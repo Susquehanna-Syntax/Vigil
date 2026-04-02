@@ -2,8 +2,6 @@
 
 **Smart, self-hosted infrastructure monitoring and endpoint management.**
 
-*Sleep well. Vigil's watching.*
-
 A [Susquehanna Syntax](https://sqsy.dev) product.
 
 ---
