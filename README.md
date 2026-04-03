@@ -61,6 +61,30 @@ Vigil/
         └── tasks/            # Signed remote task execution
 ```
 
+## API Endpoints
+
+### Agent-facing (Bearer token auth)
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/checkin` | Metric ingest + task dispatch |
+| `POST` | `/api/v1/tasks/result/` | Report task execution outcome |
+
+### Admin-facing (session or token auth)
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/hosts/` | List enrolled hosts |
+| `GET` | `/api/v1/hosts/{id}/` | Host detail |
+| `POST` | `/api/v1/hosts/{id}/approve/` | Approve a pending enrollment |
+| `POST` | `/api/v1/hosts/{id}/poll/` | Request immediate check-in |
+| `GET` | `/api/v1/metrics/{host_id}/{category}/{metric}/` | Query metric history |
+| `GET` | `/api/v1/alerts/` | List alerts (`?state=firing`, `acknowledged`, or `resolved`) |
+| `POST` | `/api/v1/alerts/{id}/acknowledge/` | Acknowledge a firing alert |
+| `POST` | `/api/v1/alerts/{id}/silence/` | Silence a firing alert |
+| `GET` | `/api/v1/tasks/` | List tasks (`?host=id&state=pending`) |
+| `GET` | `/api/v1/health/` | Health check |
+
 ## License
 
 AGPLv3
