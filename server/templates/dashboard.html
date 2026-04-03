@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vigil — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #1c1c21;
+    --s1: #232329;
+    --s2: #2a2a31;
+    --s3: #32323a;
+    --s4: #3a3a43;
+    --border: #3a3a43;
+    --text-1: #eae8e4;
+    --text-2: #a09ca6;
+    --text-3: #6e6b76;
+
+    --rose: #f2a0b8;
+    --lavender: #baa8e8;
+    --mint: #7eddb5;
+    --peach: #f0b888;
+    --sky: #82c4ee;
+    --lemon: #e2d478;
+    --coral: #f09080;
+
+    --r-sm: 10px;
+    --r-md: 14px;
+    --r-lg: 20px;
+    --r-xl: 24px;
+
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text-1);
+    min-height: 100vh;
+    overflow-x: hidden;
+    line-height: 1.5;
+  }
+
+  /* ── Layout ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 68px 1fr;
+    min-height: 100vh;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    position: fixed;
+    left: 0; top: 0; bottom: 0;
+    width: 68px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 0;
+    gap: 4px;
+    background: rgba(28, 28, 33, 0.78);
+    backdrop-filter: blur(32px);
+    -webkit-backdrop-filter: blur(32px);
+    border-right: 1px solid rgba(255,255,255,0.04);
+  }
+
+  .sidebar-logo {
+    width: 38px; height: 38px;
+    border-radius: var(--r-sm);
+    margin-bottom: 24px;
+    display: grid; place-items: center;
+    overflow: hidden;
+    transition: transform 0.5s var(--ease-out-expo);
+  }
+  .sidebar-logo:hover { transform: rotate(-8deg) scale(1.08); }
+  .sidebar-logo img {
+    width: 100%; height: 100%;
+    object-fit: contain;
+  }
+  /* Fallback eye icon when no image yet */
+  .sidebar-logo svg {
+    width: 24px; height: 24px;
+    stroke: var(--lavender);
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .sidebar-icon {
+    width: 42px; height: 42px;
+    border-radius: var(--r-sm);
+    display: grid; place-items: center;
+    cursor: pointer;
+    color: var(--text-3);
+    position: relative;
+    transition: color 0.3s, background 0.3s var(--ease-out-expo), transform 0.4s var(--ease-out-expo);
+  }
+  .sidebar-icon:hover { background: rgba(255,255,255,0.06); color: var(--text-2); transform: scale(1.06); }
+  .sidebar-icon:active { transform: scale(0.92); transition-duration: 0.1s; }
+  .sidebar-icon.active { background: var(--mint); color: var(--bg); }
+  .sidebar-icon svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+  .sidebar-icon[data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute; left: 54px;
+    background: var(--s3); color: var(--text-1);
+    font-size: 12px; font-weight: 500;
+    padding: 5px 12px; border-radius: 8px;
+    white-space: nowrap; pointer-events: none;
+    animation: tooltipIn 0.3s var(--ease-out-expo) both;
+  }
+  @keyframes tooltipIn {
+    from { opacity: 0; transform: translateX(-6px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .sidebar-spacer { flex: 1; }
+  .sidebar-avatar {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: var(--peach);
+    display: grid; place-items: center;
+    font-size: 13px; font-weight: 600;
+    color: var(--bg); cursor: pointer;
+    transition: transform 0.4s var(--ease-out-expo);
+  }
+  .sidebar-avatar:hover { transform: scale(1.1); }
+
+  /* ── Main ── */
+  .main {
+    grid-column: 2;
+    padding: 36px 44px 60px;
+    overflow-y: auto;
+    max-height: 100vh;
+  }
+  .main::-webkit-scrollbar { width: 6px; }
+  .main::-webkit-scrollbar-track { background: transparent; }
+  .main::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 3px; }
+
+  /* ── Page Header ── */
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 36px;
+  }
+  .page-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 500;
+    font-size: 32px;
+    letter-spacing: -0.5px;
+    line-height: 1.2;
+  }
+  .page-title span { color: var(--lavender); }
+  .page-sub {
+    font-size: 14px;
+    color: var(--text-2);
+    margin-top: 6px;
+  }
+
+  /* ── Section Labels ── */
+  .section-label {
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin-bottom: 16px;
+    margin-top: 40px;
+  }
+  .section-label:first-child { margin-top: 0; }
+
+  /* ── Stats Row ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 12px;
+  }
+  .stat-card {
+    background: var(--s1);
+    border-radius: var(--r-lg);
+    padding: 22px;
+    transition: transform 0.5s var(--ease-out-expo), background 0.3s;
+  }
+  .stat-card:hover { transform: translateY(-3px); background: var(--s2); }
+  .stat-label {
+    font-size: 12px;
+    color: var(--text-3);
+    font-weight: 500;
+    margin-bottom: 8px;
+  }
+  .stat-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .stat-sub {
+    font-size: 12px;
+    color: var(--text-3);
+    margin-top: 8px;
+  }
+
+  /* ── Host Cards ── */
+  .host-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px;
+  }
+  .host-card {
+    background: var(--s1);
+    border-radius: var(--r-lg);
+    padding: 22px;
+    cursor: pointer;
+    transition: transform 0.5s var(--ease-out-expo), background 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+  .host-card:hover { transform: translateY(-4px); background: var(--s2); }
+  .host-card:active { transform: translateY(-1px) scale(0.98); transition-duration: 0.12s; }
+
+  .host-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .host-status-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .host-status-dot.online { background: var(--mint); box-shadow: 0 0 8px rgba(126,221,181,0.4); }
+  .host-status-dot.offline { background: var(--rose); }
+  .host-status-dot.pending { background: var(--peach); }
+  .host-status-dot.online { animation: pulse 3s ease-in-out infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .host-name {
+    font-size: 15px;
+    font-weight: 600;
+    flex: 1;
+  }
+  .host-mode {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+  .mode-managed { background: rgba(130,196,238,0.12); color: var(--sky); }
+  .mode-monitor { background: rgba(186,168,232,0.12); color: var(--lavender); }
+  .mode-full { background: rgba(240,184,136,0.12); color: var(--peach); }
+
+  .host-os {
+    font-size: 12px;
+    color: var(--text-3);
+    margin-bottom: 16px;
+  }
+
+  .host-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .host-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .host-metric-label {
+    font-size: 11px;
+    color: var(--text-3);
+    font-weight: 500;
+  }
+  .host-metric-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 15px;
+    font-weight: 500;
+  }
+  .host-metric-bar {
+    height: 4px;
+    background: var(--s3);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .host-metric-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.8s var(--ease-out-expo);
+  }
+
+  /* Sparkline */
+  .sparkline-wrap {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--s3);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sparkline-label {
+    font-size: 11px;
+    color: var(--text-3);
+  }
+  .sparkline {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 24px;
+  }
+  .sparkline-bar {
+    width: 4px;
+    border-radius: 2px;
+    background: var(--lavender);
+    opacity: 0.5;
+    transition: height 0.5s var(--ease-out-expo), opacity 0.3s;
+  }
+  .host-card:hover .sparkline-bar { opacity: 0.8; }
+
+  /* ── Alert List ── */
+  .alert-list { display: flex; flex-direction: column; gap: 8px; }
+  .alert-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px;
+    border-radius: var(--r-md);
+    background: var(--s1);
+    cursor: pointer;
+    transition: background 0.2s, transform 0.4s var(--ease-out-expo);
+  }
+  .alert-item:hover { background: var(--s2); transform: translateX(4px); }
+  .alert-dot {
+    width: 10px; height: 10px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .alert-content { flex: 1; }
+  .alert-title { font-size: 14px; font-weight: 500; }
+  .alert-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+  .alert-time {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-3);
+  }
+
+  /* ── Empty State ── */
+  .empty-state {
+    text-align: center;
+    padding: 80px 40px;
+  }
+  .empty-state-icon {
+    width: 64px; height: 64px;
+    border-radius: var(--r-lg);
+    background: var(--s2);
+    display: grid; place-items: center;
+    margin: 0 auto 20px;
+    color: var(--text-3);
+  }
+  .empty-state-icon svg { width: 28px; height: 28px; stroke: currentColor; fill: none; stroke-width: 1.5; }
+  .empty-state-title {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 500;
+    margin-bottom: 8px;
+  }
+  .empty-state-desc {
+    font-size: 14px;
+    color: var(--text-2);
+    max-width: 400px;
+    margin: 0 auto 24px;
+    line-height: 1.6;
+  }
+
+  .btn {
+    border: none;
+    padding: 11px 22px;
+    border-radius: var(--r-md);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    transition: transform 0.4s var(--ease-out-expo), opacity 0.2s;
+  }
+  .btn:hover { transform: translateY(-2px); }
+  .btn:active { transform: translateY(0) scale(0.96); transition-duration: 0.1s; }
+  .btn-mint { background: var(--mint); color: var(--bg); }
+  .btn-outline {
+    background: none; color: var(--text-2);
+    border: 1.5px solid var(--border);
+  }
+  .btn-outline:hover { border-color: var(--text-3); color: var(--text-1); }
+  .btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ── Entrance ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .fade-in { animation: fadeUp 0.6s var(--ease-out-expo) both; }
+  .d1 { animation-delay: 0.05s; }
+  .d2 { animation-delay: 0.1s; }
+  .d3 { animation-delay: 0.15s; }
+  .d4 { animation-delay: 0.2s; }
+  .d5 { animation-delay: 0.25s; }
+  .d6 { animation-delay: 0.3s; }
+  .d7 { animation-delay: 0.35s; }
+  .d8 { animation-delay: 0.4s; }
+  .d9 { animation-delay: 0.45s; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <!-- Replace SVG below with <img src="/static/img/logo.svg" alt="Vigil"> when ready -->
+      <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    </div>
+    <div class="sidebar-icon active" data-tip="Dashboard">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+    </div>
+    <div class="sidebar-icon" data-tip="Alerts">
+      <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+    </div>
+    <div class="sidebar-icon" data-tip="Tasks">
+      <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+    </div>
+    <div class="sidebar-icon" data-tip="Insights">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+    </div>
+    <div class="sidebar-icon" data-tip="Settings">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    </div>
+    <div class="sidebar-spacer"></div>
+    <div class="sidebar-avatar">C</div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main">
+
+    <!-- Page Header -->
+    <div class="page-header fade-in d1">
+      <div>
+        <div class="page-title">Good evening<span>.</span></div>
+        <div class="page-sub">{{ host_count }} host{{ host_count|pluralize }} · {{ online_count }} online · {{ alert_count }} active alert{{ alert_count|pluralize }}</div>
+      </div>
+      <button class="btn btn-mint" onclick="document.getElementById('enroll-hint').style.display='block'">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Host
+      </button>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row fade-in d2">
+      <div class="stat-card">
+        <div class="stat-label">Total Hosts</div>
+        <div class="stat-value" style="color: var(--lavender)">{{ host_count }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Online</div>
+        <div class="stat-value" style="color: var(--mint)">{{ online_count }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Alerts Firing</div>
+        <div class="stat-value" style="color: var(--rose)">{{ alert_count }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Pending Enrollment</div>
+        <div class="stat-value" style="color: var(--peach)">{{ pending_count }}</div>
+      </div>
+    </div>
+
+    {% if hosts %}
+    <!-- Hosts -->
+    <div class="section-label fade-in d3">Hosts</div>
+    <div class="host-grid fade-in d4">
+      {% for host in hosts %}
+      <div class="host-card">
+        <div class="host-header">
+          <div class="host-status-dot {{ host.status }}"></div>
+          <div class="host-name">{{ host.hostname }}</div>
+          <div class="host-mode mode-{{ host.mode }}">{{ host.get_mode_display }}</div>
+        </div>
+        <div class="host-os">{{ host.os|default:"Unknown OS" }} · {{ host.ip_address|default:"—" }}</div>
+        <div class="host-metrics">
+          <div class="host-metric">
+            <div class="host-metric-label">CPU</div>
+            <div class="host-metric-value">—</div>
+            <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--sky);"></div></div>
+          </div>
+          <div class="host-metric">
+            <div class="host-metric-label">Memory</div>
+            <div class="host-metric-value">—</div>
+            <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--lavender);"></div></div>
+          </div>
+          <div class="host-metric">
+            <div class="host-metric-label">Disk</div>
+            <div class="host-metric-value">—</div>
+            <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--mint);"></div></div>
+          </div>
+        </div>
+        <div class="sparkline-wrap">
+          <div class="sparkline-label">Last 1h CPU</div>
+          <div class="sparkline">
+            <div class="sparkline-bar" style="height: 6px;"></div>
+            <div class="sparkline-bar" style="height: 10px;"></div>
+            <div class="sparkline-bar" style="height: 8px;"></div>
+            <div class="sparkline-bar" style="height: 14px;"></div>
+            <div class="sparkline-bar" style="height: 11px;"></div>
+            <div class="sparkline-bar" style="height: 9px;"></div>
+            <div class="sparkline-bar" style="height: 16px;"></div>
+            <div class="sparkline-bar" style="height: 12px;"></div>
+            <div class="sparkline-bar" style="height: 7px;"></div>
+            <div class="sparkline-bar" style="height: 10px;"></div>
+            <div class="sparkline-bar" style="height: 13px;"></div>
+            <div class="sparkline-bar" style="height: 9px;"></div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if alerts %}
+    <!-- Recent Alerts -->
+    <div class="section-label fade-in d5">Recent Alerts</div>
+    <div class="alert-list fade-in d6">
+      {% for alert in alerts %}
+      <div class="alert-item">
+        <div class="alert-dot" style="background: var({% if alert.severity == 'critical' %}--rose{% elif alert.severity == 'warning' %}--lemon{% else %}--lavender{% endif %});"></div>
+        <div class="alert-content">
+          <div class="alert-title">{{ alert.message }}</div>
+          <div class="alert-sub">{{ alert.host.hostname }} · {{ alert.get_severity_display }}</div>
+        </div>
+        <div class="alert-time">{{ alert.fired_at|timesince }} ago</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <!-- Empty State -->
+    <div class="empty-state fade-in d3">
+      <div class="empty-state-icon">
+        <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      </div>
+      <div class="empty-state-title">No hosts yet</div>
+      <div class="empty-state-desc">
+        Install the Vigil agent on your first machine and it'll show up here for enrollment.
+      </div>
+      <div id="enroll-hint" style="display:none; margin-top: 24px; text-align: left; max-width: 520px; margin-left: auto; margin-right: auto;">
+        <div class="section-label">Install Agent</div>
+        <div style="background: var(--s1); border-radius: var(--r-md); padding: 18px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--mint); line-height: 1.7;">
+          curl -s https://your-vigil-server/install | sh
+        </div>
+        <div style="font-size: 12px; color: var(--text-3); margin-top: 10px;">
+          The agent will appear as "pending enrollment" until you approve it.
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+  </main>
+</div>
+</body>
+</html>

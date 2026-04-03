@@ -7,6 +7,7 @@ from rest_framework.response import Response
 
 from apps.alerts.models import Alert
 from apps.hosts.models import Host
+from apps.hosts.views import checkin
 
 
 @api_view(["GET"])
@@ -32,6 +33,7 @@ urlpatterns = [
     path("", dashboard, name="dashboard"),
     path("admin/", admin.site.urls),
     path("api/v1/health/", health_check),
+    path("api/v1/checkin", checkin, name="checkin"),
     path("api/v1/hosts/", include("apps.hosts.urls")),
     path("api/v1/metrics/", include("apps.metrics.urls")),
     path("api/v1/alerts/", include("apps.alerts.urls")),
