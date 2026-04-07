@@ -1,0 +1,39 @@
+# Vigil Agent Configuration
+# Copy to /etc/vigil/agent.yml (Linux) or adjust path for your OS.
+
+# URL of the Vigil server (no trailing slash)
+server_url: https://your-vigil-server:8000
+
+# Agent token — auto-generated on first run if left empty.
+# Treat this like a password. Ensure this file is chmod 600.
+agent_token: ""
+
+# Agent mode: monitor | managed | full_control
+#   monitor      — collect metrics only, never execute tasks
+#   managed      — collect metrics + execute allowlisted tasks
+#   full_control — collect metrics + execute ANY action (requires explicit opt-in)
+mode: managed
+
+# Check-in interval in seconds
+checkin_interval: 60
+
+# Directory for runtime state (nonce cache, pinned public key, metric buffer)
+data_dir: /var/lib/vigil-agent
+
+# Actions this agent is willing to execute (managed mode only).
+# full_control ignores this list. monitor mode ignores tasks entirely.
+allowlist:
+  - restart_service
+  - restart_container
+  - stop_container
+  - start_container
+  - clear_temp_files
+  - clear_docker_logs
+  - run_package_updates
+  # Uncomment to enable higher-risk actions:
+  # - execute_script
+  # - reboot
+
+# Directory containing pre-approved scripts for the execute_script action.
+# Scripts outside this directory are never executed.
+scripts_dir: /etc/vigil/scripts

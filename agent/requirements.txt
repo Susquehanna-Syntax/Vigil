@@ -1,0 +1,4 @@
+requests>=2.32,<3.0
+PyNaCl>=1.5,<2.0
+psutil>=6.0,<7.0
+PyYAML>=6.0,<7.0

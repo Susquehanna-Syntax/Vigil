@@ -13,6 +13,49 @@ from .authentication import authenticate_agent
 from .models import Host
 from .serializers import HostSerializer
 
+_MAX_TOKEN_LEN = 255
+_MAX_HOSTNAME_LEN = 255
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def register(request):
+    """Register a new agent. Creates a pending Host awaiting admin approval."""
+    token = request.data.get("agent_token", "").strip()
+    hostname = request.data.get("hostname", "").strip()
+
+    if not token or not hostname:
+        return Response(
+            {"error": "agent_token and hostname are required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if len(token) > _MAX_TOKEN_LEN or len(hostname) > _MAX_HOSTNAME_LEN:
+        return Response(
+            {"error": "Field value too long"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Idempotent: if the token already exists, return current status
+    existing = Host.objects.filter(agent_token=token).first()
+    if existing:
+        return Response(
+            {"id": str(existing.id), "status": existing.status},
+            status=status.HTTP_200_OK,
+        )
+
+    host = Host.objects.create(
+        hostname=hostname,
+        os=request.data.get("os", "")[:100],
+        kernel=request.data.get("kernel", "")[:100],
+        ip_address=request.META.get("REMOTE_ADDR"),
+        agent_token=token,
+        status=Host.Status.PENDING,
+    )
+    return Response(
+        {"id": str(host.id), "status": host.status},
+        status=status.HTTP_201_CREATED,
+    )
+
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
@@ -80,11 +123,13 @@ def checkin(request):
             tasks_payload.append(
                 {
                     "id": str(task.id),
+                    "host_id": str(task.host_id),
                     "action": task.action,
                     "params": task.params,
                     "nonce": task.nonce,
                     "signature": task.signature,
                     "ttl_seconds": task.ttl_seconds,
+                    "created_at": task.created_at.isoformat(),
                 }
             )
         Task.objects.filter(id__in=[t.id for t in pending]).update(

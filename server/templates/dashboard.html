@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+{% load tz %}<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -6,577 +6,1329 @@
 <title>Vigil — Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #1c1c21;
-    --s1: #232329;
-    --s2: #2a2a31;
-    --s3: #32323a;
-    --s4: #3a3a43;
-    --border: #3a3a43;
-    --text-1: #eae8e4;
-    --text-2: #a09ca6;
-    --text-3: #6e6b76;
+/* ═══════════════════════════════════════════
+   TOKENS
+   ═══════════════════════════════════════════ */
+:root {
+  --bg: #1c1c21;
+  --s1: #232329;
+  --s2: #2a2a31;
+  --s3: #32323a;
+  --s4: #3a3a43;
+  --border: #3a3a43;
+  --text-1: #eae8e4;
+  --text-2: #a09ca6;
+  --text-3: #6e6b76;
 
-    --rose: #f2a0b8;
-    --lavender: #baa8e8;
-    --mint: #7eddb5;
-    --peach: #f0b888;
-    --sky: #82c4ee;
-    --lemon: #e2d478;
-    --coral: #f09080;
+  --rose: #f2a0b8;
+  --lavender: #baa8e8;
+  --mint: #7eddb5;
+  --peach: #f0b888;
+  --sky: #82c4ee;
+  --lemon: #e2d478;
+  --coral: #f09080;
 
-    --r-sm: 10px;
-    --r-md: 14px;
-    --r-lg: 20px;
-    --r-xl: 24px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 24px;
 
-    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-    --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
-    --spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  }
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
-  body {
-    font-family: 'DM Sans', sans-serif;
-    background: var(--bg);
-    color: var(--text-1);
-    min-height: 100vh;
-    overflow-x: hidden;
-    line-height: 1.5;
-  }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text-1);
+  min-height: 100vh;
+  overflow-x: hidden;
+  line-height: 1.5;
+}
 
-  /* ── Layout ── */
-  .layout {
-    display: grid;
-    grid-template-columns: 68px 1fr;
-    min-height: 100vh;
-  }
+/* ═══════════════════════════════════════════
+   LAYOUT
+   ═══════════════════════════════════════════ */
+.layout {
+  display: grid;
+  grid-template-columns: 68px 1fr;
+  min-height: 100vh;
+}
 
-  /* ── Sidebar ── */
-  .sidebar {
-    position: fixed;
-    left: 0; top: 0; bottom: 0;
-    width: 68px;
-    z-index: 100;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 20px 0;
-    gap: 4px;
-    background: rgba(28, 28, 33, 0.78);
-    backdrop-filter: blur(32px);
-    -webkit-backdrop-filter: blur(32px);
-    border-right: 1px solid rgba(255,255,255,0.04);
-  }
+/* ═══════════════════════════════════════════
+   SIDEBAR
+   ═══════════════════════════════════════════ */
+.sidebar {
+  position: fixed;
+  left: 0; top: 0; bottom: 0;
+  width: 68px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0;
+  gap: 4px;
+  background: rgba(28, 28, 33, 0.78);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border-right: 1px solid rgba(255,255,255,0.04);
+}
 
-  .sidebar-logo {
-    width: 38px; height: 38px;
-    border-radius: var(--r-sm);
-    margin-bottom: 24px;
-    display: grid; place-items: center;
-    overflow: hidden;
-    transition: transform 0.5s var(--ease-out-expo);
-  }
-  .sidebar-logo:hover { transform: rotate(-8deg) scale(1.08); }
-  .sidebar-logo img {
-    width: 100%; height: 100%;
-    object-fit: contain;
-  }
-  /* Fallback eye icon when no image yet */
-  .sidebar-logo svg {
-    width: 24px; height: 24px;
-    stroke: var(--lavender);
-    fill: none;
-    stroke-width: 1.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
+.sidebar-logo {
+  width: 38px; height: 38px;
+  background: var(--lavender);
+  border-radius: var(--r-sm);
+  margin-bottom: 24px;
+  display: grid; place-items: center;
+  font-family: 'Fraunces', serif;
+  font-weight: 700; font-size: 17px;
+  color: var(--bg);
+  transition: transform 0.5s var(--ease-out-expo);
+  cursor: default;
+}
+.sidebar-logo:hover { transform: rotate(-8deg) scale(1.08); }
 
-  .sidebar-icon {
-    width: 42px; height: 42px;
-    border-radius: var(--r-sm);
-    display: grid; place-items: center;
-    cursor: pointer;
-    color: var(--text-3);
-    position: relative;
-    transition: color 0.3s, background 0.3s var(--ease-out-expo), transform 0.4s var(--ease-out-expo);
-  }
-  .sidebar-icon:hover { background: rgba(255,255,255,0.06); color: var(--text-2); transform: scale(1.06); }
-  .sidebar-icon:active { transform: scale(0.92); transition-duration: 0.1s; }
-  .sidebar-icon.active { background: var(--mint); color: var(--bg); }
-  .sidebar-icon svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sidebar-icon {
+  width: 42px; height: 42px;
+  border-radius: var(--r-sm);
+  display: grid; place-items: center;
+  cursor: pointer;
+  color: var(--text-3);
+  position: relative;
+  transition: color 0.3s, background 0.3s var(--ease-out-expo), transform 0.4s var(--ease-out-expo);
+}
+.sidebar-icon:hover { background: rgba(255,255,255,0.06); color: var(--text-2); transform: scale(1.06); }
+.sidebar-icon:active { transform: scale(0.92); transition-duration: 0.1s; }
+.sidebar-icon.active { background: var(--mint); color: var(--bg); }
+.sidebar-icon svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-  .sidebar-icon[data-tip]:hover::after {
-    content: attr(data-tip);
-    position: absolute; left: 54px;
-    background: var(--s3); color: var(--text-1);
-    font-size: 12px; font-weight: 500;
-    padding: 5px 12px; border-radius: 8px;
-    white-space: nowrap; pointer-events: none;
-    animation: tooltipIn 0.3s var(--ease-out-expo) both;
-  }
-  @keyframes tooltipIn {
-    from { opacity: 0; transform: translateX(-6px); }
-    to { opacity: 1; transform: translateX(0); }
-  }
+.sidebar-icon .badge-dot {
+  position: absolute; top: 6px; right: 6px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+}
 
-  .sidebar-spacer { flex: 1; }
-  .sidebar-avatar {
-    width: 34px; height: 34px;
-    border-radius: 50%;
-    background: var(--peach);
-    display: grid; place-items: center;
-    font-size: 13px; font-weight: 600;
-    color: var(--bg); cursor: pointer;
-    transition: transform 0.4s var(--ease-out-expo);
-  }
-  .sidebar-avatar:hover { transform: scale(1.1); }
+.sidebar-icon[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute; left: 54px;
+  background: var(--s3); color: var(--text-1);
+  font-size: 12px; font-weight: 500;
+  padding: 5px 12px; border-radius: 8px;
+  white-space: nowrap; pointer-events: none;
+  animation: tooltipIn 0.3s var(--ease-out-expo) both;
+}
+@keyframes tooltipIn {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
 
-  /* ── Main ── */
-  .main {
-    grid-column: 2;
-    padding: 36px 44px 60px;
-    overflow-y: auto;
-    max-height: 100vh;
-  }
-  .main::-webkit-scrollbar { width: 6px; }
-  .main::-webkit-scrollbar-track { background: transparent; }
-  .main::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 3px; }
+.sidebar-spacer { flex: 1; }
+.sidebar-avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--peach);
+  display: grid; place-items: center;
+  font-size: 13px; font-weight: 600;
+  color: var(--bg); cursor: pointer;
+  transition: transform 0.4s var(--ease-out-expo);
+}
+.sidebar-avatar:hover { transform: scale(1.1); }
 
-  /* ── Page Header ── */
-  .page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 36px;
-  }
-  .page-title {
-    font-family: 'Fraunces', serif;
-    font-weight: 500;
-    font-size: 32px;
-    letter-spacing: -0.5px;
-    line-height: 1.2;
-  }
-  .page-title span { color: var(--lavender); }
-  .page-sub {
-    font-size: 14px;
-    color: var(--text-2);
-    margin-top: 6px;
-  }
+/* ═══════════════════════════════════════════
+   MAIN
+   ═══════════════════════════════════════════ */
+.main {
+  grid-column: 2;
+  padding: 36px 44px 60px;
+  overflow-y: auto;
+  max-height: 100vh;
+}
+.main::-webkit-scrollbar { width: 6px; }
+.main::-webkit-scrollbar-track { background: transparent; }
+.main::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 3px; }
 
-  /* ── Section Labels ── */
-  .section-label {
-    font-size: 11px; font-weight: 700;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: var(--text-3);
-    margin-bottom: 16px;
-    margin-top: 40px;
-  }
-  .section-label:first-child { margin-top: 0; }
+/* ═══════════════════════════════════════════
+   PAGE SECTIONS
+   ═══════════════════════════════════════════ */
+.page { display: none; }
+.page.active { display: block; }
 
-  /* ── Stats Row ── */
-  .stats-row {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 14px;
-    margin-bottom: 12px;
-  }
-  .stat-card {
-    background: var(--s1);
-    border-radius: var(--r-lg);
-    padding: 22px;
-    transition: transform 0.5s var(--ease-out-expo), background 0.3s;
-  }
-  .stat-card:hover { transform: translateY(-3px); background: var(--s2); }
-  .stat-label {
-    font-size: 12px;
-    color: var(--text-3);
-    font-weight: 500;
-    margin-bottom: 8px;
-  }
-  .stat-value {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 28px;
-    font-weight: 600;
-    line-height: 1;
-  }
-  .stat-sub {
-    font-size: 12px;
-    color: var(--text-3);
-    margin-top: 8px;
-  }
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 36px;
+}
+.page-title {
+  font-family: 'Fraunces', serif;
+  font-weight: 500; font-size: 32px;
+  letter-spacing: -0.5px; line-height: 1.2;
+}
+.page-title span { color: var(--lavender); }
+.page-sub {
+  font-size: 14px; color: var(--text-2); margin-top: 6px;
+}
 
-  /* ── Host Cards ── */
-  .host-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 14px;
-  }
-  .host-card {
-    background: var(--s1);
-    border-radius: var(--r-lg);
-    padding: 22px;
-    cursor: pointer;
-    transition: transform 0.5s var(--ease-out-expo), background 0.3s;
-    position: relative;
-    overflow: hidden;
-  }
-  .host-card:hover { transform: translateY(-4px); background: var(--s2); }
-  .host-card:active { transform: translateY(-1px) scale(0.98); transition-duration: 0.12s; }
+.section-label {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 16px;
+  margin-top: 40px;
+}
+.section-label:first-child { margin-top: 0; }
 
-  .host-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 16px;
-  }
-  .host-status-dot {
-    width: 10px; height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .host-status-dot.online { background: var(--mint); box-shadow: 0 0 8px rgba(126,221,181,0.4); }
-  .host-status-dot.offline { background: var(--rose); }
-  .host-status-dot.pending { background: var(--peach); }
-  .host-status-dot.online { animation: pulse 3s ease-in-out infinite; }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
+/* ═══════════════════════════════════════════
+   STATS ROW
+   ═══════════════════════════════════════════ */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.stat-card {
+  background: var(--s1);
+  border-radius: var(--r-lg);
+  padding: 22px;
+  transition: transform 0.5s var(--ease-out-expo), background 0.3s;
+}
+.stat-card:hover { transform: translateY(-3px); background: var(--s2); }
+.stat-label {
+  font-size: 12px; color: var(--text-3);
+  font-weight: 500; margin-bottom: 8px;
+}
+.stat-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 28px; font-weight: 600; line-height: 1;
+}
+.stat-sub {
+  font-size: 12px; color: var(--text-3); margin-top: 8px;
+}
 
-  .host-name {
-    font-size: 15px;
-    font-weight: 600;
-    flex: 1;
-  }
-  .host-mode {
-    font-size: 10px;
-    font-weight: 600;
-    padding: 3px 10px;
-    border-radius: 20px;
-    letter-spacing: 0.3px;
-    text-transform: uppercase;
-  }
-  .mode-managed { background: rgba(130,196,238,0.12); color: var(--sky); }
-  .mode-monitor { background: rgba(186,168,232,0.12); color: var(--lavender); }
-  .mode-full { background: rgba(240,184,136,0.12); color: var(--peach); }
+/* ═══════════════════════════════════════════
+   BUTTONS
+   ═══════════════════════════════════════════ */
+.btn {
+  border: none;
+  padding: 11px 22px;
+  border-radius: var(--r-md);
+  font-family: inherit;
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center; gap: 7px;
+  transition: transform 0.4s var(--ease-out-expo), opacity 0.2s;
+}
+.btn:hover { transform: translateY(-2px); }
+.btn:active { transform: translateY(0) scale(0.96); transition-duration: 0.1s; }
+.btn-mint { background: var(--mint); color: var(--bg); }
+.btn-rose { background: var(--rose); color: var(--bg); }
+.btn-sky { background: var(--sky); color: var(--bg); }
+.btn-lav { background: var(--lavender); color: var(--bg); }
+.btn-peach { background: var(--peach); color: var(--bg); }
+.btn-outline {
+  background: none; color: var(--text-2);
+  border: 1.5px solid var(--border);
+}
+.btn-outline:hover { border-color: var(--text-3); color: var(--text-1); }
+.btn-sm { padding: 7px 14px; font-size: 12px; }
+.btn-ghost {
+  background: none; color: var(--text-2);
+  border: none; padding: 7px 14px;
+}
+.btn-ghost:hover { background: rgba(255,255,255,0.06); color: var(--text-1); }
+.btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 
-  .host-os {
-    font-size: 12px;
-    color: var(--text-3);
-    margin-bottom: 16px;
-  }
+/* ═══════════════════════════════════════════
+   FILTER TABS
+   ═══════════════════════════════════════════ */
+.tab-bar {
+  display: flex; gap: 6px;
+  margin-bottom: 20px;
+}
+.tab {
+  font-size: 12px; font-weight: 600;
+  padding: 7px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  background: var(--s1);
+  color: var(--text-3);
+  border: 1.5px solid transparent;
+  transition: all 0.3s var(--ease-out-expo), transform 0.4s var(--ease-out-expo);
+}
+.tab:hover { background: var(--s2); color: var(--text-2); transform: translateY(-1px); }
+.tab:active { transform: scale(0.94); transition-duration: 0.08s; }
+.tab.active { border-color: currentColor; }
+.tab.t-rose.active { color: var(--rose); background: rgba(242,160,184,0.1); }
+.tab.t-lemon.active { color: var(--lemon); background: rgba(226,212,120,0.1); }
+.tab.t-mint.active { color: var(--mint); background: rgba(126,221,181,0.1); }
+.tab.t-lav.active { color: var(--lavender); background: rgba(186,168,232,0.1); }
+.tab.t-sky.active { color: var(--sky); background: rgba(130,196,238,0.1); }
 
-  .host-metrics {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-  }
-  .host-metric {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .host-metric-label {
-    font-size: 11px;
-    color: var(--text-3);
-    font-weight: 500;
-  }
-  .host-metric-value {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 15px;
-    font-weight: 500;
-  }
-  .host-metric-bar {
-    height: 4px;
-    background: var(--s3);
-    border-radius: 2px;
-    overflow: hidden;
-  }
-  .host-metric-fill {
-    height: 100%;
-    border-radius: 2px;
-    transition: width 0.8s var(--ease-out-expo);
-  }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
 
-  /* Sparkline */
-  .sparkline-wrap {
-    margin-top: 16px;
-    padding-top: 14px;
-    border-top: 1px solid var(--s3);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .sparkline-label {
-    font-size: 11px;
-    color: var(--text-3);
-  }
-  .sparkline {
-    display: flex;
-    align-items: flex-end;
-    gap: 2px;
-    height: 24px;
-  }
-  .sparkline-bar {
-    width: 4px;
-    border-radius: 2px;
-    background: var(--lavender);
-    opacity: 0.5;
-    transition: height 0.5s var(--ease-out-expo), opacity 0.3s;
-  }
-  .host-card:hover .sparkline-bar { opacity: 0.8; }
+/* ═══════════════════════════════════════════
+   HOST CARDS
+   ═══════════════════════════════════════════ */
+.host-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+.host-card {
+  background: var(--s1);
+  border-radius: var(--r-lg);
+  padding: 22px;
+  cursor: pointer;
+  transition: transform 0.5s var(--ease-out-expo), background 0.3s;
+  position: relative; overflow: hidden;
+}
+.host-card:hover { transform: translateY(-4px); background: var(--s2); }
+.host-card:active { transform: translateY(-1px) scale(0.98); transition-duration: 0.12s; }
 
-  /* ── Alert List ── */
-  .alert-list { display: flex; flex-direction: column; gap: 8px; }
-  .alert-item {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 14px 18px;
-    border-radius: var(--r-md);
-    background: var(--s1);
-    cursor: pointer;
-    transition: background 0.2s, transform 0.4s var(--ease-out-expo);
-  }
-  .alert-item:hover { background: var(--s2); transform: translateX(4px); }
-  .alert-dot {
-    width: 10px; height: 10px;
-    border-radius: 4px;
-    flex-shrink: 0;
-  }
-  .alert-content { flex: 1; }
-  .alert-title { font-size: 14px; font-weight: 500; }
-  .alert-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
-  .alert-time {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
-    color: var(--text-3);
-  }
+.host-header {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 16px;
+}
+.status-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%; flex-shrink: 0;
+}
+.status-dot.online { background: var(--mint); box-shadow: 0 0 8px rgba(126,221,181,0.4); animation: pulse 3s ease-in-out infinite; }
+.status-dot.offline { background: var(--rose); }
+.status-dot.pending { background: var(--peach); animation: pulse 3s ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
 
-  /* ── Empty State ── */
-  .empty-state {
-    text-align: center;
-    padding: 80px 40px;
-  }
-  .empty-state-icon {
-    width: 64px; height: 64px;
-    border-radius: var(--r-lg);
-    background: var(--s2);
-    display: grid; place-items: center;
-    margin: 0 auto 20px;
-    color: var(--text-3);
-  }
-  .empty-state-icon svg { width: 28px; height: 28px; stroke: currentColor; fill: none; stroke-width: 1.5; }
-  .empty-state-title {
-    font-family: 'Fraunces', serif;
-    font-size: 22px;
-    font-weight: 500;
-    margin-bottom: 8px;
-  }
-  .empty-state-desc {
-    font-size: 14px;
-    color: var(--text-2);
-    max-width: 400px;
-    margin: 0 auto 24px;
-    line-height: 1.6;
-  }
+.host-name { font-size: 15px; font-weight: 600; flex: 1; }
 
-  .btn {
-    border: none;
-    padding: 11px 22px;
-    border-radius: var(--r-md);
-    font-family: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    transition: transform 0.4s var(--ease-out-expo), opacity 0.2s;
-  }
-  .btn:hover { transform: translateY(-2px); }
-  .btn:active { transform: translateY(0) scale(0.96); transition-duration: 0.1s; }
-  .btn-mint { background: var(--mint); color: var(--bg); }
-  .btn-outline {
-    background: none; color: var(--text-2);
-    border: 1.5px solid var(--border);
-  }
-  .btn-outline:hover { border-color: var(--text-3); color: var(--text-1); }
-  .btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.mode-badge {
+  font-size: 10px; font-weight: 600;
+  padding: 3px 10px; border-radius: 20px;
+  letter-spacing: 0.3px; text-transform: uppercase;
+}
+.mode-managed { background: rgba(130,196,238,0.12); color: var(--sky); }
+.mode-monitor { background: rgba(186,168,232,0.12); color: var(--lavender); }
+.mode-full_control { background: rgba(240,184,136,0.12); color: var(--peach); }
 
-  /* ── Entrance ── */
-  @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(16px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .fade-in { animation: fadeUp 0.6s var(--ease-out-expo) both; }
-  .d1 { animation-delay: 0.05s; }
-  .d2 { animation-delay: 0.1s; }
-  .d3 { animation-delay: 0.15s; }
-  .d4 { animation-delay: 0.2s; }
-  .d5 { animation-delay: 0.25s; }
-  .d6 { animation-delay: 0.3s; }
-  .d7 { animation-delay: 0.35s; }
-  .d8 { animation-delay: 0.4s; }
-  .d9 { animation-delay: 0.45s; }
+.host-os { font-size: 12px; color: var(--text-3); margin-bottom: 16px; }
+
+.host-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.host-metric { display: flex; flex-direction: column; gap: 6px; }
+.host-metric-label { font-size: 11px; color: var(--text-3); font-weight: 500; }
+.host-metric-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 15px; font-weight: 500;
+}
+.host-metric-bar {
+  height: 4px; background: var(--s3);
+  border-radius: 2px; overflow: hidden;
+}
+.host-metric-fill {
+  height: 100%; border-radius: 2px;
+  transition: width 0.8s var(--ease-out-expo);
+}
+
+.host-footer {
+  margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--s3);
+  display: flex; align-items: center;
+  justify-content: space-between;
+}
+.host-checkin {
+  font-size: 11px; color: var(--text-3);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* ═══════════════════════════════════════════
+   ALERT LIST
+   ═══════════════════════════════════════════ */
+.alert-list { display: flex; flex-direction: column; gap: 8px; }
+.alert-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 18px;
+  border-radius: var(--r-md);
+  background: var(--s1);
+  transition: background 0.2s, transform 0.4s var(--ease-out-expo);
+}
+.alert-item:hover { background: var(--s2); transform: translateX(4px); }
+.alert-dot {
+  width: 10px; height: 10px;
+  border-radius: 4px; flex-shrink: 0;
+}
+.alert-content { flex: 1; }
+.alert-title { font-size: 14px; font-weight: 500; }
+.alert-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.alert-time {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--text-3);
+  white-space: nowrap;
+}
+.alert-actions {
+  display: flex; gap: 6px;
+  margin-left: 8px;
+}
+
+/* ═══════════════════════════════════════════
+   TASK LIST
+   ═══════════════════════════════════════════ */
+.task-list { display: flex; flex-direction: column; gap: 8px; }
+.task-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px 18px;
+  border-radius: var(--r-md);
+  background: var(--s1);
+  transition: background 0.2s, transform 0.4s var(--ease-out-expo);
+}
+.task-item:hover { background: var(--s2); }
+
+.task-action-name {
+  font-size: 14px; font-weight: 500;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.task-detail { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.task-content { flex: 1; }
+
+.state-badge {
+  font-size: 10px; font-weight: 700;
+  padding: 4px 12px; border-radius: 20px;
+  letter-spacing: 0.4px; text-transform: uppercase;
+  white-space: nowrap;
+}
+.state-pending { background: rgba(240,184,136,0.12); color: var(--peach); }
+.state-dispatched { background: rgba(130,196,238,0.12); color: var(--sky); }
+.state-executing { background: rgba(130,196,238,0.12); color: var(--sky); }
+.state-completed { background: rgba(126,221,181,0.12); color: var(--mint); }
+.state-failed { background: rgba(242,160,184,0.12); color: var(--rose); }
+.state-rejected { background: rgba(240,144,128,0.12); color: var(--coral); }
+.state-expired { background: rgba(110,107,118,0.15); color: var(--text-3); }
+
+/* ═══════════════════════════════════════════
+   ENROLLMENT CARDS (Settings)
+   ═══════════════════════════════════════════ */
+.enroll-card {
+  background: var(--s1);
+  border-radius: var(--r-lg);
+  padding: 22px;
+  display: flex; align-items: center; gap: 18px;
+  transition: background 0.2s;
+  margin-bottom: 10px;
+}
+.enroll-card:hover { background: var(--s2); }
+.enroll-info { flex: 1; }
+.enroll-hostname { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.enroll-meta { font-size: 12px; color: var(--text-3); }
+.enroll-actions { display: flex; gap: 8px; }
+
+/* ═══════════════════════════════════════════
+   AGENT TABLE (Settings)
+   ═══════════════════════════════════════════ */
+.agent-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 4px;
+}
+.agent-table th {
+  text-align: left;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1px; text-transform: uppercase;
+  color: var(--text-3);
+  padding: 8px 16px;
+}
+.agent-table td {
+  padding: 14px 16px;
+  background: var(--s1);
+  font-size: 13px;
+  transition: background 0.2s;
+}
+.agent-table tr:hover td { background: var(--s2); }
+.agent-table td:first-child { border-radius: var(--r-md) 0 0 var(--r-md); }
+.agent-table td:last-child { border-radius: 0 var(--r-md) var(--r-md) 0; }
+.agent-table .mono {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px; color: var(--text-2);
+}
+
+/* ═══════════════════════════════════════════
+   HOST DETAIL PANEL
+   ═══════════════════════════════════════════ */
+.detail-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 200;
+  animation: fadeIn 0.2s ease both;
+}
+.detail-overlay.open { display: block; }
+@keyframes fadeIn {
+  from { opacity: 0; } to { opacity: 1; }
+}
+
+.detail-panel {
+  position: fixed;
+  top: 0; right: -520px; bottom: 0;
+  width: 520px;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  z-index: 210;
+  overflow-y: auto;
+  padding: 32px;
+  transition: right 0.4s var(--ease-out-expo);
+}
+.detail-panel.open { right: 0; }
+.detail-panel::-webkit-scrollbar { width: 4px; }
+.detail-panel::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 2px; }
+
+.detail-close {
+  width: 36px; height: 36px;
+  border-radius: var(--r-sm);
+  background: var(--s1);
+  border: none; cursor: pointer;
+  display: grid; place-items: center;
+  color: var(--text-2);
+  transition: background 0.2s, transform 0.3s var(--ease-out-expo);
+  float: right;
+}
+.detail-close:hover { background: var(--s2); transform: scale(1.08); }
+.detail-close svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2.5; }
+
+.detail-header { margin-bottom: 32px; padding-top: 4px; }
+.detail-hostname {
+  font-family: 'Fraunces', serif;
+  font-size: 24px; font-weight: 500;
+  margin-bottom: 6px;
+}
+.detail-meta { font-size: 13px; color: var(--text-2); }
+
+.detail-section { margin-bottom: 28px; }
+.detail-section-title {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--text-3); margin-bottom: 14px;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.metric-card {
+  background: var(--s1);
+  border-radius: var(--r-md);
+  padding: 16px;
+}
+.metric-card-label { font-size: 11px; color: var(--text-3); font-weight: 500; margin-bottom: 6px; }
+.metric-card-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 20px; font-weight: 600;
+}
+.metric-card-bar {
+  height: 4px; background: var(--s3);
+  border-radius: 2px; overflow: hidden;
+  margin-top: 10px;
+}
+.metric-card-fill { height: 100%; border-radius: 2px; }
+
+.chart-placeholder {
+  background: var(--s1);
+  border-radius: var(--r-md);
+  height: 140px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-3); font-size: 13px;
+}
+
+.detail-actions {
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+
+/* ═══════════════════════════════════════════
+   EMPTY STATE
+   ═══════════════════════════════════════════ */
+.empty-state {
+  text-align: center;
+  padding: 80px 40px;
+}
+.empty-state-icon {
+  width: 64px; height: 64px;
+  border-radius: var(--r-lg);
+  background: var(--s2);
+  display: grid; place-items: center;
+  margin: 0 auto 20px;
+  color: var(--text-3);
+}
+.empty-state-icon svg { width: 28px; height: 28px; stroke: currentColor; fill: none; stroke-width: 1.5; }
+.empty-state-title {
+  font-family: 'Fraunces', serif;
+  font-size: 22px; font-weight: 500; margin-bottom: 8px;
+}
+.empty-state-desc {
+  font-size: 14px; color: var(--text-2);
+  max-width: 400px; margin: 0 auto 24px; line-height: 1.6;
+}
+
+.code-block {
+  background: var(--s1); border-radius: var(--r-md);
+  padding: 18px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px; color: var(--mint); line-height: 1.7;
+  text-align: left; max-width: 520px; margin: 0 auto;
+}
+
+/* ═══════════════════════════════════════════
+   TOAST
+   ═══════════════════════════════════════════ */
+.toast-container {
+  position: fixed; bottom: 24px; right: 24px;
+  z-index: 300;
+  display: flex; flex-direction: column-reverse; gap: 8px;
+}
+.toast {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px 20px;
+  font-size: 13px; font-weight: 500;
+  color: var(--text-1);
+  animation: toastIn 0.4s var(--ease-out-expo) both;
+  display: flex; align-items: center; gap: 10px;
+}
+.toast.success { border-color: var(--mint); }
+.toast.error { border-color: var(--rose); }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ═══════════════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════════════ */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeUp 0.6s var(--ease-out-expo) both; }
+.d1 { animation-delay: 0.05s; }
+.d2 { animation-delay: 0.1s; }
+.d3 { animation-delay: 0.15s; }
+.d4 { animation-delay: 0.2s; }
+.d5 { animation-delay: 0.25s; }
+.d6 { animation-delay: 0.3s; }
 </style>
 </head>
 <body>
+{% csrf_token %}
 <div class="layout">
 
-  <!-- Sidebar -->
+  <!-- ═══ Sidebar ═══ -->
   <nav class="sidebar">
-    <div class="sidebar-logo">
-      <!-- Replace SVG below with <img src="/static/img/logo.svg" alt="Vigil"> when ready -->
-      <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-    </div>
-    <div class="sidebar-icon active" data-tip="Dashboard">
+    <div class="sidebar-logo">V</div>
+
+    <div class="sidebar-icon active" data-page="dashboard" data-tip="Dashboard">
       <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
     </div>
-    <div class="sidebar-icon" data-tip="Alerts">
+    <div class="sidebar-icon" data-page="alerts" data-tip="Alerts">
       <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+      {% if alert_count %}<div class="badge-dot" style="background: var(--rose);"></div>{% endif %}
     </div>
-    <div class="sidebar-icon" data-tip="Tasks">
+    <div class="sidebar-icon" data-page="tasks" data-tip="Tasks">
       <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     </div>
-    <div class="sidebar-icon" data-tip="Insights">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+    <div class="sidebar-icon" data-page="insights" data-tip="Insights">
+      <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
     </div>
-    <div class="sidebar-icon" data-tip="Settings">
+    <div class="sidebar-icon" data-page="settings" data-tip="Settings">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      {% if pending_count %}<div class="badge-dot" style="background: var(--peach);"></div>{% endif %}
     </div>
+
     <div class="sidebar-spacer"></div>
-    <div class="sidebar-avatar">C</div>
+    <div class="sidebar-avatar">V</div>
   </nav>
 
-  <!-- Main Content -->
   <main class="main">
 
-    <!-- Page Header -->
-    <div class="page-header fade-in d1">
-      <div>
-        <div class="page-title">Good evening<span>.</span></div>
-        <div class="page-sub">{{ host_count }} host{{ host_count|pluralize }} · {{ online_count }} online · {{ alert_count }} active alert{{ alert_count|pluralize }}</div>
-      </div>
-      <button class="btn btn-mint" onclick="document.getElementById('enroll-hint').style.display='block'">
-        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add Host
-      </button>
-    </div>
+    <!-- ═══════════════════════════════════════
+         PAGE: DASHBOARD
+         ═══════════════════════════════════════ -->
+    <section id="page-dashboard" class="page active">
 
-    <!-- Stats -->
-    <div class="stats-row fade-in d2">
-      <div class="stat-card">
-        <div class="stat-label">Total Hosts</div>
-        <div class="stat-value" style="color: var(--lavender)">{{ host_count }}</div>
+      <div class="page-header fade-in d1">
+        <div>
+          <div class="page-title">Dashboard<span>.</span></div>
+          <div class="page-sub">{{ host_count }} host{{ host_count|pluralize }} · {{ online_count }} online · {{ alert_count }} active alert{{ alert_count|pluralize }}</div>
+        </div>
+        <button class="btn btn-mint" onclick="navigateTo('settings')">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Host
+        </button>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Online</div>
-        <div class="stat-value" style="color: var(--mint)">{{ online_count }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Alerts Firing</div>
-        <div class="stat-value" style="color: var(--rose)">{{ alert_count }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Pending Enrollment</div>
-        <div class="stat-value" style="color: var(--peach)">{{ pending_count }}</div>
-      </div>
-    </div>
 
-    {% if hosts %}
-    <!-- Hosts -->
-    <div class="section-label fade-in d3">Hosts</div>
-    <div class="host-grid fade-in d4">
-      {% for host in hosts %}
-      <div class="host-card">
-        <div class="host-header">
-          <div class="host-status-dot {{ host.status }}"></div>
-          <div class="host-name">{{ host.hostname }}</div>
-          <div class="host-mode mode-{{ host.mode }}">{{ host.get_mode_display }}</div>
+      <!-- Stats -->
+      <div class="stats-row fade-in d2">
+        <div class="stat-card">
+          <div class="stat-label">Total Hosts</div>
+          <div class="stat-value" style="color: var(--lavender)">{{ host_count }}</div>
         </div>
-        <div class="host-os">{{ host.os|default:"Unknown OS" }} · {{ host.ip_address|default:"—" }}</div>
-        <div class="host-metrics">
-          <div class="host-metric">
-            <div class="host-metric-label">CPU</div>
-            <div class="host-metric-value">—</div>
-            <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--sky);"></div></div>
-          </div>
-          <div class="host-metric">
-            <div class="host-metric-label">Memory</div>
-            <div class="host-metric-value">—</div>
-            <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--lavender);"></div></div>
-          </div>
-          <div class="host-metric">
-            <div class="host-metric-label">Disk</div>
-            <div class="host-metric-value">—</div>
-            <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--mint);"></div></div>
-          </div>
+        <div class="stat-card">
+          <div class="stat-label">Online</div>
+          <div class="stat-value" style="color: var(--mint)">{{ online_count }}</div>
         </div>
-        <div class="sparkline-wrap">
-          <div class="sparkline-label">Last 1h CPU</div>
-          <div class="sparkline">
-            <div class="sparkline-bar" style="height: 6px;"></div>
-            <div class="sparkline-bar" style="height: 10px;"></div>
-            <div class="sparkline-bar" style="height: 8px;"></div>
-            <div class="sparkline-bar" style="height: 14px;"></div>
-            <div class="sparkline-bar" style="height: 11px;"></div>
-            <div class="sparkline-bar" style="height: 9px;"></div>
-            <div class="sparkline-bar" style="height: 16px;"></div>
-            <div class="sparkline-bar" style="height: 12px;"></div>
-            <div class="sparkline-bar" style="height: 7px;"></div>
-            <div class="sparkline-bar" style="height: 10px;"></div>
-            <div class="sparkline-bar" style="height: 13px;"></div>
-            <div class="sparkline-bar" style="height: 9px;"></div>
-          </div>
+        <div class="stat-card">
+          <div class="stat-label">Alerts Firing</div>
+          <div class="stat-value" style="color: var(--rose)">{{ alert_count }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Pending</div>
+          <div class="stat-value" style="color: var(--peach)">{{ pending_count }}</div>
         </div>
       </div>
-      {% endfor %}
-    </div>
 
-    {% if alerts %}
-    <!-- Recent Alerts -->
-    <div class="section-label fade-in d5">Recent Alerts</div>
-    <div class="alert-list fade-in d6">
-      {% for alert in alerts %}
-      <div class="alert-item">
-        <div class="alert-dot" style="background: var({% if alert.severity == 'critical' %}--rose{% elif alert.severity == 'warning' %}--lemon{% else %}--lavender{% endif %});"></div>
-        <div class="alert-content">
-          <div class="alert-title">{{ alert.message }}</div>
-          <div class="alert-sub">{{ alert.host.hostname }} · {{ alert.get_severity_display }}</div>
+      {% if hosts %}
+      <!-- Hosts -->
+      <div class="section-label fade-in d3">Hosts</div>
+      <div class="host-grid fade-in d4">
+        {% for host in hosts %}
+        <div class="host-card" onclick="openHostDetail(this)"
+             data-id="{{ host.id }}"
+             data-hostname="{{ host.hostname }}"
+             data-os="{{ host.os|default:'Unknown OS' }}"
+             data-ip="{{ host.ip_address|default:'—' }}"
+             data-status="{{ host.status }}"
+             data-mode="{{ host.mode }}"
+             data-mode-display="{{ host.get_mode_display }}"
+             data-last-checkin="{{ host.last_checkin|default:'' }}"
+             data-kernel="{{ host.kernel|default:'' }}">
+          <div class="host-header">
+            <div class="status-dot {{ host.status }}"></div>
+            <div class="host-name">{{ host.hostname }}</div>
+            <div class="mode-badge mode-{{ host.mode }}">{{ host.get_mode_display }}</div>
+          </div>
+          <div class="host-os">{{ host.os|default:"Unknown OS" }} · {{ host.ip_address|default:"—" }}</div>
+          <div class="host-metrics">
+            <div class="host-metric">
+              <div class="host-metric-label">CPU</div>
+              <div class="host-metric-value">—</div>
+              <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--sky);"></div></div>
+            </div>
+            <div class="host-metric">
+              <div class="host-metric-label">Memory</div>
+              <div class="host-metric-value">—</div>
+              <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--lavender);"></div></div>
+            </div>
+            <div class="host-metric">
+              <div class="host-metric-label">Disk</div>
+              <div class="host-metric-value">—</div>
+              <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--mint);"></div></div>
+            </div>
+          </div>
+          <div class="host-footer">
+            <div class="host-checkin">
+              {% if host.last_checkin %}{{ host.last_checkin|timesince }} ago{% else %}Never{% endif %}
+            </div>
+            <div class="status-dot {{ host.status }}" style="width:7px;height:7px;"></div>
+          </div>
         </div>
-        <div class="alert-time">{{ alert.fired_at|timesince }} ago</div>
+        {% endfor %}
       </div>
-      {% endfor %}
-    </div>
-    {% endif %}
 
-    {% else %}
-    <!-- Empty State -->
-    <div class="empty-state fade-in d3">
-      <div class="empty-state-icon">
-        <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-      </div>
-      <div class="empty-state-title">No hosts yet</div>
-      <div class="empty-state-desc">
-        Install the Vigil agent on your first machine and it'll show up here for enrollment.
-      </div>
-      <div id="enroll-hint" style="display:none; margin-top: 24px; text-align: left; max-width: 520px; margin-left: auto; margin-right: auto;">
-        <div class="section-label">Install Agent</div>
-        <div style="background: var(--s1); border-radius: var(--r-md); padding: 18px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--mint); line-height: 1.7;">
-          curl -s https://your-vigil-server/install | sh
+      {% if alerts_firing %}
+      <div class="section-label fade-in d5">Active Alerts</div>
+      <div class="alert-list fade-in d6">
+        {% for alert in alerts_firing %}
+        <div class="alert-item">
+          <div class="alert-dot" style="background: var({% if alert.severity == 'critical' %}--rose{% elif alert.severity == 'warning' %}--lemon{% else %}--lavender{% endif %});"></div>
+          <div class="alert-content">
+            <div class="alert-title">{{ alert.message }}</div>
+            <div class="alert-sub">{{ alert.host.hostname }} · {{ alert.get_severity_display }}</div>
+          </div>
+          <div class="alert-time">{{ alert.fired_at|timesince }} ago</div>
         </div>
-        <div style="font-size: 12px; color: var(--text-3); margin-top: 10px;">
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% else %}
+      <!-- Empty state -->
+      <div class="empty-state fade-in d3">
+        <div class="empty-state-icon">
+          <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <div class="empty-state-title">No hosts yet</div>
+        <div class="empty-state-desc">
+          Install the Vigil agent on your first machine and it'll show up here for enrollment.
+        </div>
+        <div class="code-block">curl -s https://your-vigil-server/install | sh</div>
+        <div style="font-size: 12px; color: var(--text-3); margin-top: 12px;">
           The agent will appear as "pending enrollment" until you approve it.
         </div>
       </div>
-    </div>
-    {% endif %}
+      {% endif %}
+
+    </section>
+
+    <!-- ═══════════════════════════════════════
+         PAGE: ALERTS
+         ═══════════════════════════════════════ -->
+    <section id="page-alerts" class="page">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Alerts<span>.</span></div>
+          <div class="page-sub">Monitor alert lifecycle across all hosts</div>
+        </div>
+      </div>
+
+      <div class="tab-bar" data-tab-group="alerts">
+        <div class="tab t-rose active" data-tab="alerts-firing">Firing{% if alert_count %} <span style="opacity:.6">({{ alert_count }})</span>{% endif %}</div>
+        <div class="tab t-lemon" data-tab="alerts-ack">Acknowledged{% if alerts_ack.count %} <span style="opacity:.6">({{ alerts_ack.count }})</span>{% endif %}</div>
+        <div class="tab t-mint" data-tab="alerts-resolved">Resolved</div>
+      </div>
+
+      <!-- Firing -->
+      <div class="tab-content active" id="alerts-firing">
+        {% if alerts_firing %}
+        <div class="alert-list">
+          {% for alert in alerts_firing %}
+          <div class="alert-item" data-alert-id="{{ alert.id }}">
+            <div class="alert-dot" style="background: var({% if alert.severity == 'critical' %}--rose{% elif alert.severity == 'warning' %}--lemon{% else %}--lavender{% endif %});"></div>
+            <div class="alert-content">
+              <div class="alert-title">{{ alert.message }}</div>
+              <div class="alert-sub">{{ alert.host.hostname }} · {{ alert.get_severity_display }}{% if alert.metric_value %} · Value: {{ alert.metric_value }}{% endif %}</div>
+            </div>
+            <div class="alert-time">{{ alert.fired_at|timesince }} ago</div>
+            <div class="alert-actions">
+              <button class="btn btn-sm btn-outline" onclick="acknowledgeAlert('{{ alert.id }}')">Ack</button>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-state-icon" style="background: rgba(126,221,181,0.1);">
+            <svg viewBox="0 0 24 24" style="stroke: var(--mint);"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="empty-state-title">All clear</div>
+          <div class="empty-state-desc">No alerts are currently firing. Everything looks healthy.</div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Acknowledged -->
+      <div class="tab-content" id="alerts-ack">
+        {% if alerts_ack %}
+        <div class="alert-list">
+          {% for alert in alerts_ack %}
+          <div class="alert-item" data-alert-id="{{ alert.id }}">
+            <div class="alert-dot" style="background: var(--lemon);"></div>
+            <div class="alert-content">
+              <div class="alert-title">{{ alert.message }}</div>
+              <div class="alert-sub">{{ alert.host.hostname }} · Ack'd {{ alert.acknowledged_at|timesince }} ago</div>
+            </div>
+            <div class="alert-time">Fired {{ alert.fired_at|timesince }} ago</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-state-title">No acknowledged alerts</div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Resolved -->
+      <div class="tab-content" id="alerts-resolved">
+        {% if alerts_resolved %}
+        <div class="alert-list">
+          {% for alert in alerts_resolved %}
+          <div class="alert-item">
+            <div class="alert-dot" style="background: var(--mint); opacity: 0.5;"></div>
+            <div class="alert-content">
+              <div class="alert-title" style="color: var(--text-2);">{{ alert.message }}</div>
+              <div class="alert-sub">{{ alert.host.hostname }} · Resolved {{ alert.resolved_at|timesince }} ago</div>
+            </div>
+            <div class="alert-time">Fired {{ alert.fired_at|timesince }} ago</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-state-title">No resolved alerts yet</div>
+        </div>
+        {% endif %}
+      </div>
+
+    </section>
+
+    <!-- ═══════════════════════════════════════
+         PAGE: TASKS
+         ═══════════════════════════════════════ -->
+    <section id="page-tasks" class="page">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Tasks<span>.</span></div>
+          <div class="page-sub">Task dispatch history and audit trail</div>
+        </div>
+      </div>
+
+      <div class="tab-bar" data-tab-group="tasks">
+        <div class="tab t-lav active" data-tab="tasks-all">All</div>
+        <div class="tab t-sky" data-tab="tasks-active">Active</div>
+        <div class="tab t-mint" data-tab="tasks-completed">Completed</div>
+        <div class="tab t-rose" data-tab="tasks-failed">Failed</div>
+      </div>
+
+      <!-- All Tasks -->
+      <div class="tab-content active" id="tasks-all">
+        {% if tasks %}
+        <div class="task-list">
+          {% for task in tasks %}
+          <div class="task-item">
+            <div class="status-dot {% if task.state == 'completed' %}online{% elif task.state == 'failed' or task.state == 'rejected' %}offline{% elif task.state == 'pending' or task.state == 'dispatched' or task.state == 'executing' %}pending{% endif %}" style="width:8px;height:8px;"></div>
+            <div class="task-content">
+              <div class="task-action-name">{{ task.action }}</div>
+              <div class="task-detail">{{ task.host.hostname }}{% if task.requested_by %} · by {{ task.requested_by.username }}{% endif %} · {{ task.created_at|timesince }} ago</div>
+            </div>
+            <span class="state-badge state-{{ task.state }}">{{ task.get_state_display }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-state-icon">
+            <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+          </div>
+          <div class="empty-state-title">No tasks yet</div>
+          <div class="empty-state-desc">Tasks will appear here when you dispatch actions to your hosts.</div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Active -->
+      <div class="tab-content" id="tasks-active">
+        {% for task in tasks %}
+          {% if task.state == 'pending' or task.state == 'dispatched' or task.state == 'executing' %}
+          <div class="task-list">
+            <div class="task-item">
+              <div class="status-dot pending" style="width:8px;height:8px;"></div>
+              <div class="task-content">
+                <div class="task-action-name">{{ task.action }}</div>
+                <div class="task-detail">{{ task.host.hostname }} · {{ task.created_at|timesince }} ago</div>
+              </div>
+              <span class="state-badge state-{{ task.state }}">{{ task.get_state_display }}</span>
+            </div>
+          </div>
+          {% endif %}
+        {% empty %}
+        <div class="empty-state">
+          <div class="empty-state-title">No active tasks</div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Completed -->
+      <div class="tab-content" id="tasks-completed">
+        {% for task in tasks %}
+          {% if task.state == 'completed' %}
+          <div class="task-list">
+            <div class="task-item">
+              <div class="status-dot online" style="width:8px;height:8px;animation:none;"></div>
+              <div class="task-content">
+                <div class="task-action-name">{{ task.action }}</div>
+                <div class="task-detail">{{ task.host.hostname }} · {{ task.created_at|timesince }} ago{% if task.result_output %} · {{ task.result_output|truncatewords:12 }}{% endif %}</div>
+              </div>
+              <span class="state-badge state-completed">Completed</span>
+            </div>
+          </div>
+          {% endif %}
+        {% empty %}
+        <div class="empty-state">
+          <div class="empty-state-title">No completed tasks</div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Failed -->
+      <div class="tab-content" id="tasks-failed">
+        {% for task in tasks %}
+          {% if task.state == 'failed' or task.state == 'rejected' %}
+          <div class="task-list">
+            <div class="task-item">
+              <div class="status-dot offline" style="width:8px;height:8px;"></div>
+              <div class="task-content">
+                <div class="task-action-name">{{ task.action }}</div>
+                <div class="task-detail">{{ task.host.hostname }} · {{ task.created_at|timesince }} ago{% if task.result_output %} · {{ task.result_output|truncatewords:12 }}{% endif %}</div>
+              </div>
+              <span class="state-badge state-{{ task.state }}">{{ task.get_state_display }}</span>
+            </div>
+          </div>
+          {% endif %}
+        {% empty %}
+        <div class="empty-state">
+          <div class="empty-state-title">No failed tasks</div>
+        </div>
+        {% endfor %}
+      </div>
+
+    </section>
+
+    <!-- ═══════════════════════════════════════
+         PAGE: INSIGHTS
+         ═══════════════════════════════════════ -->
+    <section id="page-insights" class="page">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Insights<span>.</span></div>
+          <div class="page-sub">Trends, anomalies, and predictions</div>
+        </div>
+      </div>
+
+      <div class="empty-state">
+        <div class="empty-state-icon" style="background: rgba(186,168,232,0.1);">
+          <svg viewBox="0 0 24 24" style="stroke: var(--lavender);"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        </div>
+        <div class="empty-state-title">Insights are coming</div>
+        <div class="empty-state-desc">
+          Once Vigil collects enough data, it'll start spotting trends, predicting capacity, and detecting anomalies. No configuration needed — it learns what "normal" looks like for your infrastructure.
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ═══════════════════════════════════════
+         PAGE: SETTINGS
+         ═══════════════════════════════════════ -->
+    <section id="page-settings" class="page">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Settings<span>.</span></div>
+          <div class="page-sub">Agent management and enrollment</div>
+        </div>
+      </div>
+
+      <!-- Enrollment Queue -->
+      <div class="section-label">Enrollment Queue{% if pending_count %} ({{ pending_count }}){% endif %}</div>
+      {% if pending_hosts %}
+        {% for host in pending_hosts %}
+        <div class="enroll-card" data-host-id="{{ host.id }}">
+          <div class="status-dot pending"></div>
+          <div class="enroll-info">
+            <div class="enroll-hostname">{{ host.hostname }}</div>
+            <div class="enroll-meta">{{ host.os|default:"Unknown OS" }} · {{ host.ip_address|default:"Unknown IP" }} · First seen {{ host.created_at|timesince }} ago</div>
+          </div>
+          <div class="enroll-actions">
+            <button class="btn btn-sm btn-mint" onclick="approveHost('{{ host.id }}', this)">Approve</button>
+            <button class="btn btn-sm btn-outline" onclick="rejectHost('{{ host.id }}', this)">Reject</button>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div style="background: var(--s1); border-radius: var(--r-md); padding: 28px; text-align: center; color: var(--text-3); font-size: 13px;">
+          No agents waiting for approval.
+        </div>
+      {% endif %}
+
+      <!-- All Agents -->
+      <div class="section-label">All Agents</div>
+      {% if hosts %}
+      <table class="agent-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Hostname</th>
+            <th>OS</th>
+            <th>IP</th>
+            <th>Mode</th>
+            <th>Last Check-in</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for host in hosts %}
+          <tr>
+            <td><div class="status-dot {{ host.status }}" style="width:8px;height:8px;margin:0 auto;"></div></td>
+            <td style="font-weight:600;">{{ host.hostname }}</td>
+            <td style="color: var(--text-2);">{{ host.os|default:"—" }}</td>
+            <td class="mono">{{ host.ip_address|default:"—" }}</td>
+            <td><span class="mode-badge mode-{{ host.mode }}">{{ host.get_mode_display }}</span></td>
+            <td class="mono">{% if host.last_checkin %}{{ host.last_checkin|timesince }} ago{% else %}Never{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div style="background: var(--s1); border-radius: var(--r-md); padding: 28px; text-align: center; color: var(--text-3); font-size: 13px;">
+        No agents registered yet.
+      </div>
+      {% endif %}
+
+      <!-- Install Command -->
+      <div class="section-label">Agent Install Command</div>
+      <div class="code-block" style="max-width: 100%;">
+        curl -s https://your-vigil-server/install | sh
+      </div>
+      <div style="font-size: 12px; color: var(--text-3); margin-top: 10px;">
+        New agents appear in the enrollment queue above. Approve them to begin receiving metrics and dispatching tasks.
+      </div>
+
+    </section>
 
   </main>
 </div>
+
+<!-- ═══════════════════════════════════════
+     HOST DETAIL PANEL
+     ═══════════════════════════════════════ -->
+<div class="detail-overlay" id="detail-overlay" onclick="closeHostDetail()"></div>
+<div class="detail-panel" id="detail-panel">
+  <button class="detail-close" onclick="closeHostDetail()">
+    <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
+  <div class="detail-header">
+    <div class="detail-hostname" id="detail-hostname">—</div>
+    <div class="detail-meta" id="detail-meta">—</div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">Status</div>
+    <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
+      <div class="status-dot" id="detail-status-dot"></div>
+      <span id="detail-status-text" style="font-size: 14px; font-weight: 500;">—</span>
+      <span class="mode-badge" id="detail-mode-badge" style="margin-left: auto;">—</span>
+    </div>
+    <div style="font-size: 12px; color: var(--text-3);">
+      Last check-in: <span class="mono" id="detail-last-checkin">—</span>
+    </div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">Resources</div>
+    <div class="metric-grid">
+      <div class="metric-card">
+        <div class="metric-card-label">CPU Usage</div>
+        <div class="metric-card-value" style="color: var(--sky);">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--sky);"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card-label">Memory</div>
+        <div class="metric-card-value" style="color: var(--lavender);">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--lavender);"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card-label">Disk</div>
+        <div class="metric-card-value" style="color: var(--mint);">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--mint);"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card-label">Swap</div>
+        <div class="metric-card-value" style="color: var(--peach);">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--peach);"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">CPU History (1h)</div>
+    <div class="chart-placeholder">Chart.js integration coming soon</div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">Network I/O</div>
+    <div class="chart-placeholder">Chart.js integration coming soon</div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">Docker Containers</div>
+    <div style="background: var(--s1); border-radius: var(--r-md); padding: 20px; text-align: center; color: var(--text-3); font-size: 13px;">
+      Container metrics will appear here once reported by the agent.
+    </div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">Quick Actions</div>
+    <div class="detail-actions" id="detail-actions">
+      <!-- populated by JS based on host mode -->
+    </div>
+  </div>
+</div>
+
+<!-- Toast notifications -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+/* ═══════════════════════════════════════════
+   NAVIGATION
+   ═══════════════════════════════════════════ */
+const sidebarIcons = document.querySelectorAll('.sidebar-icon[data-page]');
+const pages = document.querySelectorAll('.page');
+
+function navigateTo(pageName) {
+  pages.forEach(p => p.classList.remove('active'));
+  sidebarIcons.forEach(i => i.classList.remove('active'));
+  const page = document.getElementById('page-' + pageName);
+  const icon = document.querySelector(`.sidebar-icon[data-page="${pageName}"]`);
+  if (page) page.classList.add('active');
+  if (icon) icon.classList.add('active');
+  document.querySelector('.main').scrollTop = 0;
+}
+
+sidebarIcons.forEach(icon => {
+  icon.addEventListener('click', () => navigateTo(icon.dataset.page));
+});
+
+/* ═══════════════════════════════════════════
+   TAB SWITCHING
+   ═══════════════════════════════════════════ */
+document.querySelectorAll('.tab-bar').forEach(bar => {
+  bar.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      bar.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const group = bar.closest('.page');
+      group.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      const target = document.getElementById(tab.dataset.tab);
+      if (target) target.classList.add('active');
+    });
+  });
+});
+
+/* ═══════════════════════════════════════════
+   HOST DETAIL PANEL
+   ═══════════════════════════════════════════ */
+const overlay = document.getElementById('detail-overlay');
+const panel = document.getElementById('detail-panel');
+
+function openHostDetail(card) {
+  const d = card.dataset;
+  document.getElementById('detail-hostname').textContent = d.hostname;
+  document.getElementById('detail-meta').textContent =
+    d.os + ' · ' + d.ip + (d.kernel ? ' · ' + d.kernel : '');
+
+  const dot = document.getElementById('detail-status-dot');
+  dot.className = 'status-dot ' + d.status;
+
+  const statusNames = {online: 'Online', offline: 'Offline', pending: 'Pending Enrollment'};
+  document.getElementById('detail-status-text').textContent = statusNames[d.status] || d.status;
+
+  const badge = document.getElementById('detail-mode-badge');
+  badge.textContent = d.modeDisplay;
+  badge.className = 'mode-badge mode-' + d.mode;
+
+  document.getElementById('detail-last-checkin').textContent =
+    d.lastCheckin ? 'Recent' : 'Never';
+
+  // Quick actions based on mode
+  const actions = document.getElementById('detail-actions');
+  if (d.mode === 'monitor') {
+    actions.innerHTML = '<div style="color: var(--text-3); font-size: 13px;">This host is in monitor mode — no task execution.</div>';
+  } else {
+    actions.innerHTML = `
+      <button class="btn btn-sm btn-sky" disabled>
+        <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+        Restart Service
+      </button>
+      <button class="btn btn-sm btn-outline" disabled>Clear Temp Files</button>
+      <button class="btn btn-sm btn-outline" disabled>Run Updates</button>
+      ${d.mode === 'full_control' ? '<button class="btn btn-sm btn-rose" disabled>Reboot</button>' : ''}
+    `;
+  }
+
+  overlay.classList.add('open');
+  panel.classList.add('open');
+}
+
+function closeHostDetail() {
+  overlay.classList.remove('open');
+  panel.classList.remove('open');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeHostDetail();
+});
+
+/* ═══════════════════════════════════════════
+   API HELPERS
+   ═══════════════════════════════════════════ */
+function getCsrf() {
+  const el = document.querySelector('[name=csrfmiddlewaretoken]');
+  return el ? el.value : '';
+}
+
+function showToast(message, type) {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = 'toast ' + (type || '');
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
+
+async function apiPost(url) {
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': getCsrf(),
+    },
+    credentials: 'same-origin',
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || 'Request failed');
+  }
+  return resp.json();
+}
+
+/* ═══════════════════════════════════════════
+   ACTIONS
+   ═══════════════════════════════════════════ */
+async function approveHost(hostId, btn) {
+  try {
+    btn.disabled = true;
+    await apiPost(`/api/v1/hosts/${hostId}/approve/`);
+    showToast('Host approved', 'success');
+    btn.closest('.enroll-card').style.opacity = '0.4';
+    setTimeout(() => location.reload(), 800);
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false;
+  }
+}
+
+async function rejectHost(hostId, btn) {
+  try {
+    btn.disabled = true;
+    showToast('Host rejected', 'success');
+    btn.closest('.enroll-card').style.opacity = '0.4';
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false;
+  }
+}
+
+async function acknowledgeAlert(alertId) {
+  try {
+    await apiPost(`/api/v1/alerts/${alertId}/acknowledge/`);
+    showToast('Alert acknowledged', 'success');
+    setTimeout(() => location.reload(), 800);
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+  }
+}
+</script>
 </body>
 </html>

@@ -1,0 +1,212 @@
+"""Vigil agent entry point.
+
+Usage:
+    python -m vigil_agent                          # default config search
+    python -m vigil_agent -c /etc/vigil/agent.yml  # explicit config path
+"""
+
+import argparse
+import logging
+import signal
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+from . import client, collector, verify
+from .config import load_config
+from .executor import execute_task
+from .nonce_store import NonceStore
+from .verify import KeyMismatchError
+
+logger = logging.getLogger("vigil")
+
+_shutdown = False
+
+
+def _handle_signal(signum, _frame):
+    global _shutdown
+    logger.info("Received signal %s, shutting down gracefully", signum)
+    _shutdown = True
+
+
+def _process_tasks(tasks: list[dict], config, nonce_store: NonceStore, verify_key) -> None:
+    """Process tasks received from the server."""
+    if config.mode == "monitor":
+        if tasks:
+            logger.debug("Monitor mode — ignoring %d task(s)", len(tasks))
+        return
+
+    if verify_key is None:
+        if tasks:
+            logger.warning(
+                "No pinned public key — cannot verify task signatures. "
+                "Rejecting %d task(s).",
+                len(tasks),
+            )
+            for task in tasks:
+                _report_rejected(config, task, "No public key available for signature verification")
+        return
+
+    for task in tasks:
+        task_id = task.get("id", "unknown")
+        action = task.get("action", "")
+        nonce = task.get("nonce", "")
+
+        # Replay protection
+        if nonce_store.seen(nonce):
+            logger.warning("Task %s has replayed nonce — rejecting", task_id)
+            _report_rejected(config, task, "Replayed nonce")
+            continue
+
+        # TTL check
+        ttl = task.get("ttl_seconds", 300)
+        created_str = task.get("created_at")
+        if created_str:
+            try:
+                created = datetime.fromisoformat(created_str)
+                if datetime.now(timezone.utc) > created.replace(tzinfo=timezone.utc) + timedelta(seconds=ttl):
+                    logger.warning("Task %s has expired (TTL %ds) — rejecting", task_id, ttl)
+                    _report_rejected(config, task, f"Task expired (TTL {ttl}s)")
+                    nonce_store.record(nonce)
+                    continue
+            except (ValueError, TypeError):
+                pass  # If no created_at, skip TTL check (server may not send it)
+
+        # Signature verification
+        if not verify.verify_task_signature(task, verify_key):
+            logger.warning("Task %s failed signature verification — rejecting", task_id)
+            _report_rejected(config, task, "Invalid signature")
+            nonce_store.record(nonce)
+            continue
+
+        # Allowlist check + execution
+        nonce_store.record(nonce)
+        try:
+            output = execute_task(action, task.get("params", {}), config)
+            logger.info("Task %s (%s) completed successfully", task_id, action)
+            _report_completed(config, task, output)
+        except ValueError as exc:
+            logger.warning("Task %s (%s) rejected: %s", task_id, action, exc)
+            _report_rejected(config, task, str(exc))
+        except Exception as exc:
+            logger.error("Task %s (%s) failed: %s", task_id, action, exc)
+            _report_failed(config, task, str(exc))
+
+
+def _report_completed(config, task: dict, output: str) -> None:
+    try:
+        client.report_result(config, task["id"], "completed", output)
+    except Exception:
+        logger.exception("Failed to report task %s result", task.get("id"))
+
+
+def _report_rejected(config, task: dict, reason: str) -> None:
+    try:
+        client.report_result(config, task["id"], "rejected", reason)
+    except Exception:
+        logger.exception("Failed to report task %s rejection", task.get("id"))
+
+
+def _report_failed(config, task: dict, error: str) -> None:
+    try:
+        client.report_result(config, task["id"], "failed", error)
+    except Exception:
+        logger.exception("Failed to report task %s failure", task.get("id"))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Vigil monitoring agent")
+    parser.add_argument("-c", "--config", type=Path, help="Path to agent.yml")
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+    )
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=getattr(logging, args.log_level),
+        format="[%(asctime)s] %(levelname)s %(name)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    config = load_config(args.config)
+    logger.info(
+        "Vigil agent starting — server=%s mode=%s interval=%ds",
+        config.server_url,
+        config.mode,
+        config.checkin_interval,
+    )
+
+    # Ensure data directory exists
+    config.data_dir.mkdir(parents=True, exist_ok=True)
+
+    nonce_store = NonceStore(config.data_dir)
+
+    # Register with the server
+    try:
+        client.register(config)
+    except Exception:
+        logger.exception("Registration failed — will retry on first checkin")
+
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
+
+    verify_key = verify.get_pinned_key(config.data_dir)
+
+    # ── Main checkin loop ────────────────────────────────────────────────
+    consecutive_failures = 0
+    while not _shutdown:
+        try:
+            metrics = collector.collect_all()
+            response = client.checkin(config, metrics)
+            consecutive_failures = 0
+
+            # Handle public key (TOFU pinning)
+            pub_key_b64 = response.get("public_key")
+            if pub_key_b64:
+                try:
+                    verify_key = verify.pin_public_key(config.data_dir, pub_key_b64)
+                except KeyMismatchError:
+                    logger.critical(
+                        "SERVER PUBLIC KEY HAS CHANGED. This could indicate a compromised server. "
+                        "All tasks will be rejected until the key pin is manually reset. "
+                        "If this is a legitimate key rotation, delete %s/server_public_key.pin",
+                        config.data_dir,
+                    )
+                    verify_key = None  # Reject all tasks from now on
+
+            # Process tasks
+            tasks = response.get("tasks", [])
+            if tasks:
+                _process_tasks(tasks, config, nonce_store, verify_key)
+
+            status = response.get("status", "unknown")
+            logger.debug("Checkin complete — status=%s tasks=%d", status, len(tasks))
+
+        except Exception:
+            consecutive_failures += 1
+            # Back off on repeated failures, cap at 5 minutes
+            backoff = min(consecutive_failures * config.checkin_interval, 300)
+            logger.exception(
+                "Checkin failed (attempt %d), next retry in %ds",
+                consecutive_failures,
+                backoff,
+            )
+            _sleep_interruptible(backoff)
+            continue
+
+        _sleep_interruptible(config.checkin_interval)
+
+    logger.info("Agent shut down")
+
+
+def _sleep_interruptible(seconds: float) -> None:
+    """Sleep in small increments so signal handlers can interrupt promptly."""
+    end = time.monotonic() + seconds
+    while not _shutdown and time.monotonic() < end:
+        time.sleep(min(1.0, end - time.monotonic()))
+
+
+if __name__ == "__main__":
+    main()
