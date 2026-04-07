@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vigil — Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <style>
 /* ═══════════════════════════════════════════
    TOKENS
@@ -626,6 +628,185 @@ body {
 .d4 { animation-delay: 0.2s; }
 .d5 { animation-delay: 0.25s; }
 .d6 { animation-delay: 0.3s; }
+
+/* ═══════════════════════════════════════════
+   MONITOR PAGE
+   ═══════════════════════════════════════════ */
+.pin-bar {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.pin-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--s1); border: 1.5px solid transparent;
+  border-radius: 20px; padding: 6px 10px 6px 14px;
+  font-size: 12px; font-weight: 600;
+  color: var(--text-2); cursor: pointer;
+  transition: all 0.3s var(--ease-out-expo), transform 0.4s var(--ease-out-expo);
+}
+.pin-chip:hover { background: var(--s2); transform: translateY(-1px); }
+.pin-chip.selected { border-color: var(--sky); color: var(--sky); background: rgba(130,196,238,0.08); }
+.pin-chip .pin-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+}
+.pin-chip .pin-remove {
+  width: 16px; height: 16px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-3); font-size: 14px; line-height: 1;
+  transition: color 0.2s, background 0.2s;
+}
+.pin-chip .pin-remove:hover { color: var(--rose); background: rgba(242,160,184,0.12); }
+
+.host-selector-wrap { position: relative; display: inline-block; }
+.host-dropdown {
+  display: none;
+  position: absolute; top: 100%; left: 0;
+  margin-top: 6px;
+  background: var(--s2); border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  min-width: 320px; max-height: 340px;
+  overflow-y: auto; z-index: 50;
+  padding: 6px;
+  animation: fadeUp 0.25s var(--ease-out-expo) both;
+}
+.host-dropdown.open { display: block; }
+.host-dropdown::-webkit-scrollbar { width: 4px; }
+.host-dropdown::-webkit-scrollbar-thumb { background: var(--s4); border-radius: 2px; }
+
+.host-dropdown-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; border-radius: var(--r-sm);
+  cursor: pointer; transition: background 0.15s;
+}
+.host-dropdown-item:hover { background: var(--s3); }
+.host-dropdown-item .hdi-name { flex: 1; font-size: 13px; font-weight: 500; }
+.host-dropdown-item .hdi-meta { font-size: 11px; color: var(--text-3); }
+.host-dropdown-item .hdi-pin {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-3); transition: color 0.2s, background 0.2s;
+}
+.host-dropdown-item .hdi-pin:hover { color: var(--lemon); background: rgba(226,212,120,0.12); }
+.host-dropdown-item .hdi-pin.pinned { color: var(--lemon); }
+.host-dropdown-item .hdi-pin svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; }
+
+.monitor-host-bar {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--s1); border-radius: var(--r-lg);
+  padding: 18px 22px; margin-bottom: 20px;
+}
+.monitor-host-bar .mhb-name { font-size: 16px; font-weight: 600; }
+.monitor-host-bar .mhb-meta { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.monitor-host-bar .mhb-info { flex: 1; }
+
+.monitor-gauges {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px; margin-bottom: 20px;
+}
+.gauge-card {
+  background: var(--s1); border-radius: var(--r-lg);
+  padding: 20px; text-align: center;
+  transition: transform 0.5s var(--ease-out-expo), background 0.3s;
+}
+.gauge-card:hover { transform: translateY(-3px); background: var(--s2); }
+.gauge-card-label { font-size: 11px; color: var(--text-3); font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 10px; }
+.gauge-card-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 32px; font-weight: 600; line-height: 1;
+}
+.gauge-ring {
+  width: 80px; height: 80px;
+  margin: 0 auto 10px;
+  position: relative;
+}
+.gauge-ring svg { width: 80px; height: 80px; transform: rotate(-90deg); }
+.gauge-ring circle {
+  fill: none; stroke-width: 6;
+  stroke-linecap: round;
+}
+.gauge-ring .gauge-bg { stroke: var(--s3); }
+.gauge-ring .gauge-fill {
+  transition: stroke-dashoffset 0.8s var(--ease-out-expo);
+}
+.gauge-ring .gauge-text {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 16px; font-weight: 600;
+}
+
+.chart-row {
+  display: grid; gap: 14px;
+  margin-bottom: 14px;
+}
+.chart-row.two-col { grid-template-columns: 1fr 1fr; }
+
+.chart-card {
+  background: var(--s1); border-radius: var(--r-lg);
+  padding: 22px;
+}
+.chart-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.chart-card-title {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--text-3);
+}
+.chart-wrap { position: relative; height: 200px; }
+.chart-wrap canvas { width: 100% !important; }
+
+.disk-bars { display: flex; flex-direction: column; gap: 12px; }
+.disk-row { display: flex; align-items: center; gap: 12px; }
+.disk-mount {
+  width: 80px; flex-shrink: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px; color: var(--text-2);
+  text-align: right; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.disk-bar-track {
+  flex: 1; height: 14px;
+  background: var(--s3); border-radius: 7px;
+  overflow: hidden;
+}
+.disk-bar-fill {
+  height: 100%; border-radius: 7px;
+  transition: width 0.8s var(--ease-out-expo);
+}
+.disk-pct {
+  width: 40px; text-align: right;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px; font-weight: 600;
+}
+
+.monitor-empty {
+  text-align: center; padding: 60px 40px;
+  background: var(--s1); border-radius: var(--r-lg);
+}
+.monitor-empty-title {
+  font-family: 'Fraunces', serif;
+  font-size: 20px; font-weight: 500; margin-bottom: 8px;
+}
+.monitor-empty-desc { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+
+.time-range-bar {
+  display: flex; gap: 4px;
+}
+.time-btn {
+  font-size: 11px; font-weight: 600;
+  padding: 4px 10px; border-radius: 6px;
+  cursor: pointer; background: transparent;
+  color: var(--text-3); border: none;
+  transition: all 0.2s;
+}
+.time-btn:hover { background: var(--s3); color: var(--text-2); }
+.time-btn.active { background: var(--s3); color: var(--text-1); }
 </style>
 </head>
 <body>
@@ -646,7 +827,7 @@ body {
     <div class="sidebar-icon" data-page="tasks" data-tip="Tasks">
       <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="insights" data-tip="Insights">
+    <div class="sidebar-icon" data-page="monitor" data-tip="Monitor">
       <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
     </div>
     <div class="sidebar-icon" data-page="settings" data-tip="Settings">
@@ -986,27 +1167,169 @@ body {
     </section>
 
     <!-- ═══════════════════════════════════════
-         PAGE: INSIGHTS
+         PAGE: MONITOR
          ═══════════════════════════════════════ -->
-    <section id="page-insights" class="page">
+    <section id="page-monitor" class="page">
 
       <div class="page-header">
         <div>
-          <div class="page-title">Insights<span>.</span></div>
-          <div class="page-sub">Trends, anomalies, and predictions</div>
+          <div class="page-title">Monitor<span>.</span></div>
+          <div class="page-sub">Real-time metrics for your infrastructure</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="refreshMonitor()" id="monitor-refresh-btn">
+          <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+          Refresh
+        </button>
+      </div>
+
+      <!-- Pinned hosts bar + host selector -->
+      <div class="pin-bar" id="pin-bar">
+        <!-- Pinned chips rendered by JS -->
+        <div class="host-selector-wrap">
+          <button class="btn btn-sm btn-outline" onclick="toggleHostDropdown(event)" id="host-selector-btn">
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Select Host
+          </button>
+          <div class="host-dropdown" id="host-dropdown">
+            {% for host in hosts %}
+            <div class="host-dropdown-item" data-host-id="{{ host.id }}" data-hostname="{{ host.hostname }}" data-status="{{ host.status }}" data-os="{{ host.os|default:'' }}" data-ip="{{ host.ip_address|default:'—' }}" data-mode="{{ host.mode }}">
+              <div class="status-dot {{ host.status }}" style="width:8px;height:8px;"></div>
+              <div class="hdi-name">{{ host.hostname }}</div>
+              <div class="hdi-meta">{{ host.os|default:"" }}</div>
+              <button class="hdi-pin" onclick="event.stopPropagation(); togglePin('{{ host.id }}', '{{ host.hostname }}', '{{ host.status }}', this)" title="Pin host">
+                <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              </button>
+            </div>
+            {% endfor %}
+            {% if not hosts %}
+            <div style="padding: 20px; text-align: center; color: var(--text-3); font-size: 13px;">No hosts registered yet.</div>
+            {% endif %}
+          </div>
         </div>
       </div>
 
-      <div class="empty-state">
-        <div class="empty-state-icon" style="background: rgba(186,168,232,0.1);">
-          <svg viewBox="0 0 24 24" style="stroke: var(--lavender);"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-        </div>
-        <div class="empty-state-title">Insights are coming</div>
-        <div class="empty-state-desc">
-          Once Vigil collects enough data, it'll start spotting trends, predicting capacity, and detecting anomalies. No configuration needed — it learns what "normal" looks like for your infrastructure.
+      <!-- No host selected state -->
+      <div id="monitor-empty" class="monitor-empty">
+        <div style="font-size: 36px; margin-bottom: 12px; opacity: 0.3;">📊</div>
+        <div class="monitor-empty-title">Select a host to monitor</div>
+        <div class="monitor-empty-desc">
+          Pick a host from the bar above, or pin your favorites for quick access.
         </div>
       </div>
 
+      <!-- Active monitor view (hidden until host selected) -->
+      <div id="monitor-content" style="display:none;">
+
+        <!-- Host info bar -->
+        <div class="monitor-host-bar" id="monitor-host-bar">
+          <div class="status-dot" id="mon-status-dot"></div>
+          <div class="mhb-info">
+            <div class="mhb-name" id="mon-hostname">—</div>
+            <div class="mhb-meta" id="mon-meta">—</div>
+          </div>
+          <div class="time-range-bar">
+            <button class="time-btn active" data-range="60" onclick="setTimeRange(60, this)">1h</button>
+            <button class="time-btn" data-range="360" onclick="setTimeRange(360, this)">6h</button>
+            <button class="time-btn" data-range="1440" onclick="setTimeRange(1440, this)">24h</button>
+            <button class="time-btn" data-range="10080" onclick="setTimeRange(10080, this)">7d</button>
+          </div>
+        </div>
+
+        <!-- Gauge cards -->
+        <div class="monitor-gauges">
+          <div class="gauge-card">
+            <div class="gauge-ring">
+              <svg viewBox="0 0 80 80">
+                <circle class="gauge-bg" cx="40" cy="40" r="34"/>
+                <circle class="gauge-fill" id="gauge-cpu-fill" cx="40" cy="40" r="34" stroke="var(--sky)" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
+              </svg>
+              <div class="gauge-text" id="gauge-cpu-text" style="color: var(--sky);">—</div>
+            </div>
+            <div class="gauge-card-label">CPU</div>
+          </div>
+          <div class="gauge-card">
+            <div class="gauge-ring">
+              <svg viewBox="0 0 80 80">
+                <circle class="gauge-bg" cx="40" cy="40" r="34"/>
+                <circle class="gauge-fill" id="gauge-mem-fill" cx="40" cy="40" r="34" stroke="var(--lavender)" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
+              </svg>
+              <div class="gauge-text" id="gauge-mem-text" style="color: var(--lavender);">—</div>
+            </div>
+            <div class="gauge-card-label">Memory</div>
+          </div>
+          <div class="gauge-card">
+            <div class="gauge-ring">
+              <svg viewBox="0 0 80 80">
+                <circle class="gauge-bg" cx="40" cy="40" r="34"/>
+                <circle class="gauge-fill" id="gauge-disk-fill" cx="40" cy="40" r="34" stroke="var(--mint)" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
+              </svg>
+              <div class="gauge-text" id="gauge-disk-text" style="color: var(--mint);">—</div>
+            </div>
+            <div class="gauge-card-label">Disk</div>
+          </div>
+          <div class="gauge-card">
+            <div class="gauge-card-label" style="margin-bottom:0;">Load Average</div>
+            <div class="gauge-card-value" id="gauge-load-text" style="color: var(--peach); margin-top: 18px;">—</div>
+            <div style="font-size: 11px; color: var(--text-3); margin-top: 10px;" id="gauge-load-sub">1m / 5m / 15m</div>
+          </div>
+        </div>
+
+        <!-- CPU chart -->
+        <div class="chart-row">
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div class="chart-card-title">CPU Usage</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3);" id="cpu-chart-latest">—</div>
+            </div>
+            <div class="chart-wrap"><canvas id="chart-cpu"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Memory chart -->
+        <div class="chart-row">
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div class="chart-card-title">Memory Usage</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3);" id="mem-chart-latest">—</div>
+            </div>
+            <div class="chart-wrap"><canvas id="chart-mem"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Disk + Network row -->
+        <div class="chart-row two-col">
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div class="chart-card-title">Disk Usage</div>
+            </div>
+            <div class="disk-bars" id="disk-bars">
+              <div style="color: var(--text-3); font-size: 13px; text-align: center; padding: 20px;">Waiting for data...</div>
+            </div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div class="chart-card-title">Network I/O</div>
+              <div style="display:flex;gap:12px;font-size:11px;">
+                <span style="color:var(--sky);">● recv</span>
+                <span style="color:var(--peach);">● sent</span>
+              </div>
+            </div>
+            <div class="chart-wrap"><canvas id="chart-net"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Swap chart -->
+        <div class="chart-row">
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div class="chart-card-title">Swap Usage</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3);" id="swap-chart-latest">—</div>
+            </div>
+            <div class="chart-wrap"><canvas id="chart-swap"></canvas></div>
+          </div>
+        </div>
+
+      </div>
     </section>
 
     <!-- ═══════════════════════════════════════
@@ -1329,6 +1652,443 @@ async function acknowledgeAlert(alertId) {
     showToast('Failed: ' + e.message, 'error');
   }
 }
+
+/* ═══════════════════════════════════════════
+   MONITOR PAGE
+   ═══════════════════════════════════════════ */
+
+// ── Chart.js global config ──
+Chart.defaults.color = '#6e6b76';
+Chart.defaults.font.family = "'DM Sans', sans-serif";
+Chart.defaults.font.size = 11;
+Chart.defaults.plugins.legend.display = false;
+Chart.defaults.elements.point.radius = 0;
+Chart.defaults.elements.point.hoverRadius = 4;
+Chart.defaults.elements.line.borderWidth = 2;
+Chart.defaults.elements.line.tension = 0.35;
+Chart.defaults.animation.duration = 600;
+
+const CIRCUMFERENCE = 2 * Math.PI * 34; // gauge ring r=34
+
+// ── State ──
+let monitorHostId = null;
+let monitorTimeRange = 60; // minutes
+let chartCpu = null, chartMem = null, chartNet = null, chartSwap = null;
+let monitorInterval = null;
+
+// ── Pinned hosts (localStorage) ──
+const PIN_KEY = 'vigil-pinned-hosts';
+
+function getPins() {
+  try { return JSON.parse(localStorage.getItem(PIN_KEY)) || []; }
+  catch { return []; }
+}
+
+function savePins(pins) {
+  localStorage.setItem(PIN_KEY, JSON.stringify(pins));
+}
+
+function isPinned(hostId) {
+  return getPins().some(p => p.id === hostId);
+}
+
+function togglePin(hostId, hostname, status, btnEl) {
+  let pins = getPins();
+  const idx = pins.findIndex(p => p.id === hostId);
+  if (idx >= 0) {
+    pins.splice(idx, 1);
+    if (btnEl) btnEl.classList.remove('pinned');
+  } else {
+    pins.push({ id: hostId, hostname, status });
+    if (btnEl) btnEl.classList.add('pinned');
+  }
+  savePins(pins);
+  renderPinBar();
+}
+
+function renderPinBar() {
+  const bar = document.getElementById('pin-bar');
+  const selectorWrap = bar.querySelector('.host-selector-wrap');
+  // Remove old chips
+  bar.querySelectorAll('.pin-chip').forEach(c => c.remove());
+  // Add chips before the selector
+  const pins = getPins();
+  pins.forEach(pin => {
+    const chip = document.createElement('div');
+    chip.className = 'pin-chip' + (pin.id === monitorHostId ? ' selected' : '');
+    const dotColor = pin.status === 'online' ? 'var(--mint)' : pin.status === 'pending' ? 'var(--peach)' : 'var(--rose)';
+    chip.innerHTML = `<div class="pin-dot" style="background:${dotColor}"></div>${pin.hostname}<button class="pin-remove" onclick="event.stopPropagation();togglePin('${pin.id}','${pin.hostname}','${pin.status}',null)">&times;</button>`;
+    chip.addEventListener('click', () => selectMonitorHost(pin.id));
+    bar.insertBefore(chip, selectorWrap);
+  });
+  // Sync pin buttons in dropdown
+  document.querySelectorAll('.hdi-pin').forEach(btn => {
+    const item = btn.closest('.host-dropdown-item');
+    if (item && isPinned(item.dataset.hostId)) btn.classList.add('pinned');
+    else btn.classList.remove('pinned');
+  });
+}
+
+// ── Host dropdown ──
+function toggleHostDropdown(e) {
+  e.stopPropagation();
+  document.getElementById('host-dropdown').classList.toggle('open');
+}
+
+document.addEventListener('click', e => {
+  const dd = document.getElementById('host-dropdown');
+  if (dd && !dd.contains(e.target) && e.target.id !== 'host-selector-btn') {
+    dd.classList.remove('open');
+  }
+});
+
+document.querySelectorAll('.host-dropdown-item').forEach(item => {
+  item.addEventListener('click', () => {
+    selectMonitorHost(item.dataset.hostId);
+    document.getElementById('host-dropdown').classList.remove('open');
+  });
+});
+
+// ── Select host ──
+function selectMonitorHost(hostId) {
+  monitorHostId = hostId;
+  // Find host data from dropdown items
+  const item = document.querySelector(`.host-dropdown-item[data-host-id="${hostId}"]`);
+  if (!item) return;
+
+  const d = item.dataset;
+  document.getElementById('monitor-empty').style.display = 'none';
+  document.getElementById('monitor-content').style.display = 'block';
+  document.getElementById('mon-hostname').textContent = d.hostname;
+  document.getElementById('mon-meta').textContent = [d.os, d.ip, d.mode].filter(Boolean).join(' · ');
+  const dot = document.getElementById('mon-status-dot');
+  dot.className = 'status-dot ' + d.status;
+
+  renderPinBar();
+  refreshMonitor();
+}
+
+// ── Time range ──
+function setTimeRange(minutes, btn) {
+  monitorTimeRange = minutes;
+  document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (monitorHostId) refreshMonitor();
+}
+
+// ── Fetch metrics ──
+async function fetchMetric(hostId, category, metric, limit) {
+  const from = new Date(Date.now() - monitorTimeRange * 60000).toISOString();
+  const url = `/api/v1/metrics/${hostId}/${category}/${metric}/?from=${from}&limit=${limit || 500}`;
+  try {
+    const resp = await fetch(url, { credentials: 'same-origin' });
+    if (!resp.ok) return [];
+    return await resp.json();
+  } catch { return []; }
+}
+
+// ── Gauge helpers ──
+function setGauge(fillId, textId, pct) {
+  const fill = document.getElementById(fillId);
+  const text = document.getElementById(textId);
+  if (pct === null || pct === undefined) {
+    fill.style.strokeDashoffset = CIRCUMFERENCE;
+    text.textContent = '—';
+    return;
+  }
+  const offset = CIRCUMFERENCE * (1 - Math.min(pct, 100) / 100);
+  fill.style.strokeDashoffset = offset;
+  text.textContent = Math.round(pct) + '%';
+}
+
+// ── Chart factory ──
+function makeTimeChart(canvasId, color, label) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [{
+        label,
+        data: [],
+        borderColor: color,
+        backgroundColor: color + '18',
+        fill: true,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
+      scales: {
+        x: {
+          type: 'time',
+          grid: { color: '#32323a', drawTicks: false },
+          border: { color: '#32323a' },
+          ticks: { maxTicksLimit: 8, font: { family: "'IBM Plex Mono', monospace", size: 10 } },
+        },
+        y: {
+          min: 0, max: 100,
+          grid: { color: '#32323a', drawTicks: false },
+          border: { color: '#32323a' },
+          ticks: { callback: v => v + '%', maxTicksLimit: 5, font: { family: "'IBM Plex Mono', monospace", size: 10 } },
+        }
+      },
+      plugins: {
+        tooltip: {
+          backgroundColor: '#232329',
+          borderColor: '#3a3a43',
+          borderWidth: 1,
+          titleFont: { family: "'DM Sans', sans-serif", weight: 600 },
+          bodyFont: { family: "'IBM Plex Mono', monospace" },
+          callbacks: {
+            label: ctx => ctx.parsed.y.toFixed(1) + '%',
+          }
+        }
+      }
+    }
+  });
+}
+
+function makeNetChart(canvasId) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [
+        { label: 'Received', data: [], borderColor: '#82c4ee', backgroundColor: '#82c4ee18', fill: true },
+        { label: 'Sent', data: [], borderColor: '#f0b888', backgroundColor: '#f0b88818', fill: true },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
+      scales: {
+        x: {
+          type: 'time',
+          grid: { color: '#32323a', drawTicks: false },
+          border: { color: '#32323a' },
+          ticks: { maxTicksLimit: 8, font: { family: "'IBM Plex Mono', monospace", size: 10 } },
+        },
+        y: {
+          grid: { color: '#32323a', drawTicks: false },
+          border: { color: '#32323a' },
+          ticks: {
+            maxTicksLimit: 5,
+            font: { family: "'IBM Plex Mono', monospace", size: 10 },
+            callback: v => formatBytes(v),
+          },
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#232329',
+          borderColor: '#3a3a43',
+          borderWidth: 1,
+          callbacks: { label: ctx => ctx.dataset.label + ': ' + formatBytes(ctx.parsed.y) },
+        }
+      }
+    }
+  });
+}
+
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(Math.abs(bytes)) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+// ── Initialize charts (once) ──
+function ensureCharts() {
+  if (!chartCpu) chartCpu = makeTimeChart('chart-cpu', '#82c4ee', 'CPU');
+  if (!chartMem) chartMem = makeTimeChart('chart-mem', '#baa8e8', 'Memory');
+  if (!chartSwap) chartSwap = makeTimeChart('chart-swap', '#f0b888', 'Swap');
+  if (!chartNet) chartNet = makeNetChart('chart-net');
+}
+
+// ── Update chart data ──
+function updateChart(chart, points, labelFilter) {
+  let filtered = points;
+  if (labelFilter) {
+    filtered = points.filter(p => {
+      for (const [k, v] of Object.entries(labelFilter)) {
+        if ((p.labels || {})[k] !== v) return false;
+      }
+      return true;
+    });
+  }
+  const data = filtered.map(p => ({ x: new Date(p.time), y: p.value })).sort((a, b) => a.x - b.x);
+  chart.data.datasets[0].data = data;
+  chart.update('none');
+  return data;
+}
+
+// ── Main refresh ──
+async function refreshMonitor() {
+  if (!monitorHostId) return;
+  const btn = document.getElementById('monitor-refresh-btn');
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+
+  ensureCharts();
+
+  const limit = monitorTimeRange <= 60 ? 200 : monitorTimeRange <= 360 ? 400 : 800;
+
+  // Fetch all metrics in parallel
+  const [cpuData, memData, diskData, netRecv, netSent, swapData, loadData] = await Promise.all([
+    fetchMetric(monitorHostId, 'cpu', 'usage_percent', limit),
+    fetchMetric(monitorHostId, 'memory', 'usage_percent', limit),
+    fetchMetric(monitorHostId, 'disk', 'usage_percent', limit),
+    fetchMetric(monitorHostId, 'network', 'bytes_recv', limit),
+    fetchMetric(monitorHostId, 'network', 'bytes_sent', limit),
+    fetchMetric(monitorHostId, 'memory', 'swap_usage_percent', limit),
+    fetchMetric(monitorHostId, 'cpu', 'load_1m', limit),
+  ]);
+
+  // ── CPU ──
+  const cpuPoints = updateChart(chartCpu, cpuData, { core: 'total' });
+  const cpuLatest = cpuPoints.length ? cpuPoints[cpuPoints.length - 1].y : null;
+  setGauge('gauge-cpu-fill', 'gauge-cpu-text', cpuLatest);
+  document.getElementById('cpu-chart-latest').textContent = cpuLatest !== null ? cpuLatest.toFixed(1) + '%' : '—';
+
+  // ── Memory ──
+  const memPoints = updateChart(chartMem, memData);
+  const memLatest = memPoints.length ? memPoints[memPoints.length - 1].y : null;
+  setGauge('gauge-mem-fill', 'gauge-mem-text', memLatest);
+  document.getElementById('mem-chart-latest').textContent = memLatest !== null ? memLatest.toFixed(1) + '%' : '—';
+
+  // ── Swap ──
+  const swapPoints = updateChart(chartSwap, swapData);
+  const swapLatest = swapPoints.length ? swapPoints[swapPoints.length - 1].y : null;
+  chartSwap.options.scales.y.max = 100;
+  chartSwap.update('none');
+  document.getElementById('swap-chart-latest').textContent = swapLatest !== null ? swapLatest.toFixed(1) + '%' : '—';
+
+  // ── Disk bars ──
+  renderDiskBars(diskData);
+
+  // ── Network I/O (compute deltas for rate) ──
+  const recvSorted = netRecv.sort((a, b) => new Date(a.time) - new Date(b.time));
+  const sentSorted = netSent.sort((a, b) => new Date(a.time) - new Date(b.time));
+  // Group by interface, pick first interface found
+  const recvByIface = groupByLabel(recvSorted, 'interface');
+  const sentByIface = groupByLabel(sentSorted, 'interface');
+  const iface = Object.keys(recvByIface)[0] || Object.keys(sentByIface)[0];
+  if (iface) {
+    const recvRates = computeRates(recvByIface[iface] || []);
+    const sentRates = computeRates(sentByIface[iface] || []);
+    chartNet.data.datasets[0].data = recvRates;
+    chartNet.data.datasets[1].data = sentRates;
+    chartNet.options.scales.y.min = undefined;
+    chartNet.options.scales.y.max = undefined;
+  } else {
+    chartNet.data.datasets[0].data = [];
+    chartNet.data.datasets[1].data = [];
+  }
+  chartNet.update('none');
+
+  // ── Disk gauge (primary mount) ──
+  const diskLatest = getLatestDiskPercent(diskData);
+  setGauge('gauge-disk-fill', 'gauge-disk-text', diskLatest);
+
+  // ── Load average ──
+  if (loadData.length) {
+    const latest = loadData.sort((a, b) => new Date(b.time) - new Date(a.time))[0];
+    document.getElementById('gauge-load-text').textContent = latest.value.toFixed(2);
+  } else {
+    document.getElementById('gauge-load-text').textContent = '—';
+  }
+
+  btn.disabled = false;
+  btn.style.opacity = '1';
+}
+
+function groupByLabel(points, labelKey) {
+  const groups = {};
+  for (const p of points) {
+    const key = (p.labels || {})[labelKey] || '_default';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(p);
+  }
+  return groups;
+}
+
+function computeRates(points) {
+  const rates = [];
+  for (let i = 1; i < points.length; i++) {
+    const dt = (new Date(points[i].time) - new Date(points[i-1].time)) / 1000;
+    if (dt <= 0) continue;
+    const rate = Math.max(0, (points[i].value - points[i-1].value) / dt);
+    rates.push({ x: new Date(points[i].time), y: rate });
+  }
+  return rates;
+}
+
+function getLatestDiskPercent(diskData) {
+  if (!diskData.length) return null;
+  // Find the "/" mount or first mount
+  const byMount = groupByLabel(diskData, 'mount');
+  const mount = byMount['/'] ? '/' : Object.keys(byMount)[0];
+  if (!mount) return null;
+  const pts = byMount[mount].sort((a, b) => new Date(b.time) - new Date(a.time));
+  return pts[0]?.value ?? null;
+}
+
+function renderDiskBars(diskData) {
+  const container = document.getElementById('disk-bars');
+  if (!diskData.length) {
+    container.innerHTML = '<div style="color:var(--text-3);font-size:13px;text-align:center;padding:20px;">Waiting for data...</div>';
+    return;
+  }
+  // Get latest value per mount
+  const byMount = groupByLabel(diskData, 'mount');
+  const mounts = {};
+  for (const [mount, pts] of Object.entries(byMount)) {
+    const latest = pts.sort((a, b) => new Date(b.time) - new Date(a.time))[0];
+    mounts[mount] = latest.value;
+  }
+  // Sort by mount name
+  const sorted = Object.entries(mounts).sort((a, b) => a[0].localeCompare(b[0]));
+  container.innerHTML = sorted.map(([mount, pct]) => {
+    const color = pct > 90 ? 'var(--rose)' : pct > 75 ? 'var(--lemon)' : 'var(--mint)';
+    return `<div class="disk-row">
+      <div class="disk-mount" title="${mount}">${mount}</div>
+      <div class="disk-bar-track"><div class="disk-bar-fill" style="width:${pct}%;background:${color};"></div></div>
+      <div class="disk-pct" style="color:${color};">${Math.round(pct)}%</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Auto-refresh (every 60s when monitor page is visible) ──
+function startAutoRefresh() {
+  stopAutoRefresh();
+  monitorInterval = setInterval(() => {
+    if (document.getElementById('page-monitor').classList.contains('active') && monitorHostId) {
+      refreshMonitor();
+    }
+  }, 60000);
+}
+
+function stopAutoRefresh() {
+  if (monitorInterval) { clearInterval(monitorInterval); monitorInterval = null; }
+}
+
+// ── Init ──
+renderPinBar();
+startAutoRefresh();
+
+// Auto-select first pinned host if navigating to monitor
+const origNavigate = navigateTo;
+navigateTo = function(pageName) {
+  origNavigate(pageName);
+  if (pageName === 'monitor' && !monitorHostId) {
+    const pins = getPins();
+    if (pins.length) selectMonitorHost(pins[0].id);
+  }
+};
 </script>
 </body>
 </html>
