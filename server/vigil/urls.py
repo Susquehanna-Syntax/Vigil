@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.urls import include, path
 from rest_framework.decorators import api_view, permission_classes
@@ -17,6 +18,7 @@ def health_check(request):
     return Response({"status": "ok"})
 
 
+@login_required(login_url="/admin/login/")
 def dashboard(request):
     hosts = Host.objects.exclude(status=Host.Status.REJECTED)
     alerts_firing = Alert.objects.filter(state=Alert.State.FIRING).select_related("host", "rule")

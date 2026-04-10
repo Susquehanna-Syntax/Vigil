@@ -88,10 +88,38 @@ def collect_network() -> list[dict]:
     return points
 
 
+def collect_top_processes(n: int = 10) -> list[dict]:
+    """Collect the top N processes by CPU and memory usage."""
+    points = []
+    procs = []
+    for p in psutil.process_iter(["pid", "name", "cpu_percent", "memory_percent"]):
+        try:
+            info = p.info
+            if info["pid"] == 0:
+                continue
+            procs.append(info)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    # Top by CPU
+    by_cpu = sorted(procs, key=lambda p: p["cpu_percent"] or 0, reverse=True)[:n]
+    for rank, p in enumerate(by_cpu):
+        labels = {"pid": str(p["pid"]), "name": p["name"] or "unknown", "rank": str(rank)}
+        points.append(_point("process", "cpu_percent", p["cpu_percent"] or 0, labels))
+
+    # Top by memory
+    by_mem = sorted(procs, key=lambda p: p["memory_percent"] or 0, reverse=True)[:n]
+    for rank, p in enumerate(by_mem):
+        labels = {"pid": str(p["pid"]), "name": p["name"] or "unknown", "rank": str(rank)}
+        points.append(_point("process", "memory_percent", p["memory_percent"] or 0, labels))
+
+    return points
+
+
 def collect_all() -> list[dict]:
     """Collect all available system metrics."""
     metrics = []
-    collectors = [collect_cpu, collect_memory, collect_disk, collect_network]
+    collectors = [collect_cpu, collect_memory, collect_disk, collect_network, collect_top_processes]
     for fn in collectors:
         try:
             metrics.extend(fn())
