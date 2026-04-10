@@ -180,6 +180,22 @@ def host_approve(request, host_id):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+def host_reject(request, host_id):
+    """Reject a pending host enrollment."""
+    try:
+        host = Host.objects.get(pk=host_id, status=Host.Status.PENDING)
+    except Host.DoesNotExist:
+        return Response(
+            {"error": "Host not found or not pending"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    host.status = Host.Status.REJECTED
+    host.save()
+    return Response(HostSerializer(host).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def host_poll(request, host_id):
     """Request an immediate check-in.
 

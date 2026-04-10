@@ -5,6 +5,29 @@ from django.db import models
 from apps.hosts.models import Host
 
 
+class NotificationChannel(models.Model):
+    """A destination for alert notifications (webhook or email)."""
+
+    class Kind(models.TextChoices):
+        WEBHOOK = "webhook", "Webhook"
+        EMAIL = "email", "Email"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    config = models.JSONField(
+        default=dict,
+        help_text='Webhook: {"url": "..."}, Email: {"recipients": ["..."]}',
+    )
+    on_firing = models.BooleanField(default=True)
+    on_resolved = models.BooleanField(default=True)
+    enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.kind})"
+
+
 class AlertRule(models.Model):
     """Defines a condition that triggers an alert."""
 
