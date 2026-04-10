@@ -799,6 +799,40 @@ body {
 }
 .time-btn:hover { background: var(--s3); color: var(--text-2); }
 .time-btn.active { background: var(--s3); color: var(--text-1); }
+
+.proc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.proc-table thead th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0 18px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.proc-table tbody td {
+  padding: 7px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+.proc-table tbody tr:last-child td { border-bottom: none; }
+.proc-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+.proc-table .proc-name { color: var(--text-1); font-weight: 500; }
+.proc-table .proc-pid { color: var(--text-3); font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+.proc-table .proc-val {
+  text-align: right;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+  font-size: 12px;
+}
 </style>
 </head>
 <body>
@@ -1318,6 +1352,37 @@ body {
               <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3);" id="swap-chart-latest">—</div>
             </div>
             <div class="chart-wrap"><canvas id="chart-swap"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Top Processes -->
+        <div class="section-label" style="margin-top:36px;">Top Processes</div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px;">
+          <div class="chart-card" style="padding:0; overflow:hidden;">
+            <div class="chart-card-header" style="padding:16px 18px 10px;">
+              <div class="chart-card-title">By CPU</div>
+            </div>
+            <table class="proc-table" id="proc-table-cpu">
+              <thead>
+                <tr><th>Process</th><th>PID</th><th style="text-align:right;">CPU %</th></tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="3" style="color:var(--text-3);text-align:center;padding:20px;">Waiting for data...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="chart-card" style="padding:0; overflow:hidden;">
+            <div class="chart-card-header" style="padding:16px 18px 10px;">
+              <div class="chart-card-title">By Memory</div>
+            </div>
+            <table class="proc-table" id="proc-table-mem">
+              <thead>
+                <tr><th>Process</th><th>PID</th><th style="text-align:right;">Mem %</th></tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="3" style="color:var(--text-3);text-align:center;padding:20px;">Waiting for data...</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -2121,8 +2186,62 @@ async function refreshMonitor() {
     document.getElementById('gauge-load-text').textContent = '—';
   }
 
+  // ── Top processes ──
+  const [procCpu, procMem] = await Promise.all([
+    fetchMetric(monitorHostId, 'process', 'cpu_percent', 50),
+    fetchMetric(monitorHostId, 'process', 'memory_percent', 50),
+  ]);
+  renderProcTable('proc-table-cpu', procCpu, 'cpu_percent');
+  renderProcTable('proc-table-mem', procMem, 'memory_percent');
+
   btn.disabled = false;
   btn.style.opacity = '1';
+}
+
+function renderProcTable(tableId, points, metricName) {
+  const table = document.getElementById(tableId);
+  const tbody = table.querySelector('tbody');
+  if (!points.length) {
+    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--text-3);text-align:center;padding:20px;">No data yet</td></tr>';
+    return;
+  }
+  // Get the latest snapshot: group by rank, take most recent per rank
+  const byRank = {};
+  for (const p of points) {
+    const rank = parseInt((p.labels || {}).rank || '99');
+    const time = new Date(p.time);
+    if (!byRank[rank] || time > byRank[rank].time) {
+      byRank[rank] = { ...p, time };
+    }
+  }
+  const sorted = Object.values(byRank).sort((a, b) => b.value - a.value);
+  const isCpu = metricName === 'cpu_percent';
+  const accentColor = isCpu ? 'var(--sky)' : 'var(--lavender)';
+
+  tbody.innerHTML = sorted.map(p => {
+    const name = (p.labels || {}).name || '?';
+    const pid = (p.labels || {}).pid || '?';
+    const val = p.value.toFixed(1);
+    const barW = Math.min(p.value, 100);
+    return `<tr>
+      <td class="proc-name">${escHtml(name)}</td>
+      <td class="proc-pid">${pid}</td>
+      <td class="proc-val" style="color:${accentColor};">
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
+          <div style="width:50px;height:4px;background:var(--s3);border-radius:2px;overflow:hidden;">
+            <div style="height:100%;width:${barW}%;background:${accentColor};border-radius:2px;"></div>
+          </div>
+          ${val}%
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function escHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
 }
 
 function groupByLabel(points, labelKey) {
