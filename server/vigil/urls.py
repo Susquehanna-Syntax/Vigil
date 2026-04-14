@@ -52,4 +52,5 @@ urlpatterns = [
     path("api/v1/metrics/", include("apps.metrics.urls")),
     path("api/v1/alerts/", include("apps.alerts.urls")),
     path("api/v1/tasks/", include("apps.tasks.urls")),
+    path("api/v1/vulns/", include("apps.vulns.urls")),
 ]

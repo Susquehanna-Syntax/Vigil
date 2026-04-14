@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "apps.metrics",
     "apps.alerts",
     "apps.tasks",
+    "apps.vulns",
 ]
 
 MIDDLEWARE = [
@@ -142,7 +143,28 @@ CELERY_BEAT_SCHEDULE = {
         "task": "alerts.mark_stale_hosts_offline",
         "schedule": 120.0,  # every 2 minutes
     },
+    "prune-old-metric-points": {
+        "task": "metrics.prune_old_metric_points",
+        "schedule": 3600.0,  # every hour
+    },
+    "sync-nessus-vulns": {
+        "task": "vulns.sync_nessus_vulns",
+        "schedule": 3600.0,  # every hour
+    },
 }
+
+# ---------------------------------------------------------------------------
+# Metric retention
+# ---------------------------------------------------------------------------
+VIGIL_METRIC_RETENTION_DAYS = int(os.environ.get("VIGIL_METRIC_RETENTION_DAYS", "30"))
+
+# ---------------------------------------------------------------------------
+# Nessus / Tenable vulnerability integration
+# ---------------------------------------------------------------------------
+NESSUS_URL = os.environ.get("NESSUS_URL", "")
+NESSUS_ACCESS_KEY = os.environ.get("NESSUS_ACCESS_KEY", "")
+NESSUS_SECRET_KEY = os.environ.get("NESSUS_SECRET_KEY", "")
+NESSUS_VERIFY_SSL = os.environ.get("NESSUS_VERIFY_SSL", "true").lower() in ("true", "1")
 
 # ---------------------------------------------------------------------------
 # Notifications
