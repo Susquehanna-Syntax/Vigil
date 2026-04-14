@@ -3,6 +3,7 @@ import operator as op
 from datetime import timedelta
 
 from celery import shared_task
+from django.conf import settings
 from django.db.models import Avg
 from django.utils.timezone import now
 
@@ -124,3 +125,14 @@ def mark_stale_hosts_offline():
     if count:
         logger.info("Marked %d stale hosts as offline", count)
     return f"{count} hosts marked offline"
+
+
+@shared_task(name="metrics.prune_old_metric_points")
+def prune_old_metric_points():
+    """Delete MetricPoints older than VIGIL_METRIC_RETENTION_DAYS (default: 30)."""
+    retention_days = getattr(settings, "VIGIL_METRIC_RETENTION_DAYS", 30)
+    cutoff = now() - timedelta(days=retention_days)
+    deleted, _ = MetricPoint.objects.filter(time__lt=cutoff).delete()
+    if deleted:
+        logger.info("Pruned %d metric points older than %d days", deleted, retention_days)
+    return f"Pruned {deleted} metric points older than {retention_days} days"
