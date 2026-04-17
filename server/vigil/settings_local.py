@@ -23,3 +23,6 @@ CELERY_RESULT_BACKEND = "cache+memory://"
 
 # Don't need celery-beat scheduler with SQLite
 CELERY_BEAT_SCHEDULER = "celery.beat:PersistentScheduler"
+
+# Ed25519 signing key for task dispatch (local dev only)
+VIGIL_SIGNING_KEY_SEED = "rHy5pUP+XS/teEAd0Wkb8gFO1XjvxAGNFw51q/botHg="

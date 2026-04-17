@@ -14,6 +14,8 @@ Vigil is a lightweight monitoring system where agents on your hosts phone home t
 - Real-time metric collection (CPU, memory, disk, network, swap)
 - Threshold-based alerting with auto-resolution
 - Notification dispatch (webhook, email)
+- Multistep task authoring (YAML editor), community sharing, and fleet deployment
+- TOTP-based two-factor authentication for task execution
 - Signed remote task execution with mode/allowlist enforcement
 - SQSY dark-theme dashboard with Chart.js visualizations
 
@@ -177,8 +179,9 @@ Once an agent is approved and checking in, you should see:
 - **Dashboard page:** Host cards with live CPU/Memory/Disk bars, status dots, last checkin time
 - **Monitor page:** Select a host to see SVG ring gauges (CPU, Memory, Disk, Load) and Chart.js time-series charts with configurable time range (1h/6h/24h/7d)
 - **Alerts page:** Alerts fire automatically when metrics breach rule thresholds (7 default rules are pre-configured for CPU, memory, disk, and swap). Alerts auto-resolve when metrics recover.
-- **Tasks page:** Dispatched tasks and their results
-- **Settings page:** Enrollment queue for approving/rejecting pending hosts
+- **Tasks page:** Author multistep tasks in YAML, deploy across your fleet. My Library tab for your private tasks, History tab for execution logs. Publish/Unpublish from your library to share with the community.
+- **Community page:** Browse task templates published by others. Fork any template into your own library to customize and deploy.
+- **Settings page:** Enrollment queue for approving/rejecting pending hosts. TOTP enrollment and management.
 
 ## Project Layout
 
@@ -213,7 +216,8 @@ Vigil/
         ├── hosts/            # Host model, enrollment, checkin endpoint
         ├── metrics/          # MetricPoint model, metric history API
         ├── alerts/           # AlertRule, Alert, NotificationChannel, evaluation task
-        └── tasks/            # Task model, dispatch, result reporting
+        ├── tasks/            # Task, TaskDefinition, TaskRun — YAML authoring + fleet deploy
+        └── accounts/         # UserProfile, TOTP enrollment (RFC 6238)
 ```
 
 ## API Endpoints
@@ -240,7 +244,79 @@ Vigil/
 | `POST` | `/api/v1/alerts/{id}/acknowledge/` | Acknowledge a firing alert |
 | `POST` | `/api/v1/alerts/{id}/silence/` | Silence a firing alert |
 | `GET` | `/api/v1/tasks/` | List tasks |
+| `POST` | `/api/v1/tasks/` | Dispatch a single-action task |
+| `GET` | `/api/v1/tasks/actions/` | Action registry (for editor autocomplete) |
+| `GET/POST` | `/api/v1/tasks/definitions/` | List/create task definitions (YAML) |
+| `POST` | `/api/v1/tasks/definitions/validate/` | Validate YAML without saving |
+| `GET/PUT/DELETE` | `/api/v1/tasks/definitions/{id}/` | Read/update/delete a definition |
+| `POST` | `/api/v1/tasks/definitions/{id}/fork/` | Fork a community template |
+| `POST` | `/api/v1/tasks/definitions/{id}/publish/` | Publish to community |
+| `POST` | `/api/v1/tasks/definitions/{id}/unpublish/` | Unpublish from community |
+| `POST` | `/api/v1/tasks/definitions/{id}/deploy/` | Deploy across hosts (requires 2FA) |
+| `GET` | `/api/v1/tasks/runs/{id}/` | Run detail with per-host step status |
+| `GET` | `/api/v1/accounts/totp/` | TOTP enrollment status |
+| `POST` | `/api/v1/accounts/totp/enroll/` | Start TOTP enrollment (returns secret + URI) |
+| `POST` | `/api/v1/accounts/totp/enroll/confirm/` | Confirm enrollment with a 6-digit code |
+| `POST` | `/api/v1/accounts/totp/disable/` | Disable TOTP (requires current code) |
 | `GET` | `/api/v1/health/` | Health check (no auth) |
+
+## Task Authoring & Deployment
+
+Vigil's task system lets you author multistep tasks as YAML definitions, then deploy them across one or more hosts.
+
+### YAML format
+
+```yaml
+name: Clear disk space
+description: Reclaim disk on a host by pruning temp files and docker logs.
+relevance: disk usage above 80%
+risk: standard
+
+actions:
+  - id: cleanup-temp
+    type: clear_temp_files
+  - id: cleanup-docker
+    type: clear_docker_logs
+```
+
+Each action runs sequentially per host. If a step fails, remaining steps on that host are aborted. The run tracks overall state across all target hosts (completed, partial, failed).
+
+### Available actions
+
+| Action | Risk | Required params |
+|---|---|---|
+| `restart_service` | standard | `service_name` |
+| `restart_container` | standard | `container_name` |
+| `start_container` | low | `container_name` |
+| `stop_container` | standard | `container_name` |
+| `clear_temp_files` | low | — |
+| `clear_docker_logs` | low | — |
+| `run_package_updates` | standard | — |
+| `execute_script` | high | `script_content` |
+| `reboot` | high | — |
+
+### Deployment flow
+
+1. Create a definition via the YAML editor (Tasks → New Task)
+2. Click **Deploy** on a library card
+3. Select target hosts in the deploy modal
+4. Confirm with TOTP code (or password during testing)
+5. Steps dispatch in sequence per host — track progress in the run detail view
+
+### Community sharing
+
+Tasks are private by default. From your library, click **Publish** to share a task template with other users on this server. Others can **Fork** community templates into their own library. A future release will connect to an external task repository for cross-instance sharing.
+
+## Two-Factor Authentication (TOTP)
+
+Vigil implements RFC 6238 TOTP natively (no external dependencies). Task deployments require a 6-digit TOTP code once enrolled.
+
+**Enrollment:**
+1. Go to Settings → Two-Factor Authentication
+2. Click "Enroll TOTP" — copy the secret into any authenticator app (Google Authenticator, Authy, 1Password, Bitwarden, Aegis)
+3. Enter a code from the app to confirm enrollment
+
+Once enrolled, the password fallback is disabled for that account. TOTP can be disabled from Settings (requires a current code).
 
 ## Alerting
 

@@ -366,27 +366,40 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
    FILTER TABS
    ═══════════════════════════════════════════ */
 .tab-bar {
-  display: flex; gap: 6px;
+  display: flex; gap: 28px;
   margin-bottom: 20px;
+  border-bottom: 1px solid var(--s3);
 }
 .tab {
-  font-size: 12px; font-weight: 600;
-  padding: 7px 16px;
-  border-radius: 20px;
+  font-size: 13px; font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 10px 2px;
   cursor: pointer;
-  background: var(--s1);
+  background: transparent;
   color: var(--text-3);
-  border: 1.5px solid transparent;
-  transition: all 0.3s var(--ease-out-expo), transform 0.4s var(--ease-out-expo);
+  border: none;
+  position: relative;
+  transition: color 0.3s var(--ease-out-expo);
 }
-.tab:hover { background: var(--s2); color: var(--text-2); transform: translateY(-1px); }
-.tab:active { transform: scale(0.94); transition-duration: 0.08s; }
-.tab.active { border-color: currentColor; }
-.tab.t-rose.active { color: var(--rose); background: rgba(242,160,184,0.1); }
-.tab.t-lemon.active { color: var(--lemon); background: rgba(226,212,120,0.1); }
-.tab.t-mint.active { color: var(--mint); background: rgba(126,221,181,0.1); }
-.tab.t-lav.active { color: var(--lavender); background: rgba(186,168,232,0.1); }
-.tab.t-sky.active { color: var(--sky); background: rgba(130,196,238,0.1); }
+.tab::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 2px;
+  background: currentColor;
+  border-radius: 1px;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.35s var(--ease-out-expo);
+}
+.tab:hover { color: var(--text-2); }
+.tab.active { color: var(--text-1); }
+.tab.active::after { transform: scaleX(1); }
+.tab.t-rose.active { color: var(--rose); }
+.tab.t-lemon.active { color: var(--lemon); }
+.tab.t-mint.active { color: var(--mint); }
+.tab.t-lav.active { color: var(--lavender); }
+.tab.t-sky.active { color: var(--sky); }
 
 .tab-content { display: none; }
 .tab-content.active { display: block; }
@@ -532,6 +545,250 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .state-failed { background: rgba(242,160,184,0.12); color: var(--rose); }
 .state-rejected { background: rgba(240,144,128,0.12); color: var(--coral); }
 .state-expired { background: rgba(110,107,118,0.15); color: var(--text-3); }
+.state-blocked { background: rgba(110,107,118,0.15); color: var(--text-3); }
+
+/* ═══════════════════════════════════════════
+   TASK DEFINITION CARDS
+   ═══════════════════════════════════════════ */
+.def-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.def-card {
+  background: var(--s1);
+  border-radius: var(--r-md);
+  padding: 18px 22px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: transform 0.4s var(--ease-out-expo), background 0.3s, border-color 0.3s;
+}
+.def-card:hover { transform: translateX(2px); background: var(--s2); border-color: var(--s4); }
+.def-card:active { transform: translateX(0) scale(0.995); transition-duration: 0.12s; }
+.def-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.def-card-title {
+  font-family: 'Fraunces', serif;
+  font-size: 17px; font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.def-card-desc {
+  font-size: 13px; color: var(--text-2);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.def-card-meta {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 11px; color: var(--text-3);
+  font-family: 'IBM Plex Mono', monospace;
+  margin-top: 4px;
+}
+.def-card-meta .dot-sep { opacity: 0.5; }
+.def-card-footer {
+  display: flex; gap: 8px;
+  flex-shrink: 0;
+}
+.def-card-footer .btn {
+  padding: 9px 16px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════
+   YAML EDITOR PAGE
+   ═══════════════════════════════════════════ */
+.editor-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 20px;
+  min-height: calc(100vh - 220px);
+}
+.editor-panel {
+  background: var(--s1);
+  border-radius: var(--r-lg);
+  padding: 18px;
+  display: flex; flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+.editor-panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.editor-textarea {
+  flex: 1;
+  width: 100%;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-1);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  padding: 16px 18px;
+  resize: none;
+  outline: none;
+  min-height: 340px;
+  transition: border-color 0.2s;
+  tab-size: 2;
+}
+.editor-textarea:focus { border-color: var(--sky); }
+.editor-error {
+  display: none;
+  background: rgba(242,160,184,0.08);
+  border: 1px solid rgba(242,160,184,0.3);
+  color: var(--rose);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  white-space: pre-wrap;
+}
+.editor-error.show { display: block; }
+
+.preview-section {
+  display: flex; flex-direction: column; gap: 10px;
+}
+.preview-heading {
+  font-family: 'Fraunces', serif;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.15;
+}
+.preview-sub {
+  font-size: 13px; color: var(--text-2);
+}
+.preview-meta {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  font-size: 11px; color: var(--text-3);
+}
+.preview-meta span { padding: 3px 10px; background: var(--s2); border-radius: 20px; }
+.preview-actions {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-top: 4px;
+}
+.preview-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 14px;
+  background: var(--s2);
+  border-radius: var(--r-md);
+  border-left: 3px solid var(--s4);
+}
+.preview-step-num {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--s3); color: var(--text-2);
+  display: grid; place-items: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; font-weight: 600; flex-shrink: 0;
+  margin-top: 1px;
+}
+.preview-step-body { flex: 1; min-width: 0; }
+.preview-step-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.preview-step-action {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 2px;
+  word-break: break-all;
+}
+.preview-step.risk-high { border-left-color: var(--rose); }
+.preview-step.risk-standard { border-left-color: var(--sky); }
+.preview-step.risk-low { border-left-color: var(--mint); }
+
+.editor-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.editor-toolbar .right {
+  display: flex; gap: 8px;
+}
+
+/* ═══════════════════════════════════════════
+   DEPLOY MODAL
+   ═══════════════════════════════════════════ */
+.modal.modal-wide { width: 560px; }
+.host-picker {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--s2);
+  padding: 6px;
+}
+.host-pick {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.host-pick:hover { background: var(--s3); }
+.host-pick input[type=checkbox] {
+  accent-color: var(--sky);
+  width: 16px; height: 16px; cursor: pointer;
+}
+.host-pick .host-pick-name { flex: 1; font-size: 13px; font-weight: 500; }
+.host-pick .host-pick-meta { font-size: 11px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; }
+.host-pick-empty {
+  padding: 24px; text-align: center;
+  color: var(--text-3); font-size: 13px;
+}
+.confirm-hint {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
+/* ═══════════════════════════════════════════
+   TOTP CARD (Settings)
+   ═══════════════════════════════════════════ */
+.totp-card {
+  background: var(--s1);
+  border-radius: var(--r-lg);
+  padding: 22px 24px;
+  margin-bottom: 10px;
+}
+.totp-status { font-size: 14px; font-weight: 600; color: var(--text-1); }
+.totp-status.enabled { color: var(--mint); }
+.totp-status.pending { color: var(--lemon); }
+.totp-status.disabled { color: var(--text-2); }
+.totp-sub { font-size: 12px; color: var(--text-3); margin-top: 4px; line-height: 1.5; }
+.totp-label { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3); margin-bottom: 6px; }
+.totp-secret-row { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 16px; }
+.totp-secret-row > div { flex: 1; min-width: 240px; }
+.totp-secret { font-size: 16px; letter-spacing: 2px; color: var(--sky); word-break: break-all; }
+.totp-uri { font-size: 11px; color: var(--text-3); word-break: break-all; line-height: 1.5; }
+.totp-verify-row { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+.totp-code-input {
+  background: var(--s2); color: var(--text-1);
+  border: 1.5px solid var(--s4); border-radius: var(--r-sm);
+  padding: 10px 14px; font-size: 18px; letter-spacing: 4px;
+  width: 140px; text-align: center;
+  transition: border-color 0.2s;
+}
+.totp-code-input:focus { outline: none; border-color: var(--mint); }
+.totp-actions { display: flex; gap: 8px; }
 
 /* ═══════════════════════════════════════════
    ENROLLMENT CARDS (Settings)
@@ -968,6 +1225,9 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
     <div class="sidebar-icon" data-page="tasks" data-tip="Tasks">
       <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     </div>
+    <div class="sidebar-icon" data-page="community" data-tip="Community">
+      <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><circle cx="17" cy="7" r="3" opacity="0.6"/><path d="M21 21v-2a4 4 0 00-3-3.87" opacity="0.6"/></svg>
+    </div>
     <div class="sidebar-icon" data-page="vulns" data-tip="Vulnerabilities">
       <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
     </div>
@@ -1205,30 +1465,33 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
       <div class="page-header">
         <div>
           <div class="page-title">Tasks<span>.</span></div>
-          <div class="page-sub">Task dispatch history and audit trail</div>
+          <div class="page-sub">Author multistep tasks and deploy them across your fleet</div>
         </div>
-        <button class="btn btn-sky" onclick="openDispatchModal()">
+        <button class="btn btn-sky" onclick="openDefinitionEditor()">
           <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Dispatch Task
+          New Task
         </button>
       </div>
 
       <div class="tab-bar" data-tab-group="tasks">
-        <div class="tab t-lav active" data-tab="tasks-all">All</div>
-        <div class="tab t-sky" data-tab="tasks-active">Active</div>
-        <div class="tab t-mint" data-tab="tasks-completed">Completed</div>
-        <div class="tab t-rose" data-tab="tasks-failed">Failed</div>
+        <div class="tab t-lav active" data-tab="tasks-library">My Library</div>
+        <div class="tab t-mint" data-tab="tasks-history">History</div>
       </div>
 
-      <!-- All Tasks -->
-      <div class="tab-content active" id="tasks-all">
+      <!-- My Library -->
+      <div class="tab-content active" id="tasks-library">
+        <div id="task-library-grid" class="def-grid"></div>
+      </div>
+
+      <!-- History -->
+      <div class="tab-content" id="tasks-history">
         {% if tasks %}
         <div class="task-list">
           {% for task in tasks %}
           <div class="task-item">
-            <div class="status-dot {% if task.state == 'completed' %}online{% elif task.state == 'failed' or task.state == 'rejected' %}offline{% elif task.state == 'pending' or task.state == 'dispatched' or task.state == 'executing' %}pending{% endif %}" style="width:8px;height:8px;"></div>
+            <div class="status-dot {% if task.state == 'completed' %}online{% elif task.state == 'failed' or task.state == 'rejected' %}offline{% elif task.state == 'pending' or task.state == 'dispatched' or task.state == 'executing' or task.state == 'blocked' %}pending{% endif %}" style="width:8px;height:8px;"></div>
             <div class="task-content">
-              <div class="task-action-name">{{ task.action }}</div>
+              <div class="task-action-name">{{ task.action }}{% if task.step_label %} · {{ task.step_label }}{% endif %}</div>
               <div class="task-detail">{{ task.host.hostname }}{% if task.requested_by %} · by {{ task.requested_by.username }}{% endif %} · {{ task.created_at|timesince }} ago</div>
             </div>
             <span class="state-badge state-{{ task.state }}">{{ task.get_state_display }}</span>
@@ -1237,80 +1500,32 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
         </div>
         {% else %}
         <div class="empty-state">
-          <div class="empty-state-icon">
-            <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-          </div>
-          <div class="empty-state-title">No tasks yet</div>
-          <div class="empty-state-desc">Tasks will appear here when you dispatch actions to your hosts.</div>
+          <div class="empty-state-title">No task history yet</div>
+          <div class="empty-state-desc">Dispatched task steps will appear here.</div>
         </div>
         {% endif %}
       </div>
 
-      <!-- Active -->
-      <div class="tab-content" id="tasks-active">
-        {% for task in tasks %}
-          {% if task.state == 'pending' or task.state == 'dispatched' or task.state == 'executing' %}
-          <div class="task-list">
-            <div class="task-item">
-              <div class="status-dot pending" style="width:8px;height:8px;"></div>
-              <div class="task-content">
-                <div class="task-action-name">{{ task.action }}</div>
-                <div class="task-detail">{{ task.host.hostname }} · {{ task.created_at|timesince }} ago</div>
-              </div>
-              <span class="state-badge state-{{ task.state }}">{{ task.get_state_display }}</span>
-            </div>
-          </div>
-          {% endif %}
-        {% empty %}
-        <div class="empty-state">
-          <div class="empty-state-title">No active tasks</div>
+    </section>
+
+    <!-- ═══════════════════════════════════════
+         PAGE: COMMUNITY
+         ═══════════════════════════════════════ -->
+    <section id="page-community" class="page">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Community<span>.</span></div>
+          <div class="page-sub">Task templates shared on this server. Fork any of them into your library.</div>
         </div>
-        {% endfor %}
       </div>
 
-      <!-- Completed -->
-      <div class="tab-content" id="tasks-completed">
-        {% for task in tasks %}
-          {% if task.state == 'completed' %}
-          <div class="task-list">
-            <div class="task-item">
-              <div class="status-dot online" style="width:8px;height:8px;animation:none;"></div>
-              <div class="task-content">
-                <div class="task-action-name">{{ task.action }}</div>
-                <div class="task-detail">{{ task.host.hostname }} · {{ task.created_at|timesince }} ago{% if task.result_output %} · {{ task.result_output|truncatewords:12 }}{% endif %}</div>
-              </div>
-              <span class="state-badge state-completed">Completed</span>
-            </div>
-          </div>
-          {% endif %}
-        {% empty %}
-        <div class="empty-state">
-          <div class="empty-state-title">No completed tasks</div>
-        </div>
-        {% endfor %}
+      <div style="background:var(--s1); border-left:2px solid var(--lavender); border-radius:var(--r-sm); padding:14px 18px; margin-bottom:18px; font-size:12px; color:var(--text-2); line-height:1.6;">
+        This is your local community tab. A future release will sync from a
+        public Vigil task repo so self-hosted instances can share templates.
       </div>
 
-      <!-- Failed -->
-      <div class="tab-content" id="tasks-failed">
-        {% for task in tasks %}
-          {% if task.state == 'failed' or task.state == 'rejected' %}
-          <div class="task-list">
-            <div class="task-item">
-              <div class="status-dot offline" style="width:8px;height:8px;"></div>
-              <div class="task-content">
-                <div class="task-action-name">{{ task.action }}</div>
-                <div class="task-detail">{{ task.host.hostname }} · {{ task.created_at|timesince }} ago{% if task.result_output %} · {{ task.result_output|truncatewords:12 }}{% endif %}</div>
-              </div>
-              <span class="state-badge state-{{ task.state }}">{{ task.get_state_display }}</span>
-            </div>
-          </div>
-          {% endif %}
-        {% empty %}
-        <div class="empty-state">
-          <div class="empty-state-title">No failed tasks</div>
-        </div>
-        {% endfor %}
-      </div>
+      <div id="task-community-grid" class="def-grid"></div>
 
     </section>
 
@@ -1523,6 +1738,33 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
         </div>
       </div>
 
+      <!-- Two-factor authentication -->
+      <div class="section-label">Two-Factor Authentication</div>
+      <div id="totp-card" class="totp-card">
+        <div class="totp-status" id="totp-status-line">Loading…</div>
+        <div class="totp-sub" id="totp-sub-line">TOTP protects task execution. Password fallback is test-only and will be removed.</div>
+        <div id="totp-enroll-view" style="display:none; margin-top:16px;">
+          <div class="totp-secret-row">
+            <div>
+              <div class="totp-label">Secret (enter into any authenticator app)</div>
+              <div class="totp-secret mono" id="totp-secret-text">—</div>
+            </div>
+            <div>
+              <div class="totp-label">otpauth URI</div>
+              <div class="totp-uri mono" id="totp-uri-text">—</div>
+            </div>
+          </div>
+          <div class="totp-verify-row">
+            <input type="text" inputmode="numeric" maxlength="6" class="totp-code-input mono" id="totp-verify-code" placeholder="123456" />
+            <button class="btn btn-mint btn-sm" onclick="totpConfirm()">Verify & Enable</button>
+          </div>
+        </div>
+        <div class="totp-actions" id="totp-actions" style="margin-top:16px;">
+          <button class="btn btn-sky btn-sm" id="totp-start-btn" onclick="totpStart()">Enroll TOTP</button>
+          <button class="btn btn-outline btn-sm" id="totp-disable-btn" style="display:none;" onclick="totpDisablePrompt()">Disable…</button>
+        </div>
+      </div>
+
       <!-- Enrollment Queue -->
       <div class="section-label">Enrollment Queue{% if pending_count %} ({{ pending_count }}){% endif %}</div>
       {% if pending_hosts %}
@@ -1641,6 +1883,44 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 
     </section>
 
+    <!-- ═══════════════════════════════════════
+         PAGE: TASK EDITOR
+         ═══════════════════════════════════════ -->
+    <section id="page-task-editor" class="page">
+      <div class="editor-toolbar">
+        <div>
+          <div class="page-title" id="editor-page-title">New Task<span>.</span></div>
+          <div class="page-sub">Write the YAML on the left. The preview updates as you type.</div>
+        </div>
+        <div class="right">
+          <button class="btn btn-ghost" onclick="navigateTo('tasks')">Cancel</button>
+          <button class="btn btn-sky" id="editor-save-btn" onclick="saveDefinitionFromEditor()">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            Save Task
+          </button>
+        </div>
+      </div>
+
+      <div class="editor-layout">
+        <div class="editor-panel">
+          <div class="editor-panel-title">YAML Source</div>
+          <textarea id="editor-yaml" class="editor-textarea" spellcheck="false" autocomplete="off" oninput="onEditorInput()"></textarea>
+          <div class="editor-error" id="editor-error"></div>
+          <div class="confirm-hint" style="margin-top:10px;">
+            Tasks are private by default. Use <strong>Publish to Community</strong> from your library when you're ready to share.
+          </div>
+        </div>
+
+        <div class="editor-panel">
+          <div class="editor-panel-title">Preview</div>
+          <div id="editor-preview" class="preview-section">
+            <div class="preview-heading">—</div>
+            <div class="preview-sub">Start typing to see a structured preview.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
   </main>
 </div>
 
@@ -1722,6 +2002,45 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
       <!-- populated by JS based on host mode -->
     </div>
   </div>
+</div>
+
+<!-- Deploy Task Modal -->
+<div class="modal-overlay" id="deploy-overlay" onclick="closeDeployModal()"></div>
+<div class="modal modal-wide" id="deploy-modal">
+  <div class="modal-title">
+    <span id="deploy-modal-title">Deploy Task</span>
+    <button class="modal-close" onclick="closeDeployModal()">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <form id="deploy-form" onsubmit="submitDeploy(event)">
+    <div class="form-group">
+      <label class="form-label">Target Hosts</label>
+      <div class="host-picker" id="deploy-host-picker">
+        <div class="host-pick-empty">No online hosts available.</div>
+      </div>
+      <div class="confirm-hint" id="deploy-host-summary">Select one or more hosts.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Confirm (2FA)</label>
+      <input class="form-control" type="text" id="deploy-totp" placeholder="6-digit code" inputmode="numeric" autocomplete="one-time-code">
+      <div class="confirm-hint">Enter your TOTP code if enrolled, or leave blank and use your account password below.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">…or Password</label>
+      <input class="form-control" type="password" id="deploy-password" placeholder="Account password" autocomplete="current-password">
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px;gap:12px;">
+      <span id="deploy-risk-label"></span>
+      <div style="display:flex;gap:10px;">
+        <button type="button" class="btn btn-ghost" onclick="closeDeployModal()">Cancel</button>
+        <button type="submit" class="btn btn-sky" id="deploy-submit-btn">
+          <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+          Deploy
+        </button>
+      </div>
+    </div>
+  </form>
 </div>
 
 <!-- Task Dispatch Modal -->
@@ -2052,6 +2371,85 @@ async function rejectHost(hostId, btn) {
   } catch (e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false;
+  }
+}
+
+/* ── TOTP enrollment ── */
+async function refreshTotpStatus() {
+  const status = document.getElementById('totp-status-line');
+  if (!status) return;
+  try {
+    const data = await apiJson('/api/v1/accounts/totp/');
+    const sub = document.getElementById('totp-sub-line');
+    const startBtn = document.getElementById('totp-start-btn');
+    const disableBtn = document.getElementById('totp-disable-btn');
+    const enrollView = document.getElementById('totp-enroll-view');
+    if (data.enrolled) {
+      status.textContent = 'TOTP enabled';
+      status.className = 'totp-status enabled';
+      sub.textContent = 'Your account is protected. Task deploys require a 6-digit code.';
+      startBtn.style.display = 'none';
+      disableBtn.style.display = '';
+      enrollView.style.display = 'none';
+    } else if (data.pending) {
+      status.textContent = 'Enrollment pending';
+      status.className = 'totp-status pending';
+      sub.textContent = 'Scan the secret into an authenticator app, then enter a code to finish.';
+      startBtn.style.display = 'none';
+      disableBtn.style.display = 'none';
+    } else {
+      status.textContent = 'TOTP not enabled';
+      status.className = 'totp-status disabled';
+      sub.textContent = 'Password fallback is test-only and will be removed. Enroll TOTP to execute tasks.';
+      startBtn.style.display = '';
+      disableBtn.style.display = 'none';
+      enrollView.style.display = 'none';
+    }
+  } catch (e) { /* settings may not be open */ }
+}
+
+async function totpStart() {
+  try {
+    const data = await apiJson('/api/v1/accounts/totp/enroll/', { method: 'POST' });
+    document.getElementById('totp-secret-text').textContent = data.secret;
+    document.getElementById('totp-uri-text').textContent = data.otpauth_uri;
+    document.getElementById('totp-enroll-view').style.display = 'block';
+    document.getElementById('totp-verify-code').value = '';
+    document.getElementById('totp-verify-code').focus();
+    refreshTotpStatus();
+  } catch (e) {
+    showToast('TOTP enroll failed: ' + e.message, 'error');
+  }
+}
+
+async function totpConfirm() {
+  const code = document.getElementById('totp-verify-code').value.trim();
+  if (!/^\d{6}$/.test(code)) {
+    showToast('Enter a 6-digit code', 'error');
+    return;
+  }
+  try {
+    await apiJson('/api/v1/accounts/totp/enroll/confirm/', {
+      method: 'POST', body: JSON.stringify({ code }),
+    });
+    showToast('TOTP enabled', 'success');
+    refreshTotpStatus();
+  } catch (e) {
+    showToast('Verify failed: ' + e.message, 'error');
+  }
+}
+
+async function totpDisablePrompt() {
+  const code = prompt('Enter a current 6-digit code to disable TOTP:');
+  if (!code) return;
+  try {
+    await apiJson('/api/v1/accounts/totp/disable/', {
+      method: 'POST', body: JSON.stringify({ code: code.trim() }),
+    });
+    showToast('TOTP disabled', 'success');
+    refreshTotpStatus();
+  } catch (e) {
+    showToast('Disable failed: ' + e.message, 'error');
   }
 }
 
@@ -2600,6 +2998,7 @@ navigateTo = function(pageName) {
     if (pins.length) selectMonitorHost(pins[0].id);
   }
   if (pageName === 'vulns') refreshVulns();
+  if (pageName === 'settings') refreshTotpStatus();
 };
 
 /* ═══════════════════════════════════════════
@@ -2696,6 +3095,352 @@ async function submitDispatch(event) {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeDispatchModal();
 });
+
+/* ═══════════════════════════════════════════
+   TASK DEFINITIONS (library, editor, deploy)
+   ═══════════════════════════════════════════ */
+const DEFAULT_YAML_TEMPLATE = `name: New Task
+description: What this task does and when to run it.
+relevance: "e.g. web servers, database hosts"
+risk: standard
+actions:
+  - id: step1
+    type: restart_service
+    params:
+      service_name: nginx
+`;
+
+let editorState = {
+  definitionId: null,   // null when creating
+  lastParsedSpec: null,
+  validateTimer: null,
+};
+
+let deployState = {
+  definitionId: null,
+  spec: null,
+  availableHosts: [],
+};
+
+async function apiJson(url, opts) {
+  const resp = await fetch(url, {
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+    ...opts,
+  });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(body.error || 'Request failed');
+  }
+  return body;
+}
+
+function riskBadgeHtml(risk) {
+  const label = { low: 'Low', standard: 'Standard', high: 'High' }[risk] || 'Standard';
+  return `<span class="risk-badge risk-${risk}">${label} risk</span>`;
+}
+
+function defCardHtml(def, opts) {
+  const actions = def.parsed_spec && def.parsed_spec.actions ? def.parsed_spec.actions.length : def.action_count || 0;
+  const updated = def.updated_at ? new Date(def.updated_at).toLocaleDateString() : '';
+  const ownerLine = opts.showOwner && def.owner_username ? ` · by ${escHtml(def.owner_username)}` : '';
+  const isPublished = def.visibility === 'community';
+  const publishBadge = isPublished
+    ? `<span class="dot-sep">·</span><span style="color:var(--lavender);">published</span>`
+    : '';
+  const buttons = opts.mode === 'community'
+    ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); forkDefinition('${def.id}')">Fork</button>`
+    : `${isPublished
+        ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); unpublishDefinition('${def.id}')">Unpublish</button>`
+        : `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); publishDefinition('${def.id}')">Publish</button>`}
+       <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openDefinitionEditor('${def.id}')">Edit</button>
+       <button class="btn btn-sky btn-sm" onclick="event.stopPropagation(); openDeployModal('${def.id}')">Deploy</button>`;
+  return `
+    <div class="def-card" onclick="openDefinitionEditor('${def.id}')">
+      <div class="def-card-body">
+        <div class="def-card-title">${escHtml(def.name || 'Untitled')}</div>
+        <div class="def-card-desc">${escHtml(def.description || 'No description provided.')}</div>
+        <div class="def-card-meta">
+          ${riskBadgeHtml(def.risk_level || 'standard')}
+          <span class="dot-sep">·</span>
+          <span>${actions} action${actions === 1 ? '' : 's'}</span>
+          ${def.relevance ? `<span class="dot-sep">·</span><span>${escHtml(def.relevance)}</span>` : ''}
+          ${updated ? `<span class="dot-sep">·</span><span>${escHtml(updated)}${ownerLine}</span>` : ''}
+          ${publishBadge}
+        </div>
+      </div>
+      <div class="def-card-footer">${buttons}</div>
+    </div>`;
+}
+
+const LIBRARY_EMPTY_HTML = `
+  <div class="empty-state">
+    <div class="empty-state-icon">
+      <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+    </div>
+    <div class="empty-state-title">No tasks yet</div>
+    <div class="empty-state-desc">Create your first task — describe what it does and list the actions that run in order.</div>
+  </div>`;
+
+const COMMUNITY_EMPTY_HTML = `
+  <div class="empty-state">
+    <div class="empty-state-title">No community templates</div>
+    <div class="empty-state-desc">Publish one of your own tasks to share it here.</div>
+  </div>`;
+
+async function refreshTaskLibrary() {
+  try {
+    const defs = await apiJson('/api/v1/tasks/definitions/?scope=mine');
+    const grid = document.getElementById('task-library-grid');
+    if (!grid) return;
+    if (!defs.length) {
+      grid.innerHTML = LIBRARY_EMPTY_HTML;
+      return;
+    }
+    grid.innerHTML = defs.map(d => defCardHtml(d, { mode: 'library' })).join('');
+  } catch (e) {
+    showToast('Failed to load library: ' + e.message, 'error');
+  }
+}
+
+async function refreshTaskCommunity() {
+  try {
+    const defs = await apiJson('/api/v1/tasks/definitions/?scope=community');
+    const grid = document.getElementById('task-community-grid');
+    if (!grid) return;
+    if (!defs.length) {
+      grid.innerHTML = COMMUNITY_EMPTY_HTML;
+      return;
+    }
+    grid.innerHTML = defs.map(d => defCardHtml(d, { mode: 'community', showOwner: true })).join('');
+  } catch (e) {
+    showToast('Failed to load community: ' + e.message, 'error');
+  }
+}
+
+async function forkDefinition(id) {
+  try {
+    await apiJson(`/api/v1/tasks/definitions/${id}/fork/`, { method: 'POST' });
+    showToast('Forked into your library', 'success');
+    refreshTaskLibrary();
+    const libTab = document.querySelector('[data-tab="tasks-library"]');
+    if (libTab) libTab.click();
+  } catch (e) {
+    showToast('Fork failed: ' + e.message, 'error');
+  }
+}
+
+async function openDefinitionEditor(definitionId) {
+  editorState.definitionId = definitionId || null;
+  document.getElementById('editor-error').classList.remove('show');
+  document.getElementById('editor-page-title').innerHTML = (definitionId ? 'Edit Task' : 'New Task') + '<span>.</span>';
+
+  if (definitionId) {
+    try {
+      const def = await apiJson(`/api/v1/tasks/definitions/${definitionId}/`);
+      document.getElementById('editor-yaml').value = def.yaml_source || DEFAULT_YAML_TEMPLATE;
+    } catch (e) {
+      showToast('Failed to load task: ' + e.message, 'error');
+      return;
+    }
+  } else {
+    document.getElementById('editor-yaml').value = DEFAULT_YAML_TEMPLATE;
+  }
+
+  navigateTo('task-editor');
+  onEditorInput();
+}
+
+function onEditorInput() {
+  clearTimeout(editorState.validateTimer);
+  editorState.validateTimer = setTimeout(validateEditor, 280);
+}
+
+async function validateEditor() {
+  const yaml = document.getElementById('editor-yaml').value;
+  const errBox = document.getElementById('editor-error');
+  try {
+    const body = await apiJson('/api/v1/tasks/definitions/validate/', {
+      method: 'POST',
+      body: JSON.stringify({ yaml_source: yaml }),
+    });
+    editorState.lastParsedSpec = body.parsed_spec;
+    errBox.classList.remove('show');
+    renderEditorPreview(body.parsed_spec);
+  } catch (e) {
+    editorState.lastParsedSpec = null;
+    errBox.textContent = e.message;
+    errBox.classList.add('show');
+  }
+}
+
+function renderEditorPreview(spec) {
+  const el = document.getElementById('editor-preview');
+  if (!spec) { el.innerHTML = '<div class="preview-heading">—</div>'; return; }
+  const actionsHtml = spec.actions.map((a, i) => `
+    <div class="preview-step risk-${a.risk}">
+      <div class="preview-step-num">${i + 1}</div>
+      <div class="preview-step-body">
+        <div class="preview-step-title">${escHtml(a.id)} — ${escHtml(a.label || a.type)}</div>
+        <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => `${k}=${v}`).join(' ') : ''}</div>
+      </div>
+    </div>`).join('');
+  el.innerHTML = `
+    <div class="preview-heading">${escHtml(spec.name)}</div>
+    <div class="preview-sub">${escHtml(spec.description || 'No description.')}</div>
+    <div class="preview-meta">
+      ${riskBadgeHtml(spec.risk)}
+      ${spec.relevance ? `<span>${escHtml(spec.relevance)}</span>` : ''}
+      <span>${spec.actions.length} step${spec.actions.length === 1 ? '' : 's'}</span>
+    </div>
+    <div class="preview-actions">${actionsHtml}</div>`;
+}
+
+async function saveDefinitionFromEditor() {
+  const yaml = document.getElementById('editor-yaml').value;
+  const btn = document.getElementById('editor-save-btn');
+  btn.disabled = true; btn.style.opacity = '0.6';
+  try {
+    const url = editorState.definitionId
+      ? `/api/v1/tasks/definitions/${editorState.definitionId}/`
+      : '/api/v1/tasks/definitions/';
+    const method = editorState.definitionId ? 'PUT' : 'POST';
+    await apiJson(url, { method, body: JSON.stringify({ yaml_source: yaml }) });
+    showToast('Task saved', 'success');
+    await refreshTaskLibrary();
+    navigateTo('tasks');
+  } catch (e) {
+    const errBox = document.getElementById('editor-error');
+    errBox.textContent = e.message;
+    errBox.classList.add('show');
+    showToast('Save failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.style.opacity = '1';
+  }
+}
+
+/* ── Deploy modal ── */
+
+function closeDeployModal() {
+  document.getElementById('deploy-overlay').classList.remove('open');
+  document.getElementById('deploy-modal').classList.remove('open');
+}
+
+async function openDeployModal(definitionId) {
+  try {
+    const def = await apiJson(`/api/v1/tasks/definitions/${definitionId}/`);
+    deployState.definitionId = definitionId;
+    deployState.spec = def.parsed_spec;
+    document.getElementById('deploy-modal-title').textContent = `Deploy — ${def.name}`;
+    document.getElementById('deploy-risk-label').innerHTML = riskBadgeHtml(def.risk_level || 'standard');
+
+    const picker = document.getElementById('deploy-host-picker');
+    const hosts = await apiJson('/api/v1/hosts/');
+    const eligible = hosts.filter(h => h.status === 'online' && h.mode !== 'monitor');
+    deployState.availableHosts = eligible;
+
+    if (!eligible.length) {
+      picker.innerHTML = '<div class="host-pick-empty">No online, executable hosts available.</div>';
+    } else {
+      picker.innerHTML = eligible.map(h => `
+        <label class="host-pick">
+          <input type="checkbox" value="${h.id}" onchange="updateDeployHostSummary()">
+          <span class="host-pick-name">${escHtml(h.hostname)}</span>
+          <span class="host-pick-meta">${escHtml(h.ip_address || '')} · ${escHtml(h.mode)}</span>
+        </label>`).join('');
+    }
+    updateDeployHostSummary();
+
+    document.getElementById('deploy-totp').value = '';
+    document.getElementById('deploy-password').value = '';
+
+    document.getElementById('deploy-overlay').classList.add('open');
+    document.getElementById('deploy-modal').classList.add('open');
+  } catch (e) {
+    showToast('Failed to open deploy modal: ' + e.message, 'error');
+  }
+}
+
+function updateDeployHostSummary() {
+  const picker = document.getElementById('deploy-host-picker');
+  const count = picker.querySelectorAll('input[type=checkbox]:checked').length;
+  const total = deployState.availableHosts.length;
+  const stepCount = (deployState.spec && deployState.spec.actions && deployState.spec.actions.length) || 0;
+  const summary = document.getElementById('deploy-host-summary');
+  if (!total) { summary.textContent = 'No online hosts available.'; return; }
+  if (!count) { summary.textContent = `Select one or more of ${total} host${total === 1 ? '' : 's'}.`; return; }
+  const totalSteps = stepCount * count;
+  summary.textContent = `${count} host${count === 1 ? '' : 's'} selected · ${totalSteps} step${totalSteps === 1 ? '' : 's'} will run in order`;
+}
+
+async function submitDeploy(event) {
+  event.preventDefault();
+  const picker = document.getElementById('deploy-host-picker');
+  const host_ids = [...picker.querySelectorAll('input[type=checkbox]:checked')].map(cb => cb.value);
+  if (!host_ids.length) { showToast('Select at least one host', 'error'); return; }
+
+  const totp = document.getElementById('deploy-totp').value.trim();
+  const password = document.getElementById('deploy-password').value;
+  if (!totp && !password) { showToast('Enter TOTP or password to confirm', 'error'); return; }
+
+  const body = { host_ids };
+  if (totp) body.totp = totp;
+  if (password) body.password = password;
+
+  const btn = document.getElementById('deploy-submit-btn');
+  btn.disabled = true; btn.style.opacity = '0.6';
+  try {
+    const run = await apiJson(`/api/v1/tasks/definitions/${deployState.definitionId}/deploy/`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    showToast(`Deployed to ${run.host_count} host${run.host_count === 1 ? '' : 's'}`, 'success');
+    closeDeployModal();
+  } catch (e) {
+    showToast('Deploy failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.style.opacity = '1';
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeDeployModal();
+});
+
+// Load the library / community grids when their respective pages become visible.
+const originalNavigateForTasks = navigateTo;
+navigateTo = function (pageName) {
+  originalNavigateForTasks(pageName);
+  if (pageName === 'tasks') refreshTaskLibrary();
+  if (pageName === 'community') refreshTaskCommunity();
+};
+
+// Hook tab switches inside the tasks page so the library grid refreshes on demand.
+document.querySelectorAll('.tab-bar[data-tab-group="tasks"] .tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    if (tab.dataset.tab === 'tasks-library') refreshTaskLibrary();
+  });
+});
+
+async function publishDefinition(id) {
+  try {
+    await apiJson(`/api/v1/tasks/definitions/${id}/publish/`, { method: 'POST' });
+    showToast('Published to community', 'success');
+    refreshTaskLibrary();
+  } catch (e) {
+    showToast('Publish failed: ' + e.message, 'error');
+  }
+}
+
+async function unpublishDefinition(id) {
+  try {
+    await apiJson(`/api/v1/tasks/definitions/${id}/unpublish/`, { method: 'POST' });
+    showToast('Unpublished', 'success');
+    refreshTaskLibrary();
+  } catch (e) {
+    showToast('Unpublish failed: ' + e.message, 'error');
+  }
+}
 
 /* ═══════════════════════════════════════════
    VULNERABILITIES PAGE
