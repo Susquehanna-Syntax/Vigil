@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     "apps.alerts",
     "apps.tasks",
     "apps.vulns",
+    "apps.accounts",
 ]
 
 MIDDLEWARE = [
