@@ -318,6 +318,15 @@ class TaskRuntime:
                     except Exception as exc:
                         logger.warning("on_step_result callback raised: %s", exc)
 
+            # Fail fast: if a step errors out, abort the remaining steps.
+            # The agent is the trust boundary — partial execution of a
+            # script that has already failed is a security risk.
+            if result.state == "error":
+                logger.warning(
+                    "Step %r failed, aborting remaining steps", name
+                )
+                break
+
     # ── Action step ───────────────────────────────────────────────────────────
 
     def _execute_action(self, step: dict, ctx: dict[str, Any]) -> StepResult:
