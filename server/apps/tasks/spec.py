@@ -36,12 +36,50 @@ class SpecError(ValueError):
 # records required params, a risk tier, and a human label for the UI.
 
 ACTION_REGISTRY: dict[str, dict[str, Any]] = {
+    # ── Service management ──────────────────────────────────────────────────
     "restart_service": {
         "label": "Restart service",
         "risk": "standard",
         "required": ["service_name"],
         "optional": [],
     },
+    "start_service": {
+        "label": "Start service",
+        "risk": "standard",
+        "required": ["service_name"],
+        "optional": [],
+    },
+    "stop_service": {
+        "label": "Stop service",
+        "risk": "standard",
+        "required": ["service_name"],
+        "optional": [],
+    },
+    "reload_service": {
+        "label": "Reload service",
+        "risk": "standard",
+        "required": ["service_name"],
+        "optional": [],
+    },
+    "enable_service": {
+        "label": "Enable service",
+        "risk": "low",
+        "required": ["service_name"],
+        "optional": [],
+    },
+    "disable_service": {
+        "label": "Disable service",
+        "risk": "standard",
+        "required": ["service_name"],
+        "optional": [],
+    },
+    "check_service": {
+        "label": "Check service status",
+        "risk": "low",
+        "required": ["service_name"],
+        "optional": ["expect"],
+    },
+    # ── Container management ────────────────────────────────────────────────
     "restart_container": {
         "label": "Restart container",
         "risk": "standard",
@@ -60,11 +98,29 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": ["container_name"],
         "optional": [],
     },
-    "clear_temp_files": {
-        "label": "Clear /tmp",
+    "pull_image": {
+        "label": "Pull container image",
         "risk": "low",
-        "required": [],
-        "optional": ["older_than_days"],
+        "required": ["image"],
+        "optional": [],
+    },
+    "remove_container": {
+        "label": "Remove container",
+        "risk": "high",
+        "required": ["container_name"],
+        "optional": [],
+    },
+    "docker_compose_up": {
+        "label": "Docker Compose up",
+        "risk": "standard",
+        "required": ["compose_file"],
+        "optional": ["services"],  # comma-separated service names
+    },
+    "docker_compose_down": {
+        "label": "Docker Compose down",
+        "risk": "standard",
+        "required": ["compose_file"],
+        "optional": [],
     },
     "clear_docker_logs": {
         "label": "Truncate Docker logs",
@@ -72,11 +128,74 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": [],
         "optional": ["container_name"],
     },
+    # ── File / directory operations ─────────────────────────────────────────
+    "write_file": {
+        "label": "Write file",
+        "risk": "high",
+        "required": ["path", "content"],
+        "optional": ["mode"],
+    },
+    "create_directory": {
+        "label": "Create directory",
+        "risk": "low",
+        "required": ["path"],
+        "optional": ["owner", "group", "mode"],
+    },
+    "delete_path": {
+        "label": "Delete path",
+        "risk": "high",
+        "required": ["path"],
+        "optional": ["recursive"],
+    },
+    "copy_file": {
+        "label": "Copy file",
+        "risk": "standard",
+        "required": ["src", "dest"],
+        "optional": [],
+    },
+    "move_file": {
+        "label": "Move file",
+        "risk": "standard",
+        "required": ["src", "dest"],
+        "optional": [],
+    },
+    "set_permissions": {
+        "label": "Set permissions",
+        "risk": "standard",
+        "required": ["path"],
+        "optional": ["owner", "group", "mode"],
+    },
+    # ── Package management ──────────────────────────────────────────────────
+    "install_package": {
+        "label": "Install package",
+        "risk": "standard",
+        "required": ["package_name"],
+        "optional": [],
+    },
+    "remove_package": {
+        "label": "Remove package",
+        "risk": "standard",
+        "required": ["package_name"],
+        "optional": [],
+    },
+    "update_package": {
+        "label": "Update package",
+        "risk": "standard",
+        "required": ["package_name"],
+        "optional": [],
+    },
     "run_package_updates": {
-        "label": "Run package updates",
+        "label": "Run system updates",
         "risk": "standard",
         "required": [],
         "optional": ["security_only"],
+    },
+    # ── System ──────────────────────────────────────────────────────────────
+    "clear_temp_files": {
+        "label": "Clear /tmp",
+        "risk": "low",
+        "required": [],
+        "optional": ["older_than_days"],
     },
     "execute_script": {
         "label": "Execute allowlisted script",
@@ -89,6 +208,63 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "high",
         "required": [],
         "optional": ["delay_seconds"],
+    },
+    "run_command": {
+        "label": "Run shell command",
+        "risk": "high",
+        "required": ["command"],
+        "optional": ["timeout"],
+    },
+    "set_hostname": {
+        "label": "Set hostname",
+        "risk": "standard",
+        "required": ["hostname"],
+        "optional": [],
+    },
+    # ── Networking ──────────────────────────────────────────────────────────
+    "add_firewall_rule": {
+        "label": "Add firewall rule",
+        "risk": "high",
+        "required": ["port", "protocol"],
+        "optional": ["action"],
+    },
+    "remove_firewall_rule": {
+        "label": "Remove firewall rule",
+        "risk": "high",
+        "required": ["port", "protocol"],
+        "optional": [],
+    },
+    # ── User management ────────────────────────────────────────────────────
+    "create_user": {
+        "label": "Create user",
+        "risk": "high",
+        "required": ["username"],
+        "optional": ["groups", "shell"],  # groups: comma-separated
+    },
+    "delete_user": {
+        "label": "Delete user",
+        "risk": "high",
+        "required": ["username"],
+        "optional": ["remove_home"],
+    },
+    "add_user_to_group": {
+        "label": "Add user to group",
+        "risk": "standard",
+        "required": ["username", "group"],
+        "optional": [],
+    },
+    # ── Cron ────────────────────────────────────────────────────────────────
+    "create_cron_job": {
+        "label": "Create cron job",
+        "risk": "standard",
+        "required": ["schedule", "command"],
+        "optional": ["user"],
+    },
+    "delete_cron_job": {
+        "label": "Delete cron job",
+        "risk": "standard",
+        "required": ["pattern"],
+        "optional": ["user"],
     },
 }
 

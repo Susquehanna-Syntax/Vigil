@@ -14,15 +14,30 @@ logger = logging.getLogger("vigil.config")
 _VALID_MODES = {"monitor", "managed", "full_control"}
 
 _ALL_ACTIONS = {
-    "restart_service",
-    "restart_container",
-    "stop_container",
-    "start_container",
-    "clear_temp_files",
+    # Service management
+    "restart_service", "start_service", "stop_service", "reload_service",
+    "enable_service", "disable_service", "check_service",
+    # Container management
+    "restart_container", "stop_container", "start_container",
+    "pull_image", "remove_container",
+    "docker_compose_up", "docker_compose_down",
     "clear_docker_logs",
+    # File / directory operations
+    "write_file", "create_directory", "delete_path",
+    "copy_file", "move_file", "set_permissions",
+    # Package management
+    "install_package", "remove_package", "update_package",
     "run_package_updates",
-    "execute_script",
-    "reboot",
+    # System
+    "clear_temp_files", "execute_script", "reboot", "set_hostname",
+    # run_command intentionally excluded — full_control only, enforced in
+    # the executor handler itself as defense-in-depth.
+    # Networking
+    "add_firewall_rule", "remove_firewall_rule",
+    # User management
+    "create_user", "delete_user", "add_user_to_group",
+    # Cron
+    "create_cron_job", "delete_cron_job",
 }
 
 DEFAULT_CONFIG_PATHS = [

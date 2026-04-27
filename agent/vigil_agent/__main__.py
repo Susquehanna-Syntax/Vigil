@@ -14,8 +14,9 @@ from pathlib import Path
 
 from . import client, collector, verify
 from .config import load_config
-from .executor import execute_task
+from .executor import execute_action
 from .nonce_store import NonceStore
+from .runtime import TaskRuntime
 from .verify import KeyMismatchError
 
 logger = logging.getLogger("vigil")
@@ -79,18 +80,75 @@ def _process_tasks(tasks: list[dict], config, nonce_store: NonceStore, verify_ke
             nonce_store.record(nonce)
             continue
 
-        # Allowlist check + execution
+        # Execution — the agent validates each action against its own local
+        # config.  The server sends the script; we decide what's allowed.
         nonce_store.record(nonce)
-        try:
-            output = execute_task(action, task.get("params", {}), config)
-            logger.info("Task %s (%s) completed successfully", task_id, action)
-            _report_completed(config, task, output)
-        except ValueError as exc:
-            logger.warning("Task %s (%s) rejected: %s", task_id, action, exc)
-            _report_rejected(config, task, str(exc))
-        except Exception as exc:
-            logger.error("Task %s (%s) failed: %s", task_id, action, exc)
-            _report_failed(config, task, str(exc))
+        params = task.get("params", {})
+
+        if isinstance(params.get("steps"), list):
+            # ── Multi-step script ───────────────────────────────────────
+            # The full script was sent as a single signed payload.  The
+            # TaskRuntime calls execute_action() per step, which checks
+            # the local allowlist each time.
+            _execute_script_task(task_id, params, config, task)
+        else:
+            # ── Single-action task (legacy / quick-action) ──────────────
+            try:
+                output = execute_action(action, params, config)
+                logger.info("Task %s (%s) completed", task_id, action)
+                _report_completed(config, task, output)
+            except ValueError as exc:
+                logger.warning("Task %s (%s) rejected: %s", task_id, action, exc)
+                _report_rejected(config, task, str(exc))
+            except Exception as exc:
+                logger.error("Task %s (%s) failed: %s", task_id, action, exc)
+                _report_failed(config, task, str(exc))
+
+
+def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None:
+    """Run a multi-step script through the TaskRuntime.
+
+    Each step is validated against the agent's local allowlist individually.
+    If a step is disallowed or fails, execution stops (fail-fast) and we
+    report the aggregated result back to the server.
+    """
+    # Translate the server's spec format into what the runtime expects:
+    # server sends {steps: [{action, params, id}, ...]}
+    # runtime expects {steps: [{action, params, name}, ...]}
+    raw_steps = params.get("steps", [])
+    runtime_payload = {
+        "steps": [
+            {
+                "name": s.get("id", s.get("name", f"step{i+1}")),
+                "action": s.get("action", s.get("type", "")),
+                "params": s.get("params", {}),
+            }
+            for i, s in enumerate(raw_steps)
+        ],
+        "variables": params.get("variables", {}),
+    }
+
+    runtime = TaskRuntime(runtime_payload, config)
+    results = runtime.run()
+
+    # Build per-step output for the server
+    step_outputs = []
+    any_error = False
+    for r in results:
+        status = "OK" if r.state == "ok" else "ERROR"
+        line = f"[{status}] {r.name}: {r.output or r.error or r.state}"
+        step_outputs.append(line)
+        if r.state == "error":
+            any_error = True
+
+    output = "\n".join(step_outputs)
+
+    if any_error:
+        logger.warning("Script task %s failed at step %r", task_id, results[-1].name)
+        _report_failed(config, task, output)
+    else:
+        logger.info("Script task %s completed (%d steps)", task_id, len(results))
+        _report_completed(config, task, output)
 
 
 def _report_completed(config, task: dict, output: str) -> None:

@@ -324,14 +324,8 @@ def definition_fork(request, definition_id):
 def _verify_confirmation(user, payload) -> str | None:
     """Return error message if confirmation fails, else None.
 
-    Real 2FA is TOTP (RFC 6238) — see ``apps.accounts.totp``. If the user has
-    TOTP enrolled they MUST use it; the password fallback below is only for
-    accounts that have not yet enrolled.
-
-    # TODO(security): Remove the password-reauth fallback once TOTP enrollment
-    # is mandatory. It exists purely so local testing / early adopters can
-    # deploy before enrolling — it's not a real second factor because the
-    # session was already authenticated with the same password.
+    TOTP (RFC 6238) is required for task deploys. Users must enroll via
+    Settings before they can deploy scripts to agents.
     """
     from apps.accounts.totp import verify_totp
 
@@ -339,21 +333,14 @@ def _verify_confirmation(user, payload) -> str | None:
     totp_secret = getattr(profile, "totp_secret", "") or ""
     totp_enabled = bool(profile and profile.totp_confirmed_at and totp_secret)
 
+    if not totp_enabled:
+        return "TOTP enrollment required — enroll in Settings before deploying"
+
     totp_code = (payload.get("totp") or "").strip()
-    password = payload.get("password") or ""
-
-    if totp_enabled:
-        if not totp_code:
-            return "TOTP code required"
-        if not verify_totp(totp_secret, totp_code):
-            return "Invalid TOTP code"
-        return None
-
-    # --- insecure fallback, test-only ---
-    if not password:
-        return "Confirmation required — enroll TOTP in Settings or provide 'password'"
-    if not user.check_password(password):
-        return "Invalid password"
+    if not totp_code:
+        return "TOTP code required"
+    if not verify_totp(totp_secret, totp_code):
+        return "Invalid TOTP code"
     return None
 
 
@@ -399,6 +386,22 @@ def definition_deploy(request, definition_id):
                 {"error": f"Host {host.hostname} is in monitor mode"}, status=400
             )
 
+    # Build the steps payload the agent will receive.  The full script is
+    # sent as a single signed task per host — the agent validates each
+    # action against its own local allowlist, so a compromised server
+    # cannot escalate beyond what each agent permits.
+    steps_payload = [
+        {
+            "id": action.get("id") or f"step{i + 1}",
+            "action": action["type"],
+            "params": action.get("params") or {},
+        }
+        for i, action in enumerate(actions)
+    ]
+
+    # Effective risk is the highest risk across all actions.
+    risk = spec.get("risk", "standard")
+
     with transaction.atomic():
         run = TaskRun.objects.create(
             definition=definition,
@@ -410,20 +413,18 @@ def definition_deploy(request, definition_id):
         )
 
         for host in hosts:
-            for index, action in enumerate(actions):
-                state = Task.State.PENDING if index == 0 else Task.State.BLOCKED
-                Task.objects.create(
-                    host=host,
-                    requested_by=request.user,
-                    run=run,
-                    step_order=index,
-                    step_label=action.get("id") or f"step{index + 1}",
-                    action=action["type"],
-                    params=action.get("params") or {},
-                    risk_level=action.get("risk", "standard"),
-                    state=state,
-                    nonce=secrets.token_hex(32),
-                )
+            Task.objects.create(
+                host=host,
+                requested_by=request.user,
+                run=run,
+                step_order=0,
+                step_label=definition.name,
+                action="_script",
+                params={"steps": steps_payload},
+                risk_level=risk,
+                state=Task.State.PENDING,
+                nonce=secrets.token_hex(32),
+            )
 
     return Response(TaskRunSerializer(run).data, status=201)
 
