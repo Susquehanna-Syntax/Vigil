@@ -208,3 +208,57 @@ def host_poll(request, host_id):
     except Host.DoesNotExist:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
     return Response(HostSerializer(host).data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def host_rdp(request, host_id):
+    """Generate a Windows .rdp file pointing at this host.
+
+    Browsers can't invoke mstsc directly, so we serve a downloadable .rdp
+    file. On Windows the OS opens it in mstsc; on macOS in Microsoft Remote
+    Desktop; on Linux in Remmina/FreeRDP. The user supplies their own
+    credentials at connection time — we never store or transmit them.
+    """
+    from django.http import HttpResponse
+
+    try:
+        host = Host.objects.get(pk=host_id)
+    except Host.DoesNotExist:
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    target = host.ip_address or host.hostname
+    if not target:
+        return Response({"error": "Host has no address"}, status=status.HTTP_400_BAD_REQUEST)
+
+    port = request.GET.get("port", "3389")
+    try:
+        port_int = int(port)
+        if not (1 <= port_int <= 65535):
+            raise ValueError
+    except (TypeError, ValueError):
+        return Response({"error": "Invalid port"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Standard .rdp file format. CRLF line endings are required by mstsc.
+    lines = [
+        f"full address:s:{target}:{port_int}",
+        "prompt for credentials:i:1",
+        "administrative session:i:0",
+        "screen mode id:i:2",
+        "use multimon:i:0",
+        "audiomode:i:0",
+        "redirectclipboard:i:1",
+        "redirectprinters:i:0",
+        "redirectsmartcards:i:0",
+        "authentication level:i:2",
+        f"alternate full address:s:{target}",
+    ]
+    rdp_body = "\r\n".join(lines) + "\r\n"
+
+    # Sanitize hostname for a safe filename
+    safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in host.hostname)[:64]
+    filename = f"{safe or 'host'}.rdp"
+
+    response = HttpResponse(rdp_body, content_type="application/x-rdp")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
