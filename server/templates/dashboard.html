@@ -724,9 +724,148 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 }
 
 /* ═══════════════════════════════════════════
+   TASK SEARCH BAR
+   ═══════════════════════════════════════════ */
+.task-search-bar {
+  position: relative;
+  margin-bottom: 18px;
+}
+.task-search-input {
+  width: 100%;
+  background: var(--s1);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-1);
+  font-family: inherit; font-size: 14px;
+  padding: 11px 14px 11px 42px;
+  transition: border-color 0.2s; outline: none;
+}
+.task-search-input:focus { border-color: var(--sky); }
+.task-search-input::placeholder { color: var(--text-3); }
+.task-search-icon {
+  position: absolute;
+  left: 14px; top: 50%;
+  transform: translateY(-50%);
+  width: 16px; height: 16px;
+  stroke: var(--text-3);
+  fill: none; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════
    DEPLOY MODAL
    ═══════════════════════════════════════════ */
 .modal.modal-wide { width: 560px; }
+.modal.modal-xwide { width: 920px; }
+.deploy-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: stretch;
+}
+.deploy-col-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 10px;
+}
+.deploy-yaml-wrap {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+  overflow: auto;
+  max-height: 360px;
+  color: var(--text-1);
+  tab-size: 2;
+}
+.deploy-yaml-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+.deploy-yaml-wrap::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 3px; }
+/* YAML syntax highlighting tokens */
+.yh-key      { color: var(--sky); }
+.yh-string   { color: var(--mint); }
+.yh-number   { color: var(--peach); }
+.yh-bool     { color: var(--lemon); font-weight: 600; }
+.yh-null     { color: var(--text-3); font-style: italic; }
+.yh-comment  { color: var(--text-3); font-style: italic; }
+.yh-anchor   { color: var(--lavender); }
+.yh-dash     { color: var(--lavender); }
+.yh-doctype  { color: var(--rose); }
+
+.deploy-host-search {
+  width: 100%;
+  background: var(--s2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-1);
+  font-family: inherit; font-size: 13px;
+  padding: 9px 13px;
+  margin-bottom: 8px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.deploy-host-search:focus { border-color: var(--sky); }
+.deploy-host-table {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--s2);
+  overflow: hidden;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.deploy-host-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.deploy-host-row:last-child { border-bottom: none; }
+.deploy-host-row:hover { background: var(--s3); }
+.deploy-host-row input[type=checkbox] {
+  accent-color: var(--sky);
+  width: 16px; height: 16px; cursor: pointer;
+}
+.deploy-host-row.selected { background: rgba(130,196,238,0.06); }
+.deploy-host-row .dh-name { font-size: 13px; font-weight: 500; }
+.deploy-host-row .dh-meta { font-size: 11px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; }
+.deploy-host-head {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 12px;
+  padding: 9px 12px;
+  background: var(--s3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-3);
+  border-bottom: 1px solid var(--border);
+}
+.deploy-input-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+.deploy-input-row { display: flex; flex-direction: column; gap: 5px; }
+.deploy-input-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.deploy-input-desc  { font-size: 11px; color: var(--text-3); }
+.deploy-input-row .form-control { padding: 8px 11px; font-size: 13px; }
+.deploy-input-row.bool { flex-direction: row; align-items: center; gap: 10px; }
+.deploy-input-row.bool input { accent-color: var(--sky); width: 16px; height: 16px; }
+.deploy-input-row.bool .deploy-input-label { font-weight: 500; }
+.deploy-totp-row {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.deploy-totp-row .form-control { letter-spacing: 4px; font-family: 'IBM Plex Mono', monospace; }
 .host-picker {
   max-height: 260px;
   overflow-y: auto;
@@ -1480,6 +1619,10 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 
       <!-- My Library -->
       <div class="tab-content active" id="tasks-library">
+        <div class="task-search-bar">
+          <svg class="task-search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" class="task-search-input" id="task-library-search" placeholder="Search tasks by name, description, or action…" oninput="filterTaskGrid('library')">
+        </div>
         <div id="task-library-grid" class="def-grid"></div>
       </div>
 
@@ -1523,6 +1666,11 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
       <div style="background:var(--s1); border-left:2px solid var(--lavender); border-radius:var(--r-sm); padding:14px 18px; margin-bottom:18px; font-size:12px; color:var(--text-2); line-height:1.6;">
         This is your local community tab. A future release will sync from a
         public Vigil task repo so self-hosted instances can share templates.
+      </div>
+
+      <div class="task-search-bar">
+        <svg class="task-search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" class="task-search-input" id="task-community-search" placeholder="Search community templates…" oninput="filterTaskGrid('community')">
       </div>
 
       <div id="task-community-grid" class="def-grid"></div>
@@ -1573,7 +1721,6 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 
       <!-- No host selected state -->
       <div id="monitor-empty" class="monitor-empty">
-        <div style="font-size: 36px; margin-bottom: 12px; opacity: 0.3;">📊</div>
         <div class="monitor-empty-title">Select a host to monitor</div>
         <div class="monitor-empty-desc">
           Pick a host from the bar above, or pin your favorites for quick access.
@@ -1590,6 +1737,10 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
             <div class="mhb-name" id="mon-hostname">—</div>
             <div class="mhb-meta" id="mon-meta">—</div>
           </div>
+          <button class="btn btn-outline btn-sm" id="mon-rdp-btn" onclick="launchRdpForCurrentMonitor()" title="Download a .rdp file for this host">
+            <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="18" x2="12" y2="20"/></svg>
+            RDP
+          </button>
           <div class="time-range-bar">
             <button class="time-btn active" data-range="60" onclick="setTimeRange(60, this)">1h</button>
             <button class="time-btn" data-range="360" onclick="setTimeRange(360, this)">6h</button>
@@ -1893,6 +2044,9 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
           <div class="page-sub">Write the YAML on the left. The preview updates as you type.</div>
         </div>
         <div class="right">
+          <select class="form-control" id="editor-template-picker" onchange="loadEditorTemplate(this.value)" style="width:auto; padding:8px 12px; font-size:13px;">
+            <option value="">Start from template…</option>
+          </select>
           <button class="btn btn-ghost" onclick="navigateTo('tasks')">Cancel</button>
           <button class="btn btn-sky" id="editor-save-btn" onclick="saveDefinitionFromEditor()">
             <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
@@ -2006,7 +2160,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 
 <!-- Deploy Task Modal -->
 <div class="modal-overlay" id="deploy-overlay" onclick="closeDeployModal()"></div>
-<div class="modal modal-wide" id="deploy-modal">
+<div class="modal modal-xwide" id="deploy-modal">
   <div class="modal-title">
     <span id="deploy-modal-title">Deploy Task</span>
     <button class="modal-close" onclick="closeDeployModal()">
@@ -2014,22 +2168,47 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
     </button>
   </div>
   <form id="deploy-form" onsubmit="submitDeploy(event)">
-    <div class="form-group">
-      <label class="form-label">Target Hosts</label>
-      <div class="host-picker" id="deploy-host-picker">
-        <div class="host-pick-empty">No online hosts available.</div>
+    <div class="deploy-grid">
+
+      <!-- LEFT: task definition + inputs -->
+      <div>
+        <div class="deploy-col-title">Task definition</div>
+        <pre class="deploy-yaml-wrap" id="deploy-yaml-view"></pre>
+
+        <div id="deploy-inputs-wrap" style="margin-top:18px; display:none;">
+          <div class="deploy-col-title">Options</div>
+          <div class="deploy-input-list" id="deploy-inputs"></div>
+        </div>
       </div>
-      <div class="confirm-hint" id="deploy-host-summary">Select one or more hosts.</div>
+
+      <!-- RIGHT: searchable host table -->
+      <div>
+        <div class="deploy-col-title">Target hosts</div>
+        <input type="text" class="deploy-host-search" id="deploy-host-search" placeholder="Search hosts by hostname, IP, or mode…" oninput="filterDeployHosts()">
+        <div class="deploy-host-table">
+          <div class="deploy-host-head">
+            <div><input type="checkbox" id="deploy-host-all" onchange="toggleAllDeployHosts(this.checked)" style="accent-color:var(--sky);width:14px;height:14px;cursor:pointer;"></div>
+            <div>Hostname</div>
+            <div>Mode</div>
+          </div>
+          <div id="deploy-host-rows">
+            <div class="host-pick-empty">No online, executable hosts available.</div>
+          </div>
+        </div>
+        <div class="confirm-hint" id="deploy-host-summary" style="margin-top:8px;">Select one or more hosts.</div>
+      </div>
+
     </div>
-    <div class="form-group">
-      <label class="form-label">Confirm (2FA)</label>
-      <input class="form-control" type="text" id="deploy-totp" placeholder="6-digit code" inputmode="numeric" autocomplete="one-time-code">
-      <div class="confirm-hint">Enter your TOTP code if enrolled, or leave blank and use your account password below.</div>
+
+    <!-- BOTTOM: TOTP -->
+    <div class="deploy-totp-row">
+      <div class="form-group" style="margin-bottom: 0;">
+        <label class="form-label">Confirm with TOTP</label>
+        <input class="form-control" type="text" id="deploy-totp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+        <div class="confirm-hint">Enter the 6-digit code from your authenticator app. Enrollment is required (Settings → Two-Factor Authentication).</div>
+      </div>
     </div>
-    <div class="form-group">
-      <label class="form-label">…or Password</label>
-      <input class="form-control" type="password" id="deploy-password" placeholder="Account password" autocomplete="current-password">
-    </div>
+
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px;gap:12px;">
       <span id="deploy-risk-label"></span>
       <div style="display:flex;gap:10px;">
@@ -2578,6 +2757,15 @@ function selectMonitorHost(hostId) {
   refreshMonitor();
 }
 
+// ── RDP launch ──
+function launchRdpForCurrentMonitor() {
+  if (!monitorHostId) { showToast('No host selected', 'error'); return; }
+  // Stream a .rdp file download. The server returns it with
+  // Content-Disposition: attachment so the OS hands it off to mstsc /
+  // Microsoft Remote Desktop / Remmina depending on platform.
+  window.location.href = `/api/v1/hosts/${monitorHostId}/rdp/`;
+}
+
 // ── Time range ──
 function setTimeRange(minutes, btn) {
   monitorTimeRange = minutes;
@@ -3110,6 +3298,217 @@ actions:
       service_name: nginx
 `;
 
+/* Pre-canned task templates exposed in the editor's "Start from template…"
+   dropdown. Each entry's YAML is a complete, valid TaskDefinition. */
+const EDITOR_TEMPLATES = [
+  {
+    id: 'update-package',
+    label: 'Update a package',
+    yaml: `name: Update package
+description: Refresh the package index and upgrade a single package to its latest version.
+risk: standard
+
+inputs:
+  - id: pkg
+    label: Package name
+    type: text
+    default: hashcat
+    required: true
+
+actions:
+  - id: refresh-index
+    type: run_package_updates
+  - id: upgrade
+    type: update_package
+    params:
+      package_name: "{{ inputs.pkg }}"
+`
+  },
+  {
+    id: 'reinstall-package',
+    label: 'Reinstall a package from scratch',
+    yaml: `name: Reinstall package from scratch
+description: Remove the package and any leftover config, then install it fresh.
+risk: standard
+
+inputs:
+  - id: pkg
+    label: Package name
+    type: text
+    default: hashcat
+    required: true
+
+actions:
+  - id: remove
+    type: remove_package
+    params:
+      package_name: "{{ inputs.pkg }}"
+  - id: refresh-index
+    type: run_package_updates
+  - id: install
+    type: install_package
+    params:
+      package_name: "{{ inputs.pkg }}"
+`
+  },
+  {
+    id: 'update-or-reinstall',
+    label: 'Update OR reinstall (user picks at deploy time)',
+    yaml: `name: Update or reinstall a package
+description: |
+  Lets the operator pick whether to do a fast in-place update or a clean
+  remove + reinstall when deploying.
+risk: standard
+
+inputs:
+  - id: pkg
+    label: Package name
+    type: text
+    default: hashcat
+    required: true
+  - id: mode
+    label: How should we handle it
+    type: choice
+    choices:
+      - { value: update,    label: "Update in place" }
+      - { value: reinstall, label: "Reinstall from scratch" }
+    default: update
+
+actions:
+  # NOTE: Only one of these branches will produce a meaningful change for
+  # any given run, but both are always executed. The agent's package
+  # manager treats a no-op install as a fast no-op.
+  - id: refresh-index
+    type: run_package_updates
+  - id: upgrade-only
+    type: update_package
+    params:
+      package_name: "{{ inputs.pkg }}"
+`
+  },
+  {
+    id: 'restart-service',
+    label: 'Restart a systemd service',
+    yaml: `name: Restart service
+description: Bounce a single systemd service.
+risk: standard
+
+inputs:
+  - id: service
+    label: Service name
+    type: text
+    default: nginx
+    required: true
+
+actions:
+  - id: restart
+    type: restart_service
+    params:
+      service_name: "{{ inputs.service }}"
+`
+  },
+  {
+    id: 'clear-tmp',
+    label: 'Clear /tmp older than N days',
+    yaml: `name: Clear /tmp
+description: Delete files in /tmp older than the chosen age.
+risk: low
+
+inputs:
+  - id: days
+    label: Older than (days)
+    type: number
+    default: 7
+
+actions:
+  - id: clean
+    type: clear_temp_files
+    params:
+      older_than_days: "{{ inputs.days }}"
+`
+  },
+  {
+    id: 'wait-then-act',
+    label: 'Wait until user offline, then act (full_control)',
+    yaml: `name: Wait until user offline, then restart
+description: |
+  Polls 'who' until no users are logged in, then restarts the named service.
+  Requires the agent to be in full_control mode because run_command is used.
+relevance: "interactive workstations where you don't want to disrupt active users"
+risk: high
+
+inputs:
+  - id: service
+    label: Service to restart once nobody is logged in
+    type: text
+    default: nginx
+    required: true
+  - id: max_wait_minutes
+    label: Maximum minutes to wait for sessions to clear
+    type: number
+    default: 60
+
+actions:
+  - id: wait-for-idle
+    type: run_command
+    params:
+      command: "sh -c 'for i in $(seq 1 {{ inputs.max_wait_minutes }}); do who | grep -q . || exit 0; sleep 60; done; exit 1'"
+      timeout: 7200
+  - id: restart-service
+    type: restart_service
+    params:
+      service_name: "{{ inputs.service }}"
+`
+  },
+  {
+    id: 'reboot-host',
+    label: 'Reboot host (with delay)',
+    yaml: `name: Reboot host
+description: Schedule a delayed reboot.
+risk: high
+
+inputs:
+  - id: delay
+    label: Delay before reboot (seconds)
+    type: number
+    default: 60
+
+actions:
+  - id: reboot
+    type: reboot
+    params:
+      delay_seconds: "{{ inputs.delay }}"
+`
+  },
+];
+
+function _populateTemplatePicker() {
+  const sel = document.getElementById('editor-template-picker');
+  if (!sel || sel.children.length > 1) return;
+  for (const tpl of EDITOR_TEMPLATES) {
+    const opt = document.createElement('option');
+    opt.value = tpl.id;
+    opt.textContent = tpl.label;
+    sel.appendChild(opt);
+  }
+}
+
+function loadEditorTemplate(id) {
+  if (!id) return;
+  const tpl = EDITOR_TEMPLATES.find(t => t.id === id);
+  if (!tpl) return;
+  const ta = document.getElementById('editor-yaml');
+  const current = (ta.value || '').trim();
+  const isPristine = !current || current === DEFAULT_YAML_TEMPLATE.trim();
+  if (!isPristine && !confirm('Replace the current YAML with the selected template?')) {
+    document.getElementById('editor-template-picker').value = '';
+    return;
+  }
+  ta.value = tpl.yaml;
+  document.getElementById('editor-template-picker').value = '';
+  onEditorInput();
+}
+
 let editorState = {
   definitionId: null,   // null when creating
   lastParsedSpec: null,
@@ -3120,6 +3519,7 @@ let deployState = {
   definitionId: null,
   spec: null,
   availableHosts: [],
+  selectedHosts: new Set(),
 };
 
 async function apiJson(url, opts) {
@@ -3188,16 +3588,42 @@ const COMMUNITY_EMPTY_HTML = `
     <div class="empty-state-desc">Publish one of your own tasks to share it here.</div>
   </div>`;
 
+// Cached unfiltered lists so search is purely client-side and instant.
+const taskGridCache = { library: [], community: [] };
+
+function _renderTaskGrid(scope) {
+  const cfg = scope === 'community'
+    ? { gridId: 'task-community-grid', searchId: 'task-community-search', mode: 'community', empty: COMMUNITY_EMPTY_HTML, showOwner: true }
+    : { gridId: 'task-library-grid',   searchId: 'task-library-search',   mode: 'library',   empty: LIBRARY_EMPTY_HTML,   showOwner: false };
+  const grid = document.getElementById(cfg.gridId);
+  if (!grid) return;
+  const all = taskGridCache[scope] || [];
+  const q = (document.getElementById(cfg.searchId)?.value || '').trim().toLowerCase();
+  let visible = all;
+  if (q) {
+    visible = all.filter(d => {
+      const haystack = [
+        d.name, d.description, d.relevance,
+        ...(d.parsed_spec?.actions || []).map(a => `${a.type} ${a.label || ''}`)
+      ].join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }
+  if (!all.length) { grid.innerHTML = cfg.empty; return; }
+  if (!visible.length) {
+    const safeQ = escHtml(q);
+    grid.innerHTML = '<div class="empty-state"><div class="empty-state-title">No matches</div><div class="empty-state-desc">No tasks match \u201c' + safeQ + '\u201d.</div></div>';
+    return;
+  }
+  grid.innerHTML = visible.map(d => defCardHtml(d, { mode: cfg.mode, showOwner: cfg.showOwner })).join('');
+}
+
+function filterTaskGrid(scope) { _renderTaskGrid(scope); }
+
 async function refreshTaskLibrary() {
   try {
-    const defs = await apiJson('/api/v1/tasks/definitions/?scope=mine');
-    const grid = document.getElementById('task-library-grid');
-    if (!grid) return;
-    if (!defs.length) {
-      grid.innerHTML = LIBRARY_EMPTY_HTML;
-      return;
-    }
-    grid.innerHTML = defs.map(d => defCardHtml(d, { mode: 'library' })).join('');
+    taskGridCache.library = await apiJson('/api/v1/tasks/definitions/?scope=mine');
+    _renderTaskGrid('library');
   } catch (e) {
     showToast('Failed to load library: ' + e.message, 'error');
   }
@@ -3205,14 +3631,8 @@ async function refreshTaskLibrary() {
 
 async function refreshTaskCommunity() {
   try {
-    const defs = await apiJson('/api/v1/tasks/definitions/?scope=community');
-    const grid = document.getElementById('task-community-grid');
-    if (!grid) return;
-    if (!defs.length) {
-      grid.innerHTML = COMMUNITY_EMPTY_HTML;
-      return;
-    }
-    grid.innerHTML = defs.map(d => defCardHtml(d, { mode: 'community', showOwner: true })).join('');
+    taskGridCache.community = await apiJson('/api/v1/tasks/definitions/?scope=community');
+    _renderTaskGrid('community');
   } catch (e) {
     showToast('Failed to load community: ' + e.message, 'error');
   }
@@ -3234,6 +3654,8 @@ async function openDefinitionEditor(definitionId) {
   editorState.definitionId = definitionId || null;
   document.getElementById('editor-error').classList.remove('show');
   document.getElementById('editor-page-title').innerHTML = (definitionId ? 'Edit Task' : 'New Task') + '<span>.</span>';
+  _populateTemplatePicker();
+  document.getElementById('editor-template-picker').value = '';
 
   if (definitionId) {
     try {
@@ -3285,6 +3707,26 @@ function renderEditorPreview(spec) {
         <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => `${k}=${v}`).join(' ') : ''}</div>
       </div>
     </div>`).join('');
+  const inputs = spec.inputs || [];
+  let inputsHtml = '';
+  if (inputs.length) {
+    const rows = inputs.map(i => {
+      const sample = i.type === 'choice'
+        ? (i.choices || []).map(c => c.value).join(' | ')
+        : (i.default !== undefined && i.default !== '' ? String(i.default) : '');
+      return `<div style="display:flex;gap:10px;font-size:12px;padding:6px 10px;border-bottom:1px solid var(--border);">
+        <span class="mono" style="color:var(--sky);min-width:120px;">${escHtml(i.id)}</span>
+        <span style="color:var(--text-3);min-width:60px;">${escHtml(i.type)}</span>
+        <span style="color:var(--text-2);flex:1;">${escHtml(i.label || '')}</span>
+        <span class="mono" style="color:var(--text-3);">${escHtml(sample)}</span>
+      </div>`;
+    }).join('');
+    inputsHtml = `
+      <div style="margin-top:18px;">
+        <div class="preview-heading" style="font-size:14px;">Inputs (asked at deploy time)</div>
+        <div style="background:var(--s2);border-radius:var(--r-sm);margin-top:8px;border:1px solid var(--border);">${rows}</div>
+      </div>`;
+  }
   el.innerHTML = `
     <div class="preview-heading">${escHtml(spec.name)}</div>
     <div class="preview-sub">${escHtml(spec.description || 'No description.')}</div>
@@ -3292,7 +3734,9 @@ function renderEditorPreview(spec) {
       ${riskBadgeHtml(spec.risk)}
       ${spec.relevance ? `<span>${escHtml(spec.relevance)}</span>` : ''}
       <span>${spec.actions.length} step${spec.actions.length === 1 ? '' : 's'}</span>
+      ${inputs.length ? `<span>${inputs.length} input${inputs.length === 1 ? '' : 's'}</span>` : ''}
     </div>
+    ${inputsHtml}
     <div class="preview-actions">${actionsHtml}</div>`;
 }
 
@@ -3326,33 +3770,264 @@ function closeDeployModal() {
   document.getElementById('deploy-modal').classList.remove('open');
 }
 
+/* Tiny YAML highlighter — just enough to colorize keys, strings, numbers,
+   booleans, comments, and dashes. Returns escaped HTML. */
+function highlightYaml(src) {
+  const lines = (src || '').split('\n');
+  const out = [];
+  for (const raw of lines) {
+    // Comments take the rest of the line.
+    const hashIdx = (() => {
+      let inStr = null;
+      for (let i = 0; i < raw.length; i++) {
+        const c = raw[i];
+        if (inStr) { if (c === inStr && raw[i-1] !== '\\') inStr = null; continue; }
+        if (c === '"' || c === "'") inStr = c;
+        else if (c === '#' && (i === 0 || /\s/.test(raw[i-1]))) return i;
+      }
+      return -1;
+    })();
+
+    let body = raw, comment = '';
+    if (hashIdx >= 0) { body = raw.slice(0, hashIdx); comment = raw.slice(hashIdx); }
+
+    // Match: leading whitespace, optional dash, then either `key:` or a scalar.
+    const m = body.match(/^(\s*)(- )?(.*)$/);
+    const indent = m[1] || '';
+    const dash = m[2] || '';
+    let rest = m[3] || '';
+
+    let html = escHtml(indent);
+    if (dash) html += '<span class="yh-dash">- </span>';
+
+    const kvMatch = rest.match(/^([A-Za-z_][\w.-]*)(\s*:)(\s*)(.*)$/);
+    if (kvMatch) {
+      html += '<span class="yh-key">' + escHtml(kvMatch[1]) + '</span>';
+      html += escHtml(kvMatch[2] + kvMatch[3]);
+      html += highlightYamlValue(kvMatch[4]);
+    } else if (rest) {
+      html += highlightYamlValue(rest);
+    }
+
+    if (comment) html += '<span class="yh-comment">' + escHtml(comment) + '</span>';
+    out.push(html);
+  }
+  return out.join('\n');
+}
+
+function highlightYamlValue(v) {
+  if (!v) return '';
+  // String literal
+  const strM = v.match(/^("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')(.*)$/);
+  if (strM) return '<span class="yh-string">' + escHtml(strM[1]) + '</span>' + highlightYamlValue(strM[2]);
+  // Boolean / null
+  if (/^(true|false|yes|no|on|off)\b/i.test(v)) {
+    const b = v.match(/^(true|false|yes|no|on|off)(.*)$/i);
+    return '<span class="yh-bool">' + escHtml(b[1]) + '</span>' + highlightYamlValue(b[2]);
+  }
+  if (/^(null|~)\b/i.test(v)) {
+    const n = v.match(/^(null|~)(.*)$/i);
+    return '<span class="yh-null">' + escHtml(n[1]) + '</span>' + highlightYamlValue(n[2]);
+  }
+  // Number
+  const numM = v.match(/^(-?\d+(?:\.\d+)?)(.*)$/);
+  if (numM && /^[\s,\]\}]?/.test(numM[2])) {
+    return '<span class="yh-number">' + escHtml(numM[1]) + '</span>' + highlightYamlValue(numM[2]);
+  }
+  // Inline mapping/sequence delimiters and the rest
+  return escHtml(v);
+}
+
+function _renderDeployInputs(inputs) {
+  const wrap = document.getElementById('deploy-inputs-wrap');
+  const list = document.getElementById('deploy-inputs');
+  if (!inputs || !inputs.length) {
+    wrap.style.display = 'none';
+    list.replaceChildren();
+    return;
+  }
+  wrap.style.display = 'block';
+  list.replaceChildren();
+  for (const inp of inputs) {
+    const row = document.createElement('div');
+    row.className = 'deploy-input-row' + (inp.type === 'boolean' ? ' bool' : '');
+    row.dataset.inputId = inp.id;
+    row.dataset.inputType = inp.type;
+
+    const label = document.createElement('label');
+    label.className = 'deploy-input-label';
+    label.textContent = inp.label || inp.id;
+
+    let control;
+    if (inp.type === 'choice') {
+      control = document.createElement('select');
+      control.className = 'form-control';
+      for (const c of (inp.choices || [])) {
+        const opt = document.createElement('option');
+        opt.value = c.value;
+        opt.textContent = c.label || c.value;
+        if (c.value === inp.default) opt.selected = true;
+        control.appendChild(opt);
+      }
+    } else if (inp.type === 'boolean') {
+      control = document.createElement('input');
+      control.type = 'checkbox';
+      control.checked = !!inp.default;
+    } else if (inp.type === 'number') {
+      control = document.createElement('input');
+      control.type = 'number';
+      control.className = 'form-control';
+      control.value = inp.default ?? '';
+    } else {
+      control = document.createElement('input');
+      control.type = 'text';
+      control.className = 'form-control';
+      control.value = inp.default ?? '';
+      if (inp.required) control.required = true;
+    }
+    control.classList.add('deploy-input-control');
+
+    if (inp.type === 'boolean') {
+      row.appendChild(control);
+      row.appendChild(label);
+    } else {
+      row.appendChild(label);
+      if (inp.description) {
+        const d = document.createElement('div');
+        d.className = 'deploy-input-desc';
+        d.textContent = inp.description;
+        row.appendChild(d);
+      }
+      row.appendChild(control);
+    }
+    list.appendChild(row);
+  }
+}
+
+function _readDeployInputs() {
+  const out = {};
+  for (const row of document.querySelectorAll('#deploy-inputs .deploy-input-row')) {
+    const id = row.dataset.inputId;
+    const type = row.dataset.inputType;
+    const ctrl = row.querySelector('.deploy-input-control');
+    if (!ctrl) continue;
+    if (type === 'boolean') out[id] = !!ctrl.checked;
+    else if (type === 'number') out[id] = ctrl.value === '' ? null : Number(ctrl.value);
+    else out[id] = ctrl.value;
+  }
+  return out;
+}
+
+function _renderDeployHostRows() {
+  const rowsEl = document.getElementById('deploy-host-rows');
+  const all = deployState.availableHosts || [];
+  const q = (document.getElementById('deploy-host-search')?.value || '').trim().toLowerCase();
+  let visible = all;
+  if (q) {
+    visible = all.filter(h =>
+      (h.hostname || '').toLowerCase().includes(q)
+      || (h.ip_address || '').toLowerCase().includes(q)
+      || (h.mode || '').toLowerCase().includes(q)
+    );
+  }
+  if (!all.length) {
+    rowsEl.replaceChildren();
+    const empty = document.createElement('div');
+    empty.className = 'host-pick-empty';
+    empty.textContent = 'No online, executable hosts available.';
+    rowsEl.appendChild(empty);
+    return;
+  }
+  rowsEl.replaceChildren();
+  if (!visible.length) {
+    const empty = document.createElement('div');
+    empty.className = 'host-pick-empty';
+    empty.textContent = 'No hosts match your search.';
+    rowsEl.appendChild(empty);
+    return;
+  }
+  for (const h of visible) {
+    const row = document.createElement('label');
+    row.className = 'deploy-host-row';
+    if (deployState.selectedHosts.has(h.id)) row.classList.add('selected');
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = h.id;
+    cb.checked = deployState.selectedHosts.has(h.id);
+    cb.addEventListener('change', () => {
+      if (cb.checked) deployState.selectedHosts.add(h.id);
+      else deployState.selectedHosts.delete(h.id);
+      row.classList.toggle('selected', cb.checked);
+      updateDeployHostSummary();
+      _syncSelectAllCheckbox();
+    });
+
+    const nameWrap = document.createElement('div');
+    const name = document.createElement('div');
+    name.className = 'dh-name';
+    name.textContent = h.hostname;
+    const meta = document.createElement('div');
+    meta.className = 'dh-meta';
+    meta.textContent = h.ip_address || '';
+    nameWrap.appendChild(name);
+    if (h.ip_address) nameWrap.appendChild(meta);
+
+    const mode = document.createElement('div');
+    mode.className = 'dh-meta';
+    mode.textContent = h.mode;
+
+    row.appendChild(cb);
+    row.appendChild(nameWrap);
+    row.appendChild(mode);
+    rowsEl.appendChild(row);
+  }
+  _syncSelectAllCheckbox();
+}
+
+function _syncSelectAllCheckbox() {
+  const all = deployState.availableHosts || [];
+  const checkbox = document.getElementById('deploy-host-all');
+  if (!checkbox) return;
+  if (!all.length) { checkbox.checked = false; checkbox.indeterminate = false; return; }
+  const selected = all.filter(h => deployState.selectedHosts.has(h.id)).length;
+  checkbox.checked = selected === all.length && all.length > 0;
+  checkbox.indeterminate = selected > 0 && selected < all.length;
+}
+
+function toggleAllDeployHosts(checked) {
+  const all = deployState.availableHosts || [];
+  if (checked) all.forEach(h => deployState.selectedHosts.add(h.id));
+  else deployState.selectedHosts.clear();
+  _renderDeployHostRows();
+  updateDeployHostSummary();
+}
+
+function filterDeployHosts() { _renderDeployHostRows(); }
+
 async function openDeployModal(definitionId) {
   try {
     const def = await apiJson(`/api/v1/tasks/definitions/${definitionId}/`);
     deployState.definitionId = definitionId;
     deployState.spec = def.parsed_spec;
+    deployState.selectedHosts = new Set();
     document.getElementById('deploy-modal-title').textContent = `Deploy — ${def.name}`;
     document.getElementById('deploy-risk-label').innerHTML = riskBadgeHtml(def.risk_level || 'standard');
 
-    const picker = document.getElementById('deploy-host-picker');
+    // YAML preview with syntax highlighting (escape-safe — uses escHtml internally).
+    document.getElementById('deploy-yaml-view').innerHTML = highlightYaml(def.yaml_source || '');
+
+    // Inputs section (hidden if the task declares no inputs).
+    _renderDeployInputs((def.parsed_spec && def.parsed_spec.inputs) || []);
+
     const hosts = await apiJson('/api/v1/hosts/');
     const eligible = hosts.filter(h => h.status === 'online' && h.mode !== 'monitor');
     deployState.availableHosts = eligible;
-
-    if (!eligible.length) {
-      picker.innerHTML = '<div class="host-pick-empty">No online, executable hosts available.</div>';
-    } else {
-      picker.innerHTML = eligible.map(h => `
-        <label class="host-pick">
-          <input type="checkbox" value="${h.id}" onchange="updateDeployHostSummary()">
-          <span class="host-pick-name">${escHtml(h.hostname)}</span>
-          <span class="host-pick-meta">${escHtml(h.ip_address || '')} · ${escHtml(h.mode)}</span>
-        </label>`).join('');
-    }
+    _renderDeployHostRows();
     updateDeployHostSummary();
 
     document.getElementById('deploy-totp').value = '';
-    document.getElementById('deploy-password').value = '';
+    document.getElementById('deploy-host-search').value = '';
 
     document.getElementById('deploy-overlay').classList.add('open');
     document.getElementById('deploy-modal').classList.add('open');
@@ -3362,9 +4037,8 @@ async function openDeployModal(definitionId) {
 }
 
 function updateDeployHostSummary() {
-  const picker = document.getElementById('deploy-host-picker');
-  const count = picker.querySelectorAll('input[type=checkbox]:checked').length;
-  const total = deployState.availableHosts.length;
+  const total = (deployState.availableHosts || []).length;
+  const count = deployState.selectedHosts ? deployState.selectedHosts.size : 0;
   const stepCount = (deployState.spec && deployState.spec.actions && deployState.spec.actions.length) || 0;
   const summary = document.getElementById('deploy-host-summary');
   if (!total) { summary.textContent = 'No online hosts available.'; return; }
@@ -3375,17 +4049,13 @@ function updateDeployHostSummary() {
 
 async function submitDeploy(event) {
   event.preventDefault();
-  const picker = document.getElementById('deploy-host-picker');
-  const host_ids = [...picker.querySelectorAll('input[type=checkbox]:checked')].map(cb => cb.value);
+  const host_ids = [...(deployState.selectedHosts || [])];
   if (!host_ids.length) { showToast('Select at least one host', 'error'); return; }
 
   const totp = document.getElementById('deploy-totp').value.trim();
-  const password = document.getElementById('deploy-password').value;
-  if (!totp && !password) { showToast('Enter TOTP or password to confirm', 'error'); return; }
+  if (!totp) { showToast('Enter your TOTP code', 'error'); return; }
 
-  const body = { host_ids };
-  if (totp) body.totp = totp;
-  if (password) body.password = password;
+  const body = { host_ids, totp, inputs: _readDeployInputs() };
 
   const btn = document.getElementById('deploy-submit-btn');
   btn.disabled = true; btn.style.opacity = '0.6';

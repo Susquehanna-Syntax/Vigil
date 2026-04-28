@@ -21,6 +21,7 @@ actions that the agent already knows how to run.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import yaml
@@ -271,6 +272,11 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
 _RISK_ORDER = {"low": 0, "standard": 1, "high": 2}
 _VALID_RISK = set(_RISK_ORDER)
 
+_INPUT_TYPES = {"text", "choice", "boolean", "number"}
+# Variable references look like {{ inputs.foo }} — whitespace flexible.
+_VAR_PATTERN = re.compile(r"\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
+_INPUT_ID_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
 
 def _as_str(value: Any, field: str, max_len: int = 500) -> str:
     if value is None:
@@ -281,6 +287,162 @@ def _as_str(value: Any, field: str, max_len: int = 500) -> str:
     if len(value) > max_len:
         raise SpecError(f"{field!r} is too long (max {max_len})")
     return value
+
+
+def _validate_inputs(raw_inputs: Any) -> list[dict[str, Any]]:
+    """Validate top-level ``inputs:`` schema. Returns canonical list."""
+    if raw_inputs is None:
+        return []
+    if not isinstance(raw_inputs, list):
+        raise SpecError("'inputs' must be a list")
+    if len(raw_inputs) > 16:
+        raise SpecError("too many inputs (max 16)")
+
+    seen_ids: set[str] = set()
+    canonical: list[dict[str, Any]] = []
+    for index, entry in enumerate(raw_inputs):
+        if not isinstance(entry, dict):
+            raise SpecError(f"input #{index + 1} must be a mapping")
+
+        input_id = _as_str(entry.get("id"), f"inputs[{index}].id", max_len=60)
+        if not input_id:
+            raise SpecError(f"input #{index + 1} missing 'id'")
+        if not _INPUT_ID_PATTERN.match(input_id):
+            raise SpecError(f"input id {input_id!r} must match [A-Za-z_][A-Za-z0-9_]*")
+        if input_id in seen_ids:
+            raise SpecError(f"duplicate input id {input_id!r}")
+        seen_ids.add(input_id)
+
+        input_type = _as_str(entry.get("type") or "text", f"inputs[{index}].type", max_len=16).lower()
+        if input_type not in _INPUT_TYPES:
+            raise SpecError(
+                f"input {input_id!r}: unknown type {input_type!r} — "
+                f"must be one of {', '.join(sorted(_INPUT_TYPES))}"
+            )
+
+        label = _as_str(entry.get("label") or input_id, f"inputs[{index}].label", max_len=120)
+        description = _as_str(entry.get("description"), f"inputs[{index}].description", max_len=255)
+
+        choices: list[dict[str, str]] = []
+        if input_type == "choice":
+            raw_choices = entry.get("choices") or []
+            if not isinstance(raw_choices, list) or not raw_choices:
+                raise SpecError(f"input {input_id!r}: 'choices' must be a non-empty list")
+            if len(raw_choices) > 32:
+                raise SpecError(f"input {input_id!r}: too many choices (max 32)")
+            for ci, choice in enumerate(raw_choices):
+                if not isinstance(choice, dict):
+                    raise SpecError(f"input {input_id!r}: choice #{ci + 1} must be a mapping")
+                cv = _as_str(choice.get("value"), f"inputs[{index}].choices[{ci}].value", max_len=120)
+                if not cv:
+                    raise SpecError(f"input {input_id!r}: choice #{ci + 1} missing 'value'")
+                cl = _as_str(choice.get("label") or cv, f"inputs[{index}].choices[{ci}].label", max_len=120)
+                choices.append({"value": cv, "label": cl})
+
+        default = entry.get("default")
+        if input_type == "boolean":
+            default = bool(default) if default is not None else False
+        elif input_type == "number":
+            if default is None:
+                default = 0
+            elif not isinstance(default, (int, float)) or isinstance(default, bool):
+                raise SpecError(f"input {input_id!r}: 'default' must be a number")
+        elif input_type == "choice":
+            valid_values = {c["value"] for c in choices}
+            if default is None:
+                default = choices[0]["value"]
+            else:
+                default = _as_str(default, f"inputs[{index}].default", max_len=120)
+                if default not in valid_values:
+                    raise SpecError(f"input {input_id!r}: default {default!r} not in choices")
+        else:  # text
+            default = _as_str(default, f"inputs[{index}].default", max_len=500) if default is not None else ""
+
+        canonical.append({
+            "id": input_id,
+            "type": input_type,
+            "label": label,
+            "description": description,
+            "choices": choices,
+            "default": default,
+            "required": bool(entry.get("required", input_type != "boolean")),
+        })
+
+    return canonical
+
+
+def _check_variable_refs(value: Any, declared_ids: set[str], where: str) -> None:
+    """Recursively confirm every {{ inputs.x }} reference matches a declared input."""
+    if isinstance(value, str):
+        for match in _VAR_PATTERN.finditer(value):
+            ref = match.group(1)
+            if ref not in declared_ids:
+                raise SpecError(f"{where}: unknown input reference {{{{ inputs.{ref} }}}}")
+    elif isinstance(value, dict):
+        for k, v in value.items():
+            _check_variable_refs(v, declared_ids, where)
+    elif isinstance(value, list):
+        for i, v in enumerate(value):
+            _check_variable_refs(v, declared_ids, f"{where}[{i}]")
+
+
+def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[str, Any]:
+    """Substitute supplied input values into action params.
+
+    Returns a copy of ``parsed_spec`` with ``actions[*].params`` rewritten so
+    that every ``{{ inputs.x }}`` placeholder is replaced with the resolved
+    value. Raises :class:`SpecError` if a required input is missing or a value
+    fails type/choice validation.
+    """
+    declared = parsed_spec.get("inputs") or []
+    if not declared:
+        return parsed_spec
+
+    resolved: dict[str, Any] = {}
+    for inp in declared:
+        iid = inp["id"]
+        supplied = values.get(iid, inp["default"])
+        itype = inp["type"]
+
+        if itype == "boolean":
+            resolved[iid] = bool(supplied)
+        elif itype == "number":
+            if isinstance(supplied, bool) or not isinstance(supplied, (int, float)):
+                try:
+                    supplied = float(supplied)
+                except (TypeError, ValueError):
+                    raise SpecError(f"input {iid!r}: must be a number")
+            resolved[iid] = supplied
+        elif itype == "choice":
+            sval = str(supplied) if supplied is not None else ""
+            valid = {c["value"] for c in inp["choices"]}
+            if sval not in valid:
+                raise SpecError(f"input {iid!r}: {sval!r} is not a valid choice")
+            resolved[iid] = sval
+        else:  # text
+            sval = "" if supplied is None else str(supplied)
+            if inp.get("required", True) and not sval:
+                raise SpecError(f"input {iid!r} is required")
+            if len(sval) > 500:
+                raise SpecError(f"input {iid!r}: value too long (max 500)")
+            resolved[iid] = sval
+
+    def _sub(value: Any) -> Any:
+        if isinstance(value, str):
+            def repl(m: re.Match) -> str:
+                return str(resolved[m.group(1)])
+            return _VAR_PATTERN.sub(repl, value)
+        if isinstance(value, dict):
+            return {k: _sub(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [_sub(v) for v in value]
+        return value
+
+    new_actions = []
+    for action in parsed_spec.get("actions", []):
+        new_actions.append({**action, "params": _sub(action.get("params") or {})})
+
+    return {**parsed_spec, "actions": new_actions, "resolved_inputs": resolved}
 
 
 def parse_and_validate(yaml_source: str) -> dict[str, Any]:
@@ -312,6 +474,9 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
     risk = _as_str(raw.get("risk") or "standard", "risk", max_len=16).lower()
     if risk not in _VALID_RISK:
         raise SpecError(f"'risk' must be one of: {', '.join(sorted(_VALID_RISK))}")
+
+    declared_inputs = _validate_inputs(raw.get("inputs"))
+    declared_input_ids = {inp["id"] for inp in declared_inputs}
 
     actions_raw = raw.get("actions")
     if not isinstance(actions_raw, list) or not actions_raw:
@@ -365,6 +530,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                 raise SpecError(
                     f"action #{index + 1}: param {pk!r} must be a primitive value"
                 )
+            # If the value references {{ inputs.x }}, the input must exist.
+            _check_variable_refs(pv, declared_input_ids, f"action #{index + 1} param {pk!r}")
 
         parsed_actions.append({
             "id": action_id,
@@ -388,4 +555,5 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         "risk": effective_risk,
         "declared_risk": risk,
         "actions": parsed_actions,
+        "inputs": declared_inputs,
     }

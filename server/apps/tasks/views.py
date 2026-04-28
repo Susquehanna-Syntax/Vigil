@@ -17,7 +17,7 @@ from .serializers import (
     TaskRunSerializer,
     TaskSerializer,
 )
-from .spec import ACTION_REGISTRY, SpecError, parse_and_validate
+from .spec import ACTION_REGISTRY, SpecError, parse_and_validate, resolve_inputs
 
 _TERMINAL_STATES = {Task.State.COMPLETED, Task.State.FAILED, Task.State.REJECTED}
 _UPDATABLE_STATES = {Task.State.DISPATCHED, Task.State.EXECUTING}
@@ -367,7 +367,15 @@ def definition_deploy(request, definition_id):
     if error:
         return Response({"error": error}, status=401)
 
-    spec = definition.parsed_spec
+    base_spec = definition.parsed_spec
+    raw_inputs = request.data.get("inputs") or {}
+    if not isinstance(raw_inputs, dict):
+        return Response({"error": "inputs must be an object"}, status=400)
+    try:
+        spec = resolve_inputs(base_spec, raw_inputs)
+    except SpecError as exc:
+        return Response({"error": str(exc)}, status=400)
+
     actions = spec.get("actions") or []
     if not actions:
         return Response({"error": "definition has no actions"}, status=400)
