@@ -283,24 +283,95 @@ Each action runs sequentially per host. If a step fails, remaining steps on that
 
 ### Available actions
 
-| Action | Risk | Required params |
-|---|---|---|
-| `restart_service` | standard | `service_name` |
-| `restart_container` | standard | `container_name` |
-| `start_container` | low | `container_name` |
-| `stop_container` | standard | `container_name` |
-| `clear_temp_files` | low | — |
-| `clear_docker_logs` | low | — |
-| `run_package_updates` | standard | — |
-| `execute_script` | high | `script_content` |
-| `reboot` | high | — |
+The action registry is the contract between the server (which signs tasks) and
+the agent (which executes them). All 37 primitives below are defined in
+`server/apps/tasks/spec.py` and mirrored in `agent/vigil_agent/executor.py`.
+Running `run_command` requires `full_control` mode; everything else is
+permitted under `managed` mode if it appears in the agent's allowlist.
+
+**Service management**
+
+| Action | Risk | Required params | Optional |
+|---|---|---|---|
+| `restart_service` | standard | `service_name` | — |
+| `start_service` | standard | `service_name` | — |
+| `stop_service` | standard | `service_name` | — |
+| `reload_service` | standard | `service_name` | — |
+| `enable_service` | low | `service_name` | — |
+| `disable_service` | standard | `service_name` | — |
+| `check_service` | low | `service_name` | `expect` |
+
+**Container management**
+
+| Action | Risk | Required params | Optional |
+|---|---|---|---|
+| `restart_container` | standard | `container_name` | — |
+| `start_container` | low | `container_name` | — |
+| `stop_container` | standard | `container_name` | — |
+| `remove_container` | high | `container_name` | — |
+| `pull_image` | low | `image` | — |
+| `docker_compose_up` | standard | `compose_file` | `services` |
+| `docker_compose_down` | standard | `compose_file` | — |
+| `clear_docker_logs` | low | — | `container_name` |
+
+**File and directory operations**
+
+| Action | Risk | Required params | Optional |
+|---|---|---|---|
+| `write_file` | high | `path`, `content` | `mode` |
+| `create_directory` | low | `path` | `owner`, `group`, `mode` |
+| `delete_path` | high | `path` | `recursive` |
+| `copy_file` | standard | `src`, `dest` | — |
+| `move_file` | standard | `src`, `dest` | — |
+| `set_permissions` | standard | `path` | `owner`, `group`, `mode` |
+
+**Package management** (resolved via `pkg_manager.py` — apt/dnf/yum/pacman)
+
+| Action | Risk | Required params | Optional |
+|---|---|---|---|
+| `install_package` | standard | `package_name` | — |
+| `remove_package` | standard | `package_name` | — |
+| `update_package` | standard | `package_name` | — |
+| `run_package_updates` | standard | — | `security_only` |
+
+**System**
+
+| Action | Risk | Required params | Optional |
+|---|---|---|---|
+| `clear_temp_files` | low | — | `older_than_days` |
+| `execute_script` | high | `script_name` | — |
+| `reboot` | high | — | `delay_seconds` |
+| `run_command` | high | `command` | `timeout` |
+| `set_hostname` | standard | `hostname` | — |
+
+**Networking**
+
+| Action | Risk | Required params | Optional |
+|---|---|---|---|
+| `add_firewall_rule` | high | `port`, `protocol` | `action` |
+| `remove_firewall_rule` | high | `port`, `protocol` | — |
+
+**User management**
+
+| Action | Risk | Required params | Optional |
+|---|---|---|---|
+| `create_user` | high | `username` | `groups`, `shell` |
+| `delete_user` | high | `username` | `remove_home` |
+| `add_user_to_group` | standard | `username`, `group` | — |
+
+**Cron**
+
+| Action | Risk | Required params | Optional |
+|---|---|---|---|
+| `create_cron_job` | standard | `schedule`, `command` | `user` |
+| `delete_cron_job` | standard | `pattern` | `user` |
 
 ### Deployment flow
 
 1. Create a definition via the YAML editor (Tasks → New Task)
 2. Click **Deploy** on a library card
 3. Select target hosts in the deploy modal
-4. Confirm with TOTP code (or password during testing)
+4. Confirm with a 6-digit TOTP code (enrollment is required — there is no password fallback)
 5. Steps dispatch in sequence per host — track progress in the run detail view
 
 ### Community sharing
@@ -316,7 +387,7 @@ Vigil implements RFC 6238 TOTP natively (no external dependencies). Task deploym
 2. Click "Enroll TOTP" — copy the secret into any authenticator app (Google Authenticator, Authy, 1Password, Bitwarden, Aegis)
 3. Enter a code from the app to confirm enrollment
 
-Once enrolled, the password fallback is disabled for that account. TOTP can be disabled from Settings (requires a current code).
+Enrollment is required to deploy tasks — there is no password fallback. TOTP can be disabled from Settings (requires a current code), but task deploys remain blocked until you re-enroll.
 
 ## Alerting
 
