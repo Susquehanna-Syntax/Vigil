@@ -1,39 +1,89 @@
 # Vigil Agent Configuration
-# Copy to /etc/vigil/agent.yml (Linux) or adjust path for your OS.
+# ─────────────────────────────────────────────────────────────────────────────
+# Copy to /etc/vigil/agent.yml (Linux/macOS) or
+#          C:\ProgramData\Vigil\agent.yml (Windows)
+# Override path via: VIGIL_CONFIG_PATH=/path/to/agent.yml
+#
+# SECURITY: this file contains your agent token — chmod 600 on Linux/macOS.
+# ─────────────────────────────────────────────────────────────────────────────
 
-# URL of the Vigil server (no trailing slash)
-server_url: https://your-vigil-server:8000
 
-# Agent token — auto-generated on first run if left empty.
-# Treat this like a password. Ensure this file is chmod 600.
+# ── Connection ────────────────────────────────────────────────────────────────
+
+# URL of the Vigil server (no trailing slash).
+server_url: https://vigil.example.com
+
+# Agent token — generated automatically on first run and saved here.
+# Copy the token from the Vigil console to pre-authorize this host.
+# Leave empty to auto-register (host will appear as "Pending" until approved).
 agent_token: ""
 
-# Agent mode: monitor | managed | full_control
-#   monitor      — collect metrics only, never execute tasks
-#   managed      — collect metrics + execute allowlisted tasks
-#   full_control — collect metrics + execute ANY action (requires explicit opt-in)
-mode: managed
-
-# Check-in interval in seconds
+# Check-in interval in seconds. Lower values give fresher metrics and faster
+# task dispatch at the cost of more server load. Default: 60.
 checkin_interval: 60
 
-# Directory for runtime state (nonce cache, pinned public key, metric buffer)
-data_dir: /var/lib/vigil-agent
 
-# Actions this agent is willing to execute (managed mode only).
-# full_control ignores this list. monitor mode ignores tasks entirely.
+# ── Agent Mode ────────────────────────────────────────────────────────────────
+#
+#   monitor      — collect and report metrics only; tasks are never executed
+#   managed      — metrics + execute tasks that appear in the allowlist below
+#   full_control — metrics + execute ANY action the server requests
+#                  (opt-in only; requires explicit acknowledgement)
+#
+# The agent's mode is the final word. A compromised server cannot escalate
+# an agent beyond its configured mode.
+
+mode: managed
+
+
+# ── Allowlist (managed mode only) ────────────────────────────────────────────
+#
+# Actions this agent will execute when mode is "managed".
+# full_control and monitor modes ignore this list entirely.
+# Each entry matches an action type in the task YAML.
+
 allowlist:
+  # Service / container lifecycle
   - restart_service
   - restart_container
   - stop_container
   - start_container
+
+  # Housekeeping
   - clear_temp_files
   - clear_docker_logs
-  - run_package_updates
-  # Uncomment to enable higher-risk actions:
-  # - execute_script
-  # - reboot
 
-# Directory containing pre-approved scripts for the execute_script action.
-# Scripts outside this directory are never executed.
+  # Package management
+  - run_package_updates
+  - update_package
+  - install_package
+
+  # Higher-risk actions — uncomment deliberately:
+  # - execute_script   # runs a pre-approved script from scripts_dir
+  # - reboot           # full system reboot
+
+
+# ── Storage ──────────────────────────────────────────────────────────────────
+
+# Runtime state: nonce cache, pinned server public key, metric buffer.
+data_dir: /var/lib/vigil-agent
+
+# Pre-approved scripts for the execute_script action.
+# Paths outside this directory are rejected by the agent.
 scripts_dir: /etc/vigil/scripts
+
+
+# ── Tags ─────────────────────────────────────────────────────────────────────
+#
+# Tags advertised to the server at every check-in.
+# Operators can also assign tags from the Vigil console; both sources are
+# merged (server-side values always win on conflict).
+# Tags enable "deploy by tag" targeting — e.g. roll out a task to all "prod"
+# hosts without listing them individually.
+
+tags:
+  - linux
+  # - prod
+  # - rack-3
+  # - web-server
+  # - site-london

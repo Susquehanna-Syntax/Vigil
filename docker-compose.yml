@@ -27,6 +27,7 @@ services:
 
   web:
     build: ./server
+    image: susquehannasyntax/vigil:latest
     env_file: .env
     environment:
       POSTGRES_HOST: db
@@ -43,7 +44,7 @@ services:
       - ./server:/app
 
   celery-worker:
-    build: ./server
+    image: susquehannasyntax/vigil:latest
     env_file: .env
     environment:
       POSTGRES_HOST: db
@@ -55,11 +56,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./server:/app
 
   celery-beat:
-    build: ./server
+    image: susquehannasyntax/vigil:latest
     env_file: .env
     environment:
       POSTGRES_HOST: db
@@ -71,8 +70,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./server:/app
 
 volumes:
   pgdata:

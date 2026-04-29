@@ -55,6 +55,10 @@ class AgentConfig:
     data_dir: Path = field(default_factory=lambda: Path("/var/lib/vigil-agent"))
     allowlist: set[str] = field(default_factory=set)
     scripts_dir: Path = field(default_factory=lambda: Path("/etc/vigil/scripts"))
+    # Free-form tags advertised to the server at every checkin. Server-side
+    # tags take precedence: this list is used to seed/augment, never to
+    # overwrite tags an operator has set in the console.
+    tags: list[str] = field(default_factory=list)
     config_path: Path | None = None
 
     def __post_init__(self):
@@ -65,6 +69,20 @@ class AgentConfig:
         unknown = self.allowlist - _ALL_ACTIONS
         if unknown:
             raise ValueError(f"Unknown actions in allowlist: {unknown}")
+        # Normalize tags: strip whitespace, drop blanks, dedupe, lowercase.
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for tag in self.tags or []:
+            if not isinstance(tag, str):
+                continue
+            t = tag.strip().lower()
+            if not t or t in seen:
+                continue
+            if len(t) > 40:
+                raise ValueError(f"tag {tag!r} too long (max 40 chars)")
+            seen.add(t)
+            cleaned.append(t)
+        self.tags = cleaned
 
     def task_allowed(self, action: str) -> bool:
         if self.mode == "monitor":
@@ -123,6 +141,10 @@ def load_config(path: Path | None = None) -> AgentConfig:
 
     data_dir = Path(raw.get("data_dir", "/var/lib/vigil-agent"))
 
+    raw_tags = raw.get("tags") or []
+    if not isinstance(raw_tags, list):
+        raise ValueError("tags must be a list of strings")
+
     config = AgentConfig(
         server_url=server_url,
         agent_token=agent_token,
@@ -131,6 +153,7 @@ def load_config(path: Path | None = None) -> AgentConfig:
         data_dir=data_dir,
         allowlist=allowlist,
         scripts_dir=Path(raw.get("scripts_dir", "/etc/vigil/scripts")),
+        tags=raw_tags,
         config_path=path,
     )
 

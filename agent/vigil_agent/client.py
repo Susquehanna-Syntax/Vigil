@@ -34,6 +34,8 @@ def register(config: AgentConfig) -> dict:
         "agent_token": config.agent_token,
         **_system_info(),
     }
+    if config.tags:
+        payload["tags"] = list(config.tags)
     url = f"{config.server_url}/api/v1/register"
     resp = requests.post(url, json=payload, timeout=_TIMEOUT)
     resp.raise_for_status()
@@ -42,12 +44,16 @@ def register(config: AgentConfig) -> dict:
     return result
 
 
-def checkin(config: AgentConfig, metrics: list[dict]) -> dict:
+def checkin(config: AgentConfig, metrics: list[dict], inventory: dict | None = None) -> dict:
     """Send metrics and receive tasks. Returns the full server response."""
     payload = {
         **_system_info(),
         "metrics": metrics,
     }
+    if config.tags:
+        payload["tags"] = list(config.tags)
+    if inventory:
+        payload["inventory"] = inventory
     url = f"{config.server_url}/api/v1/checkin"
     resp = requests.post(url, json=payload, headers=_headers(config), timeout=_TIMEOUT)
     resp.raise_for_status()

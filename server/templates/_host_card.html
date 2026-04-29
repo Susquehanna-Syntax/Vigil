@@ -1,0 +1,69 @@
+<div class="host-card{% if inactive %} inactive{% endif %}" onclick="openHostDetail(this)"
+     data-id="{{ host.id }}"
+     data-hostname="{{ host.hostname }}"
+     data-os="{{ host.os|default:'Unknown OS' }}"
+     data-ip="{{ host.ip_address|default:'—' }}"
+     data-status="{{ host.status }}"
+     data-mode="{{ host.mode }}"
+     data-mode-display="{{ host.get_mode_display }}"
+     data-last-checkin="{{ host.last_checkin|default:'' }}"
+     data-kernel="{{ host.kernel|default:'' }}"
+     data-tags="{% for t in host.tags %}{{ t }}{% if not forloop.last %},{% endif %}{% endfor %}"
+     {% if inactive %}data-inactive="1"{% endif %}>
+
+  <div class="host-card-id">
+    <div class="host-card-id-row">
+      <div class="status-dot {{ host.status }}"></div>
+      <div class="host-name">{{ host.hostname }}</div>
+      <div class="mode-badge mode-{{ host.mode }}">{{ host.get_mode_display }}</div>
+    </div>
+    <div class="host-card-id-meta">{{ host.os|default:"Unknown OS" }} · {{ host.ip_address|default:"—" }}</div>
+    {% if host.tags %}
+    <div class="host-tag-row">
+      {% for t in host.tags %}<span class="host-tag-chip">{{ t }}</span>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="host-metrics">
+    <div class="host-metric" data-metric="cpu">
+      <div class="host-metric-label">CPU</div>
+      <div class="host-metric-value">—</div>
+      <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--sky);"></div></div>
+    </div>
+    <div class="host-metric" data-metric="memory">
+      <div class="host-metric-label">Memory</div>
+      <div class="host-metric-value">—</div>
+      <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--lavender);"></div></div>
+    </div>
+    <div class="host-metric" data-metric="disk">
+      <div class="host-metric-label">Disk</div>
+      <div class="host-metric-value">—</div>
+      <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--mint);"></div></div>
+    </div>
+    <div class="host-metric" data-metric="net-in">
+      <div class="host-metric-label">Net In</div>
+      <div class="host-metric-value">—</div>
+      <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--peach);"></div></div>
+    </div>
+    <div class="host-metric" data-metric="net-out">
+      <div class="host-metric-label">Net Out</div>
+      <div class="host-metric-value">—</div>
+      <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--lemon);"></div></div>
+    </div>
+  </div>
+
+  <div class="host-card-actions">
+    <div class="host-checkin">
+      {% if host.last_checkin %}{{ host.last_checkin|timesince }} ago{% else %}Never{% endif %}
+    </div>
+    <button type="button" class="btn btn-ghost" onclick="event.stopPropagation(); downloadHostRdp('{{ host.id }}', '{{ host.hostname }}')">
+      <svg viewBox="0 0 24 24" width="13" height="13"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      RDP
+    </button>
+    <button type="button" class="btn btn-sky" onclick="event.stopPropagation(); openDeployForHost('{{ host.id }}')">
+      <svg viewBox="0 0 24 24" width="13" height="13"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+      Deploy
+    </button>
+  </div>
+</div>

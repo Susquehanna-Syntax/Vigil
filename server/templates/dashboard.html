@@ -405,28 +405,64 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .tab-content.active { display: block; }
 
 /* ═══════════════════════════════════════════
-   HOST CARDS
+   HOST CARDS — full-width row layout
    ═══════════════════════════════════════════ */
 .host-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
+.host-search-bar {
+  width: 100%;
+  background: var(--s2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-1);
+  font-family: inherit; font-size: 13px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  outline: none;
+  transition: border-color 0.18s;
+}
+.host-search-bar:focus { border-color: var(--sky); }
 .host-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.6fr) 3fr minmax(160px, 1fr);
+  align-items: center;
+  gap: 18px;
   background: var(--s1);
   border-radius: var(--r-lg);
-  padding: 22px;
+  padding: 16px 20px;
   cursor: pointer;
-  transition: transform 0.5s var(--ease-out-expo), background 0.3s;
+  transition: transform 0.4s var(--ease-out-expo), background 0.3s;
   position: relative; overflow: hidden;
 }
-.host-card:hover { transform: translateY(-4px); background: var(--s2); }
-.host-card:active { transform: translateY(-1px) scale(0.98); transition-duration: 0.12s; }
+.host-card.hidden { display: none; }
+.host-card:hover { transform: translateY(-2px); background: var(--s2); }
+.host-card:active { transform: translateY(0) scale(0.995); transition-duration: 0.12s; }
+.host-card.inactive { opacity: 0.58; }
+.host-card.inactive:hover { opacity: 0.9; }
 
-.host-header {
-  display: flex; align-items: center; gap: 12px;
-  margin-bottom: 16px;
+.host-card-id {
+  display: flex; flex-direction: column; gap: 6px;
+  min-width: 0;
 }
+.host-card-id-row {
+  display: flex; align-items: center; gap: 10px;
+}
+.host-card-id-row .host-name { font-size: 14px; font-weight: 600; }
+.host-card-id-meta { font-size: 11px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; }
+.host-tag-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.host-tag-chip {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(186,168,232,0.10);
+  color: var(--lavender);
+  letter-spacing: 0.3px;
+}
+
 .status-dot {
   width: 10px; height: 10px;
   border-radius: 50%; flex-shrink: 0;
@@ -439,7 +475,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   50% { opacity: 0.5; }
 }
 
-.host-name { font-size: 15px; font-weight: 600; flex: 1; }
+.host-name { font-size: 15px; font-weight: 600; }
 
 .mode-badge {
   font-size: 10px; font-weight: 600;
@@ -450,21 +486,22 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .mode-monitor { background: rgba(186,168,232,0.12); color: var(--lavender); }
 .mode-full_control { background: rgba(240,184,136,0.12); color: var(--peach); }
 
-.host-os { font-size: 12px; color: var(--text-3); margin-bottom: 16px; }
+.host-os { font-size: 12px; color: var(--text-3); }
 
 .host-metrics {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
 }
-.host-metric { display: flex; flex-direction: column; gap: 6px; }
-.host-metric-label { font-size: 11px; color: var(--text-3); font-weight: 500; }
+.host-metric { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.host-metric-label { font-size: 10px; color: var(--text-3); font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase; }
 .host-metric-value {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 15px; font-weight: 500;
+  font-size: 13px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .host-metric-bar {
-  height: 4px; background: var(--s3);
+  height: 3px; background: var(--s3);
   border-radius: 2px; overflow: hidden;
 }
 .host-metric-fill {
@@ -472,16 +509,40 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   transition: width 0.8s var(--ease-out-expo);
 }
 
-.host-footer {
-  margin-top: 16px; padding-top: 14px;
-  border-top: 1px solid var(--s3);
-  display: flex; align-items: center;
-  justify-content: space-between;
+.host-card-actions {
+  display: flex; flex-direction: column; gap: 6px; align-items: stretch;
+}
+.host-card-actions .btn {
+  padding: 6px 12px; font-size: 12px;
 }
 .host-checkin {
   font-size: 11px; color: var(--text-3);
   font-family: 'IBM Plex Mono', monospace;
+  text-align: right;
+  margin-bottom: 2px;
 }
+
+.inactive-section { margin-top: 24px; }
+.inactive-section summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  user-select: none;
+}
+.inactive-section summary::-webkit-details-marker { display: none; }
+.inactive-section summary::before {
+  content: '▸ ';
+  display: inline-block;
+  transition: transform 0.18s;
+}
+.inactive-section[open] summary::before { transform: rotate(90deg); }
+.inactive-section .host-grid { margin-top: 10px; }
 
 /* ═══════════════════════════════════════════
    ALERT LIST
@@ -866,6 +927,68 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   border-top: 1px solid var(--border);
 }
 .deploy-totp-row .form-control { letter-spacing: 4px; font-family: 'IBM Plex Mono', monospace; }
+
+/* Deploy tabs (LEFT pane) */
+.deploy-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.deploy-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: color 0.18s, border-color 0.18s;
+}
+.deploy-tab:hover { color: var(--text-1); }
+.deploy-tab.active { color: var(--text-1); border-bottom-color: var(--sky); }
+.deploy-tab-panels { position: relative; }
+.deploy-panel { display: none; }
+.deploy-panel.active { display: block; }
+.deploy-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px 12px;
+  margin-bottom: 10px;
+}
+.deploy-policy-grid .full { grid-column: 1 / -1; }
+.deploy-day-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.deploy-day-chip {
+  user-select: none;
+  border: 1px solid var(--border);
+  background: var(--s2);
+  color: var(--text-2);
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.deploy-day-chip.on {
+  background: rgba(130,196,238,0.14);
+  border-color: var(--sky);
+  color: var(--sky);
+}
+.deploy-policy-help {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 4px;
+  line-height: 1.5;
+}
 .host-picker {
   max-height: 260px;
   overflow-y: auto;
@@ -1344,6 +1467,52 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   font-weight: 600;
   font-size: 12px;
 }
+
+/* ═══════════════════════════════════════════
+   INVENTORY TABLE
+   ═══════════════════════════════════════════ */
+.inv-table {
+  width: 100%;
+  background: var(--s1);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+}
+.inv-table thead th {
+  position: sticky; top: 0;
+  background: var(--s2);
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.inv-table tbody td {
+  padding: 11px 14px;
+  font-size: 12px;
+  color: var(--text-1);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.inv-table tbody tr:last-child td { border-bottom: none; }
+.inv-table tbody tr { cursor: pointer; transition: background 0.12s; }
+.inv-table tbody tr:hover { background: var(--s2); }
+.inv-table .mono { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-2); }
+.inv-table .col-status .dot {
+  display: inline-block; width: 8px; height: 8px;
+  border-radius: 50%; margin-right: 6px; vertical-align: middle;
+}
+.inv-table .empty-cell { color: var(--text-3); font-style: italic; font-size: 11px; }
+.inv-empty {
+  background: var(--s1); border-radius: var(--r-md);
+  padding: 60px 20px; text-align: center;
+  color: var(--text-3); font-size: 13px;
+}
 </style>
 </head>
 <body>
@@ -1369,6 +1538,9 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
     </div>
     <div class="sidebar-icon" data-page="vulns" data-tip="Vulnerabilities">
       <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    </div>
+    <div class="sidebar-icon" data-page="inventory" data-tip="Inventory">
+      <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
     </div>
     <div class="sidebar-icon" data-page="monitor" data-tip="Monitor">
       <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -1420,53 +1592,26 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
         </div>
       </div>
 
-      {% if hosts %}
+      {% if active_hosts or inactive_hosts %}
       <!-- Hosts -->
       <div class="section-label fade-in d3">Hosts</div>
-      <div class="host-grid fade-in d4">
-        {% for host in hosts %}
-        <div class="host-card" onclick="openHostDetail(this)"
-             data-id="{{ host.id }}"
-             data-hostname="{{ host.hostname }}"
-             data-os="{{ host.os|default:'Unknown OS' }}"
-             data-ip="{{ host.ip_address|default:'—' }}"
-             data-status="{{ host.status }}"
-             data-mode="{{ host.mode }}"
-             data-mode-display="{{ host.get_mode_display }}"
-             data-last-checkin="{{ host.last_checkin|default:'' }}"
-             data-kernel="{{ host.kernel|default:'' }}">
-          <div class="host-header">
-            <div class="status-dot {{ host.status }}"></div>
-            <div class="host-name">{{ host.hostname }}</div>
-            <div class="mode-badge mode-{{ host.mode }}">{{ host.get_mode_display }}</div>
-          </div>
-          <div class="host-os">{{ host.os|default:"Unknown OS" }} · {{ host.ip_address|default:"—" }}</div>
-          <div class="host-metrics">
-            <div class="host-metric">
-              <div class="host-metric-label">CPU</div>
-              <div class="host-metric-value">—</div>
-              <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--sky);"></div></div>
-            </div>
-            <div class="host-metric">
-              <div class="host-metric-label">Memory</div>
-              <div class="host-metric-value">—</div>
-              <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--lavender);"></div></div>
-            </div>
-            <div class="host-metric">
-              <div class="host-metric-label">Disk</div>
-              <div class="host-metric-value">—</div>
-              <div class="host-metric-bar"><div class="host-metric-fill" style="width: 0%; background: var(--mint);"></div></div>
-            </div>
-          </div>
-          <div class="host-footer">
-            <div class="host-checkin">
-              {% if host.last_checkin %}{{ host.last_checkin|timesince }} ago{% else %}Never{% endif %}
-            </div>
-            <div class="status-dot {{ host.status }}" style="width:7px;height:7px;"></div>
-          </div>
-        </div>
+      <input type="text" class="host-search-bar fade-in d4" id="host-search" placeholder="Search agents by hostname, IP, OS, or tag…" oninput="filterHostCards(this.value)">
+      <div class="host-grid fade-in d4" id="host-grid">
+        {% for host in active_hosts %}
+        {% include "_host_card.html" with host=host inactive=False %}
         {% endfor %}
       </div>
+
+      {% if inactive_hosts %}
+      <details class="inactive-section fade-in d5" id="inactive-hosts-section">
+        <summary>Inactive agents ({{ inactive_hosts|length }}) — no check-in in 90+ days</summary>
+        <div class="host-grid">
+          {% for host in inactive_hosts %}
+          {% include "_host_card.html" with host=host inactive=True %}
+          {% endfor %}
+        </div>
+      </details>
+      {% endif %}
 
       {% if alerts_firing %}
       <div class="section-label fade-in d5">Active Alerts</div>
@@ -1916,6 +2061,45 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
         </div>
       </div>
 
+      <!-- Active Directory import -->
+      <div class="section-label" style="margin-top:32px;">Active Directory Import</div>
+      <div class="totp-card">
+        <div class="totp-sub" style="margin-bottom:12px;">Sync computer objects from your AD into the Host table. Imported hosts stay PENDING until their agent enrolls. OU segments become auto-tags.</div>
+        <div class="deploy-policy-grid" style="margin-bottom:12px;">
+          <div class="full">
+            <label class="deploy-input-label">LDAP URL</label>
+            <input type="text" class="form-control" id="ad-ldap-url" placeholder="ldaps://dc.example.com:636">
+          </div>
+          <div class="full">
+            <label class="deploy-input-label">Bind DN</label>
+            <input type="text" class="form-control" id="ad-bind-dn" placeholder="CN=svc-vigil,OU=Service Accounts,DC=example,DC=com">
+          </div>
+          <div class="full">
+            <label class="deploy-input-label">Bind Password</label>
+            <input type="password" class="form-control" id="ad-bind-password" placeholder="(unchanged — leave blank to keep current)">
+          </div>
+          <div>
+            <label class="deploy-input-label">Base DN</label>
+            <input type="text" class="form-control" id="ad-base-dn" placeholder="DC=example,DC=com">
+          </div>
+          <div>
+            <label class="deploy-input-label">Computer OU</label>
+            <input type="text" class="form-control" id="ad-computer-ou" placeholder="OU=Computers,DC=example,DC=com">
+          </div>
+          <div class="full" style="display:flex;align-items:center;gap:10px;">
+            <input type="checkbox" id="ad-enabled" style="accent-color:var(--sky);width:16px;height:16px;">
+            <label for="ad-enabled" class="deploy-input-label" style="margin:0;">Enabled (uncheck to disable without losing settings)</label>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;">
+          <div class="confirm-hint" id="ad-status">—</div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-outline btn-sm" onclick="adSaveConfig()">Save</button>
+            <button class="btn btn-sky btn-sm" onclick="adSyncNow()">Import Now</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Enrollment Queue -->
       <div class="section-label">Enrollment Queue{% if pending_count %} ({{ pending_count }}){% endif %}</div>
       {% if pending_hosts %}
@@ -2035,6 +2219,35 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
     </section>
 
     <!-- ═══════════════════════════════════════
+         PAGE: INVENTORY
+         ═══════════════════════════════════════ -->
+    <section id="page-inventory" class="page">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Inventory<span>.</span></div>
+          <div class="page-sub">Hardware snapshot of every enrolled host</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="text" class="form-control" id="inv-search" placeholder="Search inventory…" oninput="renderInventory()" style="width:240px;font-size:13px;">
+          <button class="btn btn-outline btn-sm" onclick="exportInventoryCsv()">
+            <svg viewBox="0 0 24 24" width="14" height="14"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export CSV
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="refreshInventory()">
+            <svg viewBox="0 0 24 24" width="14" height="14"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div id="inv-content">
+        <div style="background:var(--s1);border-radius:var(--r-md);padding:40px;text-align:center;color:var(--text-3);font-size:13px;" id="inv-loading">
+          Loading inventory…
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════
          PAGE: TASK EDITOR
          ═══════════════════════════════════════ -->
     <section id="page-task-editor" class="page">
@@ -2151,6 +2364,16 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   </div>
 
   <div class="detail-section">
+    <div class="detail-section-title">Tags</div>
+    <div id="detail-tags-row" class="host-tag-row" style="margin-bottom:8px;"></div>
+    <div style="display:flex;gap:8px;">
+      <input type="text" class="form-control" id="detail-tag-input" placeholder="Add tag (press Enter)" style="flex:1;font-size:12px;padding:7px 10px;">
+      <button type="button" class="btn btn-ghost" id="detail-tag-add">Add</button>
+    </div>
+    <div class="confirm-hint" style="margin-top:6px;">Server-side tags. Agent.yml tags are merged in (server values always win).</div>
+  </div>
+
+  <div class="detail-section">
     <div class="detail-section-title">Quick Actions</div>
     <div class="detail-actions" id="detail-actions">
       <!-- populated by JS based on host mode -->
@@ -2170,32 +2393,115 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   <form id="deploy-form" onsubmit="submitDeploy(event)">
     <div class="deploy-grid">
 
-      <!-- LEFT: task definition + inputs -->
+      <!-- LEFT: tabbed view of definition / inputs / policy -->
       <div>
-        <div class="deploy-col-title">Task definition</div>
-        <pre class="deploy-yaml-wrap" id="deploy-yaml-view"></pre>
+        <div class="deploy-tabs" role="tablist">
+          <button type="button" class="deploy-tab active" data-tab="yaml" onclick="setDeployTab('yaml')">YAML</button>
+          <button type="button" class="deploy-tab" data-tab="options" onclick="setDeployTab('options')" id="deploy-tab-options" style="display:none;">Options</button>
+          <button type="button" class="deploy-tab" data-tab="schedule" onclick="setDeployTab('schedule')">Schedule</button>
+          <button type="button" class="deploy-tab" data-tab="retry" onclick="setDeployTab('retry')">Retry</button>
+          <button type="button" class="deploy-tab" data-tab="criteria" onclick="setDeployTab('criteria')">Success</button>
+        </div>
 
-        <div id="deploy-inputs-wrap" style="margin-top:18px; display:none;">
-          <div class="deploy-col-title">Options</div>
-          <div class="deploy-input-list" id="deploy-inputs"></div>
+        <div class="deploy-tab-panels">
+          <!-- YAML preview -->
+          <div class="deploy-panel active" data-panel="yaml">
+            <pre class="deploy-yaml-wrap" id="deploy-yaml-view"></pre>
+          </div>
+
+          <!-- Options (input-driven) -->
+          <div class="deploy-panel" data-panel="options">
+            <div id="deploy-inputs-wrap" style="display:none;">
+              <div class="deploy-input-list" id="deploy-inputs"></div>
+            </div>
+          </div>
+
+          <!-- Schedule (execution window) -->
+          <div class="deploy-panel" data-panel="schedule">
+            <div class="deploy-policy-help">Tasks are only dispatched to agents during this window. Outside the window, deploys remain queued until the next eligible check-in. Leave start=0 and end=23 to allow any time.</div>
+            <div class="deploy-policy-grid" style="margin-top:10px;">
+              <div>
+                <label class="deploy-input-label">Start hour</label>
+                <input type="number" min="0" max="23" class="form-control" id="deploy-schedule-start" value="0">
+              </div>
+              <div>
+                <label class="deploy-input-label">End hour (inclusive)</label>
+                <input type="number" min="0" max="23" class="form-control" id="deploy-schedule-end" value="23">
+              </div>
+              <div class="full">
+                <label class="deploy-input-label">Allowed days</label>
+                <div class="deploy-day-row" id="deploy-day-chips"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Retry (on-failure policy) -->
+          <div class="deploy-panel" data-panel="retry">
+            <div class="deploy-policy-help">When a step fails, the agent re-runs it up to this many times with a delay between attempts. Set attempts to 0 to disable retries.</div>
+            <div class="deploy-policy-grid" style="margin-top:10px;">
+              <div>
+                <label class="deploy-input-label">Retry attempts</label>
+                <input type="number" min="0" max="10" class="form-control" id="deploy-retry-attempts" value="0">
+              </div>
+              <div>
+                <label class="deploy-input-label">Delay between retries (seconds)</label>
+                <input type="number" min="0" max="3600" class="form-control" id="deploy-retry-delay" value="30">
+              </div>
+            </div>
+          </div>
+
+          <!-- Success Criteria -->
+          <div class="deploy-panel" data-panel="criteria">
+            <div class="deploy-policy-help">Even if a step exits cleanly, the agent treats it as failed unless the output meets these criteria. Leave optional fields blank to skip them.</div>
+            <div class="deploy-policy-grid" style="margin-top:10px;">
+              <div>
+                <label class="deploy-input-label">Expected exit code</label>
+                <input type="number" class="form-control" id="deploy-criteria-exit" value="0">
+              </div>
+              <div></div>
+              <div class="full">
+                <label class="deploy-input-label">Output must contain</label>
+                <input type="text" class="form-control" id="deploy-criteria-contains" placeholder="(optional)">
+              </div>
+              <div class="full">
+                <label class="deploy-input-label">Output must match regex</label>
+                <input type="text" class="form-control" id="deploy-criteria-regex" placeholder="(optional)" style="font-family:'IBM Plex Mono',monospace;">
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- RIGHT: searchable host table -->
+      <!-- RIGHT: searchable host table OR tag picker -->
       <div>
-        <div class="deploy-col-title">Target hosts</div>
-        <input type="text" class="deploy-host-search" id="deploy-host-search" placeholder="Search hosts by hostname, IP, or mode…" oninput="filterDeployHosts()">
-        <div class="deploy-host-table">
-          <div class="deploy-host-head">
-            <div><input type="checkbox" id="deploy-host-all" onchange="toggleAllDeployHosts(this.checked)" style="accent-color:var(--sky);width:14px;height:14px;cursor:pointer;"></div>
-            <div>Hostname</div>
-            <div>Mode</div>
-          </div>
-          <div id="deploy-host-rows">
-            <div class="host-pick-empty">No online, executable hosts available.</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div class="deploy-col-title" style="margin-bottom:0;">Target</div>
+          <div class="deploy-tabs" style="margin-bottom:0;">
+            <button type="button" class="deploy-tab active" data-target-mode="hosts" onclick="setDeployTargetMode('hosts')">Hosts</button>
+            <button type="button" class="deploy-tab" data-target-mode="tags" onclick="setDeployTargetMode('tags')">By Tag</button>
           </div>
         </div>
-        <div class="confirm-hint" id="deploy-host-summary" style="margin-top:8px;">Select one or more hosts.</div>
+
+        <div id="deploy-target-hosts">
+          <input type="text" class="deploy-host-search" id="deploy-host-search" placeholder="Search hosts by hostname, IP, or mode…" oninput="filterDeployHosts()">
+          <div class="deploy-host-table">
+            <div class="deploy-host-head">
+              <div><input type="checkbox" id="deploy-host-all" onchange="toggleAllDeployHosts(this.checked)" style="accent-color:var(--sky);width:14px;height:14px;cursor:pointer;"></div>
+              <div>Hostname</div>
+              <div>Mode</div>
+            </div>
+            <div id="deploy-host-rows">
+              <div class="host-pick-empty">No online, executable hosts available.</div>
+            </div>
+          </div>
+          <div class="confirm-hint" id="deploy-host-summary" style="margin-top:8px;">Select one or more hosts.</div>
+        </div>
+
+        <div id="deploy-target-tags" style="display:none;">
+          <div class="deploy-policy-help" style="margin-bottom:10px;">Pick one or more tags. The deploy will go to every online, executable host that matches any selected tag.</div>
+          <div class="deploy-day-row" id="deploy-tag-chips"></div>
+          <div class="confirm-hint" id="deploy-tag-summary" style="margin-top:10px;">No tags selected.</div>
+        </div>
       </div>
 
     </div>
@@ -2360,9 +2666,82 @@ function openHostDetail(card) {
   overlay.classList.add('open');
   panel.classList.add('open');
 
+  // Tags — initial render from card data, then refresh from API.
+  _renderDetailTags(d.id, (d.tags || '').split(',').filter(Boolean));
+  _refreshDetailTags(d.id);
+
   // Fetch live metrics for this host
   loadDetailMetrics(d.id);
 }
+
+const _detailTagState = { hostId: null, tags: [] };
+
+function _renderDetailTags(hostId, tags) {
+  _detailTagState.hostId = hostId;
+  _detailTagState.tags = (tags || []).slice();
+  const wrap = document.getElementById('detail-tags-row');
+  wrap.replaceChildren();
+  if (!_detailTagState.tags.length) {
+    const empty = document.createElement('div');
+    empty.className = 'confirm-hint';
+    empty.textContent = 'No tags yet.';
+    wrap.appendChild(empty);
+    return;
+  }
+  for (const t of _detailTagState.tags) {
+    const chip = document.createElement('span');
+    chip.className = 'host-tag-chip';
+    chip.style.cursor = 'pointer';
+    chip.title = 'Click to remove';
+    chip.textContent = t + '  ✕';
+    chip.addEventListener('click', () => _removeDetailTag(t));
+    wrap.appendChild(chip);
+  }
+}
+
+async function _refreshDetailTags(hostId) {
+  try {
+    const host = await apiJson(`/api/v1/hosts/${hostId}/`);
+    _renderDetailTags(hostId, host.tags || []);
+  } catch (e) { /* keep card-derived tags as fallback */ }
+}
+
+async function _saveDetailTags(tags) {
+  if (!_detailTagState.hostId) return;
+  try {
+    const host = await apiJson(`/api/v1/hosts/${_detailTagState.hostId}/tags/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ tags }),
+    });
+    _renderDetailTags(_detailTagState.hostId, host.tags || []);
+    showToast('Tags updated', 'success');
+  } catch (e) {
+    showToast('Failed to update tags: ' + e.message, 'error');
+  }
+}
+
+function _removeDetailTag(tag) {
+  const next = _detailTagState.tags.filter(t => t !== tag);
+  _saveDetailTags(next);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('detail-tag-input');
+  const btn = document.getElementById('detail-tag-add');
+  if (!input || !btn) return;
+  function commit() {
+    const v = (input.value || '').trim().toLowerCase();
+    if (!v) return;
+    if (_detailTagState.tags.includes(v)) { input.value = ''; return; }
+    const next = [..._detailTagState.tags, v];
+    input.value = '';
+    _saveDetailTags(next);
+  }
+  btn.addEventListener('click', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+  });
+});
 
 let detailChartCpu = null;
 let detailChartNet = null;
@@ -3129,42 +3508,93 @@ function stopAutoRefresh() {
 }
 
 // ── Dashboard host card live metrics ──
+function _formatBytesPerSec(value) {
+  if (!isFinite(value) || value <= 0) return '0 B/s';
+  const units = ['B/s','KB/s','MB/s','GB/s'];
+  let v = value, i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2) + ' ' + units[i];
+}
+
 async function refreshHostCards() {
-  const cards = document.querySelectorAll('.host-card');
+  // Skip cards inside the collapsed inactive section — no live data needed.
+  const cards = document.querySelectorAll('.host-card:not([data-inactive="1"])');
   for (const card of cards) {
     const hostId = card.dataset.id;
     if (!hostId || card.dataset.status !== 'online') continue;
     const from = new Date(Date.now() - 5 * 60000).toISOString();
     try {
-      const [cpuResp, memResp, diskResp] = await Promise.all([
+      const [cpuResp, memResp, diskResp, netInResp, netOutResp] = await Promise.all([
         fetch(`/api/v1/metrics/${hostId}/cpu/usage_percent/?from=${from}&limit=5`, { credentials: 'same-origin' }),
         fetch(`/api/v1/metrics/${hostId}/memory/usage_percent/?from=${from}&limit=5`, { credentials: 'same-origin' }),
         fetch(`/api/v1/metrics/${hostId}/disk/usage_percent/?from=${from}&limit=5`, { credentials: 'same-origin' }),
+        fetch(`/api/v1/metrics/${hostId}/network/bytes_recv/?from=${from}&limit=20`, { credentials: 'same-origin' }),
+        fetch(`/api/v1/metrics/${hostId}/network/bytes_sent/?from=${from}&limit=20`, { credentials: 'same-origin' }),
       ]);
-      const [cpuData, memData, diskData] = await Promise.all([
-        cpuResp.ok ? cpuResp.json() : [],
-        memResp.ok ? memResp.json() : [],
-        diskResp.ok ? diskResp.json() : [],
+      const [cpuData, memData, diskData, netInData, netOutData] = await Promise.all([
+        cpuResp.ok    ? cpuResp.json()    : [],
+        memResp.ok    ? memResp.json()    : [],
+        diskResp.ok   ? diskResp.json()   : [],
+        netInResp.ok  ? netInResp.json()  : [],
+        netOutResp.ok ? netOutResp.json() : [],
       ]);
-      const metrics = card.querySelectorAll('.host-metric');
-      // CPU
+      const cpuEl = card.querySelector('[data-metric="cpu"]');
+      const memEl = card.querySelector('[data-metric="memory"]');
+      const diskEl = card.querySelector('[data-metric="disk"]');
+      const netInEl = card.querySelector('[data-metric="net-in"]');
+      const netOutEl = card.querySelector('[data-metric="net-out"]');
+
       const cpuPts = cpuData.filter(p => (p.labels || {}).core === 'total');
-      if (cpuPts.length && metrics[0]) {
+      if (cpuPts.length && cpuEl) {
         const v = Math.round(cpuPts[0].value);
-        metrics[0].querySelector('.host-metric-value').textContent = v + '%';
-        metrics[0].querySelector('.host-metric-fill').style.width = v + '%';
+        cpuEl.querySelector('.host-metric-value').textContent = v + '%';
+        cpuEl.querySelector('.host-metric-fill').style.width = v + '%';
       }
-      // Memory
-      if (memData.length && metrics[1]) {
+      if (memData.length && memEl) {
         const v = Math.round(memData[0].value);
-        metrics[1].querySelector('.host-metric-value').textContent = v + '%';
-        metrics[1].querySelector('.host-metric-fill').style.width = v + '%';
+        memEl.querySelector('.host-metric-value').textContent = v + '%';
+        memEl.querySelector('.host-metric-fill').style.width = v + '%';
       }
-      // Disk
-      if (diskData.length && metrics[2]) {
-        const v = Math.round(diskData[0].value);
-        metrics[2].querySelector('.host-metric-value').textContent = v + '%';
-        metrics[2].querySelector('.host-metric-fill').style.width = v + '%';
+      if (diskData.length && diskEl) {
+        // Aggregate latest disk usage across mounts — show the highest %.
+        const max = diskData.reduce((m, p) => Math.max(m, p.value || 0), 0);
+        const v = Math.round(max);
+        diskEl.querySelector('.host-metric-value').textContent = v + '%';
+        diskEl.querySelector('.host-metric-fill').style.width = v + '%';
+      }
+
+      // Network rates require two adjacent samples. Sum across interfaces
+      // (excluding loopback) to give a top-level fleet view.
+      function _rate(points) {
+        if (!points || points.length < 2) return 0;
+        const byIface = {};
+        for (const p of points) {
+          const iface = (p.labels || {}).interface || '_';
+          if (!byIface[iface]) byIface[iface] = [];
+          byIface[iface].push(p);
+        }
+        let total = 0;
+        for (const samples of Object.values(byIface)) {
+          samples.sort((a,b) => new Date(a.time) - new Date(b.time));
+          if (samples.length < 2) continue;
+          const a = samples[samples.length - 2];
+          const b = samples[samples.length - 1];
+          const dt = (new Date(b.time) - new Date(a.time)) / 1000;
+          if (dt > 0) total += Math.max(0, (b.value - a.value) / dt);
+        }
+        return total;
+      }
+      const inRate = _rate(netInData);
+      const outRate = _rate(netOutData);
+      if (netInEl) {
+        netInEl.querySelector('.host-metric-value').textContent = _formatBytesPerSec(inRate);
+        const pct = Math.min(100, Math.round((inRate / (1024*1024)) * 100));
+        netInEl.querySelector('.host-metric-fill').style.width = pct + '%';
+      }
+      if (netOutEl) {
+        netOutEl.querySelector('.host-metric-value').textContent = _formatBytesPerSec(outRate);
+        const pct = Math.min(100, Math.round((outRate / (1024*1024)) * 100));
+        netOutEl.querySelector('.host-metric-fill').style.width = pct + '%';
       }
     } catch {}
   }
@@ -3172,6 +3602,48 @@ async function refreshHostCards() {
 
 // Refresh host cards on page load
 refreshHostCards();
+
+// ── Search filter for host cards ──
+function filterHostCards(query) {
+  const q = (query || '').trim().toLowerCase();
+  for (const card of document.querySelectorAll('.host-card')) {
+    if (!q) {
+      card.classList.remove('hidden');
+      continue;
+    }
+    const hay = [
+      card.dataset.hostname || '',
+      card.dataset.os || '',
+      card.dataset.ip || '',
+      card.dataset.tags || '',
+      card.dataset.modeDisplay || '',
+    ].join(' ').toLowerCase();
+    card.classList.toggle('hidden', !hay.includes(q));
+  }
+  // Auto-expand the inactive section when a search is active so matches
+  // there don't stay hidden behind a collapsed details element.
+  const inactive = document.getElementById('inactive-hosts-section');
+  if (inactive) inactive.open = !!q;
+}
+
+// ── Card-level quick actions ──
+function downloadHostRdp(hostId, hostname) {
+  const url = `/api/v1/hosts/${hostId}/rdp/`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (hostname || 'host') + '.rdp';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function openDeployForHost(hostId) {
+  // Switch to the Tasks page and let the user pick a definition;
+  // pre-seed the deploy modal so this host is preselected.
+  navigateTo('tasks');
+  window._pendingDeployPreselectHost = hostId;
+  showToast('Pick a task to deploy to this host', 'info');
+}
 
 // ── Init ──
 renderPinBar();
@@ -3520,6 +3992,9 @@ let deployState = {
   spec: null,
   availableHosts: [],
   selectedHosts: new Set(),
+  targetMode: 'hosts',          // 'hosts' or 'tags'
+  availableTags: [],
+  selectedTags: new Set(),
 };
 
 async function apiJson(url, opts) {
@@ -3838,15 +4313,129 @@ function highlightYamlValue(v) {
   return escHtml(v);
 }
 
+const DEPLOY_DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+function setDeployTab(tab) {
+  for (const t of document.querySelectorAll('.deploy-tab[data-tab]')) {
+    t.classList.toggle('active', t.dataset.tab === tab);
+  }
+  for (const p of document.querySelectorAll('.deploy-panel')) {
+    p.classList.toggle('active', p.dataset.panel === tab);
+  }
+}
+
+function setDeployTargetMode(mode) {
+  deployState.targetMode = (mode === 'tags') ? 'tags' : 'hosts';
+  for (const t of document.querySelectorAll('.deploy-tab[data-target-mode]')) {
+    t.classList.toggle('active', t.dataset.targetMode === deployState.targetMode);
+  }
+  document.getElementById('deploy-target-hosts').style.display =
+    deployState.targetMode === 'hosts' ? '' : 'none';
+  document.getElementById('deploy-target-tags').style.display =
+    deployState.targetMode === 'tags' ? '' : 'none';
+  updateDeployHostSummary();
+}
+
+function _renderDeployTagChips() {
+  const wrap = document.getElementById('deploy-tag-chips');
+  if (!wrap) return;
+  wrap.replaceChildren();
+  if (!deployState.availableTags.length) {
+    const empty = document.createElement('div');
+    empty.className = 'deploy-policy-help';
+    empty.textContent = 'No tags exist yet. Tag agents in the host detail panel or via agent.yml.';
+    wrap.appendChild(empty);
+    return;
+  }
+  for (const t of deployState.availableTags) {
+    const chip = document.createElement('span');
+    chip.className = 'deploy-day-chip' + (deployState.selectedTags.has(t.tag) ? ' on' : '');
+    chip.textContent = `${t.tag} · ${t.host_count}`;
+    chip.dataset.tag = t.tag;
+    chip.addEventListener('click', () => {
+      if (deployState.selectedTags.has(t.tag)) deployState.selectedTags.delete(t.tag);
+      else deployState.selectedTags.add(t.tag);
+      chip.classList.toggle('on');
+      updateDeployHostSummary();
+    });
+    wrap.appendChild(chip);
+  }
+}
+
+function _populateDeployDayChips(activeDays) {
+  const wrap = document.getElementById('deploy-day-chips');
+  if (!wrap) return;
+  const set = new Set(activeDays || [0,1,2,3,4,5,6]);
+  wrap.replaceChildren();
+  DEPLOY_DAY_LABELS.forEach((label, idx) => {
+    const chip = document.createElement('span');
+    chip.className = 'deploy-day-chip' + (set.has(idx) ? ' on' : '');
+    chip.textContent = label;
+    chip.dataset.day = String(idx);
+    chip.addEventListener('click', () => chip.classList.toggle('on'));
+    wrap.appendChild(chip);
+  });
+}
+
+function _readDeployDays() {
+  const out = [];
+  for (const chip of document.querySelectorAll('#deploy-day-chips .deploy-day-chip.on')) {
+    out.push(Number(chip.dataset.day));
+  }
+  return out.sort((a,b) => a-b);
+}
+
+function _populateDeployPolicy(spec) {
+  // Schedule defaults from spec; otherwise full week, 0..23.
+  const sched = (spec && spec.schedule && spec.schedule.window) || null;
+  document.getElementById('deploy-schedule-start').value = sched ? sched.start_hour ?? 0 : 0;
+  document.getElementById('deploy-schedule-end').value   = sched ? sched.end_hour   ?? 23 : 23;
+  _populateDeployDayChips(sched ? sched.days : [0,1,2,3,4,5,6]);
+
+  // Retry defaults
+  const retry = (spec && spec.on_failure && spec.on_failure.retry) || null;
+  document.getElementById('deploy-retry-attempts').value = retry ? retry.attempts ?? 0 : 0;
+  document.getElementById('deploy-retry-delay').value    = retry ? retry.delay_seconds ?? 30 : 30;
+
+  // Success criteria defaults
+  const crit = (spec && spec.success_criteria) || null;
+  document.getElementById('deploy-criteria-exit').value     = crit && crit.exit_code !== undefined ? crit.exit_code : 0;
+  document.getElementById('deploy-criteria-contains').value = (crit && crit.output_contains) || '';
+  document.getElementById('deploy-criteria-regex').value    = (crit && crit.output_regex) || '';
+}
+
+function _readDeployPolicy() {
+  const startH = Number(document.getElementById('deploy-schedule-start').value);
+  const endH   = Number(document.getElementById('deploy-schedule-end').value);
+  const days   = _readDeployDays();
+  const schedule = { window: { start_hour: startH, end_hour: endH, days: days.length ? days : [0,1,2,3,4,5,6] } };
+
+  const attempts = Number(document.getElementById('deploy-retry-attempts').value || 0);
+  const delay    = Number(document.getElementById('deploy-retry-delay').value || 0);
+  const on_failure = attempts > 0 ? { retry: { attempts, delay_seconds: delay } } : null;
+
+  const exit_code = Number(document.getElementById('deploy-criteria-exit').value || 0);
+  const contains  = document.getElementById('deploy-criteria-contains').value.trim();
+  const regex     = document.getElementById('deploy-criteria-regex').value.trim();
+  const success_criteria = { exit_code };
+  if (contains) success_criteria.output_contains = contains;
+  if (regex)    success_criteria.output_regex = regex;
+
+  return { schedule, on_failure, success_criteria };
+}
+
 function _renderDeployInputs(inputs) {
   const wrap = document.getElementById('deploy-inputs-wrap');
   const list = document.getElementById('deploy-inputs');
+  const tab  = document.getElementById('deploy-tab-options');
   if (!inputs || !inputs.length) {
     wrap.style.display = 'none';
     list.replaceChildren();
+    if (tab) tab.style.display = 'none';
     return;
   }
   wrap.style.display = 'block';
+  if (tab) tab.style.display = '';
   list.replaceChildren();
   for (const inp of inputs) {
     const row = document.createElement('div');
@@ -4011,18 +4600,39 @@ async function openDeployModal(definitionId) {
     deployState.definitionId = definitionId;
     deployState.spec = def.parsed_spec;
     deployState.selectedHosts = new Set();
+    deployState.selectedTags = new Set();
+    setDeployTargetMode('hosts');
     document.getElementById('deploy-modal-title').textContent = `Deploy — ${def.name}`;
     document.getElementById('deploy-risk-label').innerHTML = riskBadgeHtml(def.risk_level || 'standard');
 
     // YAML preview with syntax highlighting (escape-safe — uses escHtml internally).
     document.getElementById('deploy-yaml-view').innerHTML = highlightYaml(def.yaml_source || '');
 
+    // Reset active tab back to YAML each open
+    setDeployTab('yaml');
+
     // Inputs section (hidden if the task declares no inputs).
     _renderDeployInputs((def.parsed_spec && def.parsed_spec.inputs) || []);
 
-    const hosts = await apiJson('/api/v1/hosts/');
+    // Policy tabs (Schedule / Retry / Success Criteria) — hydrate from YAML.
+    _populateDeployPolicy(def.parsed_spec || {});
+
+    const [hosts, tags] = await Promise.all([
+      apiJson('/api/v1/hosts/'),
+      apiJson('/api/v1/hosts/tags/').catch(() => []),
+    ]);
     const eligible = hosts.filter(h => h.status === 'online' && h.mode !== 'monitor');
     deployState.availableHosts = eligible;
+    deployState.availableTags = Array.isArray(tags) ? tags : [];
+    _renderDeployTagChips();
+    // If a card-level "Deploy" button stashed a preselect, honour it once.
+    if (window._pendingDeployPreselectHost) {
+      const preId = window._pendingDeployPreselectHost;
+      if (eligible.some(h => h.id === preId)) {
+        deployState.selectedHosts.add(preId);
+      }
+      window._pendingDeployPreselectHost = null;
+    }
     _renderDeployHostRows();
     updateDeployHostSummary();
 
@@ -4037,9 +4647,27 @@ async function openDeployModal(definitionId) {
 }
 
 function updateDeployHostSummary() {
+  const stepCount = (deployState.spec && deployState.spec.actions && deployState.spec.actions.length) || 0;
+
+  if (deployState.targetMode === 'tags') {
+    const tagSummary = document.getElementById('deploy-tag-summary');
+    const selectedTagList = [...deployState.selectedTags];
+    if (!selectedTagList.length) {
+      tagSummary.textContent = 'No tags selected.';
+      return;
+    }
+    // Estimate matched hosts using the available host list, since the
+    // server makes the final decision (this is just a preview).
+    const matched = (deployState.availableHosts || []).filter(h =>
+      (h.tags || []).some(t => deployState.selectedTags.has(t))
+    );
+    const totalSteps = stepCount * matched.length;
+    tagSummary.textContent = `${selectedTagList.length} tag${selectedTagList.length === 1 ? '' : 's'} → ${matched.length} matched host${matched.length === 1 ? '' : 's'} · ${totalSteps} step${totalSteps === 1 ? '' : 's'} will run`;
+    return;
+  }
+
   const total = (deployState.availableHosts || []).length;
   const count = deployState.selectedHosts ? deployState.selectedHosts.size : 0;
-  const stepCount = (deployState.spec && deployState.spec.actions && deployState.spec.actions.length) || 0;
   const summary = document.getElementById('deploy-host-summary');
   if (!total) { summary.textContent = 'No online hosts available.'; return; }
   if (!count) { summary.textContent = `Select one or more of ${total} host${total === 1 ? '' : 's'}.`; return; }
@@ -4049,13 +4677,28 @@ function updateDeployHostSummary() {
 
 async function submitDeploy(event) {
   event.preventDefault();
-  const host_ids = [...(deployState.selectedHosts || [])];
-  if (!host_ids.length) { showToast('Select at least one host', 'error'); return; }
 
   const totp = document.getElementById('deploy-totp').value.trim();
   if (!totp) { showToast('Enter your TOTP code', 'error'); return; }
 
-  const body = { host_ids, totp, inputs: _readDeployInputs() };
+  const policy = _readDeployPolicy();
+  const body = {
+    totp,
+    inputs: _readDeployInputs(),
+    schedule: policy.schedule,
+    on_failure: policy.on_failure,
+    success_criteria: policy.success_criteria,
+  };
+
+  if (deployState.targetMode === 'tags') {
+    const tags = [...deployState.selectedTags];
+    if (!tags.length) { showToast('Select at least one tag', 'error'); return; }
+    body.tags = tags;
+  } else {
+    const host_ids = [...(deployState.selectedHosts || [])];
+    if (!host_ids.length) { showToast('Select at least one host', 'error'); return; }
+    body.host_ids = host_ids;
+  }
 
   const btn = document.getElementById('deploy-submit-btn');
   btn.disabled = true; btn.style.opacity = '0.6';
@@ -4231,6 +4874,268 @@ function updateHostCardVulnBadges(summaries) {
     if (resp.ok) updateHostCardVulnBadges(await resp.json());
   } catch {}
 })();
+
+/* ═══════════════════════════════════════════
+   INVENTORY PAGE
+   ═══════════════════════════════════════════ */
+const inventoryState = { rows: [], customColumns: [] };
+
+function _formatBytes(value) {
+  if (!value) return '—';
+  const units = ['B','KB','MB','GB','TB'];
+  let v = value, i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2) + ' ' + units[i];
+}
+
+function _firstMac(macMap) {
+  if (!macMap || typeof macMap !== 'object') return '';
+  const entries = Object.entries(macMap);
+  if (!entries.length) return '';
+  // Prefer eth/en interfaces over wlan or virtual.
+  entries.sort(([a],[b]) => {
+    const score = (n) => (/^en|^eth/.test(n) ? 0 : /wl/.test(n) ? 1 : 2);
+    return score(a) - score(b);
+  });
+  return entries[0][1];
+}
+
+async function refreshInventory() {
+  try {
+    const data = await apiJson('/api/v1/hosts/inventory/');
+    inventoryState.rows = data.rows || [];
+    inventoryState.customColumns = data.custom_columns || [];
+    renderInventory();
+  } catch (e) {
+    const content = document.getElementById('inv-content');
+    const msg = document.createElement('div');
+    msg.className = 'inv-empty';
+    msg.textContent = 'Failed to load inventory: ' + e.message;
+    content.replaceChildren(msg);
+  }
+}
+
+function renderInventory() {
+  const content = document.getElementById('inv-content');
+  const q = (document.getElementById('inv-search')?.value || '').trim().toLowerCase();
+  let rows = inventoryState.rows;
+  if (q) {
+    rows = rows.filter(r => {
+      const hay = [
+        r.hostname, r.os, r.ip_address, r.manufacturer,
+        r.model_name, r.service_tag, r.cpu_model,
+        ...(r.tags || []),
+      ].filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  if (!rows.length) {
+    const msg = document.createElement('div');
+    msg.className = 'inv-empty';
+    msg.textContent = q ? 'No matching inventory rows.' : 'No agents have reported inventory yet.';
+    content.replaceChildren(msg);
+    return;
+  }
+
+  const customCols = inventoryState.customColumns;
+  const headers = ['Host', 'IP', 'Manufacturer', 'Model', 'Service Tag', 'CPU', 'Cores', 'RAM', 'MAC', ...customCols, 'Last Seen'];
+
+  const table = document.createElement('table');
+  table.className = 'inv-table';
+  const thead = document.createElement('thead');
+  const tr = document.createElement('tr');
+  for (const h of headers) {
+    const th = document.createElement('th');
+    th.textContent = h;
+    tr.appendChild(th);
+  }
+  thead.appendChild(tr);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  for (const r of rows) {
+    const row = document.createElement('tr');
+    row.addEventListener('click', () => openInventoryDetail(r));
+
+    const cells = [
+      _hostCell(r),
+      _cellText(r.ip_address || '', 'mono'),
+      _cellText(r.manufacturer || ''),
+      _cellText(r.model_name || ''),
+      _cellText(r.service_tag || '', 'mono'),
+      _cellText(r.cpu_model || ''),
+      _cellText(r.cpu_cores ? String(r.cpu_cores) : ''),
+      _cellText(r.ram_total_bytes ? _formatBytes(r.ram_total_bytes) : '', 'mono'),
+      _cellText(_firstMac(r.mac_addresses) || '', 'mono'),
+    ];
+    for (const col of customCols) {
+      const v = (r.custom_columns || {})[col];
+      cells.push(_cellText(v == null ? '' : String(v)));
+    }
+    cells.push(_cellText(r.last_checkin ? new Date(r.last_checkin).toLocaleString() : 'Never', 'mono'));
+    cells.forEach(c => row.appendChild(c));
+    tbody.appendChild(row);
+  }
+  table.appendChild(tbody);
+
+  content.replaceChildren(table);
+}
+
+function _hostCell(r) {
+  const td = document.createElement('td');
+  td.className = 'col-status';
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+  dot.style.background = r.status === 'online' ? 'var(--mint)'
+                       : r.status === 'pending' ? 'var(--peach)'
+                       : 'var(--rose)';
+  td.appendChild(dot);
+  const name = document.createElement('span');
+  name.textContent = r.hostname || '';
+  name.style.fontWeight = '600';
+  td.appendChild(name);
+  return td;
+}
+
+function _cellText(text, extraClass) {
+  const td = document.createElement('td');
+  if (extraClass) td.classList.add(extraClass);
+  if (text === '' || text == null) {
+    const span = document.createElement('span');
+    span.className = 'empty-cell';
+    span.textContent = '—';
+    td.appendChild(span);
+  } else {
+    td.textContent = text;
+  }
+  return td;
+}
+
+function exportInventoryCsv() {
+  if (!inventoryState.rows.length) {
+    showToast('No inventory data to export', 'info');
+    return;
+  }
+  const customCols = inventoryState.customColumns;
+  const headers = ['hostname','status','os','ip_address','manufacturer','model','service_tag','cpu_model','cpu_cores','ram_total_bytes','mac_address','tags', ...customCols,'last_checkin'];
+  const escape = (v) => {
+    const s = (v == null) ? '' : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [headers.join(',')];
+  for (const r of inventoryState.rows) {
+    const row = [
+      r.hostname, r.status, r.os, r.ip_address || '',
+      r.manufacturer || '', r.model_name || '', r.service_tag || '',
+      r.cpu_model || '', r.cpu_cores || '', r.ram_total_bytes || '',
+      _firstMac(r.mac_addresses) || '',
+      (r.tags || []).join(';'),
+    ];
+    for (const col of customCols) {
+      row.push((r.custom_columns || {})[col] || '');
+    }
+    row.push(r.last_checkin || '');
+    lines.push(row.map(escape).join(','));
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'vigil-inventory-' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function openInventoryDetail(row) {
+  // Reuse the existing host detail panel by synthesizing a card-like dataset.
+  const fakeCard = { dataset: {
+    id: row.host_id,
+    hostname: row.hostname || '',
+    os: row.os || 'Unknown OS',
+    ip: row.ip_address || '—',
+    status: row.status || '',
+    mode: row.mode || '',
+    modeDisplay: row.mode || '',
+    lastCheckin: row.last_checkin || '',
+    kernel: '',
+    tags: (row.tags || []).join(','),
+  }};
+  openHostDetail(fakeCard);
+}
+
+// Auto-load inventory the first time the page is shown
+const _origNavForInv = navigateTo;
+navigateTo = function(pageName) {
+  _origNavForInv(pageName);
+  if (pageName === 'inventory' && !inventoryState.rows.length) {
+    refreshInventory();
+  }
+  if (pageName === 'settings') {
+    adLoadConfig();
+  }
+};
+
+/* ═══════════════════════════════════════════
+   ACTIVE DIRECTORY SETTINGS
+   ═══════════════════════════════════════════ */
+async function adLoadConfig() {
+  try {
+    const cfg = await apiJson('/api/v1/hosts/ad/');
+    document.getElementById('ad-ldap-url').value = cfg.ldap_url || '';
+    document.getElementById('ad-bind-dn').value = cfg.bind_dn || '';
+    document.getElementById('ad-base-dn').value = cfg.base_dn || '';
+    document.getElementById('ad-computer-ou').value = cfg.computer_ou || '';
+    document.getElementById('ad-enabled').checked = !!cfg.enabled;
+    const status = document.getElementById('ad-status');
+    if (cfg.last_sync) {
+      status.textContent = `Last sync: ${new Date(cfg.last_sync).toLocaleString()} — ${cfg.last_sync_status || ''}`;
+    } else {
+      status.textContent = cfg.has_password ? 'Configured but never synced.' : 'Not yet configured.';
+    }
+  } catch (e) { /* settings page may load before login */ }
+}
+
+async function adSaveConfig() {
+  const body = {
+    ldap_url: document.getElementById('ad-ldap-url').value.trim(),
+    bind_dn: document.getElementById('ad-bind-dn').value.trim(),
+    base_dn: document.getElementById('ad-base-dn').value.trim(),
+    computer_ou: document.getElementById('ad-computer-ou').value.trim(),
+    enabled: document.getElementById('ad-enabled').checked,
+  };
+  const pwd = document.getElementById('ad-bind-password').value;
+  if (pwd) body.bind_password = pwd;
+  try {
+    await apiJson('/api/v1/hosts/ad/', { method: 'POST', body: JSON.stringify(body) });
+    document.getElementById('ad-bind-password').value = '';
+    showToast('AD settings saved', 'success');
+    adLoadConfig();
+  } catch (e) {
+    showToast('Failed to save: ' + e.message, 'error');
+  }
+}
+
+async function adSyncNow() {
+  const btn = event.target;
+  btn.disabled = true; btn.style.opacity = '0.6';
+  try {
+    const result = await apiJson('/api/v1/hosts/ad/sync/', { method: 'POST' });
+    if (result.queued) {
+      showToast('AD sync queued', 'success');
+    } else if (result.result && result.result.error) {
+      showToast('AD sync failed: ' + result.result.error, 'error');
+    } else if (result.result) {
+      showToast(`AD sync complete: ${result.result.created} created, ${result.result.updated} updated`, 'success');
+    }
+    adLoadConfig();
+  } catch (e) {
+    showToast('Failed to start sync: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.style.opacity = '';
+  }
+}
 </script>
 </body>
 </html>

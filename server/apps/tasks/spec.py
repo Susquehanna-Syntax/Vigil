@@ -277,6 +277,19 @@ _INPUT_TYPES = {"text", "choice", "boolean", "number"}
 _VAR_PATTERN = re.compile(r"\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 _INPUT_ID_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
+# Day-of-week aliases accepted in `schedule.window.days`. Stored canonically
+# as 0..6 with 0 = Monday (matches Python's datetime.weekday()).
+_DAY_ALIASES: dict[str, int] = {
+    "mon": 0, "monday": 0,
+    "tue": 1, "tues": 1, "tuesday": 1,
+    "wed": 2, "weds": 2, "wednesday": 2,
+    "thu": 3, "thurs": 3, "thursday": 3,
+    "fri": 4, "friday": 4,
+    "sat": 5, "saturday": 5,
+    "sun": 6, "sunday": 6,
+}
+_ALL_DAYS = list(range(7))
+
 
 def _as_str(value: Any, field: str, max_len: int = 500) -> str:
     if value is None:
@@ -369,6 +382,206 @@ def _validate_inputs(raw_inputs: Any) -> list[dict[str, Any]]:
         })
 
     return canonical
+
+
+def _validate_schedule(raw: Any) -> dict[str, Any] | None:
+    """Validate the optional ``schedule`` block.
+
+    Schema::
+
+        schedule:
+          window:
+            start_hour: 8     # 0..23 inclusive
+            end_hour:   17    # 0..23 inclusive
+            days: [mon, tue, wed, thu, fri]   # optional, defaults to all 7
+
+    Returns a canonical ``{"window": {...}}`` dict or ``None`` if no schedule
+    block is provided. ``end_hour`` is inclusive — a window of 8..17 means a
+    task may dispatch at any time during 8:00..17:59.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise SpecError("'schedule' must be a mapping")
+
+    window = raw.get("window")
+    if window is None:
+        return None
+    if not isinstance(window, dict):
+        raise SpecError("'schedule.window' must be a mapping")
+
+    def _hour(name: str, default: int) -> int:
+        v = window.get(name, default)
+        if isinstance(v, bool) or not isinstance(v, int):
+            try:
+                v = int(v)
+            except (TypeError, ValueError):
+                raise SpecError(f"schedule.window.{name} must be an integer 0..23")
+        if not 0 <= v <= 23:
+            raise SpecError(f"schedule.window.{name} must be between 0 and 23")
+        return v
+
+    start_hour = _hour("start_hour", 0)
+    end_hour = _hour("end_hour", 23)
+
+    raw_days = window.get("days")
+    if raw_days is None:
+        days = list(_ALL_DAYS)
+    else:
+        if not isinstance(raw_days, list) or not raw_days:
+            raise SpecError("schedule.window.days must be a non-empty list")
+        days = []
+        for entry in raw_days:
+            if isinstance(entry, int) and not isinstance(entry, bool):
+                if not 0 <= entry <= 6:
+                    raise SpecError(f"day index must be 0..6, got {entry}")
+                day_idx = entry
+            elif isinstance(entry, str):
+                key = entry.strip().lower()
+                if key not in _DAY_ALIASES:
+                    raise SpecError(
+                        f"unknown day {entry!r} — expected mon..sun or 0..6"
+                    )
+                day_idx = _DAY_ALIASES[key]
+            else:
+                raise SpecError(f"day entries must be names or 0..6 ints")
+            if day_idx not in days:
+                days.append(day_idx)
+        days.sort()
+
+    return {
+        "window": {
+            "start_hour": start_hour,
+            "end_hour": end_hour,
+            "days": days,
+        }
+    }
+
+
+def _validate_on_failure(raw: Any) -> dict[str, Any] | None:
+    """Validate the optional ``on_failure`` block.
+
+    Schema::
+
+        on_failure:
+          retry:
+            attempts: 3        # 0..10 — max retries after the first attempt
+            delay_seconds: 60  # 0..3600 — delay between attempts (default 30)
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise SpecError("'on_failure' must be a mapping")
+
+    retry = raw.get("retry")
+    if retry is None:
+        return None
+    if not isinstance(retry, dict):
+        raise SpecError("'on_failure.retry' must be a mapping")
+
+    attempts = retry.get("attempts", 0)
+    if isinstance(attempts, bool) or not isinstance(attempts, int):
+        try:
+            attempts = int(attempts)
+        except (TypeError, ValueError):
+            raise SpecError("on_failure.retry.attempts must be a non-negative integer")
+    if not 0 <= attempts <= 10:
+        raise SpecError("on_failure.retry.attempts must be between 0 and 10")
+
+    delay = retry.get("delay_seconds", 30)
+    if isinstance(delay, bool) or not isinstance(delay, int):
+        try:
+            delay = int(delay)
+        except (TypeError, ValueError):
+            raise SpecError("on_failure.retry.delay_seconds must be an integer")
+    if not 0 <= delay <= 3600:
+        raise SpecError("on_failure.retry.delay_seconds must be between 0 and 3600")
+
+    return {"retry": {"attempts": attempts, "delay_seconds": delay}}
+
+
+def _validate_success_criteria(raw: Any) -> dict[str, Any] | None:
+    """Validate the optional ``success_criteria`` block.
+
+    Schema::
+
+        success_criteria:
+          exit_code: 0                # default 0
+          output_contains: "OK"       # optional substring match
+          output_regex: "^DONE"       # optional regex (compiled here to surface
+                                      # invalid patterns at validation time)
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise SpecError("'success_criteria' must be a mapping")
+
+    canonical: dict[str, Any] = {}
+
+    if "exit_code" in raw:
+        ec = raw.get("exit_code")
+        if isinstance(ec, bool) or not isinstance(ec, int):
+            try:
+                ec = int(ec)
+            except (TypeError, ValueError):
+                raise SpecError("success_criteria.exit_code must be an integer")
+        canonical["exit_code"] = ec
+
+    if "output_contains" in raw:
+        oc = raw.get("output_contains")
+        if oc is None:
+            oc = ""
+        elif not isinstance(oc, str):
+            raise SpecError("success_criteria.output_contains must be a string")
+        if len(oc) > 500:
+            raise SpecError("success_criteria.output_contains too long (max 500)")
+        if oc:
+            canonical["output_contains"] = oc
+
+    if "output_regex" in raw:
+        rx = raw.get("output_regex")
+        if rx is None:
+            rx = ""
+        elif not isinstance(rx, str):
+            raise SpecError("success_criteria.output_regex must be a string")
+        if len(rx) > 500:
+            raise SpecError("success_criteria.output_regex too long (max 500)")
+        if rx:
+            try:
+                re.compile(rx)
+            except re.error as exc:
+                raise SpecError(f"success_criteria.output_regex invalid: {exc}")
+            canonical["output_regex"] = rx
+
+    return canonical or None
+
+
+def schedule_window_active(schedule: dict[str, Any] | None, *, weekday: int, hour: int) -> bool:
+    """Return True if *schedule* allows dispatch at the given weekday/hour.
+
+    Used by the dispatch path (hosts/views.py) to decide whether a pending
+    task is eligible for immediate handoff. ``weekday`` follows the Python
+    convention (0 = Monday). ``hour`` is 0..23.
+
+    A task with no schedule (``None``) is always active. ``end_hour`` is
+    inclusive: an 8..17 window includes 17:59:59.
+    """
+    if not schedule:
+        return True
+    window = schedule.get("window") if isinstance(schedule, dict) else None
+    if not window:
+        return True
+
+    days = window.get("days") or list(_ALL_DAYS)
+    if weekday not in days:
+        return False
+
+    start = int(window.get("start_hour", 0))
+    end = int(window.get("end_hour", 23))
+    if start <= end:
+        return start <= hour <= end
+    # Wrap-around window (e.g. 22..6 — overnight maintenance)
+    return hour >= start or hour <= end
 
 
 def _check_variable_refs(value: Any, declared_ids: set[str], where: str) -> None:
@@ -548,6 +761,29 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
     effective_risk_level = max(_RISK_ORDER[risk], derived_risk_level)
     effective_risk = next(k for k, v in _RISK_ORDER.items() if v == effective_risk_level)
 
+    schedule = _validate_schedule(raw.get("schedule"))
+    on_failure = _validate_on_failure(raw.get("on_failure"))
+    success_criteria = _validate_success_criteria(raw.get("success_criteria"))
+
+    # Optional `collect:` directive — turns a task into an inventory data
+    # collector. Validated lightly here; the result handler reads it.
+    raw_collect = raw.get("collect")
+    collect: dict[str, Any] | None = None
+    if raw_collect is not None:
+        if not isinstance(raw_collect, dict):
+            raise SpecError("'collect' must be a mapping")
+        column = _as_str(raw_collect.get("column"), "collect.column", max_len=80)
+        if not column:
+            raise SpecError("collect.column is required")
+        parse_mode = _as_str(
+            raw_collect.get("parse") or "output_line_1", "collect.parse", max_len=40
+        ).lower()
+        if parse_mode not in {"output_line_1", "output_full", "output_trim"}:
+            raise SpecError(
+                "collect.parse must be one of: output_line_1, output_full, output_trim"
+            )
+        collect = {"column": column, "parse": parse_mode}
+
     return {
         "name": name,
         "description": description,
@@ -556,4 +792,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         "declared_risk": risk,
         "actions": parsed_actions,
         "inputs": declared_inputs,
+        "schedule": schedule,
+        "on_failure": on_failure,
+        "success_criteria": success_criteria,
+        "collect": collect,
     }

@@ -5,7 +5,12 @@ Returns metric dicts ready for the checkin payload. Each metric is:
 """
 
 import logging
+import platform
+import re
+import shutil
+import subprocess
 from datetime import datetime, timezone
+from pathlib import Path
 
 import psutil
 
@@ -126,3 +131,137 @@ def collect_all() -> list[dict]:
         except Exception:
             logger.exception("Collector %s failed", fn.__name__)
     return metrics
+
+
+# ── Inventory collection ────────────────────────────────────────────────────
+#
+# Inventory is collected once and shipped alongside the regular metric
+# payload. It moves at human timescales (hardware doesn't change often), so
+# the runtime can choose to send it on a slower cadence than metrics.
+
+_DMI_PATH = Path("/sys/class/dmi/id")
+_DMI_FIELDS = {
+    "service_tag": ["product_serial", "chassis_serial", "board_serial"],
+    "manufacturer": ["sys_vendor", "board_vendor", "chassis_vendor"],
+    "model": ["product_name", "board_name"],
+}
+
+
+def _read_dmi_field(filenames: list[str]) -> str:
+    """Best-effort read of /sys/class/dmi/id/*. Returns "" on any failure."""
+    for name in filenames:
+        path = _DMI_PATH / name
+        try:
+            value = path.read_text(errors="replace").strip()
+        except (OSError, PermissionError):
+            continue
+        if value and value.lower() not in {"to be filled by o.e.m.", "unknown", "default string", "system manufacturer", "system product name"}:
+            return value
+    return ""
+
+
+def _read_mac_addresses() -> dict[str, str]:
+    """Return {iface: mac} for every non-loopback interface psutil reports."""
+    out: dict[str, str] = {}
+    try:
+        addrs = psutil.net_if_addrs()
+    except Exception:
+        return out
+    for iface, entries in addrs.items():
+        if iface == "lo":
+            continue
+        for entry in entries:
+            # AF_LINK on macOS, AF_PACKET on Linux — both expose .address
+            fam_name = getattr(entry.family, "name", str(entry.family))
+            if "PACKET" in fam_name or "LINK" in fam_name:
+                mac = (entry.address or "").lower()
+                if re.fullmatch(r"[0-9a-f:]{17}", mac) and mac != "00:00:00:00:00:00":
+                    out[iface] = mac
+                    break
+    return out
+
+
+def _read_disks() -> list[dict]:
+    """Return a list of {device, size_bytes} for fixed disks."""
+    disks: list[dict] = []
+    try:
+        partitions = psutil.disk_partitions(all=False)
+    except Exception:
+        return disks
+    seen_devices: set[str] = set()
+    for part in partitions:
+        device = part.device
+        if device in seen_devices:
+            continue
+        seen_devices.add(device)
+        try:
+            usage = psutil.disk_usage(part.mountpoint)
+            disks.append({
+                "device": device,
+                "mount": part.mountpoint,
+                "fstype": part.fstype,
+                "size_bytes": int(usage.total),
+            })
+        except (PermissionError, OSError):
+            continue
+    return disks
+
+
+def collect_inventory() -> dict:
+    """Best-effort hardware inventory snapshot.
+
+    Returns a dict with whatever information could be gathered. Fields that
+    require root or privileged access (DMI reads can on some distros) fall
+    back to "" / 0. The server stores this verbatim alongside the host.
+    """
+    inv: dict = {}
+    try:
+        mem = psutil.virtual_memory()
+        inv["ram_total_bytes"] = int(mem.total)
+    except Exception:
+        inv["ram_total_bytes"] = 0
+
+    try:
+        inv["cpu_cores"] = int(psutil.cpu_count(logical=True) or 0)
+    except Exception:
+        inv["cpu_cores"] = 0
+
+    cpu_model = ""
+    cpuinfo = Path("/proc/cpuinfo")
+    if cpuinfo.exists():
+        try:
+            for line in cpuinfo.read_text(errors="replace").splitlines():
+                if line.lower().startswith("model name"):
+                    _, _, value = line.partition(":")
+                    cpu_model = value.strip()
+                    break
+        except OSError:
+            pass
+    if not cpu_model:
+        cpu_model = platform.processor() or platform.machine() or ""
+    inv["cpu_model"] = cpu_model
+
+    for key, candidates in _DMI_FIELDS.items():
+        inv[key] = _read_dmi_field(candidates)
+
+    # If DMI failed entirely, try `dmidecode -s` as a privileged fallback.
+    if not any(inv.get(k) for k in _DMI_FIELDS) and shutil.which("dmidecode"):
+        for field, dmi_arg in (
+            ("service_tag", "system-serial-number"),
+            ("manufacturer", "system-manufacturer"),
+            ("model", "system-product-name"),
+        ):
+            try:
+                proc = subprocess.run(
+                    ["dmidecode", "-s", dmi_arg],
+                    capture_output=True, text=True, timeout=5, shell=False,
+                )
+                if proc.returncode == 0:
+                    inv[field] = proc.stdout.strip()
+            except (subprocess.TimeoutExpired, OSError):
+                continue
+
+    inv["mac_addresses"] = _read_mac_addresses()
+    inv["disks"] = _read_disks()
+
+    return inv
