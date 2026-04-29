@@ -337,12 +337,13 @@ class TaskRuntime:
         raw_params = step.get("params", {}) or {}
         params = resolve_params(raw_params, ctx)
         timeout = step.get("timeout")
+        criteria = step.get("success_criteria") or None
 
         logger.debug("step[action] name=%r action=%r params=%r", name, action, params)
 
         try:
             output = execute_action(action, params, self._config, timeout=timeout)
-            return StepResult(
+            result = StepResult(
                 name=name,
                 action=str(action),
                 state="ok",
@@ -359,6 +360,19 @@ class TaskRuntime:
                 exit_code=1,
                 error=str(exc),
             )
+
+        # Apply success_criteria after a successful run. Even if the action
+        # exited cleanly, the user can demand additional checks against the
+        # output (substring or regex). A criterion miss flips the step to
+        # error so the server treats it as a real failure for retry/abort.
+        if criteria:
+            failure = _evaluate_success_criteria(criteria, result)
+            if failure:
+                logger.info("step %r failed success_criteria: %s", name, failure)
+                result.state = "error"
+                result.exit_code = 1
+                result.error = failure
+        return result
 
     # ── If/else step ──────────────────────────────────────────────────────────
 
@@ -435,3 +449,39 @@ class TaskRuntime:
             output="\n".join(iteration_outputs),
             exit_code=0,
         )
+
+
+# ── Success criteria ─────────────────────────────────────────────────────────
+
+
+def _evaluate_success_criteria(criteria: dict[str, Any], result: StepResult) -> str:
+    """Return a failure message if any criterion is not met, else "".
+
+    Supported keys:
+        exit_code        — required exit code
+        output_contains  — substring that must appear in stdout/stderr
+        output_regex     — regex that must match somewhere in output
+
+    The server compiles ``output_regex`` at validation time, so by the time
+    it reaches the agent it is safe to compile here without further checks.
+    """
+    output = result.output or ""
+
+    if "exit_code" in criteria:
+        expected = int(criteria["exit_code"])
+        if int(result.exit_code) != expected:
+            return f"exit_code {result.exit_code} != expected {expected}"
+
+    needle = criteria.get("output_contains")
+    if needle and needle not in output:
+        return f"output did not contain expected substring {needle!r}"
+
+    pattern = criteria.get("output_regex")
+    if pattern:
+        try:
+            if not re.search(pattern, output):
+                return f"output did not match regex {pattern!r}"
+        except re.error as exc:
+            return f"invalid output_regex {pattern!r}: {exc}"
+
+    return ""

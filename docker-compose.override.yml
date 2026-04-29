@@ -1,0 +1,35 @@
+# docker-compose.override.yml — local development only
+# This file is automatically merged with docker-compose.yml by Docker Compose.
+# Do NOT commit secrets here. It IS committed to git as a dev convenience.
+#
+# Differences from production:
+#   - Source code is bind-mounted → edits take effect without rebuild
+#   - Django dev server (auto-reload) instead of gunicorn
+#   - Postgres and Redis ports exposed on localhost
+#   - DEBUG defaults to true
+
+services:
+  web:
+    command: python manage.py runserver 0.0.0.0:8000
+    environment:
+      DJANGO_DEBUG: "true"
+    volumes:
+      - ./server:/app
+    # Override the entrypoint to skip collectstatic in dev
+    entrypoint: ["/app/entrypoint.sh"]
+
+  celery-worker:
+    volumes:
+      - ./server:/app
+
+  celery-beat:
+    volumes:
+      - ./server:/app
+
+  db:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"

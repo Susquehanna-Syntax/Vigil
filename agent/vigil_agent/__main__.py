@@ -116,15 +116,18 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
     # server sends {steps: [{action, params, id}, ...]}
     # runtime expects {steps: [{action, params, name}, ...]}
     raw_steps = params.get("steps", [])
+    def _build_step(s: dict, i: int) -> dict:
+        d: dict = {
+            "name": s.get("id", s.get("name", f"step{i+1}")),
+            "action": s.get("action", s.get("type", "")),
+            "params": s.get("params", {}),
+        }
+        if s.get("success_criteria"):
+            d["success_criteria"] = s["success_criteria"]
+        return d
+
     runtime_payload = {
-        "steps": [
-            {
-                "name": s.get("id", s.get("name", f"step{i+1}")),
-                "action": s.get("action", s.get("type", "")),
-                "params": s.get("params", {}),
-            }
-            for i, s in enumerate(raw_steps)
-        ],
+        "steps": [_build_step(s, i) for i, s in enumerate(raw_steps)],
         "variables": params.get("variables", {}),
     }
 
@@ -213,11 +216,25 @@ def main() -> None:
     verify_key = verify.get_pinned_key(config.data_dir)
 
     # ── Main checkin loop ────────────────────────────────────────────────
+    # Hardware inventory shifts at human timescales — refresh once per hour
+    # rather than on every checkin to avoid wasting cycles on dmidecode.
     consecutive_failures = 0
+    inventory_refresh_after = 0.0  # monotonic deadline; 0 → refresh now
+    last_inventory: dict | None = None
     while not _shutdown:
         try:
             metrics = collector.collect_all()
-            response = client.checkin(config, metrics)
+            inventory_payload = None
+            if time.monotonic() >= inventory_refresh_after:
+                try:
+                    last_inventory = collector.collect_inventory()
+                except Exception:
+                    logger.exception("Inventory collection failed")
+                    last_inventory = None
+                # Always send on the first refresh; otherwise hourly.
+                inventory_refresh_after = time.monotonic() + 3600
+                inventory_payload = last_inventory
+            response = client.checkin(config, metrics, inventory=inventory_payload)
             consecutive_failures = 0
 
             # Handle public key (TOFU pinning)

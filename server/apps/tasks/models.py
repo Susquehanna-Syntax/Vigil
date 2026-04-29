@@ -142,6 +142,15 @@ class Task(models.Model):
     signature = models.TextField(blank=True)
     ttl_seconds = models.IntegerField(default=300)
     result_output = models.TextField(blank=True)
+    # Snapshot of definition.parsed_spec.schedule at deploy time. Used by the
+    # checkin dispatcher to gate handoff outside the configured window.
+    schedule = models.JSONField(default=dict, blank=True)
+    # On-failure retry policy snapshot. retry_count/max_retries track usage.
+    retry_count = models.IntegerField(default=0)
+    max_retries = models.IntegerField(default=0)
+    retry_delay_seconds = models.IntegerField(default=0)
+    # When set, the task is held until this time (used between retries).
+    not_before = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     dispatched_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)

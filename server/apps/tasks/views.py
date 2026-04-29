@@ -1,4 +1,5 @@
 import secrets
+from datetime import timedelta
 
 from django.db import transaction
 from django.db.models import Max
@@ -17,7 +18,15 @@ from .serializers import (
     TaskRunSerializer,
     TaskSerializer,
 )
-from .spec import ACTION_REGISTRY, SpecError, parse_and_validate, resolve_inputs
+from .spec import (
+    ACTION_REGISTRY,
+    SpecError,
+    _validate_on_failure,
+    _validate_schedule,
+    _validate_success_criteria,
+    parse_and_validate,
+    resolve_inputs,
+)
 
 _TERMINAL_STATES = {Task.State.COMPLETED, Task.State.FAILED, Task.State.REJECTED}
 _UPDATABLE_STATES = {Task.State.DISPATCHED, Task.State.EXECUTING}
@@ -73,15 +82,67 @@ def task_result(request):
         if task.run_id:
             _advance_run_sequence(task)
 
+        # If the parent definition is flagged ``collect:``, capture this
+        # successful run's output into the host's inventory custom columns.
+        if new_state == Task.State.COMPLETED:
+            _maybe_capture_inventory_column(task, output)
+
     return Response(TaskSerializer(task).data)
+
+
+def _maybe_capture_inventory_column(task: Task, output: str) -> None:
+    """Write task output into ``HostInventory.custom_columns`` if applicable.
+
+    Skips silently when the task isn't part of a run, the run has no
+    definition, or the definition's parsed_spec lacks a ``collect`` block.
+    """
+    from apps.hosts.models import HostInventory
+
+    run = task.run
+    definition = getattr(run, "definition", None) if run else None
+    if not definition:
+        return
+    collect = (definition.parsed_spec or {}).get("collect") or None
+    if not collect or not isinstance(collect, dict):
+        return
+    column = (collect.get("column") or "").strip()
+    if not column:
+        return
+    parse_mode = collect.get("parse") or "output_line_1"
+
+    text = output or ""
+    if parse_mode == "output_line_1":
+        # Strip the per-step bracketed prefix our agent reports use, then
+        # take the first non-empty line of the task output.
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        first = lines[0] if lines else ""
+        if first.startswith("[OK]"):
+            first = first[4:].lstrip()
+            if ":" in first:
+                first = first.split(":", 1)[1].strip()
+        value = first[:500]
+    elif parse_mode == "output_trim":
+        value = text.strip()[:500]
+    else:  # output_full
+        value = text[:2000]
+
+    inv, _ = HostInventory.objects.get_or_create(host=task.host)
+    columns = dict(inv.custom_columns or {})
+    columns[column] = value
+    inv.custom_columns = columns
+    inv.save(update_fields=["custom_columns", "updated_at"])
 
 
 def _advance_run_sequence(finished_task: Task) -> None:
     """After a task in a run finishes, unblock the next step on that host.
 
-    If the finished task failed or was rejected, reject all remaining blocked
-    steps on that host. Finally, collapse the run into a terminal state when
-    no tasks remain eligible to run.
+    If the finished task failed or was rejected, retry policy is consulted:
+    when ``retry_count < max_retries`` the original task is reset to PENDING
+    (with a fresh nonce/signature and a ``not_before`` delay) so the agent
+    re-executes it on the next eligible checkin. Once retries are exhausted
+    or no policy applies, all remaining blocked steps on that host are
+    rejected. Finally, the run is collapsed into a terminal state when no
+    tasks remain eligible to run.
     """
     run = finished_task.run
     sibling_qs = Task.objects.filter(
@@ -94,7 +155,33 @@ def _advance_run_sequence(finished_task: Task) -> None:
             next_step.state = Task.State.PENDING
             next_step.save(update_fields=["state"])
     else:
-        # Abort the rest of the chain for this host.
+        # Failure path — try to retry the same step before aborting the chain.
+        if (
+            finished_task.state == Task.State.FAILED
+            and finished_task.retry_count < finished_task.max_retries
+        ):
+            delay = max(0, int(finished_task.retry_delay_seconds or 0))
+            finished_task.retry_count += 1
+            finished_task.state = Task.State.PENDING
+            finished_task.nonce = secrets.token_hex(32)
+            finished_task.signature = ""
+            finished_task.dispatched_at = None
+            finished_task.completed_at = None
+            finished_task.not_before = now() + timedelta(seconds=delay) if delay else None
+            prior = (finished_task.result_output or "").rstrip()
+            attempt_marker = (
+                f"\n[retry {finished_task.retry_count}/{finished_task.max_retries} "
+                f"scheduled, waiting {delay}s]"
+            )
+            finished_task.result_output = (prior + attempt_marker).strip()
+            finished_task.save(update_fields=[
+                "retry_count", "state", "nonce", "signature",
+                "dispatched_at", "completed_at", "not_before", "result_output",
+            ])
+            # Don't finalize the run — there's still active work pending.
+            return
+
+        # No retry remaining — abort the rest of the chain for this host.
         sibling_qs.filter(state=Task.State.BLOCKED).update(
             state=Task.State.REJECTED,
             result_output=f"Aborted: step {finished_task.step_order} did not succeed",
@@ -359,7 +446,30 @@ def definition_deploy(request, definition_id):
     if not _user_can_see(definition, request.user):
         return Response({"error": "Not found"}, status=404)
 
+    # Targeting: either an explicit list of host_ids or a list of tags. When
+    # tags are supplied we resolve to the set of online, executable hosts
+    # that match ANY of the requested tags (union semantics).
+    raw_tags = request.data.get("tags") or []
     host_ids = request.data.get("host_ids") or []
+    if raw_tags:
+        if not isinstance(raw_tags, list) or not all(isinstance(t, str) for t in raw_tags):
+            return Response({"error": "tags must be a list of strings"}, status=400)
+        wanted = {t.strip().lower() for t in raw_tags if t.strip()}
+        if not wanted:
+            return Response({"error": "tags is empty after normalization"}, status=400)
+        candidate_hosts = Host.objects.filter(
+            status=Host.Status.ONLINE
+        ).exclude(mode=Host.Mode.MONITOR)
+        host_ids = [
+            str(h.id)
+            for h in candidate_hosts
+            if any(isinstance(t, str) and t.lower() in wanted for t in (h.tags or []))
+        ]
+        if not host_ids:
+            return Response(
+                {"error": f"no eligible hosts match tags: {sorted(wanted)}"},
+                status=400,
+            )
     if not isinstance(host_ids, list) or not host_ids:
         return Response({"error": "host_ids must be a non-empty list"}, status=400)
 
@@ -373,6 +483,23 @@ def definition_deploy(request, definition_id):
         return Response({"error": "inputs must be an object"}, status=400)
     try:
         spec = resolve_inputs(base_spec, raw_inputs)
+    except SpecError as exc:
+        return Response({"error": str(exc)}, status=400)
+
+    # Per-deploy policy overrides — Schedule / Retry / Success Criteria. The
+    # deploy modal sends these from its policy tabs, hydrated from the YAML
+    # defaults. Each override is validated using the same validators the YAML
+    # parser uses, so an attacker can't smuggle a different schema through.
+    try:
+        if "schedule" in request.data:
+            override = _validate_schedule(request.data.get("schedule"))
+            spec["schedule"] = override
+        if "on_failure" in request.data:
+            override = _validate_on_failure(request.data.get("on_failure"))
+            spec["on_failure"] = override
+        if "success_criteria" in request.data:
+            override = _validate_success_criteria(request.data.get("success_criteria"))
+            spec["success_criteria"] = override
     except SpecError as exc:
         return Response({"error": str(exc)}, status=400)
 
@@ -398,17 +525,30 @@ def definition_deploy(request, definition_id):
     # sent as a single signed task per host — the agent validates each
     # action against its own local allowlist, so a compromised server
     # cannot escalate beyond what each agent permits.
-    steps_payload = [
-        {
+    success_criteria = spec.get("success_criteria") or None
+    steps_payload = []
+    for i, action in enumerate(actions):
+        step = {
             "id": action.get("id") or f"step{i + 1}",
             "action": action["type"],
             "params": action.get("params") or {},
         }
-        for i, action in enumerate(actions)
-    ]
+        # Success criteria apply to every step in the script. The agent
+        # evaluates these after each step's exit and marks the step failed
+        # if criteria are not met (even if the action itself succeeded).
+        if success_criteria:
+            step["success_criteria"] = success_criteria
+        steps_payload.append(step)
 
     # Effective risk is the highest risk across all actions.
     risk = spec.get("risk", "standard")
+
+    # Schedule + retry policy are snapshotted onto each Task so a later edit
+    # of the TaskDefinition cannot retroactively change in-flight deploys.
+    schedule_snapshot = spec.get("schedule") or {}
+    retry_cfg = ((spec.get("on_failure") or {}).get("retry") or {})
+    max_retries = int(retry_cfg.get("attempts", 0))
+    retry_delay = int(retry_cfg.get("delay_seconds", 0))
 
     with transaction.atomic():
         run = TaskRun.objects.create(
@@ -432,6 +572,9 @@ def definition_deploy(request, definition_id):
                 risk_level=risk,
                 state=Task.State.PENDING,
                 nonce=secrets.token_hex(32),
+                schedule=schedule_snapshot,
+                max_retries=max_retries,
+                retry_delay_seconds=retry_delay,
             )
 
     return Response(TaskRunSerializer(run).data, status=201)
