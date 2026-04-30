@@ -6,6 +6,11 @@ __pycache__/
 *.pyc
 *.pyo
 db.sqlite3
+db.sqlite3.bak.*
 staticfiles/
 *.egg-info/
 .venv/
+
+# Agent runtime — never commit live credentials or state
+agent/agent.yml
+agent/data/

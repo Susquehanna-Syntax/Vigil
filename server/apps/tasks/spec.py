@@ -547,10 +547,11 @@ def _validate_success_criteria(raw: Any) -> dict[str, Any] | None:
         if len(rx) > 500:
             raise SpecError("success_criteria.output_regex too long (max 500)")
         if rx:
-            try:
-                re.compile(rx)
-            except re.error as exc:
-                raise SpecError(f"success_criteria.output_regex invalid: {exc}")
+            if "{{" not in rx:
+                try:
+                    re.compile(rx)
+                except re.error as exc:
+                    raise SpecError(f"success_criteria.output_regex invalid: {exc}")
             canonical["output_regex"] = rx
 
     return canonical or None
@@ -655,7 +656,15 @@ def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[
     for action in parsed_spec.get("actions", []):
         new_actions.append({**action, "params": _sub(action.get("params") or {})})
 
-    return {**parsed_spec, "actions": new_actions, "resolved_inputs": resolved}
+    new_sc = parsed_spec.get("success_criteria")
+    if new_sc and isinstance(new_sc, dict):
+        new_sc = dict(new_sc)
+        if "output_contains" in new_sc and isinstance(new_sc["output_contains"], str):
+            new_sc["output_contains"] = _sub(new_sc["output_contains"])
+        if "output_regex" in new_sc and isinstance(new_sc["output_regex"], str):
+            new_sc["output_regex"] = _sub(new_sc["output_regex"])
+
+    return {**parsed_spec, "actions": new_actions, "success_criteria": new_sc, "resolved_inputs": resolved}
 
 
 def parse_and_validate(yaml_source: str) -> dict[str, Any]:

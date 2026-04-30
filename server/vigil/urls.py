@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.conf import settings as django_settings
 from django.contrib import admin
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
@@ -56,6 +57,8 @@ def dashboard(request):
         "alerts_resolved": alerts_resolved,
         "tasks": tasks,
         "pending_hosts": pending_hosts,
+        "vigil_timezone": django_settings.VIGIL_TIMEZONE,
+        "vigil_time_format": django_settings.VIGIL_TIME_FORMAT,
     })
 
 

@@ -65,18 +65,27 @@ TEMPLATES = [
 WSGI_APPLICATION = "vigil.wsgi.application"
 
 # ---------------------------------------------------------------------------
-# Database — PostgreSQL + TimescaleDB
+# Database — PostgreSQL + TimescaleDB (SQLite fallback for local dev)
 # ---------------------------------------------------------------------------
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.environ.get("POSTGRES_DB", "vigil"),
-        "USER": os.environ.get("POSTGRES_USER", "vigil"),
-        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "vigil"),
-        "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
-        "PORT": os.environ.get("POSTGRES_PORT", "5432"),
+_use_sqlite = os.environ.get("USE_SQLITE", "").lower() in ("true", "1", "yes")
+if _use_sqlite:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.environ.get("POSTGRES_DB", "vigil"),
+            "USER": os.environ.get("POSTGRES_USER", "vigil"),
+            "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "vigil"),
+            "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
+            "PORT": os.environ.get("POSTGRES_PORT", "5432"),
+        }
+    }
 
 # ---------------------------------------------------------------------------
 # Auth
@@ -158,6 +167,12 @@ CELERY_BEAT_SCHEDULE = {
 # Metric retention
 # ---------------------------------------------------------------------------
 VIGIL_METRIC_RETENTION_DAYS = int(os.environ.get("VIGIL_METRIC_RETENTION_DAYS", "30"))
+
+# ---------------------------------------------------------------------------
+# Display / locale
+# ---------------------------------------------------------------------------
+VIGIL_TIMEZONE = os.environ.get("VIGIL_TIMEZONE", "UTC")
+VIGIL_TIME_FORMAT = os.environ.get("VIGIL_TIME_FORMAT", "12h")  # "12h" or "24h"
 
 # ---------------------------------------------------------------------------
 # Nessus / Tenable vulnerability integration
