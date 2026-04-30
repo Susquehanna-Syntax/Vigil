@@ -203,10 +203,11 @@ def checkin(request):
     if candidates:
         weekday = _local.weekday()
         hour = _local.hour
+        minute = _local.minute
         for task in candidates:
             if task.not_before and task.not_before > current:
                 continue
-            if not schedule_window_active(task.schedule, weekday=weekday, hour=hour):
+            if not schedule_window_active(task.schedule, weekday=weekday, hour=hour, minute=minute):
                 continue
             eligible.append(task)
 
