@@ -818,12 +818,34 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
    DEPLOY MODAL
    ═══════════════════════════════════════════ */
 .modal.modal-wide { width: 560px; }
-.modal.modal-xwide { width: 920px; }
+.modal.modal-xwide {
+  width: 920px;
+  height: 680px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.modal.modal-xwide .modal-title { flex-shrink: 0; }
+.modal.modal-xwide form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
 .deploy-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  align-items: stretch;
+  grid-template-columns: 47% 47%;
+  gap: 0 6%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.deploy-grid > div {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 .deploy-col-title {
   font-size: 11px;
@@ -843,7 +865,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   line-height: 1.55;
   white-space: pre;
   overflow: auto;
-  max-height: 360px;
+  height: 100%;
   color: var(--text-1);
   tab-size: 2;
 }
@@ -878,7 +900,8 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   border-radius: var(--r-md);
   background: var(--s2);
   overflow: hidden;
-  max-height: 320px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 .deploy-host-row {
@@ -921,10 +944,14 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .deploy-input-row.bool { flex-direction: row; align-items: center; gap: 10px; }
 .deploy-input-row.bool input { accent-color: var(--sky); width: 16px; height: 16px; }
 .deploy-input-row.bool .deploy-input-label { font-weight: 500; }
+.deploy-right-col { display: flex; flex-direction: column; min-height: 0; }
+.deploy-right-col > #deploy-target-hosts,
+.deploy-right-col > #deploy-target-tags { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .deploy-totp-row {
-  margin-top: 18px;
-  padding-top: 18px;
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .deploy-totp-row .form-control { letter-spacing: 4px; font-family: 'IBM Plex Mono', monospace; }
 
@@ -950,8 +977,8 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 }
 .deploy-tab:hover { color: var(--text-1); }
 .deploy-tab.active { color: var(--text-1); border-bottom-color: var(--sky); }
-.deploy-tab-panels { position: relative; }
-.deploy-panel { display: none; }
+.deploy-tab-panels { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.deploy-panel { display: none; height: 100%; overflow-y: auto; }
 .deploy-panel.active { display: block; }
 .deploy-policy-grid {
   display: grid;
@@ -1526,24 +1553,24 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
     <div class="sidebar-icon active" data-page="dashboard" data-tip="Dashboard">
       <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="alerts" data-tip="Alerts">
-      <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
-      {% if alert_count %}<div class="badge-dot" style="background: var(--rose);"></div>{% endif %}
+    <div class="sidebar-icon" data-page="inventory" data-tip="Inventory">
+      <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
     </div>
     <div class="sidebar-icon" data-page="tasks" data-tip="Tasks">
       <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="community" data-tip="Community">
-      <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><circle cx="17" cy="7" r="3" opacity="0.6"/><path d="M21 21v-2a4 4 0 00-3-3.87" opacity="0.6"/></svg>
-    </div>
     <div class="sidebar-icon" data-page="vulns" data-tip="Vulnerabilities">
       <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="inventory" data-tip="Inventory">
-      <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-    </div>
     <div class="sidebar-icon" data-page="monitor" data-tip="Monitor">
       <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    </div>
+    <div class="sidebar-icon" data-page="alerts" data-tip="Alerts">
+      <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+      {% if alert_count %}<div class="badge-dot" style="background: var(--rose);"></div>{% endif %}
+    </div>
+    <div class="sidebar-icon" data-page="community" data-tip="Community">
+      <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><circle cx="17" cy="7" r="3" opacity="0.6"/><path d="M21 21v-2a4 4 0 00-3-3.87" opacity="0.6"/></svg>
     </div>
     <div class="sidebar-icon" data-page="settings" data-tip="Settings">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
@@ -2155,6 +2182,32 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
       </div>
       {% endif %}
 
+      <!-- Display Settings -->
+      <div class="section-label" style="margin-top:32px;">Display & Timezone</div>
+      <div class="totp-card">
+        <div class="totp-sub" style="margin-bottom:14px;">
+          Server timezone controls when schedule windows are evaluated. Set <code style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sky);">VIGIL_TIMEZONE</code> in your <code style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sky);">.env</code> to an <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones" target="_blank" style="color:var(--sky);">IANA timezone name</a> and restart the server.
+        </div>
+        <div class="deploy-policy-grid" style="margin-bottom:10px;">
+          <div>
+            <label class="deploy-input-label">Server Timezone</label>
+            <div class="form-control" style="background:var(--s3);cursor:default;color:var(--text-2);" id="settings-tz-display">{{ vigil_timezone }}</div>
+          </div>
+          <div>
+            <label class="deploy-input-label">Time Format</label>
+            <div style="display:flex;gap:8px;margin-top:2px;">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
+                <input type="radio" name="time-format-radio" value="12h" style="accent-color:var(--sky);" onchange="setTimeFormat('12h')"> 12-hour
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
+                <input type="radio" name="time-format-radio" value="24h" style="accent-color:var(--sky);" onchange="setTimeFormat('24h')"> 24-hour
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="confirm-hint">Time format preference is saved in your browser. Changes take effect the next time you open the deploy modal.</div>
+      </div>
+
       <!-- Install Command -->
       <div class="section-label">Agent Install Command</div>
       <div class="code-block" style="max-width: 100%;">
@@ -2418,15 +2471,15 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 
           <!-- Schedule (execution window) -->
           <div class="deploy-panel" data-panel="schedule">
-            <div class="deploy-policy-help">Tasks are only dispatched to agents during this window. Outside the window, deploys remain queued until the next eligible check-in. Leave start=0 and end=23 to allow any time.</div>
+            <div class="deploy-policy-help">Tasks are only dispatched during this window. Server timezone: <strong id="deploy-tz-label"></strong>. Outside the window, tasks stay queued until the next eligible check-in.</div>
             <div class="deploy-policy-grid" style="margin-top:10px;">
               <div>
-                <label class="deploy-input-label">Start hour</label>
-                <input type="number" min="0" max="23" class="form-control" id="deploy-schedule-start" value="0">
+                <label class="deploy-input-label">Start time</label>
+                <select class="form-control" id="deploy-schedule-start"></select>
               </div>
               <div>
-                <label class="deploy-input-label">End hour (inclusive)</label>
-                <input type="number" min="0" max="23" class="form-control" id="deploy-schedule-end" value="23">
+                <label class="deploy-input-label">End time (inclusive)</label>
+                <select class="form-control" id="deploy-schedule-end"></select>
               </div>
               <div class="full">
                 <label class="deploy-input-label">Allowed days</label>
@@ -2473,8 +2526,8 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
       </div>
 
       <!-- RIGHT: searchable host table OR tag picker -->
-      <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <div class="deploy-right-col">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-shrink:0;">
           <div class="deploy-col-title" style="margin-bottom:0;">Target</div>
           <div class="deploy-tabs" style="margin-bottom:0;">
             <button type="button" class="deploy-tab active" data-target-mode="hosts" onclick="setDeployTargetMode('hosts')">Hosts</button>
@@ -3763,6 +3816,13 @@ const DEFAULT_YAML_TEMPLATE = `name: New Task
 description: What this task does and when to run it.
 relevance: "e.g. web servers, database hosts"
 risk: standard
+
+# Optional: require specific output from each step (supports {{ inputs.x }} variables)
+# success_criteria:
+#   exit_code: 0
+#   output_contains: "restarted"
+#   output_regex: "^OK"
+
 actions:
   - id: step1
     type: restart_service
@@ -4314,6 +4374,40 @@ function highlightYamlValue(v) {
 }
 
 const DEPLOY_DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const VIGIL_TIMEZONE = '{{ vigil_timezone|escapejs }}';
+const VIGIL_TIME_FORMAT = '{{ vigil_time_format|escapejs }}';
+
+function _hour24ToLabel(h) {
+  const fmt = window._vigilTimeFormatOverride || VIGIL_TIME_FORMAT;
+  if (fmt === '24h') {
+    return h.toString().padStart(2, '0') + ':00';
+  }
+  if (h === 0)  return '12:00 AM';
+  if (h === 12) return '12:00 PM';
+  return h < 12 ? `${h}:00 AM` : `${h - 12}:00 PM`;
+}
+
+function _buildHourSelect(elId, selectedHour) {
+  const sel = document.getElementById(elId);
+  if (!sel) return;
+  sel.innerHTML = '';
+  for (let h = 0; h <= 23; h++) {
+    const opt = document.createElement('option');
+    opt.value = String(h);
+    opt.textContent = _hour24ToLabel(h);
+    if (h === selectedHour) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+function setTimeFormat(fmt) {
+  localStorage.setItem('vigil_time_format', fmt);
+  // Patch the module-level constant so next modal open uses new format
+  window._vigilTimeFormatOverride = fmt;
+  for (const r of document.querySelectorAll('input[name="time-format-radio"]')) {
+    r.checked = r.value === fmt;
+  }
+}
 
 function setDeployTab(tab) {
   for (const t of document.querySelectorAll('.deploy-tab[data-tab]')) {
@@ -4388,8 +4482,12 @@ function _readDeployDays() {
 function _populateDeployPolicy(spec) {
   // Schedule defaults from spec; otherwise full week, 0..23.
   const sched = (spec && spec.schedule && spec.schedule.window) || null;
-  document.getElementById('deploy-schedule-start').value = sched ? sched.start_hour ?? 0 : 0;
-  document.getElementById('deploy-schedule-end').value   = sched ? sched.end_hour   ?? 23 : 23;
+  const startH = sched ? (sched.start_hour ?? 0) : 0;
+  const endH   = sched ? (sched.end_hour   ?? 23) : 23;
+  _buildHourSelect('deploy-schedule-start', startH);
+  _buildHourSelect('deploy-schedule-end', endH);
+  const tzLabel = document.getElementById('deploy-tz-label');
+  if (tzLabel) tzLabel.textContent = VIGIL_TIMEZONE;
   _populateDeployDayChips(sched ? sched.days : [0,1,2,3,4,5,6]);
 
   // Retry defaults
@@ -4405,8 +4503,8 @@ function _populateDeployPolicy(spec) {
 }
 
 function _readDeployPolicy() {
-  const startH = Number(document.getElementById('deploy-schedule-start').value);
-  const endH   = Number(document.getElementById('deploy-schedule-end').value);
+  const startH = Number(document.getElementById('deploy-schedule-start').value || 0);
+  const endH   = Number(document.getElementById('deploy-schedule-end').value || 23);
   const days   = _readDeployDays();
   const schedule = { window: { start_hour: startH, end_hour: endH, days: days.length ? days : [0,1,2,3,4,5,6] } };
 
@@ -4594,54 +4692,74 @@ function toggleAllDeployHosts(checked) {
 
 function filterDeployHosts() { _renderDeployHostRows(); }
 
+// Cached fleet data — refreshed lazily (max once per 60s) so the deploy
+// modal opens instantly on repeat uses without waiting for API round-trips.
+let _deployHostCache = null;
+let _deployTagCache  = null;
+let _deployFleetFetchedAt = 0;
+
+async function _ensureFleetCache(force) {
+  const age = Date.now() - _deployFleetFetchedAt;
+  if (!force && _deployHostCache && age < 60_000) return;
+  const [hosts, tags] = await Promise.all([
+    apiJson('/api/v1/hosts/'),
+    apiJson('/api/v1/hosts/tags/').catch(() => []),
+  ]);
+  _deployHostCache = hosts.filter(h => h.status === 'online' && h.mode !== 'monitor');
+  _deployTagCache  = Array.isArray(tags) ? tags : [];
+  _deployFleetFetchedAt = Date.now();
+}
+
 async function openDeployModal(definitionId) {
+  // Show modal skeleton immediately so the UI feels instant.
+  document.getElementById('deploy-modal-title').textContent = 'Loading…';
+  document.getElementById('deploy-risk-label').innerHTML = '';
+  document.getElementById('deploy-yaml-view').innerHTML = '';
+  document.getElementById('deploy-totp').value = '';
+  document.getElementById('deploy-host-search').value = '';
+  deployState.definitionId = definitionId;
+  deployState.selectedHosts = new Set();
+  deployState.selectedTags = new Set();
+  document.getElementById('deploy-overlay').classList.add('open');
+  document.getElementById('deploy-modal').classList.add('open');
+  setDeployTab('yaml');
+
   try {
-    const def = await apiJson(`/api/v1/tasks/definitions/${definitionId}/`);
-    deployState.definitionId = definitionId;
+    // Fetch definition + fleet in parallel, fleet may come from cache.
+    const [def] = await Promise.all([
+      apiJson(`/api/v1/tasks/definitions/${definitionId}/`),
+      _ensureFleetCache(),
+    ]);
+
     deployState.spec = def.parsed_spec;
-    deployState.selectedHosts = new Set();
-    deployState.selectedTags = new Set();
     setDeployTargetMode('hosts');
     document.getElementById('deploy-modal-title').textContent = `Deploy — ${def.name}`;
     document.getElementById('deploy-risk-label').innerHTML = riskBadgeHtml(def.risk_level || 'standard');
 
-    // YAML preview with syntax highlighting (escape-safe — uses escHtml internally).
-    document.getElementById('deploy-yaml-view').innerHTML = highlightYaml(def.yaml_source || '');
+    // YAML highlighting deferred one frame so the modal paints first.
+    requestAnimationFrame(() => {
+      document.getElementById('deploy-yaml-view').innerHTML = highlightYaml(def.yaml_source || '');
+    });
 
-    // Reset active tab back to YAML each open
-    setDeployTab('yaml');
-
-    // Inputs section (hidden if the task declares no inputs).
     _renderDeployInputs((def.parsed_spec && def.parsed_spec.inputs) || []);
-
-    // Policy tabs (Schedule / Retry / Success Criteria) — hydrate from YAML.
     _populateDeployPolicy(def.parsed_spec || {});
 
-    const [hosts, tags] = await Promise.all([
-      apiJson('/api/v1/hosts/'),
-      apiJson('/api/v1/hosts/tags/').catch(() => []),
-    ]);
-    const eligible = hosts.filter(h => h.status === 'online' && h.mode !== 'monitor');
-    deployState.availableHosts = eligible;
-    deployState.availableTags = Array.isArray(tags) ? tags : [];
+    deployState.availableHosts = _deployHostCache || [];
+    deployState.availableTags  = _deployTagCache  || [];
     _renderDeployTagChips();
-    // If a card-level "Deploy" button stashed a preselect, honour it once.
+
     if (window._pendingDeployPreselectHost) {
       const preId = window._pendingDeployPreselectHost;
-      if (eligible.some(h => h.id === preId)) {
+      if (deployState.availableHosts.some(h => h.id === preId)) {
         deployState.selectedHosts.add(preId);
       }
       window._pendingDeployPreselectHost = null;
     }
     _renderDeployHostRows();
     updateDeployHostSummary();
-
-    document.getElementById('deploy-totp').value = '';
-    document.getElementById('deploy-host-search').value = '';
-
-    document.getElementById('deploy-overlay').classList.add('open');
-    document.getElementById('deploy-modal').classList.add('open');
   } catch (e) {
+    document.getElementById('deploy-overlay').classList.remove('open');
+    document.getElementById('deploy-modal').classList.remove('open');
     showToast('Failed to open deploy modal: ' + e.message, 'error');
   }
 }
@@ -5136,6 +5254,16 @@ async function adSyncNow() {
     btn.disabled = false; btn.style.opacity = '';
   }
 }
+
+// Restore time format preference from localStorage
+(function() {
+  const savedFmt = localStorage.getItem('vigil_time_format');
+  if (savedFmt) {
+    setTimeFormat(savedFmt);
+  } else {
+    setTimeFormat(VIGIL_TIME_FORMAT);
+  }
+})();
 </script>
 </body>
 </html>

@@ -1,3 +1,5 @@
+import zoneinfo
+
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import now
 from rest_framework import status
@@ -121,6 +123,13 @@ def checkin(request):
     # A previously offline host that successfully checks in is back online
     if host.status == Host.Status.OFFLINE:
         host.status = Host.Status.ONLINE
+        from apps.alerts.models import Alert as _Alert
+        _Alert.objects.filter(
+            host=host,
+            rule=None,
+            state=_Alert.State.FIRING,
+            message__startswith="Host offline:",
+        ).update(state=_Alert.State.RESOLVED, resolved_at=now())
 
     # Auto-tag based on intrinsic facts (OS family, mode). Runs after the
     # agent.yml merge so derived tags appear alongside operator-set ones.
@@ -181,12 +190,19 @@ def checkin(request):
     #   2. ``schedule.window`` — agents only receive tasks during the
     #      configured maintenance window. Tasks outside the window remain
     #      PENDING and are picked up at the next eligible checkin.
+    from django.conf import settings as _settings
     current = now()
+    _tz_name = getattr(_settings, "VIGIL_TIMEZONE", "UTC")
+    try:
+        _tz = zoneinfo.ZoneInfo(_tz_name)
+        _local = current.astimezone(_tz)
+    except Exception:
+        _local = current
     eligible: list[Task] = []
     candidates = list(Task.objects.filter(host=host, state=Task.State.PENDING))
     if candidates:
-        weekday = current.weekday()
-        hour = current.hour
+        weekday = _local.weekday()
+        hour = _local.hour
         for task in candidates:
             if task.not_before and task.not_before > current:
                 continue

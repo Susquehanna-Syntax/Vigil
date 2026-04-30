@@ -121,9 +121,26 @@ def mark_stale_hosts_offline():
         status=Host.Status.ONLINE,
         last_checkin__lt=cutoff,
     )
+    stale_list = list(stale)
     count = stale.update(status=Host.Status.OFFLINE)
     if count:
         logger.info("Marked %d stale hosts as offline", count)
+        for host in stale_list:
+            already_firing = Alert.objects.filter(
+                host=host,
+                rule=None,
+                state__in=[Alert.State.FIRING, Alert.State.ACKNOWLEDGED],
+                message__startswith="Host offline:",
+            ).exists()
+            if not already_firing:
+                Alert.objects.create(
+                    host=host,
+                    rule=None,
+                    state=Alert.State.FIRING,
+                    severity="warning",
+                    message=f"Host offline: {host.hostname} has not checked in for 5+ minutes",
+                    metric_value=None,
+                )
     return f"{count} hosts marked offline"
 
 
