@@ -391,13 +391,15 @@ def _validate_schedule(raw: Any) -> dict[str, Any] | None:
 
         schedule:
           window:
-            start_hour: 8     # 0..23 inclusive
-            end_hour:   17    # 0..23 inclusive
+            start_hour:   8   # 0..23 inclusive
+            start_minute: 30  # 0..59, default 0
+            end_hour:    17   # 0..23 inclusive
+            end_minute:   0   # 0..59, default 0
             days: [mon, tue, wed, thu, fri]   # optional, defaults to all 7
 
     Returns a canonical ``{"window": {...}}`` dict or ``None`` if no schedule
-    block is provided. ``end_hour`` is inclusive — a window of 8..17 means a
-    task may dispatch at any time during 8:00..17:59.
+    block is provided. ``end_hour``/``end_minute`` is inclusive — a window of
+    08:00..17:00 means a task may dispatch any time from 08:00 through 17:59.
     """
     if raw is None:
         return None
@@ -421,8 +423,21 @@ def _validate_schedule(raw: Any) -> dict[str, Any] | None:
             raise SpecError(f"schedule.window.{name} must be between 0 and 23")
         return v
 
+    def _minute(name: str, default: int = 0) -> int:
+        v = window.get(name, default)
+        if isinstance(v, bool) or not isinstance(v, int):
+            try:
+                v = int(v)
+            except (TypeError, ValueError):
+                raise SpecError(f"schedule.window.{name} must be an integer 0..59")
+        if not 0 <= v <= 59:
+            raise SpecError(f"schedule.window.{name} must be between 0 and 59")
+        return v
+
     start_hour = _hour("start_hour", 0)
+    start_minute = _minute("start_minute", 0)
     end_hour = _hour("end_hour", 23)
+    end_minute = _minute("end_minute", 0)
 
     raw_days = window.get("days")
     if raw_days is None:
@@ -452,7 +467,9 @@ def _validate_schedule(raw: Any) -> dict[str, Any] | None:
     return {
         "window": {
             "start_hour": start_hour,
+            "start_minute": start_minute,
             "end_hour": end_hour,
+            "end_minute": end_minute,
             "days": days,
         }
     }
@@ -557,15 +574,17 @@ def _validate_success_criteria(raw: Any) -> dict[str, Any] | None:
     return canonical or None
 
 
-def schedule_window_active(schedule: dict[str, Any] | None, *, weekday: int, hour: int) -> bool:
-    """Return True if *schedule* allows dispatch at the given weekday/hour.
+def schedule_window_active(
+    schedule: dict[str, Any] | None, *, weekday: int, hour: int, minute: int = 0
+) -> bool:
+    """Return True if *schedule* allows dispatch at the given weekday/time.
 
     Used by the dispatch path (hosts/views.py) to decide whether a pending
     task is eligible for immediate handoff. ``weekday`` follows the Python
-    convention (0 = Monday). ``hour`` is 0..23.
+    convention (0 = Monday). ``hour`` is 0..23, ``minute`` is 0..59.
 
-    A task with no schedule (``None``) is always active. ``end_hour`` is
-    inclusive: an 8..17 window includes 17:59:59.
+    A task with no schedule (``None``) is always active. The end boundary is
+    inclusive at the hour level: a 08:00–17:00 window includes 17:59:59.
     """
     if not schedule:
         return True
@@ -577,12 +596,13 @@ def schedule_window_active(schedule: dict[str, Any] | None, *, weekday: int, hou
     if weekday not in days:
         return False
 
-    start = int(window.get("start_hour", 0))
-    end = int(window.get("end_hour", 23))
+    start = int(window.get("start_hour", 0)) * 60 + int(window.get("start_minute", 0))
+    end   = int(window.get("end_hour", 23))  * 60 + int(window.get("end_minute", 0))
+    now_m = hour * 60 + minute
     if start <= end:
-        return start <= hour <= end
-    # Wrap-around window (e.g. 22..6 — overnight maintenance)
-    return hour >= start or hour <= end
+        return start <= now_m <= end + 59  # end hour is inclusive through :59
+    # Wrap-around window (e.g. 22:00..06:00 — overnight maintenance)
+    return now_m >= start or now_m <= end + 59
 
 
 def _check_variable_refs(value: Any, declared_ids: set[str], where: str) -> None:

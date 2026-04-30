@@ -2188,24 +2188,10 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
         <div class="totp-sub" style="margin-bottom:14px;">
           Server timezone controls when schedule windows are evaluated. Set <code style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sky);">VIGIL_TIMEZONE</code> in your <code style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sky);">.env</code> to an <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones" target="_blank" style="color:var(--sky);">IANA timezone name</a> and restart the server.
         </div>
-        <div class="deploy-policy-grid" style="margin-bottom:10px;">
-          <div>
-            <label class="deploy-input-label">Server Timezone</label>
-            <div class="form-control" style="background:var(--s3);cursor:default;color:var(--text-2);" id="settings-tz-display">{{ vigil_timezone }}</div>
-          </div>
-          <div>
-            <label class="deploy-input-label">Time Format</label>
-            <div style="display:flex;gap:8px;margin-top:2px;">
-              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
-                <input type="radio" name="time-format-radio" value="12h" style="accent-color:var(--sky);" onchange="setTimeFormat('12h')"> 12-hour
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
-                <input type="radio" name="time-format-radio" value="24h" style="accent-color:var(--sky);" onchange="setTimeFormat('24h')"> 24-hour
-              </label>
-            </div>
-          </div>
+        <div style="max-width:280px;">
+          <label class="deploy-input-label">Server Timezone</label>
+          <div class="form-control" style="background:var(--s3);cursor:default;color:var(--text-2);" id="settings-tz-display">{{ vigil_timezone }}</div>
         </div>
-        <div class="confirm-hint">Time format preference is saved in your browser. Changes take effect the next time you open the deploy modal.</div>
       </div>
 
       <!-- Install Command -->
@@ -2471,15 +2457,15 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 
           <!-- Schedule (execution window) -->
           <div class="deploy-panel" data-panel="schedule">
-            <div class="deploy-policy-help">Tasks are only dispatched during this window. Server timezone: <strong id="deploy-tz-label"></strong>. Outside the window, tasks stay queued until the next eligible check-in.</div>
+            <div class="deploy-policy-help">Tasks are only dispatched during this window (server timezone: <strong id="deploy-tz-label"></strong>). Outside the window, tasks stay queued until the next eligible check-in.</div>
             <div class="deploy-policy-grid" style="margin-top:10px;">
               <div>
                 <label class="deploy-input-label">Start time</label>
-                <select class="form-control" id="deploy-schedule-start"></select>
+                <input type="time" class="form-control" id="deploy-schedule-start" value="08:00">
               </div>
               <div>
                 <label class="deploy-input-label">End time (inclusive)</label>
-                <select class="form-control" id="deploy-schedule-end"></select>
+                <input type="time" class="form-control" id="deploy-schedule-end" value="17:00">
               </div>
               <div class="full">
                 <label class="deploy-input-label">Allowed days</label>
@@ -3817,7 +3803,22 @@ description: What this task does and when to run it.
 relevance: "e.g. web servers, database hosts"
 risk: standard
 
-# Optional: require specific output from each step (supports {{ inputs.x }} variables)
+# Optional: restrict when tasks are dispatched (server timezone).
+# schedule:
+#   window:
+#     start_hour: 8      # 0-23
+#     start_minute: 0    # 0-59 (default 0)
+#     end_hour: 17       # inclusive through end_hour:59
+#     end_minute: 0      # 0-59 (default 0)
+#     days: [mon, tue, wed, thu, fri]
+
+# Optional: retry on failure
+# on_failure:
+#   retry:
+#     attempts: 3
+#     delay_seconds: 60
+
+# Optional: require specific output (supports {{ inputs.x }} variables)
 # success_criteria:
 #   exit_code: 0
 #   output_contains: "restarted"
@@ -4375,39 +4376,7 @@ function highlightYamlValue(v) {
 
 const DEPLOY_DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const VIGIL_TIMEZONE = '{{ vigil_timezone|escapejs }}';
-const VIGIL_TIME_FORMAT = '{{ vigil_time_format|escapejs }}';
 
-function _hour24ToLabel(h) {
-  const fmt = window._vigilTimeFormatOverride || VIGIL_TIME_FORMAT;
-  if (fmt === '24h') {
-    return h.toString().padStart(2, '0') + ':00';
-  }
-  if (h === 0)  return '12:00 AM';
-  if (h === 12) return '12:00 PM';
-  return h < 12 ? `${h}:00 AM` : `${h - 12}:00 PM`;
-}
-
-function _buildHourSelect(elId, selectedHour) {
-  const sel = document.getElementById(elId);
-  if (!sel) return;
-  sel.innerHTML = '';
-  for (let h = 0; h <= 23; h++) {
-    const opt = document.createElement('option');
-    opt.value = String(h);
-    opt.textContent = _hour24ToLabel(h);
-    if (h === selectedHour) opt.selected = true;
-    sel.appendChild(opt);
-  }
-}
-
-function setTimeFormat(fmt) {
-  localStorage.setItem('vigil_time_format', fmt);
-  // Patch the module-level constant so next modal open uses new format
-  window._vigilTimeFormatOverride = fmt;
-  for (const r of document.querySelectorAll('input[name="time-format-radio"]')) {
-    r.checked = r.value === fmt;
-  }
-}
 
 function setDeployTab(tab) {
   for (const t of document.querySelectorAll('.deploy-tab[data-tab]')) {
@@ -4479,13 +4448,17 @@ function _readDeployDays() {
   return out.sort((a,b) => a-b);
 }
 
+function _toTimeValue(hour, minute) {
+  return String(hour ?? 0).padStart(2,'0') + ':' + String(minute ?? 0).padStart(2,'0');
+}
+
 function _populateDeployPolicy(spec) {
-  // Schedule defaults from spec; otherwise full week, 0..23.
+  // Schedule defaults from spec; otherwise full week, 00:00..23:00.
   const sched = (spec && spec.schedule && spec.schedule.window) || null;
-  const startH = sched ? (sched.start_hour ?? 0) : 0;
-  const endH   = sched ? (sched.end_hour   ?? 23) : 23;
-  _buildHourSelect('deploy-schedule-start', startH);
-  _buildHourSelect('deploy-schedule-end', endH);
+  document.getElementById('deploy-schedule-start').value = sched
+    ? _toTimeValue(sched.start_hour, sched.start_minute) : '08:00';
+  document.getElementById('deploy-schedule-end').value = sched
+    ? _toTimeValue(sched.end_hour, sched.end_minute) : '17:00';
   const tzLabel = document.getElementById('deploy-tz-label');
   if (tzLabel) tzLabel.textContent = VIGIL_TIMEZONE;
   _populateDeployDayChips(sched ? sched.days : [0,1,2,3,4,5,6]);
@@ -4502,11 +4475,22 @@ function _populateDeployPolicy(spec) {
   document.getElementById('deploy-criteria-regex').value    = (crit && crit.output_regex) || '';
 }
 
+function _parseTimeInput(id, defaultHour, defaultMinute = 0) {
+  const val = (document.getElementById(id)?.value || '').trim();
+  if (!val) return [defaultHour, defaultMinute];
+  const [hStr, mStr] = val.split(':');
+  return [parseInt(hStr, 10) || 0, parseInt(mStr, 10) || 0];
+}
+
 function _readDeployPolicy() {
-  const startH = Number(document.getElementById('deploy-schedule-start').value || 0);
-  const endH   = Number(document.getElementById('deploy-schedule-end').value || 23);
-  const days   = _readDeployDays();
-  const schedule = { window: { start_hour: startH, end_hour: endH, days: days.length ? days : [0,1,2,3,4,5,6] } };
+  const [startH, startM] = _parseTimeInput('deploy-schedule-start', 8, 0);
+  const [endH,   endM]   = _parseTimeInput('deploy-schedule-end',   17, 0);
+  const days = _readDeployDays();
+  const schedule = { window: {
+    start_hour: startH, start_minute: startM,
+    end_hour: endH,     end_minute: endM,
+    days: days.length ? days : [0,1,2,3,4,5,6],
+  } };
 
   const attempts = Number(document.getElementById('deploy-retry-attempts').value || 0);
   const delay    = Number(document.getElementById('deploy-retry-delay').value || 0);
@@ -5255,15 +5239,6 @@ async function adSyncNow() {
   }
 }
 
-// Restore time format preference from localStorage
-(function() {
-  const savedFmt = localStorage.getItem('vigil_time_format');
-  if (savedFmt) {
-    setTimeFormat(savedFmt);
-  } else {
-    setTimeFormat(VIGIL_TIME_FORMAT);
-  }
-})();
 </script>
 </body>
 </html>
