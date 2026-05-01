@@ -515,6 +515,10 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .host-card-actions .btn {
   padding: 6px 12px; font-size: 12px;
 }
+.btn-rose-ghost {
+  color: var(--rose); border-color: transparent; background: transparent;
+}
+.btn-rose-ghost:hover { background: rgba(242,139,130,.12); border-color: var(--rose); }
 .host-checkin {
   font-size: 11px; color: var(--text-3);
   font-family: 'IBM Plex Mono', monospace;
@@ -1498,33 +1502,55 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 /* ═══════════════════════════════════════════
    INVENTORY TABLE
    ═══════════════════════════════════════════ */
-.inv-table {
-  width: 100%;
-  background: var(--s1);
-  border-radius: var(--r-md);
+/* Inventory scroll wrapper — table scrolls inside, header sticks */
+.inv-scroll-wrap {
+  overflow: auto;
+  max-height: calc(100vh - 220px);
   border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.inv-table {
+  width: max-content;
+  min-width: 100%;
+  background: var(--s1);
   border-collapse: separate;
   border-spacing: 0;
-  overflow: hidden;
 }
-.inv-table thead th {
-  position: sticky; top: 0;
+/* ── Sticky header row 1: labels ── */
+.inv-table thead tr:first-child th {
+  position: sticky; top: 0; z-index: 3;
+  height: 38px;
   background: var(--s2);
   text-align: left;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: var(--text-3);
-  padding: 10px 14px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+  text-transform: uppercase; color: var(--text-3);
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  cursor: pointer; user-select: none;
+}
+.inv-table thead tr:first-child th:hover { color: var(--text-1); }
+/* ── Sticky header row 2: filters ── */
+.inv-table thead tr.inv-filter-row th {
+  position: sticky; top: 38px; z-index: 2;
+  background: var(--s2);
+  padding: 5px 8px 7px;
   border-bottom: 1px solid var(--border);
 }
+.inv-col-filter {
+  width: 100%; min-width: 60px;
+  background: var(--s1); border: 1px solid var(--s3);
+  border-radius: 4px; color: var(--text-1);
+  font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+  padding: 3px 6px; outline: none; box-sizing: border-box;
+}
+.inv-col-filter:focus { border-color: var(--sky); }
+.inv-col-filter.active { border-color: var(--sky); background: rgba(99,179,237,.06); }
+/* ── Table body ── */
 .inv-table tbody td {
-  padding: 11px 14px;
-  font-size: 12px;
-  color: var(--text-1);
-  border-bottom: 1px solid var(--border);
-  vertical-align: middle;
+  padding: 11px 14px; font-size: 12px;
+  color: var(--text-1); border-bottom: 1px solid var(--border);
+  vertical-align: middle; white-space: nowrap;
 }
 .inv-table tbody tr:last-child td { border-bottom: none; }
 .inv-table tbody tr { cursor: pointer; transition: background 0.12s; }
@@ -1535,6 +1561,23 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   border-radius: 50%; margin-right: 6px; vertical-align: middle;
 }
 .inv-table .empty-cell { color: var(--text-3); font-style: italic; font-size: 11px; }
+/* Sort arrow */
+.inv-sort-arrow { color: var(--sky); margin-left: 4px; font-style: normal; }
+/* Drag states */
+.inv-th-dragging { opacity: 0.35; }
+.inv-th-drag-over { box-shadow: inset 2px 0 0 var(--sky); }
+/* Column editor dropdown */
+.inv-col-editor {
+  position: absolute; top: 100%; right: 0; z-index: 200;
+  background: var(--s2); border: 1px solid var(--s3); border-radius: var(--r-md);
+  padding: 14px 16px; min-width: 200px; max-height: 420px; overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,.4);
+}
+.inv-col-editor-row {
+  display: flex; align-items: center; gap: 8px; padding: 5px 0;
+  font-size: 13px; cursor: pointer; user-select: none;
+}
+.inv-col-editor-row input[type="checkbox"] { accent-color: var(--sky); cursor: pointer; }
 .inv-empty {
   background: var(--s1); border-radius: var(--r-md);
   padding: 60px 20px; text-align: center;
@@ -2268,6 +2311,13 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
           <input type="text" class="form-control" id="inv-search" placeholder="Search inventory…" oninput="renderInventory()" style="width:240px;font-size:13px;">
+          <div style="position:relative;display:inline-block;" id="inv-col-editor-wrap">
+            <button class="btn btn-outline btn-sm" onclick="toggleInvColEditor()" id="inv-col-editor-btn">
+              <svg viewBox="0 0 24 24" width="14" height="14"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              Columns
+            </button>
+            <div class="inv-col-editor" id="inv-col-editor" style="display:none;"></div>
+          </div>
           <button class="btn btn-outline btn-sm" onclick="exportInventoryCsv()">
             <svg viewBox="0 0 24 24" width="14" height="14"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Export CSV
@@ -2417,6 +2467,15 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
     <div class="detail-actions" id="detail-actions">
       <!-- populated by JS based on host mode -->
     </div>
+  </div>
+
+  <div class="detail-section" style="margin-top:auto; padding-top:24px; border-top:1px solid var(--s3);">
+    <button type="button" class="btn btn-outline btn-rose-ghost" style="width:100%;" id="detail-delete-btn"
+            onclick="deleteHost(document.getElementById('detail-panel').dataset.hostId, document.getElementById('detail-panel').dataset.hostname, this)">
+      <svg viewBox="0 0 24 24" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+      Remove Agent
+    </button>
+    <div class="confirm-hint" style="margin-top:6px;">Permanently removes this agent and all its data. The agent will re-enroll on next check-in if still running.</div>
   </div>
 </div>
 
@@ -2702,6 +2761,10 @@ function openHostDetail(card) {
     `;
   }
 
+  // Store host identity on the panel for the delete button.
+  panel.dataset.hostId = d.id;
+  panel.dataset.hostname = d.hostname;
+
   overlay.classList.add('open');
   panel.classList.add('open');
 
@@ -2965,6 +3028,42 @@ async function rejectHost(hostId, btn) {
     showToast('Host rejected', 'success');
     btn.closest('.enroll-card').style.opacity = '0.4';
     setTimeout(() => location.reload(), 800);
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+    btn.disabled = false;
+  }
+}
+
+async function deleteHost(hostId, hostname, btn) {
+  if (!hostId) return;
+  // Two-step confirm: first click arms, second click fires.
+  if (btn.dataset.armed !== '1') {
+    btn.dataset.armed = '1';
+    const orig = btn.innerHTML;
+    btn.innerHTML = btn.innerHTML.replace(/Remove.*/, 'Confirm remove?');
+    btn.style.background = 'rgba(242,139,130,.18)';
+    setTimeout(() => {
+      btn.dataset.armed = '0';
+      btn.innerHTML = orig;
+      btn.style.background = '';
+    }, 3000);
+    return;
+  }
+  try {
+    btn.disabled = true;
+    const resp = await fetch(`/api/v1/hosts/${hostId}/`, {
+      method: 'DELETE',
+      headers: { 'X-CSRFToken': getCsrf() },
+      credentials: 'same-origin',
+    });
+    if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || 'Delete failed');
+    showToast(`${hostname} removed`, 'success');
+    closeHostDetail();
+    // Remove the card from the DOM immediately.
+    const card = document.querySelector(`.host-card[data-id="${hostId}"]`);
+    if (card) card.remove();
+    // Invalidate fleet cache so the deploy modal won't show the deleted host.
+    _deployHostCache = null;
   } catch (e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false;
@@ -4980,7 +5079,130 @@ function updateHostCardVulnBadges(summaries) {
 /* ═══════════════════════════════════════════
    INVENTORY PAGE
    ═══════════════════════════════════════════ */
-const inventoryState = { rows: [], customColumns: [] };
+const inventoryState = {
+  rows: [], customColumns: [],
+  sortCol: null, sortDir: 'asc',
+  colFilters: {},
+  dragSrcColId: null,
+};
+
+// ── Column definitions ──────────────────────────────────────────────────────
+// fn(row) → <td>   val(row) → string used for sort/filter
+const INV_COLUMNS = [
+  { id: 'hostname',        label: 'Host',         dv: true,
+    fn: r => _hostCell(r),                                              val: r => r.hostname || '' },
+  { id: 'ip_address',      label: 'IP',           dv: true,
+    fn: r => _cellText(r.ip_address || '', 'mono'),                     val: r => r.ip_address || '' },
+  { id: 'os',              label: 'OS (agent)',   dv: true,
+    fn: r => _cellText(r.os || ''),                                     val: r => r.os || '' },
+  { id: 'os_name',         label: 'OS Name',      dv: false,
+    fn: r => _cellText(r.os_name || ''),                                val: r => r.os_name || '' },
+  { id: 'os_version',      label: 'OS Version',   dv: false,
+    fn: r => _cellText(r.os_version || '', 'mono'),                     val: r => r.os_version || '' },
+  { id: 'kernel_version',  label: 'Kernel',       dv: false,
+    fn: r => _cellText(r.kernel_version || '', 'mono'),                 val: r => r.kernel_version || '' },
+  { id: 'architecture',    label: 'Arch',         dv: false,
+    fn: r => _cellText(r.architecture || ''),                           val: r => r.architecture || '' },
+  { id: 'uptime',          label: 'Uptime',       dv: false,
+    fn: r => _cellText(r.uptime_seconds ? _formatUptime(r.uptime_seconds) : ''),
+    val: r => r.uptime_seconds != null ? String(r.uptime_seconds) : '' },
+  { id: 'last_logged_user',label: 'Last User',    dv: false,
+    fn: r => _cellText(r.last_logged_user || ''),                       val: r => r.last_logged_user || '' },
+  { id: 'manufacturer',    label: 'Manufacturer', dv: true,
+    fn: r => _cellText(r.manufacturer || ''),                           val: r => r.manufacturer || '' },
+  { id: 'model_name',      label: 'Model',        dv: true,
+    fn: r => _cellText(r.model_name || ''),                             val: r => r.model_name || '' },
+  { id: 'service_tag',     label: 'Service Tag',  dv: true,
+    fn: r => _cellText(r.service_tag || '', 'mono'),                    val: r => r.service_tag || '' },
+  { id: 'cpu_model',       label: 'CPU',          dv: true,
+    fn: r => _cellText(r.cpu_model || ''),                              val: r => r.cpu_model || '' },
+  { id: 'cpu_cores',       label: 'Cores',        dv: true,
+    fn: r => _cellText(r.cpu_cores ? String(r.cpu_cores) : ''),        val: r => r.cpu_cores != null ? String(r.cpu_cores) : '' },
+  { id: 'ram',             label: 'RAM',          dv: true,
+    fn: r => _cellText(r.ram_total_bytes ? _formatBytes(r.ram_total_bytes) : '', 'mono'),
+    val: r => r.ram_total_bytes != null ? String(r.ram_total_bytes) : '' },
+  { id: 'mac',             label: 'MAC',          dv: true,
+    fn: r => _cellText(_firstMac(r.mac_addresses) || '', 'mono'),       val: r => _firstMac(r.mac_addresses) || '' },
+  { id: 'bios_version',    label: 'BIOS',         dv: false,
+    fn: r => _cellText(r.bios_version || '', 'mono'),                   val: r => r.bios_version || '' },
+  { id: 'bios_date',       label: 'BIOS Date',    dv: false,
+    fn: r => _cellText(r.bios_date || ''),                              val: r => r.bios_date || '' },
+  { id: 'system_timezone', label: 'Timezone',     dv: false,
+    fn: r => _cellText(r.system_timezone || ''),                        val: r => r.system_timezone || '' },
+  { id: 'tags',            label: 'Tags',         dv: false,
+    fn: r => _cellText((r.tags || []).join(', ')),                      val: r => (r.tags || []).join(', ') },
+  { id: 'last_seen',       label: 'Last Seen',    dv: true,
+    fn: r => _cellText(r.last_checkin ? new Date(r.last_checkin).toLocaleString() : 'Never', 'mono'),
+    val: r => r.last_checkin || '' },
+];
+
+function _invVisibleIds() {
+  const saved = localStorage.getItem('vigil_inv_cols');
+  if (saved) { try { return new Set(JSON.parse(saved)); } catch {} }
+  return new Set(INV_COLUMNS.filter(c => c.dv).map(c => c.id));
+}
+function _invSaveVisible(ids) {
+  localStorage.setItem('vigil_inv_cols', JSON.stringify([...ids]));
+}
+
+function _invColOrder() {
+  const saved = localStorage.getItem('vigil_inv_col_order');
+  if (saved) { try { return JSON.parse(saved); } catch {} }
+  return INV_COLUMNS.map(c => c.id);
+}
+function _invSaveOrder(ids) {
+  localStorage.setItem('vigil_inv_col_order', JSON.stringify(ids));
+}
+
+function _getActiveCols() {
+  const visible = _invVisibleIds();
+  const order = _invColOrder();
+  const byId = Object.fromEntries(INV_COLUMNS.map(c => [c.id, c]));
+  const inOrder = new Set(order);
+  const orderedStatic = order.filter(id => byId[id] && visible.has(id)).map(id => byId[id]);
+  const extras = INV_COLUMNS.filter(c => visible.has(c.id) && !inOrder.has(c.id));
+  const customColDefs = (inventoryState.customColumns || []).map(col => ({
+    id: 'custom__' + col, label: col,
+    fn: r => _cellText(String((r.custom_columns || {})[col] ?? '')),
+    val: r => String((r.custom_columns || {})[col] ?? ''),
+  }));
+  return [...orderedStatic, ...extras, ...customColDefs];
+}
+
+function toggleInvColEditor() {
+  const panel = document.getElementById('inv-col-editor');
+  if (!panel) return;
+  if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
+
+  const visible = _invVisibleIds();
+  panel.innerHTML = '';
+  for (const col of INV_COLUMNS) {
+    const row = document.createElement('label');
+    row.className = 'inv-col-editor-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = visible.has(col.id);
+    cb.onchange = () => {
+      const cur = _invVisibleIds();
+      cb.checked ? cur.add(col.id) : cur.delete(col.id);
+      _invSaveVisible(cur);
+      renderInventory();
+    };
+    row.appendChild(cb);
+    row.appendChild(document.createTextNode(col.label));
+    panel.appendChild(row);
+  }
+  panel.style.display = 'block';
+  setTimeout(() => {
+    function _outside(e) {
+      if (!document.getElementById('inv-col-editor-wrap')?.contains(e.target)) {
+        panel.style.display = 'none';
+        document.removeEventListener('click', _outside);
+      }
+    }
+    document.addEventListener('click', _outside);
+  }, 0);
+}
 
 function _formatBytes(value) {
   if (!value) return '—';
@@ -4990,11 +5212,19 @@ function _formatBytes(value) {
   return v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2) + ' ' + units[i];
 }
 
+function _formatUptime(seconds) {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
 function _firstMac(macMap) {
   if (!macMap || typeof macMap !== 'object') return '';
   const entries = Object.entries(macMap);
   if (!entries.length) return '';
-  // Prefer eth/en interfaces over wlan or virtual.
   entries.sort(([a],[b]) => {
     const score = (n) => (/^en|^eth/.test(n) ? 0 : /wl/.test(n) ? 1 : 2);
     return score(a) - score(b);
@@ -5021,66 +5251,162 @@ function renderInventory() {
   const content = document.getElementById('inv-content');
   const q = (document.getElementById('inv-search')?.value || '').trim().toLowerCase();
   let rows = inventoryState.rows;
+
+  // Global search across all text fields
   if (q) {
     rows = rows.filter(r => {
       const hay = [
-        r.hostname, r.os, r.ip_address, r.manufacturer,
-        r.model_name, r.service_tag, r.cpu_model,
+        r.hostname, r.os, r.os_name, r.os_version, r.kernel_version,
+        r.ip_address, r.manufacturer, r.model_name, r.service_tag,
+        r.cpu_model, r.architecture, r.last_logged_user, r.system_timezone,
         ...(r.tags || []),
       ].filter(Boolean).join(' ').toLowerCase();
       return hay.includes(q);
     });
   }
+
+  // Per-column filters — prefix "=" for exact match, otherwise contains
+  const allCols = _getActiveCols();
+  rows = rows.filter(r => {
+    for (const col of allCols) {
+      const f = (inventoryState.colFilters[col.id] || '').trim();
+      if (!f) continue;
+      const cellVal = (col.val ? col.val(r) : '').toLowerCase();
+      if (f.startsWith('=')) {
+        if (cellVal !== f.slice(1).toLowerCase()) return false;
+      } else {
+        if (!cellVal.includes(f.toLowerCase())) return false;
+      }
+    }
+    return true;
+  });
+
+  // Sorting
+  const { sortCol, sortDir } = inventoryState;
+  if (sortCol) {
+    const sc = allCols.find(c => c.id === sortCol);
+    if (sc && sc.val) {
+      rows = [...rows].sort((a, b) => {
+        const va = sc.val(a), vb = sc.val(b);
+        const na = parseFloat(va), nb = parseFloat(vb);
+        const cmp = (!isNaN(na) && !isNaN(nb)) ? na - nb : va.localeCompare(vb);
+        return sortDir === 'asc' ? cmp : -cmp;
+      });
+    }
+  }
+
+  const anyFilter = q || Object.values(inventoryState.colFilters).some(v => v.trim());
   if (!rows.length) {
     const msg = document.createElement('div');
     msg.className = 'inv-empty';
-    msg.textContent = q ? 'No matching inventory rows.' : 'No agents have reported inventory yet.';
+    msg.textContent = anyFilter ? 'No matching inventory rows.' : 'No agents have reported inventory yet.';
     content.replaceChildren(msg);
     return;
   }
 
-  const customCols = inventoryState.customColumns;
-  const headers = ['Host', 'IP', 'Manufacturer', 'Model', 'Service Tag', 'CPU', 'Cores', 'RAM', 'MAC', ...customCols, 'Last Seen'];
+  const wrap = document.createElement('div');
+  wrap.className = 'inv-scroll-wrap';
 
   const table = document.createElement('table');
   table.className = 'inv-table';
   const thead = document.createElement('thead');
-  const tr = document.createElement('tr');
-  for (const h of headers) {
+
+  // ── Row 1: column labels (sortable + draggable) ──
+  const labelTr = document.createElement('tr');
+  for (const col of allCols) {
     const th = document.createElement('th');
-    th.textContent = h;
-    tr.appendChild(th);
+    th.dataset.colId = col.id;
+    th.draggable = !col.id.startsWith('custom__');
+
+    const span = document.createElement('span');
+    span.textContent = col.label;
+    th.appendChild(span);
+
+    if (sortCol === col.id) {
+      const arrow = document.createElement('span');
+      arrow.className = 'inv-sort-arrow';
+      arrow.textContent = sortDir === 'asc' ? '↑' : '↓';
+      th.appendChild(arrow);
+    }
+
+    // Sort on click
+    th.addEventListener('click', () => {
+      if (inventoryState.sortCol === col.id) {
+        inventoryState.sortDir = inventoryState.sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        inventoryState.sortCol = col.id;
+        inventoryState.sortDir = 'asc';
+      }
+      renderInventory();
+    });
+
+    // Drag-to-reorder
+    th.addEventListener('dragstart', e => {
+      inventoryState.dragSrcColId = col.id;
+      th.classList.add('inv-th-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    th.addEventListener('dragend', () => {
+      th.classList.remove('inv-th-dragging');
+      document.querySelectorAll('.inv-th-drag-over').forEach(el => el.classList.remove('inv-th-drag-over'));
+    });
+    th.addEventListener('dragover', e => { e.preventDefault(); th.classList.add('inv-th-drag-over'); });
+    th.addEventListener('dragleave', () => th.classList.remove('inv-th-drag-over'));
+    th.addEventListener('drop', e => {
+      e.preventDefault();
+      th.classList.remove('inv-th-drag-over');
+      const srcId = inventoryState.dragSrcColId;
+      const dstId = col.id;
+      if (srcId && srcId !== dstId) {
+        const order = _invColOrder();
+        const si = order.indexOf(srcId), di = order.indexOf(dstId);
+        if (si !== -1 && di !== -1) { order.splice(si, 1); order.splice(di, 0, srcId); _invSaveOrder(order); }
+        else if (si !== -1) { order.splice(si, 1); order.push(srcId); _invSaveOrder(order); }
+        renderInventory();
+      }
+    });
+
+    labelTr.appendChild(th);
   }
-  thead.appendChild(tr);
+  thead.appendChild(labelTr);
+
+  // ── Row 2: per-column filter inputs ──
+  const filterTr = document.createElement('tr');
+  filterTr.className = 'inv-filter-row';
+  for (const col of allCols) {
+    const th = document.createElement('th');
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'inv-col-filter' + (inventoryState.colFilters[col.id] ? ' active' : '');
+    inp.placeholder = '…';
+    inp.value = inventoryState.colFilters[col.id] || '';
+    inp.title = 'Contains match  |  prefix = for exact  (e.g. =Ubuntu)';
+    inp.addEventListener('input', e => {
+      e.stopPropagation();
+      inventoryState.colFilters[col.id] = inp.value;
+      inp.classList.toggle('active', !!inp.value);
+      renderInventory();
+    });
+    inp.addEventListener('click', e => e.stopPropagation());
+    inp.addEventListener('keydown', e => e.stopPropagation());
+    th.appendChild(inp);
+    filterTr.appendChild(th);
+  }
+  thead.appendChild(filterTr);
+
   table.appendChild(thead);
 
+  // ── Body ──
   const tbody = document.createElement('tbody');
   for (const r of rows) {
     const row = document.createElement('tr');
     row.addEventListener('click', () => openInventoryDetail(r));
-
-    const cells = [
-      _hostCell(r),
-      _cellText(r.ip_address || '', 'mono'),
-      _cellText(r.manufacturer || ''),
-      _cellText(r.model_name || ''),
-      _cellText(r.service_tag || '', 'mono'),
-      _cellText(r.cpu_model || ''),
-      _cellText(r.cpu_cores ? String(r.cpu_cores) : ''),
-      _cellText(r.ram_total_bytes ? _formatBytes(r.ram_total_bytes) : '', 'mono'),
-      _cellText(_firstMac(r.mac_addresses) || '', 'mono'),
-    ];
-    for (const col of customCols) {
-      const v = (r.custom_columns || {})[col];
-      cells.push(_cellText(v == null ? '' : String(v)));
-    }
-    cells.push(_cellText(r.last_checkin ? new Date(r.last_checkin).toLocaleString() : 'Never', 'mono'));
-    cells.forEach(c => row.appendChild(c));
+    for (const col of allCols) row.appendChild(col.fn(r));
     tbody.appendChild(row);
   }
   table.appendChild(tbody);
-
-  content.replaceChildren(table);
+  wrap.appendChild(table);
+  content.replaceChildren(wrap);
 }
 
 function _hostCell(r) {
@@ -5119,7 +5445,12 @@ function exportInventoryCsv() {
     return;
   }
   const customCols = inventoryState.customColumns;
-  const headers = ['hostname','status','os','ip_address','manufacturer','model','service_tag','cpu_model','cpu_cores','ram_total_bytes','mac_address','tags', ...customCols,'last_checkin'];
+  const headers = [
+    'hostname','status','os','os_name','os_version','kernel_version','architecture',
+    'ip_address','manufacturer','model','service_tag','cpu_model','cpu_cores',
+    'ram_total_bytes','mac_address','bios_version','bios_date','system_timezone',
+    'uptime_seconds','last_logged_user','tags',...customCols,'last_checkin'
+  ];
   const escape = (v) => {
     const s = (v == null) ? '' : String(v);
     return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
@@ -5127,15 +5458,16 @@ function exportInventoryCsv() {
   const lines = [headers.join(',')];
   for (const r of inventoryState.rows) {
     const row = [
-      r.hostname, r.status, r.os, r.ip_address || '',
-      r.manufacturer || '', r.model_name || '', r.service_tag || '',
-      r.cpu_model || '', r.cpu_cores || '', r.ram_total_bytes || '',
-      _firstMac(r.mac_addresses) || '',
+      r.hostname, r.status, r.os, r.os_name || '', r.os_version || '',
+      r.kernel_version || '', r.architecture || '',
+      r.ip_address || '', r.manufacturer || '', r.model_name || '',
+      r.service_tag || '', r.cpu_model || '', r.cpu_cores || '',
+      r.ram_total_bytes || '', _firstMac(r.mac_addresses) || '',
+      r.bios_version || '', r.bios_date || '', r.system_timezone || '',
+      r.uptime_seconds || '', r.last_logged_user || '',
       (r.tags || []).join(';'),
     ];
-    for (const col of customCols) {
-      row.push((r.custom_columns || {})[col] || '');
-    }
+    for (const col of customCols) row.push((r.custom_columns || {})[col] || '');
     row.push(r.last_checkin || '');
     lines.push(row.map(escape).join(','));
   }

@@ -261,6 +261,58 @@ def collect_inventory() -> dict:
             except (subprocess.TimeoutExpired, OSError):
                 continue
 
+    # OS info — prefer /etc/os-release on Linux
+    _os_release: dict = {}
+    _os_rel_path = Path("/etc/os-release")
+    if _os_rel_path.exists():
+        try:
+            for _line in _os_rel_path.read_text(errors="replace").splitlines():
+                _k, _, _v = _line.partition("=")
+                _os_release[_k.strip()] = _v.strip().strip('"')
+        except OSError:
+            pass
+    inv["os_name"] = (
+        _os_release.get("PRETTY_NAME")
+        or _os_release.get("NAME", "")
+        or f"{platform.system()} {platform.release()}"
+    ).strip()
+    inv["os_version"] = (_os_release.get("VERSION_ID") or platform.release()).strip()
+    inv["kernel_version"] = platform.release()
+    inv["architecture"] = platform.machine()
+
+    # Uptime
+    try:
+        import time as _time_mod
+        inv["uptime_seconds"] = int(_time_mod.time() - psutil.boot_time())
+    except Exception:
+        inv["uptime_seconds"] = 0
+
+    # Last logged-in user
+    try:
+        _users = psutil.users()
+        if _users:
+            _last_user = max(_users, key=lambda u: u.started)
+            inv["last_logged_user"] = _last_user.name
+        else:
+            inv["last_logged_user"] = ""
+    except Exception:
+        inv["last_logged_user"] = ""
+
+    # BIOS info from DMI
+    inv["bios_version"] = _read_dmi_field(["bios_version"])
+    inv["bios_date"] = _read_dmi_field(["bios_date"])
+
+    # System timezone
+    try:
+        _tz_path = Path("/etc/timezone")
+        if _tz_path.exists():
+            inv["system_timezone"] = _tz_path.read_text(errors="replace").strip()
+        else:
+            import time as _time_mod2
+            inv["system_timezone"] = (_time_mod2.tzname or ("",))[0]
+    except Exception:
+        inv["system_timezone"] = ""
+
     inv["mac_addresses"] = _read_mac_addresses()
     inv["disks"] = _read_disks()
 
