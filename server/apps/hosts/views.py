@@ -155,6 +155,18 @@ def checkin(request):
         inv.service_tag = (inv_payload.get("service_tag") or "")[:120]
         inv.manufacturer = (inv_payload.get("manufacturer") or "")[:120]
         inv.model_name = (inv_payload.get("model") or inv_payload.get("model_name") or "")[:160]
+        inv.os_name = (inv_payload.get("os_name") or "")[:200]
+        inv.os_version = (inv_payload.get("os_version") or "")[:120]
+        inv.kernel_version = (inv_payload.get("kernel_version") or "")[:120]
+        inv.architecture = (inv_payload.get("architecture") or "")[:32]
+        try:
+            inv.uptime_seconds = int(inv_payload.get("uptime_seconds") or 0) or None
+        except (TypeError, ValueError):
+            inv.uptime_seconds = None
+        inv.last_logged_user = (inv_payload.get("last_logged_user") or "")[:120]
+        inv.bios_version = (inv_payload.get("bios_version") or "")[:120]
+        inv.bios_date = (inv_payload.get("bios_date") or "")[:50]
+        inv.system_timezone = (inv_payload.get("system_timezone") or "")[:80]
         disks = inv_payload.get("disks") or []
         inv.disks = disks if isinstance(disks, list) else []
         inv.save()
@@ -249,13 +261,17 @@ def host_list(request):
     return Response(HostSerializer(hosts, many=True).data)
 
 
-@api_view(["GET"])
+@api_view(["GET", "DELETE"])
 @permission_classes([IsAuthenticated])
 def host_detail(request, host_id):
     try:
         host = Host.objects.get(pk=host_id)
     except Host.DoesNotExist:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    if request.method == "DELETE":
+        hostname = host.hostname
+        host.delete()
+        return Response({"deleted": hostname}, status=status.HTTP_200_OK)
     return Response(HostSerializer(host).data)
 
 
