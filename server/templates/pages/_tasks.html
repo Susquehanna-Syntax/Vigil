@@ -32,7 +32,8 @@
         {% if tasks %}
         <div class="task-list">
           {% for task in tasks %}
-          <div class="task-item">
+          <div class="task-item" style="cursor:pointer;" onclick="openTaskDetail('{{ task.run_id }}')"
+               title="Click to view full run details">
             <div class="status-dot {% if task.state == 'completed' %}online{% elif task.state == 'failed' or task.state == 'rejected' %}offline{% elif task.state == 'pending' or task.state == 'dispatched' or task.state == 'executing' or task.state == 'blocked' %}pending{% endif %}" style="width:8px;height:8px;"></div>
             <div class="task-content">
               <div class="task-action-name">{{ task.action }}{% if task.step_label %} · {{ task.step_label }}{% endif %}</div>
