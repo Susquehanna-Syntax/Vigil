@@ -11,6 +11,8 @@ staticfiles/
 *.egg-info/
 .venv/
 
+.worktrees/
+
 # Agent runtime — never commit live credentials or state
 agent/agent.yml
 agent/data/
