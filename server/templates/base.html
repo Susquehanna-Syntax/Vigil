@@ -66,7 +66,10 @@
   </button>
   <div class="detail-header">
     <div class="detail-hostname" id="detail-hostname">—</div>
-    <div class="detail-meta" id="detail-meta">—</div>
+    <div class="detail-meta" style="display:flex;align-items:center;gap:6px;">
+      <span id="detail-os-logo"></span>
+      <span id="detail-meta">—</span>
+    </div>
   </div>
 
   <div class="detail-section">
@@ -354,6 +357,19 @@
       </div>
     </div>
   </form>
+</div>
+
+{# Task run detail modal — opened by openTaskDetail() in vigil-tasks.js #}
+<div class="modal-overlay" id="task-detail-overlay" onclick="closeTaskDetail()"></div>
+<div class="modal modal-wide" id="task-detail-modal" style="max-height:80vh;display:flex;flex-direction:column;">
+  <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+    <span id="task-detail-title">Task Run</span>
+    <button class="modal-close" onclick="closeTaskDetail()">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div id="task-detail-meta" style="font-size:12px;color:var(--text-3);margin-bottom:16px;flex-shrink:0;display:flex;gap:12px;flex-wrap:wrap;"></div>
+  <div id="task-detail-steps" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px;"></div>
 </div>
 
 {# Toast notifications — populated by vigil-utils.js showToast() #}

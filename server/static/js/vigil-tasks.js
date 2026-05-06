@@ -597,3 +597,98 @@ document.querySelectorAll('.tab-bar[data-tab-group="tasks"] .tab').forEach(tab =
     if (tab.dataset.tab === 'tasks-library') refreshTaskLibrary();
   });
 });
+
+/* ── Task run detail modal ───────────────────────────────────────────── */
+
+const _TASK_STATE_COLORS = {
+  completed: 'var(--mint)', failed: 'var(--rose)', rejected: 'var(--rose)',
+  pending: 'var(--peach)', dispatched: 'var(--peach)', executing: 'var(--sky)', blocked: 'var(--lemon)',
+};
+
+function _tdEl(tag, style, text) {
+  const el = document.createElement(tag);
+  if (style) el.style.cssText = style;
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
+async function openTaskDetail(runId) {
+  if (!runId || runId === 'None') return;
+  const overlay = document.getElementById('task-detail-overlay');
+  const modal = document.getElementById('task-detail-modal');
+  const titleEl = document.getElementById('task-detail-title');
+  const metaEl = document.getElementById('task-detail-meta');
+  const stepsEl = document.getElementById('task-detail-steps');
+
+  titleEl.textContent = 'Loading…';
+  metaEl.replaceChildren();
+  stepsEl.replaceChildren();
+  overlay.classList.add('open');
+  modal.classList.add('open');
+
+  try {
+    const run = await apiJson('/api/v1/tasks/runs/' + runId + '/');
+
+    titleEl.textContent = run.definition_name || run.name_snapshot || 'Task Run';
+
+    const fmt = iso => iso ? new Date(iso).toLocaleString() : '—';
+    const sep = () => _tdEl('span', 'color:var(--s3);margin:0 4px;', '·');
+    const metaParts = [
+      run.requested_by_username ? 'by ' + run.requested_by_username : null,
+      'started ' + fmt(run.created_at),
+      run.finished_at ? 'finished ' + fmt(run.finished_at) : null,
+      run.host_count + ' host' + (run.host_count !== 1 ? 's' : '') +
+        ', ' + run.step_count + ' step' + (run.step_count !== 1 ? 's' : ''),
+    ].filter(Boolean);
+    metaParts.forEach((p, i) => {
+      metaEl.appendChild(_tdEl('span', null, p));
+      if (i < metaParts.length - 1) metaEl.appendChild(sep());
+    });
+
+    if (!run.tasks || run.tasks.length === 0) {
+      stepsEl.appendChild(_tdEl('div', 'color:var(--text-3);text-align:center;padding:24px;', 'No step records found.'));
+      return;
+    }
+
+    for (const task of run.tasks) {
+      const color = _TASK_STATE_COLORS[task.state] || 'var(--text-3)';
+      const output = (task.result_output || '').trim();
+
+      const card = _tdEl('div', 'background:var(--s1);border-radius:var(--r-md);padding:14px 16px;');
+
+      const hdr = _tdEl('div', 'display:flex;align-items:center;gap:10px;margin-bottom:6px;');
+      hdr.appendChild(_tdEl('span', 'font-size:13px;font-weight:600;color:var(--text-1);', task.step_label || task.action));
+      if (task.step_label && task.step_label !== task.action) {
+        hdr.appendChild(_tdEl('span', "font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-3);", task.action));
+      }
+      hdr.appendChild(_tdEl('span', 'margin-left:auto;font-size:11px;font-weight:600;color:' + color + ';', task.state));
+      card.appendChild(hdr);
+
+      const hostLine = _tdEl('div', 'font-size:11px;color:var(--text-3);margin-bottom:' + (output ? '8' : '0') + 'px;');
+      hostLine.textContent = (task.host_hostname || String(task.host)) +
+        (task.completed_at ? ' · ' + new Date(task.completed_at).toLocaleString() : '');
+      card.appendChild(hostLine);
+
+      if (output) {
+        const pre = _tdEl('pre', "margin:0;padding:10px 12px;background:var(--s0);border-radius:var(--r-sm);" +
+          "font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-2);" +
+          'white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;');
+        pre.textContent = output;
+        card.appendChild(pre);
+      } else if (task.state === 'completed' || task.state === 'failed') {
+        card.appendChild(_tdEl('div', 'font-size:11px;color:var(--text-3);font-style:italic;', 'No output captured.'));
+      }
+
+      stepsEl.appendChild(card);
+    }
+  } catch (e) {
+    const errEl = _tdEl('div', 'color:var(--rose);padding:16px;');
+    errEl.textContent = 'Failed to load run details: ' + e.message;
+    stepsEl.appendChild(errEl);
+  }
+}
+
+function closeTaskDetail() {
+  document.getElementById('task-detail-overlay').classList.remove('open');
+  document.getElementById('task-detail-modal').classList.remove('open');
+}
