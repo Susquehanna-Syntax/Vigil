@@ -1,0 +1,53 @@
+{# Tasks page section (My Library tab + History tab) #}
+{# Logic: static/js/vigil-tasks.js | Styles: vigil.css .def-*, .task-* | Data: tasks from dashboard() view; library grid fetched client-side #}
+    <section id="page-tasks" class="page">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Tasks<span>.</span></div>
+          <div class="page-sub">Author multistep tasks and deploy them across your fleet</div>
+        </div>
+        <button class="btn btn-sky" onclick="openDefinitionEditor()">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New Task
+        </button>
+      </div>
+
+      <div class="tab-bar" data-tab-group="tasks">
+        <div class="tab t-lav active" data-tab="tasks-library">My Library</div>
+        <div class="tab t-mint" data-tab="tasks-history">History</div>
+      </div>
+
+      <!-- My Library -->
+      <div class="tab-content active" id="tasks-library">
+        <div class="task-search-bar">
+          <svg class="task-search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" class="task-search-input" id="task-library-search" placeholder="Search tasks by name, description, or action…" oninput="filterTaskGrid('library')">
+        </div>
+        <div id="task-library-grid" class="def-grid"></div>
+      </div>
+
+      <!-- History -->
+      <div class="tab-content" id="tasks-history">
+        {% if tasks %}
+        <div class="task-list">
+          {% for task in tasks %}
+          <div class="task-item">
+            <div class="status-dot {% if task.state == 'completed' %}online{% elif task.state == 'failed' or task.state == 'rejected' %}offline{% elif task.state == 'pending' or task.state == 'dispatched' or task.state == 'executing' or task.state == 'blocked' %}pending{% endif %}" style="width:8px;height:8px;"></div>
+            <div class="task-content">
+              <div class="task-action-name">{{ task.action }}{% if task.step_label %} · {{ task.step_label }}{% endif %}</div>
+              <div class="task-detail">{{ task.host.hostname }}{% if task.requested_by %} · by {{ task.requested_by.username }}{% endif %} · {{ task.created_at|timesince }} ago</div>
+            </div>
+            <span class="state-badge state-{{ task.state }}">{{ task.get_state_display }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-state-title">No task history yet</div>
+          <div class="empty-state-desc">Dispatched task steps will appear here.</div>
+        </div>
+        {% endif %}
+      </div>
+
+    </section>

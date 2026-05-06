@@ -1,0 +1,50 @@
+{# Vulnerabilities page section #}
+{# Logic: static/js/vigil-vulns.js | Styles: vigil.css .vuln-*, .stat-* | Data: client-side fetch /api/v1/vulns/ (returns empty if Nessus not configured) #}
+    <section id="page-vulns" class="page">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Vulnerabilities<span>.</span></div>
+          <div class="page-sub">Nessus / Tenable scan findings per host</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="refreshVulns()" id="vulns-refresh-btn">
+          <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+          Refresh
+        </button>
+      </div>
+
+      <div class="stats-row" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 28px;">
+        <div class="stat-card">
+          <div class="stat-label">Hosts with Criticals</div>
+          <div class="stat-value" style="color: var(--rose)" id="vuln-stat-critical-hosts">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Critical Findings</div>
+          <div class="stat-value" style="color: var(--coral)" id="vuln-stat-total-critical">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total High Findings</div>
+          <div class="stat-value" style="color: var(--lemon)" id="vuln-stat-total-high">—</div>
+        </div>
+      </div>
+
+      <div id="vulns-content">
+        <div style="background:var(--s1);border-radius:var(--r-md);padding:40px;text-align:center;color:var(--text-3);font-size:13px;" id="vulns-loading">
+          Loading vulnerability data…
+        </div>
+      </div>
+
+      <div id="vulns-not-configured" style="display:none;">
+        <div style="background:var(--s1);border-radius:var(--r-lg);padding:48px;text-align:center;">
+          <div style="font-size:42px;margin-bottom:16px;opacity:0.5;">🛡</div>
+          <div style="font-weight:600;font-size:16px;margin-bottom:10px;color:var(--text-1);">Nessus not configured</div>
+          <div style="color:var(--text-2);font-size:13px;max-width:440px;margin:0 auto;line-height:1.7;">
+            Set <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">NESSUS_URL</code>,
+            <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">NESSUS_ACCESS_KEY</code>, and
+            <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">NESSUS_SECRET_KEY</code>
+            environment variables to enable vulnerability sync.
+          </div>
+        </div>
+      </div>
+
+    </section>

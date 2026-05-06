@@ -1,0 +1,91 @@
+{# Alerts page section #}
+{# Logic: static/js/vigil-alerts.js | Styles: vigil.css .alert-*, .tab-* | Data: alerts_firing, alerts_ack, alerts_resolved from dashboard() view #}
+    <section id="page-alerts" class="page">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Alerts<span>.</span></div>
+          <div class="page-sub">Monitor alert lifecycle across all hosts</div>
+        </div>
+      </div>
+
+      <div class="tab-bar" data-tab-group="alerts">
+        <div class="tab t-rose active" data-tab="alerts-firing">Firing{% if alert_count %} <span style="opacity:.6">({{ alert_count }})</span>{% endif %}</div>
+        <div class="tab t-lemon" data-tab="alerts-ack">Acknowledged{% if alerts_ack.count %} <span style="opacity:.6">({{ alerts_ack.count }})</span>{% endif %}</div>
+        <div class="tab t-mint" data-tab="alerts-resolved">Resolved</div>
+      </div>
+
+      <!-- Firing -->
+      <div class="tab-content active" id="alerts-firing">
+        {% if alerts_firing %}
+        <div class="alert-list">
+          {% for alert in alerts_firing %}
+          <div class="alert-item" data-alert-id="{{ alert.id }}">
+            <div class="alert-dot" style="background: var({% if alert.severity == 'critical' %}--rose{% elif alert.severity == 'warning' %}--lemon{% else %}--lavender{% endif %});"></div>
+            <div class="alert-content">
+              <div class="alert-title">{{ alert.message }}</div>
+              <div class="alert-sub">{{ alert.host.hostname }} · {{ alert.get_severity_display }}{% if alert.metric_value %} · Value: {{ alert.metric_value }}{% endif %}</div>
+            </div>
+            <div class="alert-time">{{ alert.fired_at|timesince }} ago</div>
+            <div class="alert-actions">
+              <button class="btn btn-sm btn-outline" onclick="acknowledgeAlert('{{ alert.id }}')">Ack</button>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-state-icon" style="background: rgba(126,221,181,0.1);">
+            <svg viewBox="0 0 24 24" style="stroke: var(--mint);"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div class="empty-state-title">All clear</div>
+          <div class="empty-state-desc">No alerts are currently firing. Everything looks healthy.</div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Acknowledged -->
+      <div class="tab-content" id="alerts-ack">
+        {% if alerts_ack %}
+        <div class="alert-list">
+          {% for alert in alerts_ack %}
+          <div class="alert-item" data-alert-id="{{ alert.id }}">
+            <div class="alert-dot" style="background: var(--lemon);"></div>
+            <div class="alert-content">
+              <div class="alert-title">{{ alert.message }}</div>
+              <div class="alert-sub">{{ alert.host.hostname }} · Ack'd {{ alert.acknowledged_at|timesince }} ago</div>
+            </div>
+            <div class="alert-time">Fired {{ alert.fired_at|timesince }} ago</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-state-title">No acknowledged alerts</div>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Resolved -->
+      <div class="tab-content" id="alerts-resolved">
+        {% if alerts_resolved %}
+        <div class="alert-list">
+          {% for alert in alerts_resolved %}
+          <div class="alert-item">
+            <div class="alert-dot" style="background: var(--mint); opacity: 0.5;"></div>
+            <div class="alert-content">
+              <div class="alert-title" style="color: var(--text-2);">{{ alert.message }}</div>
+              <div class="alert-sub">{{ alert.host.hostname }} · Resolved {{ alert.resolved_at|timesince }} ago</div>
+            </div>
+            <div class="alert-time">Fired {{ alert.fired_at|timesince }} ago</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-state-title">No resolved alerts yet</div>
+        </div>
+        {% endif %}
+      </div>
+
+    </section>

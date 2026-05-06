@@ -1,0 +1,24 @@
+{# Community page section #}
+{# Logic: static/js/vigil-tasks.js (refreshTaskCommunity) | Styles: vigil.css .def-*, .task-* | Data: client-side fetch /api/v1/tasks/definitions/?scope=community #}
+    <section id="page-community" class="page">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Community<span>.</span></div>
+          <div class="page-sub">Task templates shared on this server. Fork any of them into your library.</div>
+        </div>
+      </div>
+
+      <div style="background:var(--s1); border-left:2px solid var(--lavender); border-radius:var(--r-sm); padding:14px 18px; margin-bottom:18px; font-size:12px; color:var(--text-2); line-height:1.6;">
+        This is your local community tab. A future release will sync from a
+        public Vigil task repo so self-hosted instances can share templates.
+      </div>
+
+      <div class="task-search-bar">
+        <svg class="task-search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" class="task-search-input" id="task-community-search" placeholder="Search community templates…" oninput="filterTaskGrid('community')">
+      </div>
+
+      <div id="task-community-grid" class="def-grid"></div>
+
+    </section>
