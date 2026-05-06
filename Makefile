@@ -8,11 +8,10 @@
 #   make logs      — follow all logs
 #   make shell     — Django shell in running web container
 #   make build     — build Docker images locally
-#   make push      — push images to DockerHub (requires docker login)
+#   make push      — push server image to DockerHub (susquehannasyntax/vigil)
 #   make test      — run Django test suite
 
-DOCKER_IMAGE ?= connorhaggerty/vigil-server
-AGENT_IMAGE  ?= connorhaggerty/vigil-agent
+DOCKER_IMAGE ?= susquehannasyntax/vigil
 VERSION      ?= latest
 
 .PHONY: help setup up down logs shell build push test migrate superuser \
@@ -99,17 +98,6 @@ push: ## Push server image to DockerHub (run: docker login first)
 		docker push $(DOCKER_IMAGE):latest; \
 	fi
 	@echo "  Pushed $(DOCKER_IMAGE):$(VERSION)"
-
-push-agent: ## Build and push agent image to DockerHub
-	docker build -t $(AGENT_IMAGE):$(VERSION) ./agent
-	docker push $(AGENT_IMAGE):$(VERSION)
-	@if [ "$(VERSION)" != "latest" ]; then \
-		docker tag $(AGENT_IMAGE):$(VERSION) $(AGENT_IMAGE):latest; \
-		docker push $(AGENT_IMAGE):latest; \
-	fi
-	@echo "  Pushed $(AGENT_IMAGE):$(VERSION)"
-
-push-all: push push-agent ## Push both server and agent images
 
 # ── Django management ─────────────────────────────────────────────────────────
 

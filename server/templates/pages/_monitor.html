@@ -1,0 +1,198 @@
+{# Monitor page section — pin bar + host dropdown + gauges + charts + processes #}
+{# Logic: static/js/vigil-monitor.js (charts) + vigil-host-cards.js (pin bar / dropdown) | Styles: vigil.css .monitor-*, .gauge-*, .chart-*, .pin-*, .proc-* | Data: client-side fetch /api/v1/metrics/{host}/{cat}/{metric}/ #}
+    <section id="page-monitor" class="page">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Monitor<span>.</span></div>
+          <div class="page-sub">Real-time metrics for your infrastructure</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="refreshMonitor()" id="monitor-refresh-btn">
+          <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+          Refresh
+        </button>
+      </div>
+
+      <!-- Pinned hosts bar + host selector -->
+      <div class="pin-bar" id="pin-bar">
+        <!-- Pinned chips rendered by JS -->
+        <div class="host-selector-wrap">
+          <button class="btn btn-sm btn-outline" onclick="toggleHostDropdown(event)" id="host-selector-btn">
+            <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Select Host
+          </button>
+          <div class="host-dropdown" id="host-dropdown">
+            {% for host in hosts %}
+            <div class="host-dropdown-item" data-host-id="{{ host.id }}" data-hostname="{{ host.hostname }}" data-status="{{ host.status }}" data-os="{{ host.os|default:'' }}" data-ip="{{ host.ip_address|default:'—' }}" data-mode="{{ host.mode }}">
+              <div class="status-dot {{ host.status }}" style="width:8px;height:8px;"></div>
+              <div class="hdi-name">{{ host.hostname }}</div>
+              <div class="hdi-meta">{{ host.os|default:"" }}</div>
+              <button class="hdi-pin" onclick="event.stopPropagation(); togglePin('{{ host.id }}', '{{ host.hostname }}', '{{ host.status }}', this)" title="Pin host">
+                <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              </button>
+            </div>
+            {% endfor %}
+            {% if not hosts %}
+            <div style="padding: 20px; text-align: center; color: var(--text-3); font-size: 13px;">No hosts registered yet.</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- No host selected state -->
+      <div id="monitor-empty" class="monitor-empty">
+        <div class="monitor-empty-title">Select a host to monitor</div>
+        <div class="monitor-empty-desc">
+          Pick a host from the bar above, or pin your favorites for quick access.
+        </div>
+      </div>
+
+      <!-- Active monitor view (hidden until host selected) -->
+      <div id="monitor-content" style="display:none;">
+
+        <!-- Host info bar -->
+        <div class="monitor-host-bar" id="monitor-host-bar">
+          <div class="status-dot" id="mon-status-dot"></div>
+          <div class="mhb-info">
+            <div class="mhb-name" id="mon-hostname">—</div>
+            <div class="mhb-meta" id="mon-meta">—</div>
+          </div>
+          <button class="btn btn-outline btn-sm" id="mon-rdp-btn" onclick="launchRdpForCurrentMonitor()" title="Download a .rdp file for this host">
+            <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="18" x2="12" y2="20"/></svg>
+            RDP
+          </button>
+          <div class="time-range-bar">
+            <button class="time-btn active" data-range="60" onclick="setTimeRange(60, this)">1h</button>
+            <button class="time-btn" data-range="360" onclick="setTimeRange(360, this)">6h</button>
+            <button class="time-btn" data-range="1440" onclick="setTimeRange(1440, this)">24h</button>
+            <button class="time-btn" data-range="10080" onclick="setTimeRange(10080, this)">7d</button>
+          </div>
+        </div>
+
+        <!-- Gauge cards -->
+        <div class="monitor-gauges">
+          <div class="gauge-card">
+            <div class="gauge-ring">
+              <svg viewBox="0 0 80 80">
+                <circle class="gauge-bg" cx="40" cy="40" r="34"/>
+                <circle class="gauge-fill" id="gauge-cpu-fill" cx="40" cy="40" r="34" stroke="var(--sky)" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
+              </svg>
+              <div class="gauge-text" id="gauge-cpu-text" style="color: var(--sky);">—</div>
+            </div>
+            <div class="gauge-card-label">CPU</div>
+          </div>
+          <div class="gauge-card">
+            <div class="gauge-ring">
+              <svg viewBox="0 0 80 80">
+                <circle class="gauge-bg" cx="40" cy="40" r="34"/>
+                <circle class="gauge-fill" id="gauge-mem-fill" cx="40" cy="40" r="34" stroke="var(--lavender)" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
+              </svg>
+              <div class="gauge-text" id="gauge-mem-text" style="color: var(--lavender);">—</div>
+            </div>
+            <div class="gauge-card-label">Memory</div>
+          </div>
+          <div class="gauge-card">
+            <div class="gauge-ring">
+              <svg viewBox="0 0 80 80">
+                <circle class="gauge-bg" cx="40" cy="40" r="34"/>
+                <circle class="gauge-fill" id="gauge-disk-fill" cx="40" cy="40" r="34" stroke="var(--mint)" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
+              </svg>
+              <div class="gauge-text" id="gauge-disk-text" style="color: var(--mint);">—</div>
+            </div>
+            <div class="gauge-card-label">Disk</div>
+          </div>
+          <div class="gauge-card">
+            <div class="gauge-card-label" style="margin-bottom:0;">Load Average</div>
+            <div class="gauge-card-value" id="gauge-load-text" style="color: var(--peach); margin-top: 18px;">—</div>
+            <div style="font-size: 11px; color: var(--text-3); margin-top: 10px;" id="gauge-load-sub">1m / 5m / 15m</div>
+          </div>
+        </div>
+
+        <!-- CPU chart -->
+        <div class="chart-row">
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div class="chart-card-title">CPU Usage</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3);" id="cpu-chart-latest">—</div>
+            </div>
+            <div class="chart-wrap"><canvas id="chart-cpu"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Memory chart -->
+        <div class="chart-row">
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div class="chart-card-title">Memory Usage</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3);" id="mem-chart-latest">—</div>
+            </div>
+            <div class="chart-wrap"><canvas id="chart-mem"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Disk + Network row -->
+        <div class="chart-row two-col">
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div class="chart-card-title">Disk Usage</div>
+            </div>
+            <div class="disk-bars" id="disk-bars">
+              <div style="color: var(--text-3); font-size: 13px; text-align: center; padding: 20px;">Waiting for data...</div>
+            </div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div class="chart-card-title">Network I/O</div>
+              <div style="display:flex;gap:12px;font-size:11px;">
+                <span style="color:var(--sky);">● recv</span>
+                <span style="color:var(--peach);">● sent</span>
+              </div>
+            </div>
+            <div class="chart-wrap"><canvas id="chart-net"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Swap chart -->
+        <div class="chart-row">
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div class="chart-card-title">Swap Usage</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-3);" id="swap-chart-latest">—</div>
+            </div>
+            <div class="chart-wrap"><canvas id="chart-swap"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Top Processes -->
+        <div class="section-label" style="margin-top:36px;">Top Processes</div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px;">
+          <div class="chart-card" style="padding:0; overflow:hidden;">
+            <div class="chart-card-header" style="padding:16px 18px 10px;">
+              <div class="chart-card-title">By CPU</div>
+            </div>
+            <table class="proc-table" id="proc-table-cpu">
+              <thead>
+                <tr><th>Process</th><th>PID</th><th style="text-align:right;">CPU %</th></tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="3" style="color:var(--text-3);text-align:center;padding:20px;">Waiting for data...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="chart-card" style="padding:0; overflow:hidden;">
+            <div class="chart-card-header" style="padding:16px 18px 10px;">
+              <div class="chart-card-title">By Memory</div>
+            </div>
+            <table class="proc-table" id="proc-table-mem">
+              <thead>
+                <tr><th>Process</th><th>PID</th><th style="text-align:right;">Mem %</th></tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="3" style="color:var(--text-3);text-align:center;padding:20px;">Waiting for data...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </section>
