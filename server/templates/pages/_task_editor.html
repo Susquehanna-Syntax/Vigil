@@ -1,0 +1,39 @@
+{# Task editor page section — YAML textarea + structured preview #}
+{# Logic: static/js/vigil-tasks.js (openDefinitionEditor / validateEditor / saveDefinitionFromEditor) | Styles: vigil.css .editor-*, .preview-* | Data: client-side fetch /api/v1/tasks/definitions/{id,validate}/ #}
+    <section id="page-task-editor" class="page">
+      <div class="editor-toolbar">
+        <div>
+          <div class="page-title" id="editor-page-title">New Task<span>.</span></div>
+          <div class="page-sub">Write the YAML on the left. The preview updates as you type.</div>
+        </div>
+        <div class="right">
+          <select class="form-control" id="editor-template-picker" onchange="loadEditorTemplate(this.value)" style="width:auto; padding:8px 12px; font-size:13px;">
+            <option value="">Start from template…</option>
+          </select>
+          <button class="btn btn-ghost" onclick="navigateTo('tasks')">Cancel</button>
+          <button class="btn btn-sky" id="editor-save-btn" onclick="saveDefinitionFromEditor()">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            Save Task
+          </button>
+        </div>
+      </div>
+
+      <div class="editor-layout">
+        <div class="editor-panel">
+          <div class="editor-panel-title">YAML Source</div>
+          <textarea id="editor-yaml" class="editor-textarea" spellcheck="false" autocomplete="off" oninput="onEditorInput()"></textarea>
+          <div class="editor-error" id="editor-error"></div>
+          <div class="confirm-hint" style="margin-top:10px;">
+            Tasks are private by default. Use <strong>Publish to Community</strong> from your library when you're ready to share.
+          </div>
+        </div>
+
+        <div class="editor-panel">
+          <div class="editor-panel-title">Preview</div>
+          <div id="editor-preview" class="preview-section">
+            <div class="preview-heading">—</div>
+            <div class="preview-sub">Start typing to see a structured preview.</div>
+          </div>
+        </div>
+      </div>
+    </section>

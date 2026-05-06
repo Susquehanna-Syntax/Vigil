@@ -1,0 +1,154 @@
+{# Settings page section — TOTP, AD import, enrollment queue, agent table #}
+{# Logic: static/js/vigil-settings.js (TOTP) + vigil-inventory.js (AD config) + vigil-host-cards.js (approve/reject) | Styles: vigil.css .totp-*, .enroll-*, .agent-table | Data: pending_hosts, hosts, vigil_timezone from dashboard() view #}
+    <section id="page-settings" class="page">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Settings<span>.</span></div>
+          <div class="page-sub">Agent management and enrollment</div>
+        </div>
+      </div>
+
+      <!-- Two-factor authentication -->
+      <div class="section-label">Two-Factor Authentication</div>
+      <div id="totp-card" class="totp-card">
+        <div class="totp-status" id="totp-status-line">Loading…</div>
+        <div class="totp-sub" id="totp-sub-line">TOTP protects task execution. Password fallback is test-only and will be removed.</div>
+        <div id="totp-enroll-view" style="display:none; margin-top:16px;">
+          <div class="totp-secret-row">
+            <div>
+              <div class="totp-label">Secret (enter into any authenticator app)</div>
+              <div class="totp-secret mono" id="totp-secret-text">—</div>
+            </div>
+            <div>
+              <div class="totp-label">otpauth URI</div>
+              <div class="totp-uri mono" id="totp-uri-text">—</div>
+            </div>
+          </div>
+          <div class="totp-verify-row">
+            <input type="text" inputmode="numeric" maxlength="6" class="totp-code-input mono" id="totp-verify-code" placeholder="123456" />
+            <button class="btn btn-mint btn-sm" onclick="totpConfirm()">Verify & Enable</button>
+          </div>
+        </div>
+        <div class="totp-actions" id="totp-actions" style="margin-top:16px;">
+          <button class="btn btn-sky btn-sm" id="totp-start-btn" onclick="totpStart()">Enroll TOTP</button>
+          <button class="btn btn-outline btn-sm" id="totp-disable-btn" style="display:none;" onclick="totpDisablePrompt()">Disable…</button>
+        </div>
+      </div>
+
+      <!-- Active Directory import -->
+      <div class="section-label" style="margin-top:32px;">Active Directory Import</div>
+      <div class="totp-card">
+        <div class="totp-sub" style="margin-bottom:12px;">Sync computer objects from your AD into the Host table. Imported hosts stay PENDING until their agent enrolls. OU segments become auto-tags.</div>
+        <div class="deploy-policy-grid" style="margin-bottom:12px;">
+          <div class="full">
+            <label class="deploy-input-label">LDAP URL</label>
+            <input type="text" class="form-control" id="ad-ldap-url" placeholder="ldaps://dc.example.com:636">
+          </div>
+          <div class="full">
+            <label class="deploy-input-label">Bind DN</label>
+            <input type="text" class="form-control" id="ad-bind-dn" placeholder="CN=svc-vigil,OU=Service Accounts,DC=example,DC=com">
+          </div>
+          <div class="full">
+            <label class="deploy-input-label">Bind Password</label>
+            <input type="password" class="form-control" id="ad-bind-password" placeholder="(unchanged — leave blank to keep current)">
+          </div>
+          <div>
+            <label class="deploy-input-label">Base DN</label>
+            <input type="text" class="form-control" id="ad-base-dn" placeholder="DC=example,DC=com">
+          </div>
+          <div>
+            <label class="deploy-input-label">Computer OU</label>
+            <input type="text" class="form-control" id="ad-computer-ou" placeholder="OU=Computers,DC=example,DC=com">
+          </div>
+          <div class="full" style="display:flex;align-items:center;gap:10px;">
+            <input type="checkbox" id="ad-enabled" style="accent-color:var(--sky);width:16px;height:16px;">
+            <label for="ad-enabled" class="deploy-input-label" style="margin:0;">Enabled (uncheck to disable without losing settings)</label>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;">
+          <div class="confirm-hint" id="ad-status">—</div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-outline btn-sm" onclick="adSaveConfig()">Save</button>
+            <button class="btn btn-sky btn-sm" onclick="adSyncNow()">Import Now</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Enrollment Queue -->
+      <div class="section-label">Enrollment Queue{% if pending_count %} ({{ pending_count }}){% endif %}</div>
+      {% if pending_hosts %}
+        {% for host in pending_hosts %}
+        <div class="enroll-card" data-host-id="{{ host.id }}">
+          <div class="status-dot pending"></div>
+          <div class="enroll-info">
+            <div class="enroll-hostname">{{ host.hostname }}</div>
+            <div class="enroll-meta">{{ host.os|default:"Unknown OS" }} · {{ host.ip_address|default:"Unknown IP" }} · First seen {{ host.created_at|timesince }} ago</div>
+          </div>
+          <div class="enroll-actions">
+            <button class="btn btn-sm btn-mint" onclick="approveHost('{{ host.id }}', this)">Approve</button>
+            <button class="btn btn-sm btn-outline" onclick="rejectHost('{{ host.id }}', this)">Reject</button>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div style="background: var(--s1); border-radius: var(--r-md); padding: 28px; text-align: center; color: var(--text-3); font-size: 13px;">
+          No agents waiting for approval.
+        </div>
+      {% endif %}
+
+      <!-- All Agents -->
+      <div class="section-label">All Agents</div>
+      {% if hosts %}
+      <table class="agent-table">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Hostname</th>
+            <th>OS</th>
+            <th>IP</th>
+            <th>Mode</th>
+            <th>Last Check-in</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for host in hosts %}
+          <tr>
+            <td><div class="status-dot {{ host.status }}" style="width:8px;height:8px;margin:0 auto;"></div></td>
+            <td style="font-weight:600;">{{ host.hostname }}</td>
+            <td style="color: var(--text-2);">{{ host.os|default:"—" }}</td>
+            <td class="mono">{{ host.ip_address|default:"—" }}</td>
+            <td><span class="mode-badge mode-{{ host.mode }}">{{ host.get_mode_display }}</span></td>
+            <td class="mono">{% if host.last_checkin %}{{ host.last_checkin|timesince }} ago{% else %}Never{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div style="background: var(--s1); border-radius: var(--r-md); padding: 28px; text-align: center; color: var(--text-3); font-size: 13px;">
+        No agents registered yet.
+      </div>
+      {% endif %}
+
+      <!-- Display Settings -->
+      <div class="section-label" style="margin-top:32px;">Display & Timezone</div>
+      <div class="totp-card">
+        <div class="totp-sub" style="margin-bottom:14px;">
+          Server timezone controls when schedule windows are evaluated. Set <code style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sky);">VIGIL_TIMEZONE</code> in your <code style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sky);">.env</code> to an <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones" target="_blank" style="color:var(--sky);">IANA timezone name</a> and restart the server.
+        </div>
+        <div style="max-width:280px;">
+          <label class="deploy-input-label">Server Timezone</label>
+          <div class="form-control" style="background:var(--s3);cursor:default;color:var(--text-2);" id="settings-tz-display">{{ vigil_timezone }}</div>
+        </div>
+      </div>
+
+      <!-- Install Command -->
+      <div class="section-label">Agent Install Command</div>
+      <div class="code-block" style="max-width: 100%;">
+        curl -s https://your-vigil-server/install | sh
+      </div>
+      <div style="font-size: 12px; color: var(--text-3); margin-top: 10px;">
+        New agents appear in the enrollment queue above. Approve them to begin receiving metrics and dispatching tasks.
+      </div>
+
+    </section>

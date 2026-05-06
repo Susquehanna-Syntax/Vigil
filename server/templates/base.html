@@ -1,0 +1,399 @@
+{% load static tz %}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Vigil — Dashboard{% endblock %}</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- Chart.js — used by vigil-monitor.js (time-series) and vigil-host-cards.js (detail drawer) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+
+<!-- Styles: static/css/vigil.css — all design tokens, layout, and component styles -->
+<link rel="stylesheet" href="{% static 'css/vigil.css' %}">
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+{% csrf_token %}
+<div class="layout">
+
+  {# Sidebar — left rail with page icons. Logic: vigil-nav.js wires data-page → navigateTo() #}
+  <nav class="sidebar">
+    <div class="sidebar-logo">V</div>
+
+    <div class="sidebar-icon active" data-page="dashboard" data-tip="Dashboard">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+    </div>
+    <div class="sidebar-icon" data-page="inventory" data-tip="Inventory">
+      <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+    </div>
+    <div class="sidebar-icon" data-page="tasks" data-tip="Tasks">
+      <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+    </div>
+    <div class="sidebar-icon" data-page="vulns" data-tip="Vulnerabilities">
+      <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    </div>
+    <div class="sidebar-icon" data-page="monitor" data-tip="Monitor">
+      <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    </div>
+    <div class="sidebar-icon" data-page="alerts" data-tip="Alerts">
+      <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+      {% if alert_count %}<div class="badge-dot" style="background: var(--rose);"></div>{% endif %}
+    </div>
+    <div class="sidebar-icon" data-page="community" data-tip="Community">
+      <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><circle cx="17" cy="7" r="3" opacity="0.6"/><path d="M21 21v-2a4 4 0 00-3-3.87" opacity="0.6"/></svg>
+    </div>
+    <div class="sidebar-icon" data-page="settings" data-tip="Settings">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      {% if pending_count %}<div class="badge-dot" style="background: var(--peach);"></div>{% endif %}
+    </div>
+
+    <div class="sidebar-spacer"></div>
+    <div class="sidebar-avatar">V</div>
+  </nav>
+
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+{# Host detail drawer — slide-in panel. Logic: vigil-host-cards.js (openHostDetail / closeHostDetail) #}
+<div class="detail-overlay" id="detail-overlay" onclick="closeHostDetail()"></div>
+<div class="detail-panel" id="detail-panel">
+  <button class="detail-close" onclick="closeHostDetail()">
+    <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
+  <div class="detail-header">
+    <div class="detail-hostname" id="detail-hostname">—</div>
+    <div class="detail-meta" id="detail-meta">—</div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">Status</div>
+    <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
+      <div class="status-dot" id="detail-status-dot"></div>
+      <span id="detail-status-text" style="font-size: 14px; font-weight: 500;">—</span>
+      <span class="mode-badge" id="detail-mode-badge" style="margin-left: auto;">—</span>
+    </div>
+    <div style="font-size: 12px; color: var(--text-3);">
+      Last check-in: <span class="mono" id="detail-last-checkin">—</span>
+    </div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">Resources</div>
+    <div class="metric-grid">
+      <div class="metric-card">
+        <div class="metric-card-label">CPU Usage</div>
+        <div class="metric-card-value" style="color: var(--sky);">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--sky);"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card-label">Memory</div>
+        <div class="metric-card-value" style="color: var(--lavender);">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--lavender);"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card-label">Disk</div>
+        <div class="metric-card-value" style="color: var(--mint);">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--mint);"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card-label">Swap</div>
+        <div class="metric-card-value" style="color: var(--peach);">—</div>
+        <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--peach);"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">CPU History (1h)</div>
+    <div style="height: 180px; background: var(--s1); border-radius: var(--r-md); padding: 12px;">
+      <canvas id="detail-chart-cpu"></canvas>
+    </div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">Network I/O</div>
+    <div style="height: 180px; background: var(--s1); border-radius: var(--r-md); padding: 12px;">
+      <canvas id="detail-chart-net"></canvas>
+    </div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">Docker Containers</div>
+    <div style="background: var(--s1); border-radius: var(--r-md); padding: 20px; text-align: center; color: var(--text-3); font-size: 13px;">
+      Container metrics will appear here once reported by the agent.
+    </div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">Tags</div>
+    <div id="detail-tags-row" class="host-tag-row" style="margin-bottom:8px;"></div>
+    <div style="display:flex;gap:8px;">
+      <input type="text" class="form-control" id="detail-tag-input" placeholder="Add tag (press Enter)" style="flex:1;font-size:12px;padding:7px 10px;">
+      <button type="button" class="btn btn-ghost" id="detail-tag-add">Add</button>
+    </div>
+    <div class="confirm-hint" style="margin-top:6px;">Server-side tags. Agent.yml tags are merged in (server values always win).</div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">Quick Actions</div>
+    <div class="detail-actions" id="detail-actions">
+      <!-- populated by JS based on host mode -->
+    </div>
+  </div>
+
+  <div class="detail-section" style="margin-top:auto; padding-top:24px; border-top:1px solid var(--s3);">
+    <button type="button" class="btn btn-outline btn-rose-ghost" style="width:100%;" id="detail-delete-btn"
+            onclick="deleteHost(document.getElementById('detail-panel').dataset.hostId, document.getElementById('detail-panel').dataset.hostname, this)">
+      <svg viewBox="0 0 24 24" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+      Remove Agent
+    </button>
+    <div class="confirm-hint" style="margin-top:6px;">Permanently removes this agent and all its data. The agent will re-enroll on next check-in if still running.</div>
+  </div>
+</div>
+
+{# Deploy task modal — full-width with YAML/Options/Schedule/Retry/Success tabs. Logic: vigil-deploy.js #}
+<div class="modal-overlay" id="deploy-overlay" onclick="closeDeployModal()"></div>
+<div class="modal modal-xwide" id="deploy-modal">
+  <div class="modal-title">
+    <span id="deploy-modal-title">Deploy Task</span>
+    <button class="modal-close" onclick="closeDeployModal()">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <form id="deploy-form" onsubmit="submitDeploy(event)">
+    <div class="deploy-grid">
+
+      <!-- LEFT: tabbed view of definition / inputs / policy -->
+      <div>
+        <div class="deploy-tabs" role="tablist">
+          <button type="button" class="deploy-tab active" data-tab="yaml" onclick="setDeployTab('yaml')">YAML</button>
+          <button type="button" class="deploy-tab" data-tab="options" onclick="setDeployTab('options')" id="deploy-tab-options" style="display:none;">Options</button>
+          <button type="button" class="deploy-tab" data-tab="schedule" onclick="setDeployTab('schedule')">Schedule</button>
+          <button type="button" class="deploy-tab" data-tab="retry" onclick="setDeployTab('retry')">Retry</button>
+          <button type="button" class="deploy-tab" data-tab="criteria" onclick="setDeployTab('criteria')">Success</button>
+        </div>
+
+        <div class="deploy-tab-panels">
+          <!-- YAML preview -->
+          <div class="deploy-panel active" data-panel="yaml">
+            <pre class="deploy-yaml-wrap" id="deploy-yaml-view"></pre>
+          </div>
+
+          <!-- Options (input-driven) -->
+          <div class="deploy-panel" data-panel="options">
+            <div id="deploy-inputs-wrap" style="display:none;">
+              <div class="deploy-input-list" id="deploy-inputs"></div>
+            </div>
+          </div>
+
+          <!-- Schedule (execution window) -->
+          <div class="deploy-panel" data-panel="schedule">
+            <div class="deploy-policy-help">Tasks are only dispatched during this window (server timezone: <strong id="deploy-tz-label"></strong>). Outside the window, tasks stay queued until the next eligible check-in.</div>
+            <div class="deploy-policy-grid" style="margin-top:10px;">
+              <div>
+                <label class="deploy-input-label">Start time</label>
+                <input type="time" class="form-control" id="deploy-schedule-start" value="08:00">
+              </div>
+              <div>
+                <label class="deploy-input-label">End time (inclusive)</label>
+                <input type="time" class="form-control" id="deploy-schedule-end" value="17:00">
+              </div>
+              <div class="full">
+                <label class="deploy-input-label">Allowed days</label>
+                <div class="deploy-day-row" id="deploy-day-chips"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Retry (on-failure policy) -->
+          <div class="deploy-panel" data-panel="retry">
+            <div class="deploy-policy-help">When a step fails, the agent re-runs it up to this many times with a delay between attempts. Set attempts to 0 to disable retries.</div>
+            <div class="deploy-policy-grid" style="margin-top:10px;">
+              <div>
+                <label class="deploy-input-label">Retry attempts</label>
+                <input type="number" min="0" max="10" class="form-control" id="deploy-retry-attempts" value="0">
+              </div>
+              <div>
+                <label class="deploy-input-label">Delay between retries (seconds)</label>
+                <input type="number" min="0" max="3600" class="form-control" id="deploy-retry-delay" value="30">
+              </div>
+            </div>
+          </div>
+
+          <!-- Success Criteria -->
+          <div class="deploy-panel" data-panel="criteria">
+            <div class="deploy-policy-help">Even if a step exits cleanly, the agent treats it as failed unless the output meets these criteria. Leave optional fields blank to skip them.</div>
+            <div class="deploy-policy-grid" style="margin-top:10px;">
+              <div>
+                <label class="deploy-input-label">Expected exit code</label>
+                <input type="number" class="form-control" id="deploy-criteria-exit" value="0">
+              </div>
+              <div></div>
+              <div class="full">
+                <label class="deploy-input-label">Output must contain</label>
+                <input type="text" class="form-control" id="deploy-criteria-contains" placeholder="(optional)">
+              </div>
+              <div class="full">
+                <label class="deploy-input-label">Output must match regex</label>
+                <input type="text" class="form-control" id="deploy-criteria-regex" placeholder="(optional)" style="font-family:'IBM Plex Mono',monospace;">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: searchable host table OR tag picker -->
+      <div class="deploy-right-col">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-shrink:0;">
+          <div class="deploy-col-title" style="margin-bottom:0;">Target</div>
+          <div class="deploy-tabs" style="margin-bottom:0;">
+            <button type="button" class="deploy-tab active" data-target-mode="hosts" onclick="setDeployTargetMode('hosts')">Hosts</button>
+            <button type="button" class="deploy-tab" data-target-mode="tags" onclick="setDeployTargetMode('tags')">By Tag</button>
+          </div>
+        </div>
+
+        <div id="deploy-target-hosts">
+          <input type="text" class="deploy-host-search" id="deploy-host-search" placeholder="Search hosts by hostname, IP, or mode…" oninput="filterDeployHosts()">
+          <div class="deploy-host-table">
+            <div class="deploy-host-head">
+              <div><input type="checkbox" id="deploy-host-all" onchange="toggleAllDeployHosts(this.checked)" style="accent-color:var(--sky);width:14px;height:14px;cursor:pointer;"></div>
+              <div>Hostname</div>
+              <div>Mode</div>
+            </div>
+            <div id="deploy-host-rows">
+              <div class="host-pick-empty">No online, executable hosts available.</div>
+            </div>
+          </div>
+          <div class="confirm-hint" id="deploy-host-summary" style="margin-top:8px;">Select one or more hosts.</div>
+        </div>
+
+        <div id="deploy-target-tags" style="display:none;">
+          <div class="deploy-policy-help" style="margin-bottom:10px;">Pick one or more tags. The deploy will go to every online, executable host that matches any selected tag.</div>
+          <div class="deploy-day-row" id="deploy-tag-chips"></div>
+          <div class="confirm-hint" id="deploy-tag-summary" style="margin-top:10px;">No tags selected.</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- BOTTOM: TOTP -->
+    <div class="deploy-totp-row">
+      <div class="form-group" style="margin-bottom: 0;">
+        <label class="form-label">Confirm with TOTP</label>
+        <input class="form-control" type="text" id="deploy-totp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+        <div class="confirm-hint">Enter the 6-digit code from your authenticator app. Enrollment is required (Settings → Two-Factor Authentication).</div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px;gap:12px;">
+      <span id="deploy-risk-label"></span>
+      <div style="display:flex;gap:10px;">
+        <button type="button" class="btn btn-ghost" onclick="closeDeployModal()">Cancel</button>
+        <button type="submit" class="btn btn-sky" id="deploy-submit-btn">
+          <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+          Deploy
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+
+{# Quick task dispatch modal — single host/action picker. Logic: vigil-tasks.js (openDispatchModal / submitDispatch) #}
+<div class="modal-overlay" id="dispatch-overlay" onclick="closeDispatchModal()"></div>
+<div class="modal" id="dispatch-modal">
+  <div class="modal-title">
+    Dispatch Task
+    <button class="modal-close" onclick="closeDispatchModal()">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <form id="dispatch-form" onsubmit="submitDispatch(event)">
+    <div class="form-group">
+      <label class="form-label">Host</label>
+      <select class="form-control" id="dispatch-host" required>
+        <option value="">Select a host…</option>
+        {% for host in hosts %}{% if host.status == 'online' and host.mode != 'monitor' %}
+        <option value="{{ host.id }}">{{ host.hostname }}{% if host.ip_address %} ({{ host.ip_address }}){% endif %} — {{ host.get_mode_display }}</option>
+        {% endif %}{% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Action</label>
+      <select class="form-control" id="dispatch-action" required onchange="updateDispatchParams()">
+        <option value="">Select an action…</option>
+        <optgroup label="Services">
+          <option value="restart_service">restart_service</option>
+        </optgroup>
+        <optgroup label="Containers">
+          <option value="start_container">start_container</option>
+          <option value="restart_container">restart_container</option>
+          <option value="stop_container">stop_container</option>
+          <option value="clear_docker_logs">clear_docker_logs</option>
+        </optgroup>
+        <optgroup label="System">
+          <option value="clear_temp_files">clear_temp_files</option>
+          <option value="run_package_updates">run_package_updates</option>
+          <option value="execute_script">execute_script</option>
+          <option value="reboot">reboot</option>
+        </optgroup>
+      </select>
+    </div>
+    <div id="dispatch-params"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:24px;gap:12px;">
+      <span id="dispatch-risk-label"></span>
+      <div style="display:flex;gap:10px;">
+        <button type="button" class="btn btn-ghost" onclick="closeDispatchModal()">Cancel</button>
+        <button type="submit" class="btn btn-sky" id="dispatch-submit-btn">
+          <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+          Dispatch
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+
+{# Toast notifications — populated by vigil-utils.js showToast() #}
+<div class="toast-container" id="toast-container"></div>
+
+{# Bridge: passes server-rendered config to JS. Source: vigil/urls.py dashboard() view. #}
+{# Security: only non-secret values that Django has already rendered to the page. #}
+{#   No CSRF token here — vigil-utils.js getCsrf() reads from the cookie/DOM. #}
+{# CSP note: this is the only inline <script> block. When CSP is added, generate a #}
+{#   nonce server-side, apply it here AND to every <script src> tag below.        #}
+{% block config %}
+<script>
+  window.VIGIL_CONFIG = {
+    timezone: '{{ vigil_timezone|escapejs }}',
+    timeFormat: '{{ vigil_time_format|escapejs }}',
+  };
+</script>
+{% endblock %}
+
+<!-- vigil-utils.js — getCsrf, apiPost/apiJson, showToast, escHtml, formatBytes, groupByLabel, computeRates. Load first: every other script depends on this. -->
+<script src="{% static 'js/vigil-utils.js' %}"></script>
+<!-- vigil-nav.js — navigateTo(), tab-bar switching -->
+<script src="{% static 'js/vigil-nav.js' %}"></script>
+<!-- vigil-host-cards.js — dashboard host cards, pin bar, host detail drawer, RDP, host CRUD -->
+<script src="{% static 'js/vigil-host-cards.js' %}"></script>
+<!-- vigil-monitor.js — Monitor page charts, metric fetching, auto-refresh (wraps navigateTo) -->
+<script src="{% static 'js/vigil-monitor.js' %}"></script>
+<!-- vigil-alerts.js — alert acknowledge -->
+<script src="{% static 'js/vigil-alerts.js' %}"></script>
+<!-- vigil-tasks.js — task library, editor, dispatch modal, YAML highlighting -->
+<script src="{% static 'js/vigil-tasks.js' %}"></script>
+<!-- vigil-deploy.js — deploy modal, fleet cache, schedule/retry/success-criteria policy (wraps navigateTo) -->
+<script src="{% static 'js/vigil-deploy.js' %}"></script>
+<!-- vigil-vulns.js — vulnerability scan refresh + host-card vuln badges -->
+<script src="{% static 'js/vigil-vulns.js' %}"></script>
+<!-- vigil-inventory.js — inventory table, column editor, AD sync, CSV export (wraps navigateTo) -->
+<script src="{% static 'js/vigil-inventory.js' %}"></script>
+<!-- vigil-settings.js — TOTP enroll / confirm / disable -->
+<script src="{% static 'js/vigil-settings.js' %}"></script>
+
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>
