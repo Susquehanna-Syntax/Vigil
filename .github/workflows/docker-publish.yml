@@ -1,4 +1,4 @@
-name: Build & Publish Docker Images
+name: Build & Publish Docker Image
 
 on:
   push:
@@ -9,8 +9,8 @@ on:
     branches: [main]
 
 env:
-  SERVER_IMAGE: connorhaggerty/vigil-server
-  AGENT_IMAGE:  connorhaggerty/vigil-agent
+  # Server image — agent is distributed as a platform-native binary, not a container.
+  SERVER_IMAGE: susquehannasyntax/vigil
 
 jobs:
   # ── Run Django checks on every push / PR ───────────────────────────────────
@@ -75,9 +75,9 @@ jobs:
       - name: Run tests
         run: python manage.py test --verbosity=2
 
-  # ── Build and push Docker images (main branch + tags only) ─────────────────
+  # ── Build and push the server image (main branch + tags only) ──────────────
   publish:
-    name: Publish Docker Images
+    name: Publish Docker Image
     runs-on: ubuntu-latest
     needs: test
     if: github.event_name == 'push'
@@ -96,23 +96,12 @@ jobs:
 
       # Determine image tags:
       #   main branch → :latest
-      #   v1.2.3 tag  → :1.2.3 and :latest
-      - name: Extract metadata (server)
+      #   v1.2.3 tag  → :1.2.3, :1.2 and :latest
+      - name: Extract metadata
         id: meta-server
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.SERVER_IMAGE }}
-          tags: |
-            type=ref,event=branch,suffix=
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Extract metadata (agent)
-        id: meta-agent
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.AGENT_IMAGE }}
           tags: |
             type=ref,event=branch,suffix=
             type=semver,pattern={{version}}
@@ -126,17 +115,6 @@ jobs:
           push: true
           tags: ${{ steps.meta-server.outputs.tags }}
           labels: ${{ steps.meta-server.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
-
-      - name: Build and push agent image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./agent
-          push: true
-          tags: ${{ steps.meta-agent.outputs.tags }}
-          labels: ${{ steps.meta-agent.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
