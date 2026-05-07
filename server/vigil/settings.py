@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "apps.tasks",
     "apps.vulns",
     "apps.accounts",
+    "apps.agent_dist",
 ]
 
 MIDDLEWARE = [
@@ -43,6 +44,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "apps.accounts.middleware.SetupRedirectMiddleware",
 ]
 
 ROOT_URLCONF = "vigil.urls"
@@ -113,7 +115,18 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
+# ---------------------------------------------------------------------------
+# Media files — agent binaries and other uploaded files
+# ---------------------------------------------------------------------------
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+LOGIN_URL = "/login/"
 
 # ---------------------------------------------------------------------------
 # Task signing — Ed25519
@@ -146,6 +159,8 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+# Vigil's beat tasks are fire-and-forget — don't accumulate results in Redis.
+CELERY_TASK_IGNORE_RESULT = True
 CELERY_BEAT_SCHEDULE = {
     "evaluate-alert-rules": {
         "task": "alerts.evaluate_alert_rules",
@@ -167,12 +182,23 @@ CELERY_BEAT_SCHEDULE = {
         "task": "alerts.check_docker_image_updates",
         "schedule": 600.0,  # every 10 minutes
     },
+    "check-outdated-agents": {
+        "task": "alerts.check_outdated_agents",
+        "schedule": 3600.0,  # every hour
+    },
 }
 
 # ---------------------------------------------------------------------------
 # Metric retention
 # ---------------------------------------------------------------------------
 VIGIL_METRIC_RETENTION_DAYS = int(os.environ.get("VIGIL_METRIC_RETENTION_DAYS", "30"))
+
+# ---------------------------------------------------------------------------
+# Agent distribution — filesystem path where compiled binaries live.
+# In the Docker image this is pre-populated by the multi-stage build.
+# ---------------------------------------------------------------------------
+VIGIL_AGENT_DIST_DIR = Path(os.environ.get("VIGIL_AGENT_DIST_DIR", str(BASE_DIR / "agent_dist")))
+VIGIL_AGENT_VERSION = os.environ.get("VIGIL_AGENT_VERSION", "2026.1.0")
 
 # ---------------------------------------------------------------------------
 # Display / locale
@@ -220,5 +246,15 @@ LOGGING = {
     "root": {
         "handlers": ["console"],
         "level": os.environ.get("DJANGO_LOG_LEVEL", "INFO"),
+    },
+    # Suppress chatty third-party loggers that otherwise flood syslog
+    # via journald when the server runs as a systemd service.
+    "loggers": {
+        "urllib3": {"level": "WARNING", "propagate": True},
+        "requests": {"level": "WARNING", "propagate": True},
+        "django.db.backends": {"level": "WARNING", "propagate": True},
+        "django_celery_beat": {"level": "WARNING", "propagate": True},
+        "celery.beat": {"level": "WARNING", "propagate": True},
+        "celery.worker": {"level": "WARNING", "propagate": True},
     },
 }

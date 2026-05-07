@@ -122,6 +122,9 @@ def checkin(request):
         if agent_mode in valid_modes:
             host.mode = agent_mode
 
+    if agent_ver := data.get("vigil_version"):
+        host.agent_version = str(agent_ver)[:50]
+
     # Merge tags advertised by the agent.yml — server-side tags always win.
     if "tags" in data:
         host.tags = _normalize_tags(data.get("tags"), existing=host.tags)
@@ -461,6 +464,30 @@ def host_poll(request, host_id):
     except Host.DoesNotExist:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
     return Response(HostSerializer(host).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def check_pending(request):
+    """Enrollment wizard: check whether a host with the given token has appeared.
+
+    Returns:
+      {"status": "waiting"}              — no host with that token yet
+      {"status": "pending", "host": {…}} — host registered, awaiting approval
+      {"status": "approved", "host": {…}} — host already approved
+    """
+    token = (request.data.get("token") or "").strip()
+    if not token:
+        return Response({"error": "token is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    host = Host.objects.filter(agent_token=token).first()
+    if host is None:
+        return Response({"status": "waiting"})
+
+    host_data = HostSerializer(host).data
+    if host.status == Host.Status.PENDING:
+        return Response({"status": "pending", "host": host_data})
+    return Response({"status": "approved", "host": host_data})
 
 
 @api_view(["GET"])

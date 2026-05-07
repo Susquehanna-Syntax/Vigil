@@ -372,6 +372,78 @@
   <div id="task-detail-steps" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px;"></div>
 </div>
 
+{# Enrollment wizard — opened by openEnrollWizard() in vigil-enroll.js #}
+<div class="modal-overlay" id="enroll-overlay" onclick="closeEnrollWizard()"></div>
+<div class="modal modal-wide" id="enroll-modal" style="max-height:80vh;display:flex;flex-direction:column;">
+  <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+    <span id="enroll-title">Add Host</span>
+    <button class="modal-close" onclick="closeEnrollWizard()">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+
+  {# Step indicator #}
+  <div class="enroll-steps" id="enroll-steps" style="display:flex;gap:8px;margin-bottom:20px;flex-shrink:0;">
+    <div class="auth-step-pill active" id="enroll-pip-1">1</div>
+    <div class="auth-step-pill" id="enroll-pip-2">2</div>
+    <div class="auth-step-pill" id="enroll-pip-3">3</div>
+    <div class="auth-step-pill" id="enroll-pip-4">4</div>
+    <div style="font-size:12px;color:var(--text-3);margin-left:4px;align-self:center;" id="enroll-step-label">Generate token</div>
+  </div>
+
+  {# Step 1: token + install command #}
+  <div id="enroll-s1" style="flex:1;overflow-y:auto;">
+    <div class="totp-sub" style="margin-bottom:16px;">A unique enrollment token will be embedded in the install command. The agent will use it to register — then you approve it here.</div>
+    <div style="margin-bottom:12px;">
+      <label class="deploy-input-label">One-liner install command</label>
+      <div class="code-block mono" id="enroll-cmd" style="cursor:pointer;user-select:all;word-break:break-all;" onclick="copyEnrollCmd()" title="Click to copy">Generating…</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:20px;">
+      <button class="btn btn-ghost btn-sm" onclick="copyEnrollCmd()">Copy command</button>
+      <button class="btn btn-sky btn-sm" onclick="enrollGoStep2()">
+        I ran the command — Next
+        <svg viewBox="0 0 24 24" style="width:13px;height:13px;"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </button>
+    </div>
+    <div class="confirm-hint">Run this on the machine you want to add. Requires root / sudo. The agent starts automatically and will appear in the queue below.</div>
+  </div>
+
+  {# Step 2: polling #}
+  <div id="enroll-s2" style="flex:1;overflow-y:auto;display:none;text-align:center;padding:32px 0;">
+    <div style="font-size:32px;margin-bottom:16px;">⏳</div>
+    <div style="font-weight:600;font-size:15px;margin-bottom:8px;">Waiting for agent to connect…</div>
+    <div class="totp-sub">The agent will appear here within a few seconds of running the command.</div>
+    <div style="margin-top:20px;">
+      <div class="status-dot pending" style="display:inline-block;animation:pulse 1.5s infinite;"></div>
+    </div>
+  </div>
+
+  {# Step 3: approve #}
+  <div id="enroll-s3" style="flex:1;overflow-y:auto;display:none;">
+    <div style="font-weight:600;font-size:15px;margin-bottom:16px;color:var(--mint);">Agent detected!</div>
+    <div class="enroll-card" style="margin-bottom:20px;">
+      <div class="status-dot pending"></div>
+      <div class="enroll-info">
+        <div class="enroll-hostname" id="enroll-detected-hostname">—</div>
+        <div class="enroll-meta" id="enroll-detected-meta">—</div>
+      </div>
+    </div>
+    <div class="totp-sub" style="margin-bottom:16px;">Review the details above and approve the host to bring it online.</div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-mint btn-sm" id="enroll-approve-btn" onclick="enrollApproveHost()">Approve &amp; Activate</button>
+      <button class="btn btn-outline btn-sm" onclick="closeEnrollWizard()">Cancel</button>
+    </div>
+  </div>
+
+  {# Step 4: done #}
+  <div id="enroll-s4" style="flex:1;overflow-y:auto;display:none;text-align:center;padding:32px 0;">
+    <div style="font-size:40px;margin-bottom:16px;">✓</div>
+    <div style="font-weight:600;font-size:16px;margin-bottom:8px;color:var(--mint);">Host enrolled successfully</div>
+    <div class="totp-sub" style="margin-bottom:24px;" id="enroll-done-msg">The agent is now online and monitoring.</div>
+    <button class="btn btn-sky btn-sm" onclick="closeEnrollWizard(); location.reload();">Done</button>
+  </div>
+</div>
+
 {# Toast notifications — populated by vigil-utils.js showToast() #}
 <div class="toast-container" id="toast-container"></div>
 
@@ -409,6 +481,8 @@
 <script src="{% static 'js/vigil-inventory.js' %}"></script>
 <!-- vigil-settings.js — TOTP enroll / confirm / disable -->
 <script src="{% static 'js/vigil-settings.js' %}"></script>
+<!-- vigil-enroll.js — enrollment wizard modal -->
+<script src="{% static 'js/vigil-enroll.js' %}"></script>
 
 {% block extra_scripts %}{% endblock %}
 </body>

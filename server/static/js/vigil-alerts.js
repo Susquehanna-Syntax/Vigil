@@ -14,6 +14,18 @@ async function acknowledgeAlert(alertId) {
   }
 }
 
+function suggestAgentUpdate(hostId) {
+  const yaml = [
+    `name: "Update Vigil Agent"`,
+    `description: "Download the latest Vigil agent binary from the server and restart the service"`,
+    `actions:`,
+    `  - id: update`,
+    `    type: update_agent`,
+    `    params: {}`,
+  ].join('\n');
+  openDefinitionEditor(null, yaml);
+}
+
 function suggestDockerFix(hostId, containerName, image) {
   const yaml = [
     `name: "Update Docker Image: ${image}"`,

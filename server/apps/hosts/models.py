@@ -24,6 +24,7 @@ class Host(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     mode = models.CharField(max_length=20, choices=Mode.choices, default=Mode.MONITOR)
     tags = models.JSONField(default=list, blank=True)
+    agent_version = models.CharField(max_length=50, blank=True, default="")
     last_checkin = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

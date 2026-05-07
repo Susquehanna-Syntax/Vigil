@@ -1,0 +1,37 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vigil — Sign In</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'css/vigil.css' %}">
+</head>
+<body class="auth-page">
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-wordmark">Vigil<span style="color:var(--mint);">.</span></div>
+    <div class="auth-headline">Welcome back</div>
+    <div class="auth-sub">Sign in to your Vigil instance</div>
+
+    {% if error %}
+    <div class="auth-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="{% url 'login' %}{% if request.GET.next %}?next={{ request.GET.next }}{% endif %}">
+      {% csrf_token %}
+      <div class="form-group">
+        <label class="form-label">Username</label>
+        <input type="text" name="username" class="form-control" autocomplete="username" autofocus required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input type="password" name="password" class="form-control" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn btn-mint" style="width:100%;margin-top:8px;">Sign in</button>
+    </form>
+  </div>
+  <div class="auth-footer">Vigil &mdash; A Susquehanna Syntax product</div>
+</div>
+</body>
+</html>

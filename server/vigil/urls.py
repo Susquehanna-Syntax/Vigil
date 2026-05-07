@@ -1,6 +1,8 @@
 from datetime import timedelta
 
 from django.conf import settings as django_settings
+from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
@@ -10,6 +12,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
+from apps.accounts.views import login_view, logout_view, setup_view
 from apps.alerts.models import Alert
 from apps.hosts.models import Host
 from apps.hosts.views import checkin, register
@@ -27,7 +30,7 @@ def health_check(request):
     return Response({"status": "ok"})
 
 
-@login_required(login_url="/admin/login/")
+@login_required(login_url="/login/")
 def dashboard(request):
     hosts = Host.objects.exclude(status=Host.Status.REJECTED).select_related("inventory")
     cutoff = now() - timedelta(days=INACTIVE_AFTER_DAYS)
@@ -64,6 +67,9 @@ def dashboard(request):
 
 urlpatterns = [
     path("", dashboard, name="dashboard"),
+    path("setup/", setup_view, name="setup"),
+    path("login/", login_view, name="login"),
+    path("logout/", logout_view, name="logout"),
     path("admin/", admin.site.urls),
     path("api/v1/health/", health_check),
     path("api/v1/register", register, name="register"),
@@ -74,4 +80,5 @@ urlpatterns = [
     path("api/v1/tasks/", include("apps.tasks.urls")),
     path("api/v1/vulns/", include("apps.vulns.urls")),
     path("api/v1/accounts/", include("apps.accounts.urls")),
-]
+    path("agent/", include("apps.agent_dist.urls")),
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
