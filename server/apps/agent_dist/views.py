@@ -60,9 +60,16 @@ def download_agent(request, platform):
 
 
 def install_script(request):
-    """Return a shell script that downloads and installs the agent."""
+    """Return the bash installer for Linux and macOS."""
     base_url = f"{request.scheme}://{request.get_host()}"
     content = render_to_string("agent_install.sh", {"base_url": base_url})
+    return HttpResponse(content, content_type="text/plain; charset=utf-8")
+
+
+def install_ps1(request):
+    """Return the PowerShell installer for Windows."""
+    base_url = f"{request.scheme}://{request.get_host()}"
+    content = render_to_string("agent_install.ps1", {"base_url": base_url})
     return HttpResponse(content, content_type="text/plain; charset=utf-8")
 
 

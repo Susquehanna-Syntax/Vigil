@@ -10,12 +10,14 @@
 
 services:
   web:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
     command: python manage.py runserver 0.0.0.0:8000
     environment:
       DJANGO_DEBUG: "true"
     volumes:
       - ./server:/app
-    # Override the entrypoint to skip collectstatic in dev
     entrypoint: ["/app/entrypoint.sh"]
 
   celery-worker:

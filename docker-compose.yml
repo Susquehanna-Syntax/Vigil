@@ -1,14 +1,32 @@
+# Vigil — Self-hosted infrastructure monitoring & endpoint management
+# https://github.com/susquehannasyntax/vigil
+#
+# Paste this into Portainer → Stacks → Add Stack, or run:
+#   docker compose up -d
+#
+# Required environment variables (set in Portainer's "Environment variables" tab
+# or in a .env file alongside this compose):
+#
+#   DJANGO_SECRET_KEY      — random secret, e.g. openssl rand -hex 32
+#   VIGIL_SIGNING_KEY_SEED — Ed25519 seed for task signing (base64, 32 bytes)
+#   POSTGRES_PASSWORD      — database password
+#
+# Optional:
+#   POSTGRES_DB            — default: vigil
+#   POSTGRES_USER          — default: vigil
+#   VIGIL_TIMEZONE         — IANA tz name, e.g. America/New_York (default: UTC)
+#   VIGIL_AGENT_VERSION    — agent version baked into this image (default: 2026.1.0)
+
 services:
   db:
     image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-vigil}
       POSTGRES_USER: ${POSTGRES_USER:-vigil}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vigil}"]
       interval: 5s
@@ -17,8 +35,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -26,33 +43,42 @@ services:
       retries: 5
 
   web:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
     image: susquehannasyntax/vigil:latest
-    env_file: .env
+    restart: unless-stopped
     environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-insecure-change-me}
+      VIGIL_SIGNING_KEY_SEED: ${VIGIL_SIGNING_KEY_SEED:-}
+      VIGIL_TIMEZONE: ${VIGIL_TIMEZONE:-UTC}
+      VIGIL_AGENT_VERSION: ${VIGIL_AGENT_VERSION:-2026.1.0}
+      POSTGRES_DB: ${POSTGRES_DB:-vigil}
+      POSTGRES_USER: ${POSTGRES_USER:-vigil}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
       POSTGRES_HOST: db
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
     ports:
-      - "8000:8000"
+      - "9200:8000"
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
-      - ./server:/app
+      - media:/app/media
 
   celery-worker:
     image: susquehannasyntax/vigil:latest
-    env_file: .env
+    restart: unless-stopped
+    command: celery -A vigil worker -l info
     environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-insecure-change-me}
+      VIGIL_SIGNING_KEY_SEED: ${VIGIL_SIGNING_KEY_SEED:-}
+      POSTGRES_DB: ${POSTGRES_DB:-vigil}
+      POSTGRES_USER: ${POSTGRES_USER:-vigil}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
       POSTGRES_HOST: db
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
-    command: celery -A vigil worker -l info
     depends_on:
       db:
         condition: service_healthy
@@ -61,12 +87,17 @@ services:
 
   celery-beat:
     image: susquehannasyntax/vigil:latest
-    env_file: .env
+    restart: unless-stopped
+    command: celery -A vigil beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-insecure-change-me}
+      VIGIL_SIGNING_KEY_SEED: ${VIGIL_SIGNING_KEY_SEED:-}
+      POSTGRES_DB: ${POSTGRES_DB:-vigil}
+      POSTGRES_USER: ${POSTGRES_USER:-vigil}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
       POSTGRES_HOST: db
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
-    command: celery -A vigil beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     depends_on:
       db:
         condition: service_healthy
@@ -75,3 +106,4 @@ services:
 
 volumes:
   pgdata:
+  media:

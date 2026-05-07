@@ -120,6 +120,11 @@ function copyInstallCmd() {
   navigator.clipboard.writeText(cmd).then(() => showToast('Copied', 'success'));
 }
 
+function copyInstallCmdPs1() {
+  const cmd = `irm ${window.location.origin}/agent/install.ps1 | iex`;
+  navigator.clipboard.writeText(cmd).then(() => showToast('Copied', 'success'));
+}
+
 async function uploadAgentBinary() {
   const platform = document.getElementById('upload-platform').value;
   const version = (document.getElementById('upload-version').value || '').trim();
