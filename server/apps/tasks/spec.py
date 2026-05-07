@@ -267,6 +267,13 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": ["pattern"],
         "optional": ["user"],
     },
+    # ── Self-management ─────────────────────────────────────────────────────
+    "update_agent": {
+        "label": "Update Vigil agent",
+        "risk": "standard",
+        "required": [],
+        "optional": ["platform"],
+    },
 }
 
 _RISK_ORDER = {"low": 0, "standard": 1, "high": 2}

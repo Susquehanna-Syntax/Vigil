@@ -15,4 +15,5 @@ urlpatterns = [
     path("<uuid:host_id>/rdp/", views.host_rdp, name="host-rdp"),
     path("<uuid:host_id>/tags/", views.host_tags, name="host-tags"),
     path("<uuid:host_id>/inventory/", views.inventory_detail, name="inventory-detail"),
+    path("check-pending/", views.check_pending, name="host-check-pending"),
 ]

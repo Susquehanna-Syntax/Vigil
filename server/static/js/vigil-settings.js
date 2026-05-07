@@ -1,9 +1,10 @@
 // vigil-settings.js
-// Owns: Settings page — TOTP enrollment / disable.
+// Owns: Settings page — TOTP enrollment / disable, agent binary upload.
 //   (AD config lives in vigil-inventory.js since it imports Hosts.)
 // HTML: templates/pages/_settings.html
-// Depends on: vigil-utils.js (apiJson, showToast)
+// Depends on: vigil-utils.js (apiJson, showToast, getCsrf)
 // API: GET/POST /api/v1/accounts/totp/{,enroll/,enroll/confirm/,disable/}
+//      GET /agent/info/  POST /agent/upload/<platform>/
 
 /* ── TOTP enrollment ── */
 async function refreshTotpStatus() {
@@ -81,6 +82,68 @@ async function totpDisablePrompt() {
     refreshTotpStatus();
   } catch (e) {
     showToast('Disable failed: ' + e.message, 'error');
+  }
+}
+
+/* ── Agent binary distribution ── */
+
+async function loadAgentInfo() {
+  const el = document.getElementById('agent-versions');
+  if (!el) return;
+  try {
+    const data = await apiJson('/agent/info/');
+    el.textContent = '';
+    if (!data.length) { el.textContent = 'No binaries uploaded yet.'; return; }
+    data.forEach((b, i) => {
+      if (i > 0) el.appendChild(document.createTextNode('  ·  '));
+      const label = document.createElement('span');
+      label.style.color = 'var(--text-2)';
+      label.textContent = b.platform_label;
+      el.appendChild(label);
+      el.appendChild(document.createTextNode(' '));
+      const ver = document.createElement('span');
+      ver.className = 'mono';
+      ver.style.cssText = 'color:var(--sky);font-size:11px;';
+      ver.textContent = `v${b.version || '?'}`;
+      el.appendChild(ver);
+      el.appendChild(document.createTextNode(' '));
+      const hash = document.createElement('span');
+      hash.style.cssText = 'color:var(--text-3);font-size:11px;';
+      hash.textContent = `(sha256: ${b.sha256.slice(0, 12)}…)`;
+      el.appendChild(hash);
+    });
+  } catch (_) {}
+}
+
+function copyInstallCmd() {
+  const cmd = `curl -fsSL ${window.location.origin}/agent/install.sh | sudo bash`;
+  navigator.clipboard.writeText(cmd).then(() => showToast('Copied', 'success'));
+}
+
+async function uploadAgentBinary() {
+  const platform = document.getElementById('upload-platform').value;
+  const version = (document.getElementById('upload-version').value || '').trim();
+  const fileInput = document.getElementById('upload-binary');
+  const file = fileInput.files[0];
+  if (!file) { showToast('Select a binary file first', 'error'); return; }
+
+  const formData = new FormData();
+  formData.append('binary', file);
+  if (version) formData.append('version', version);
+
+  try {
+    const resp = await fetch(`/agent/upload/${encodeURIComponent(platform)}/`, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrf() },
+      body: formData,
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Upload failed');
+    showToast(`Uploaded ${platform}${version ? ' v' + version : ''}`, 'success');
+    fileInput.value = '';
+    loadAgentInfo();
+  } catch (e) {
+    showToast('Upload failed: ' + e.message, 'error');
   }
 }
 

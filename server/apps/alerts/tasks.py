@@ -236,3 +236,54 @@ def check_docker_image_updates():
                 dispatch_alert_notification(existing, event="resolved")
 
     return f"Docker image check: {fired} fired, {resolved} resolved"
+
+
+# ---------------------------------------------------------------------------
+# Outdated agent version alerts
+# ---------------------------------------------------------------------------
+
+@shared_task(name="alerts.check_outdated_agents")
+def check_outdated_agents():
+    """Fire an alert for any online host running an older agent version."""
+    from django.conf import settings as _s
+    current_version = getattr(_s, "VIGIL_AGENT_VERSION", "")
+    if not current_version:
+        return "VIGIL_AGENT_VERSION not set, skipping"
+
+    online_hosts = Host.objects.filter(status=Host.Status.ONLINE)
+    fired = resolved = 0
+
+    for host in online_hosts:
+        if not host.agent_version:
+            continue
+
+        is_outdated = host.agent_version != current_version
+
+        existing = Alert.objects.filter(
+            host=host,
+            rule=None,
+            state__in=[Alert.State.FIRING, Alert.State.ACKNOWLEDGED],
+            message__startswith="Agent outdated:",
+        ).first()
+
+        if is_outdated and not existing:
+            Alert.objects.create(
+                host=host,
+                rule=None,
+                state=Alert.State.FIRING,
+                severity="warning",
+                message=f"Agent outdated: {host.hostname} is running v{host.agent_version} (current: v{current_version})",
+                metric_value=None,
+                fix_context={"host_id": str(host.id), "hostname": host.hostname},
+            )
+            fired += 1
+            logger.info("Agent outdated alert fired: %s (v%s → v%s)", host.hostname, host.agent_version, current_version)
+
+        elif not is_outdated and existing and existing.state == Alert.State.FIRING:
+            existing.state = Alert.State.RESOLVED
+            existing.resolved_at = now()
+            existing.save(update_fields=["state", "resolved_at"])
+            resolved += 1
+            logger.info("Agent outdated alert resolved: %s", host.hostname)
+
+    return f"Agent version check: {fired} fired, {resolved} resolved"

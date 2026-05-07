@@ -20,6 +20,10 @@ import shlex
 import shutil
 import stat
 import subprocess
+import sys
+import tempfile
+import threading
+import time
 from pathlib import Path
 
 from .config import AgentConfig
@@ -692,6 +696,66 @@ def _delete_cron_job(params: dict, _config: AgentConfig) -> str:
     return f"Removed {removed} cron entry/entries matching {pattern!r}"
 
 
+# ── Self-update ─────────────────────────────────────────────────────────────
+
+def _update_agent(params: dict, config: AgentConfig) -> str:
+    """Download the latest agent binary from the server and replace this binary.
+
+    The agent restarts itself via systemctl 3 seconds after the binary is
+    replaced, giving this task result time to be reported first.
+    """
+    import requests as _requests
+
+    platform = (params.get("platform") or "").strip()
+    if not platform:
+        machine = os.uname().machine
+        platform = "linux-arm64" if machine in ("aarch64", "arm64") else "linux-amd64"
+
+    url = f"{config.server_url}/agent/download/{platform}/"
+    token = config.agent_token
+
+    current_exe = Path(sys.executable if getattr(sys, "frozen", False) else sys.argv[0]).resolve()
+
+    resp = _requests.get(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=(10, 120),
+        stream=True,
+    )
+    resp.raise_for_status()
+
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=current_exe.parent, prefix=".vigil-agent-update-")
+    try:
+        with os.fdopen(tmp_fd, "wb") as fh:
+            for chunk in resp.iter_content(chunk_size=65536):
+                fh.write(chunk)
+        os.chmod(tmp_path, 0o755)
+        os.replace(tmp_path, current_exe)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+    new_version = resp.headers.get("X-Vigil-Version", "unknown")
+
+    def _restart_after_delay():
+        time.sleep(3)
+        try:
+            subprocess.run(
+                ["systemctl", "restart", "vigil-agent"],
+                timeout=10, capture_output=True,
+            )
+        except Exception:
+            pass
+
+    t = threading.Thread(target=_restart_after_delay, daemon=True)
+    t.start()
+
+    return f"Agent updated to {new_version} ({platform}); restarting in 3 s"
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # DISPATCH TABLE
 # ═════════════════════════════════════════════════════════════════════════════
@@ -742,6 +806,8 @@ _HANDLERS: dict[str, callable] = {
     # Cron
     "create_cron_job": _create_cron_job,
     "delete_cron_job": _delete_cron_job,
+    # Self-management
+    "update_agent": _update_agent,
 }
 
 

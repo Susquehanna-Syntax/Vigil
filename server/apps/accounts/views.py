@@ -1,3 +1,6 @@
+from django.contrib import auth
+from django.contrib.auth import authenticate, get_user_model
+from django.shortcuts import redirect, render
 from django.utils.timezone import now
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -74,6 +77,105 @@ def totp_disable(request):
     profile.totp_confirmed_at = None
     profile.save(update_fields=["totp_secret", "totp_confirmed_at"])
     return Response({"enrolled": False})
+
+
+# ---------------------------------------------------------------------------
+# Setup / login / logout — HTML views
+# ---------------------------------------------------------------------------
+
+def setup_view(request):
+    """First-time admin registration with mandatory TOTP enrollment.
+
+    Step 1 (no session key): create account form.
+    Step 2 (setup_totp_secret in session): TOTP QR + confirm form.
+    Blocks if an account already exists and setup is not in progress.
+    """
+    User = get_user_model()
+
+    # Bounce completed users away from /setup/
+    if User.objects.exists() and "setup_totp_secret" not in request.session:
+        return redirect("dashboard") if request.user.is_authenticated else redirect("login")
+
+    error = None
+
+    # ── Step 2: TOTP confirmation ────────────────────────────────────────
+    if "setup_totp_secret" in request.session:
+        if not request.user.is_authenticated:
+            del request.session["setup_totp_secret"]
+            return redirect("setup")
+
+        if request.method == "POST":
+            code = request.POST.get("totp_code", "").strip()
+            secret = request.session["setup_totp_secret"]
+            if verify_totp(secret, code):
+                profile, _ = UserProfile.objects.get_or_create(user=request.user)
+                profile.totp_secret = secret
+                profile.totp_confirmed_at = now()
+                profile.save()
+                del request.session["setup_totp_secret"]
+                return redirect("dashboard")
+            error = "Invalid code — check your authenticator clock"
+
+        secret = request.session["setup_totp_secret"]
+        uri = otpauth_uri(secret, request.user.get_username())
+        return render(request, "setup.html", {
+            "step": 2,
+            "totp_secret": secret,
+            "totp_uri": uri,
+            "error": error,
+        })
+
+    # ── Step 1: Account creation ─────────────────────────────────────────
+    if request.method == "POST":
+        username = request.POST.get("username", "").strip()
+        password = request.POST.get("password", "")
+        confirm = request.POST.get("confirm", "")
+
+        if not username or not password:
+            error = "Username and password are required"
+        elif password != confirm:
+            error = "Passwords do not match"
+        elif len(password) < 8:
+            error = "Password must be at least 8 characters"
+        else:
+            user = User.objects.create_superuser(username=username, password=password)
+            auth.login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+            secret = generate_secret()
+            request.session["setup_totp_secret"] = secret
+            uri = otpauth_uri(secret, username)
+            return render(request, "setup.html", {
+                "step": 2,
+                "totp_secret": secret,
+                "totp_uri": uri,
+            })
+
+    return render(request, "setup.html", {"step": 1, "error": error})
+
+
+def login_view(request):
+    User = get_user_model()
+    if not User.objects.exists():
+        return redirect("setup")
+    if request.user.is_authenticated:
+        return redirect("dashboard")
+
+    error = None
+    if request.method == "POST":
+        username = request.POST.get("username", "").strip()
+        password = request.POST.get("password", "")
+        user = authenticate(request, username=username, password=password)
+        if user is not None:
+            auth.login(request, user)
+            next_url = request.GET.get("next", "/")
+            return redirect(next_url)
+        error = "Invalid username or password"
+
+    return render(request, "login.html", {"error": error})
+
+
+def logout_view(request):
+    auth.logout(request)
+    return redirect("login")
 
 
 @api_view(["POST"])

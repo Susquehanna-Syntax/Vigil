@@ -10,6 +10,7 @@ import socket
 import requests
 
 from .config import AgentConfig
+from .__version__ import __version__
 
 logger = logging.getLogger("vigil.client")
 
@@ -48,6 +49,7 @@ def checkin(config: AgentConfig, metrics: list[dict], inventory: dict | None = N
     """Send metrics and receive tasks. Returns the full server response."""
     payload = {
         **_system_info(),
+        "vigil_version": __version__,
         "metrics": metrics,
     }
     if config.tags:
