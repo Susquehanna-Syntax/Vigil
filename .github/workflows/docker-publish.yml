@@ -68,22 +68,27 @@ jobs:
       - name: Run tests
         run: python manage.py test --verbosity=2
 
-  # ── Build agent binaries on native runners (parallel) ──────────────────────
+  # ── Build agent binaries (parallel) ─────────────────────────────────────────
+  # Both macOS targets run on macos-latest (Apple Silicon). PyInstaller's
+  # --target-arch flag cross-compiles darwin-amd64 without needing macos-13.
   build-agent:
     name: Agent — ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-13
+          - os: macos-latest
             platform: darwin-amd64
             out: vigil-agent-darwin-amd64
+            target_arch: x86_64
           - os: macos-latest
             platform: darwin-arm64
             out: vigil-agent-darwin-arm64
+            target_arch: arm64
           - os: windows-latest
             platform: windows-amd64
             out: vigil-agent-windows-amd64
+            target_arch: ""
 
     runs-on: ${{ matrix.os }}
     defaults:
@@ -99,7 +104,11 @@ jobs:
           cache-dependency-path: agent/requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt pyinstaller
-      - name: Build binary
+      - name: Build binary (macOS)
+        if: runner.os == 'macOS'
+        run: pyinstaller --onefile --target-arch ${{ matrix.target_arch }} --name ${{ matrix.out }} vigil_agent/__main__.py
+      - name: Build binary (Windows)
+        if: runner.os == 'Windows'
         run: pyinstaller --onefile --name ${{ matrix.out }} vigil_agent/__main__.py
       - name: Upload artifact
         uses: actions/upload-artifact@v4
