@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vigil — Documentation</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,300&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #1c1c21; --s1: #232329; --s2: #2a2a31; --s3: #32323a; --s4: #3a3a43;
+    --border: #3a3a43; --text-1: #eae8e4; --text-2: #a09ca6; --text-3: #6e6b76;
+    --rose: #f2a0b8; --lavender: #baa8e8; --mint: #7eddb5; --peach: #f0b888;
+    --sky: #82c4ee; --lemon: #e2d478; --coral: #f09080;
+    --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-xl: 24px;
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    --sidebar-w: 260px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text-1); min-height: 100vh; line-height: 1.6; overflow-x: hidden; }
+  .layout { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+
+  /* SIDEBAR */
+  .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: var(--sidebar-w); z-index: 100; display: flex; flex-direction: column; padding: 28px 0; overflow-y: auto; background: rgba(28,28,33,0.82); backdrop-filter: blur(32px); -webkit-backdrop-filter: blur(32px); border-right: 1px solid rgba(255,255,255,0.04); }
+  .sidebar::-webkit-scrollbar { width: 4px; }
+  .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 2px; }
+  .sidebar-header { padding: 0 24px 24px; border-bottom: 1px solid var(--s3); margin-bottom: 16px; }
+  .sidebar-logo { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--text-1); margin-bottom: 6px; }
+  .sidebar-logo-icon { width: 36px; height: 36px; background: var(--mint); border-radius: var(--r-sm); display: grid; place-items: center; font-family: 'Fraunces', serif; font-weight: 700; font-size: 18px; color: var(--bg); transition: transform 0.5s var(--ease-out-expo); flex-shrink: 0; }
+  .sidebar-logo:hover .sidebar-logo-icon { transform: rotate(-8deg) scale(1.08); }
+  .sidebar-logo-text { font-family: 'Fraunces', serif; font-size: 20px; font-weight: 500; letter-spacing: -0.3px; }
+  .sidebar-version { font-size: 11px; color: var(--text-3); font-weight: 500; padding-left: 48px; }
+  .nav-section-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-3); padding: 16px 24px 8px; }
+  .nav-link { display: flex; align-items: center; gap: 10px; padding: 8px 24px; font-size: 13px; font-weight: 500; color: var(--text-2); text-decoration: none; transition: color 0.2s, background 0.2s, transform 0.3s var(--ease-out-expo); }
+  .nav-link:hover { color: var(--text-1); background: rgba(255,255,255,0.03); transform: translateX(3px); }
+  .nav-link.active { color: var(--mint); background: rgba(126,221,181,0.06); }
+  .nav-link svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .nav-spacer { flex: 1; }
+  .nav-footer { padding: 16px 24px; border-top: 1px solid var(--s3); margin-top: 16px; }
+  .nav-footer-link { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); text-decoration: none; transition: color 0.2s; padding: 6px 0; }
+  .nav-footer-link:hover { color: var(--text-2); }
+  .nav-footer-link svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .sqsy-footer { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--s3); display: flex; align-items: center; gap: 10px; }
+  .sqsy-badge { font-size: 10px; color: var(--text-3); font-weight: 500; letter-spacing: 0.3px; line-height: 1.4; }
+  .sqsy-badge a { color: var(--lavender); text-decoration: none; transition: color 0.2s; }
+  .sqsy-badge a:hover { color: var(--rose); }
+
+  /* MAIN */
+  .main { grid-column: 2; padding: 40px 56px 80px; max-width: 960px; margin: 0 auto; width: 100%; }
+  .hero { margin-bottom: 48px; animation: fadeUp 0.6s var(--ease-out-expo) both; }
+  .hero-banner { width: 100%; height: 220px; border-radius: var(--r-xl); background: var(--s1); overflow: hidden; margin-bottom: 28px; position: relative; display: flex; align-items: center; justify-content: center; }
+  .hero-banner-art { display: flex; gap: 20px; align-items: center; opacity: 0.22; }
+  .hero-banner-art div { border-radius: var(--r-md); animation: floatSlow 6s ease-in-out infinite alternate; }
+  .hero-banner-art div:nth-child(1) { width: 64px; height: 64px; background: var(--mint); animation-delay: 0s; }
+  .hero-banner-art div:nth-child(2) { width: 88px; height: 88px; background: var(--lavender); animation-delay: 0.5s; border-radius: 50%; }
+  .hero-banner-art div:nth-child(3) { width: 52px; height: 52px; background: var(--sky); animation-delay: 1s; }
+  .hero-banner-art div:nth-child(4) { width: 72px; height: 72px; background: var(--peach); animation-delay: 1.5s; border-radius: 50%; }
+  .hero-banner-art div:nth-child(5) { width: 56px; height: 56px; background: var(--lemon); animation-delay: 2s; }
+  .hero-banner-art div:nth-child(6) { width: 44px; height: 44px; background: var(--rose); animation-delay: 2.5s; border-radius: 50%; }
+  @keyframes floatSlow { from { transform: translateY(8px) rotate(-2deg); } to { transform: translateY(-8px) rotate(2deg); } }
+  .hero-title { font-family: 'Fraunces', serif; font-weight: 500; font-size: 36px; letter-spacing: -0.5px; line-height: 1.2; margin-bottom: 10px; }
+  .hero-title span { color: var(--mint); }
+  .hero-sub { font-size: 15px; color: var(--text-2); max-width: 620px; line-height: 1.7; margin-bottom: 20px; }
+  .hero-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge { font-size: 11px; font-weight: 600; padding: 5px 14px; border-radius: 20px; letter-spacing: 0.3px; }
+  .badge-lav { color: var(--lavender); background: rgba(186,168,232,0.1); }
+  .badge-mint { color: var(--mint); background: rgba(126,221,181,0.1); }
+  .badge-sky { color: var(--sky); background: rgba(130,196,238,0.1); }
+  .badge-peach { color: var(--peach); background: rgba(240,184,136,0.1); }
+  .badge-rose { color: var(--rose); background: rgba(242,160,184,0.1); }
+
+  .section { scroll-margin-top: 24px; margin-bottom: 56px; }
+  .section-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-3); margin-bottom: 12px; }
+  .section-title { font-family: 'Fraunces', serif; font-weight: 500; font-size: 26px; letter-spacing: -0.3px; margin-bottom: 8px; line-height: 1.3; }
+  .section-desc { font-size: 14px; color: var(--text-2); margin-bottom: 24px; max-width: 640px; line-height: 1.7; }
+  .divider { height: 1px; background: var(--s3); margin: 0 0 56px; }
+  h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; margin-top: 28px; color: var(--text-1); }
+  h3:first-child { margin-top: 0; }
+
+  .prose { font-size: 14px; color: var(--text-2); line-height: 1.7; }
+  .prose p { margin-bottom: 14px; }
+  .prose strong { color: var(--text-1); font-weight: 600; }
+  .prose a { color: var(--sky); text-decoration: none; transition: color 0.2s; }
+  .prose a:hover { color: var(--rose); }
+  .prose ul, .prose ol { margin: 12px 0 16px 20px; }
+  .prose li { margin-bottom: 6px; }
+
+  .code-block { background: var(--s1); border: 1px solid var(--s3); border-radius: var(--r-md); padding: 20px 24px; margin: 16px 0 20px; overflow-x: auto; position: relative; }
+  .code-block pre { font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.7; color: var(--text-2); white-space: pre; margin: 0; }
+  .code-block .code-label { position: absolute; top: 0; right: 0; font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3); background: var(--s2); padding: 4px 12px; border-radius: 0 var(--r-md) 0 var(--r-sm); }
+  code { font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; background: var(--s2); padding: 2px 8px; border-radius: 6px; color: var(--mint); }
+  .hl-comment { color: var(--text-3); } .hl-keyword { color: var(--lemon); } .hl-string { color: var(--mint); }
+  .hl-flag { color: var(--peach); } .hl-var { color: var(--sky); } .hl-cmd { color: var(--rose); } .hl-num { color: var(--lemon); }
+
+  .table-wrap { margin: 16px 0 20px; border-radius: var(--r-md); overflow: hidden; border: 1px solid var(--s3); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead { background: var(--s2); }
+  th { text-align: left; font-weight: 600; font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-3); padding: 12px 16px; }
+  td { padding: 10px 16px; color: var(--text-2); border-top: 1px solid var(--s3); }
+  tbody tr { transition: background 0.15s; }
+  tbody tr:hover { background: rgba(255,255,255,0.015); }
+  td code { font-size: 12px; background: var(--s2); padding: 2px 6px; border-radius: 4px; }
+
+  .callout { padding: 18px 22px; border-radius: var(--r-md); margin: 16px 0 20px; font-size: 13px; line-height: 1.6; display: flex; gap: 12px; align-items: flex-start; }
+  .callout-icon { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+  .callout-info { background: rgba(130,196,238,0.08); color: var(--sky); }
+  .callout-info .callout-icon { background: var(--sky); color: var(--bg); }
+  .callout-warn { background: rgba(240,144,128,0.08); color: var(--coral); }
+  .callout-warn .callout-icon { background: var(--coral); color: var(--bg); }
+  .callout-tip { background: rgba(126,221,181,0.08); color: var(--mint); }
+  .callout-tip .callout-icon { background: var(--mint); color: var(--bg); }
+
+  .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 20px 0; }
+  .feature-card { background: var(--s1); border-radius: var(--r-lg); padding: 22px; transition: transform 0.5s var(--ease-out-expo), background 0.3s; }
+  .feature-card:hover { transform: translateY(-3px); background: var(--s2); }
+  .feature-card-icon { width: 38px; height: 38px; border-radius: var(--r-sm); display: grid; place-items: center; margin-bottom: 14px; }
+  .feature-card-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .feature-card-desc { font-size: 12px; color: var(--text-2); line-height: 1.5; }
+
+  .api-method { display: inline-block; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.5px; min-width: 50px; text-align: center; }
+  .m-get { background: rgba(130,196,238,0.15); color: var(--sky); }
+  .m-post { background: rgba(126,221,181,0.15); color: var(--mint); }
+  .m-patch { background: rgba(240,184,136,0.15); color: var(--peach); }
+  .m-delete { background: rgba(242,160,184,0.15); color: var(--rose); }
+
+  .steps { counter-reset: step; margin: 16px 0 20px; }
+  .step { display: flex; gap: 16px; padding: 12px 0; align-items: flex-start; counter-increment: step; }
+  .step::before { content: counter(step); width: 28px; height: 28px; border-radius: 8px; background: var(--s2); display: grid; place-items: center; font-size: 12px; font-weight: 700; color: var(--sky); flex-shrink: 0; margin-top: 1px; }
+  .step-content { font-size: 14px; color: var(--text-2); line-height: 1.6; }
+  .step-content strong { color: var(--text-1); }
+
+  /* risk tier badges */
+  .risk { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 10px; border-radius: 10px; letter-spacing: 0.5px; text-transform: uppercase; }
+  .risk-low { color: var(--mint); background: rgba(126,221,181,0.12); }
+  .risk-std { color: var(--lemon); background: rgba(226,212,120,0.12); }
+  .risk-high { color: var(--rose); background: rgba(242,160,184,0.12); }
+
+  /* platform pill */
+  .plat { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 12px; border-radius: 8px; margin: 2px 3px; }
+  .plat-linux { color: var(--lemon); background: rgba(226,212,120,0.1); }
+  .plat-mac { color: var(--sky); background: rgba(130,196,238,0.1); }
+  .plat-win { color: var(--lavender); background: rgba(186,168,232,0.1); }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+
+  .mobile-toggle { display: none; position: fixed; bottom: 20px; right: 20px; z-index: 200; width: 48px; height: 48px; border-radius: 50%; background: var(--lavender); border: none; cursor: pointer; place-items: center; color: var(--bg); transition: transform 0.4s var(--ease-out-expo); }
+  .mobile-toggle:active { transform: scale(0.88); }
+  .mobile-toggle svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; }
+
+  @media (max-width: 900px) { :root { --sidebar-w: 240px; } .main { padding: 32px 28px 60px; } .feature-grid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 700px) { .layout { grid-template-columns: 1fr; } .sidebar { transform: translateX(-100%); transition: transform 0.4s var(--ease-out-expo); width: 280px; } .sidebar.open { transform: translateX(0); } .main { grid-column: 1; padding: 24px 20px 60px; } .feature-grid { grid-template-columns: 1fr; } .mobile-toggle { display: grid; } .hero-banner { height: 160px; } }
+
+  .page-footer { text-align: center; padding: 40px 0 20px; color: var(--text-3); font-size: 12px; }
+  .page-footer a { color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+  .page-footer a:hover { color: var(--lavender); }
+</style>
+</head>
+<body>
+<button class="mobile-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')" aria-label="Toggle navigation">
+  <svg viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+</button>
+
+<div class="layout">
+  <!-- ─── SIDEBAR ─────────────────────────────────────────── -->
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <a href="#top" class="sidebar-logo">
+        <div class="sidebar-logo-icon">V</div>
+        <span class="sidebar-logo-text">Vigil</span>
+      </a>
+      <div class="sidebar-version">v2026.1.0 — Docs</div>
+    </div>
+
+    <span class="nav-section-label">Getting Started</span>
+    <a href="#overview" class="nav-link active">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Overview
+    </a>
+    <a href="#quickstart" class="nav-link">
+      <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Quick Start
+    </a>
+    <a href="#deployment" class="nav-link">
+      <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      Deployment
+    </a>
+
+    <span class="nav-section-label">Architecture</span>
+    <a href="#architecture" class="nav-link">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      System Design
+    </a>
+    <a href="#agent" class="nav-link">
+      <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      The Agent
+    </a>
+    <a href="#dataflow" class="nav-link">
+      <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Data Flow
+    </a>
+
+    <span class="nav-section-label">Enrollment</span>
+    <a href="#enrollment" class="nav-link">
+      <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+      Wizard
+    </a>
+    <a href="#install" class="nav-link">
+      <svg viewBox="0 0 24 24"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+      Agent Install
+    </a>
+
+    <span class="nav-section-label">Features</span>
+    <a href="#monitoring" class="nav-link">
+      <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Monitoring
+    </a>
+    <a href="#alerts" class="nav-link">
+      <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      Alerts
+    </a>
+    <a href="#tasks" class="nav-link">
+      <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      Task Execution
+    </a>
+
+    <span class="nav-section-label">Security</span>
+    <a href="#security" class="nav-link">
+      <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Security Model
+    </a>
+    <a href="#totp" class="nav-link">
+      <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      TOTP / 2FA
+    </a>
+
+    <span class="nav-section-label">Reference</span>
+    <a href="#api" class="nav-link">
+      <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+      API Reference
+    </a>
+    <a href="#task-spec" class="nav-link">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Task YAML Spec
+    </a>
+    <a href="#env" class="nav-link">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      Environment Vars
+    </a>
+    <a href="#dev" class="nav-link">
+      <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+      Dev Setup
+    </a>
+
+    <div class="nav-spacer"></div>
+    <div class="nav-footer">
+      <div class="sqsy-footer">
+        <div class="sqsy-badge">A <a href="#">Susquehanna Syntax</a> product<br>Sleep well. Vigil's watching.</div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ─── MAIN ──────────────────────────────────────────────── -->
+  <main class="main" id="top">
+
+    <!-- HERO -->
+    <div class="hero">
+      <div class="hero-banner">
+        <div class="hero-banner-art">
+          <div></div><div></div><div></div><div></div><div></div><div></div>
+        </div>
+      </div>
+      <p class="section-label">Documentation</p>
+      <h1 class="hero-title">Vigil — <span>Infrastructure Monitoring</span></h1>
+      <p class="hero-sub">Self-hosted monitoring and endpoint management for homelabs and small businesses. One Docker Compose away from full visibility into your fleet.</p>
+      <div class="hero-badges">
+        <span class="badge badge-mint">Django 5</span>
+        <span class="badge badge-sky">TimescaleDB</span>
+        <span class="badge badge-lav">Celery + Redis</span>
+        <span class="badge badge-peach">Ed25519 Signing</span>
+        <span class="badge badge-rose">TOTP 2FA</span>
+      </div>
+    </div>
+
+    <!-- OVERVIEW -->
+    <section class="section" id="overview">
+      <p class="section-label">Introduction</p>
+      <h2 class="section-title" style="color:var(--mint)">What is Vigil?</h2>
+      <p class="section-desc">Vigil combines infrastructure monitoring with secure remote task execution in a single, easy-to-deploy package — no cloud required.</p>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-card-icon" style="background:rgba(126,221,181,0.15);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--mint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <div class="feature-card-title">Real-Time Monitoring</div>
+          <div class="feature-card-desc">CPU, memory, disk, and network metrics collected every minute. Stored in TimescaleDB for efficient time-series queries and trend analysis.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-icon" style="background:rgba(186,168,232,0.15);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--lavender)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          </div>
+          <div class="feature-card-title">Secure Task Execution</div>
+          <div class="feature-card-desc">Deploy structured tasks to managed hosts. All tasks are Ed25519-signed; agents verify before executing. TOTP required for deployment.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-icon" style="background:rgba(130,196,238,0.15);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--sky)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          </div>
+          <div class="feature-card-title">Smart Alerting</div>
+          <div class="feature-card-desc">Configurable thresholds with severity levels (warning / critical). Acknowledge and silence alerts inline. Celery-driven background evaluation.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-icon" style="background:rgba(240,184,136,0.15);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--peach)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <div class="feature-card-title">Outbound-Only Agents</div>
+          <div class="feature-card-desc">Agents open no listening ports. All connections are agent-initiated HTTPS to the Vigil server — safe behind any firewall.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-icon" style="background:rgba(226,212,120,0.15);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--lemon)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </div>
+          <div class="feature-card-title">One-Compose Deploy</div>
+          <div class="feature-card-desc">Paste the <code>docker-compose.yml</code> into Portainer (or run <code>docker compose up -d</code>). Postgres, Redis, Celery, and the web UI all start together.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-icon" style="background:rgba(242,160,184,0.15);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--rose)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+          </div>
+          <div class="feature-card-title">Enrollment Wizard</div>
+          <div class="feature-card-desc">Four-step modal: generate token, copy install command, watch agent appear, approve. From zero to monitored host in under two minutes.</div>
+        </div>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- QUICK START -->
+    <section class="section" id="quickstart">
+      <p class="section-label">Getting Started</p>
+      <h2 class="section-title" style="color:var(--sky)">Quick Start</h2>
+      <p class="section-desc">Get Vigil running in four steps. You need Docker with the Compose plugin and an internet connection for the first pull.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-content">
+            <strong>Download the compose file</strong><br>
+            Grab <code>docker-compose.yml</code> from the repo (or paste it directly into Portainer → Stacks → Add Stack).
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>Set required environment variables</strong><br>
+            Three values are required. Everything else has a sensible default.
+            <div class="code-block" style="margin-top:10px;">
+              <div class="code-label">Shell / .env</div>
+              <pre><span class="hl-comment"># Generate a signing key seed (Ed25519, 32 bytes base64)</span>
+<span class="hl-var">DJANGO_SECRET_KEY</span>=<span class="hl-string">$(openssl rand -hex 32)</span>
+<span class="hl-var">VIGIL_SIGNING_KEY_SEED</span>=<span class="hl-string">$(python3 -c "import os,base64; print(base64.b64encode(os.urandom(32)).decode())")</span>
+<span class="hl-var">POSTGRES_PASSWORD</span>=<span class="hl-string">changeme</span></pre>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>Start all services</strong><br>
+            <div class="code-block" style="margin-top:10px;">
+              <pre><span class="hl-cmd">docker compose up -d</span></pre>
+            </div>
+            Vigil is now available at <code>http://your-host:9200</code>.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>Create your admin account and enroll your first host</strong><br>
+            <div class="code-block" style="margin-top:10px;">
+              <pre><span class="hl-cmd">docker compose exec web python manage.py createsuperuser</span></pre>
+            </div>
+            Log in, click <strong>Add Host</strong> in the dashboard, and follow the four-step enrollment wizard.
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-tip">
+        <div class="callout-icon">T</div>
+        <div>The default port is <strong>9200</strong>. To change it, set <code>ports: "YOUR_PORT:8000"</code> in the compose file or override the web service in <code>docker-compose.override.yml</code>.</div>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- DEPLOYMENT -->
+    <section class="section" id="deployment">
+      <p class="section-label">Infrastructure</p>
+      <h2 class="section-title" style="color:var(--peach)">Deployment</h2>
+      <p class="section-desc">Vigil ships as a single Docker image containing the Django app, Celery workers, and all pre-compiled agent binaries for every supported platform.</p>
+
+      <h3>Services</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Service</th><th>Image</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>web</code></td><td><code>susquehannasyntax/vigil:latest</code></td><td>Django + Gunicorn, serves the UI and API</td></tr>
+            <tr><td><code>celery-worker</code></td><td><code>susquehannasyntax/vigil:latest</code></td><td>Background task processing (metrics, alerts, task dispatch)</td></tr>
+            <tr><td><code>celery-beat</code></td><td><code>susquehannasyntax/vigil:latest</code></td><td>Periodic scheduler (alert evaluation, outdated-agent check)</td></tr>
+            <tr><td><code>db</code></td><td><code>timescale/timescaledb:latest-pg16</code></td><td>PostgreSQL + TimescaleDB time-series extension</td></tr>
+            <tr><td><code>redis</code></td><td><code>redis:7-alpine</code></td><td>Celery broker and result backend</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>docker-compose.yml</h3>
+      <div class="code-block">
+        <div class="code-label">docker-compose.yml</div>
+        <pre><span class="hl-comment"># Vigil — Self-hosted infrastructure monitoring &amp; endpoint management
+# Paste into Portainer → Stacks → Add Stack, or run:
+#   docker compose up -d
+#
+# Required environment variables (set in Portainer's "Environment variables"
+# tab or in a .env file alongside this compose):
+#
+#   DJANGO_SECRET_KEY      — random secret, e.g. openssl rand -hex 32
+#   VIGIL_SIGNING_KEY_SEED — Ed25519 seed for task signing (base64, 32 bytes)
+#   POSTGRES_PASSWORD      — database password</span>
+
+<span class="hl-keyword">services</span>:
+  <span class="hl-var">db</span>:
+    <span class="hl-keyword">image</span>: <span class="hl-string">timescale/timescaledb:latest-pg16</span>
+    <span class="hl-keyword">restart</span>: <span class="hl-string">unless-stopped</span>
+    <span class="hl-keyword">environment</span>:
+      <span class="hl-var">POSTGRES_DB</span>: <span class="hl-string">${POSTGRES_DB:-vigil}</span>
+      <span class="hl-var">POSTGRES_USER</span>: <span class="hl-string">${POSTGRES_USER:-vigil}</span>
+      <span class="hl-var">POSTGRES_PASSWORD</span>: <span class="hl-string">${POSTGRES_PASSWORD:-vigil}</span>
+    <span class="hl-keyword">volumes</span>:
+      - <span class="hl-string">pgdata:/var/lib/postgresql/data</span>
+    <span class="hl-keyword">healthcheck</span>:
+      <span class="hl-keyword">test</span>: <span class="hl-string">["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vigil}"]</span>
+      <span class="hl-keyword">interval</span>: <span class="hl-num">5s</span>
+      <span class="hl-keyword">timeout</span>: <span class="hl-num">5s</span>
+      <span class="hl-keyword">retries</span>: <span class="hl-num">5</span>
+
+  <span class="hl-var">redis</span>:
+    <span class="hl-keyword">image</span>: <span class="hl-string">redis:7-alpine</span>
+    <span class="hl-keyword">restart</span>: <span class="hl-string">unless-stopped</span>
+    <span class="hl-keyword">healthcheck</span>:
+      <span class="hl-keyword">test</span>: <span class="hl-string">["CMD", "redis-cli", "ping"]</span>
+      <span class="hl-keyword">interval</span>: <span class="hl-num">5s</span>
+      <span class="hl-keyword">timeout</span>: <span class="hl-num">5s</span>
+      <span class="hl-keyword">retries</span>: <span class="hl-num">5</span>
+
+  <span class="hl-var">web</span>:
+    <span class="hl-keyword">image</span>: <span class="hl-string">susquehannasyntax/vigil:latest</span>
+    <span class="hl-keyword">restart</span>: <span class="hl-string">unless-stopped</span>
+    <span class="hl-keyword">environment</span>:
+      <span class="hl-var">DJANGO_SECRET_KEY</span>: <span class="hl-string">${DJANGO_SECRET_KEY:-insecure-change-me}</span>
+      <span class="hl-var">VIGIL_SIGNING_KEY_SEED</span>: <span class="hl-string">${VIGIL_SIGNING_KEY_SEED:-}</span>
+      <span class="hl-var">VIGIL_TIMEZONE</span>: <span class="hl-string">${VIGIL_TIMEZONE:-UTC}</span>
+      <span class="hl-var">VIGIL_AGENT_VERSION</span>: <span class="hl-string">${VIGIL_AGENT_VERSION:-2026.1.0}</span>
+      <span class="hl-var">POSTGRES_DB</span>: <span class="hl-string">${POSTGRES_DB:-vigil}</span>
+      <span class="hl-var">POSTGRES_USER</span>: <span class="hl-string">${POSTGRES_USER:-vigil}</span>
+      <span class="hl-var">POSTGRES_PASSWORD</span>: <span class="hl-string">${POSTGRES_PASSWORD:-vigil}</span>
+      <span class="hl-var">POSTGRES_HOST</span>: <span class="hl-string">db</span>
+      <span class="hl-var">CELERY_BROKER_URL</span>: <span class="hl-string">redis://redis:6379/0</span>
+      <span class="hl-var">CELERY_RESULT_BACKEND</span>: <span class="hl-string">redis://redis:6379/0</span>
+    <span class="hl-keyword">ports</span>:
+      - <span class="hl-string">"9200:8000"</span>
+    <span class="hl-keyword">depends_on</span>:
+      <span class="hl-var">db</span>:
+        <span class="hl-keyword">condition</span>: <span class="hl-string">service_healthy</span>
+      <span class="hl-var">redis</span>:
+        <span class="hl-keyword">condition</span>: <span class="hl-string">service_healthy</span>
+    <span class="hl-keyword">volumes</span>:
+      - <span class="hl-string">media:/app/media</span>
+
+  <span class="hl-var">celery-worker</span>:
+    <span class="hl-keyword">image</span>: <span class="hl-string">susquehannasyntax/vigil:latest</span>
+    <span class="hl-keyword">restart</span>: <span class="hl-string">unless-stopped</span>
+    <span class="hl-keyword">command</span>: <span class="hl-string">celery -A vigil worker -l info</span>
+    <span class="hl-keyword">environment</span>:
+      <span class="hl-var">DJANGO_SECRET_KEY</span>: <span class="hl-string">${DJANGO_SECRET_KEY:-insecure-change-me}</span>
+      <span class="hl-var">VIGIL_SIGNING_KEY_SEED</span>: <span class="hl-string">${VIGIL_SIGNING_KEY_SEED:-}</span>
+      <span class="hl-var">POSTGRES_DB</span>: <span class="hl-string">${POSTGRES_DB:-vigil}</span>
+      <span class="hl-var">POSTGRES_USER</span>: <span class="hl-string">${POSTGRES_USER:-vigil}</span>
+      <span class="hl-var">POSTGRES_PASSWORD</span>: <span class="hl-string">${POSTGRES_PASSWORD:-vigil}</span>
+      <span class="hl-var">POSTGRES_HOST</span>: <span class="hl-string">db</span>
+      <span class="hl-var">CELERY_BROKER_URL</span>: <span class="hl-string">redis://redis:6379/0</span>
+      <span class="hl-var">CELERY_RESULT_BACKEND</span>: <span class="hl-string">redis://redis:6379/0</span>
+    <span class="hl-keyword">depends_on</span>:
+      <span class="hl-var">db</span>:
+        <span class="hl-keyword">condition</span>: <span class="hl-string">service_healthy</span>
+      <span class="hl-var">redis</span>:
+        <span class="hl-keyword">condition</span>: <span class="hl-string">service_healthy</span>
+
+  <span class="hl-var">celery-beat</span>:
+    <span class="hl-keyword">image</span>: <span class="hl-string">susquehannasyntax/vigil:latest</span>
+    <span class="hl-keyword">restart</span>: <span class="hl-string">unless-stopped</span>
+    <span class="hl-keyword">command</span>: <span class="hl-string">celery -A vigil beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler</span>
+    <span class="hl-keyword">environment</span>:
+      <span class="hl-var">DJANGO_SECRET_KEY</span>: <span class="hl-string">${DJANGO_SECRET_KEY:-insecure-change-me}</span>
+      <span class="hl-var">VIGIL_SIGNING_KEY_SEED</span>: <span class="hl-string">${VIGIL_SIGNING_KEY_SEED:-}</span>
+      <span class="hl-var">POSTGRES_DB</span>: <span class="hl-string">${POSTGRES_DB:-vigil}</span>
+      <span class="hl-var">POSTGRES_USER</span>: <span class="hl-string">${POSTGRES_USER:-vigil}</span>
+      <span class="hl-var">POSTGRES_PASSWORD</span>: <span class="hl-string">${POSTGRES_PASSWORD:-vigil}</span>
+      <span class="hl-var">POSTGRES_HOST</span>: <span class="hl-string">db</span>
+      <span class="hl-var">CELERY_BROKER_URL</span>: <span class="hl-string">redis://redis:6379/0</span>
+      <span class="hl-var">CELERY_RESULT_BACKEND</span>: <span class="hl-string">redis://redis:6379/0</span>
+    <span class="hl-keyword">depends_on</span>:
+      <span class="hl-var">db</span>:
+        <span class="hl-keyword">condition</span>: <span class="hl-string">service_healthy</span>
+      <span class="hl-var">redis</span>:
+        <span class="hl-keyword">condition</span>: <span class="hl-string">service_healthy</span>
+
+<span class="hl-keyword">volumes</span>:
+  <span class="hl-var">pgdata</span>:
+  <span class="hl-var">media</span>:</pre>
+      </div>
+
+      <h3>Required Environment Variables</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Required</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>DJANGO_SECRET_KEY</code></td><td><span class="risk risk-high">required</span></td><td>Random secret for Django session signing. Use <code>openssl rand -hex 32</code>.</td></tr>
+            <tr><td><code>VIGIL_SIGNING_KEY_SEED</code></td><td><span class="risk risk-high">required</span></td><td>Base64-encoded 32-byte Ed25519 seed for task signing.</td></tr>
+            <tr><td><code>POSTGRES_PASSWORD</code></td><td><span class="risk risk-high">required</span></td><td>Database password. Do not use the default in production.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Optional Environment Variables</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>POSTGRES_DB</code></td><td><code>vigil</code></td><td>Database name</td></tr>
+            <tr><td><code>POSTGRES_USER</code></td><td><code>vigil</code></td><td>Database user</td></tr>
+            <tr><td><code>VIGIL_TIMEZONE</code></td><td><code>UTC</code></td><td>IANA timezone for display (e.g. <code>America/New_York</code>)</td></tr>
+            <tr><td><code>VIGIL_AGENT_VERSION</code></td><td><code>2026.1.0</code></td><td>Expected agent version; triggers alerts when agents are outdated</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout callout-warn">
+        <div class="callout-icon">!</div>
+        <div>Never run the compose file with the insecure default values in production. <code>DJANGO_SECRET_KEY=insecure-change-me</code> exists only as a local dev fallback.</div>
+      </div>
+
+      <h3>Portainer Stack</h3>
+      <div class="prose">
+        <p>Paste the <code>docker-compose.yml</code> directly into <strong>Portainer → Stacks → Add Stack → Web editor</strong>. Add your three required variables in the "Environment variables" tab, then click Deploy. No extra files needed.</p>
+      </div>
+
+      <h3>Volume Persistence</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Named Volume</th><th>Contents</th></tr></thead>
+          <tbody>
+            <tr><td><code>pgdata</code></td><td>All database data — metrics, hosts, tasks, alerts</td></tr>
+            <tr><td><code>media</code></td><td>Manually uploaded agent binaries (overrides baked-in binaries)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- ARCHITECTURE -->
+    <section class="section" id="architecture">
+      <p class="section-label">Architecture</p>
+      <h2 class="section-title" style="color:var(--lavender)">System Design</h2>
+      <p class="section-desc">Vigil is split into two components: the server (Django + Celery) and lightweight agents deployed on monitored hosts.</p>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-card-icon" style="background:rgba(186,168,232,0.15);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--lavender)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </div>
+          <div class="feature-card-title">Server (Django)</div>
+          <div class="feature-card-desc">REST API, dashboard UI, TimescaleDB storage, Celery task queue. Runs in Docker. Stateless web layer; state lives in Postgres.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-icon" style="background:rgba(126,221,181,0.15);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--mint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          </div>
+          <div class="feature-card-title">Agent (Python / PyInstaller)</div>
+          <div class="feature-card-desc">Single binary, installed as a system service. Collects metrics and polls for tasks. Verifies Ed25519 signatures before executing anything.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-icon" style="background:rgba(130,196,238,0.15);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--sky)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div class="feature-card-title">Celery Workers</div>
+          <div class="feature-card-desc">Process incoming metrics, evaluate alert rules, dispatch signed tasks to agents. Scheduled via <code>django-celery-beat</code> with DB-backed schedules.</div>
+        </div>
+      </div>
+
+      <h3>Agent Modes</h3>
+      <p class="prose">Each agent is locally configured in one of three modes — the server cannot escalate an agent's permissions beyond what it was configured for.</p>
+      <div class="table-wrap" style="margin-top:14px;">
+        <table>
+          <thead><tr><th>Mode</th><th>What It Does</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Monitor</strong></td><td>Metrics collection and check-in only. No task execution.</td></tr>
+            <tr><td><strong>Managed</strong></td><td>Metrics + execution of allowlisted structured task actions only.</td></tr>
+            <tr><td><strong>Full Control</strong></td><td>Metrics + execution of any signed structured task action.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- AGENT -->
+    <section class="section" id="agent">
+      <p class="section-label">Agent</p>
+      <h2 class="section-title" style="color:var(--mint)">The Agent</h2>
+      <p class="section-desc">The Vigil agent is a single PyInstaller binary that runs as a system service on every monitored host. It has no inbound ports and no listening sockets.</p>
+
+      <h3>Supported Platforms</h3>
+      <div class="prose">
+        <p>
+          <span class="plat plat-linux">Linux x86-64</span>
+          <span class="plat plat-linux">Linux ARM64</span>
+          <span class="plat plat-mac">macOS Intel</span>
+          <span class="plat plat-mac">macOS Apple Silicon</span>
+          <span class="plat plat-win">Windows x86-64</span>
+        </p>
+        <p style="margin-top:12px;">Linux binaries are baked into the Docker image at build time. macOS and Windows binaries are compiled on native runners in CI and baked into the same image, so the install script always serves the correct binary for the connecting host's architecture.</p>
+      </div>
+
+      <h3>What the Agent Does</h3>
+      <div class="steps">
+        <div class="step">
+          <div class="step-content"><strong>Reads local config</strong> — server URL, agent token, run mode, and allowlist from <code>/etc/vigil/agent.yml</code> (Linux/macOS) or <code>C:\ProgramData\Vigil\agent.yml</code> (Windows).</div>
+        </div>
+        <div class="step">
+          <div class="step-content"><strong>Collects metrics</strong> — CPU %, memory %, disk usage, network I/O, uptime, OS details, and agent version every 60 seconds.</div>
+        </div>
+        <div class="step">
+          <div class="step-content"><strong>Posts to <code>/api/v1/checkin</code></strong> — submits metrics and receives any pending signed task payloads in the same response.</div>
+        </div>
+        <div class="step">
+          <div class="step-content"><strong>Verifies task signatures</strong> — each task is signed with the server's Ed25519 key. The agent caches the public key and refuses unsigned or expired tasks.</div>
+        </div>
+        <div class="step">
+          <div class="step-content"><strong>Executes and reports back</strong> — runs the approved task action and POSTs the result to <code>/api/v1/tasks/result</code>.</div>
+        </div>
+      </div>
+
+      <h3>Config File Format</h3>
+      <div class="code-block">
+        <div class="code-label">agent.yml</div>
+        <pre><span class="hl-var">server_url</span>: <span class="hl-string">https://vigil.example.com</span>
+<span class="hl-var">agent_token</span>: <span class="hl-string">550e8400-e29b-41d4-a716-446655440000</span>
+<span class="hl-var">mode</span>: <span class="hl-string">managed</span>         <span class="hl-comment"># monitor | managed | full_control</span>
+<span class="hl-var">checkin_interval</span>: <span class="hl-num">60</span>  <span class="hl-comment"># seconds</span>
+<span class="hl-var">allowlist</span>:           <span class="hl-comment"># only for "managed" mode</span>
+  - <span class="hl-string">restart_service</span>
+  - <span class="hl-string">run_script</span>
+  - <span class="hl-string">update_agent</span></pre>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- DATA FLOW -->
+    <section class="section" id="dataflow">
+      <p class="section-label">Architecture</p>
+      <h2 class="section-title" style="color:var(--sky)">Data Flow</h2>
+      <p class="section-desc">All traffic is agent-initiated. The server never opens connections to hosts.</p>
+
+      <div class="code-block">
+        <div class="code-label">Check-in</div>
+        <pre><span class="hl-comment"># Every 60 seconds:</span>
+<span class="hl-var">Agent</span>  ──POST /api/v1/checkin──▶  <span class="hl-var">Server</span>
+       <span class="hl-comment">{ metrics, agent_token }</span>
+<span class="hl-var">Agent</span>  ◀────────────────────────  <span class="hl-var">Server</span>
+       <span class="hl-comment">{ pending_tasks: [...] }</span>
+
+<span class="hl-comment"># After task executes:</span>
+<span class="hl-var">Agent</span>  ──POST /api/v1/tasks/result──▶  <span class="hl-var">Server</span>
+       <span class="hl-comment">{ task_id, exit_code, stdout, stderr }</span></pre>
+      </div>
+
+      <h3>Metric Processing Pipeline</h3>
+      <div class="steps">
+        <div class="step">
+          <div class="step-content">Agent POSTs metrics to <code>/api/v1/checkin</code></div>
+        </div>
+        <div class="step">
+          <div class="step-content">Django view validates token, upserts <code>Host</code> record, enqueues <code>process_checkin</code> Celery task</div>
+        </div>
+        <div class="step">
+          <div class="step-content">Celery worker writes metric rows to TimescaleDB hypertables, evaluates alert rules</div>
+        </div>
+        <div class="step">
+          <div class="step-content">If threshold exceeded: creates or updates <code>Alert</code> record; dashboard updates via polling</div>
+        </div>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- ENROLLMENT -->
+    <section class="section" id="enrollment">
+      <p class="section-label">Enrollment</p>
+      <h2 class="section-title" style="color:var(--peach)">Enrollment Wizard</h2>
+      <p class="section-desc">Adding a new host is a four-step guided process. No manual config editing required.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-content">
+            <strong>Generate token</strong> — Click <em>Add Host</em> in the dashboard. The wizard generates a UUID token client-side and shows a one-liner install command with the token embedded.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>Install the agent</strong> — Copy and run the install command on the target host. The script downloads the correct binary for the host's OS and architecture, writes <code>agent.yml</code> with the token, and starts the service.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>Wait for check-in</strong> — The wizard polls <code>/api/v1/hosts/check-pending/</code> every 3 seconds. When the agent's first check-in arrives, the wizard advances automatically.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>Approve the host</strong> — Review the hostname and OS shown by the wizard. Click <em>Approve</em>. The host transitions from <code>pending</code> to <code>online</code> and immediately appears in the dashboard.
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-info">
+        <div class="callout-icon">i</div>
+        <div>Hosts remain in <strong>pending</strong> status until explicitly approved. A pending agent submits metrics but receives no tasks and no public key until the admin approves it.</div>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- INSTALL -->
+    <section class="section" id="install">
+      <p class="section-label">Agent Distribution</p>
+      <h2 class="section-title" style="color:var(--lemon)">Agent Install</h2>
+      <p class="section-desc">Vigil serves platform-specific install scripts and binaries from its own web server. No external registry needed.</p>
+
+      <h3>Linux</h3>
+      <div class="code-block">
+        <div class="code-label">Bash</div>
+        <pre><span class="hl-comment"># Zero-touch: token embedded</span>
+<span class="hl-var">VIGIL_TOKEN</span>=<span class="hl-string">your-uuid</span> <span class="hl-cmd">curl</span> <span class="hl-flag">-fsSL</span> http://vigil:9200/agent/install.sh | <span class="hl-cmd">sudo bash</span>
+
+<span class="hl-comment"># Prompt for token interactively</span>
+<span class="hl-cmd">curl</span> <span class="hl-flag">-fsSL</span> http://vigil:9200/agent/install.sh | <span class="hl-cmd">sudo bash</span></pre>
+      </div>
+      <p class="prose">The script auto-detects <code>x86_64</code> or <code>aarch64</code>, downloads the matching binary, installs to <code>/usr/local/bin/vigil-agent</code>, writes config, and registers a systemd service.</p>
+
+      <h3>macOS</h3>
+      <div class="code-block">
+        <div class="code-label">Bash</div>
+        <pre><span class="hl-var">VIGIL_TOKEN</span>=<span class="hl-string">your-uuid</span> <span class="hl-cmd">curl</span> <span class="hl-flag">-fsSL</span> http://vigil:9200/agent/install.sh | <span class="hl-cmd">sudo bash</span></pre>
+      </div>
+      <p class="prose">Same script — detects Darwin, selects <code>darwin-amd64</code> or <code>darwin-arm64</code>, installs to <code>/usr/local/bin/</code>, writes a launchd plist, and loads with <code>launchctl</code>.</p>
+
+      <h3>Windows</h3>
+      <div class="code-block">
+        <div class="code-label">PowerShell (run as Administrator)</div>
+        <pre><span class="hl-var">$env:VIGIL_TOKEN</span>=<span class="hl-string">"your-uuid"</span>
+<span class="hl-cmd">irm</span> http://vigil:9200/agent/install.ps1 | <span class="hl-cmd">iex</span></pre>
+      </div>
+      <p class="prose">Installs to <code>C:\Program Files\Vigil\</code>, writes config to <code>C:\ProgramData\Vigil\agent.yml</code>, and registers a Windows service via <code>sc.exe</code>.</p>
+
+      <h3>Manual Download</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Platform</th><th>Download Path</th></tr></thead>
+          <tbody>
+            <tr><td><span class="plat plat-linux">Linux x86-64</span></td><td><code>/agent/download/linux-amd64/</code></td></tr>
+            <tr><td><span class="plat plat-linux">Linux ARM64</span></td><td><code>/agent/download/linux-arm64/</code></td></tr>
+            <tr><td><span class="plat plat-mac">macOS Intel</span></td><td><code>/agent/download/darwin-amd64/</code></td></tr>
+            <tr><td><span class="plat plat-mac">macOS Apple Silicon</span></td><td><code>/agent/download/darwin-arm64/</code></td></tr>
+            <tr><td><span class="plat plat-win">Windows x64</span></td><td><code>/agent/download/windows-amd64/</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout callout-tip">
+        <div class="callout-icon">T</div>
+        <div>Binaries baked into the Docker image take precedence. Admins can upload manually-built binaries under <strong>Settings → Agent Distribution</strong>, which are served from the <code>media</code> volume and override the baked-in files.</div>
+      </div>
+
+      <h3>Uninstall — Linux</h3>
+      <div class="code-block">
+        <div class="code-label">Bash (run as root)</div>
+        <pre><span class="hl-comment"># Stop and disable the service</span>
+<span class="hl-cmd">systemctl</span> stop vigil-agent
+<span class="hl-cmd">systemctl</span> disable vigil-agent
+
+<span class="hl-comment"># Remove the unit file and reload systemd</span>
+<span class="hl-cmd">rm</span> <span class="hl-flag">-f</span> /etc/systemd/system/vigil-agent.service
+<span class="hl-cmd">systemctl</span> daemon-reload
+
+<span class="hl-comment"># Remove binary and config</span>
+<span class="hl-cmd">rm</span> <span class="hl-flag">-f</span> /usr/local/bin/vigil-agent
+<span class="hl-cmd">rm</span> <span class="hl-flag">-rf</span> /etc/vigil</pre>
+      </div>
+
+      <h3>Uninstall — macOS</h3>
+      <div class="code-block">
+        <div class="code-label">Bash (run as root)</div>
+        <pre><span class="hl-comment"># Unload and remove the launchd plist</span>
+<span class="hl-cmd">launchctl</span> unload /Library/LaunchDaemons/com.sqsy.vigil-agent.plist
+<span class="hl-cmd">rm</span> <span class="hl-flag">-f</span> /Library/LaunchDaemons/com.sqsy.vigil-agent.plist
+
+<span class="hl-comment"># Remove binary and config</span>
+<span class="hl-cmd">rm</span> <span class="hl-flag">-f</span> /usr/local/bin/vigil-agent
+<span class="hl-cmd">rm</span> <span class="hl-flag">-rf</span> /etc/vigil</pre>
+      </div>
+
+      <h3>Uninstall — Windows</h3>
+      <div class="code-block">
+        <div class="code-label">PowerShell (run as Administrator)</div>
+        <pre><span class="hl-comment"># Stop and delete the Windows service</span>
+<span class="hl-cmd">sc.exe</span> stop  VigilAgent
+<span class="hl-cmd">sc.exe</span> delete VigilAgent
+
+<span class="hl-comment"># Remove program files and config</span>
+<span class="hl-cmd">Remove-Item</span> <span class="hl-flag">-Recurse -Force</span> <span class="hl-string">"C:\Program Files\Vigil"</span>
+<span class="hl-cmd">Remove-Item</span> <span class="hl-flag">-Recurse -Force</span> <span class="hl-string">"C:\ProgramData\Vigil"</span></pre>
+      </div>
+
+      <div class="callout callout-info">
+        <div class="callout-icon">i</div>
+        <div>After uninstalling the agent, remove the host record from the Vigil dashboard under <strong>Hosts → &hellip; → Remove Host</strong>. This clears all stored metrics and alerts for that host from the database.</div>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- MONITORING -->
+    <section class="section" id="monitoring">
+      <p class="section-label">Monitoring</p>
+      <h2 class="section-title" style="color:var(--mint)">Monitoring</h2>
+      <p class="section-desc">Vigil collects system metrics on every check-in and stores them in TimescaleDB for efficient range queries and downsampling.</p>
+
+      <h3>Collected Metrics</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Metric</th><th>Field</th><th>Unit</th></tr></thead>
+          <tbody>
+            <tr><td>CPU usage</td><td><code>cpu_percent</code></td><td>%</td></tr>
+            <tr><td>Memory usage</td><td><code>mem_percent</code></td><td>%</td></tr>
+            <tr><td>Disk usage</td><td><code>disk_percent</code></td><td>%</td></tr>
+            <tr><td>Load average (1m)</td><td><code>load_1</code></td><td>—</td></tr>
+            <tr><td>Network bytes sent</td><td><code>net_sent</code></td><td>bytes/interval</td></tr>
+            <tr><td>Network bytes received</td><td><code>net_recv</code></td><td>bytes/interval</td></tr>
+            <tr><td>Uptime</td><td><code>uptime_seconds</code></td><td>s</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Host Status States</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge badge-sky">pending</span></td><td>Agent registered but not yet approved by an admin</td></tr>
+            <tr><td><span class="badge badge-mint">online</span></td><td>Checked in within the last 3× check-in interval</td></tr>
+            <tr><td><span class="badge badge-rose" style="color:var(--rose);background:rgba(242,160,184,0.1);">offline</span></td><td>No check-in received within the expected window</td></tr>
+            <tr><td><span class="badge" style="color:var(--lemon);background:rgba(226,212,120,0.1);">warning</span></td><td>Online but one or more metrics exceed warning thresholds</td></tr>
+            <tr><td><span class="badge badge-rose" style="color:var(--rose);background:rgba(242,160,184,0.1);">critical</span></td><td>One or more metrics exceed critical thresholds</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- ALERTS -->
+    <section class="section" id="alerts">
+      <p class="section-label">Alerting</p>
+      <h2 class="section-title" style="color:var(--rose)">Alerts</h2>
+      <p class="section-desc">Vigil evaluates alert rules on every check-in. Alerts fire when a metric crosses a threshold and resolve automatically when it drops back below.</p>
+
+      <h3>Alert Lifecycle</h3>
+      <div class="steps">
+        <div class="step">
+          <div class="step-content"><strong>Firing</strong> — metric exceeds threshold. Alert created with severity <code>warning</code> or <code>critical</code>.</div>
+        </div>
+        <div class="step">
+          <div class="step-content"><strong>Acknowledged</strong> — admin dismisses the alert. It remains visible but stops appearing as "active" in the header count.</div>
+        </div>
+        <div class="step">
+          <div class="step-content"><strong>Silenced</strong> — alert is suppressed for a set duration. Re-fires if still breached when silence expires.</div>
+        </div>
+        <div class="step">
+          <div class="step-content"><strong>Resolved</strong> — metric drops back below threshold. Alert auto-resolves and moves to history.</div>
+        </div>
+      </div>
+
+      <h3>Default Thresholds</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Metric</th><th>Warning</th><th>Critical</th></tr></thead>
+          <tbody>
+            <tr><td>CPU</td><td>75%</td><td>90%</td></tr>
+            <tr><td>Memory</td><td>80%</td><td>95%</td></tr>
+            <tr><td>Disk</td><td>80%</td><td>95%</td></tr>
+            <tr><td>Host offline</td><td>—</td><td>3× missed check-ins</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout callout-info">
+        <div class="callout-icon">i</div>
+        <div>When an alert fires for an outdated agent, the alerts panel shows a <em>Suggest Fix</em> button that pre-fills the task editor with an <code>update_agent</code> task payload ready to deploy.</div>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- TASKS -->
+    <section class="section" id="tasks">
+      <p class="section-label">Task Execution</p>
+      <h2 class="section-title" style="color:var(--lavender)">Task Execution</h2>
+      <p class="section-desc">Vigil tasks are structured action objects — never raw shell commands. Every task is signed with Ed25519 before dispatch and verified by the agent before execution.</p>
+
+      <h3>Risk Tiers</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tier</th><th>Required Auth</th><th>Delay</th><th>Examples</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="risk risk-low">Low</span></td>
+              <td>Session (confirm)</td>
+              <td>None</td>
+              <td><code>get_status</code>, <code>ping</code></td>
+            </tr>
+            <tr>
+              <td><span class="risk risk-std">Standard</span></td>
+              <td>TOTP code required</td>
+              <td>None</td>
+              <td><code>restart_service</code>, <code>run_script</code>, <code>update_agent</code></td>
+            </tr>
+            <tr>
+              <td><span class="risk risk-high">High</span></td>
+              <td>TOTP code required</td>
+              <td>60s countdown</td>
+              <td><code>reboot</code>, <code>shutdown</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Deploying a Task</h3>
+      <div class="steps">
+        <div class="step">
+          <div class="step-content">Open the <strong>Tasks</strong> panel and click <em>Deploy Task</em>.</div>
+        </div>
+        <div class="step">
+          <div class="step-content">Select one or more target hosts and write (or paste) the task YAML.</div>
+        </div>
+        <div class="step">
+          <div class="step-content">Enter your 6-digit TOTP code (standard/high risk tasks).</div>
+        </div>
+        <div class="step">
+          <div class="step-content">Click <em>Execute</em>. The server signs the task payload, queues it for delivery on the next agent check-in.</div>
+        </div>
+        <div class="step">
+          <div class="step-content">Watch the result appear in the task history. Stdout/stderr are captured and displayed inline.</div>
+        </div>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- SECURITY -->
+    <section class="section" id="security">
+      <p class="section-label">Security</p>
+      <h2 class="section-title" style="color:var(--rose)">Security Model</h2>
+      <p class="section-desc">Vigil is designed from the ground up around the principle that a compromised server must not be able to execute arbitrary commands on monitored hosts.</p>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-card-icon" style="background:rgba(242,160,184,0.15);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--rose)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <div class="feature-card-title">Agent-Side Allowlists</div>
+          <div class="feature-card-desc">The agent decides what it will execute, not the server. Tasks are structured action objects; raw shell commands are never sent over the wire.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-icon" style="background:rgba(226,212,120,0.15);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--lemon)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <div class="feature-card-title">Ed25519 Task Signing</div>
+          <div class="feature-card-desc">Every task payload is signed with the server's Ed25519 private key. Agents cache the public key and reject any unsigned or tampered task.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-icon" style="background:rgba(130,196,238,0.15);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--sky)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+          </div>
+          <div class="feature-card-title">Enrollment Ceremony</div>
+          <div class="feature-card-desc">New agents are <code>pending</code> until an admin explicitly approves them. No task execution or key distribution before approval.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-icon" style="background:rgba(186,168,232,0.15);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--lavender)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div class="feature-card-title">TTL + Nonce Replay Protection</div>
+          <div class="feature-card-desc">Tasks expire after 5 minutes by default. Nonces are tracked and rejected on reuse, preventing replay attacks even over a compromised connection.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-icon" style="background:rgba(126,221,181,0.15);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--mint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </div>
+          <div class="feature-card-title">Immutable Audit Trail</div>
+          <div class="feature-card-desc">Every task deploy, host approval, and sensitive action is logged with user, target, auth method, task ID, and result.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-icon" style="background:rgba(240,184,136,0.15);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--peach)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <div class="feature-card-title">Outbound-Only Agents</div>
+          <div class="feature-card-desc">Agents never open a listening port. They connect to the server; the server never connects to them. Safe behind NAT and enterprise firewalls.</div>
+        </div>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- TOTP -->
+    <section class="section" id="totp">
+      <p class="section-label">Authentication</p>
+      <h2 class="section-title" style="color:var(--lemon)">TOTP / 2FA</h2>
+      <p class="section-desc">Task execution beyond read-only views requires TOTP (Time-based One-Time Password). Enroll once per account via Settings.</p>
+
+      <h3>Enrollment</h3>
+      <div class="steps">
+        <div class="step">
+          <div class="step-content">Open <strong>Settings → Security → TOTP</strong> and click <em>Enable TOTP</em>.</div>
+        </div>
+        <div class="step">
+          <div class="step-content">Copy the secret or scan the displayed <code>otpauth://</code> URI with an authenticator app (e.g., Bitwarden, Aegis, Google Authenticator).</div>
+        </div>
+        <div class="step">
+          <div class="step-content">Enter a current 6-digit code to confirm enrollment. TOTP is now required for all task deploys.</div>
+        </div>
+      </div>
+
+      <div class="callout callout-warn">
+        <div class="callout-icon">!</div>
+        <div>TOTP enrollment is <strong>per-account</strong>. In a single-user homelab install, the one admin account must enroll before deploying standard or high-risk tasks. Password-only fallback is a temporary dev convenience and will be removed in a future release.</div>
+      </div>
+
+      <h3>Disabling TOTP</h3>
+      <p class="prose">Under <strong>Settings → Security</strong>, click <em>Disable TOTP</em> and confirm with a current 6-digit code. You will be unable to deploy tasks until TOTP is re-enrolled.</p>
+    </section>
+    <div class="divider"></div>
+
+    <!-- API REFERENCE -->
+    <section class="section" id="api">
+      <p class="section-label">Reference</p>
+      <h2 class="section-title" style="color:var(--sky)">API Reference</h2>
+      <p class="section-desc">All API endpoints are under <code>/api/v1/</code>. Authentication is session-based (cookie) for browser clients; token auth is planned for external integrations.</p>
+
+      <h3>Hosts</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/hosts/</code></td><td>List all hosts and their current status</td></tr>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/hosts/{id}/</code></td><td>Host detail including latest metrics</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/hosts/{id}/approve/</code></td><td>Approve a pending host</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/hosts/{id}/poll/</code></td><td>Trigger an immediate check-in</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/hosts/check-pending/</code></td><td>Poll by token — returns waiting / pending / approved</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Metrics</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/checkin/</code></td><td>Agent metric submission + task polling (agent-only)</td></tr>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/metrics/{host}/{metric}/</code></td><td>Query metric history for a host</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Tasks</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/tasks/deploy/</code></td><td>Deploy a signed task to one or more hosts</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/tasks/result/</code></td><td>Agent reports task execution result (agent-only)</td></tr>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/</code></td><td>List task history</td></tr>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/{id}/</code></td><td>Task detail including stdout/stderr</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Alerts</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/alerts/</code></td><td>List active alerts</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/alerts/{id}/acknowledge/</code></td><td>Acknowledge an alert</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/alerts/{id}/silence/</code></td><td>Silence an alert for a duration</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>External Checks</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/checks/external/</code></td><td>Push result of an external check (HTTP/ping/port) into Vigil</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- TASK YAML SPEC -->
+    <section class="section" id="task-spec">
+      <p class="section-label">Reference</p>
+      <h2 class="section-title" style="color:var(--peach)">Task YAML Spec</h2>
+      <p class="section-desc">Tasks are defined as YAML documents. The <code>action</code> key selects a handler registered in the server's action registry.</p>
+
+      <h3>Schema</h3>
+      <div class="code-block">
+        <div class="code-label">task.yml</div>
+        <pre><span class="hl-var">action</span>: <span class="hl-string">restart_service</span>   <span class="hl-comment"># required — action name from registry</span>
+<span class="hl-var">params</span>:                   <span class="hl-comment"># optional key/value pairs passed to the handler</span>
+  <span class="hl-var">service</span>: <span class="hl-string">nginx</span>
+<span class="hl-var">comment</span>: <span class="hl-string">Restart after config deploy</span>  <span class="hl-comment"># optional audit note</span></pre>
+      </div>
+
+      <h3>Built-in Actions</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Action</th><th>Risk</th><th>Required Params</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>get_status</code></td><td><span class="risk risk-low">low</span></td><td>—</td><td>Return current uptime, load, and service list</td></tr>
+            <tr><td><code>ping</code></td><td><span class="risk risk-low">low</span></td><td>—</td><td>No-op echo — confirms agent is alive and responding</td></tr>
+            <tr><td><code>restart_service</code></td><td><span class="risk risk-std">standard</span></td><td><code>service</code></td><td>Restart a named system service (systemctl/launchctl/sc)</td></tr>
+            <tr><td><code>run_script</code></td><td><span class="risk risk-std">standard</span></td><td><code>script</code></td><td>Execute a pre-approved script from the agent's allowlist path</td></tr>
+            <tr><td><code>update_agent</code></td><td><span class="risk risk-std">standard</span></td><td>—</td><td>Download and apply the latest agent binary from the server, then restart the service</td></tr>
+            <tr><td><code>reboot</code></td><td><span class="risk risk-high">high</span></td><td>—</td><td>Schedule a system reboot (60s delay enforced by server)</td></tr>
+            <tr><td><code>shutdown</code></td><td><span class="risk risk-high">high</span></td><td>—</td><td>Initiate system shutdown (60s delay enforced by server)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout callout-info">
+        <div class="callout-icon">i</div>
+        <div>Actions not in the agent's allowlist are silently refused (Managed mode). The agent logs the refusal locally. The server marks the task as <code>refused</code> when the next result comes in.</div>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- ENV VARS -->
+    <section class="section" id="env">
+      <p class="section-label">Reference</p>
+      <h2 class="section-title" style="color:var(--lemon)">Environment Variables</h2>
+      <p class="section-desc">Complete reference for all environment variables consumed by the Vigil server.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>DJANGO_SECRET_KEY</code></td><td><em>none</em></td><td>Django session signing key. Generate with <code>openssl rand -hex 32</code>. Required in production.</td></tr>
+            <tr><td><code>DJANGO_DEBUG</code></td><td><code>false</code></td><td>Set to <code>true</code> in development only. Never enable in production.</td></tr>
+            <tr><td><code>VIGIL_SIGNING_KEY_SEED</code></td><td><em>none</em></td><td>Base64-encoded 32-byte Ed25519 seed. Required for task signing.</td></tr>
+            <tr><td><code>VIGIL_TIMEZONE</code></td><td><code>UTC</code></td><td>IANA timezone name used for display and scheduling (e.g. <code>America/Chicago</code>).</td></tr>
+            <tr><td><code>VIGIL_AGENT_VERSION</code></td><td><code>2026.1.0</code></td><td>Expected agent version. Outdated agents trigger an alert.</td></tr>
+            <tr><td><code>VIGIL_AGENT_DIST_DIR</code></td><td><code>/app/agent_dist</code></td><td>Filesystem path from which baked-in agent binaries are served.</td></tr>
+            <tr><td><code>POSTGRES_HOST</code></td><td><code>db</code></td><td>Postgres hostname (matches the Docker Compose service name).</td></tr>
+            <tr><td><code>POSTGRES_DB</code></td><td><code>vigil</code></td><td>Database name.</td></tr>
+            <tr><td><code>POSTGRES_USER</code></td><td><code>vigil</code></td><td>Database user.</td></tr>
+            <tr><td><code>POSTGRES_PASSWORD</code></td><td><em>none</em></td><td>Database password. Required.</td></tr>
+            <tr><td><code>CELERY_BROKER_URL</code></td><td><code>redis://redis:6379/0</code></td><td>Celery broker connection string.</td></tr>
+            <tr><td><code>CELERY_RESULT_BACKEND</code></td><td><code>redis://redis:6379/0</code></td><td>Celery result backend connection string.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- DEV SETUP -->
+    <section class="section" id="dev">
+      <p class="section-label">Development</p>
+      <h2 class="section-title" style="color:var(--lavender)">Dev Setup</h2>
+      <p class="section-desc">The <code>docker-compose.override.yml</code> file is automatically merged in development, bind-mounting source and swapping gunicorn for the Django dev server.</p>
+
+      <h3>Start the Stack</h3>
+      <div class="code-block">
+        <div class="code-label">Shell</div>
+        <pre><span class="hl-cmd">docker compose up -d</span>   <span class="hl-comment"># picks up override.yml automatically</span></pre>
+      </div>
+
+      <h3>Django Commands</h3>
+      <div class="code-block">
+        <div class="code-label">Shell</div>
+        <pre><span class="hl-comment"># Standalone dev server (outside Docker)</span>
+<span class="hl-cmd">cd</span> server
+<span class="hl-cmd">source</span> .venv/bin/activate
+<span class="hl-cmd">pip install</span> <span class="hl-flag">-r</span> requirements.txt
+<span class="hl-cmd">python manage.py migrate</span>
+<span class="hl-cmd">python manage.py runserver</span>
+
+<span class="hl-comment"># Run tests</span>
+<span class="hl-cmd">python manage.py test</span>
+
+<span class="hl-comment"># Create superuser</span>
+<span class="hl-cmd">python manage.py createsuperuser</span></pre>
+      </div>
+
+      <h3>Celery (development)</h3>
+      <div class="code-block">
+        <div class="code-label">Shell</div>
+        <pre><span class="hl-comment"># Worker</span>
+<span class="hl-cmd">celery</span> <span class="hl-flag">-A</span> vigil worker <span class="hl-flag">-l</span> info
+
+<span class="hl-comment"># Beat scheduler</span>
+<span class="hl-cmd">celery</span> <span class="hl-flag">-A</span> vigil beat <span class="hl-flag">-l</span> info <span class="hl-flag">--scheduler</span> django_celery_beat.schedulers:DatabaseScheduler</pre>
+      </div>
+
+      <h3>CI / GitHub Actions</h3>
+      <div class="prose">
+        <p>The <code>.github/workflows/docker-publish.yml</code> workflow runs on every push to <code>main</code> and on version tags (<code>v*.*.*</code>).</p>
+        <ul>
+          <li><strong>test</strong> — Django system check, migrations, and test suite against a real Postgres + Redis</li>
+          <li><strong>build-agent</strong> — matrix job on <code>macos-13</code>, <code>macos-latest</code>, and <code>windows-latest</code>; produces native PyInstaller binaries and uploads them as artifacts</li>
+          <li><strong>publish</strong> — downloads all three platform artifacts into <code>server/agent_dist/</code>, builds a multi-arch Docker image (<code>linux/amd64</code> + <code>linux/arm64</code>), and pushes to DockerHub with <code>:latest</code> and the semver tag</li>
+        </ul>
+        <p>Required GitHub secrets: <code>DOCKERHUB_USERNAME</code> and <code>DOCKERHUB_TOKEN</code>.</p>
+      </div>
+
+      <div class="callout callout-tip">
+        <div class="callout-icon">T</div>
+        <div>The <code>docker-compose.override.yml</code> bind-mounts <code>./server:/app</code> so Python edits take effect immediately on the running dev server. Agent binaries baked into the image are <em>not</em> affected by the bind mount because they live outside the <code>/app</code> tree when the image was built.</div>
+      </div>
+    </section>
+
+    <div class="page-footer">
+      <p>Vigil v2026.1.0 &mdash; a <a href="#">Susquehanna Syntax</a> product</p>
+      <p style="margin-top:6px;">"Sleep well. Vigil's watching."</p>
+    </div>
+  </main>
+</div>
+
+<script>
+  // Highlight active nav link on scroll
+  const sections = document.querySelectorAll('.section[id]');
+  const navLinks = document.querySelectorAll('.nav-link[href^="#"]');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        navLinks.forEach(l => l.classList.remove('active'));
+        const active = document.querySelector(`.nav-link[href="#${e.target.id}"]`);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { threshold: 0.25, rootMargin: '-60px 0px -60% 0px' });
+  sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>
