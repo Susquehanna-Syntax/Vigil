@@ -29,7 +29,7 @@ def health_check(request):
 
 @login_required(login_url="/admin/login/")
 def dashboard(request):
-    hosts = Host.objects.exclude(status=Host.Status.REJECTED)
+    hosts = Host.objects.exclude(status=Host.Status.REJECTED).select_related("inventory")
     cutoff = now() - timedelta(days=INACTIVE_AFTER_DAYS)
     inactive_hosts = list(
         hosts.filter(status=Host.Status.OFFLINE, last_checkin__lt=cutoff).order_by("hostname")

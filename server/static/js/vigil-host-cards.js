@@ -19,6 +19,13 @@ function openHostDetail(card) {
   document.getElementById('detail-meta').textContent =
     d.os + ' · ' + d.ip + (d.kernel ? ' · ' + d.kernel : '');
 
+  const logoEl = document.getElementById('detail-os-logo');
+  if (logoEl) {
+    logoEl.replaceChildren();
+    const svgDoc = new DOMParser().parseFromString(osLogo(d.os), 'image/svg+xml');
+    logoEl.appendChild(document.adoptNode(svgDoc.documentElement));
+  }
+
   const dot = document.getElementById('detail-status-dot');
   dot.className = 'status-dot ' + d.status;
 
@@ -480,6 +487,18 @@ async function refreshHostCards() {
     } catch {}
   }
 }
+
+// Inject OS logos into server-rendered host cards.
+// DOMParser in SVG mode is XSS-safe — scripts don't execute, and osLogo()
+// never interpolates user data into its SVG output strings.
+function _injectOsLogos(root) {
+  (root || document).querySelectorAll('.host-os-logo[data-os]').forEach(el => {
+    if (el.firstChild) return;
+    const doc = new DOMParser().parseFromString(osLogo(el.dataset.os), 'image/svg+xml');
+    el.appendChild(document.adoptNode(doc.documentElement));
+  });
+}
+_injectOsLogos();
 
 // Refresh host cards on page load
 refreshHostCards();

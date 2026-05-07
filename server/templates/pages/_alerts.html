@@ -28,6 +28,9 @@
             </div>
             <div class="alert-time">{{ alert.fired_at|timesince }} ago</div>
             <div class="alert-actions">
+              {% if alert.fix_context.container_name %}
+              <button class="btn btn-sm btn-outline" style="color:var(--mint);" onclick="suggestDockerFix('{{ alert.host.id }}', '{{ alert.fix_context.container_name|escapejs }}', '{{ alert.fix_context.image|escapejs }}')">Suggest Fix</button>
+              {% endif %}
               <button class="btn btn-sm btn-outline" onclick="acknowledgeAlert('{{ alert.id }}')">Ack</button>
             </div>
           </div>

@@ -153,3 +153,86 @@ def prune_old_metric_points():
     if deleted:
         logger.info("Pruned %d metric points older than %d days", deleted, retention_days)
     return f"Pruned {deleted} metric points older than {retention_days} days"
+
+
+# ---------------------------------------------------------------------------
+# Docker image update alerts
+# ---------------------------------------------------------------------------
+
+def _get_or_create_docker_rule() -> AlertRule:
+    """Return the sentinel AlertRule for Docker outdated-image alerts.
+
+    enabled=False so the standard metric evaluation engine ignores it;
+    check_docker_image_updates() manages firing and resolving directly.
+    """
+    rule, _ = AlertRule.objects.get_or_create(
+        name="Docker: Outdated Image",
+        defaults={
+            "category": "docker",
+            "metric": "image_outdated",
+            "operator": "gt",
+            "threshold": 0,
+            "severity": AlertRule.Severity.WARNING,
+            "duration_seconds": 0,
+            "enabled": False,
+            "is_default": True,
+        },
+    )
+    return rule
+
+
+@shared_task(name="alerts.check_docker_image_updates")
+def check_docker_image_updates():
+    """Evaluate docker/image_outdated metrics and fire or resolve per-container alerts."""
+    rule = _get_or_create_docker_rule()
+    online_hosts = Host.objects.filter(status=Host.Status.ONLINE)
+    window = now() - timedelta(minutes=15)
+    fired = resolved = 0
+
+    for host in online_hosts:
+        points = MetricPoint.objects.filter(
+            host=host,
+            category="docker",
+            metric="image_outdated",
+            time__gte=window,
+        ).order_by("-time")
+
+        # Latest point per container (ordered desc, first-seen wins)
+        latest_by_container: dict[str, MetricPoint] = {}
+        for pt in points:
+            key = pt.labels.get("container_name", "")
+            if key and key not in latest_by_container:
+                latest_by_container[key] = pt
+
+        for container_name, pt in latest_by_container.items():
+            image = pt.labels.get("image", "unknown")
+            existing = Alert.objects.filter(
+                host=host,
+                rule=rule,
+                state__in=[Alert.State.FIRING, Alert.State.ACKNOWLEDGED],
+                message__contains=f"'{container_name}'",
+            ).first()
+
+            if pt.value >= 1.0 and not existing:
+                alert = Alert.objects.create(
+                    host=host,
+                    rule=rule,
+                    state=Alert.State.FIRING,
+                    severity=AlertRule.Severity.WARNING,
+                    message=f"Docker: Container '{container_name}' is running an outdated image ({image})",
+                    metric_value=1.0,
+                    fix_context={"container_name": container_name, "image": image},
+                )
+                fired += 1
+                logger.info("Docker alert fired: %s on %s (%s)", container_name, host.hostname, image)
+                dispatch_alert_notification(alert, event="firing")
+
+            elif pt.value == 0.0 and existing and existing.state == Alert.State.FIRING:
+                existing.state = Alert.State.RESOLVED
+                existing.resolved_at = now()
+                existing.save(update_fields=["state", "resolved_at"])
+                resolved += 1
+                logger.info("Docker alert resolved: %s on %s", container_name, host.hostname)
+                dispatch_alert_notification(existing, event="resolved")
+
+    return f"Docker image check: {fired} fired, {resolved} resolved"

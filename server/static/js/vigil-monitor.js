@@ -43,6 +43,13 @@ function selectMonitorHost(hostId) {
   const dot = document.getElementById('mon-status-dot');
   dot.className = 'status-dot ' + d.status;
 
+  const monLogo = document.getElementById('mon-os-logo');
+  if (monLogo) {
+    monLogo.replaceChildren();
+    const svgDoc = new DOMParser().parseFromString(osLogo(d.os), 'image/svg+xml');
+    monLogo.appendChild(document.adoptNode(svgDoc.documentElement));
+  }
+
   renderPinBar();
   refreshMonitor();
 }

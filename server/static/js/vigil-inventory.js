@@ -25,7 +25,7 @@ const INV_COLUMNS = [
   { id: 'os',              label: 'OS (agent)',   dv: true,
     fn: r => _cellText(r.os || ''),                                     val: r => r.os || '' },
   { id: 'os_name',         label: 'OS Name',      dv: false,
-    fn: r => _cellText(r.os_name || ''),                                val: r => r.os_name || '' },
+    fn: r => _osNameCell(r.os_name || ''),                              val: r => r.os_name || '' },
   { id: 'os_version',      label: 'OS Version',   dv: false,
     fn: r => _cellText(r.os_version || '', 'mono'),                     val: r => r.os_version || '' },
   { id: 'kernel_version',  label: 'Kernel',       dv: false,
@@ -351,6 +351,23 @@ function _hostCell(r) {
   name.textContent = r.hostname || '';
   name.style.fontWeight = '600';
   td.appendChild(name);
+  return td;
+}
+
+// DOMParser is XSS-safe in SVG mode; osLogo() never interpolates user data into SVG strings.
+function _osNameCell(name) {
+  const td = document.createElement('td');
+  td.style.cssText = 'display:flex;align-items:center;gap:5px;';
+  if (name) {
+    const doc = new DOMParser().parseFromString(osLogo(name), 'image/svg+xml');
+    td.appendChild(document.adoptNode(doc.documentElement));
+    td.appendChild(document.createTextNode(name));
+  } else {
+    const span = document.createElement('span');
+    span.className = 'empty-cell';
+    span.textContent = '—';
+    td.appendChild(span);
+  }
   return td;
 }
 

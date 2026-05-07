@@ -1,7 +1,7 @@
 <div class="host-card{% if inactive %} inactive{% endif %}" onclick="openHostDetail(this)"
      data-id="{{ host.id }}"
      data-hostname="{{ host.hostname }}"
-     data-os="{{ host.os|default:'Unknown OS' }}"
+     data-os="{{ host.inventory.os_name|default:host.os|default:'Unknown OS' }}"
      data-ip="{{ host.ip_address|default:'—' }}"
      data-status="{{ host.status }}"
      data-mode="{{ host.mode }}"
@@ -17,7 +17,10 @@
       <div class="host-name">{{ host.hostname }}</div>
       <div class="mode-badge mode-{{ host.mode }}">{{ host.get_mode_display }}</div>
     </div>
-    <div class="host-card-id-meta">{{ host.os|default:"Unknown OS" }} · {{ host.ip_address|default:"—" }}</div>
+    <div class="host-card-id-meta">
+      <span class="host-os-logo" data-os="{{ host.inventory.os_name|default:host.os|default:'' }}"></span>
+      {{ host.inventory.os_name|default:host.os|default:"Unknown OS" }} · {{ host.ip_address|default:"—" }}
+    </div>
     {% if host.tags %}
     <div class="host-tag-row">
       {% for t in host.tags %}<span class="host-tag-chip">{{ t }}</span>{% endfor %}
