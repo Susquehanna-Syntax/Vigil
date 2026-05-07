@@ -151,20 +151,41 @@
         </div>
 
         <!-- Download links -->
-        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+        <div style="margin-bottom:6px;font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;">Linux</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
           <a href="/agent/download/linux-amd64/" class="btn btn-outline btn-sm">
             <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Linux x86-64
+            x86-64
           </a>
           <a href="/agent/download/linux-arm64/" class="btn btn-outline btn-sm">
             <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Linux ARM64
+            ARM64
+          </a>
+        </div>
+        <div style="margin-bottom:6px;font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;">macOS</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+          <a href="/agent/download/darwin-amd64/" class="btn btn-outline btn-sm">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Intel
+          </a>
+          <a href="/agent/download/darwin-arm64/" class="btn btn-outline btn-sm">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Apple Silicon
+          </a>
+        </div>
+        <div style="margin-bottom:6px;font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;">Windows</div>
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+          <a href="/agent/download/windows-amd64/" class="btn btn-outline btn-sm">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            x86-64 (.exe)
           </a>
         </div>
 
-        <!-- One-liner install command -->
-        <label class="deploy-input-label">One-liner install</label>
+        <!-- One-liner install commands -->
+        <label class="deploy-input-label">Linux / macOS one-liner</label>
         <div class="code-block mono" id="install-cmd" style="cursor:pointer;user-select:all;" onclick="copyInstallCmd()" title="Click to copy"></div>
+        <label class="deploy-input-label" style="margin-top:10px;">Windows (PowerShell, run as Administrator)</label>
+        <div class="code-block mono" id="install-cmd-ps1" style="cursor:pointer;user-select:all;" onclick="copyInstallCmdPs1()" title="Click to copy"></div>
         <div id="agent-versions" style="margin-top:10px;font-size:12px;color:var(--text-3);min-height:16px;"></div>
 
         <!-- Upload new binary -->
@@ -173,9 +194,12 @@
           <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
             <div>
               <label class="deploy-input-label">Platform</label>
-              <select class="form-control" id="upload-platform" style="width:160px;">
+              <select class="form-control" id="upload-platform" style="width:180px;">
                 <option value="linux-amd64">Linux (x86-64)</option>
                 <option value="linux-arm64">Linux (ARM64)</option>
+                <option value="darwin-amd64">macOS (Intel)</option>
+                <option value="darwin-arm64">macOS (Apple Silicon)</option>
+                <option value="windows-amd64">Windows (x86-64)</option>
               </select>
             </div>
             <div>
@@ -194,6 +218,8 @@
       <script>
         document.getElementById('install-cmd').textContent =
           `curl -fsSL ${window.location.origin}/agent/install.sh | sudo bash`;
+        document.getElementById('install-cmd-ps1').textContent =
+          `irm ${window.location.origin}/agent/install.ps1 | iex`;
         loadAgentInfo();
       </script>
 

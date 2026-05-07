@@ -78,12 +78,12 @@
         </div>
         <div class="empty-state-title">No hosts yet</div>
         <div class="empty-state-desc">
-          Install the Vigil agent on your first machine and it'll show up here for enrollment.
+          Add your first machine — the wizard generates an install command and walks you through enrollment.
         </div>
-        <div class="code-block">curl -s https://your-vigil-server/install | sh</div>
-        <div style="font-size: 12px; color: var(--text-3); margin-top: 12px;">
-          The agent will appear as "pending enrollment" until you approve it.
-        </div>
+        <button class="btn btn-mint" style="margin-top:8px;" onclick="openEnrollWizard()">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Host
+        </button>
       </div>
       {% endif %}
 

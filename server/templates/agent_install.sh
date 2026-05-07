@@ -1,24 +1,35 @@
 {% autoescape off %}#!/bin/bash
 # Vigil Agent installer — {{ base_url }}
+# Linux / macOS
 # Usage: curl -fsSL {{ base_url }}/agent/install.sh | sudo bash
 #   or:  VIGIL_TOKEN=<token> curl -fsSL {{ base_url }}/agent/install.sh | sudo bash
 set -e
 
 VIGIL_SERVER="{{ base_url }}"
 
-# Detect OS and architecture
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
 
-if [ "$OS" != "linux" ]; then
-  echo "Unsupported OS: $OS (only Linux is supported at this time)" >&2
-  exit 1
-fi
-
-case "$ARCH" in
-  x86_64|amd64) PLATFORM="linux-amd64" ;;
-  aarch64|arm64) PLATFORM="linux-arm64" ;;
-  *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
+case "$OS" in
+  linux)
+    case "$ARCH" in
+      x86_64|amd64) PLATFORM="linux-amd64" ;;
+      aarch64|arm64) PLATFORM="linux-arm64" ;;
+      *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
+    esac
+    ;;
+  darwin)
+    case "$ARCH" in
+      x86_64|amd64) PLATFORM="darwin-amd64" ;;
+      arm64) PLATFORM="darwin-arm64" ;;
+      *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
+    esac
+    ;;
+  *)
+    echo "Unsupported OS: $OS" >&2
+    echo "For Windows use: irm {{ base_url }}/agent/install.ps1 | iex" >&2
+    exit 1
+    ;;
 esac
 
 echo "Installing Vigil agent for $PLATFORM..."
@@ -35,18 +46,19 @@ agent_token: "REPLACE_WITH_TOKEN"
 mode: monitor
 checkin_interval: 30
 EOF
-  sed -i "s|REPLACE_WITH_SERVER_URL|${VIGIL_SERVER}|" /etc/vigil/agent.yml
+  sed -i.bak "s|REPLACE_WITH_SERVER_URL|${VIGIL_SERVER}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
 
-  # If VIGIL_TOKEN env var is set (enrollment wizard flow), inject it automatically
   if [ -n "${VIGIL_TOKEN:-}" ]; then
-    sed -i "s|REPLACE_WITH_TOKEN|${VIGIL_TOKEN}|" /etc/vigil/agent.yml
+    sed -i.bak "s|REPLACE_WITH_TOKEN|${VIGIL_TOKEN}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
     echo "Agent token configured from VIGIL_TOKEN."
   else
     echo "Config written to /etc/vigil/agent.yml — set agent_token before starting."
   fi
 fi
 
-if command -v systemctl >/dev/null 2>&1; then
+# ── Service installation ────────────────────────────────────────────────────
+
+if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
   cat > /etc/systemd/system/vigil-agent.service << 'EOF'
 [Unit]
 Description=Vigil Monitoring Agent
@@ -64,19 +76,53 @@ WantedBy=multi-user.target
 EOF
   systemctl daemon-reload
   systemctl enable vigil-agent
-
   if [ -n "${VIGIL_TOKEN:-}" ]; then
     systemctl start vigil-agent
-    echo ""
     echo "Vigil agent installed and started."
-    echo "  Approve this host in Vigil Settings > Enrollment Queue."
+    echo "Approve this host in Vigil Settings > Enrollment Queue."
   else
-    echo ""
     echo "Vigil agent installed."
     echo "  1. Edit /etc/vigil/agent.yml and set agent_token"
     echo "  2. systemctl start vigil-agent"
     echo "  3. Approve the host in Vigil Settings > Enrollment Queue"
   fi
+
+elif [ "$OS" = "darwin" ]; then
+  PLIST_PATH="/Library/LaunchDaemons/com.susquehannasyntax.vigil-agent.plist"
+  cat > "$PLIST_PATH" << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.susquehannasyntax.vigil-agent</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/vigil-agent</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/var/log/vigil-agent.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/vigil-agent.log</string>
+</dict>
+</plist>
+EOF
+  launchctl load "$PLIST_PATH"
+  if [ -n "${VIGIL_TOKEN:-}" ]; then
+    launchctl start com.susquehannasyntax.vigil-agent
+    echo "Vigil agent installed and started."
+    echo "Approve this host in Vigil Settings > Enrollment Queue."
+  else
+    echo "Vigil agent installed."
+    echo "  1. Edit /etc/vigil/agent.yml and set agent_token"
+    echo "  2. launchctl start com.susquehannasyntax.vigil-agent"
+    echo "  3. Approve the host in Vigil Settings > Enrollment Queue"
+  fi
+
 else
   echo "Vigil agent installed to /usr/local/bin/vigil-agent"
   echo "Edit /etc/vigil/agent.yml and start the agent manually."

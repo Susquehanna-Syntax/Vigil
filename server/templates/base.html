@@ -410,7 +410,7 @@
 
   {# Step 2: polling #}
   <div id="enroll-s2" style="flex:1;overflow-y:auto;display:none;text-align:center;padding:32px 0;">
-    <div style="font-size:32px;margin-bottom:16px;">⏳</div>
+    <div style="margin-bottom:16px;"><svg viewBox="0 0 24 24" style="width:32px;height:32px;stroke:var(--sky);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
     <div style="font-weight:600;font-size:15px;margin-bottom:8px;">Waiting for agent to connect…</div>
     <div class="totp-sub">The agent will appear here within a few seconds of running the command.</div>
     <div style="margin-top:20px;">
@@ -437,7 +437,7 @@
 
   {# Step 4: done #}
   <div id="enroll-s4" style="flex:1;overflow-y:auto;display:none;text-align:center;padding:32px 0;">
-    <div style="font-size:40px;margin-bottom:16px;">✓</div>
+    <div style="margin-bottom:16px;"><svg viewBox="0 0 24 24" style="width:36px;height:36px;stroke:var(--mint);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
     <div style="font-weight:600;font-size:16px;margin-bottom:8px;color:var(--mint);">Host enrolled successfully</div>
     <div class="totp-sub" style="margin-bottom:24px;" id="enroll-done-msg">The agent is now online and monitoring.</div>
     <button class="btn btn-sky btn-sm" onclick="closeEnrollWizard(); location.reload();">Done</button>

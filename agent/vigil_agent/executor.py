@@ -708,8 +708,14 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
 
     platform = (params.get("platform") or "").strip()
     if not platform:
-        machine = os.uname().machine
-        platform = "linux-arm64" if machine in ("aarch64", "arm64") else "linux-amd64"
+        if sys.platform == "win32":
+            platform = "windows-amd64"
+        elif sys.platform == "darwin":
+            machine = os.uname().machine
+            platform = "darwin-arm64" if machine == "arm64" else "darwin-amd64"
+        else:
+            machine = os.uname().machine
+            platform = "linux-arm64" if machine in ("aarch64", "arm64") else "linux-amd64"
 
     url = f"{config.server_url}/agent/download/{platform}/"
     token = config.agent_token
@@ -743,10 +749,25 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
     def _restart_after_delay():
         time.sleep(3)
         try:
-            subprocess.run(
-                ["systemctl", "restart", "vigil-agent"],
-                timeout=10, capture_output=True,
-            )
+            if sys.platform == "win32":
+                subprocess.run(["sc", "stop", "vigil-agent"], timeout=10, capture_output=True)
+                time.sleep(2)
+                subprocess.run(["sc", "start", "vigil-agent"], timeout=10, capture_output=True)
+            elif sys.platform == "darwin":
+                subprocess.run(
+                    ["launchctl", "stop", "com.susquehannasyntax.vigil-agent"],
+                    timeout=10, capture_output=True,
+                )
+                time.sleep(1)
+                subprocess.run(
+                    ["launchctl", "start", "com.susquehannasyntax.vigil-agent"],
+                    timeout=10, capture_output=True,
+                )
+            else:
+                subprocess.run(
+                    ["systemctl", "restart", "vigil-agent"],
+                    timeout=10, capture_output=True,
+                )
         except Exception:
             pass
 
