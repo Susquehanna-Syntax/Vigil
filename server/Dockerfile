@@ -1,6 +1,10 @@
 # Stage 1: Build agent binary with PyInstaller
 FROM python:3.12-slim AS agent-builder
 
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends binutils && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN pip install --no-cache-dir pyinstaller psutil requests PyNaCl PyYAML
 
 WORKDIR /build
