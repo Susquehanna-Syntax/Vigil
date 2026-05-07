@@ -163,6 +163,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "vulns.sync_nessus_vulns",
         "schedule": 3600.0,  # every hour
     },
+    "check-docker-image-updates": {
+        "task": "alerts.check_docker_image_updates",
+        "schedule": 600.0,  # every 10 minutes
+    },
 }
 
 # ---------------------------------------------------------------------------

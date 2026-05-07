@@ -2,7 +2,7 @@
 
 **Smart, self-hosted infrastructure monitoring and endpoint management.**
 
-A [Susquehanna Syntax](https://sqsy.dev) product.
+A [Susquehanna Syntax](https://github.com/Susquehanna-Syntax) product.
 
 ---
 

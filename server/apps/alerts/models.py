@@ -69,6 +69,7 @@ class Alert(models.Model):
     fired_at = models.DateTimeField(auto_now_add=True)
     acknowledged_at = models.DateTimeField(null=True, blank=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
+    fix_context = models.JSONField(blank=True, default=dict)
 
     class Meta:
         ordering = ["-fired_at"]

@@ -420,6 +420,11 @@ def _verify_confirmation(user, payload) -> str | None:
     totp_secret = getattr(profile, "totp_secret", "") or ""
     totp_enabled = bool(profile and profile.totp_confirmed_at and totp_secret)
 
+    # Skip the gate entirely in DEBUG mode so local dev/testing works without TOTP.
+    from django.conf import settings as _settings
+    if _settings.DEBUG:
+        return None
+
     if not totp_enabled:
         return "TOTP enrollment required — enroll in Settings before deploying"
 

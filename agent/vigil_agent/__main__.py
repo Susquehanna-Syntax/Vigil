@@ -218,9 +218,15 @@ def main() -> None:
     # ── Main checkin loop ────────────────────────────────────────────────
     # Hardware inventory shifts at human timescales — refresh once per hour
     # rather than on every checkin to avoid wasting cycles on dmidecode.
+    # Docker image update checks are refreshed every 5 minutes; the cached
+    # results are re-included in every checkin so the server alert engine
+    # always has recent data without hammering the Docker Hub registry.
+    _DOCKER_CHECK_INTERVAL = 300  # 5 minutes
     consecutive_failures = 0
     inventory_refresh_after = 0.0  # monotonic deadline; 0 → refresh now
+    docker_refresh_after = 0.0    # monotonic deadline; 0 → check now
     last_inventory: dict | None = None
+    _cached_docker_metrics: list[dict] = []
     while not _shutdown:
         try:
             metrics = collector.collect_all()
@@ -234,6 +240,13 @@ def main() -> None:
                 # Always send on the first refresh; otherwise hourly.
                 inventory_refresh_after = time.monotonic() + 3600
                 inventory_payload = last_inventory
+            if time.monotonic() >= docker_refresh_after:
+                try:
+                    _cached_docker_metrics = collector.collect_docker_updates()
+                except Exception:
+                    logger.exception("Docker update check failed")
+                docker_refresh_after = time.monotonic() + _DOCKER_CHECK_INTERVAL
+            metrics.extend(_cached_docker_metrics)
             response = client.checkin(config, metrics, inventory=inventory_payload)
             consecutive_failures = 0
 

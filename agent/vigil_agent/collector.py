@@ -4,6 +4,8 @@ Returns metric dicts ready for the checkin payload. Each metric is:
   {"category": str, "metric": str, "value": float, "labels": dict, "time": str}
 """
 
+import http.client as _http_client
+import json as _json
 import logging
 import platform
 import re
@@ -13,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import psutil
+import requests
 
 logger = logging.getLogger("vigil.collector")
 
@@ -121,10 +124,29 @@ def collect_top_processes(n: int = 10) -> list[dict]:
     return points
 
 
+def collect_temperatures() -> list[dict]:
+    points = []
+    try:
+        all_temps = psutil.sensors_temperatures()
+    except (AttributeError, OSError):
+        return points
+    for sensor_name, entries in all_temps.items():
+        for entry in entries:
+            label = entry.label or sensor_name
+            labels = {"sensor": sensor_name, "label": label}
+            points.append(_point("temperature", "celsius", entry.current, labels))
+            if entry.high is not None:
+                points.append(_point("temperature", "high_celsius", entry.high, labels))
+            if entry.critical is not None:
+                points.append(_point("temperature", "critical_celsius", entry.critical, labels))
+    return points
+
+
 def collect_all() -> list[dict]:
     """Collect all available system metrics."""
     metrics = []
-    collectors = [collect_cpu, collect_memory, collect_disk, collect_network, collect_top_processes]
+    collectors = [collect_cpu, collect_memory, collect_disk, collect_network,
+                  collect_top_processes, collect_temperatures]
     for fn in collectors:
         try:
             metrics.extend(fn())
@@ -261,16 +283,17 @@ def collect_inventory() -> dict:
             except (subprocess.TimeoutExpired, OSError):
                 continue
 
-    # OS info — prefer /etc/os-release on Linux
+    # OS info — try host path first so Flatpak/container agents report the real OS
     _os_release: dict = {}
-    _os_rel_path = Path("/etc/os-release")
-    if _os_rel_path.exists():
-        try:
-            for _line in _os_rel_path.read_text(errors="replace").splitlines():
-                _k, _, _v = _line.partition("=")
-                _os_release[_k.strip()] = _v.strip().strip('"')
-        except OSError:
-            pass
+    for _os_rel_path in [Path("/run/host/os-release"), Path("/etc/os-release")]:
+        if _os_rel_path.exists():
+            try:
+                for _line in _os_rel_path.read_text(errors="replace").splitlines():
+                    _k, _, _v = _line.partition("=")
+                    _os_release[_k.strip()] = _v.strip().strip('"')
+                break
+            except OSError:
+                continue
     inv["os_name"] = (
         _os_release.get("PRETTY_NAME")
         or _os_release.get("NAME", "")
@@ -317,3 +340,174 @@ def collect_inventory() -> dict:
     inv["disks"] = _read_disks()
 
     return inv
+
+
+# ---------------------------------------------------------------------------
+# Docker image update detection
+# ---------------------------------------------------------------------------
+
+_DOCKER_SOCKET = "/var/run/docker.sock"
+
+
+class _UnixHTTPConnection(_http_client.HTTPConnection):
+    """HTTPConnection routed through a Unix domain socket."""
+
+    def __init__(self, socket_path: str) -> None:
+        super().__init__("localhost")
+        self._socket_path = socket_path
+
+    def connect(self) -> None:
+        import socket as _sock_mod
+        self.sock = _sock_mod.socket(_sock_mod.AF_UNIX, _sock_mod.SOCK_STREAM)
+        self.sock.connect(self._socket_path)
+
+
+def _docker_api_get(path: str):
+    """GET from the Docker Engine API via the Unix socket. Returns parsed JSON or None."""
+    try:
+        conn = _UnixHTTPConnection(_DOCKER_SOCKET)
+        conn.request("GET", path, headers={"Host": "localhost"})
+        resp = conn.getresponse()
+        if resp.status == 200:
+            return _json.loads(resp.read())
+        return None
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _parse_docker_hub_ref(image_str: str) -> tuple[str, str] | None:
+    """Parse a container image string into (docker_hub_name, tag).
+
+    Returns None for non-Docker Hub images (private registries, ghcr.io, etc.).
+    Only strings without a registry prefix (i.e. no dot before the first slash,
+    or no slash at all) are treated as Docker Hub.
+    """
+    # Strip digest suffix if present (e.g. nginx@sha256:abc → nginx)
+    image_str = image_str.split("@")[0]
+
+    # Split off tag
+    if ":" in image_str.rsplit("/", 1)[-1]:
+        name_part, tag = image_str.rsplit(":", 1)
+    else:
+        name_part, tag = image_str, "latest"
+
+    # Detect a registry prefix: first component contains a dot or colon → not Docker Hub
+    first_component = name_part.split("/")[0]
+    if "." in first_component or ":" in first_component or first_component == "localhost":
+        return None
+
+    # No slash → official image (library namespace)
+    if "/" not in name_part:
+        return f"library/{name_part}", tag
+
+    return name_part, tag
+
+
+def _get_registry_digest(hub_name: str, tag: str) -> str | None:
+    """Return the current manifest digest for hub_name:tag from Docker Hub, or None."""
+    try:
+        token_resp = requests.get(
+            "https://auth.docker.io/token",
+            params={"service": "registry.docker.io", "scope": f"repository:{hub_name}:pull"},
+            timeout=10,
+        )
+        token_resp.raise_for_status()
+        token = token_resp.json().get("token")
+        if not token:
+            return None
+
+        resp = requests.get(
+            f"https://registry-1.docker.io/v2/{hub_name}/manifests/{tag}",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.docker.distribution.manifest.v2+json",
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.headers.get("Docker-Content-Digest")
+    except Exception as exc:
+        logger.debug("Registry digest check failed for %s:%s — %s", hub_name, tag, exc)
+        return None
+
+
+def collect_docker_updates() -> list[dict]:
+    """Check running Docker containers for outdated images.
+
+    Returns metric dicts for the checkin payload. Skipped silently when Docker
+    is unavailable (no socket, permission denied, daemon not running).
+    Only Docker Hub public images are checked; private registries are skipped.
+    """
+    if not Path(_DOCKER_SOCKET).exists():
+        return []
+
+    try:
+        containers = _docker_api_get("/containers/json")
+    except PermissionError:
+        logger.warning("Cannot access Docker socket %s — permission denied", _DOCKER_SOCKET)
+        return []
+    except Exception as exc:
+        logger.debug("Docker socket query failed: %s", exc)
+        return []
+
+    if not isinstance(containers, list):
+        return []
+
+    metrics: list[dict] = [_point("docker", "running_count", float(len(containers)))]
+
+    # One registry query per unique image:tag pair
+    digest_cache: dict[str, str | None] = {}
+    ts = _now_iso()
+
+    for container in containers:
+        image_str = container.get("Image", "")
+        ref = _parse_docker_hub_ref(image_str)
+        if ref is None:
+            logger.debug("Skipping non-Docker-Hub image: %s", image_str)
+            continue
+
+        hub_name, tag = ref
+        container_name = (container.get("Names") or ["unknown"])[0].lstrip("/")
+        image_id = container.get("ImageID", "")
+
+        # Get local manifest digest from image inspect
+        image_info = _docker_api_get(f"/images/{image_id}/json") if image_id else None
+        repo_digests = (image_info or {}).get("RepoDigests", [])
+        if not repo_digests:
+            logger.debug("No RepoDigests for %s (%s) — locally built, skipping", container_name, image_str)
+            continue
+        local_digest = repo_digests[0].split("@")[-1]
+
+        # Registry digest (cached per image:tag)
+        cache_key = f"{hub_name}:{tag}"
+        if cache_key not in digest_cache:
+            digest_cache[cache_key] = _get_registry_digest(hub_name, tag)
+        remote_digest = digest_cache[cache_key]
+
+        if remote_digest is None:
+            continue  # Registry unreachable — don't emit a metric this cycle
+
+        outdated = 1.0 if local_digest != remote_digest else 0.0
+        metrics.append({
+            "category": "docker",
+            "metric": "image_outdated",
+            "value": outdated,
+            "labels": {
+                "container_name": container_name,
+                "image": image_str,
+                "local_digest": local_digest[:19],
+                "remote_digest": remote_digest[:19],
+            },
+            "time": ts,
+        })
+        logger.debug(
+            "Docker %s (%s): %s",
+            container_name,
+            image_str,
+            "OUTDATED" if outdated else "up to date",
+        )
+
+    return metrics

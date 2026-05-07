@@ -444,7 +444,8 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   display: flex; align-items: center; gap: 10px;
 }
 .host-card-id-row .host-name { font-size: 14px; font-weight: 600; }
-.host-card-id-meta { font-size: 11px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; }
+.host-card-id-meta { font-size: 11px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; display: flex; align-items: center; gap: 5px; }
+.host-os-logo { display: inline-flex; align-items: center; flex-shrink: 0; opacity: 0.85; }
 .host-tag-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .host-tag-chip {
   font-size: 10px;

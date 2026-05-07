@@ -469,7 +469,7 @@ async function forkDefinition(id) {
   }
 }
 
-async function openDefinitionEditor(definitionId) {
+async function openDefinitionEditor(definitionId, initialYaml = null) {
   editorState.definitionId = definitionId || null;
   document.getElementById('editor-error').classList.remove('show');
   document.getElementById('editor-page-title').innerHTML = (definitionId ? 'Edit Task' : 'New Task') + '<span>.</span>';
@@ -485,7 +485,8 @@ async function openDefinitionEditor(definitionId) {
       return;
     }
   } else {
-    document.getElementById('editor-yaml').value = DEFAULT_YAML_TEMPLATE;
+    // initialYaml can be passed by suggestDockerFix() or other callers to pre-fill the editor
+    document.getElementById('editor-yaml').value = initialYaml || DEFAULT_YAML_TEMPLATE;
   }
 
   navigateTo('task-editor');

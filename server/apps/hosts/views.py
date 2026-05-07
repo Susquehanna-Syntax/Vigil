@@ -116,6 +116,12 @@ def checkin(request):
         if val := data.get(field):
             setattr(host, field, val)
 
+    # Sync mode from agent config so the server always reflects what the agent will accept.
+    if agent_mode := data.get("mode"):
+        valid_modes = {m.value for m in Host.Mode}
+        if agent_mode in valid_modes:
+            host.mode = agent_mode
+
     # Merge tags advertised by the agent.yml — server-side tags always win.
     if "tags" in data:
         host.tags = _normalize_tags(data.get("tags"), existing=host.tags)
