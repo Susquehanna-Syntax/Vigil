@@ -110,25 +110,33 @@ jobs:
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          pip3.12 install --upgrade pip
-          # Resolve universal2 wheels via PyPI JSON API (pip 26's --platform
-          # selection can't find them reliably). Install each by URL.
-          install_u2() {
-            url=$(python3.12 -c "
+          pip3.12 install --upgrade pip delocate
+          mkdir -p /tmp/arm64 /tmp/x86 /tmp/u2
+          # Download a specific wheel from PyPI by version + filename regex
+          grab() {
+            python3.12 -c "
           import json, re, sys, urllib.request
-          data = json.load(urllib.request.urlopen(f'https://pypi.org/pypi/{sys.argv[1]}/json'))
-          pat = re.compile(sys.argv[2])
+          pkg, ver, pat, dest = sys.argv[1:]
+          data = json.load(urllib.request.urlopen(f'https://pypi.org/pypi/{pkg}/{ver}/json'))
+          p = re.compile(pat)
           for u in data['urls']:
-              if pat.search(u['filename']):
-                  print(u['url']); sys.exit(0)
-          sys.exit('no universal2 wheel for ' + sys.argv[1])
-          " "$1" "$2")
-            echo "Installing $1 from $url"
-            pip3.12 install --upgrade --force-reinstall --no-deps "$url"
+              if p.search(u['filename']):
+                  with urllib.request.urlopen(u['url']) as r, open(dest + '/' + u['filename'], 'wb') as f:
+                      f.write(r.read())
+                  print('downloaded:', u['filename']); sys.exit(0)
+          sys.exit('no match for ' + pkg + ' ' + pat)
+          " "$1" "$2" "$3" "$4"
           }
-          install_u2 cffi   'cp312-cp312-macosx_.*_universal2\.whl$'
-          install_u2 PyNaCl 'cp36-abi3-macosx_.*_universal2\.whl$'
-          install_u2 psutil 'cp37-abi3-macosx_.*_universal2\.whl$'
+          # cffi and psutil don't ship universal2 wheels — fuse arm64 + x86_64
+          grab cffi   2.0.0 'cp312-cp312-macosx_.*_arm64\.whl$'  /tmp/arm64
+          grab cffi   2.0.0 'cp312-cp312-macosx_.*_x86_64\.whl$' /tmp/x86
+          grab psutil 6.1.1 'cp36-abi3-macosx_.*_arm64\.whl$'    /tmp/arm64
+          grab psutil 6.1.1 'cp36-abi3-macosx_.*_x86_64\.whl$'   /tmp/x86
+          delocate-fuse /tmp/arm64/cffi-*.whl   /tmp/x86/cffi-*.whl   -w /tmp/u2
+          delocate-fuse /tmp/arm64/psutil-*.whl /tmp/x86/psutil-*.whl -w /tmp/u2
+          # PyNaCl 1.6.2 ships a real universal2 wheel
+          grab PyNaCl 1.6.2 'cp38-abi3-macosx_.*_universal2\.whl$' /tmp/u2
+          pip3.12 install --upgrade --force-reinstall --no-deps /tmp/u2/*.whl
           # PyYAML has no universal2 wheel — build pure-Python (no _yaml.so)
           PYYAML_FORCE_LIBYAML=0 pip3.12 install --no-binary PyYAML --force-reinstall 'PyYAML>=6.0,<7.0'
           # Remaining pure-Python deps + PyInstaller (ships universal2 wheel)
