@@ -81,15 +81,12 @@ jobs:
           - os: macos-latest
             platform: darwin-amd64
             out: vigil-agent-darwin-amd64
-            target_arch: x86_64
           - os: macos-latest
             platform: darwin-arm64
             out: vigil-agent-darwin-arm64
-            target_arch: arm64
           - os: windows-latest
             platform: windows-amd64
             out: vigil-agent-windows-amd64
-            target_arch: ""
 
     runs-on: ${{ matrix.os }}
     defaults:
@@ -99,15 +96,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
+        if: runner.os != 'macOS'
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: agent/requirements.txt
-      - name: Install dependencies
+      - name: Install universal2 Python (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          curl -fsSL "https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg" -o /tmp/python.pkg
+          sudo installer -pkg /tmp/python.pkg -target /
+          echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: pip3.12 install -r requirements.txt pyinstaller
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
         run: pip install -r requirements.txt pyinstaller
       - name: Build binary (macOS)
         if: runner.os == 'macOS'
-        run: pyinstaller --onefile --target-arch ${{ matrix.target_arch }} --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
+        run: pyinstaller --onefile --target-arch universal2 --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
       - name: Build binary (Windows)
         if: runner.os == 'Windows'
         run: pyinstaller --onefile --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
