@@ -107,10 +107,10 @@ jobs:
         run: pip install -r requirements.txt pyinstaller
       - name: Build binary (macOS)
         if: runner.os == 'macOS'
-        run: pyinstaller --onefile --target-arch ${{ matrix.target_arch }} --name ${{ matrix.out }} vigil_agent/__main__.py
+        run: pyinstaller --onefile --target-arch ${{ matrix.target_arch }} --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
       - name: Build binary (Windows)
         if: runner.os == 'Windows'
-        run: pyinstaller --onefile --name ${{ matrix.out }} vigil_agent/__main__.py
+        run: pyinstaller --onefile --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
