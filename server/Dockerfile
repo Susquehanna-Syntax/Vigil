@@ -11,7 +11,8 @@ WORKDIR /build
 COPY agent/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY agent/vigil_agent/ vigil_agent/
-RUN pyinstaller --onefile --name vigil-agent vigil_agent/__main__.py
+COPY agent/vigil_agent_main.py vigil_agent_main.py
+RUN pyinstaller --onefile --name vigil-agent vigil_agent_main.py
 
 # Stage 2: Server image
 FROM python:3.12-slim AS base
