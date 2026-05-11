@@ -111,14 +111,22 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           pip3.12 install --upgrade pip
-          # Force universal2 wheels for native-extension packages
           mkdir -p /tmp/u2-wheels
-          pip3.12 download --no-deps --only-binary :all: \
+          # cffi: cp312 abi, macosx_10_9_universal2
+          pip3.12 download --no-deps --only-binary=:all: \
               --platform macosx_10_9_universal2 \
+              --python-version 3.12 --implementation cp --abi cp312 \
+              --dest /tmp/u2-wheels cffi
+          # PyNaCl: abi3, macosx_10_10_universal2
+          pip3.12 download --no-deps --only-binary=:all: \
               --platform macosx_10_10_universal2 \
-              --platform macosx_11_0_universal2 \
-              --dest /tmp/u2-wheels \
-              cffi PyNaCl psutil
+              --python-version 3.12 --implementation cp --abi abi3 \
+              --dest /tmp/u2-wheels PyNaCl
+          # psutil: abi3, macosx_10_9_universal2
+          pip3.12 download --no-deps --only-binary=:all: \
+              --platform macosx_10_9_universal2 \
+              --python-version 3.12 --implementation cp --abi abi3 \
+              --dest /tmp/u2-wheels psutil
           pip3.12 install --upgrade --force-reinstall --no-deps /tmp/u2-wheels/*.whl
           # PyYAML has no universal2 wheel — build pure-Python (no _yaml.so)
           PYYAML_FORCE_LIBYAML=0 pip3.12 install --no-binary PyYAML --force-reinstall 'PyYAML>=6.0,<7.0'
