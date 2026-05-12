@@ -50,6 +50,7 @@ def checkin(config: AgentConfig, metrics: list[dict], inventory: dict | None = N
     payload = {
         **_system_info(),
         "vigil_version": __version__,
+        "mode": config.mode,
         "metrics": metrics,
     }
     if config.tags:
