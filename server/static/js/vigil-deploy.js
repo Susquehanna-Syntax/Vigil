@@ -183,9 +183,32 @@ function _toTimeValue(hour, minute) {
   return String(hour ?? 0).padStart(2,'0') + ':' + String(minute ?? 0).padStart(2,'0');
 }
 
+function _onRunNowToggle() {
+  // Grey out the start/end/day inputs when "Run now" is checked so the form
+  // can't visually suggest a window that won't actually be sent.
+  const runNow = document.getElementById('deploy-schedule-run-now');
+  const fields = document.getElementById('deploy-schedule-fields');
+  const start  = document.getElementById('deploy-schedule-start');
+  const end    = document.getElementById('deploy-schedule-end');
+  const chips  = document.getElementById('deploy-day-chips');
+  const disabled = !!(runNow && runNow.checked);
+  if (start) start.disabled = disabled;
+  if (end)   end.disabled   = disabled;
+  if (fields) fields.style.opacity = disabled ? '0.4' : '1';
+  if (chips)  chips.style.pointerEvents = disabled ? 'none' : 'auto';
+}
+window._onRunNowToggle = _onRunNowToggle;
+
 function _populateDeployPolicy(spec) {
-  // Schedule defaults from spec; otherwise full week, 00:00..23:00.
+  // Schedule defaults from spec; otherwise "Run now" — no window at all.
+  // The Run now checkbox is the source of truth: when checked, _readDeployPolicy
+  // returns schedule=null so the server stores schedule={} and the dispatcher
+  // doesn't gate the task.
   const sched = (spec && spec.schedule && spec.schedule.window) || null;
+  const runNow = document.getElementById('deploy-schedule-run-now');
+  if (runNow) {
+    runNow.checked = !sched;
+  }
   document.getElementById('deploy-schedule-start').value = sched
     ? _toTimeValue(sched.start_hour, sched.start_minute) : '08:00';
   document.getElementById('deploy-schedule-end').value = sched
@@ -193,6 +216,7 @@ function _populateDeployPolicy(spec) {
   const tzLabel = document.getElementById('deploy-tz-label');
   if (tzLabel) tzLabel.textContent = VIGIL_TIMEZONE;
   _populateDeployDayChips(sched ? sched.days : [0,1,2,3,4,5,6]);
+  _onRunNowToggle();
 
   // Retry defaults
   const retry = (spec && spec.on_failure && spec.on_failure.retry) || null;
@@ -214,14 +238,21 @@ function _parseTimeInput(id, defaultHour, defaultMinute = 0) {
 }
 
 function _readDeployPolicy() {
-  const [startH, startM] = _parseTimeInput('deploy-schedule-start', 8, 0);
-  const [endH,   endM]   = _parseTimeInput('deploy-schedule-end',   17, 0);
-  const days = _readDeployDays();
-  const schedule = { window: {
-    start_hour: startH, start_minute: startM,
-    end_hour: endH,     end_minute: endM,
-    days: days.length ? days : [0,1,2,3,4,5,6],
-  } };
+  // "Run now" wins over the form fields. Returning schedule=null here makes
+  // the deploy endpoint store schedule={} on the Task row, which is what
+  // schedule_window_active() treats as "always eligible".
+  const runNow = document.getElementById('deploy-schedule-run-now');
+  let schedule = null;
+  if (!runNow || !runNow.checked) {
+    const [startH, startM] = _parseTimeInput('deploy-schedule-start', 8, 0);
+    const [endH,   endM]   = _parseTimeInput('deploy-schedule-end',   17, 0);
+    const days = _readDeployDays();
+    schedule = { window: {
+      start_hour: startH, start_minute: startM,
+      end_hour: endH,     end_minute: endM,
+      days: days.length ? days : [0,1,2,3,4,5,6],
+    } };
+  }
 
   const attempts = Number(document.getElementById('deploy-retry-attempts').value || 0);
   const delay    = Number(document.getElementById('deploy-retry-delay').value || 0);

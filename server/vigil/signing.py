@@ -1,4 +1,5 @@
 import base64
+import binascii
 import json
 import logging
 
@@ -9,15 +10,37 @@ logger = logging.getLogger(__name__)
 
 _signing_key: SigningKey | None = None
 
+_GENERATE_HINT = (
+    "Generate one with: "
+    "python3 -c \"import os,base64; print(base64.b64encode(os.urandom(32)).decode())\""
+)
+
 
 def get_signing_key() -> SigningKey:
     global _signing_key
     if _signing_key is not None:
         return _signing_key
 
-    seed_b64 = getattr(settings, "VIGIL_SIGNING_KEY_SEED", "")
+    from django.core.exceptions import ImproperlyConfigured
+
+    seed_b64 = (getattr(settings, "VIGIL_SIGNING_KEY_SEED", "") or "").strip()
     if seed_b64:
-        _signing_key = SigningKey(base64.b64decode(seed_b64))
+        try:
+            seed = base64.b64decode(seed_b64, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ImproperlyConfigured(
+                f"VIGIL_SIGNING_KEY_SEED is not valid base64 ({exc}). "
+                f"Expected exactly 44 characters ending in '='. Common cause: a "
+                f"YAML/Portainer stack stripped the trailing '=' padding — set the "
+                f"value via the Environment variables tab, or wrap it in double "
+                f"quotes if you inline it in YAML. " + _GENERATE_HINT
+            ) from exc
+        if len(seed) != 32:
+            raise ImproperlyConfigured(
+                f"VIGIL_SIGNING_KEY_SEED decoded to {len(seed)} bytes — must be "
+                f"exactly 32 (Ed25519 seed size). " + _GENERATE_HINT
+            )
+        _signing_key = SigningKey(seed)
     elif settings.DEBUG:
         logger.warning(
             "VIGIL_SIGNING_KEY_SEED not set — using ephemeral key. "
@@ -25,8 +48,9 @@ def get_signing_key() -> SigningKey:
         )
         _signing_key = SigningKey.generate()
     else:
-        from django.core.exceptions import ImproperlyConfigured
-        raise ImproperlyConfigured("VIGIL_SIGNING_KEY_SEED must be set in production.")
+        raise ImproperlyConfigured(
+            "VIGIL_SIGNING_KEY_SEED must be set in production. " + _GENERATE_HINT
+        )
 
     return _signing_key
 

@@ -5,10 +5,16 @@
 #   docker compose up -d
 #
 # Required environment variables (set in Portainer's "Environment variables" tab
-# or in a .env file alongside this compose):
+# or in a .env file alongside this compose — NOT inline in this YAML):
 #
 #   DJANGO_SECRET_KEY      — random secret, e.g. openssl rand -hex 32
-#   VIGIL_SIGNING_KEY_SEED — Ed25519 seed for task signing (base64, 32 bytes)
+#   VIGIL_SIGNING_KEY_SEED — Ed25519 seed for task signing
+#                            generate: python3 -c "import os,base64; print(base64.b64encode(os.urandom(32)).decode())"
+#                            value MUST be exactly 44 chars ending in '=' (32-byte base64)
+#                            PORTAINER/YAML TRAP: the trailing '=' is base64 padding and gets
+#                            stripped by some YAML parsers — keep it in env vars or quote it
+#                            ("Hk3...P0c="). A malformed seed throws binascii.Error and 500s
+#                            every agent checkin.
 #   POSTGRES_PASSWORD      — database password
 #
 # Optional:
@@ -16,6 +22,11 @@
 #   POSTGRES_USER          — default: vigil
 #   VIGIL_TIMEZONE         — IANA tz name, e.g. America/New_York (default: UTC)
 #   VIGIL_AGENT_VERSION    — agent version baked into this image (default: 2026.1.0)
+#
+# Verify after deploy:
+#   docker exec <web-container> python -c \
+#     "import os,base64; s=os.environ['VIGIL_SIGNING_KEY_SEED']; print(len(s), len(base64.b64decode(s)))"
+#   # Expect: 44 32
 
 services:
   db:

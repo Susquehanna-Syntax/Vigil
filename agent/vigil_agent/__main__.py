@@ -33,8 +33,17 @@ def _handle_signal(signum, _frame):
 def _process_tasks(tasks: list[dict], config, nonce_store: NonceStore, verify_key) -> None:
     """Process tasks received from the server."""
     if config.mode == "monitor":
-        if tasks:
-            logger.debug("Monitor mode — ignoring %d task(s)", len(tasks))
+        # Reject explicitly rather than silently dropping — otherwise tasks sit
+        # in DISPATCHED forever on the server and the operator has no idea why.
+        for task in tasks:
+            logger.info(
+                "Monitor mode — rejecting task %s (%s)",
+                task.get("id"), task.get("action"),
+            )
+            _report_rejected(
+                config, task,
+                "Agent is in monitor mode — task execution disabled in agent config",
+            )
         return
 
     if verify_key is None:
@@ -59,19 +68,25 @@ def _process_tasks(tasks: list[dict], config, nonce_store: NonceStore, verify_ke
             _report_rejected(config, task, "Replayed nonce")
             continue
 
-        # TTL check
+        # TTL check — bounded against when the SERVER dispatched the task,
+        # not when it was originally created. A task can sit in PENDING for
+        # hours (waiting on a schedule.window, retry delay, or offline host);
+        # the TTL only makes sense once the signed payload is on the wire.
+        # Falls back to ``created_at`` for compatibility with older servers.
         ttl = task.get("ttl_seconds", 300)
-        created_str = task.get("created_at")
-        if created_str:
+        ref_str = task.get("dispatched_at") or task.get("created_at")
+        if ref_str:
             try:
-                created = datetime.fromisoformat(created_str)
-                if datetime.now(timezone.utc) > created.replace(tzinfo=timezone.utc) + timedelta(seconds=ttl):
+                ref = datetime.fromisoformat(ref_str)
+                if ref.tzinfo is None:
+                    ref = ref.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) > ref + timedelta(seconds=ttl):
                     logger.warning("Task %s has expired (TTL %ds) — rejecting", task_id, ttl)
                     _report_rejected(config, task, f"Task expired (TTL {ttl}s)")
                     nonce_store.record(nonce)
                     continue
             except (ValueError, TypeError):
-                pass  # If no created_at, skip TTL check (server may not send it)
+                pass  # malformed timestamp — skip the gate, signature still gates execution
 
         # Signature verification
         if not verify.verify_task_signature(task, verify_key):

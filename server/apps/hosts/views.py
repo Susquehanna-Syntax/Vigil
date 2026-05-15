@@ -234,6 +234,11 @@ def checkin(request):
 
     tasks_payload = []
     if eligible:
+        # Snapshot a single dispatch timestamp so every task in this checkin
+        # response gets the same reference time and the DB write matches what
+        # the agent receives.
+        dispatch_ts = now()
+        dispatch_iso = dispatch_ts.isoformat()
         for task in eligible:
             if not task.signature:
                 task.signature = sign_task(task)
@@ -247,11 +252,17 @@ def checkin(request):
                     "nonce": task.nonce,
                     "signature": task.signature,
                     "ttl_seconds": task.ttl_seconds,
+                    # ``dispatched_at`` is what the agent uses for TTL — it
+                    # represents when the signed payload went on the wire, so
+                    # a task that waited days for a schedule.window can still
+                    # be processed. ``created_at`` is kept for older agents
+                    # but should not be used as a freshness proof.
+                    "dispatched_at": dispatch_iso,
                     "created_at": task.created_at.isoformat(),
                 }
             )
         Task.objects.filter(id__in=[t.id for t in eligible]).update(
-            state=Task.State.DISPATCHED, dispatched_at=now()
+            state=Task.State.DISPATCHED, dispatched_at=dispatch_ts
         )
 
     return Response(

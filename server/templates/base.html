@@ -195,15 +195,19 @@
 
           <!-- Schedule (execution window) -->
           <div class="deploy-panel" data-panel="schedule">
-            <div class="deploy-policy-help">Tasks are only dispatched during this window (server timezone: <strong id="deploy-tz-label"></strong>). Outside the window, tasks stay queued until the next eligible check-in.</div>
-            <div class="deploy-policy-grid" style="margin-top:10px;">
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;font-weight:600;">
+              <input type="checkbox" id="deploy-schedule-run-now" checked onchange="_onRunNowToggle()">
+              Run now (no schedule window — dispatch on next check-in)
+            </label>
+            <div class="deploy-policy-help">When unchecked, tasks are only dispatched during this window (server timezone: <strong id="deploy-tz-label"></strong>). Outside the window, tasks stay queued until the next eligible check-in.</div>
+            <div class="deploy-policy-grid" id="deploy-schedule-fields" style="margin-top:10px;">
               <div>
                 <label class="deploy-input-label">Start time</label>
-                <input type="time" class="form-control" id="deploy-schedule-start" value="08:00">
+                <input type="time" class="form-control" id="deploy-schedule-start" value="08:00" disabled>
               </div>
               <div>
                 <label class="deploy-input-label">End time (inclusive)</label>
-                <input type="time" class="form-control" id="deploy-schedule-end" value="17:00">
+                <input type="time" class="form-control" id="deploy-schedule-end" value="17:00" disabled>
               </div>
               <div class="full">
                 <label class="deploy-input-label">Allowed days</label>

@@ -356,10 +356,21 @@
             Three values are required. Everything else has a sensible default.
             <div class="code-block" style="margin-top:10px;">
               <div class="code-label">Shell / .env</div>
-              <pre><span class="hl-comment"># Generate a signing key seed (Ed25519, 32 bytes base64)</span>
+              <pre><span class="hl-comment"># Generate a signing key seed (Ed25519, 32 bytes base64 — exactly 44 chars, trailing '=')</span>
 <span class="hl-var">DJANGO_SECRET_KEY</span>=<span class="hl-string">$(openssl rand -hex 32)</span>
 <span class="hl-var">VIGIL_SIGNING_KEY_SEED</span>=<span class="hl-string">$(python3 -c "import os,base64; print(base64.b64encode(os.urandom(32)).decode())")</span>
-<span class="hl-var">POSTGRES_PASSWORD</span>=<span class="hl-string">changeme</span></pre>
+<span class="hl-var">POSTGRES_PASSWORD</span>=<span class="hl-string">changeme</span>
+
+<span class="hl-comment"># Verify the seed is valid base64 of 32 bytes BEFORE bringing up the stack.</span>
+<span class="hl-comment"># A malformed seed 500s every agent checkin in your fleet.</span>
+<span class="hl-cmd">python3 -c "import base64,sys; print(len(base64.b64decode(sys.argv[1])))" "$VIGIL_SIGNING_KEY_SEED"</span>
+<span class="hl-comment"># Expect: 32</span></pre>
+            </div>
+            <div class="callout callout-warn" style="margin-top:14px;">
+              <div class="callout-icon">!</div>
+              <div>
+                <strong>Portainer / YAML editor users:</strong> do <em>not</em> paste the seed as a bare value inside <code>docker-compose.yml</code>. The trailing <code>=</code> on base64 strings is padding and can be silently stripped by YAML parsing. Either set it in Portainer's <strong>Environment variables</strong> tab (one of the three required variables in step 2), or wrap the value in double quotes if you inline it: <code>VIGIL_SIGNING_KEY_SEED: "Hk3...P0c="</code>. A bad seed produces <code>binascii.Error: Incorrect padding</code> and 500s every <code>/api/v1/checkin</code> until fixed.
+              </div>
             </div>
           </div>
         </div>
@@ -522,7 +533,7 @@
           <thead><tr><th>Variable</th><th>Required</th><th>Description</th></tr></thead>
           <tbody>
             <tr><td><code>DJANGO_SECRET_KEY</code></td><td><span class="risk risk-high">required</span></td><td>Random secret for Django session signing. Use <code>openssl rand -hex 32</code>.</td></tr>
-            <tr><td><code>VIGIL_SIGNING_KEY_SEED</code></td><td><span class="risk risk-high">required</span></td><td>Base64-encoded 32-byte Ed25519 seed for task signing.</td></tr>
+            <tr><td><code>VIGIL_SIGNING_KEY_SEED</code></td><td><span class="risk risk-high">required</span></td><td>Base64-encoded 32-byte Ed25519 seed for task signing. Exactly 44 chars ending in <code>=</code>. <strong>Quote the value if you inline it into YAML</strong> — the trailing <code>=</code> is padding and gets stripped otherwise, which 500s every agent checkin.</td></tr>
             <tr><td><code>POSTGRES_PASSWORD</code></td><td><span class="risk risk-high">required</span></td><td>Database password. Do not use the default in production.</td></tr>
           </tbody>
         </table>
@@ -548,7 +559,20 @@
 
       <h3>Portainer Stack</h3>
       <div class="prose">
-        <p>Paste the <code>docker-compose.yml</code> directly into <strong>Portainer → Stacks → Add Stack → Web editor</strong>. Add your three required variables in the "Environment variables" tab, then click Deploy. No extra files needed.</p>
+        <p>Paste the <code>docker-compose.yml</code> directly into <strong>Portainer → Stacks → Add Stack → Web editor</strong>. Add the three required variables in the <strong>Environment variables</strong> tab (not inside the YAML), then click Deploy. No extra files needed.</p>
+        <p>After deploy, sanity-check that the seed survived the round trip:</p>
+        <div class="code-block">
+          <div class="code-label">Shell (on the Docker host)</div>
+          <pre><span class="hl-cmd">docker exec <span class="hl-string">&lt;vigil-web-container&gt;</span> python -c <span class="hl-string">"import os,base64; s=os.environ['VIGIL_SIGNING_KEY_SEED']; print(len(s), len(base64.b64decode(s)))"</span></span>
+<span class="hl-comment"># Expect: 44 32  (any other output means the seed was mangled — fix it in Environment variables and redeploy)</span></pre>
+        </div>
+      </div>
+
+      <div class="callout callout-warn" style="margin-top:14px;">
+        <div class="callout-icon">!</div>
+        <div>
+          <strong>Don't inline the signing seed in the YAML.</strong> The trailing <code>=</code> base64 padding can be silently stripped on save, producing <code>binascii.Error: Incorrect padding</code> in <code>vigil/signing.py</code> and turning every <code>POST /api/v1/checkin</code> into a 500. Agents will retry indefinitely with no tasks dispatching and no error surfaced in the UI. If you absolutely need to inline it, wrap the value in double quotes.
+        </div>
       </div>
 
       <h3>Volume Persistence</h3>
