@@ -49,18 +49,41 @@ USE_SQLITE=true .venv/bin/python manage.py runserver
 
 ```bash
 cp .env.example .env
-# Edit .env — set DJANGO_SECRET_KEY and VIGIL_SIGNING_KEY_SEED at minimum
+```
+
+**1. Generate a signing key seed** (32-byte Ed25519 seed, base64-encoded — required, every checkin signs with it):
+
+```bash
+python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
+# Output is exactly 44 characters ending in '=' — example: Hk3PtP...P0c=
+```
+
+**2. Put it in `.env`** (along with `DJANGO_SECRET_KEY` and `POSTGRES_PASSWORD`). In a `.env` file the value is bare, no quotes:
+
+```
+VIGIL_SIGNING_KEY_SEED=Hk3PtP...P0c=
+```
+
+> ⚠️ **If you're pasting the compose stack into Portainer** (or any other UI that round-trips through YAML), set the value in the **Environment variables** tab — never inline it into the YAML. If you must inline it, **wrap it in double quotes** (`"Hk3...P0c="`) — the trailing `=` is base64 padding and unquoted YAML can strip or mangle it. A malformed seed produces `binascii.Error: Incorrect padding` and breaks every agent checkin in the fleet.
+
+**3. Verify the seed is good before bringing the stack up:**
+
+```bash
+python3 -c "import base64,sys; s=sys.argv[1]; print('OK',len(base64.b64decode(s)),'bytes')" \
+  "$(grep '^VIGIL_SIGNING_KEY_SEED=' .env | cut -d= -f2-)"
+# Expect: OK 32 bytes
+```
+
+Any other output (especially `binascii.Error: Incorrect padding` or a length that isn't 32) means fix the seed before continuing.
+
+**4. Start the stack:**
+
+```bash
 docker compose up -d
 docker compose exec web python manage.py createsuperuser
 ```
 
-This brings up the full stack: Django, PostgreSQL + TimescaleDB, Redis, Celery worker, and Celery beat.
-
-Generate a signing key seed (required for task deployment):
-
-```bash
-python3 -c "import base64; from nacl.signing import SigningKey; print(base64.b64encode(bytes(SigningKey.generate())).decode())"
-```
+This brings up Django, PostgreSQL + TimescaleDB, Redis, Celery worker, and Celery beat.
 
 ---
 
