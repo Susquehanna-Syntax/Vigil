@@ -2,7 +2,6 @@ import secrets
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import Max
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
 from rest_framework.decorators import api_view, permission_classes
@@ -30,14 +29,6 @@ from .spec import (
 
 _TERMINAL_STATES = {Task.State.COMPLETED, Task.State.FAILED, Task.State.REJECTED}
 _UPDATABLE_STATES = {Task.State.DISPATCHED, Task.State.EXECUTING}
-
-# Legacy single-action dispatch map (kept for the existing one-off dispatch UI).
-_VALID_ACTIONS = {name: info["required"] for name, info in ACTION_REGISTRY.items()}
-_ACTION_RISK = {
-    name: getattr(Task.RiskLevel, info["risk"].upper())
-    for name, info in ACTION_REGISTRY.items()
-}
-
 
 # ── Agent-facing: task result ────────────────────────────────────────────────
 
@@ -86,8 +77,48 @@ def task_result(request):
         # successful run's output into the host's inventory custom columns.
         if new_state == Task.State.COMPLETED:
             _maybe_capture_inventory_column(task, output)
+            _maybe_request_nessus_scan(task)
 
     return Response(TaskSerializer(task).data)
+
+
+def _maybe_request_nessus_scan(task: Task) -> None:
+    """If the completed task contained a ``request_nessus_scan`` step,
+    register a VulnScan(requested) for the host.
+
+    Multi-step tasks have ``action == "_script"`` and an array of
+    individual step actions in ``params.steps``. We look for any step
+    whose action is ``request_nessus_scan`` — a single occurrence is
+    enough to schedule one scan (we don't fan out to multiple).
+    """
+    from apps.vulns.models import VulnScan
+
+    steps = (task.params or {}).get("steps") or []
+    has_request = (
+        task.action == "request_nessus_scan"
+        or any(isinstance(s, dict) and s.get("action") == "request_nessus_scan" for s in steps)
+    )
+    if not has_request:
+        return
+
+    # Throttle: skip if there's already an active scan for this host.
+    active = VulnScan.objects.filter(
+        host=task.host,
+        state__in=[
+            VulnScan.State.REQUESTED,
+            VulnScan.State.LAUNCHED,
+            VulnScan.State.RUNNING,
+        ],
+    ).exists()
+    if active:
+        return
+
+    VulnScan.objects.create(
+        host=task.host,
+        target=task.host.ip_address or "",
+        state=VulnScan.State.REQUESTED,
+        requested_via_task=True,
+    )
 
 
 def _maybe_capture_inventory_column(task: Task, output: str) -> None:
@@ -212,56 +243,6 @@ def _finalize_run_if_done(run: TaskRun) -> None:
     run.save(update_fields=["state", "finished_at"])
 
 
-# ── Legacy single-action dispatch (kept for the quick-action UI) ─────────────
-
-
-@api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated])
-def task_list(request):
-    if request.method == "GET":
-        qs = Task.objects.select_related("host", "requested_by").order_by("-created_at")
-        if host_id := request.query_params.get("host"):
-            qs = qs.filter(host_id=host_id)
-        if state := request.query_params.get("state"):
-            qs = qs.filter(state=state)
-        return Response(TaskSerializer(qs[:50], many=True).data)
-
-    action = request.data.get("action", "").strip()
-    host_id = request.data.get("host", "")
-    params = request.data.get("params") or {}
-
-    if not action:
-        return Response({"error": "action is required"}, status=400)
-    if action not in _VALID_ACTIONS:
-        return Response({"error": f"Unknown action '{action}'"}, status=400)
-    if not host_id:
-        return Response({"error": "host is required"}, status=400)
-
-    for required_param in _VALID_ACTIONS[action]:
-        if required_param not in params:
-            return Response({"error": f"Missing required param: {required_param}"}, status=400)
-
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
-        return Response({"error": "Host not found"}, status=404)
-
-    if host.status != Host.Status.ONLINE:
-        return Response({"error": "Host is not online"}, status=400)
-    if host.mode == Host.Mode.MONITOR:
-        return Response({"error": "Host is in monitor mode — task execution disabled"}, status=400)
-
-    task = Task.objects.create(
-        host=host,
-        requested_by=request.user,
-        action=action,
-        params=params,
-        risk_level=_ACTION_RISK.get(action, Task.RiskLevel.STANDARD),
-        nonce=secrets.token_hex(32),
-    )
-    return Response(TaskSerializer(task).data, status=201)
-
-
 # ── TaskDefinition CRUD ──────────────────────────────────────────────────────
 
 
@@ -356,34 +337,6 @@ def definition_validate(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-def definition_publish(request, definition_id):
-    """Publish a definition to the community tab.
-
-    Only the owner can publish. Later, this endpoint will also push the
-    definition to an external community repo (a separate site that hosts a
-    self-hostable task library) — for now it just flips the local visibility.
-    """
-    definition = get_object_or_404(TaskDefinition, pk=definition_id)
-    if definition.owner_id != request.user.id:
-        return Response({"error": "You do not own this definition"}, status=403)
-    definition.visibility = TaskDefinition.Visibility.COMMUNITY
-    definition.save(update_fields=["visibility", "updated_at"])
-    return Response(TaskDefinitionSerializer(definition).data)
-
-
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def definition_unpublish(request, definition_id):
-    definition = get_object_or_404(TaskDefinition, pk=definition_id)
-    if definition.owner_id != request.user.id:
-        return Response({"error": "You do not own this definition"}, status=403)
-    definition.visibility = TaskDefinition.Visibility.PRIVATE
-    definition.save(update_fields=["visibility", "updated_at"])
-    return Response(TaskDefinitionSerializer(definition).data)
-
-
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
 def definition_fork(request, definition_id):
     """Fork a community template into the current user's library."""
     source = get_object_or_404(TaskDefinition, pk=definition_id)
@@ -409,31 +362,13 @@ def definition_fork(request, definition_id):
 
 
 def _verify_confirmation(user, payload) -> str | None:
-    """Return error message if confirmation fails, else None.
+    """2FA gate for task deploys — delegates to the shared TOTP helper.
 
-    TOTP (RFC 6238) is required for task deploys. Users must enroll via
-    Settings before they can deploy scripts to agents.
+    Returns an error message if the TOTP challenge fails, else None.
     """
-    from apps.accounts.totp import verify_totp
+    from apps.accounts.totp import require_totp_confirmation
 
-    profile = getattr(user, "profile", None)
-    totp_secret = getattr(profile, "totp_secret", "") or ""
-    totp_enabled = bool(profile and profile.totp_confirmed_at and totp_secret)
-
-    # Skip the gate entirely in DEBUG mode so local dev/testing works without TOTP.
-    from django.conf import settings as _settings
-    if _settings.DEBUG:
-        return None
-
-    if not totp_enabled:
-        return "TOTP enrollment required — enroll in Settings before deploying"
-
-    totp_code = (payload.get("totp") or "").strip()
-    if not totp_code:
-        return "TOTP code required"
-    if not verify_totp(totp_secret, totp_code):
-        return "Invalid TOTP code"
-    return None
+    return require_totp_confirmation(user, payload)
 
 
 @api_view(["POST"])
@@ -583,6 +518,35 @@ def definition_deploy(request, definition_id):
             )
 
     return Response(TaskRunSerializer(run).data, status=201)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def task_history(request):
+    """Paginated task history feed for the History tab (polled by the UI).
+
+    Returns the full fleet's task history, newest first, in pages of 50.
+    """
+    try:
+        page = max(1, int(request.query_params.get("page", "1")))
+    except (TypeError, ValueError):
+        page = 1
+    page_size = 50
+
+    qs = Task.objects.select_related("host", "requested_by").order_by("-created_at")
+    total = qs.count()
+    pages = max(1, (total + page_size - 1) // page_size)
+    if page > pages:
+        page = pages
+    start = (page - 1) * page_size
+    items = list(qs[start:start + page_size])
+    return Response({
+        "count": total,
+        "page": page,
+        "pages": pages,
+        "page_size": page_size,
+        "results": TaskSerializer(items, many=True).data,
+    })
 
 
 @api_view(["GET"])

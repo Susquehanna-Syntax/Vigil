@@ -235,6 +235,14 @@
       <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       TOTP / 2FA
     </a>
+    <a href="#vulns" class="nav-link">
+      <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Vulnerabilities
+    </a>
+    <a href="#community" class="nav-link">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0 1 13 0"/></svg>
+      Community
+    </a>
 
     <span class="nav-section-label">Reference</span>
     <a href="#api" class="nav-link">
@@ -984,7 +992,7 @@
           <div class="step-content">Click <em>Execute</em>. The server signs the task payload, queues it for delivery on the next agent check-in.</div>
         </div>
         <div class="step">
-          <div class="step-content">Watch the result appear in the task history. Stdout/stderr are captured and displayed inline.</div>
+          <div class="step-content">Watch the result appear in the <strong>History</strong> tab — it polls every 5 seconds while open, so state transitions (dispatched → executing → completed) land without a page reload. Click any row to open the run detail modal; stdout/stderr are captured per step.</div>
         </div>
       </div>
     </section>
@@ -1069,6 +1077,114 @@
 
       <h3>Disabling TOTP</h3>
       <p class="prose">Under <strong>Settings → Security</strong>, click <em>Disable TOTP</em> and confirm with a current 6-digit code. You will be unable to deploy tasks until TOTP is re-enrolled.</p>
+
+      <h3>2FA-gated endpoints</h3>
+      <p class="prose">As of 2026.1.9, the following actions all require a fresh single-use TOTP code:</p>
+      <ul class="prose">
+        <li><strong>Task deploy</strong> — <code>POST /api/v1/tasks/definitions/{id}/deploy/</code></li>
+        <li><strong>Host enrollment approval</strong> — <code>POST /api/v1/hosts/{id}/approve/</code> (an approved host immediately becomes eligible to receive signed tasks)</li>
+        <li><strong>Launch Nessus scan</strong> — <code>POST /api/v1/vulns/scans/{host_id}/</code></li>
+      </ul>
+      <p class="prose">Codes are <strong>single-use</strong>: once a code has been consumed for a sensitive action, it can't be replayed within its 90-second validity window. An intercepted code is therefore worthless after one use.</p>
+    </section>
+    <div class="divider"></div>
+
+    <!-- VULNERABILITY MANAGEMENT -->
+    <section class="section" id="vulns">
+      <p class="section-label">Reference</p>
+      <h2 class="section-title" style="color:var(--coral)">Vulnerability Management (Nessus)</h2>
+      <p class="section-desc">Vigil ingests scan findings from Nessus / Tenable, lets you launch scans from the dashboard, and alerts on high-risk and critical findings. Set <code>NESSUS_URL</code>, <code>NESSUS_ACCESS_KEY</code>, and <code>NESSUS_SECRET_KEY</code> to enable.</p>
+
+      <h3>Installing Nessus Essentials</h3>
+      <p class="prose">Register for a free Essentials activation code at <a href="https://www.tenable.com/products/nessus/nessus-essentials" target="_blank" rel="noopener">tenable.com/products/nessus/nessus-essentials</a> (scans up to 16 IPs), then on the host that will run the scanner:</p>
+      <div class="code-block">
+        <div class="code-label">Shell — Debian/Ubuntu</div>
+        <pre><span class="hl-cmd">curl -o nessus.deb 'https://www.tenable.com/downloads/api/v2/pages/nessus/files/Nessus-latest-debian10_amd64.deb'</span>
+<span class="hl-cmd">sudo dpkg -i nessus.deb</span>
+<span class="hl-cmd">sudo systemctl enable --now nessusd</span></pre>
+      </div>
+      <p class="prose">Open <code>https://localhost:8834</code>, complete activation, and wait ~20–30 minutes for plugin compilation. Generate API keys under <em>My Account → API Keys → Generate</em>.</p>
+
+      <h3>Wiring keys into Vigil</h3>
+      <div class="code-block">
+        <div class="code-label">.env</div>
+        <pre><span class="hl-var">NESSUS_URL</span>=<span class="hl-string">https://localhost:8834</span>
+<span class="hl-var">NESSUS_ACCESS_KEY</span>=<span class="hl-string">&lt;paste&gt;</span>
+<span class="hl-var">NESSUS_SECRET_KEY</span>=<span class="hl-string">&lt;paste&gt;</span>
+<span class="hl-var">NESSUS_VERIFY_SSL</span>=<span class="hl-string">false</span>     <span class="hl-comment"># Nessus uses a self-signed cert</span></pre>
+      </div>
+      <p class="prose">When Vigil runs in Docker and Nessus runs on the host, use <code>NESSUS_URL=https://host.docker.internal:8834</code> on macOS or <code>https://172.17.0.1:8834</code> on the default Linux Docker bridge.</p>
+
+      <h3>What the sync task does</h3>
+      <p class="prose">The <code>vulns.sync_nessus_vulns</code> Celery beat runs hourly. Each invocation does three things in order:</p>
+      <ol class="prose">
+        <li><strong>Launches</strong> every <code>VulnScan</code> in the <code>requested</code> state by calling Nessus's <em>Basic Network Scan</em> template against the host's IP (template UUID resolved at runtime).</li>
+        <li><strong>Polls</strong> in-flight scans and updates state in the Vulnerabilities tab.</li>
+        <li><strong>Ingests</strong> results from completed scans into <code>VulnSummary</code>, fires alerts on newly-appeared criticals and highs, and resolves them once findings clear.</li>
+      </ol>
+
+      <h3>Three ways to start a scan</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Path</th><th>Trigger</th><th>TOTP</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Scan now</strong> button on the Vulnerabilities tab</td><td>Operator from UI</td><td>Yes</td></tr>
+            <tr><td><strong>Request a Nessus scan of this host</strong> — built-in task template in the YAML editor</td><td>Operator dispatches to a host</td><td>Yes (at deploy)</td></tr>
+            <tr><td><code>request_nessus_scan</code> action embedded in a custom YAML task</td><td>Anyone with a deployable YAML using this action</td><td>Yes (deploy gate)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose">In every path, the request lands as a <code>VulnScan</code> row visible in the <em>Recent scans</em> list. One active scan per host is enforced; repeats while one is in flight return <code>409 Conflict</code>.</p>
+
+      <h3>High-risk + critical alerts</h3>
+      <p class="prose">When the sync task ingests a scan result, it compares the new counts to the previous summary. New criticals fire a <span class="risk risk-high">critical</span> alert; new highs fire a <span class="risk risk-std">warning</span> alert. Both auto-resolve when their count drops back to zero.</p>
+
+      <h3>Two ready-made templates in the editor</h3>
+      <p class="prose">The task editor's <em>Start from template…</em> dropdown includes:</p>
+      <ul class="prose">
+        <li><strong>Install Nessus Essentials on this host</strong> — high-risk multi-step task that downloads, installs, and starts <code>nessusd</code>, then prints the activation URL.</li>
+        <li><strong>Request a Nessus scan of this host</strong> — low-risk single-step task using <code>request_nessus_scan</code>; the server picks up the marker on task completion and queues a scan.</li>
+      </ul>
+    </section>
+    <div class="divider"></div>
+
+    <!-- COMMUNITY CATALOG -->
+    <section class="section" id="community">
+      <p class="section-label">Sharing</p>
+      <h2 class="section-title" style="color:var(--lavender)">Community Catalog</h2>
+      <p class="section-desc">The Vigil community task catalog lives on GitHub at <a href="https://github.com/SusquehannaSyntax/Vigil-Approved-Scripts" target="_blank" rel="noopener">SusquehannaSyntax/Vigil-Approved-Scripts</a>. Submissions are PR-reviewed by SQSY maintainers; once merged, every Vigil instance can browse the entry.</p>
+
+      <h3>Submitting your task</h3>
+      <p class="prose">The task editor's toolbar has a <strong>Submit to Community</strong> button. Clicking it:</p>
+      <ol class="prose">
+        <li>Reads the YAML currently in the editor and slugifies the task <code>name</code> into a filename (e.g. <code>restart-nginx-and-verify.yaml</code>).</li>
+        <li><strong>Auto-injects attribution</strong> — adds <code>author: &lt;your-vigil-username&gt;</code> and <code>created: &lt;today&gt;</code> after the <code>name:</code> line if they aren't already declared. The catalog requires both fields; auto-injection means you never have to remember them.</li>
+        <li>Opens a modal with two actions: <strong>Copy YAML</strong> (clipboard) and <strong>Open GitHub PR</strong>.</li>
+        <li><strong>Open GitHub PR</strong> deep-links to <code>github.com/SusquehannaSyntax/Vigil-Approved-Scripts/new/main/tasks?filename=&lt;slug&gt;.yaml&amp;value=&lt;your YAML&gt;</code> — GitHub's new-file editor with the body pre-filled.</li>
+        <li>If you don't have write access, GitHub forks the repo into your account automatically. Click <strong>Propose new file</strong> → <strong>Create pull request</strong>.</li>
+        <li>A SQSY maintainer reviews and merges. Once merged, every Vigil instance can browse the entry.</li>
+      </ol>
+
+      <h3>Required YAML fields</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Auto-filled?</th></tr></thead>
+          <tbody>
+            <tr><td><code>name</code></td><td>string</td><td>No (write it yourself)</td></tr>
+            <tr><td><code>description</code></td><td>string</td><td>No</td></tr>
+            <tr><td><code>risk</code></td><td><code>low</code> / <code>standard</code> / <code>high</code></td><td>No</td></tr>
+            <tr><td><code>actions</code></td><td>non-empty list</td><td>No</td></tr>
+            <tr><td><code>author</code></td><td>string (your Vigil username)</td><td><strong>Yes</strong></td></tr>
+            <tr><td><code>created</code></td><td>ISO-8601 date (<code>YYYY-MM-DD</code>)</td><td><strong>Yes</strong></td></tr>
+          </tbody>
+        </table>
+        <p style="margin-top:8px;color:var(--text-3);font-size:12px;"><code>author</code> and <code>created</code> are also optional in the local schema, so private tasks aren't forced to carry them. When present, both fields surface in card meta lines and the editor preview — YAML-declared <code>author</code> takes precedence over the local <code>owner_username</code> so a forked task keeps its original attribution.</p>
+      </div>
+
+      <div class="callout callout-info">
+        <div class="callout-icon">i</div>
+        <div>This replaces the older local "publish to community" flow. The <code>publish</code> / <code>unpublish</code> endpoints and the local <code>visibility=community</code> toggle were removed in 2026.1.9. The advantage of GitHub: one curated repo for everyone, version history, audit trail, and no shared DB to operate.</div>
+      </div>
     </section>
     <div class="divider"></div>
 
@@ -1108,10 +1224,34 @@
         <table>
           <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
           <tbody>
-            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/tasks/deploy/</code></td><td>Deploy a signed task to one or more hosts</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/tasks/definitions/{id}/deploy/</code></td><td>Deploy a signed task definition to one or more hosts (requires TOTP)</td></tr>
             <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/tasks/result/</code></td><td>Agent reports task execution result (agent-only)</td></tr>
-            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/</code></td><td>List task history</td></tr>
-            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/{id}/</code></td><td>Task detail including stdout/stderr</td></tr>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/history/?page=N</code></td><td>Paginated task history (50/page, polled by the History tab)</td></tr>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/runs/{id}/</code></td><td>Run detail including stdout/stderr per step</td></tr>
+          </tbody>
+        </table>
+        <p style="margin-top:8px;color:var(--text-3);font-size:12px;">The legacy single-action endpoint (<code>POST /api/v1/tasks/</code>) was removed in 2026.1.9 — it bypassed the TOTP gate. Community publish/unpublish endpoints were also removed; submissions go through a GitHub PR (see <em>Community catalog</em>).</p>
+      </div>
+
+      <h3>Vulnerabilities (Nessus)</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/vulns/</code></td><td>Per-host vulnerability summaries (critical/high/medium/low/info)</td></tr>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/vulns/scans/</code></td><td>Recent scan requests / runs (newest first, capped at 100)</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/vulns/scans/{host_id}/</code></td><td>Queue a Nessus scan (requires TOTP; one active scan per host)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Hosts</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/hosts/{id}/approve/</code></td><td>Approve a pending host enrollment (requires TOTP — an approved host immediately becomes eligible for signed tasks)</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/hosts/{id}/reject/</code></td><td>Reject a pending enrollment</td></tr>
           </tbody>
         </table>
       </div>
@@ -1149,11 +1289,21 @@
       <h3>Schema</h3>
       <div class="code-block">
         <div class="code-label">task.yml</div>
-        <pre><span class="hl-var">action</span>: <span class="hl-string">restart_service</span>   <span class="hl-comment"># required — action name from registry</span>
-<span class="hl-var">params</span>:                   <span class="hl-comment"># optional key/value pairs passed to the handler</span>
-  <span class="hl-var">service</span>: <span class="hl-string">nginx</span>
-<span class="hl-var">comment</span>: <span class="hl-string">Restart after config deploy</span>  <span class="hl-comment"># optional audit note</span></pre>
+        <pre><span class="hl-var">name</span>: <span class="hl-string">Bounce nginx and verify</span>            <span class="hl-comment"># required — human-readable</span>
+<span class="hl-var">author</span>: <span class="hl-string">connorhaggerty</span>                  <span class="hl-comment"># optional locally; required for community PRs</span>
+<span class="hl-var">created</span>: <span class="hl-string">2026-05-15</span>                      <span class="hl-comment"># optional; ISO-8601 (YYYY-MM-DD)</span>
+<span class="hl-var">description</span>: <span class="hl-string">Restart nginx, then curl /health.</span>
+<span class="hl-var">relevance</span>: <span class="hl-string">web servers</span>                    <span class="hl-comment"># optional — what hosts this fits</span>
+<span class="hl-var">risk</span>: <span class="hl-string">standard</span>                              <span class="hl-comment"># low | standard | high</span>
+<span class="hl-var">actions</span>:                                    <span class="hl-comment"># non-empty list of steps</span>
+  - <span class="hl-var">id</span>: <span class="hl-string">bounce</span>
+    <span class="hl-var">type</span>: <span class="hl-string">restart_service</span>
+    <span class="hl-var">params</span>: { <span class="hl-var">service_name</span>: <span class="hl-string">nginx</span> }
+  - <span class="hl-var">id</span>: <span class="hl-string">verify</span>
+    <span class="hl-var">type</span>: <span class="hl-string">execute_script</span>
+    <span class="hl-var">params</span>: { <span class="hl-var">script_name</span>: <span class="hl-string">healthcheck.sh</span> }</pre>
       </div>
+      <p class="prose"><strong>Attribution fields.</strong> <code>author</code> is any short string (up to 80 chars); <code>created</code> must be an ISO-8601 date (<code>YYYY-MM-DD</code>). Both are optional in the local schema so private tasks aren't forced to carry them — the <strong>Submit to Community</strong> flow auto-injects both if missing, so every YAML on the community repo is self-describing.</p>
 
       <h3>Built-in Actions</h3>
       <div class="table-wrap">
@@ -1167,6 +1317,7 @@
             <tr><td><code>update_agent</code></td><td><span class="risk risk-std">standard</span></td><td>—</td><td>Download and apply the latest agent binary from the server, then restart the service</td></tr>
             <tr><td><code>reboot</code></td><td><span class="risk risk-high">high</span></td><td>—</td><td>Schedule a system reboot (60s delay enforced by server)</td></tr>
             <tr><td><code>shutdown</code></td><td><span class="risk risk-high">high</span></td><td>—</td><td>Initiate system shutdown (60s delay enforced by server)</td></tr>
+            <tr><td><code>request_nessus_scan</code></td><td><span class="risk risk-low">low</span></td><td>—</td><td>Marker action: the agent emits "Nessus scan requested" and the server creates a <code>VulnScan(requested)</code> row that the next sync cycle launches against Nessus. No local work runs on the agent.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1200,6 +1351,10 @@
             <tr><td><code>POSTGRES_PASSWORD</code></td><td><em>none</em></td><td>Database password. Required.</td></tr>
             <tr><td><code>CELERY_BROKER_URL</code></td><td><code>redis://redis:6379/0</code></td><td>Celery broker connection string.</td></tr>
             <tr><td><code>CELERY_RESULT_BACKEND</code></td><td><code>redis://redis:6379/0</code></td><td>Celery result backend connection string.</td></tr>
+            <tr><td><code>NESSUS_URL</code></td><td><em>empty</em></td><td>Nessus / Tenable server URL (e.g. <code>https://localhost:8834</code>). When unset, the Vulnerabilities tab shows a "not configured" empty state. From Docker on Linux use <code>https://172.17.0.1:8834</code>.</td></tr>
+            <tr><td><code>NESSUS_ACCESS_KEY</code></td><td><em>empty</em></td><td>Nessus API access key (generate in Nessus UI: <em>My Account → API Keys</em>).</td></tr>
+            <tr><td><code>NESSUS_SECRET_KEY</code></td><td><em>empty</em></td><td>Nessus API secret key.</td></tr>
+            <tr><td><code>NESSUS_VERIFY_SSL</code></td><td><code>true</code></td><td>Set to <code>false</code> when Nessus is self-signed (Essentials default).</td></tr>
           </tbody>
         </table>
       </div>

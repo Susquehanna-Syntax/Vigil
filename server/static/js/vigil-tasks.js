@@ -1,106 +1,11 @@
 // vigil-tasks.js
-// Owns: Tasks page — library grid, community grid, dispatch modal,
-//   task definition editor (YAML + preview), publish/unpublish/fork.
+// Owns: Tasks page — library grid, community grid, task editor (YAML +
+//   preview), fork, deploy launcher, community-submit (GitHub PR).
 // HTML: templates/pages/_tasks.html, templates/pages/_community.html,
-//   templates/pages/_task_editor.html, dispatch modal in templates/base.html.
+//   templates/pages/_task_editor.html, modals in templates/base.html.
 // Depends on: vigil-utils.js (apiJson, showToast, escHtml),
-//   vigil-deploy.js (openDeployModal triggered from def cards;
-//   publishDefinition / unpublishDefinition live in deploy.js as they
-//   share its task-definition API surface).
-// API: /api/v1/tasks/, /api/v1/tasks/definitions/{,validate/,fork/,...}
-
-/* ── Task dispatch modal (simple per-host quick action) ──────────────── */
-const ACTION_PARAMS = {
-  restart_service:    [{ name: 'service_name',   label: 'Service Name',   type: 'text',     placeholder: 'e.g. nginx, postgresql, sshd' }],
-  restart_container:  [{ name: 'container_name', label: 'Container Name', type: 'text',     placeholder: 'e.g. my-app' }],
-  stop_container:     [{ name: 'container_name', label: 'Container Name', type: 'text',     placeholder: 'e.g. my-app' }],
-  start_container:    [{ name: 'container_name', label: 'Container Name', type: 'text',     placeholder: 'e.g. my-app' }],
-  clear_temp_files:   [],
-  clear_docker_logs:  [],
-  run_package_updates: [],
-  execute_script:     [{ name: 'script_content', label: 'Script Content', type: 'textarea', placeholder: '#!/bin/bash\n# Your script here' }],
-  reboot:             [],
-};
-
-const ACTION_RISK = {
-  start_container: 'low', clear_temp_files: 'low', clear_docker_logs: 'low',
-  restart_service: 'standard', restart_container: 'standard', stop_container: 'standard', run_package_updates: 'standard',
-  execute_script: 'high', reboot: 'high',
-};
-
-function openDispatchModal() {
-  document.getElementById('dispatch-form').reset();
-  document.getElementById('dispatch-params').innerHTML = '';
-  document.getElementById('dispatch-risk-label').innerHTML = '';
-  document.getElementById('dispatch-overlay').classList.add('open');
-  document.getElementById('dispatch-modal').classList.add('open');
-}
-
-function closeDispatchModal() {
-  document.getElementById('dispatch-overlay').classList.remove('open');
-  document.getElementById('dispatch-modal').classList.remove('open');
-}
-
-function updateDispatchParams() {
-  const action = document.getElementById('dispatch-action').value;
-  const paramsContainer = document.getElementById('dispatch-params');
-  const riskEl = document.getElementById('dispatch-risk-label');
-
-  if (!action) { paramsContainer.innerHTML = ''; riskEl.innerHTML = ''; return; }
-
-  const paramDefs = ACTION_PARAMS[action] || [];
-  const risk = ACTION_RISK[action] || 'standard';
-
-  paramsContainer.innerHTML = paramDefs.map(p => {
-    const inputHtml = p.type === 'textarea'
-      ? `<textarea class="form-control" id="param-${p.name}" name="${p.name}" placeholder="${escHtml(p.placeholder || '')}" required></textarea>`
-      : `<input class="form-control" id="param-${p.name}" name="${p.name}" type="text" placeholder="${escHtml(p.placeholder || '')}" required>`;
-    return `<div class="form-group"><label class="form-label">${escHtml(p.label)}</label>${inputHtml}</div>`;
-  }).join('');
-
-  const riskLabels = { low: 'Low risk', standard: 'Standard risk', high: 'High risk' };
-  riskEl.innerHTML = `<span class="risk-badge risk-${risk}">${riskLabels[risk]}</span>`;
-}
-
-async function submitDispatch(event) {
-  event.preventDefault();
-  const hostId = document.getElementById('dispatch-host').value;
-  const action = document.getElementById('dispatch-action').value;
-  if (!hostId || !action) return;
-
-  const params = {};
-  (ACTION_PARAMS[action] || []).forEach(p => {
-    const el = document.getElementById('param-' + p.name);
-    if (el) params[p.name] = el.value;
-  });
-
-  const btn = document.getElementById('dispatch-submit-btn');
-  btn.disabled = true; btn.style.opacity = '0.6';
-
-  try {
-    const resp = await fetch('/api/v1/tasks/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
-      credentials: 'same-origin',
-      body: JSON.stringify({ host: hostId, action, params }),
-    });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.error || 'Dispatch failed');
-    }
-    showToast('Task dispatched — agent picks it up on next check-in', 'success');
-    closeDispatchModal();
-    setTimeout(() => location.reload(), 1400);
-  } catch (e) {
-    showToast('Failed: ' + e.message, 'error');
-  } finally {
-    btn.disabled = false; btn.style.opacity = '1';
-  }
-}
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeDispatchModal();
-});
+//   vigil-deploy.js (openDeployModal triggered from def cards).
+// API: /api/v1/tasks/history/, /api/v1/tasks/definitions/{,validate/,fork/,...}
 
 /* ── Editor: default YAML + canned templates ─────────────────────────── */
 const DEFAULT_YAML_TEMPLATE = `name: New Task
@@ -299,6 +204,65 @@ actions:
 `
   },
   {
+    id: 'install-nessus',
+    label: 'Install Nessus Essentials on this host',
+    yaml: `name: Install Nessus Essentials
+description: |
+  Downloads and installs Nessus Essentials, then starts the service.
+  After the task completes, finish activation in the browser at
+  https://<this-host>:8834 using the activation code emailed to you
+  by Tenable. Plugin compilation takes ~20-30 minutes the first time.
+relevance: "the host you want to run as your central Nessus scanner"
+risk: high
+
+inputs:
+  - id: deb_url
+    label: Nessus .deb URL (defaults to latest Debian/Ubuntu x86_64)
+    type: text
+    default: "https://www.tenable.com/downloads/api/v2/pages/nessus/files/Nessus-latest-debian10_amd64.deb"
+    required: true
+
+actions:
+  - id: download
+    type: run_command
+    params:
+      command: 'curl -sSfL -o /tmp/nessus.deb "{{ inputs.deb_url }}"'
+      timeout: 600
+  - id: install
+    type: run_command
+    params:
+      command: 'sudo dpkg -i /tmp/nessus.deb && rm /tmp/nessus.deb'
+      timeout: 300
+  - id: start
+    type: run_command
+    params:
+      command: 'sudo systemctl enable --now nessusd'
+      timeout: 60
+  - id: ready_message
+    type: run_command
+    params:
+      command: 'echo "Nessus installed. Finish activation at https://$(hostname -I | awk \"{print \\$1}\"):8834"'
+      timeout: 5
+`
+  },
+  {
+    id: 'request-nessus-scan',
+    label: 'Request a Nessus scan of this host',
+    yaml: `name: Request Nessus scan
+description: |
+  Asks the Vigil server to schedule a Nessus scan of this host.
+  Nothing runs locally — the agent emits a marker, the server records
+  the request in the Vulnerabilities tab, and the central Nessus
+  instance launches the actual scan on the next sync cycle.
+relevance: "any host you want scanned for vulnerabilities"
+risk: low
+
+actions:
+  - id: request_scan
+    type: request_nessus_scan
+`
+  },
+  {
     id: 'reboot-host',
     label: 'Reboot host (with delay)',
     yaml: `name: Reboot host
@@ -362,17 +326,23 @@ function riskBadgeHtml(risk) {
 function defCardHtml(def, opts) {
   const actions = def.parsed_spec && def.parsed_spec.actions ? def.parsed_spec.actions.length : def.action_count || 0;
   const updated = def.updated_at ? new Date(def.updated_at).toLocaleDateString() : '';
-  const ownerLine = opts.showOwner && def.owner_username ? ` · by ${escHtml(def.owner_username)}` : '';
-  const isPublished = def.visibility === 'community';
-  const publishBadge = isPublished
-    ? `<span class="dot-sep">·</span><span style="color:var(--lavender);">published</span>`
+  // YAML-declared author/created take precedence over local owner_username
+  // and updated_at — they're the authoritative attribution from the
+  // task's submitter (community PR flow auto-fills both).
+  const yamlAuthor = def.parsed_spec && def.parsed_spec.author;
+  const yamlCreated = def.parsed_spec && def.parsed_spec.created;
+  const authorLabel = yamlAuthor
+    ? `by ${escHtml(yamlAuthor)}`
+    : (opts.showOwner && def.owner_username ? `by ${escHtml(def.owner_username)}` : '');
+  const dateLabel = yamlCreated ? escHtml(yamlCreated) : escHtml(updated);
+  const attribution = (dateLabel || authorLabel)
+    ? `<span class="dot-sep">·</span><span>${[dateLabel, authorLabel].filter(Boolean).join(' · ')}</span>`
     : '';
+  // Community submissions now go through a GitHub PR from the editor —
+  // see openCommunitySubmit(). Cards no longer carry a publish action.
   const buttons = opts.mode === 'community'
     ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); forkDefinition('${def.id}')">Fork</button>`
-    : `${isPublished
-        ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); unpublishDefinition('${def.id}')">Unpublish</button>`
-        : `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); publishDefinition('${def.id}')">Publish</button>`}
-       <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openDefinitionEditor('${def.id}')">Edit</button>
+    : `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openDefinitionEditor('${def.id}')">Edit</button>
        <button class="btn btn-sky btn-sm" onclick="event.stopPropagation(); openDeployModal('${def.id}')">Deploy</button>`;
   return `
     <div class="def-card" onclick="openDefinitionEditor('${def.id}')">
@@ -384,8 +354,7 @@ function defCardHtml(def, opts) {
           <span class="dot-sep">·</span>
           <span>${actions} action${actions === 1 ? '' : 's'}</span>
           ${def.relevance ? `<span class="dot-sep">·</span><span>${escHtml(def.relevance)}</span>` : ''}
-          ${updated ? `<span class="dot-sep">·</span><span>${escHtml(updated)}${ownerLine}</span>` : ''}
-          ${publishBadge}
+          ${attribution}
         </div>
       </div>
       <div class="def-card-footer">${buttons}</div>
@@ -555,9 +524,80 @@ function renderEditorPreview(spec) {
       ${spec.relevance ? `<span>${escHtml(spec.relevance)}</span>` : ''}
       <span>${spec.actions.length} step${spec.actions.length === 1 ? '' : 's'}</span>
       ${inputs.length ? `<span>${inputs.length} input${inputs.length === 1 ? '' : 's'}</span>` : ''}
+      ${spec.author ? `<span>by ${escHtml(spec.author)}</span>` : ''}
+      ${spec.created ? `<span>${escHtml(spec.created)}</span>` : ''}
     </div>
     ${inputsHtml}
     <div class="preview-actions">${actionsHtml}</div>`;
+}
+
+/* ── Community submission (GitHub PR) ────────────────────────────────── */
+const COMMUNITY_REPO_URL = 'https://github.com/SusquehannaSyntax/Vigil-Approved-Scripts';
+
+function _slugifyTaskName(name) {
+  return (name || 'task')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60) || 'task';
+}
+
+function _injectCommunityMetadata(yaml) {
+  // Inject author + created at the top of the YAML if they aren't already
+  // declared. The community-repo policy requires both fields on every
+  // accepted PR; auto-injection means the submitter doesn't have to think
+  // about it. Existing values are preserved (we only add what's missing).
+  const author = (window.VIGIL_CONFIG && window.VIGIL_CONFIG.username) || 'unknown';
+  const today = new Date().toISOString().slice(0, 10);  // YYYY-MM-DD
+  const hasAuthor = /^author\s*:/m.test(yaml);
+  const hasCreated = /^created\s*:/m.test(yaml);
+  if (hasAuthor && hasCreated) return yaml;
+
+  const additions = [];
+  if (!hasAuthor) additions.push(`author: ${author}`);
+  if (!hasCreated) additions.push(`created: ${today}`);
+
+  // Slot the new keys after `name:` so they sit alongside the other header
+  // metadata. Fall back to top-of-file if `name:` isn't on its own line.
+  const lines = yaml.split('\n');
+  const nameIdx = lines.findIndex(l => /^name\s*:/.test(l));
+  if (nameIdx >= 0) {
+    lines.splice(nameIdx + 1, 0, ...additions);
+    return lines.join('\n');
+  }
+  return additions.join('\n') + '\n' + yaml;
+}
+
+function openCommunitySubmit() {
+  const rawYaml = (document.getElementById('editor-yaml').value || '').trim();
+  if (!rawYaml) { showToast('Write some YAML first', 'error'); return; }
+  const yaml = _injectCommunityMetadata(rawYaml);
+  const parsed = editorState.lastParsedSpec;
+  const nameSlug = parsed && parsed.name ? _slugifyTaskName(parsed.name) : 'task';
+  const filename = nameSlug + '.yaml';
+  const url = `${COMMUNITY_REPO_URL}/new/main/tasks?filename=${encodeURIComponent(filename)}&value=${encodeURIComponent(yaml)}`;
+  const link = document.getElementById('community-submit-link');
+  link.href = url;
+  document.getElementById('community-submit-filename').textContent = filename;
+  document.getElementById('community-submit-overlay').classList.add('open');
+  document.getElementById('community-submit-modal').classList.add('open');
+  window.__pendingCommunityYaml = yaml;
+}
+
+function closeCommunitySubmit() {
+  document.getElementById('community-submit-overlay').classList.remove('open');
+  document.getElementById('community-submit-modal').classList.remove('open');
+}
+
+async function copyCommunityYaml() {
+  const yaml = window.__pendingCommunityYaml || '';
+  if (!yaml) return;
+  try {
+    await navigator.clipboard.writeText(yaml);
+    showToast('YAML copied to clipboard', 'success');
+  } catch {
+    showToast('Clipboard blocked — copy from the editor manually', 'error');
+  }
 }
 
 async function saveDefinitionFromEditor() {
@@ -693,3 +733,165 @@ function closeTaskDetail() {
   document.getElementById('task-detail-overlay').classList.remove('open');
   document.getElementById('task-detail-modal').classList.remove('open');
 }
+
+/* ── Task history (live-polled, paginated) ───────────────────────────── */
+
+const TASK_STATE_LABELS = {
+  blocked: 'Blocked', pending: 'Pending', dispatched: 'Dispatched',
+  executing: 'Executing', completed: 'Completed', failed: 'Failed',
+  rejected: 'Rejected', expired: 'Expired',
+};
+
+const taskHistoryState = { page: 1, pages: 1, interval: null };
+
+function _taskDotClass(state) {
+  if (state === 'completed') return 'online';
+  if (state === 'failed' || state === 'rejected' || state === 'expired') return 'offline';
+  if (state === 'pending' || state === 'dispatched' || state === 'executing' || state === 'blocked') return 'pending';
+  return '';
+}
+
+function _taskTimeSince(iso) {
+  if (!iso) return '';
+  const sec = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (sec < 60)   return sec + 's ago';
+  const m = Math.floor(sec / 60);
+  if (m < 60)     return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24)     return h + 'h ago';
+  return Math.floor(h / 24) + 'd ago';
+}
+
+function _buildTaskHistoryRow(t) {
+  const row = document.createElement('div');
+  row.className = 'task-item';
+  if (t.run) {
+    row.style.cursor = 'pointer';
+    row.title = 'Click to view full run details';
+    row.addEventListener('click', () => openTaskDetail(t.run));
+  }
+
+  const dot = document.createElement('div');
+  dot.className = 'status-dot ' + _taskDotClass(t.state);
+  dot.style.width = '8px';
+  dot.style.height = '8px';
+  row.appendChild(dot);
+
+  const content = document.createElement('div');
+  content.className = 'task-content';
+
+  const name = document.createElement('div');
+  name.className = 'task-action-name';
+  name.textContent = t.action + ((t.step_label && t.step_label !== t.action) ? ' · ' + t.step_label : '');
+  content.appendChild(name);
+
+  const detail = document.createElement('div');
+  detail.className = 'task-detail';
+  const parts = [t.host_hostname || ''];
+  if (t.requested_by_username) parts.push('by ' + t.requested_by_username);
+  parts.push(_taskTimeSince(t.created_at));
+  detail.textContent = parts.filter(Boolean).join(' · ');
+  content.appendChild(detail);
+
+  row.appendChild(content);
+
+  const badge = document.createElement('span');
+  badge.className = 'state-badge state-' + t.state;
+  badge.textContent = TASK_STATE_LABELS[t.state] || t.state;
+  row.appendChild(badge);
+
+  return row;
+}
+
+function _buildEmptyState(title, desc) {
+  const wrap = document.createElement('div');
+  wrap.className = 'empty-state';
+  const t = document.createElement('div');
+  t.className = 'empty-state-title';
+  t.textContent = title;
+  wrap.appendChild(t);
+  if (desc) {
+    const d = document.createElement('div');
+    d.className = 'empty-state-desc';
+    d.textContent = desc;
+    wrap.appendChild(d);
+  }
+  return wrap;
+}
+
+function _renderTaskHistoryPager() {
+  const pager = document.getElementById('task-history-pager');
+  if (!pager) return;
+  pager.replaceChildren();
+  if (taskHistoryState.pages <= 1) { pager.style.display = 'none'; return; }
+  pager.style.display = 'flex';
+  const p = taskHistoryState.page, n = taskHistoryState.pages;
+
+  const prev = document.createElement('button');
+  prev.className = 'btn btn-outline btn-sm';
+  prev.textContent = '‹ Prev';
+  prev.disabled = p <= 1;
+  prev.addEventListener('click', () => taskHistoryGoto(p - 1));
+  pager.appendChild(prev);
+
+  const label = document.createElement('span');
+  label.style.fontSize = '12px';
+  label.style.color = 'var(--text-3)';
+  label.textContent = `Page ${p} of ${n}`;
+  pager.appendChild(label);
+
+  const next = document.createElement('button');
+  next.className = 'btn btn-outline btn-sm';
+  next.textContent = 'Next ›';
+  next.disabled = p >= n;
+  next.addEventListener('click', () => taskHistoryGoto(p + 1));
+  pager.appendChild(next);
+}
+
+async function refreshTaskHistory(page) {
+  const list = document.getElementById('task-history-list');
+  if (!list) return;
+  const p = page || taskHistoryState.page || 1;
+  try {
+    const body = await apiJson(`/api/v1/tasks/history/?page=${p}`);
+    taskHistoryState.page = body.page;
+    taskHistoryState.pages = body.pages;
+    list.replaceChildren();
+    if (!body.results.length) {
+      list.appendChild(_buildEmptyState('No task history yet', 'Dispatched task steps will appear here.'));
+    } else {
+      for (const t of body.results) list.appendChild(_buildTaskHistoryRow(t));
+    }
+    _renderTaskHistoryPager();
+  } catch (e) {
+    // Silent on poll failure — keep last-good list visible.
+  }
+}
+
+function taskHistoryGoto(page) {
+  if (page < 1 || page > taskHistoryState.pages) return;
+  refreshTaskHistory(page);
+}
+
+function _taskHistoryTabVisible() {
+  const tasks = document.getElementById('page-tasks');
+  const hist = document.getElementById('tasks-history');
+  return tasks && tasks.classList.contains('active') &&
+         hist && hist.classList.contains('active') &&
+         !document.hidden;
+}
+
+function _startTaskHistoryPolling() {
+  if (taskHistoryState.interval) return;
+  taskHistoryState.interval = setInterval(() => {
+    if (_taskHistoryTabVisible()) refreshTaskHistory(taskHistoryState.page);
+  }, 5000);
+}
+_startTaskHistoryPolling();
+
+// Tab click: load history when the user opens the tab.
+document.querySelectorAll('.tab-bar[data-tab-group="tasks"] .tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    if (tab.dataset.tab === 'tasks-history') refreshTaskHistory(1);
+  });
+});

@@ -95,10 +95,15 @@ async function _pollForHost() {
 
 async function enrollApproveHost() {
   if (!_enrollDetectedHost) return;
+  const totp = (document.getElementById('enroll-approve-totp').value || '').trim();
+  if (!totp) { showToast('Enter your TOTP code to approve', 'error'); return; }
   const btn = document.getElementById('enroll-approve-btn');
   btn.disabled = true;
   try {
-    await apiJson(`/api/v1/hosts/${_enrollDetectedHost.id}/approve/`, { method: 'POST' });
+    await apiJson(`/api/v1/hosts/${_enrollDetectedHost.id}/approve/`, {
+      method: 'POST',
+      body: JSON.stringify({ totp }),
+    });
     const hostname = _enrollDetectedHost.hostname || 'Host';
     document.getElementById('enroll-done-msg').textContent = `${hostname} is now online and monitoring.`;
     _enrollSetStep(4);

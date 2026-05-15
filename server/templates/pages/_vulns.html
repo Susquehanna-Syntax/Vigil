@@ -34,6 +34,15 @@
         </div>
       </div>
 
+      {# Recent scans (server-launched + task-requested). Hidden when none. #}
+      <div id="vuln-scans-section" style="display:none;margin-top:28px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div style="font-weight:600;font-size:14px;color:var(--text-1);">Recent scans</div>
+          <div style="font-size:11px;color:var(--text-3);">Updated every refresh · max 100</div>
+        </div>
+        <div id="vuln-scans-list" class="task-list"></div>
+      </div>
+
       <div id="vulns-not-configured" style="display:none;">
         <div style="background:var(--s1);border-radius:var(--r-lg);padding:48px;text-align:center;">
           <div style="font-size:42px;margin-bottom:16px;opacity:0.5;">🛡</div>

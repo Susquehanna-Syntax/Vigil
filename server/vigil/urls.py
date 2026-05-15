@@ -16,7 +16,6 @@ from apps.accounts.views import login_view, logout_view, setup_view
 from apps.alerts.models import Alert
 from apps.hosts.models import Host
 from apps.hosts.views import checkin, register
-from apps.tasks.models import Task
 
 # Hosts that haven't checked in within this window are surfaced in a
 # collapsed "Inactive" section on the dashboard rather than mixed in with
@@ -43,7 +42,6 @@ def dashboard(request):
     alerts_firing = Alert.objects.filter(state=Alert.State.FIRING).select_related("host", "rule")
     alerts_ack = Alert.objects.filter(state=Alert.State.ACKNOWLEDGED).select_related("host", "rule").order_by("-fired_at")[:20]
     alerts_resolved = Alert.objects.filter(state=Alert.State.RESOLVED).select_related("host", "rule").order_by("-resolved_at")[:20]
-    tasks = Task.objects.select_related("host", "requested_by").order_by("-created_at")[:50]
     pending_hosts = hosts.filter(status=Host.Status.PENDING)
 
     return render(request, "dashboard.html", {
@@ -58,10 +56,10 @@ def dashboard(request):
         "alerts_firing": alerts_firing,
         "alerts_ack": alerts_ack,
         "alerts_resolved": alerts_resolved,
-        "tasks": tasks,
         "pending_hosts": pending_hosts,
         "vigil_timezone": django_settings.VIGIL_TIMEZONE,
         "vigil_time_format": django_settings.VIGIL_TIME_FORMAT,
+        "vigil_username": request.user.username,
     })
 
 

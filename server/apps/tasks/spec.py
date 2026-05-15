@@ -274,6 +274,16 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": [],
         "optional": ["platform"],
     },
+    # ── Vulnerability scanning ─────────────────────────────────────────────
+    # The agent emits a "please scan me" marker; the server picks it up
+    # on task completion and creates a VulnScan(requested). The actual
+    # scan is launched by the central Nessus instance, not the agent.
+    "request_nessus_scan": {
+        "label": "Request Nessus vulnerability scan",
+        "risk": "low",
+        "required": [],
+        "optional": [],
+    },
 }
 
 _RISK_ORDER = {"low": 0, "standard": 1, "high": 2}
@@ -283,6 +293,7 @@ _INPUT_TYPES = {"text", "choice", "boolean", "number"}
 # Variable references look like {{ inputs.foo }} — whitespace flexible.
 _VAR_PATTERN = re.compile(r"\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 _INPUT_ID_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+_ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 # Day-of-week aliases accepted in `schedule.window.days`. Stored canonically
 # as 0..6 with 0 = Monday (matches Python's datetime.weekday()).
@@ -720,6 +731,22 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
     description = _as_str(raw.get("description"), "description", max_len=2000)
     relevance = _as_str(raw.get("relevance"), "relevance", max_len=255)
 
+    # ``author`` and ``created`` are optional locally but auto-injected by the
+    # "Submit to Community" flow so every YAML that lands on the community
+    # repo is self-describing (who wrote it, when). When present, ``created``
+    # must be an ISO-8601 calendar date (YYYY-MM-DD); ``author`` is any short
+    # string. Both flow through to ``parsed_spec`` so the UI can render them.
+    author = _as_str(raw.get("author"), "author", max_len=80)
+    # PyYAML auto-parses ISO dates into ``datetime.date`` objects; accept
+    # both forms so authors can write either ``created: 2026-05-15`` (parsed
+    # as a date) or ``created: "2026-05-15"`` (parsed as a string).
+    raw_created = raw.get("created")
+    if hasattr(raw_created, "isoformat") and not isinstance(raw_created, str):
+        raw_created = raw_created.isoformat()
+    created = _as_str(raw_created, "created", max_len=10)
+    if created and not _ISO_DATE_PATTERN.match(created):
+        raise SpecError("'created' must be an ISO-8601 date (YYYY-MM-DD)")
+
     risk = _as_str(raw.get("risk") or "standard", "risk", max_len=16).lower()
     if risk not in _VALID_RISK:
         raise SpecError(f"'risk' must be one of: {', '.join(sorted(_VALID_RISK))}")
@@ -824,6 +851,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         "name": name,
         "description": description,
         "relevance": relevance,
+        "author": author,
+        "created": created,
         "risk": effective_risk,
         "declared_risk": risk,
         "actions": parsed_actions,

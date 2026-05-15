@@ -15,7 +15,7 @@
   {% include "pages/_alerts.html" %}
 
   {# Tasks page — library + history #}
-  {# Logic: static/js/vigil-tasks.js | Data: tasks from dashboard() view; library grid via /api/v1/tasks/definitions/?scope=mine #}
+  {# Logic: static/js/vigil-tasks.js | Data: history via /api/v1/tasks/history/ (live-polled); library grid via /api/v1/tasks/definitions/?scope=mine #}
   {% include "pages/_tasks.html" %}
 
   {# Community page — published task templates from this server #}

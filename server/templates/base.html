@@ -309,58 +309,36 @@
   </form>
 </div>
 
-{# Quick task dispatch modal — single host/action picker. Logic: vigil-tasks.js (openDispatchModal / submitDispatch) #}
-<div class="modal-overlay" id="dispatch-overlay" onclick="closeDispatchModal()"></div>
-<div class="modal" id="dispatch-modal">
+{# Submit-to-community modal — opened from the task editor (openCommunitySubmit) #}
+<div class="modal-overlay" id="community-submit-overlay" onclick="closeCommunitySubmit()"></div>
+<div class="modal" id="community-submit-modal">
   <div class="modal-title">
-    Dispatch Task
-    <button class="modal-close" onclick="closeDispatchModal()">
+    Submit to Community
+    <button class="modal-close" onclick="closeCommunitySubmit()">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <form id="dispatch-form" onsubmit="submitDispatch(event)">
-    <div class="form-group">
-      <label class="form-label">Host</label>
-      <select class="form-control" id="dispatch-host" required>
-        <option value="">Select a host…</option>
-        {% for host in hosts %}{% if host.status == 'online' and host.mode != 'monitor' %}
-        <option value="{{ host.id }}">{{ host.hostname }}{% if host.ip_address %} ({{ host.ip_address }}){% endif %} — {{ host.get_mode_display }}</option>
-        {% endif %}{% endfor %}
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Action</label>
-      <select class="form-control" id="dispatch-action" required onchange="updateDispatchParams()">
-        <option value="">Select an action…</option>
-        <optgroup label="Services">
-          <option value="restart_service">restart_service</option>
-        </optgroup>
-        <optgroup label="Containers">
-          <option value="start_container">start_container</option>
-          <option value="restart_container">restart_container</option>
-          <option value="stop_container">stop_container</option>
-          <option value="clear_docker_logs">clear_docker_logs</option>
-        </optgroup>
-        <optgroup label="System">
-          <option value="clear_temp_files">clear_temp_files</option>
-          <option value="run_package_updates">run_package_updates</option>
-          <option value="execute_script">execute_script</option>
-          <option value="reboot">reboot</option>
-        </optgroup>
-      </select>
-    </div>
-    <div id="dispatch-params"></div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:24px;gap:12px;">
-      <span id="dispatch-risk-label"></span>
-      <div style="display:flex;gap:10px;">
-        <button type="button" class="btn btn-ghost" onclick="closeDispatchModal()">Cancel</button>
-        <button type="submit" class="btn btn-sky" id="dispatch-submit-btn">
-          <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-          Dispatch
-        </button>
-      </div>
-    </div>
-  </form>
+  <div class="totp-sub" style="margin-bottom:14px;">
+    The Vigil community catalog lives on GitHub at
+    <a href="https://github.com/SusquehannaSyntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky);">SusquehannaSyntax/Vigil-Approved-Scripts</a>.
+    Submitting opens GitHub's new-file editor with your YAML pre-filled — GitHub will offer to fork the repo and open a PR.
+  </div>
+  <div class="totp-sub" style="margin-bottom:18px;">
+    <strong>How submission works:</strong>
+    <ol style="margin:6px 0 0 18px;padding:0;line-height:1.7;">
+      <li>Click <strong>Open GitHub PR</strong>. The file will be created at <code id="community-submit-filename" style="background:var(--s2);padding:2px 6px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">task.yaml</code> under <code style="background:var(--s2);padding:2px 6px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">tasks/</code>.</li>
+      <li>Sign in to GitHub if prompted. If you don't have write access, GitHub will automatically fork the repo into your account.</li>
+      <li>Click <strong>Propose new file</strong> on GitHub, then <strong>Create pull request</strong>.</li>
+      <li>A SQSY maintainer reviews and merges. Once merged, every Vigil instance can browse and fork the entry.</li>
+    </ol>
+  </div>
+  <div class="totp-sub" style="margin-bottom:18px;font-size:11px;color:var(--text-3);">
+    <strong>Auto-added to your YAML</strong> if you haven't set them: <code style="background:var(--s2);padding:1px 5px;border-radius:4px;font-family:'IBM Plex Mono',monospace;">author</code> (your Vigil username) and <code style="background:var(--s2);padding:1px 5px;border-radius:4px;font-family:'IBM Plex Mono',monospace;">created</code> (today's date). Required by the catalog so every entry is attributed.
+  </div>
+  <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;">
+    <button class="btn btn-ghost" onclick="copyCommunityYaml()">Copy YAML</button>
+    <a id="community-submit-link" class="btn btn-sky" target="_blank" rel="noopener" href="#" onclick="closeCommunitySubmit()">Open GitHub PR</a>
+  </div>
 </div>
 
 {# Task run detail modal — opened by openTaskDetail() in vigil-tasks.js #}
@@ -432,7 +410,11 @@
         <div class="enroll-meta" id="enroll-detected-meta">—</div>
       </div>
     </div>
-    <div class="totp-sub" style="margin-bottom:16px;">Review the details above and approve the host to bring it online.</div>
+    <div class="totp-sub" style="margin-bottom:12px;">Review the details above and approve the host to bring it online. Confirm with your TOTP code — approval is 2FA-gated because an approved host immediately becomes eligible to receive signed tasks.</div>
+    <div class="form-group" style="margin-bottom:14px;">
+      <label class="form-label">TOTP code</label>
+      <input class="form-control" type="text" id="enroll-approve-totp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+    </div>
     <div style="display:flex;gap:8px;">
       <button class="btn btn-mint btn-sm" id="enroll-approve-btn" onclick="enrollApproveHost()">Approve &amp; Activate</button>
       <button class="btn btn-outline btn-sm" onclick="closeEnrollWizard()">Cancel</button>
@@ -461,6 +443,7 @@
   window.VIGIL_CONFIG = {
     timezone: '{{ vigil_timezone|escapejs }}',
     timeFormat: '{{ vigil_time_format|escapejs }}',
+    username: '{{ vigil_username|escapejs }}',
   };
 </script>
 {% endblock %}

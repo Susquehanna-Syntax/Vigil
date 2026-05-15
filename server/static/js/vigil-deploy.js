@@ -584,23 +584,3 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeDeployModal();
 });
 
-/* ── Publish / unpublish task definitions ────────────────────────────── */
-async function publishDefinition(id) {
-  try {
-    await apiJson(`/api/v1/tasks/definitions/${id}/publish/`, { method: 'POST' });
-    showToast('Published to community', 'success');
-    refreshTaskLibrary();
-  } catch (e) {
-    showToast('Publish failed: ' + e.message, 'error');
-  }
-}
-
-async function unpublishDefinition(id) {
-  try {
-    await apiJson(`/api/v1/tasks/definitions/${id}/unpublish/`, { method: 'POST' });
-    showToast('Unpublished', 'success');
-    refreshTaskLibrary();
-  } catch (e) {
-    showToast('Unpublish failed: ' + e.message, 'error');
-  }
-}

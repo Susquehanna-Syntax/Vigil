@@ -15,12 +15,13 @@ Vigil is a lightweight monitoring system where agents on your hosts phone home t
 - 20 built-in alert rules with auto-resolution and host-offline detection
 - Notification dispatch (webhook, email)
 - Hardware inventory with OS, CPU, RAM, BIOS, MAC, uptime, timezone, and custom collector columns
-- Nessus/Tenable vulnerability scan integration
+- Nessus/Tenable vulnerability integration — ingest scan results, launch scans from the UI ("Scan now"), or have agents request a scan via a task action; high-risk and critical findings raise alerts
 - Active Directory computer import with auto-tagging from OU paths
 - Tag-based fleet segmentation — deploy tasks by tag or by individual host
 - Multistep task authoring (YAML editor) with schedule windows, retry policies, and success criteria
-- Community task sharing (publish/fork templates)
-- TOTP-based two-factor authentication for task execution
+- Live-polled task history with pagination (5 s refresh while the History tab is visible)
+- Community task catalog on GitHub — submit your YAML as a pull request from the editor, browse approved entries
+- TOTP-based two-factor authentication for task execution and host enrollment approval, with single-use codes (replay protection)
 - Signed remote task execution with mode/allowlist enforcement on the agent
 - SQSY dark-theme dashboard with Chart.js visualizations
 
@@ -185,11 +186,11 @@ allowlist:
 |---|---|
 | **Dashboard** | Host card grid — status dots, CPU/Memory/Disk/Network mini-bars, RDP, Deploy, Remove buttons. Searchable. Inactive agents (90+ days) collapse into a separate section. |
 | **Inventory** | Hardware table for all enrolled hosts. Columns: hostname, IP, OS, CPU, RAM, MAC, BIOS, disks, uptime, last user, timezone, and more. Scrollable, sortable (click header), filterable per-column (`=value` for exact, default contains), drag-to-reorder columns, column visibility toggled via Columns button. |
-| **Tasks** | YAML task editor, your private library, deployment history, and community templates. |
-| **Vulns** | Nessus/Tenable scan findings per host. |
+| **Tasks** | YAML task editor (with **Submit to Community** that opens a GitHub PR) and your private library. The **History** tab lists every dispatched task with live polling — newest first, paginated. |
+| **Vulns** | Nessus/Tenable scan findings per host, with a **Scan now** button per row. The **Recent scans** section below shows every scan request — UI-launched or agent-requested — and its state. |
 | **Monitor** | Select a host for live SVG gauges (CPU, Memory, Disk, Load) and Chart.js time-series with 1h/6h/24h/7d range selector. RDP download button for Windows hosts. |
 | **Alerts** | Firing, acknowledged, and resolved alerts across the fleet. |
-| **Community** | Browse and fork task templates published by other users on this server. |
+| **Community** | Browse forks of approved community tasks. New submissions live on GitHub at [SusquehannaSyntax/Vigil-Approved-Scripts](https://github.com/SusquehannaSyntax/Vigil-Approved-Scripts) — use **Submit to Community** in the task editor to open a PR. |
 | **Settings** | Enrollment queue (approve/reject pending hosts), TOTP enrollment, AD import, server timezone display. |
 
 ---
@@ -388,7 +389,39 @@ All 37 primitives are defined in `server/apps/tasks/spec.py` and executed in `ag
 4. Optionally set a schedule window, retry policy, and success criteria on their tabs
 5. Select target hosts (or choose a tag) on the **Hosts** tab
 6. Enter your 6-digit TOTP code and submit
-7. Track execution in the run detail view (Tasks → History)
+7. Track execution in the run detail view (Tasks → History — the list polls every 5 seconds while open)
+
+---
+
+## Community Catalog
+
+The Vigil community catalog lives on GitHub at [SusquehannaSyntax/Vigil-Approved-Scripts](https://github.com/SusquehannaSyntax/Vigil-Approved-Scripts). Every Vigil instance can browse approved entries; submissions are PR-reviewed by SQSY maintainers.
+
+### Submitting your task
+
+The task editor's toolbar has a **Submit to Community** button. Clicking it:
+
+1. Reads the YAML currently in the editor and slugifies the task name into a filename (e.g. `restart-nginx-and-verify.yaml`).
+2. **Auto-injects attribution** — adds `author: <your-vigil-username>` and `created: <today>` after the `name:` line if they aren't already declared. The community repo policy requires both fields; auto-injection means you never have to remember.
+3. Opens a modal with two actions: **Copy YAML** (clipboard) and **Open GitHub PR**.
+4. The **Open GitHub PR** link points at `github.com/SusquehannaSyntax/Vigil-Approved-Scripts/new/main/tasks?filename=<slug>.yaml&value=<your YAML>` — GitHub's new-file editor with the body pre-filled.
+5. If you don't have write access on the repo, GitHub forks it into your account automatically; click **Propose new file** → **Create pull request**.
+6. A SQSY maintainer reviews and merges. Once merged, every Vigil instance can see the entry.
+
+### Required YAML fields for community submissions
+
+| Field | Type | Auto-filled by Submit-to-Community |
+|---|---|---|
+| `name` | string | No (must be in your YAML) |
+| `description` | string | No |
+| `risk` | `low` / `standard` / `high` | No |
+| `actions` | non-empty list | No |
+| `author` | string (your Vigil username) | **Yes** |
+| `created` | ISO-8601 date (`YYYY-MM-DD`) | **Yes** |
+
+`author` and `created` are also optional in the local schema, so private tasks aren't forced to carry them. When present, both fields surface in card meta lines and the editor preview — YAML-declared `author` takes precedence over the local `owner_username` so a forked task keeps its original attribution.
+
+This replaces the older local "publish to community" flow — there is no per-server community tab managed by API anymore. The advantage: one curated repo for everyone, version history, audit trail, and no shared DB to operate.
 
 ---
 
@@ -471,7 +504,64 @@ Task deploys are blocked until enrolled. TOTP can be disabled from Settings (req
 
 ## Vulnerability Management (Nessus)
 
-Set `NESSUS_URL`, `NESSUS_ACCESS_KEY`, and `NESSUS_SECRET_KEY` in your `.env`. Vigil syncs scan findings from Nessus/Tenable once per hour via Celery beat and correlates them to hosts by IP address. Findings appear on the **Vulns** page grouped by severity.
+Vigil ships a first-class Nessus / Tenable integration: it ingests scan findings, lets you launch scans without leaving the dashboard, and alerts on high-risk and critical findings.
+
+### Server setup
+
+1. Install **Nessus Essentials** (free, scans up to 16 IPs) — register at <https://www.tenable.com/products/nessus/nessus-essentials> for an activation code, then:
+
+   ```bash
+   curl -o nessus.deb 'https://www.tenable.com/downloads/api/v2/pages/nessus/files/Nessus-latest-debian10_amd64.deb'
+   sudo dpkg -i nessus.deb
+   sudo systemctl enable --now nessusd
+   ```
+
+   Open `https://localhost:8834`, complete activation, and wait ~20–30 minutes for plugin compilation. Generate API keys under **My Account → API Keys → Generate**.
+
+2. Wire the keys into Vigil's `.env`:
+
+   ```env
+   NESSUS_URL=https://localhost:8834
+   NESSUS_ACCESS_KEY=<paste>
+   NESSUS_SECRET_KEY=<paste>
+   NESSUS_VERIFY_SSL=false        # self-signed cert by default
+   ```
+
+   When Vigil runs in Docker against a host-installed Nessus, use `https://host.docker.internal:8834` (Mac) or `https://172.17.0.1:8834` (Linux bridge).
+
+3. Verify the connection:
+
+   ```bash
+   docker compose exec server python manage.py shell -c \
+     "from apps.vulns.tasks import sync_nessus_vulns; print(sync_nessus_vulns())"
+   ```
+
+### What runs automatically
+
+The `vulns.sync_nessus_vulns` Celery beat (hourly) does three things in order:
+
+1. **Launches** every `VulnScan` in the `requested` state by calling Nessus's `Basic Network Scan` template against the host's IP.
+2. **Polls** in-flight scans and updates their state in the dashboard.
+3. **Ingests** results from completed scans into `VulnSummary`, fires alerts on new criticals and new highs, and resolves them once findings clear.
+
+### Launching scans from Vigil
+
+Three paths, all converge on a `VulnScan` row visible in the **Recent scans** list:
+
+| Path | Who triggers | TOTP gate |
+|---|---|---|
+| **Scan now** button (Vulnerabilities tab) | Operator from UI | Yes |
+| **Request a Nessus scan** task template | Operator dispatches to a host | Yes (at deploy time) |
+| `request_nessus_scan` action in a custom YAML task | Anyone with a published YAML using this action | Yes (deploy gate) |
+
+One active scan per host is enforced — repeated requests while a scan is in flight return `409 Conflict`.
+
+### Two ready-made templates in the editor
+
+The task editor's **Start from template…** dropdown includes:
+
+- **Install Nessus Essentials on this host** — high-risk multi-step task that downloads, installs, and starts `nessusd`, then echoes the activation URL.
+- **Request a Nessus scan of this host** — low-risk single-step task using the `request_nessus_scan` action; the server picks up the marker on task completion and queues a scan.
 
 ---
 
@@ -546,16 +636,20 @@ The allowlist is defined in `agent.yml` and enforced locally by the agent — th
 | `POST` | `/api/v1/tasks/definitions/validate/` | Validate YAML without saving |
 | `GET` `PUT` `DELETE` | `/api/v1/tasks/definitions/{id}/` | Read / update / delete a definition |
 | `POST` | `/api/v1/tasks/definitions/{id}/fork/` | Fork a community template |
-| `POST` | `/api/v1/tasks/definitions/{id}/publish/` | Publish to community |
-| `POST` | `/api/v1/tasks/definitions/{id}/unpublish/` | Unpublish from community |
 | `POST` | `/api/v1/tasks/definitions/{id}/deploy/` | Deploy across hosts (requires TOTP) |
+| `GET` | `/api/v1/tasks/history/?page=N` | Paginated task history feed (50/page, polled by the History tab) |
 | `GET` | `/api/v1/tasks/runs/{id}/` | Run detail with per-host step status |
+
+> The legacy single-action dispatch endpoint (`POST /api/v1/tasks/`) was removed in 2026.1.9 — it bypassed the TOTP gate. Use the definition-deploy endpoint instead. Community publish/unpublish endpoints were also removed; the community catalog now lives on GitHub (see [Community catalog](#community-catalog)).
 
 ### Misc
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/v1/vulns/` | Vulnerability findings |
+| `GET` | `/api/v1/vulns/` | Vulnerability summaries per host |
+| `GET` | `/api/v1/vulns/scans/` | Recent scan requests / runs (newest first, capped at 100) |
+| `POST` | `/api/v1/vulns/scans/{host_id}/` | Queue a Nessus scan for a host (requires TOTP, one active per host) |
+| `POST` | `/api/v1/hosts/{id}/approve/` | Approve a pending host (requires TOTP) |
 | `GET` | `/api/v1/accounts/totp/` | TOTP enrollment status |
 | `POST` | `/api/v1/accounts/totp/enroll/` | Start TOTP enrollment |
 | `POST` | `/api/v1/accounts/totp/enroll/confirm/` | Confirm with 6-digit code |
