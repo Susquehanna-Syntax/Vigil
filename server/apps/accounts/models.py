@@ -15,6 +15,11 @@ class UserProfile(models.Model):
     # Set once the user has verified a code with this secret. Until then the
     # secret is "pending" and TOTP is NOT considered enabled.
     totp_confirmed_at = models.DateTimeField(null=True, blank=True)
+    # Replay-protection: the most recent TOTP code consumed by this user and
+    # when it was consumed. Reused codes within the validity window are
+    # rejected to prevent an intercepted code from being replayed.
+    last_totp_code = models.CharField(max_length=12, blank=True, default="")
+    last_totp_used_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self) -> str:
         return f"profile<{self.user_id}>"

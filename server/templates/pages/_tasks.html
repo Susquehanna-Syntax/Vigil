@@ -27,28 +27,15 @@
         <div id="task-library-grid" class="def-grid"></div>
       </div>
 
-      <!-- History -->
+      <!-- History (live-polled from /api/v1/tasks/history/) -->
       <div class="tab-content" id="tasks-history">
-        {% if tasks %}
-        <div class="task-list">
-          {% for task in tasks %}
-          <div class="task-item" style="cursor:pointer;" onclick="openTaskDetail('{{ task.run_id }}')"
-               title="Click to view full run details">
-            <div class="status-dot {% if task.state == 'completed' %}online{% elif task.state == 'failed' or task.state == 'rejected' %}offline{% elif task.state == 'pending' or task.state == 'dispatched' or task.state == 'executing' or task.state == 'blocked' %}pending{% endif %}" style="width:8px;height:8px;"></div>
-            <div class="task-content">
-              <div class="task-action-name">{{ task.action }}{% if task.step_label %} · {{ task.step_label }}{% endif %}</div>
-              <div class="task-detail">{{ task.host.hostname }}{% if task.requested_by %} · by {{ task.requested_by.username }}{% endif %} · {{ task.created_at|timesince }} ago</div>
-            </div>
-            <span class="state-badge state-{{ task.state }}">{{ task.get_state_display }}</span>
+        <div id="task-history-list" class="task-list">
+          <div class="empty-state">
+            <div class="empty-state-title">Loading…</div>
           </div>
-          {% endfor %}
         </div>
-        {% else %}
-        <div class="empty-state">
-          <div class="empty-state-title">No task history yet</div>
-          <div class="empty-state-desc">Dispatched task steps will appear here.</div>
-        </div>
-        {% endif %}
+        <div id="task-history-pager"
+             style="display:none;align-items:center;justify-content:center;gap:14px;padding:14px 0;"></div>
       </div>
 
     </section>

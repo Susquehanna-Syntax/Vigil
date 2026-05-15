@@ -269,9 +269,14 @@ document.addEventListener('keydown', e => {
 
 /* ── Approve / reject / delete actions ───────────────────────────────── */
 async function approveHost(hostId, btn) {
+  const totp = (window.prompt('Enter your 6-digit TOTP code to approve this host:') || '').trim();
+  if (!totp) return;
   try {
     btn.disabled = true;
-    await apiPost(`/api/v1/hosts/${hostId}/approve/`);
+    await apiJson(`/api/v1/hosts/${hostId}/approve/`, {
+      method: 'POST',
+      body: JSON.stringify({ totp }),
+    });
     showToast('Host approved', 'success');
     btn.closest('.enroll-card').style.opacity = '0.4';
     setTimeout(() => location.reload(), 800);

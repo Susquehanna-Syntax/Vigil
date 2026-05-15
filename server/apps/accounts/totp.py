@@ -66,3 +66,61 @@ def otpauth_uri(secret_b32: str, account_name: str, issuer: str = "Vigil") -> st
     label = quote(f"{issuer}:{account_name}")
     params = f"secret={secret_b32}&issuer={quote(issuer)}&algorithm=SHA1&digits={_DIGITS}&period={_STEP_SECONDS}"
     return f"otpauth://totp/{label}?{params}"
+
+
+# A code is valid for up to (1 step + window) before and after the current
+# step. With window=1 and step=30s that's a 90-second total validity window,
+# which is also how long we treat a freshly-consumed code as "burned".
+_REPLAY_WINDOW_SECONDS = (2 * 1 + 1) * _STEP_SECONDS
+
+
+def consume_totp(user, code: str) -> tuple[bool, str | None]:
+    """Verify a TOTP code for ``user`` and mark it consumed.
+
+    Rejects codes that were used within the validity window so an
+    intercepted code cannot be replayed for a second sensitive action.
+    Returns ``(ok, error_message)``.
+    """
+    from django.utils.timezone import now
+
+    profile = getattr(user, "profile", None)
+    if profile is None:
+        return False, "User profile missing"
+    secret = profile.totp_secret or ""
+    if not (profile.totp_confirmed_at and secret):
+        return False, "TOTP enrollment required — enroll in Settings before continuing"
+
+    code = (code or "").strip().replace(" ", "")
+    if not code:
+        return False, "TOTP code required"
+    if not verify_totp(secret, code):
+        return False, "Invalid TOTP code"
+
+    if profile.last_totp_code == code and profile.last_totp_used_at:
+        elapsed = (now() - profile.last_totp_used_at).total_seconds()
+        if elapsed < _REPLAY_WINDOW_SECONDS:
+            return False, "TOTP code already used — wait for the next code"
+
+    profile.last_totp_code = code
+    profile.last_totp_used_at = now()
+    profile.save(update_fields=["last_totp_code", "last_totp_used_at"])
+    return True, None
+
+
+def require_totp_confirmation(user, payload) -> str | None:
+    """Standard 2FA gate for sensitive endpoints.
+
+    Pulls ``totp`` from the request payload, verifies it, and marks it
+    consumed. Returns an error string for the caller to surface, or
+    ``None`` on success.
+
+    Notes:
+      * There is NO DEBUG bypass — local development must enroll a real
+        TOTP secret. See ``apps/accounts/totp.py:generate_totp`` for a
+        helper that prints the current code during testing.
+      * Replay protection: the same code cannot be reused within its
+        validity window even if it would otherwise verify.
+    """
+    payload = payload or {}
+    ok, err = consume_totp(user, (payload.get("totp") or "").strip())
+    return None if ok else err

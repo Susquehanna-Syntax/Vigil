@@ -8,7 +8,10 @@ SECRET_KEY = os.environ.get(
     "insecure-dev-key-change-me-in-production",
 )
 
-DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() in ("true", "1", "yes")
+# DEBUG defaults to false so a forgotten env var doesn't ship verbose error
+# pages (or — historically — silently disable 2FA) to production. Local dev
+# should use ``settings_local.py`` or explicitly set DJANGO_DEBUG=true.
+DEBUG = os.environ.get("DJANGO_DEBUG", "false").lower() in ("true", "1", "yes")
 
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 

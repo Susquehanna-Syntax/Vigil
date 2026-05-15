@@ -432,7 +432,14 @@ def host_tags(request, host_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def host_approve(request, host_id):
-    """Approve a pending host enrollment."""
+    """Approve a pending host enrollment.
+
+    Approval is 2FA-gated because an approved host immediately becomes
+    eligible to receive signed tasks — equivalent in blast-radius to
+    dispatching a task.
+    """
+    from apps.accounts.totp import require_totp_confirmation
+
     try:
         host = Host.objects.get(pk=host_id, status=Host.Status.PENDING)
     except Host.DoesNotExist:
@@ -440,6 +447,11 @@ def host_approve(request, host_id):
             {"error": "Host not found or not pending"},
             status=status.HTTP_404_NOT_FOUND,
         )
+
+    error = require_totp_confirmation(request.user, request.data)
+    if error:
+        return Response({"error": error}, status=status.HTTP_401_UNAUTHORIZED)
+
     host.status = Host.Status.ONLINE
     host.save()
     return Response(HostSerializer(host).data)

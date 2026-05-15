@@ -21,6 +21,7 @@ async function refreshVulns() {
     if (!resp.ok) throw new Error('Request failed');
     const data = await resp.json();
     renderVulns(data);
+    refreshVulnScans();  // also refresh scan history
     vulnsLoaded = true;
   } catch {
     if (loadingEl) loadingEl.style.display = 'none';
@@ -28,6 +29,98 @@ async function refreshVulns() {
   } finally {
     if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
   }
+}
+
+const _VULN_SCAN_DOT = {
+  requested: 'pending', launched: 'pending', running: 'pending',
+  completed: 'online', failed: 'offline', aborted: 'offline',
+};
+
+function _buildVulnScanRow(s) {
+  const row = document.createElement('div');
+  row.className = 'task-item';
+
+  const dot = document.createElement('div');
+  dot.className = 'status-dot ' + (_VULN_SCAN_DOT[s.state] || '');
+  dot.style.width = '8px';
+  dot.style.height = '8px';
+  row.appendChild(dot);
+
+  const content = document.createElement('div');
+  content.className = 'task-content';
+
+  const title = document.createElement('div');
+  title.className = 'task-action-name';
+  title.textContent = 'Nessus scan · ' + (s.host_hostname || '');
+  content.appendChild(title);
+
+  const detail = document.createElement('div');
+  detail.className = 'task-detail';
+  const requester = s.requested_via_task
+    ? 'requested by agent task'
+    : (s.requested_by_username ? 'by ' + s.requested_by_username : 'by system');
+  const when = s.requested_at ? new Date(s.requested_at).toLocaleString() : '';
+  detail.textContent = `${requester} · ${when}` + (s.target ? ' · target ' + s.target : '');
+  content.appendChild(detail);
+
+  row.appendChild(content);
+
+  const badge = document.createElement('span');
+  badge.className = 'state-badge state-' + s.state;
+  badge.textContent = s.state;
+  row.appendChild(badge);
+  return row;
+}
+
+async function refreshVulnScans() {
+  const section = document.getElementById('vuln-scans-section');
+  const list = document.getElementById('vuln-scans-list');
+  if (!section || !list) return;
+  try {
+    const scans = await apiJson('/api/v1/vulns/scans/');
+    list.replaceChildren();
+    if (!scans.length) { section.style.display = 'none'; return; }
+    section.style.display = '';
+    for (const s of scans) list.appendChild(_buildVulnScanRow(s));
+  } catch {
+    section.style.display = 'none';
+  }
+}
+
+async function startVulnScan(hostId, btn) {
+  const totp = (window.prompt('Enter your TOTP code to launch a Nessus scan:') || '').trim();
+  if (!totp) return;
+  try {
+    btn.disabled = true; btn.style.opacity = '0.5';
+    await apiJson(`/api/v1/vulns/scans/${hostId}/`, {
+      method: 'POST',
+      body: JSON.stringify({ totp }),
+    });
+    showToast('Scan queued — Nessus will pick it up shortly', 'success');
+    setTimeout(refreshVulnScans, 600);
+  } catch (e) {
+    showToast('Scan request failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.style.opacity = '1';
+  }
+}
+
+function _vulnCountCell(value, colorClass) {
+  const td = document.createElement('td');
+  const span = document.createElement('span');
+  span.className = 'vuln-count ' + (value > 0 ? colorClass : 'c-dim');
+  span.textContent = value;
+  td.appendChild(span);
+  return td;
+}
+
+function _cell(text, opts) {
+  const td = document.createElement('td');
+  if (opts && opts.bold) td.style.fontWeight = '600';
+  if (opts && opts.mono) { td.className = 'mono'; td.style.color = 'var(--text-2)'; }
+  if (opts && opts.muted) { td.style.color = 'var(--text-3)'; td.style.fontSize = '12px'; }
+  td.textContent = text;
+  return td;
 }
 
 function renderVulns(summaries) {
@@ -44,40 +137,69 @@ function renderVulns(summaries) {
   if (e('vuln-stat-total-critical'))  e('vuln-stat-total-critical').textContent  = totalCritical;
   if (e('vuln-stat-total-high'))      e('vuln-stat-total-high').textContent      = totalHigh;
 
+  content.replaceChildren();
+
   if (!summaries.length) {
-    content.innerHTML = `<div style="background:var(--s1);border-radius:var(--r-md);padding:40px;text-align:center;color:var(--text-3);font-size:13px;">
-      No scan results yet. Configure Nessus credentials and the data will appear after the next hourly sync.
-    </div>`;
+    const empty = document.createElement('div');
+    empty.style.cssText = 'background:var(--s1);border-radius:var(--r-md);padding:40px;text-align:center;color:var(--text-3);font-size:13px;';
+    empty.textContent = 'No scan results yet. Configure Nessus credentials and the data will appear after the next hourly sync.';
+    content.appendChild(empty);
     return;
   }
 
-  const latestSync = summaries[0]?.synced_at
-    ? new Date(summaries[0].synced_at).toLocaleString()
-    : 'Unknown';
+  const table = document.createElement('table');
+  table.className = 'vuln-table';
 
-  content.innerHTML = `
-    <table class="vuln-table">
-      <thead><tr>
-        <th>Host</th><th>IP</th>
-        <th style="color:var(--rose);">Critical</th>
-        <th style="color:var(--coral);">High</th>
-        <th style="color:var(--lemon);">Medium</th>
-        <th style="color:var(--sky);">Low</th>
-        <th style="color:var(--text-3);">Info</th>
-        <th>Last Scan</th>
-      </tr></thead>
-      <tbody>${summaries.map(s => `<tr>
-        <td style="font-weight:600;">${escHtml(s.host_hostname)}</td>
-        <td class="mono" style="color:var(--text-2);">${escHtml(s.host_ip || '—')}</td>
-        <td><span class="vuln-count ${s.critical > 0 ? 'c-rose'  : 'c-dim'}">${s.critical}</span></td>
-        <td><span class="vuln-count ${s.high     > 0 ? 'c-coral' : 'c-dim'}">${s.high}</span></td>
-        <td><span class="vuln-count ${s.medium   > 0 ? 'c-lemon' : 'c-dim'}">${s.medium}</span></td>
-        <td><span class="vuln-count ${s.low      > 0 ? 'c-sky'   : 'c-dim'}">${s.low}</span></td>
-        <td><span class="vuln-count c-dim">${s.info}</span></td>
-        <td style="color:var(--text-3);font-size:12px;">${s.last_scan_at ? new Date(s.last_scan_at).toLocaleDateString() : '—'}</td>
-      </tr>`).join('')}</tbody>
-    </table>
-    <div class="vuln-sync-note">Last synced: ${latestSync}</div>`;
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  const headers = [
+    ['Host', null], ['IP', null],
+    ['Critical', 'var(--rose)'], ['High', 'var(--coral)'],
+    ['Medium', 'var(--lemon)'], ['Low', 'var(--sky)'],
+    ['Info', 'var(--text-3)'], ['Last Scan', null], ['', null],
+  ];
+  for (const [label, color] of headers) {
+    const th = document.createElement('th');
+    th.textContent = label;
+    if (color) th.style.color = color;
+    headRow.appendChild(th);
+  }
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  for (const s of summaries) {
+    const tr = document.createElement('tr');
+    tr.appendChild(_cell(s.host_hostname, { bold: true }));
+    tr.appendChild(_cell(s.host_ip || '—', { mono: true }));
+    tr.appendChild(_vulnCountCell(s.critical, 'c-rose'));
+    tr.appendChild(_vulnCountCell(s.high,     'c-coral'));
+    tr.appendChild(_vulnCountCell(s.medium,   'c-lemon'));
+    tr.appendChild(_vulnCountCell(s.low,      'c-sky'));
+    tr.appendChild(_vulnCountCell(s.info,     'c-dim'));
+    tr.appendChild(_cell(
+      s.last_scan_at ? new Date(s.last_scan_at).toLocaleDateString() : '—',
+      { muted: true }
+    ));
+    const actTd = document.createElement('td');
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-outline btn-sm';
+    btn.textContent = 'Scan now';
+    btn.title = 'Launch a Nessus scan against this host';
+    btn.addEventListener('click', () => startVulnScan(s.host, btn));
+    actTd.appendChild(btn);
+    tr.appendChild(actTd);
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  content.appendChild(table);
+
+  const note = document.createElement('div');
+  note.className = 'vuln-sync-note';
+  note.textContent = 'Last synced: ' + (
+    summaries[0]?.synced_at ? new Date(summaries[0].synced_at).toLocaleString() : 'Unknown'
+  );
+  content.appendChild(note);
 
   updateHostCardVulnBadges(summaries);
 }

@@ -11,6 +11,10 @@
             <option value="">Start from template…</option>
           </select>
           <button class="btn btn-ghost" onclick="navigateTo('tasks')">Cancel</button>
+          <button class="btn btn-outline" id="editor-publish-btn" onclick="openCommunitySubmit()" title="Open a GitHub PR to share this task with the Vigil community">
+            <svg viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+            Submit to Community
+          </button>
           <button class="btn btn-sky" id="editor-save-btn" onclick="saveDefinitionFromEditor()">
             <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
             Save Task
@@ -24,7 +28,7 @@
           <textarea id="editor-yaml" class="editor-textarea" spellcheck="false" autocomplete="off" oninput="onEditorInput()"></textarea>
           <div class="editor-error" id="editor-error"></div>
           <div class="confirm-hint" style="margin-top:10px;">
-            Tasks are private by default. Use <strong>Publish to Community</strong> from your library when you're ready to share.
+            Tasks are private by default. Click <strong>Submit to Community</strong> above to open a GitHub PR against the curated catalog — every Vigil instance can browse and fork approved entries.
           </div>
         </div>
 

@@ -239,6 +239,17 @@ def _pull_image(params: dict, _config: AgentConfig) -> str:
     return _run(["docker", "pull", image], timeout=600)
 
 
+def _request_nessus_scan(_params: dict, _config: AgentConfig) -> str:
+    """Emit a marker so the server records a Nessus scan request.
+
+    No real work happens on the agent — Nessus scans the host's IP from
+    the central scanner. The server inspects completed task params for
+    this action and creates a ``VulnScan(state=REQUESTED)`` row, which
+    the next ``sync_nessus_vulns`` cycle launches against Nessus.
+    """
+    return "Nessus scan requested — central scanner will pick it up"
+
+
 def _remove_container(params: dict, _config: AgentConfig) -> str:
     name = _validate_name(params.get("container_name", ""), "container name")
     return _run(["docker", "rm", "-f", name])
@@ -795,6 +806,7 @@ _HANDLERS: dict[str, callable] = {
     "stop_container": _stop_container,
     "start_container": _start_container,
     "pull_image": _pull_image,
+    "request_nessus_scan": _request_nessus_scan,
     "remove_container": _remove_container,
     "docker_compose_up": _docker_compose_up,
     "docker_compose_down": _docker_compose_down,
