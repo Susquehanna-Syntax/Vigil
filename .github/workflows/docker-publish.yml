@@ -99,8 +99,10 @@ jobs:
         if: runner.os != 'macOS'
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: agent/requirements.txt
+      # No pip cache: actions/setup-python@v5's internal cache step has been
+      # failing on windows-latest after the Windows Server 2025 rollout, and
+      # it marks the whole step failed even when Python installs cleanly.
+      # The agent has 4 small deps — fresh install takes seconds.
       - name: Install universal2 Python (macOS)
         if: runner.os == 'macOS'
         run: |
