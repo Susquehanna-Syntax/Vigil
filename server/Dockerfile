@@ -39,7 +39,10 @@ RUN mkdir -p /app/agent_dist
 COPY --from=agent-builder /build/dist/vigil-agent /app/agent_dist/vigil-agent-linux-amd64
 RUN chmod +x /app/agent_dist/vigil-agent-linux-amd64
 
-RUN python manage.py collectstatic --noinput
+# VIGIL_SKIP_STARTUP_CHECKS=1 lets manage.py boot without VIGIL_SIGNING_KEY_SEED.
+# Build-time collectstatic doesn't need a real signing key — the runtime env
+# (compose/Portainer) supplies the seed. Required since DEBUG defaults to false.
+RUN VIGIL_SKIP_STARTUP_CHECKS=1 python manage.py collectstatic --noinput
 
 EXPOSE 8000
 
