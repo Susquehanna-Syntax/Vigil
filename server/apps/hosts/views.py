@@ -110,8 +110,11 @@ def checkin(request):
 
     # Update host metadata from the payload
     host.last_checkin = now()
-    if ip := (data.get("ip_address") or request.META.get("REMOTE_ADDR")):
-        host.ip_address = ip
+    # IP is taken from the connection, never the agent-supplied body: a rogue
+    # agent must not be able to steer Nessus scans or .rdp targets at hosts it
+    # does not own. Matches register() above.
+    if remote_addr := request.META.get("REMOTE_ADDR"):
+        host.ip_address = remote_addr
     for field in ("hostname", "os", "kernel"):
         if val := data.get(field):
             setattr(host, field, val)
