@@ -20,6 +20,49 @@ def _bundled_path(platform: str) -> Path:
     return _dist_dir() / f"vigil-agent-{platform}"
 
 
+def _hash_file(open_file) -> str:
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: open_file.read(65536), b""):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
+def binary_sha256(platform: str) -> str:
+    """SHA-256 of the agent binary ``download_agent`` would serve for *platform*.
+
+    Hashes the filesystem bundle (Docker build artifact) when present, else the
+    uploaded DB record. Returns "" when no binary exists for the platform.
+    """
+    bundled = _bundled_path(platform)
+    if bundled.is_file():
+        with open(bundled, "rb") as fh:
+            return _hash_file(fh)
+    try:
+        record = AgentBinary.objects.get(platform=platform)
+    except AgentBinary.DoesNotExist:
+        return ""
+    if record.sha256:
+        return record.sha256.strip().lower()
+    if record.binary:
+        with record.binary.open("rb") as fh:
+            return _hash_file(fh)
+    return ""
+
+
+def all_binary_sha256() -> dict[str, str]:
+    """Map of platform -> SHA-256 for every platform that has a binary available.
+
+    Used at deploy time to stamp verified digests into ``update_agent`` tasks
+    so the agent can prove the binary it downloads is the one the server signed.
+    """
+    digests = {}
+    for platform, _label in AgentBinary.Platform.choices:
+        digest = binary_sha256(platform)
+        if digest:
+            digests[platform] = digest
+    return digests
+
+
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def download_agent(request, platform):

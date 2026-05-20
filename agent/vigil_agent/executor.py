@@ -13,6 +13,7 @@ Security invariants:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
@@ -343,9 +344,11 @@ def _delete_path(params: dict, _config: AgentConfig) -> str:
         return f"Deleted {path}"
 
 
-def _copy_file(params: dict, _config: AgentConfig) -> str:
+def _copy_file(params: dict, config: AgentConfig) -> str:
     src = _validate_path(params.get("src", ""), "src")
-    dest = _validate_path(params.get("dest", ""), "dest")
+    # The destination is written to, so it gets the sensitive-file checks —
+    # _validate_path alone would let a copy land on /etc/shadow.
+    dest = _validate_write_path(params.get("dest", ""), config)
     if not src.exists():
         raise ValueError(f"Source not found: {src}")
 
@@ -357,9 +360,11 @@ def _copy_file(params: dict, _config: AgentConfig) -> str:
     return f"Copied {src} -> {dest}"
 
 
-def _move_file(params: dict, _config: AgentConfig) -> str:
-    src = _validate_path(params.get("src", ""), "src")
-    dest = _validate_path(params.get("dest", ""), "dest")
+def _move_file(params: dict, config: AgentConfig) -> str:
+    # A move both writes the destination and removes the source, so both
+    # ends go through the sensitive-path checks.
+    src = _validate_write_path(params.get("src", ""), config)
+    dest = _validate_write_path(params.get("dest", ""), config)
     if not src.exists():
         raise ValueError(f"Source not found: {src}")
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -709,6 +714,15 @@ def _delete_cron_job(params: dict, _config: AgentConfig) -> str:
 
 # ── Self-update ─────────────────────────────────────────────────────────────
 
+def _sha256_file(path) -> str:
+    """Return the lowercase hex SHA-256 digest of a file."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _update_agent(params: dict, config: AgentConfig) -> str:
     """Download the latest agent binary from the server and replace this binary.
 
@@ -728,6 +742,20 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
             machine = os.uname().machine
             platform = "linux-arm64" if machine in ("aarch64", "arm64") else "linux-amd64"
 
+    # The replacement binary is verified against a SHA-256 the server placed
+    # inside this Ed25519-signed task. A TLS-only download is not a strong
+    # enough proof for swapping the whole agent executable, so without a
+    # verified digest we refuse to self-update.
+    sha_map = params.get("binary_sha256")
+    expected_sha = ""
+    if isinstance(sha_map, dict):
+        expected_sha = str(sha_map.get(platform) or "").strip().lower()
+    if not expected_sha:
+        raise ValueError(
+            f"update_agent task carries no verified SHA-256 for platform "
+            f"{platform!r}; refusing to self-update"
+        )
+
     url = f"{config.server_url}/agent/download/{platform}/"
     token = config.agent_token
 
@@ -746,6 +774,12 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
         with os.fdopen(tmp_fd, "wb") as fh:
             for chunk in resp.iter_content(chunk_size=65536):
                 fh.write(chunk)
+        actual_sha = _sha256_file(tmp_path)
+        if actual_sha != expected_sha:
+            raise ValueError(
+                f"Downloaded agent binary failed SHA-256 verification: "
+                f"expected {expected_sha}, got {actual_sha}"
+            )
         os.chmod(tmp_path, 0o755)
         os.replace(tmp_path, current_exe)
     except Exception:

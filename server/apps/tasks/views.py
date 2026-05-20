@@ -480,6 +480,18 @@ def definition_deploy(request, definition_id):
             step["success_criteria"] = success_criteria
         steps_payload.append(step)
 
+    # update_agent replaces the whole agent executable. Stamp the verified
+    # SHA-256 of each platform binary into the step so the agent can check the
+    # download against a digest carried inside this Ed25519-signed task — a
+    # TLS-only transfer is not a strong enough proof for that swap.
+    if any(s["action"] == "update_agent" for s in steps_payload):
+        from apps.agent_dist.views import all_binary_sha256
+
+        sha_map = all_binary_sha256()
+        for s in steps_payload:
+            if s["action"] == "update_agent":
+                s["params"] = {**(s.get("params") or {}), "binary_sha256": sha_map}
+
     # Effective risk is the highest risk across all actions.
     risk = spec.get("risk", "standard")
 
