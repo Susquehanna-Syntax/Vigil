@@ -13,6 +13,9 @@ staticfiles/
 
 .worktrees/
 
+# Superpowers tooling artifacts — design docs belong directly under docs/
+docs/superpowers/
+
 # Agent runtime — never commit live credentials or state
 agent/agent.yml
 agent/data/
