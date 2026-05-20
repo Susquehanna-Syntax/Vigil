@@ -41,7 +41,7 @@ def totp_enroll_start(request):
     secret = generate_secret()
     profile.totp_secret = secret
     profile.totp_confirmed_at = None
-    profile.save(update_fields=["totp_secret", "totp_confirmed_at"])
+    profile.save(update_fields=["totp_secret_encrypted", "totp_confirmed_at"])
 
     return Response({
         "secret": secret,
@@ -75,7 +75,7 @@ def totp_disable(request):
         return Response({"error": "Invalid code"}, status=400)
     profile.totp_secret = ""
     profile.totp_confirmed_at = None
-    profile.save(update_fields=["totp_secret", "totp_confirmed_at"])
+    profile.save(update_fields=["totp_secret_encrypted", "totp_confirmed_at"])
     return Response({"enrolled": False})
 
 
@@ -86,9 +86,12 @@ def totp_disable(request):
 def setup_view(request):
     """First-time admin registration with mandatory TOTP enrollment.
 
-    Step 1 (no session key): create account form.
-    Step 2 (setup_totp_secret in session): TOTP QR + confirm form.
-    Blocks if an account already exists and setup is not in progress.
+    Step 1 (no setup session): create the superuser account.
+    Step 2 (setup session present): scan the TOTP QR and confirm a code.
+
+    The account is created in step 1, but the browser is not logged in until a
+    TOTP code is confirmed in step 2 — abandoning setup therefore leaves no
+    authenticated session behind.
     """
     User = get_user_model()
 
@@ -100,24 +103,36 @@ def setup_view(request):
 
     # ── Step 2: TOTP confirmation ────────────────────────────────────────
     if "setup_totp_secret" in request.session:
-        if not request.user.is_authenticated:
-            del request.session["setup_totp_secret"]
+        pending_user_id = request.session.get("setup_user_id")
+        pending_user = (
+            User.objects.filter(pk=pending_user_id).first() if pending_user_id else None
+        )
+        if pending_user is None:
+            # Setup session lost track of its user — restart from step 1.
+            request.session.pop("setup_totp_secret", None)
+            request.session.pop("setup_user_id", None)
             return redirect("setup")
 
+        secret = request.session["setup_totp_secret"]
         if request.method == "POST":
             code = request.POST.get("totp_code", "").strip()
-            secret = request.session["setup_totp_secret"]
             if verify_totp(secret, code):
-                profile, _ = UserProfile.objects.get_or_create(user=request.user)
+                profile, _ = UserProfile.objects.get_or_create(user=pending_user)
                 profile.totp_secret = secret
                 profile.totp_confirmed_at = now()
                 profile.save()
-                del request.session["setup_totp_secret"]
+                # Log in only now that TOTP is confirmed.
+                auth.login(
+                    request,
+                    pending_user,
+                    backend="django.contrib.auth.backends.ModelBackend",
+                )
+                request.session.pop("setup_totp_secret", None)
+                request.session.pop("setup_user_id", None)
                 return redirect("dashboard")
             error = "Invalid code — check your authenticator clock"
 
-        secret = request.session["setup_totp_secret"]
-        uri = otpauth_uri(secret, request.user.get_username())
+        uri = otpauth_uri(secret, pending_user.get_username())
         return render(request, "setup.html", {
             "step": 2,
             "totp_secret": secret,
@@ -139,8 +154,8 @@ def setup_view(request):
             error = "Password must be at least 8 characters"
         else:
             user = User.objects.create_superuser(username=username, password=password)
-            auth.login(request, user, backend="django.contrib.auth.backends.ModelBackend")
             secret = generate_secret()
+            request.session["setup_user_id"] = user.pk
             request.session["setup_totp_secret"] = secret
             uri = otpauth_uri(secret, username)
             return render(request, "setup.html", {
