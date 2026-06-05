@@ -68,6 +68,42 @@ function openHostDetail(card) {
 
   // Fetch live metrics for this host
   loadDetailMetrics(d.id);
+
+  // Security score — hidden until we know the host has a summary.
+  _loadDetailScore(d.id);
+}
+
+async function _loadDetailScore(hostId) {
+  const section = document.getElementById('detail-score-section');
+  if (!section) return;
+  try {
+    const resp = await fetch(`/api/v1/vulns/?host=${hostId}`, { credentials: 'same-origin' });
+    if (!resp.ok) { section.style.display = 'none'; return; }
+    const rows = await resp.json();
+    if (!rows.length) { section.style.display = 'none'; return; }
+    const s = rows[0];
+    section.style.display = '';
+    const scoreEl = document.getElementById('detail-score');
+    const scanEl = document.getElementById('detail-last-scan');
+    if (scoreEl) {
+      scoreEl.textContent = s.score;
+      scoreEl.style.color = _scoreColor(s.score);
+    }
+    if (scanEl) scanEl.textContent = s.last_scan_at
+      ? new Date(s.last_scan_at).toLocaleString()
+      : 'never';
+  } catch {
+    section.style.display = 'none';
+  }
+}
+
+// Shared with vigil-vulns.js — same color tiers as the SVG face.
+function _scoreColor(score) {
+  if (score <= -40) return 'var(--coral)';
+  if (score <= 29) return 'var(--rose)';
+  if (score <= 49) return 'var(--peach)';
+  if (score <= 69) return 'var(--lemon)';
+  return 'var(--mint)';
 }
 
 const _detailTagState = { hostId: null, tags: [] };

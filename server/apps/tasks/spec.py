@@ -284,6 +284,33 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": [],
         "optional": [],
     },
+    # Engine-agnostic alias — uses whichever network scanner the server
+    # picks based on operator preference (Nessus or Greenbone). When
+    # both are configured the server consults Host.preferred_scanners
+    # (and falls back to Nessus). v1 server-side wiring still creates a
+    # NESSUS VulnScan; the dispatcher routing lands with PR #5.
+    "request_network_scan": {
+        "label": "Request network vulnerability scan",
+        "risk": "low",
+        "required": [],
+        "optional": ["engine"],  # "nessus" | "greenbone" | "" (server picks)
+    },
+    # Trivy is agent-local — the agent runs `trivy fs --format json …`
+    # and ships the JSON back in the task output. The server's task-
+    # completion handler hands that JSON to TrivyScanner.ingest_report,
+    # which writes VulnFinding rows and triggers a score recompute.
+    "run_trivy_scan": {
+        "label": "Run Trivy vulnerability scan",
+        "risk": "low",
+        "required": [],
+        "optional": ["scope"],  # "fs" (default — scan root filesystem) | "rootfs" | "image:<name>"
+    },
+    "trivy_db_update": {
+        "label": "Update Trivy vulnerability database",
+        "risk": "low",
+        "required": [],
+        "optional": [],
+    },
 }
 
 _RISK_ORDER = {"low": 0, "standard": 1, "high": 2}

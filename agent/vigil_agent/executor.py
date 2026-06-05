@@ -246,9 +246,82 @@ def _request_nessus_scan(_params: dict, _config: AgentConfig) -> str:
     No real work happens on the agent — Nessus scans the host's IP from
     the central scanner. The server inspects completed task params for
     this action and creates a ``VulnScan(state=REQUESTED)`` row, which
-    the next ``sync_nessus_vulns`` cycle launches against Nessus.
+    the next ``sync_vulns`` cycle launches against Nessus.
     """
     return "Nessus scan requested — central scanner will pick it up"
+
+
+def _request_network_scan(params: dict, _config: AgentConfig) -> str:
+    """Engine-agnostic version of ``_request_nessus_scan``.
+
+    The agent has no opinion about which network scanner runs — that's
+    the server's call. We just emit a marker; the task-completion
+    handler decides Nessus vs. Greenbone based on
+    ``params.engine`` (if set) or the host's preferred_scanners.
+    """
+    engine = (params.get("engine") or "auto").strip()
+    return f"Network scan requested (engine={engine}) — server will dispatch"
+
+
+# Trivy actions ─────────────────────────────────────────────────────────────
+# Trivy is agent-local: the scan runs here and we ship the JSON back as
+# task output. The server's task-completion handler routes the JSON into
+# apps/vulns/scanners/trivy.py:TrivyScanner.ingest_report.
+
+_TRIVY_SCOPE_PATTERN = re.compile(r"^(fs|rootfs|image:[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,254})$")
+
+
+def _run_trivy_scan(params: dict, _config: AgentConfig) -> str:
+    """Run ``trivy`` against the local filesystem or a named image.
+
+    ``scope`` selects what to scan:
+      * ``fs`` (default) — ``trivy fs /``
+      * ``rootfs`` — alias for ``fs``
+      * ``image:<name>`` — ``trivy image <name>``
+
+    Returns Trivy's raw JSON output. The server parses it on receipt —
+    we don't attempt any local interpretation here. A 5-minute timeout
+    is enough for a homelab box; large container hosts may need a bump.
+    """
+    if shutil.which("trivy") is None:
+        raise RuntimeError(
+            "trivy binary not found in PATH — install it with "
+            "'curl -sSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh' "
+            "or run the 'Install Trivy' task template"
+        )
+
+    scope = (params.get("scope") or "fs").strip()
+    if not _TRIVY_SCOPE_PATTERN.match(scope):
+        raise ValueError(f"Invalid trivy scope: {scope!r}")
+
+    base = [
+        "trivy",
+        "--quiet",
+        "--format", "json",
+        "--severity", "CRITICAL,HIGH,MEDIUM,LOW",
+    ]
+    if scope in ("fs", "rootfs"):
+        cmd = [*base, "fs", "/"]
+    else:
+        # scope = "image:<name>"
+        image_name = scope[len("image:"):]
+        if not _SAFE_IMAGE.match(image_name):
+            raise ValueError(f"Invalid image name in trivy scope: {image_name!r}")
+        cmd = [*base, "image", image_name]
+
+    # Larger timeout — fs scans across thousands of packages take time.
+    return _run(cmd, timeout=600)
+
+
+def _trivy_db_update(_params: dict, _config: AgentConfig) -> str:
+    """Force a refresh of Trivy's local vulnerability database.
+
+    Trivy auto-updates on first scan but caches between runs; this
+    action is for explicit refreshes (e.g. after a security advisory).
+    """
+    if shutil.which("trivy") is None:
+        raise RuntimeError("trivy binary not found in PATH")
+    return _run(["trivy", "--quiet", "image", "--download-db-only"], timeout=300)
 
 
 def _remove_container(params: dict, _config: AgentConfig) -> str:
@@ -841,6 +914,9 @@ _HANDLERS: dict[str, callable] = {
     "start_container": _start_container,
     "pull_image": _pull_image,
     "request_nessus_scan": _request_nessus_scan,
+    "request_network_scan": _request_network_scan,
+    "run_trivy_scan": _run_trivy_scan,
+    "trivy_db_update": _trivy_db_update,
     "remove_container": _remove_container,
     "docker_compose_up": _docker_compose_up,
     "docker_compose_down": _docker_compose_down,

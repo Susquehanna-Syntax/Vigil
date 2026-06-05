@@ -38,6 +38,9 @@ _ALL_ACTIONS = {
     "create_user", "delete_user", "add_user_to_group",
     # Cron
     "create_cron_job", "delete_cron_job",
+    # Vulnerability scanning
+    "request_nessus_scan", "request_network_scan",
+    "run_trivy_scan", "trivy_db_update",
 }
 
 DEFAULT_CONFIG_PATHS = [

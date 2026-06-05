@@ -13,6 +13,19 @@
         </button>
       </div>
 
+      {# Fleet headline — sad-face badge + worst-offender callout, computed from VulnSummary scores. #}
+      <div id="vuln-fleet-headline" style="display:flex;align-items:center;gap:24px;background:var(--s1);border-radius:var(--r-lg);padding:24px;margin-bottom:24px;">
+        <div id="vuln-fleet-face" style="flex-shrink:0;width:80px;height:80px;"></div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text-3);margin-bottom:4px;">Fleet score</div>
+          <div style="display:flex;align-items:baseline;gap:10px;">
+            <span class="mono" id="vuln-fleet-score" style="font-size:36px;font-weight:600;line-height:1;">—</span>
+            <span style="font-size:13px;color:var(--text-3);">/ 100</span>
+          </div>
+          <div id="vuln-fleet-worst" style="font-size:12px;color:var(--text-3);margin-top:8px;"></div>
+        </div>
+      </div>
+
       <div class="stats-row" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 28px;">
         <div class="stat-card">
           <div class="stat-label">Hosts with Criticals</div>

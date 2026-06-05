@@ -78,32 +78,60 @@ def task_result(request):
         if new_state == Task.State.COMPLETED:
             _maybe_capture_inventory_column(task, output)
             _maybe_request_nessus_scan(task)
+            _maybe_ingest_trivy_report(task, output)
 
     return Response(TaskSerializer(task).data)
 
 
 def _maybe_request_nessus_scan(task: Task) -> None:
-    """If the completed task contained a ``request_nessus_scan`` step,
-    register a VulnScan(requested) for the host.
+    """If the completed task asked for a network scan, queue one.
+
+    Handles both the engine-specific ``request_nessus_scan`` action
+    (always creates a Nessus VulnScan) and the engine-agnostic
+    ``request_network_scan`` (consults ``params.engine`` on the
+    matching step, falls back to ``nessus`` for back-compat).
 
     Multi-step tasks have ``action == "_script"`` and an array of
-    individual step actions in ``params.steps``. We look for any step
-    whose action is ``request_nessus_scan`` — a single occurrence is
-    enough to schedule one scan (we don't fan out to multiple).
+    individual step actions in ``params.steps``. A single occurrence
+    is enough to schedule one scan.
     """
     from apps.vulns.models import VulnScan
 
     steps = (task.params or {}).get("steps") or []
-    has_request = (
-        task.action == "request_nessus_scan"
-        or any(isinstance(s, dict) and s.get("action") == "request_nessus_scan" for s in steps)
-    )
-    if not has_request:
+
+    matched_step = None
+    matched_action = None
+    if task.action in ("request_nessus_scan", "request_network_scan"):
+        matched_action = task.action
+        matched_step = task.params or {}
+    else:
+        for s in steps:
+            if isinstance(s, dict) and s.get("action") in ("request_nessus_scan", "request_network_scan"):
+                matched_action = s["action"]
+                matched_step = s
+                break
+
+    if not matched_action:
         return
 
-    # Throttle: skip if there's already an active scan for this host.
+    # Pick scanner. request_nessus_scan is always Nessus; the agnostic
+    # alias honours params.engine, else falls back to Nessus (which is
+    # the only network scanner most installs have configured today).
+    engine = "nessus"
+    if matched_action == "request_network_scan":
+        candidate = (
+            (matched_step.get("params") or {}).get("engine")
+            if isinstance(matched_step.get("params"), dict)
+            else matched_step.get("engine") or "nessus"
+        )
+        if candidate in (VulnScan.Scanner.NESSUS, VulnScan.Scanner.GREENBONE):
+            engine = candidate
+
+    # Throttle: skip if there's already an active scan for this host
+    # on this scanner — repeats while one is in flight are noise.
     active = VulnScan.objects.filter(
         host=task.host,
+        scanner=engine,
         state__in=[
             VulnScan.State.REQUESTED,
             VulnScan.State.LAUNCHED,
@@ -115,10 +143,43 @@ def _maybe_request_nessus_scan(task: Task) -> None:
 
     VulnScan.objects.create(
         host=task.host,
+        scanner=engine,
         target=task.host.ip_address or "",
         state=VulnScan.State.REQUESTED,
         requested_via_task=True,
     )
+
+
+def _maybe_ingest_trivy_report(task: Task, output: str) -> None:
+    """If the completed task ran a ``run_trivy_scan`` step, ingest its JSON.
+
+    Trivy is agent-local — the agent runs the scan and ships the
+    full JSON in the task output. We detect the action via either
+    ``task.action`` (single-step) or ``task.params.steps`` (multi-step
+    via the ``_script`` wrapper), then hand the output to
+    :meth:`TrivyScanner.ingest_report`.
+
+    Failures are swallowed (just logged) so a bad output payload can't
+    poison the task-result endpoint — the rest of the completion path
+    must still finish.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    steps = (task.params or {}).get("steps") or []
+    has_trivy = (
+        task.action == "run_trivy_scan"
+        or any(isinstance(s, dict) and s.get("action") == "run_trivy_scan" for s in steps)
+    )
+    if not has_trivy or not output:
+        return
+
+    try:
+        from apps.vulns.scanners import TrivyScanner
+        status = TrivyScanner().ingest_report(task.host, output)
+        logger.info("Trivy ingest for %s: %s", task.host.hostname, status)
+    except Exception:
+        logger.exception("Trivy ingest failed for task %s", task.id)
 
 
 def _maybe_capture_inventory_column(task: Task, output: str) -> None:

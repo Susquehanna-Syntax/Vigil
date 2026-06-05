@@ -177,9 +177,13 @@ CELERY_BEAT_SCHEDULE = {
         "task": "metrics.prune_old_metric_points",
         "schedule": 3600.0,  # every hour
     },
-    "sync-nessus-vulns": {
-        "task": "vulns.sync_nessus_vulns",
-        "schedule": 3600.0,  # every hour
+    "sync-vulns": {
+        "task": "vulns.sync_vulns",
+        "schedule": 3600.0,  # every hour — iterates every configured scanner
+    },
+    "snapshot-vuln-scores": {
+        "task": "vulns.snapshot_scores",
+        "schedule": 86400.0,  # once daily — powers score sparklines + trend
     },
     "check-docker-image-updates": {
         "task": "alerts.check_docker_image_updates",
@@ -216,6 +220,17 @@ NESSUS_URL = os.environ.get("NESSUS_URL", "")
 NESSUS_ACCESS_KEY = os.environ.get("NESSUS_ACCESS_KEY", "")
 NESSUS_SECRET_KEY = os.environ.get("NESSUS_SECRET_KEY", "")
 NESSUS_VERIFY_SSL = os.environ.get("NESSUS_VERIFY_SSL", "true").lower() in ("true", "1")
+
+# ---------------------------------------------------------------------------
+# Greenbone / OpenVAS vulnerability integration (BYO container)
+# ---------------------------------------------------------------------------
+# Talks GMP (XML over TLS) to a Greenbone Community Edition stack the
+# user runs themselves. URL is host:port of the GMP listener (default
+# 9390 for greenbone-community-container).
+GREENBONE_URL = os.environ.get("GREENBONE_URL", "")
+GREENBONE_USERNAME = os.environ.get("GREENBONE_USERNAME", "")
+GREENBONE_PASSWORD = os.environ.get("GREENBONE_PASSWORD", "")
+GREENBONE_VERIFY_SSL = os.environ.get("GREENBONE_VERIFY_SSL", "true").lower() in ("true", "1")
 
 # ---------------------------------------------------------------------------
 # Notifications
