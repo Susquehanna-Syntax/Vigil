@@ -12,4 +12,5 @@ urlpatterns = [
     path("definitions/<uuid:definition_id>/fork/", views.definition_fork, name="definition-fork"),
     path("definitions/<uuid:definition_id>/deploy/", views.definition_deploy, name="definition-deploy"),
     path("runs/<uuid:run_id>/", views.run_detail, name="run-detail"),
+    path("<uuid:task_id>/", views.task_detail, name="task-detail"),
 ]

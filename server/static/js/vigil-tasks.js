@@ -263,6 +263,125 @@ actions:
 `
   },
   {
+    id: 'install-trivy',
+    label: 'Install Trivy on this host',
+    yaml: `name: Install Trivy
+description: |
+  Installs the Trivy CLI from the official Aqua repository so this
+  agent can run local filesystem and container image scans. The
+  binary lands at /usr/local/bin/trivy. First scan pulls the
+  vulnerability database (~50 MB) automatically.
+relevance: "any host you want to scan with the agent-local Trivy scanner"
+risk: high
+
+actions:
+  - id: install
+    type: run_command
+    params:
+      command: 'curl -sSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin'
+      timeout: 300
+  - id: verify
+    type: run_command
+    params:
+      command: 'trivy --version'
+      timeout: 30
+`
+  },
+  {
+    id: 'run-trivy-scan',
+    label: 'Run a Trivy vulnerability scan on this host',
+    yaml: `name: Trivy filesystem scan
+description: |
+  Runs Trivy against the local filesystem, captures the JSON report,
+  and ships it back. The server parses each (package, CVE) pair into a
+  VulnFinding row and recomputes the host score. Requires the trivy
+  binary already installed (see the "Install Trivy on this host"
+  template).
+relevance: "any host with the Trivy CLI installed"
+risk: low
+
+inputs:
+  - id: scope
+    label: Scan scope
+    type: choice
+    default: fs
+    choices:
+      - { value: fs, label: "Filesystem (root)" }
+      - { value: rootfs, label: "Root filesystem (alias)" }
+
+actions:
+  - id: scan
+    type: run_trivy_scan
+    params:
+      scope: "{{ inputs.scope }}"
+`
+  },
+  {
+    id: 'install-greenbone-ce',
+    label: 'Install Greenbone Community Edition (Docker)',
+    yaml: `name: Install Greenbone Community Edition
+description: |
+  Drops the official Greenbone CE docker-compose stack into
+  /opt/greenbone and brings it up. First-run NVT feed sync takes
+  20-30 minutes; check progress at https://<this-host>:9392.
+  After it's ready, set the admin password, create a Vigil service
+  account, and wire GREENBONE_URL/USERNAME/PASSWORD into the Vigil
+  server stack.
+relevance: "the host you want to run as your Greenbone scanner"
+risk: high
+
+actions:
+  - id: make_dir
+    type: run_command
+    params:
+      command: 'sudo mkdir -p /opt/greenbone'
+      timeout: 10
+  - id: download_compose
+    type: run_command
+    params:
+      command: 'sudo curl -fsSL -o /opt/greenbone/docker-compose.yml https://greenbone.github.io/docs/latest/_static/docker-compose-22.04.yml'
+      timeout: 120
+  - id: bring_up
+    type: docker_compose_up
+    params:
+      compose_file: /opt/greenbone/docker-compose.yml
+  - id: ready_message
+    type: run_command
+    params:
+      command: 'echo "Greenbone CE is starting. Initial NVT sync runs for 20-30 minutes. Open https://$(hostname -I | awk \"{print \\$1}\"):9392 once sync completes."'
+      timeout: 5
+`
+  },
+  {
+    id: 'request-network-scan',
+    label: 'Request a network scan of this host (engine-agnostic)',
+    yaml: `name: Request network scan
+description: |
+  Asks the server to queue a network scan against this host. The
+  engine field picks which central scanner runs — set it to "nessus"
+  or "greenbone", or leave blank to let the server choose based on
+  what's configured.
+relevance: "any host you want scanned by whichever network scanner is configured"
+risk: low
+
+inputs:
+  - id: engine
+    label: Scanner engine
+    type: choice
+    default: auto
+    choices:
+      - { value: auto, label: "Server's default" }
+      - { value: nessus, label: "Nessus" }
+      - { value: greenbone, label: "Greenbone" }
+
+actions:
+  - id: request_scan
+    type: request_network_scan
+    params:
+      engine: "{{ inputs.engine }}"
+`
+  },
+  {
     id: 'reboot-host',
     label: 'Reboot host (with delay)',
     yaml: `name: Reboot host
@@ -800,7 +919,70 @@ function _buildTaskHistoryRow(t) {
   badge.textContent = TASK_STATE_LABELS[t.state] || t.state;
   row.appendChild(badge);
 
+  // Delete control — only for tasks that have stopped moving. In-flight
+  // tasks could still produce a result POST, so we don't risk orphaning
+  // anything.
+  const TERMINAL = new Set(['completed', 'failed', 'rejected', 'expired']);
+  if (TERMINAL.has(t.state)) {
+    const del = document.createElement('button');
+    del.className = 'btn btn-sm btn-ghost task-row-delete';
+    del.title = 'Delete this task row from history';
+    del.style.color = 'var(--text-3)';
+    del.setAttribute('aria-label', 'Delete task');
+    const x = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    x.setAttribute('viewBox', '0 0 24 24');
+    x.setAttribute('width', '14');
+    x.setAttribute('height', '14');
+    x.setAttribute('fill', 'none');
+    x.setAttribute('stroke', 'currentColor');
+    x.setAttribute('stroke-width', '2');
+    x.setAttribute('stroke-linecap', 'round');
+    const ln1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    ln1.setAttribute('x1', '18'); ln1.setAttribute('y1', '6');
+    ln1.setAttribute('x2', '6');  ln1.setAttribute('y2', '18');
+    const ln2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    ln2.setAttribute('x1', '6');  ln2.setAttribute('y1', '6');
+    ln2.setAttribute('x2', '18'); ln2.setAttribute('y2', '18');
+    x.appendChild(ln1); x.appendChild(ln2);
+    del.appendChild(x);
+    del.addEventListener('click', (ev) => {
+      ev.stopPropagation();           // don't open the run detail modal
+      _deleteTaskHistoryRow(t.id, row, del);
+    });
+    row.appendChild(del);
+  }
+
   return row;
+}
+
+async function _deleteTaskHistoryRow(taskId, rowEl, btnEl) {
+  if (!window.confirm('Delete this task from history? This is permanent.')) return;
+  btnEl.disabled = true; btnEl.style.opacity = '0.5';
+  try {
+    const resp = await fetch(`/api/v1/tasks/${taskId}/`, {
+      method: 'DELETE',
+      credentials: 'same-origin',
+      headers: { 'X-CSRFToken': _csrfToken() },
+    });
+    if (resp.status === 204) {
+      rowEl.style.transition = 'opacity 0.18s, transform 0.18s';
+      rowEl.style.opacity = '0';
+      rowEl.style.transform = 'translateX(8px)';
+      setTimeout(() => rowEl.remove(), 200);
+      showToast('Task deleted', 'success');
+    } else {
+      const body = await resp.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${resp.status}`);
+    }
+  } catch (e) {
+    showToast('Delete failed: ' + e.message, 'error');
+    btnEl.disabled = false; btnEl.style.opacity = '1';
+  }
+}
+
+function _csrfToken() {
+  const m = document.cookie.match(/csrftoken=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : '';
 }
 
 function _buildEmptyState(title, desc) {

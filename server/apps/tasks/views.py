@@ -634,6 +634,52 @@ def run_detail(request, run_id):
     return Response(TaskRunSerializer(run).data)
 
 
+@api_view(["GET", "DELETE"])
+@permission_classes([IsAuthenticated])
+def task_detail(request, task_id):
+    """Single-task fetch + delete from the history view.
+
+    DELETE is gated on terminal state — in-flight tasks (``BLOCKED``,
+    ``PENDING``, ``DISPATCHED``, ``EXECUTING``) cannot be deleted from
+    the UI; cancel them first. Deleting the last remaining task in a
+    multi-step run also deletes the empty ``TaskRun`` so the run table
+    doesn't accumulate orphans.
+    """
+    task = get_object_or_404(
+        Task.objects.select_related("host", "run"),
+        pk=task_id,
+    )
+
+    if request.method == "GET":
+        return Response(TaskSerializer(task).data)
+
+    # DELETE — only allowed once the task has stopped moving. BLOCKED /
+    # PENDING / DISPATCHED / EXECUTING are still in flight and could
+    # still produce a result POST; deleting them would orphan the
+    # result. COMPLETED / FAILED / REJECTED / EXPIRED are all fair game.
+    in_flight = {
+        Task.State.BLOCKED, Task.State.PENDING,
+        Task.State.DISPATCHED, Task.State.EXECUTING,
+    }
+    if task.state in in_flight:
+        return Response(
+            {
+                "error": "In-flight tasks cannot be deleted",
+                "state": task.state,
+            },
+            status=409,
+        )
+
+    run = task.run
+    task.delete()
+
+    # Garbage-collect a now-empty run so history stays tidy.
+    if run and not run.tasks.exists():
+        run.delete()
+
+    return Response(status=204)
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def action_registry(request):

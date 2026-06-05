@@ -227,7 +227,13 @@ def check_docker_image_updates():
                 logger.info("Docker alert fired: %s on %s (%s)", container_name, host.hostname, image)
                 dispatch_alert_notification(alert, event="firing")
 
-            elif pt.value == 0.0 and existing and existing.state == Alert.State.FIRING:
+            elif pt.value == 0.0 and existing and existing.state in (
+                Alert.State.FIRING, Alert.State.ACKNOWLEDGED,
+            ):
+                # Resolve both FIRING and ACKNOWLEDGED alerts. An ack
+                # means "I see this," not "leave it open forever" — once
+                # the agent confirms the container is on the latest
+                # image, the alert has served its purpose either way.
                 existing.state = Alert.State.RESOLVED
                 existing.resolved_at = now()
                 existing.save(update_fields=["state", "resolved_at"])
