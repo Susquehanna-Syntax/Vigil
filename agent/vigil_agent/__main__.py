@@ -123,50 +123,145 @@ def _process_tasks(tasks: list[dict], config, nonce_store: NonceStore, verify_ke
 def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None:
     """Run a multi-step script through the TaskRuntime.
 
-    Each step is validated against the agent's local allowlist individually.
-    If a step is disallowed or fails, execution stops (fail-fast) and we
+    Each step is validated against the agent's local allowlist
+    individually. Per-step ``when:`` expressions are evaluated *here*
+    before the runtime sees them — steps that evaluate false are
+    skipped, recorded in the output, and don't block subsequent steps.
+    If a non-skipped step fails, execution stops (fail-fast) and we
     report the aggregated result back to the server.
     """
-    # Translate the server's spec format into what the runtime expects:
-    # server sends {steps: [{action, params, id}, ...]}
-    # runtime expects {steps: [{action, params, name}, ...]}
     raw_steps = params.get("steps", [])
-    def _build_step(s: dict, i: int) -> dict:
-        d: dict = {
+
+    # Build the evaluation context once per task. agent.* comes from the
+    # platform; inputs.* from the resolved step inputs the server already
+    # substituted server-side, but we also pass anything in
+    # params.variables for back-compat.
+    context = _build_when_context(config, params)
+
+    # Pre-evaluate every step's when:. Skipped steps don't reach
+    # TaskRuntime at all.
+    plan: list[tuple[int, dict, bool, str]] = []
+    for i, s in enumerate(raw_steps):
+        when_expr = (s.get("when") or "").strip()
+        skip = False
+        skip_reason = ""
+        if when_expr:
+            try:
+                from .expression import evaluate as _eval_when, ExprError
+                if not _eval_when(when_expr, context):
+                    skip = True
+                    skip_reason = when_expr
+            except ExprError as exc:
+                # Treat unparseable when: as fail-loud — the server
+                # already validated syntax, so reaching here means a
+                # version drift between server + agent. Better to
+                # surface than silently run something untested.
+                logger.warning("when: evaluation failed: %s", exc)
+                skip = True
+                skip_reason = f"when expr error: {exc}"
+        plan.append((i, s, skip, skip_reason))
+
+    runnable_steps = [
+        {
             "name": s.get("id", s.get("name", f"step{i+1}")),
             "action": s.get("action", s.get("type", "")),
             "params": s.get("params", {}),
+            **({"success_criteria": s["success_criteria"]} if s.get("success_criteria") else {}),
         }
-        if s.get("success_criteria"):
-            d["success_criteria"] = s["success_criteria"]
-        return d
+        for i, s, skip, _ in plan if not skip
+    ]
 
-    runtime_payload = {
-        "steps": [_build_step(s, i) for i, s in enumerate(raw_steps)],
-        "variables": params.get("variables", {}),
-    }
+    if runnable_steps:
+        runtime_payload = {
+            "steps": runnable_steps,
+            "variables": params.get("variables", {}),
+        }
+        runtime = TaskRuntime(runtime_payload, config)
+        results = runtime.run()
+    else:
+        results = []  # everything got skipped
 
-    runtime = TaskRuntime(runtime_payload, config)
-    results = runtime.run()
-
-    # Build per-step output for the server
+    # Walk the original plan and stitch results back in for step_outputs.
+    results_by_name = {r.name: r for r in results}
     step_outputs = []
     any_error = False
-    for r in results:
+    any_ran = False
+    for i, s, skip, reason in plan:
+        name = s.get("id", s.get("name", f"step{i+1}"))
+        if skip:
+            step_outputs.append(f"[SKIPPED] {name}: when {reason!r} evaluated false")
+            continue
+        any_ran = True
+        r = results_by_name.get(name)
+        if r is None:
+            step_outputs.append(f"[ERROR] {name}: runtime returned no result")
+            any_error = True
+            continue
         status = "OK" if r.state == "ok" else "ERROR"
-        line = f"[{status}] {r.name}: {r.output or r.error or r.state}"
-        step_outputs.append(line)
+        step_outputs.append(f"[{status}] {r.name}: {r.output or r.error or r.state}")
         if r.state == "error":
             any_error = True
 
     output = "\n".join(step_outputs)
 
     if any_error:
-        logger.warning("Script task %s failed at step %r", task_id, results[-1].name)
+        logger.warning("Script task %s failed", task_id)
         _report_failed(config, task, output)
+    elif not any_ran:
+        # Every step's when: predicate was false — the task ran
+        # successfully in the sense that nothing went wrong; nothing
+        # was applicable.
+        logger.info("Script task %s skipped — no step matched when: predicates", task_id)
+        _report_skipped(config, task, output)
     else:
-        logger.info("Script task %s completed (%d steps)", task_id, len(results))
+        logger.info("Script task %s completed (%d step(s) ran)", task_id, len(results))
         _report_completed(config, task, output)
+
+
+def _build_when_context(config, params: dict) -> dict:
+    """Build the ``{agent, inputs, host}`` dict used by when: predicates.
+
+    Pulled fresh per task so changes in platform state (e.g. a package
+    manager installed mid-life) are picked up by the next deploy. The
+    cost is one ``pkg_manager.detect()`` call per task, which is cheap
+    (it's just ``which apt`` / ``which dnf`` etc.).
+    """
+    import platform as _plat
+    try:
+        from .pkg_manager import detect as _detect_pkg
+        _pm = _detect_pkg()
+        pkg = _pm.name if _pm else ""
+    except Exception:
+        pkg = ""
+
+    machine = (_plat.machine() or "").lower()
+    if machine in ("x86_64", "amd64"):
+        arch = "amd64"
+    elif machine in ("aarch64", "arm64"):
+        arch = "arm64"
+    elif machine.startswith("arm"):
+        arch = "arm"
+    else:
+        arch = machine
+
+    sysname = (_plat.system() or "").lower()
+    os_name = (
+        "linux" if sysname == "linux"
+        else "darwin" if sysname == "darwin"
+        else "windows" if sysname == "windows"
+        else sysname
+    )
+
+    return {
+        "agent": {
+            "os": os_name,
+            "arch": arch,
+            "pkg_manager": pkg,
+            "hostname": _plat.node(),
+        },
+        "inputs": (params.get("variables") or {}),
+        "host": {},   # reserved for future server-pushed context
+    }
 
 
 def _report_completed(config, task: dict, output: str) -> None:
@@ -188,6 +283,13 @@ def _report_failed(config, task: dict, error: str) -> None:
         client.report_result(config, task["id"], "failed", error)
     except Exception:
         logger.exception("Failed to report task %s failure", task.get("id"))
+
+
+def _report_skipped(config, task: dict, output: str) -> None:
+    try:
+        client.report_result(config, task["id"], "skipped", output)
+    except Exception:
+        logger.exception("Failed to report task %s skip", task.get("id"))
 
 
 def main() -> None:

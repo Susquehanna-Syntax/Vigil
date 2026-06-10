@@ -171,7 +171,7 @@
         <div class="sidebar-logo-icon">V</div>
         <span class="sidebar-logo-text">Vigil</span>
       </a>
-      <div class="sidebar-version">v2026.1.0 — Docs</div>
+      <div class="sidebar-version">v2026.2.2 — Docs</div>
     </div>
 
     <span class="nav-section-label">Getting Started</span>
@@ -264,6 +264,10 @@
     <a href="#dev" class="nav-link">
       <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
       Dev Setup
+    </a>
+    <a href="#about-page" class="nav-link">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      About Page
     </a>
 
     <div class="nav-spacer"></div>
@@ -479,7 +483,7 @@
       <span class="hl-var">DJANGO_SECRET_KEY</span>: <span class="hl-string">${DJANGO_SECRET_KEY:-insecure-change-me}</span>
       <span class="hl-var">VIGIL_SIGNING_KEY_SEED</span>: <span class="hl-string">${VIGIL_SIGNING_KEY_SEED:-}</span>
       <span class="hl-var">VIGIL_TIMEZONE</span>: <span class="hl-string">${VIGIL_TIMEZONE:-UTC}</span>
-      <span class="hl-var">VIGIL_AGENT_VERSION</span>: <span class="hl-string">${VIGIL_AGENT_VERSION:-2026.1.0}</span>
+      <span class="hl-var">VIGIL_AGENT_VERSION</span>: <span class="hl-string">${VIGIL_AGENT_VERSION:-2026.2.2}</span>
       <span class="hl-var">POSTGRES_DB</span>: <span class="hl-string">${POSTGRES_DB:-vigil}</span>
       <span class="hl-var">POSTGRES_USER</span>: <span class="hl-string">${POSTGRES_USER:-vigil}</span>
       <span class="hl-var">POSTGRES_PASSWORD</span>: <span class="hl-string">${POSTGRES_PASSWORD:-vigil}</span>
@@ -559,7 +563,7 @@
             <tr><td><code>POSTGRES_DB</code></td><td><code>vigil</code></td><td>Database name</td></tr>
             <tr><td><code>POSTGRES_USER</code></td><td><code>vigil</code></td><td>Database user</td></tr>
             <tr><td><code>VIGIL_TIMEZONE</code></td><td><code>UTC</code></td><td>IANA timezone for display (e.g. <code>America/New_York</code>)</td></tr>
-            <tr><td><code>VIGIL_AGENT_VERSION</code></td><td><code>2026.1.0</code></td><td>Expected agent version; triggers alerts when agents are outdated</td></tr>
+            <tr><td><code>VIGIL_AGENT_VERSION</code></td><td><code>2026.2.2</code></td><td>Expected agent version; triggers alerts when agents are outdated. Bump in lockstep with each release.</td></tr>
           </tbody>
         </table>
       </div>
@@ -924,7 +928,7 @@
           <div class="step-content"><strong>Silenced</strong> — alert is suppressed for a set duration. Re-fires if still breached when silence expires.</div>
         </div>
         <div class="step">
-          <div class="step-content"><strong>Resolved</strong> — metric drops back below threshold. Alert auto-resolves and moves to history.</div>
+          <div class="step-content"><strong>Resolved</strong> — metric drops back below threshold. Alert auto-resolves and moves to history. Both <code>Firing</code> and <code>Acknowledged</code> alerts get auto-resolved this way — an ack is "I see this," not "leave it open forever."</div>
         </div>
       </div>
 
@@ -998,9 +1002,18 @@
           <div class="step-content">Click <em>Execute</em>. The server signs the task payload, queues it for delivery on the next agent check-in.</div>
         </div>
         <div class="step">
-          <div class="step-content">Watch the result appear in the <strong>History</strong> tab — it polls every 5 seconds while open, so state transitions (dispatched → executing → completed) land without a page reload. Click any row to open the run detail modal; stdout/stderr are captured per step.</div>
+          <div class="step-content">Watch the result appear in the <strong>History</strong> tab — it polls every 5 seconds while open, so state transitions (dispatched → executing → completed) land without a page reload. Click any row to open the run detail modal; stdout/stderr are captured per step. Terminal rows (completed / failed / rejected / expired / <span class="risk" style="color:var(--lavender);background:rgba(186,168,232,0.10);font-size:10px;padding:1px 6px;">skipped</span>) get a per-row delete control; in-flight rows can't be deleted.</div>
         </div>
       </div>
+
+      <h3>Managing your library</h3>
+      <p class="prose">The <strong>My Library</strong> tab carries every task definition you've saved. Each card has three controls:</p>
+      <ul class="prose">
+        <li><strong>Edit</strong> — re-open in the YAML editor.</li>
+        <li><strong>Deploy</strong> — open the deploy modal pre-pointed at this definition.</li>
+        <li><strong>Delete</strong> (small ghost trash icon to the left) — remove the definition. Past runs in <strong>History</strong> survive because their <code>TaskRun → TaskDefinition</code> FK is nullable; the audit trail stays intact even after the definition is gone.</li>
+      </ul>
+      <p class="prose">Delete is owner-gated. Trying to delete someone else's private definition returns 404 (not 403) so a non-owner can't even confirm it exists.</p>
     </section>
     <div class="divider"></div>
 
@@ -1514,6 +1527,29 @@
           </tbody>
         </table>
       </div>
+
+      <h3>Diagnostics</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/health/</code></td><td>Liveness probe — returns <code>{"status":"ok"}</code>. AllowAny.</td></tr>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/about/</code></td><td>Server version, expected agent version, Python, database, and per-scanner configured status. AllowAny — same content as the in-app About page.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Task definitions and history</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="api-method m-delete">DELETE</span></td><td><code>/api/v1/tasks/definitions/{id}/</code></td><td>Delete a task definition you own. Returns 404 (not 403) for definitions you don't own to mask their existence.</td></tr>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/{id}/</code></td><td>Fetch a single task row from history.</td></tr>
+            <tr><td><span class="api-method m-delete">DELETE</span></td><td><code>/api/v1/tasks/{id}/</code></td><td>Delete a task row from history. Gated on terminal state (completed / failed / rejected / expired / skipped) — in-flight tasks return 409.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
     <div class="divider"></div>
 
@@ -1563,6 +1599,92 @@
         <div class="callout-icon">i</div>
         <div>Actions not in the agent's allowlist are silently refused (Managed mode). The agent logs the refusal locally. The server marks the task as <code>refused</code> when the next result comes in.</div>
       </div>
+
+      <h3 style="margin-top:36px;">Conditional execution — <code>when:</code> + <code>target_tags:</code></h3>
+      <p class="prose">A two-layer filter lets one template handle Linux, macOS, and Windows hosts:</p>
+      <ul class="prose">
+        <li><strong><code>target_tags:</code></strong> — top-level list. <em>Server-side</em> gate: deploys are rejected (400) for hosts that don't carry at least one of these tags.</li>
+        <li><strong><code>when:</code></strong> — optional per-action predicate. <em>Agent-side</em>: the agent evaluates the expression against its own context just before executing the step. False → step is reported as <code>skipped</code> (terminal but not a failure); subsequent steps proceed.</li>
+      </ul>
+
+      <h4 style="margin-top:18px;font-size:14px;font-weight:600;">Expression language</h4>
+      <p class="prose">Deliberately small. The server validates syntax at definition save; the agent evaluates at runtime. Allowed:</p>
+      <ul class="prose">
+        <li>Comparisons: <code>==</code>, <code>!=</code>, <code>in</code>, <code>not in</code></li>
+        <li>Logical: <code>and</code>, <code>or</code>, <code>not</code></li>
+        <li>Literals: strings, numbers, booleans, tuples like <code>("apt", "dnf")</code></li>
+        <li>Dotted name access against the context (<code>agent.os</code>, <code>inputs.engine</code>, <code>host.tags</code>)</li>
+      </ul>
+      <p class="prose">Banned: function calls, attribute writes, comprehensions, subscripts, lambdas, f-strings, walrus. A broken predicate rejects the save — you can't deploy something the agent can't safely evaluate.</p>
+
+      <h4 style="margin-top:18px;font-size:14px;font-weight:600;">Context available to <code>when:</code></h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Values</th></tr></thead>
+          <tbody>
+            <tr><td><code>agent.os</code></td><td><code>linux</code> / <code>darwin</code> / <code>windows</code></td></tr>
+            <tr><td><code>agent.arch</code></td><td><code>amd64</code> / <code>arm64</code> / <code>arm</code> / <code>i386</code></td></tr>
+            <tr><td><code>agent.pkg_manager</code></td><td><code>apt</code> / <code>dnf</code> / <code>yum</code> / <code>pacman</code> / <code>apk</code> / <code>brew</code> / <code>winget</code> / <code>choco</code></td></tr>
+            <tr><td><code>agent.hostname</code></td><td>This agent's local hostname (<code>platform.node()</code>)</td></tr>
+            <tr><td><code>inputs.&lt;id&gt;</code></td><td>Any input declared at the top level — resolved value, not the placeholder</td></tr>
+            <tr><td><code>host.*</code></td><td>Reserved for server-pushed context in a future release</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 style="margin-top:18px;font-size:14px;font-weight:600;">Auto-classified tags</h4>
+      <p class="prose">The server derives a small set of <em>auto-tags</em> from each agent's inventory and merges them into <code>Host.tags</code> on every check-in. They use a colon prefix so user-set tags stay distinguishable, and the UI renders them muted/italic on the host detail panel:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Prefix</th><th>Source</th><th>Examples</th></tr></thead>
+          <tbody>
+            <tr><td><code>os:</code></td><td><code>platform.system()</code> on the agent</td><td><code>os:linux</code>, <code>os:darwin</code>, <code>os:windows</code></td></tr>
+            <tr><td><code>os_family:</code></td><td><code>/etc/os-release</code> ID / ID_LIKE</td><td><code>os_family:debian</code>, <code>os_family:rhel</code>, <code>os_family:macos</code></td></tr>
+            <tr><td><code>pkg:</code></td><td>Detected package manager binary</td><td><code>pkg:apt</code>, <code>pkg:dnf</code>, <code>pkg:brew</code>, <code>pkg:winget</code></td></tr>
+            <tr><td><code>arch:</code></td><td>Normalized <code>uname -m</code></td><td><code>arch:amd64</code>, <code>arch:arm64</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose">User tags survive untouched. Vigil only replaces tags within the colon-prefixed namespaces above.</p>
+
+      <h4 style="margin-top:18px;font-size:14px;font-weight:600;">Worked example — one cross-platform template</h4>
+      <p class="prose">The shipped <strong>Install Trivy on this host</strong> template is the canonical worked example: one template, four <code>when:</code> branches, plus a final verify step that always runs:</p>
+      <div class="code-block">
+        <div class="code-label">install-trivy.yaml</div>
+        <pre><span class="hl-var">name</span>: <span class="hl-string">Install Trivy</span>
+<span class="hl-var">risk</span>: <span class="hl-string">high</span>
+<span class="hl-var">target_tags</span>:
+  - <span class="hl-string">pkg:apt</span>
+  - <span class="hl-string">pkg:dnf</span>
+  - <span class="hl-string">pkg:brew</span>
+  - <span class="hl-string">pkg:winget</span>
+<span class="hl-var">actions</span>:
+  - <span class="hl-var">id</span>: <span class="hl-string">trivy_apt</span>
+    <span class="hl-var">type</span>: <span class="hl-string">run_command</span>
+    <span class="hl-var">when</span>: <span class="hl-string">agent.pkg_manager == "apt"</span>
+    <span class="hl-var">params</span>: { <span class="hl-var">command</span>: <span class="hl-string">'apt-get install -y trivy'</span> }
+  - <span class="hl-var">id</span>: <span class="hl-string">trivy_dnf</span>
+    <span class="hl-var">type</span>: <span class="hl-string">run_command</span>
+    <span class="hl-var">when</span>: <span class="hl-string">agent.pkg_manager in ("dnf", "yum")</span>
+    <span class="hl-var">params</span>: { <span class="hl-var">command</span>: <span class="hl-string">'rpm -ivh ...trivy.rpm'</span> }
+  - <span class="hl-var">id</span>: <span class="hl-string">trivy_brew</span>
+    <span class="hl-var">type</span>: <span class="hl-string">run_command</span>
+    <span class="hl-var">when</span>: <span class="hl-string">agent.os == "darwin"</span>
+    <span class="hl-var">params</span>: { <span class="hl-var">command</span>: <span class="hl-string">'brew install trivy'</span> }
+  - <span class="hl-var">id</span>: <span class="hl-string">trivy_winget</span>
+    <span class="hl-var">type</span>: <span class="hl-string">run_command</span>
+    <span class="hl-var">when</span>: <span class="hl-string">agent.os == "windows"</span>
+    <span class="hl-var">params</span>: { <span class="hl-var">command</span>: <span class="hl-string">'winget install AquaSecurity.Trivy'</span> }
+  - <span class="hl-var">id</span>: <span class="hl-string">verify</span>
+    <span class="hl-var">type</span>: <span class="hl-string">run_command</span>
+    <span class="hl-var">params</span>: { <span class="hl-var">command</span>: <span class="hl-string">'trivy --version'</span> }</pre>
+      </div>
+      <p class="prose">On an apt host: <code>trivy_apt</code> + <code>verify</code> run; the other three report <em>skipped</em>. On a Windows host: only <code>trivy_winget</code> + <code>verify</code> run. The run lands as <strong>Completed</strong> in the History tab; the run detail modal shows the per-step breakdown with the skipped steps annotated with the <code>when:</code> expression that evaluated false.</p>
+
+      <div class="callout callout-info">
+        <div class="callout-icon">i</div>
+        <div>If the agent's <code>when:</code> evaluator can't parse a predicate (e.g. server is newer than the agent and uses a syntax the agent doesn't know), the step is marked <em>skipped</em> with a clear error in the output rather than executed. Fail-loud, never fail-open.</div>
+      </div>
     </section>
     <div class="divider"></div>
 
@@ -1580,7 +1702,7 @@
             <tr><td><code>DJANGO_DEBUG</code></td><td><code>false</code></td><td>Set to <code>true</code> in development only. Never enable in production.</td></tr>
             <tr><td><code>VIGIL_SIGNING_KEY_SEED</code></td><td><em>none</em></td><td>Base64-encoded 32-byte Ed25519 seed. Required for task signing.</td></tr>
             <tr><td><code>VIGIL_TIMEZONE</code></td><td><code>UTC</code></td><td>IANA timezone name used for display and scheduling (e.g. <code>America/Chicago</code>).</td></tr>
-            <tr><td><code>VIGIL_AGENT_VERSION</code></td><td><code>2026.1.0</code></td><td>Expected agent version. Outdated agents trigger an alert.</td></tr>
+            <tr><td><code>VIGIL_AGENT_VERSION</code></td><td><code>2026.2.2</code></td><td>Expected agent version. Outdated agents trigger an alert. Keep in lockstep with the server release tag.</td></tr>
             <tr><td><code>VIGIL_AGENT_DIST_DIR</code></td><td><code>/app/agent_dist</code></td><td>Filesystem path from which baked-in agent binaries are served.</td></tr>
             <tr><td><code>POSTGRES_HOST</code></td><td><code>db</code></td><td>Postgres hostname (matches the Docker Compose service name).</td></tr>
             <tr><td><code>POSTGRES_DB</code></td><td><code>vigil</code></td><td>Database name.</td></tr>
@@ -1600,6 +1722,41 @@
         </table>
       </div>
       <p class="prose" style="margin-top:8px;color:var(--text-3);font-size:12px;">Trivy has no server-side env vars — it's agent-local and configured by installing the <code>trivy</code> binary on each host you want to scan.</p>
+    </section>
+    <div class="divider"></div>
+
+    <!-- ABOUT PAGE -->
+    <section class="section" id="about-page">
+      <p class="section-label">Reference</p>
+      <h2 class="section-title" style="color:var(--sky)">About page</h2>
+      <p class="section-desc">The in-app About page (sidebar info icon at the bottom) and the matching <code>/api/v1/about/</code> endpoint surface "what am I running" so you can paste it into a support thread without shelling into the container. No login is required for the API — nothing returned is sensitive.</p>
+
+      <h3>What it shows</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Source</th></tr></thead>
+          <tbody>
+            <tr><td><code>vigil_version</code></td><td><code>VIGIL_VERSION</code> constant in <code>vigil/settings.py</code> — bumped in lockstep with each git release tag.</td></tr>
+            <tr><td><code>expected_agent_version</code></td><td><code>VIGIL_AGENT_VERSION</code> env var — what <code>check_outdated_agents</code> compares each host against.</td></tr>
+            <tr><td><code>python_version</code></td><td>Live <code>sys.version_info</code>.</td></tr>
+            <tr><td><code>database</code></td><td>Django settings — <code>postgresql</code>, <code>sqlite3</code>, etc.</td></tr>
+            <tr><td><code>timezone</code></td><td><code>VIGIL_TIMEZONE</code> env var (display only).</td></tr>
+            <tr><td><code>scanners[]</code></td><td>Every entry in <code>SCANNER_REGISTRY</code> with its live <code>configured()</code> result.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Sanity check from the shell</h3>
+      <div class="code-block">
+        <div class="code-label">Shell</div>
+        <pre><span class="hl-cmd">curl -s http://localhost:9200/api/v1/about/ | python3 -m json.tool</span></pre>
+      </div>
+      <p class="prose">If <code>vigil_version</code> matches the tag you intended to deploy, your stack is on the right image. If the configured pills on the page disagree with what you set in Portainer's Environment variables tab (e.g. <code>nessus: not configured</code> when you swear you set <code>NESSUS_URL</code>), the env var didn't propagate into the container — fix that and update the stack.</p>
+
+      <div class="callout callout-tip">
+        <div class="callout-icon">T</div>
+        <div>Bump <code>VIGIL_VERSION</code> in <code>server/vigil/settings.py</code> on every release. If it goes stale, the About page will show the wrong number even after a successful image rebuild.</div>
+      </div>
     </section>
     <div class="divider"></div>
 
@@ -1660,7 +1817,7 @@
     </section>
 
     <div class="page-footer">
-      <p>Vigil v2026.1.0 &mdash; a <a href="#">Susquehanna Syntax</a> product</p>
+      <p>Vigil v2026.2.2 &mdash; a <a href="#">Susquehanna Syntax</a> product</p>
       <p style="margin-top:6px;">"Sleep well. Vigil's watching."</p>
     </div>
   </main>

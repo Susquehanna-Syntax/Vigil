@@ -285,7 +285,12 @@ def check_outdated_agents():
             fired += 1
             logger.info("Agent outdated alert fired: %s (v%s → v%s)", host.hostname, host.agent_version, current_version)
 
-        elif not is_outdated and existing and existing.state == Alert.State.FIRING:
+        elif not is_outdated and existing and existing.state in (
+            Alert.State.FIRING, Alert.State.ACKNOWLEDGED,
+        ):
+            # Resolve both FIRING and ACKNOWLEDGED alerts — same reasoning
+            # as check_docker_image_updates: an ack is "I see this," not
+            # "leave it open forever."
             existing.state = Alert.State.RESOLVED
             existing.resolved_at = now()
             existing.save(update_fields=["state", "resolved_at"])

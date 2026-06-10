@@ -836,12 +836,29 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
             # If the value references {{ inputs.x }}, the input must exist.
             _check_variable_refs(pv, declared_input_ids, f"action #{index + 1} param {pk!r}")
 
+        # Optional `when:` predicate. Validated for syntactic safety
+        # here; the agent evaluates it at runtime against its own
+        # platform context. Bad syntax fails the save, not the deploy.
+        when_raw = entry.get("when")
+        when_expr = ""
+        if when_raw is not None:
+            when_expr = _as_str(when_raw, f"actions[{index}].when", max_len=500)
+            if when_expr:
+                from .expression import ExprError, validate as _validate_when
+                try:
+                    _validate_when(when_expr)
+                except ExprError as exc:
+                    raise SpecError(
+                        f"action #{index + 1}: when expression rejected: {exc}"
+                    ) from exc
+
         parsed_actions.append({
             "id": action_id,
             "type": action_type,
             "label": spec["label"],
             "params": params,
             "risk": spec["risk"],
+            "when": when_expr,
         })
 
         derived_risk_level = max(derived_risk_level, _RISK_ORDER[spec["risk"]])
@@ -874,6 +891,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
             )
         collect = {"column": column, "parse": parse_mode}
 
+    target_tags = _validate_target_tags(raw.get("target_tags"))
+
     return {
         "name": name,
         "description": description,
@@ -888,4 +907,38 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         "on_failure": on_failure,
         "success_criteria": success_criteria,
         "collect": collect,
+        "target_tags": target_tags,
     }
+
+
+def _validate_target_tags(raw: Any) -> list[str]:
+    """Validate the optional top-level ``target_tags:`` list.
+
+    Schema::
+
+        target_tags:
+          - os:linux         # auto-tag namespace
+          - pkg:apt
+          - prod             # plain user tag — also accepted
+
+    The deploy endpoint enforces this as an OR filter — a host is
+    eligible if it carries any one of these tags (in its merged
+    ``Host.tags`` list). Returns an empty list when no filter is set.
+    """
+    if raw is None or raw == []:
+        return []
+    if not isinstance(raw, list):
+        raise SpecError("'target_tags' must be a list of strings")
+    if len(raw) > 32:
+        raise SpecError("too many target_tags (max 32)")
+    canonical: list[str] = []
+    seen: set[str] = set()
+    for index, tag in enumerate(raw):
+        s = _as_str(tag, f"target_tags[{index}]", max_len=64).lower()
+        if not s:
+            raise SpecError(f"target_tags[{index}] is empty")
+        if s in seen:
+            continue  # dedupe silently
+        seen.add(s)
+        canonical.append(s)
+    return canonical

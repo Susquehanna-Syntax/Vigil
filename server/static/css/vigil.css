@@ -605,6 +605,18 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .state-rejected { background: rgba(240,144,128,0.12); color: var(--coral); }
 .state-expired { background: rgba(110,107,118,0.15); color: var(--text-3); }
 .state-blocked { background: rgba(110,107,118,0.15); color: var(--text-3); }
+.state-skipped { background: rgba(186,168,232,0.10); color: var(--lavender); }
+.status-dot.skipped { background: var(--lavender); }
+
+/* Auto-classified tags (os:linux, pkg:apt, …) read slightly muted so
+   user-set tags stand out. The colon convention is the wire format the
+   server uses to distinguish them; CSS picks them up via :has() in
+   modern browsers — fallback is the auto-tag class applied by JS. */
+.host-tag-chip.host-tag-auto {
+  color: var(--text-3);
+  background: var(--s2);
+  font-style: italic;
+}
 
 /* ═══════════════════════════════════════════
    TASK DEFINITION CARDS

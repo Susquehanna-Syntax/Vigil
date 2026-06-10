@@ -121,12 +121,18 @@ function _renderDetailTags(hostId, tags) {
     return;
   }
   for (const t of _detailTagState.tags) {
+    const isAuto = /^(os|os_family|pkg|arch):/.test(t);
     const chip = document.createElement('span');
-    chip.className = 'host-tag-chip';
-    chip.style.cursor = 'pointer';
-    chip.title = 'Click to remove';
-    chip.textContent = t + '  ✕';
-    chip.addEventListener('click', () => _removeDetailTag(t));
+    chip.className = 'host-tag-chip' + (isAuto ? ' host-tag-auto' : '');
+    if (isAuto) {
+      chip.title = 'Auto-classified from inventory — recomputed on every check-in.';
+      chip.textContent = t;
+    } else {
+      chip.style.cursor = 'pointer';
+      chip.title = 'Click to remove';
+      chip.textContent = t + '  ✕';
+      chip.addEventListener('click', () => _removeDetailTag(t));
+    }
     wrap.appendChild(chip);
   }
 }

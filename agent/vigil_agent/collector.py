@@ -229,6 +229,44 @@ def _read_disks() -> list[dict]:
     return disks
 
 
+def _detect_os_family(os_release: dict) -> str:
+    """Map /etc/os-release ID/ID_LIKE into a coarse family bucket.
+
+    Used by the server to derive ``os_family:debian`` style auto-tags.
+    Returns ``""`` when we genuinely can't tell.
+    """
+    if platform.system() == "Darwin":
+        return "macos"
+    if platform.system() == "Windows":
+        return "windows"
+    raw_ids = (os_release.get("ID", "") + " " + os_release.get("ID_LIKE", "")).lower()
+    if any(t in raw_ids for t in ("debian", "ubuntu")):
+        return "debian"
+    if any(t in raw_ids for t in ("rhel", "fedora", "centos", "rocky", "alma", "ol")):
+        return "rhel"
+    if "arch" in raw_ids:
+        return "arch"
+    if "alpine" in raw_ids:
+        return "alpine"
+    if "suse" in raw_ids:
+        return "suse"
+    return ""
+
+
+def _normalize_arch(machine: str) -> str:
+    """Map ``uname -m`` strings into amd64 / arm64 / arm / i386 / ``""``."""
+    m = (machine or "").lower()
+    if m in ("x86_64", "amd64"):
+        return "amd64"
+    if m in ("aarch64", "arm64"):
+        return "arm64"
+    if m.startswith("arm"):
+        return "arm"
+    if m in ("i386", "i686", "x86"):
+        return "i386"
+    return m or ""
+
+
 def collect_inventory() -> dict:
     """Best-effort hardware inventory snapshot.
 
@@ -302,6 +340,19 @@ def collect_inventory() -> dict:
     inv["os_version"] = (_os_release.get("VERSION_ID") or platform.release()).strip()
     inv["kernel_version"] = platform.release()
     inv["architecture"] = platform.machine()
+
+    # Auto-tag inputs — the server uses these to derive os/pkg/arch
+    # tags on Host.tags so target_tags: filters and conditional steps
+    # have something to match against. All best-effort; missing fields
+    # turn into empty strings and the server skips that tag.
+    inv["os_family"] = _detect_os_family(_os_release)
+    inv["arch_normalized"] = _normalize_arch(platform.machine())
+    try:
+        from .pkg_manager import detect as _detect_pkg
+        _pm = _detect_pkg()
+        inv["pkg_manager"] = _pm.name if _pm else ""
+    except Exception:
+        inv["pkg_manager"] = ""
 
     # Uptime
     try:

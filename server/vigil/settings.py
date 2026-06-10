@@ -207,6 +207,11 @@ VIGIL_METRIC_RETENTION_DAYS = int(os.environ.get("VIGIL_METRIC_RETENTION_DAYS", 
 VIGIL_AGENT_DIST_DIR = Path(os.environ.get("VIGIL_AGENT_DIST_DIR", str(BASE_DIR / "agent_dist")))
 VIGIL_AGENT_VERSION = os.environ.get("VIGIL_AGENT_VERSION", "2026.1.0")
 
+# Server build version — surfaced on the About page and the /api/v1/about/
+# endpoint. Bump this on every release; the Git tag (v2026.2.2, etc.) and
+# this constant should stay in lockstep.
+VIGIL_VERSION = "2026.2.2"
+
 # ---------------------------------------------------------------------------
 # Display / locale
 # ---------------------------------------------------------------------------

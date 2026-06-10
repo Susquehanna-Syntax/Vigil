@@ -27,7 +27,10 @@ from .spec import (
     resolve_inputs,
 )
 
-_TERMINAL_STATES = {Task.State.COMPLETED, Task.State.FAILED, Task.State.REJECTED}
+_TERMINAL_STATES = {
+    Task.State.COMPLETED, Task.State.FAILED,
+    Task.State.REJECTED, Task.State.SKIPPED,
+}
 _UPDATABLE_STATES = {Task.State.DISPATCHED, Task.State.EXECUTING}
 
 # ── Agent-facing: task result ────────────────────────────────────────────────
@@ -241,7 +244,10 @@ def _advance_run_sequence(finished_task: Task) -> None:
         run=run, host=finished_task.host, step_order__gt=finished_task.step_order
     ).order_by("step_order")
 
-    if finished_task.state == Task.State.COMPLETED:
+    # SKIPPED is treated like COMPLETED for chain-advance purposes — the
+    # step elected not to run, but it's not a failure. The next step
+    # unblocks normally.
+    if finished_task.state in (Task.State.COMPLETED, Task.State.SKIPPED):
         next_step = sibling_qs.filter(state=Task.State.BLOCKED).first()
         if next_step:
             next_step.state = Task.State.PENDING
@@ -294,9 +300,11 @@ def _finalize_run_if_done(run: TaskRun) -> None:
         return
 
     states = set(Task.objects.filter(run=run).values_list("state", flat=True))
-    if states <= {Task.State.COMPLETED}:
+    if states <= {Task.State.COMPLETED, Task.State.SKIPPED}:
+        # Skipped steps are happy outcomes — only-skipped or
+        # completed-and-skipped runs are COMPLETED, not PARTIAL.
         run.state = TaskRun.State.COMPLETED
-    elif Task.State.COMPLETED in states:
+    elif Task.State.COMPLETED in states or Task.State.SKIPPED in states:
         run.state = TaskRun.State.PARTIAL
     else:
         run.state = TaskRun.State.FAILED
@@ -512,6 +520,11 @@ def definition_deploy(request, definition_id):
     if len(hosts) != len(host_ids):
         return Response({"error": "One or more hosts not found"}, status=404)
 
+    # target_tags acts as an OR filter: a host is eligible if any of its
+    # tags appears in the definition's target_tags. Auto-classified tags
+    # (os:linux, pkg:apt, etc.) live alongside user tags in Host.tags so
+    # one membership check covers both.
+    target_tags = set(spec.get("target_tags") or [])
     for host in hosts:
         if host.status != Host.Status.ONLINE:
             return Response(
@@ -521,6 +534,19 @@ def definition_deploy(request, definition_id):
             return Response(
                 {"error": f"Host {host.hostname} is in monitor mode"}, status=400
             )
+        if target_tags:
+            host_tags = {str(t).lower() for t in (host.tags or [])}
+            if host_tags.isdisjoint(target_tags):
+                return Response(
+                    {
+                        "error": (
+                            f"Host {host.hostname} doesn't carry any of the "
+                            f"required target_tags ({sorted(target_tags)}). "
+                            f"Host tags: {sorted(host_tags) or '(none)'}."
+                        ),
+                    },
+                    status=400,
+                )
 
     # Build the steps payload the agent will receive.  The full script is
     # sent as a single signed task per host — the agent validates each
@@ -534,6 +560,11 @@ def definition_deploy(request, definition_id):
             "action": action["type"],
             "params": action.get("params") or {},
         }
+        # Optional when: predicate evaluated by the agent at execution
+        # time. Empty string means "always run" (back-compat).
+        when_expr = action.get("when") or ""
+        if when_expr:
+            step["when"] = when_expr
         # Success criteria apply to every step in the script. The agent
         # evaluates these after each step's exit and marks the step failed
         # if criteria are not met (even if the action itself succeeded).

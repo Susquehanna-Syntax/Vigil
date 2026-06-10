@@ -50,6 +50,9 @@
     </div>
 
     <div class="sidebar-spacer"></div>
+    <div class="sidebar-icon" data-page="about" data-tip="About">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+    </div>
     <div class="sidebar-avatar">V</div>
   </nav>
 
@@ -481,6 +484,8 @@
 <script src="{% static 'js/vigil-settings.js' %}"></script>
 <!-- vigil-enroll.js — enrollment wizard modal -->
 <script src="{% static 'js/vigil-enroll.js' %}"></script>
+<!-- vigil-about.js — server / agent / scanner version surface -->
+<script src="{% static 'js/vigil-about.js' %}"></script>
 
 {% block extra_scripts %}{% endblock %}
 </body>

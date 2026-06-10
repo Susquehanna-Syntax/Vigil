@@ -1,0 +1,57 @@
+{# About page section — server build, agent target, scanner status #}
+{# Logic: static/js/vigil-about.js | Data: client-side fetch /api/v1/about/ #}
+    <section id="page-about" class="page">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">About<span>.</span></div>
+          <div class="page-sub">What you're running, and what it can see</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="refreshAbout()" id="about-refresh-btn">
+          <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+          Refresh
+        </button>
+      </div>
+
+      <div class="stats-row" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 28px;">
+        <div class="stat-card">
+          <div class="stat-label">Vigil server</div>
+          <div class="stat-value mono" style="color: var(--mint); font-size: 28px;" id="about-server-version">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Expected agent version</div>
+          <div class="stat-value mono" style="color: var(--sky); font-size: 28px;" id="about-agent-version">—</div>
+        </div>
+      </div>
+
+      <div style="background:var(--s1);border-radius:var(--r-lg);padding:24px;margin-bottom:20px;">
+        <div class="section-label" style="margin-bottom:12px;">Runtime</div>
+        <div style="display:grid;grid-template-columns:160px 1fr;gap:10px 18px;font-size:13px;">
+          <div style="color:var(--text-3);">Python</div>
+          <div class="mono" id="about-python">—</div>
+          <div style="color:var(--text-3);">Database</div>
+          <div class="mono" id="about-database">—</div>
+          <div style="color:var(--text-3);">Timezone</div>
+          <div class="mono" id="about-timezone">—</div>
+        </div>
+      </div>
+
+      <div style="background:var(--s1);border-radius:var(--r-lg);padding:24px;margin-bottom:20px;">
+        <div class="section-label" style="margin-bottom:12px;">Vulnerability scanners</div>
+        <div id="about-scanners" style="display:flex;flex-direction:column;gap:8px;font-size:13px;">
+          <div style="color:var(--text-3);">Loading…</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:14px;">
+          Trivy is agent-local — it reports configured as long as the registry knows about it; the actual scan
+          only runs when a host has the <code>trivy</code> binary installed.
+        </div>
+      </div>
+
+      <div style="text-align:center;font-size:11px;color:var(--text-3);margin-top:24px;">
+        <a href="/wiki/" style="color:var(--text-3);">Documentation</a>
+        ·
+        <a href="https://github.com/SusquehannaSyntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--text-3);">Community catalog</a>
+        ·
+        Sleep well. Vigil's watching.
+      </div>
+    </section>

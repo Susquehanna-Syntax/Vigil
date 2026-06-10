@@ -117,6 +117,11 @@ class Task(models.Model):
         FAILED = "failed", "Failed"
         REJECTED = "rejected", "Rejected"
         EXPIRED = "expired", "Expired"
+        # Set when the agent evaluated the step's when: predicate to
+        # false and elected not to run it. Skipped steps unblock
+        # subsequent steps in the same run — they're a terminal state
+        # for the step but not a failure.
+        SKIPPED = "skipped", "Skipped"
 
     class RiskLevel(models.TextChoices):
         LOW = "low", "Low"

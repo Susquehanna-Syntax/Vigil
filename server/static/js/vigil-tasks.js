@@ -267,19 +267,48 @@ actions:
     label: 'Install Trivy on this host',
     yaml: `name: Install Trivy
 description: |
-  Installs the Trivy CLI from the official Aqua repository so this
-  agent can run local filesystem and container image scans. The
-  binary lands at /usr/local/bin/trivy. First scan pulls the
-  vulnerability database (~50 MB) automatically.
+  Cross-platform Trivy install. The agent picks the right path based
+  on its own platform (apt / dnf / brew / winget) via per-step when:
+  predicates. Hosts without a known package manager are filtered out
+  by target_tags so the editor only offers eligible targets.
 relevance: "any host you want to scan with the agent-local Trivy scanner"
 risk: high
+target_tags:
+  - pkg:apt
+  - pkg:dnf
+  - pkg:yum
+  - pkg:brew
+  - pkg:winget
 
 actions:
-  - id: install
+  - id: trivy_apt
     type: run_command
+    when: agent.pkg_manager == "apt"
     params:
-      command: 'curl -sSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin'
-      timeout: 300
+      command: 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y wget gnupg ca-certificates && wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor -o /usr/share/keyrings/trivy.gpg && echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" > /etc/apt/sources.list.d/trivy.list && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y trivy'
+      timeout: 600
+
+  - id: trivy_dnf
+    type: run_command
+    when: agent.pkg_manager in ("dnf", "yum")
+    params:
+      command: 'rpm -ivh https://github.com/aquasecurity/trivy/releases/latest/download/trivy_$(uname -m).rpm'
+      timeout: 600
+
+  - id: trivy_brew
+    type: run_command
+    when: agent.os == "darwin"
+    params:
+      command: 'su - $(stat -f %Su /dev/console) -c "/opt/homebrew/bin/brew install trivy 2>/dev/null || /usr/local/bin/brew install trivy"'
+      timeout: 600
+
+  - id: trivy_winget
+    type: run_command
+    when: agent.os == "windows"
+    params:
+      command: 'winget install --id AquaSecurity.Trivy --accept-source-agreements --accept-package-agreements --silent'
+      timeout: 600
+
   - id: verify
     type: run_command
     params:
@@ -326,9 +355,12 @@ description: |
   20-30 minutes; check progress at https://<this-host>:9392.
   After it's ready, set the admin password, create a Vigil service
   account, and wire GREENBONE_URL/USERNAME/PASSWORD into the Vigil
-  server stack.
-relevance: "the host you want to run as your Greenbone scanner"
+  server stack. Linux-only — restricted to docker-capable hosts via
+  target_tags.
+relevance: "a Linux host you want to run as your Greenbone scanner"
 risk: high
+target_tags:
+  - os:linux
 
 actions:
   - id: make_dir
@@ -459,9 +491,18 @@ function defCardHtml(def, opts) {
     : '';
   // Community submissions now go through a GitHub PR from the editor —
   // see openCommunitySubmit(). Cards no longer carry a publish action.
+  // Owner-only Delete sits next to Edit so it's findable without a
+  // hover-menu but visually subdued so it doesn't compete with Deploy.
   const buttons = opts.mode === 'community'
     ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); forkDefinition('${def.id}')">Fork</button>`
-    : `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openDefinitionEditor('${def.id}')">Edit</button>
+    : `<button class="btn btn-ghost btn-sm" style="color:var(--text-3);" title="Delete this task definition"
+              onclick="event.stopPropagation(); deleteDefinition('${def.id}', ${JSON.stringify(def.name || 'Untitled')})">
+         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+           <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+           <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+         </svg>
+       </button>
+       <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openDefinitionEditor('${def.id}')">Edit</button>
        <button class="btn btn-sky btn-sm" onclick="event.stopPropagation(); openDeployModal('${def.id}')">Deploy</button>`;
   return `
     <div class="def-card" onclick="openDefinitionEditor('${def.id}')">
@@ -554,6 +595,27 @@ async function forkDefinition(id) {
     if (libTab) libTab.click();
   } catch (e) {
     showToast('Fork failed: ' + e.message, 'error');
+  }
+}
+
+async function deleteDefinition(id, name) {
+  const label = name || 'this task';
+  if (!window.confirm(`Delete "${label}"? Past runs in History are kept, but the definition is gone for good.`)) return;
+  try {
+    const resp = await fetch(`/api/v1/tasks/definitions/${id}/`, {
+      method: 'DELETE',
+      credentials: 'same-origin',
+      headers: { 'X-CSRFToken': _csrfToken() },
+    });
+    if (resp.status === 204) {
+      showToast(`Deleted "${label}"`, 'success');
+      refreshTaskLibrary();
+    } else {
+      const body = await resp.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${resp.status}`);
+    }
+  } catch (e) {
+    showToast('Delete failed: ' + e.message, 'error');
   }
 }
 
@@ -858,7 +920,7 @@ function closeTaskDetail() {
 const TASK_STATE_LABELS = {
   blocked: 'Blocked', pending: 'Pending', dispatched: 'Dispatched',
   executing: 'Executing', completed: 'Completed', failed: 'Failed',
-  rejected: 'Rejected', expired: 'Expired',
+  rejected: 'Rejected', expired: 'Expired', skipped: 'Skipped',
 };
 
 const taskHistoryState = { page: 1, pages: 1, interval: null };
@@ -867,6 +929,7 @@ function _taskDotClass(state) {
   if (state === 'completed') return 'online';
   if (state === 'failed' || state === 'rejected' || state === 'expired') return 'offline';
   if (state === 'pending' || state === 'dispatched' || state === 'executing' || state === 'blocked') return 'pending';
+  if (state === 'skipped') return 'skipped';
   return '';
 }
 
@@ -922,7 +985,7 @@ function _buildTaskHistoryRow(t) {
   // Delete control — only for tasks that have stopped moving. In-flight
   // tasks could still produce a result POST, so we don't risk orphaning
   // anything.
-  const TERMINAL = new Set(['completed', 'failed', 'rejected', 'expired']);
+  const TERMINAL = new Set(['completed', 'failed', 'rejected', 'expired', 'skipped']);
   if (TERMINAL.has(t.state)) {
     const del = document.createElement('button');
     del.className = 'btn btn-sm btn-ghost task-row-delete';

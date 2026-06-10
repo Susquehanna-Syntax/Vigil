@@ -25,6 +25,48 @@ _MAX_HOSTNAME_LEN = 255
 _MAX_TAGS = 32
 
 
+# Auto-tag namespace — colons keep them visibly distinct from user tags
+# and let the UI surface them differently. Any tag the server writes
+# here can be rebuilt from inventory, so it's safe to remove + replace
+# in this exact prefix list without touching user-set tags.
+_AUTO_TAG_PREFIXES = ("os:", "os_family:", "pkg:", "arch:")
+
+
+def _sync_host_auto_tags(host, inv: dict) -> None:
+    """Refresh the colon-namespaced auto-tags on ``host`` from ``inv``.
+
+    Sources, all coming from the agent's collect_inventory():
+      * ``host.os`` (set elsewhere from check-in)
+      * ``inv["os_family"]`` — "debian" / "rhel" / "alpine" / "macos" / ...
+      * ``inv["pkg_manager"]`` — "apt" / "dnf" / "brew" / "winget" / ...
+      * ``inv["arch_normalized"]`` — "amd64" / "arm64" / ...
+
+    Strips all existing tags in our namespace, then re-adds whichever
+    are non-empty. User tags survive untouched.
+    """
+    derived: list[str] = []
+    if host.os:
+        derived.append(f"os:{host.os.strip().lower()}")
+    fam = (inv.get("os_family") or "").strip().lower()
+    if fam:
+        derived.append(f"os_family:{fam}")
+    pkg = (inv.get("pkg_manager") or "").strip().lower()
+    if pkg:
+        derived.append(f"pkg:{pkg}")
+    arch = (inv.get("arch_normalized") or "").strip().lower()
+    if arch:
+        derived.append(f"arch:{arch}")
+
+    user_tags = [
+        t for t in (host.tags or [])
+        if isinstance(t, str) and not t.startswith(_AUTO_TAG_PREFIXES)
+    ]
+    new_tags = sorted({*user_tags, *derived})
+    if new_tags != (host.tags or []):
+        host.tags = new_tags
+        host.save(update_fields=["tags"])
+
+
 def _normalize_tags(raw, *, existing=None):
     """Sanitize incoming tag lists from agents.
 
@@ -182,6 +224,12 @@ def checkin(request):
         disks = inv_payload.get("disks") or []
         inv.disks = disks if isinstance(disks, list) else []
         inv.save()
+
+        # Auto-classified tags — sync os:/os_family:/pkg:/arch: values
+        # into Host.tags so target_tags filters and conditional template
+        # branches have something to match. User-set tags are preserved;
+        # only the colon-prefixed namespace we manage gets refreshed.
+        _sync_host_auto_tags(host, inv_payload)
 
     # Pending hosts must wait for admin approval before receiving tasks
     if host.status == Host.Status.PENDING:

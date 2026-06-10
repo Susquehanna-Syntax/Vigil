@@ -42,4 +42,8 @@
   {# Task editor page — YAML textarea + structured preview #}
   {# Logic: static/js/vigil-tasks.js (openDefinitionEditor → validate → save) #}
   {% include "pages/_task_editor.html" %}
+
+  {# About page — server version, agent version, configured scanners #}
+  {# Logic: static/js/vigil-about.js | Data: client-side fetch /api/v1/about/ #}
+  {% include "pages/_about.html" %}
 {% endblock %}

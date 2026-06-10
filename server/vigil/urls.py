@@ -29,6 +29,43 @@ def health_check(request):
     return Response({"status": "ok"})
 
 
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def about(request):
+    """Server build + scanner status, surfaced by the About page.
+
+    Anyone hitting the dashboard URL can read this — it's the kind of
+    thing operators paste into support threads ("here's what I'm
+    running"), so we keep it AllowAny rather than session-gated.
+    Nothing here is sensitive: versions, which scanners are configured,
+    and which database backend is in use.
+    """
+    import sys
+
+    from apps.vulns.scanners import SCANNER_REGISTRY
+
+    db_vendor = (
+        django_settings.DATABASES.get("default", {}).get("ENGINE", "").rsplit(".", 1)[-1]
+    )
+
+    scanners = []
+    for name, cls in SCANNER_REGISTRY.items():
+        try:
+            configured = cls().configured()
+        except Exception:
+            configured = False
+        scanners.append({"name": name, "configured": configured})
+
+    return Response({
+        "vigil_version": getattr(django_settings, "VIGIL_VERSION", "unknown"),
+        "expected_agent_version": getattr(django_settings, "VIGIL_AGENT_VERSION", ""),
+        "python_version": "%d.%d.%d" % sys.version_info[:3],
+        "database": db_vendor,
+        "timezone": getattr(django_settings, "VIGIL_TIMEZONE", "UTC"),
+        "scanners": scanners,
+    })
+
+
 @login_required(login_url="/login/")
 def dashboard(request):
     hosts = Host.objects.exclude(status=Host.Status.REJECTED).select_related("inventory")
@@ -70,6 +107,7 @@ urlpatterns = [
     path("logout/", logout_view, name="logout"),
     path("admin/", admin.site.urls),
     path("api/v1/health/", health_check),
+    path("api/v1/about/", about, name="about-api"),
     path("api/v1/register", register, name="register"),
     path("api/v1/checkin", checkin, name="checkin"),
     path("api/v1/hosts/", include("apps.hosts.urls")),
