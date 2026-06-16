@@ -346,10 +346,13 @@ def main() -> None:
     # ── Main checkin loop ────────────────────────────────────────────────
     # Hardware inventory shifts at human timescales — refresh once per hour
     # rather than on every checkin to avoid wasting cycles on dmidecode.
-    # Docker image update checks are refreshed every 5 minutes; the cached
-    # results are re-included in every checkin so the server alert engine
-    # always has recent data without hammering the Docker Hub registry.
-    _DOCKER_CHECK_INTERVAL = 300  # 5 minutes
+    # Docker image update checks hit the Docker Hub registry, which rate-
+    # limits anonymous clients. Even with HEAD requests (which don't count
+    # against the pull budget) there's no reason to re-check often — a
+    # published image moving is a once-in-days event. Refresh every 6
+    # hours; the cached results ride along in every checkin so the server
+    # alert engine always has recent data.
+    _DOCKER_CHECK_INTERVAL = 21600  # 6 hours
     consecutive_failures = 0
     inventory_refresh_after = 0.0  # monotonic deadline; 0 → refresh now
     docker_refresh_after = 0.0    # monotonic deadline; 0 → check now

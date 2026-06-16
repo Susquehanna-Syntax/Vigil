@@ -496,7 +496,7 @@ function defCardHtml(def, opts) {
   const buttons = opts.mode === 'community'
     ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); forkDefinition('${def.id}')">Fork</button>`
     : `<button class="btn btn-ghost btn-sm" style="color:var(--text-3);" title="Delete this task definition"
-              onclick="event.stopPropagation(); deleteDefinition('${def.id}', ${JSON.stringify(def.name || 'Untitled')})">
+              onclick="event.stopPropagation(); deleteDefinition('${def.id}', this)">
          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
            <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
@@ -598,8 +598,14 @@ async function forkDefinition(id) {
   }
 }
 
-async function deleteDefinition(id, name) {
-  const label = name || 'this task';
+async function deleteDefinition(id, btn) {
+  // Resolve the display name from the card DOM rather than passing it
+  // through the inline onclick — escHtml here doesn't escape quotes, so
+  // a name with a " would have broken the attribute (and silently fell
+  // through to the card's open-editor handler).
+  const card = btn && btn.closest ? btn.closest('.def-card') : null;
+  const titleEl = card && card.querySelector('.def-card-title');
+  const label = (titleEl && titleEl.textContent.trim()) || 'this task';
   if (!window.confirm(`Delete "${label}"? Past runs in History are kept, but the definition is gone for good.`)) return;
   try {
     const resp = await fetch(`/api/v1/tasks/definitions/${id}/`, {

@@ -470,11 +470,26 @@ def _get_registry_digest(hub_name: str, tag: str) -> str | None:
         if not token:
             return None
 
-        resp = requests.get(
+        # HEAD, not GET: Docker Hub counts manifest *GET* requests against
+        # the anonymous pull limit (100 / 6h / IP), but HEAD requests are
+        # free. A GET here on every container every few minutes silently
+        # exhausts the host's pull budget and breaks real `docker pull`s.
+        # HEAD still returns the Docker-Content-Digest header we need.
+        #
+        # Accept lists the manifest-list / OCI-index types first so a
+        # multi-arch image returns its *index* digest — matching what
+        # Docker stores in RepoDigests — instead of a single-arch digest
+        # that would always look "outdated".
+        resp = requests.head(
             f"https://registry-1.docker.io/v2/{hub_name}/manifests/{tag}",
             headers={
                 "Authorization": f"Bearer {token}",
-                "Accept": "application/vnd.docker.distribution.manifest.v2+json",
+                "Accept": ", ".join([
+                    "application/vnd.docker.distribution.manifest.list.v2+json",
+                    "application/vnd.oci.image.index.v1+json",
+                    "application/vnd.docker.distribution.manifest.v2+json",
+                    "application/vnd.oci.image.manifest.v1+json",
+                ]),
             },
             timeout=10,
         )

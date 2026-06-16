@@ -1,3 +1,4 @@
+import secrets
 import zoneinfo
 
 from django.utils.dateparse import parse_datetime
@@ -523,6 +524,71 @@ def host_tags(request, host_id):
     host.tags = _normalize_tags(raw)
     host.save(update_fields=["tags", "updated_at"])
     return Response(HostSerializer(host).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def host_update_agent(request, host_id):
+    """Force an agent self-update on one host. 2FA-gated.
+
+    Queues a single ``update_agent`` task carrying the verified per-
+    platform SHA-256 the agent checks before swapping its binary (the
+    download is TLS-only, so the signed digest is the real proof). The
+    task is signed and handed over on the host's next check-in.
+
+    The agent's mode stays authoritative: a monitor-mode host is refused
+    here, and a managed-mode agent still has to allowlist ``update_agent``
+    or it will reject the task on arrival — by design, the server can't
+    force an update past the agent's local policy.
+    """
+    from apps.accounts.totp import require_totp_confirmation
+    from apps.agent_dist.views import all_binary_sha256
+
+    try:
+        host = Host.objects.get(pk=host_id)
+    except Host.DoesNotExist:
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if host.mode == Host.Mode.MONITOR:
+        return Response(
+            {"error": "Host is in monitor mode — it does not execute tasks"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    error = require_totp_confirmation(request.user, request.data)
+    if error:
+        return Response({"error": error}, status=status.HTTP_401_UNAUTHORIZED)
+
+    sha_map = all_binary_sha256()
+    if not sha_map:
+        return Response(
+            {"error": "No agent binaries are available on the server to update to"},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    # Don't stack duplicate update tasks — if one is already queued or in
+    # flight for this host, point the caller at it instead.
+    existing = Task.objects.filter(
+        host=host,
+        action="update_agent",
+        state__in=[Task.State.PENDING, Task.State.DISPATCHED, Task.State.EXECUTING],
+    ).first()
+    if existing:
+        return Response(
+            {"status": "already_queued", "task_id": str(existing.id)},
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    task = Task.objects.create(
+        host=host,
+        requested_by=request.user,
+        action="update_agent",
+        params={"binary_sha256": sha_map},
+        risk_level=Task.RiskLevel.STANDARD,
+        state=Task.State.PENDING,
+        nonce=secrets.token_hex(32),
+    )
+    return Response({"status": "queued", "task_id": str(task.id)}, status=status.HTTP_201_CREATED)
 
 
 @api_view(["POST"])

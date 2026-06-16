@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from django.utils.timezone import now
 from rest_framework.test import APIClient
 
 from apps.hosts.models import Host
@@ -91,6 +92,66 @@ class AgentTagNamespaceTests(TestCase):
         host.refresh_from_db()
         self.assertIn("agent:office", host.tags)
         self.assertNotIn("office", host.tags)
+
+
+class ForceUpdateAgentTests(TestCase):
+    def setUp(self):
+        from apps.accounts.models import UserProfile
+        from apps.accounts.totp import generate_secret
+        self.client = APIClient()
+        self.user = get_user_model().objects.create_user("op", password="pw")
+        profile = UserProfile.objects.create(user=self.user)
+        self.secret = generate_secret()
+        profile.totp_secret = self.secret
+        profile.totp_confirmed_at = now()
+        profile.save()
+        self.client.force_authenticate(self.user)
+        self.host = Host.objects.create(
+            hostname="h", agent_token="t" * 32,
+            status=Host.Status.ONLINE, mode=Host.Mode.MANAGED,
+        )
+
+    def _totp(self):
+        from apps.accounts.totp import generate_totp
+        return generate_totp(self.secret)
+
+    def test_monitor_mode_rejected(self):
+        self.host.mode = Host.Mode.MONITOR
+        self.host.save()
+        resp = self.client.post(
+            f"/api/v1/hosts/{self.host.id}/update-agent/",
+            {"totp": self._totp()}, format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_requires_totp(self):
+        from apps.agent_dist.models import AgentBinary
+        AgentBinary.objects.create(platform="linux-amd64", version="1", sha256="a" * 64)
+        resp = self.client.post(
+            f"/api/v1/hosts/{self.host.id}/update-agent/", {}, format="json",
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_no_binaries_503(self):
+        resp = self.client.post(
+            f"/api/v1/hosts/{self.host.id}/update-agent/",
+            {"totp": self._totp()}, format="json",
+        )
+        self.assertEqual(resp.status_code, 503)
+
+    @override_settings(VIGIL_AGENT_DIST_DIR="/nonexistent-vigil-test-dist")
+    def test_queues_signed_update_task(self):
+        from apps.agent_dist.models import AgentBinary
+        from apps.tasks.models import Task
+        AgentBinary.objects.create(platform="linux-amd64", version="1", sha256="a" * 64)
+        resp = self.client.post(
+            f"/api/v1/hosts/{self.host.id}/update-agent/",
+            {"totp": self._totp()}, format="json",
+        )
+        self.assertEqual(resp.status_code, 201, getattr(resp, "data", None))
+        task = Task.objects.get(host=self.host, action="update_agent")
+        self.assertEqual(task.params["binary_sha256"]["linux-amd64"], "a" * 64)
+        self.assertEqual(task.state, Task.State.PENDING)
 
 
 class AboutEndpointAuthTests(TestCase):

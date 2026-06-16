@@ -12,6 +12,7 @@ urlpatterns = [
     path("<uuid:host_id>/approve/", views.host_approve, name="host-approve"),
     path("<uuid:host_id>/reject/", views.host_reject, name="host-reject"),
     path("<uuid:host_id>/poll/", views.host_poll, name="host-poll"),
+    path("<uuid:host_id>/update-agent/", views.host_update_agent, name="host-update-agent"),
     path("<uuid:host_id>/rdp/", views.host_rdp, name="host-rdp"),
     path("<uuid:host_id>/tags/", views.host_tags, name="host-tags"),
     path("<uuid:host_id>/inventory/", views.inventory_detail, name="inventory-detail"),

@@ -27,3 +27,6 @@ docs/internal/
 # Agent runtime — never commit live credentials or state
 agent/agent.yml
 agent/data/
+
+# Visual brainstorming companion — local scratch, never committed
+.superpowers/

@@ -39,6 +39,16 @@ function openHostDetail(card) {
   document.getElementById('detail-last-checkin').textContent =
     d.lastCheckin ? 'Recent' : 'Never';
 
+  // Agent version — colour mint when it matches the server's expected
+  // version, peach when it's behind (the same signal the "Agent
+  // outdated" alert uses). Lets you confirm a host's agent at a glance.
+  _renderDetailAgentVersion(d.agentVersion || '');
+
+  // Force-update control: only meaningful when the host actually runs
+  // tasks (monitor-mode agents never will).
+  const updateBtn = document.getElementById('detail-update-agent-btn');
+  if (updateBtn) updateBtn.style.display = (d.mode === 'monitor') ? 'none' : '';
+
   // Quick actions based on mode
   const actions = document.getElementById('detail-actions');
   if (d.mode === 'monitor') {
@@ -71,6 +81,67 @@ function openHostDetail(card) {
 
   // Security score — hidden until we know the host has a summary.
   _loadDetailScore(d.id);
+}
+
+async function forceUpdateAgent() {
+  const hostId = panel.dataset.hostId;
+  if (!hostId) return;
+  const totp = (window.prompt(
+    'Force agent self-update on this host.\n\n' +
+    'Enter your 6-digit 2FA code to authorize:'
+  ) || '').trim();
+  if (!totp) return;
+  try {
+    const resp = await fetch(`/api/v1/hosts/${hostId}/update-agent/`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrfToken() },
+      body: JSON.stringify({ totp }),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (resp.status === 201) {
+      showToast('Agent update queued — applies on the next check-in', 'success');
+    } else if (resp.status === 409) {
+      showToast('An agent update is already queued for this host', 'info');
+    } else {
+      throw new Error(body.error || `HTTP ${resp.status}`);
+    }
+  } catch (e) {
+    showToast('Update failed: ' + e.message, 'error');
+  }
+}
+
+// Expected agent version, fetched once from /api/v1/about/ and cached.
+let _expectedAgentVersion = null;
+async function _getExpectedAgentVersion() {
+  if (_expectedAgentVersion !== null) return _expectedAgentVersion;
+  try {
+    const resp = await fetch('/api/v1/about/', { credentials: 'same-origin' });
+    _expectedAgentVersion = resp.ok ? ((await resp.json()).expected_agent_version || '') : '';
+  } catch {
+    _expectedAgentVersion = '';
+  }
+  return _expectedAgentVersion;
+}
+
+async function _renderDetailAgentVersion(reported) {
+  const el = document.getElementById('detail-agent-version');
+  if (!el) return;
+  if (!reported) {
+    el.textContent = 'Unknown';
+    el.style.color = 'var(--text-3)';
+    return;
+  }
+  el.textContent = 'v' + reported;
+  const expected = await _getExpectedAgentVersion();
+  if (expected && reported !== expected) {
+    el.textContent = `v${reported} (outdated → v${expected})`;
+    el.style.color = 'var(--peach)';
+  } else if (expected) {
+    el.style.color = 'var(--mint)';
+  } else {
+    el.style.color = 'var(--text-1)';
+  }
 }
 
 async function _loadDetailScore(hostId) {
