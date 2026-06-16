@@ -16,6 +16,14 @@ staticfiles/
 # Superpowers tooling artifacts — design docs belong directly under docs/
 docs/superpowers/
 
+# Internal working notes — point-in-time audits, scratch specs, and
+# planning docs. Kept locally for reference, never committed (keeps the
+# public repo to shipped code + user-facing docs).
+docs/internal/
+
+# Session-state buffer for the assistant — never code, never committed.
+.remember/
+
 # Agent runtime — never commit live credentials or state
 agent/agent.yml
 agent/data/
