@@ -61,6 +61,11 @@ def _validate_node(node: ast.AST) -> None:
     # Attribute access must be on an allowed root → a single attribute step.
     # `agent.os` is fine; `agent.os.upper` is not.
     if isinstance(node, ast.Attribute):
+        # No underscore-prefixed attributes. Context values are plain
+        # dicts today so this can't reach anything, but it keeps
+        # `agent.__class__`-style probing out of the grammar outright.
+        if node.attr.startswith("_"):
+            raise ExprError(f"attribute {node.attr!r} is not permitted")
         # The value side must be a Name (one root) or another Attribute
         # (one further level — host.tags etc.). We cap depth at 2.
         depth = 0
@@ -68,7 +73,7 @@ def _validate_node(node: ast.AST) -> None:
         while isinstance(cur, ast.Attribute):
             cur = cur.value
             depth += 1
-            if depth > 3:
+            if depth > 2:
                 raise ExprError("attribute chain too deep")
         if not isinstance(cur, ast.Name):
             raise ExprError("attribute access must start at agent / inputs / host")
@@ -146,9 +151,19 @@ def _resolve(node: ast.AST, context: dict[str, Any]) -> Any:
             elif isinstance(op, ast.NotEq):
                 ok = left != right
             elif isinstance(op, ast.In):
-                ok = (right is not None) and (left in right)
+                # `None in "string"` and `x in 5` raise TypeError at the
+                # Python level. Predicates must never blow up over a
+                # missing context key, so an untestable membership is
+                # simply False (and its negation True).
+                try:
+                    ok = (right is not None) and (left in right)
+                except TypeError:
+                    ok = False
             elif isinstance(op, ast.NotIn):
-                ok = (right is None) or (left not in right)
+                try:
+                    ok = (right is None) or (left not in right)
+                except TypeError:
+                    ok = True
             else:
                 raise ExprError(f"unsupported comparison {type(op).__name__}")
             if not ok:

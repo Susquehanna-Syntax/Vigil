@@ -1,5 +1,7 @@
 import base64
 import json
+from datetime import timedelta
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
@@ -11,8 +13,10 @@ from apps.accounts.models import UserProfile
 from apps.accounts.totp import generate_secret, generate_totp
 from apps.agent_dist.models import AgentBinary
 from apps.hosts.models import Host
-from apps.tasks.models import Task, TaskDefinition
+from apps.tasks.expression import ExprError, evaluate, parse, validate
+from apps.tasks.models import Task, TaskDefinition, TaskRun
 from apps.tasks.spec import SpecError, parse_and_validate
+from apps.tasks.tasks import expire_stale_tasks
 from vigil.signing import get_public_key_b64, sign_task
 
 UPDATE_AGENT_YAML = "name: Update agent\nrisk: standard\nactions:\n  - type: update_agent\n"
@@ -111,3 +115,162 @@ class UpdateAgentDeployTests(TestCase):
         )
         self.assertEqual(resp.status_code, 401)
         self.assertFalse(Task.objects.filter(host=self.host).exists())
+
+
+class ExpressionEvaluatorTests(TestCase):
+    """The ``when:`` predicate grammar — safety and evaluation."""
+
+    CTX = {"agent": {"os": "linux", "pkg_manager": "apt"}, "inputs": {}, "host": {}}
+
+    def test_basic_comparisons(self):
+        self.assertTrue(evaluate('agent.os == "linux"', self.CTX))
+        self.assertFalse(evaluate('agent.os == "windows"', self.CTX))
+        self.assertTrue(evaluate('agent.pkg_manager in ("apt", "dnf")', self.CTX))
+        self.assertTrue(
+            evaluate('agent.os == "linux" and agent.pkg_manager == "apt"', self.CTX)
+        )
+
+    def test_missing_key_is_none_not_error(self):
+        self.assertFalse(evaluate('inputs.nope == "x"', self.CTX))
+        self.assertTrue(evaluate("inputs.nope == None", self.CTX))
+
+    def test_membership_against_missing_is_typeerror_safe(self):
+        # `None in "linux"` / `x in 5` would raise TypeError in Python;
+        # the evaluator must resolve them to False / True, never crash.
+        self.assertFalse(evaluate("inputs.missing in agent.os", self.CTX))
+        self.assertTrue(evaluate("inputs.missing not in agent.os", self.CTX))
+
+    def test_rejects_function_calls(self):
+        with self.assertRaises(ExprError):
+            parse('len(agent.os) == 5')
+
+    def test_rejects_dunder_attribute(self):
+        with self.assertRaises(ExprError):
+            parse('agent.__class__ == "x"')
+
+    def test_rejects_deep_attribute_chain(self):
+        with self.assertRaises(ExprError):
+            parse("agent.a.b.c == 1")
+
+    def test_rejects_unknown_root(self):
+        with self.assertRaises(ExprError):
+            parse('server.secret == "x"')
+
+    def test_validate_is_syntax_only(self):
+        # validate() doesn't need a context — it only checks the grammar.
+        validate('agent.os == "linux"')
+        with self.assertRaises(ExprError):
+            validate("agent.os ==")
+
+
+class ExpressionCopySyncTests(TestCase):
+    """The server and agent ship byte-identical copies of expression.py.
+
+    They are imported by both sides and the security of ``when:`` rests
+    on them staying in lockstep — a drift is a real bug, so assert it.
+    """
+
+    def test_server_and_agent_copies_identical(self):
+        server_copy = Path(__file__).resolve().parent / "expression.py"
+        agent_copy = (
+            Path(__file__).resolve().parents[3]
+            / "agent" / "vigil_agent" / "expression.py"
+        )
+        if not agent_copy.exists():
+            self.skipTest("agent copy not present in this checkout")
+        self.assertEqual(
+            server_copy.read_bytes(),
+            agent_copy.read_bytes(),
+            "server and agent expression.py have drifted — re-sync them",
+        )
+
+
+class ExpireStaleTasksTests(TestCase):
+    def setUp(self):
+        self.host = Host.objects.create(
+            hostname="h", agent_token="t" * 32,
+            status=Host.Status.ONLINE, mode=Host.Mode.MANAGED,
+        )
+
+    def _task(self, *, dispatched_ago_seconds, ttl=300, **kw):
+        t = Task.objects.create(
+            host=self.host, action="_script", params={"steps": []},
+            nonce=("n" * 31) + str(Task.objects.count() % 10),
+            ttl_seconds=ttl, state=Task.State.DISPATCHED,
+            **kw,
+        )
+        Task.objects.filter(pk=t.pk).update(
+            dispatched_at=now() - timedelta(seconds=dispatched_ago_seconds)
+        )
+        return t
+
+    @override_settings(VIGIL_TASK_EXPIRY_GRACE_SECONDS=3600)
+    def test_overdue_dispatched_task_expires(self):
+        task = self._task(dispatched_ago_seconds=300 + 3600 + 60)
+        expire_stale_tasks()
+        task.refresh_from_db()
+        self.assertEqual(task.state, Task.State.EXPIRED)
+        self.assertIsNotNone(task.completed_at)
+
+    @override_settings(VIGIL_TASK_EXPIRY_GRACE_SECONDS=3600)
+    def test_recent_dispatched_task_survives(self):
+        task = self._task(dispatched_ago_seconds=60)
+        expire_stale_tasks()
+        task.refresh_from_db()
+        self.assertEqual(task.state, Task.State.DISPATCHED)
+
+    @override_settings(VIGIL_TASK_EXPIRY_GRACE_SECONDS=3600)
+    def test_expiry_finalizes_run(self):
+        run = TaskRun.objects.create(
+            name_snapshot="r", host_count=1, step_count=1,
+            state=TaskRun.State.RUNNING,
+        )
+        self._task(dispatched_ago_seconds=300 + 3600 + 60, run=run, step_order=0)
+        expire_stale_tasks()
+        run.refresh_from_db()
+        self.assertEqual(run.state, TaskRun.State.FAILED)
+
+
+class TaskHistorySoftDeleteTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = get_user_model().objects.create_user("op", password="pw")
+        self.client.force_authenticate(self.user)
+        self.host = Host.objects.create(
+            hostname="h", agent_token="t" * 32,
+            status=Host.Status.ONLINE, mode=Host.Mode.MANAGED,
+        )
+
+    def _task(self, state):
+        return Task.objects.create(
+            host=self.host, action="_script", params={"steps": []},
+            nonce=("n" * 31) + str(Task.objects.count() % 10),
+            state=state,
+        )
+
+    def test_delete_hides_but_preserves_row(self):
+        task = self._task(Task.State.COMPLETED)
+        resp = self.client.delete(f"/api/v1/tasks/{task.id}/")
+        self.assertEqual(resp.status_code, 204)
+        task.refresh_from_db()  # row still exists — audit trail is immutable
+        self.assertTrue(task.hidden)
+
+    def test_hidden_task_absent_from_history(self):
+        task = self._task(Task.State.COMPLETED)
+        self.client.delete(f"/api/v1/tasks/{task.id}/")
+        resp = self.client.get("/api/v1/tasks/history/")
+        ids = [t["id"] for t in resp.data["results"]]
+        self.assertNotIn(str(task.id), ids)
+
+    def test_in_flight_task_cannot_be_deleted(self):
+        task = self._task(Task.State.DISPATCHED)
+        resp = self.client.delete(f"/api/v1/tasks/{task.id}/")
+        self.assertEqual(resp.status_code, 409)
+        task.refresh_from_db()
+        self.assertFalse(task.hidden)
+
+    def test_history_does_not_expose_nonce(self):
+        self._task(Task.State.COMPLETED)
+        resp = self.client.get("/api/v1/tasks/history/")
+        self.assertTrue(resp.data["results"])
+        self.assertNotIn("nonce", resp.data["results"][0])

@@ -38,6 +38,17 @@ _WEIGHT_HIGH = 3
 _WEIGHT_MEDIUM = 1
 _WEIGHT_LOW = 0.2
 
+# Numeric severity order. The TextChoices values sort alphabetically
+# ("medium" > "critical"!) so anything that needs worst-first ordering
+# must rank through this map, never through the raw strings.
+SEVERITY_RANK = {
+    "critical": 4,
+    "high": 3,
+    "medium": 2,
+    "low": 1,
+    "info": 0,
+}
+
 
 def compute_score(critical: int, high: int, medium: int, low: int) -> int:
     """Return the integer score for the given severity counts.
@@ -70,19 +81,27 @@ def recompute_summary(host: "Host") -> "VulnSummary":
     from .models import VulnFinding, VulnSummary
 
     counts: dict[str, int] = defaultdict(int)
-    # Track which (cve_id) we've already counted so a host with the same
-    # CVE flagged by Nessus and Trivy doesn't get double-penalized.
-    seen_cves: set[str] = set()
+    # Dedup by CVE so a host with the same CVE flagged by Nessus and
+    # Trivy isn't double-penalized. When scanners disagree on severity,
+    # the worst one wins — tracked via SEVERITY_RANK so the result
+    # doesn't depend on row iteration order.
+    best_by_cve: dict[str, str] = {}
 
     for finding in VulnFinding.objects.filter(host=host, state=VulnFinding.State.OPEN):
         if finding.cve_id:
-            if finding.cve_id in seen_cves:
-                continue
-            seen_cves.add(finding.cve_id)
+            prev = best_by_cve.get(finding.cve_id)
+            if prev is None or (
+                SEVERITY_RANK.get(finding.severity, 0) > SEVERITY_RANK.get(prev, 0)
+            ):
+                best_by_cve[finding.cve_id] = finding.severity
+            continue
         # No CVE → identity falls back to (scanner, plugin). Each
         # (host, scanner, plugin) is already unique via the model
         # constraint, so no extra dedup needed for this branch.
         counts[finding.severity] += 1
+
+    for severity in best_by_cve.values():
+        counts[severity] += 1
 
     summary, _ = VulnSummary.objects.get_or_create(host=host)
     summary.critical = counts.get(VulnFinding.Severity.CRITICAL, 0)

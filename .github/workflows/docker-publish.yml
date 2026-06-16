@@ -46,6 +46,11 @@ jobs:
     env:
       DJANGO_SECRET_KEY: ci-test-secret-key
       DJANGO_DEBUG: "true"
+      # Django's test runner forces DEBUG=False, so signing.py's
+      # ephemeral-key fallback never fires under `manage.py test`. Tests
+      # that sign tasks need a real seed — provide a throwaway one here
+      # (32 random bytes, base64). CI-only value, never a deployed key.
+      VIGIL_SIGNING_KEY_SEED: "rVVG5N5frRQYzPFzKradn0wIPW6+elhaDwPLUafvCNA="
       POSTGRES_DB: vigil_test
       POSTGRES_USER: vigil
       POSTGRES_PASSWORD: vigil

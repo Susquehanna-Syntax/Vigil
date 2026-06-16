@@ -193,7 +193,19 @@ CELERY_BEAT_SCHEDULE = {
         "task": "alerts.check_outdated_agents",
         "schedule": 3600.0,  # every hour
     },
+    "expire-stale-tasks": {
+        "task": "tasks.expire_stale_tasks",
+        "schedule": 600.0,  # every 10 minutes — sweep wedged DISPATCHED tasks
+    },
 }
+
+# How long past its own TTL a dispatched task may stay silent before the
+# expiry sweep marks it EXPIRED. Generous on purpose: TTL bounds when an
+# agent may START a task, not how long it may run (a filesystem-wide
+# Trivy scan legitimately takes minutes).
+VIGIL_TASK_EXPIRY_GRACE_SECONDS = int(
+    os.environ.get("VIGIL_TASK_EXPIRY_GRACE_SECONDS", "3600")
+)
 
 # ---------------------------------------------------------------------------
 # Metric retention
@@ -205,12 +217,12 @@ VIGIL_METRIC_RETENTION_DAYS = int(os.environ.get("VIGIL_METRIC_RETENTION_DAYS", 
 # In the Docker image this is pre-populated by the multi-stage build.
 # ---------------------------------------------------------------------------
 VIGIL_AGENT_DIST_DIR = Path(os.environ.get("VIGIL_AGENT_DIST_DIR", str(BASE_DIR / "agent_dist")))
-VIGIL_AGENT_VERSION = os.environ.get("VIGIL_AGENT_VERSION", "2026.1.0")
+VIGIL_AGENT_VERSION = os.environ.get("VIGIL_AGENT_VERSION", "2026.2.3")
 
 # Server build version — surfaced on the About page and the /api/v1/about/
-# endpoint. Bump this on every release; the Git tag (v2026.2.2, etc.) and
+# endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
 # this constant should stay in lockstep.
-VIGIL_VERSION = "2026.2.2"
+VIGIL_VERSION = "2026.2.3"
 
 # ---------------------------------------------------------------------------
 # Display / locale

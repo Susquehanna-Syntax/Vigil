@@ -24,7 +24,7 @@ from apps.alerts.notifications import dispatch_alert_notification
 from apps.hosts.models import Host
 
 from ..models import VulnFinding, VulnScan, VulnSummary
-from ..scoring import recompute_summary
+from ..scoring import compute_score, recompute_summary
 from .base import Scanner
 
 logger = logging.getLogger(__name__)
@@ -221,10 +221,14 @@ class NessusScanner(Scanner):
                 if not host_ip:
                     continue
 
-                # Match to Vigil Host by IP first, then hostname substring
+                # Match to Vigil Host by IP first, then exact hostname —
+                # Nessus's "hostname" field carries either the IP or the
+                # DNS name it scanned. A substring match here would pair
+                # IP 10.0.0.1 with hostname web-10.0.0.10, so it must be
+                # exact.
                 vigil_host = Host.objects.filter(ip_address=host_ip).first()
                 if not vigil_host:
-                    vigil_host = Host.objects.filter(hostname__icontains=host_ip).first()
+                    vigil_host = Host.objects.filter(hostname__iexact=host_ip).first()
                 if not vigil_host:
                     continue
 
@@ -253,16 +257,29 @@ class NessusScanner(Scanner):
                     # counts + score; refresh local state for the alert
                     # path below.
                     summary.refresh_from_db()
+                    summary.last_scan_at = scan_time
+                    summary.scanner_scan_id = scan_id
+                    summary.save(update_fields=["last_scan_at", "scanner_scan_id", "synced_at"])
                 else:
+                    # Aggregate fallback — the per-host findings call
+                    # failed, so the scan's own counts are the best data
+                    # we have. Persist them (and a score derived from
+                    # them) in full; update_fields must include the
+                    # counts or this whole branch writes nothing.
                     summary.critical = h.get("critical", 0)
                     summary.high = h.get("high", 0)
                     summary.medium = h.get("medium", 0)
                     summary.low = h.get("low", 0)
                     summary.info = h.get("info", 0)
-
-                summary.last_scan_at = scan_time
-                summary.scanner_scan_id = scan_id
-                summary.save(update_fields=["last_scan_at", "scanner_scan_id", "synced_at"])
+                    summary.score = compute_score(
+                        summary.critical, summary.high, summary.medium, summary.low,
+                    )
+                    summary.last_scan_at = scan_time
+                    summary.scanner_scan_id = scan_id
+                    summary.save(update_fields=[
+                        "critical", "high", "medium", "low", "info", "score",
+                        "last_scan_at", "scanner_scan_id", "synced_at",
+                    ])
                 updated += 1
 
                 _handle_vuln_alert(vigil_host, summary, prev_critical, prev_high)
@@ -449,11 +466,13 @@ class NessusScanner(Scanner):
 
     def _poll_active_scans(self, base_url, headers, verify_ssl):
         """Update local state for Nessus VulnScans whose jobs are in flight."""
+        # external_scan_id is a non-null CharField — exclude the empty
+        # string, not NULL, or a row with no scanner id would be polled
+        # against the bare /scans/ list endpoint.
         active = VulnScan.objects.filter(
             state__in=[VulnScan.State.LAUNCHED, VulnScan.State.RUNNING],
-            external_scan_id__isnull=False,
             scanner=self.name,
-        )
+        ).exclude(external_scan_id="")
         for scan in active:
             try:
                 r = requests.get(

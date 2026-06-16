@@ -24,7 +24,9 @@ class TaskSerializer(serializers.ModelSerializer):
             "params",
             "risk_level",
             "state",
-            "nonce",
+            # nonce is deliberately NOT exposed — it's a one-time replay
+            # token that only the target agent should ever see (it gets
+            # it inside the signed check-in payload, not from this API).
             "ttl_seconds",
             "result_output",
             "created_at",

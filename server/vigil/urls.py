@@ -9,7 +9,7 @@ from django.shortcuts import render
 from django.urls import include, path
 from django.utils.timezone import now
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.views import login_view, logout_view, setup_view
@@ -30,15 +30,15 @@ def health_check(request):
 
 
 @api_view(["GET"])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def about(request):
     """Server build + scanner status, surfaced by the About page.
 
-    Anyone hitting the dashboard URL can read this — it's the kind of
-    thing operators paste into support threads ("here's what I'm
-    running"), so we keep it AllowAny rather than session-gated.
-    Nothing here is sensitive: versions, which scanners are configured,
-    and which database backend is in use.
+    Session-gated: exact server/Python versions, the database vendor,
+    and which scanners are configured are exactly what an attacker
+    fingerprints a deployment with. Operators pasting build info into a
+    support thread can log in first — the About page already lives
+    behind the dashboard.
     """
     import sys
 

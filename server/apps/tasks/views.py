@@ -637,7 +637,11 @@ def task_history(request):
         page = 1
     page_size = 50
 
-    qs = Task.objects.select_related("host", "requested_by").order_by("-created_at")
+    qs = (
+        Task.objects.filter(hidden=False)
+        .select_related("host", "requested_by")
+        .order_by("-created_at")
+    )
     total = qs.count()
     pages = max(1, (total + page_size - 1) // page_size)
     if page > pages:
@@ -668,13 +672,15 @@ def run_detail(request, run_id):
 @api_view(["GET", "DELETE"])
 @permission_classes([IsAuthenticated])
 def task_detail(request, task_id):
-    """Single-task fetch + delete from the history view.
+    """Single-task fetch + remove-from-history.
 
-    DELETE is gated on terminal state — in-flight tasks (``BLOCKED``,
-    ``PENDING``, ``DISPATCHED``, ``EXECUTING``) cannot be deleted from
-    the UI; cancel them first. Deleting the last remaining task in a
-    multi-step run also deletes the empty ``TaskRun`` so the run table
-    doesn't accumulate orphans.
+    DELETE is a soft delete: the row is flagged ``hidden`` and drops out
+    of the history feed, but it is never destroyed — the audit trail
+    (who ran what, where, with what result) is immutable by design.
+
+    Hiding is gated on terminal state — in-flight tasks (``BLOCKED``,
+    ``PENDING``, ``DISPATCHED``, ``EXECUTING``) are still moving and
+    stay visible until they finish or the expiry sweep collects them.
     """
     task = get_object_or_404(
         Task.objects.select_related("host", "run"),
@@ -684,10 +690,6 @@ def task_detail(request, task_id):
     if request.method == "GET":
         return Response(TaskSerializer(task).data)
 
-    # DELETE — only allowed once the task has stopped moving. BLOCKED /
-    # PENDING / DISPATCHED / EXECUTING are still in flight and could
-    # still produce a result POST; deleting them would orphan the
-    # result. COMPLETED / FAILED / REJECTED / EXPIRED are all fair game.
     in_flight = {
         Task.State.BLOCKED, Task.State.PENDING,
         Task.State.DISPATCHED, Task.State.EXECUTING,
@@ -701,12 +703,9 @@ def task_detail(request, task_id):
             status=409,
         )
 
-    run = task.run
-    task.delete()
-
-    # Garbage-collect a now-empty run so history stays tidy.
-    if run and not run.tasks.exists():
-        run.delete()
+    if not task.hidden:
+        task.hidden = True
+        task.save(update_fields=["hidden"])
 
     return Response(status=204)
 

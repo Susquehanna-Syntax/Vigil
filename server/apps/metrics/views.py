@@ -1,3 +1,4 @@
+from django.utils.dateparse import parse_datetime
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -20,13 +21,23 @@ def metric_history(request, host_id, category, metric_name):
         host=host, category=category, metric=metric_name
     ).order_by("-time")
 
-    from_ts = request.query_params.get("from")
-    to_ts = request.query_params.get("to")
-    limit = min(int(request.query_params.get("limit", 200)), 1000)
+    # Query params are untrusted — a malformed limit or timestamp must
+    # come back as a 400, not an unhandled 500.
+    try:
+        limit = int(request.query_params.get("limit", 200))
+    except (TypeError, ValueError):
+        return Response({"error": "limit must be an integer"}, status=400)
+    limit = max(1, min(limit, 1000))
 
-    if from_ts:
-        qs = qs.filter(time__gte=from_ts)
-    if to_ts:
-        qs = qs.filter(time__lte=to_ts)
+    for param, lookup in (("from", "time__gte"), ("to", "time__lte")):
+        raw = request.query_params.get(param)
+        if not raw:
+            continue
+        ts = parse_datetime(raw)
+        if ts is None:
+            return Response(
+                {"error": f"{param} must be an ISO-8601 datetime"}, status=400
+            )
+        qs = qs.filter(**{lookup: ts})
 
     return Response(MetricPointSerializer(qs[:limit], many=True).data)

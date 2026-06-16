@@ -1,5 +1,4 @@
-from django.conf import settings
-from django.db.models import Avg
+from django.db.models import Avg, Case, IntegerField, Value, When
 from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -8,6 +7,7 @@ from rest_framework.response import Response
 from apps.hosts.models import Host
 
 from .models import VulnFinding, VulnScan, VulnScoreHistory, VulnSummary
+from .scoring import SEVERITY_RANK
 from .serializers import (
     VulnFindingSerializer,
     VulnScanSerializer,
@@ -72,6 +72,18 @@ def finding_list(request):
         qs = qs.filter(severity=severity)
     state = request.query_params.get("state", VulnFinding.State.OPEN)
     qs = qs.filter(state=state)
+
+    # Worst-first. severity is a string column ("medium" sorts above
+    # "critical" alphabetically), so rank it numerically — this also
+    # guarantees criticals survive the 500-row cap.
+    severity_rank = Case(
+        *[When(severity=s, then=Value(r)) for s, r in SEVERITY_RANK.items()],
+        default=Value(0),
+        output_field=IntegerField(),
+    )
+    qs = qs.annotate(_severity_rank=severity_rank).order_by(
+        "-_severity_rank", "-last_seen"
+    )
     return Response(VulnFindingSerializer(qs[:500], many=True).data)
 
 
@@ -82,7 +94,11 @@ def score_history(request, host_id):
 
     Defaults to the last 30 days. Powers the sparkline on host detail.
     """
-    days = int(request.query_params.get("days", 30))
+    try:
+        days = int(request.query_params.get("days", 30))
+    except (TypeError, ValueError):
+        days = 30
+    days = max(1, min(days, 365))
     qs = VulnScoreHistory.objects.filter(host_id=host_id).order_by("-date")[:days]
     return Response(VulnScoreHistorySerializer(qs, many=True).data)
 
@@ -103,36 +119,55 @@ def scan_list(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def scan_create(request, host_id):
-    """Queue a Nessus scan for ``host_id``.
+    """Queue a network vulnerability scan for ``host_id``.
 
     2FA-gated (matches task deploy). Returns 409 if there's already an
     active scan for this host — one in-flight scan per host. The actual
     launch happens in the next ``sync_vulns`` cycle (or inline if Celery
     is eager).
 
-    v1 only queues Nessus scans from this endpoint; multi-scanner
-    selection lands with PR #3 (Trivy) and PR #4 (Greenbone). The
-    endpoint is therefore still gated on Nessus configuration.
+    Optional body field ``scanner`` selects the engine (``nessus`` or
+    ``greenbone``). When omitted, the first configured engine wins, in
+    that order — so Nessus-only and Greenbone-only installs both work
+    without the UI having to know which is set up.
     """
     from apps.accounts.totp import require_totp_confirmation
 
+    from .scanners import SCANNER_REGISTRY
+
     host = get_object_or_404(Host, pk=host_id)
 
-    # Nessus must be configured before we accept scan requests.
-    if not all([
-        getattr(settings, "NESSUS_URL", ""),
-        getattr(settings, "NESSUS_ACCESS_KEY", ""),
-        getattr(settings, "NESSUS_SECRET_KEY", ""),
-    ]):
-        return Response(
-            {"error": "Nessus is not configured on this server"}, status=503
+    network_engines = (VulnScan.Scanner.NESSUS, VulnScan.Scanner.GREENBONE)
+    requested = (request.data.get("scanner") or "").strip().lower()
+    if requested:
+        if requested not in network_engines:
+            return Response(
+                {"error": f"scanner must be one of: {', '.join(network_engines)}"},
+                status=400,
+            )
+        if not SCANNER_REGISTRY[requested]().configured():
+            return Response(
+                {"error": f"{requested} is not configured on this server"},
+                status=503,
+            )
+        engine = requested
+    else:
+        engine = next(
+            (e for e in network_engines if SCANNER_REGISTRY[e]().configured()),
+            None,
         )
+        if engine is None:
+            return Response(
+                {"error": "No network scanner (Nessus or Greenbone) is configured"},
+                status=503,
+            )
 
     error = require_totp_confirmation(request.user, request.data)
     if error:
         return Response({"error": error}, status=401)
 
-    # One active scan per host — block duplicates.
+    # One active scan per host — block duplicates regardless of engine;
+    # two scanners hammering the same box at once helps nobody.
     active = VulnScan.objects.filter(
         host=host,
         state__in=[
@@ -149,7 +184,7 @@ def scan_create(request, host_id):
 
     scan = VulnScan.objects.create(
         host=host,
-        scanner=VulnScan.Scanner.NESSUS,
+        scanner=engine,
         target=host.ip_address or "",
         state=VulnScan.State.REQUESTED,
         requested_by=request.user,

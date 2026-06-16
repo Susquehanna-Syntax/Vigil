@@ -41,6 +41,10 @@ _ALL_ACTIONS = {
     # Vulnerability scanning
     "request_nessus_scan", "request_network_scan",
     "run_trivy_scan", "trivy_db_update",
+    # Agent lifecycle — allowlisting this lets a managed-mode agent
+    # accept signed self-update tasks (the binary digest rides inside
+    # the Ed25519-signed payload).
+    "update_agent",
 }
 
 DEFAULT_CONFIG_PATHS = [
@@ -111,7 +115,20 @@ def _warn_permissions(path: Path) -> None:
 
 
 def load_config(path: Path | None = None) -> AgentConfig:
-    """Load and validate agent configuration from YAML."""
+    """Load and validate agent configuration from YAML.
+
+    Resolution order: explicit ``-c`` path, then the ``VIGIL_CONFIG_PATH``
+    environment variable (what the Dockerfile and config.example.yml
+    document), then DEFAULT_CONFIG_PATHS.
+    """
+    if path is None:
+        env_path = os.environ.get("VIGIL_CONFIG_PATH", "").strip()
+        if env_path:
+            path = Path(env_path)
+            if not path.exists():
+                raise FileNotFoundError(
+                    f"VIGIL_CONFIG_PATH points at {env_path}, which does not exist"
+                )
     if path is None:
         for candidate in DEFAULT_CONFIG_PATHS:
             if candidate.exists():
@@ -119,7 +136,8 @@ def load_config(path: Path | None = None) -> AgentConfig:
                 break
     if path is None or not path.exists():
         raise FileNotFoundError(
-            f"No config file found. Tried: {[str(p) for p in DEFAULT_CONFIG_PATHS]}"
+            f"No config file found. Tried: VIGIL_CONFIG_PATH, "
+            f"{[str(p) for p in DEFAULT_CONFIG_PATHS]}"
         )
 
     _warn_permissions(path)

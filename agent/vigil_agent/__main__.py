@@ -104,8 +104,15 @@ def _process_tasks(tasks: list[dict], config, nonce_store: NonceStore, verify_ke
             # ── Multi-step script ───────────────────────────────────────
             # The full script was sent as a single signed payload.  The
             # TaskRuntime calls execute_action() per step, which checks
-            # the local allowlist each time.
-            _execute_script_task(task_id, params, config, task)
+            # the local allowlist each time.  Same safety net as the
+            # single-action path below — an unexpected exception must
+            # report `failed` rather than leave the task DISPATCHED on
+            # the server forever.
+            try:
+                _execute_script_task(task_id, params, config, task)
+            except Exception as exc:
+                logger.exception("Script task %s crashed", task_id)
+                _report_failed(config, task, f"Agent error: {exc}")
         else:
             # ── Single-action task (legacy / quick-action) ──────────────
             try:
@@ -139,7 +146,10 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
     context = _build_when_context(config, params)
 
     # Pre-evaluate every step's when:. Skipped steps don't reach
-    # TaskRuntime at all.
+    # TaskRuntime at all. An expression that cannot be evaluated at all
+    # (version drift between server and agent — the server validated
+    # syntax at save time) fails the WHOLE task before any step runs:
+    # executing half a script under drift is worse than executing none.
     plan: list[tuple[int, dict, bool, str]] = []
     for i, s in enumerate(raw_steps):
         when_expr = (s.get("when") or "").strip()
@@ -147,18 +157,19 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
         skip_reason = ""
         if when_expr:
             try:
-                from .expression import evaluate as _eval_when, ExprError
+                from .expression import evaluate as _eval_when
                 if not _eval_when(when_expr, context):
                     skip = True
                     skip_reason = when_expr
-            except ExprError as exc:
-                # Treat unparseable when: as fail-loud — the server
-                # already validated syntax, so reaching here means a
-                # version drift between server + agent. Better to
-                # surface than silently run something untested.
-                logger.warning("when: evaluation failed: %s", exc)
-                skip = True
-                skip_reason = f"when expr error: {exc}"
+            except Exception as exc:
+                name = s.get("id", s.get("name", f"step{i+1}"))
+                msg = (
+                    f"[ERROR] {name}: when {when_expr!r} could not be "
+                    f"evaluated ({exc}) — task aborted before execution"
+                )
+                logger.warning("Script task %s: %s", task_id, msg)
+                _report_failed(config, task, msg)
+                return
         plan.append((i, s, skip, skip_reason))
 
     runnable_steps = [

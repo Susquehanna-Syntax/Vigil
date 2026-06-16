@@ -3,9 +3,10 @@ import zoneinfo
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import now
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
 
 from apps.metrics.models import MetricPoint
 from apps.tasks.models import Task
@@ -67,6 +68,32 @@ def _sync_host_auto_tags(host, inv: dict) -> None:
         host.save(update_fields=["tags"])
 
 
+# Namespace for tags the agent advertises about itself (agent.yml).
+# Deploys can target by tag, so an agent must never be able to mint an
+# operator-looking tag like "prod" and opt itself into tag-targeted
+# deploys (whose signed params may carry secrets). Everything an agent
+# self-reports lands under agent:* where the deploy picker shows its
+# provenance.
+_AGENT_TAG_PREFIX = "agent:"
+
+
+def _namespace_agent_tags(raw):
+    """Prefix every agent-advertised tag with ``agent:`` (idempotent)."""
+    if not isinstance(raw, list):
+        return raw
+    out: list[str] = []
+    for entry in raw:
+        if not isinstance(entry, str):
+            continue
+        t = entry.strip().lower()
+        if not t:
+            continue
+        if not t.startswith(_AGENT_TAG_PREFIX):
+            t = _AGENT_TAG_PREFIX + t
+        out.append(t)
+    return out
+
+
 def _normalize_tags(raw, *, existing=None):
     """Sanitize incoming tag lists from agents.
 
@@ -92,8 +119,22 @@ def _normalize_tags(raw, *, existing=None):
     return sorted(out)
 
 
+class _RegisterRateThrottle(AnonRateThrottle):
+    """Per-IP cap on unauthenticated enrollment attempts.
+
+    register() is AllowAny by design (agents have no credentials yet),
+    which makes it a free table-bloat vector — anyone who can reach the
+    server can mint pending Host rows. 60/hour per source IP is far
+    above any legitimate enrollment burst (registration is idempotent;
+    an agent registers once per install) while capping abuse.
+    """
+
+    rate = "60/hour"
+
+
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([_RegisterRateThrottle])
 def register(request):
     """Register a new agent. Creates a pending Host awaiting admin approval."""
     token = request.data.get("agent_token", "").strip()
@@ -118,7 +159,7 @@ def register(request):
             status=status.HTTP_200_OK,
         )
 
-    seed_tags = _normalize_tags(request.data.get("tags"))
+    seed_tags = _normalize_tags(_namespace_agent_tags(request.data.get("tags")))
 
     host = Host.objects.create(
         hostname=hostname,
@@ -170,9 +211,13 @@ def checkin(request):
     if agent_ver := data.get("vigil_version"):
         host.agent_version = str(agent_ver)[:50]
 
-    # Merge tags advertised by the agent.yml — server-side tags always win.
+    # Merge tags advertised by the agent.yml — namespaced under agent:*
+    # so a rogue agent can't impersonate operator-set tags used for
+    # deploy targeting. Server-side tags always win.
     if "tags" in data:
-        host.tags = _normalize_tags(data.get("tags"), existing=host.tags)
+        host.tags = _normalize_tags(
+            _namespace_agent_tags(data.get("tags")), existing=host.tags
+        )
 
     # A previously offline host that successfully checks in is back online
     if host.status == Host.Status.OFFLINE:

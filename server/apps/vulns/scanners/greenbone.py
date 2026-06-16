@@ -32,6 +32,7 @@ into "scan still running" rather than crashing the periodic sync.
 from __future__ import annotations
 
 import logging
+import re
 import socket
 import ssl
 import xml.etree.ElementTree as ET
@@ -82,15 +83,19 @@ def _cvss_to_severity(cvss: float) -> str:
     return VulnFinding.Severity.INFO
 
 
+# Hard ceiling on a single GMP response. get_results is paginated (see
+# _ingest_task_results) so anything past this is a runaway, not data.
+_MAX_RESPONSE_BYTES = 32 * 1024 * 1024
+
+
 class _GmpClient:
     """Tiny GMP-over-TLS client used by :class:`GreenboneScanner`.
 
     One client = one TLS connection = one authenticated session. Each
     ``send()`` writes an XML element and reads until the response root
-    element closes; GMP keeps responses small enough that a 64 KB read
-    buffer with a simple "root element closed" termination check works
-    in practice. Big result sets are paginated via filter params so we
-    never need to stream a multi-MB response in one shot.
+    element closes. Big result sets are paginated via ``first``/``rows``
+    filter params so we never need to stream a multi-MB response in one
+    shot, and a hard byte ceiling guards against runaways.
     """
 
     def __init__(self, host: str, port: int, verify_ssl: bool):
@@ -117,14 +122,39 @@ class _GmpClient:
         """Write one GMP command, read+parse the matching response."""
         self._sock.sendall(xml_str.encode("utf-8"))
         buf = bytearray()
-        # Read until we have a complete, parseable root element. GMP
-        # responses are self-terminating XML; trying to parse on every
-        # chunk lets us stop the moment the document is complete.
+        root_close: bytes | None = None
+        # Read until the root element closes. Parsing the whole buffer
+        # on every chunk is O(n²), so we first do a cheap tail check:
+        # only attempt the parse when the buffer plausibly ends with
+        # `</root>` (or `/>` for an empty-element response).
         while True:
             chunk = self._sock.recv(65536)
             if not chunk:
                 break
             buf.extend(chunk)
+            if len(buf) > _MAX_RESPONSE_BYTES:
+                raise RuntimeError(
+                    f"Greenbone response exceeded {_MAX_RESPONSE_BYTES} bytes"
+                )
+            if root_close is None:
+                # A DTD would have to appear before the root element.
+                # GMP never sends one, and rejecting it outright closes
+                # the XXE / entity-expansion class of XML attacks
+                # without pulling in defusedxml.
+                if b"<!DOCTYPE" in bytes(buf[:1024]):
+                    raise RuntimeError(
+                        "Greenbone response contains a DTD — refusing to parse"
+                    )
+                m = re.match(rb"\s*<([A-Za-z_][\w.-]*)", bytes(buf[:256]))
+                if m:
+                    root_close = b"</" + m.group(1) + b">"
+            tail = bytes(buf[-4096:]).rstrip()
+            if (
+                root_close is not None
+                and not tail.endswith(root_close)
+                and not tail.endswith(b"/>")
+            ):
+                continue
             try:
                 return ET.fromstring(bytes(buf))
             except ET.ParseError:
@@ -212,8 +242,12 @@ class GreenboneScanner(Scanner):
                 scan.save(update_fields=["state", "error", "finished_at"])
                 continue
             try:
-                target_id = self._create_target(client, scan.host.hostname, target)
-                task_id = self._create_task(client, scan.host.hostname, target_id)
+                # Names carry the VulnScan UUID — GVM requires unique
+                # target names, so a bare "Vigil: <hostname>" would fail
+                # with "Target exists already" on every re-scan.
+                label = f"{scan.host.hostname} [{scan.id}]"
+                target_id = self._create_target(client, label, target)
+                task_id = self._create_task(client, label, target_id)
                 self._start_task(client, task_id)
 
                 scan.state = VulnScan.State.LAUNCHED
@@ -273,22 +307,29 @@ class GreenboneScanner(Scanner):
         return polled
 
     def _ingest_completed(self, client: _GmpClient) -> int:
-        """Walk COMPLETED Greenbone scans whose results haven't been ingested."""
-        # We treat "results ingested" as "scan has a non-null finished_at
-        # AND a VulnFinding exists for that host+scanner+last_seen >=
-        # finished_at." For v1 just re-ingest every COMPLETED scan in the
-        # current sync cycle whose findings might have changed — Greenbone
-        # tasks aren't re-runnable cheaply, so duplication is bounded.
+        """Ingest COMPLETED Greenbone scans exactly once.
+
+        ``ingested_at`` gates the work: each completed scan is pulled a
+        single time, oldest first, so when a host has several completed
+        scans the newest one is ingested last and its result set is the
+        one that decides which findings are OPEN vs FIXED.
+        """
         completed = list(
             VulnScan.objects.filter(
                 state=VulnScan.State.COMPLETED,
                 scanner=self.name,
-            ).exclude(external_scan_id="").select_related("host")[:25]
+                ingested_at__isnull=True,
+            )
+            .exclude(external_scan_id="")
+            .select_related("host")
+            .order_by("finished_at")[:25]
         )
         synced = 0
         for scan in completed:
             try:
                 self._ingest_task_results(client, scan)
+                scan.ingested_at = now()
+                scan.save(update_fields=["ingested_at"])
                 synced += 1
             except Exception as exc:
                 logger.warning(
@@ -299,11 +340,11 @@ class GreenboneScanner(Scanner):
 
     # ----- GMP request helpers --------------------------------------------
 
-    def _create_target(self, client: _GmpClient, hostname: str, ip: str) -> str:
+    def _create_target(self, client: _GmpClient, label: str, ip: str) -> str:
         # Hosts list = single IP for now. Greenbone accepts comma-separated.
         resp = client.send(
             f'<create_target>'
-            f'<name>Vigil: {_xml_escape(hostname)}</name>'
+            f'<name>Vigil: {_xml_escape(label)}</name>'
             f'<hosts>{_xml_escape(ip)}</hosts>'
             f'</create_target>'
         )
@@ -313,10 +354,10 @@ class GreenboneScanner(Scanner):
             )
         return resp.get("id") or ""
 
-    def _create_task(self, client: _GmpClient, hostname: str, target_id: str) -> str:
+    def _create_task(self, client: _GmpClient, label: str, target_id: str) -> str:
         resp = client.send(
             f'<create_task>'
-            f'<name>Vigil: {_xml_escape(hostname)}</name>'
+            f'<name>Vigil: {_xml_escape(label)}</name>'
             f'<config id="{_FULL_AND_FAST_CONFIG_UUID}"/>'
             f'<target id="{_xml_escape(target_id)}"/>'
             f'<scanner id="{_OPENVAS_DEFAULT_SCANNER_UUID}"/>'
@@ -335,50 +376,63 @@ class GreenboneScanner(Scanner):
                 f"start_task: {resp.get('status')} {resp.get('status_text')}"
             )
 
+    # Page size for get_results. GMP supports first/rows pagination in
+    # the filter string; paging keeps individual responses small instead
+    # of streaming one giant rows=-1 document.
+    _RESULTS_PAGE_SIZE = 500
+
     def _ingest_task_results(self, client: _GmpClient, scan: VulnScan) -> None:
         """Pull results for one completed Greenbone task, write findings."""
-        resp = client.send(
-            f'<get_results filter="task_id={_xml_escape(scan.external_scan_id)} '
-            f'rows=-1 levels=hmlg apply_overrides=1"/>'
-        )
-
         seen_keys: set[str] = set()
         host = scan.host
 
-        for result in resp.findall(".//result"):
-            nvt_el = result.find("nvt")
-            if nvt_el is None:
-                continue
-            oid = nvt_el.get("oid") or ""
-            if not oid:
-                continue
-            name = (nvt_el.findtext("name") or "")[:255]
-
-            cve_text = (nvt_el.findtext("cve") or "").strip()
-            # GMP returns CVE as comma-separated or "NOCVE". Take first.
-            cve_id = ""
-            if cve_text and cve_text != "NOCVE":
-                cve_id = cve_text.split(",")[0].strip()[:32]
-
-            try:
-                cvss = float((result.findtext("severity") or "0").strip())
-            except ValueError:
-                cvss = 0.0
-            severity = _cvss_to_severity(cvss)
-
-            VulnFinding.objects.update_or_create(
-                host=host,
-                scanner=VulnScan.Scanner.GREENBONE,
-                plugin_id_or_oid=oid,
-                defaults={
-                    "severity": severity,
-                    "cve_id": cve_id,
-                    "title": name,
-                    "state": VulnFinding.State.OPEN,
-                    "resolved_at": None,
-                },
+        first = 1
+        while True:
+            resp = client.send(
+                f'<get_results filter="task_id={_xml_escape(scan.external_scan_id)} '
+                f'first={first} rows={self._RESULTS_PAGE_SIZE} '
+                f'levels=hmlg apply_overrides=1"/>'
             )
-            seen_keys.add(oid)
+            results = resp.findall(".//result")
+
+            for result in results:
+                nvt_el = result.find("nvt")
+                if nvt_el is None:
+                    continue
+                oid = nvt_el.get("oid") or ""
+                if not oid:
+                    continue
+                name = (nvt_el.findtext("name") or "")[:255]
+
+                cve_text = (nvt_el.findtext("cve") or "").strip()
+                # GMP returns CVE as comma-separated or "NOCVE". Take first.
+                cve_id = ""
+                if cve_text and cve_text != "NOCVE":
+                    cve_id = cve_text.split(",")[0].strip()[:32]
+
+                try:
+                    cvss = float((result.findtext("severity") or "0").strip())
+                except ValueError:
+                    cvss = 0.0
+                severity = _cvss_to_severity(cvss)
+
+                VulnFinding.objects.update_or_create(
+                    host=host,
+                    scanner=VulnScan.Scanner.GREENBONE,
+                    plugin_id_or_oid=oid,
+                    defaults={
+                        "severity": severity,
+                        "cve_id": cve_id,
+                        "title": name,
+                        "state": VulnFinding.State.OPEN,
+                        "resolved_at": None,
+                    },
+                )
+                seen_keys.add(oid)
+
+            if len(results) < self._RESULTS_PAGE_SIZE:
+                break
+            first += self._RESULTS_PAGE_SIZE
 
         stale = VulnFinding.objects.filter(
             host=host,
@@ -394,7 +448,8 @@ class GreenboneScanner(Scanner):
 def _parse_gmp_url(url: str) -> tuple[str, int]:
     """Parse ``host:port`` (or just ``host``) into a (host, port) tuple.
 
-    Default port is 9390 (Greenbone CE GMP listener).
+    Default port is 9390 (Greenbone CE GMP listener). IPv6 literals use
+    the bracketed form: ``[::1]:9390`` or just ``[::1]``.
     """
     url = (url or "").strip()
     if not url:
@@ -403,6 +458,17 @@ def _parse_gmp_url(url: str) -> tuple[str, int]:
     # type "tls://gvm:9390" or "gvm:9390" or "gvm". Strip the scheme.
     if "://" in url:
         url = url.split("://", 1)[1]
+    if url.startswith("["):
+        host, sep, rest = url[1:].partition("]")
+        if not sep:
+            raise ValueError("unclosed '[' in IPv6 address")
+        if rest.startswith(":"):
+            return host, int(rest[1:])
+        return host, 9390
+    if url.count(":") > 1:
+        # Bare IPv6 literal with no port — every colon is part of the
+        # address.
+        return url, 9390
     if ":" in url:
         host, port_s = url.rsplit(":", 1)
         return host, int(port_s)

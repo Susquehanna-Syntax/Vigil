@@ -184,7 +184,8 @@ function _buildVulnScanRow(s) {
 
   const title = document.createElement('div');
   title.className = 'task-action-name';
-  title.textContent = 'Nessus scan · ' + (s.host_hostname || '');
+  const engineLabel = { nessus: 'Nessus', greenbone: 'Greenbone', trivy: 'Trivy' }[s.scanner] || 'Network';
+  title.textContent = engineLabel + ' scan · ' + (s.host_hostname || '');
   content.appendChild(title);
 
   const detail = document.createElement('div');
@@ -526,8 +527,10 @@ function updateHostCardVulnBadges(summaries) {
       badge.title = `${s.high} high vulnerabilities`;
     }
     if (badge) {
-      const footer = card.querySelector('.host-footer');
-      if (footer) footer.prepend(badge);
+      // Sits in the name row beside the mode badge (the card has no
+      // footer element — a .host-footer selector here matches nothing).
+      const row = card.querySelector('.host-card-id-row');
+      if (row) row.appendChild(badge);
     }
   });
 }

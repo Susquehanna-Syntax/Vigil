@@ -87,6 +87,11 @@ class VulnScan(models.Model):
     requested_at = models.DateTimeField(auto_now_add=True)
     launched_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
+    # When this scan's results were pulled into VulnFinding rows. The
+    # sync only ingests COMPLETED scans whose ingested_at is unset, so
+    # each scan is processed exactly once — re-ingesting an old scan
+    # after a newer one would wrongly mark the newer findings FIXED.
+    ingested_at = models.DateTimeField(null=True, blank=True)
     requested_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -187,7 +192,11 @@ class VulnFinding(models.Model):
             models.Index(fields=["scanner", "state"]),
             models.Index(fields=["cve_id"]),  # dedup-by-CVE recompute query
         ]
-        ordering = ["-severity", "-last_seen"]
+        # NOT ordered by severity: it's a TextChoices column, and string
+        # order puts "medium" above "critical". Worst-first ordering is
+        # done with a SEVERITY_RANK annotation where it's needed (see
+        # finding_list).
+        ordering = ["-last_seen"]
 
     def __str__(self):
         ref = self.cve_id or self.plugin_id_or_oid
