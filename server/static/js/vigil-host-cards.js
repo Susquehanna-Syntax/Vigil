@@ -41,8 +41,11 @@ function openHostDetail(card) {
 
   // Agent version — colour mint when it matches the server's expected
   // version, peach when it's behind (the same signal the "Agent
-  // outdated" alert uses). Lets you confirm a host's agent at a glance.
+  // outdated" alert uses). Paint instantly from the (possibly stale)
+  // card data, then refresh from the API so a just-updated agent shows
+  // its new version without a full page reload.
   _renderDetailAgentVersion(d.agentVersion || '');
+  _refreshDetailAgentVersion(d.id);
 
   // Force-update control: only meaningful when the host actually runs
   // tasks (monitor-mode agents never will).
@@ -122,6 +125,17 @@ async function _getExpectedAgentVersion() {
     _expectedAgentVersion = '';
   }
   return _expectedAgentVersion;
+}
+
+async function _refreshDetailAgentVersion(hostId) {
+  try {
+    const resp = await fetch(`/api/v1/hosts/${hostId}/`, { credentials: 'same-origin' });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    // Guard against a drawer switch while this was in flight.
+    if (panel.dataset.hostId !== hostId) return;
+    _renderDetailAgentVersion(data.agent_version || '');
+  } catch { /* keep the value painted from card data */ }
 }
 
 async function _renderDetailAgentVersion(reported) {

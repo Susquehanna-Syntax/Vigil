@@ -15,6 +15,7 @@ class HostSerializer(serializers.ModelSerializer):
             "status",
             "mode",
             "tags",
+            "agent_version",
             "last_checkin",
             "created_at",
         ]

@@ -59,7 +59,33 @@ fi
 # ── Service installation ────────────────────────────────────────────────────
 
 if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
-  cat > /etc/systemd/system/vigil-agent.service << 'EOF'
+  # Carry the installing shell's egress proxy into the service env.
+  # systemd units don't inherit a login shell's environment, so on a
+  # proxied network the agent (and any task that shells out to curl/wget,
+  # e.g. installing Trivy) can't reach the internet even though the host
+  # can. Requires the proxy vars to be present at install time — run the
+  # installer with `sudo -E` (or as a root shell that already has them).
+  PROXY_LINES=""
+  _hp="${HTTP_PROXY:-${http_proxy:-}}"
+  _hsp="${HTTPS_PROXY:-${https_proxy:-}}"
+  _np="${NO_PROXY:-${no_proxy:-}}"
+  if [ -n "$_hp" ] || [ -n "$_hsp" ]; then
+    # Keep loopback + the Vigil server itself direct, then append any
+    # operator-provided no_proxy entries.
+    _server_host=$(printf '%s' "$VIGIL_SERVER" | sed -e 's|^https\?://||' -e 's|[:/].*$||')
+    _np_full="localhost,127.0.0.1,${_server_host}${_np:+,$_np}"
+    [ -n "$_hp" ]  && PROXY_LINES="${PROXY_LINES}Environment=HTTP_PROXY=${_hp}
+Environment=http_proxy=${_hp}
+"
+    [ -n "$_hsp" ] && PROXY_LINES="${PROXY_LINES}Environment=HTTPS_PROXY=${_hsp}
+Environment=https_proxy=${_hsp}
+"
+    PROXY_LINES="${PROXY_LINES}Environment=NO_PROXY=${_np_full}
+Environment=no_proxy=${_np_full}"
+    echo "Detected proxy — baking egress config into the agent service."
+  fi
+
+  cat > /etc/systemd/system/vigil-agent.service << EOF
 [Unit]
 Description=Vigil Monitoring Agent
 After=network-online.target
@@ -70,6 +96,7 @@ Type=simple
 ExecStart=/usr/local/bin/vigil-agent
 Restart=always
 RestartSec=10
+${PROXY_LINES}
 
 [Install]
 WantedBy=multi-user.target

@@ -796,6 +796,75 @@ def _sha256_file(path) -> str:
     return digest.hexdigest()
 
 
+def _sync_systemd_proxy(config: AgentConfig) -> str:
+    """Mirror the host's ``/etc/environment`` proxy into the agent's unit.
+
+    systemd services don't inherit a login shell's environment, so on a
+    proxied network the agent — and any task that shells out to
+    curl/wget, like installing Trivy — can't reach the internet even
+    though the host can. On every self-update we read ``/etc/environment``
+    (the standard system-wide env file) and, if it defines an HTTP(S)
+    proxy, drop it into a ``vigil-agent.service.d`` override so the
+    post-update restart comes up with working egress. Loopback and the
+    Vigil server stay direct.
+
+    Best-effort and Linux/systemd only — any failure is logged and
+    ignored so it can never break the binary swap that already happened.
+    """
+    if sys.platform != "linux" or shutil.which("systemctl") is None:
+        return "skipped (not linux/systemd)"
+    env_file = Path("/etc/environment")
+    if not env_file.exists():
+        return "no /etc/environment"
+    try:
+        vals: dict[str, str] = {}
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            if key.lower().startswith("export "):
+                key = key[len("export "):].strip()
+            key = key.lower()
+            val = val.strip().strip('"').strip("'")
+            if key in ("http_proxy", "https_proxy", "no_proxy") and val:
+                vals[key] = val
+
+        http_p = vals.get("http_proxy", "")
+        https_p = vals.get("https_proxy", "")
+        if not http_p and not https_p:
+            return "no proxy in /etc/environment"
+
+        # Keep loopback + the Vigil server direct so internal check-ins
+        # never detour through the proxy.
+        server_host = re.sub(r"^https?://", "", config.server_url or "").split("/")[0].split(":")[0]
+        no_proxy_parts = ["localhost", "127.0.0.1"]
+        if server_host:
+            no_proxy_parts.append(server_host)
+        if vals.get("no_proxy"):
+            no_proxy_parts.append(vals["no_proxy"])
+        no_proxy = ",".join(no_proxy_parts)
+
+        lines = ["[Service]"]
+        for name, value in (("HTTP_PROXY", http_p), ("HTTPS_PROXY", https_p)):
+            if value:
+                lines.append(f"Environment={name}={value}")
+                lines.append(f"Environment={name.lower()}={value}")
+        lines.append(f"Environment=NO_PROXY={no_proxy}")
+        lines.append(f"Environment=no_proxy={no_proxy}")
+        content = "\n".join(lines) + "\n"
+
+        drop_dir = Path("/etc/systemd/system/vigil-agent.service.d")
+        drop_dir.mkdir(parents=True, exist_ok=True)
+        (drop_dir / "10-vigil-proxy.conf").write_text(content)
+        subprocess.run(["systemctl", "daemon-reload"], timeout=10, capture_output=True)
+        return "applied proxy drop-in from /etc/environment"
+    except Exception as exc:
+        logger.warning("Proxy drop-in sync failed: %s", exc)
+        return f"failed: {exc}"
+
+
 def _update_agent(params: dict, config: AgentConfig) -> str:
     """Download the latest agent binary from the server and replace this binary.
 
@@ -863,6 +932,12 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
         raise
 
     new_version = resp.headers.get("X-Vigil-Version", "unknown")
+
+    # Self-heal proxy egress: reload the unit with any /etc/environment
+    # proxy *before* the restart below picks up the new binary, so a
+    # proxied host comes back online able to reach the internet.
+    proxy_status = _sync_systemd_proxy(config)
+    logger.info("update_agent proxy sync: %s", proxy_status)
 
     def _restart_after_delay():
         time.sleep(3)
