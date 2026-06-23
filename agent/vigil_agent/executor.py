@@ -271,6 +271,25 @@ def _request_network_scan(params: dict, _config: AgentConfig) -> str:
 _TRIVY_SCOPE_PATTERN = re.compile(r"^(fs|rootfs|image:[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,254})$")
 
 
+# Subprocess wall-clock budget for a scan, and Trivy's own internal scan
+# deadline kept just under it. Trivy's *default* --timeout is 5m, which
+# routinely expires while walking a real root filesystem and surfaces as
+# "semaphore acquire: context deadline exceeded" — so we set it explicitly.
+_TRIVY_SUBPROCESS_TIMEOUT = 1200
+_TRIVY_SCAN_TIMEOUT = _TRIVY_SUBPROCESS_TIMEOUT - 60
+
+# Directories full of large content-addressed blobs (flatpak/docker/containers/
+# snap) that aren't OS or language package sources. Walking them adds minutes
+# and yields no findings — and analysing those blobs is what stalls the scan.
+_TRIVY_SKIP_DIRS = (
+    "/var/lib/flatpak",
+    "/var/lib/docker",
+    "/var/lib/containers",
+    "/var/lib/snapd",
+    "/var/snap",
+)
+
+
 def _run_trivy_scan(params: dict, _config: AgentConfig) -> str:
     """Run ``trivy`` against the local filesystem or a named image.
 
@@ -280,8 +299,13 @@ def _run_trivy_scan(params: dict, _config: AgentConfig) -> str:
       * ``image:<name>`` — ``trivy image <name>``
 
     Returns Trivy's raw JSON output. The server parses it on receipt —
-    we don't attempt any local interpretation here. A 5-minute timeout
-    is enough for a homelab box; large container hosts may need a bump.
+    we don't attempt any local interpretation here.
+
+    The scan is restricted to the ``vuln`` scanner: a default ``fs`` scan also
+    runs the *secret* scanner, which reads and analyses every file on disk.
+    That's both wasted work (the server only ingests vulnerabilities) and the
+    usual cause of stalls on hosts with large blob stores. Combined with an
+    explicit ``--timeout`` and a skip-list, scans complete reliably.
     """
     if shutil.which("trivy") is None:
         raise RuntimeError(
@@ -294,23 +318,26 @@ def _run_trivy_scan(params: dict, _config: AgentConfig) -> str:
     if not _TRIVY_SCOPE_PATTERN.match(scope):
         raise ValueError(f"Invalid trivy scope: {scope!r}")
 
-    base = [
-        "trivy",
+    common = [
         "--quiet",
         "--format", "json",
         "--severity", "CRITICAL,HIGH,MEDIUM,LOW",
+        "--scanners", "vuln",
+        "--timeout", f"{_TRIVY_SCAN_TIMEOUT}s",
     ]
     if scope in ("fs", "rootfs"):
-        cmd = [*base, "fs", "/"]
+        skip = []
+        for d in _TRIVY_SKIP_DIRS:
+            skip += ["--skip-dirs", d]
+        cmd = ["trivy", "fs", *common, *skip, "/"]
     else:
         # scope = "image:<name>"
         image_name = scope[len("image:"):]
         if not _SAFE_IMAGE.match(image_name):
             raise ValueError(f"Invalid image name in trivy scope: {image_name!r}")
-        cmd = [*base, "image", image_name]
+        cmd = ["trivy", "image", *common, image_name]
 
-    # Larger timeout — fs scans across thousands of packages take time.
-    return _run(cmd, timeout=600)
+    return _run(cmd, timeout=_TRIVY_SUBPROCESS_TIMEOUT)
 
 
 def _trivy_db_update(_params: dict, _config: AgentConfig) -> str:
