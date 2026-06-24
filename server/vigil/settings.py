@@ -38,6 +38,23 @@ INSTALLED_APPS = [
     "apps.agent_dist",
 ]
 
+# ---------------------------------------------------------------------------
+# Edition extension apps (Pro / Enterprise)
+# ---------------------------------------------------------------------------
+# Community core is self-contained. The commercial editions ship as separate
+# repos (Vigil-Pro, Vigil-Enterprise) whose Django apps are placed on the
+# PYTHONPATH and named here via the VIGIL_EXTRA_APPS env var, comma-separated:
+#
+#     VIGIL_EXTRA_APPS=vigil_pro.rbac,vigil_pro.baselines
+#
+# Each extra app may register features (vigil.editions), subscribe to events
+# (vigil.hooks), and expose a urls.py (auto-mounted in vigil/urls.py). Core
+# never imports edition code. See docs/pro-extension-points.md for the contract.
+VIGIL_EXTRA_APPS = [
+    a.strip() for a in os.environ.get("VIGIL_EXTRA_APPS", "").split(",") if a.strip()
+]
+INSTALLED_APPS += VIGIL_EXTRA_APPS
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",

@@ -56,6 +56,8 @@ def about(request):
             configured = False
         scanners.append({"name": name, "configured": configured})
 
+    from vigil.editions import active_edition, enabled_features
+
     return Response({
         "vigil_version": getattr(django_settings, "VIGIL_VERSION", "unknown"),
         "expected_agent_version": getattr(django_settings, "VIGIL_AGENT_VERSION", ""),
@@ -63,6 +65,8 @@ def about(request):
         "database": db_vendor,
         "timezone": getattr(django_settings, "VIGIL_TIMEZONE", "UTC"),
         "scanners": scanners,
+        "edition": active_edition(),
+        "features": sorted(enabled_features()),
     })
 
 
@@ -118,3 +122,29 @@ urlpatterns = [
     path("api/v1/accounts/", include("apps.accounts.urls")),
     path("agent/", include("apps.agent_dist.urls")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+
+# ---------------------------------------------------------------------------
+# Edition extension URLs (Pro / Enterprise)
+# ---------------------------------------------------------------------------
+# Each app named in VIGIL_EXTRA_APPS may expose a ``urls.py``; if present it is
+# mounted under ``ext/<app-label>/`` (the app's final dotted segment). Apps
+# without a urls module are skipped. Core never imports edition code directly —
+# routes are discovered, not hard-wired. See docs/pro-extension-points.md.
+def _edition_url_patterns():
+    from importlib.util import find_spec
+
+    patterns = []
+    for app_path in getattr(settings, "VIGIL_EXTRA_APPS", []):
+        urls_module = f"{app_path}.urls"
+        try:
+            if find_spec(urls_module) is None:
+                continue
+        except (ImportError, ModuleNotFoundError, ValueError):
+            continue
+        label = app_path.rsplit(".", 1)[-1]
+        patterns.append(path(f"ext/{label}/", include(urls_module)))
+    return patterns
+
+
+urlpatterns += _edition_url_patterns()

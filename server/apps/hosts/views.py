@@ -616,6 +616,12 @@ def host_approve(request, host_id):
 
     host.status = Host.Status.ONLINE
     host.save()
+
+    # Extension seam: Pro baselines auto-dispatch on this event; Enterprise
+    # audit logs record the approval. No-op in Community. See vigil/hooks.py.
+    from vigil.hooks import emit
+    emit("host_approved", host=host, approved_by=request.user)
+
     return Response(HostSerializer(host).data)
 
 
@@ -632,6 +638,10 @@ def host_reject(request, host_id):
         )
     host.status = Host.Status.REJECTED
     host.save()
+
+    from vigil.hooks import emit
+    emit("host_rejected", host=host, rejected_by=request.user)
+
     return Response(HostSerializer(host).data)
 
 
