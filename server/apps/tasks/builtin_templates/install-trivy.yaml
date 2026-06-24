@@ -1,0 +1,57 @@
+name: Install Trivy
+description: |
+  Cross-platform Trivy install. The agent picks the right path based
+  on its own platform (apt / dnf / brew / winget) via per-step when:
+  predicates. Hosts without a known package manager are filtered out
+  by target_tags so the editor only offers eligible targets.
+
+  Commands that use shell features (&&, |, >, $(...)) are wrapped in
+  `sh -c '...'` because the agent's run_command executes without a shell
+  (shell=False is a security invariant) — a bare pipeline would otherwise
+  be tokenized into plain arguments and fail.
+relevance: "any host you want to scan with the agent-local Trivy scanner"
+risk: high
+target_tags:
+  - pkg:apt-get
+  - pkg:dnf
+  - pkg:yum
+  - pkg:brew
+  - pkg:winget
+
+actions:
+  - id: trivy_apt
+    type: run_command
+    when: agent.pkg_manager == "apt-get"
+    params:
+      command: |-
+        sh -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y wget gnupg ca-certificates && wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor -o /usr/share/keyrings/trivy.gpg && echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" > /etc/apt/sources.list.d/trivy.list && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y trivy'
+      timeout: 600
+
+  - id: trivy_dnf
+    type: run_command
+    when: agent.pkg_manager in ("dnf", "yum")
+    params:
+      command: |-
+        sh -c 'rpm -ivh https://github.com/aquasecurity/trivy/releases/latest/download/trivy_$(uname -m).rpm'
+      timeout: 600
+
+  - id: trivy_brew
+    type: run_command
+    when: agent.os == "darwin"
+    params:
+      command: |-
+        sh -c 'su - $(stat -f %Su /dev/console) -c "/opt/homebrew/bin/brew install trivy 2>/dev/null || /usr/local/bin/brew install trivy"'
+      timeout: 600
+
+  - id: trivy_winget
+    type: run_command
+    when: agent.os == "windows"
+    params:
+      command: 'winget install --id AquaSecurity.Trivy --accept-source-agreements --accept-package-agreements --silent'
+      timeout: 600
+
+  - id: verify
+    type: run_command
+    params:
+      command: 'trivy --version'
+      timeout: 30
