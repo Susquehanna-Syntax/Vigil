@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Pro / Enterprise editions
+    url: https://github.com/Susquehanna-Syntax
+    about: Pro and Enterprise are commercial, closed-source editions and aren't tracked here. Contact the maintainers via the Susquehanna Syntax org.
+  - name: Report a security vulnerability
+    url: https://github.com/Susquehanna-Syntax/Vigil-Community-Edition/security/advisories/new
+    about: Disclose security issues privately. Never open a public issue for a vulnerability.
