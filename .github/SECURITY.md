@@ -10,7 +10,7 @@ seriously and ask that they be disclosed privately.
 Report it privately through GitHub:
 
 1. Go to the repository's **Security** tab → **Report a vulnerability**
-   (<https://github.com/Susquehanna-Syntax/Vigil-Community-Edition/security/advisories/new>).
+   (<https://github.com/Susquehanna-Syntax/Vigil/security/advisories/new>).
 2. Include the details below.
 
 This opens a private advisory visible only to you and the maintainers.
