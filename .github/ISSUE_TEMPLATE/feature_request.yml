@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest an improvement to Community Vigil
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Mind the edition split (see `docs/EDITIONS.md`): RBAC, baselines, AI
+        suggestions and status pages are **Pro**; audit logs, sites, SSO and
+        branding are **Enterprise**. Those are commercial editions and aren't
+        built in this repo.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      description: What are you trying to do, and what's missing today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+  - type: dropdown
+    id: edition
+    attributes:
+      label: Does this belong in the Community edition?
+      options:
+        - "Yes — Community"
+        - "Unsure"
+        - "Probably Pro / Enterprise"
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

@@ -1,0 +1,66 @@
+name: Bug report
+description: Something in Vigil isn't working as expected
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the **Community** repo. Pro/Enterprise issues belong in their
+        private edition repos. Never paste secrets, keys, or signing seeds.
+  - type: input
+    id: version
+    attributes:
+      label: Vigil version
+      description: From the About page or `GET /api/v1/about/` (server + agent).
+      placeholder: "server 2026.3.0 / agent 2026.3.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Server (Django / API)
+        - Agent (collector / executor)
+        - Dashboard / UI
+        - Tasks / task execution
+        - Vuln scanning (Trivy / Nessus / Greenbone)
+        - Alerting
+        - Deployment (Docker Compose)
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      options:
+        - Docker Compose
+        - Manual / from source
+        - Other
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what actually happened.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / task output
+      description: Server logs, agent logs, or the failed task's step output. Redact secrets.
+      render: shell
+  - type: input
+    id: host
+    attributes:
+      label: Affected host OS / agent mode
+      placeholder: "Ubuntu 24.04 · full_control"
