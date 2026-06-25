@@ -328,7 +328,10 @@ def _run_trivy_scan(params: dict, _config: AgentConfig) -> str:
     if scope in ("fs", "rootfs"):
         skip = []
         for d in _TRIVY_SKIP_DIRS:
-            skip += ["--skip-dirs", d]
+            # Under `trivy fs /` the walker matches paths *relative* to the
+            # scan root (e.g. "var/lib/flatpak/…", no leading slash), so an
+            # absolute --skip-dirs may not match. Pass both forms to be safe.
+            skip += ["--skip-dirs", d, "--skip-dirs", d.lstrip("/")]
         cmd = ["trivy", "fs", *common, *skip, "/"]
     else:
         # scope = "image:<name>"
