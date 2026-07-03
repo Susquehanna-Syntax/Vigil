@@ -396,6 +396,10 @@
   {# Step 1: token + install command #}
   <div id="enroll-s1" style="flex:1;overflow-y:auto;">
     <div class="totp-sub" style="margin-bottom:16px;">A unique enrollment token will be embedded in the install command. The agent will use it to register — then you approve it here.</div>
+    <div class="tab-bar" style="margin-bottom:14px;">
+      <button class="tab t-sky active" id="enroll-os-unix" onclick="enrollSetOs('unix')">Linux &amp; macOS</button>
+      <button class="tab t-sky" id="enroll-os-windows" onclick="enrollSetOs('windows')">Windows</button>
+    </div>
     <div style="margin-bottom:12px;">
       <label class="deploy-input-label">One-liner install command</label>
       <div class="code-block mono" id="enroll-cmd" style="cursor:pointer;user-select:all;word-break:break-all;" onclick="copyEnrollCmd()" title="Click to copy">Generating…</div>
@@ -407,7 +411,7 @@
         <svg viewBox="0 0 24 24" style="width:13px;height:13px;"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </button>
     </div>
-    <div class="confirm-hint">Run this on the machine you want to add. Requires root / sudo. The agent starts automatically and will appear in the queue below.</div>
+    <div class="confirm-hint" id="enroll-cmd-hint">Run this on the machine you want to add — x86-64 and ARM64 are detected automatically. Requires root / sudo. The agent starts automatically and will appear in the queue below.</div>
   </div>
 
   {# Step 2: polling #}

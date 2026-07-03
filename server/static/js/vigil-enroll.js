@@ -8,6 +8,7 @@
 let _enrollToken = null;
 let _enrollPollTimer = null;
 let _enrollDetectedHost = null;
+let _enrollOs = 'unix';  // 'unix' (Linux/macOS, any arch) or 'windows'
 
 /* ── helpers ── */
 
@@ -28,13 +29,33 @@ function _enrollSetStep(n) {
 
 /* ── public API ── */
 
+function _enrollRenderCmd() {
+  const origin = window.location.origin;
+  const cmd = _enrollOs === 'windows'
+    ? `$env:VIGIL_TOKEN = "${_enrollToken}"; irm ${origin}/agent/install.ps1 | iex`
+    : `VIGIL_TOKEN=${_enrollToken} curl -fsSL ${origin}/agent/install.sh | sudo bash`;
+  document.getElementById('enroll-cmd').textContent = cmd;
+  const hint = document.getElementById('enroll-cmd-hint');
+  if (hint) {
+    hint.textContent = _enrollOs === 'windows'
+      ? 'Run this in an elevated (Administrator) PowerShell on the machine you want to add. The agent installs as a Windows service and will appear in the queue below.'
+      : 'Run this on the machine you want to add — x86-64 and ARM64 are detected automatically. Requires root / sudo. The agent starts automatically and will appear in the queue below.';
+  }
+}
+
+function enrollSetOs(os) {
+  _enrollOs = os;
+  document.getElementById('enroll-os-unix').classList.toggle('active', os === 'unix');
+  document.getElementById('enroll-os-windows').classList.toggle('active', os === 'windows');
+  _enrollRenderCmd();
+}
+
 function openEnrollWizard() {
   _enrollToken = _uuidv4();
   _enrollDetectedHost = null;
   _stopEnrollPoll();
 
-  const cmd = `VIGIL_TOKEN=${_enrollToken} curl -fsSL ${window.location.origin}/agent/install.sh | sudo bash`;
-  document.getElementById('enroll-cmd').textContent = cmd;
+  _enrollRenderCmd();
   _enrollSetStep(1);
 
   document.getElementById('enroll-overlay').classList.add('open');
