@@ -34,10 +34,22 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY server/ .
 
-# Bundle the agent binary — served via /agent/download/<platform>/
+# Bundle the agent binaries — served via /agent/download/<platform>/.
+# CI drops cross-platform binaries (linux-amd64/arm64, darwin, windows) into
+# server/agent_dist/ before the image build, so they arrive via COPY server/ .
+# above. The agent-builder stage output only fills the gap for the image's
+# native arch on local builds, where no CI artifacts exist. TARGETARCH is
+# amd64 or arm64 depending on which platform buildx is producing — naming
+# the fallback correctly keeps an arm64 image from serving an arm64 binary
+# under the linux-amd64 name.
+ARG TARGETARCH
 RUN mkdir -p /app/agent_dist
-COPY --from=agent-builder /build/dist/vigil-agent /app/agent_dist/vigil-agent-linux-amd64
-RUN chmod +x /app/agent_dist/vigil-agent-linux-amd64
+COPY --from=agent-builder /build/dist/vigil-agent /tmp/vigil-agent-native
+RUN if [ ! -f "/app/agent_dist/vigil-agent-linux-${TARGETARCH}" ]; then \
+        cp /tmp/vigil-agent-native "/app/agent_dist/vigil-agent-linux-${TARGETARCH}"; \
+    fi && \
+    rm -f /tmp/vigil-agent-native && \
+    chmod +x /app/agent_dist/vigil-agent-linux-* 2>/dev/null || true
 
 # VIGIL_SKIP_STARTUP_CHECKS=1 lets manage.py boot without VIGIL_SIGNING_KEY_SEED.
 # Build-time collectstatic doesn't need a real signing key — the runtime env

@@ -77,12 +77,20 @@ jobs:
   # ── Build agent binaries (parallel) ─────────────────────────────────────────
   # Both macOS targets run on macos-latest (Apple Silicon). PyInstaller's
   # --target-arch flag cross-compiles darwin-amd64 without needing macos-13.
+  # Linux binaries build natively on amd64 and arm64 runners — PyInstaller
+  # cannot cross-compile between Linux architectures.
   build-agent:
     name: Agent — ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
         include:
+          - os: ubuntu-latest
+            platform: linux-amd64
+            out: vigil-agent-linux-amd64
+          - os: ubuntu-24.04-arm
+            platform: linux-arm64
+            out: vigil-agent-linux-arm64
           - os: macos-latest
             platform: darwin-amd64
             out: vigil-agent-darwin-amd64
@@ -157,6 +165,20 @@ jobs:
       - name: Build binary (Windows)
         if: runner.os == 'Windows'
         run: pyinstaller --onefile --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
+      # Build inside python:3.12-slim (Debian 12) rather than on the runner
+      # directly — a binary linked against the runner's glibc 2.39 would not
+      # start on Debian 11 / Ubuntu 20.04 era hosts. This matches the glibc
+      # floor of the previous in-Dockerfile agent build.
+      - name: Build binary (Linux, Debian 12 container)
+        if: runner.os == 'Linux'
+        run: |
+          docker run --rm -v "$PWD":/build -w /build python:3.12-slim bash -c "
+            set -e
+            apt-get update
+            apt-get install -y --no-install-recommends binutils
+            pip install --no-cache-dir -r requirements.txt pyinstaller
+            pyinstaller --onefile --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
+          "
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -174,7 +196,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Download all three agent binaries into server/agent_dist/.
+      # Download all agent binaries into server/agent_dist/.
       # COPY server/ . in the Dockerfile picks them up automatically.
       - name: Download agent binaries
         uses: actions/download-artifact@v4
@@ -184,6 +206,8 @@ jobs:
 
       - name: Mark Unix binaries executable
         run: |
+          chmod +x server/agent_dist/vigil-agent-linux-amd64 || true
+          chmod +x server/agent_dist/vigil-agent-linux-arm64 || true
           chmod +x server/agent_dist/vigil-agent-darwin-amd64 || true
           chmod +x server/agent_dist/vigil-agent-darwin-arm64 || true
 

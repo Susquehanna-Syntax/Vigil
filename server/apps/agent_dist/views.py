@@ -17,7 +17,19 @@ def _dist_dir() -> Path:
 
 
 def _bundled_path(platform: str) -> Path:
-    return _dist_dir() / f"vigil-agent-{platform}"
+    """Path of the bundled binary for *platform*, tolerating a ``.exe`` suffix.
+
+    PyInstaller appends ``.exe`` on Windows and the CI artifact keeps it, so
+    the Windows bundle lands on disk as ``vigil-agent-windows-amd64.exe``.
+    Prefer the exact name, fall back to the ``.exe`` variant.
+    """
+    exact = _dist_dir() / f"vigil-agent-{platform}"
+    if exact.is_file():
+        return exact
+    with_exe = _dist_dir() / f"vigil-agent-{platform}.exe"
+    if with_exe.is_file():
+        return with_exe
+    return exact
 
 
 def _hash_file(open_file) -> str:
@@ -78,8 +90,8 @@ def download_agent(request, platform):
             open(bundled, "rb"),
             content_type="application/octet-stream",
         )
-        filename = f"vigil-agent-{platform}"
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        # bundled.name keeps the .exe suffix for Windows downloads
+        response["Content-Disposition"] = f'attachment; filename="{bundled.name}"'
         response["X-Vigil-Version"] = getattr(settings, "VIGIL_AGENT_VERSION", "")
         return response
 
