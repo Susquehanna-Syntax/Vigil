@@ -457,8 +457,51 @@ def _parse_docker_hub_ref(image_str: str) -> tuple[str, str] | None:
     return name_part, tag
 
 
-def _get_registry_digest(hub_name: str, tag: str) -> str | None:
-    """Return the current manifest digest for hub_name:tag from Docker Hub, or None."""
+# Sentinel returned by _get_registry_digest when the registry answered 304
+# Not Modified to our If-None-Match — the tag still points at a digest we
+# already have locally, so the container is up to date by definition.
+_DIGEST_UNCHANGED = "__unchanged__"
+
+
+def _normalize_hub_repo(name: str) -> str:
+    """Normalize a RepoDigests repo name to Docker Hub's <namespace>/<repo> form."""
+    for prefix in ("docker.io/", "registry-1.docker.io/", "index.docker.io/"):
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+            break
+    if "/" not in name:
+        name = f"library/{name}"
+    return name
+
+
+def _local_hub_digests(repo_digests: list, hub_name: str) -> list[str]:
+    """Digests the local image is known by for *hub_name* on Docker Hub.
+
+    RepoDigests can hold entries for several repos when an image has been
+    retagged or pulled through a mirror. Comparing against the wrong repo's
+    digest makes a current container look permanently outdated — and every
+    "update" pull that follows burns real (counted) pull quota without
+    changing anything. Watchtower compares against every digest the local
+    image is known by; do the same, preferring repo-matched entries.
+    """
+    matched: list[str] = []
+    all_digests: list[str] = []
+    for entry in repo_digests:
+        if "@" not in entry:
+            continue
+        repo, digest = entry.rsplit("@", 1)
+        all_digests.append(digest)
+        if _normalize_hub_repo(repo) == hub_name:
+            matched.append(digest)
+    return matched or all_digests
+
+
+def _get_registry_digest(hub_name: str, tag: str, local_digests: list[str] | None = None) -> str | None:
+    """Return the current manifest digest for hub_name:tag from Docker Hub.
+
+    Returns _DIGEST_UNCHANGED when the registry confirms via If-None-Match
+    that the tag still resolves to a digest we already hold, or None on error.
+    """
     try:
         token_resp = requests.get(
             "https://auth.docker.io/token",
@@ -480,19 +523,29 @@ def _get_registry_digest(hub_name: str, tag: str) -> str | None:
         # multi-arch image returns its *index* digest — matching what
         # Docker stores in RepoDigests — instead of a single-arch digest
         # that would always look "outdated".
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": ", ".join([
+                "application/vnd.docker.distribution.manifest.list.v2+json",
+                "application/vnd.oci.image.index.v1+json",
+                "application/vnd.docker.distribution.manifest.v2+json",
+                "application/vnd.oci.image.manifest.v1+json",
+            ]),
+        }
+        # If-None-Match with the digests we already hold — the registry's
+        # manifest ETag is the digest, so a 304 proves "no change" without
+        # the manifest ever being served. This is watchtower's check-only
+        # pattern and can never be metered as a pull.
+        if local_digests:
+            headers["If-None-Match"] = ", ".join(f'"{d}"' for d in local_digests)
+
         resp = requests.head(
             f"https://registry-1.docker.io/v2/{hub_name}/manifests/{tag}",
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Accept": ", ".join([
-                    "application/vnd.docker.distribution.manifest.list.v2+json",
-                    "application/vnd.oci.image.index.v1+json",
-                    "application/vnd.docker.distribution.manifest.v2+json",
-                    "application/vnd.oci.image.manifest.v1+json",
-                ]),
-            },
+            headers=headers,
             timeout=10,
         )
+        if resp.status_code == 304:
+            return _DIGEST_UNCHANGED
         resp.raise_for_status()
         return resp.headers.get("Docker-Content-Digest")
     except Exception as exc:
@@ -539,24 +592,30 @@ def collect_docker_updates() -> list[dict]:
         container_name = (container.get("Names") or ["unknown"])[0].lstrip("/")
         image_id = container.get("ImageID", "")
 
-        # Get local manifest digest from image inspect
+        # Get local manifest digests from image inspect
         image_info = _docker_api_get(f"/images/{image_id}/json") if image_id else None
         repo_digests = (image_info or {}).get("RepoDigests", [])
         if not repo_digests:
             logger.debug("No RepoDigests for %s (%s) — locally built, skipping", container_name, image_str)
             continue
-        local_digest = repo_digests[0].split("@")[-1]
+        local_digests = _local_hub_digests(repo_digests, hub_name)
+        if not local_digests:
+            logger.debug("No usable RepoDigests for %s (%s), skipping", container_name, image_str)
+            continue
 
-        # Registry digest (cached per image:tag)
-        cache_key = f"{hub_name}:{tag}"
+        # Registry digest (cached per image id + tag — the If-None-Match set
+        # depends on the local image, so two containers only share a cache
+        # entry when they run the exact same image)
+        cache_key = f"{hub_name}:{tag}@{image_id}"
         if cache_key not in digest_cache:
-            digest_cache[cache_key] = _get_registry_digest(hub_name, tag)
+            digest_cache[cache_key] = _get_registry_digest(hub_name, tag, local_digests)
         remote_digest = digest_cache[cache_key]
 
         if remote_digest is None:
             continue  # Registry unreachable — don't emit a metric this cycle
 
-        outdated = 1.0 if local_digest != remote_digest else 0.0
+        up_to_date = remote_digest == _DIGEST_UNCHANGED or remote_digest in local_digests
+        outdated = 0.0 if up_to_date else 1.0
         metrics.append({
             "category": "docker",
             "metric": "image_outdated",
@@ -564,8 +623,8 @@ def collect_docker_updates() -> list[dict]:
             "labels": {
                 "container_name": container_name,
                 "image": image_str,
-                "local_digest": local_digest[:19],
-                "remote_digest": remote_digest[:19],
+                "local_digest": local_digests[0][:19],
+                "remote_digest": "unchanged" if remote_digest == _DIGEST_UNCHANGED else remote_digest[:19],
             },
             "time": ts,
         })
