@@ -1,13 +1,48 @@
+from datetime import timedelta
+
 from django.contrib import auth
 from django.contrib.auth import authenticate, get_user_model
 from django.shortcuts import redirect, render
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timezone import now
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import UserProfile
+from .models import LoginAttempt, UserProfile
 from .totp import generate_secret, generate_totp, otpauth_uri, verify_totp
+
+# ---------------------------------------------------------------------------
+# Login rate limiting
+# ---------------------------------------------------------------------------
+# Sliding window over failed attempts. Per-username stops a targeted guess
+# even when the attacker rotates IPs; per-IP stops spraying many usernames
+# from one address. IP comes from REMOTE_ADDR only — never a forwarded
+# header — matching how agent checkins derive it.
+LOGIN_ATTEMPT_WINDOW = timedelta(minutes=15)
+MAX_FAILURES_PER_USERNAME = 5
+MAX_FAILURES_PER_IP = 20
+
+
+def _login_blocked(username: str, ip: str | None) -> bool:
+    since = now() - LOGIN_ATTEMPT_WINDOW
+    recent = LoginAttempt.objects.filter(created_at__gte=since)
+    if username and recent.filter(username=username).count() >= MAX_FAILURES_PER_USERNAME:
+        return True
+    if ip and recent.filter(ip=ip).count() >= MAX_FAILURES_PER_IP:
+        return True
+    return False
+
+
+def _record_login_failure(username: str, ip: str | None) -> None:
+    LoginAttempt.objects.create(username=username[:150], ip=ip)
+    # Opportunistic prune — failures only matter inside the window; keep a
+    # day for operator forensics and drop the rest.
+    LoginAttempt.objects.filter(created_at__lt=now() - timedelta(hours=24)).delete()
+
+
+def _clear_login_failures(username: str) -> None:
+    LoginAttempt.objects.filter(username=username).delete()
 
 
 def _get_or_create_profile(user) -> UserProfile:
@@ -178,11 +213,24 @@ def login_view(request):
     if request.method == "POST":
         username = request.POST.get("username", "").strip()
         password = request.POST.get("password", "")
+        ip = request.META.get("REMOTE_ADDR")
+
+        if _login_blocked(username, ip):
+            error = "Too many failed sign-in attempts. Try again in a few minutes."
+            return render(request, "login.html", {"error": error}, status=429)
+
         user = authenticate(request, username=username, password=password)
         if user is not None:
+            _clear_login_failures(username)
             auth.login(request, user)
+            # Same-host relative targets only — anything else is an open
+            # redirect a phisher could ride out of a legitimate login link.
             next_url = request.GET.get("next", "/")
+            if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+                next_url = "/"
             return redirect(next_url)
+
+        _record_login_failure(username, ip)
         error = "Invalid username or password"
 
     return render(request, "login.html", {"error": error})
