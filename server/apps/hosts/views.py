@@ -9,6 +9,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 
+from apps.accounts.permissions import IsAdmin
 from apps.metrics.models import MetricPoint
 from apps.tasks.models import Task
 from apps.tasks.spec import schedule_window_active
@@ -386,6 +387,10 @@ def host_detail(request, host_id):
     except Host.DoesNotExist:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
     if request.method == "DELETE":
+        # Destructive removal of a host and all its history is admin-only;
+        # viewing stays open to any authenticated session.
+        if not IsAdmin().has_permission(request, None):
+            return Response({"error": "Administrator access required"}, status=status.HTTP_403_FORBIDDEN)
         hostname = host.hostname
         host.delete()
         return Response({"deleted": hostname}, status=status.HTTP_200_OK)
@@ -449,9 +454,10 @@ def inventory_detail(request, host_id):
 
 
 @api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdmin])
 def ad_config(request):
-    """Read or update the AD import settings.
+    """Read or update the AD import settings. Admin-only — the config holds
+    directory bind credentials and controls what gets imported.
 
     GET returns the current settings (password redacted). POST upserts the
     config; the password is encrypted at rest and only visible to the
@@ -494,7 +500,7 @@ def ad_config(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdmin])
 def ad_sync_now(request):
     """Trigger an AD import synchronously (small fleets) or via Celery."""
     from .tasks import import_ad_computers
@@ -592,11 +598,11 @@ def host_update_agent(request, host_id):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdmin])
 def host_approve(request, host_id):
     """Approve a pending host enrollment.
 
-    Approval is 2FA-gated because an approved host immediately becomes
+    Admin-only and 2FA-gated because an approved host immediately becomes
     eligible to receive signed tasks — equivalent in blast-radius to
     dispatching a task.
     """
@@ -626,9 +632,9 @@ def host_approve(request, host_id):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdmin])
 def host_reject(request, host_id):
-    """Reject a pending host enrollment."""
+    """Reject a pending host enrollment. Admin-only, like approval."""
     try:
         host = Host.objects.get(pk=host_id, status=Host.Status.PENDING)
     except Host.DoesNotExist:

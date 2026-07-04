@@ -37,3 +37,20 @@ class UserProfile(models.Model):
 
     def __str__(self) -> str:
         return f"profile<{self.user_id}>"
+
+
+class LoginAttempt(models.Model):
+    """A failed console login, kept briefly to rate-limit brute forcing.
+
+    Rows are recorded only for failures, cleared for a username on its next
+    successful login, and pruned after 24 hours. DB-backed (rather than a
+    per-process cache) so the limit holds across gunicorn workers and
+    restarts.
+    """
+
+    username = models.CharField(max_length=150, db_index=True)
+    ip = models.GenericIPAddressField(null=True, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    def __str__(self) -> str:
+        return f"failed login {self.username!r} from {self.ip} at {self.created_at}"

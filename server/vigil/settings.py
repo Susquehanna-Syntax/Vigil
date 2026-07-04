@@ -149,6 +149,22 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "/login/"
 
 # ---------------------------------------------------------------------------
+# Session / CSRF cookie hardening
+# ---------------------------------------------------------------------------
+# The console session lives exclusively in an HttpOnly cookie — page JS can
+# never read it and nothing auth-related is ever placed in localStorage
+# (localStorage holds only UI preferences: pinned hosts, table columns).
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+# Self-hosted Vigil frequently runs plain HTTP on a trusted LAN, so Secure
+# flags are opt-in. Set VIGIL_SECURE_COOKIES=true when serving over HTTPS
+# (directly or behind a TLS-terminating proxy).
+_secure_cookies = os.environ.get("VIGIL_SECURE_COOKIES", "false").lower() in ("true", "1", "yes")
+SESSION_COOKIE_SECURE = _secure_cookies
+CSRF_COOKIE_SECURE = _secure_cookies
+
+# ---------------------------------------------------------------------------
 # Task signing — Ed25519
 # Generate with: python -c "import base64; from nacl.signing import SigningKey; print(base64.b64encode(bytes(SigningKey.generate())).decode())"
 # ---------------------------------------------------------------------------
@@ -158,9 +174,13 @@ VIGIL_SIGNING_KEY_SEED = os.environ.get("VIGIL_SIGNING_KEY_SEED", "")
 # Django REST Framework
 # ---------------------------------------------------------------------------
 REST_FRAMEWORK = {
+    # Session-cookie auth only. TokenAuthentication was listed historically
+    # but rest_framework.authtoken was never installed, so any request
+    # carrying an "Authorization: Token …" header would 500 — and Vigil's
+    # agents use their own Bearer scheme (apps.hosts.authentication), not
+    # DRF tokens.
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.SessionAuthentication",
-        "rest_framework.authentication.TokenAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
@@ -238,12 +258,12 @@ VIGIL_METRIC_RETENTION_DAYS = int(os.environ.get("VIGIL_METRIC_RETENTION_DAYS", 
 # In the Docker image this is pre-populated by the multi-stage build.
 # ---------------------------------------------------------------------------
 VIGIL_AGENT_DIST_DIR = Path(os.environ.get("VIGIL_AGENT_DIST_DIR", str(BASE_DIR / "agent_dist")))
-VIGIL_AGENT_VERSION = os.environ.get("VIGIL_AGENT_VERSION", "2026.3.4")
+VIGIL_AGENT_VERSION = os.environ.get("VIGIL_AGENT_VERSION", "2026.3.5")
 
 # Server build version — surfaced on the About page and the /api/v1/about/
 # endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
 # this constant should stay in lockstep.
-VIGIL_VERSION = "2026.3.4"
+VIGIL_VERSION = "2026.3.5"
 
 # ---------------------------------------------------------------------------
 # Display / locale

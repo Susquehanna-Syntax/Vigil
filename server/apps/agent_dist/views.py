@@ -9,6 +9,8 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from apps.accounts.permissions import IsAdmin
+
 from .models import AgentBinary
 
 
@@ -129,10 +131,14 @@ def install_ps1(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdmin])
 @parser_classes([MultiPartParser])
 def upload_agent(request, platform):
-    """Upload a new agent binary for the given platform (manual override)."""
+    """Upload a new agent binary for the given platform (manual override).
+
+    Admin-only: whoever can replace the served binary controls code that
+    runs as root on every enrolled host.
+    """
     valid_platforms = dict(AgentBinary.Platform.choices)
     if platform not in valid_platforms:
         return Response({"error": f"Unknown platform '{platform}'"}, status=400)
