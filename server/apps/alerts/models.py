@@ -68,6 +68,10 @@ class Alert(models.Model):
     metric_value = models.FloatField(null=True)
     fired_at = models.DateTimeField(auto_now_add=True)
     acknowledged_at = models.DateTimeField(null=True, blank=True)
+    # Timed acknowledgement: when set, the ack lapses at this instant and the
+    # alert flips back to FIRING (and re-notifies). Null = acknowledged for
+    # good — stays quiet until it resolves or is manually un-acknowledged.
+    acknowledged_until = models.DateTimeField(null=True, blank=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
     fix_context = models.JSONField(blank=True, default=dict)
 

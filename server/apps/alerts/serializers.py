@@ -27,6 +27,7 @@ class AlertSerializer(serializers.ModelSerializer):
             "metric_value",
             "fired_at",
             "acknowledged_at",
+            "acknowledged_until",
             "resolved_at",
         ]
         read_only_fields = fields
