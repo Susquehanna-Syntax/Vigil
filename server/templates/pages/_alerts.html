@@ -31,7 +31,20 @@
               {% if alert.fix_context.container_name %}
               <button class="btn btn-sm btn-outline" style="color:var(--mint);" onclick="suggestDockerFix('{{ alert.host.id }}', '{{ alert.fix_context.container_name|escapejs }}', '{{ alert.fix_context.image|escapejs }}')">Suggest Fix</button>
               {% endif %}
-              <button class="btn btn-sm btn-outline" onclick="acknowledgeAlert('{{ alert.id }}')">Ack</button>
+              <div class="ack-menu-wrap">
+                <button class="btn btn-sm btn-outline" onclick="toggleAckMenu(event, '{{ alert.id }}')">
+                  Ack
+                  <svg viewBox="0 0 24 24" style="width:11px;height:11px;"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <div class="ack-menu" id="ack-menu-{{ alert.id }}">
+                  <div class="ack-menu-item" onclick="acknowledgeAlert('{{ alert.id }}', 3600)">For 1 hour</div>
+                  <div class="ack-menu-item" onclick="acknowledgeAlert('{{ alert.id }}', 28800)">For 8 hours</div>
+                  <div class="ack-menu-item" onclick="acknowledgeAlert('{{ alert.id }}', 86400)">For 24 hours</div>
+                  <div class="ack-menu-item" onclick="acknowledgeAlert('{{ alert.id }}', 604800)">For 7 days</div>
+                  <div class="ack-menu-divider"></div>
+                  <div class="ack-menu-item" onclick="acknowledgeAlert('{{ alert.id }}')">Permanently</div>
+                </div>
+              </div>
             </div>
           </div>
           {% endfor %}
@@ -56,9 +69,12 @@
             <div class="alert-dot" style="background: var(--lemon);"></div>
             <div class="alert-content">
               <div class="alert-title">{{ alert.message }}</div>
-              <div class="alert-sub">{{ alert.host.hostname }} · Ack'd {{ alert.acknowledged_at|timesince }} ago</div>
+              <div class="alert-sub">{{ alert.host.hostname }} · Ack'd {{ alert.acknowledged_at|timesince }} ago · {% if alert.acknowledged_until %}Re-fires in {{ alert.acknowledged_until|timeuntil }}{% else %}Permanent{% endif %}</div>
             </div>
             <div class="alert-time">Fired {{ alert.fired_at|timesince }} ago</div>
+            <div class="alert-actions">
+              <button class="btn btn-sm btn-outline" onclick="unacknowledgeAlert('{{ alert.id }}')">Un-ack</button>
+            </div>
           </div>
           {% endfor %}
         </div>

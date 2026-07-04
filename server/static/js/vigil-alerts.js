@@ -1,18 +1,55 @@
 // vigil-alerts.js
-// Owns: Alert lifecycle actions — acknowledge / silence buttons, Docker fix suggestions.
+// Owns: Alert lifecycle actions — acknowledge / un-acknowledge buttons, ack
+//       duration menu, Docker fix suggestions.
 // HTML: templates/pages/_alerts.html
-// Depends on: vigil-utils.js (apiPost, showToast), vigil-tasks.js (openDefinitionEditor), vigil-nav.js (navigateTo)
-// API: POST /api/v1/alerts/{id}/acknowledge/
+// Depends on: vigil-utils.js (apiJson, showToast), vigil-tasks.js (openDefinitionEditor), vigil-nav.js (navigateTo)
+// API: POST /api/v1/alerts/{id}/acknowledge/  POST /api/v1/alerts/{id}/unacknowledge/
 
-async function acknowledgeAlert(alertId) {
+/* ── Acknowledge (with optional duration) ────────────────────────────── */
+
+// durationSeconds: null = acknowledge permanently; otherwise the ack lapses
+// after this many seconds and the alert re-fires.
+async function acknowledgeAlert(alertId, durationSeconds = null) {
+  closeAckMenus();
   try {
-    await apiPost(`/api/v1/alerts/${alertId}/acknowledge/`);
-    showToast('Alert acknowledged', 'success');
+    const body = durationSeconds ? { duration_seconds: durationSeconds } : {};
+    await apiJson(`/api/v1/alerts/${alertId}/acknowledge/`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    showToast(durationSeconds ? 'Acknowledged — will re-fire if still open' : 'Alert acknowledged', 'success');
     setTimeout(() => location.reload(), 800);
   } catch (e) {
     showToast('Failed: ' + e.message, 'error');
   }
 }
+
+async function unacknowledgeAlert(alertId) {
+  try {
+    await apiJson(`/api/v1/alerts/${alertId}/unacknowledge/`, { method: 'POST' });
+    showToast('Alert re-fired', 'success');
+    setTimeout(() => location.reload(), 800);
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+  }
+}
+
+/* ── Ack duration menu ───────────────────────────────────────────────── */
+
+function closeAckMenus() {
+  document.querySelectorAll('.ack-menu.open').forEach(m => m.classList.remove('open'));
+}
+
+function toggleAckMenu(event, alertId) {
+  event.stopPropagation();
+  const menu = document.getElementById('ack-menu-' + alertId);
+  if (!menu) return;
+  const wasOpen = menu.classList.contains('open');
+  closeAckMenus();
+  if (!wasOpen) menu.classList.add('open');
+}
+
+document.addEventListener('click', closeAckMenus);
 
 function suggestAgentUpdate(hostId) {
   const yaml = [

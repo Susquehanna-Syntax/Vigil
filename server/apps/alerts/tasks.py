@@ -113,6 +113,36 @@ def evaluate_alert_rules():
     return f"Evaluated {rules.count()} rules × {online_hosts.count()} hosts: {fired} fired, {resolved} resolved"
 
 
+@shared_task(name="alerts.expire_acknowledgements")
+def expire_acknowledgements():
+    """Re-fire acknowledged alerts whose timed acknowledgement has lapsed.
+
+    Permanent acks (acknowledged_until is null) are never touched — they stay
+    quiet until the underlying condition resolves or the user un-acknowledges.
+    """
+    current = now()
+    expired = Alert.objects.filter(
+        state=Alert.State.ACKNOWLEDGED,
+        acknowledged_until__isnull=False,
+        acknowledged_until__lt=current,
+    ).select_related("host", "rule")
+
+    count = 0
+    for alert in expired:
+        alert.state = Alert.State.FIRING
+        alert.acknowledged_at = None
+        alert.acknowledged_until = None
+        alert.save(update_fields=["state", "acknowledged_at", "acknowledged_until"])
+        count += 1
+        logger.info(
+            "Acknowledgement lapsed — alert re-firing: %s on %s",
+            alert.message, alert.host.hostname,
+        )
+        dispatch_alert_notification(alert, event="firing")
+
+    return f"{count} acknowledgements expired"
+
+
 @shared_task(name="alerts.mark_stale_hosts_offline")
 def mark_stale_hosts_offline():
     """Mark hosts that haven't checked in for 5 minutes as offline."""
