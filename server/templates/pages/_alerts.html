@@ -80,7 +80,11 @@
         </div>
         {% else %}
         <div class="empty-state">
+          <div class="empty-state-icon" style="background: rgba(226,212,120,0.1);">
+            <svg viewBox="0 0 24 24" style="stroke: var(--lemon);"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          </div>
           <div class="empty-state-title">No acknowledged alerts</div>
+          <div class="empty-state-desc">Alerts you acknowledge move here until they resolve or re-fire.</div>
         </div>
         {% endif %}
       </div>
@@ -102,7 +106,11 @@
         </div>
         {% else %}
         <div class="empty-state">
+          <div class="empty-state-icon" style="background: rgba(126,221,181,0.1);">
+            <svg viewBox="0 0 24 24" style="stroke: var(--mint);"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </div>
           <div class="empty-state-title">No resolved alerts yet</div>
+          <div class="empty-state-desc">Resolved alerts keep their history here for reference.</div>
         </div>
         {% endif %}
       </div>
