@@ -489,12 +489,14 @@ function defCardHtml(def, opts) {
   const attribution = (dateLabel || authorLabel)
     ? `<span class="dot-sep">·</span><span>${[dateLabel, authorLabel].filter(Boolean).join(' · ')}</span>`
     : '';
-  // Community submissions now go through a GitHub PR from the editor —
-  // see openCommunitySubmit(). Cards no longer carry a publish action.
+  // Community cards come from the public GitHub repo (no local id) — Fork
+  // opens the template's YAML in the editor; saving adds it to the library.
+  // Submissions flow the other way via GitHub PR — see openCommunitySubmit().
   // Owner-only Delete sits next to Edit so it's findable without a
   // hover-menu but visually subdued so it doesn't compete with Deploy.
   const buttons = opts.mode === 'community'
-    ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); forkDefinition('${def.id}')">Fork</button>`
+    ? `${def.html_url ? `<a class="btn btn-ghost btn-sm" style="color:var(--text-3);text-decoration:none;" href="${escHtml(def.html_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">View on GitHub</a>` : ''}
+       <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openCommunityTemplate('${encodeURIComponent(def.filename)}')">Fork</button>`
     : `<button class="btn btn-ghost btn-sm" style="color:var(--text-3);" title="Delete this task definition"
               onclick="event.stopPropagation(); deleteDefinition('${def.id}', this)">
          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -504,8 +506,11 @@ function defCardHtml(def, opts) {
        </button>
        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openDefinitionEditor('${def.id}')">Edit</button>
        <button class="btn btn-sky btn-sm" onclick="event.stopPropagation(); openDeployModal('${def.id}')">Deploy</button>`;
+  const cardClick = opts.mode === 'community'
+    ? `openCommunityTemplate('${encodeURIComponent(def.filename)}')`
+    : `openDefinitionEditor('${def.id}')`;
   return `
-    <div class="def-card" onclick="openDefinitionEditor('${def.id}')">
+    <div class="def-card" onclick="${cardClick}">
       <div class="def-card-body">
         <div class="def-card-title">${escHtml(def.name || 'Untitled')}</div>
         <div class="def-card-desc">${escHtml(def.description || 'No description provided.')}</div>
@@ -532,8 +537,10 @@ const LIBRARY_EMPTY_HTML = `
 
 const COMMUNITY_EMPTY_HTML = `
   <div class="empty-state">
-    <div class="empty-state-title">No community templates</div>
-    <div class="empty-state-desc">Publish one of your own tasks to share it here.</div>
+    <div class="empty-state-title">No community templates yet</div>
+    <div class="empty-state-desc">Templates come from the public
+      <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky);">Vigil-Approved-Scripts</a>
+      repo. Be the first to contribute — open any task in the editor and use Submit to Community.</div>
   </div>`;
 
 // Cached unfiltered lists so search is purely client-side and instant.
@@ -579,11 +586,21 @@ async function refreshTaskLibrary() {
 
 async function refreshTaskCommunity() {
   try {
-    taskGridCache.community = await apiJson('/api/v1/tasks/definitions/?scope=community');
+    // Server-side proxy of the public Vigil-Approved-Scripts GitHub repo,
+    // cached for 10 minutes — see community_templates in apps/tasks/views.py.
+    taskGridCache.community = await apiJson('/api/v1/tasks/community/');
     _renderTaskGrid('community');
   } catch (e) {
     showToast('Failed to load community: ' + e.message, 'error');
   }
+}
+
+function openCommunityTemplate(encodedFilename) {
+  const filename = decodeURIComponent(encodedFilename);
+  const tpl = (taskGridCache.community || []).find(t => t.filename === filename);
+  if (!tpl || !tpl.yaml_source) { showToast('Template not loaded — refresh Community', 'error'); return; }
+  openDefinitionEditor(null, tpl.yaml_source);
+  showToast('Community template opened — save it to add it to your library', 'success');
 }
 
 async function forkDefinition(id) {
@@ -719,7 +736,7 @@ function renderEditorPreview(spec) {
 }
 
 /* ── Community submission (GitHub PR) ────────────────────────────────── */
-const COMMUNITY_REPO_URL = 'https://github.com/SusquehannaSyntax/Vigil-Approved-Scripts';
+const COMMUNITY_REPO_URL = 'https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts';
 
 function _slugifyTaskName(name) {
   return (name || 'task')

@@ -274,3 +274,75 @@ class TaskHistorySoftDeleteTests(TestCase):
         resp = self.client.get("/api/v1/tasks/history/")
         self.assertTrue(resp.data["results"])
         self.assertNotIn("nonce", resp.data["results"][0])
+
+
+class CommunityTemplatesTests(TestCase):
+    """The Community tab is backed by the public GitHub repo via a cached proxy."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.client = APIClient()
+        self.user = get_user_model().objects.create_user("op", password="pw")
+        self.client.force_authenticate(self.user)
+
+    def _mock_response(self, status_code=200, json_data=None, text=""):
+        from unittest.mock import MagicMock
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.json.return_value = json_data
+        resp.text = text
+        resp.raise_for_status.side_effect = (
+            None if status_code < 400 else Exception(f"HTTP {status_code}")
+        )
+        return resp
+
+    def test_empty_repo_returns_empty_list(self):
+        from unittest.mock import patch
+        with patch("requests.get", return_value=self._mock_response(404)):
+            resp = self.client.get("/api/v1/tasks/community/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data, [])
+
+    def test_parses_valid_yaml_and_skips_invalid(self):
+        from unittest.mock import patch
+        listing = self._mock_response(200, json_data=[
+            {"type": "file", "name": "good.yaml", "download_url": "https://x/good.yaml",
+             "html_url": "https://github.com/x/good.yaml"},
+            {"type": "file", "name": "bad.yaml", "download_url": "https://x/bad.yaml",
+             "html_url": "https://github.com/x/bad.yaml"},
+            {"type": "dir", "name": "sub", "download_url": None},
+            {"type": "file", "name": "readme.md", "download_url": "https://x/readme.md"},
+        ])
+        good = self._mock_response(200, text=UPDATE_AGENT_YAML)
+        bad = self._mock_response(200, text="not: [valid task yaml")
+
+        def fake_get(url, **kwargs):
+            if "good.yaml" in url:
+                return good
+            if "bad.yaml" in url:
+                return bad
+            return listing
+
+        with patch("requests.get", side_effect=fake_get):
+            resp = self.client.get("/api/v1/tasks/community/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.data), 1)
+        entry = resp.data[0]
+        self.assertEqual(entry["filename"], "good.yaml")
+        self.assertEqual(entry["name"], "Update agent")
+        self.assertEqual(entry["yaml_source"], UPDATE_AGENT_YAML)
+        self.assertIn("actions", entry["parsed_spec"])
+
+    def test_result_is_cached(self):
+        from unittest.mock import patch
+        with patch("requests.get", return_value=self._mock_response(404)) as mocked:
+            self.client.get("/api/v1/tasks/community/")
+            self.client.get("/api/v1/tasks/community/")
+        self.assertEqual(mocked.call_count, 1)
+
+    def test_unreachable_repo_returns_502(self):
+        from unittest.mock import patch
+        with patch("requests.get", side_effect=OSError("no network")):
+            resp = self.client.get("/api/v1/tasks/community/")
+        self.assertEqual(resp.status_code, 502)

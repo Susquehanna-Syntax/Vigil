@@ -21,7 +21,7 @@
 #   POSTGRES_DB            — default: vigil
 #   POSTGRES_USER          — default: vigil
 #   VIGIL_TIMEZONE         — IANA tz name, e.g. America/New_York (default: UTC)
-#   VIGIL_AGENT_VERSION    — agent version baked into this image (default: 2026.3.7)
+#   VIGIL_AGENT_VERSION    — agent version baked into this image (default: 2026.3.8)
 #                            Bump this default in lockstep with every release
 #                            tag, otherwise every host shows "Agent outdated".
 #
@@ -62,7 +62,7 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-insecure-change-me}
       VIGIL_SIGNING_KEY_SEED: ${VIGIL_SIGNING_KEY_SEED:-}
       VIGIL_TIMEZONE: ${VIGIL_TIMEZONE:-UTC}
-      VIGIL_AGENT_VERSION: ${VIGIL_AGENT_VERSION:-2026.3.7}
+      VIGIL_AGENT_VERSION: ${VIGIL_AGENT_VERSION:-2026.3.8}
       POSTGRES_DB: ${POSTGRES_DB:-vigil}
       POSTGRES_USER: ${POSTGRES_USER:-vigil}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
