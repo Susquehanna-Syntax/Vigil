@@ -332,6 +332,88 @@ def _save_definition_from_yaml(definition: TaskDefinition, yaml_source: str) -> 
     definition.risk_level = spec["risk"]
 
 
+# ---------------------------------------------------------------------------
+# Community templates — sourced from the public GitHub repo
+# ---------------------------------------------------------------------------
+# The Community tab lists task YAMLs from the tasks/ directory of this repo.
+# Fetched server-side (avoids per-browser GitHub rate limits) and cached for
+# 10 minutes. Submissions still flow the other way via GitHub PR from the
+# editor — see openCommunitySubmit() in vigil-tasks.js.
+VIGIL_COMMUNITY_REPO = "Susquehanna-Syntax/Vigil-Approved-Scripts"
+_COMMUNITY_CACHE_KEY = "vigil_community_templates"
+_COMMUNITY_CACHE_TTL = 600  # seconds
+_COMMUNITY_MAX_TEMPLATES = 50
+
+
+def _fetch_community_templates() -> list[dict]:
+    """Pull and parse task YAMLs from the community repo's tasks/ directory.
+
+    Invalid or unparsable files are skipped — the repo gates quality through
+    PR review, but a bad merge must not blank the whole tab.
+    """
+    import requests as _requests
+
+    listing = _requests.get(
+        f"https://api.github.com/repos/{VIGIL_COMMUNITY_REPO}/contents/tasks",
+        headers={"Accept": "application/vnd.github+json"},
+        timeout=10,
+    )
+    if listing.status_code == 404:
+        # Repo empty or tasks/ not created yet — a valid "no templates" state.
+        return []
+    listing.raise_for_status()
+
+    entries = [
+        e for e in listing.json()
+        if isinstance(e, dict)
+        and e.get("type") == "file"
+        and e.get("name", "").endswith((".yaml", ".yml"))
+        and e.get("download_url")
+    ][:_COMMUNITY_MAX_TEMPLATES]
+
+    templates = []
+    for entry in entries:
+        try:
+            raw = _requests.get(entry["download_url"], timeout=10)
+            raw.raise_for_status()
+            spec = parse_and_validate(raw.text)
+        except Exception:
+            continue
+        templates.append({
+            "filename": entry["name"],
+            "html_url": entry.get("html_url", ""),
+            "name": spec["name"],
+            "description": spec.get("description", ""),
+            "relevance": spec.get("relevance", ""),
+            "risk_level": spec.get("risk", "standard"),
+            "parsed_spec": spec,
+            "yaml_source": raw.text,
+        })
+    return templates
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def community_templates(request):
+    """List community task templates from the public GitHub repo (cached)."""
+    from django.core.cache import cache
+
+    force = request.query_params.get("refresh") == "1"
+    if not force:
+        cached = cache.get(_COMMUNITY_CACHE_KEY)
+        if cached is not None:
+            return Response(cached)
+    try:
+        templates = _fetch_community_templates()
+    except Exception:
+        return Response(
+            {"error": "Community repo unreachable — check the server's internet access"},
+            status=502,
+        )
+    cache.set(_COMMUNITY_CACHE_KEY, templates, _COMMUNITY_CACHE_TTL)
+    return Response(templates)
+
+
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def definition_list(request):

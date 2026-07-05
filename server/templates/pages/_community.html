@@ -1,17 +1,20 @@
 {# Community page section #}
-{# Logic: static/js/vigil-tasks.js (refreshTaskCommunity) | Styles: vigil.css .def-*, .task-* | Data: client-side fetch /api/v1/tasks/definitions/?scope=community #}
+{# Logic: static/js/vigil-tasks.js (refreshTaskCommunity) | Styles: vigil.css .def-*, .task-* | Data: client-side fetch /api/v1/tasks/community/ (GitHub-backed, server-cached) #}
     <section id="page-community" class="page">
 
       <div class="page-header">
         <div>
           <div class="page-title">Community<span>.</span></div>
-          <div class="page-sub">Task templates shared on this server. Fork any of them into your library.</div>
+          <div class="page-sub">Task templates from the public Vigil community repo. Fork any of them into your library.</div>
         </div>
       </div>
 
       <div style="background:var(--s1); border-left:2px solid var(--lavender); border-radius:var(--r-sm); padding:14px 18px; margin-bottom:18px; font-size:12px; color:var(--text-2); line-height:1.6;">
-        This is your local community tab. A future release will sync from a
-        public Vigil task repo so self-hosted instances can share templates.
+        Templates are synced from
+        <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky);">Susquehanna-Syntax/Vigil-Approved-Scripts</a>
+        and reviewed by PR before they land. Fork opens a template in your editor — nothing runs
+        without your review, and deploying still requires 2FA. Share your own from the task editor
+        with <em>Submit to Community</em>.
       </div>
 
       <div class="task-search-bar">
