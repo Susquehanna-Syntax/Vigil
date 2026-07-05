@@ -84,6 +84,70 @@ class AlertAckLifecycleTests(TestCase):
         self.assertEqual(resp.status_code, 400)
 
 
+class AlertBulkActionTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = get_user_model().objects.create_user("op", password="pw")
+        self.client.force_authenticate(self.user)
+        self.host = Host.objects.create(
+            hostname="h", agent_token="t" * 32,
+            status=Host.Status.ONLINE, mode=Host.Mode.MONITOR,
+        )
+
+    def _alert(self, state=Alert.State.FIRING, **kw):
+        return Alert.objects.create(
+            host=self.host, rule=None, state=state, severity="warning",
+            message="Docker: Container 'web' is running an outdated image", **kw,
+        )
+
+    def _bulk(self, ids, action, **extra):
+        return self.client.post(
+            "/api/v1/alerts/bulk/",
+            {"ids": ids, "action": action, **extra},
+            format="json",
+        )
+
+    def test_bulk_acknowledge_with_duration(self):
+        alerts = [self._alert() for _ in range(3)]
+        resp = self._bulk([str(a.id) for a in alerts], "acknowledge", duration_seconds=3600)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["updated"], 3)
+        self.assertEqual(resp.data["skipped"], 0)
+        for a in alerts:
+            a.refresh_from_db()
+            self.assertEqual(a.state, Alert.State.ACKNOWLEDGED)
+            self.assertIsNotNone(a.acknowledged_until)
+
+    def test_bulk_skips_wrong_state_and_bad_ids(self):
+        firing = self._alert()
+        acked = self._alert(state=Alert.State.ACKNOWLEDGED, acknowledged_at=now())
+        resp = self._bulk([str(firing.id), str(acked.id), "not-a-uuid"], "acknowledge")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["updated"], 1)
+        self.assertEqual(resp.data["skipped"], 2)
+
+    def test_bulk_unacknowledge(self):
+        acked = [
+            self._alert(state=Alert.State.ACKNOWLEDGED, acknowledged_at=now(),
+                        acknowledged_until=now() + timedelta(hours=1))
+            for _ in range(2)
+        ]
+        resp = self._bulk([str(a.id) for a in acked], "unacknowledge")
+        self.assertEqual(resp.data["updated"], 2)
+        for a in acked:
+            a.refresh_from_db()
+            self.assertEqual(a.state, Alert.State.FIRING)
+            self.assertIsNone(a.acknowledged_until)
+
+    def test_bulk_validates_input(self):
+        self.assertEqual(self._bulk([], "acknowledge").status_code, 400)
+        self.assertEqual(self._bulk([str(self._alert().id)], "resolve").status_code, 400)
+        self.assertEqual(
+            self._bulk([str(self._alert().id)], "acknowledge", duration_seconds=-5).status_code,
+            400,
+        )
+
+
 class ExpireAcknowledgementsTests(TestCase):
     def setUp(self):
         self.host = Host.objects.create(

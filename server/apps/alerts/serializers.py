@@ -29,5 +29,6 @@ class AlertSerializer(serializers.ModelSerializer):
             "acknowledged_at",
             "acknowledged_until",
             "resolved_at",
+            "fix_context",
         ]
         read_only_fields = fields

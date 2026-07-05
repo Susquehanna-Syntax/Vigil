@@ -1,5 +1,5 @@
 {# Alerts page section #}
-{# Logic: static/js/vigil-alerts.js | Styles: vigil.css .alert-*, .tab-* | Data: alerts_firing, alerts_ack, alerts_resolved from dashboard() view #}
+{# Logic: static/js/vigil-alerts.js (client-side rendered — refreshAlerts) | Styles: vigil.css .alert-*, .tab-*, .bulk-bar | Data: fetched from /api/v1/alerts/?state=... #}
     <section id="page-alerts" class="page">
 
       <div class="page-header">
@@ -10,109 +10,47 @@
       </div>
 
       <div class="tab-bar" data-tab-group="alerts">
-        <div class="tab t-rose active" data-tab="alerts-firing">Firing{% if alert_count %} <span style="opacity:.6">({{ alert_count }})</span>{% endif %}</div>
-        <div class="tab t-lemon" data-tab="alerts-ack">Acknowledged{% if alerts_ack.count %} <span style="opacity:.6">({{ alerts_ack.count }})</span>{% endif %}</div>
+        <div class="tab t-rose active" data-tab="alerts-firing">Firing <span style="opacity:.6" id="alerts-count-firing"></span></div>
+        <div class="tab t-lemon" data-tab="alerts-ack">Acknowledged <span style="opacity:.6" id="alerts-count-ack"></span></div>
         <div class="tab t-mint" data-tab="alerts-resolved">Resolved</div>
+      </div>
+
+      {# Bulk action bar — appears when any alert is checked #}
+      <div class="bulk-bar" id="alerts-bulk-bar" hidden>
+        <span class="bulk-bar-count" id="alerts-bulk-count">0 selected</span>
+        <div class="bulk-bar-actions">
+          <div class="ack-menu-wrap">
+            <button class="btn btn-sm btn-outline" onclick="toggleAckMenu(event, 'bulk')">
+              Ack selected
+              <svg viewBox="0 0 24 24" style="width:11px;height:11px;"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="ack-menu" id="ack-menu-bulk">
+              <div class="ack-menu-item" onclick="bulkAlertAction('acknowledge', 3600)">For 1 hour</div>
+              <div class="ack-menu-item" onclick="bulkAlertAction('acknowledge', 28800)">For 8 hours</div>
+              <div class="ack-menu-item" onclick="bulkAlertAction('acknowledge', 86400)">For 24 hours</div>
+              <div class="ack-menu-item" onclick="bulkAlertAction('acknowledge', 604800)">For 7 days</div>
+              <div class="ack-menu-divider"></div>
+              <div class="ack-menu-item" onclick="bulkAlertAction('acknowledge', null)">Permanently</div>
+            </div>
+          </div>
+          <button class="btn btn-sm btn-outline" onclick="bulkAlertAction('unacknowledge')">Un-ack selected</button>
+          <button class="btn btn-sm btn-ghost" onclick="clearAlertSelection()">Clear</button>
+        </div>
       </div>
 
       <!-- Firing -->
       <div class="tab-content active" id="alerts-firing">
-        {% if alerts_firing %}
-        <div class="alert-list">
-          {% for alert in alerts_firing %}
-          <div class="alert-item" data-alert-id="{{ alert.id }}">
-            <div class="alert-dot" style="background: var({% if alert.severity == 'critical' %}--rose{% elif alert.severity == 'warning' %}--lemon{% else %}--lavender{% endif %});"></div>
-            <div class="alert-content">
-              <div class="alert-title">{{ alert.message }}</div>
-              <div class="alert-sub">{{ alert.host.hostname }} · {{ alert.get_severity_display }}{% if alert.metric_value %} · Value: {{ alert.metric_value }}{% endif %}</div>
-            </div>
-            <div class="alert-time">{{ alert.fired_at|timesince }} ago</div>
-            <div class="alert-actions">
-              {% if alert.fix_context.container_name %}
-              <button class="btn btn-sm btn-outline" style="color:var(--mint);" onclick="suggestDockerFix('{{ alert.host.id }}', '{{ alert.fix_context.container_name|escapejs }}', '{{ alert.fix_context.image|escapejs }}')">Suggest Fix</button>
-              {% endif %}
-              <div class="ack-menu-wrap">
-                <button class="btn btn-sm btn-outline" onclick="toggleAckMenu(event, '{{ alert.id }}')">
-                  Ack
-                  <svg viewBox="0 0 24 24" style="width:11px;height:11px;"><polyline points="6 9 12 15 18 9"/></svg>
-                </button>
-                <div class="ack-menu" id="ack-menu-{{ alert.id }}">
-                  <div class="ack-menu-item" onclick="acknowledgeAlert('{{ alert.id }}', 3600)">For 1 hour</div>
-                  <div class="ack-menu-item" onclick="acknowledgeAlert('{{ alert.id }}', 28800)">For 8 hours</div>
-                  <div class="ack-menu-item" onclick="acknowledgeAlert('{{ alert.id }}', 86400)">For 24 hours</div>
-                  <div class="ack-menu-item" onclick="acknowledgeAlert('{{ alert.id }}', 604800)">For 7 days</div>
-                  <div class="ack-menu-divider"></div>
-                  <div class="ack-menu-item" onclick="acknowledgeAlert('{{ alert.id }}')">Permanently</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state">
-          <div class="empty-state-icon" style="background: rgba(126,221,181,0.1);">
-            <svg viewBox="0 0 24 24" style="stroke: var(--mint);"><polyline points="20 6 9 17 4 12"/></svg>
-          </div>
-          <div class="empty-state-title">All clear</div>
-          <div class="empty-state-desc">No alerts are currently firing. Everything looks healthy.</div>
-        </div>
-        {% endif %}
+        <div class="alert-list" id="alerts-list-firing"></div>
       </div>
 
       <!-- Acknowledged -->
       <div class="tab-content" id="alerts-ack">
-        {% if alerts_ack %}
-        <div class="alert-list">
-          {% for alert in alerts_ack %}
-          <div class="alert-item" data-alert-id="{{ alert.id }}">
-            <div class="alert-dot" style="background: var(--lemon);"></div>
-            <div class="alert-content">
-              <div class="alert-title">{{ alert.message }}</div>
-              <div class="alert-sub">{{ alert.host.hostname }} · Ack'd {{ alert.acknowledged_at|timesince }} ago · {% if alert.acknowledged_until %}Re-fires in {{ alert.acknowledged_until|timeuntil }}{% else %}Permanent{% endif %}</div>
-            </div>
-            <div class="alert-time">Fired {{ alert.fired_at|timesince }} ago</div>
-            <div class="alert-actions">
-              <button class="btn btn-sm btn-outline" onclick="unacknowledgeAlert('{{ alert.id }}')">Un-ack</button>
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state">
-          <div class="empty-state-icon" style="background: rgba(226,212,120,0.1);">
-            <svg viewBox="0 0 24 24" style="stroke: var(--lemon);"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-          </div>
-          <div class="empty-state-title">No acknowledged alerts</div>
-          <div class="empty-state-desc">Alerts you acknowledge move here until they resolve or re-fire.</div>
-        </div>
-        {% endif %}
+        <div class="alert-list" id="alerts-list-ack"></div>
       </div>
 
       <!-- Resolved -->
       <div class="tab-content" id="alerts-resolved">
-        {% if alerts_resolved %}
-        <div class="alert-list">
-          {% for alert in alerts_resolved %}
-          <div class="alert-item">
-            <div class="alert-dot" style="background: var(--mint); opacity: 0.5;"></div>
-            <div class="alert-content">
-              <div class="alert-title" style="color: var(--text-2);">{{ alert.message }}</div>
-              <div class="alert-sub">{{ alert.host.hostname }} · Resolved {{ alert.resolved_at|timesince }} ago</div>
-            </div>
-            <div class="alert-time">Fired {{ alert.fired_at|timesince }} ago</div>
-          </div>
-          {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state">
-          <div class="empty-state-icon" style="background: rgba(126,221,181,0.1);">
-            <svg viewBox="0 0 24 24" style="stroke: var(--mint);"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          </div>
-          <div class="empty-state-title">No resolved alerts yet</div>
-          <div class="empty-state-desc">Resolved alerts keep their history here for reference.</div>
-        </div>
-        {% endif %}
+        <div class="alert-list" id="alerts-list-resolved"></div>
       </div>
 
     </section>
