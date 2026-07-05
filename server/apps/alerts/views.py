@@ -1,4 +1,5 @@
 from datetime import timedelta
+from uuid import UUID
 
 from django.utils.timezone import now
 from rest_framework.decorators import api_view, permission_classes
@@ -33,6 +34,13 @@ def _parse_ack_duration(request):
 def alert_list(request):
     state = request.query_params.get("state", Alert.State.FIRING)
     alerts = Alert.objects.filter(state=state).select_related("host", "rule")
+    # Optional cap — the resolved tab only ever shows recent history
+    try:
+        limit = int(request.query_params.get("limit", 0))
+    except (TypeError, ValueError):
+        limit = 0
+    if limit > 0:
+        alerts = alerts[: min(limit, 200)]
     return Response(AlertSerializer(alerts, many=True).data)
 
 
@@ -70,6 +78,61 @@ def alert_unacknowledge(request, alert_id):
     alert.acknowledged_until = None
     alert.save(update_fields=["state", "acknowledged_at", "acknowledged_until"])
     return Response(AlertSerializer(alert).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def alert_bulk(request):
+    """Acknowledge or un-acknowledge a batch of alerts in one request.
+
+    Body: {"ids": [...], "action": "acknowledge"|"unacknowledge",
+    "duration_seconds": <optional, acknowledge only>}. Alerts that aren't in
+    the right state for the action are counted as skipped, not errors — the
+    console lets a selection span tabs.
+    """
+    ids = request.data.get("ids")
+    action = request.data.get("action")
+    if not isinstance(ids, list) or not ids:
+        return Response({"error": "ids must be a non-empty list"}, status=400)
+    if len(ids) > 200:
+        return Response({"error": "Too many ids (max 200)"}, status=400)
+    if action not in ("acknowledge", "unacknowledge"):
+        return Response({"error": "action must be 'acknowledge' or 'unacknowledge'"}, status=400)
+
+    until = None
+    if action == "acknowledge":
+        until, err = _parse_ack_duration(request)
+        if err is not None:
+            return err
+
+    valid_ids = []
+    for raw in ids:
+        try:
+            valid_ids.append(UUID(str(raw)))
+        except (TypeError, ValueError):
+            pass
+
+    current = now()
+    updated = 0
+    skipped = len(ids) - len(valid_ids)
+    alerts = Alert.objects.filter(pk__in=valid_ids)
+    skipped += len(valid_ids) - alerts.count()
+    for alert in alerts:
+        if action == "acknowledge" and alert.state == Alert.State.FIRING:
+            alert.state = Alert.State.ACKNOWLEDGED
+            alert.acknowledged_at = current
+            alert.acknowledged_until = until
+        elif action == "unacknowledge" and alert.state == Alert.State.ACKNOWLEDGED:
+            alert.state = Alert.State.FIRING
+            alert.acknowledged_at = None
+            alert.acknowledged_until = None
+        else:
+            skipped += 1
+            continue
+        alert.save(update_fields=["state", "acknowledged_at", "acknowledged_until"])
+        updated += 1
+
+    return Response({"updated": updated, "skipped": skipped})
 
 
 @api_view(["POST"])

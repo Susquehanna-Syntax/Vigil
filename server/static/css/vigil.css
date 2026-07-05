@@ -571,6 +571,30 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   margin-left: 8px;
 }
 
+/* Selection checkbox + bulk action bar */
+.alert-check {
+  accent-color: var(--sky);
+  width: 16px; height: 16px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.bulk-bar {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 10px 16px;
+  margin-bottom: 14px;
+  animation: fadeUp 0.25s var(--ease-out-expo) both;
+}
+.bulk-bar[hidden] { display: none; }
+.bulk-bar-count {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px; font-weight: 600;
+  color: var(--sky);
+}
+.bulk-bar-actions { display: flex; gap: 6px; margin-left: auto; }
+
 /* Ack duration menu — same idiom as .host-dropdown, right-aligned */
 .ack-menu-wrap { position: relative; display: inline-block; }
 .ack-menu {
