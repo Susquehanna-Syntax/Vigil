@@ -53,6 +53,26 @@ class SpecValidationTests(TestCase):
         self.assertEqual([a["type"] for a in spec["actions"]], ["pull_image", "recreate_container"])
         self.assertEqual(spec["risk"], "standard")
 
+    def test_builtin_templates_all_parse(self):
+        builtin_dir = Path(__file__).resolve().parent / "builtin_templates"
+        yaml_files = sorted(builtin_dir.glob("*.yaml"))
+        self.assertTrue(yaml_files, "no builtin templates found")
+        for yaml_path in yaml_files:
+            spec = parse_and_validate(yaml_path.read_text())
+            self.assertTrue(spec["name"], yaml_path.name)
+
+    def test_check_docker_updates_is_low_risk_no_params(self):
+        spec = parse_and_validate(
+            "name: Check\nrisk: low\nactions:\n  - type: check_docker_updates\n"
+        )
+        self.assertEqual(spec["risk"], "low")  # low declared, low derived — stays low
+        with self.assertRaises(SpecError):
+            parse_and_validate(
+                "name: Bad\nactions:\n"
+                "  - type: check_docker_updates\n"
+                "    params: { image: nope }\n"
+            )
+
     def test_recreate_container_requires_container_name(self):
         with self.assertRaises(SpecError):
             parse_and_validate(

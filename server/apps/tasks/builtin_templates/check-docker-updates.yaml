@@ -1,0 +1,16 @@
+name: Check Docker images for updates
+description: |
+  Force an immediate Docker Hub digest re-check on the target host instead
+  of waiting for the agent's next scheduled check (default every 6 hours,
+  configurable with docker_check_interval in agent.yml). The task output
+  lists each Hub-tagged container as up to date or OUTDATED, and the fresh
+  results ride back on the next check-in so outdated-image alerts fire or
+  resolve within about a minute. Deploy it ad hoc after updating containers,
+  or add a schedule window to run it during maintenance hours.
+relevance: "any host running Docker containers"
+risk: low
+author: Vigil
+created: 2026-07-06
+actions:
+  - id: check
+    type: check_docker_updates

@@ -22,6 +22,12 @@ agent_token: ""
 # task dispatch at the cost of more server load. Default: 60.
 checkin_interval: 60
 
+# Seconds between Docker Hub image-update checks (unmetered HEAD requests —
+# never counted pulls). Default: 21600 (6 hours), minimum 300. Docker-mutating
+# tasks and the "Check Docker images for updates" template trigger an
+# immediate re-check regardless of this interval.
+docker_check_interval: 21600
+
 
 # ── Agent Mode ────────────────────────────────────────────────────────────────
 #
@@ -52,6 +58,7 @@ allowlist:
   # Container image updates (pull + recreate on the new image)
   - pull_image
   - recreate_container
+  - check_docker_updates
 
   # Housekeeping
   - clear_temp_files

@@ -329,6 +329,7 @@ All 37 primitives are defined in `server/apps/tasks/spec.py` and executed in `ag
 | `docker_compose_up` | `compose_file` | `services` |
 | `docker_compose_down` | `compose_file` | — |
 | `clear_docker_logs` | — | `container_name` |
+| `check_docker_updates` | — | — |
 
 **Package management**
 

@@ -349,15 +349,19 @@ def main() -> None:
     # Docker image update checks hit the Docker Hub registry, which rate-
     # limits anonymous clients. Even with HEAD requests (which don't count
     # against the pull budget) there's no reason to re-check often — a
-    # published image moving is a once-in-days event. Refresh every 6
-    # hours; the cached results ride along in every checkin so the server
-    # alert engine always has recent data.
-    _DOCKER_CHECK_INTERVAL = 21600  # 6 hours
+    # published image moving is a once-in-days event. The interval comes
+    # from `docker_check_interval` in agent.yml (default 6 hours, floor 5
+    # minutes); a docker-mutating task or a check_docker_updates task sets
+    # the collector's recheck flag, which forces a refresh on the next pass
+    # so alerts fire/resolve promptly after remediation. Results are shipped
+    # once per refresh — re-sending them on every checkin would only insert
+    # duplicate points with stale timestamps the alert engine ignores.
     consecutive_failures = 0
     inventory_refresh_after = 0.0  # monotonic deadline; 0 → refresh now
     docker_refresh_after = 0.0    # monotonic deadline; 0 → check now
     last_inventory: dict | None = None
     _cached_docker_metrics: list[dict] = []
+    docker_payload_pending = False  # fresh results awaiting a successful checkin
     while not _shutdown:
         try:
             metrics = collector.collect_all()
@@ -371,15 +375,20 @@ def main() -> None:
                 # Always send on the first refresh; otherwise hourly.
                 inventory_refresh_after = time.monotonic() + 3600
                 inventory_payload = last_inventory
+            if collector.consume_docker_recheck():
+                docker_refresh_after = 0.0
             if time.monotonic() >= docker_refresh_after:
                 try:
                     _cached_docker_metrics = collector.collect_docker_updates()
+                    docker_payload_pending = True
                 except Exception:
                     logger.exception("Docker update check failed")
-                docker_refresh_after = time.monotonic() + _DOCKER_CHECK_INTERVAL
-            metrics.extend(_cached_docker_metrics)
+                docker_refresh_after = time.monotonic() + config.docker_check_interval
+            if docker_payload_pending:
+                metrics.extend(_cached_docker_metrics)
             response = client.checkin(config, metrics, inventory=inventory_payload)
             consecutive_failures = 0
+            docker_payload_pending = False
 
             # Handle public key (TOFU pinning)
             pub_key_b64 = response.get("public_key")
