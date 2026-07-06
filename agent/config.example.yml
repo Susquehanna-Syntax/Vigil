@@ -49,6 +49,10 @@ allowlist:
   - stop_container
   - start_container
 
+  # Container image updates (pull + recreate on the new image)
+  - pull_image
+  - recreate_container
+
   # Housekeeping
   - clear_temp_files
   - clear_docker_logs

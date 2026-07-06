@@ -986,11 +986,11 @@
           </tbody>
         </table>
       </div>
-      <p class="prose" style="margin-top:8px;">The Docker check is binary (outdated / current) rather than threshold-based — see <a href="#docker">Docker Container Updates</a> for the full story, including the per-container <em>Suggest Fix</em> button that prefills a pull-and-restart task.</p>
+      <p class="prose" style="margin-top:8px;">The Docker check is binary (outdated / current) rather than threshold-based — see <a href="#docker">Docker Container Updates</a> for the full story, including the per-container <em>Suggest Fix</em> button that prefills a pull-and-recreate task.</p>
 
       <div class="callout callout-info">
         <div class="callout-icon">i</div>
-        <div>When an alert fires for an outdated agent, the alerts panel shows a <em>Suggest Fix</em> button that pre-fills the task editor with an <code>update_agent</code> task payload ready to deploy. Outdated-container alerts get an equivalent button that prefills a <code>pull_image</code> + <code>restart_container</code> task.</div>
+        <div>When an alert fires for an outdated agent, the alerts panel shows a <em>Suggest Fix</em> button that pre-fills the task editor with an <code>update_agent</code> task payload ready to deploy. Outdated-container alerts get an equivalent button that prefills a <code>pull_image</code> + <code>recreate_container</code> task.</div>
       </div>
     </section>
     <div class="divider"></div>
@@ -1062,7 +1062,7 @@
     <section class="section" id="docker">
       <p class="section-label">Container Management</p>
       <h2 class="section-title" style="color:var(--sky)">Docker Container Updates</h2>
-      <p class="section-desc">Vigil watches running Docker containers on every monitored host, fires alerts when an image falls behind upstream, and ships a one-click <em>Suggest Fix</em> that prefills a signed task to pull the new image and restart the container.</p>
+      <p class="section-desc">Vigil watches running Docker containers on every monitored host, fires alerts when an image falls behind upstream, and ships a one-click <em>Suggest Fix</em> that prefills a signed task to pull the new image and recreate the container on it.</p>
 
       <h3>How detection works</h3>
       <p class="prose">Every agent with read access to the local Docker socket (<code>/var/run/docker.sock</code>) compares the manifest digest of each running container against the current manifest on Docker Hub. The check runs every <strong>5 minutes</strong> and the result is cached between check-ins so the daemon and the public registry aren't hammered. When the socket is missing, permission is denied, or the daemon isn't running, the check is silently skipped — Vigil never fails an agent because Docker isn't installed.</p>
@@ -1096,18 +1096,19 @@
       <div class="code-block">
         <div class="code-label">Auto-generated task YAML</div>
         <pre><span class="hl-var">name</span>: <span class="hl-string">"Update Docker Image: nginx:latest"</span>
-<span class="hl-var">description</span>: <span class="hl-string">"Pull the latest nginx:latest and restart nginx"</span>
+<span class="hl-var">description</span>: <span class="hl-string">"Pull the latest nginx:latest and recreate nginx on it"</span>
 <span class="hl-var">actions</span>:
   - <span class="hl-var">id</span>: <span class="hl-string">pull_new_image</span>
     <span class="hl-var">type</span>: <span class="hl-string">pull_image</span>
     <span class="hl-var">params</span>:
       <span class="hl-var">image</span>: <span class="hl-string">"nginx:latest"</span>
-  - <span class="hl-var">id</span>: <span class="hl-string">restart_container</span>
-    <span class="hl-var">type</span>: <span class="hl-string">restart_container</span>
+  - <span class="hl-var">id</span>: <span class="hl-string">recreate</span>
+    <span class="hl-var">type</span>: <span class="hl-string">recreate_container</span>
     <span class="hl-var">params</span>:
-      <span class="hl-var">container_name</span>: <span class="hl-string">"nginx"</span></pre>
+      <span class="hl-var">container_name</span>: <span class="hl-string">"nginx"</span>
+      <span class="hl-var">image</span>: <span class="hl-string">"nginx:latest"</span></pre>
       </div>
-      <p class="prose">Effective risk is <span class="risk risk-std">standard</span> (derived from <code>restart_container</code>), so deploying still requires TOTP. Once the agent reports success on its next check-in, the alert auto-resolves on the following 10-minute beat cycle.</p>
+      <p class="prose">The second step is <code>recreate_container</code>, not <code>restart_container</code> — <code>docker restart</code> keeps a container on the image it was created from, so a plain restart would leave the update unapplied and the alert re-firing. Recreation stops and removes the container, then re-runs it on the new image with its user-supplied config (env overrides, ports, volumes, network, restart policy, capabilities) carried over; if the replacement fails to start, the original container is put back and restarted. Effective risk is <span class="risk risk-std">standard</span> (derived from <code>recreate_container</code>), so deploying still requires TOTP. Once the agent reports success on its next check-in, the alert auto-resolves on the following 10-minute beat cycle.</p>
 
       <h3>Container management actions</h3>
       <p class="prose">The full set of container primitives available in custom task YAML — usable either standalone or composed into multi-step updates:</p>
@@ -1117,7 +1118,8 @@
           <tbody>
             <tr><td><code>pull_image</code></td><td><span class="risk risk-low">low</span></td><td><code>image</code></td><td><code>docker pull &lt;image&gt;</code> — 10-minute timeout for large pulls. Image name is validated against a strict safe pattern before exec.</td></tr>
             <tr><td><code>start_container</code></td><td><span class="risk risk-low">low</span></td><td><code>container_name</code></td><td>Start a stopped container</td></tr>
-            <tr><td><code>restart_container</code></td><td><span class="risk risk-std">standard</span></td><td><code>container_name</code></td><td>Restart a running container — picks up a freshly-pulled image</td></tr>
+            <tr><td><code>restart_container</code></td><td><span class="risk risk-std">standard</span></td><td><code>container_name</code></td><td>Restart a running container on its <em>current</em> image — does <strong>not</strong> apply a freshly-pulled image</td></tr>
+            <tr><td><code>recreate_container</code></td><td><span class="risk risk-std">standard</span></td><td><code>container_name</code></td><td>Stop, remove, and re-run the container so it adopts a freshly-pulled image (optional <code>image</code> to switch tags). User-supplied config is carried over; rolls back to the original container if the replacement fails to start. Compose-managed containers are refused — use <code>docker_compose_up</code></td></tr>
             <tr><td><code>stop_container</code></td><td><span class="risk risk-std">standard</span></td><td><code>container_name</code></td><td>Stop a running container</td></tr>
             <tr><td><code>remove_container</code></td><td><span class="risk risk-high">high</span></td><td><code>container_name</code></td><td><code>docker rm -f</code> — forcibly remove (data loss if no volume)</td></tr>
             <tr><td><code>docker_compose_up</code></td><td><span class="risk risk-std">standard</span></td><td><code>compose_file</code></td><td><code>docker compose -f &lt;file&gt; up -d</code>; optional <code>services</code> filter</td></tr>
@@ -1128,11 +1130,11 @@
       </div>
 
       <h3>Updating from a custom YAML</h3>
-      <p class="prose">Skip the Suggest Fix button when you want to bake an update into a reusable task definition (per-host inputs, schedule windows, retry policy). The same pull-then-restart shape works for any container:</p>
+      <p class="prose">Skip the Suggest Fix button when you want to bake an update into a reusable task definition (per-host inputs, schedule windows, retry policy). The same pull-then-recreate shape works for any container:</p>
       <div class="code-block">
         <div class="code-label">tasks/update-container.yaml</div>
         <pre><span class="hl-var">name</span>: <span class="hl-string">Update a container to its latest tag</span>
-<span class="hl-var">description</span>: <span class="hl-string">Pull the configured image and restart the named container.</span>
+<span class="hl-var">description</span>: <span class="hl-string">Pull the configured image and recreate the named container on it.</span>
 <span class="hl-var">risk</span>: <span class="hl-string">standard</span>
 <span class="hl-var">inputs</span>:
   - <span class="hl-var">id</span>: <span class="hl-string">image</span>
@@ -1147,9 +1149,9 @@
   - <span class="hl-var">id</span>: <span class="hl-string">pull</span>
     <span class="hl-var">type</span>: <span class="hl-string">pull_image</span>
     <span class="hl-var">params</span>: { <span class="hl-var">image</span>: <span class="hl-string">"{{ inputs.image }}"</span> }
-  - <span class="hl-var">id</span>: <span class="hl-string">restart</span>
-    <span class="hl-var">type</span>: <span class="hl-string">restart_container</span>
-    <span class="hl-var">params</span>: { <span class="hl-var">container_name</span>: <span class="hl-string">"{{ inputs.container }}"</span> }</pre>
+  - <span class="hl-var">id</span>: <span class="hl-string">recreate</span>
+    <span class="hl-var">type</span>: <span class="hl-string">recreate_container</span>
+    <span class="hl-var">params</span>: { <span class="hl-var">container_name</span>: <span class="hl-string">"{{ inputs.container }}"</span>, <span class="hl-var">image</span>: <span class="hl-string">"{{ inputs.image }}"</span> }</pre>
       </div>
       <p class="prose">For Compose-managed stacks, swap the two steps for <code>docker_compose_up</code> against the stack's compose file — Compose pulls and recreates in a single action.</p>
 

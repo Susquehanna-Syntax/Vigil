@@ -37,6 +37,30 @@ class SpecValidationTests(TestCase):
         with self.assertRaises(SpecError):
             parse_and_validate("")
 
+    def test_pull_and_recreate_template_validates_at_standard_risk(self):
+        # Shape emitted by the alerts panel's Suggest Fix button.
+        yaml_src = (
+            "name: 'Update Docker Image: nginx:latest'\n"
+            "actions:\n"
+            "  - id: pull_new_image\n"
+            "    type: pull_image\n"
+            "    params: { image: 'nginx:latest' }\n"
+            "  - id: recreate\n"
+            "    type: recreate_container\n"
+            "    params: { container_name: nginx, image: 'nginx:latest' }\n"
+        )
+        spec = parse_and_validate(yaml_src)
+        self.assertEqual([a["type"] for a in spec["actions"]], ["pull_image", "recreate_container"])
+        self.assertEqual(spec["risk"], "standard")
+
+    def test_recreate_container_requires_container_name(self):
+        with self.assertRaises(SpecError):
+            parse_and_validate(
+                "name: Bad\nactions:\n"
+                "  - type: recreate_container\n"
+                "    params: { image: 'nginx:latest' }\n"
+            )
+
 
 class SigningTests(TestCase):
     def test_sign_task_signature_verifies(self):
