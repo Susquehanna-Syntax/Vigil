@@ -273,18 +273,21 @@ function suggestAgentUpdate(hostId) {
 }
 
 function suggestDockerFix(hostId, containerName, image) {
+  // recreate_container (not restart_container): a restart keeps the container
+  // on its original image, so the pulled update would never actually apply.
   const yaml = [
     `name: "Update Docker Image: ${image}"`,
-    `description: "Pull the latest ${image} and restart ${containerName}"`,
+    `description: "Pull the latest ${image} and recreate ${containerName} on it"`,
     `actions:`,
     `  - id: pull_new_image`,
     `    type: pull_image`,
     `    params:`,
     `      image: "${image}"`,
-    `  - id: restart_container`,
-    `    type: restart_container`,
+    `  - id: recreate`,
+    `    type: recreate_container`,
     `    params:`,
     `      container_name: "${containerName}"`,
+    `      image: "${image}"`,
   ].join('\n');
   openDefinitionEditor(null, yaml);
 }

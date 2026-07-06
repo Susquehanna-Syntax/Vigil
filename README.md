@@ -325,6 +325,7 @@ All 37 primitives are defined in `server/apps/tasks/spec.py` and executed in `ag
 | `stop_container` | `container_name` | — |
 | `remove_container` | `container_name` | — |
 | `pull_image` | `image` | — |
+| `recreate_container` | `container_name` | `image` |
 | `docker_compose_up` | `compose_file` | `services` |
 | `docker_compose_down` | `compose_file` | — |
 | `clear_docker_logs` | — | `container_name` |

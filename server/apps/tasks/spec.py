@@ -105,6 +105,16 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": ["image"],
         "optional": [],
     },
+    # Applies a freshly pulled image: docker restart alone keeps the container
+    # on its original image, so image updates require recreation. The agent
+    # carries the container's user-supplied config over and rolls back to the
+    # original container if the replacement fails to start.
+    "recreate_container": {
+        "label": "Recreate container (apply new image)",
+        "risk": "standard",
+        "required": ["container_name"],
+        "optional": ["image"],
+    },
     "remove_container": {
         "label": "Remove container",
         "risk": "high",

@@ -14,6 +14,7 @@ Security invariants:
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import re
@@ -238,6 +239,181 @@ def _pull_image(params: dict, _config: AgentConfig) -> str:
     if not _SAFE_IMAGE.match(image):
         raise ValueError(f"Invalid image name: {image!r}")
     return _run(["docker", "pull", image], timeout=600)
+
+
+_COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
+
+
+def _docker_inspect(ref: str, *, kind: str = "container") -> dict:
+    """Return the parsed ``docker inspect`` object for a container or image."""
+    out = _run(["docker", "inspect", "--type", kind, ref])
+    data = json.loads(out)
+    if not data:
+        raise RuntimeError(f"docker inspect returned nothing for {ref!r}")
+    return data[0]
+
+
+def _recreate_run_args(spec: dict, old_image: dict, new_image_ref: str) -> list[str]:
+    """Build the ``docker run`` argv that reproduces *spec* on a new image.
+
+    Only configuration the *user* supplied at ``docker run`` time is carried
+    over — env vars, command, and entrypoint are diffed against the original
+    image's defaults so the new image's own defaults still apply (the same
+    approach watchtower uses). Exotic host configs (tmpfs, GPUs, log drivers,
+    resource limits) are not reproduced; those setups belong in compose.
+    """
+    cfg = spec.get("Config") or {}
+    host = spec.get("HostConfig") or {}
+    img_cfg = old_image.get("Config") or {}
+
+    args = ["docker", "run", "-d", "--name", (spec.get("Name") or "").lstrip("/")]
+
+    restart = host.get("RestartPolicy") or {}
+    policy = restart.get("Name") or ""
+    if policy and policy != "no":
+        retries = restart.get("MaximumRetryCount") or 0
+        if policy == "on-failure" and retries:
+            policy = f"{policy}:{retries}"
+        args += ["--restart", policy]
+
+    image_env = set(img_cfg.get("Env") or [])
+    for env in cfg.get("Env") or []:
+        if env not in image_env:
+            args += ["-e", env]
+
+    image_labels = img_cfg.get("Labels") or {}
+    for label, value in (cfg.get("Labels") or {}).items():
+        if image_labels.get(label) != value:
+            args += ["--label", f"{label}={value}"]
+
+    network = host.get("NetworkMode") or "default"
+    if network not in ("default", "bridge"):
+        args += ["--network", network]
+
+    if host.get("PublishAllPorts"):
+        args.append("-P")
+    for port, bindings in (host.get("PortBindings") or {}).items():
+        for binding in bindings or [{}]:
+            host_ip = binding.get("HostIp") or ""
+            host_port = binding.get("HostPort") or ""
+            if host_ip:
+                args += ["-p", f"{host_ip}:{host_port}:{port}"]
+            elif host_port:
+                args += ["-p", f"{host_port}:{port}"]
+            else:
+                args += ["-p", port]
+
+    for mount in spec.get("Mounts") or []:
+        source = mount.get("Source") if mount.get("Type") == "bind" else mount.get("Name")
+        if not source:
+            continue
+        volume = f"{source}:{mount.get('Destination')}"
+        if not mount.get("RW", True):
+            volume += ":ro"
+        args += ["-v", volume]
+
+    if host.get("Privileged"):
+        args.append("--privileged")
+    for cap in host.get("CapAdd") or []:
+        args += ["--cap-add", cap]
+    for cap in host.get("CapDrop") or []:
+        args += ["--cap-drop", cap]
+    for device in host.get("Devices") or []:
+        on_host = device.get("PathOnHost")
+        if on_host:
+            args += ["--device", f"{on_host}:{device.get('PathInContainer') or on_host}"]
+    for extra_host in host.get("ExtraHosts") or []:
+        args += ["--add-host", extra_host]
+    if cfg.get("User"):
+        args += ["--user", cfg["User"]]
+
+    trailing: list[str] = []
+    entrypoint = cfg.get("Entrypoint")
+    if isinstance(entrypoint, str):
+        entrypoint = [entrypoint]
+    if entrypoint and entrypoint != (img_cfg.get("Entrypoint") or None):
+        # --entrypoint takes a single executable; the rest of the override,
+        # plus the command, must be restated as trailing args.
+        args += ["--entrypoint", entrypoint[0]]
+        trailing += entrypoint[1:]
+        trailing += cfg.get("Cmd") or []
+    else:
+        command = cfg.get("Cmd")
+        if isinstance(command, str):
+            command = [command]
+        if command and command != (img_cfg.get("Cmd") or None):
+            trailing += command
+
+    args.append(new_image_ref)
+    args += [str(part) for part in trailing]
+    return args
+
+
+def _recreate_container(params: dict, _config: AgentConfig) -> str:
+    """Stop, remove, and re-run a container so it adopts a freshly pulled image.
+
+    ``docker restart`` keeps a container on the image it was created from, so
+    a pull + restart never applies an update. Applying one requires
+    recreating the container: inspect the existing one, carry its
+    user-supplied config (env overrides, ports, volumes, network, restart
+    policy, capabilities) onto a new container on the target image, and roll
+    the original back into place if the replacement fails to start.
+
+    Compose-managed containers are refused — recreate those with
+    ``docker_compose_up`` so compose stays authoritative over their config.
+    """
+    name = _validate_name(params.get("container_name", ""), "container name")
+    spec = _docker_inspect(name)
+
+    labels = (spec.get("Config") or {}).get("Labels") or {}
+    if labels.get(_COMPOSE_PROJECT_LABEL):
+        raise ValueError(
+            f"Container {name!r} is managed by docker compose "
+            f"(project {labels[_COMPOSE_PROJECT_LABEL]!r}) — "
+            f"use docker_compose_up to recreate it"
+        )
+
+    image_ref = params.get("image") or (spec.get("Config") or {}).get("Image") or ""
+    if not _SAFE_IMAGE.match(image_ref):
+        raise ValueError(f"Invalid image name: {image_ref!r}")
+
+    old_image_id = spec.get("Image") or ""
+    # The old image is always inspectable while its container exists — docker
+    # refuses to remove an image that a container still references.
+    old_image = _docker_inspect(old_image_id or image_ref, kind="image")
+    run_args = _recreate_run_args(spec, old_image, image_ref)
+
+    backup = f"{name}.vigil-old"
+    try:
+        _run(["docker", "rm", "-f", backup])  # clear stale backup from a failed run
+    except RuntimeError:
+        pass
+
+    _run(["docker", "stop", name])
+    _run(["docker", "rename", name, backup])
+    try:
+        _run(run_args, timeout=300)
+    except Exception as exc:
+        try:
+            _run(["docker", "rm", "-f", name])  # half-created replacement, if any
+        except RuntimeError:
+            pass
+        try:
+            _run(["docker", "rename", backup, name])
+            _run(["docker", "start", name])
+            rollback = "original container restored"
+        except RuntimeError as rb_exc:
+            rollback = f"ROLLBACK FAILED, backup container is {backup!r}: {rb_exc}"
+        raise RuntimeError(f"Recreate failed ({rollback}): {exc}") from exc
+    _run(["docker", "rm", backup])
+
+    new_image_id = _run(["docker", "inspect", "--format", "{{.Image}}", name])
+    changed = "image updated" if new_image_id != old_image_id else "image unchanged"
+    return (
+        f"Recreated {name} on {image_ref} ({changed})\n"
+        f"  old image: {old_image_id[:19]}\n"
+        f"  new image: {new_image_id[:19]}"
+    )
 
 
 def _request_nessus_scan(_params: dict, _config: AgentConfig) -> str:
@@ -1018,6 +1194,7 @@ _HANDLERS: dict[str, callable] = {
     "stop_container": _stop_container,
     "start_container": _start_container,
     "pull_image": _pull_image,
+    "recreate_container": _recreate_container,
     "request_nessus_scan": _request_nessus_scan,
     "request_network_scan": _request_network_scan,
     "run_trivy_scan": _run_trivy_scan,

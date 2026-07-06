@@ -19,7 +19,7 @@ _ALL_ACTIONS = {
     "enable_service", "disable_service", "check_service",
     # Container management
     "restart_container", "stop_container", "start_container",
-    "pull_image", "remove_container",
+    "pull_image", "recreate_container", "remove_container",
     "docker_compose_up", "docker_compose_down",
     "clear_docker_logs",
     # File / directory operations
