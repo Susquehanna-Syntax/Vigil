@@ -3,6 +3,14 @@
 Same upsert-by-name seeding as 0009 — re-running against the current
 contents of ``builtin_templates/`` adds the new template and refreshes
 the canonical copies of existing ones without touching users' forks.
+
+Unlike 0009 this seed tolerates duplicate owner-less community rows for
+the same name (installs that predate the GitHub-backed community tab can
+carry both a locally-submitted copy and the 0009-seeded copy — 0009's
+``update_or_create`` crashes on those with MultipleObjectsReturned).
+Duplicates are collapsed onto the oldest row; ``TaskRun.definition`` and
+``forked_from`` are both SET_NULL, so dropping the extras can't cascade
+into task history or user forks.
 """
 
 from pathlib import Path
@@ -23,18 +31,22 @@ def _iter_specs():
 def seed(apps, schema_editor):
     TaskDefinition = apps.get_model("tasks", "TaskDefinition")
     for src, spec in _iter_specs():
-        TaskDefinition.objects.update_or_create(
-            name=spec["name"],
-            owner=None,
-            visibility="community",
-            defaults={
-                "description": spec["description"],
-                "relevance": spec["relevance"],
-                "risk_level": spec["risk"],
-                "yaml_source": src,
-                "parsed_spec": spec,
-            },
+        rows = list(
+            TaskDefinition.objects.filter(
+                name=spec["name"], owner=None, visibility="community"
+            ).order_by("created_at")  # pk is a UUID — created_at is creation order
         )
+        for extra in rows[1:]:
+            extra.delete()
+        target = rows[0] if rows else TaskDefinition(
+            name=spec["name"], owner=None, visibility="community"
+        )
+        target.description = spec["description"]
+        target.relevance = spec["relevance"]
+        target.risk_level = spec["risk"]
+        target.yaml_source = src
+        target.parsed_spec = spec
+        target.save()
 
 
 def unseed(apps, schema_editor):
