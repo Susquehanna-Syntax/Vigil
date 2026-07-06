@@ -51,6 +51,29 @@ class CheckinIpTrustTests(TestCase):
         # The connection address wins; the body value is discarded.
         self.assertEqual(self.host.ip_address, "203.0.113.7")
 
+    def test_checkin_syncs_mode_from_agent(self):
+        # setUp host is MONITOR; the agent reports its authoritative local mode
+        resp = self.client.post(
+            "/api/v1/checkin",
+            {"hostname": "web-01", "mode": "managed"},
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {self.host.agent_token}",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.host.refresh_from_db()
+        self.assertEqual(self.host.mode, Host.Mode.MANAGED)
+
+    def test_checkin_ignores_invalid_mode(self):
+        resp = self.client.post(
+            "/api/v1/checkin",
+            {"hostname": "web-01", "mode": "root_me_please"},
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {self.host.agent_token}",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.host.refresh_from_db()
+        self.assertEqual(self.host.mode, Host.Mode.MONITOR)
+
     def test_checkin_rejects_bad_token(self):
         resp = self.client.post(
             "/api/v1/checkin",

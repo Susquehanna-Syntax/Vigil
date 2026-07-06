@@ -547,6 +547,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
    ═══════════════════════════════════════════ */
 .alert-list { display: flex; flex-direction: column; gap: 8px; }
 .alert-item {
+  position: relative;
   display: flex; align-items: center; gap: 14px;
   padding: 14px 18px;
   border-radius: var(--r-md);
@@ -554,6 +555,10 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   transition: background 0.2s, transform 0.4s var(--ease-out-expo);
 }
 .alert-item:hover { background: var(--s2); transform: translateX(4px); }
+/* The hover transform creates a stacking context per card, so an open ack
+   menu would otherwise paint underneath the next card in DOM order. Lift
+   the card that owns the open menu above its siblings. */
+.alert-item.menu-open { z-index: 60; }
 .alert-dot {
   width: 10px; height: 10px;
   border-radius: 4px; flex-shrink: 0;
@@ -573,11 +578,32 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 
 /* Selection checkbox + bulk action bar */
 .alert-check {
-  accent-color: var(--sky);
-  width: 16px; height: 16px;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 17px; height: 17px;
   flex-shrink: 0;
+  margin: 0;
+  border: 1.5px solid var(--s4);
+  border-radius: 5px;
+  background: var(--s2);
   cursor: pointer;
+  display: grid; place-content: center;
+  transition: background 0.2s, border-color 0.2s;
 }
+.alert-check::before {
+  content: "";
+  width: 9px; height: 9px;
+  transform: scale(0);
+  transition: transform 0.25s var(--ease-out-back);
+  background: var(--bg);
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+}
+.alert-check:hover { border-color: var(--sky); }
+.alert-check:checked {
+  background: var(--sky);
+  border-color: var(--sky);
+}
+.alert-check:checked::before { transform: scale(1); }
 .bulk-bar {
   display: flex; align-items: center; gap: 14px;
   background: var(--s1);

@@ -228,6 +228,8 @@ async function unacknowledgeAlert(alertId) {
 /* ── Ack duration menu ───────────────────────────────────────────────── */
 function closeAckMenus() {
   document.querySelectorAll('.ack-menu.open').forEach(m => m.classList.remove('open'));
+  // Drop the z-index lift from whichever card owned the open menu
+  document.querySelectorAll('.alert-item.menu-open').forEach(el => el.classList.remove('menu-open'));
 }
 
 function toggleAckMenu(event, alertId) {
@@ -236,7 +238,13 @@ function toggleAckMenu(event, alertId) {
   if (!menu) return;
   const wasOpen = menu.classList.contains('open');
   closeAckMenus();
-  if (!wasOpen) menu.classList.add('open');
+  if (!wasOpen) {
+    menu.classList.add('open');
+    // Lift the owning card above its siblings so the menu isn't painted
+    // under the next alert card (hover transforms create stacking contexts)
+    const item = menu.closest('.alert-item');
+    if (item) item.classList.add('menu-open');
+  }
 }
 
 document.addEventListener('click', closeAckMenus);
