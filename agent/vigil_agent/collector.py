@@ -462,6 +462,27 @@ def _parse_docker_hub_ref(image_str: str) -> tuple[str, str] | None:
 # already have locally, so the container is up to date by definition.
 _DIGEST_UNCHANGED = "__unchanged__"
 
+# Set when something changed local Docker state (image pulled, container
+# recreated, compose stack redeployed) or a check_docker_updates task asked
+# for a re-check. The main loop consumes it to refresh update metrics on the
+# next check-in instead of waiting out the configured check interval — this
+# is what lets an outdated-image alert resolve minutes after remediation.
+_docker_recheck_requested = False
+
+
+def request_docker_recheck() -> None:
+    """Flag that Docker update metrics should be refreshed on the next pass."""
+    global _docker_recheck_requested
+    _docker_recheck_requested = True
+
+
+def consume_docker_recheck() -> bool:
+    """Return whether a re-check was requested, clearing the flag."""
+    global _docker_recheck_requested
+    requested = _docker_recheck_requested
+    _docker_recheck_requested = False
+    return requested
+
 
 def _normalize_hub_repo(name: str) -> str:
     """Normalize a RepoDigests repo name to Docker Hub's <namespace>/<repo> form."""

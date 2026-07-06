@@ -139,6 +139,16 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": [],
         "optional": ["container_name"],
     },
+    # Forces an immediate Docker Hub digest re-check instead of waiting out
+    # the agent's docker_check_interval — outdated-image alerts fire or
+    # resolve on the next check-in (~1 min). Read-only: HEAD requests only,
+    # never a pull.
+    "check_docker_updates": {
+        "label": "Check Docker images for updates now",
+        "risk": "low",
+        "required": [],
+        "optional": [],
+    },
     # ── File / directory operations ─────────────────────────────────────────
     "write_file": {
         "label": "Write file",

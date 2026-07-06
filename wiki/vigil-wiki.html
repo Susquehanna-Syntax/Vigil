@@ -1065,7 +1065,7 @@
       <p class="section-desc">Vigil watches running Docker containers on every monitored host, fires alerts when an image falls behind upstream, and ships a one-click <em>Suggest Fix</em> that prefills a signed task to pull the new image and recreate the container on it.</p>
 
       <h3>How detection works</h3>
-      <p class="prose">Every agent with read access to the local Docker socket (<code>/var/run/docker.sock</code>) compares the manifest digest of each running container against the current manifest on Docker Hub. The check runs every <strong>5 minutes</strong> and the result is cached between check-ins so the daemon and the public registry aren't hammered. When the socket is missing, permission is denied, or the daemon isn't running, the check is silently skipped — Vigil never fails an agent because Docker isn't installed.</p>
+      <p class="prose">Every agent with read access to the local Docker socket (<code>/var/run/docker.sock</code>) compares the manifest digest of each running container against the current manifest on Docker Hub, using unmetered HEAD requests that never count against the anonymous pull quota. The check runs every <strong>6 hours</strong> by default — configurable per host with <code>docker_check_interval</code> in <code>agent.yml</code> (seconds, minimum 300). Three things trigger an immediate re-check regardless of the interval: agent startup, any docker-mutating task completing (<code>pull_image</code>, <code>recreate_container</code>, <code>restart_container</code>, compose actions, …), and the low-risk <code>check_docker_updates</code> action — available as the built-in <em>Check Docker images for updates</em> template — so alerts fire or resolve about a minute after remediation instead of waiting out the interval. When the socket is missing, permission is denied, or the daemon isn't running, the check is silently skipped — Vigil never fails an agent because Docker isn't installed.</p>
 
       <div class="callout callout-info">
         <div class="callout-icon">i</div>
@@ -1125,6 +1125,7 @@
             <tr><td><code>docker_compose_up</code></td><td><span class="risk risk-std">standard</span></td><td><code>compose_file</code></td><td><code>docker compose -f &lt;file&gt; up -d</code>; optional <code>services</code> filter</td></tr>
             <tr><td><code>docker_compose_down</code></td><td><span class="risk risk-std">standard</span></td><td><code>compose_file</code></td><td><code>docker compose -f &lt;file&gt; down</code></td></tr>
             <tr><td><code>clear_docker_logs</code></td><td><span class="risk risk-low">low</span></td><td>—</td><td>Truncate JSON log files; scoped to one container via optional <code>container_name</code>, otherwise all</td></tr>
+            <tr><td><code>check_docker_updates</code></td><td><span class="risk risk-low">low</span></td><td>—</td><td>Force an immediate Docker Hub digest re-check (read-only HEAD requests). Task output lists each Hub-tagged container as up to date or OUTDATED; fresh metrics ship on the next check-in so alerts fire/resolve within ~1 minute</td></tr>
           </tbody>
         </table>
       </div>

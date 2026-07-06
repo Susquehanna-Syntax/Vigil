@@ -21,7 +21,7 @@ _ALL_ACTIONS = {
     "restart_container", "stop_container", "start_container",
     "pull_image", "recreate_container", "remove_container",
     "docker_compose_up", "docker_compose_down",
-    "clear_docker_logs",
+    "clear_docker_logs", "check_docker_updates",
     # File / directory operations
     "write_file", "create_directory", "delete_path",
     "copy_file", "move_file", "set_permissions",
@@ -59,6 +59,10 @@ class AgentConfig:
     agent_token: str
     mode: str = "managed"
     checkin_interval: int = 60
+    # Seconds between Docker Hub image-update checks. The check uses
+    # unmetered HEAD requests, but the floor keeps misconfigured agents
+    # from hammering the registry's auth endpoint.
+    docker_check_interval: int = 21600
     data_dir: Path = field(default_factory=lambda: Path("/var/lib/vigil-agent"))
     allowlist: set[str] = field(default_factory=set)
     scripts_dir: Path = field(default_factory=lambda: Path("/etc/vigil/scripts"))
@@ -73,6 +77,8 @@ class AgentConfig:
             raise ValueError(f"Invalid mode '{self.mode}', must be one of: {_VALID_MODES}")
         if self.checkin_interval < 10:
             raise ValueError("checkin_interval must be at least 10 seconds")
+        if self.docker_check_interval < 300:
+            raise ValueError("docker_check_interval must be at least 300 seconds")
         unknown = self.allowlist - _ALL_ACTIONS
         if unknown:
             raise ValueError(f"Unknown actions in allowlist: {unknown}")
@@ -171,6 +177,7 @@ def load_config(path: Path | None = None) -> AgentConfig:
         agent_token=agent_token,
         mode=mode,
         checkin_interval=int(raw.get("checkin_interval", 60)),
+        docker_check_interval=int(raw.get("docker_check_interval", 21600)),
         data_dir=data_dir,
         allowlist=allowlist,
         scripts_dir=Path(raw.get("scripts_dir", "/etc/vigil/scripts")),

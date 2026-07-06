@@ -28,6 +28,7 @@ import threading
 import time
 from pathlib import Path
 
+from . import collector
 from .config import AgentConfig
 from .pkg_manager import detect as detect_pkg_manager
 
@@ -215,7 +216,9 @@ def _restart_container(params: dict, _config: AgentConfig) -> str:
         params.get("container_name") or params.get("container_id", ""),
         "container name/id",
     )
-    return _run(["docker", "restart", name])
+    output = _run(["docker", "restart", name])
+    collector.request_docker_recheck()
+    return output
 
 
 def _stop_container(params: dict, _config: AgentConfig) -> str:
@@ -223,7 +226,9 @@ def _stop_container(params: dict, _config: AgentConfig) -> str:
         params.get("container_name") or params.get("container_id", ""),
         "container name/id",
     )
-    return _run(["docker", "stop", name])
+    output = _run(["docker", "stop", name])
+    collector.request_docker_recheck()
+    return output
 
 
 def _start_container(params: dict, _config: AgentConfig) -> str:
@@ -231,14 +236,52 @@ def _start_container(params: dict, _config: AgentConfig) -> str:
         params.get("container_name") or params.get("container_id", ""),
         "container name/id",
     )
-    return _run(["docker", "start", name])
+    output = _run(["docker", "start", name])
+    collector.request_docker_recheck()
+    return output
 
 
 def _pull_image(params: dict, _config: AgentConfig) -> str:
     image = params.get("image", "")
     if not _SAFE_IMAGE.match(image):
         raise ValueError(f"Invalid image name: {image!r}")
-    return _run(["docker", "pull", image], timeout=600)
+    output = _run(["docker", "pull", image], timeout=600)
+    collector.request_docker_recheck()
+    return output
+
+
+def _check_docker_updates(_params: dict, _config: AgentConfig) -> str:
+    """Force an immediate Docker Hub digest re-check.
+
+    Runs the same check the agent performs on its ``docker_check_interval``
+    schedule and returns a per-container summary. The recheck flag is also
+    set so the main loop refreshes its cached metrics and ships them on the
+    next check-in — firing or resolving outdated-image alerts within about
+    a minute instead of waiting out the interval.
+    """
+    metrics = collector.collect_docker_updates()
+    collector.request_docker_recheck()
+
+    lines = []
+    outdated = 0
+    for metric in metrics:
+        if metric.get("metric") != "image_outdated":
+            continue
+        labels = metric.get("labels") or {}
+        if metric.get("value"):
+            outdated += 1
+            state = "OUTDATED"
+        else:
+            state = "up to date"
+        lines.append(f"  {labels.get('container_name')}: {labels.get('image')} — {state}")
+
+    if not lines:
+        return (
+            "No Docker Hub-tagged containers to check "
+            "(Docker unavailable, nothing running, or only local/private images)"
+        )
+    header = f"Checked {len(lines)} container(s): {outdated} outdated"
+    return "\n".join([header, *lines])
 
 
 _COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
@@ -406,6 +449,7 @@ def _recreate_container(params: dict, _config: AgentConfig) -> str:
             rollback = f"ROLLBACK FAILED, backup container is {backup!r}: {rb_exc}"
         raise RuntimeError(f"Recreate failed ({rollback}): {exc}") from exc
     _run(["docker", "rm", backup])
+    collector.request_docker_recheck()
 
     new_image_id = _run(["docker", "inspect", "--format", "{{.Image}}", name])
     changed = "image updated" if new_image_id != old_image_id else "image unchanged"
@@ -532,7 +576,9 @@ def _trivy_db_update(_params: dict, _config: AgentConfig) -> str:
 
 def _remove_container(params: dict, _config: AgentConfig) -> str:
     name = _validate_name(params.get("container_name", ""), "container name")
-    return _run(["docker", "rm", "-f", name])
+    output = _run(["docker", "rm", "-f", name])
+    collector.request_docker_recheck()
+    return output
 
 
 def _docker_compose_up(params: dict, _config: AgentConfig) -> str:
@@ -551,7 +597,9 @@ def _docker_compose_up(params: dict, _config: AgentConfig) -> str:
             _validate_name(svc, "service name")
             cmd.append(svc)
 
-    return _run(cmd, timeout=300)
+    output = _run(cmd, timeout=300)
+    collector.request_docker_recheck()
+    return output
 
 
 def _docker_compose_down(params: dict, _config: AgentConfig) -> str:
@@ -559,7 +607,9 @@ def _docker_compose_down(params: dict, _config: AgentConfig) -> str:
     path = _validate_path(compose_file, "compose_file")
     if not path.is_file():
         raise ValueError(f"Compose file not found: {compose_file}")
-    return _run(["docker", "compose", "-f", str(path), "down"], timeout=120)
+    output = _run(["docker", "compose", "-f", str(path), "down"], timeout=120)
+    collector.request_docker_recheck()
+    return output
 
 
 def _clear_docker_logs(params: dict, _config: AgentConfig) -> str:
@@ -1195,6 +1245,7 @@ _HANDLERS: dict[str, callable] = {
     "start_container": _start_container,
     "pull_image": _pull_image,
     "recreate_container": _recreate_container,
+    "check_docker_updates": _check_docker_updates,
     "request_nessus_scan": _request_nessus_scan,
     "request_network_scan": _request_network_scan,
     "run_trivy_scan": _run_trivy_scan,

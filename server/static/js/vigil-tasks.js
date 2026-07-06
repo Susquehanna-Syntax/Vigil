@@ -45,6 +45,23 @@ actions:
    dropdown. Each entry's YAML is a complete, valid TaskDefinition. */
 const EDITOR_TEMPLATES = [
   {
+    id: 'check-docker-updates',
+    label: 'Check Docker images for updates now',
+    yaml: `name: Check Docker images for updates
+description: |
+  Force an immediate Docker Hub digest re-check instead of waiting for the
+  agent's scheduled check (default every 6 hours — docker_check_interval in
+  agent.yml). Output lists each Hub-tagged container as up to date or
+  OUTDATED, and outdated-image alerts fire or resolve on the next check-in.
+relevance: "any host running Docker containers"
+risk: low
+
+actions:
+  - id: check
+    type: check_docker_updates
+`
+  },
+  {
     id: 'update-package',
     label: 'Update a package',
     yaml: `name: Update package
