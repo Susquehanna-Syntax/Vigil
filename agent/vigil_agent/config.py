@@ -79,9 +79,18 @@ class AgentConfig:
             raise ValueError("checkin_interval must be at least 10 seconds")
         if self.docker_check_interval < 300:
             raise ValueError("docker_check_interval must be at least 300 seconds")
+        # Unknown allowlist entries are dropped with a warning, not fatal:
+        # an agent.yml written for a newer agent (or with a typo) must never
+        # crash-loop the agent and take monitoring down with it. The dropped
+        # action simply stays un-allowlisted — tasks naming it are rejected
+        # with a clear reason, and it starts working after the agent updates.
         unknown = self.allowlist - _ALL_ACTIONS
         if unknown:
-            raise ValueError(f"Unknown actions in allowlist: {unknown}")
+            logger.warning(
+                "Ignoring unknown allowlist actions (typo, or this agent "
+                "binary is older than the config): %s", sorted(unknown),
+            )
+            self.allowlist = self.allowlist - unknown
         # Normalize tags: strip whitespace, drop blanks, dedupe, lowercase.
         cleaned: list[str] = []
         seen: set[str] = set()
