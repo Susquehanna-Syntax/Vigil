@@ -363,9 +363,9 @@
   </div>
 </div>
 
-{# SSH command modal — opened by openSshForCurrentMonitor() in vigil-monitor.js.
-   Purely client-side: builds an ssh command for the operator's own terminal.
-   Vigil never opens a connection to the host. #}
+{% comment %}SSH command modal — opened by openSshForCurrentMonitor() in
+vigil-monitor.js. Purely client-side: builds an ssh command for the operator's
+own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <div class="modal-overlay" id="ssh-overlay" onclick="closeSshModal()"></div>
 <div class="modal" id="ssh-modal">
   <div class="modal-title">
