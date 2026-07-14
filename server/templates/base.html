@@ -363,6 +363,36 @@
   </div>
 </div>
 
+{# SSH command modal — opened by openSshForCurrentMonitor() in vigil-monitor.js.
+   Purely client-side: builds an ssh command for the operator's own terminal.
+   Vigil never opens a connection to the host. #}
+<div class="modal-overlay" id="ssh-overlay" onclick="closeSshModal()"></div>
+<div class="modal" id="ssh-modal">
+  <div class="modal-title">
+    <span id="ssh-modal-title">SSH to host</span>
+    <button class="modal-close" onclick="closeSshModal()">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="totp-sub" style="margin-bottom:16px;">
+    Opens a normal SSH session in your own terminal. Copy the command below, or use the
+    <code style="background:var(--s2);padding:1px 5px;border-radius:4px;font-family:'IBM Plex Mono',monospace;">ssh://</code>
+    link if your OS has a handler registered. Vigil doesn't connect to the host for you.
+  </div>
+  <div class="form-group">
+    <label class="form-label" for="ssh-user">Username</label>
+    <input type="text" class="form-control" id="ssh-user" placeholder="root" oninput="updateSshCommand()">
+  </div>
+  <div class="ssh-cmd-row">
+    <code class="ssh-cmd" id="ssh-cmd">ssh host</code>
+    <button class="btn btn-sky btn-sm" onclick="copySshCommand()">Copy</button>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:18px;">
+    <a id="ssh-uri-link" class="btn btn-ghost" href="#">Open ssh://</a>
+    <button class="btn btn-ghost" onclick="closeSshModal()">Close</button>
+  </div>
+</div>
+
 {# Unmanaged device add/edit modal — opened by openDeviceModal() in vigil-devices.js #}
 <div class="modal-overlay" id="device-overlay" onclick="closeDeviceModal()"></div>
 <div class="modal" id="device-modal">
