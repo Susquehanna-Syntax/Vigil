@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Host, HostInventory
+from .models import DockerContainer, Host, HostInventory
 
 
 class HostSerializer(serializers.ModelSerializer):
@@ -62,5 +62,30 @@ class HostInventorySerializer(serializers.ModelSerializer):
             "disks",
             "custom_columns",
             "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class DockerContainerSerializer(serializers.ModelSerializer):
+    host_hostname = serializers.CharField(source="host.hostname", read_only=True)
+
+    class Meta:
+        model = DockerContainer
+        fields = [
+            "container_id",
+            "name",
+            "image",
+            "state",
+            "status",
+            "stack",
+            "service",
+            "cpu_percent",
+            "mem_usage_bytes",
+            "mem_limit_bytes",
+            "mem_percent",
+            "ports",
+            "updated_at",
+            "host",
+            "host_hostname",
         ]
         read_only_fields = fields

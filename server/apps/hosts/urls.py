@@ -6,6 +6,7 @@ urlpatterns = [
     path("", views.host_list, name="host-list"),
     path("tags/", views.tag_index, name="tag-index"),
     path("inventory/", views.inventory_list, name="inventory-list"),
+    path("docker/overview/", views.docker_overview, name="docker-overview"),
     path("ad/", views.ad_config, name="ad-config"),
     path("ad/sync/", views.ad_sync_now, name="ad-sync"),
     path("<uuid:host_id>/", views.host_detail, name="host-detail"),
@@ -16,5 +17,6 @@ urlpatterns = [
     path("<uuid:host_id>/rdp/", views.host_rdp, name="host-rdp"),
     path("<uuid:host_id>/tags/", views.host_tags, name="host-tags"),
     path("<uuid:host_id>/inventory/", views.inventory_detail, name="inventory-detail"),
+    path("<uuid:host_id>/containers/", views.host_containers, name="host-containers"),
     path("check-pending/", views.check_pending, name="host-check-pending"),
 ]
