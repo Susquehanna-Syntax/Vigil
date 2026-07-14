@@ -297,8 +297,84 @@ async function refreshMonitor() {
   renderProcTable('proc-table-cpu', procCpu, 'cpu_percent');
   renderProcTable('proc-table-mem', procMem, 'memory_percent');
 
+  // ── Docker containers (fire-and-forget; independent of the metric range) ──
+  renderDockerContainers(monitorHostId);
+
   btn.disabled = false;
   btn.style.opacity = '1';
+}
+
+/* ── Docker containers ───────────────────────────────────────────────── */
+const CTR_STATES = ['running', 'exited', 'dead', 'paused', 'restarting', 'created'];
+
+async function renderDockerContainers(hostId) {
+  const wrap = document.getElementById('docker-stacks');
+  const countEl = document.getElementById('docker-count');
+  if (!wrap) return;
+
+  let containers = [];
+  try {
+    const resp = await fetch(`/api/v1/hosts/${hostId}/containers/`, { credentials: 'same-origin' });
+    if (resp.ok) containers = await resp.json();
+  } catch { containers = []; }
+
+  if (!containers.length) {
+    countEl.textContent = '';
+    wrap.innerHTML = '<div class="docker-empty">No containers reported for this host.</div>';
+    return;
+  }
+  countEl.textContent = containers.length === 1 ? '1 container' : `${containers.length} containers`;
+
+  // Group by compose stack; ungrouped containers sort last.
+  const groups = {};
+  for (const c of containers) {
+    const key = c.stack || '';
+    (groups[key] = groups[key] || []).push(c);
+  }
+  const stackNames = Object.keys(groups).sort((a, b) => {
+    if (a === '') return 1;
+    if (b === '') return -1;
+    return a.localeCompare(b);
+  });
+
+  let html = '';
+  for (const stack of stackNames) {
+    const rows = groups[stack];
+    const label = stack || 'Ungrouped';
+    const noun = rows.length === 1 ? 'container' : 'containers';
+    html += `<div class="docker-stack">
+      <div class="docker-stack-header">
+        <span class="docker-stack-name">${escHtml(label)}</span>
+        <span class="docker-stack-count">${rows.length} ${noun}</span>
+      </div>
+      <table class="ctr-table">
+        <thead><tr>
+          <th>Container</th><th>Image</th><th>State</th>
+          <th class="num">CPU</th><th class="num">Memory</th>
+        </tr></thead>
+        <tbody>`;
+    for (const c of rows) {
+      const state = (c.state || '').toLowerCase();
+      const stateClass = CTR_STATES.includes(state) ? state : '';
+      const cpu = (c.cpu_percent === null || c.cpu_percent === undefined)
+        ? '—' : c.cpu_percent.toFixed(1) + '%';
+      let mem = '—';
+      if (c.mem_usage_bytes !== null && c.mem_usage_bytes !== undefined) {
+        mem = formatBytes(c.mem_usage_bytes);
+        if (c.mem_limit_bytes) mem += ' / ' + formatBytes(c.mem_limit_bytes);
+      }
+      const svc = c.service ? `<div class="ctr-svc">${escHtml(c.service)}</div>` : '';
+      html += `<tr>
+        <td><div class="ctr-name">${escHtml(c.name || '')}</div>${svc}</td>
+        <td class="ctr-image">${escHtml(c.image || '')}</td>
+        <td><span class="ctr-state ${stateClass}">${escHtml(state || 'unknown')}</span></td>
+        <td class="ctr-stat">${cpu}</td>
+        <td class="ctr-stat">${mem}</td>
+      </tr>`;
+    }
+    html += `</tbody></table></div>`;
+  }
+  wrap.innerHTML = html;
 }
 
 /* ── Top processes table ─────────────────────────────────────────────── */

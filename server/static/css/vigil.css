@@ -1757,3 +1757,95 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
     scroll-behavior: auto !important;
   }
 }
+
+/* ═══════════════════════════════════════════
+   DOCKER CONTAINERS (monitor page)
+   ═══════════════════════════════════════════ */
+.section-count {
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.docker-stacks { display: flex; flex-direction: column; gap: 14px; }
+.docker-empty {
+  color: var(--text-3);
+  font-size: 13px;
+  padding: 24px;
+  text-align: center;
+}
+.docker-stack {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.docker-stack-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 14px 18px 10px;
+}
+.docker-stack-name {
+  font-family: 'Fraunces', serif;
+  font-size: 15px;
+  color: var(--text-1);
+}
+.docker-stack-count {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.ctr-table { width: 100%; border-collapse: collapse; }
+.ctr-table thead th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 6px 18px;
+}
+.ctr-table thead th.num { text-align: right; }
+.ctr-table tbody td {
+  padding: 9px 18px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-2);
+  vertical-align: middle;
+}
+.ctr-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+.ctr-name { color: var(--text-1); font-weight: 500; }
+.ctr-svc { color: var(--text-3); font-size: 11px; font-family: 'IBM Plex Mono', monospace; }
+.ctr-image {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--text-2);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ctr-stat {
+  font-family: 'IBM Plex Mono', monospace;
+  text-align: right;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.ctr-state {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+  text-transform: capitalize;
+  background: rgba(110,107,118,0.18);
+  color: var(--text-3);
+}
+.ctr-state.running { background: rgba(126,221,181,0.15); color: var(--mint); }
+.ctr-state.exited,
+.ctr-state.dead { background: rgba(242,160,184,0.15); color: var(--rose); }
+.ctr-state.paused,
+.ctr-state.restarting { background: rgba(226,212,120,0.15); color: var(--lemon); }
