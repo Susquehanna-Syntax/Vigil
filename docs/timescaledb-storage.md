@@ -22,6 +22,12 @@ automatically on Postgres+TimescaleDB (skipped on SQLite / plain Postgres) and:
    1-day chunks. The surrogate `id` PK is dropped (TimescaleDB forbids a unique
    index without the partition column); the `id` column + sequence remain, so
    the Django ORM is unaffected.
+   **On upgrade the existing bloated raw table is TRUNCATEd first** (default),
+   so the conversion is instant, reclaims all disk immediately, and a boot-time
+   `migrate` can never hang copying 26 GB of data. Only raw samples are dropped;
+   compression + retention + rollups keep storage bounded from then on. Set
+   `VIGIL_TS_MIGRATE_EXISTING_DATA=true` to instead preserve history by copying
+   rows into chunks (slow, needs scratch ≈ table size — use the runbook below).
 2. **Compression** — `segmentby = host_id, category, metric`, `orderby = time DESC`;
    policy compresses chunks older than **7 days** (`VIGIL_TS_COMPRESS_AFTER`).
    Typical metric compression is 10–20×; this is the biggest single win.
@@ -63,8 +69,19 @@ FROM pg_stat_user_tables WHERE relname='metrics_metricpoint';
 SELECT min(time), max(time), count(*) FROM metrics_metricpoint;
 ```
 
-## Recovery on a near-full disk
+## Upgrade behavior (default)
 
+When you pull a new image and the entrypoint runs `migrate`, migration `0002`
+TRUNCATEs the old raw table and converts the empty table to a hypertable. This
+is instant, returns all the bloat to the OS, and cannot hang the container
+start. New samples immediately accumulate under compression + retention +
+rollups, so storage stays bounded. No manual step is required. Raw metric
+history prior to the upgrade is discarded (operational metrics; dashboards
+repopulate within minutes).
+
+## Preserving history on a near-full disk (opt-in)
+
+Only relevant with `VIGIL_TS_MIGRATE_EXISTING_DATA=true`.
 `create_hypertable(..., migrate_data => true)` copies **every** existing row
 into chunks first, needing scratch ≈ the current table size (~26 GB). That will
 **fail on a full disk**. Because diagnostics usually show much of the 26 GB is
