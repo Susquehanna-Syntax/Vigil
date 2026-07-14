@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import DockerContainer, Host, HostInventory
+from .models import DockerContainer, Host, HostInventory, UnmanagedDevice
 
 
 class HostSerializer(serializers.ModelSerializer):
@@ -89,3 +89,31 @@ class DockerContainerSerializer(serializers.ModelSerializer):
             "host_hostname",
         ]
         read_only_fields = fields
+
+class UnmanagedDeviceSerializer(serializers.ModelSerializer):
+    device_type_label = serializers.CharField(
+        source="get_device_type_display", read_only=True,
+    )
+
+    class Meta:
+        model = UnmanagedDevice
+        fields = [
+            "id",
+            "name",
+            "device_type",
+            "device_type_label",
+            "ip_address",
+            "mac_address",
+            "vendor",
+            "location",
+            "notes",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "device_type_label", "created_at", "updated_at"]
+
+    def validate_name(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Name is required.")
+        return value
