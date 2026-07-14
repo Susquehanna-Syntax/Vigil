@@ -1877,3 +1877,18 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   font-size: 12px;
   color: var(--text-2);
 }
+
+/* SSH command modal */
+.ssh-cmd-row { display: flex; align-items: center; gap: 10px; }
+.ssh-cmd {
+  flex: 1;
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: var(--text-1);
+  overflow-x: auto;
+  white-space: nowrap;
+}

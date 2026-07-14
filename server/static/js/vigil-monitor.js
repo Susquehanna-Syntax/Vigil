@@ -24,6 +24,8 @@ const CIRCUMFERENCE = 2 * Math.PI * 34; // gauge ring r=34
 
 // Monitor state
 let monitorHostId = null;
+let monitorHostIp = '';
+let monitorHostName = '';
 let monitorTimeRange = 60; // minutes
 let chartCpu = null, chartMem = null, chartNet = null, chartSwap = null;
 let monitorInterval = null;
@@ -36,6 +38,8 @@ function selectMonitorHost(hostId) {
   if (!item) return;
 
   const d = item.dataset;
+  monitorHostIp = d.ip && d.ip !== '—' ? d.ip : '';
+  monitorHostName = d.hostname || '';
   document.getElementById('monitor-empty').style.display = 'none';
   document.getElementById('monitor-content').style.display = 'block';
   document.getElementById('mon-hostname').textContent = d.hostname;
@@ -61,6 +65,46 @@ function launchRdpForCurrentMonitor() {
   // Content-Disposition: attachment so the OS hands it off to mstsc /
   // Microsoft Remote Desktop / Remmina depending on platform.
   window.location.href = `/api/v1/hosts/${monitorHostId}/rdp/`;
+}
+
+// ── SSH command (client-side only; opens in the operator's own terminal) ──
+function openSshForCurrentMonitor() {
+  if (!monitorHostId) { showToast('No host selected', 'error'); return; }
+  const target = monitorHostIp || monitorHostName;
+  if (!target) { showToast('No address known for this host', 'error'); return; }
+  document.getElementById('ssh-modal-title').textContent = `SSH to ${monitorHostName || target}`;
+  document.getElementById('ssh-user').value = '';
+  updateSshCommand();
+  document.getElementById('ssh-overlay').classList.add('open');
+  document.getElementById('ssh-modal').classList.add('open');
+}
+
+function closeSshModal() {
+  document.getElementById('ssh-overlay').classList.remove('open');
+  document.getElementById('ssh-modal').classList.remove('open');
+}
+
+function _sshTarget() {
+  return monitorHostIp || monitorHostName || 'host';
+}
+
+function updateSshCommand() {
+  const user = document.getElementById('ssh-user').value.trim();
+  const host = _sshTarget();
+  const dest = user ? `${user}@${host}` : host;
+  document.getElementById('ssh-cmd').textContent = `ssh ${dest}`;
+  // Encode userinfo and host separately so the "@" stays structural while a
+  // stray character in either part can't reshape the URI or the href attribute.
+  const uri = 'ssh://' + (user ? encodeURIComponent(user) + '@' : '') + encodeURIComponent(host);
+  document.getElementById('ssh-uri-link').href = uri;
+}
+
+function copySshCommand() {
+  const cmd = document.getElementById('ssh-cmd').textContent;
+  navigator.clipboard.writeText(cmd).then(
+    () => showToast('Copied — paste into your terminal', 'success'),
+    () => showToast('Copy failed', 'error'),
+  );
 }
 
 // ── Time range ──
