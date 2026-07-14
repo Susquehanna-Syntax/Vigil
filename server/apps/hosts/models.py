@@ -125,3 +125,46 @@ class DockerContainer(models.Model):
 
     def __str__(self):
         return f"{self.host.hostname}/{self.name}"
+
+
+class UnmanagedDevice(models.Model):
+    """A device on the network that does NOT run a Vigil agent.
+
+    A plain manual registry — routers, switches, printers, NAS boxes, IoT
+    gear — so an operator can keep an inventory of everything on the network,
+    not just agent-enrolled hosts. Deliberately manual and static: automated
+    discovery / SNMP polling is out of scope for Community.
+    """
+
+    class DeviceType(models.TextChoices):
+        ROUTER = "router", "Router"
+        SWITCH = "switch", "Switch"
+        FIREWALL = "firewall", "Firewall"
+        ACCESS_POINT = "access_point", "Access Point"
+        PRINTER = "printer", "Printer"
+        NAS = "nas", "NAS"
+        SERVER = "server", "Server"
+        WORKSTATION = "workstation", "Workstation"
+        CAMERA = "camera", "Camera"
+        UPS = "ups", "UPS"
+        IOT = "iot", "IoT Device"
+        OTHER = "other", "Other"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=200)
+    device_type = models.CharField(
+        max_length=20, choices=DeviceType.choices, default=DeviceType.OTHER,
+    )
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    mac_address = models.CharField(max_length=17, blank=True)
+    vendor = models.CharField(max_length=120, blank=True)
+    location = models.CharField(max_length=160, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.device_type})"
