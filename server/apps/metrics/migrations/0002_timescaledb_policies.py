@@ -13,6 +13,10 @@ remember a manual step on a new instance.
 
 What it does (Postgres + TimescaleDB only; SQLite/other vendors are skipped)
     1. Convert ``metrics_metricpoint`` to a hypertable partitioned on ``time``.
+       On an upgrade the pre-existing bloated raw table is TRUNCATEd first
+       (default) so the conversion is instant, reclaims disk immediately, and a
+       boot-time ``migrate`` cannot hang copying data — set
+       VIGIL_TS_MIGRATE_EXISTING_DATA=true to preserve history instead.
     2. Enable columnar compression (segment by series, order by time) and add a
        policy to compress chunks older than VIGIL_TS_COMPRESS_AFTER.
     3. Add a retention policy dropping raw chunks older than
@@ -39,6 +43,17 @@ COMPRESS_AFTER = os.environ.get("VIGIL_TS_COMPRESS_AFTER", "7 days")
 RAW_RETENTION_DAYS = os.environ.get("VIGIL_METRIC_RETENTION_DAYS", "30")
 HOURLY_RETENTION = os.environ.get("VIGIL_TS_HOURLY_RETENTION", "365 days")
 DAILY_RETENTION = os.environ.get("VIGIL_TS_DAILY_RETENTION", "1825 days")
+
+# How to convert a pre-existing (non-hypertable) metrics table on upgrade.
+# Default False: TRUNCATE the bloated raw table, then convert the now-empty
+# table — instant, reclaims all disk immediately, and cannot hang a boot-time
+# migrate (no migrate_data copy). Only raw samples are dropped; going forward
+# compression + retention + rollups keep storage bounded. Set
+# VIGIL_TS_MIGRATE_EXISTING_DATA=true to instead preserve history by copying
+# rows into chunks (slow, needs scratch space ~= table size).
+MIGRATE_EXISTING_DATA = os.environ.get(
+    "VIGIL_TS_MIGRATE_EXISTING_DATA", "false"
+).lower() in ("true", "1", "yes")
 
 
 def apply(apps, schema_editor):
@@ -69,11 +84,25 @@ def apply(apps, schema_editor):
         )
         if not cur.fetchone():
             cur.execute(f"ALTER TABLE {TABLE} DROP CONSTRAINT IF EXISTS {TABLE}_pkey")
-            cur.execute(
-                f"SELECT create_hypertable('{TABLE}', 'time', "
-                f"chunk_time_interval => INTERVAL '{CHUNK_INTERVAL}', "
-                f"migrate_data => TRUE, if_not_exists => TRUE)"
-            )
+            if MIGRATE_EXISTING_DATA:
+                # Preserve history — copies existing rows into chunks. Slow and
+                # scratch-hungry (~= table size) on a large table; opt-in only.
+                cur.execute(
+                    f"SELECT create_hypertable('{TABLE}', 'time', "
+                    f"chunk_time_interval => INTERVAL '{CHUNK_INTERVAL}', "
+                    f"migrate_data => TRUE, if_not_exists => TRUE)"
+                )
+            else:
+                # Default reclaim path: drop the bloated raw rows (returns disk to
+                # the OS immediately, unlike DELETE) so the conversion is instant
+                # and a boot-time migrate on a large table cannot hang or fill the
+                # disk. Fresh installs hit this against an already-empty table.
+                cur.execute(f"TRUNCATE TABLE {TABLE} RESTART IDENTITY")
+                cur.execute(
+                    f"SELECT create_hypertable('{TABLE}', 'time', "
+                    f"chunk_time_interval => INTERVAL '{CHUNK_INTERVAL}', "
+                    f"if_not_exists => TRUE)"
+                )
 
         # 2. Continuous aggregates — built before raw retention so downsampled
         #    history is materialized while raw chunks still exist. Grouping
