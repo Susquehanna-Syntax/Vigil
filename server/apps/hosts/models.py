@@ -92,3 +92,36 @@ class HostInventory(models.Model):
 
     def __str__(self):
         return f"Inventory: {self.host.hostname}"
+
+
+class DockerContainer(models.Model):
+    """One Docker container running on a host, from the agent's snapshot.
+
+    Refreshed wholesale on each checkin that carries a ``docker_containers``
+    payload: the host's existing rows are replaced, so this table always
+    reflects the latest snapshot rather than history.
+    """
+
+    host = models.ForeignKey(
+        Host, on_delete=models.CASCADE, related_name="docker_containers"
+    )
+    container_id = models.CharField(max_length=64)
+    name = models.CharField(max_length=200)
+    image = models.CharField(max_length=255, blank=True)
+    state = models.CharField(max_length=20, blank=True)  # running, exited, paused, ...
+    status = models.CharField(max_length=120, blank=True)  # "Up 3 hours"
+    stack = models.CharField(max_length=200, blank=True)  # compose project
+    service = models.CharField(max_length=200, blank=True)  # compose service
+    cpu_percent = models.FloatField(null=True, blank=True)
+    mem_usage_bytes = models.BigIntegerField(null=True, blank=True)
+    mem_limit_bytes = models.BigIntegerField(null=True, blank=True)
+    mem_percent = models.FloatField(null=True, blank=True)
+    ports = models.JSONField(default=list, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["stack", "name"]
+        indexes = [models.Index(fields=["host", "stack"])]
+
+    def __str__(self):
+        return f"{self.host.hostname}/{self.name}"

@@ -1,6 +1,7 @@
 import secrets
 import zoneinfo
 
+from django.db import transaction
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import now
 from rest_framework import status
@@ -18,14 +19,32 @@ from vigil.signing import get_public_key_b64, sign_task
 from .auto_tags import merge_auto_tags
 from .authentication import authenticate_agent
 from .crypto import encrypt_secret
-from .models import ADConfig, Host, HostInventory
-from .serializers import HostInventorySerializer, HostSerializer
+from .models import ADConfig, DockerContainer, Host, HostInventory
+from .serializers import (
+    DockerContainerSerializer,
+    HostInventorySerializer,
+    HostSerializer,
+)
 
 _MAX_TOKEN_LEN = 255
 _MAX_HOSTNAME_LEN = 255
 
 
 _MAX_TAGS = 32
+
+
+def _safe_float(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_int(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
 
 
 # Auto-tag namespace — colons keep them visibly distinct from user tags
@@ -278,6 +297,38 @@ def checkin(request):
         # only the colon-prefixed namespace we manage gets refreshed.
         _sync_host_auto_tags(host, inv_payload)
 
+    # Docker container snapshot — replace the host's set wholesale. Absent key
+    # means the agent didn't report (old agent / no docker) and we leave the
+    # existing rows alone; an explicit empty list means "no containers now".
+    containers_payload = data.get("docker_containers")
+    if isinstance(containers_payload, list):
+        rows = []
+        for c in containers_payload:
+            if not isinstance(c, dict):
+                continue
+            name = str(c.get("name") or "")[:200]
+            if not name:
+                continue
+            rows.append(DockerContainer(
+                host=host,
+                container_id=str(c.get("container_id") or c.get("id") or "")[:64],
+                name=name,
+                image=str(c.get("image") or "")[:255],
+                state=str(c.get("state") or "")[:20],
+                status=str(c.get("status") or "")[:120],
+                stack=str(c.get("stack") or "")[:200],
+                service=str(c.get("service") or "")[:200],
+                cpu_percent=_safe_float(c.get("cpu_percent")),
+                mem_usage_bytes=_safe_int(c.get("mem_usage_bytes")),
+                mem_limit_bytes=_safe_int(c.get("mem_limit_bytes")),
+                mem_percent=_safe_float(c.get("mem_percent")),
+                ports=c.get("ports") if isinstance(c.get("ports"), list) else [],
+            ))
+        with transaction.atomic():
+            DockerContainer.objects.filter(host=host).delete()
+            if rows:
+                DockerContainer.objects.bulk_create(rows)
+
     # Pending hosts must wait for admin approval before receiving tasks
     if host.status == Host.Status.PENDING:
         return Response({"status": "pending", "tasks": []})
@@ -451,6 +502,30 @@ def inventory_detail(request, host_id):
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
     inv = getattr(host, "inventory", None) or HostInventory(host=host)
     return Response(HostInventorySerializer(inv).data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def host_containers(request, host_id):
+    """Docker containers reported for one host, ordered by stack then name."""
+    try:
+        host = Host.objects.get(pk=host_id)
+    except Host.DoesNotExist:
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    qs = host.docker_containers.all()
+    return Response(DockerContainerSerializer(qs, many=True).data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def docker_overview(request):
+    """Every container across all hosts — the monitor page's Docker view."""
+    qs = (
+        DockerContainer.objects.select_related("host")
+        .all()
+        .order_by("host__hostname", "stack", "name")
+    )
+    return Response(DockerContainerSerializer(qs, many=True).data)
 
 
 @api_view(["GET", "POST"])
