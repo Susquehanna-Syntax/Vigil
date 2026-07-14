@@ -174,9 +174,36 @@ def mark_stale_hosts_offline():
     return f"{count} hosts marked offline"
 
 
+def _metricpoint_is_hypertable() -> bool:
+    """True when metrics_metricpoint has been converted to a TimescaleDB
+    hypertable (migration 0002). On a hypertable, retention is owned by a
+    native drop_chunks policy, so the row-by-row DELETE below must not run —
+    DELETE on compressed chunks is slow and never returns disk to the OS."""
+    from django.db import connection
+
+    if connection.vendor != "postgresql":
+        return False
+    try:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM timescaledb_information.hypertables "
+                "WHERE hypertable_name = 'metrics_metricpoint'"
+            )
+            return cur.fetchone() is not None
+    except Exception:
+        # timescaledb_information not present (plain Postgres) — treat as plain.
+        return False
+
+
 @shared_task(name="metrics.prune_old_metric_points")
 def prune_old_metric_points():
-    """Delete MetricPoints older than VIGIL_METRIC_RETENTION_DAYS (default: 30)."""
+    """Delete MetricPoints older than VIGIL_METRIC_RETENTION_DAYS (default: 30).
+
+    Fallback path only. When the table is a TimescaleDB hypertable the native
+    retention policy handles expiry (and frees disk per chunk), so this no-ops.
+    """
+    if _metricpoint_is_hypertable():
+        return "Retention handled by TimescaleDB drop_chunks policy; DELETE skipped"
     retention_days = getattr(settings, "VIGIL_METRIC_RETENTION_DAYS", 30)
     cutoff = now() - timedelta(days=retention_days)
     deleted, _ = MetricPoint.objects.filter(time__lt=cutoff).delete()

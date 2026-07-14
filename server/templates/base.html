@@ -12,6 +12,8 @@
 
 <!-- Styles: static/css/vigil.css — all design tokens, layout, and component styles -->
 <link rel="stylesheet" href="{% static 'css/vigil.css' %}">
+<link rel="icon" type="image/png" href="{% static 'img/vigil-logo.png' %}">
+<link rel="apple-touch-icon" href="{% static 'img/vigil-logo.png' %}">
 {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -20,7 +22,7 @@
 
   {# Sidebar — left rail with page icons. Logic: vigil-nav.js wires data-page → navigateTo() #}
   <nav class="sidebar">
-    <div class="sidebar-logo">V</div>
+    <div class="sidebar-logo"><img src="{% static 'img/vigil-logo.png' %}" alt="Vigil" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;"></div>
 
     <div class="sidebar-icon active" data-page="dashboard" data-tip="Dashboard">
       <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
