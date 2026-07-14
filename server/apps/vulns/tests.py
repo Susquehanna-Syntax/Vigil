@@ -91,6 +91,56 @@ class GmpUrlParseTests(TestCase):
         self.assertEqual(_parse_gmp_url("fe80::1"), ("fe80::1", 9390))
 
 
+class GreenboneLaunchTests(TestCase):
+    """The GMP launch flow must send a port_list on create_target.
+
+    Since gvmd 20.8, create_target without PORT_LIST/PORT_RANGE is rejected
+    with a 400, so a launch that omits it silently fails every scan.
+    """
+
+    def setUp(self):
+        self.host = Host.objects.create(
+            hostname="web1", agent_token="t" * 32, status=Host.Status.ONLINE,
+            ip_address="10.0.0.9",
+        )
+        self.scan = VulnScan.objects.create(
+            host=self.host, scanner="greenbone", state=VulnScan.State.REQUESTED,
+        )
+
+    def _fake_client(self, sent):
+        import xml.etree.ElementTree as ET
+
+        class _FakeClient:
+            def send(self, xml_str):
+                sent.append(xml_str)
+                if xml_str.startswith("<create_target"):
+                    return ET.fromstring('<create_target_response status="201" id="tgt-1"/>')
+                if xml_str.startswith("<create_task"):
+                    return ET.fromstring('<create_task_response status="201" id="task-1"/>')
+                if xml_str.startswith("<start_task"):
+                    return ET.fromstring(
+                        '<start_task_response status="202">'
+                        "<report_id>rep-1</report_id></start_task_response>"
+                    )
+                return ET.fromstring('<r status="200"/>')
+
+        return _FakeClient()
+
+    def test_create_target_includes_port_list(self):
+        from .scanners.greenbone import GreenboneScanner
+
+        sent = []
+        launched = GreenboneScanner()._launch_pending(self._fake_client(sent))
+
+        self.assertEqual(launched, 1)
+        create_target = next(x for x in sent if x.startswith("<create_target"))
+        self.assertIn("<port_list id=", create_target)
+
+        self.scan.refresh_from_db()
+        self.assertEqual(self.scan.state, VulnScan.State.LAUNCHED)
+        self.assertEqual(self.scan.external_scan_id, "task-1")
+
+
 class ScanCreateTests(TestCase):
     def setUp(self):
         self.client = APIClient()

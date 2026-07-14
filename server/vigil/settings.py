@@ -305,6 +305,9 @@ GREENBONE_URL = os.environ.get("GREENBONE_URL", "")
 GREENBONE_USERNAME = os.environ.get("GREENBONE_USERNAME", "")
 GREENBONE_PASSWORD = os.environ.get("GREENBONE_PASSWORD", "")
 GREENBONE_VERIFY_SSL = os.environ.get("GREENBONE_VERIFY_SSL", "true").lower() in ("true", "1")
+# Port list UUID for scan targets. Empty falls back to the well-known
+# "All IANA assigned TCP" list; gvmd 20.8+ rejects targets with no port list.
+GREENBONE_PORT_LIST_ID = os.environ.get("GREENBONE_PORT_LIST_ID", "")
 
 # ---------------------------------------------------------------------------
 # Notifications
