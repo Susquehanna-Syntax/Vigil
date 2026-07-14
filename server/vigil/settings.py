@@ -238,6 +238,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "tasks.expire_stale_tasks",
         "schedule": 600.0,  # every 10 minutes — sweep wedged DISPATCHED tasks
     },
+    "check-db-disk-usage": {
+        "task": "metrics.check_db_disk_usage",
+        "schedule": 3600.0,  # every hour — storage safety valve (self-monitoring)
+    },
 }
 
 # How long past its own TTL a dispatched task may stay silent before the
@@ -249,21 +253,33 @@ VIGIL_TASK_EXPIRY_GRACE_SECONDS = int(
 )
 
 # ---------------------------------------------------------------------------
-# Metric retention
+# Metric retention & TimescaleDB storage policies
 # ---------------------------------------------------------------------------
+# Raw metric retention horizon. On TimescaleDB this drives the native
+# drop_chunks retention policy (migration metrics/0002); on SQLite/plain
+# Postgres it drives the DELETE-based fallback prune task. Downsampled 1-hour
+# and 1-day continuous-aggregate rollups are retained far longer
+# (VIGIL_TS_HOURLY_RETENTION / VIGIL_TS_DAILY_RETENTION) so trend history
+# survives raw expiry. Chunks older than VIGIL_TS_COMPRESS_AFTER are compressed
+# (~10-20x). See docs/timescaledb-storage.md.
 VIGIL_METRIC_RETENTION_DAYS = int(os.environ.get("VIGIL_METRIC_RETENTION_DAYS", "30"))
+
+# Storage safety valve — metrics.check_db_disk_usage logs WARNING/ERROR when the
+# database trends toward the disk limit. Set to 0 to disable a threshold.
+VIGIL_DB_SIZE_WARN_GB = float(os.environ.get("VIGIL_DB_SIZE_WARN_GB", "20"))
+VIGIL_DB_SIZE_CRIT_GB = float(os.environ.get("VIGIL_DB_SIZE_CRIT_GB", "40"))
 
 # ---------------------------------------------------------------------------
 # Agent distribution — filesystem path where compiled binaries live.
 # In the Docker image this is pre-populated by the multi-stage build.
 # ---------------------------------------------------------------------------
 VIGIL_AGENT_DIST_DIR = Path(os.environ.get("VIGIL_AGENT_DIST_DIR", str(BASE_DIR / "agent_dist")))
-VIGIL_AGENT_VERSION = os.environ.get("VIGIL_AGENT_VERSION", "2026.3.13")
+VIGIL_AGENT_VERSION = os.environ.get("VIGIL_AGENT_VERSION", "2026.3.14")
 
 # Server build version — surfaced on the About page and the /api/v1/about/
 # endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
 # this constant should stay in lockstep.
-VIGIL_VERSION = "2026.3.13"
+VIGIL_VERSION = "2026.3.14"
 
 # ---------------------------------------------------------------------------
 # Display / locale
