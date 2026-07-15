@@ -92,3 +92,79 @@ class HostInventory(models.Model):
 
     def __str__(self):
         return f"Inventory: {self.host.hostname}"
+
+
+class DockerContainer(models.Model):
+    """One Docker container running on a host, from the agent's snapshot.
+
+    Refreshed wholesale on each checkin that carries a ``docker_containers``
+    payload: the host's existing rows are replaced, so this table always
+    reflects the latest snapshot rather than history.
+    """
+
+    host = models.ForeignKey(
+        Host, on_delete=models.CASCADE, related_name="docker_containers"
+    )
+    container_id = models.CharField(max_length=64)
+    name = models.CharField(max_length=200)
+    image = models.CharField(max_length=255, blank=True)
+    state = models.CharField(max_length=20, blank=True)  # running, exited, paused, ...
+    status = models.CharField(max_length=120, blank=True)  # "Up 3 hours"
+    stack = models.CharField(max_length=200, blank=True)  # compose project
+    service = models.CharField(max_length=200, blank=True)  # compose service
+    cpu_percent = models.FloatField(null=True, blank=True)
+    mem_usage_bytes = models.BigIntegerField(null=True, blank=True)
+    mem_limit_bytes = models.BigIntegerField(null=True, blank=True)
+    mem_percent = models.FloatField(null=True, blank=True)
+    ports = models.JSONField(default=list, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["stack", "name"]
+        indexes = [models.Index(fields=["host", "stack"])]
+
+    def __str__(self):
+        return f"{self.host.hostname}/{self.name}"
+
+
+class UnmanagedDevice(models.Model):
+    """A device on the network that does NOT run a Vigil agent.
+
+    A plain manual registry — routers, switches, printers, NAS boxes, IoT
+    gear — so an operator can keep an inventory of everything on the network,
+    not just agent-enrolled hosts. Deliberately manual and static: automated
+    discovery / SNMP polling is out of scope for Community.
+    """
+
+    class DeviceType(models.TextChoices):
+        ROUTER = "router", "Router"
+        SWITCH = "switch", "Switch"
+        FIREWALL = "firewall", "Firewall"
+        ACCESS_POINT = "access_point", "Access Point"
+        PRINTER = "printer", "Printer"
+        NAS = "nas", "NAS"
+        SERVER = "server", "Server"
+        WORKSTATION = "workstation", "Workstation"
+        CAMERA = "camera", "Camera"
+        UPS = "ups", "UPS"
+        IOT = "iot", "IoT Device"
+        OTHER = "other", "Other"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=200)
+    device_type = models.CharField(
+        max_length=20, choices=DeviceType.choices, default=DeviceType.OTHER,
+    )
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    mac_address = models.CharField(max_length=17, blank=True)
+    vendor = models.CharField(max_length=120, blank=True)
+    location = models.CharField(max_length=160, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.device_type})"
