@@ -45,7 +45,12 @@ def register(config: AgentConfig) -> dict:
     return result
 
 
-def checkin(config: AgentConfig, metrics: list[dict], inventory: dict | None = None) -> dict:
+def checkin(
+    config: AgentConfig,
+    metrics: list[dict],
+    inventory: dict | None = None,
+    docker_containers: list[dict] | None = None,
+) -> dict:
     """Send metrics and receive tasks. Returns the full server response."""
     payload = {
         **_system_info(),
@@ -57,6 +62,10 @@ def checkin(config: AgentConfig, metrics: list[dict], inventory: dict | None = N
         payload["tags"] = list(config.tags)
     if inventory:
         payload["inventory"] = inventory
+    # None → Docker unavailable, omit the key so the server keeps the prior
+    # snapshot. An empty list is meaningful ("no containers now") and is sent.
+    if docker_containers is not None:
+        payload["docker_containers"] = docker_containers
     url = f"{config.server_url}/api/v1/checkin"
     resp = requests.post(url, json=payload, headers=_headers(config), timeout=_TIMEOUT)
     resp.raise_for_status()

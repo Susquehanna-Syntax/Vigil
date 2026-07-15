@@ -386,7 +386,18 @@ def main() -> None:
                 docker_refresh_after = time.monotonic() + config.docker_check_interval
             if docker_payload_pending:
                 metrics.extend(_cached_docker_metrics)
-            response = client.checkin(config, metrics, inventory=inventory_payload)
+            # Container snapshot is local-only (Docker socket) and cheap enough
+            # to refresh every checkin so the monitor shows live stats. None
+            # when Docker is unavailable — the server then keeps the last set.
+            try:
+                docker_containers = collector.collect_docker_containers()
+            except Exception:
+                logger.exception("Docker container collection failed")
+                docker_containers = None
+            response = client.checkin(
+                config, metrics, inventory=inventory_payload,
+                docker_containers=docker_containers,
+            )
             consecutive_failures = 0
             docker_payload_pending = False
 

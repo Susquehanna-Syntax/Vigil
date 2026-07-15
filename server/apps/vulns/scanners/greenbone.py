@@ -69,6 +69,13 @@ _FULL_AND_FAST_CONFIG_UUID = "daba56c8-73ec-11df-a475-002264764cea"
 # Greenbone "OpenVAS Default" scanner UUID — also well-known.
 _OPENVAS_DEFAULT_SCANNER_UUID = "08b69003-5fc2-4037-a479-93b440211c73"
 
+# Greenbone "All IANA assigned TCP" port list — a well-known UUID present on
+# every install. Since gvmd 20.8 create_target *requires* a PORT_LIST or
+# PORT_RANGE (the built-in default was removed), so omitting it makes every
+# launch fail with "One of PORT_LIST and PORT_RANGE are required". Overridable
+# via GREENBONE_PORT_LIST_ID for operators who prefer TCP+UDP or a custom list.
+_ALL_IANA_TCP_PORT_LIST_UUID = "33d0cd82-57c6-11e1-8ed1-406186ea4fc5"
+
 
 # Severity float (CVSS) → our enum. Greenbone reports CVSS v2-style.
 def _cvss_to_severity(cvss: float) -> str:
@@ -342,10 +349,15 @@ class GreenboneScanner(Scanner):
 
     def _create_target(self, client: _GmpClient, label: str, ip: str) -> str:
         # Hosts list = single IP for now. Greenbone accepts comma-separated.
+        # port_list is mandatory since gvmd 20.8 — see _ALL_IANA_TCP_PORT_LIST_UUID.
+        port_list_id = getattr(
+            settings, "GREENBONE_PORT_LIST_ID", _ALL_IANA_TCP_PORT_LIST_UUID,
+        ) or _ALL_IANA_TCP_PORT_LIST_UUID
         resp = client.send(
             f'<create_target>'
             f'<name>Vigil: {_xml_escape(label)}</name>'
             f'<hosts>{_xml_escape(ip)}</hosts>'
+            f'<port_list id="{_xml_escape(port_list_id)}"/>'
             f'</create_target>'
         )
         if resp.get("status") != "201":

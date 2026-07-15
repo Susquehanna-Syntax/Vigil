@@ -657,3 +657,108 @@ def collect_docker_updates() -> list[dict]:
         )
 
     return metrics
+
+
+def _docker_ports(ports: list) -> list:
+    """Compact the /containers/json Ports array to {private, public, type}."""
+    compact = []
+    for p in ports:
+        if not isinstance(p, dict):
+            continue
+        entry = {"private": p.get("PrivatePort"), "type": p.get("Type", "tcp")}
+        if p.get("PublicPort"):
+            entry["public"] = p.get("PublicPort")
+        compact.append(entry)
+    return compact
+
+
+def _docker_container_stats(container_id: str) -> dict:
+    """One-shot CPU/mem stats for a running container.
+
+    Best-effort: returns an empty dict when the stats endpoint is
+    unavailable or the response is missing the fields we need. CPU percent
+    mirrors ``docker stats`` (cpu delta / system delta * online cpus). Memory
+    subtracts page cache so the figure tracks the container's real working set.
+    """
+    stats = _docker_api_get(f"/containers/{container_id}/stats?stream=false")
+    if not isinstance(stats, dict):
+        return {}
+    out: dict = {}
+
+    cpu = stats.get("cpu_stats") or {}
+    precpu = stats.get("precpu_stats") or {}
+    cpu_total = (cpu.get("cpu_usage") or {}).get("total_usage")
+    precpu_total = (precpu.get("cpu_usage") or {}).get("total_usage")
+    system = cpu.get("system_cpu_usage")
+    presystem = precpu.get("system_cpu_usage")
+    if None not in (cpu_total, precpu_total, system, presystem):
+        cpu_delta = cpu_total - precpu_total
+        system_delta = system - presystem
+        ncpu = cpu.get("online_cpus") or len(
+            (cpu.get("cpu_usage") or {}).get("percpu_usage") or []
+        ) or 1
+        if system_delta > 0 and cpu_delta >= 0:
+            out["cpu_percent"] = round((cpu_delta / system_delta) * ncpu * 100.0, 2)
+
+    mem = stats.get("memory_stats") or {}
+    usage = mem.get("usage")
+    limit = mem.get("limit")
+    mem_detail = mem.get("stats") or {}
+    cache = mem_detail.get("inactive_file") or mem_detail.get("cache") or 0
+    if usage is not None:
+        real = max(usage - cache, 0)
+        out["mem_usage_bytes"] = real
+        if limit:
+            out["mem_limit_bytes"] = limit
+            out["mem_percent"] = round((real / limit) * 100.0, 2)
+
+    return out
+
+
+def collect_docker_containers() -> list[dict] | None:
+    """Snapshot of Docker containers on this host for the checkin payload.
+
+    Returns ``None`` when Docker is unavailable (no socket, permission
+    denied, daemon down) so the server leaves the previous snapshot alone
+    instead of wiping it on a transient hiccup. Returns ``[]`` only when the
+    daemon is reachable and genuinely runs no containers. Each entry carries
+    identity, compose stack/service (from labels), state, and best-effort
+    CPU/mem stats for running containers.
+    """
+    if not Path(_DOCKER_SOCKET).exists():
+        return None
+    try:
+        containers = _docker_api_get("/containers/json?all=1")
+    except PermissionError:
+        logger.warning("Cannot access Docker socket %s — permission denied", _DOCKER_SOCKET)
+        return None
+    except Exception as exc:
+        logger.debug("Docker container list failed: %s", exc)
+        return None
+    if not isinstance(containers, list):
+        return None
+
+    out: list[dict] = []
+    for c in containers:
+        cid = c.get("Id", "")
+        names = c.get("Names") or []
+        name = names[0].lstrip("/") if names else (cid[:12] or "unknown")
+        labels = c.get("Labels") or {}
+        state = (c.get("State") or "").lower()
+        entry = {
+            "container_id": cid[:64],
+            "name": name,
+            "image": c.get("Image", ""),
+            "state": state,
+            "status": c.get("Status", ""),
+            "stack": labels.get("com.docker.compose.project", ""),
+            "service": labels.get("com.docker.compose.service", ""),
+            "ports": _docker_ports(c.get("Ports") or []),
+        }
+        if state == "running" and cid:
+            try:
+                entry.update(_docker_container_stats(cid))
+            except Exception as exc:
+                logger.debug("Docker stats for %s failed: %s", name, exc)
+        out.append(entry)
+    return out
