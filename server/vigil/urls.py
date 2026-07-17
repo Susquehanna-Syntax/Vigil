@@ -120,6 +120,7 @@ urlpatterns = [
     path("api/v1/tasks/", include("apps.tasks.urls")),
     path("api/v1/vulns/", include("apps.vulns.urls")),
     path("api/v1/accounts/", include("apps.accounts.urls")),
+    path("api/v1/sites/", include("apps_business.sites.urls")),
     path("agent/", include("apps.agent_dist.urls")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
