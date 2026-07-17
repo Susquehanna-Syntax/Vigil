@@ -57,19 +57,18 @@ class EditionsTests(TestCase):
     def tearDown(self):
         editions.clear()
 
-    def test_community_by_default(self):
-        self.assertEqual(editions.active_edition(), editions.COMMUNITY)
-        self.assertFalse(editions.feature_enabled("rbac"))
+    def test_free_by_default(self):
+        # Unlicensed = free tier; Business features read as off, free
+        # features as on — always.
+        self.assertEqual(editions.active_edition(), editions.FREE)
+        self.assertFalse(editions.feature_enabled("sites"))
+        self.assertTrue(editions.feature_enabled("baselines"))
 
-    def test_pro_feature_sets_pro_edition(self):
-        editions.register_feature("rbac")
-        self.assertTrue(editions.feature_enabled("rbac"))
-        self.assertEqual(editions.active_edition(), editions.PRO)
-
-    def test_enterprise_feature_wins(self):
-        editions.register_feature("rbac")        # pro
-        editions.register_feature("audit_log")   # enterprise
-        self.assertEqual(editions.active_edition(), editions.ENTERPRISE)
+    def test_extension_registration_lights_a_feature(self):
+        editions.register_feature("sites")
+        self.assertTrue(editions.feature_enabled("sites"))
+        # Registration is UX wiring, not licensing — the tier is unchanged.
+        self.assertEqual(editions.active_edition(), editions.FREE)
 
 
 class RegistrationTests(TestCase):
@@ -113,4 +112,5 @@ class ExtensionViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data["ok"])
         self.assertTrue(response.data["ai_suggestions_enabled"])
-        self.assertEqual(response.data["edition"], editions.PRO)
+        # Extension registration never changes the tier — that's the license's job.
+        self.assertEqual(response.data["edition"], editions.FREE)

@@ -36,20 +36,37 @@ INSTALLED_APPS = [
     "apps.vulns",
     "apps.accounts",
     "apps.agent_dist",
+    "apps.licensing",
 ]
 
 # ---------------------------------------------------------------------------
-# Edition extension apps (Pro / Enterprise)
+# Licensing (SQSY-LICENSING.md)
 # ---------------------------------------------------------------------------
-# Community core is self-contained. The commercial editions ship as separate
-# repos (Vigil-Pro, Vigil-Enterprise) whose Django apps are placed on the
-# PYTHONPATH and named here via the VIGIL_EXTRA_APPS env var, comma-separated:
+# Base64 Ed25519 public key that license blobs must verify against. Dev and
+# prod keys never mix (SQSY-LICENSING.md §7a): the DEV key (pairs with
+# Mercantil's gitignored dev-signing.key) is the default only when DEBUG, so
+# local development can mint test licenses out of the box. Everywhere else the
+# operator sets VIGIL_LICENSE_PUBLIC_KEY — to the production key once it is
+# born in KMS, or explicitly to the dev key on internal dogfood installs. An
+# empty key simply means no license verifies: free tier, monitoring untouched.
+_DEV_LICENSE_PUBLIC_KEY = "HDIgm72yEkIopWgvsv0Q6Gp695l4ecOZMYnP2by7+IQ="
+VIGIL_LICENSE_PUBLIC_KEY = os.environ.get(
+    "VIGIL_LICENSE_PUBLIC_KEY", _DEV_LICENSE_PUBLIC_KEY if DEBUG else ""
+)
+
+# ---------------------------------------------------------------------------
+# Extra apps (operator extensions)
+# ---------------------------------------------------------------------------
+# Community extensions are Django apps placed on the PYTHONPATH and named here
+# via the VIGIL_EXTRA_APPS env var, comma-separated:
 #
-#     VIGIL_EXTRA_APPS=vigil_pro.rbac,vigil_pro.baselines
+#     VIGIL_EXTRA_APPS=my_extension.dashboards
 #
 # Each extra app may register features (vigil.editions), subscribe to events
 # (vigil.hooks), and expose a urls.py (auto-mounted in vigil/urls.py). Core
-# never imports edition code. See docs/pro-extension-points.md for the contract.
+# never imports extension code. See docs/pro-extension-points.md for the
+# contract. (Business features no longer load this way — they ship in this
+# repo under apps_business/ and are unlocked by the license.)
 VIGIL_EXTRA_APPS = [
     a.strip() for a in os.environ.get("VIGIL_EXTRA_APPS", "").split(",") if a.strip()
 ]
