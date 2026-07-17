@@ -185,8 +185,12 @@ class LicensingTests(TestCase):
     # -- DRF gate -----------------------------------------------------------------
 
     def test_require_feature_402_body_when_unlicensed(self):
+        from rest_framework.exceptions import APIException
+
         perm = licensing.require_feature("audit_log")()
-        self.assertFalse(perm.has_permission(None, None))
+        with self.assertRaises(APIException) as ctx:
+            perm.has_permission(None, None)
+        self.assertEqual(ctx.exception.status_code, 402)
         self.assertEqual(perm.message["feature"], "audit_log")
         licensing.set_license(make_blob())
         self.assertTrue(perm.has_permission(None, None))

@@ -288,27 +288,46 @@ def has_feature(name: str) -> bool:
     )
 
 
+class PaymentRequired(Exception):
+    """Raised by require_feature gates; DRF renders it as HTTP 402."""
+
+    def __init__(self, detail: dict):
+        self.detail = detail
+        super().__init__(detail.get("detail", "license required"))
+
+
+def upgrade_body(name: str) -> dict:
+    return {
+        "feature": name,
+        "licensed": False,
+        "detail": f"'{name}' requires a Vigil Business license.",
+        "upgrade_url": "https://susquehannasyntax.com/subscribe",
+    }
+
+
 def require_feature(name: str):
     """DRF permission class factory for Business API endpoints.
 
-    Returns 402 with a structured body — distinct from authz 403s so the
-    frontend can render an upgrade prompt instead of an error. UI panels
-    should already be greyed from ``GET /api/v1/license/``; this is the
-    backstop, not the UX (§5: upgrade prompts, not 403s).
+    Unlicensed calls get 402 with a structured body — distinct from authz
+    403s so the frontend renders an upgrade prompt instead of an error. UI
+    panels should already be greyed from ``GET /api/v1/license/``; this is
+    the backstop, not the UX (§5: upgrade prompts, not 403s).
     """
+    from rest_framework.exceptions import APIException
     from rest_framework.permissions import BasePermission
 
+    class _PaymentRequired(APIException):
+        status_code = 402
+        default_detail = upgrade_body(name)
+        default_code = "license_required"
+
     class _HasLicensedFeature(BasePermission):
-        message = {
-            "feature": name,
-            "licensed": False,
-            "detail": f"'{name}' requires a Vigil Business license.",
-            "upgrade_url": "https://susquehannasyntax.com/subscribe",
-        }
-        code = 402
+        message = upgrade_body(name)
 
         def has_permission(self, request, view):
-            return has_feature(name)
+            if has_feature(name):
+                return True
+            raise _PaymentRequired()
 
     _HasLicensedFeature.__name__ = f"Requires_{name}"
     return _HasLicensedFeature
