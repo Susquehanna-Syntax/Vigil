@@ -4,14 +4,26 @@ from django.db import models
 from apps.hosts.crypto import decrypt_secret, encrypt_secret
 
 
+class Role(models.TextChoices):
+    """Vigil's three roles. Free ships ADMIN + VIEWER (matching the 1-admin +
+    1-read-only free tier); assigning OPERATOR requires the Business
+    ``rbac_advanced`` feature. Roles are Vigil-local on purpose — Civil (the
+    shared identity service) carries who you are, never what you may do."""
+
+    ADMIN = "admin", "Admin"          # everything, incl. settings + enrollment
+    OPERATOR = "operator", "Operator"  # deploy + view; no settings, no approvals
+    VIEWER = "viewer", "Viewer"        # read-only
+
+
 class UserProfile(models.Model):
-    """Per-user profile — currently holds the TOTP enrollment state."""
+    """Per-user profile — TOTP enrollment state and the user's role."""
 
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="profile",
     )
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.VIEWER)
     # TOTP secret encrypted at rest with Fernet (see apps/hosts/crypto.py) so a
     # database dump does not expose every admin's 2FA seed. Empty until
     # enrollment begins. Read and written through the ``totp_secret`` property,
