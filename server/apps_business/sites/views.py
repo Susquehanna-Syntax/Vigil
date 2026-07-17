@@ -18,10 +18,14 @@ from .serializers import SiteSerializer
 
 def _gate(request):
     """The write gate. Returns a 402 Response, or None when licensed."""
+    from rest_framework.exceptions import APIException
+
     perm = require_feature("sites")()
-    if perm.has_permission(request, None):
-        return None
-    return Response(perm.message, status=402)
+    try:
+        perm.has_permission(request, None)
+    except APIException as exc:
+        return Response(exc.detail, status=402)
+    return None
 
 
 @api_view(["GET", "POST"])
