@@ -194,3 +194,46 @@ class LicensingTests(TestCase):
         self.assertEqual(perm.message["feature"], "audit_log")
         licensing.set_license(make_blob())
         self.assertTrue(perm.has_permission(None, None))
+
+
+@override_settings(VIGIL_LICENSE_PUBLIC_KEY=PUB)
+class LicenseApiTests(TestCase):
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user(
+            "root", password="x", is_staff=True)
+        self.client.force_login(self.admin)
+        licensing.reload()
+
+    def tearDown(self):
+        StoredLicense.replace("")
+        licensing.reload()
+
+    def test_get_reports_free_state_and_features(self):
+        resp = self.client.get("/api/v1/license/")
+        self.assertEqual(resp.status_code, 200)
+        d = resp.json()
+        self.assertEqual(d["tier"], "free")
+        self.assertEqual(d["instance"], licensing.instance_id())
+        names = {f["name"]: f for f in d["features"]}
+        self.assertTrue(names["baselines"]["active"])
+        self.assertFalse(names["sites"]["active"])
+
+    def test_paste_valid_license_via_api(self):
+        resp = self.client.post("/api/v1/license/", {"license": make_blob()},
+                                format=None)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()["tier"], "business")
+
+    def test_paste_garbage_is_400_with_reason(self):
+        resp = self.client.post("/api/v1/license/", {"license": "junk"})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("does not verify", resp.json()["detail"])
+
+    def test_paste_requires_admin(self):
+        get_user_model().objects.create_user("pleb", password="x")
+        c = self.client_class()
+        c.login(username="pleb", password="x")
+        self.assertEqual(
+            c.post("/api/v1/license/", {"license": "x"}).status_code, 403)
+        # but GET works for any signed-in user
+        self.assertEqual(c.get("/api/v1/license/").status_code, 200)

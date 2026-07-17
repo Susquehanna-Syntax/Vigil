@@ -122,6 +122,7 @@ urlpatterns = [
     path("api/v1/accounts/", include("apps.accounts.urls")),
     path("api/v1/sites/", include("apps_business.sites.urls")),
     path("api/v1/audits/", include("apps_business.audits.urls")),
+    path("api/v1/license/", include("apps.licensing.urls")),
     path("agent/", include("apps.agent_dist.urls")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
