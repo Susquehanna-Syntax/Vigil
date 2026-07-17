@@ -256,3 +256,96 @@ def totp_debug_code(request):
     if not profile.totp_secret:
         return Response({"error": "No secret"}, status=400)
     return Response({"code": generate_totp(profile.totp_secret)})
+
+
+# ---------------------------------------------------------------------------
+# User + role management (seats are counted, never enforced — §6)
+# ---------------------------------------------------------------------------
+
+def _user_row(u):
+    from .permissions import role_of
+    return {
+        "id": u.pk,
+        "username": u.username,
+        "email": u.email,
+        "role": role_of(u),
+        "is_active": u.is_active,
+        "date_joined": u.date_joined.isoformat(),
+    }
+
+
+@api_view(["GET", "POST"])
+def users_index(request):
+    from vigil import licensing
+
+    from .permissions import IsAdmin
+    if not IsAdmin().has_permission(request, None):
+        return Response({"detail": IsAdmin.message}, status=403)
+
+    User = get_user_model()
+    if request.method == "GET":
+        return Response({
+            "seats_used": licensing.seats_used(),
+            "seats_allowed": licensing.seats_allowed(),
+            "users": [_user_row(u) for u in User.objects.order_by("date_joined")],
+        })
+
+    username = (request.data.get("username") or "").strip()
+    password = request.data.get("password") or ""
+    if not username or not password:
+        return Response({"detail": "username and password are required"}, status=400)
+    if User.objects.filter(username=username).exists():
+        return Response({"detail": "username already exists"}, status=400)
+    # Deliberately NO seat check here. Seat #5 on a 4-seat license works;
+    # the banner (vigil.licensing.banners) is the entire enforcement (§6).
+    user = User.objects.create_user(
+        username=username, password=password,
+        email=(request.data.get("email") or "").strip(),
+    )
+    role = request.data.get("role") or ""
+    if role:
+        resp = _apply_role(user, role)
+        if resp is not None:
+            user.delete()  # don't leave a half-created user behind a 402
+            return resp
+    return Response(_user_row(user), status=201)
+
+
+@api_view(["PATCH"])
+def user_role(request, user_id):
+    from .permissions import IsAdmin
+    if not IsAdmin().has_permission(request, None):
+        return Response({"detail": IsAdmin.message}, status=403)
+    User = get_user_model()
+    try:
+        user = User.objects.get(pk=user_id)
+    except User.DoesNotExist:
+        return Response(status=404)
+    resp = _apply_role(user, request.data.get("role") or "")
+    return resp if resp is not None else Response(_user_row(user))
+
+
+def _apply_role(user, role: str):
+    """Set *role* on *user*'s profile. Returns an error Response or None.
+
+    ADMIN and VIEWER are free (they ARE the free tier: 1 admin + 1 read-only).
+    OPERATOR — a third kind of human authority — is the Business
+    ``rbac_advanced`` feature. The gate is on GRANTING the role: existing
+    operators keep working after a lapse (§6 — never lock a human out
+    mid-incident).
+    """
+    from vigil import licensing
+
+    from .models import Role
+
+    if role not in Role.values:
+        return Response({"detail": f"unknown role {role!r}"}, status=400)
+    if role == Role.OPERATOR and not licensing.has_feature("rbac_advanced"):
+        return Response(licensing.upgrade_body("rbac_advanced"), status=402)
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    profile.role = role
+    profile.save(update_fields=["role"])
+    # Keep is_staff in lockstep so Django admin and role_of() agree.
+    user.is_staff = role == Role.ADMIN
+    user.save(update_fields=["is_staff"])
+    return None
