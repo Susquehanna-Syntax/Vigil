@@ -11,6 +11,55 @@
 
       <!-- Two-factor authentication -->
       <div class="section-label">Two-Factor Authentication</div>
+
+      {# ---- License (all tiers, always visible — SQSY-LICENSING.md §5) ---- #}
+      <div class="totp-card" id="license-card">
+        <h3>License</h3>
+        <p id="license-summary" class="muted">Loading…</p>
+        <p>Instance ID: <span class="license-instance" id="license-instance"></span></p>
+        <p id="license-seats"></p>
+        <div id="license-features"></div>
+        <form id="license-paste-form" style="margin-top:12px;">
+          <input type="text" id="license-paste" placeholder="Paste a license key (SQSY-LICENSE-V1.…)" style="width:70%;">
+          <button type="submit" class="btn">Apply</button>
+          <a class="btn" id="license-get" target="_blank" rel="noopener">Get a license</a>
+        </form>
+        <p id="license-paste-result" class="muted"></p>
+      </div>
+      <script>
+      (function () {
+        function render(d) {
+          document.getElementById("license-summary").textContent =
+            d.tier === "business"
+              ? "Vigil Business — licensed to " + d.org + " (" + d.status + ")"
+              : "Vigil Free — every monitoring feature, forever. Business adds sites, audits, seats and branding." + (d.detail ? " (" + d.detail + ")" : "");
+          document.getElementById("license-instance").textContent = d.instance;
+          document.getElementById("license-seats").textContent =
+            "Seats: " + d.seats.used + " / " + d.seats.allowed;
+          document.getElementById("license-get").href =
+            d.subscribe_url + "?instance=" + encodeURIComponent(d.instance);
+          document.getElementById("license-features").innerHTML = d.features.map(function (f) {
+            return '<span class="license-chip license-chip--' + (f.active ? "on" : "off") + '">' +
+              f.name + (f.active ? "" : " · " + f.tier) + "</span>";
+          }).join(" ");
+        }
+        fetch("/api/v1/license/").then(function (r) { return r.json(); }).then(render);
+        document.getElementById("license-paste-form").addEventListener("submit", function (e) {
+          e.preventDefault();
+          fetch("/api/v1/license/", {
+            method: "POST",
+            headers: {"Content-Type": "application/json", "X-CSRFToken": (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ""},
+            body: JSON.stringify({license: document.getElementById("license-paste").value.trim()}),
+          }).then(function (r) { return r.json().then(function (d) { return {ok: r.ok, d: d}; }); })
+            .then(function (res) {
+              document.getElementById("license-paste-result").textContent =
+                res.ok ? "License applied." : (res.d.detail || "That key does not verify.");
+              if (res.ok) render(res.d);
+            });
+        });
+      })();
+      </script>
+
       <div id="totp-card" class="totp-card">
         <div class="totp-status" id="totp-status-line">Loading…</div>
         <div class="totp-sub" id="totp-sub-line">TOTP protects task execution. Password fallback is test-only and will be removed.</div>

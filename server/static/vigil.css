@@ -1,0 +1,18 @@
+
+/* --- License banners (SQSY-LICENSING.md §6 — banners ARE the enforcement) --- */
+.license-banner {
+  padding: 10px 16px;
+  border-radius: 8px;
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+.license-banner--info     { background: rgba(137,180,250,.12); border-color: #89B4FA; color: #89B4FA; }
+.license-banner--warning  { background: rgba(249,226,175,.12); border-color: #F9E2AF; color: #F9E2AF; }
+.license-banner--critical { background: rgba(243,139,168,.12); border-color: #F38BA8; color: #F38BA8; }
+
+/* --- License panel on Settings --- */
+.license-chip { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; margin:2px; }
+.license-chip--on  { background: rgba(166,227,161,.15); color:#A6E3A1; }
+.license-chip--off { background: rgba(156,156,176,.12); color:#9C9CB0; }
+.license-instance { font-family: "IBM Plex Mono", monospace; font-size: 12px; user-select: all; }

@@ -59,6 +59,9 @@
   </nav>
 
   <main class="main">
+    {% for b in license_banners %}
+    <div class="license-banner license-banner--{{ b.severity }}">{{ b.message }}</div>
+    {% endfor %}
     {% block content %}{% endblock %}
   </main>
 </div>
