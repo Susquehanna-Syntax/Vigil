@@ -1,0 +1,27 @@
+Vigil Commercial License (the "Business features")
+
+Copyright (c) 2026 Susquehanna Syntax. All rights reserved.
+
+This directory (server/apps_business/ and everything beneath it) is NOT
+covered by the GNU AGPLv3 license that applies to the remainder of this
+repository. It is source-visible for review, audit, and contribution, but
+its use in production requires a valid Vigil Business subscription from
+Susquehanna Syntax (https://susquehannasyntax.com).
+
+You may:
+  - read, audit, and build this code;
+  - run it for evaluation, development, or testing;
+  - run it in production while holding a valid Vigil Business license;
+  - submit patches (which you license to Susquehanna Syntax for inclusion).
+
+You may not:
+  - run it in production without a valid Vigil Business subscription;
+  - redistribute it, in source or binary form, outside this repository;
+  - remove or alter license verification (which, per our own spec, never
+    degrades monitoring — it only gates the features this directory adds).
+
+Nothing in this license restricts, and nothing in this software ever blocks,
+the AGPL-licensed monitoring core. A lapsed subscription means these features
+turn off and monitoring continues untouched, forever.
+
+For a commercial license: https://susquehannasyntax.com
