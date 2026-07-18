@@ -32,6 +32,10 @@
       </div>
       <button type="submit" class="btn btn-mint" style="width:100%;margin-top:8px;">Sign in</button>
     </form>
+    {% if civil_enabled %}
+    {% if request.GET.civil == "failed" %}<div class="auth-error">Civil sign-in didn't complete — use your local account or try again.</div>{% endif %}
+    <a class="btn" style="width:100%;margin-top:10px;display:inline-block;text-align:center;box-sizing:border-box;" href="{% url 'civil-login' %}{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% endif %}">Sign in with Civil</a>
+    {% endif %}
   </div>
   <div class="auth-footer">Vigil &mdash; A Susquehanna Syntax product</div>
 </div>
