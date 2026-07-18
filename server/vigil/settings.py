@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "apps.baselines",
     "apps.aisuggest",
     "apps.statuspage",
+    "apps.civilsso",
     # Business features (apps_business/LICENSE) — installed always, unlocked by license
     "apps_business.sites",
     "apps_business.audits",
@@ -59,6 +60,12 @@ _DEV_LICENSE_PUBLIC_KEY = "HDIgm72yEkIopWgvsv0Q6Gp695l4ecOZMYnP2by7+IQ="
 VIGIL_LICENSE_PUBLIC_KEY = os.environ.get(
     "VIGIL_LICENSE_PUBLIC_KEY", _DEV_LICENSE_PUBLIC_KEY if DEBUG else ""
 )
+
+# ---------------------------------------------------------------------------
+# Civil SSO (opt-in shared identity for the SQSY family). Unset = off.
+# ---------------------------------------------------------------------------
+CIVIL_URL = os.environ.get("CIVIL_URL", "")
+CIVIL_APP_SLUG = os.environ.get("CIVIL_APP_SLUG", "vigil")
 
 # ---------------------------------------------------------------------------
 # Extra apps (operator extensions)
@@ -104,6 +111,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "apps.licensing.context_processors.license_banners",
+                "apps.civilsso.context_processors.civil",
             ],
         },
     },
