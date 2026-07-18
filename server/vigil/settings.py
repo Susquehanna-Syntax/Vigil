@@ -311,7 +311,7 @@ VIGIL_AGENT_VERSION = os.environ.get("VIGIL_AGENT_VERSION", "2026.3.16")
 # Server build version — surfaced on the About page and the /api/v1/about/
 # endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
 # this constant should stay in lockstep.
-VIGIL_VERSION = "2026.3.16"
+VIGIL_VERSION = "2026.4.0"
 
 # ---------------------------------------------------------------------------
 # Display / locale
