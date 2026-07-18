@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>{{ page.title }}</title>
+  <style>
+    :root { --surface:#1E1E2E; --card:#27273A; --text:#E6E6F0; --muted:#9C9CB0;
+            --mint:#A6E3A1; --rose:#F38BA8; }
+    * { box-sizing:border-box; margin:0; }
+    body { background:var(--surface); color:var(--text);
+           font-family:"DM Sans",system-ui,sans-serif; min-height:100vh;
+           display:flex; flex-direction:column; align-items:center; padding:40px 16px; }
+    .wrap { width:min(94vw, 640px); }
+    header { display:flex; align-items:center; gap:14px; margin-bottom:24px; }
+    header img { height:40px; }
+    h1 { font-size:1.5rem; }
+    .overall { padding:14px 18px; border-radius:10px; margin-bottom:20px;
+               font-weight:600; }
+    .overall--up   { background:rgba(166,227,161,.14); color:var(--mint); }
+    .overall--down { background:rgba(243,139,168,.14); color:var(--rose); }
+    ul { list-style:none; }
+    li { background:var(--card); border-radius:8px; padding:12px 16px;
+         margin-bottom:8px; display:flex; justify-content:space-between; }
+    .dot { font-weight:600; }
+    .dot--up { color:var(--mint); } .dot--down { color:var(--rose); }
+    footer { margin-top:32px; color:var(--muted); font-size:12px; }
+    footer a { color:var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      {% if logo_url %}<img src="{{ logo_url }}" alt="">{% endif %}
+      <h1>{{ page.title }}</h1>
+    </header>
+    <div class="overall overall--{% if all_up %}up{% else %}down{% endif %}">
+      {% if all_up %}All systems operational{% else %}Some systems are down{% endif %}
+    </div>
+    <ul>
+      {% for h in hosts %}
+      <li>
+        <span>{{ h.hostname }}</span>
+        <span class="dot dot--{% if h.up %}up{% else %}down{% endif %}">
+          {% if h.up %}Operational{% else %}Down{% endif %}
+        </span>
+      </li>
+      {% empty %}
+      <li><span>No hosts on this page yet.</span><span></span></li>
+      {% endfor %}
+    </ul>
+    {% if show_badge %}
+    <footer>Powered by <a href="https://susquehannasyntax.com">Vigil</a> — sleep well.</footer>
+    {% endif %}
+  </div>
+</body>
+</html>

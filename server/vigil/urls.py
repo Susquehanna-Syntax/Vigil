@@ -16,6 +16,7 @@ from apps.accounts.views import login_view, logout_view, setup_view
 from apps.alerts.models import Alert
 from apps.hosts.models import Host
 from apps.hosts.views import checkin, register
+from apps.statuspage.views import public_status as status_public_view
 
 # Hosts that haven't checked in within this window are surfaced in a
 # collapsed "Inactive" section on the dashboard rather than mixed in with
@@ -123,7 +124,11 @@ urlpatterns = [
     path("api/v1/sites/", include("apps_business.sites.urls")),
     path("api/v1/audits/", include("apps_business.audits.urls")),
     path("api/v1/license/", include("apps.licensing.urls")),
+    path("api/v1/baselines/", include("apps.baselines.urls")),
+    path("api/v1/ai/", include("apps.aisuggest.urls")),
+    path("api/v1/status-pages/", include("apps.statuspage.urls")),
     path("agent/", include("apps.agent_dist.urls")),
+    path("status/<str:token>/", status_public_view, name="status-public"),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 

@@ -37,6 +37,9 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.agent_dist",
     "apps.licensing",
+    "apps.baselines",
+    "apps.aisuggest",
+    "apps.statuspage",
     # Business features (apps_business/LICENSE) — installed always, unlocked by license
     "apps_business.sites",
     "apps_business.audits",
