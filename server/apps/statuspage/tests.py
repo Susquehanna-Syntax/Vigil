@@ -114,3 +114,37 @@ class StatusPageTests(TestCase):
         c = self.client_class()
         c.login(username="v", password="x")
         self.assertEqual(c.get("/api/v1/status-pages/").status_code, 403)
+
+
+class HostLabelTests(TestCase):
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user(
+            "labeladmin", password="x", is_staff=True)
+        self.client.force_login(self.admin)
+        licensing.reload()
+
+    def test_selectable_hosts_lists_non_pending(self):
+        make_host("online-1")
+        make_host("pending-1", status=Host.Status.PENDING)
+        rows = self.client.get("/api/v1/status-pages/hosts/").json()
+        names = [r["hostname"] for r in rows]
+        self.assertIn("online-1", names)
+        self.assertNotIn("pending-1", names)
+
+    def test_custom_label_renders_on_public_page(self):
+        h = make_host("db-internal-01")
+        page = StatusPage.objects.create(
+            enabled=True, host_ids=[str(h.id)],
+            host_labels={str(h.id): "Primary Database"})
+        pub = self.client_class().get(f"/status/{page.token}/")
+        self.assertContains(pub, "Primary Database")
+        self.assertNotContains(pub, "db-internal-01")
+
+    def test_labels_saved_via_api(self):
+        h = make_host("web-x")
+        page = StatusPage.objects.create()
+        resp = self.client.patch(f"/api/v1/status-pages/{page.id}/", {
+            "host_ids": [str(h.id)], "host_labels": {str(h.id): "Public Web"}},
+            content_type="application/json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()["host_labels"][str(h.id)], "Public Web")

@@ -191,69 +191,10 @@ async function saveCivilSettings(opts) {
   } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
 }
 
-/* ── Status pages ────────────────────────────────────────────────────── */
-async function loadStatusPages() {
-  const list = document.getElementById('statuspage-list');
-  if (!list) return;
-  try {
-    const pages = await apiJson('/api/v1/status-pages/');
-    if (!pages.length) { list.innerHTML = '<p class="muted">No status pages yet.</p>'; return; }
-    list.innerHTML = pages.map(p => {
-      const url = window.location.origin + p.url;
-      const branded = p.is_primary ? '' :
-        `<label class="setting-check"><input type="checkbox" data-sp-brand="${p.id}" ${p.hide_badge ? 'checked' : ''}> Hide "Powered by Vigil" badge (Business)</label>`;
-      return `<div class="sp-row">
-        <div class="sp-row-head">
-          <input type="text" class="sp-title" data-sp-title="${p.id}" value="${escHtml(p.title)}">
-          <label class="setting-check"><input type="checkbox" data-sp-enabled="${p.id}" ${p.enabled ? 'checked' : ''}> Public</label>
-        </div>
-        <div class="sp-url">${p.enabled ? `<a href="${escHtml(url)}" target="_blank">${escHtml(url)}</a>` : '<span class="muted">enable to publish</span>'}${p.is_primary ? ' <span class="tag-chip">primary · free</span>' : ''}</div>
-        ${branded}
-        <div class="sp-row-actions">
-          <button class="btn btn-xs btn-outline" data-sp-save="${p.id}">Save</button>
-          <button class="btn btn-xs btn-outline" data-sp-rotate="${p.id}">Rotate URL</button>
-          <button class="btn btn-xs btn-outline" style="color:var(--rose);" data-sp-del="${p.id}">Delete</button>
-        </div>
-      </div>`;
-    }).join('');
-    _wireStatusPageRows();
-  } catch (e) { list.innerHTML = `<p class="muted">Couldn't load: ${escHtml(e.message)}</p>`; }
-}
-
-function _wireStatusPageRows() {
-  const q = (sel) => document.querySelectorAll(sel);
-  q('[data-sp-save]').forEach(b => b.addEventListener('click', async () => {
-    const id = b.dataset.spSave;
-    const body = {
-      title: document.querySelector(`[data-sp-title="${id}"]`).value,
-      enabled: document.querySelector(`[data-sp-enabled="${id}"]`).checked,
-    };
-    const brand = document.querySelector(`[data-sp-brand="${id}"]`);
-    if (brand) body.hide_badge = brand.checked;
-    try { await apiJson(`/api/v1/status-pages/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }); showToast('Saved', 'success'); loadStatusPages(); }
-    catch (e) { showToast(e.message.includes('402') ? 'Branding is a Business feature' : 'Save failed: ' + e.message, 'error'); }
-  }));
-  q('[data-sp-rotate]').forEach(b => b.addEventListener('click', async () => {
-    await apiJson(`/api/v1/status-pages/${b.dataset.spRotate}/`, { method: 'PATCH', body: JSON.stringify({ rotate_token: true }) });
-    showToast('New URL issued', 'success'); loadStatusPages();
-  }));
-  q('[data-sp-del]').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm('Delete this status page?')) return;
-    await fetch(`/api/v1/status-pages/${b.dataset.spDel}/`, { method: 'DELETE', headers: { 'X-CSRFToken': getCsrf() }, credentials: 'same-origin' });
-    loadStatusPages();
-  }));
-}
-
 document.addEventListener('DOMContentLoaded', () => {
   const cs = document.getElementById('civil-save-btn');
   if (cs) cs.addEventListener('click', () => saveCivilSettings());
   const ct = document.getElementById('civil-test-btn');
   if (ct) ct.addEventListener('click', () => saveCivilSettings({ test: true, refresh_key: true }));
-  const sn = document.getElementById('statuspage-new-btn');
-  if (sn) sn.addEventListener('click', async () => {
-    try { await apiJson('/api/v1/status-pages/', { method: 'POST', body: '{}' }); loadStatusPages(); }
-    catch (e) { showToast(e.message.includes('402') ? 'Additional pages are a Business feature' : e.message, 'error'); }
-  });
   loadCivilSettings();
-  loadStatusPages();
 });

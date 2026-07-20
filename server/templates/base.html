@@ -46,6 +46,9 @@
       <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
       {% if alert_count %}<div class="badge-dot" style="background: var(--rose);"></div>{% endif %}
     </div>
+    <div class="sidebar-icon" data-page="statuspages" data-tip="Status Pages">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><circle cx="6.5" cy="6.5" r="0.5"/><line x1="8" y1="13" x2="16" y2="13"/></svg>
+    </div>
     <div class="sidebar-icon" data-page="community" data-tip="Community">
       <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><circle cx="17" cy="7" r="3" opacity="0.6"/><path d="M21 21v-2a4 4 0 00-3-3.87" opacity="0.6"/></svg>
     </div>
@@ -588,6 +591,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-tasks.js' %}"></script>
 <script src="{% static 'js/vigil-ai.js' %}"></script>
 <script src="{% static 'js/vigil-baselines.js' %}"></script>
+<script src="{% static 'js/vigil-statuspages.js' %}"></script>
 <!-- vigil-deploy.js — deploy modal, fleet cache, schedule/retry/success-criteria policy (wraps navigateTo) -->
 <script src="{% static 'js/vigil-deploy.js' %}"></script>
 <!-- vigil-vulns.js — vulnerability scan refresh + host-card vuln badges -->

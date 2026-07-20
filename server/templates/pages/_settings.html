@@ -19,10 +19,10 @@
         <p>Instance ID: <span class="license-instance" id="license-instance"></span></p>
         <p id="license-seats"></p>
         <div id="license-features"></div>
-        <form id="license-paste-form" style="margin-top:12px;">
-          <input type="text" id="license-paste" placeholder="Paste a license key (SQSY-LICENSE-V1.…)" style="width:70%;">
-          <button type="submit" class="btn">Apply</button>
-          <a class="btn" id="license-get" target="_blank" rel="noopener">Get a license</a>
+        <form id="license-paste-form" style="margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <input type="text" class="form-control" id="license-paste" placeholder="Paste a license key (SQSY-LICENSE-V1.…)" style="flex:1; min-width:280px;">
+          <button type="submit" class="btn btn-mint btn-sm">Apply</button>
+          <a class="btn btn-outline btn-sm" id="license-get" target="_blank" rel="noopener">Get a license</a>
         </form>
         <p id="license-paste-result" class="muted"></p>
       </div>
@@ -61,32 +61,27 @@
       </script>
 
       <!-- AI-assisted debugging (free, bring-your-own endpoint) -->
-      <div class="section-label">AI Assistance</div>
-      <div class="totp-card" id="ai-settings-card">
-        <h3>AI suggestions endpoint</h3>
-        <p class="muted">Point Vigil at any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, OpenAI) or Anthropic. Bring your own key — nothing is hosted by SQSY, and Vigil never bills you for inference. Suggestions come back as draft task YAML you review before running.</p>
-        <div class="setting-row">
-          <label>Provider</label>
-          <select id="ai-provider">
-            <option value="openai">OpenAI-compatible (Ollama, vLLM, LM Studio, OpenAI)</option>
-            <option value="anthropic">Anthropic</option>
-          </select>
+      <div class="section-label">AI Providers</div>
+      <div class="totp-card">
+        <h3>AI suggestion providers</h3>
+        <p class="muted">Add one or more model endpoints — any OpenAI-compatible server (Ollama, vLLM, LM Studio, OpenAI) or Anthropic. Bring your own key; nothing is hosted by SQSY and Vigil never bills you for inference. When you ask for a suggested fix you can fan the request out to several and compare. Suggestions are always draft task YAML you review before running.</p>
+        <div id="ai-providers-list" style="margin:14px 0;"></div>
+        <div class="bl-editor" id="ap-form" data-editing="" style="margin-bottom:0;">
+          <h3 id="ap-form-title">Add a provider</h3>
+          <div class="setting-row"><label>Name</label><input type="text" class="form-control" id="ap-name" placeholder="e.g. Homelab qwopus"></div>
+          <div class="setting-row"><label>Kind</label>
+            <select class="form-control" id="ap-kind">
+              <option value="openai">OpenAI-compatible (Ollama, vLLM, LM Studio, OpenAI)</option>
+              <option value="anthropic">Anthropic</option>
+            </select></div>
+          <div class="setting-row"><label>Base URL</label><input type="text" class="form-control" id="ap-url" placeholder="http://10.0.0.108:11434/v1"></div>
+          <div class="setting-row"><label>Model</label><input type="text" class="form-control" id="ap-model" placeholder="qwopus / gpt-4o-mini / claude-sonnet-..."></div>
+          <div class="setting-row"><label>API key</label><input type="password" class="form-control" id="ap-key" placeholder="blank = keyless local / keep current"><p class="bl-hint" id="ap-key-note"></p></div>
+          <div class="bl-editor-actions">
+            <button class="btn btn-mint btn-sm" id="ap-save">Save provider</button>
+            <button class="btn btn-outline btn-sm" id="ap-new">Clear</button>
+          </div>
         </div>
-        <div class="setting-row">
-          <label>Base URL</label>
-          <input type="text" id="ai-base-url" placeholder="http://10.0.0.108:11434/v1">
-        </div>
-        <div class="setting-row">
-          <label>Model</label>
-          <input type="text" id="ai-model" placeholder="qwopus / gpt-4o-mini / claude-...">
-        </div>
-        <div class="setting-row">
-          <label>API key</label>
-          <input type="password" id="ai-key" placeholder="leave blank to keep current / keyless local">
-        </div>
-        <p class="muted" id="ai-key-state"></p>
-        <label class="setting-check"><input type="checkbox" id="ai-enabled"> Enable AI suggestions</label>
-        <div style="margin-top:12px;"><button class="btn btn-mint" id="ai-save-btn">Save AI settings</button></div>
       </div>
 
       <!-- Civil shared identity (opt-in SSO) -->
@@ -97,27 +92,18 @@
         <p class="muted" id="civil-env-note" hidden>⚠ CIVIL_URL is set by an environment variable, which overrides anything here.</p>
         <div class="setting-row">
           <label>Civil URL</label>
-          <input type="text" id="civil-url" placeholder="http://civil.lan:8100">
+          <input type="text" class="form-control" id="civil-url" placeholder="http://civil.lan:8100">
         </div>
         <div class="setting-row">
           <label>This app's slug (as registered in Civil)</label>
-          <input type="text" id="civil-slug" placeholder="vigil">
+          <input type="text" class="form-control" id="civil-slug" placeholder="vigil">
         </div>
         <label class="setting-check"><input type="checkbox" id="civil-enabled"> Enable Civil sign-in</label>
         <p class="muted" id="civil-state"></p>
         <div style="margin-top:12px;">
-          <button class="btn btn-mint" id="civil-save-btn">Save</button>
-          <button class="btn btn-outline" id="civil-test-btn">Test connection &amp; fetch key</button>
+          <button class="btn btn-mint btn-sm" id="civil-save-btn">Save</button>
+          <button class="btn btn-outline btn-sm" id="civil-test-btn">Test connection &amp; fetch key</button>
         </div>
-      </div>
-
-      <!-- Status pages -->
-      <div class="section-label">Status Pages</div>
-      <div class="totp-card" id="statuspage-card">
-        <h3>Public status pages</h3>
-        <p class="muted">A public, shareable status page for your hosts. The first page is free (with a "Powered by Vigil" badge); branding and additional per-site pages are Business features.</p>
-        <div id="statuspage-list"></div>
-        <div style="margin-top:12px;"><button class="btn btn-mint" id="statuspage-new-btn">New status page</button></div>
       </div>
 
       <div id="totp-card" class="totp-card">

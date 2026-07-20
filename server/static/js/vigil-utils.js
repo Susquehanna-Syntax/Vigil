@@ -129,3 +129,41 @@ function osLogo(name) {
   // Generic Linux penguin outline
   return s('<ellipse cx="12" cy="9" rx="4" ry="5"/><ellipse cx="12" cy="9" rx="2" ry="3" fill="#1E1E2E"/><ellipse cx="12" cy="17" rx="5" ry="4"/><ellipse cx="12" cy="17" rx="3" ry="2.5" fill="#1E1E2E"/><circle cx="10.5" cy="7.5" r="1" fill="#F0C040"/><circle cx="13.5" cy="7.5" r="1" fill="#F0C040"/>', '#F0C040');
 }
+
+/* ── Custom confirm modal (replaces window.confirm) ──────────────────── */
+function confirmModal(message, opts) {
+  opts = opts || {};
+  return new Promise((resolve) => {
+    let overlay = document.getElementById('confirm-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'confirm-overlay';
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal" style="width:420px;">
+          <div class="modal-title" id="confirm-title">Are you sure?</div>
+          <div class="confirm-msg" id="confirm-msg"></div>
+          <div class="confirm-actions">
+            <button class="btn btn-outline btn-sm" id="confirm-cancel">Cancel</button>
+            <button class="btn btn-sm" id="confirm-ok">Confirm</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+    }
+    const okBtn = overlay.querySelector('#confirm-ok');
+    const cancelBtn = overlay.querySelector('#confirm-cancel');
+    overlay.querySelector('#confirm-title').textContent = opts.title || 'Are you sure?';
+    overlay.querySelector('#confirm-msg').textContent = message;
+    okBtn.textContent = opts.confirmText || 'Confirm';
+    okBtn.className = 'btn btn-sm ' + (opts.danger ? 'btn-rose' : 'btn-mint');
+    const close = (val) => {
+      overlay.classList.remove('open');
+      okBtn.onclick = cancelBtn.onclick = overlay.onclick = null;
+      setTimeout(() => resolve(val), 200);
+    };
+    okBtn.onclick = () => close(true);
+    cancelBtn.onclick = () => close(false);
+    overlay.onclick = (e) => { if (e.target === overlay) close(false); };
+    requestAnimationFrame(() => overlay.classList.add('open'));
+  });
+}

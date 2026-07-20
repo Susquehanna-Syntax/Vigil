@@ -19,8 +19,10 @@ def public_status(request, token):
     Business page cleanly falls back to the free look instead of breaking."""
     page = get_object_or_404(StatusPage, token=token, enabled=True)
     branded = has_feature("status_branding")
+    labels = page.host_labels or {}
     hosts = [
-        {"hostname": h.hostname, "up": h.status == Host.Status.ONLINE}
+        {"hostname": labels.get(str(h.id)) or h.hostname,
+         "up": h.status == Host.Status.ONLINE}
         for h in page.hosts()
     ]
     return render(request, "status_public.html", {
@@ -36,12 +38,23 @@ def public_status(request, token):
 def _row(p: StatusPage) -> dict:
     return {
         "id": str(p.id), "token": p.token, "title": p.title,
-        "enabled": p.enabled, "host_ids": p.host_ids,
+        "enabled": p.enabled, "host_ids": [str(h) for h in (p.host_ids or [])],
+        "host_labels": p.host_labels or {},
         "site_id": str(p.site_id) if p.site_id else None,
         "logo_url": p.logo_url, "hide_badge": p.hide_badge,
         "url": f"/status/{p.token}/",
         "is_primary": p.is_primary,
     }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def selectable_hosts(request):
+    """Every non-pending host, for the status-page machine picker."""
+    hosts = Host.objects.exclude(status=Host.Status.PENDING).exclude(
+        status=Host.Status.REJECTED).order_by("hostname")
+    return Response([{"id": str(h.id), "hostname": h.hostname,
+                      "up": h.status == Host.Status.ONLINE} for h in hosts])
 
 
 @api_view(["GET", "POST"])
@@ -74,7 +87,7 @@ def _apply(page, request):
     data = request.data
     if any(f in data for f in BRANDING_FIELDS) and not has_feature("status_branding"):
         return Response(upgrade_body("status_branding"), status=402)
-    for field in ("title", "enabled", "host_ids", *BRANDING_FIELDS):
+    for field in ("title", "enabled", "host_ids", "host_labels", *BRANDING_FIELDS):
         if field in data:
             setattr(page, field, data[field] if data[field] != "" else
                     ("" if field == "logo_url" else data[field]))
