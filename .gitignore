@@ -30,3 +30,6 @@ agent/data/
 
 # Visual brainstorming companion — local scratch, never committed
 .superpowers/
+REXYMCP.md
+.rexymcp/
+docs/dev/
