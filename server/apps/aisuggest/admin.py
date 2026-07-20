@@ -1,5 +1,9 @@
 from django.contrib import admin
 
-from .models import AiSettings
+from .models import AiProvider
 
-admin.site.register(AiSettings)
+
+@admin.register(AiProvider)
+class AiProviderAdmin(admin.ModelAdmin):
+    list_display = ("name", "kind", "model", "enabled", "order")
+    list_editable = ("enabled", "order")

@@ -27,6 +27,9 @@ class StatusPage(models.Model):
     enabled = models.BooleanField(default=False)
     # Empty = every non-pending host; else host UUID strings.
     host_ids = models.JSONField(default=list, blank=True)
+    # Optional per-host display-name overrides: {host_id: "Public name"}.
+    # A client-facing page shouldn't have to expose internal hostnames.
+    host_labels = models.JSONField(default=dict, blank=True)
     # Business scoping/branding. site_id references business_sites.Site but is
     # a plain UUID (no FK) so the free page never joins a Business table.
     site_id = models.UUIDField(null=True, blank=True)

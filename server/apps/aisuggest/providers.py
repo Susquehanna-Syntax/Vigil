@@ -95,11 +95,10 @@ class AnthropicProvider:
             raise ProviderError(f"unexpected response shape: {exc}") from exc
 
 
-def provider_for(settings_row):
-    from .models import AiSettings
+def provider_for(row):
+    """Build a callable client from an AiProvider row."""
+    from .models import ProviderKind
 
-    if settings_row.provider == AiSettings.Provider.ANTHROPIC:
-        return AnthropicProvider(settings_row.base_url, settings_row.model,
-                                 settings_row.api_key)
-    return OpenAICompatProvider(settings_row.base_url, settings_row.model,
-                                settings_row.api_key)
+    if row.kind == ProviderKind.ANTHROPIC:
+        return AnthropicProvider(row.base_url, row.model, row.api_key)
+    return OpenAICompatProvider(row.base_url, row.model, row.api_key)
