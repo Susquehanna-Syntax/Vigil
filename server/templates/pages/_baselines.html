@@ -1,0 +1,37 @@
+<section class="page" id="page-baselines">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Baselines</h1>
+      <p class="page-sub">Named task sequences that run automatically when a matching host is approved — and can be called from any task with <code>type: baseline</code>.</p>
+    </div>
+    <button class="btn btn-mint" id="bl-new-btn">New baseline</button>
+  </div>
+
+  <div class="bl-editor" id="bl-editor">
+    <h3 id="bl-editor-title">New baseline</h3>
+    <div class="bl-field">
+      <label>Name</label>
+      <input type="text" id="bl-name" placeholder="e.g. Linux bootstrap" maxlength="120">
+      <div class="bl-hint">This is the name tasks call it by: <code>params: { name: "…" }</code></div>
+    </div>
+    <div class="bl-field">
+      <label>Description (optional)</label>
+      <input type="text" id="bl-desc" placeholder="What this baseline does" maxlength="2000">
+    </div>
+    <div class="bl-field">
+      <label>Steps (run in order)</label>
+      <div class="bl-editor-steps" id="bl-editor-steps"></div>
+      <select id="bl-def-picker" class="bl-picker"></select>
+    </div>
+    <div class="bl-field">
+      <label>Auto-run on hosts tagged (comma-separated, blank = every approved host)</label>
+      <input type="text" id="bl-tags" placeholder="os:linux, role:web">
+    </div>
+    <label class="bl-check"><input type="checkbox" id="bl-enabled" checked> Auto-dispatch on enrollment</label>
+    <div class="bl-editor-actions">
+      <button class="btn btn-mint" id="bl-save-btn">Save baseline</button>
+    </div>
+  </div>
+
+  <div id="baselines-list" class="bl-list"></div>
+</section>

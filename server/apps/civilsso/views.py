@@ -12,6 +12,7 @@ import logging
 import secrets
 from urllib.parse import urlencode
 
+from django.conf import settings as dj_settings
 from django.contrib.auth import get_user_model, login
 from django.http import Http404
 from django.shortcuts import redirect
@@ -102,3 +103,48 @@ def _provision_user(claims: dict):
     user.save()
     logger.info("provisioned local user %s for civil:%s", username, claims["sub"])
     return user
+
+
+def civil_settings_api(request):
+    """GET/POST the Civil connection config. Admin-only, CSRF-protected by
+    the session middleware; framework-light so the same file ports across
+    the SQSY family."""
+    import json as _json
+
+    from django.http import JsonResponse
+
+    from .models import CachedCivilKey, CivilConfig
+
+    user = getattr(request, "user", None)
+    if not (user and user.is_authenticated and (user.is_staff or user.is_superuser)):
+        return JsonResponse({"detail": "Administrator access required."}, status=403)
+
+    cfg = CivilConfig.current()
+    data = {}
+    if request.method == "POST":
+        try:
+            data = _json.loads(request.body.decode() or "{}")
+        except ValueError:
+            return JsonResponse({"detail": "invalid JSON"}, status=400)
+        if "url" in data:
+            cfg.url = (data["url"] or "").strip().rstrip("/")
+        if "app_slug" in data:
+            cfg.app_slug = (data["app_slug"] or "").strip()
+        if "enabled" in data:
+            cfg.enabled = bool(data["enabled"])
+        cfg.save()
+
+    payload = {
+        "enabled": cfg.enabled,
+        "url": cfg.url,
+        "app_slug": cfg.app_slug or client.app_slug(),
+        "effective_url": client.civil_url(),
+        "env_override": bool(getattr(dj_settings, "CIVIL_URL", "")),
+        "active": client.enabled(),
+        "key_cached": bool(CachedCivilKey.current()),
+    }
+    if data.get("test") or data.get("refresh_key"):
+        pem = client.get_public_key(force_fetch=True) if client.enabled() else ""
+        payload["test_ok"] = bool(pem)
+        payload["key_cached"] = bool(CachedCivilKey.current())
+    return JsonResponse(payload)

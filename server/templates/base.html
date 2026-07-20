@@ -33,6 +33,9 @@
     <div class="sidebar-icon" data-page="tasks" data-tip="Tasks">
       <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     </div>
+    <div class="sidebar-icon" data-page="baselines" data-tip="Baselines">
+      <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><polyline points="3 18 4 19 6 17"/></svg>
+    </div>
     <div class="sidebar-icon" data-page="vulns" data-tip="Vulnerabilities">
       <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
     </div>
@@ -583,6 +586,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-alerts.js' %}"></script>
 <!-- vigil-tasks.js — task library, editor, dispatch modal, YAML highlighting -->
 <script src="{% static 'js/vigil-tasks.js' %}"></script>
+<script src="{% static 'js/vigil-ai.js' %}"></script>
+<script src="{% static 'js/vigil-baselines.js' %}"></script>
 <!-- vigil-deploy.js — deploy modal, fleet cache, schedule/retry/success-criteria policy (wraps navigateTo) -->
 <script src="{% static 'js/vigil-deploy.js' %}"></script>
 <!-- vigil-vulns.js — vulnerability scan refresh + host-card vuln badges -->
