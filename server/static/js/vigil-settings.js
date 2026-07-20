@@ -196,5 +196,17 @@ document.addEventListener('DOMContentLoaded', () => {
   if (cs) cs.addEventListener('click', () => saveCivilSettings());
   const ct = document.getElementById('civil-test-btn');
   if (ct) ct.addEventListener('click', () => saveCivilSettings({ test: true, refresh_key: true }));
+
+  // Settings sub-nav: switch which pane is visible.
+  document.querySelectorAll('#settings-nav .settings-nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('#settings-nav .settings-nav-item').forEach(i => i.classList.remove('active'));
+      document.querySelectorAll('#page-settings .settings-pane').forEach(p => p.classList.remove('active'));
+      item.classList.add('active');
+      const pane = document.querySelector(`#page-settings .settings-pane[data-pane="${item.dataset.pane}"]`);
+      if (pane) pane.classList.add('active');
+    });
+  });
+
   loadCivilSettings();
 });

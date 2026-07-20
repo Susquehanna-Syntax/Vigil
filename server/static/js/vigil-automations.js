@@ -121,10 +121,14 @@ function _autoSyncVisibility() {
   if (trig === 'schedule' && tgt === 'event_host') { document.getElementById('auto-target').value = 'all'; _autoSyncVisibility(); }
 }
 
+function _closeAutoEditor() {
+  document.getElementById('auto-editor-overlay').classList.remove('open');
+  document.getElementById('auto-editor-modal').classList.remove('open');
+}
+
 function _openAutoEditor(a) {
-  const ed = document.getElementById('auto-editor');
-  ed.hidden = false;
-  ed.dataset.editing = a ? a.id : '';
+  const modal = document.getElementById('auto-editor-modal');
+  modal.dataset.editing = a ? a.id : '';
   document.getElementById('auto-editor-title').textContent = a ? 'Edit automation' : 'New automation';
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
   set('auto-name', a ? a.name : '');
@@ -143,7 +147,27 @@ function _openAutoEditor(a) {
   set('auto-target-host', a && a.target_host ? a.target_host : '');
   document.getElementById('auto-enabled').checked = a ? a.enabled : true;
   _autoSyncVisibility();
-  ed.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('auto-editor-overlay').classList.add('open');
+  modal.classList.add('open');
+}
+
+// View/edit the referenced task (opens the task editor) or baseline (opens
+// its editor). Baselines are edited on the Baselines sub-tab.
+function _viewAutoAction() {
+  const kind = document.getElementById('auto-action-kind').value;
+  if (kind === 'task') {
+    const id = document.getElementById('auto-action-task').value;
+    if (!id) return showToast('Pick a task first', 'error');
+    _closeAutoEditor();
+    if (typeof openDefinitionEditor === 'function') openDefinitionEditor(id);
+  } else {
+    const name = document.getElementById('auto-action-baseline').value;
+    if (!name) return showToast('Pick a baseline first', 'error');
+    const b = _autoBaselines.find(x => x.name === name);
+    _closeAutoEditor();
+    document.querySelector('#page-baselines .sub-tab[data-subtab="bl-panel"]')?.click();
+    if (b && typeof _startEdit === 'function') _startEdit(b.id);
+  }
 }
 
 async function _saveAutomation() {
@@ -165,12 +189,12 @@ async function _saveAutomation() {
     enabled: document.getElementById('auto-enabled').checked,
   };
   if (!body.name) return showToast('Name the automation', 'error');
-  const editing = document.getElementById('auto-editor').dataset.editing;
+  const editing = document.getElementById('auto-editor-modal').dataset.editing;
   try {
     if (editing) await apiJson(`/api/v1/automations/${editing}/`, { method: 'PATCH', body: JSON.stringify(body) });
     else await apiJson('/api/v1/automations/', { method: 'POST', body: JSON.stringify(body) });
     showToast('Automation saved', 'success');
-    document.getElementById('auto-editor').hidden = true;
+    _closeAutoEditor();
     loadAutomations();
   } catch (e) { showToast(e.message, 'error'); }
 }
@@ -184,6 +208,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (nb) nb.addEventListener('click', () => _openAutoEditor(null));
   const save = document.getElementById('auto-save-btn');
   if (save) save.addEventListener('click', _saveAutomation);
-  const cancel = document.getElementById('auto-cancel-btn');
-  if (cancel) cancel.addEventListener('click', () => { document.getElementById('auto-editor').hidden = true; });
+  document.getElementById('auto-cancel-btn')?.addEventListener('click', _closeAutoEditor);
+  document.getElementById('auto-cancel-btn-2')?.addEventListener('click', _closeAutoEditor);
+  document.getElementById('auto-editor-overlay')?.addEventListener('click', _closeAutoEditor);
+  document.getElementById('auto-view-action')?.addEventListener('click', _viewAutoAction);
 });
