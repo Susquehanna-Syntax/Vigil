@@ -7,6 +7,7 @@
 
 let _baselineDefs = [];   // all task definitions, for the picker (id -> def)
 let _editingSteps = [];   // definition ids currently in the editor, in order
+let _allBaselines = [];   // cached, for client-side search
 
 async function loadBaselines() {
   const list = document.getElementById('baselines-list');
@@ -18,11 +19,22 @@ async function loadBaselines() {
       apiJson('/api/v1/tasks/definitions/'),
     ]);
     _baselineDefs = Array.isArray(defs) ? defs : (defs.results || []);
+    _allBaselines = baselines;
     _renderDefPicker();
-    _renderBaselineList(baselines);
+    _renderBaselineList(_filterBaselines());
   } catch (e) {
     list.innerHTML = `<div class="empty-block"><h4>Couldn't load baselines</h4><p>${escHtml(e.message)}</p></div>`;
   }
+}
+
+function _filterBaselines() {
+  const q = (document.getElementById('bl-search')?.value || '').trim().toLowerCase();
+  if (!q) return _allBaselines;
+  return _allBaselines.filter(b =>
+    b.name.toLowerCase().includes(q) ||
+    (b.description || '').toLowerCase().includes(q) ||
+    (b.target_tags || []).some(t => t.toLowerCase().includes(q)) ||
+    b.steps.some(s => s.definition_name.toLowerCase().includes(q)));
 }
 
 function _defName(id) {
@@ -78,8 +90,7 @@ function _renderBaselineList(baselines) {
       </div>
       <div class="bl-call">
         <div class="bl-call-label">Call from a task:</div>
-        <pre>- type: baseline
-  params: { name: "${escHtml(b.name)}" }</pre>
+        <pre>${yamlToHtml('- type: baseline\n  params: { name: "' + b.name + '" }')}</pre>
       </div>
     </div>`;
   }).join('');
@@ -194,6 +205,19 @@ document.addEventListener('DOMContentLoaded', () => {
   if (nu) nu.addEventListener('click', () => _openEditor(null, null));
   const cancel = document.getElementById('bl-cancel-btn');
   if (cancel) cancel.addEventListener('click', () => { document.getElementById('bl-editor').hidden = true; });
+  const search = document.getElementById('bl-search');
+  if (search) search.addEventListener('input', () => _renderBaselineList(_filterBaselines()));
+
+  // Sub-tab switching (Baselines / Automation)
+  document.querySelectorAll('#page-baselines .sub-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('#page-baselines .sub-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('#page-baselines .sub-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(tab.dataset.subtab).classList.add('active');
+      if (tab.dataset.subtab === 'auto-panel' && typeof loadAutomations === 'function') loadAutomations();
+    });
+  });
 });
 
 if (typeof navigateTo === 'function') {

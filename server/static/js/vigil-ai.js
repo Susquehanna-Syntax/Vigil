@@ -8,7 +8,43 @@
 // Depends on: vigil-utils.js, vigil-tasks.js (openDefinitionEditor).
 
 let _aiProviders = [];        // cached enabled providers for the picker
+let _staticResolver = null;   // optional client-side built-in suggestion
 const RISK_RANK = { low: 0, standard: 1, high: 2 };
+
+// Deterministic image-update task for a container — no AI needed, and
+// compose-aware: a compose-managed container (has a stack) must be recreated
+// through `docker compose up`, not `recreate_container` (which fails with
+// "managed by docker compose").
+function _staticDockerFix(c) {
+  const img = c.image || 'IMAGE';
+  if (c.stack) {
+    const yaml = `name: "Update ${img} (compose)"
+description: "Pull the latest ${img} and recreate ${c.name} via docker compose"
+risk: standard
+actions:
+  - type: pull_image
+    params:
+      image: "${img}"
+  - type: docker_compose_up
+    params:
+      compose_file: "/opt/${c.stack}/docker-compose.yml"  # set the real path
+      services: "${c.service || c.name}"`;
+    return { yaml, parsed: { name: `Update ${img} (compose)` }, risk: 'standard',
+             note: `${c.name} is managed by docker compose (project "${c.stack}") — this recreates it with docker compose up.` };
+  }
+  const yaml = `name: "Update ${img}"
+description: "Pull the latest ${img} and recreate ${c.name} on it"
+risk: standard
+actions:
+  - type: pull_image
+    params:
+      image: "${img}"
+  - type: recreate_container
+    params:
+      container_name: "${c.name}"
+      image: "${img}"`;
+  return { yaml, parsed: { name: `Update ${img}` }, risk: 'standard' };
+}
 
 /* ── Modal shell ─────────────────────────────────────────────────────── */
 function _ensureAiModal() {
@@ -44,8 +80,9 @@ function _closeAi() {
   if (o) o.classList.remove('open');
 }
 
-async function _openAi(context, runFn) {
+async function _openAi(context, runFn, staticResult) {
   const overlay = _ensureAiModal();
+  _staticResolver = staticResult || null;
   document.getElementById('ai-context').textContent = context || '';
   document.getElementById('ai-compare').innerHTML = '';
   const picker = document.getElementById('ai-picker');
@@ -57,48 +94,77 @@ async function _openAi(context, runFn) {
     _aiProviders = (await apiJson('/api/v1/ai/providers/')).filter(p => p.enabled && p.configured);
   } catch { _aiProviders = []; }
 
-  if (!_aiProviders.length) {
+  // The built-in template (when present) is always an option and needs no AI.
+  const staticChip = _staticResolver ? `
+    <label class="ai-pick on" data-pid="static">
+      <input type="checkbox" checked>
+      <span>Built-in template</span>
+      <span class="ai-pick-model">no AI · instant</span>
+    </label>` : '';
+
+  if (!_aiProviders.length && !_staticResolver) {
     document.getElementById('ai-picker-wrap').innerHTML =
       `<div class="ai-empty">No AI providers are configured.
        <button class="btn btn-mint btn-sm" style="margin-left:8px;" onclick="_closeAi();navigateTo('settings');">Add one in Settings</button></div>`;
     return;
   }
-  picker.innerHTML = _aiProviders.map(p => `
+  picker.innerHTML = staticChip + _aiProviders.map(p => `
     <label class="ai-pick on" data-pid="${p.id}">
       <input type="checkbox" checked>
       <span>${escHtml(p.name)}</span>
       <span class="ai-pick-model">${escHtml(p.model)}</span>
     </label>`).join('');
+  if (!_aiProviders.length) {
+    picker.insertAdjacentHTML('beforeend',
+      '<span class="ai-empty" style="width:100%;">Add AI providers in Settings to compare model suggestions alongside the built-in template.</span>');
+  }
   picker.querySelectorAll('.ai-pick').forEach(el => {
     const cb = el.querySelector('input');
     cb.addEventListener('change', () => el.classList.toggle('on', cb.checked));
   });
   document.getElementById('ai-run').onclick = () => {
     const ids = [...picker.querySelectorAll('.ai-pick')].filter(el => el.querySelector('input').checked)
-      .map(el => +el.dataset.pid);
-    if (!ids.length) return showToast('Pick at least one model', 'error');
+      .map(el => el.dataset.pid === 'static' ? 'static' : +el.dataset.pid);
+    if (!ids.length) return showToast('Pick at least one option', 'error');
     document.getElementById('ai-picker-wrap').style.display = 'none';
     _runComparison(ids, runFn);
   };
 }
 
 /* ── Fan-out + compare ───────────────────────────────────────────────── */
-function _runComparison(providerIds, runFn) {
+function _colName(id) {
+  if (id === 'static') return 'Built-in template';
+  const p = _aiProviders.find(x => x.id === id);
+  return p ? p.name : String(id);
+}
+function _colModel(id) {
+  if (id === 'static') return 'deterministic · no AI';
+  const p = _aiProviders.find(x => x.id === id);
+  return p ? p.model : '';
+}
+
+function _runComparison(ids, runFn) {
   const grid = document.getElementById('ai-compare');
-  grid.style.gridTemplateColumns = providerIds.length > 1 ? '1fr 1fr' : '1fr';
-  grid.innerHTML = providerIds.map(id => {
-    const p = _aiProviders.find(x => x.id === id);
-    return `<div class="ai-col" id="ai-col-${id}">
-      <div class="ai-col-head"><span class="ai-col-name">${escHtml(p.name)}</span>
+  grid.style.gridTemplateColumns = ids.length > 1 ? '1fr 1fr' : '1fr';
+  grid.innerHTML = ids.map(id => `
+    <div class="ai-col" id="ai-col-${id}">
+      <div class="ai-col-head"><span class="ai-col-name">${escHtml(_colName(id))}</span>
         <span class="ai-col-time" id="ai-time-${id}">0.0s</span></div>
       <div class="ai-progress"><div class="ai-progress-bar"></div></div>
-      <div class="ai-loading-row"><span>${escHtml(p.model)}</span><span>thinking…</span></div>
-    </div>`;
-  }).join('');
+      <div class="ai-loading-row"><span>${escHtml(_colModel(id))}</span><span>${id === 'static' ? 'building…' : 'thinking…'}</span></div>
+    </div>`).join('');
 
   const results = {};
-  providerIds.forEach(id => {
+  ids.forEach(id => {
     const t0 = performance.now();
+    // The built-in template resolves synchronously and instantly.
+    if (id === 'static') {
+      const s = _staticResolver();
+      results[id] = { suggestions: [s], elapsed_ms: 0 };
+      _renderColumn(id, results[id]);
+      _rankBest(results, ids);
+      return;
+    }
     const timer = setInterval(() => {
       const el = document.getElementById(`ai-time-${id}`);
       if (el) el.textContent = ((performance.now() - t0) / 1000).toFixed(1) + 's';
@@ -109,7 +175,7 @@ function _runComparison(providerIds, runFn) {
       .finally(() => {
         clearInterval(timer);
         _renderColumn(id, results[id]);
-        _rankBest(results, providerIds);
+        _rankBest(results, ids);
       });
   });
 }
@@ -117,7 +183,6 @@ function _runComparison(providerIds, runFn) {
 function _renderColumn(id, data) {
   const col = document.getElementById(`ai-col-${id}`);
   if (!col) return;
-  const p = _aiProviders.find(x => x.id === id);
   const time = data && data.elapsed_ms != null ? (data.elapsed_ms / 1000).toFixed(1) + 's' : '';
   let body;
   if (!data || data.error) {
@@ -131,7 +196,8 @@ function _renderColumn(id, data) {
           <span class="ai-sug-name">${escHtml((s.parsed && s.parsed.name) || 'Suggestion')}</span>
           <span class="risk-badge risk-${escHtml(s.risk || 'standard')}">${escHtml(s.risk || 'standard')}</span>
         </div>
-        <pre class="ai-sug-yaml">${escHtml(s.yaml)}</pre>
+        ${s.note ? `<div class="bl-hint" style="margin-bottom:6px;">${escHtml(s.note)}</div>` : ''}
+        <pre class="ai-sug-yaml">${yamlToHtml(s.yaml)}</pre>
         <div class="ai-sug-actions">
           <button class="btn btn-outline btn-xs" data-ai-copy>Copy</button>
           <button class="btn btn-mint btn-xs" data-ai-open>Use this</button>
@@ -139,7 +205,7 @@ function _renderColumn(id, data) {
       </div>`).join('');
   }
   col.innerHTML = `<div class="ai-col-head">
-      <span class="ai-col-name">${escHtml(p.name)}</span>
+      <span class="ai-col-name">${escHtml(_colName(id))}</span>
       <span class="ai-col-time">${time}</span></div>${body}`;
   col.querySelectorAll('.ai-sug').forEach(node => {
     const s = data.suggestions[+node.dataset.idx];
@@ -189,10 +255,15 @@ function suggestFixForAlert(alertId, context) {
     { method: 'POST', body: JSON.stringify({ provider_id: pid }) }));
 }
 
-function suggestFixForContainer(hostId, containerId, name) {
-  _openAi(`Container: ${name || containerId}`, (pid) =>
-    apiJson(`/api/v1/ai/suggest/docker/${hostId}/${encodeURIComponent(containerId)}/`,
-      { method: 'POST', body: JSON.stringify({ provider_id: pid }) }));
+function suggestFixForContainer(hostId, container) {
+  // `container` is the full row (name, image, stack, service) so the built-in
+  // template can be compose-aware. Falls back to id-only if a bare id passed.
+  const c = typeof container === 'object' ? container : { name: container, container_id: container };
+  const cid = c.container_id;
+  _openAi(`Container: ${c.name || cid}`,
+    (pid) => apiJson(`/api/v1/ai/suggest/docker/${hostId}/${encodeURIComponent(cid)}/`,
+      { method: 'POST', body: JSON.stringify({ provider_id: pid }) }),
+    () => _staticDockerFix(c));
 }
 
 /* ── Providers manager (Settings) ────────────────────────────────────── */

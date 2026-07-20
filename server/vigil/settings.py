@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "apps.baselines",
     "apps.aisuggest",
     "apps.statuspage",
+    "apps.automations",
     "apps.civilsso",
     # Business features (apps_business/LICENSE) — installed always, unlocked by license
     "apps_business.sites",

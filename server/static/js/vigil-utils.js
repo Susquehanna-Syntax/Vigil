@@ -167,3 +167,27 @@ function confirmModal(message, opts) {
     requestAnimationFrame(() => overlay.classList.add('open'));
   });
 }
+
+/* ── Lightweight YAML syntax coloring (display only) ─────────────────── */
+function yamlToHtml(src) {
+  const esc = (s) => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+  return src.split('\n').map(line => {
+    // comment
+    const c = line.indexOf('#');
+    let comment = '';
+    let body = line;
+    if (c >= 0 && !line.slice(0, c).includes('"')) { comment = line.slice(c); body = line.slice(0, c); }
+    let html = esc(body)
+      // list dash
+      .replace(/^(\s*)(- )/, '$1<span class="y-dash">- </span>')
+      // key:
+      .replace(/^(\s*(?:<span class="y-dash">- <\/span>)?)([\w.-]+)(:)/,
+               '$1<span class="y-key">$2</span><span class="y-punc">$3</span>')
+      // quoted strings
+      .replace(/(&quot;[^&]*?&quot;|&#39;[^&]*?&#39;)/g, '<span class="y-str">$1</span>')
+      // bare numbers after colon
+      .replace(/(<span class="y-punc">:<\/span>\s*)(\d+(?:\.\d+)?)(\s*)$/, '$1<span class="y-num">$2</span>$3');
+    if (comment) html += '<span class="y-comment">' + esc(comment) + '</span>';
+    return html;
+  }).join('\n');
+}

@@ -127,6 +127,7 @@ urlpatterns = [
     path("api/v1/baselines/", include("apps.baselines.urls")),
     path("api/v1/ai/", include("apps.aisuggest.urls")),
     path("api/v1/status-pages/", include("apps.statuspage.urls")),
+    path("api/v1/automations/", include("apps.automations.urls")),
     path("", include("apps.civilsso.urls")),
     path("agent/", include("apps.agent_dist.urls")),
     path("status/<str:token>/", status_public_view, name="status-public"),

@@ -2012,3 +2012,26 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .empty-block { text-align: center; padding: 48px 20px; color: var(--text-3); }
 .empty-block h4 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 17px; color: var(--text-2); margin-bottom: 8px; }
 .empty-block p { font-size: 13px; max-width: 440px; margin: 0 auto; line-height: 1.6; }
+
+/* YAML syntax coloring (display-only, in code blocks) */
+.y-key { color: var(--sky); }
+.y-str { color: var(--mint); }
+.y-num { color: var(--peach); }
+.y-dash, .y-punc { color: var(--text-3); }
+.y-comment { color: var(--text-3); font-style: italic; }
+.ai-sug-yaml, .bl-call pre { color: var(--text-1); }
+
+/* Baselines search */
+.bl-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
+.bl-search { flex: 1; max-width: 380px; }
+.automation-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+.automation-badge.event { background: rgba(186,168,232,0.15); color: var(--lavender); }
+.automation-badge.schedule { background: rgba(240,184,136,0.15); color: var(--peach); }
+.sub-tabs { display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid var(--border); }
+.sub-tab { padding: 10px 18px; font-size: 14px; font-weight: 600; color: var(--text-3);
+  cursor: pointer; border-bottom: 2px solid transparent; transition: color 0.2s, border-color 0.2s; }
+.sub-tab:hover { color: var(--text-2); }
+.sub-tab.active { color: var(--text-1); border-bottom-color: var(--mint); }
+.sub-panel { display: none; } .sub-panel.active { display: block; }
+.auto-when { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 14px; color: var(--text-2); margin-bottom: 14px; }
+.auto-when .form-control { width: auto; min-width: 150px; display: inline-block; }
