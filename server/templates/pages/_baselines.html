@@ -1,38 +1,128 @@
 <section class="page" id="page-baselines">
   <div class="page-header">
     <div>
-      <div class="page-title">Base<span>lines</span></div>
-      <div class="page-sub">Named task sequences that auto-run when a matching host is approved — and are callable from any task with <code class="inline">type: baseline</code>.</div>
-    </div>
-    <button class="btn btn-mint" id="bl-new-btn">New baseline</button>
-  </div>
-
-  <div class="bl-editor" id="bl-editor" data-editing="" hidden>
-    <h3 id="bl-editor-title">New baseline</h3>
-    <div class="bl-field">
-      <label>Name</label>
-      <input type="text" class="form-control" id="bl-name" placeholder="e.g. Linux bootstrap" maxlength="120">
-      <div class="bl-hint">Tasks call it by this name: <code class="inline">- type: baseline / params: { name: "…" }</code></div>
-    </div>
-    <div class="bl-field">
-      <label>Description <span style="color:var(--text-3);font-weight:400;">(optional)</span></label>
-      <input type="text" class="form-control" id="bl-desc" placeholder="What this baseline does" maxlength="2000">
-    </div>
-    <div class="bl-field">
-      <label>Steps — run top to bottom</label>
-      <div class="bl-editor-steps" id="bl-editor-steps"></div>
-      <select class="form-control" id="bl-def-picker" style="margin-top:4px;"></select>
-    </div>
-    <div class="bl-field">
-      <label>Auto-run on hosts tagged <span style="color:var(--text-3);font-weight:400;">(comma-separated; blank = every approved host)</span></label>
-      <input type="text" class="form-control" id="bl-tags" placeholder="os:linux, role:web">
-    </div>
-    <label class="setting-check"><input type="checkbox" id="bl-enabled" checked> Auto-dispatch when a matching host is approved</label>
-    <div class="bl-editor-actions">
-      <button class="btn btn-mint btn-sm" id="bl-save-btn">Save baseline</button>
-      <button class="btn btn-outline btn-sm" id="bl-cancel-btn">Cancel</button>
+      <div class="page-title">Baselines <span>&amp; Automation</span></div>
+      <div class="page-sub">Named task sequences and rules that run tasks automatically — on host enrollment, on events, or on a schedule.</div>
     </div>
   </div>
 
-  <div id="baselines-list" class="bl-list"></div>
+  <div class="sub-tabs">
+    <div class="sub-tab active" data-subtab="bl-panel">Baselines</div>
+    <div class="sub-tab" data-subtab="auto-panel">Automation</div>
+  </div>
+
+  <!-- ── Baselines panel ─────────────────────────────────────────────── -->
+  <div class="sub-panel active" id="bl-panel">
+    <div class="bl-toolbar">
+      <input type="text" class="form-control bl-search" id="bl-search" placeholder="Search baselines by name, step, or tag…">
+      <button class="btn btn-mint" id="bl-new-btn">New baseline</button>
+    </div>
+
+    <div class="bl-editor" id="bl-editor" data-editing="" hidden>
+      <h3 id="bl-editor-title">New baseline</h3>
+      <div class="bl-field">
+        <label>Name</label>
+        <input type="text" class="form-control" id="bl-name" placeholder="e.g. Linux bootstrap" maxlength="120">
+        <div class="bl-hint">Tasks call it by this name: <code class="inline">- type: baseline / params: { name: "…" }</code></div>
+      </div>
+      <div class="bl-field">
+        <label>Description <span style="color:var(--text-3);font-weight:400;">(optional)</span></label>
+        <input type="text" class="form-control" id="bl-desc" placeholder="What this baseline does" maxlength="2000">
+      </div>
+      <div class="bl-field">
+        <label>Steps — run top to bottom</label>
+        <div class="bl-editor-steps" id="bl-editor-steps"></div>
+        <select class="form-control" id="bl-def-picker" style="margin-top:4px;"></select>
+      </div>
+      <div class="bl-field">
+        <label>Auto-run on hosts tagged <span style="color:var(--text-3);font-weight:400;">(comma-separated; blank = every approved host)</span></label>
+        <input type="text" class="form-control" id="bl-tags" placeholder="os:linux, role:web">
+      </div>
+      <label class="setting-check"><input type="checkbox" id="bl-enabled" checked> Auto-dispatch when a matching host is approved</label>
+      <div class="bl-editor-actions">
+        <button class="btn btn-mint btn-sm" id="bl-save-btn">Save baseline</button>
+        <button class="btn btn-outline btn-sm" id="bl-cancel-btn">Cancel</button>
+      </div>
+    </div>
+
+    <div id="baselines-list" class="bl-list"></div>
+  </div>
+
+  <!-- ── Automation panel ────────────────────────────────────────────── -->
+  <div class="sub-panel" id="auto-panel">
+    <div class="bl-toolbar">
+      <div class="page-sub" style="flex:1;margin:0;">Run a task or baseline automatically — when an event fires, or on a schedule.</div>
+      <button class="btn btn-mint" id="auto-new-btn">New automation</button>
+    </div>
+
+    <div class="bl-editor" id="auto-editor" data-editing="" hidden>
+      <h3 id="auto-editor-title">New automation</h3>
+      <div class="bl-field">
+        <label>Name</label>
+        <input type="text" class="form-control" id="auto-name" placeholder="e.g. Clean disk when critical" maxlength="120">
+      </div>
+      <div class="bl-field">
+        <label>Trigger</label>
+        <div class="auto-when">
+          <select class="form-control" id="auto-trigger">
+            <option value="event">When an event fires</option>
+            <option value="schedule">On a schedule</option>
+          </select>
+
+          <span id="auto-event-fields" class="auto-when" style="margin:0;">
+            <select class="form-control" id="auto-event"></select>
+            <span id="auto-sev-wrap">at least
+              <select class="form-control" id="auto-sev">
+                <option value="">any severity</option>
+                <option value="warning">warning</option>
+                <option value="critical">critical</option>
+              </select>
+            </span>
+          </span>
+
+          <span id="auto-sched-fields" class="auto-when" style="margin:0;" hidden>
+            <span>cron</span>
+            <input type="text" class="form-control" id="auto-cron-min" value="0" style="width:70px;" title="minute">
+            <input type="text" class="form-control" id="auto-cron-hour" value="2" style="width:70px;" title="hour">
+            <input type="text" class="form-control" id="auto-cron-dom" value="*" style="width:70px;" title="day of month">
+            <input type="text" class="form-control" id="auto-cron-mon" value="*" style="width:70px;" title="month">
+            <input type="text" class="form-control" id="auto-cron-dow" value="*" style="width:70px;" title="day of week">
+            <span class="bl-hint" id="auto-cron-hint"></span>
+          </span>
+        </div>
+        <div class="bl-hint" id="auto-event-tags-wrap">Only on hosts tagged (optional): <input type="text" class="form-control" id="auto-event-tags" placeholder="os:linux" style="display:inline-block;width:auto;"></div>
+      </div>
+      <div class="bl-field">
+        <label>Run</label>
+        <div class="auto-when">
+          <select class="form-control" id="auto-action-kind">
+            <option value="task">Task</option>
+            <option value="baseline">Baseline</option>
+          </select>
+          <select class="form-control" id="auto-action-task"></select>
+          <select class="form-control" id="auto-action-baseline" hidden></select>
+        </div>
+      </div>
+      <div class="bl-field">
+        <label>On</label>
+        <div class="auto-when">
+          <select class="form-control" id="auto-target">
+            <option value="event_host">The host from the event</option>
+            <option value="tags">Hosts matching tags</option>
+            <option value="host">A specific host</option>
+            <option value="all">All managed hosts</option>
+          </select>
+          <input type="text" class="form-control" id="auto-target-tags" placeholder="role:backup" hidden>
+          <select class="form-control" id="auto-target-host" hidden></select>
+        </div>
+      </div>
+      <label class="setting-check"><input type="checkbox" id="auto-enabled" checked> Enabled</label>
+      <div class="bl-editor-actions">
+        <button class="btn btn-mint btn-sm" id="auto-save-btn">Save automation</button>
+        <button class="btn btn-outline btn-sm" id="auto-cancel-btn">Cancel</button>
+      </div>
+    </div>
+
+    <div id="automations-list" class="bl-list"></div>
+  </div>
 </section>
