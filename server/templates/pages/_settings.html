@@ -5,12 +5,23 @@
       <div class="page-header">
         <div>
           <div class="page-title">Settings<span>.</span></div>
-          <div class="page-sub">Agent management and enrollment</div>
+          <div class="page-sub">Configure Vigil, agents, identity, and AI.</div>
         </div>
       </div>
+      <div class="settings-layout">
+        <nav class="settings-nav" id="settings-nav">
+          <button class="settings-nav-item active" data-pane="account"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Account &amp; Security</button>
+          <button class="settings-nav-item" data-pane="ai"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 00-7 7c0 3 2 4 2 7h10c0-3 2-4 2-7a7 7 0 00-7-7z"/><line x1="9" y1="21" x2="15" y2="21"/></svg>AI Providers</button>
+          <button class="settings-nav-item" data-pane="identity"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg>Shared Identity</button>
+          <button class="settings-nav-item" data-pane="directory"><svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg>Directory Import</button>
+          <button class="settings-nav-item" data-pane="agents"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3v4M8 3v4"/></svg>Agents</button>
+          <button class="settings-nav-item" data-pane="display"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>Display</button>
+          <button class="settings-nav-item" data-pane="distribution"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Agent Binary</button>
+        </nav>
+        <div class="settings-content">
+        <div class="settings-pane active" data-pane="account">
 
-      <!-- Two-factor authentication -->
-      <div class="section-label">Two-Factor Authentication</div>
+      <div class="section-label">License</div>
 
       {# ---- License (all tiers, always visible — SQSY-LICENSING.md §5) ---- #}
       <div class="totp-card" id="license-card">
@@ -60,7 +71,8 @@
       })();
       </script>
 
-      <!-- AI-assisted debugging (free, bring-your-own endpoint) -->
+        </div>
+        <div class="settings-pane" data-pane="ai">
       <div class="section-label">AI Providers</div>
       <div class="totp-card">
         <h3>AI suggestion providers</h3>
@@ -84,7 +96,8 @@
         </div>
       </div>
 
-      <!-- Civil shared identity (opt-in SSO) -->
+        </div>
+        <div class="settings-pane" data-pane="identity">
       <div class="section-label">Shared Identity (Civil)</div>
       <div class="totp-card" id="civil-settings-card">
         <h3>Civil SSO</h3>
@@ -106,6 +119,7 @@
         </div>
       </div>
 
+      <div class="section-label" style="margin-top:32px;">Two-Factor Authentication</div>
       <div id="totp-card" class="totp-card">
         <div class="totp-status" id="totp-status-line">Loading…</div>
         <div class="totp-sub" id="totp-sub-line">TOTP protects task execution. Password fallback is test-only and will be removed.</div>
@@ -131,7 +145,8 @@
         </div>
       </div>
 
-      <!-- Active Directory import -->
+        </div>
+        <div class="settings-pane" data-pane="directory">
       <div class="section-label" style="margin-top:32px;">Active Directory Import</div>
       <div class="totp-card">
         <div class="totp-sub" style="margin-bottom:12px;">Sync computer objects from your AD into the Host table. Imported hosts stay PENDING until their agent enrolls. OU segments become auto-tags.</div>
@@ -170,7 +185,8 @@
         </div>
       </div>
 
-      <!-- Enrollment Queue -->
+        </div>
+        <div class="settings-pane" data-pane="agents">
       <div class="section-label">Enrollment Queue{% if pending_count %} ({{ pending_count }}){% endif %}</div>
       {% if pending_hosts %}
         {% for host in pending_hosts %}
@@ -225,7 +241,8 @@
       </div>
       {% endif %}
 
-      <!-- Display Settings -->
+        </div>
+        <div class="settings-pane" data-pane="display">
       <div class="section-label" style="margin-top:32px;">Display & Timezone</div>
       <div class="totp-card">
         <div class="totp-sub" style="margin-bottom:14px;">
@@ -237,7 +254,8 @@
         </div>
       </div>
 
-      <!-- Agent Distribution -->
+        </div>
+        <div class="settings-pane" data-pane="distribution">
       <div class="section-label" style="margin-top:32px;">Agent Distribution</div>
       <div class="totp-card">
         <div class="totp-sub" style="margin-bottom:14px;">
@@ -317,5 +335,7 @@
           `irm ${window.location.origin}/agent/install.ps1 | iex`;
         loadAgentInfo();
       </script>
-
+        </div>
+        </div><!-- settings-content -->
+      </div><!-- settings-layout -->
     </section>

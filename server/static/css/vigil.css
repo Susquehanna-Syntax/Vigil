@@ -33,6 +33,28 @@
   --spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
+/* ── Light mode (ported from Turnstil) — the design tokens flip; every
+   component reads them, so the whole UI follows. ── */
+:root[data-theme="light"] {
+  --bg:      #f4f3f1;
+  --s1:      #ffffff;
+  --s2:      #eeedf0;
+  --s3:      #e4e3e7;
+  --s4:      #d5d4d9;
+  --border:  #d0cfd4;
+  --text-1:  #1c1c21;
+  --text-2:  #5c5966;
+  --text-3:  #8a8793;
+  color-scheme: light;
+}
+/* Filled accent buttons keep dark text in light mode (accents stay pastel). */
+:root[data-theme="light"] .btn-mint,
+:root[data-theme="light"] .btn-rose,
+:root[data-theme="light"] .btn-sky,
+:root[data-theme="light"] .btn-lav,
+:root[data-theme="light"] .btn-peach { color: #1c1c21; }
+:root[data-theme="light"] .sidebar-icon.active { color: #ffffff; }
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
@@ -1944,7 +1966,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .bl-call pre { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--mint); white-space: pre; overflow-x: auto; }
 
 /* AI compare modal */
-.ai-modal { width: 720px; }
+.modal.ai-modal { width: 760px; max-width: calc(100vw - 40px); }
 .ai-provider-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .ai-pick { display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px;
   border: 1.5px solid var(--border); border-radius: var(--r-md); font-size: 13px;
@@ -2035,3 +2057,34 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .sub-panel { display: none; } .sub-panel.active { display: block; }
 .auto-when { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 14px; color: var(--text-2); margin-bottom: 14px; }
 .auto-when .form-control { width: auto; min-width: 150px; display: inline-block; }
+
+/* Modal action rows + editor step edit buttons */
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 26px;
+  padding-top: 20px; border-top: 1px solid var(--border); }
+.bl-editor-step-btns { display: flex; gap: 5px; flex-shrink: 0; }
+.modal-wide .bl-field { margin-bottom: 20px; }
+/* More breathing room on the baselines/automation lists */
+.bl-list { gap: 18px; }
+.sub-panel { padding-top: 4px; }
+.bl-toolbar { margin-bottom: 26px; }
+
+/* ── Settings: Jackil-style nav + content panes ──────────────────────── */
+.settings-layout { display: grid; grid-template-columns: 220px 1fr; gap: 32px; align-items: start; }
+.settings-nav { display: flex; flex-direction: column; gap: 4px; position: sticky; top: 8px; }
+.settings-nav-item { display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+  padding: 11px 14px; border: none; background: none; color: var(--text-2); font-family: inherit;
+  font-size: 13.5px; font-weight: 500; border-radius: var(--r-md); cursor: pointer;
+  transition: background 0.2s, color 0.2s; }
+.settings-nav-item svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.settings-nav-item:hover { background: var(--s2); color: var(--text-1); }
+.settings-nav-item.active { background: var(--s2); color: var(--text-1); font-weight: 600; }
+.settings-nav-item.active svg { color: var(--mint); }
+.settings-pane { display: none; }
+.settings-pane.active { display: block; animation: fadein 0.25s var(--ease-out-expo); }
+.settings-pane .section-label:first-child { margin-top: 0; }
+@keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (max-width: 900px) {
+  .settings-layout { grid-template-columns: 1fr; }
+  .settings-nav { flex-direction: row; flex-wrap: wrap; position: static; }
+}

@@ -47,48 +47,42 @@ actions:
 }
 
 /* ── Modal shell ─────────────────────────────────────────────────────── */
+let _aiModal = null;
 function _ensureAiModal() {
-  let overlay = document.getElementById('ai-overlay');
-  if (overlay) return overlay;
-  overlay = document.createElement('div');
-  overlay.id = 'ai-overlay';
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `
-    <div class="modal ai-modal">
-      <div class="modal-title">
-        Suggested fixes
-        <button class="modal-close" id="ai-close" aria-label="Close">
-          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="page-sub" id="ai-context" style="margin:-14px 0 18px;"></div>
-      <div id="ai-picker-wrap">
-        <div class="section-label" style="margin-top:0;">Ask which models</div>
-        <div class="ai-provider-picker" id="ai-picker"></div>
-        <button class="btn btn-mint btn-sm" id="ai-run" style="margin-top:12px;">Get suggestions</button>
-      </div>
-      <div class="ai-compare" id="ai-compare"></div>
-    </div>`;
-  document.body.appendChild(overlay);
-  overlay.querySelector('#ai-close').onclick = () => _closeAi();
-  overlay.onclick = (e) => { if (e.target === overlay) _closeAi(); };
-  return overlay;
+  if (_aiModal) return _aiModal;
+  _aiModal = mountModal('ai', { wide: true });
+  _aiModal.modal.classList.add('ai-modal');
+  _aiModal.setBody(`
+    <div class="modal-title">
+      Suggested fixes
+      <button class="modal-close" id="ai-close" aria-label="Close">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="page-sub" id="ai-context" style="margin:-14px 0 18px;"></div>
+    <div id="ai-picker-wrap">
+      <div class="section-label" style="margin-top:0;">Ask which models</div>
+      <div class="ai-provider-picker" id="ai-picker"></div>
+      <button class="btn btn-mint btn-sm" id="ai-run" style="margin-top:12px;">Get suggestions</button>
+    </div>
+    <div class="ai-compare" id="ai-compare"></div>`);
+  _aiModal.modal.querySelector('#ai-close').onclick = () => _closeAi();
+  return _aiModal;
 }
 
 function _closeAi() {
-  const o = document.getElementById('ai-overlay');
-  if (o) o.classList.remove('open');
+  if (_aiModal) _aiModal.close();
 }
 
 async function _openAi(context, runFn, staticResult) {
-  const overlay = _ensureAiModal();
+  const m = _ensureAiModal();
   _staticResolver = staticResult || null;
   document.getElementById('ai-context').textContent = context || '';
   document.getElementById('ai-compare').innerHTML = '';
   const picker = document.getElementById('ai-picker');
   document.getElementById('ai-picker-wrap').style.display = '';
   picker.innerHTML = '<span class="ai-empty">Loading providers…</span>';
-  requestAnimationFrame(() => overlay.classList.add('open'));
+  requestAnimationFrame(m.open);
 
   try {
     _aiProviders = (await apiJson('/api/v1/ai/providers/')).filter(p => p.enabled && p.configured);

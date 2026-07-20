@@ -130,41 +130,58 @@ function osLogo(name) {
   return s('<ellipse cx="12" cy="9" rx="4" ry="5"/><ellipse cx="12" cy="9" rx="2" ry="3" fill="#1E1E2E"/><ellipse cx="12" cy="17" rx="5" ry="4"/><ellipse cx="12" cy="17" rx="3" ry="2.5" fill="#1E1E2E"/><circle cx="10.5" cy="7.5" r="1" fill="#F0C040"/><circle cx="13.5" cy="7.5" r="1" fill="#F0C040"/>', '#F0C040');
 }
 
+/* ── Modal helper ────────────────────────────────────────────────────────
+   The app's modals are a SIBLING overlay + modal, both toggled `.open`
+   (a nested modal only opening the overlay renders as a blank blur). This
+   helper mounts that pair once per id and returns open/close/setBody. */
+function mountModal(id, opts) {
+  opts = opts || {};
+  let overlay = document.getElementById(id + '-overlay');
+  let modal = document.getElementById(id + '-modal');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = id + '-overlay';
+    overlay.className = 'modal-overlay';
+    modal = document.createElement('div');
+    modal.id = id + '-modal';
+    modal.className = 'modal' + (opts.wide ? ' modal-wide' : '') + (opts.xwide ? ' modal-xwide' : '');
+    document.body.appendChild(overlay);
+    document.body.appendChild(modal);
+  }
+  const close = () => { overlay.classList.remove('open'); modal.classList.remove('open'); };
+  overlay.onclick = close;
+  const open = () => { overlay.classList.add('open'); modal.classList.add('open'); };
+  return { overlay, modal, open, close, setBody: (html) => { modal.innerHTML = html; } };
+}
+
 /* ── Custom confirm modal (replaces window.confirm) ──────────────────── */
 function confirmModal(message, opts) {
   opts = opts || {};
   return new Promise((resolve) => {
-    let overlay = document.getElementById('confirm-overlay');
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.id = 'confirm-overlay';
-      overlay.className = 'modal-overlay';
-      overlay.innerHTML = `
-        <div class="modal" style="width:420px;">
-          <div class="modal-title" id="confirm-title">Are you sure?</div>
-          <div class="confirm-msg" id="confirm-msg"></div>
-          <div class="confirm-actions">
-            <button class="btn btn-outline btn-sm" id="confirm-cancel">Cancel</button>
-            <button class="btn btn-sm" id="confirm-ok">Confirm</button>
-          </div>
-        </div>`;
-      document.body.appendChild(overlay);
-    }
-    const okBtn = overlay.querySelector('#confirm-ok');
-    const cancelBtn = overlay.querySelector('#confirm-cancel');
-    overlay.querySelector('#confirm-title').textContent = opts.title || 'Are you sure?';
-    overlay.querySelector('#confirm-msg').textContent = message;
+    const m = mountModal('confirm');
+    m.setBody(`
+      <div class="modal-title">
+        <span id="confirm-title"></span>
+        <button class="modal-close" id="confirm-x" aria-label="Close">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="confirm-msg" id="confirm-msg"></div>
+      <div class="confirm-actions">
+        <button class="btn btn-outline btn-sm" id="confirm-cancel">Cancel</button>
+        <button class="btn btn-sm" id="confirm-ok"></button>
+      </div>`);
+    m.modal.querySelector('#confirm-title').textContent = opts.title || 'Are you sure?';
+    m.modal.querySelector('#confirm-msg').textContent = message;
+    const okBtn = m.modal.querySelector('#confirm-ok');
     okBtn.textContent = opts.confirmText || 'Confirm';
     okBtn.className = 'btn btn-sm ' + (opts.danger ? 'btn-rose' : 'btn-mint');
-    const close = (val) => {
-      overlay.classList.remove('open');
-      okBtn.onclick = cancelBtn.onclick = overlay.onclick = null;
-      setTimeout(() => resolve(val), 200);
-    };
-    okBtn.onclick = () => close(true);
-    cancelBtn.onclick = () => close(false);
-    overlay.onclick = (e) => { if (e.target === overlay) close(false); };
-    requestAnimationFrame(() => overlay.classList.add('open'));
+    const done = (val) => { m.close(); setTimeout(() => resolve(val), 200); };
+    okBtn.onclick = () => done(true);
+    m.modal.querySelector('#confirm-cancel').onclick = () => done(false);
+    m.modal.querySelector('#confirm-x').onclick = () => done(false);
+    m.overlay.onclick = () => done(false);
+    requestAnimationFrame(m.open);
   });
 }
 
@@ -191,3 +208,21 @@ function yamlToHtml(src) {
     return html;
   }).join('\n');
 }
+
+/* ── Theme toggle (light / dark) ─────────────────────────────────────── */
+function _applyThemeIcon(theme) {
+  const sun = document.getElementById('theme-icon-sun');
+  const moon = document.getElementById('theme-icon-moon');
+  if (sun) sun.style.display = theme === 'light' ? 'block' : 'none';
+  if (moon) moon.style.display = theme === 'light' ? 'none' : 'block';
+}
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  const next = cur === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('vigil-theme', next); } catch (e) {}
+  _applyThemeIcon(next);
+}
+document.addEventListener('DOMContentLoaded', () => {
+  _applyThemeIcon(document.documentElement.getAttribute('data-theme') || 'dark');
+});

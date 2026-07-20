@@ -142,12 +142,18 @@ function _renderEditorSteps() {
         </div>
       </div>
       <span class="bl-editor-step-btns">
+        <button class="btn btn-outline btn-xs" data-view="${escHtml(String(id))}" title="View / edit this task">View / edit</button>
         <button class="btn btn-outline btn-xs" data-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>↑</button>
         <button class="btn btn-outline btn-xs" data-mv="${i}" data-dir="1" ${i === _editingSteps.length - 1 ? 'disabled' : ''}>↓</button>
         <button class="btn btn-outline btn-xs" style="color:var(--rose);" data-rm="${i}">Remove</button>
       </span></div>`;
   }).join('');
   wrap.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', () => { _editingSteps.splice(+b.dataset.rm, 1); _renderEditorSteps(); }));
+  wrap.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
+    // Open the underlying task definition in the task editor to view/edit it.
+    _closeBlEditor();
+    if (typeof openDefinitionEditor === 'function') openDefinitionEditor(b.dataset.view);
+  }));
   wrap.querySelectorAll('[data-mv]').forEach(b => b.addEventListener('click', () => {
     const i = +b.dataset.mv, j = i + (+b.dataset.dir);
     if (j < 0 || j >= _editingSteps.length) return;
@@ -157,9 +163,8 @@ function _renderEditorSteps() {
 }
 
 function _openEditor(data, editingId) {
-  const ed = document.getElementById('bl-editor');
-  ed.hidden = false;
-  ed.dataset.editing = editingId || '';
+  const modal = document.getElementById('bl-editor-modal');
+  modal.dataset.editing = editingId || '';
   document.getElementById('bl-editor-title').textContent = editingId ? 'Edit baseline' : (data && data.name ? 'Duplicate baseline' : 'New baseline');
   document.getElementById('bl-name').value = data ? (data.name || '') : '';
   document.getElementById('bl-desc').value = data ? (data.description || '') : '';
@@ -167,7 +172,13 @@ function _openEditor(data, editingId) {
   document.getElementById('bl-enabled').checked = data ? !!data.enabled : true;
   _editingSteps = data && data.steps ? data.steps.map(s => String(s.definition_id)) : [];
   _renderEditorSteps();
-  ed.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('bl-editor-overlay').classList.add('open');
+  modal.classList.add('open');
+}
+
+function _closeBlEditor() {
+  document.getElementById('bl-editor-overlay').classList.remove('open');
+  document.getElementById('bl-editor-modal').classList.remove('open');
 }
 
 function _startEdit(id) {
@@ -184,12 +195,12 @@ async function _saveBaseline() {
   };
   if (!body.name) return showToast('Give the baseline a name', 'error');
   if (!body.definition_ids.length) return showToast('Add at least one task', 'error');
-  const editing = document.getElementById('bl-editor').dataset.editing;
+  const editing = document.getElementById('bl-editor-modal').dataset.editing;
   try {
     if (editing) await apiJson(`/api/v1/baselines/${editing}/`, { method: 'PATCH', body: JSON.stringify(body) });
     else await apiJson('/api/v1/baselines/', { method: 'POST', body: JSON.stringify(body) });
     showToast('Baseline saved', 'success');
-    document.getElementById('bl-editor').hidden = true;
+    _closeBlEditor();
     loadBaselines();
   } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
 }
@@ -203,8 +214,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (save) save.addEventListener('click', _saveBaseline);
   const nu = document.getElementById('bl-new-btn');
   if (nu) nu.addEventListener('click', () => _openEditor(null, null));
-  const cancel = document.getElementById('bl-cancel-btn');
-  if (cancel) cancel.addEventListener('click', () => { document.getElementById('bl-editor').hidden = true; });
+  document.getElementById('bl-cancel-btn')?.addEventListener('click', _closeBlEditor);
+  document.getElementById('bl-cancel-btn-2')?.addEventListener('click', _closeBlEditor);
+  document.getElementById('bl-editor-overlay')?.addEventListener('click', _closeBlEditor);
+  // Create a brand-new task definition, then it appears in the picker to add.
+  document.getElementById('bl-new-task-btn')?.addEventListener('click', () => {
+    _closeBlEditor();
+    if (typeof openDefinitionEditor === 'function') openDefinitionEditor(null);
+  });
   const search = document.getElementById('bl-search');
   if (search) search.addEventListener('input', () => _renderBaselineList(_filterBaselines()));
 
