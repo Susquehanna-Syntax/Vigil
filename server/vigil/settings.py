@@ -67,6 +67,9 @@ VIGIL_LICENSE_PUBLIC_KEY = os.environ.get(
 CIVIL_URL = os.environ.get("CIVIL_URL", "")
 CIVIL_APP_SLUG = os.environ.get("CIVIL_APP_SLUG", "vigil")
 
+# AI suggestion call timeout — local BYO endpoints can be slow (cold loads).
+VIGIL_AI_TIMEOUT_SECONDS = int(os.environ.get("VIGIL_AI_TIMEOUT_SECONDS", "300"))
+
 # ---------------------------------------------------------------------------
 # Extra apps (operator extensions)
 # ---------------------------------------------------------------------------
