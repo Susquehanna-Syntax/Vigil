@@ -10,7 +10,14 @@ from __future__ import annotations
 import json
 import urllib.request
 
-TIMEOUT_SECONDS = 60
+
+def _timeout() -> int:
+    """Call timeout. Local BYO endpoints (Ollama on a homelab box) can take
+    minutes on a cold model load — 60s punished exactly the users this
+    feature is free for. Overridable per install."""
+    from django.conf import settings
+
+    return int(getattr(settings, "VIGIL_AI_TIMEOUT_SECONDS", 300))
 
 
 class ProviderError(Exception):
@@ -25,7 +32,7 @@ def _post_json(url: str, payload: dict, headers: dict) -> dict:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
+        with urllib.request.urlopen(req, timeout=_timeout()) as resp:
             return json.loads(resp.read().decode())
     except Exception as exc:  # noqa: BLE001 — normalized for the caller
         raise ProviderError(f"endpoint call failed: {exc}") from exc
