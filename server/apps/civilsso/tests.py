@@ -140,3 +140,38 @@ class LoginStartTests(TestCase):
         self.client.get("/accounts/civil/login/",
                         {"next": "https://evil.example.com/"})
         self.assertNotIn("civilsso_next", self.client.session)
+
+
+class CivilConfigTests(TestCase):
+    def setUp(self):
+        self.admin = get_user_model().objects.create_superuser("cfgadmin", password="x")
+        self.client.force_login(self.admin)
+
+    def test_db_config_enables_feature_without_env(self):
+        from . import client
+        from .models import CivilConfig
+        self.assertFalse(client.enabled())
+        resp = self.client.post("/api/v1/civil/settings/",
+                                '{"enabled": true, "url": "http://civil.lan:8100/", "app_slug": "vigil"}',
+                                content_type="application/json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertTrue(resp.json()["active"])
+        self.assertEqual(client.civil_url(), "http://civil.lan:8100")
+        cfg = CivilConfig.current()
+        self.assertTrue(cfg.enabled)
+
+    @override_settings(CIVIL_URL="http://env-civil.lan")
+    def test_env_var_still_wins(self):
+        from . import client
+        self.client.post("/api/v1/civil/settings/",
+                         '{"enabled": true, "url": "http://db-civil.lan"}',
+                         content_type="application/json")
+        self.assertEqual(client.civil_url(), "http://env-civil.lan")
+        resp = self.client.get("/api/v1/civil/settings/")
+        self.assertTrue(resp.json()["env_override"])
+
+    def test_settings_require_admin(self):
+        get_user_model().objects.create_user("pleb2", password="x")
+        c = self.client_class()
+        c.login(username="pleb2", password="x")
+        self.assertEqual(c.get("/api/v1/civil/settings/").status_code, 403)

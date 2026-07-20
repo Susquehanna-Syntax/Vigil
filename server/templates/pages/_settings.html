@@ -60,6 +60,66 @@
       })();
       </script>
 
+      <!-- AI-assisted debugging (free, bring-your-own endpoint) -->
+      <div class="section-label">AI Assistance</div>
+      <div class="totp-card" id="ai-settings-card">
+        <h3>AI suggestions endpoint</h3>
+        <p class="muted">Point Vigil at any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, OpenAI) or Anthropic. Bring your own key — nothing is hosted by SQSY, and Vigil never bills you for inference. Suggestions come back as draft task YAML you review before running.</p>
+        <div class="setting-row">
+          <label>Provider</label>
+          <select id="ai-provider">
+            <option value="openai">OpenAI-compatible (Ollama, vLLM, LM Studio, OpenAI)</option>
+            <option value="anthropic">Anthropic</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <label>Base URL</label>
+          <input type="text" id="ai-base-url" placeholder="http://10.0.0.108:11434/v1">
+        </div>
+        <div class="setting-row">
+          <label>Model</label>
+          <input type="text" id="ai-model" placeholder="qwopus / gpt-4o-mini / claude-...">
+        </div>
+        <div class="setting-row">
+          <label>API key</label>
+          <input type="password" id="ai-key" placeholder="leave blank to keep current / keyless local">
+        </div>
+        <p class="muted" id="ai-key-state"></p>
+        <label class="setting-check"><input type="checkbox" id="ai-enabled"> Enable AI suggestions</label>
+        <div style="margin-top:12px;"><button class="btn btn-mint" id="ai-save-btn">Save AI settings</button></div>
+      </div>
+
+      <!-- Civil shared identity (opt-in SSO) -->
+      <div class="section-label">Shared Identity (Civil)</div>
+      <div class="totp-card" id="civil-settings-card">
+        <h3>Civil SSO</h3>
+        <p class="muted">Opt in to one account across every SQSY app (Vigil, Jackil, Sigil, Turnstil) via a Civil identity server. Local login always keeps working; when Civil is down, existing sessions are unaffected. Leave disabled for a standalone install.</p>
+        <p class="muted" id="civil-env-note" hidden>⚠ CIVIL_URL is set by an environment variable, which overrides anything here.</p>
+        <div class="setting-row">
+          <label>Civil URL</label>
+          <input type="text" id="civil-url" placeholder="http://civil.lan:8100">
+        </div>
+        <div class="setting-row">
+          <label>This app's slug (as registered in Civil)</label>
+          <input type="text" id="civil-slug" placeholder="vigil">
+        </div>
+        <label class="setting-check"><input type="checkbox" id="civil-enabled"> Enable Civil sign-in</label>
+        <p class="muted" id="civil-state"></p>
+        <div style="margin-top:12px;">
+          <button class="btn btn-mint" id="civil-save-btn">Save</button>
+          <button class="btn btn-outline" id="civil-test-btn">Test connection &amp; fetch key</button>
+        </div>
+      </div>
+
+      <!-- Status pages -->
+      <div class="section-label">Status Pages</div>
+      <div class="totp-card" id="statuspage-card">
+        <h3>Public status pages</h3>
+        <p class="muted">A public, shareable status page for your hosts. The first page is free (with a "Powered by Vigil" badge); branding and additional per-site pages are Business features.</p>
+        <div id="statuspage-list"></div>
+        <div style="margin-top:12px;"><button class="btn btn-mint" id="statuspage-new-btn">New status page</button></div>
+      </div>
+
       <div id="totp-card" class="totp-card">
         <div class="totp-status" id="totp-status-line">Loading…</div>
         <div class="totp-sub" id="totp-sub-line">TOTP protects task execution. Password fallback is test-only and will be removed.</div>

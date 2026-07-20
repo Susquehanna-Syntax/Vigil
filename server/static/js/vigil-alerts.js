@@ -48,9 +48,7 @@ function _alertItemHtml(alert, tab) {
     sub = `${escHtml(alert.host_hostname || '—')} · ${escHtml(alert.severity)}` +
           (alert.metric_value != null ? ` · Value: ${alert.metric_value}` : '');
     time = `${_alertRelTime(alert.fired_at)}`;
-    const fixBtn = alert.fix_context && alert.fix_context.container_name
-      ? `<button class="btn btn-sm btn-outline" style="color:var(--mint);" data-alert-action="suggest-fix" data-alert-id="${alert.id}">Suggest Fix</button>`
-      : '';
+    const fixBtn = `<button class="btn btn-sm btn-outline" style="color:var(--mint);" data-alert-action="suggest-fix" data-alert-id="${alert.id}">Suggest Fix</button>`;
     actions = `
       <div class="alert-actions">
         ${fixBtn}
@@ -263,8 +261,16 @@ document.addEventListener('click', (e) => {
   if (!btn) return;
   e.stopPropagation();
   const alert = alertsCache.firing.find(a => a.id === btn.dataset.alertId);
-  if (!alert || !alert.fix_context) return;
-  suggestDockerFix(alert.host, alert.fix_context.container_name, alert.fix_context.image);
+  if (!alert) return;
+  // Ask the operator's own model for a real remediation. Falls back to the
+  // static template only when AI isn't wired (the modal handles the 409 with
+  // a link to Settings).
+  if (typeof suggestFixForAlert === 'function') {
+    const sub = `${alert.host_hostname || ''} · ${alert.message || ''}`.trim();
+    suggestFixForAlert(alert.id, sub);
+  } else if (alert.fix_context && alert.fix_context.container_name) {
+    suggestDockerFix(alert.host, alert.fix_context.container_name, alert.fix_context.image);
+  }
 });
 
 /* ── Fix suggestions ─────────────────────────────────────────────────── */

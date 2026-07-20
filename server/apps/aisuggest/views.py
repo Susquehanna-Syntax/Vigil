@@ -71,6 +71,11 @@ def suggest_for_alert(request, alert_id):
         logger.warning("suggestion call failed: %s", exc)
         return Response({"detail": str(exc)}, status=502)
 
+    return Response({"suggestions": _extract_suggestions(text),
+                     "raw_count": text.count("```") // 2})
+
+
+def _extract_suggestions(text: str) -> list[dict]:
     suggestions = []
     for block in re.findall(r"```(?:yaml)?\s*\n(.*?)```", text, flags=re.S):
         try:
@@ -83,8 +88,7 @@ def suggest_for_alert(request, alert_id):
         suggestions.append({"yaml": block.strip(), "parsed": spec})
         if len(suggestions) == 3:
             break
-    return Response({"suggestions": suggestions,
-                     "raw_count": text.count("```") // 2})
+    return suggestions
 
 
 def _alert_prompt(alert) -> str:
@@ -98,3 +102,45 @@ def _alert_prompt(alert) -> str:
         if v:
             lines.append(f"{attr.capitalize()}: {v}")
     return "\n".join(lines)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsOperator])
+def suggest_for_container(request, host_id, container_id):
+    """Suggest-a-fix for a Docker container — same pipeline as alerts:
+    the model sees the container's live snapshot, its output is validated,
+    and nothing runs without a human."""
+    from apps.hosts.models import DockerContainer, Host
+
+    row = AiSettings.get()
+    if not row.enabled or not (row.base_url or
+                               row.provider == AiSettings.Provider.ANTHROPIC):
+        return Response(
+            {"detail": "AI suggestions are not configured. Point Vigil at any "
+                       "OpenAI-compatible or Anthropic endpoint in Settings — "
+                       "bring your own key; nothing is hosted by SQSY."},
+            status=409,
+        )
+    host = get_object_or_404(Host, pk=host_id)
+    container = get_object_or_404(DockerContainer, host=host,
+                                  container_id=container_id)
+    lines = [
+        f"Docker container issue on host {host.hostname} ({host.os})",
+        f"Container: {container.name} (image {container.image})",
+        f"State: {container.state} — {container.status}",
+    ]
+    if container.stack:
+        lines.append(f"Compose stack/service: {container.stack}/{container.service}")
+    if container.cpu_percent is not None:
+        lines.append(f"CPU: {container.cpu_percent:.1f}%")
+    if container.mem_percent is not None:
+        lines.append(f"Memory: {container.mem_percent:.1f}%")
+    note = (request.data.get("note") or "").strip()[:500]
+    if note:
+        lines.append(f"Operator note: {note}")
+    try:
+        text = provider_for(row).complete(SYSTEM_PROMPT, "\n".join(lines))
+    except ProviderError as exc:
+        logger.warning("container suggestion call failed: %s", exc)
+        return Response({"detail": str(exc)}, status=502)
+    return Response({"suggestions": _extract_suggestions(text)})

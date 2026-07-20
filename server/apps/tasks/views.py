@@ -595,6 +595,13 @@ def definition_deploy(request, definition_id):
         return Response({"error": str(exc)}, status=400)
 
     actions = spec.get("actions") or []
+    # Inline any `type: baseline` calls — agents only ever receive concrete
+    # actions (a baseline reference is a server-side macro, not an agent verb).
+    from apps.baselines.expansion import BaselineExpandError, expand_actions
+    try:
+        actions, _expanded_risk = expand_actions(actions)
+    except BaselineExpandError as exc:
+        return Response({"error": str(exc)}, status=400)
     if not actions:
         return Response({"error": "definition has no actions"}, status=400)
 
@@ -667,7 +674,8 @@ def definition_deploy(request, definition_id):
                 s["params"] = {**(s.get("params") or {}), "binary_sha256": sha_map}
 
     # Effective risk is the highest risk across all actions.
-    risk = spec.get("risk", "standard")
+    from apps.baselines.expansion import _max_risk as _mr
+    risk = _mr(spec.get("risk", "standard"), _expanded_risk)
 
     # Schedule + retry policy are snapshotted onto each Task so a later edit
     # of the TaskDefinition cannot retroactively change in-flight deploys.
