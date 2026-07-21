@@ -1966,37 +1966,51 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .bl-call pre { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--mint); white-space: pre; overflow-x: auto; }
 
 /* AI compare modal */
-.modal.ai-modal { width: 760px; max-width: calc(100vw - 40px); }
+.modal.ai-modal { width: 1040px; max-width: calc(100vw - 40px); }
 .ai-provider-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
-.ai-pick { display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px;
+.ai-pick { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px;
   border: 1.5px solid var(--border); border-radius: var(--r-md); font-size: 13px;
   cursor: pointer; user-select: none; transition: border-color 0.2s, background 0.2s; }
 .ai-pick:hover { border-color: var(--s4); }
 .ai-pick.on { border-color: var(--sky); background: rgba(130,196,238,0.1); }
 .ai-pick input { accent-color: var(--sky); }
 .ai-pick .ai-pick-model { color: var(--text-3); font-size: 11px; }
-.ai-compare { display: grid; gap: 14px; margin-top: 18px; }
-.ai-col { background: var(--s1); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px; }
-.ai-col-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.ai-col-name { font-weight: 600; font-size: 14px; }
-.ai-col-time { font-size: 11px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; }
-.ai-col.best { border-color: var(--mint); }
+.ai-compare { display: grid; gap: 16px; margin-top: 20px; align-items: stretch; }
+/* Each provider is an equal, fixed card that keeps its width and a stable
+   min-height whether it's still loading or already showing a suggestion. */
+.ai-col { background: var(--s1); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 18px; min-width: 0; display: flex; flex-direction: column; min-height: 340px; }
+.ai-col-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 8px; }
+.ai-col-name { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-col-time { font-size: 11px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; flex-shrink: 0; }
+.ai-col-body { flex: 1; display: flex; flex-direction: column; }
+.ai-col.loading .ai-col-body { justify-content: center; gap: 10px; }
+.ai-col.best { border-color: var(--mint); box-shadow: 0 0 0 1px var(--mint); }
 .ai-best-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
-  color: var(--bg); background: var(--mint); padding: 2px 8px; border-radius: 20px; }
-.ai-progress { height: 4px; background: var(--s3); border-radius: 2px; overflow: hidden; margin: 6px 0 4px; }
+  color: var(--bg); background: var(--mint); padding: 2px 8px; border-radius: 20px; flex-shrink: 0; }
+.ai-progress { height: 4px; background: var(--s3); border-radius: 2px; overflow: hidden; }
 .ai-progress-bar { height: 100%; width: 40%; background: var(--sky); border-radius: 2px;
   animation: ai-indeterminate 1.2s var(--ease-out-expo) infinite; }
 @keyframes ai-indeterminate { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
 .ai-loading-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-3); }
-.ai-sug { border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px; margin-bottom: 10px; }
-.ai-sug.top { border-color: var(--mint); }
-.ai-sug-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; }
-.ai-sug-name { font-weight: 600; font-size: 13px; }
-.ai-sug-yaml { background: var(--s2); border-radius: var(--r-sm); padding: 11px; font-family: 'IBM Plex Mono', monospace;
-  font-size: 11.5px; overflow-x: auto; white-space: pre; max-height: 220px; overflow-y: auto; color: var(--text-1); }
-.ai-sug-actions { display: flex; gap: 7px; margin-top: 9px; }
-.ai-empty, .ai-err { font-size: 12px; color: var(--text-3); padding: 10px 0; }
+.ai-sug { flex: 1; display: flex; flex-direction: column; }
+.ai-sug-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 8px; }
+.ai-sug-name { font-weight: 600; font-size: 14px; }
+.ai-sug-yaml { flex: 1; background: var(--s2); border-radius: var(--r-sm); padding: 12px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 12px; overflow: auto; white-space: pre;
+  max-height: 300px; color: var(--text-1); }
+.ai-sug-nav { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 12px 0 4px; }
+.ai-sug-count { font-size: 12px; color: var(--text-2); font-weight: 500; }
+.ai-arrow { width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid var(--border);
+  background: var(--s2); color: var(--text-1); font-size: 18px; line-height: 1; cursor: pointer;
+  display: grid; place-items: center; transition: border-color 0.2s, background 0.2s; }
+.ai-arrow:hover:not(:disabled) { border-color: var(--sky); background: var(--s3); }
+.ai-arrow:disabled { opacity: 0.35; cursor: default; }
+.ai-sug-actions { display: flex; gap: 8px; margin-top: 12px; }
+.ai-sug-actions .btn { flex: 1; justify-content: center; }
+.ai-empty, .ai-err { font-size: 13px; color: var(--text-3); padding: 20px 0; text-align: center; }
 .ai-err { color: var(--rose); }
+@media (max-width: 820px) { .ai-compare { grid-template-columns: 1fr !important; } }
 
 /* Settings rows / provider cards */
 .setting-row { margin-bottom: 14px; }
@@ -2088,3 +2102,49 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   .settings-layout { grid-template-columns: 1fr; }
   .settings-nav { flex-direction: row; flex-wrap: wrap; position: static; }
 }
+
+/* ── Picker modal + in-modal task editor ─────────────────────────────── */
+.picker-toolbar { display: flex; gap: 10px; margin-bottom: 16px; }
+.picker-toolbar .form-control { flex: 1; }
+.picker-list { display: flex; flex-direction: column; gap: 8px; max-height: 52vh; overflow-y: auto; }
+.picker-row { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  background: var(--s2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px 15px; }
+.picker-row:hover { border-color: var(--s4); }
+.picker-row-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.picker-row-name { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.picker-row-meta { font-size: 12px; color: var(--text-3); }
+.picker-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.picker-empty { text-align: center; color: var(--text-3); font-size: 13px; padding: 30px 0; }
+
+.te-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.te-yaml { min-height: 320px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.55; white-space: pre; }
+.te-preview { background: var(--s2); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 14px; min-height: 320px; max-height: 46vh; overflow-y: auto; }
+.te-preview-name { font-weight: 600; font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+@media (max-width: 760px) { .te-grid { grid-template-columns: 1fr; } }
+
+/* One consistent pastel per task in step previews (was per-step risk mix) */
+.preview-step.task-low { border-left-color: var(--mint); }
+.preview-step.task-standard { border-left-color: var(--sky); }
+.preview-step.task-high { border-left-color: var(--rose); }
+
+/* Styled native selects (custom caret, consistent with inputs) */
+select.form-control {
+  appearance: none; -webkit-appearance: none; -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236e6b76' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center;
+  padding-right: 34px; cursor: pointer;
+}
+select.form-control:hover { border-color: var(--s4); }
+
+/* The picker/task-edit modals stack above the editor modals they open from. */
+#picker-overlay, #picker-modal { z-index: 320; }
+#picker-overlay { z-index: 319; }
+#taskedit-overlay, #taskedit-modal { z-index: 340; }
+#taskedit-overlay { z-index: 339; }
+
+/* Picker launch buttons (look like a select, act like a button) */
+.picker-btn { justify-content: space-between; background: var(--s2); border: 1.5px solid var(--border);
+  color: var(--text-1); font-weight: 500; min-width: 200px; }
+.picker-btn:hover { border-color: var(--s4); transform: none; }
+.picker-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
