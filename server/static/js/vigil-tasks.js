@@ -709,8 +709,11 @@ async function validateEditor() {
 function renderEditorPreview(spec) {
   const el = document.getElementById('editor-preview');
   if (!spec) { el.innerHTML = '<div class="preview-heading">—</div>'; return; }
+  // The whole task's steps share ONE pastel — the task's derived risk — so a
+  // task reads as a single coloured unit rather than a mixed-colour ladder.
+  const taskRisk = spec.derived_risk || spec.risk || 'standard';
   const actionsHtml = spec.actions.map((a, i) => `
-    <div class="preview-step risk-${a.risk}">
+    <div class="preview-step task-${taskRisk}">
       <div class="preview-step-num">${i + 1}</div>
       <div class="preview-step-body">
         <div class="preview-step-title">${escHtml(a.id)} — ${escHtml(a.label || a.type)}</div>

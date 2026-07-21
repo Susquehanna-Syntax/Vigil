@@ -137,26 +137,29 @@ function _colModel(id) {
   return p ? p.model : '';
 }
 
+let _aiResults = {};   // id -> data
+let _aiPage = {};      // id -> current suggestion index
+
 function _runComparison(ids, runFn) {
   const grid = document.getElementById('ai-compare');
-  grid.style.gridTemplateColumns = ids.length > 1 ? '1fr 1fr' : '1fr';
+  // Equal, fixed columns that never shrink when a sibling is still loading.
+  grid.style.gridTemplateColumns = `repeat(${ids.length}, minmax(0, 1fr))`;
   grid.innerHTML = ids.map(id => `
-    <div class="ai-col" id="ai-col-${id}">
+    <div class="ai-col loading" id="ai-col-${id}">
       <div class="ai-col-head"><span class="ai-col-name">${escHtml(_colName(id))}</span>
         <span class="ai-col-time" id="ai-time-${id}">0.0s</span></div>
-      <div class="ai-progress"><div class="ai-progress-bar"></div></div>
-      <div class="ai-loading-row"><span>${escHtml(_colModel(id))}</span><span>${id === 'static' ? 'building…' : 'thinking…'}</span></div>
+      <div class="ai-col-body">
+        <div class="ai-progress"><div class="ai-progress-bar"></div></div>
+        <div class="ai-loading-row"><span>${escHtml(_colModel(id))}</span><span>${id === 'static' ? 'building…' : 'thinking…'}</span></div>
+      </div>
     </div>`).join('');
 
-  const results = {};
+  _aiResults = {}; _aiPage = {};
   ids.forEach(id => {
     const t0 = performance.now();
-    // The built-in template resolves synchronously and instantly.
     if (id === 'static') {
-      const s = _staticResolver();
-      results[id] = { suggestions: [s], elapsed_ms: 0 };
-      _renderColumn(id, results[id]);
-      _rankBest(results, ids);
+      _aiResults[id] = { suggestions: [_staticResolver()], elapsed_ms: 0 };
+      _renderColumn(id); _rankBest(ids);
       return;
     }
     const timer = setInterval(() => {
@@ -164,64 +167,84 @@ function _runComparison(ids, runFn) {
       if (el) el.textContent = ((performance.now() - t0) / 1000).toFixed(1) + 's';
     }, 100);
     runFn(id)
-      .then(data => { results[id] = data; })
-      .catch(err => { results[id] = { error: err.message }; })
-      .finally(() => {
-        clearInterval(timer);
-        _renderColumn(id, results[id]);
-        _rankBest(results, ids);
-      });
+      .then(data => { _aiResults[id] = data; })
+      .catch(err => { _aiResults[id] = { error: err.message }; })
+      .finally(() => { clearInterval(timer); _renderColumn(id); _rankBest(ids); });
   });
 }
 
-function _renderColumn(id, data) {
+function _renderColumn(id) {
   const col = document.getElementById(`ai-col-${id}`);
   if (!col) return;
+  const data = _aiResults[id];
+  col.classList.remove('loading');
   const time = data && data.elapsed_ms != null ? (data.elapsed_ms / 1000).toFixed(1) + 's' : '';
+  const sugs = (data && data.suggestions) || [];
+  const page = _aiPage[id] || 0;
   let body;
   if (!data || data.error) {
-    body = `<div class="ai-err">${escHtml((data && data.error) || 'failed')}</div>`;
-  } else if (!data.suggestions || !data.suggestions.length) {
-    body = '<div class="ai-empty">No valid suggestions returned.</div>';
+    body = `<div class="ai-col-body"><div class="ai-err">${escHtml((data && data.error) || 'failed')}</div></div>`;
+  } else if (!sugs.length) {
+    body = `<div class="ai-col-body"><div class="ai-empty">No valid suggestions returned.</div></div>`;
   } else {
-    body = data.suggestions.map((s, i) => `
-      <div class="ai-sug" data-pid="${id}" data-idx="${i}">
+    const s = sugs[page];
+    const nav = sugs.length > 1 ? `
+      <div class="ai-sug-nav">
+        <button class="ai-arrow" data-ai-prev ${page === 0 ? 'disabled' : ''} aria-label="Previous">‹</button>
+        <span class="ai-sug-count">Suggestion ${page + 1} of ${sugs.length}</span>
+        <button class="ai-arrow" data-ai-next ${page === sugs.length - 1 ? 'disabled' : ''} aria-label="Next">›</button>
+      </div>` : '';
+    body = `<div class="ai-col-body">
+      <div class="ai-sug">
         <div class="ai-sug-head">
           <span class="ai-sug-name">${escHtml((s.parsed && s.parsed.name) || 'Suggestion')}</span>
           <span class="risk-badge risk-${escHtml(s.risk || 'standard')}">${escHtml(s.risk || 'standard')}</span>
         </div>
-        ${s.note ? `<div class="bl-hint" style="margin-bottom:6px;">${escHtml(s.note)}</div>` : ''}
+        ${s.note ? `<div class="bl-hint" style="margin-bottom:8px;">${escHtml(s.note)}</div>` : ''}
         <pre class="ai-sug-yaml">${yamlToHtml(s.yaml)}</pre>
-        <div class="ai-sug-actions">
-          <button class="btn btn-outline btn-xs" data-ai-copy>Copy</button>
-          <button class="btn btn-mint btn-xs" data-ai-open>Use this</button>
-        </div>
-      </div>`).join('');
+      </div>
+      ${nav}
+      <div class="ai-sug-actions">
+        <button class="btn btn-outline btn-sm" data-ai-copy>Copy YAML</button>
+        <button class="btn btn-mint btn-sm" data-ai-open>Use this</button>
+      </div>
+    </div>`;
   }
   col.innerHTML = `<div class="ai-col-head">
       <span class="ai-col-name">${escHtml(_colName(id))}</span>
       <span class="ai-col-time">${time}</span></div>${body}`;
-  col.querySelectorAll('.ai-sug').forEach(node => {
-    const s = data.suggestions[+node.dataset.idx];
-    node.querySelector('[data-ai-open]').addEventListener('click', () => {
-      _closeAi();
-      if (typeof openDefinitionEditor === 'function') openDefinitionEditor(null, s.yaml);
-    });
-    node.querySelector('[data-ai-copy]').addEventListener('click', () => {
-      navigator.clipboard.writeText(s.yaml); showToast('YAML copied', 'success');
-    });
+  if (col.classList.contains('best')) _addBestTag(col);
+
+  const cur = sugs[page];
+  col.querySelector('[data-ai-prev]')?.addEventListener('click', () => { _aiPage[id] = page - 1; _renderColumn(id); });
+  col.querySelector('[data-ai-next]')?.addEventListener('click', () => { _aiPage[id] = page + 1; _renderColumn(id); });
+  col.querySelector('[data-ai-open]')?.addEventListener('click', () => {
+    _closeAi();
+    if (typeof openTaskModal === 'function') openTaskModal({ yaml: cur.yaml });
+    else if (typeof openDefinitionEditor === 'function') openDefinitionEditor(null, cur.yaml);
   });
+  col.querySelector('[data-ai-copy]')?.addEventListener('click', () => {
+    navigator.clipboard.writeText(cur.yaml); showToast('YAML copied', 'success');
+  });
+}
+
+function _addBestTag(col) {
+  if (col.querySelector('.ai-best-tag')) return;
+  const head = col.querySelector('.ai-col-head');
+  const tag = document.createElement('span');
+  tag.className = 'ai-best-tag'; tag.textContent = 'best pick';
+  head.appendChild(tag);
 }
 
 // Heuristic "best": a provider that returned at least one valid suggestion,
 // preferring the lowest-risk top suggestion, then the fastest. Marks the
-// column and its leading suggestion — the human still clicks to use it.
-function _rankBest(results, ids) {
-  const done = ids.filter(id => results[id]);
+// column — the human still clicks to use it.
+function _rankBest(ids) {
+  const done = ids.filter(id => _aiResults[id]);
   if (done.length < ids.length) return;  // wait for all before ranking
   let best = null, bestKey = null;
   for (const id of ids) {
-    const d = results[id];
+    const d = _aiResults[id];
     if (!d || d.error || !d.suggestions || !d.suggestions.length) continue;
     const topRisk = Math.min(...d.suggestions.map(s => RISK_RANK[s.risk] ?? 1));
     const key = [topRisk, d.elapsed_ms || 1e9];
@@ -234,12 +257,7 @@ function _rankBest(results, ids) {
   if (best != null) {
     const col = document.getElementById(`ai-col-${best}`);
     col.classList.add('best');
-    const head = col.querySelector('.ai-col-head');
-    const tag = document.createElement('span');
-    tag.className = 'ai-best-tag'; tag.textContent = 'best pick';
-    head.appendChild(tag);
-    const firstSug = col.querySelector('.ai-sug');
-    if (firstSug) firstSug.classList.add('top');
+    _addBestTag(col);
   }
 }
 

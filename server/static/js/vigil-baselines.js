@@ -150,9 +150,12 @@ function _renderEditorSteps() {
   }).join('');
   wrap.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', () => { _editingSteps.splice(+b.dataset.rm, 1); _renderEditorSteps(); }));
   wrap.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
-    // Open the underlying task definition in the task editor to view/edit it.
-    _closeBlEditor();
-    if (typeof openDefinitionEditor === 'function') openDefinitionEditor(b.dataset.view);
+    // Edit the task in a stacked modal — keeps the baseline editor open behind.
+    openTaskModal({ id: b.dataset.view, onSaved: (def) => {
+      const idx = _baselineDefs.findIndex(d => String(d.id) === String(def.id));
+      if (idx >= 0) _baselineDefs[idx] = def; else _baselineDefs.push(def);
+      _renderEditorSteps();
+    } });
   }));
   wrap.querySelectorAll('[data-mv]').forEach(b => b.addEventListener('click', () => {
     const i = +b.dataset.mv, j = i + (+b.dataset.dir);
@@ -206,9 +209,15 @@ async function _saveBaseline() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  const picker = document.getElementById('bl-def-picker');
-  if (picker) picker.addEventListener('change', () => {
-    if (picker.value) { _editingSteps.push(picker.value); picker.value = ''; _renderEditorSteps(); }
+  // Add a step by picking (or creating) a task in the searchable picker modal.
+  document.getElementById('bl-add-step-btn')?.addEventListener('click', () => {
+    openPicker({ type: 'task', title: 'Add a task to the sequence',
+      onSelect: (item) => {
+        // Make the just-picked task known to the step renderer (it may have
+        // been created inside the picker, after the page's defs were loaded).
+        if (item.raw && !_baselineDefs.some(d => String(d.id) === String(item.key))) _baselineDefs.push(item.raw);
+        _editingSteps.push(String(item.key)); _renderEditorSteps();
+      } });
   });
   const save = document.getElementById('bl-save-btn');
   if (save) save.addEventListener('click', _saveBaseline);
@@ -217,11 +226,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('bl-cancel-btn')?.addEventListener('click', _closeBlEditor);
   document.getElementById('bl-cancel-btn-2')?.addEventListener('click', _closeBlEditor);
   document.getElementById('bl-editor-overlay')?.addEventListener('click', _closeBlEditor);
-  // Create a brand-new task definition, then it appears in the picker to add.
-  document.getElementById('bl-new-task-btn')?.addEventListener('click', () => {
-    _closeBlEditor();
-    if (typeof openDefinitionEditor === 'function') openDefinitionEditor(null);
-  });
   const search = document.getElementById('bl-search');
   if (search) search.addEventListener('input', () => _renderBaselineList(_filterBaselines()));
 

@@ -51,10 +51,7 @@
   <div class="bl-field">
     <label>Steps — run top to bottom</label>
     <div class="bl-editor-steps" id="bl-editor-steps"></div>
-    <div class="auto-when" style="margin-top:8px;">
-      <select class="form-control" id="bl-def-picker" style="flex:1;"></select>
-      <button class="btn btn-outline btn-sm" id="bl-new-task-btn" type="button">Create new task…</button>
-    </div>
+    <button class="btn btn-outline btn-sm" id="bl-add-step-btn" type="button" style="margin-top:8px;">+ Add step</button>
   </div>
   <div class="bl-field">
     <label>Auto-run on hosts tagged <span style="color:var(--text-3);font-weight:400;">(comma-separated; blank = every approved host)</span></label>
@@ -114,10 +111,11 @@
         <option value="task">Task</option>
         <option value="baseline">Baseline</option>
       </select>
-      <select class="form-control" id="auto-action-task" style="flex:1;"></select>
-      <select class="form-control" id="auto-action-baseline" style="flex:1;" hidden></select>
+      <button class="btn btn-outline picker-btn" id="auto-action-btn" type="button"><span id="auto-action-label">Choose…</span></button>
       <button class="btn btn-outline btn-sm" id="auto-view-action" type="button">View / edit</button>
     </div>
+    <input type="hidden" id="auto-action-task">
+    <input type="hidden" id="auto-action-baseline">
   </div>
   <div class="bl-field">
     <label>On</label>
@@ -129,7 +127,8 @@
         <option value="all">All managed hosts</option>
       </select>
       <input type="text" class="form-control" id="auto-target-tags" placeholder="role:backup" hidden>
-      <select class="form-control" id="auto-target-host" hidden></select>
+      <button class="btn btn-outline picker-btn" id="auto-target-host-btn" type="button" hidden><span id="auto-target-host-label">Choose a host…</span></button>
+      <input type="hidden" id="auto-target-host">
     </div>
   </div>
   <label class="setting-check"><input type="checkbox" id="auto-enabled" checked> Enabled</label>

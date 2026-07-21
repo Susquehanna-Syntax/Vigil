@@ -90,14 +90,36 @@ function _wireAutoCards(autos) {
 
 /* ── Editor ──────────────────────────────────────────────────────────── */
 function _fillEditorOptions() {
+  // Only the event trigger is still a native select; task/baseline/host are
+  // chosen through the searchable picker modal.
   const ev = document.getElementById('auto-event');
   if (ev) ev.innerHTML = Object.entries(_autoEvents).map(([k, v]) => `<option value="${k}">${escHtml(v)}</option>`).join('');
-  const task = document.getElementById('auto-action-task');
-  if (task) task.innerHTML = '<option value="">Pick a task…</option>' + _autoDefs.map(d => `<option value="${d.id}">${escHtml(d.name)}</option>`).join('');
-  const bl = document.getElementById('auto-action-baseline');
-  if (bl) bl.innerHTML = '<option value="">Pick a baseline…</option>' + _autoBaselines.map(b => `<option value="${escHtml(b.name)}">${escHtml(b.name)}</option>`).join('');
-  const th = document.getElementById('auto-target-host');
-  if (th) th.innerHTML = '<option value="">Pick a host…</option>' + _autoHosts.map(h => `<option value="${escHtml(String(h.id))}">${escHtml(h.hostname)}</option>`).join('');
+}
+
+// Open the picker for the current action kind and store the choice.
+function _autoPickAction() {
+  const kind = document.getElementById('auto-action-kind').value;
+  if (kind === 'task') {
+    openPicker({ type: 'task', title: 'Pick a task to run', onSelect: (item) => {
+      if (item.raw && !_autoDefs.some(d => String(d.id) === String(item.key))) _autoDefs.push(item.raw);
+      document.getElementById('auto-action-task').value = item.key;
+      _autoRefreshActionLabel();
+    } });
+  } else {
+    openPicker({ type: 'baseline', title: 'Pick a baseline to run', onSelect: (item) => {
+      if (!_autoBaselines.some(b => b.name === item.key)) _autoBaselines.push(item.raw);
+      document.getElementById('auto-action-baseline').value = item.key;
+      _autoRefreshActionLabel();
+    } });
+  }
+}
+
+function _autoPickHost() {
+  openPicker({ type: 'machine', title: 'Pick a host', allowAdd: false, onSelect: (item) => {
+    if (!_autoHosts.some(h => String(h.id) === String(item.key))) _autoHosts.push(item.raw);
+    document.getElementById('auto-target-host').value = item.key;
+    _autoRefreshHostLabel();
+  } });
 }
 
 function _autoSyncVisibility() {
@@ -108,17 +130,34 @@ function _autoSyncVisibility() {
   const ev = document.getElementById('auto-event').value;
   document.getElementById('auto-sev-wrap').style.display = ev === 'alert_fired' ? '' : 'none';
 
-  const kind = document.getElementById('auto-action-kind').value;
-  document.getElementById('auto-action-task').hidden = kind !== 'task';
-  document.getElementById('auto-action-baseline').hidden = kind !== 'baseline';
+  _autoRefreshActionLabel();
 
   const tgt = document.getElementById('auto-target').value;
   document.getElementById('auto-target-tags').hidden = tgt !== 'tags';
-  document.getElementById('auto-target-host').hidden = tgt !== 'host';
+  document.getElementById('auto-target-host-btn').hidden = tgt !== 'host';
   // scheduled automations can't target the event host
   const evOpt = document.querySelector('#auto-target option[value="event_host"]');
   if (evOpt) evOpt.disabled = trig === 'schedule';
   if (trig === 'schedule' && tgt === 'event_host') { document.getElementById('auto-target').value = 'all'; _autoSyncVisibility(); }
+}
+
+function _autoRefreshActionLabel() {
+  const kind = document.getElementById('auto-action-kind').value;
+  const label = document.getElementById('auto-action-label');
+  if (kind === 'task') {
+    const id = document.getElementById('auto-action-task').value;
+    const d = _autoDefs.find(x => String(x.id) === String(id));
+    label.textContent = d ? d.name : 'Choose a task…';
+  } else {
+    const name = document.getElementById('auto-action-baseline').value;
+    label.textContent = name || 'Choose a baseline…';
+  }
+}
+
+function _autoRefreshHostLabel() {
+  const id = document.getElementById('auto-target-host').value;
+  const h = _autoHosts.find(x => String(x.id) === String(id));
+  document.getElementById('auto-target-host-label').textContent = h ? h.hostname : 'Choose a host…';
 }
 
 function _closeAutoEditor() {
@@ -147,6 +186,8 @@ function _openAutoEditor(a) {
   set('auto-target-host', a && a.target_host ? a.target_host : '');
   document.getElementById('auto-enabled').checked = a ? a.enabled : true;
   _autoSyncVisibility();
+  _autoRefreshActionLabel();
+  _autoRefreshHostLabel();
   document.getElementById('auto-editor-overlay').classList.add('open');
   modal.classList.add('open');
 }
@@ -158,8 +199,12 @@ function _viewAutoAction() {
   if (kind === 'task') {
     const id = document.getElementById('auto-action-task').value;
     if (!id) return showToast('Pick a task first', 'error');
-    _closeAutoEditor();
-    if (typeof openDefinitionEditor === 'function') openDefinitionEditor(id);
+    // Stacked task modal — keeps the automation editor open behind it.
+    openTaskModal({ id, onSaved: (def) => {
+      const idx = _autoDefs.findIndex(d => String(d.id) === String(def.id));
+      if (idx >= 0) _autoDefs[idx] = def; else _autoDefs.push(def);
+      _autoRefreshActionLabel();
+    } });
   } else {
     const name = document.getElementById('auto-action-baseline').value;
     if (!name) return showToast('Pick a baseline first', 'error');
@@ -212,4 +257,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('auto-cancel-btn-2')?.addEventListener('click', _closeAutoEditor);
   document.getElementById('auto-editor-overlay')?.addEventListener('click', _closeAutoEditor);
   document.getElementById('auto-view-action')?.addEventListener('click', _viewAutoAction);
+  document.getElementById('auto-action-btn')?.addEventListener('click', _autoPickAction);
+  document.getElementById('auto-target-host-btn')?.addEventListener('click', _autoPickHost);
+  // Changing task↔baseline clears the previous choice so the label is honest.
+  document.getElementById('auto-action-kind')?.addEventListener('change', () => {
+    document.getElementById('auto-action-task').value = '';
+    document.getElementById('auto-action-baseline').value = '';
+    _autoRefreshActionLabel();
+  });
 });
