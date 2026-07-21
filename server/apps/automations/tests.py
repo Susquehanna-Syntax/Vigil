@@ -186,3 +186,49 @@ class AutomationApiTests(TestCase):
         c = self.client_class()
         c.login(username="v", password="x")
         self.assertEqual(c.get("/api/v1/automations/").status_code, 403)
+
+
+class SpecificEventTests(TestCase):
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user("root2", password="x", is_staff=True)
+        wire()
+
+    def _rule(self, name, sev="critical"):
+        return AlertRule.objects.create(name=name, category="disk", metric="d",
+                                        operator="gt", threshold=90, severity=sev)
+
+    def test_specific_rule_only_fires_for_that_rule(self):
+        d = make_def()
+        disk_rule = self._rule("Disk critical")
+        mem_rule = self._rule("Memory high", "warning")
+        Automation.objects.create(
+            name="disk only", trigger="event", event="alert_fired",
+            event_rule=disk_rule, action_kind="task", task_definition=d,
+            target="event_host", created_by=self.admin)
+        host = make_host()
+        # a memory alert must NOT trigger it
+        mem_alert = Alert.objects.create(host=host, rule=mem_rule, severity="warning", message="m")
+        hooks.emit("alert_fired", alert=mem_alert)
+        self.assertFalse(Task.objects.filter(host=host).exists())
+        # the disk alert does
+        disk_alert = Alert.objects.create(host=host, rule=disk_rule, severity="critical", message="d")
+        hooks.emit("alert_fired", alert=disk_alert)
+        self.assertTrue(Task.objects.filter(host=host).exists())
+
+    def test_rule_list_endpoint(self):
+        self._rule("Disk critical")
+        self.client.force_login(self.admin)
+        rows = self.client.get("/api/v1/alerts/rules/").json()
+        self.assertTrue(any(r["name"] == "Disk critical" for r in rows))
+
+    def test_api_sets_event_rule(self):
+        d = make_def()
+        rule = self._rule("CPU spike")
+        self.client.force_login(self.admin)
+        resp = self.client.post("/api/v1/automations/", {
+            "name": "cpu", "trigger": "event", "event": "alert_fired",
+            "event_rule": str(rule.id), "action_kind": "task",
+            "task_definition": str(d.id), "target": "event_host"},
+            content_type="application/json")
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()["event_rule_name"], "CPU spike")

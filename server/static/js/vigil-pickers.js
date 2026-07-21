@@ -126,7 +126,8 @@ function openTaskModal(opts) {
   opts = opts || {};
   _taskModalSaved = opts.onSaved || null;
   _taskModalId = opts.id || null;
-  const m = mountModal('taskedit', { wide: true });
+  const m = mountModal('taskedit');
+  m.modal.classList.add('te-modal');
   m.setBody(`
     <div class="modal-title">
       <span id="te-title">${opts.id ? 'Edit task' : 'New task'}</span>
@@ -135,12 +136,15 @@ function openTaskModal(opts) {
       </button>
     </div>
     <div class="te-grid">
-      <div>
+      <div class="te-pane">
         <label class="form-label">Task YAML</label>
-        <textarea class="form-control te-yaml" id="te-yaml" spellcheck="false"
-          placeholder="name: My task&#10;risk: standard&#10;actions:&#10;  - type: run_command&#10;    params:&#10;      command: uptime"></textarea>
+        <div class="te-editor" id="te-editor">
+          <pre class="te-highlight" id="te-highlight" aria-hidden="true"></pre>
+          <textarea class="te-yaml" id="te-yaml" spellcheck="false" autocapitalize="off" autocorrect="off"
+            placeholder="name: My task&#10;risk: standard&#10;actions:&#10;  - type: run_command&#10;    params:&#10;      command: uptime"></textarea>
+        </div>
       </div>
-      <div>
+      <div class="te-pane">
         <label class="form-label">Preview</label>
         <div class="te-preview" id="te-preview"><div class="muted-note">Start typing to see steps.</div></div>
       </div>
@@ -153,18 +157,23 @@ function openTaskModal(opts) {
   m.modal.querySelector('#te-cancel').onclick = m.close;
   m.overlay.onclick = m.close;
   const ta = m.modal.querySelector('#te-yaml');
+  const hl = m.modal.querySelector('#te-highlight');
+  const sync = () => {
+    hl.innerHTML = yamlToHtml(ta.value) + '\n';   // trailing NL keeps last line visible
+    hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft;
+  };
   ta.addEventListener('input', () => {
+    sync();
     clearTimeout(_taskValidateTimer);
     _taskValidateTimer = setTimeout(() => _teValidate(ta.value), 400);
   });
+  ta.addEventListener('scroll', () => { hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; });
   m.modal.querySelector('#te-save').onclick = () => _teSave(ta.value, m.close);
   m.open();
 
-  if (opts.id) {
-    apiJson(`/api/v1/tasks/definitions/${opts.id}/`).then(d => { ta.value = d.yaml_source || ''; _teValidate(ta.value); });
-  } else if (opts.yaml) {
-    ta.value = opts.yaml; _teValidate(opts.yaml);
-  }
+  const load = (yaml) => { ta.value = yaml || ''; sync(); _teValidate(ta.value); };
+  if (opts.id) apiJson(`/api/v1/tasks/definitions/${opts.id}/`).then(d => load(d.yaml_source || ''));
+  else load(opts.yaml || '');
   setTimeout(() => ta.focus(), 50);
 }
 
@@ -177,14 +186,18 @@ async function _teValidate(yaml) {
     const spec = r.parsed_spec || {};
     const risk = spec.derived_risk || spec.risk || 'standard';
     const steps = (spec.actions || []).map((a, i) => `
-      <div class="preview-step task-${escHtml(risk)}">
-        <div class="preview-step-num">${i + 1}</div>
-        <div class="preview-step-body">
-          <div class="preview-step-title">${escHtml(a.id || ('step' + (i + 1)))} — ${escHtml(a.label || a.type)}</div>
-          <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => `${k}=${v}`).join(' ') : ''}</div>
+      <div class="te-step">
+        <div class="te-step-num">${i + 1}</div>
+        <div class="te-step-body">
+          <div class="te-step-title">${escHtml(a.id || ('step' + (i + 1)))} — ${escHtml(a.label || a.type)}</div>
+          <div class="te-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => `${k}=${v}`).join(' ') : ''}</div>
         </div>
       </div>`).join('');
-    prev.innerHTML = `<div class="te-preview-name">${escHtml(spec.name || 'Untitled')} <span class="risk-badge risk-${escHtml(risk)}">${escHtml(risk)}</span></div>${steps || '<div class="muted-note">No steps.</div>'}`;
+    // Whole task shares ONE pastel: an accent bar down the preview, not a
+    // tiny per-step stripe.
+    prev.innerHTML = `<div class="te-preview-inner task-${escHtml(risk)}">
+      <div class="te-preview-name">${escHtml(spec.name || 'Untitled')} <span class="risk-badge risk-${escHtml(risk)}">${escHtml(risk)}</span></div>
+      ${steps || '<div class="muted-note">No steps.</div>'}</div>`;
   } catch (e) {
     prev.innerHTML = `<div class="ai-err">${escHtml(e.message)}</div>`;
   }

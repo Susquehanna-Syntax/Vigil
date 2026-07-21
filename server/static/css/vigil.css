@@ -879,6 +879,10 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .preview-step.risk-high { border-left-color: var(--rose); }
 .preview-step.risk-standard { border-left-color: var(--sky); }
 .preview-step.risk-low { border-left-color: var(--mint); }
+/* Full-page task editor: whole task in one pastel (its derived risk). */
+.preview-step.task-high { border-left-color: var(--rose); }
+.preview-step.task-standard { border-left-color: var(--sky); }
+.preview-step.task-low { border-left-color: var(--mint); }
 
 .editor-toolbar {
   display: flex; align-items: center; justify-content: space-between;
@@ -2116,17 +2120,44 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .picker-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .picker-empty { text-align: center; color: var(--text-3); font-size: 13px; padding: 30px 0; }
 
-.te-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-.te-yaml { min-height: 320px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.55; white-space: pre; }
-.te-preview { background: var(--s2); border: 1px solid var(--border); border-radius: var(--r-md);
-  padding: 14px; min-height: 320px; max-height: 46vh; overflow-y: auto; }
-.te-preview-name { font-weight: 600; font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-@media (max-width: 760px) { .te-grid { grid-template-columns: 1fr; } }
+/* Big, tall task-edit modal that fills most of the viewport. */
+.modal.te-modal { width: 1100px; max-width: calc(100vw - 40px); height: 86vh;
+  display: flex; flex-direction: column; }
+.modal.te-modal .modal-title { flex-shrink: 0; }
+.te-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; flex: 1; min-height: 0; margin-bottom: 4px; }
+.te-pane { display: flex; flex-direction: column; min-height: 0; }
+.te-pane > .form-label { flex-shrink: 0; }
 
-/* One consistent pastel per task in step previews (was per-step risk mix) */
-.preview-step.task-low { border-left-color: var(--mint); }
-.preview-step.task-standard { border-left-color: var(--sky); }
-.preview-step.task-high { border-left-color: var(--rose); }
+/* Editable YAML with live syntax coloring: a highlighted <pre> sits behind a
+   transparent-text <textarea>; both share identical metrics so they overlap. */
+.te-editor { position: relative; flex: 1; min-height: 0; border: 1.5px solid var(--border);
+  border-radius: var(--r-md); background: var(--s2); overflow: hidden; }
+.te-editor:focus-within { border-color: var(--sky); }
+.te-highlight, .te-yaml {
+  margin: 0; padding: 14px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;
+  line-height: 1.6; white-space: pre; tab-size: 2;
+  position: absolute; inset: 0; width: 100%; height: 100%; overflow: auto; border: 0;
+}
+.te-highlight { pointer-events: none; color: var(--text-1); z-index: 1; }
+.te-yaml { z-index: 2; background: transparent; color: transparent; caret-color: var(--sky);
+  resize: none; outline: none; }
+.te-yaml::placeholder { color: var(--text-3); }
+.te-yaml::selection { background: rgba(130,196,238,0.3); }
+
+.te-preview { flex: 1; min-height: 0; background: var(--s2); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 14px; overflow-y: auto; }
+.te-preview-inner { border-left: 4px solid var(--s4); padding-left: 14px; }
+.te-preview-inner.task-low { border-left-color: var(--mint); }
+.te-preview-inner.task-standard { border-left-color: var(--sky); }
+.te-preview-inner.task-high { border-left-color: var(--rose); }
+.te-preview-name { font-weight: 600; font-size: 15px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.te-step { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.te-step:last-child { border-bottom: 0; }
+.te-step-num { width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; background: var(--s3);
+  color: var(--text-2); font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+.te-step-title { font-size: 13px; font-weight: 600; }
+.te-step-action { font-size: 12px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; margin-top: 3px; }
+@media (max-width: 800px) { .te-grid { grid-template-columns: 1fr; } .modal.te-modal { height: 92vh; } }
 
 /* Styled native selects (custom caret, consistent with inputs) */
 select.form-control {

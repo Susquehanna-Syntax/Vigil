@@ -8,22 +8,25 @@ let _autoEvents = {};      // event name -> label
 let _autoDefs = [];        // task definitions
 let _autoBaselines = [];   // baseline names
 let _autoHosts = [];       // selectable hosts
+let _autoRules = [];       // alert rules (for specific-event)
 
 async function loadAutomations() {
   const list = document.getElementById('automations-list');
   if (!list) return;
   list.innerHTML = '<div class="empty-block"><p>Loading…</p></div>';
   try {
-    const [data, defs, baselines, hosts] = await Promise.all([
+    const [data, defs, baselines, hosts, rules] = await Promise.all([
       apiJson('/api/v1/automations/'),
       apiJson('/api/v1/tasks/definitions/'),
       apiJson('/api/v1/baselines/'),
       apiJson('/api/v1/status-pages/hosts/'),
+      apiJson('/api/v1/alerts/rules/').catch(() => []),
     ]);
     _autoEvents = data.events || {};
     _autoDefs = Array.isArray(defs) ? defs : (defs.results || []);
     _autoBaselines = baselines;
     _autoHosts = hosts;
+    _autoRules = rules;
     _fillEditorOptions();
     _renderAutomations(data.automations);
   } catch (e) {
@@ -41,7 +44,7 @@ function _renderAutomations(autos) {
   }
   list.innerHTML = autos.map(a => {
     const when = a.trigger === 'event'
-      ? `<span class="automation-badge event">on event</span> when <b>${escHtml(_autoEvents[a.event] || a.event)}</b>${a.min_severity ? ` (≥ ${escHtml(a.min_severity)})` : ''}${(a.event_tags || []).length ? ` on <span class="chip">${a.event_tags.map(escHtml).join('</span> <span class="chip">')}</span>` : ''}`
+      ? `<span class="automation-badge event">on event</span> when <b>${escHtml(_autoEvents[a.event] || a.event)}</b>${a.event_rule_name ? ` — <b>${escHtml(a.event_rule_name)}</b>` : ''}${a.min_severity ? ` (≥ ${escHtml(a.min_severity)})` : ''}${(a.event_tags || []).length ? ` on <span class="chip">${a.event_tags.map(escHtml).join('</span> <span class="chip">')}</span>` : ''}`
       : `<span class="automation-badge schedule">scheduled</span> cron <code class="inline">${escHtml(a.cron_display)}</code>`;
     const action = a.action_kind === 'baseline'
       ? `baseline <b>${escHtml(a.baseline_name)}</b>` : `task <b>${escHtml(a.task_name || '?')}</b>`;
@@ -94,6 +97,9 @@ function _fillEditorOptions() {
   // chosen through the searchable picker modal.
   const ev = document.getElementById('auto-event');
   if (ev) ev.innerHTML = Object.entries(_autoEvents).map(([k, v]) => `<option value="${k}">${escHtml(v)}</option>`).join('');
+  const rule = document.getElementById('auto-event-rule');
+  if (rule) rule.innerHTML = '<option value="">any alert</option>' +
+    _autoRules.map(r => `<option value="${escHtml(String(r.id))}">${escHtml(r.name)} (${escHtml(r.severity)})</option>`).join('');
 }
 
 // Open the picker for the current action kind and store the choice.
@@ -129,6 +135,7 @@ function _autoSyncVisibility() {
   document.getElementById('auto-event-tags-wrap').style.display = trig === 'event' ? '' : 'none';
   const ev = document.getElementById('auto-event').value;
   document.getElementById('auto-sev-wrap').style.display = ev === 'alert_fired' ? '' : 'none';
+  document.getElementById('auto-rule-wrap').style.display = ev === 'alert_fired' ? '' : 'none';
 
   _autoRefreshActionLabel();
 
@@ -173,6 +180,7 @@ function _openAutoEditor(a) {
   set('auto-name', a ? a.name : '');
   set('auto-trigger', a ? a.trigger : 'event');
   set('auto-event', a ? a.event : (Object.keys(_autoEvents)[0] || ''));
+  set('auto-event-rule', a && a.event_rule ? a.event_rule : '');
   set('auto-sev', a ? a.min_severity : '');
   set('auto-event-tags', a ? (a.event_tags || []).join(', ') : '');
   const cron = (a && a.cron) || { minute: '0', hour: '2', dom: '*', month: '*', dow: '*' };
@@ -221,6 +229,7 @@ async function _saveAutomation() {
     name: v('auto-name'),
     trigger: v('auto-trigger'),
     event: v('auto-event'),
+    event_rule: v('auto-event-rule') || null,
     min_severity: v('auto-sev'),
     event_tags: v('auto-event-tags').split(',').map(s => s.trim()).filter(Boolean),
     cron: { minute: v('auto-cron-min'), hour: v('auto-cron-hour'), dom: v('auto-cron-dom'),

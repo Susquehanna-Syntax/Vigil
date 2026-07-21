@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("", views.alert_list, name="alert-list"),
+    path("rules/", views.rule_list, name="alert-rule-list"),
     path("bulk/", views.alert_bulk, name="alert-bulk"),
     path("<uuid:alert_id>/acknowledge/", views.alert_acknowledge, name="alert-acknowledge"),
     path("<uuid:alert_id>/unacknowledge/", views.alert_unacknowledge, name="alert-unacknowledge"),

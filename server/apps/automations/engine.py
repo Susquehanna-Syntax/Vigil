@@ -149,8 +149,11 @@ def handle_event(event_name: str, payload: dict) -> None:
 
     autos = Automation.objects.filter(
         enabled=True, trigger=Automation.Trigger.EVENT, event=event_name)
-    for auto in autos.select_related("task_definition", "target_host"):
+    for auto in autos.select_related("task_definition", "target_host", "event_rule"):
         if alert is not None and not severity_ok(auto, alert):
+            continue
+        # Specific-rule filter: only fire for that exact alert rule.
+        if auto.event_rule_id and getattr(alert, "rule_id", None) != auto.event_rule_id:
             continue
         if not tags_ok(auto, host):
             continue

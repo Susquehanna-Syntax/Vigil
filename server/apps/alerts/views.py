@@ -153,3 +153,17 @@ def alert_silence(request, alert_id):
     alert.acknowledged_until = until
     alert.save(update_fields=["state", "acknowledged_at", "acknowledged_until"])
     return Response(AlertSerializer(alert).data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def rule_list(request):
+    """Alert rules, for the automation 'specific rule' selector."""
+    from .models import AlertRule
+
+    rows = AlertRule.objects.order_by("name")
+    return Response([
+        {"id": str(r.id), "name": r.name, "category": r.category,
+         "severity": r.severity, "metric": r.metric}
+        for r in rows
+    ])

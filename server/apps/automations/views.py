@@ -28,6 +28,8 @@ def _row(a: Automation) -> dict:
         "id": str(a.id), "name": a.name, "enabled": a.enabled,
         "trigger": a.trigger,
         "event": a.event, "min_severity": a.min_severity, "event_tags": a.event_tags,
+        "event_rule": str(a.event_rule_id) if a.event_rule_id else None,
+        "event_rule_name": a.event_rule.name if a.event_rule_id else None,
         "cron": {"minute": a.cron_minute, "hour": a.cron_hour, "dom": a.cron_dom,
                  "month": a.cron_month, "dow": a.cron_dow},
         "cron_display": a.cron_display,
@@ -58,6 +60,10 @@ def _apply(a: Automation, data) -> str | None:
         a.event = data["event"] or ""
     if "min_severity" in data:
         a.min_severity = data["min_severity"] or ""
+    if "event_rule" in data:
+        from apps.alerts.models import AlertRule
+        a.event_rule = (AlertRule.objects.filter(pk=data["event_rule"]).first()
+                        if data["event_rule"] else None)
     if "event_tags" in data:
         a.event_tags = [t.strip() for t in (data["event_tags"] or []) if t.strip()]
     cron = data.get("cron") or {}

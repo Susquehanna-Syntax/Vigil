@@ -47,6 +47,11 @@ class Automation(models.Model):
     event = models.CharField(max_length=40, blank=True, default="")  # a KNOWN_EVENTS name
     # Only fire when the alert is at least this severity (alert events only).
     min_severity = models.CharField(max_length=10, blank=True, default="")
+    # Only fire for a SPECIFIC alert rule, not just any alert (alert events
+    # only; null = any rule).
+    event_rule = models.ForeignKey(
+        "alerts.AlertRule", null=True, blank=True, on_delete=models.CASCADE,
+        related_name="automations")
     # Only fire when the event's host carries one of these tags (blank = any).
     event_tags = models.JSONField(default=list, blank=True)
 
