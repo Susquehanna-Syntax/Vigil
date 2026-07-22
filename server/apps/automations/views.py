@@ -37,6 +37,7 @@ def _row(a: Automation) -> dict:
         "task_definition": str(a.task_definition_id) if a.task_definition_id else None,
         "task_name": a.task_definition.name if a.task_definition_id else None,
         "baseline_name": a.baseline_name,
+        "params_override": a.params_override or {},
         "target": a.target, "target_tags": a.target_tags,
         "target_host": str(a.target_host_id) if a.target_host_id else None,
         "last_run": a.last_run.isoformat() if a.last_run else None,
@@ -80,6 +81,8 @@ def _apply(a: Automation, data) -> str | None:
                              if data["task_definition"] else None)
     if "baseline_name" in data:
         a.baseline_name = (data["baseline_name"] or "").strip()
+    if "params_override" in data:
+        a.params_override = data["params_override"] or {}
     if "target" in data:
         if data["target"] not in Automation.Target.values:
             return "invalid target"
@@ -99,6 +102,13 @@ def _apply(a: Automation, data) -> str | None:
     if a.action_kind == Automation.ActionKind.BASELINE:
         if not Baseline.objects.filter(name__iexact=a.baseline_name).exists():
             return f"no baseline named {a.baseline_name!r}"
+        a.params_override = {}  # per-step inputs live on the baseline itself
+    elif a.params_override and a.task_definition_id:
+        from apps.tasks.spec import validate_params_override
+        err = validate_params_override(
+            a.task_definition.parsed_spec or {}, a.params_override)
+        if err is not None:
+            return err
     # A scheduled automation can't target "the event host" — there is no event.
     if a.trigger == Automation.Trigger.SCHEDULE and a.target == Automation.Target.EVENT_HOST:
         return "a scheduled automation needs a concrete target (tags, a host, or all)"

@@ -71,6 +71,9 @@ class Automation(models.Model):
         "tasks.TaskDefinition", null=True, blank=True,
         on_delete=models.CASCADE, related_name="automations")
     baseline_name = models.CharField(max_length=120, blank=True, default="")
+    # Input overrides for the task action: {"<action_index>": {"<param>": value}}
+    # merged over the definition's params at dispatch (TASK kind only).
+    params_override = models.JSONField(default=dict, blank=True)
 
     # -- target (ignored for EVENT_HOST) --
     target = models.CharField(max_length=12, choices=Target.choices,

@@ -167,6 +167,47 @@ class BaselineApiTests(TestCase):
             content_type="application/json")
         self.assertEqual(resp.status_code, 400)
 
+    def test_step_params_override_round_trips(self):
+        d = make_definition(actions=[{"type": "restart_service",
+                                      "params": {"service_name": "nginx"}}])
+        resp = self.client.post("/api/v1/baselines/", {
+            "name": "Overridden",
+            "definition_ids": [{"definition_id": str(d.id),
+                                "params_override": {"0": {"service_name": "postgres"}}}]},
+            content_type="application/json")
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()["steps"][0]["params_override"],
+                         {"0": {"service_name": "postgres"}})
+        got = self.client.get(f"/api/v1/baselines/{resp.json()['id']}/").json()
+        self.assertEqual(got["steps"][0]["params_override"],
+                         {"0": {"service_name": "postgres"}})
+
+    def test_step_params_override_applies_at_dispatch(self):
+        from .models import build_agent_steps
+        d = make_definition(actions=[
+            {"type": "restart_service", "params": {"service_name": "nginx"}},
+            {"type": "pkg_update", "params": {}},
+        ])
+        b = make_baseline(self.admin, definitions=[d])
+        step = b.steps.get()
+        step.params_override = {"0": {"service_name": "postgres"}}
+        step.save()
+        steps, _ = build_agent_steps(b)
+        self.assertEqual(steps[0]["params"], {"service_name": "postgres"})
+        self.assertEqual(steps[1]["params"], {})
+
+    def test_unknown_override_param_is_refused(self):
+        d = make_definition(actions=[{"type": "restart_service",
+                                      "params": {"service_name": "nginx"}}])
+        resp = self.client.post("/api/v1/baselines/", {
+            "name": "Bad override",
+            "definition_ids": [{"definition_id": str(d.id),
+                                "params_override": {"0": {"bogus": "x"}}}]},
+            content_type="application/json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("bogus", resp.json()["detail"])
+        self.assertEqual(Baseline.objects.count(), 0)
+
     def test_toggle_and_delete(self):
         b = make_baseline(self.admin)
         resp = self.client.patch(f"/api/v1/baselines/{b.id}/", {"enabled": False},

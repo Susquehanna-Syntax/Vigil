@@ -25,6 +25,7 @@ def _row(b: Baseline) -> dict:
                 "definition_name": s.definition.name,
                 "risk": s.definition.risk_level,
                 "order": s.order,
+                "params_override": s.params_override or {},
             }
             for s in b.steps.select_related("definition").order_by("order")
         ],
@@ -32,23 +33,36 @@ def _row(b: Baseline) -> dict:
 
 
 def _validate_and_set_steps(baseline: Baseline, definition_ids) -> Response | None:
-    """Replace the sequence. Returns an error Response or None."""
+    """Replace the sequence. Entries are bare definition ids or
+    ``{"definition_id": ..., "params_override": {...}}`` dicts.
+    Returns an error Response or None."""
+    from apps.tasks.spec import validate_params_override
+
     if not isinstance(definition_ids, list) or not definition_ids:
         return Response({"detail": "definition_ids must be a non-empty list"},
                         status=400)
     definitions = []
-    for did in definition_ids:
+    for entry in definition_ids:
+        override = {}
+        did = entry
+        if isinstance(entry, dict):
+            did = entry.get("definition_id")
+            override = entry.get("params_override") or {}
         d = TaskDefinition.objects.filter(pk=did).first()
         if d is None:
             return Response({"detail": f"unknown definition {did}"}, status=400)
         ok, why = eligible(d)
         if not ok:
             return Response({"detail": f"{d.name}: {why}"}, status=400)
-        definitions.append(d)
+        err = validate_params_override(d.parsed_spec or {}, override)
+        if err is not None:
+            return Response({"detail": f"{d.name}: {err}"}, status=400)
+        definitions.append((d, override))
     baseline.steps.all().delete()
     BaselineStep.objects.bulk_create([
-        BaselineStep(baseline=baseline, definition=d, order=i)
-        for i, d in enumerate(definitions)
+        BaselineStep(baseline=baseline, definition=d, order=i,
+                     params_override=override)
+        for i, (d, override) in enumerate(definitions)
     ])
     return None
 
