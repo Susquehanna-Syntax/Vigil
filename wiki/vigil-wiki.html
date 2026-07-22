@@ -192,7 +192,7 @@
     </a>
     <a href="#editions" class="nav-link">
       <svg viewBox="0 0 24 24"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4z"/></svg>
-      Editions
+      Tiers &amp; Licensing
     </a>
 
     <span class="nav-section-label">Architecture</span>
@@ -611,38 +611,68 @@
     </section>
     <div class="divider"></div>
 
-    <!-- EDITIONS -->
+    <!-- TIERS & LICENSING -->
     <section class="section" id="editions">
-      <p class="section-label">Editions</p>
-      <h2 class="section-title" style="color:var(--peach)">Editions</h2>
-      <p class="section-desc">Vigil is open-core. The Community edition you're reading about is free and complete for homelabs. Pro and Enterprise are commercial editions that plug into the same core without forking it — every install runs the same engine.</p>
+      <p class="section-label">Tiers &amp; Licensing</p>
+      <h2 class="section-title" style="color:var(--peach)">Two tiers. That's it.</h2>
+      <p class="section-desc">As of 2026.4.0 there is no Pro tier and no Enterprise tier. <strong>Free Vigil answers "is my stuff up." Vigil Business answers "can I prove to a third party that their stuff is up."</strong> Everything ships in one repo and one image — a Business license lights features up at runtime, and nothing ever blocks monitoring.</p>
 
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Feature</th><th>Community</th><th>Pro</th><th>Enterprise</th></tr></thead>
+          <thead><tr><th>Feature</th><th>Free</th><th>Business</th></tr></thead>
           <tbody>
-            <tr><td>Monitoring, alerting, smart defaults</td><td>✓</td><td>✓</td><td>✓</td></tr>
-            <tr><td>Remote task execution + agent</td><td>✓</td><td>✓</td><td>✓</td></tr>
-            <tr><td>Vuln scanning (Trivy / Nessus / Greenbone)</td><td>✓</td><td>✓</td><td>✓</td></tr>
-            <tr><td>Single admin user</td><td>✓</td><td>—</td><td>—</td></tr>
-            <tr><td>Multi-user RBAC (admin / operator / viewer)</td><td>—</td><td>✓</td><td>✓</td></tr>
-            <tr><td>Baselines (auto-dispatch on host approval)</td><td>—</td><td>✓</td><td>✓</td></tr>
-            <tr><td>AI task suggestions (bring-your-own key)</td><td>—</td><td>✓</td><td>✓</td></tr>
-            <tr><td>Status pages</td><td>—</td><td>✓</td><td>✓</td></tr>
-            <tr><td>Detailed audit logs + retention</td><td>—</td><td>—</td><td>✓</td></tr>
-            <tr><td>Sites / multi-tenancy</td><td>—</td><td>—</td><td>✓</td></tr>
-            <tr><td>Branding, SSO, federation</td><td>—</td><td>—</td><td>✓</td></tr>
-            <tr><td>Email / SLA support</td><td>—</td><td>—</td><td>✓</td></tr>
+            <tr><td>Monitoring, alerting, smart defaults — unlimited agents, hosts, retention</td><td>✓</td><td>✓</td></tr>
+            <tr><td>Remote task execution + agent (agent is 100% OSS, no tier awareness)</td><td>✓</td><td>✓</td></tr>
+            <tr><td>Vuln scanning (Trivy / Nessus / Greenbone)</td><td>✓</td><td>✓</td></tr>
+            <tr><td>Baselines — auto-dispatch tasks to newly approved hosts</td><td>✓</td><td>✓</td></tr>
+            <tr><td>AI task suggestions — bring-your-own endpoint &amp; key</td><td>✓</td><td>✓</td></tr>
+            <tr><td>Public status page (token URL, "Powered by Vigil" badge)</td><td>✓</td><td>✓</td></tr>
+            <tr><td>Jackil integration (alert → ticket)</td><td>✓</td><td>✓</td></tr>
+            <tr><td>Seats</td><td>1 admin + 1 viewer</td><td>Per-seat pricing</td></tr>
+            <tr><td>Roles</td><td>Admin, Viewer</td><td>+ Operator, custom roles</td></tr>
+            <tr><td>Sites (administrative boundaries, per-site scoping)</td><td>1 (default)</td><td>Unlimited</td></tr>
+            <tr><td>Audit log viewer + CSV export (recording is always on)</td><td>—</td><td>✓</td></tr>
+            <tr><td>Status page branding — logo, no badge, per-site client pages</td><td>—</td><td>✓</td></tr>
+            <tr><td>Branding (reports, portal)</td><td>—</td><td>✓</td></tr>
+            <tr><td>SSO / SAML</td><td>—</td><td>Talk to us</td></tr>
           </tbody>
         </table>
       </div>
 
-      <p class="prose">All editions are self-hosted today; a managed Enterprise SaaS option is planned.</p>
+      <p class="prose"><strong>Seats are the only meter.</strong> Sites are unlimited on Business, and nothing is ever priced per host or per agent. A <em>site</em> is an administrative boundary — a campus, a department, a client org. It is not a physical location; put whatever you want inside one.</p>
+
+      <h3>How licensing works</h3>
+      <p class="prose">A Business license is an Ed25519-signed blob verified <strong>locally and offline</strong> against a public key baked into the build — air-gapped installs are first-class, and there is no phone-home, no revocation list, and no kill switch. The license is bound to your instance UUID (shown on Settings → License): a key pasted into someone else's Vigil does nothing. Input paths, in priority order: the <code>VIGIL_LICENSE_KEY</code> env var, <code>manage.py license set</code>, or the paste box on the license screen — applied at runtime, no restart.</p>
 
       <div class="callout callout-tip">
         <div class="callout-icon">✓</div>
-        <div><strong>AI is bring-your-own-key and provider-agnostic.</strong> Task suggestions use an API key you supply for the provider of your choice (Anthropic, OpenAI, or an OpenAI-compatible local runner like Ollama) — Vigil never bills you for inference. Anthropic is the documented default but never required.</div>
+        <div><strong>Nothing ever blocks.</strong> Expiry gives you a 14-day grace period with Business features on, then they switch off — with monitoring, alerting, and agent ingest untouched, forever. Going over your seat count works and shows a banner. A license bound to a different instance reads as no license. Every degraded state is a banner, never an error page, never a lockout.</div>
       </div>
+
+      <div class="callout callout-tip">
+        <div class="callout-icon">✓</div>
+        <div><strong>Telemetry, in full:</strong> the optional monthly license refresh sends your instance UUID, Vigil version, and seat count. That is the complete list. Free installs send nothing, ever.</div>
+      </div>
+
+      <h3>New in 2026.4.0</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Addition</th><th>What it is</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Pro folded into Free</strong></td><td>The planned Pro tier was retired before ever shipping. Baselines, AI suggestions, and status pages landed free for everyone.</td></tr>
+            <tr><td><strong>Sites</strong> <em>(Business)</em></td><td>Named administrative boundaries with host assignment. Reads are open on every tier so you can see what you'd get; writes unlock with a license.</td></tr>
+            <tr><td><strong>Audit log</strong> <em>(Business)</em></td><td>Who did what, to what, authenticated how — fed by lifecycle hooks and auth signals. Recording is on for every install from day one; the license unlocks the viewer and CSV export. Append-only, read-only in admin.</td></tr>
+            <tr><td><strong>Seats &amp; roles</strong></td><td>Admin / Operator / Viewer roles on user profiles. Free ships Admin + Viewer (its 2 seats); granting Operator needs Business. Seat overage is a banner — user creation is never blocked.</td></tr>
+            <tr><td><strong>Baselines</strong></td><td>Pick task definitions that auto-dispatch to every newly approved host (tag-filterable). High-risk and <code>update_agent</code> definitions are excluded — those keep the human and 2FA in the loop.</td></tr>
+            <tr><td><strong>AI suggestions</strong></td><td>Point Vigil at any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, OpenAI) or Anthropic, with your own key. Suggestions arrive as draft task YAML, validated like any editor input; nothing auto-executes.</td></tr>
+            <tr><td><strong>Status pages</strong></td><td>A public, shareable, token-URL status page for every install. Business strips the badge, adds a logo, and unlocks additional per-site client pages.</td></tr>
+            <tr><td><strong>Civil SSO</strong> <em>(opt-in)</em></td><td>One account across Vigil, Jackil, Sigil, and Turnstil via the new <a href="https://github.com/Susquehanna-Syntax/Civil">Civil</a> identity service. Off by default; single-container installs are unchanged, and Civil being down never affects existing sessions.</td></tr>
+            <tr><td><strong>License screen</strong></td><td>Settings shows your tier, instance UUID, seats used/allowed, and per-feature chips; paste a key and it applies with no restart.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="prose">Licensing legal split: everything in this repo is AGPLv3 except <code>server/apps_business/</code>, which is source-visible under a commercial license and requires a Business subscription in production. Full detail in <code>docs/EDITIONS.md</code>.</p>
     </section>
     <div class="divider"></div>
 

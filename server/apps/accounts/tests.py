@@ -186,3 +186,113 @@ class AdminGateTests(TestCase):
         self.assertTrue(Host.objects.filter(pk=host.id).exists())
         # Viewing the same host stays open to any authenticated session
         self.assertEqual(self.client.get(f"/api/v1/hosts/{host.id}/").status_code, 200)
+
+
+# ---------------------------------------------------------------------------
+# RBAC + seats
+# ---------------------------------------------------------------------------
+
+import base64 as _b64
+import json as _json
+import time as _time
+
+from django.test import override_settings
+from nacl.signing import SigningKey as _SigningKey
+
+from vigil import licensing as _licensing
+
+from .models import Role, UserProfile as _UP
+from .permissions import IsOperator, role_of
+
+_SK = _SigningKey.generate()
+_PUB = _b64.b64encode(_SK.verify_key.encode()).decode()
+
+
+def _blob():
+    claims = {
+        "instance": _licensing.instance_id(), "org": "t", "seats": 2,
+        "sites": None, "exp": int(_time.time()) + 86400, "iat": int(_time.time()),
+    }
+    payload = _json.dumps(claims, separators=(",", ":"), sort_keys=True).encode()
+
+    def b64u(b):
+        return _b64.urlsafe_b64encode(b).decode().rstrip("=")
+
+    return f"{_licensing.PREFIX}.{b64u(payload)}.{b64u(_SK.sign(payload).signature)}"
+
+
+@override_settings(VIGIL_LICENSE_PUBLIC_KEY=_PUB)
+class RbacSeatTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user("root", password="x", is_staff=True)
+        self.client.force_login(self.admin)
+        _licensing.reload()
+
+    def tearDown(self):
+        from apps.licensing.models import StoredLicense
+        StoredLicense.replace("")
+        _licensing.reload()
+
+    def test_role_of_mapping(self):
+        User = get_user_model()
+        self.assertEqual(role_of(self.admin), Role.ADMIN)  # staff → admin
+        plain = User.objects.create_user("plain", password="x")
+        self.assertEqual(role_of(plain), Role.VIEWER)      # no profile → viewer
+        _UP.objects.create(user=plain, role=Role.OPERATOR)
+        fresh = User.objects.get(pk=plain.pk)  # uncached profile relation
+        self.assertEqual(role_of(fresh), Role.OPERATOR)
+
+    def test_viewer_and_admin_roles_are_free(self):
+        resp = self.client.post("/api/v1/accounts/users/",
+                                {"username": "v", "password": "pw12345!",
+                                 "role": "viewer"})
+        self.assertEqual(resp.status_code, 201, resp.content)
+        resp = self.client.patch(
+            f"/api/v1/accounts/users/{resp.json()['id']}/role/",
+            {"role": "admin"}, content_type="application/json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["role"], "admin")
+
+    def test_operator_role_requires_business(self):
+        resp = self.client.post("/api/v1/accounts/users/",
+                                {"username": "op1", "password": "pw12345!",
+                                 "role": "operator"})
+        self.assertEqual(resp.status_code, 402)
+        self.assertEqual(resp.json()["feature"], "rbac_advanced")
+        # the half-created user must not linger
+        self.assertFalse(get_user_model().objects.filter(username="op1").exists())
+        _licensing.set_license(_blob())
+        resp = self.client.post("/api/v1/accounts/users/",
+                                {"username": "op1", "password": "pw12345!",
+                                 "role": "operator"})
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()["role"], "operator")
+
+    def test_operator_keeps_working_after_lapse(self):
+        _licensing.set_license(_blob())
+        self.client.post("/api/v1/accounts/users/",
+                         {"username": "op2", "password": "pw12345!",
+                          "role": "operator"})
+        from apps.licensing.models import StoredLicense
+        StoredLicense.replace("")
+        _licensing.reload()  # license gone
+        op = get_user_model().objects.get(username="op2")
+        self.assertTrue(IsOperator().has_permission(
+            type("R", (), {"user": op})(), None))
+
+    def test_seat_overage_never_blocks_creation(self):
+        _licensing.set_license(_blob())  # 2 seats
+        for i in range(4):               # ends at 5 users total
+            resp = self.client.post("/api/v1/accounts/users/",
+                                    {"username": f"u{i}", "password": "pw12345!"})
+            self.assertEqual(resp.status_code, 201)
+        self.assertEqual(_licensing.seats_used(), 5)
+        overage = [b for b in _licensing.banners() if "seats in use" in b["message"]]
+        self.assertEqual(len(overage), 1)
+
+    def test_non_admin_cannot_manage_users(self):
+        get_user_model().objects.create_user("pleb", password="x")
+        c = self.client_class()
+        c.login(username="pleb", password="x")
+        self.assertEqual(c.get("/api/v1/accounts/users/").status_code, 403)

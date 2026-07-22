@@ -1,80 +1,67 @@
-"""Edition and feature gating — the second extension seam.
+"""Feature gating — thin façade over :mod:`vigil.licensing`.
 
-Vigil core is the free **Community** edition. The **Pro** and **Enterprise**
-editions ship as separate repos (``Vigil-Pro``, ``Vigil-Enterprise``) whose
-apps register the optional features they provide by calling
-:func:`register_feature` from their ``AppConfig.ready()``.
+**There is no Pro tier and no Enterprise tier.** Vigil 2026.4.0 folded the
+never-shipped Pro edition into Free; the only paid tier is **Business**,
+unlocked by a signed license (see ``vigil/licensing.py`` and
+``SQSY-LICENSING.md``). The old separate-repo edition model
+(``Vigil-Pro`` / ``Vigil-Enterprise``) is gone — Business code ships in this
+repo under ``server/apps_business/`` and lights up at runtime.
 
-Core code lights up integration points with :func:`feature_enabled` — e.g. a
-template that shows a "Suggested fix" button only when ``ai_suggestions`` is
-registered. Core never imports edition code: an absent edition just means the
-feature was never registered, so it reads as off.
+This module keeps the two names core templates and extensions already use:
 
-This is a *capability switch for UX and wiring*, not a license enforcement
-mechanism. Self-hosted editions are gated by which app is installed; the
-future Enterprise SaaS layers real licensing on top, in its own repo.
+- :func:`feature_enabled` — the gate. Free features are always on; Business
+  features consult the license; extension-registered features are on when
+  the extension registered them.
+- :func:`register_feature` — still the way an operator-installed extra app
+  (``VIGIL_EXTRA_APPS``) advertises a capability so core lights up its
+  integration points. This is a UX/wiring switch, not license enforcement.
 """
 
 from __future__ import annotations
 
 import logging
 
+from vigil import licensing
+
 logger = logging.getLogger("vigil.editions")
 
-COMMUNITY = "community"
-PRO = "pro"
-ENTERPRISE = "enterprise"  # the "Business" tier; SaaS in the future
+FREE = "free"
+BUSINESS = "business"
 
-# Which edition introduces each optional feature. Drives docs and upgrade
-# prompts ("available in Pro"). Keep in sync with docs/EDITIONS.md.
-FEATURE_EDITIONS: dict[str, str] = {
-    # Pro (Vigil-Pro)
-    "rbac": PRO,
-    "baselines": PRO,
-    "ai_suggestions": PRO,
-    "status_pages": PRO,
-    # Enterprise / Business (Vigil-Enterprise)
-    "audit_log": ENTERPRISE,
-    "sites": ENTERPRISE,
-    "branding": ENTERPRISE,
-    "sso": ENTERPRISE,
-    "federation": ENTERPRISE,
-}
+#: Which tier introduces each optional feature. Drives docs and upgrade
+#: prompts. Keep in sync with docs/EDITIONS.md.
+FEATURE_TIERS: dict[str, str] = (
+    {f: FREE for f in licensing.FREE_FEATURES}
+    | {f: BUSINESS for f in licensing.BUSINESS_FEATURES}
+)
 
-_enabled: set[str] = set()
+_registered: set[str] = set()
 
 
 def register_feature(name: str) -> None:
-    """Mark *name* as active. Called by an edition app at startup."""
-    if name not in FEATURE_EDITIONS:
-        logger.warning("Registering unknown edition feature %r", name)
-    _enabled.add(name)
-    logger.info("Edition feature enabled: %s", name)
+    """An extra app advertising a capability (UX wiring, not licensing)."""
+    if name not in FEATURE_TIERS:
+        logger.warning("Registering unknown feature %r", name)
+    _registered.add(name)
+    logger.info("Extension feature enabled: %s", name)
 
 
 def feature_enabled(name: str) -> bool:
-    """True if an installed edition has registered *name*."""
-    return name in _enabled
+    """True if *name* is free, licensed, or extension-registered."""
+    return name in _registered or licensing.has_feature(name)
 
 
 def enabled_features() -> set[str]:
-    """The set of currently active optional features (copy)."""
-    return set(_enabled)
+    """Every currently-active optional feature (for the About/license API)."""
+    active = {f for f in FEATURE_TIERS if licensing.has_feature(f)}
+    return active | set(_registered)
 
 
 def active_edition() -> str:
-    """Best-guess edition label from the features that are active.
-
-    Enterprise if any Enterprise feature is on, else Pro if any feature is on,
-    else Community. Purely informational (About page, upgrade prompts).
-    """
-    if any(FEATURE_EDITIONS.get(f) == ENTERPRISE for f in _enabled):
-        return ENTERPRISE
-    if _enabled:
-        return PRO
-    return COMMUNITY
+    """``free`` or ``business`` — purely informational (About page)."""
+    return licensing.current_state().tier
 
 
 def clear() -> None:
-    """Reset registered features — test helper, not for production use."""
-    _enabled.clear()
+    """Reset extension registrations — test helper only."""
+    _registered.clear()

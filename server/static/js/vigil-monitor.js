@@ -394,7 +394,7 @@ async function renderDockerContainers(hostId) {
       <table class="ctr-table">
         <thead><tr>
           <th>Container</th><th>Image</th><th>State</th>
-          <th class="num">CPU</th><th class="num">Memory</th>
+          <th class="num">CPU</th><th class="num">Memory</th><th></th>
         </tr></thead>
         <tbody>`;
     for (const c of rows) {
@@ -414,11 +414,18 @@ async function renderDockerContainers(hostId) {
         <td><span class="ctr-state ${stateClass}">${escHtml(state || 'unknown')}</span></td>
         <td class="ctr-stat">${cpu}</td>
         <td class="ctr-stat">${mem}</td>
+        <td class="ctr-fix"><button class="btn btn-xs btn-outline" style="color:var(--mint);" data-ctr-fix data-host="${escHtml(hostId)}" data-cid="${escHtml(c.container_id || '')}">Suggest fix</button></td>
       </tr>`;
     }
     html += `</tbody></table></div>`;
   }
   wrap.innerHTML = html;
+  wrap.querySelectorAll('[data-ctr-fix]').forEach(btn => btn.addEventListener('click', () => {
+    if (typeof suggestFixForContainer === 'function') {
+      const c = containers.find(x => (x.container_id || '') === btn.dataset.cid) || { container_id: btn.dataset.cid };
+      suggestFixForContainer(btn.dataset.host, c);
+    }
+  }));
 }
 
 /* ── Top processes table ─────────────────────────────────────────────── */

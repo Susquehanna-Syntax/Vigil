@@ -37,6 +37,13 @@ class SpecError(ValueError):
 # records required params, a risk tier, and a human label for the UI.
 
 ACTION_REGISTRY: dict[str, dict[str, Any]] = {
+    # ── Composition (server-side; expanded before signing, never sent to agents) ──
+    "baseline": {
+        "label": "Run baseline",
+        "risk": "standard",
+        "required": ["name"],
+        "optional": [],
+    },
     # ── Service management ──────────────────────────────────────────────────
     "restart_service": {
         "label": "Restart service",

@@ -701,6 +701,17 @@ Vigil/
 
 ---
 
+## Tiers
+
+Vigil is free — full monitoring, alerting, unlimited agents, hosts, and
+retention, forever. **Vigil Business** adds the accountability features
+(unlimited Sites, audit-log viewer/export, seats + Operator role, branding)
+via a signed, instance-bound, offline-verified license. Nothing ever blocks:
+an expired license means Business features switch off and monitoring carries
+on untouched. See `docs/EDITIONS.md`.
+
 ## License
 
-AGPLv3
+AGPLv3 for everything except `server/apps_business/`, which is source-visible
+under a commercial license (`server/apps_business/LICENSE`) and requires a
+Vigil Business subscription for production use
