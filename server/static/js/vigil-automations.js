@@ -9,6 +9,7 @@ let _autoDefs = [];        // task definitions
 let _autoBaselines = [];   // baseline names
 let _autoHosts = [];       // selectable hosts
 let _autoRules = [];       // alert rules (for specific-event)
+let _autoParamsOverride = {};  // task input overrides for the automation being edited
 
 async function loadAutomations() {
   const list = document.getElementById('automations-list');
@@ -109,6 +110,7 @@ function _autoPickAction() {
     openPicker({ type: 'task', title: 'Pick a task to run', onSelect: (item) => {
       if (item.raw && !_autoDefs.some(d => String(d.id) === String(item.key))) _autoDefs.push(item.raw);
       document.getElementById('auto-action-task').value = item.key;
+      _autoParamsOverride = {};   // new task — old inputs are meaningless
       _autoRefreshActionLabel();
     } });
   } else {
@@ -138,6 +140,10 @@ function _autoSyncVisibility() {
   document.getElementById('auto-rule-wrap').style.display = ev === 'alert_fired' ? '' : 'none';
 
   _autoRefreshActionLabel();
+
+  const kind = document.getElementById('auto-action-kind').value;
+  const inputsBtn = document.getElementById('auto-inputs-btn');
+  if (inputsBtn) inputsBtn.hidden = kind !== 'task';
 
   const tgt = document.getElementById('auto-target').value;
   document.getElementById('auto-target-tags').hidden = tgt !== 'tags';
@@ -192,6 +198,7 @@ function _openAutoEditor(a) {
   set('auto-target', a ? a.target : 'event_host');
   set('auto-target-tags', a ? (a.target_tags || []).join(', ') : '');
   set('auto-target-host', a && a.target_host ? a.target_host : '');
+  _autoParamsOverride = (a && a.params_override) || {};
   document.getElementById('auto-enabled').checked = a ? a.enabled : true;
   _autoSyncVisibility();
   _autoRefreshActionLabel();
@@ -240,6 +247,7 @@ async function _saveAutomation() {
     target: v('auto-target'),
     target_tags: v('auto-target-tags').split(',').map(s => s.trim()).filter(Boolean),
     target_host: v('auto-target-host') || null,
+    params_override: _autoParamsOverride,
     enabled: document.getElementById('auto-enabled').checked,
   };
   if (!body.name) return showToast('Name the automation', 'error');
@@ -272,6 +280,16 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('auto-action-kind')?.addEventListener('change', () => {
     document.getElementById('auto-action-task').value = '';
     document.getElementById('auto-action-baseline').value = '';
+    _autoParamsOverride = {};
     _autoRefreshActionLabel();
+  });
+  document.getElementById('auto-inputs-btn')?.addEventListener('click', () => {
+    if (document.getElementById('auto-action-kind').value !== 'task')
+      return showToast('Inputs apply to tasks — edit the baseline’s steps instead', 'error');
+    const id = document.getElementById('auto-action-task').value;
+    const def = _autoDefs.find(d => String(d.id) === String(id));
+    if (!def) return showToast('Pick a task first', 'error');
+    openInputsModal({ def, override: _autoParamsOverride,
+      onSave: (ov) => { _autoParamsOverride = ov; } });
   });
 });
