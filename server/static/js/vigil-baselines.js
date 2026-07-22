@@ -37,6 +37,17 @@ function _filterBaselines() {
     b.steps.some(s => s.definition_name.toLowerCase().includes(q)));
 }
 
+function _blIneligible(def) {
+  // Mirrors apps/baselines/models.py eligible(): baselines auto-run without
+  // per-dispatch 2FA, so high-risk and update_agent tasks stay out.
+  if (!def) return null;
+  const risk = def.risk_level || def.risk || 'standard';
+  if (risk === 'high') return 'high risk — can’t run in a baseline';
+  const acts = (def.parsed_spec && def.parsed_spec.actions) || [];
+  if (acts.some(a => a.type === 'update_agent')) return 'update_agent — can’t run in a baseline';
+  return null;
+}
+
 function _defName(id) {
   const d = _baselineDefs.find(x => String(x.id) === String(id));
   return d ? d.name : id;
@@ -133,12 +144,13 @@ function _renderEditorSteps() {
   }
   wrap.innerHTML = _editingSteps.map((id, i) => {
     const count = _defActionCount(id);
+    const why = _blIneligible(_baselineDefs.find(d => String(d.id) === String(id)));
     return `<div class="bl-editor-step">
       <div class="bl-editor-step-main">
         <span class="bl-editor-step-num">${i + 1}</span>
         <div>
           <div>${escHtml(_defName(id))}</div>
-          <div class="bl-hint">${count != null ? count + ' action' + (count === 1 ? '' : 's') : ''} · <span class="risk-badge risk-${escHtml(_defRisk(id))}" style="padding:1px 8px;">${escHtml(_defRisk(id))}</span></div>
+          <div class="bl-hint">${count != null ? count + ' action' + (count === 1 ? '' : 's') : ''} · <span class="risk-badge risk-${escHtml(_defRisk(id))}" style="padding:1px 8px;">${escHtml(_defRisk(id))}</span>${why ? ` · <span class="bl-step-warn">${escHtml(why)}</span>` : ''}</div>
         </div>
       </div>
       <span class="bl-editor-step-btns">
@@ -198,6 +210,10 @@ async function _saveBaseline() {
   };
   if (!body.name) return showToast('Give the baseline a name', 'error');
   if (!body.definition_ids.length) return showToast('Add at least one task', 'error');
+  for (const id of _editingSteps) {
+    const why = _blIneligible(_baselineDefs.find(d => String(d.id) === String(id)));
+    if (why) return showToast(`Fix ineligible steps first: ${_defName(id)} — ${why}`, 'error');
+  }
   const editing = document.getElementById('bl-editor-modal').dataset.editing;
   try {
     if (editing) await apiJson(`/api/v1/baselines/${editing}/`, { method: 'PATCH', body: JSON.stringify(body) });
@@ -212,6 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Add a step by picking (or creating) a task in the searchable picker modal.
   document.getElementById('bl-add-step-btn')?.addEventListener('click', () => {
     openPicker({ type: 'task', title: 'Add a task to the sequence',
+      ineligible: (item) => _blIneligible(item.raw),
       onSelect: (item) => {
         // Make the just-picked task known to the step renderer (it may have
         // been created inside the picker, after the page's defs were loaded).

@@ -79,17 +79,22 @@ function _renderPickerList(q) {
   q = (q || '').trim().toLowerCase();
   const items = q ? _pickerItems.filter(i => i.name.toLowerCase().includes(q) || (i.meta || '').toLowerCase().includes(q)) : _pickerItems;
   if (!items.length) { list.innerHTML = `<div class="picker-empty">${_pickerItems.length ? 'No matches.' : 'Nothing here yet — use “Add new”.'}</div>`; return; }
-  list.innerHTML = items.map((i, idx) => `
-    <div class="picker-row" data-key="${escHtml(String(i.key))}">
+  list.innerHTML = items.map((i, idx) => {
+    // Some contexts can't accept every item (e.g. high-risk tasks while
+    // building a baseline) — show them greyed with the reason, not hidden.
+    const why = _pickerState.ineligible ? _pickerState.ineligible(i) : null;
+    return `
+    <div class="picker-row${why ? ' picker-row-disabled' : ''}" data-key="${escHtml(String(i.key))}">
       <div class="picker-row-main">
         <span class="picker-row-name">${escHtml(i.name)}${i.risk ? ` <span class="risk-badge risk-${escHtml(i.risk)}">${escHtml(i.risk)}</span>` : ''}</span>
-        <span class="picker-row-meta">${escHtml(i.meta || '')}</span>
+        <span class="picker-row-meta">${escHtml(i.meta || '')}${why ? ` · <span class="picker-why">${escHtml(why)}</span>` : ''}</span>
       </div>
       <div class="picker-row-actions">
         ${i.editable ? `<button class="btn btn-outline btn-xs" data-pick-edit="${idx}">Edit</button>` : ''}
-        <button class="btn btn-mint btn-xs" data-pick-sel="${idx}">Select</button>
+        <button class="btn btn-mint btn-xs" data-pick-sel="${idx}" ${why ? `disabled title="${escHtml(why)}"` : ''}>Select</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   list.querySelectorAll('[data-pick-sel]').forEach(b => b.addEventListener('click', () => {
     const item = items[+b.dataset.pickSel];
     closePicker();

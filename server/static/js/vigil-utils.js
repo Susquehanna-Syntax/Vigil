@@ -48,7 +48,7 @@ async function apiJson(url, opts) {
   });
   const body = await resp.json().catch(() => ({}));
   if (!resp.ok) {
-    throw new Error(body.error || 'Request failed');
+    throw new Error(body.detail || body.error || 'Request failed');
   }
   return body;
 }
