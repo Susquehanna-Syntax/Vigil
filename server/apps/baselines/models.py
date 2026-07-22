@@ -56,6 +56,10 @@ class BaselineStep(models.Model):
                                    on_delete=models.CASCADE,
                                    related_name="baseline_steps")
     order = models.PositiveIntegerField(default=0)
+    # Per-step input overrides: {"<action_index>": {"<param>": value}} merged
+    # over the definition's action params at dispatch, so one shared task can
+    # run with different inputs in different baselines.
+    params_override = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ("order",)
@@ -90,7 +94,15 @@ def build_agent_steps(baseline: "Baseline") -> tuple[list[dict], str]:
     i = 0
     for step in baseline.steps.select_related("definition").order_by("order"):
         spec = step.definition.parsed_spec or {}
-        actions, risk = expand_actions(spec.get("actions") or [])
+        actions_src = spec.get("actions") or []
+        override = step.params_override or {}
+        if override:
+            actions_src = [
+                {**a, "params": {**(a.get("params") or {}),
+                                 **override.get(str(idx), {})}}
+                for idx, a in enumerate(actions_src)
+            ]
+        actions, risk = expand_actions(actions_src)
         success_criteria = spec.get("success_criteria") or None
         for action in actions:
             i += 1
