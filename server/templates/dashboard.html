@@ -26,6 +26,14 @@
   {# Logic: static/js/vigil-monitor.js + vigil-host-cards.js | Data: client-side fetch /api/v1/metrics/{host}/{cat}/{metric}/ #}
   {% include "pages/_monitor.html" %}
 
+  {# Baselines page — sequence editor for auto-enroll task chains #}
+  {# Logic: static/js/vigil-baselines.js | Data: /api/v1/baselines/ + /api/v1/tasks/definitions/ #}
+  {% include "pages/_baselines.html" %}
+
+  {# Status pages — public status page manager with machine select + naming #}
+  {# Logic: static/js/vigil-statuspages.js | Data: /api/v1/status-pages/ (+ /hosts/) #}
+  {% include "pages/_statuspages.html" %}
+
   {# Settings page — TOTP, AD import, enrollment queue, agent table, display prefs #}
   {# Logic: static/js/vigil-settings.js + vigil-inventory.js (AD config) + vigil-host-cards.js (approve/reject) #}
   {# Data: pending_hosts, hosts, vigil_timezone from dashboard() view #}

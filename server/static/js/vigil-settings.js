@@ -152,3 +152,61 @@ async function uploadAgentBinary() {
   }
 }
 
+
+
+/* ── Civil SSO settings ──────────────────────────────────────────────── */
+async function loadCivilSettings() {
+  const card = document.getElementById('civil-settings-card');
+  if (!card) return;
+  try {
+    const d = await apiJson('/api/v1/civil/settings/');
+    document.getElementById('civil-url').value = d.url || '';
+    document.getElementById('civil-slug').value = d.app_slug || '';
+    document.getElementById('civil-enabled').checked = !!d.enabled;
+    document.getElementById('civil-env-note').hidden = !d.env_override;
+    _renderCivilState(d);
+  } catch (e) { /* leave blank */ }
+}
+
+function _renderCivilState(d) {
+  const el = document.getElementById('civil-state');
+  if (!el) return;
+  if (!d.active) { el.textContent = 'Civil sign-in is off — using local accounts only.'; return; }
+  el.textContent = `Active against ${d.effective_url} · verification key ${d.key_cached ? 'cached' : 'not yet fetched'}.`;
+}
+
+async function saveCivilSettings(opts) {
+  const body = {
+    url: document.getElementById('civil-url').value.trim(),
+    app_slug: document.getElementById('civil-slug').value.trim(),
+    enabled: document.getElementById('civil-enabled').checked,
+    ...(opts || {}),
+  };
+  try {
+    const d = await apiJson('/api/v1/civil/settings/', { method: 'POST', body: JSON.stringify(body) });
+    _renderCivilState(d);
+    document.getElementById('civil-env-note').hidden = !d.env_override;
+    if (opts && opts.test) showToast(d.test_ok ? 'Reached Civil and fetched its key' : 'Could not reach Civil', d.test_ok ? 'success' : 'error');
+    else showToast('Civil settings saved', 'success');
+  } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const cs = document.getElementById('civil-save-btn');
+  if (cs) cs.addEventListener('click', () => saveCivilSettings());
+  const ct = document.getElementById('civil-test-btn');
+  if (ct) ct.addEventListener('click', () => saveCivilSettings({ test: true, refresh_key: true }));
+
+  // Settings sub-nav: switch which pane is visible.
+  document.querySelectorAll('#settings-nav .settings-nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('#settings-nav .settings-nav-item').forEach(i => i.classList.remove('active'));
+      document.querySelectorAll('#page-settings .settings-pane').forEach(p => p.classList.remove('active'));
+      item.classList.add('active');
+      const pane = document.querySelector(`#page-settings .settings-pane[data-pane="${item.dataset.pane}"]`);
+      if (pane) pane.classList.add('active');
+    });
+  });
+
+  loadCivilSettings();
+});

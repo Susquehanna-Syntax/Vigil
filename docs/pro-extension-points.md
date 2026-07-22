@@ -1,22 +1,14 @@
-# Pro / Enterprise extension contract
+# Extension contract
 
-Vigil is open-core. This repo (**Vigil**, AGPLv3) is the free **Community**
-edition and the single source of truth for the platform. The commercial
-editions live in separate repos and **plug into core through the seams
-described here** — they never fork or patch core.
+Vigil is one repo, two tiers (see `docs/EDITIONS.md`). Business features ship
+IN this repo under `server/apps_business/` (commercial license, runtime
+`has_feature()` gates) — the separate Vigil-Pro / Vigil-Enterprise repos were
+retired in 2026.4.0 before ever shipping.
 
-- **Pro** → `git@github.com:Susquehanna-Syntax/Vigil-Pro.git`
-- **Enterprise** (the "Business" tier; SaaS in the future) → `git@github.com:Susquehanna-Syntax/Vigil-Enterprise.git`
-
-> **Rule for core (this repo):** never import edition code, never reference
-> `vigil_pro`/`vigil_enterprise` by name. Core only *offers* seams. If a change
-> would break one of the guarantees below, it breaks Pro/Enterprise — treat
-> this file as a contract.
-
-The four seams are exercised end-to-end by the reference app at
-`server/apps/example_extension/` — copy its shape into the edition repos.
-
----
+The seams below remain the contract for **community/operator extensions**
+(`VIGIL_EXTRA_APPS`): extra Django apps that subscribe to lifecycle events,
+register capabilities, and mount routes without forking core. Business apps
+use the same hooks bus but are wired explicitly in `INSTALLED_APPS`.
 
 ## 1. App loading — `VIGIL_EXTRA_APPS`
 
