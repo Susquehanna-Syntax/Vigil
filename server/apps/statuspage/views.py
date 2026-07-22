@@ -29,6 +29,7 @@ def public_status(request, token):
         "page": page,
         "hosts": hosts,
         "all_up": all(h["up"] for h in hosts) if hosts else True,
+        "up_count": sum(1 for h in hosts if h["up"]),
         "branded": branded,
         "show_badge": not (branded and page.hide_badge),
         "logo_url": page.logo_url if branded else "",

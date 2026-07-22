@@ -1,57 +1,176 @@
-<!doctype html>
+{% load static %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
+  <meta http-equiv="refresh" content="60">
   <title>{{ page.title }}</title>
+  <link rel="icon" type="image/png" href="{% static 'img/vigil-logo.png' %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=Fraunces:opsz,wght@9..144,400;9..144,500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    :root { --surface:#1E1E2E; --card:#27273A; --text:#E6E6F0; --muted:#9C9CB0;
-            --mint:#A6E3A1; --rose:#F38BA8; }
-    * { box-sizing:border-box; margin:0; }
-    body { background:var(--surface); color:var(--text);
-           font-family:"DM Sans",system-ui,sans-serif; min-height:100vh;
-           display:flex; flex-direction:column; align-items:center; padding:40px 16px; }
-    .wrap { width:min(94vw, 640px); }
-    header { display:flex; align-items:center; gap:14px; margin-bottom:24px; }
-    header img { height:40px; }
-    h1 { font-size:1.5rem; }
-    .overall { padding:14px 18px; border-radius:10px; margin-bottom:20px;
-               font-weight:600; }
-    .overall--up   { background:rgba(166,227,161,.14); color:var(--mint); }
-    .overall--down { background:rgba(243,139,168,.14); color:var(--rose); }
-    ul { list-style:none; }
-    li { background:var(--card); border-radius:8px; padding:12px 16px;
-         margin-bottom:8px; display:flex; justify-content:space-between; }
-    .dot { font-weight:600; }
-    .dot--up { color:var(--mint); } .dot--down { color:var(--rose); }
-    footer { margin-top:32px; color:var(--muted); font-size:12px; }
-    footer a { color:var(--muted); }
+    :root {
+      --surface: #1E1E2E;
+      --card: #27273A;
+      --card-2: #2E2E44;
+      --text: #E6E6F0;
+      --text-2: #B8B8CC;
+      --muted: #9C9CB0;
+      --mint: #A6E3A1;
+      --rose: #F38BA8;
+      --lavender: #baa8e8;
+      --sky: #82c4ee;
+      --peach: #f0b888;
+      --lemon: #e2d478;
+      --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      background: var(--surface); color: var(--text);
+      font-family: "DM Sans", system-ui, sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; padding: 48px 16px 32px;
+      overflow-x: hidden;
+    }
+
+    /* ── Animated backdrop — slow pastel orbs drifting behind everything ── */
+    .backdrop { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+    .orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .13; }
+    .orb--mint     { width: 44vmax; height: 44vmax; background: var(--mint);
+                     top: -12vmax; left: -10vmax; animation: drift-a 52s var(--ease-out-expo) infinite alternate; }
+    .orb--lavender { width: 38vmax; height: 38vmax; background: var(--lavender);
+                     bottom: -14vmax; right: -8vmax; animation: drift-b 64s var(--ease-out-expo) infinite alternate; }
+    .orb--sky      { width: 30vmax; height: 30vmax; background: var(--sky);
+                     top: 40%; left: 60%; animation: drift-c 47s var(--ease-out-expo) infinite alternate; }
+    .orb--down     { background: var(--rose) !important; }
+    @keyframes drift-a { from { transform: translate(0, 0) scale(1); }    to { transform: translate(9vmax, 7vmax) scale(1.15); } }
+    @keyframes drift-b { from { transform: translate(0, 0) scale(1.1); }  to { transform: translate(-8vmax, -6vmax) scale(.95); } }
+    @keyframes drift-c { from { transform: translate(0, 0); }             to { transform: translate(-12vmax, 5vmax); } }
+
+    /* The watcher — a faint Vigil eye that blinks now and then. */
+    .watcher { position: fixed; right: 4vw; top: 6vh; width: 150px; opacity: .1;
+               z-index: 0; pointer-events: none;
+               animation: blink 9s ease-in-out infinite; transform-origin: center; }
+    @keyframes blink {
+      0%, 91%, 100% { transform: scaleY(1); }
+      93%, 95%      { transform: scaleY(.06); }
+      97%           { transform: scaleY(1); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .orb, .watcher, .up-dot { animation: none !important; }
+      .card, .overall, header { animation: none !important; opacity: 1 !important; }
+    }
+
+    .wrap { width: min(94vw, 680px); position: relative; z-index: 1; }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header { display: flex; align-items: center; gap: 16px; margin-bottom: 28px;
+             animation: rise .7s var(--ease-out-expo) both; }
+    header img.logo { height: 44px; width: 44px; border-radius: 10px; object-fit: cover; }
+    h1 { font-family: "Fraunces", serif; font-weight: 500; font-size: 1.9rem;
+         letter-spacing: .01em; }
+    .subtitle { color: var(--muted); font-size: .85rem; margin-top: 2px;
+                font-family: "IBM Plex Mono", monospace; }
+
+    /* ── Overall banner ─────────────────────────────────────────────────── */
+    .overall { border-radius: 14px; padding: 22px 24px; margin-bottom: 22px;
+               display: flex; align-items: center; gap: 14px;
+               animation: rise .7s .08s var(--ease-out-expo) both; }
+    .overall--up   { background: rgba(166, 227, 161, .12); }
+    .overall--down { background: rgba(243, 139, 168, .12); }
+    .overall-title { font-family: "Fraunces", serif; font-size: 1.25rem; font-weight: 500; }
+    .overall--up .overall-title   { color: var(--mint); }
+    .overall--down .overall-title { color: var(--rose); }
+    .overall-count { margin-left: auto; font-family: "IBM Plex Mono", monospace;
+                     font-size: .85rem; color: var(--text-2); }
+    .up-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+    .overall--up .up-dot   { background: var(--mint); animation: breathe 3s ease-in-out infinite; }
+    .overall--down .up-dot { background: var(--rose); }
+    @keyframes breathe { 0%, 100% { box-shadow: 0 0 0 0 rgba(166,227,161,.35); }
+                         50%      { box-shadow: 0 0 0 7px rgba(166,227,161,0); } }
+
+    /* ── Host cards ─────────────────────────────────────────────────────── */
+    ul { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+    .card { background: var(--card); border-radius: 12px; padding: 16px 18px;
+            display: flex; align-items: center; gap: 14px;
+            border-left: 4px solid var(--mint);
+            animation: rise .6s var(--ease-out-expo) both; }
+    .card--down { border-left-color: var(--rose); background: var(--card-2); }
+    .card-name { font-weight: 500; font-size: 1rem; }
+    .card-state { margin-left: auto; font-family: "IBM Plex Mono", monospace;
+                  font-size: .82rem; padding: 4px 12px; border-radius: 999px; }
+    .card-state--up   { color: var(--mint); background: rgba(166, 227, 161, .1); }
+    .card-state--down { color: var(--rose); background: rgba(243, 139, 168, .1); }
+    .card-empty { color: var(--muted); justify-content: center;
+                  border-left-color: var(--lavender); }
+    @keyframes rise { from { opacity: 0; transform: translateY(14px); }
+                      to   { opacity: 1; transform: translateY(0); } }
+
+    /* ── Footer ─────────────────────────────────────────────────────────── */
+    footer { margin-top: 40px; display: flex; flex-direction: column; align-items: center;
+             gap: 8px; color: var(--muted); font-size: 12.5px; position: relative; z-index: 1;
+             animation: rise .7s .2s var(--ease-out-expo) both; }
+    footer .powered { display: flex; align-items: center; gap: 8px; }
+    footer .powered img { height: 18px; width: 18px; border-radius: 4px; }
+    footer a { color: var(--sky); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+    .sqsy { font-family: "Fraunces", serif; letter-spacing: .14em; font-size: 11.5px;
+            color: var(--lavender); text-transform: uppercase; }
+    .sqsy b { font-weight: 500; letter-spacing: .22em; }
   </style>
 </head>
 <body>
+  <div class="backdrop" aria-hidden="true">
+    <div class="orb orb--mint{% if not all_up %} orb--down{% endif %}"></div>
+    <div class="orb orb--lavender"></div>
+    <div class="orb orb--sky"></div>
+    <svg class="watcher" viewBox="0 0 120 74" fill="none" stroke="var(--lavender)" stroke-width="5">
+      <path d="M4 37 C 26 8, 94 8, 116 37 C 94 66, 26 66, 4 37 Z"/>
+      <circle cx="60" cy="37" r="19"/>
+      <circle cx="60" cy="37" r="6" fill="var(--lavender)" stroke="none"/>
+    </svg>
+  </div>
+
   <div class="wrap">
     <header>
-      {% if logo_url %}<img src="{{ logo_url }}" alt="">{% endif %}
-      <h1>{{ page.title }}</h1>
+      <img class="logo" src="{% if logo_url %}{{ logo_url }}{% else %}{% static 'img/vigil-logo.png' %}{% endif %}" alt="">
+      <div>
+        <h1>{{ page.title }}</h1>
+        <div class="subtitle">live status · refreshes every minute</div>
+      </div>
     </header>
+
     <div class="overall overall--{% if all_up %}up{% else %}down{% endif %}">
-      {% if all_up %}All systems operational{% else %}Some systems are down{% endif %}
+      <span class="up-dot"></span>
+      <span class="overall-title">
+        {% if all_up %}All systems operational{% else %}Some systems are down{% endif %}
+      </span>
+      <span class="overall-count">{{ up_count }}/{{ hosts|length }} up</span>
     </div>
+
     <ul>
       {% for h in hosts %}
-      <li>
-        <span>{{ h.hostname }}</span>
-        <span class="dot dot--{% if h.up %}up{% else %}down{% endif %}">
-          {% if h.up %}Operational{% else %}Down{% endif %}
+      <li class="card{% if not h.up %} card--down{% endif %}" style="animation-delay: {% widthratio forloop.counter0 1 60 %}ms">
+        <span class="card-name">{{ h.hostname }}</span>
+        <span class="card-state card-state--{% if h.up %}up{% else %}down{% endif %}">
+          {% if h.up %}operational{% else %}down{% endif %}
         </span>
       </li>
       {% empty %}
-      <li><span>No hosts on this page yet.</span><span></span></li>
+      <li class="card card-empty">No hosts on this page yet.</li>
       {% endfor %}
     </ul>
+
     {% if show_badge %}
-    <footer>Powered by <a href="https://susquehannasyntax.com">Vigil</a> — sleep well.</footer>
+    <footer>
+      <span class="powered">
+        <img src="{% static 'img/vigil-logo.png' %}" alt="">
+        Powered by <a href="https://susquehannasyntax.com">Vigil</a> — sleep well.
+      </span>
+      <span class="sqsy">A <b>SQSY</b> · Susquehanna Syntax product</span>
+    </footer>
     {% endif %}
   </div>
 </body>
