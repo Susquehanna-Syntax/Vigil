@@ -6,7 +6,7 @@
 // Depends on: vigil-utils.js (apiJson, confirmModal, showToast, escHtml).
 
 let _baselineDefs = [];   // all task definitions, for the picker (id -> def)
-let _editingSteps = [];   // definition ids currently in the editor, in order
+let _editingSteps = [];   // editor steps in order: { id, ov } (definition id + params override)
 let _allBaselines = [];   // cached, for client-side search
 
 async function loadBaselines() {
@@ -124,7 +124,8 @@ function _wireCards(baselines) {
     const b = baselines.find(x => x.id === btn.dataset.blDup);
     _openEditor({ name: b.name + ' (copy)', description: b.description,
       target_tags: b.target_tags, enabled: b.enabled,
-      steps: b.steps.map(s => ({ definition_id: s.definition_id })) }, null);
+      steps: b.steps.map(s => ({ definition_id: s.definition_id,
+                                 params_override: s.params_override || {} })) }, null);
   }));
 }
 
@@ -142,9 +143,11 @@ function _renderEditorSteps() {
     wrap.innerHTML = '<div class="muted-note">No steps yet — add task definitions below in the order they should run.</div>';
     return;
   }
-  wrap.innerHTML = _editingSteps.map((id, i) => {
+  wrap.innerHTML = _editingSteps.map((s, i) => {
+    const id = s.id;
     const count = _defActionCount(id);
     const why = _blIneligible(_baselineDefs.find(d => String(d.id) === String(id)));
+    const nOv = Object.values(s.ov || {}).reduce((n, p) => n + Object.keys(p).length, 0);
     return `<div class="bl-editor-step">
       <div class="bl-editor-step-main">
         <span class="bl-editor-step-num">${i + 1}</span>
@@ -154,12 +157,21 @@ function _renderEditorSteps() {
         </div>
       </div>
       <span class="bl-editor-step-btns">
+        <button class="btn btn-outline btn-xs" data-inputs="${i}" title="Change this step's task inputs">Inputs${nOv ? ' · ' + nOv : ''}</button>
         <button class="btn btn-outline btn-xs" data-view="${escHtml(String(id))}" title="View / edit this task">View / edit</button>
         <button class="btn btn-outline btn-xs" data-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>↑</button>
         <button class="btn btn-outline btn-xs" data-mv="${i}" data-dir="1" ${i === _editingSteps.length - 1 ? 'disabled' : ''}>↓</button>
         <button class="btn btn-outline btn-xs" style="color:var(--rose);" data-rm="${i}">Remove</button>
       </span></div>`;
   }).join('');
+  wrap.querySelectorAll('[data-inputs]').forEach(b => b.addEventListener('click', () => {
+    const i = +b.dataset.inputs;
+    const def = _baselineDefs.find(d => String(d.id) === _editingSteps[i].id);
+    if (!def) return showToast('Task not loaded yet', 'error');
+    openInputsModal({ def, override: _editingSteps[i].ov, onSave: (ov) => {
+      _editingSteps[i].ov = ov; _renderEditorSteps();
+    } });
+  }));
   wrap.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', () => { _editingSteps.splice(+b.dataset.rm, 1); _renderEditorSteps(); }));
   wrap.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
     // Edit the task in a stacked modal — keeps the baseline editor open behind.
@@ -185,7 +197,9 @@ function _openEditor(data, editingId) {
   document.getElementById('bl-desc').value = data ? (data.description || '') : '';
   document.getElementById('bl-tags').value = data ? (data.target_tags || []).join(', ') : '';
   document.getElementById('bl-enabled').checked = data ? !!data.enabled : true;
-  _editingSteps = data && data.steps ? data.steps.map(s => String(s.definition_id)) : [];
+  _editingSteps = data && data.steps
+    ? data.steps.map(s => ({ id: String(s.definition_id), ov: s.params_override || {} }))
+    : [];
   _renderEditorSteps();
   document.getElementById('bl-editor-overlay').classList.add('open');
   modal.classList.add('open');
@@ -206,13 +220,14 @@ async function _saveBaseline() {
     description: document.getElementById('bl-desc').value.trim(),
     target_tags: document.getElementById('bl-tags').value.split(',').map(t => t.trim()).filter(Boolean),
     enabled: document.getElementById('bl-enabled').checked,
-    definition_ids: _editingSteps,
+    definition_ids: _editingSteps.map(s => ({ definition_id: s.id,
+                                              params_override: s.ov || {} })),
   };
   if (!body.name) return showToast('Give the baseline a name', 'error');
   if (!body.definition_ids.length) return showToast('Add at least one task', 'error');
-  for (const id of _editingSteps) {
-    const why = _blIneligible(_baselineDefs.find(d => String(d.id) === String(id)));
-    if (why) return showToast(`Fix ineligible steps first: ${_defName(id)} — ${why}`, 'error');
+  for (const s of _editingSteps) {
+    const why = _blIneligible(_baselineDefs.find(d => String(d.id) === String(s.id)));
+    if (why) return showToast(`Fix ineligible steps first: ${_defName(s.id)} — ${why}`, 'error');
   }
   const editing = document.getElementById('bl-editor-modal').dataset.editing;
   try {
@@ -233,7 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Make the just-picked task known to the step renderer (it may have
         // been created inside the picker, after the page's defs were loaded).
         if (item.raw && !_baselineDefs.some(d => String(d.id) === String(item.key))) _baselineDefs.push(item.raw);
-        _editingSteps.push(String(item.key)); _renderEditorSteps();
+        _editingSteps.push({ id: String(item.key), ov: {} }); _renderEditorSteps();
       } });
   });
   const save = document.getElementById('bl-save-btn');

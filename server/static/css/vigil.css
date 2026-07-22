@@ -2185,3 +2185,8 @@ select.form-control:hover { border-color: var(--s4); }
 .picker-row-disabled { opacity: 0.55; }
 .picker-row-disabled .btn[disabled] { cursor: not-allowed; }
 .picker-why, .bl-step-warn { color: var(--rose); }
+
+/* Inputs modal — per-use param overrides for a task definition. */
+.inputs-action { margin: 14px 0 6px; display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.inputs-grid { display: grid; grid-template-columns: 160px 1fr; gap: 8px 12px; align-items: center; }
+.inputs-grid label { color: var(--text-2); font-size: 0.85rem; }

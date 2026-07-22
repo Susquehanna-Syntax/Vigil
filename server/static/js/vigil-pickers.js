@@ -124,6 +124,67 @@ function _pickerAdd(type) {
   }
 }
 
+/* ═══ Inputs modal — per-use param overrides for a task definition ═══════ */
+let _actionRegistry = null;
+
+async function openInputsModal(opts) {
+  // opts: { def, override, onSave(newOverride) }
+  if (!_actionRegistry) _actionRegistry = await apiJson('/api/v1/tasks/actions/');
+  const def = opts.def;
+  const override = opts.override || {};
+  const m = mountModal('inputs', { wide: true });
+  const actions = (def.parsed_spec && def.parsed_spec.actions) || [];
+  const sections = actions.map((a, i) => {
+    const entry = _actionRegistry[a.type];
+    const head = `<div class="inputs-action"><span class="bl-editor-step-num">${i + 1}</span> ${escHtml(entry && entry.label ? entry.label : a.type)}</div>`;
+    if (!entry) return head + '<div class="muted-note">No editable inputs.</div>';
+    const names = [...(entry.required || []), ...(entry.optional || [])];
+    if (!names.length) return head + '<div class="muted-note">This action takes no inputs.</div>';
+    const rows = names.map(name => {
+      const required = (entry.required || []).includes(name);
+      const current = (override[String(i)] || {})[name];
+      const fallback = (a.params || {})[name];
+      return `<label>${escHtml(name)}${required ? ' *' : ''}</label>
+        <input type="text" class="form-control" data-inp-action="${i}" data-inp-name="${escHtml(name)}"
+          value="${current != null ? escHtml(String(current)) : ''}"
+          placeholder="${fallback != null ? escHtml(String(fallback)) : ''}">`;
+    }).join('');
+    return `${head}<div class="inputs-grid">${rows}</div>`;
+  }).join('');
+  m.setBody(`
+    <div class="modal-title">
+      <span>Inputs — ${escHtml(def.name)}</span>
+      <button class="modal-close" id="inputs-close" aria-label="Close">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="muted-note" style="margin-bottom:6px;">Changes apply only where this task is used here — the task itself is untouched. Blank fields use the task's own values.</div>
+    ${sections || '<div class="muted-note">This task has no actions.</div>'}
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="inputs-reset" type="button">Reset to task defaults</button>
+      <button class="btn btn-ghost" id="inputs-cancel" type="button">Cancel</button>
+      <button class="btn btn-mint" id="inputs-save" type="button">Save inputs</button>
+    </div>`);
+  m.modal.querySelector('#inputs-close').onclick = m.close;
+  m.modal.querySelector('#inputs-cancel').onclick = m.close;
+  m.overlay.onclick = m.close;
+  m.modal.querySelector('#inputs-reset').onclick = () => {
+    m.modal.querySelectorAll('[data-inp-action]').forEach(el => { el.value = ''; });
+  };
+  m.modal.querySelector('#inputs-save').onclick = () => {
+    const built = {};
+    m.modal.querySelectorAll('[data-inp-action]').forEach(el => {
+      const v = el.value.trim();
+      if (!v) return;
+      const key = el.dataset.inpAction;
+      (built[key] = built[key] || {})[el.dataset.inpName] = v;
+    });
+    m.close();
+    opts.onSave(built);
+  };
+  m.open();
+}
+
 /* ═══ In-modal task editor ═══════════════════════════════════════════════ */
 let _taskModalSaved = null, _taskModalId = null, _taskValidateTimer = null;
 
