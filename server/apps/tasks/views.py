@@ -444,9 +444,12 @@ def definition_list(request):
     return Response(TaskDefinitionSerializer(definition).data, status=201)
 
 
-@api_view(["GET", "PUT", "DELETE"])
+@api_view(["GET", "PUT"])
 @permission_classes([IsAuthenticated])
 def definition_detail(request, definition_id):
+    """Fetch or update a definition. Definitions can't be deleted — baselines
+    and automations reference them, and a vanished definition would silently
+    gut those sequences."""
     definition = get_object_or_404(TaskDefinition, pk=definition_id)
     if not _user_can_see(definition, request.user):
         return Response({"error": "Not found"}, status=404)
@@ -457,10 +460,6 @@ def definition_detail(request, definition_id):
     # Mutations require ownership.
     if definition.owner_id != request.user.id:
         return Response({"error": "You do not own this definition"}, status=403)
-
-    if request.method == "DELETE":
-        definition.delete()
-        return Response(status=204)
 
     # PUT — update from new YAML source. Visibility is NOT editable here;
     # use the publish/unpublish endpoints.
@@ -759,45 +758,17 @@ def run_detail(request, run_id):
     return Response(TaskRunSerializer(run).data)
 
 
-@api_view(["GET", "DELETE"])
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def task_detail(request, task_id):
-    """Single-task fetch + remove-from-history.
-
-    DELETE is a soft delete: the row is flagged ``hidden`` and drops out
-    of the history feed, but it is never destroyed — the audit trail
-    (who ran what, where, with what result) is immutable by design.
-
-    Hiding is gated on terminal state — in-flight tasks (``BLOCKED``,
-    ``PENDING``, ``DISPATCHED``, ``EXECUTING``) are still moving and
-    stay visible until they finish or the expiry sweep collects them.
-    """
+    """Single-task fetch. History rows are the audit trail — who ran what,
+    where, with what result — and are immutable by design; there is no
+    delete."""
     task = get_object_or_404(
         Task.objects.select_related("host", "run"),
         pk=task_id,
     )
-
-    if request.method == "GET":
-        return Response(TaskSerializer(task).data)
-
-    in_flight = {
-        Task.State.BLOCKED, Task.State.PENDING,
-        Task.State.DISPATCHED, Task.State.EXECUTING,
-    }
-    if task.state in in_flight:
-        return Response(
-            {
-                "error": "In-flight tasks cannot be deleted",
-                "state": task.state,
-            },
-            status=409,
-        )
-
-    if not task.hidden:
-        task.hidden = True
-        task.save(update_fields=["hidden"])
-
-    return Response(status=204)
+    return Response(TaskSerializer(task).data)
 
 
 @api_view(["GET"])
