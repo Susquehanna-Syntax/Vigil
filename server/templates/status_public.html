@@ -4,7 +4,6 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <meta http-equiv="refresh" content="60">
   <title>{{ page.title }}</title>
   <link rel="icon" type="image/png" href="{% static 'img/vigil-logo.png' %}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -93,14 +92,14 @@
 
     /* ── Host cards ─────────────────────────────────────────────────────── */
     ul { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 12px; }
-    /* The whole card is tinted by current state — mint when up, rose when down. */
+    /* The whole card is tinted by current state — mint when up, rose when down.
+       No accent bars; the fill alone carries the state. */
     .card { border-radius: 14px; padding: 16px 18px;
-            border: 1px solid transparent; border-left-width: 4px;
+            border: 1px solid rgba(255, 255, 255, .04);
+            transition: background .5s var(--ease-out-expo);
             animation: rise .6s var(--ease-out-expo) both; }
-    .card--up   { background: rgba(166, 227, 161, .11); border-color: rgba(166, 227, 161, .22);
-                  border-left-color: var(--mint); }
-    .card--down { background: rgba(243, 139, 168, .12); border-color: rgba(243, 139, 168, .26);
-                  border-left-color: var(--rose); }
+    .card--up   { background: rgba(166, 227, 161, .11); }
+    .card--down { background: rgba(243, 139, 168, .12); }
     .card-top { display: flex; align-items: center; gap: 14px; }
     .card-name { font-weight: 500; font-size: 1rem; }
     .card-uptime { margin-left: auto; font-family: "IBM Plex Mono", monospace;
@@ -110,7 +109,7 @@
     .card-state--up   { color: var(--mint); background: rgba(166, 227, 161, .14); }
     .card-state--down { color: var(--rose); background: rgba(243, 139, 168, .14); }
     .card-empty { color: var(--muted); text-align: center;
-                  background: rgba(186, 168, 232, .08); border-left-color: var(--lavender); }
+                  background: rgba(186, 168, 232, .08); }
 
     /* ── Uptime bar strip — one thin bar per day over the window ─────────── */
     .uptime { margin-top: 14px; }
@@ -162,20 +161,20 @@
       </div>
     </header>
 
-    <div class="overall overall--{% if all_up %}up{% else %}down{% endif %}">
+    <div class="overall overall--{% if all_up %}up{% else %}down{% endif %}" id="overall">
       <span class="up-dot"></span>
-      <span class="overall-title">
+      <span class="overall-title" id="overall-title">
         {% if all_up %}All systems operational{% else %}Some systems are down{% endif %}
       </span>
-      <span class="overall-count">{{ up_count }}/{{ hosts|length }} up</span>
+      <span class="overall-count" id="overall-count">{{ up_count }}/{{ hosts|length }} up</span>
     </div>
 
-    <ul>
+    <ul id="cards">
       {% for h in hosts %}
-      <li class="card card--{% if h.up %}up{% else %}down{% endif %}" style="animation-delay: {% widthratio forloop.counter0 1 60 %}ms">
+      <li class="card card--{% if h.up %}up{% else %}down{% endif %}" data-host-id="{{ h.id }}" style="animation-delay: {% widthratio forloop.counter0 1 60 %}ms">
         <div class="card-top">
           <span class="card-name">{{ h.hostname }}</span>
-          {% if h.uptime_pct %}<span class="card-uptime">{{ h.uptime_pct }}% uptime</span>{% endif %}
+          <span class="card-uptime">{% if h.uptime_pct %}{{ h.uptime_pct }}% uptime{% endif %}</span>
           <span class="card-state card-state--{% if h.up %}up{% else %}down{% endif %}">
             {% if h.up %}operational{% else %}down{% endif %}
           </span>
@@ -207,5 +206,60 @@
     </footer>
     {% endif %}
   </div>
+
+  <script>
+    // Poll for fresh status instead of a full-page meta-refresh, so the entry
+    // animations don't replay every minute — only the changed values update.
+    (function () {
+      var POLL_MS = 60000;
+
+      function applyState(el, up) {
+        el.classList.toggle('card--up', up);
+        el.classList.toggle('card--down', !up);
+      }
+
+      function render(data) {
+        var overall = document.getElementById('overall');
+        overall.classList.toggle('overall--up', data.all_up);
+        overall.classList.toggle('overall--down', !data.all_up);
+        document.getElementById('overall-title').textContent =
+          data.all_up ? 'All systems operational' : 'Some systems are down';
+        document.getElementById('overall-count').textContent =
+          data.up_count + '/' + data.total + ' up';
+
+        var orb = document.querySelector('.orb--mint');
+        if (orb) orb.classList.toggle('orb--down', !data.all_up);
+
+        data.hosts.forEach(function (h) {
+          var card = document.querySelector('.card[data-host-id="' + h.id + '"]');
+          if (!card) return;
+          applyState(card, h.up);
+          var state = card.querySelector('.card-state');
+          if (state) {
+            state.className = 'card-state card-state--' + (h.up ? 'up' : 'down');
+            state.textContent = h.up ? 'operational' : 'down';
+          }
+          var uptime = card.querySelector('.card-uptime');
+          if (uptime) uptime.textContent = h.uptime_pct ? h.uptime_pct + '% uptime' : '';
+          var bars = card.querySelector('.uptime-bars');
+          if (bars && h.bars && h.bars.length) {
+            bars.innerHTML = h.bars.map(function (b) {
+              return '<span class="ubar ubar--' + b.state + '" title="' +
+                b.label.replace(/"/g, '&quot;') + '"></span>';
+            }).join('');
+          }
+        });
+      }
+
+      function poll() {
+        fetch(location.pathname.replace(/\/?$/, '/') + 'data/', { cache: 'no-store' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) { if (d) render(d); })
+          .catch(function () { /* keep the last-known state on a blip */ });
+      }
+
+      setInterval(poll, POLL_MS);
+    })();
+  </script>
 </body>
 </html>

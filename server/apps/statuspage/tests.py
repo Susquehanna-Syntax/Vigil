@@ -195,3 +195,25 @@ class UptimeHistoryTests(TestCase):
         pub = self.client_class().get(f"/status/{page.token}/")
         self.assertContains(pub, "uptime-bars")
         self.assertContains(pub, "% uptime")
+
+    def test_poll_data_endpoint_is_public_json(self):
+        from django.utils.timezone import now
+
+        from apps.statuspage.models import HostUptimeSample
+
+        h = make_host("web-1")
+        HostUptimeSample.objects.create(host=h, time=now(), up=True)
+        page = StatusPage.objects.create(enabled=True, host_ids=[str(h.id)])
+        # No auth — token is the access control.
+        resp = self.client_class().get(f"/status/{page.token}/data/")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["all_up"])
+        self.assertEqual(data["total"], 1)
+        self.assertEqual(data["hosts"][0]["hostname"], "web-1")
+        self.assertEqual(len(data["hosts"][0]["bars"]), 90)
+        # A disabled page's data is 404, same as the HTML page.
+        page.enabled = False
+        page.save(update_fields=["enabled"])
+        self.assertEqual(
+            self.client_class().get(f"/status/{page.token}/data/").status_code, 404)
