@@ -148,3 +148,50 @@ class HostLabelTests(TestCase):
             content_type="application/json")
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.json()["host_labels"][str(h.id)], "Public Web")
+
+
+class UptimeHistoryTests(TestCase):
+    def test_sampler_records_one_reading_per_non_pending_host(self):
+        from apps.statuspage.models import HostUptimeSample
+        from apps.statuspage.tasks import sample_uptime
+
+        up = make_host("up-1")
+        make_host("down-1", status=Host.Status.OFFLINE)
+        make_host("pending-1", status=Host.Status.PENDING)
+        sample_uptime()
+        self.assertEqual(HostUptimeSample.objects.count(), 2)  # pending skipped
+        self.assertTrue(HostUptimeSample.objects.get(host=up).up)
+
+    def test_history_buckets_by_day_and_colors_states(self):
+        from datetime import timedelta
+
+        from django.utils.timezone import now
+
+        from apps.statuspage.models import HostUptimeSample
+        from apps.statuspage.views import _uptime_history
+
+        h = make_host("web-1")
+        today = now()
+        # Today: fully up. Yesterday: half down (degraded/down). 2 days ago: no data.
+        HostUptimeSample.objects.create(host=h, time=today, up=True)
+        HostUptimeSample.objects.create(host=h, time=today - timedelta(days=1), up=True)
+        HostUptimeSample.objects.create(host=h, time=today - timedelta(days=1), up=False)
+        hist = _uptime_history([h])[str(h.id)]
+        self.assertEqual(len(hist["bars"]), 90)
+        self.assertEqual(hist["bars"][-1]["state"], "up")        # today
+        self.assertEqual(hist["bars"][-2]["state"], "down")      # 50% → down tier
+        self.assertEqual(hist["bars"][-3]["state"], "nodata")    # no samples
+        # 2 up of 3 total samples across the window
+        self.assertAlmostEqual(float(hist["pct"]), 2 / 3)
+
+    def test_public_page_renders_uptime_bars(self):
+        from django.utils.timezone import now
+
+        from apps.statuspage.models import HostUptimeSample
+
+        h = make_host("web-1")
+        HostUptimeSample.objects.create(host=h, time=now(), up=True)
+        page = StatusPage.objects.create(enabled=True, host_ids=[str(h.id)])
+        pub = self.client_class().get(f"/status/{page.token}/")
+        self.assertContains(pub, "uptime-bars")
+        self.assertContains(pub, "% uptime")
