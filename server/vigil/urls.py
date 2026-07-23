@@ -17,6 +17,7 @@ from apps.alerts.models import Alert
 from apps.hosts.models import Host
 from apps.hosts.views import checkin, register
 from apps.statuspage.views import public_status as status_public_view
+from apps.statuspage.views import public_status_data as status_public_data_view
 
 # Hosts that haven't checked in within this window are surfaced in a
 # collapsed "Inactive" section on the dashboard rather than mixed in with
@@ -131,6 +132,7 @@ urlpatterns = [
     path("", include("apps.civilsso.urls")),
     path("agent/", include("apps.agent_dist.urls")),
     path("status/<str:token>/", status_public_view, name="status-public"),
+    path("status/<str:token>/data/", status_public_data_view, name="status-public-data"),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 

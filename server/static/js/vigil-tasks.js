@@ -509,19 +509,10 @@ function defCardHtml(def, opts) {
   // Community cards come from the public GitHub repo (no local id) — Fork
   // opens the template's YAML in the editor; saving adds it to the library.
   // Submissions flow the other way via GitHub PR — see openCommunitySubmit().
-  // Owner-only Delete sits next to Edit so it's findable without a
-  // hover-menu but visually subdued so it doesn't compete with Deploy.
   const buttons = opts.mode === 'community'
     ? `${def.html_url ? `<a class="btn btn-ghost btn-sm" style="color:var(--text-3);text-decoration:none;" href="${escHtml(def.html_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">View on GitHub</a>` : ''}
        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openCommunityTemplate('${encodeURIComponent(def.filename)}')">Fork</button>`
-    : `<button class="btn btn-ghost btn-sm" style="color:var(--text-3);" title="Delete this task definition"
-              onclick="event.stopPropagation(); deleteDefinition('${def.id}', this)">
-         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-           <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
-           <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
-         </svg>
-       </button>
-       <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openDefinitionEditor('${def.id}')">Edit</button>
+    : `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openDefinitionEditor('${def.id}')">Edit</button>
        <button class="btn btn-sky btn-sm" onclick="event.stopPropagation(); openDeployModal('${def.id}')">Deploy</button>`;
   const cardClick = opts.mode === 'community'
     ? `openCommunityTemplate('${encodeURIComponent(def.filename)}')`
@@ -629,33 +620,6 @@ async function forkDefinition(id) {
     if (libTab) libTab.click();
   } catch (e) {
     showToast('Fork failed: ' + e.message, 'error');
-  }
-}
-
-async function deleteDefinition(id, btn) {
-  // Resolve the display name from the card DOM rather than passing it
-  // through the inline onclick — escHtml here doesn't escape quotes, so
-  // a name with a " would have broken the attribute (and silently fell
-  // through to the card's open-editor handler).
-  const card = btn && btn.closest ? btn.closest('.def-card') : null;
-  const titleEl = card && card.querySelector('.def-card-title');
-  const label = (titleEl && titleEl.textContent.trim()) || 'this task';
-  if (!window.confirm(`Delete "${label}"? Past runs in History are kept, but the definition is gone for good.`)) return;
-  try {
-    const resp = await fetch(`/api/v1/tasks/definitions/${id}/`, {
-      method: 'DELETE',
-      credentials: 'same-origin',
-      headers: { 'X-CSRFToken': _csrfToken() },
-    });
-    if (resp.status === 204) {
-      showToast(`Deleted "${label}"`, 'success');
-      refreshTaskLibrary();
-    } else {
-      const body = await resp.json().catch(() => ({}));
-      throw new Error(body.error || `HTTP ${resp.status}`);
-    }
-  } catch (e) {
-    showToast('Delete failed: ' + e.message, 'error');
   }
 }
 
@@ -1025,65 +989,7 @@ function _buildTaskHistoryRow(t) {
   badge.textContent = TASK_STATE_LABELS[t.state] || t.state;
   row.appendChild(badge);
 
-  // Delete control — only for tasks that have stopped moving. In-flight
-  // tasks could still produce a result POST, so we don't risk orphaning
-  // anything.
-  const TERMINAL = new Set(['completed', 'failed', 'rejected', 'expired', 'skipped']);
-  if (TERMINAL.has(t.state)) {
-    const del = document.createElement('button');
-    del.className = 'btn btn-sm btn-ghost task-row-delete';
-    del.title = 'Delete this task row from history';
-    del.style.color = 'var(--text-3)';
-    del.setAttribute('aria-label', 'Delete task');
-    const x = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    x.setAttribute('viewBox', '0 0 24 24');
-    x.setAttribute('width', '14');
-    x.setAttribute('height', '14');
-    x.setAttribute('fill', 'none');
-    x.setAttribute('stroke', 'currentColor');
-    x.setAttribute('stroke-width', '2');
-    x.setAttribute('stroke-linecap', 'round');
-    const ln1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    ln1.setAttribute('x1', '18'); ln1.setAttribute('y1', '6');
-    ln1.setAttribute('x2', '6');  ln1.setAttribute('y2', '18');
-    const ln2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    ln2.setAttribute('x1', '6');  ln2.setAttribute('y1', '6');
-    ln2.setAttribute('x2', '18'); ln2.setAttribute('y2', '18');
-    x.appendChild(ln1); x.appendChild(ln2);
-    del.appendChild(x);
-    del.addEventListener('click', (ev) => {
-      ev.stopPropagation();           // don't open the run detail modal
-      _deleteTaskHistoryRow(t.id, row, del);
-    });
-    row.appendChild(del);
-  }
-
   return row;
-}
-
-async function _deleteTaskHistoryRow(taskId, rowEl, btnEl) {
-  if (!window.confirm('Delete this task from history? This is permanent.')) return;
-  btnEl.disabled = true; btnEl.style.opacity = '0.5';
-  try {
-    const resp = await fetch(`/api/v1/tasks/${taskId}/`, {
-      method: 'DELETE',
-      credentials: 'same-origin',
-      headers: { 'X-CSRFToken': _csrfToken() },
-    });
-    if (resp.status === 204) {
-      rowEl.style.transition = 'opacity 0.18s, transform 0.18s';
-      rowEl.style.opacity = '0';
-      rowEl.style.transform = 'translateX(8px)';
-      setTimeout(() => rowEl.remove(), 200);
-      showToast('Task deleted', 'success');
-    } else {
-      const body = await resp.json().catch(() => ({}));
-      throw new Error(body.error || `HTTP ${resp.status}`);
-    }
-  } catch (e) {
-    showToast('Delete failed: ' + e.message, 'error');
-    btnEl.disabled = false; btnEl.style.opacity = '1';
-  }
 }
 
 function _csrfToken() {

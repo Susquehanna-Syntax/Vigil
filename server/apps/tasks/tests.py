@@ -292,26 +292,21 @@ class TaskHistorySoftDeleteTests(TestCase):
             state=state,
         )
 
-    def test_delete_hides_but_preserves_row(self):
+    def test_task_history_delete_is_gone(self):
+        # History rows are the audit trail — the DELETE verb no longer exists.
         task = self._task(Task.State.COMPLETED)
         resp = self.client.delete(f"/api/v1/tasks/{task.id}/")
-        self.assertEqual(resp.status_code, 204)
-        task.refresh_from_db()  # row still exists — audit trail is immutable
-        self.assertTrue(task.hidden)
+        self.assertEqual(resp.status_code, 405)
+        task.refresh_from_db()
+        self.assertFalse(task.hidden)
 
     def test_hidden_task_absent_from_history(self):
         task = self._task(Task.State.COMPLETED)
-        self.client.delete(f"/api/v1/tasks/{task.id}/")
+        task.hidden = True
+        task.save(update_fields=["hidden"])
         resp = self.client.get("/api/v1/tasks/history/")
         ids = [t["id"] for t in resp.data["results"]]
         self.assertNotIn(str(task.id), ids)
-
-    def test_in_flight_task_cannot_be_deleted(self):
-        task = self._task(Task.State.DISPATCHED)
-        resp = self.client.delete(f"/api/v1/tasks/{task.id}/")
-        self.assertEqual(resp.status_code, 409)
-        task.refresh_from_db()
-        self.assertFalse(task.hidden)
 
     def test_history_does_not_expose_nonce(self):
         self._task(Task.State.COMPLETED)

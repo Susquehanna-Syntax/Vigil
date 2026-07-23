@@ -254,6 +254,14 @@ CELERY_BEAT_SCHEDULE = {
         "task": "metrics.prune_old_metric_points",
         "schedule": 3600.0,  # every hour
     },
+    "sample-host-uptime": {
+        "task": "statuspage.sample_uptime",
+        "schedule": 300.0,  # every 5 minutes — feeds the status-page uptime bars
+    },
+    "prune-old-uptime-samples": {
+        "task": "statuspage.prune_old_uptime_samples",
+        "schedule": 86400.0,  # once daily
+    },
     "sync-vulns": {
         "task": "vulns.sync_vulns",
         "schedule": 3600.0,  # every hour — iterates every configured scanner
@@ -315,7 +323,7 @@ VIGIL_AGENT_VERSION = os.environ.get("VIGIL_AGENT_VERSION", "2026.3.16")
 # Server build version — surfaced on the About page and the /api/v1/about/
 # endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
 # this constant should stay in lockstep.
-VIGIL_VERSION = "2026.4.0"
+VIGIL_VERSION = "2026.4.1"
 
 # ---------------------------------------------------------------------------
 # Display / locale
