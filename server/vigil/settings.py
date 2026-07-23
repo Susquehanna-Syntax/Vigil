@@ -254,6 +254,14 @@ CELERY_BEAT_SCHEDULE = {
         "task": "metrics.prune_old_metric_points",
         "schedule": 3600.0,  # every hour
     },
+    "sample-host-uptime": {
+        "task": "statuspage.sample_uptime",
+        "schedule": 300.0,  # every 5 minutes — feeds the status-page uptime bars
+    },
+    "prune-old-uptime-samples": {
+        "task": "statuspage.prune_old_uptime_samples",
+        "schedule": 86400.0,  # once daily
+    },
     "sync-vulns": {
         "task": "vulns.sync_vulns",
         "schedule": 3600.0,  # every hour — iterates every configured scanner

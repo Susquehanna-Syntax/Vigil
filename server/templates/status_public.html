@@ -92,19 +92,39 @@
                          50%      { box-shadow: 0 0 0 7px rgba(166,227,161,0); } }
 
     /* ── Host cards ─────────────────────────────────────────────────────── */
-    ul { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-    .card { background: var(--card); border-radius: 12px; padding: 16px 18px;
-            display: flex; align-items: center; gap: 14px;
-            border-left: 4px solid var(--mint);
+    ul { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+    /* The whole card is tinted by current state — mint when up, rose when down. */
+    .card { border-radius: 14px; padding: 16px 18px;
+            border: 1px solid transparent; border-left-width: 4px;
             animation: rise .6s var(--ease-out-expo) both; }
-    .card--down { border-left-color: var(--rose); background: var(--card-2); }
+    .card--up   { background: rgba(166, 227, 161, .11); border-color: rgba(166, 227, 161, .22);
+                  border-left-color: var(--mint); }
+    .card--down { background: rgba(243, 139, 168, .12); border-color: rgba(243, 139, 168, .26);
+                  border-left-color: var(--rose); }
+    .card-top { display: flex; align-items: center; gap: 14px; }
     .card-name { font-weight: 500; font-size: 1rem; }
-    .card-state { margin-left: auto; font-family: "IBM Plex Mono", monospace;
+    .card-uptime { margin-left: auto; font-family: "IBM Plex Mono", monospace;
+                   font-size: .8rem; color: var(--text-2); }
+    .card-state { font-family: "IBM Plex Mono", monospace;
                   font-size: .82rem; padding: 4px 12px; border-radius: 999px; }
-    .card-state--up   { color: var(--mint); background: rgba(166, 227, 161, .1); }
-    .card-state--down { color: var(--rose); background: rgba(243, 139, 168, .1); }
-    .card-empty { color: var(--muted); justify-content: center;
-                  border-left-color: var(--lavender); }
+    .card-state--up   { color: var(--mint); background: rgba(166, 227, 161, .14); }
+    .card-state--down { color: var(--rose); background: rgba(243, 139, 168, .14); }
+    .card-empty { color: var(--muted); text-align: center;
+                  background: rgba(186, 168, 232, .08); border-left-color: var(--lavender); }
+
+    /* ── Uptime bar strip — one thin bar per day over the window ─────────── */
+    .uptime { margin-top: 14px; }
+    .uptime-bars { display: flex; align-items: flex-end; gap: 2px; height: 34px; }
+    .ubar { flex: 1 1 0; min-width: 0; height: 100%; border-radius: 2px;
+            transition: transform .12s var(--ease-out-expo); }
+    .ubar:hover { transform: scaleY(1.12); }
+    .ubar--up       { background: var(--mint); }
+    .ubar--degraded { background: var(--peach); }
+    .ubar--down     { background: var(--rose); }
+    .ubar--nodata   { background: rgba(156, 156, 176, .18); }
+    .uptime-axis { display: flex; justify-content: space-between; margin-top: 6px;
+                   font-size: 10.5px; color: var(--muted);
+                   font-family: "IBM Plex Mono", monospace; }
     @keyframes rise { from { opacity: 0; transform: translateY(14px); }
                       to   { opacity: 1; transform: translateY(0); } }
 
@@ -152,11 +172,25 @@
 
     <ul>
       {% for h in hosts %}
-      <li class="card{% if not h.up %} card--down{% endif %}" style="animation-delay: {% widthratio forloop.counter0 1 60 %}ms">
-        <span class="card-name">{{ h.hostname }}</span>
-        <span class="card-state card-state--{% if h.up %}up{% else %}down{% endif %}">
-          {% if h.up %}operational{% else %}down{% endif %}
-        </span>
+      <li class="card card--{% if h.up %}up{% else %}down{% endif %}" style="animation-delay: {% widthratio forloop.counter0 1 60 %}ms">
+        <div class="card-top">
+          <span class="card-name">{{ h.hostname }}</span>
+          {% if h.uptime_pct %}<span class="card-uptime">{{ h.uptime_pct }}% uptime</span>{% endif %}
+          <span class="card-state card-state--{% if h.up %}up{% else %}down{% endif %}">
+            {% if h.up %}operational{% else %}down{% endif %}
+          </span>
+        </div>
+        {% if h.bars %}
+        <div class="uptime">
+          <div class="uptime-bars">
+            {% for bar in h.bars %}<span class="ubar ubar--{{ bar.state }}" title="{{ bar.label }}"></span>{% endfor %}
+          </div>
+          <div class="uptime-axis">
+            <span>{{ window_days }} days ago</span>
+            <span>today</span>
+          </div>
+        </div>
+        {% endif %}
       </li>
       {% empty %}
       <li class="card card-empty">No hosts on this page yet.</li>

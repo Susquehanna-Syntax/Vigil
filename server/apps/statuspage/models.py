@@ -19,6 +19,26 @@ def _token() -> str:
     return secrets.token_urlsafe(16)
 
 
+class HostUptimeSample(models.Model):
+    """A periodic up/down reading for a host, sampled by a beat task.
+
+    Availability history for the status page's uptime bars. One row per host
+    per sample interval; ``up`` is True when the host was Online at sample
+    time. Kept in the status-page app so core ``hosts`` gains no columns.
+    """
+
+    host = models.ForeignKey(
+        "hosts.Host", on_delete=models.CASCADE, related_name="uptime_samples")
+    time = models.DateTimeField(db_index=True)
+    up = models.BooleanField()
+
+    class Meta:
+        indexes = [models.Index(fields=["host", "time"])]
+
+    def __str__(self) -> str:
+        return f"{self.host_id} {'up' if self.up else 'down'} @ {self.time}"
+
+
 class StatusPage(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     # The unguessable URL slug. Rotatable by saving a new one.
