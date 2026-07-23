@@ -79,17 +79,22 @@ function _renderPickerList(q) {
   q = (q || '').trim().toLowerCase();
   const items = q ? _pickerItems.filter(i => i.name.toLowerCase().includes(q) || (i.meta || '').toLowerCase().includes(q)) : _pickerItems;
   if (!items.length) { list.innerHTML = `<div class="picker-empty">${_pickerItems.length ? 'No matches.' : 'Nothing here yet — use “Add new”.'}</div>`; return; }
-  list.innerHTML = items.map((i, idx) => `
-    <div class="picker-row" data-key="${escHtml(String(i.key))}">
+  list.innerHTML = items.map((i, idx) => {
+    // Some contexts can't accept every item (e.g. high-risk tasks while
+    // building a baseline) — show them greyed with the reason, not hidden.
+    const why = _pickerState.ineligible ? _pickerState.ineligible(i) : null;
+    return `
+    <div class="picker-row${why ? ' picker-row-disabled' : ''}" data-key="${escHtml(String(i.key))}">
       <div class="picker-row-main">
         <span class="picker-row-name">${escHtml(i.name)}${i.risk ? ` <span class="risk-badge risk-${escHtml(i.risk)}">${escHtml(i.risk)}</span>` : ''}</span>
-        <span class="picker-row-meta">${escHtml(i.meta || '')}</span>
+        <span class="picker-row-meta">${escHtml(i.meta || '')}${why ? ` · <span class="picker-why">${escHtml(why)}</span>` : ''}</span>
       </div>
       <div class="picker-row-actions">
         ${i.editable ? `<button class="btn btn-outline btn-xs" data-pick-edit="${idx}">Edit</button>` : ''}
-        <button class="btn btn-mint btn-xs" data-pick-sel="${idx}">Select</button>
+        <button class="btn btn-mint btn-xs" data-pick-sel="${idx}" ${why ? `disabled title="${escHtml(why)}"` : ''}>Select</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   list.querySelectorAll('[data-pick-sel]').forEach(b => b.addEventListener('click', () => {
     const item = items[+b.dataset.pickSel];
     closePicker();
@@ -117,6 +122,67 @@ function _pickerAdd(type) {
     closePicker();
     if (typeof _openEditor === 'function') _openEditor(null, null);   // baselines editor
   }
+}
+
+/* ═══ Inputs modal — per-use param overrides for a task definition ═══════ */
+let _actionRegistry = null;
+
+async function openInputsModal(opts) {
+  // opts: { def, override, onSave(newOverride) }
+  if (!_actionRegistry) _actionRegistry = await apiJson('/api/v1/tasks/actions/');
+  const def = opts.def;
+  const override = opts.override || {};
+  const m = mountModal('inputs', { wide: true });
+  const actions = (def.parsed_spec && def.parsed_spec.actions) || [];
+  const sections = actions.map((a, i) => {
+    const entry = _actionRegistry[a.type];
+    const head = `<div class="inputs-action"><span class="bl-editor-step-num">${i + 1}</span> ${escHtml(entry && entry.label ? entry.label : a.type)}</div>`;
+    if (!entry) return head + '<div class="muted-note">No editable inputs.</div>';
+    const names = [...(entry.required || []), ...(entry.optional || [])];
+    if (!names.length) return head + '<div class="muted-note">This action takes no inputs.</div>';
+    const rows = names.map(name => {
+      const required = (entry.required || []).includes(name);
+      const current = (override[String(i)] || {})[name];
+      const fallback = (a.params || {})[name];
+      return `<label>${escHtml(name)}${required ? ' *' : ''}</label>
+        <input type="text" class="form-control" data-inp-action="${i}" data-inp-name="${escHtml(name)}"
+          value="${current != null ? escHtml(String(current)) : ''}"
+          placeholder="${fallback != null ? escHtml(String(fallback)) : ''}">`;
+    }).join('');
+    return `${head}<div class="inputs-grid">${rows}</div>`;
+  }).join('');
+  m.setBody(`
+    <div class="modal-title">
+      <span>Inputs — ${escHtml(def.name)}</span>
+      <button class="modal-close" id="inputs-close" aria-label="Close">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="muted-note" style="margin-bottom:6px;">Changes apply only where this task is used here — the task itself is untouched. Blank fields use the task's own values.</div>
+    ${sections || '<div class="muted-note">This task has no actions.</div>'}
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="inputs-reset" type="button">Reset to task defaults</button>
+      <button class="btn btn-ghost" id="inputs-cancel" type="button">Cancel</button>
+      <button class="btn btn-mint" id="inputs-save" type="button">Save inputs</button>
+    </div>`);
+  m.modal.querySelector('#inputs-close').onclick = m.close;
+  m.modal.querySelector('#inputs-cancel').onclick = m.close;
+  m.overlay.onclick = m.close;
+  m.modal.querySelector('#inputs-reset').onclick = () => {
+    m.modal.querySelectorAll('[data-inp-action]').forEach(el => { el.value = ''; });
+  };
+  m.modal.querySelector('#inputs-save').onclick = () => {
+    const built = {};
+    m.modal.querySelectorAll('[data-inp-action]').forEach(el => {
+      const v = el.value.trim();
+      if (!v) return;
+      const key = el.dataset.inpAction;
+      (built[key] = built[key] || {})[el.dataset.inpName] = v;
+    });
+    m.close();
+    opts.onSave(built);
+  };
+  m.open();
 }
 
 /* ═══ In-modal task editor ═══════════════════════════════════════════════ */

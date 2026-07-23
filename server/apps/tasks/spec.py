@@ -969,3 +969,41 @@ def _validate_target_tags(raw: Any) -> list[str]:
         seen.add(s)
         canonical.append(s)
     return canonical
+
+
+def validate_params_override(spec: dict, override) -> str | None:
+    """Validate a per-use params override against a parsed task spec.
+
+    Baseline steps and automations may override action params without editing
+    the shared definition. ``override`` maps stringified action indexes to
+    ``{param: value}`` dicts; params must be declared (required or optional)
+    by that action's registry entry and values must be scalars. Returns an
+    error string, or None when valid.
+    """
+    if not override:
+        return None
+    if not isinstance(override, dict):
+        return "params_override must be an object"
+    actions = spec.get("actions") or []
+    for key, params in override.items():
+        try:
+            index = int(key)
+        except (TypeError, ValueError):
+            return f"no action at index {key!r}"
+        if not 0 <= index < len(actions):
+            return f"no action at index {key}"
+        if not isinstance(params, dict) or not all(
+            isinstance(v, (str, int, float, bool)) for v in params.values()
+        ):
+            return f"params for action {index} must be a mapping of name to value"
+        action_type = actions[index].get("type", "")
+        entry = ACTION_REGISTRY.get(action_type)
+        if entry is None:
+            # Spec validation at definition save is the authority on action
+            # types; don't second-guess it here.
+            continue
+        declared = set(entry["required"]) | set(entry["optional"])
+        for name in params:
+            if name not in declared:
+                return f"{name!r} is not a parameter of {action_type}"
+    return None

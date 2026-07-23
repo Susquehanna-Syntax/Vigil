@@ -181,6 +181,37 @@ class AutomationApiTests(TestCase):
         self.assertFalse(resp.json()["enabled"])
         self.assertEqual(self.client.delete(f"/api/v1/automations/{a.id}/").status_code, 204)
 
+    def test_params_override_round_trips_and_applies(self):
+        d = make_def(actions=[{"type": "restart_service",
+                               "params": {"service_name": "nginx"}}])
+        a = Automation.objects.create(name="svc", trigger="event", event="alert_fired",
+                                      action_kind="task", task_definition=d,
+                                      target="all", created_by=self.admin)
+        resp = self.client.patch(f"/api/v1/automations/{a.id}/", {
+            "params_override": {"0": {"service_name": "postgres"}}},
+            content_type="application/json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()["params_override"],
+                         {"0": {"service_name": "postgres"}})
+        host = make_host()
+        a.refresh_from_db()
+        self.assertEqual(run_automation(a), 1)
+        task = Task.objects.get(host=host)
+        self.assertEqual(task.params["steps"][0]["params"],
+                         {"service_name": "postgres"})
+
+    def test_unknown_override_param_rejected(self):
+        d = make_def(actions=[{"type": "restart_service",
+                               "params": {"service_name": "nginx"}}])
+        a = Automation.objects.create(name="bad-ov", trigger="event", event="alert_fired",
+                                      action_kind="task", task_definition=d,
+                                      target="event_host", created_by=self.admin)
+        resp = self.client.patch(f"/api/v1/automations/{a.id}/", {
+            "params_override": {"0": {"bogus": "x"}}},
+            content_type="application/json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("bogus", resp.json()["detail"])
+
     def test_requires_admin(self):
         get_user_model().objects.create_user("v", password="x")
         c = self.client_class()

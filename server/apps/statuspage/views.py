@@ -13,25 +13,114 @@ from .models import StatusPage
 BRANDING_FIELDS = ("site_id", "logo_url", "hide_badge")
 
 
+UPTIME_WINDOW_DAYS = 90
+
+
+def _uptime_history(host_objs):
+    """Daily uptime bars + overall % for each host over the render window.
+
+    Returns ``{host_id: {"bars": [...], "pct": float|None}}`` where each bar is
+    ``{"pct": float|None, "state": "up|degraded|down|nodata", "label": str}``.
+    Availability comes from HostUptimeSample; a day with no samples is neutral.
+    """
+    from datetime import timedelta
+
+    from django.db.models import Count, Q
+    from django.db.models.functions import TruncDate
+    from django.utils.timezone import localdate
+
+    from .models import HostUptimeSample
+
+    today = localdate()
+    start = today - timedelta(days=UPTIME_WINDOW_DAYS - 1)
+    days = [start + timedelta(days=i) for i in range(UPTIME_WINDOW_DAYS)]
+
+    rows = (HostUptimeSample.objects
+            .filter(host__in=host_objs, time__date__gte=start)
+            .annotate(day=TruncDate("time"))
+            .values("host_id", "day")
+            .annotate(total=Count("id"), up=Count("id", filter=Q(up=True))))
+
+    by_host: dict = {}
+    for r in rows:
+        by_host.setdefault(str(r["host_id"]), {})[r["day"]] = (r["up"], r["total"])
+
+    history = {}
+    for h in host_objs:
+        per_day = by_host.get(str(h.id), {})
+        bars, up_total, samp_total = [], 0, 0
+        for day in days:
+            up, total = per_day.get(day, (0, 0))
+            if total:
+                pct = up / total
+                state = ("up" if pct >= 0.995 else
+                         "degraded" if pct >= 0.90 else "down")
+                label = f"{day:%b %-d}: {pct * 100:.1f}% up"
+                up_total += up
+                samp_total += total
+            else:
+                pct, state = None, "nodata"
+                label = f"{day:%b %-d}: no data"
+            bars.append({"pct": pct, "state": state, "label": label})
+        history[str(h.id)] = {
+            "bars": bars,
+            "pct": (up_total / samp_total) if samp_total else None,
+        }
+    return history
+
+
+def _page_hosts(page):
+    """The host rows the page renders: current up/down, uptime bars, and the
+    overall percent. Shared by the HTML page and its polling JSON endpoint."""
+    labels = page.host_labels or {}
+    host_objs = list(page.hosts())
+    history = _uptime_history(host_objs)
+    hosts = []
+    for h in host_objs:
+        hist = history.get(str(h.id), {})
+        pct = hist.get("pct")
+        hosts.append({
+            "id": str(h.id),
+            "hostname": labels.get(str(h.id)) or h.hostname,
+            "up": h.status == Host.Status.ONLINE,
+            "bars": hist.get("bars", []),
+            "uptime_pct": f"{pct * 100:.2f}" if pct is not None else None,
+        })
+    return hosts
+
+
 def public_status(request, token):
     """The public page. No auth — the token IS the access control. Branding
     fields only render when the license carries status_branding, so a lapsed
     Business page cleanly falls back to the free look instead of breaking."""
     page = get_object_or_404(StatusPage, token=token, enabled=True)
     branded = has_feature("status_branding")
-    labels = page.host_labels or {}
-    hosts = [
-        {"hostname": labels.get(str(h.id)) or h.hostname,
-         "up": h.status == Host.Status.ONLINE}
-        for h in page.hosts()
-    ]
+    hosts = _page_hosts(page)
     return render(request, "status_public.html", {
         "page": page,
         "hosts": hosts,
         "all_up": all(h["up"] for h in hosts) if hosts else True,
+        "up_count": sum(1 for h in hosts if h["up"]),
+        "window_days": UPTIME_WINDOW_DAYS,
         "branded": branded,
         "show_badge": not (branded and page.hide_badge),
         "logo_url": page.logo_url if branded else "",
+    })
+
+
+def public_status_data(request, token):
+    """JSON snapshot of a page's current status — polled by the live page so it
+    refreshes in place without a full reload (which would replay animations).
+    Same token-only access model as the HTML page."""
+    from django.http import JsonResponse
+
+    page = get_object_or_404(StatusPage, token=token, enabled=True)
+    hosts = _page_hosts(page)
+    return JsonResponse({
+        "all_up": all(h["up"] for h in hosts) if hosts else True,
+        "up_count": sum(1 for h in hosts if h["up"]),
+        "total": len(hosts),
+        "hosts": hosts,
     })
 
 

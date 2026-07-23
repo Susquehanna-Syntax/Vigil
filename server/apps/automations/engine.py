@@ -41,8 +41,16 @@ def _steps_for(automation) -> tuple[list[dict], str] | None:
     if definition is None:
         return None
     spec = definition.parsed_spec or {}
+    actions_src = spec.get("actions") or []
+    override = automation.params_override or {}
+    if override:
+        actions_src = [
+            {**a, "params": {**(a.get("params") or {}),
+                             **override.get(str(idx), {})}}
+            for idx, a in enumerate(actions_src)
+        ]
     try:
-        actions, risk = expand_actions(spec.get("actions") or [])
+        actions, risk = expand_actions(actions_src)
     except BaselineExpandError as exc:
         logger.warning("automation %s: task expand failed: %s", automation.pk, exc)
         return None

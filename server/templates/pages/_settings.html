@@ -333,7 +333,8 @@
           `curl -fsSL ${window.location.origin}/agent/install.sh | sudo bash`;
         document.getElementById('install-cmd-ps1').textContent =
           `irm ${window.location.origin}/agent/install.ps1 | iex`;
-        loadAgentInfo();
+        // vigil-settings.js loads after this inline block — defer the call.
+        document.addEventListener('DOMContentLoaded', () => loadAgentInfo());
       </script>
         </div>
         </div><!-- settings-content -->
