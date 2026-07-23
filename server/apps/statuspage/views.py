@@ -69,12 +69,9 @@ def _uptime_history(host_objs):
     return history
 
 
-def public_status(request, token):
-    """The public page. No auth — the token IS the access control. Branding
-    fields only render when the license carries status_branding, so a lapsed
-    Business page cleanly falls back to the free look instead of breaking."""
-    page = get_object_or_404(StatusPage, token=token, enabled=True)
-    branded = has_feature("status_branding")
+def _page_hosts(page):
+    """The host rows the page renders: current up/down, uptime bars, and the
+    overall percent. Shared by the HTML page and its polling JSON endpoint."""
     labels = page.host_labels or {}
     host_objs = list(page.hosts())
     history = _uptime_history(host_objs)
@@ -83,11 +80,22 @@ def public_status(request, token):
         hist = history.get(str(h.id), {})
         pct = hist.get("pct")
         hosts.append({
+            "id": str(h.id),
             "hostname": labels.get(str(h.id)) or h.hostname,
             "up": h.status == Host.Status.ONLINE,
             "bars": hist.get("bars", []),
             "uptime_pct": f"{pct * 100:.2f}" if pct is not None else None,
         })
+    return hosts
+
+
+def public_status(request, token):
+    """The public page. No auth — the token IS the access control. Branding
+    fields only render when the license carries status_branding, so a lapsed
+    Business page cleanly falls back to the free look instead of breaking."""
+    page = get_object_or_404(StatusPage, token=token, enabled=True)
+    branded = has_feature("status_branding")
+    hosts = _page_hosts(page)
     return render(request, "status_public.html", {
         "page": page,
         "hosts": hosts,
@@ -97,6 +105,22 @@ def public_status(request, token):
         "branded": branded,
         "show_badge": not (branded and page.hide_badge),
         "logo_url": page.logo_url if branded else "",
+    })
+
+
+def public_status_data(request, token):
+    """JSON snapshot of a page's current status — polled by the live page so it
+    refreshes in place without a full reload (which would replay animations).
+    Same token-only access model as the HTML page."""
+    from django.http import JsonResponse
+
+    page = get_object_or_404(StatusPage, token=token, enabled=True)
+    hosts = _page_hosts(page)
+    return JsonResponse({
+        "all_up": all(h["up"] for h in hosts) if hosts else True,
+        "up_count": sum(1 for h in hosts if h["up"]),
+        "total": len(hosts),
+        "hosts": hosts,
     })
 
 
