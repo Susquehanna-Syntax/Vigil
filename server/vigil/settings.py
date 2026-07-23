@@ -15,6 +15,16 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "false").lower() in ("true", "1", "yes")
 
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
+# Origins trusted for unsafe (POST) requests. Required when Vigil is served
+# behind a reverse proxy or under an external hostname, otherwise Django rejects
+# POSTs with "Origin checking failed". Comma-separated, scheme included, e.g.
+# DJANGO_CSRF_TRUSTED_ORIGINS=https://vigil.kingdom.local,https://vigil.acme.com
+CSRF_TRUSTED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if o.strip()
+]
+
 # ---------------------------------------------------------------------------
 # Apps
 # ---------------------------------------------------------------------------
@@ -323,7 +333,7 @@ VIGIL_AGENT_VERSION = os.environ.get("VIGIL_AGENT_VERSION", "2026.3.16")
 # Server build version — surfaced on the About page and the /api/v1/about/
 # endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
 # this constant should stay in lockstep.
-VIGIL_VERSION = "2026.4.1"
+VIGIL_VERSION = "2026.4.2"
 
 # ---------------------------------------------------------------------------
 # Display / locale
