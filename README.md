@@ -278,6 +278,11 @@ success_criteria:
   output_contains: "active (running)"   # substring match
   output_regex: "^OK"                   # regex (applied after output_contains)
 
+# Optional: write this task's output into the host's inventory as a custom column
+collect:
+  column: nginx_version           # required — the custom_columns key (≤ 80 chars)
+  parse: output_line_1            # optional — output_line_1 (default) | output_trim | output_full
+
 actions:
   - id: reload
     type: reload_service
@@ -299,6 +304,35 @@ actions:
 **Retry** — on step failure the agent re-runs the step after `delay_seconds`, up to `attempts` times, before marking the task as failed.
 
 **Success criteria** — even a zero exit code is treated as failure if `output_contains` or `output_regex` doesn't match. Per-step criteria override the top-level criteria.
+
+**Collect** — a task marked with a top-level `collect:` block becomes an inventory data collector: when the run finishes on a host, the task's output is written into that host's `HostInventory.custom_columns`, and the column auto-appears on the Inventory page. The block is a **single mapping** (not a list, and not one entry per column — one task collects one column), with these keys:
+
+| Key | Required | Meaning |
+|---|---|---|
+| `column` | yes | The `custom_columns` key to write. String, ≤ 80 characters. |
+| `parse` | no | How the task output becomes the stored value. One of `output_line_1` (default), `output_trim`, `output_full`. |
+
+There is **no `value:` key and no `{{ steps.* }}` templating** — the value always comes from the task's own output, transformed by `parse`:
+
+- `output_line_1` *(default)* — the first non-empty line of output, with a leading `[OK]` step prefix and any `label:` prefix stripped; truncated to 500 characters. Best for a task whose script echoes a single value.
+- `output_trim` — the entire output, whitespace-trimmed, truncated to 500 characters.
+- `output_full` — the entire output verbatim, truncated to 2000 characters.
+
+The column is written per host when that host's task completes, so running one `collect:` task against a tag or fleet fills the column for every targeted host. Worked example — record each host's kernel release into a `kernel` column:
+
+```yaml
+name: Record kernel version
+description: Capture uname -r into the host inventory.
+risk: low
+collect:
+  column: kernel
+  parse: output_line_1
+actions:
+  - id: uname
+    type: run_command
+    params:
+      command: "uname -r"
+```
 
 ### Available actions
 
