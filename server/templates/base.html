@@ -16,11 +16,13 @@
 <link rel="apple-touch-icon" href="{% static 'img/vigil-logo.png' %}">
 {% block extra_head %}{% endblock %}
 <script>
-  // Apply the saved theme before first paint to avoid a flash.
+  // Apply the saved theme and density before first paint to avoid a flash.
   (function () {
     try {
       var t = localStorage.getItem('vigil-theme') || 'dark';
       document.documentElement.setAttribute('data-theme', t);
+      var d = localStorage.getItem('vigil-density') || 'cozy';
+      document.documentElement.setAttribute('data-density', d);
     } catch (e) {}
   })();
 </script>
