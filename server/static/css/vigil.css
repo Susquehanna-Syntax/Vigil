@@ -2190,3 +2190,21 @@ select.form-control:hover { border-color: var(--s4); }
 .inputs-action { margin: 14px 0 6px; display: flex; align-items: center; gap: 8px; font-weight: 500; }
 .inputs-grid { display: grid; grid-template-columns: 160px 1fr; gap: 8px 12px; align-items: center; }
 .inputs-grid label { color: var(--text-2); font-size: 0.85rem; }
+
+/* ═══════════════════════════════════════════
+   LAYOUT DENSITY — compact overrides.
+   Override-only: absence of [data-density="compact"] = cozy (the base rules),
+   so switching back to Cozy restores the original spacing exactly.
+   ═══════════════════════════════════════════ */
+.density-toggle { display: inline-flex; gap: 8px; }
+.density-toggle .btn.active { background: var(--sky); color: #1c1c21; border-color: transparent; }
+
+:root[data-density="compact"] .main { padding: 20px 26px 40px; }
+:root[data-density="compact"] .page-header { margin-bottom: 18px; }
+:root[data-density="compact"] .section-label { margin: 22px 0 10px; }
+:root[data-density="compact"] .host-grid { gap: 7px; }
+:root[data-density="compact"] .host-card { padding: 14px; gap: 12px; }
+:root[data-density="compact"] .stat-card { padding: 15px; }
+:root[data-density="compact"] .totp-card { padding: 16px 18px; }
+:root[data-density="compact"] .metric-card { padding: 12px; }
+:root[data-density="compact"] .enroll-card { padding: 12px 14px; }
