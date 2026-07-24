@@ -15,6 +15,7 @@
           <button class="settings-nav-item" data-pane="identity"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg>Shared Identity</button>
           <button class="settings-nav-item" data-pane="directory"><svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg>Directory Import</button>
           <button class="settings-nav-item" data-pane="agents"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3v4M8 3v4"/></svg>Agents</button>
+          <button class="settings-nav-item" data-pane="users"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>Users &amp; Roles</button>
           <button class="settings-nav-item" data-pane="display"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>Display</button>
           <button class="settings-nav-item" data-pane="distribution"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Agent Binary</button>
         </nav>
@@ -240,6 +241,32 @@
         No agents registered yet.
       </div>
       {% endif %}
+
+        </div>
+        <div class="settings-pane" data-pane="users">
+      <div class="section-label">Users</div>
+      <div class="totp-card">
+        <div class="totp-sub" style="margin-bottom:6px;">Manage who can sign in and what they can do. Admins configure Vigil and approve agents; Operators deploy tasks and acknowledge alerts; Viewers are read-only. The Operator role requires a Business license.</div>
+        <p id="users-seats" class="muted" style="margin-bottom:12px;"></p>
+        <div id="users-list"></div>
+      </div>
+
+      <div class="section-label" style="margin-top:32px;">Add a user</div>
+      <div class="totp-card">
+        <div class="setting-row"><label>Username</label><input type="text" class="form-control" id="nu-username" placeholder="e.g. jsmith" autocomplete="off"></div>
+        <div class="setting-row"><label>Email</label><input type="email" class="form-control" id="nu-email" placeholder="optional" autocomplete="off"></div>
+        <div class="setting-row"><label>Password</label><input type="password" class="form-control" id="nu-password" placeholder="at least 8 characters" autocomplete="new-password"></div>
+        <div class="setting-row"><label>Role</label>
+          <select class="form-control" id="nu-role">
+            <option value="viewer">Viewer</option>
+            <option value="operator">Operator (Business)</option>
+            <option value="admin">Admin</option>
+          </select></div>
+        <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
+          <button class="btn btn-mint btn-sm" id="nu-create" onclick="createUser()">Create user</button>
+          <span id="nu-result" class="muted"></span>
+        </div>
+      </div>
 
         </div>
         <div class="settings-pane" data-pane="display">

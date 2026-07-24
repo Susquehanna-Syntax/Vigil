@@ -2208,3 +2208,17 @@ select.form-control:hover { border-color: var(--s4); }
 :root[data-density="compact"] .totp-card { padding: 16px 18px; }
 :root[data-density="compact"] .metric-card { padding: 12px; }
 :root[data-density="compact"] .enroll-card { padding: 12px 14px; }
+
+/* ═══════════════════════════════════════════
+   USERS & ROLES — settings pane rows
+   ═══════════════════════════════════════════ */
+.user-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.user-row:last-child { border-bottom: none; }
+.user-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.user-row-name { font-weight: 600; font-size: 0.9rem; }
+.user-row-email { font-size: 0.8rem; }
+.user-row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.user-role-select { width: 130px; padding: 6px 10px; font-size: 0.82rem; }
