@@ -296,3 +296,59 @@ class RbacSeatTests(TestCase):
         c = self.client_class()
         c.login(username="pleb", password="x")
         self.assertEqual(c.get("/api/v1/accounts/users/").status_code, 403)
+
+
+class UserDeleteTests(TestCase):
+    """DELETE /api/v1/accounts/users/<id>/ — admin-only, with self and
+    last-admin guards."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = get_user_model().objects.create_user(
+            "admin", password="pw", is_staff=True
+        )
+        self.viewer = get_user_model().objects.create_user("viewer", password="pw")
+
+    def _url(self, user):
+        return f"/api/v1/accounts/users/{user.pk}/"
+
+    def test_non_admin_forbidden(self):
+        self.client.force_authenticate(self.viewer)
+        self.assertEqual(self.client.delete(self._url(self.admin)).status_code, 403)
+        self.assertTrue(get_user_model().objects.filter(pk=self.admin.pk).exists())
+
+    def test_admin_deletes_viewer(self):
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.delete(self._url(self.viewer)).status_code, 204)
+        self.assertFalse(get_user_model().objects.filter(pk=self.viewer.pk).exists())
+
+    def test_cannot_delete_self(self):
+        self.client.force_authenticate(self.admin)
+        resp = self.client.delete(self._url(self.admin))
+        self.assertEqual(resp.status_code, 400)
+        self.assertTrue(get_user_model().objects.filter(pk=self.admin.pk).exists())
+
+    def test_cannot_delete_last_admin(self):
+        # Promote the viewer to admin, then it becomes deletable from the other
+        # admin's session; but the *only* admin cannot be removed.
+        other = get_user_model().objects.create_user(
+            "admin2", password="pw", is_staff=True
+        )
+        self.client.force_authenticate(other)
+        # Deleting one of two admins is fine.
+        self.assertEqual(self.client.delete(self._url(self.admin)).status_code, 204)
+        # Now `other` is the last admin — deleting it (as itself) is blocked by
+        # the self-guard, and by the last-admin guard from any other session.
+        self.client.force_authenticate(self.viewer)  # viewer is not admin → 403
+        self.assertEqual(self.client.delete(self._url(other)).status_code, 403)
+        # Make the viewer an admin so we can prove the last-admin guard, not the
+        # self-guard, protects `other`.
+        UserProfile.objects.update_or_create(
+            user=self.viewer, defaults={"role": "admin"}
+        )
+        self.viewer.is_staff = True
+        self.viewer.save(update_fields=["is_staff"])
+        self.client.force_authenticate(self.viewer)
+        self.assertEqual(self.client.delete(self._url(other)).status_code, 204)
+        # Only the viewer-admin remains; it cannot delete itself (self-guard).
+        self.assertEqual(self.client.delete(self._url(self.viewer)).status_code, 400)

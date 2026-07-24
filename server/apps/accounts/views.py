@@ -325,6 +325,33 @@ def user_role(request, user_id):
     return resp if resp is not None else Response(_user_row(user))
 
 
+@api_view(["DELETE"])
+def user_detail(request, user_id):
+    """Delete a user. Admin-only, with two guards: you cannot delete your own
+    account (that is what makes you an admin), and you cannot delete the last
+    administrator (it would lock the install out of settings and enrollment)."""
+    from .models import Role
+    from .permissions import IsAdmin, role_of
+
+    if not IsAdmin().has_permission(request, None):
+        return Response({"detail": IsAdmin.message}, status=403)
+    User = get_user_model()
+    try:
+        target = User.objects.get(pk=user_id)
+    except User.DoesNotExist:
+        return Response(status=404)
+    if target.pk == request.user.pk:
+        return Response({"detail": "You cannot delete your own account."}, status=400)
+    if role_of(target) == Role.ADMIN:
+        admins = sum(1 for u in User.objects.all() if role_of(u) == Role.ADMIN)
+        if admins <= 1:
+            return Response(
+                {"detail": "Cannot delete the last administrator."}, status=400
+            )
+    target.delete()
+    return Response(status=204)
+
+
 def _apply_role(user, role: str):
     """Set *role* on *user*'s profile. Returns an error Response or None.
 
