@@ -112,6 +112,20 @@ This brings up Django, PostgreSQL + TimescaleDB, Redis, Celery worker, and Celer
 | `EMAIL_HOST` | `localhost` | SMTP host |
 | `EMAIL_PORT` | `587` | SMTP port |
 | `VIGIL_NOTIFICATION_FROM_EMAIL` | `vigil@localhost` | From address for alert emails |
+| `VIGIL_PUBLIC_URL` | — | External URL for remote access; its host/origin are auto-added to `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS` |
+| `VIGIL_TRUST_PROXY` | `false` | Trust `X-Forwarded-Proto`/`Host` from a TLS-terminating proxy/tunnel |
+| `TUNNEL_TOKEN` | — | Cloudflare Tunnel token for `docker compose --profile tunnel up` |
+
+---
+
+## Remote Access (off-LAN check-in)
+
+Agents are outbound-only, so reaching Vigil from outside the LAN is just a matter
+of exposing the server at a public or overlay address. Set `VIGIL_PUBLIC_URL` to
+your external URL and `VIGIL_TRUST_PROXY=true` when a proxy terminates TLS. The
+repo ships a `cloudflared` sidecar (`docker compose --profile tunnel up -d`) for
+Cloudflare Tunnel. Full recipes for **Cloudflare Tunnel**, **Tailscale**, and a
+generic **reverse proxy** are in [docs/REMOTE-ACCESS.md](docs/REMOTE-ACCESS.md).
 
 ---
 

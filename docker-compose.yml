@@ -63,6 +63,11 @@ services:
       VIGIL_SIGNING_KEY_SEED: ${VIGIL_SIGNING_KEY_SEED:-}
       VIGIL_TIMEZONE: ${VIGIL_TIMEZONE:-UTC}
       VIGIL_AGENT_VERSION: ${VIGIL_AGENT_VERSION:-2026.3.8}
+      # Remote access (see docs/REMOTE-ACCESS.md). Set VIGIL_PUBLIC_URL to your
+      # external URL and VIGIL_TRUST_PROXY=true when serving through Cloudflare
+      # Tunnel / Tailscale / a reverse proxy. Both default to off (LAN-only).
+      VIGIL_PUBLIC_URL: ${VIGIL_PUBLIC_URL:-}
+      VIGIL_TRUST_PROXY: ${VIGIL_TRUST_PROXY:-false}
       POSTGRES_DB: ${POSTGRES_DB:-vigil}
       POSTGRES_USER: ${POSTGRES_USER:-vigil}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
@@ -116,6 +121,22 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  # Cloudflare Tunnel sidecar — opt-in. Publishes Vigil to a public hostname
+  # without opening any inbound port on your network. Enable with:
+  #   docker compose --profile tunnel up -d
+  # after creating a tunnel in the Cloudflare Zero Trust dashboard and setting
+  # TUNNEL_TOKEN (and VIGIL_PUBLIC_URL + VIGIL_TRUST_PROXY=true). Point the
+  # tunnel's public hostname at http://web:8000. See docs/REMOTE-ACCESS.md.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      - web
 
 volumes:
   pgdata:
