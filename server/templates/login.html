@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vigil — Sign In</title>
+<title>{% if branding.product_name %}{{ branding.product_name }}{% else %}Vigil{% endif %} — Sign In</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{% static 'css/vigil.css' %}">
 <link rel="icon" type="image/png" href="{% static 'img/vigil-logo.png' %}">
@@ -12,9 +12,16 @@
 <body class="auth-page">
 <div class="auth-wrap">
   <div class="auth-card">
+    {% if branding.logo_url %}
+    <img class="auth-logo" src="{{ branding.logo_url }}" alt="{{ branding.product_name|default:'Vigil' }}">
+    {% endif %}
+    {% if branding.product_name %}
+    <div class="auth-wordmark">{{ branding.product_name }}<span style="color:var(--mint);">.</span></div>
+    {% else %}
     <div class="auth-wordmark">Vigil<span style="color:var(--mint);">.</span></div>
+    {% endif %}
     <div class="auth-headline">Welcome back</div>
-    <div class="auth-sub">Sign in to your Vigil instance</div>
+    <div class="auth-sub">Sign in to your {{ branding.product_name|default:"Vigil" }} instance</div>
 
     {% if error %}
     <div class="auth-error">{{ error }}</div>
@@ -37,7 +44,7 @@
     <a class="btn" style="width:100%;margin-top:10px;display:inline-block;text-align:center;box-sizing:border-box;" href="{% url 'civil-login' %}{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% endif %}">Sign in with Civil</a>
     {% endif %}
   </div>
-  <div class="auth-footer">Vigil &mdash; A Susquehanna Syntax product</div>
+  <div class="auth-footer">{% if branding.footer_text %}{{ branding.footer_text }}{% else %}Vigil &mdash; A Susquehanna Syntax product{% endif %}</div>
 </div>
 </body>
 </html>

@@ -123,6 +123,7 @@ urlpatterns = [
     path("api/v1/vulns/", include("apps.vulns.urls")),
     path("api/v1/accounts/", include("apps.accounts.urls")),
     path("api/v1/sites/", include("apps_business.sites.urls")),
+    path("api/v1/branding/", include("apps_business.branding.urls")),
     path("api/v1/audits/", include("apps_business.audits.urls")),
     path("api/v1/license/", include("apps.licensing.urls")),
     path("api/v1/baselines/", include("apps.baselines.urls")),

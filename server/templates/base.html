@@ -87,6 +87,7 @@
     <div class="license-banner license-banner--{{ b.severity }}">{{ b.message }}</div>
     {% endfor %}
     {% block content %}{% endblock %}
+    <div id="vigil-footer" class="vigil-footer"></div>
   </main>
 </div>
 
@@ -626,6 +627,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-users.js' %}"></script>
 <!-- vigil-sites.js — Sites pane (list/create/rename/delete, host assignment) -->
 <script src="{% static 'js/vigil-sites.js' %}"></script>
+<!-- vigil-branding.js — Branding pane + client-side apply on every authed page -->
+<script src="{% static 'js/vigil-branding.js' %}"></script>
 <!-- vigil-enroll.js — enrollment wizard modal -->
 <script src="{% static 'js/vigil-enroll.js' %}"></script>
 <!-- vigil-about.js — server / agent / scanner version surface -->

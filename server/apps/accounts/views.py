@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from django.contrib import auth
 from django.contrib.auth import authenticate, get_user_model
+from django.db import DatabaseError
 from django.shortcuts import redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timezone import now
@@ -202,6 +203,22 @@ def setup_view(request):
     return render(request, "setup.html", {"step": 1, "error": error})
 
 
+def _branding():
+    """Business branding for the pre-auth login page, or None.
+
+    Imported lazily so the login page still renders if the Business app is
+    absent from this build — branding is decoration, never a gate on signing in.
+    """
+    try:
+        from apps_business.branding.models import BrandingConfig
+    except ImportError:
+        return None
+    try:
+        return BrandingConfig.load()
+    except DatabaseError:
+        return None
+
+
 def login_view(request):
     User = get_user_model()
     if not User.objects.exists():
@@ -217,7 +234,11 @@ def login_view(request):
 
         if _login_blocked(username, ip):
             error = "Too many failed sign-in attempts. Try again in a few minutes."
-            return render(request, "login.html", {"error": error}, status=429)
+            return render(
+                request, "login.html",
+                {"error": error, "branding": _branding()},
+                status=429,
+            )
 
         user = authenticate(request, username=username, password=password)
         if user is not None:
@@ -233,7 +254,7 @@ def login_view(request):
         _record_login_failure(username, ip)
         error = "Invalid username or password"
 
-    return render(request, "login.html", {"error": error})
+    return render(request, "login.html", {"error": error, "branding": _branding()})
 
 
 def logout_view(request):
