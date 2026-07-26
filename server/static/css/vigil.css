@@ -2222,3 +2222,30 @@ select.form-control:hover { border-color: var(--s4); }
 .user-row-email { font-size: 0.8rem; }
 .user-row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .user-role-select { width: 130px; padding: 6px 10px; font-size: 0.82rem; }
+
+/* ═══════════════════════════════════════════
+   SITES — settings pane rows
+   ═══════════════════════════════════════════ */
+.site-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.site-row:last-child { border-bottom: none; }
+.site-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.site-row-name { font-weight: 600; font-size: 0.9rem; }
+.site-row-desc { font-size: 0.8rem; }
+.site-row-meta { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.site-row-actions { display: flex; align-items: center; gap: 8px; }
+.site-badge {
+  display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+  background: rgba(126,221,181,0.15); color: var(--mint);
+  font-size: 0.68rem; font-weight: 600; letter-spacing: 0.02em; vertical-align: middle;
+}
+.assign-list { max-height: 320px; overflow-y: auto; margin-bottom: 10px; }
+.assign-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 2px; border-bottom: 1px solid var(--border); font-size: 0.86rem;
+}
+.assign-row:last-child { border-bottom: none; }
+:root[data-density="compact"] .site-row { padding: 8px 0; }
+:root[data-density="compact"] .assign-row { padding: 5px 2px; }
