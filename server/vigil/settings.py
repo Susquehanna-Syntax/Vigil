@@ -38,6 +38,12 @@ CSRF_TRUSTED_ORIGINS = [
 # you don't have to set DJANGO_ALLOWED_HOSTS and DJANGO_CSRF_TRUSTED_ORIGINS by
 # hand as well.
 _public_url = os.environ.get("VIGIL_PUBLIC_URL", "").strip().rstrip("/")
+
+#: Exported so the UI can hand out enrollment commands that point at the
+#: external URL rather than whatever address the admin happens to be browsing
+#: from — a LAN IP baked into an agent stops working the moment it leaves.
+VIGIL_PUBLIC_URL = _public_url
+
 if _public_url:
     from urllib.parse import urlsplit
 

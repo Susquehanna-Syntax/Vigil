@@ -103,6 +103,7 @@ def dashboard(request):
         "vigil_timezone": django_settings.VIGIL_TIMEZONE,
         "vigil_time_format": django_settings.VIGIL_TIME_FORMAT,
         "vigil_username": request.user.username,
+        "vigil_public_url": django_settings.VIGIL_PUBLIC_URL,
     })
 
 

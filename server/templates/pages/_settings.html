@@ -408,11 +408,19 @@
         </div>
       </div>
 
+      {{ vigil_public_url|default:""|json_script:"vigil-public-url" }}
       <script>
+        // Prefer VIGIL_PUBLIC_URL over the address this admin happens to be
+        // browsing from. Enrolling from a LAN IP would bake that IP into the
+        // agent, which then stops checking in the moment the host leaves the
+        // LAN. See docs/REMOTE-ACCESS.md.
+        const vigilEnrollOrigin =
+          JSON.parse(document.getElementById('vigil-public-url').textContent)
+          || window.location.origin;
         document.getElementById('install-cmd').textContent =
-          `curl -fsSL ${window.location.origin}/agent/install.sh | sudo bash`;
+          `curl -fsSL ${vigilEnrollOrigin}/agent/install.sh | sudo bash`;
         document.getElementById('install-cmd-ps1').textContent =
-          `irm ${window.location.origin}/agent/install.ps1 | iex`;
+          `irm ${vigilEnrollOrigin}/agent/install.ps1 | iex`;
         // vigil-settings.js loads after this inline block — defer the call.
         document.addEventListener('DOMContentLoaded', () => loadAgentInfo());
       </script>
