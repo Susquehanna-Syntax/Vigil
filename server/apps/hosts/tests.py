@@ -193,3 +193,30 @@ class AboutEndpointAuthTests(TestCase):
         resp = self.client.get("/api/v1/about/")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("vigil_version", resp.data)
+
+
+class EnrollmentOriginTests(TestCase):
+    """The install one-liner must point at VIGIL_PUBLIC_URL when it is set.
+
+    Enrolling from a LAN address bakes that address into the agent, which then
+    silently stops checking in once the host leaves the LAN — the exact failure
+    remote access exists to prevent. See docs/REMOTE-ACCESS.md.
+    """
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("op", password="pw", is_staff=True)
+        self.client.force_login(self.user)
+
+    @override_settings(VIGIL_PUBLIC_URL="https://vigil.example.com")
+    def test_public_url_is_served_to_the_enrollment_snippet(self):
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "https://vigil.example.com")
+
+    @override_settings(VIGIL_PUBLIC_URL="")
+    def test_falls_back_to_browser_origin_when_unset(self):
+        """Unset means the template hands JS an empty string and JS falls back."""
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'id="vigil-public-url"')
+        self.assertContains(resp, "window.location.origin")

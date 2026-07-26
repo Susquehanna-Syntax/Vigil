@@ -23,8 +23,12 @@ There is exactly one Vigil-side knob plus one safety flag:
 Also set `VIGIL_SECURE_COOKIES=true` once you're serving over HTTPS.
 
 Point the agent at the same URL: in the agent's `agent.yml`, set the server URL
-to your `VIGIL_PUBLIC_URL` (or re-run the install one-liner from that URL —
-`install.sh` bakes in `window.location.origin`).
+to your `VIGIL_PUBLIC_URL`. New enrollments need no thought — once
+`VIGIL_PUBLIC_URL` is set, the install one-liner under **Settings → Agent
+Binary** hands out that URL rather than whatever address you happen to be
+browsing from, so an agent enrolled over the LAN still checks in after it
+leaves. Agents enrolled *before* you set the variable keep the old address and
+need `agent.yml` updated (or a re-install) to follow you off-LAN.
 
 ---
 
