@@ -95,6 +95,7 @@ INSTALLED_APPS = [
     # Business features (apps_business/LICENSE) — installed always, unlocked by license
     "apps_business.sites",
     "apps_business.audits",
+    "apps_business.branding",
 ]
 
 # ---------------------------------------------------------------------------

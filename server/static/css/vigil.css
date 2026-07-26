@@ -23,6 +23,9 @@
   --lemon: #e2d478;
   --coral: #f09080;
 
+  /* Business branding overrides this at runtime; unset branding is a no-op. */
+  --brand: var(--sky);
+
   --r-sm: 10px;
   --r-md: 14px;
   --r-lg: 20px;
@@ -2249,3 +2252,19 @@ select.form-control:hover { border-color: var(--s4); }
 .assign-row:last-child { border-bottom: none; }
 :root[data-density="compact"] .site-row { padding: 8px 0; }
 :root[data-density="compact"] .assign-row { padding: 5px 2px; }
+
+/* ═══════════════════════════════════════════
+   BRANDING — instance footer + login logo
+   ═══════════════════════════════════════════ */
+.vigil-footer {
+  margin-top: 32px; padding: 16px 0 4px;
+  text-align: center; font-size: 0.78rem; color: var(--text-3);
+}
+.vigil-footer:empty { display: none; }
+.vigil-footer a { color: var(--text-3); text-decoration: none; }
+.vigil-footer a:hover { color: var(--brand); text-decoration: underline; }
+.auth-logo {
+  display: block; max-width: 160px; max-height: 64px;
+  margin: 0 auto 14px; object-fit: contain;
+}
+:root[data-density="compact"] .vigil-footer { margin-top: 20px; padding: 10px 0 2px; }
