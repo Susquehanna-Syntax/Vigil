@@ -16,6 +16,7 @@
           <button class="settings-nav-item" data-pane="directory"><svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg>Directory Import</button>
           <button class="settings-nav-item" data-pane="agents"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3v4M8 3v4"/></svg>Agents</button>
           <button class="settings-nav-item" data-pane="users"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>Users &amp; Roles</button>
+          <button class="settings-nav-item" data-pane="sites"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>Sites</button>
           <button class="settings-nav-item" data-pane="display"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>Display</button>
           <button class="settings-nav-item" data-pane="distribution"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Agent Binary</button>
         </nav>
@@ -265,6 +266,25 @@
         <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
           <button class="btn btn-mint btn-sm" id="nu-create" onclick="createUser()">Create user</button>
           <span id="nu-result" class="muted"></span>
+        </div>
+      </div>
+
+        </div>
+        <div class="settings-pane" data-pane="sites">
+      <div class="section-label">Sites</div>
+      <div class="totp-card">
+        <div class="totp-sub" style="margin-bottom:12px;">Sites are administrative boundaries — a campus, a department, a client org — that group hosts. Free installs use the single default site; a Business license lets you add more and assign hosts.</div>
+        <div id="sites-list"></div>
+      </div>
+
+      <div class="section-label" style="margin-top:32px;">Add a site</div>
+      <div class="totp-card">
+        <div class="setting-row"><label>Name</label><input type="text" class="form-control" id="ns-name" placeholder="e.g. West Campus" autocomplete="off"></div>
+        <div class="setting-row"><label>Slug</label><input type="text" class="form-control" id="ns-slug" placeholder="west-campus" autocomplete="off"></div>
+        <div class="setting-row"><label>Description</label><input type="text" class="form-control" id="ns-description" placeholder="optional" autocomplete="off"></div>
+        <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
+          <button class="btn btn-mint btn-sm" id="ns-create" onclick="createSite()">Create site</button>
+          <span id="ns-note" class="muted"></span>
         </div>
       </div>
 
