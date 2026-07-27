@@ -95,6 +95,7 @@ This brings up Django, PostgreSQL + TimescaleDB, Redis, Celery worker, and Celer
 | `DJANGO_SECRET_KEY` | `insecure-dev-key-…` | Django secret key — **change in production** |
 | `DJANGO_DEBUG` | `true` | Set to `false` in production |
 | `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated allowed hosts |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | _(empty)_ | Comma-separated origins trusted for POSTs, scheme included — required behind a proxy or external hostname, else `Origin checking failed` |
 | `USE_SQLITE` | _(unset)_ | Set to `true` to use SQLite instead of PostgreSQL |
 | `POSTGRES_DB` | `vigil` | PostgreSQL database name |
 | `POSTGRES_USER` | `vigil` | PostgreSQL user |
