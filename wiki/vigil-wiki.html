@@ -190,6 +190,10 @@
       <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
       Deployment
     </a>
+    <a href="#remote-access" class="nav-link">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      Remote Access
+    </a>
     <a href="#editions" class="nav-link">
       <svg viewBox="0 0 24 24"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4z"/></svg>
       Tiers &amp; Licensing
@@ -610,6 +614,155 @@
             <tr><td><code>media</code></td><td>Manually uploaded agent binaries (overrides baked-in binaries)</td></tr>
           </tbody>
         </table>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- REMOTE ACCESS -->
+    <section class="section" id="remote-access">
+      <p class="section-label">Getting Started</p>
+      <h2 class="section-title" style="color:var(--sky)">Remote Access — checking in from outside the LAN</h2>
+      <p class="section-desc">Getting a laptop to keep reporting after it leaves the building. The short version: <strong>agents are outbound-only</strong>, so this is entirely about exposing the <em>server</em> — you never open a port on a monitored host.</p>
+
+      <div class="callout callout-info">
+        <div class="callout-icon">i</div>
+        <div>Vigil agents open HTTPS connections <strong>to</strong> the server and never listen for inbound traffic. So "remote access" means putting the server at an address the agent can reach — a public hostname or a VPN/overlay address. The agent protocol doesn't change; you point it at a new URL.</div>
+      </div>
+
+      <h3>The one knob</h3>
+      <p class="prose">Set <code>VIGIL_PUBLIC_URL</code> to the URL Vigil is reached at from outside. Its host is appended to <code>ALLOWED_HOSTS</code> and its origin to <code>CSRF_TRUSTED_ORIGINS</code> automatically, so you set <strong>one</strong> variable instead of three.</p>
+      <div class="code-block">
+        <div class="code-label">.env</div>
+<pre><span class="hl-comment"># The external URL — scheme included, no trailing slash.</span>
+<span class="hl-var">VIGIL_PUBLIC_URL</span>=https://vigil.example.com
+
+<span class="hl-comment"># Set when a proxy/tunnel terminates TLS in front of Vigil.</span>
+<span class="hl-var">VIGIL_TRUST_PROXY</span>=true
+<span class="hl-var">VIGIL_SECURE_COOKIES</span>=true</pre>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>VIGIL_PUBLIC_URL</code></td><td>The external URL. Auto-populates <code>ALLOWED_HOSTS</code> + <code>CSRF_TRUSTED_ORIGINS</code>, and is handed out in the agent install one-liner so new enrollments don't bake in a LAN address.</td></tr>
+            <tr><td><code>VIGIL_TRUST_PROXY</code></td><td>Honors <code>X-Forwarded-Proto</code>/<code>Host</code>, so <code>request.is_secure()</code>, secure cookies, and the login redirect allow-list all see the real public scheme and host.</td></tr>
+            <tr><td><code>VIGIL_SECURE_COOKIES</code></td><td>Marks session and CSRF cookies <code>Secure</code>. Turn on once you're serving HTTPS.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout callout-warn">
+        <div class="callout-icon">!</div>
+        <div><strong>Only enable <code>VIGIL_TRUST_PROXY</code> when the proxy is the ONLY route to Vigil.</strong> The shipped <code>docker-compose.yml</code> still publishes <code>9200:8000</code> for LAN use. If you rely on a tunnel exclusively, remove that <code>ports:</code> mapping (or firewall it) before turning this on — otherwise a client reaching the container directly can spoof <code>X-Forwarded-Proto</code> and be treated as HTTPS.</div>
+      </div>
+
+      <h3>Option A — Cloudflare Tunnel</h3>
+      <p class="prose">A real <code>https://vigil.example.com</code> on a domain you control, TLS handled by Cloudflare, and <strong>no inbound ports</strong> opened on your network. Best when you want the dashboard reachable from anywhere.</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-content">
+            <strong>Create the tunnel</strong><br>
+            In the Cloudflare Zero Trust dashboard → <strong>Networks → Tunnels</strong>, create a tunnel and copy its <strong>token</strong>.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>Add a public hostname</strong><br>
+            Point e.g. <code>vigil.example.com</code> → service <code>HTTP</code> → <code>http://web:8000</code> (the compose service name and internal port).
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>Fill in .env</strong>
+            <div class="code-block" style="margin-top:10px;">
+              <div class="code-label">.env</div>
+<pre><span class="hl-var">TUNNEL_TOKEN</span>=eyJhIjoi...           <span class="hl-comment"># from step 1</span>
+<span class="hl-var">VIGIL_PUBLIC_URL</span>=https://vigil.example.com
+<span class="hl-var">VIGIL_TRUST_PROXY</span>=true
+<span class="hl-var">VIGIL_SECURE_COOKIES</span>=true</pre>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>Start with the tunnel profile</strong>
+            <div class="code-block" style="margin-top:10px;">
+              <div class="code-label">Shell</div>
+<pre><span class="hl-cmd">docker compose --profile tunnel up -d</span></pre>
+            </div>
+            The bundled <code>cloudflared</code> sidecar connects out to Cloudflare. Agents and your browser reach the hostname from anywhere.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>Close the LAN port</strong><br>
+            Remove or firewall the <code>web</code> service's <code>9200:8000</code> mapping so the tunnel is the only path in — see the warning above.
+          </div>
+        </div>
+      </div>
+
+      <h3>Option B — Tailscale</h3>
+      <p class="prose">A private overlay: only your own devices and agent hosts on the tailnet can reach Vigil, and <strong>nothing is published to the public internet</strong>. Best when you don't need outside access.</p>
+      <div class="code-block">
+        <div class="code-label">.env</div>
+<pre><span class="hl-comment"># Use the MagicDNS name of the host running Vigil.</span>
+<span class="hl-var">VIGIL_PUBLIC_URL</span>=https://vigil-host.tailnet-name.ts.net
+
+<span class="hl-comment"># Only if you front it with Tailscale Serve/HTTPS. Plain http:// over the</span>
+<span class="hl-comment"># tailnet needs neither of these.</span>
+<span class="hl-var">VIGIL_TRUST_PROXY</span>=true
+<span class="hl-var">VIGIL_SECURE_COOKIES</span>=true</pre>
+      </div>
+
+      <h3>Option C — Reverse proxy (nginx / Caddy)</h3>
+      <p class="prose">You already terminate TLS somewhere. Point the proxy at <code>web:8000</code>, make sure it sets the forwarded headers, and set the same three variables.</p>
+      <div class="code-block">
+        <div class="code-label">nginx</div>
+<pre><span class="hl-var">proxy_set_header</span> Host <span class="hl-string">$host</span>;
+<span class="hl-var">proxy_set_header</span> X-Forwarded-Proto <span class="hl-string">$scheme</span>;
+<span class="hl-var">proxy_set_header</span> X-Forwarded-Host <span class="hl-string">$host</span>;
+<span class="hl-var">proxy_pass</span> http://web:8000;</pre>
+      </div>
+
+      <h3>Pointing agents at it</h3>
+      <p class="prose">Once <code>VIGIL_PUBLIC_URL</code> is set, the install one-liner under <strong>Settings → Agent Binary</strong> hands out that URL rather than whatever address you happen to be browsing from. So an agent enrolled while you're on the LAN still checks in after it leaves.</p>
+      <div class="callout callout-warn">
+        <div class="callout-icon">!</div>
+        <div><strong>Agents enrolled <em>before</em> you set <code>VIGIL_PUBLIC_URL</code> keep the old address.</strong> They'll work on the LAN and go silent off it. Fix each one by editing the server URL in its <code>agent.yml</code> and restarting the service, or re-running the install one-liner from the public URL. The pinned signing key survives the move — it's tied to the server's identity, not its address, so no re-enrollment ceremony is needed.</div>
+      </div>
+      <div class="code-block">
+        <div class="code-label">agent.yml (on the monitored host)</div>
+<pre><span class="hl-var">server_url</span>: <span class="hl-string">https://vigil.example.com</span></pre>
+      </div>
+
+      <h3>Verifying it works</h3>
+      <div class="code-block">
+        <div class="code-label">Shell (from off the LAN)</div>
+<pre><span class="hl-comment"># Should return {"status": "ok"} — no auth required.</span>
+<span class="hl-cmd">curl -fsSL https://vigil.example.com/api/v1/health/</span>
+
+<span class="hl-comment"># Confirm Django agrees about the public host (no DisallowedHost error).</span>
+<span class="hl-cmd">docker compose exec web python -c <span class="hl-string">"from django.conf import settings; print(settings.ALLOWED_HOSTS, settings.CSRF_TRUSTED_ORIGINS)"</span></span></pre>
+      </div>
+
+      <h3>Troubleshooting</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+          <tbody>
+            <tr><td><code>DisallowedHost</code> / <em>Invalid HTTP_HOST header</em></td><td><code>VIGIL_PUBLIC_URL</code> isn't set, or has a typo/trailing path. It must be scheme + host only.</td></tr>
+            <tr><td><em>Origin checking failed</em> / CSRF failure on login</td><td>The browser's origin isn't trusted. <code>VIGIL_PUBLIC_URL</code> covers one hostname; if you reach Vigil at several, add the rest to <code>DJANGO_CSRF_TRUSTED_ORIGINS</code> (comma-separated, <strong>scheme included</strong>).</td></tr>
+            <tr><td>Redirected to <code>http://</code> after login, or session drops</td><td>The proxy terminates TLS but Django doesn't know. Set <code>VIGIL_TRUST_PROXY=true</code> — and confirm the proxy actually sets <code>X-Forwarded-Proto</code>.</td></tr>
+            <tr><td>Agents online on the LAN, offline elsewhere</td><td>They were enrolled with a LAN address baked in. Update <code>server_url</code> in <code>agent.yml</code> — see the warning above.</td></tr>
+            <tr><td>Browser works, agents still fail</td><td>Usually TLS: the agent verifies certificates unconditionally and offers no way to disable it. A self-signed cert on the proxy will fail — use a real cert (Cloudflare/Let's Encrypt) or the tailnet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout callout-tip">
+        <div class="callout-icon">✓</div>
+        <div>Full recipes with per-provider detail live in <code>docs/REMOTE-ACCESS.md</code> in the repo.</div>
       </div>
     </section>
     <div class="divider"></div>
@@ -1811,7 +1964,7 @@
       </div>
 
       <h3>Networking &amp; remote access</h3>
-      <p class="prose">Agents are outbound-only, so reaching Vigil from off-LAN is entirely about exposing the <strong>server</strong>. See the Remote Access section for full recipes.</p>
+      <p class="prose">Agents are outbound-only, so reaching Vigil from off-LAN is entirely about exposing the <strong>server</strong>. See <a href="#remote-access" style="color:var(--sky)">Remote Access</a> for the full walkthrough.</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
