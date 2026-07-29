@@ -1,0 +1,127 @@
+"""Site scope resolution — the single source of truth for "what is visible here".
+
+Core (AGPL) never imports apps_business directly. Everything goes through this
+module, which degrades to "no scoping" when the Business sites app is absent,
+the same way apps/accounts/views.py:_branding() degrades.
+
+Nothing in this module may sit in a path that could stop monitoring, alerting,
+or agent ingest (SQSY-LICENSING §6).
+"""
+import logging
+
+from django.db.models import Q
+
+logger = logging.getLogger("vigil.scoping")
+
+#: Core model -> (assignment model name, FK field name on the assignment).
+#: Every assignment model uses the reverse accessor ``site_assignment``, which
+#: is what lets the queries below stay uniform.
+_ASSIGNMENTS = {
+    "baselines.Baseline": ("BaselineSiteAssignment", "baseline"),
+    "automations.Automation": ("AutomationSiteAssignment", "automation"),
+    "alerts.NotificationChannel": ("ChannelSiteAssignment", "channel"),
+}
+
+
+def _sites_models():
+    """The Business sites models module, or None when absent."""
+    try:
+        from apps_business.sites import models
+        return models
+    except ImportError:
+        return None
+
+
+def _assignment_for(model):
+    label = f"{model._meta.app_label}.{model.__name__}"
+    entry = _ASSIGNMENTS.get(label)
+    mods = _sites_models()
+    if entry is None or mods is None:
+        return None, None
+    name, field = entry
+    return getattr(mods, name), field
+
+
+def resources_for(model, site):
+    """Resources of `model` visible in `site`: its own, plus global ones it
+    has not suppressed. Unassigned resources count as global, which is why an
+    install that has never used sites resolves exactly as it did before."""
+    assignment, _field = _assignment_for(model)
+    if assignment is None or site is None:
+        return model.objects.all()
+
+    own = Q(site_assignment__site=site)
+    # "Global" is either an explicit assignment to the global site or no
+    # assignment at all — the two are deliberately equivalent.
+    is_global = Q(site_assignment__isnull=True) | Q(site_assignment__site__is_global=True)
+
+    suppressed = _suppressed_ids(site, model)
+    if suppressed:
+        is_global &= ~Q(id__in=suppressed)
+
+    return model.objects.filter(own | is_global).distinct()
+
+
+def _suppressed_ids(site, model):
+    mods = _sites_models()
+    if mods is None:
+        return set()
+    from django.contrib.contenttypes.models import ContentType
+    ct = ContentType.objects.get_for_model(model)
+    return set(
+        mods.GlobalSuppression.objects
+        .filter(site=site, content_type=ct)
+        .values_list("object_id", flat=True))
+
+
+def scope_of(obj):
+    """The Site owning `obj`, or the global site when it has no assignment."""
+    assignment, field = _assignment_for(type(obj))
+    mods = _sites_models()
+    if assignment is None or mods is None:
+        return None
+    row = assignment.objects.filter(**{field: obj}).select_related("site").first()
+    if row is not None:
+        return row.site
+    return mods.Site.objects.global_site()
+
+
+def suppress(site, obj):
+    """Hide a global resource from one site. Idempotent."""
+    mods = _sites_models()
+    if mods is None:
+        return
+    from django.contrib.contenttypes.models import ContentType
+    mods.GlobalSuppression.objects.get_or_create(
+        site=site, content_type=ContentType.objects.get_for_model(type(obj)),
+        object_id=obj.id)
+
+
+def unsuppress(site, obj):
+    """Undo suppress(). Idempotent."""
+    mods = _sites_models()
+    if mods is None:
+        return
+    from django.contrib.contenttypes.models import ContentType
+    mods.GlobalSuppression.objects.filter(
+        site=site, content_type=ContentType.objects.get_for_model(type(obj)),
+        object_id=obj.id).delete()
+
+
+def execution_allowed(obj) -> bool:
+    """May this resource's action run right now?
+
+    Site-scoped automations and baselines pause under a lapsed license; global
+    ones never do. NotificationChannel is never gated here — alert delivery is
+    not a licensable behavior (§6).
+    """
+    from apps.alerts.models import NotificationChannel
+    if isinstance(obj, NotificationChannel):
+        return True
+
+    from vigil import licensing
+    if licensing.has_feature("sites"):
+        return True
+
+    site = scope_of(obj)
+    return site is None or site.is_global
