@@ -70,6 +70,11 @@ def site_detail(request, site_id):
         ser.save()
         return Response(ser.data)
 
+    if site.is_global:
+        return Response(
+            {"detail": "The global site cannot be deleted."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     if site.is_default:
         return Response(
             {"detail": "The default site cannot be deleted."},

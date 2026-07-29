@@ -73,7 +73,9 @@ class SitesApiTests(TestCase):
         body = resp.json()
         self.assertEqual(body["feature"], "sites")
         self.assertIn("upgrade_url", body)
-        self.assertEqual(Site.objects.count(), 1)
+        # Nothing was created. Asserted by name rather than by total count:
+        # the default and global sites are structural rows, not user sites.
+        self.assertFalse(Site.objects.filter(slug="branch").exists())
 
     def test_license_lapse_freezes_writes_not_reads(self):
         self.license_up(exp_delta=-30 * 86400)  # past grace
@@ -129,3 +131,32 @@ class SitesApiTests(TestCase):
         resp = self.client.get("/api/v1/sites/")
         default = next(s for s in resp.json() if s["is_default"])
         self.assertEqual(default["host_count"], 1)
+
+
+class GlobalSiteTests(TestCase):
+    def test_exactly_one_global_site_exists_after_migrate(self):
+        self.assertEqual(Site.objects.filter(is_global=True).count(), 1)
+
+    def test_global_site_accessor_returns_it(self):
+        self.assertTrue(Site.objects.global_site().is_global)
+
+    def test_global_site_cannot_be_deleted(self):
+        with self.assertRaises(ValueError):
+            Site.objects.global_site().delete()
+
+    def test_default_site_cannot_be_deleted(self):
+        with self.assertRaises(ValueError):
+            Site.objects.get(is_default=True).delete()
+
+    def test_the_global_site_is_not_the_default_site(self):
+        """Hosts land in the default site; policies land in the global one."""
+        self.assertFalse(Site.objects.global_site().is_default)
+
+    def test_deleting_the_global_site_over_the_api_is_a_400_not_a_500(self):
+        user = get_user_model().objects.create_user("root", password="x", is_staff=True)
+        self.client.force_login(user)
+        with override_settings(VIGIL_LICENSE_PUBLIC_KEY=PUB):
+            licensing.set_license(make_blob())
+            resp = self.client.delete(f"/api/v1/sites/{Site.objects.global_site().id}/")
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertTrue(Site.objects.filter(is_global=True).exists())
