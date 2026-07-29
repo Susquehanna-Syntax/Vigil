@@ -20,7 +20,11 @@ class Baseline(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     # The callable identity: `type: baseline, params: {name: ...}` resolves
     # case-insensitively against this.
-    name = models.CharField(max_length=120, unique=True)
+    #
+    # Not unique at the DB level: once baselines are site-scoped, two sites may
+    # each own a "Nightly patch scan". Uniqueness is enforced within a scope by
+    # the view layer (see vigil/scoping.py).
+    name = models.CharField(max_length=120)
     description = models.TextField(blank=True, default="")
     # Optional tag filter: only hosts carrying at least one of these tags
     # receive the baseline at enrollment (empty = every approved host).
