@@ -6,13 +6,19 @@ import time
 import uuid
 
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
+from django.db import IntegrityError, transaction
 from django.test import TestCase, override_settings
 from nacl.signing import SigningKey
 
+from apps.baselines.models import Baseline
 from apps.hosts.models import Host
 from vigil import licensing
 
-from .models import HostSiteAssignment, Site
+from .models import (
+    AutomationSiteAssignment, BaselineSiteAssignment, ChannelSiteAssignment,
+    GlobalSuppression, HostSiteAssignment, Site, UserSiteRole,
+)
 
 SK = SigningKey.generate()
 PUB = base64.b64encode(SK.verify_key.encode()).decode()
@@ -160,3 +166,40 @@ class GlobalSiteTests(TestCase):
             resp = self.client.delete(f"/api/v1/sites/{Site.objects.global_site().id}/")
         self.assertEqual(resp.status_code, 400, resp.content)
         self.assertTrue(Site.objects.filter(is_global=True).exists())
+
+
+class ScopeAssignmentTests(TestCase):
+    def setUp(self):
+        self.site = Site.objects.create(name="West Campus", slug="west-campus")
+        self.baseline = Baseline.objects.create(name="Edge hardening")
+
+    def test_a_baseline_belongs_to_exactly_one_site(self):
+        BaselineSiteAssignment.objects.create(baseline=self.baseline, site=self.site)
+        other = Site.objects.create(name="Lab", slug="lab")
+        with transaction.atomic(), self.assertRaises(IntegrityError):
+            BaselineSiteAssignment.objects.create(baseline=self.baseline, site=other)
+
+    def test_deleting_the_baseline_removes_its_assignment(self):
+        BaselineSiteAssignment.objects.create(baseline=self.baseline, site=self.site)
+        self.baseline.delete()
+        self.assertEqual(BaselineSiteAssignment.objects.count(), 0)
+
+    def test_deleting_the_site_removes_its_assignments_but_not_the_baseline(self):
+        BaselineSiteAssignment.objects.create(baseline=self.baseline, site=self.site)
+        self.site.delete()
+        self.assertEqual(BaselineSiteAssignment.objects.count(), 0)
+        self.assertTrue(Baseline.objects.filter(pk=self.baseline.pk).exists())
+
+    def test_suppression_is_unique_per_site_and_object(self):
+        ct = ContentType.objects.get_for_model(Baseline)
+        GlobalSuppression.objects.create(
+            site=self.site, content_type=ct, object_id=self.baseline.id)
+        with transaction.atomic(), self.assertRaises(IntegrityError):
+            GlobalSuppression.objects.create(
+                site=self.site, content_type=ct, object_id=self.baseline.id)
+
+    def test_a_user_has_one_role_per_site(self):
+        user = get_user_model().objects.create_user("dana", password="x")
+        UserSiteRole.objects.create(user=user, site=self.site, role="operator")
+        with transaction.atomic(), self.assertRaises(IntegrityError):
+            UserSiteRole.objects.create(user=user, site=self.site, role="viewer")

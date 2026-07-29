@@ -1,5 +1,8 @@
 import uuid
 
+from django.conf import settings
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
 
@@ -48,3 +51,58 @@ class HostSiteAssignment(models.Model):
     )
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="host_assignments")
     assigned_at = models.DateTimeField(auto_now_add=True)
+
+
+class BaselineSiteAssignment(models.Model):
+    """Places a core Baseline in a Site. No row means the global scope."""
+    baseline = models.OneToOneField(
+        "baselines.Baseline", on_delete=models.CASCADE, related_name="site_assignment")
+    site = models.ForeignKey(Site, on_delete=models.CASCADE,
+                             related_name="baseline_assignments")
+    assigned_at = models.DateTimeField(auto_now_add=True)
+
+
+class AutomationSiteAssignment(models.Model):
+    """Places a core Automation in a Site. No row means the global scope."""
+    automation = models.OneToOneField(
+        "automations.Automation", on_delete=models.CASCADE, related_name="site_assignment")
+    site = models.ForeignKey(Site, on_delete=models.CASCADE,
+                             related_name="automation_assignments")
+    assigned_at = models.DateTimeField(auto_now_add=True)
+
+
+class ChannelSiteAssignment(models.Model):
+    """Places a core NotificationChannel in a Site. No row means global."""
+    channel = models.OneToOneField(
+        "alerts.NotificationChannel", on_delete=models.CASCADE,
+        related_name="site_assignment")
+    site = models.ForeignKey(Site, on_delete=models.CASCADE,
+                             related_name="channel_assignments")
+    assigned_at = models.DateTimeField(auto_now_add=True)
+
+
+class GlobalSuppression(models.Model):
+    """This site opts out of one global resource. Advisory only — suppressing
+    never edits or deletes the resource, which stays intact everywhere else."""
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="suppressions")
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.UUIDField()
+    resource = GenericForeignKey("content_type", "object_id")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("site", "content_type", "object_id")
+
+
+class UserSiteRole(models.Model):
+    """This user's role in this site. A user with NO rows falls back to their
+    UserProfile.role everywhere; a user with ANY row is restricted to the
+    sites named by their rows."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="site_roles")
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="user_roles")
+    role = models.CharField(max_length=20)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "site")
