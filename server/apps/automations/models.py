@@ -70,7 +70,13 @@ class Automation(models.Model):
     task_definition = models.ForeignKey(
         "tasks.TaskDefinition", null=True, blank=True,
         on_delete=models.CASCADE, related_name="automations")
-    baseline_name = models.CharField(max_length=120, blank=True, default="")
+    # The baseline to run when action_kind == BASELINE. A real FK, not a name:
+    # once baselines are site-scoped, two sites may hold same-named baselines
+    # and a name lookup could execute the wrong site's steps.
+    baseline = models.ForeignKey(
+        "baselines.Baseline", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="automations",
+    )
     # Input overrides for the task action: {"<action_index>": {"<param>": value}}
     # merged over the definition's params at dispatch (TASK kind only).
     params_override = models.JSONField(default=dict, blank=True)

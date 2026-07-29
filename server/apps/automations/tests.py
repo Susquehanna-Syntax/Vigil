@@ -80,7 +80,7 @@ class EventAutomationTests(TestCase):
         BaselineStep.objects.create(baseline=b, definition=d2, order=1)
         Automation.objects.create(
             name="bootstrap new", trigger="event", event="host_approved",
-            action_kind="baseline", baseline_name="Bootstrap", target="event_host",
+            action_kind="baseline", baseline=b, target="event_host",
             created_by=self.admin)
         host = make_host()
         hooks.emit("host_approved", host=host, approved_by=self.admin)
@@ -99,10 +99,10 @@ class EventAutomationTests(TestCase):
         self.assertFalse(Task.objects.filter(host=host).exists())
 
     def test_broken_action_never_breaks_the_event(self):
-        # baseline_name points nowhere → handle_event must not raise.
+        # The baseline reference points nowhere (deleted) → handle_event must not raise.
         Automation.objects.create(
             name="broken", trigger="event", event="host_approved",
-            action_kind="baseline", baseline_name="ghost", target="event_host",
+            action_kind="baseline", baseline=None, target="event_host",
             created_by=self.admin)
         host = make_host()
         handle_event("host_approved", {"host": host})  # no exception = pass
@@ -263,3 +263,37 @@ class SpecificEventTests(TestCase):
             content_type="application/json")
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertEqual(resp.json()["event_rule_name"], "CPU spike")
+
+
+class AutomationBaselineReferenceTests(TestCase):
+    """The automation must point at ONE specific baseline, not a name that
+    could match several once baselines become site-scoped."""
+
+    def setUp(self):
+        self.defn = make_def("echo")
+
+    def test_automation_resolves_its_own_baseline_not_a_namesake(self):
+        first = Baseline.objects.create(name="Nightly patch scan")
+        BaselineStep.objects.create(baseline=first, definition=self.defn, order=0)
+
+        # A second baseline that a name lookup could ambiguously match.
+        second = Baseline.objects.create(name="nightly patch scan (west)")
+        BaselineStep.objects.create(baseline=second, definition=self.defn, order=0)
+
+        auto = Automation.objects.create(
+            name="patch", trigger=Automation.Trigger.SCHEDULE,
+            action_kind=Automation.ActionKind.BASELINE, baseline=second,
+        )
+        auto.refresh_from_db()
+        self.assertEqual(auto.baseline_id, second.id)
+        self.assertNotEqual(auto.baseline_id, first.id)
+
+    def test_deleting_the_baseline_nulls_the_reference(self):
+        b = Baseline.objects.create(name="temp")
+        auto = Automation.objects.create(
+            name="a", trigger=Automation.Trigger.SCHEDULE,
+            action_kind=Automation.ActionKind.BASELINE, baseline=b,
+        )
+        b.delete()
+        auto.refresh_from_db()
+        self.assertIsNone(auto.baseline_id)
