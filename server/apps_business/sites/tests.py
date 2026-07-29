@@ -203,3 +203,25 @@ class ScopeAssignmentTests(TestCase):
         UserSiteRole.objects.create(user=user, site=self.site, role="operator")
         with transaction.atomic(), self.assertRaises(IntegrityError):
             UserSiteRole.objects.create(user=user, site=self.site, role="viewer")
+
+
+class GlobalSiteApiShapeTests(TestCase):
+    """A client must be able to tell the cascading scope from a real site."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("op3", password="x", is_staff=True)
+        self.client.force_login(self.user)
+
+    def test_list_marks_the_global_site(self):
+        rows = {s["name"]: s for s in self.client.get("/api/v1/sites/").json()}
+        self.assertTrue(rows["Global"]["is_global"])
+        self.assertFalse(rows["Default"]["is_global"])
+
+    def test_is_global_cannot_be_set_over_the_api(self):
+        with override_settings(VIGIL_LICENSE_PUBLIC_KEY=PUB):
+            licensing.set_license(make_blob())
+            resp = self.client.post(
+                "/api/v1/sites/", {"name": "Sneaky", "slug": "sneaky", "is_global": True})
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertFalse(Site.objects.get(slug="sneaky").is_global)
+        self.assertEqual(Site.objects.filter(is_global=True).count(), 1)
