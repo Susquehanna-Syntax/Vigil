@@ -23,12 +23,16 @@ def _steps_for(automation) -> tuple[list[dict], str] | None:
     from apps.baselines.models import Baseline, build_agent_steps
 
     if automation.action_kind == automation.ActionKind.BASELINE:
-        baseline = Baseline.objects.filter(
-            name__iexact=automation.baseline_name).prefetch_related(
-            "steps__definition").first()
+        if automation.baseline_id is None:
+            logger.warning("automation %s: baseline missing or deleted", automation.pk)
+            return None
+        baseline = (Baseline.objects
+                    .filter(pk=automation.baseline_id)
+                    .prefetch_related("steps__definition")
+                    .first())
         if baseline is None:
-            logger.warning("automation %s: no baseline named %r",
-                           automation.pk, automation.baseline_name)
+            logger.warning("automation %s: baseline %s no longer exists",
+                           automation.pk, automation.baseline_id)
             return None
         try:
             return build_agent_steps(baseline)
@@ -104,7 +108,8 @@ def run_automation(automation, *, event_host=None) -> int:
         # A monitor-mode host can't execute; skip it silently.
         hosts = [h for h in hosts if getattr(h, "mode", None) != "monitor"]
         created = 0
-        label = (automation.baseline_name if automation.action_kind == "baseline"
+        label = (automation.baseline.name if automation.action_kind == "baseline"
+                 and automation.baseline
                  else (automation.task_definition.name if automation.task_definition else automation.name))
         for host in hosts:
             Task.objects.create(
