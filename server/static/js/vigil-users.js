@@ -34,6 +34,7 @@ async function loadUsers() {
         `</div>` +
         `<div class="user-row-actions">` +
           `<select class="form-control user-role-select" data-uid="${u.id}"${isMe ? ' disabled' : ''}>${opts}</select>` +
+          `<button class="btn btn-outline btn-sm user-sites" data-uid="${u.id}">Sites</button>` +
           (isMe ? '' : `<button class="btn btn-outline btn-sm user-del" data-uid="${u.id}">Delete</button>`) +
         `</div>`;
       list.appendChild(row);
@@ -42,6 +43,10 @@ async function loadUsers() {
     // from a data- attribute, so no user-supplied text is interpolated anywhere.
     list.querySelectorAll('.user-role-select').forEach((sel) => {
       sel.addEventListener('change', () => changeRole(sel.dataset.uid, sel.value));
+    });
+    list.querySelectorAll('.user-sites').forEach((btn) => {
+      const u = byId[btn.dataset.uid];
+      btn.addEventListener('click', () => openUserSites(u));
     });
     list.querySelectorAll('.user-del').forEach((btn) => {
       const u = byId[btn.dataset.uid];
