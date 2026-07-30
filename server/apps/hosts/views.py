@@ -441,6 +441,10 @@ def host_detail(request, host_id):
         host = Host.objects.get(pk=host_id)
     except Host.DoesNotExist:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    # Out of scope reads as absent: a 403 would confirm the host exists in a
+    # site this user cannot see.
+    if not scoping.host_in_scope(request.user, host):
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
     if request.method == "DELETE":
         # Destructive removal of a host and all its history is admin-only;
         # viewing stays open to any authenticated session.
