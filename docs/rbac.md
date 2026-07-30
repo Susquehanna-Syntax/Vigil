@@ -23,11 +23,17 @@ resolves in two stages: find the role, then ask what the role permits.
 role_of(user, site):
     1. user.is_superuser            -> OWNER      (global, absolute)
     2. rows = UserSiteRole[user]
-    3. if not rows                  -> user.profile.role   (every site)
+    3. if not rows                  -> today's answer, unchanged:
+                                         ADMIN if user.is_staff
+                                         else profile.role or VIEWER
     4. if rows[site]                -> that role
     5. if rows[global site]         -> that role            (the floor)
     6. otherwise                    -> NONE
 ```
+
+Step 3 reproduces the current `role_of()` **exactly**, including its
+`is_staff` short-circuit. The site-scoped branches only engage once a user
+has at least one row.
 
 Three consequences worth stating plainly:
 
@@ -53,17 +59,21 @@ else.
 ### 1.2 Owner, and not locking yourself out
 
 `OWNER` maps onto the existing `is_superuser` field. No new column, and the
-escape hatch already exists on every install.
+escape hatch already exists on every install — superusers are ADMIN today, so
+promoting them to OWNER takes nothing away from anyone.
 
-`is_staff` must **stop** short-circuiting to ADMIN. `role_of()` today returns
-ADMIN for `is_staff or is_superuser`, which under scopeable Admin would leave
-every staff user with silent god mode and make the matrix decorative. After
-this change `is_staff` governs Django-admin access only and carries no Vigil
-authority.
+**`is_staff` keeps its meaning.** An earlier draft of this design had
+`is_staff` stop implying ADMIN, on the reasoning that scopeable Admin plus a
+global staff short-circuit leaves the matrix decorative. That was wrong on
+two counts. It would demote every existing staff user on upgrade — a silent
+lockout is a worse failure than a too-broad grant — and 28 of the current
+tests create their admin with `is_staff=True`, so the suite would have gone
+red for a reason unrelated to what was being tested.
 
-That is a real behaviour change for existing installs, so the migration sets
-`is_superuser = True` on every currently-`is_staff` user that has no explicit
-profile role, preserving today's access rather than revoking it on upgrade.
+The short-circuit is confined to step 3 instead. A staff user with no rows
+behaves exactly as today; a staff user who is *given* rows becomes scoped
+like anyone else. The matrix is opt-in, consistent with every other part of
+this design, and **no migration is required at all**.
 
 Two guards, both enforced server-side:
 
@@ -208,7 +218,9 @@ is a security boundary:
 | Case | Expected |
 |---|---|
 | superuser, any site | OWNER |
-| no rows at all | profile role, every site |
+| no rows at all, is_staff | ADMIN, every site (unchanged from today) |
+| no rows at all, no profile | VIEWER (unchanged from today) |
+| no rows at all, profile role set | that role, every site |
 | row for this site | that role |
 | no row here, global row | the global row's role |
 | rows elsewhere, none here, no global | NONE |
@@ -235,8 +247,9 @@ Each step leaves the suite green and the app working.
 
 1. `CAPABILITIES` vocabulary and `can()`, with `site=None` behaving exactly
    like today. No call sites change. Pure addition.
-2. `role_of(user, site)` with the six-branch table, plus the `is_staff`
-   change and its migration.
+2. `role_of(user, site)` with the six-branch table. The existing
+   zero-argument `role_of(user)` stays as a wrapper passing `site=None`, so
+   no caller changes yet and no migration is needed.
 3. `SiteCapability` and the matrix, still unread by any endpoint.
 4. Migrate group 1 call sites (unscoped) — should be a no-op behaviourally.
 5. Migrate group 2 (single-object).
