@@ -68,6 +68,13 @@ services:
       # Tunnel / Tailscale / a reverse proxy. Both default to off (LAN-only).
       VIGIL_PUBLIC_URL: ${VIGIL_PUBLIC_URL:-}
       VIGIL_TRUST_PROXY: ${VIGIL_TRUST_PROXY:-false}
+      VIGIL_SECURE_COOKIES: ${VIGIL_SECURE_COOKIES:-false}
+      # Both are also derived from VIGIL_PUBLIC_URL; set them explicitly when
+      # Vigil answers on more than one name. Without the passthrough they sit
+      # unread in .env and the container never sees them — which is why
+      # setting DJANGO_CSRF_TRUSTED_ORIGINS alone appeared to do nothing.
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
       POSTGRES_DB: ${POSTGRES_DB:-vigil}
       POSTGRES_USER: ${POSTGRES_USER:-vigil}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
