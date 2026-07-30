@@ -95,7 +95,7 @@ def run_automation(automation, *, event_host=None) -> int:
     it or the beat loop."""
     from django.utils.timezone import now
 
-    from apps.tasks.models import Task
+    from apps.tasks.models import Task, TaskRun
 
     try:
         built = _steps_for(automation)
@@ -107,13 +107,28 @@ def run_automation(automation, *, event_host=None) -> int:
         hosts = _resolve_hosts(automation, event_host)
         # A monitor-mode host can't execute; skip it silently.
         hosts = [h for h in hosts if getattr(h, "mode", None) != "monitor"]
+        if not hosts:
+            return 0
         created = 0
         label = (automation.baseline.name if automation.action_kind == "baseline"
                  and automation.baseline
                  else (automation.task_definition.name if automation.task_definition else automation.name))
+        # Group the dispatch under a run so it shows up in history as one
+        # event rather than a scatter of orphan tasks.
+        run = TaskRun.objects.create(
+            source=TaskRun.Source.AUTOMATION,
+            automation=automation,
+            baseline=automation.baseline if automation.action_kind == "baseline" else None,
+            definition=automation.task_definition,
+            name_snapshot=f"{automation.name} → {label}"[:120],
+            requested_by=automation.created_by,
+            host_count=len(hosts),
+            step_count=len(steps),
+        )
         for host in hosts:
             Task.objects.create(
                 host=host,
+                run=run,
                 requested_by=automation.created_by,
                 step_label=f"automation: {automation.name} → {label}",
                 action="_script",

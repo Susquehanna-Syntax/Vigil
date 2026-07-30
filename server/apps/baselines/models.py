@@ -134,7 +134,7 @@ def dispatch_to_host(host, *, baselines=None) -> int:
     """
     import logging
 
-    from apps.tasks.models import Task
+    from apps.tasks.models import Task, TaskRun
 
     logger = logging.getLogger("vigil.baselines")
     created = 0
@@ -153,8 +153,19 @@ def dispatch_to_host(host, *, baselines=None) -> int:
             steps, risk = build_agent_steps(baseline)
             if not steps:
                 continue
+            # One run per baseline per host: enrollment dispatch is per-host by
+            # nature, and a run keeps the result visible in history.
+            run = TaskRun.objects.create(
+                source=TaskRun.Source.BASELINE,
+                baseline=baseline,
+                name_snapshot=baseline.name[:120],
+                requested_by=baseline.created_by,
+                host_count=1,
+                step_count=len(steps),
+            )
             Task.objects.create(
                 host=host,
+                run=run,
                 requested_by=baseline.created_by,
                 step_label=f"baseline: {baseline.name}",
                 action="_script",

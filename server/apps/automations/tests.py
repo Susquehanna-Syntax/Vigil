@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from django.contrib.auth import get_user_model
@@ -297,3 +298,76 @@ class AutomationBaselineReferenceTests(TestCase):
         b.delete()
         auto.refresh_from_db()
         self.assertIsNone(auto.baseline_id)
+
+
+class RunHistoryTests(TestCase):
+    """Automation and baseline dispatches must be visible as runs, with a
+    resolved outcome — not a scatter of orphan tasks."""
+
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user("hist", password="x", is_staff=True)
+        self.client.force_login(self.admin)
+        wire()
+
+    def _fire(self):
+        d = make_def()
+        Automation.objects.create(
+            name="nightly", trigger="event", event="host_approved",
+            action_kind="task", task_definition=d, target="event_host",
+            created_by=self.admin)
+        host = make_host("run-01")
+        hooks.emit("host_approved", host=host, approved_by=self.admin)
+        return host
+
+    def test_an_automation_dispatch_creates_one_run(self):
+        from apps.tasks.models import TaskRun
+        self._fire()
+        run = TaskRun.objects.get()
+        self.assertEqual(run.source, TaskRun.Source.AUTOMATION)
+        self.assertEqual(run.automation.name, "nightly")
+        self.assertEqual(run.host_count, 1)
+        self.assertEqual(run.state, TaskRun.State.RUNNING)
+
+    def test_its_tasks_belong_to_that_run(self):
+        from apps.tasks.models import Task, TaskRun
+        self._fire()
+        run = TaskRun.objects.get()
+        self.assertEqual(Task.objects.filter(run=run).count(), 1)
+
+    def test_the_run_resolves_when_the_task_reports_back(self):
+        from apps.tasks.models import Task, TaskRun
+        host = self._fire()
+        task = Task.objects.get(run__isnull=False)
+        task.state = Task.State.DISPATCHED
+        task.save(update_fields=["state"])
+        resp = self.client.post(
+            "/api/v1/tasks/result/",
+            data=json.dumps({"task_id": str(task.id),
+                             "state": "completed", "output": "done"}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {host.agent_token}")
+        self.assertIn(resp.status_code, (200, 201), resp.content)
+        run = TaskRun.objects.get()
+        self.assertEqual(run.state, TaskRun.State.COMPLETED)
+        self.assertIsNotNone(run.finished_at)
+
+    def test_history_endpoint_filters_by_source(self):
+        self._fire()
+        rows = self.client.get("/api/v1/tasks/runs/?source=automation").json()
+        self.assertEqual(rows["count"], 1)
+        self.assertEqual(rows["results"][0]["automation_name"], "nightly")
+        self.assertEqual(self.client.get(
+            "/api/v1/tasks/runs/?source=baseline").json()["count"], 0)
+
+    def test_history_endpoint_rejects_an_unknown_source(self):
+        self.assertEqual(self.client.get(
+            "/api/v1/tasks/runs/?source=nonsense").status_code, 400)
+
+    def test_deleting_the_automation_keeps_the_history_row(self):
+        from apps.tasks.models import TaskRun
+        self._fire()
+        Automation.objects.get(name="nightly").delete()
+        run = TaskRun.objects.get()
+        self.assertIsNone(run.automation_id)
+        self.assertEqual(run.source, TaskRun.Source.AUTOMATION)
+        self.assertIn("nightly", run.name_snapshot)
