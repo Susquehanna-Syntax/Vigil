@@ -17,7 +17,7 @@ from vigil import licensing
 
 from .models import (
     AutomationSiteAssignment, BaselineSiteAssignment, ChannelSiteAssignment,
-    GlobalSuppression, HostSiteAssignment, Site, UserSiteRole,
+    GlobalSuppression, HostSiteAssignment, Site, SiteCapability, UserSiteRole,
 )
 
 SK = SigningKey.generate()
@@ -236,3 +236,84 @@ class GlobalSiteApiShapeTests(TestCase):
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertFalse(Site.objects.get(slug="sneaky").is_global)
         self.assertEqual(Site.objects.filter(is_global=True).count(), 1)
+
+
+@override_settings(VIGIL_LICENSE_PUBLIC_KEY=PUB)
+class UserSiteRoleApiTests(TestCase):
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user(
+            "boss", password="x", is_staff=True)
+        self.dana = get_user_model().objects.create_user("dana", password="x")
+        self.west = Site.objects.create(name="West Campus", slug="west-campus")
+        self.client.force_login(self.admin)
+        licensing.reload()
+
+    def tearDown(self):
+        from apps.licensing.models import StoredLicense
+        StoredLicense.replace("")
+        licensing.reload()
+
+    def _grant(self, **over):
+        payload = {"user": self.dana.id, "site": str(self.west.id),
+                   "role": "operator",
+                   "capabilities": [["baselines", "run"], ["alerts", "ack"]]}
+        payload.update(over)
+        return self.client.post("/api/v1/sites/roles/", data=json.dumps(payload),
+                                content_type="application/json")
+
+    def test_granting_requires_a_license(self):
+        resp = self._grant()
+        self.assertEqual(resp.status_code, 402, resp.content)
+        self.assertEqual(resp.json()["feature"], "rbac_advanced")
+
+    def test_grant_with_license_stores_capabilities(self):
+        licensing.set_license(make_blob())
+        resp = self._grant()
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(
+            resp.json()["capabilities"], [["alerts", "ack"], ["baselines", "run"]])
+
+    def test_unknown_capability_is_rejected(self):
+        licensing.set_license(make_blob())
+        resp = self._grant(capabilities=[["hosts", "teleport"]])
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_unknown_role_is_rejected(self):
+        licensing.set_license(make_blob())
+        self.assertEqual(self._grant(role="wizard").status_code, 400)
+
+    def test_reading_grants_is_never_gated(self):
+        """Reading and resolving must survive a lapse — revoking access on
+        lapse would be an outage, not a downgrade."""
+        licensing.set_license(make_blob())
+        self._grant()
+        licensing.set_license(make_blob(exp_delta=-30 * 86400))
+        resp = self.client.get(f"/api/v1/sites/roles/?user={self.dana.id}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()), 1)
+
+    def test_an_existing_grant_still_resolves_after_lapse(self):
+        from apps.accounts.permissions import can
+        licensing.set_license(make_blob())
+        self._grant()
+        licensing.set_license(make_blob(exp_delta=-30 * 86400))
+        self.assertTrue(can(self.dana, self.west, "baselines", "run"))
+        self.assertFalse(can(self.dana, self.west, "hosts", "approve"))
+
+    def test_revoking_is_not_gated(self):
+        licensing.set_license(make_blob())
+        rid = self._grant().json()["id"]
+        licensing.set_license(make_blob(exp_delta=-30 * 86400))
+        self.assertEqual(
+            self.client.delete(f"/api/v1/sites/roles/{rid}/").status_code, 204)
+
+    def test_revoking_cascades_capabilities(self):
+        licensing.set_license(make_blob())
+        rid = self._grant().json()["id"]
+        self.client.delete(f"/api/v1/sites/roles/{rid}/")
+        self.assertEqual(SiteCapability.objects.count(), 0)
+
+    def test_non_admin_cannot_grant(self):
+        licensing.set_license(make_blob())
+        self.client.force_login(self.dana)
+        self.assertEqual(self._grant().status_code, 403)
