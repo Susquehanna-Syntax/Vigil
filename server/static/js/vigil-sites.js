@@ -137,36 +137,125 @@ async function deleteSite(site) {
 async function assignHosts(site) {
   if (!site) return;
   let hosts = [];
-  try { hosts = await apiJson('/api/v1/hosts/'); } catch (e) { showToast('Could not load hosts', 'error'); return; }
+  try { hosts = await apiJson('/api/v1/hosts/'); }
+  catch (e) { showToast('Could not load hosts', 'error'); return; }
+
+  // Membership as it stood when the modal opened; Save diffs against this.
+  const before = new Set(hosts.filter((h) => h.site === site.id).map((h) => h.id));
+  const selected = new Set(before);
+  const allTags = [...new Set(hosts.flatMap((h) => h.tags || []))].sort();
+  let qText = '';
+  let qStatus = '';
+  const qTags = new Set();
+
   const m = mountModal('site-assign', { wide: true });
-  const rows = hosts.length
-    ? hosts.map((h) => `<label class="assign-row"><input type="checkbox" value="${h.id}"> <span>${escHtml(h.hostname)}</span></label>`).join('')
-    : '<p class="muted">No hosts registered yet.</p>';
+  const chip = (val, label, kind) =>
+    `<button type="button" class="sa-chip" data-kind="${kind}" data-val="${escHtml(val)}">${escHtml(label)}</button>`;
+
   m.setBody(`
-    <div class="modal-title"><span>Assign hosts</span>
+    <div class="modal-title"><span>Hosts in ${escHtml(site.name)}</span>
       <button class="modal-close" id="sa-x"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
-    <p class="muted" style="margin-bottom:10px;">Check hosts to move into this site. Assigning is idempotent; a host belongs to exactly one site.</p>
-    <div class="assign-list">${rows}</div>
+    <p class="muted" style="margin-bottom:10px;">A host belongs to exactly one site. Unchecking returns it to Global.</p>
+    <input type="text" class="deploy-host-search" id="sa-search" placeholder="Search hosts by hostname\u2026">
+    <div class="sa-chips" id="sa-chips">
+      ${['online', 'offline', 'pending'].map((s) => chip(s, s, 'status')).join('')}
+      ${allTags.map((t) => chip(t, '#' + t, 'tag')).join('')}
+    </div>
+    <div class="assign-list" id="sa-rows"></div>
     <p class="muted" id="sa-note"></p>
-    <div class="confirm-actions"><button class="btn btn-outline btn-sm" id="sa-cancel">Cancel</button><button class="btn btn-mint btn-sm" id="sa-save">Assign selected</button></div>`);
+    <div class="confirm-actions">
+      <button class="btn btn-outline btn-sm" id="sa-cancel">Cancel</button>
+      <button class="btn btn-mint btn-sm" id="sa-save">Save changes</button>
+    </div>`);
+
+  const rowsEl = m.modal.querySelector('#sa-rows');
+
+  function visible() {
+    return hosts.filter((h) => {
+      if (qText && !h.hostname.toLowerCase().includes(qText)) return false;
+      if (qStatus && h.status !== qStatus) return false;
+      if (qTags.size && !(h.tags || []).some((t) => qTags.has(t))) return false;
+      return true;
+    });
+  }
+
+  function note() {
+    const add = [...selected].filter((id) => !before.has(id)).length;
+    const rm = [...before].filter((id) => !selected.has(id)).length;
+    m.modal.querySelector('#sa-note').textContent =
+      add || rm ? `${add} to add, ${rm} to remove.` : 'No changes.';
+  }
+
+  function render() {
+    const rows = visible();
+    rowsEl.innerHTML = rows.length
+      ? rows.map((h) => `
+          <label class="assign-row">
+            <input type="checkbox" value="${h.id}"${selected.has(h.id) ? ' checked' : ''}>
+            <span class="sa-name">${escHtml(h.hostname)}</span>
+            <span class="sa-status sa-${escHtml(h.status)}">${escHtml(h.status)}</span>
+            <span class="sa-site">${escHtml(h.site_name || 'Global')}</span>
+          </label>`).join('')
+      : '<div class="host-pick-empty">No hosts match those filters.</div>';
+    rowsEl.querySelectorAll('input[type=checkbox]').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) selected.add(cb.value); else selected.delete(cb.value);
+        note();
+      });
+    });
+    note();
+  }
+
+  m.modal.querySelector('#sa-search').addEventListener('input', (e) => {
+    qText = e.target.value.trim().toLowerCase();
+    render();
+  });
+  m.modal.querySelector('#sa-chips').addEventListener('click', (e) => {
+    const b = e.target.closest('.sa-chip');
+    if (!b) return;
+    if (b.dataset.kind === 'status') {
+      const same = qStatus === b.dataset.val;
+      qStatus = same ? '' : b.dataset.val;
+      m.modal.querySelectorAll('.sa-chip[data-kind=status]')
+        .forEach((c) => c.classList.toggle('on', !same && c === b));
+    } else {
+      const v = b.dataset.val;
+      if (qTags.has(v)) qTags.delete(v); else qTags.add(v);
+      b.classList.toggle('on', qTags.has(v));
+    }
+    render();
+  });
+
   const close = () => m.close();
   m.modal.querySelector('#sa-x').onclick = close;
   m.modal.querySelector('#sa-cancel').onclick = close;
   m.modal.querySelector('#sa-save').onclick = async () => {
-    const ids = Array.from(m.modal.querySelectorAll('.assign-list input:checked')).map((c) => c.value);
-    if (!ids.length) { close(); return; }
-    try {
-      for (const hid of ids) {
-        await apiJson(`/api/v1/sites/${site.id}/hosts/${hid}/`, { method: 'PUT' });
-      }
-      showToast(`Assigned ${ids.length} host${ids.length === 1 ? '' : 's'} to ${site.name}`, 'success');
-      close();
-      loadSites();
-    } catch (e) {
-      m.modal.querySelector('#sa-note').textContent = e.message;
+    const add = [...selected].filter((id) => !before.has(id));
+    const rm = [...before].filter((id) => !selected.has(id));
+    if (!add.length && !rm.length) { close(); return; }
+    let ok = 0;
+    const failed = [];
+    for (const hid of add) {
+      try { await apiJson(`/api/v1/sites/${site.id}/hosts/${hid}/`, { method: 'PUT' }); ok++; }
+      catch (e) { failed.push(e.message); }
     }
+    for (const hid of rm) {
+      try { await apiJson(`/api/v1/sites/${site.id}/hosts/${hid}/`, { method: 'DELETE' }); ok++; }
+      catch (e) { failed.push(e.message); }
+    }
+    if (failed.length) {
+      m.modal.querySelector('#sa-note').textContent =
+        `${ok} applied, ${failed.length} failed: ${failed[0]}`;
+      loadSites();
+      return;
+    }
+    showToast(`Updated ${site.name}`, 'success');
+    close();
+    loadSites();
   };
+
+  render();
   requestAnimationFrame(m.open);
 }
 
