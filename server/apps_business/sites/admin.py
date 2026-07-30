@@ -5,7 +5,7 @@ from .models import HostSiteAssignment, Site
 
 @admin.register(Site)
 class SiteAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "is_default", "created_at")
+    list_display = ("name", "slug", "is_global", "created_at")
     prepopulated_fields = {"slug": ("name",)}
 
 

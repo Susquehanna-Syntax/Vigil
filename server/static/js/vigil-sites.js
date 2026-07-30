@@ -43,12 +43,12 @@ async function loadSites() {
       row.className = 'site-row';
       const actions = _sitesLicensed
         ? `<button class="btn btn-outline btn-sm site-edit" data-id="${s.id}">Edit</button>` +
-          `<button class="btn btn-outline btn-sm site-assign" data-id="${s.id}">Assign hosts</button>` +
-          (s.is_default ? '' : `<button class="btn btn-outline btn-sm site-del" data-id="${s.id}">Delete</button>`)
+          `<button class="btn btn-outline btn-sm site-assign" data-id="${s.id}">Hosts</button>` +
+          (s.is_global ? '' : `<button class="btn btn-outline btn-sm site-del" data-id="${s.id}">Delete</button>`)
         : '';
       row.innerHTML =
         `<div class="site-row-main">` +
-          `<span class="site-row-name">${escHtml(s.name)}${s.is_default ? ' <span class="site-badge">default</span>' : ''}</span>` +
+          `<span class="site-row-name">${escHtml(s.name)}${s.is_global ? ' <span class="site-badge">global</span>' : ''}</span>` +
           `<span class="site-row-desc muted">${escHtml(s.description || '')}</span>` +
         `</div>` +
         `<div class="site-row-meta">` +
@@ -122,8 +122,8 @@ function editSite(site) {
 }
 
 async function deleteSite(site) {
-  if (!site || site.is_default) return;
-  const ok = await confirmModal(`Delete site "${site.name}"? Its hosts return to the default site.`, { danger: true });
+  if (!site || site.is_global) return;
+  const ok = await confirmModal(`Delete site "${site.name}"? Its hosts return to Global.`, { danger: true });
   if (!ok) return;
   try {
     await apiJson(`/api/v1/sites/${site.id}/`, { method: 'DELETE' });

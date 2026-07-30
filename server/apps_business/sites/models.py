@@ -22,9 +22,9 @@ class Site(models.Model):
     name = models.CharField(max_length=200, unique=True)
     slug = models.SlugField(max_length=200, unique=True)
     description = models.TextField(blank=True, default="")
-    is_default = models.BooleanField(default=False)
-    # The scope whose baselines/automations/channels cascade into every site.
-    # Holds no hosts. Exactly one row carries this flag.
+    # The one structural scope: it holds every unassigned host, and its
+    # baselines/automations/channels cascade into every other site. Exactly
+    # one row carries this flag.
     is_global = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -34,13 +34,11 @@ class Site(models.Model):
         return self.name
 
     def delete(self, *args, **kwargs):
-        # Both are structural: the default site is where unassigned hosts
-        # live, and the global site is where cascading policy lives. Callers
-        # in the API layer check these first and answer 400.
+        # Structural: it holds every unassigned host and is the root that
+        # cascading policy resolves from. The API checks this first and
+        # answers 400.
         if self.is_global:
             raise ValueError("The global site cannot be deleted.")
-        if self.is_default:
-            raise ValueError("The default site cannot be deleted.")
         return super().delete(*args, **kwargs)
 
 

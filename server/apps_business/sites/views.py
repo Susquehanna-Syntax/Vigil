@@ -44,7 +44,7 @@ def site_index(request):
     # Hosts with no assignment belong to the default site.
     unassigned = Host.objects.filter(site_assignment__isnull=True).count()
     for s in sites:
-        if s.is_default:
+        if s.is_global:
             s.host_count += unassigned
     return Response(SiteSerializer(sites, many=True).data)
 
@@ -73,11 +73,6 @@ def site_detail(request, site_id):
     if site.is_global:
         return Response(
             {"detail": "The global site cannot be deleted."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    if site.is_default:
-        return Response(
-            {"detail": "The default site cannot be deleted."},
             status=status.HTTP_400_BAD_REQUEST,
         )
     # Hosts of a deleted site fall back to the default site: assignment rows

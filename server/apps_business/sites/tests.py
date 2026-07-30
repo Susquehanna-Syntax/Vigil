@@ -63,15 +63,15 @@ class SitesApiTests(TestCase):
 
     # -- migration ----------------------------------------------------------
 
-    def test_default_site_exists_after_migrate(self):
-        self.assertTrue(Site.objects.filter(is_default=True, slug="default").exists())
+    def test_global_site_exists_after_migrate(self):
+        self.assertTrue(Site.objects.filter(is_global=True, slug="global").exists())
 
     # -- unlicensed ---------------------------------------------------------
 
     def test_list_is_readable_without_license(self):
         resp = self.client.get("/api/v1/sites/")
         self.assertEqual(resp.status_code, 200)
-        self.assertIn("Default", [s["name"] for s in resp.json()])
+        self.assertIn("Global", [s["name"] for s in resp.json()])
 
     def test_create_without_license_is_402_with_upgrade_body(self):
         resp = self.client.post("/api/v1/sites/", {"name": "Branch", "slug": "branch"})
@@ -80,7 +80,7 @@ class SitesApiTests(TestCase):
         self.assertEqual(body["feature"], "sites")
         self.assertIn("upgrade_url", body)
         # Nothing was created. Asserted by name rather than by total count:
-        # the default and global sites are structural rows, not user sites.
+        # the global site is a structural row, not a user site.
         self.assertFalse(Site.objects.filter(slug="branch").exists())
 
     def test_license_lapse_freezes_writes_not_reads(self):
@@ -103,18 +103,18 @@ class SitesApiTests(TestCase):
         self.assertEqual(self.client.delete(f"/api/v1/sites/{sid}/").status_code, 204)
         self.assertFalse(Site.objects.filter(pk=sid).exists())
 
-    def test_cannot_delete_default_site(self):
+    def test_cannot_delete_global_site(self):
         self.license_up()
-        default = Site.objects.get(is_default=True)
-        resp = self.client.delete(f"/api/v1/sites/{default.pk}/")
+        glob = Site.objects.get(is_global=True)
+        resp = self.client.delete(f"/api/v1/sites/{glob.pk}/")
         self.assertEqual(resp.status_code, 400)
 
-    def test_unassigned_hosts_count_toward_default_site(self):
+    def test_unassigned_hosts_count_toward_global_site(self):
         make_host("a")
         make_host("b")
         resp = self.client.get("/api/v1/sites/")
-        default = next(s for s in resp.json() if s["is_default"])
-        self.assertEqual(default["host_count"], 2)
+        glob = next(s for s in resp.json() if s["is_global"])
+        self.assertEqual(glob["host_count"], 2)
 
     def test_assign_and_unassign_host(self):
         self.license_up()
@@ -127,7 +127,7 @@ class SitesApiTests(TestCase):
         self.assertEqual(resp.status_code, 204)
         self.assertFalse(HostSiteAssignment.objects.filter(host=host).exists())
 
-    def test_delete_site_moves_hosts_to_default(self):
+    def test_delete_site_moves_hosts_to_global(self):
         self.license_up()
         site = Site.objects.create(name="Branch", slug="branch")
         host = make_host("d")
@@ -135,8 +135,8 @@ class SitesApiTests(TestCase):
         self.client.delete(f"/api/v1/sites/{site.pk}/")
         self.assertFalse(HostSiteAssignment.objects.filter(host=host).exists())
         resp = self.client.get("/api/v1/sites/")
-        default = next(s for s in resp.json() if s["is_default"])
-        self.assertEqual(default["host_count"], 1)
+        glob = next(s for s in resp.json() if s["is_global"])
+        self.assertEqual(glob["host_count"], 1)
 
 
 class GlobalSiteTests(TestCase):
@@ -146,17 +146,27 @@ class GlobalSiteTests(TestCase):
     def test_global_site_accessor_returns_it(self):
         self.assertTrue(Site.objects.global_site().is_global)
 
+    def test_there_is_no_separate_default_site(self):
+        """One concept, one row: the global site holds unassigned hosts."""
+        self.assertEqual(Site.objects.count(), 1)
+        self.assertFalse(hasattr(Site.objects.global_site(), "is_default"))
+
+    def test_the_global_site_is_named_global(self):
+        g = Site.objects.global_site()
+        self.assertEqual((g.name, g.slug), ("Global", "global"))
+
     def test_global_site_cannot_be_deleted(self):
         with self.assertRaises(ValueError):
             Site.objects.global_site().delete()
 
-    def test_default_site_cannot_be_deleted(self):
-        with self.assertRaises(ValueError):
-            Site.objects.get(is_default=True).delete()
-
-    def test_the_global_site_is_not_the_default_site(self):
-        """Hosts land in the default site; policies land in the global one."""
-        self.assertFalse(Site.objects.global_site().is_default)
+    def test_unassigned_hosts_count_toward_the_global_site(self):
+        make_host("a")
+        make_host("b")
+        user = get_user_model().objects.create_user("z", password="x", is_staff=True)
+        self.client.force_login(user)
+        rows = self.client.get("/api/v1/sites/").json()
+        glob = next(s for s in rows if s["is_global"])
+        self.assertEqual(glob["host_count"], 2)
 
     def test_deleting_the_global_site_over_the_api_is_a_400_not_a_500(self):
         user = get_user_model().objects.create_user("root", password="x", is_staff=True)
@@ -213,9 +223,10 @@ class GlobalSiteApiShapeTests(TestCase):
         self.client.force_login(self.user)
 
     def test_list_marks_the_global_site(self):
+        Site.objects.create(name="West Campus", slug="west-campus")
         rows = {s["name"]: s for s in self.client.get("/api/v1/sites/").json()}
         self.assertTrue(rows["Global"]["is_global"])
-        self.assertFalse(rows["Default"]["is_global"])
+        self.assertFalse(rows["West Campus"]["is_global"])
 
     def test_is_global_cannot_be_set_over_the_api(self):
         with override_settings(VIGIL_LICENSE_PUBLIC_KEY=PUB):
