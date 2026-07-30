@@ -54,6 +54,8 @@ def alert_acknowledge(request, alert_id):
         alert = Alert.objects.get(pk=alert_id)
     except Alert.DoesNotExist:
         return Response({"error": "Alert not found"}, status=404)
+    if not scoping.host_in_scope(request.user, alert.host):
+        return Response({"error": "Alert not found"}, status=404)
     if alert.state != Alert.State.FIRING:
         return Response({"error": f"Alert is already '{alert.state}'"}, status=400)
     until, err = _parse_ack_duration(request)
@@ -73,6 +75,8 @@ def alert_unacknowledge(request, alert_id):
     try:
         alert = Alert.objects.get(pk=alert_id)
     except Alert.DoesNotExist:
+        return Response({"error": "Alert not found"}, status=404)
+    if not scoping.host_in_scope(request.user, alert.host):
         return Response({"error": "Alert not found"}, status=404)
     if alert.state != Alert.State.ACKNOWLEDGED:
         return Response({"error": f"Alert is '{alert.state}', not acknowledged"}, status=400)
@@ -118,7 +122,10 @@ def alert_bulk(request):
     current = now()
     updated = 0
     skipped = len(ids) - len(valid_ids)
-    alerts = Alert.objects.filter(pk__in=valid_ids)
+    # Same scoping as the list endpoint: ids naming another site's alerts
+    # are counted as skipped, never acted on.
+    alerts = scoping.filter_by_site(
+        Alert.objects.filter(pk__in=valid_ids), request.user, path="host__")
     skipped += len(valid_ids) - alerts.count()
     for alert in alerts:
         if action == "acknowledge" and alert.state == Alert.State.FIRING:
@@ -144,6 +151,8 @@ def alert_silence(request, alert_id):
     try:
         alert = Alert.objects.get(pk=alert_id)
     except Alert.DoesNotExist:
+        return Response({"error": "Alert not found"}, status=404)
+    if not scoping.host_in_scope(request.user, alert.host):
         return Response({"error": "Alert not found"}, status=404)
     if alert.state == Alert.State.RESOLVED:
         return Response({"error": "Cannot silence a resolved alert"}, status=400)

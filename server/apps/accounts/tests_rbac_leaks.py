@@ -5,6 +5,8 @@ and that is the failure mode this whole design most needs to prevent. The
 registry below is the enforcement — a scoped list endpoint that is not listed
 here is caught by test_registry_covers_every_scoped_list_endpoint.
 """
+import json
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
@@ -114,3 +116,62 @@ class CrossSiteLeakTests(TestCase):
         expected = {"hosts", "alerts", "baselines", "automations"}
         covered = {u.strip("/").split("/")[-1] for u in SCOPED_LIST_ENDPOINTS}
         self.assertEqual(covered, expected)
+
+
+class SingleObjectScopeTests(TestCase):
+    """A scoped user must not reach an out-of-site object by guessing its id.
+    These answer 404, not 403: a 403 confirms the object exists."""
+
+    def setUp(self):
+        self.west = Site.objects.create(name="West Campus", slug="west-campus")
+        self.lab = Site.objects.create(name="Lab", slug="lab")
+        self.dana = get_user_model().objects.create_user("dana", password="x")
+        UserSiteRole.objects.create(user=self.dana, site=self.west, role=Role.ADMIN)
+
+        self.west_host = Host.objects.create(hostname="west-host", agent_token="tw")
+        HostSiteAssignment.objects.create(host=self.west_host, site=self.west)
+        self.lab_host = Host.objects.create(hostname="lab-host", agent_token="tl")
+        HostSiteAssignment.objects.create(host=self.lab_host, site=self.lab)
+
+        rule = AlertRule.objects.create(
+            name="r", category="cpu", metric="cpu", operator="gt",
+            threshold=90, severity="warning")
+        self.lab_alert = Alert.objects.create(
+            host=self.lab_host, rule=rule, severity="warning", message="lab")
+
+        self.client.force_login(self.dana)
+
+    def test_own_host_is_reachable(self):
+        self.assertEqual(
+            self.client.get(f"/api/v1/hosts/{self.west_host.id}/").status_code, 200)
+
+    def test_out_of_site_host_is_404_not_403(self):
+        resp = self.client.get(f"/api/v1/hosts/{self.lab_host.id}/")
+        self.assertEqual(resp.status_code, 404, resp.content)
+
+    def test_out_of_site_host_cannot_be_deleted(self):
+        self.client.delete(f"/api/v1/hosts/{self.lab_host.id}/")
+        self.assertTrue(Host.objects.filter(pk=self.lab_host.pk).exists())
+
+    def test_out_of_site_alert_cannot_be_acknowledged(self):
+        resp = self.client.post(f"/api/v1/alerts/{self.lab_alert.id}/acknowledge/")
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.lab_alert.refresh_from_db()
+        self.assertIsNone(self.lab_alert.acknowledged_at)
+
+    def test_unscoped_user_reaches_everything(self):
+        staff = get_user_model().objects.create_user("boss2", password="x", is_staff=True)
+        self.client.force_login(staff)
+        self.assertEqual(
+            self.client.get(f"/api/v1/hosts/{self.lab_host.id}/").status_code, 200)
+
+    def test_out_of_site_alert_cannot_be_bulk_acknowledged(self):
+        """The bulk endpoint takes a list of ids — the same hole, wholesale."""
+        resp = self.client.post(
+            "/api/v1/alerts/bulk/",
+            data=json.dumps({"ids": [str(self.lab_alert.id)], "action": "acknowledge"}),
+            content_type="application/json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json().get("updated"), 0)
+        self.lab_alert.refresh_from_db()
+        self.assertIsNone(self.lab_alert.acknowledged_at)

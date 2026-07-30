@@ -232,3 +232,27 @@ def filter_by_site(qs, user, path=""):
     if glob in ids:
         q |= Q(**{f"{path}site_assignment__isnull": True})
     return qs.filter(q).distinct()
+
+
+def host_in_scope(user, host) -> bool:
+    """May `user` reach this host at all? False means the caller should 404
+    rather than 403 — a scoped user should not learn that a host exists in a
+    site they cannot see."""
+    from apps.accounts.permissions import visible_site_ids
+
+    ids = visible_site_ids(user)
+    if ids is None:
+        return True
+    if not ids:
+        return False
+
+    mods = _sites_models()
+    if mods is None:
+        return True
+
+    row = mods.HostSiteAssignment.objects.filter(host=host).first()
+    if row is not None:
+        return row.site_id in ids
+    # Unassigned means Global.
+    glob = mods.Site.objects.filter(is_global=True).values_list("id", flat=True).first()
+    return glob in ids
