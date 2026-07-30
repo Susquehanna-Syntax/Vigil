@@ -2261,6 +2261,24 @@ select.form-control:hover { border-color: var(--s4); }
 :root[data-density="compact"] .site-row { padding: 8px 0; }
 :root[data-density="compact"] .assign-row { padding: 5px 2px; }
 
+/* Host membership editor: search + status/tag chips + current-site column */
+.sa-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.sa-chip {
+  font-size: 12px; padding: 3px 10px; border-radius: 11px; cursor: pointer;
+  background: transparent; color: var(--text-3);
+  border: 1px solid var(--border);
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.sa-chip:hover { color: var(--text-2); }
+.sa-chip.on { color: var(--sky); border-color: var(--sky); background: rgba(137,180,250,0.12); }
+.assign-row { display: grid; grid-template-columns: auto 1fr auto auto; }
+.sa-name { font-weight: 500; }
+.sa-status { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-3); }
+.sa-online { color: var(--mint); }
+.sa-offline { color: var(--text-3); }
+.sa-pending { color: var(--peach); }
+.sa-site { font-size: 12px; color: var(--text-3); min-width: 90px; text-align: right; }
+
 /* ═══════════════════════════════════════════
    BRANDING — instance footer + login logo
    ═══════════════════════════════════════════ */
