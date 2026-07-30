@@ -428,7 +428,8 @@ def checkin(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def host_list(request):
-    hosts = list(Host.objects.exclude(status=Host.Status.REJECTED))
+    hosts = list(scoping.filter_by_site(
+        Host.objects.exclude(status=Host.Status.REJECTED), request.user))
     ctx = {"host_sites": scoping.sites_for_hosts([h.id for h in hosts])}
     return Response(HostSerializer(hosts, many=True, context=ctx).data)
 
