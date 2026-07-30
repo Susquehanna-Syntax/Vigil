@@ -136,9 +136,25 @@ async function deleteSite(site) {
 
 async function assignHosts(site) {
   if (!site) return;
+
+  // Mount and open first, then fetch. Awaiting the network before showing
+  // anything left the screen dead from click to render, which reads as lag
+  // however fast the request actually is.
+  const m = mountModal('site-assign', { wide: true });
+  m.setBody(`
+    <div class="modal-title"><span>Hosts in ${escHtml(site.name)}</span>
+      <button class="modal-close" id="sa-x"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-skeleton">
+      <div class="sk-line sk-w60"></div>
+      <div class="sk-line"></div><div class="sk-line"></div><div class="sk-line sk-w80"></div>
+    </div>`);
+  m.modal.querySelector('#sa-x').onclick = () => m.close();
+  requestAnimationFrame(m.open);
+
   let hosts = [];
   try { hosts = await apiJson('/api/v1/hosts/'); }
-  catch (e) { showToast('Could not load hosts', 'error'); return; }
+  catch (e) { m.close(); showToast('Could not load hosts', 'error'); return; }
 
   // Membership as it stood when the modal opened; Save diffs against this.
   const before = new Set(hosts.filter((h) => h.site === site.id).map((h) => h.id));
@@ -148,7 +164,6 @@ async function assignHosts(site) {
   let qStatus = '';
   const qTags = new Set();
 
-  const m = mountModal('site-assign', { wide: true });
   const chip = (val, label, kind) =>
     `<button type="button" class="sa-chip" data-kind="${kind}" data-val="${escHtml(val)}">${escHtml(label)}</button>`;
 
@@ -256,7 +271,6 @@ async function assignHosts(site) {
   };
 
   render();
-  requestAnimationFrame(m.open);
 }
 
 document.addEventListener('DOMContentLoaded', () => {

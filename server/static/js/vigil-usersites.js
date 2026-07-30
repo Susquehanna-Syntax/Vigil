@@ -22,6 +22,21 @@ const USER_SITE_ROLES = ['viewer', 'operator', 'admin'];
 
 async function openUserSites(user) {
   if (!user) return;
+
+  // Open first, fetch second. Two requests behind an unopened modal meant
+  // nothing appeared on click until both had landed.
+  const m = mountModal('user-sites', { wide: true });
+  m.setBody(`
+    <div class="modal-title"><span>Site access — ${escHtml(user.username)}</span>
+      <button class="modal-close" id="us-boot-x"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-skeleton">
+      <div class="sk-line sk-w80"></div>
+      <div class="sk-line"></div><div class="sk-line sk-w60"></div>
+    </div>`);
+  m.modal.querySelector('#us-boot-x').onclick = () => m.close();
+  requestAnimationFrame(m.open);
+
   let sites = [];
   let grants = [];
   try {
@@ -30,11 +45,10 @@ async function openUserSites(user) {
       apiJson(`/api/v1/sites/roles/?user=${encodeURIComponent(user.id)}`),
     ]);
   } catch (e) {
+    m.close();
     showToast('Could not load site roles', 'error');
     return;
   }
-
-  const m = mountModal('user-sites', { wide: true });
 
   function render() {
     const granted = new Set(grants.map((g) => g.site));
@@ -187,5 +201,4 @@ async function openUserSites(user) {
   }
 
   render();
-  requestAnimationFrame(m.open);
 }
