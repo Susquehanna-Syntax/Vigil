@@ -166,3 +166,25 @@ class IsOperator(BasePermission):
 
     def has_permission(self, request, view):
         return role_of(request.user) in (Role.ADMIN, Role.OPERATOR, OWNER)
+
+
+def visible_site_ids(user):
+    """The site ids `user` may act in, or ``None`` meaning "every site".
+
+    None and the empty set are different answers: None is an unscoped user,
+    who sees everything exactly as they did before per-site roles existed;
+    the empty set is a user scoped to nothing.
+    """
+    if not (user and user.is_authenticated):
+        return set()
+    if user.is_superuser:
+        return None
+
+    from vigil import scoping
+    rows = scoping.site_roles_for(user)
+    if not rows:
+        return None
+    if "__global__" in rows:
+        # A global row is the floor, so it reaches every site.
+        return None
+    return {k for k in rows if k != "__global__"}

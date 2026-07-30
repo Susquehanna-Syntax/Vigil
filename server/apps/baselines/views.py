@@ -7,6 +7,7 @@ from rest_framework.response import Response
 
 from apps.accounts.permissions import IsAdmin
 from apps.tasks.models import TaskDefinition
+from vigil import scoping
 
 from .models import Baseline, BaselineStep, eligible
 
@@ -71,7 +72,9 @@ def _validate_and_set_steps(baseline: Baseline, definition_ids) -> Response | No
 @permission_classes([IsAuthenticated, IsAdmin])
 def baseline_index(request):
     if request.method == "GET":
-        rows = Baseline.objects.prefetch_related("steps__definition").order_by("created_at")
+        rows = scoping.filter_by_site(
+            Baseline.objects.prefetch_related("steps__definition"),
+            request.user).order_by("created_at")
         return Response([_row(b) for b in rows])
 
     name = (request.data.get("name") or "").strip()

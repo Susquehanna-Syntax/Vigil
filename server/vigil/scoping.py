@@ -202,3 +202,33 @@ def capabilities_for(user, site):
     if row is None:
         return None
     return {(c.app, c.verb) for c in row.capabilities.all()}
+
+
+def filter_by_site(qs, user, path=""):
+    """Narrow `qs` to what `user` may see, by site.
+
+    `path` is the ORM path from the queryset's model to whatever carries the
+    site assignment: "" when the model itself does (Host, Baseline,
+    Automation), "host__" when it hangs off a host (Alert).
+
+    An unassigned object belongs to Global, so it is visible to anyone who
+    can see Global. Unscoped users get the queryset back untouched, which is
+    what keeps existing installs behaving exactly as before.
+    """
+    from apps.accounts.permissions import visible_site_ids
+
+    ids = visible_site_ids(user)
+    if ids is None:
+        return qs
+    if not ids:
+        return qs.none()
+
+    mods = _sites_models()
+    if mods is None:
+        return qs
+
+    q = Q(**{f"{path}site_assignment__site_id__in": ids})
+    glob = mods.Site.objects.filter(is_global=True).values_list("id", flat=True).first()
+    if glob in ids:
+        q |= Q(**{f"{path}site_assignment__isnull": True})
+    return qs.filter(q).distinct()

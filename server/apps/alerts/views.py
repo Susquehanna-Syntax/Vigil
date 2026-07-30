@@ -5,6 +5,7 @@ from django.utils.timezone import now
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from vigil import scoping
 
 from .models import Alert
 from .serializers import AlertSerializer
@@ -33,7 +34,9 @@ def _parse_ack_duration(request):
 @permission_classes([IsAuthenticated])
 def alert_list(request):
     state = request.query_params.get("state", Alert.State.FIRING)
-    alerts = Alert.objects.filter(state=state).select_related("host", "rule")
+    alerts = scoping.filter_by_site(
+        Alert.objects.filter(state=state).select_related("host", "rule"),
+        request.user, path="host__")
     # Optional cap — the resolved tab only ever shows recent history
     try:
         limit = int(request.query_params.get("limit", 0))

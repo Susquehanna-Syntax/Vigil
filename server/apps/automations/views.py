@@ -8,6 +8,7 @@ from apps.accounts.permissions import IsAdmin
 from apps.baselines.models import Baseline
 from apps.hosts.models import Host
 from apps.tasks.models import TaskDefinition
+from vigil import scoping
 from vigil.hooks import KNOWN_EVENTS
 
 from .models import Automation
@@ -126,8 +127,9 @@ def _apply(a: Automation, data) -> str | None:
 def automation_index(request):
     if request.method == "GET":
         return Response({
-            "automations": [_row(a) for a in Automation.objects.select_related(
-                "task_definition", "target_host")],
+            "automations": [_row(a) for a in scoping.filter_by_site(
+                Automation.objects.select_related("task_definition", "target_host"),
+                request.user)],
             "events": EVENT_LABELS,
         })
     a = Automation(created_by=request.user, trigger=request.data.get("trigger", "event"),
