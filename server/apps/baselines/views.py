@@ -74,7 +74,7 @@ def baseline_index(request):
     if request.method == "GET":
         rows = scoping.filter_by_site(
             Baseline.objects.prefetch_related("steps__definition"),
-            request.user).order_by("created_at")
+            request.user, cascade_global=True).order_by("created_at")
         return Response([_row(b) for b in rows])
 
     name = (request.data.get("name") or "").strip()
