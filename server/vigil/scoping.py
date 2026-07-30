@@ -158,3 +158,47 @@ def sites_for_hosts(host_ids):
 
     glob = mods.Site.objects.global_site()
     return {hid: assigned.get(hid, glob) for hid in host_ids}
+
+
+def site_roles_for(user):
+    """Map site id -> role string for `user`, plus ``"__global__"`` for their
+    row on the global site. Empty when the Business sites app is absent or
+    the user holds no rows — which is what makes per-site roles opt-in.
+    """
+    mods = _sites_models()
+    if mods is None or not getattr(user, "pk", None):
+        return {}
+
+    out = {}
+    rows = (mods.UserSiteRole.objects
+            .filter(user=user).select_related("site"))
+    for row in rows:
+        out[row.site_id] = row.role
+        if row.site.is_global:
+            out["__global__"] = row.role
+    return out
+
+
+def capabilities_for(user, site):
+    """The set of (app, verb) pairs granted to `user` in `site`, or None when
+    no UserSiteRole row backs them there.
+
+    None and set() mean different things: None is "no row, fall back to the
+    legacy operator powers", while an empty set is "a row exists and grants
+    nothing", which denies.
+    """
+    mods = _sites_models()
+    if mods is None or site is None or not getattr(user, "pk", None):
+        return None
+
+    row = (mods.UserSiteRole.objects
+           .filter(user=user, site=site)
+           .prefetch_related("capabilities").first())
+    if row is None:
+        # Fall back to their global row, which is the floor.
+        row = (mods.UserSiteRole.objects
+               .filter(user=user, site__is_global=True)
+               .prefetch_related("capabilities").first())
+    if row is None:
+        return None
+    return {(c.app, c.verb) for c in row.capabilities.all()}

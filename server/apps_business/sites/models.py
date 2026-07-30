@@ -104,3 +104,31 @@ class UserSiteRole(models.Model):
 
     class Meta:
         unique_together = ("user", "site")
+
+
+class SiteCapability(models.Model):
+    """One granted verb for one operator in one site.
+
+    Rows exist only for granted capabilities — absence is denial. Hung off
+    UserSiteRole rather than (user, site) so revoking a role takes its
+    capabilities with it by cascade, leaving no orphaned grants.
+    """
+    user_site_role = models.ForeignKey(
+        UserSiteRole, on_delete=models.CASCADE, related_name="capabilities")
+    app = models.CharField(max_length=20)
+    verb = models.CharField(max_length=20)
+
+    class Meta:
+        unique_together = ("user_site_role", "app", "verb")
+
+    def __str__(self):
+        return f"{self.app}:{self.verb}"
+
+    def clean(self):
+        # Validated against the core vocabulary so a typo cannot be stored.
+        from django.core.exceptions import ValidationError
+
+        from apps.accounts.permissions import CAPABILITIES
+        verbs = CAPABILITIES.get(self.app)
+        if verbs is None or self.verb not in verbs:
+            raise ValidationError(f"unknown capability {self.app}:{self.verb}")
