@@ -220,3 +220,25 @@ class EnrollmentOriginTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'id="vigil-public-url"')
         self.assertContains(resp, "window.location.origin")
+
+
+class HostSitePayloadTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            "sp", password="x", is_staff=True)
+        self.client.force_login(self.user)
+
+    def test_every_host_reports_a_site(self):
+        Host.objects.create(hostname="loose", agent_token="tok-loose")
+        row = self.client.get("/api/v1/hosts/").json()[0]
+        self.assertEqual(row["site_name"], "Global")
+        self.assertIsNotNone(row["site"])
+
+    def test_assigned_host_reports_its_own_site(self):
+        from apps_business.sites.models import HostSiteAssignment, Site
+        h = Host.objects.create(hostname="west-01", agent_token="tok-w")
+        site = Site.objects.create(name="West Campus", slug="west-campus")
+        HostSiteAssignment.objects.create(host=h, site=site)
+        row = next(r for r in self.client.get("/api/v1/hosts/").json()
+                   if r["hostname"] == "west-01")
+        self.assertEqual(row["site_name"], "West Campus")

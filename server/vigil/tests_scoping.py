@@ -120,3 +120,33 @@ class NoBusinessAppTests(TestCase):
     def test_execution_is_never_blocked_without_the_business_app(self):
         with mock.patch.object(scoping, "_sites_models", return_value=None):
             self.assertTrue(scoping.execution_allowed(self.baseline))
+
+
+class SitesForHostsTests(TestCase):
+    def setUp(self):
+        from apps.hosts.models import Host
+        from apps_business.sites.models import HostSiteAssignment
+        self.west = Site.objects.create(name="West Campus", slug="west-campus")
+        self.glob = Site.objects.global_site()
+        self.assigned = Host.objects.create(hostname="a", agent_token="t-a")
+        self.loose = Host.objects.create(hostname="b", agent_token="t-b")
+        HostSiteAssignment.objects.create(host=self.assigned, site=self.west)
+
+    def test_assigned_host_maps_to_its_site(self):
+        m = scoping.sites_for_hosts([self.assigned.id])
+        self.assertEqual(m[self.assigned.id], self.west)
+
+    def test_unassigned_host_maps_to_the_global_site(self):
+        m = scoping.sites_for_hosts([self.loose.id])
+        self.assertEqual(m[self.loose.id], self.glob)
+
+    def test_query_count_does_not_grow_with_host_count(self):
+        from apps.hosts.models import Host
+        ids = [self.assigned.id, self.loose.id]
+        with self.assertNumQueries(2):
+            scoping.sites_for_hosts(ids)
+        for i in range(8):
+            ids.append(Host.objects.create(
+                hostname=f"h{i}", agent_token=f"t{i}").id)
+        with self.assertNumQueries(2):
+            scoping.sites_for_hosts(ids)

@@ -24,7 +24,16 @@ _ASSIGNMENTS = {
 
 
 def _sites_models():
-    """The Business sites models module, or None when absent."""
+    """The Business sites models module, or None when absent.
+
+    Two distinct absences, both of which must degrade rather than raise:
+    the app is not in INSTALLED_APPS (importing its models would raise
+    RuntimeError about a missing app_label), or the commercial directory has
+    been removed outright (ImportError).
+    """
+    from django.apps import apps as django_apps
+    if not django_apps.is_installed("apps_business.sites"):
+        return None
     try:
         from apps_business.sites import models
         return models
@@ -125,3 +134,27 @@ def execution_allowed(obj) -> bool:
 
     site = scope_of(obj)
     return site is None or site.is_global
+
+
+def sites_for_hosts(host_ids):
+    """Map host id -> Site for `host_ids`. Unassigned hosts map to the global
+    site, because unassigned *is* membership of Global. Returns {} when the
+    Business sites app is absent.
+
+    Two queries regardless of how many hosts are passed.
+    """
+    mods = _sites_models()
+    host_ids = list(host_ids)
+    if mods is None or not host_ids:
+        return {}
+
+    assigned = {
+        row.host_id: row.site
+        for row in (mods.HostSiteAssignment.objects
+                    .filter(host_id__in=host_ids).select_related("site"))
+    }
+    if len(assigned) == len(host_ids):
+        return assigned
+
+    glob = mods.Site.objects.global_site()
+    return {hid: assigned.get(hid, glob) for hid in host_ids}

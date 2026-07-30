@@ -4,6 +4,12 @@ from .models import DockerContainer, Host, HostInventory, UnmanagedDevice
 
 
 class HostSerializer(serializers.ModelSerializer):
+    # Supplied by the view through serializer context so the whole list costs
+    # two queries rather than one per host. Absent context yields null/"",
+    # which is also what an AGPL-only build (no Business app) returns.
+    site = serializers.SerializerMethodField()
+    site_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Host
         fields = [
@@ -18,8 +24,21 @@ class HostSerializer(serializers.ModelSerializer):
             "agent_version",
             "last_checkin",
             "created_at",
+            "site",
+            "site_name",
         ]
         read_only_fields = fields
+
+    def _site(self, obj):
+        return (self.context.get("host_sites") or {}).get(obj.id)
+
+    def get_site(self, obj):
+        s = self._site(obj)
+        return str(s.id) if s is not None else None
+
+    def get_site_name(self, obj):
+        s = self._site(obj)
+        return s.name if s is not None else ""
 
 
 class HostInventorySerializer(serializers.ModelSerializer):
