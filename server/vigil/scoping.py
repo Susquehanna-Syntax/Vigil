@@ -204,16 +204,23 @@ def capabilities_for(user, site):
     return {(c.app, c.verb) for c in row.capabilities.all()}
 
 
-def filter_by_site(qs, user, path=""):
+def filter_by_site(qs, user, path="", cascade_global=False):
     """Narrow `qs` to what `user` may see, by site.
 
     `path` is the ORM path from the queryset's model to whatever carries the
     site assignment: "" when the model itself does (Host, Baseline,
     Automation), "host__" when it hangs off a host (Alert).
 
-    An unassigned object belongs to Global, so it is visible to anyone who
-    can see Global. Unscoped users get the queryset back untouched, which is
-    what keeps existing installs behaving exactly as before.
+    `cascade_global` distinguishes the two meanings of "global":
+
+    * **False** (hosts, alerts) — unassigned means *membership* of the global
+      site, so only someone who can see Global sees those rows.
+    * **True** (baselines, automations, channels) — global means *applies
+      everywhere*, so anyone with access to any site must see it. A Lab-only
+      admin has to see the global baseline that governs Lab.
+
+    Unscoped users get the queryset back untouched, which is what keeps
+    existing installs behaving exactly as before.
     """
     from apps.accounts.permissions import visible_site_ids
 
@@ -228,9 +235,14 @@ def filter_by_site(qs, user, path=""):
         return qs
 
     q = Q(**{f"{path}site_assignment__site_id__in": ids})
-    glob = mods.Site.objects.filter(is_global=True).values_list("id", flat=True).first()
-    if glob in ids:
+    if cascade_global:
         q |= Q(**{f"{path}site_assignment__isnull": True})
+        q |= Q(**{f"{path}site_assignment__site__is_global": True})
+    else:
+        glob = mods.Site.objects.filter(
+            is_global=True).values_list("id", flat=True).first()
+        if glob in ids:
+            q |= Q(**{f"{path}site_assignment__isnull": True})
     return qs.filter(q).distinct()
 
 

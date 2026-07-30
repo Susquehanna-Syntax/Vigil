@@ -129,7 +129,7 @@ def automation_index(request):
         return Response({
             "automations": [_row(a) for a in scoping.filter_by_site(
                 Automation.objects.select_related("task_definition", "target_host"),
-                request.user)],
+                request.user, cascade_global=True)],
             "events": EVENT_LABELS,
         })
     a = Automation(created_by=request.user, trigger=request.data.get("trigger", "event"),

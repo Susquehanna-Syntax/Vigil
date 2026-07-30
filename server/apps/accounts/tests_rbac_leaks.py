@@ -175,3 +175,38 @@ class SingleObjectScopeTests(TestCase):
         self.assertEqual(resp.json().get("updated"), 0)
         self.lab_alert.refresh_from_db()
         self.assertIsNone(self.lab_alert.acknowledged_at)
+
+
+class GlobalCascadeTests(TestCase):
+    """Global policy applies in every site, so a site-scoped user must see it.
+    Global *hosts* are different: unassigned is membership, not cascade."""
+
+    def setUp(self):
+        self.lab = Site.objects.create(name="Lab", slug="lab")
+        self.west = Site.objects.create(name="West Campus", slug="west-campus")
+        self.sam = get_user_model().objects.create_user("sam", password="x")
+        UserSiteRole.objects.create(user=self.sam, site=self.lab, role=Role.ADMIN)
+
+        Baseline.objects.create(name="global-baseline")           # unassigned
+        lab_b = Baseline.objects.create(name="lab-baseline")
+        BaselineSiteAssignment.objects.create(baseline=lab_b, site=self.lab)
+        west_b = Baseline.objects.create(name="west-baseline")
+        BaselineSiteAssignment.objects.create(baseline=west_b, site=self.west)
+
+        # A host with no assignment belongs to Global, not to Lab.
+        Host.objects.create(hostname="loose-host", agent_token="tok-loose")
+        self.client.force_login(self.sam)
+
+    def test_a_site_admin_sees_the_global_baseline_that_governs_them(self):
+        names = {b["name"] for b in self.client.get("/api/v1/baselines/").json()}
+        self.assertIn("global-baseline", names)
+        self.assertIn("lab-baseline", names)
+
+    def test_but_still_not_another_sites_baseline(self):
+        names = {b["name"] for b in self.client.get("/api/v1/baselines/").json()}
+        self.assertNotIn("west-baseline", names)
+
+    def test_an_unassigned_host_is_not_visible_to_a_lab_only_user(self):
+        """Hosts do not cascade: unassigned means it lives in Global."""
+        names = {h["hostname"] for h in self.client.get("/api/v1/hosts/").json()}
+        self.assertNotIn("loose-host", names)
