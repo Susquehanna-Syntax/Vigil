@@ -2337,3 +2337,25 @@ select.form-control:hover { border-color: var(--s4); }
   font-family: var(--mono, monospace); font-size: 12px;
   white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto;
 }
+
+/* Per-site role grants (Settings → Users & Roles → Sites) */
+.us-warning {
+  padding: 10px 12px; margin-bottom: 14px; border-radius: 8px;
+  background: rgba(240,184,136,0.10); border: 1px solid rgba(240,184,136,0.35);
+  color: var(--text-2); font-size: 0.85rem; line-height: 1.5;
+}
+.us-grants { max-height: 420px; overflow-y: auto; }
+.us-grant { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.us-grant:last-child { border-bottom: none; }
+.us-grant-head { display: flex; align-items: center; gap: 10px; }
+.us-site { font-weight: 600; flex: 1; }
+.us-grant-head .form-control { width: auto; }
+.us-note { margin: 6px 0 0; font-size: 0.82rem; }
+.us-matrix { margin-top: 10px; padding-left: 4px; }
+.us-matrix-row { display: grid; grid-template-columns: 110px 1fr; gap: 10px; padding: 4px 0; align-items: center; }
+.us-app { font-size: 12px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.us-verbs { display: flex; flex-wrap: wrap; gap: 12px; }
+.us-verb { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-2); cursor: pointer; }
+.us-add { display: flex; gap: 8px; align-items: center; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.us-add .form-control { width: auto; flex: 1; }
+.us-bad { color: var(--rose); }
