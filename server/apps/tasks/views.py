@@ -15,6 +15,7 @@ from .models import Task, TaskDefinition, TaskRun
 from .serializers import (
     TaskDefinitionSerializer,
     TaskRunSerializer,
+    TaskRunSummarySerializer,
     TaskSerializer,
 )
 from .spec import (
@@ -743,6 +744,45 @@ def task_history(request):
         "pages": pages,
         "page_size": page_size,
         "results": TaskSerializer(items, many=True).data,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def run_history(request):
+    """Paginated run history, newest first.
+
+    ``?source=automation,baseline`` narrows to those kinds; omitted means
+    every run including manual deploys.
+    """
+    try:
+        page = max(1, int(request.query_params.get("page", "1")))
+    except (TypeError, ValueError):
+        page = 1
+    page_size = 25
+
+    qs = TaskRun.objects.select_related(
+        "automation", "baseline", "requested_by").order_by("-created_at")
+
+    raw = (request.query_params.get("source") or "").strip()
+    if raw:
+        wanted = [s for s in (v.strip() for v in raw.split(",")) if s]
+        valid = [s for s in wanted if s in TaskRun.Source.values]
+        if not valid:
+            return Response({"detail": f"unknown source {raw!r}"}, status=400)
+        qs = qs.filter(source__in=valid)
+
+    total = qs.count()
+    pages = max(1, (total + page_size - 1) // page_size)
+    if page > pages:
+        page = pages
+    start = (page - 1) * page_size
+    return Response({
+        "count": total,
+        "page": page,
+        "pages": pages,
+        "page_size": page_size,
+        "results": TaskRunSummarySerializer(qs[start:start + page_size], many=True).data,
     })
 
 

@@ -74,6 +74,37 @@ class TaskDefinitionSerializer(serializers.ModelSerializer):
         ]
 
 
+class TaskRunSummarySerializer(serializers.ModelSerializer):
+    """Run header without the nested tasks — for the history feed, where the
+    per-task detail would dominate the payload."""
+
+    automation_name = serializers.CharField(
+        source="automation.name", read_only=True, default=None)
+    baseline_name = serializers.CharField(
+        source="baseline.name", read_only=True, default=None)
+    requested_by_username = serializers.CharField(
+        source="requested_by.username", read_only=True, default=None)
+
+    class Meta:
+        model = TaskRun
+        fields = [
+            "id",
+            "source",
+            "automation",
+            "automation_name",
+            "baseline",
+            "baseline_name",
+            "name_snapshot",
+            "requested_by_username",
+            "host_count",
+            "step_count",
+            "state",
+            "created_at",
+            "finished_at",
+        ]
+        read_only_fields = fields
+
+
 class TaskRunSerializer(serializers.ModelSerializer):
     definition_name = serializers.CharField(
         source="definition.name", read_only=True, default=None

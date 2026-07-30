@@ -2294,3 +2294,46 @@ select.form-control:hover { border-color: var(--s4); }
   margin: 0 auto 14px; object-fit: contain;
 }
 :root[data-density="compact"] .vigil-footer { margin-top: 20px; padding: 10px 0 2px; }
+
+/* ═══════════════════════════════════════════
+   Run history — Baselines → History sub-tab
+   ═══════════════════════════════════════════ */
+.run-row {
+  display: grid;
+  grid-template-columns: 90px 1fr auto auto 90px;
+  gap: 14px; align-items: center;
+  padding: 11px 14px; margin-bottom: 6px;
+  background: var(--s2); border: 1px solid var(--border); border-radius: 8px;
+  cursor: pointer; font-size: 0.86rem;
+  transition: border-color 0.2s, background 0.2s;
+}
+.run-row:hover { border-color: var(--s3); background: var(--s3); }
+.run-kind {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 2px 7px; border-radius: 4px; text-align: center;
+  border: 1px solid var(--border); color: var(--text-3);
+}
+.run-kind-baseline { color: var(--lavender); border-color: rgba(186,168,232,0.4); }
+.run-kind-automation { color: var(--sky); border-color: rgba(130,196,238,0.4); }
+.run-name { font-weight: 500; color: var(--text-1); }
+.run-meta, .run-when { font-size: 12px; color: var(--text-3); }
+.run-state {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  text-align: right; font-weight: 600;
+}
+.run-state.t-mint { color: var(--mint); }
+.run-state.t-rose { color: var(--rose); }
+.run-state.t-lemon { color: var(--lemon); }
+.run-state.t-peach { color: var(--peach); }
+.run-state.t-lav { color: var(--lavender); }
+.hist-pager { display: flex; gap: 12px; align-items: center; justify-content: center; margin-top: 14px; }
+.run-task-list { max-height: 420px; overflow-y: auto; }
+.run-task { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.run-task:last-child { border-bottom: none; }
+.run-task-host { font-weight: 500; margin-right: 10px; }
+.run-task-out {
+  margin-top: 6px; padding: 8px 10px; border-radius: 6px;
+  background: var(--s1); color: var(--text-2);
+  font-family: var(--mono, monospace); font-size: 12px;
+  white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto;
+}
