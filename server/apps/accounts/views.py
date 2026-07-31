@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from django.contrib import auth
 from django.contrib.auth import authenticate, get_user_model
+from django.db import DatabaseError
 from django.shortcuts import redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timezone import now
@@ -202,6 +203,22 @@ def setup_view(request):
     return render(request, "setup.html", {"step": 1, "error": error})
 
 
+def _branding():
+    """Business branding for the pre-auth login page, or None.
+
+    Imported lazily so the login page still renders if the Business app is
+    absent from this build — branding is decoration, never a gate on signing in.
+    """
+    try:
+        from apps_business.branding.models import BrandingConfig
+    except ImportError:
+        return None
+    try:
+        return BrandingConfig.load()
+    except DatabaseError:
+        return None
+
+
 def login_view(request):
     User = get_user_model()
     if not User.objects.exists():
@@ -217,7 +234,11 @@ def login_view(request):
 
         if _login_blocked(username, ip):
             error = "Too many failed sign-in attempts. Try again in a few minutes."
-            return render(request, "login.html", {"error": error}, status=429)
+            return render(
+                request, "login.html",
+                {"error": error, "branding": _branding()},
+                status=429,
+            )
 
         user = authenticate(request, username=username, password=password)
         if user is not None:
@@ -233,7 +254,7 @@ def login_view(request):
         _record_login_failure(username, ip)
         error = "Invalid username or password"
 
-    return render(request, "login.html", {"error": error})
+    return render(request, "login.html", {"error": error, "branding": _branding()})
 
 
 def logout_view(request):
@@ -323,6 +344,33 @@ def user_role(request, user_id):
         return Response(status=404)
     resp = _apply_role(user, request.data.get("role") or "")
     return resp if resp is not None else Response(_user_row(user))
+
+
+@api_view(["DELETE"])
+def user_detail(request, user_id):
+    """Delete a user. Admin-only, with two guards: you cannot delete your own
+    account (that is what makes you an admin), and you cannot delete the last
+    administrator (it would lock the install out of settings and enrollment)."""
+    from .models import Role
+    from .permissions import IsAdmin, role_of
+
+    if not IsAdmin().has_permission(request, None):
+        return Response({"detail": IsAdmin.message}, status=403)
+    User = get_user_model()
+    try:
+        target = User.objects.get(pk=user_id)
+    except User.DoesNotExist:
+        return Response(status=404)
+    if target.pk == request.user.pk:
+        return Response({"detail": "You cannot delete your own account."}, status=400)
+    if role_of(target) == Role.ADMIN:
+        admins = sum(1 for u in User.objects.all() if role_of(u) == Role.ADMIN)
+        if admins <= 1:
+            return Response(
+                {"detail": "Cannot delete the last administrator."}, status=400
+            )
+    target.delete()
+    return Response(status=204)
 
 
 def _apply_role(user, role: str):

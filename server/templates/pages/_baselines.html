@@ -7,8 +7,9 @@
   </div>
 
   <div class="sub-tabs">
-    <div class="sub-tab active" data-subtab="bl-panel">Baselines</div>
-    <div class="sub-tab" data-subtab="auto-panel">Automation</div>
+    <div class="sub-tab t-lav active" data-subtab="bl-panel">Baselines</div>
+    <div class="sub-tab t-sky" data-subtab="auto-panel">Automation</div>
+    <div class="sub-tab t-mint" data-subtab="hist-panel">History</div>
   </div>
 
   <!-- ── Baselines panel ─────────────────────────────────────────────── -->
@@ -27,6 +28,20 @@
       <button class="btn btn-mint" id="auto-new-btn">New automation</button>
     </div>
     <div id="automations-list" class="bl-list"></div>
+  </div>
+
+  <!-- ── History panel ───────────────────────────────────────────────── -->
+  <div class="sub-panel" id="hist-panel">
+    <div class="bl-toolbar">
+      <div class="page-sub" style="flex:1;margin:0;">Every baseline and automation dispatch, newest first, with how it turned out.</div>
+      <div class="sa-chips" id="hist-filters" style="margin:0;">
+        <button type="button" class="sa-chip on" data-src="automation,baseline">All</button>
+        <button type="button" class="sa-chip" data-src="baseline">Baselines</button>
+        <button type="button" class="sa-chip" data-src="automation">Automations</button>
+      </div>
+    </div>
+    <div id="run-history-list" class="bl-list"></div>
+    <div id="run-history-pager" class="hist-pager"></div>
   </div>
 </section>
 

@@ -16,11 +16,13 @@
 <link rel="apple-touch-icon" href="{% static 'img/vigil-logo.png' %}">
 {% block extra_head %}{% endblock %}
 <script>
-  // Apply the saved theme before first paint to avoid a flash.
+  // Apply the saved theme and density before first paint to avoid a flash.
   (function () {
     try {
       var t = localStorage.getItem('vigil-theme') || 'dark';
       document.documentElement.setAttribute('data-theme', t);
+      var d = localStorage.getItem('vigil-density') || 'cozy';
+      document.documentElement.setAttribute('data-density', d);
     } catch (e) {}
   })();
 </script>
@@ -85,6 +87,7 @@
     <div class="license-banner license-banner--{{ b.severity }}">{{ b.message }}</div>
     {% endfor %}
     {% block content %}{% endblock %}
+    <div id="vigil-footer" class="vigil-footer"></div>
   </main>
 </div>
 
@@ -609,6 +612,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-ai.js' %}"></script>
 <script src="{% static 'js/vigil-baselines.js' %}"></script>
 <script src="{% static 'js/vigil-automations.js' %}"></script>
+<!-- vigil-runhistory.js — Baselines → History sub-tab (baseline + automation runs) -->
+<script src="{% static 'js/vigil-runhistory.js' %}"></script>
 <script src="{% static 'js/vigil-statuspages.js' %}"></script>
 <!-- vigil-deploy.js — deploy modal, fleet cache, schedule/retry/success-criteria policy (wraps navigateTo) -->
 <script src="{% static 'js/vigil-deploy.js' %}"></script>
@@ -620,6 +625,14 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-devices.js' %}"></script>
 <!-- vigil-settings.js — TOTP enroll / confirm / disable -->
 <script src="{% static 'js/vigil-settings.js' %}"></script>
+<!-- vigil-users.js — Users & Roles pane (list/create/role/delete) -->
+<script src="{% static 'js/vigil-users.js' %}"></script>
+<!-- vigil-usersites.js — per-site role grants + operator capability matrix -->
+<script src="{% static 'js/vigil-usersites.js' %}"></script>
+<!-- vigil-sites.js — Sites pane (list/create/rename/delete, host assignment) -->
+<script src="{% static 'js/vigil-sites.js' %}"></script>
+<!-- vigil-branding.js — Branding pane + client-side apply on every authed page -->
+<script src="{% static 'js/vigil-branding.js' %}"></script>
 <!-- vigil-enroll.js — enrollment wizard modal -->
 <script src="{% static 'js/vigil-enroll.js' %}"></script>
 <!-- vigil-about.js — server / agent / scanner version surface -->

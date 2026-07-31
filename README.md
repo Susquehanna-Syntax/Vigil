@@ -95,6 +95,7 @@ This brings up Django, PostgreSQL + TimescaleDB, Redis, Celery worker, and Celer
 | `DJANGO_SECRET_KEY` | `insecure-dev-key-…` | Django secret key — **change in production** |
 | `DJANGO_DEBUG` | `true` | Set to `false` in production |
 | `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated allowed hosts |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | _(empty)_ | Comma-separated origins trusted for POSTs, scheme included — required behind a proxy or external hostname, else `Origin checking failed` |
 | `USE_SQLITE` | _(unset)_ | Set to `true` to use SQLite instead of PostgreSQL |
 | `POSTGRES_DB` | `vigil` | PostgreSQL database name |
 | `POSTGRES_USER` | `vigil` | PostgreSQL user |
@@ -112,6 +113,20 @@ This brings up Django, PostgreSQL + TimescaleDB, Redis, Celery worker, and Celer
 | `EMAIL_HOST` | `localhost` | SMTP host |
 | `EMAIL_PORT` | `587` | SMTP port |
 | `VIGIL_NOTIFICATION_FROM_EMAIL` | `vigil@localhost` | From address for alert emails |
+| `VIGIL_PUBLIC_URL` | — | External URL for remote access; its host/origin are auto-added to `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS` |
+| `VIGIL_TRUST_PROXY` | `false` | Trust `X-Forwarded-Proto`/`Host` from a TLS-terminating proxy/tunnel |
+| `TUNNEL_TOKEN` | — | Cloudflare Tunnel token for `docker compose --profile tunnel up` |
+
+---
+
+## Remote Access (off-LAN check-in)
+
+Agents are outbound-only, so reaching Vigil from outside the LAN is just a matter
+of exposing the server at a public or overlay address. Set `VIGIL_PUBLIC_URL` to
+your external URL and `VIGIL_TRUST_PROXY=true` when a proxy terminates TLS. The
+repo ships a `cloudflared` sidecar (`docker compose --profile tunnel up -d`) for
+Cloudflare Tunnel. Full recipes for **Cloudflare Tunnel**, **Tailscale**, and a
+generic **reverse proxy** are in [docs/REMOTE-ACCESS.md](docs/REMOTE-ACCESS.md).
 
 ---
 
@@ -278,6 +293,11 @@ success_criteria:
   output_contains: "active (running)"   # substring match
   output_regex: "^OK"                   # regex (applied after output_contains)
 
+# Optional: write this task's output into the host's inventory as a custom column
+collect:
+  column: nginx_version           # required — the custom_columns key (≤ 80 chars)
+  parse: output_line_1            # optional — output_line_1 (default) | output_trim | output_full
+
 actions:
   - id: reload
     type: reload_service
@@ -299,6 +319,35 @@ actions:
 **Retry** — on step failure the agent re-runs the step after `delay_seconds`, up to `attempts` times, before marking the task as failed.
 
 **Success criteria** — even a zero exit code is treated as failure if `output_contains` or `output_regex` doesn't match. Per-step criteria override the top-level criteria.
+
+**Collect** — a task marked with a top-level `collect:` block becomes an inventory data collector: when the run finishes on a host, the task's output is written into that host's `HostInventory.custom_columns`, and the column auto-appears on the Inventory page. The block is a **single mapping** (not a list, and not one entry per column — one task collects one column), with these keys:
+
+| Key | Required | Meaning |
+|---|---|---|
+| `column` | yes | The `custom_columns` key to write. String, ≤ 80 characters. |
+| `parse` | no | How the task output becomes the stored value. One of `output_line_1` (default), `output_trim`, `output_full`. |
+
+There is **no `value:` key and no `{{ steps.* }}` templating** — the value always comes from the task's own output, transformed by `parse`:
+
+- `output_line_1` *(default)* — the first non-empty line of output, with a leading `[OK]` step prefix and any `label:` prefix stripped; truncated to 500 characters. Best for a task whose script echoes a single value.
+- `output_trim` — the entire output, whitespace-trimmed, truncated to 500 characters.
+- `output_full` — the entire output verbatim, truncated to 2000 characters.
+
+The column is written per host when that host's task completes, so running one `collect:` task against a tag or fleet fills the column for every targeted host. Worked example — record each host's kernel release into a `kernel` column:
+
+```yaml
+name: Record kernel version
+description: Capture uname -r into the host inventory.
+risk: low
+collect:
+  column: kernel
+  parse: output_line_1
+actions:
+  - id: uname
+    type: run_command
+    params:
+      command: "uname -r"
+```
 
 ### Available actions
 

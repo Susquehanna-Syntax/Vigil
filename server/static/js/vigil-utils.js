@@ -223,6 +223,22 @@ function toggleTheme() {
   try { localStorage.setItem('vigil-theme', next); } catch (e) {}
   _applyThemeIcon(next);
 }
+
+/* ── Layout density (cozy / compact) ─────────────────────────────────── */
+function _applyDensityButtons(mode) {
+  const cozy = document.getElementById('density-cozy');
+  const compact = document.getElementById('density-compact');
+  if (cozy) cozy.classList.toggle('active', mode === 'cozy');
+  if (compact) compact.classList.toggle('active', mode === 'compact');
+}
+function setDensity(mode) {
+  const next = mode === 'compact' ? 'compact' : 'cozy';
+  document.documentElement.setAttribute('data-density', next);
+  try { localStorage.setItem('vigil-density', next); } catch (e) {}
+  _applyDensityButtons(next);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   _applyThemeIcon(document.documentElement.getAttribute('data-theme') || 'dark');
+  _applyDensityButtons(document.documentElement.getAttribute('data-density') || 'cozy');
 });

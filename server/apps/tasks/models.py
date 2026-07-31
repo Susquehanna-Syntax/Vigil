@@ -75,9 +75,27 @@ class TaskRun(models.Model):
         FAILED = "failed", "Failed"
         PARTIAL = "partial", "Partial"
 
+    class Source(models.TextChoices):
+        MANUAL = "manual", "Manual deploy"
+        AUTOMATION = "automation", "Automation"
+        BASELINE = "baseline", "Baseline"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     definition = models.ForeignKey(
         TaskDefinition, on_delete=models.SET_NULL, null=True, related_name="runs"
+    )
+    # What kicked this off. Recorded explicitly rather than inferred from the
+    # FKs below, because those go null when the automation or baseline is
+    # deleted and the history must still say what it was.
+    source = models.CharField(
+        max_length=12, choices=Source.choices, default=Source.MANUAL)
+    automation = models.ForeignKey(
+        "automations.Automation", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="runs",
+    )
+    baseline = models.ForeignKey(
+        "baselines.Baseline", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="runs",
     )
     name_snapshot = models.CharField(max_length=120, blank=True)
     requested_by = models.ForeignKey(

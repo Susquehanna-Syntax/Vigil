@@ -12,6 +12,7 @@ urlpatterns = [
     path("definitions/<uuid:definition_id>/", views.definition_detail, name="definition-detail"),
     path("definitions/<uuid:definition_id>/fork/", views.definition_fork, name="definition-fork"),
     path("definitions/<uuid:definition_id>/deploy/", views.definition_deploy, name="definition-deploy"),
+    path("runs/", views.run_history, name="run-history"),
     path("runs/<uuid:run_id>/", views.run_detail, name="run-detail"),
     path("<uuid:task_id>/", views.task_detail, name="task-detail"),
 ]
