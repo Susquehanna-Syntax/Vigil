@@ -19,10 +19,22 @@ def split(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+    """Data only. Dropping is_default lives in 0007 on purpose.
+
+    Deleting and updating Site rows queues deferred FK trigger events from
+    every table that cascades off Site. PostgreSQL then refuses to ALTER that
+    table in the same transaction:
+
+        cannot ALTER TABLE "business_sites_site" because it has pending
+        trigger events
+
+    Splitting the schema change into its own migration gives it a fresh
+    transaction, after this one's triggers have fired. SQLite does not
+    enforce this, which is why the local suite never caught it.
+    """
 
     dependencies = [("business_sites", "0004_scope_assignments")]
 
     operations = [
         migrations.RunPython(unify, split),
-        migrations.RemoveField(model_name="site", name="is_default"),
     ]
