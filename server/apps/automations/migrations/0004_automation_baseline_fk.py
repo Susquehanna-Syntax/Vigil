@@ -22,6 +22,14 @@ def unlink_baselines(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+    """Add the FK and backfill it. Dropping baseline_name lives in 0005.
+
+    On a fresh database link_baselines() touches no rows, so this would pass
+    CI either way. On a real upgrade it updates every automation that names a
+    baseline, and those UPDATEs leave deferred FK trigger events pending on
+    automations_automation — after which PostgreSQL refuses to ALTER that
+    table in the same transaction.
+    """
 
     dependencies = [
         ("automations", "0003_automation_params_override"),
@@ -39,5 +47,4 @@ class Migration(migrations.Migration):
             ),
         ),
         migrations.RunPython(link_baselines, unlink_baselines),
-        migrations.RemoveField(model_name="automation", name="baseline_name"),
     ]
