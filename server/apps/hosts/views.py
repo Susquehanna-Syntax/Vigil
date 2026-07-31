@@ -14,6 +14,7 @@ from apps.accounts.permissions import IsAdmin
 from apps.metrics.models import MetricPoint
 from apps.tasks.models import Task
 from apps.tasks.spec import schedule_window_active
+from vigil import scoping
 from vigil.signing import get_public_key_b64, sign_task
 
 from .auto_tags import merge_auto_tags
@@ -427,8 +428,10 @@ def checkin(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def host_list(request):
-    hosts = Host.objects.exclude(status=Host.Status.REJECTED)
-    return Response(HostSerializer(hosts, many=True).data)
+    hosts = list(scoping.filter_by_site(
+        Host.objects.exclude(status=Host.Status.REJECTED), request.user))
+    ctx = {"host_sites": scoping.sites_for_hosts([h.id for h in hosts])}
+    return Response(HostSerializer(hosts, many=True, context=ctx).data)
 
 
 @api_view(["GET", "DELETE"])
@@ -438,6 +441,10 @@ def host_detail(request, host_id):
         host = Host.objects.get(pk=host_id)
     except Host.DoesNotExist:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    # Out of scope reads as absent: a 403 would confirm the host exists in a
+    # site this user cannot see.
+    if not scoping.host_in_scope(request.user, host):
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
     if request.method == "DELETE":
         # Destructive removal of a host and all its history is admin-only;
         # viewing stays open to any authenticated session.
@@ -446,7 +453,8 @@ def host_detail(request, host_id):
         hostname = host.hostname
         host.delete()
         return Response({"deleted": hostname}, status=status.HTTP_200_OK)
-    return Response(HostSerializer(host).data)
+    return Response(HostSerializer(
+        host, context={"host_sites": scoping.sites_for_hosts([host.id])}).data)
 
 
 @api_view(["GET"])

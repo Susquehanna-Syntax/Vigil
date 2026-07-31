@@ -193,3 +193,52 @@ class AboutEndpointAuthTests(TestCase):
         resp = self.client.get("/api/v1/about/")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("vigil_version", resp.data)
+
+
+class EnrollmentOriginTests(TestCase):
+    """The install one-liner must point at VIGIL_PUBLIC_URL when it is set.
+
+    Enrolling from a LAN address bakes that address into the agent, which then
+    silently stops checking in once the host leaves the LAN — the exact failure
+    remote access exists to prevent. See docs/REMOTE-ACCESS.md.
+    """
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("op", password="pw", is_staff=True)
+        self.client.force_login(self.user)
+
+    @override_settings(VIGIL_PUBLIC_URL="https://vigil.example.com")
+    def test_public_url_is_served_to_the_enrollment_snippet(self):
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "https://vigil.example.com")
+
+    @override_settings(VIGIL_PUBLIC_URL="")
+    def test_falls_back_to_browser_origin_when_unset(self):
+        """Unset means the template hands JS an empty string and JS falls back."""
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'id="vigil-public-url"')
+        self.assertContains(resp, "window.location.origin")
+
+
+class HostSitePayloadTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            "sp", password="x", is_staff=True)
+        self.client.force_login(self.user)
+
+    def test_every_host_reports_a_site(self):
+        Host.objects.create(hostname="loose", agent_token="tok-loose")
+        row = self.client.get("/api/v1/hosts/").json()[0]
+        self.assertEqual(row["site_name"], "Global")
+        self.assertIsNotNone(row["site"])
+
+    def test_assigned_host_reports_its_own_site(self):
+        from apps_business.sites.models import HostSiteAssignment, Site
+        h = Host.objects.create(hostname="west-01", agent_token="tok-w")
+        site = Site.objects.create(name="West Campus", slug="west-campus")
+        HostSiteAssignment.objects.create(host=h, site=site)
+        row = next(r for r in self.client.get("/api/v1/hosts/").json()
+                   if r["hostname"] == "west-01")
+        self.assertEqual(row["site_name"], "West Campus")

@@ -26,6 +26,52 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 # ---------------------------------------------------------------------------
+# Remote access — reverse proxy / tunnel (Cloudflare Tunnel, Tailscale, nginx)
+# ---------------------------------------------------------------------------
+# Agents are outbound-only, so getting them (and the dashboard) to check in from
+# outside the LAN is purely a question of exposing the server at a public or
+# overlay address. See docs/REMOTE-ACCESS.md.
+#
+# VIGIL_PUBLIC_URL is the single knob: the URL Vigil is reached at from outside
+# (e.g. https://vigil.example.com or the https://<host>.<tailnet>.ts.net name).
+# Its host is appended to ALLOWED_HOSTS and its origin to CSRF_TRUSTED_ORIGINS so
+# you don't have to set DJANGO_ALLOWED_HOSTS and DJANGO_CSRF_TRUSTED_ORIGINS by
+# hand as well.
+_public_url = os.environ.get("VIGIL_PUBLIC_URL", "").strip().rstrip("/")
+
+#: Exported so the UI can hand out enrollment commands that point at the
+#: external URL rather than whatever address the admin happens to be browsing
+#: from — a LAN IP baked into an agent stops working the moment it leaves.
+VIGIL_PUBLIC_URL = _public_url
+
+if _public_url:
+    from urllib.parse import urlsplit
+
+    _pu = urlsplit(_public_url)
+    if _pu.hostname and _pu.hostname not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_pu.hostname)
+    if _pu.scheme and _pu.netloc:
+        _origin = f"{_pu.scheme}://{_pu.netloc}"
+        if _origin not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(_origin)
+
+# When Vigil sits behind a proxy that terminates TLS (Cloudflare Tunnel, a
+# Tailscale HTTPS front, nginx/Caddy), the proxy forwards plain HTTP to Django
+# and sets X-Forwarded-Proto/Host. Set VIGIL_TRUST_PROXY=true so Django honors
+# those headers — request.is_secure() then returns True, secure cookies work,
+# and get_host() reflects the public hostname (needed for the login redirect
+# allow-list and absolute URLs).
+#
+# SECURITY: only enable this when the proxy is the ONLY route to Vigil and always
+# rewrites these headers. If the container's port is also reachable directly, a
+# client could spoof X-Forwarded-Proto. In the shipped compose the web port is
+# published for LAN use, so this stays opt-in, not automatic.
+_trust_proxy = os.environ.get("VIGIL_TRUST_PROXY", "false").lower() in ("true", "1", "yes")
+if _trust_proxy:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = True
+
+# ---------------------------------------------------------------------------
 # Apps
 # ---------------------------------------------------------------------------
 INSTALLED_APPS = [
@@ -55,6 +101,7 @@ INSTALLED_APPS = [
     # Business features (apps_business/LICENSE) — installed always, unlocked by license
     "apps_business.sites",
     "apps_business.audits",
+    "apps_business.branding",
 ]
 
 # ---------------------------------------------------------------------------
@@ -333,7 +380,7 @@ VIGIL_AGENT_VERSION = os.environ.get("VIGIL_AGENT_VERSION", "2026.3.16")
 # Server build version — surfaced on the About page and the /api/v1/about/
 # endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
 # this constant should stay in lockstep.
-VIGIL_VERSION = "2026.4.2"
+VIGIL_VERSION = "2026.5.0"
 
 # ---------------------------------------------------------------------------
 # Display / locale

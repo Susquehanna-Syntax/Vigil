@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from django.contrib.auth import get_user_model
@@ -214,3 +215,35 @@ class BaselineApiTests(TestCase):
                                  content_type="application/json")
         self.assertFalse(resp.json()["enabled"])
         self.assertEqual(self.client.delete(f"/api/v1/baselines/{b.id}/").status_code, 204)
+
+
+class BaselineNameScopeTests(TestCase):
+    def test_two_baselines_may_share_a_name_at_the_database_level(self):
+        """Uniqueness moves to the view layer so that, once scoped, two sites
+        can each own a 'Nightly patch scan'."""
+        Baseline.objects.create(name="Nightly patch scan")
+        Baseline.objects.create(name="Nightly patch scan")   # must not raise
+        self.assertEqual(Baseline.objects.filter(name="Nightly patch scan").count(), 2)
+
+    def test_api_still_rejects_a_duplicate_name(self):
+        user = get_user_model().objects.create_user("op", password="x", is_staff=True)
+        self.client.force_login(user)
+        Baseline.objects.create(name="Hardening")
+        resp = self.client.post(
+            "/api/v1/baselines/",
+            data=json.dumps({"name": "Hardening", "definition_ids": []}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_api_still_rejects_a_duplicate_name_on_rename(self):
+        user = get_user_model().objects.create_user("op2", password="x", is_staff=True)
+        self.client.force_login(user)
+        Baseline.objects.create(name="Hardening")
+        other = Baseline.objects.create(name="Patching")
+        resp = self.client.patch(
+            f"/api/v1/baselines/{other.id}/",
+            data=json.dumps({"name": "Hardening"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400, resp.content)

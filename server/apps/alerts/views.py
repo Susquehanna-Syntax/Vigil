@@ -5,6 +5,7 @@ from django.utils.timezone import now
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from vigil import scoping
 
 from .models import Alert
 from .serializers import AlertSerializer
@@ -33,7 +34,9 @@ def _parse_ack_duration(request):
 @permission_classes([IsAuthenticated])
 def alert_list(request):
     state = request.query_params.get("state", Alert.State.FIRING)
-    alerts = Alert.objects.filter(state=state).select_related("host", "rule")
+    alerts = scoping.filter_by_site(
+        Alert.objects.filter(state=state).select_related("host", "rule"),
+        request.user, path="host__")
     # Optional cap — the resolved tab only ever shows recent history
     try:
         limit = int(request.query_params.get("limit", 0))
@@ -50,6 +53,8 @@ def alert_acknowledge(request, alert_id):
     try:
         alert = Alert.objects.get(pk=alert_id)
     except Alert.DoesNotExist:
+        return Response({"error": "Alert not found"}, status=404)
+    if not scoping.host_in_scope(request.user, alert.host):
         return Response({"error": "Alert not found"}, status=404)
     if alert.state != Alert.State.FIRING:
         return Response({"error": f"Alert is already '{alert.state}'"}, status=400)
@@ -70,6 +75,8 @@ def alert_unacknowledge(request, alert_id):
     try:
         alert = Alert.objects.get(pk=alert_id)
     except Alert.DoesNotExist:
+        return Response({"error": "Alert not found"}, status=404)
+    if not scoping.host_in_scope(request.user, alert.host):
         return Response({"error": "Alert not found"}, status=404)
     if alert.state != Alert.State.ACKNOWLEDGED:
         return Response({"error": f"Alert is '{alert.state}', not acknowledged"}, status=400)
@@ -115,7 +122,10 @@ def alert_bulk(request):
     current = now()
     updated = 0
     skipped = len(ids) - len(valid_ids)
-    alerts = Alert.objects.filter(pk__in=valid_ids)
+    # Same scoping as the list endpoint: ids naming another site's alerts
+    # are counted as skipped, never acted on.
+    alerts = scoping.filter_by_site(
+        Alert.objects.filter(pk__in=valid_ids), request.user, path="host__")
     skipped += len(valid_ids) - alerts.count()
     for alert in alerts:
         if action == "acknowledge" and alert.state == Alert.State.FIRING:
@@ -141,6 +151,8 @@ def alert_silence(request, alert_id):
     try:
         alert = Alert.objects.get(pk=alert_id)
     except Alert.DoesNotExist:
+        return Response({"error": "Alert not found"}, status=404)
+    if not scoping.host_in_scope(request.user, alert.host):
         return Response({"error": "Alert not found"}, status=404)
     if alert.state == Alert.State.RESOLVED:
         return Response({"error": "Cannot silence a resolved alert"}, status=400)

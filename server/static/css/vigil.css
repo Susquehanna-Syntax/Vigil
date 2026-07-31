@@ -23,6 +23,9 @@
   --lemon: #e2d478;
   --coral: #f09080;
 
+  /* Business branding overrides this at runtime; unset branding is a no-op. */
+  --brand: var(--sky);
+
   --r-sm: 10px;
   --r-md: 14px;
   --r-lg: 20px;
@@ -2071,7 +2074,15 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .sub-tab { padding: 10px 18px; font-size: 14px; font-weight: 600; color: var(--text-3);
   cursor: pointer; border-bottom: 2px solid transparent; transition: color 0.2s, border-color 0.2s; }
 .sub-tab:hover { color: var(--text-2); }
-.sub-tab.active { color: var(--text-1); border-bottom-color: var(--mint); }
+.sub-tab.active { color: var(--text-1); border-bottom-color: var(--text-1); }
+/* Accent modifiers, mirroring .tab. Unlike .tab — which draws its underline
+   with ::after and currentColor — .sub-tab uses border-bottom, so each rule
+   sets both properties. */
+.sub-tab.t-rose.active  { color: var(--rose);     border-bottom-color: var(--rose); }
+.sub-tab.t-lemon.active { color: var(--lemon);    border-bottom-color: var(--lemon); }
+.sub-tab.t-mint.active  { color: var(--mint);     border-bottom-color: var(--mint); }
+.sub-tab.t-lav.active   { color: var(--lavender); border-bottom-color: var(--lavender); }
+.sub-tab.t-sky.active   { color: var(--sky);      border-bottom-color: var(--sky); }
 .sub-panel { display: none; } .sub-panel.active { display: block; }
 .auto-when { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 14px; color: var(--text-2); margin-bottom: 14px; }
 .auto-when .form-control { width: auto; min-width: 150px; display: inline-block; }
@@ -2190,3 +2201,180 @@ select.form-control:hover { border-color: var(--s4); }
 .inputs-action { margin: 14px 0 6px; display: flex; align-items: center; gap: 8px; font-weight: 500; }
 .inputs-grid { display: grid; grid-template-columns: 160px 1fr; gap: 8px 12px; align-items: center; }
 .inputs-grid label { color: var(--text-2); font-size: 0.85rem; }
+
+/* ═══════════════════════════════════════════
+   LAYOUT DENSITY — compact overrides.
+   Override-only: absence of [data-density="compact"] = cozy (the base rules),
+   so switching back to Cozy restores the original spacing exactly.
+   ═══════════════════════════════════════════ */
+.density-toggle { display: inline-flex; gap: 8px; }
+.density-toggle .btn.active { background: var(--sky); color: #1c1c21; border-color: transparent; }
+
+:root[data-density="compact"] .main { padding: 20px 26px 40px; }
+:root[data-density="compact"] .page-header { margin-bottom: 18px; }
+:root[data-density="compact"] .section-label { margin: 22px 0 10px; }
+:root[data-density="compact"] .host-grid { gap: 7px; }
+:root[data-density="compact"] .host-card { padding: 14px; gap: 12px; }
+:root[data-density="compact"] .stat-card { padding: 15px; }
+:root[data-density="compact"] .totp-card { padding: 16px 18px; }
+:root[data-density="compact"] .metric-card { padding: 12px; }
+:root[data-density="compact"] .enroll-card { padding: 12px 14px; }
+
+/* ═══════════════════════════════════════════
+   USERS & ROLES — settings pane rows
+   ═══════════════════════════════════════════ */
+.user-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.user-row:last-child { border-bottom: none; }
+.user-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.user-row-name { font-weight: 600; font-size: 0.9rem; }
+.user-row-email { font-size: 0.8rem; }
+.user-row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.user-role-select { width: 130px; padding: 6px 10px; font-size: 0.82rem; }
+
+/* ═══════════════════════════════════════════
+   SITES — settings pane rows
+   ═══════════════════════════════════════════ */
+.site-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.site-row:last-child { border-bottom: none; }
+.site-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.site-row-name { font-weight: 600; font-size: 0.9rem; }
+.site-row-desc { font-size: 0.8rem; }
+.site-row-meta { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.site-row-actions { display: flex; align-items: center; gap: 8px; }
+.site-badge {
+  display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+  background: rgba(126,221,181,0.15); color: var(--mint);
+  font-size: 0.68rem; font-weight: 600; letter-spacing: 0.02em; vertical-align: middle;
+}
+.assign-list { max-height: 320px; overflow-y: auto; margin-bottom: 10px; }
+.assign-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 2px; border-bottom: 1px solid var(--border); font-size: 0.86rem;
+}
+.assign-row:last-child { border-bottom: none; }
+:root[data-density="compact"] .site-row { padding: 8px 0; }
+:root[data-density="compact"] .assign-row { padding: 5px 2px; }
+
+/* Host membership editor: search + status/tag chips + current-site column */
+.sa-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.sa-chip {
+  font-size: 12px; padding: 3px 10px; border-radius: 11px; cursor: pointer;
+  background: transparent; color: var(--text-3);
+  border: 1px solid var(--border);
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.sa-chip:hover { color: var(--text-2); }
+.sa-chip.on { color: var(--sky); border-color: var(--sky); background: rgba(137,180,250,0.12); }
+.assign-row { display: grid; grid-template-columns: auto 1fr auto auto; }
+.sa-name { font-weight: 500; }
+.sa-status { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-3); }
+.sa-online { color: var(--mint); }
+.sa-offline { color: var(--text-3); }
+.sa-pending { color: var(--peach); }
+.sa-site { font-size: 12px; color: var(--text-3); min-width: 90px; text-align: right; }
+
+/* ═══════════════════════════════════════════
+   BRANDING — instance footer + login logo
+   ═══════════════════════════════════════════ */
+.vigil-footer {
+  margin-top: 32px; padding: 16px 0 4px;
+  text-align: center; font-size: 0.78rem; color: var(--text-3);
+}
+.vigil-footer:empty { display: none; }
+.vigil-footer a { color: var(--text-3); text-decoration: none; }
+.vigil-footer a:hover { color: var(--brand); text-decoration: underline; }
+.auth-logo {
+  display: block; max-width: 160px; max-height: 64px;
+  margin: 0 auto 14px; object-fit: contain;
+}
+:root[data-density="compact"] .vigil-footer { margin-top: 20px; padding: 10px 0 2px; }
+
+/* ═══════════════════════════════════════════
+   Run history — Baselines → History sub-tab
+   ═══════════════════════════════════════════ */
+.run-row {
+  display: grid;
+  grid-template-columns: 90px 1fr auto auto 90px;
+  gap: 14px; align-items: center;
+  padding: 11px 14px; margin-bottom: 6px;
+  background: var(--s2); border: 1px solid var(--border); border-radius: 8px;
+  cursor: pointer; font-size: 0.86rem;
+  transition: border-color 0.2s, background 0.2s;
+}
+.run-row:hover { border-color: var(--s3); background: var(--s3); }
+.run-kind {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 2px 7px; border-radius: 4px; text-align: center;
+  border: 1px solid var(--border); color: var(--text-3);
+}
+.run-kind-baseline { color: var(--lavender); border-color: rgba(186,168,232,0.4); }
+.run-kind-automation { color: var(--sky); border-color: rgba(130,196,238,0.4); }
+.run-name { font-weight: 500; color: var(--text-1); }
+.run-meta, .run-when { font-size: 12px; color: var(--text-3); }
+.run-state {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  text-align: right; font-weight: 600;
+}
+.run-state.t-mint { color: var(--mint); }
+.run-state.t-rose { color: var(--rose); }
+.run-state.t-lemon { color: var(--lemon); }
+.run-state.t-peach { color: var(--peach); }
+.run-state.t-lav { color: var(--lavender); }
+.hist-pager { display: flex; gap: 12px; align-items: center; justify-content: center; margin-top: 14px; }
+.run-task-list { max-height: 420px; overflow-y: auto; }
+.run-task { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.run-task:last-child { border-bottom: none; }
+.run-task-host { font-weight: 500; margin-right: 10px; }
+.run-task-out {
+  margin-top: 6px; padding: 8px 10px; border-radius: 6px;
+  background: var(--s1); color: var(--text-2);
+  font-family: var(--mono, monospace); font-size: 12px;
+  white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto;
+}
+
+/* Per-site role grants (Settings → Users & Roles → Sites) */
+.us-warning {
+  padding: 10px 12px; margin-bottom: 14px; border-radius: 8px;
+  background: rgba(240,184,136,0.10); border: 1px solid rgba(240,184,136,0.35);
+  color: var(--text-2); font-size: 0.85rem; line-height: 1.5;
+}
+.us-grants { max-height: 420px; overflow-y: auto; }
+.us-grant { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.us-grant:last-child { border-bottom: none; }
+.us-grant-head { display: flex; align-items: center; gap: 10px; }
+.us-site { font-weight: 600; flex: 1; }
+.us-grant-head .form-control { width: auto; }
+.us-note { margin: 6px 0 0; font-size: 0.82rem; }
+.us-matrix { margin-top: 10px; padding-left: 4px; }
+.us-matrix-row { display: grid; grid-template-columns: 110px 1fr; gap: 10px; padding: 4px 0; align-items: center; }
+.us-app { font-size: 12px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.us-verbs { display: flex; flex-wrap: wrap; gap: 12px; }
+.us-verb { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-2); cursor: pointer; }
+.us-add { display: flex; gap: 8px; align-items: center; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.us-add .form-control { width: auto; flex: 1; }
+.us-bad { color: var(--rose); }
+
+/* Skeleton shown while a modal's data is in flight, so opening one is
+   instant rather than waiting on the network with a blank screen. */
+.modal-skeleton { padding: 6px 0 2px; }
+.modal-skeleton .sk-line {
+  height: 13px; margin-bottom: 11px; border-radius: 5px;
+  background: linear-gradient(90deg, var(--s2) 25%, var(--s3) 50%, var(--s2) 75%);
+  background-size: 200% 100%;
+  animation: sk-shimmer 1.2s var(--ease-out-expo) infinite;
+}
+.modal-skeleton .sk-w80 { width: 80%; }
+.modal-skeleton .sk-w60 { width: 60%; }
+@keyframes sk-shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-skeleton .sk-line { animation: none; }
+}

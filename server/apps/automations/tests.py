@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from django.contrib.auth import get_user_model
@@ -80,7 +81,7 @@ class EventAutomationTests(TestCase):
         BaselineStep.objects.create(baseline=b, definition=d2, order=1)
         Automation.objects.create(
             name="bootstrap new", trigger="event", event="host_approved",
-            action_kind="baseline", baseline_name="Bootstrap", target="event_host",
+            action_kind="baseline", baseline=b, target="event_host",
             created_by=self.admin)
         host = make_host()
         hooks.emit("host_approved", host=host, approved_by=self.admin)
@@ -99,10 +100,10 @@ class EventAutomationTests(TestCase):
         self.assertFalse(Task.objects.filter(host=host).exists())
 
     def test_broken_action_never_breaks_the_event(self):
-        # baseline_name points nowhere → handle_event must not raise.
+        # The baseline reference points nowhere (deleted) → handle_event must not raise.
         Automation.objects.create(
             name="broken", trigger="event", event="host_approved",
-            action_kind="baseline", baseline_name="ghost", target="event_host",
+            action_kind="baseline", baseline=None, target="event_host",
             created_by=self.admin)
         host = make_host()
         handle_event("host_approved", {"host": host})  # no exception = pass
@@ -263,3 +264,110 @@ class SpecificEventTests(TestCase):
             content_type="application/json")
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertEqual(resp.json()["event_rule_name"], "CPU spike")
+
+
+class AutomationBaselineReferenceTests(TestCase):
+    """The automation must point at ONE specific baseline, not a name that
+    could match several once baselines become site-scoped."""
+
+    def setUp(self):
+        self.defn = make_def("echo")
+
+    def test_automation_resolves_its_own_baseline_not_a_namesake(self):
+        first = Baseline.objects.create(name="Nightly patch scan")
+        BaselineStep.objects.create(baseline=first, definition=self.defn, order=0)
+
+        # A second baseline that a name lookup could ambiguously match.
+        second = Baseline.objects.create(name="nightly patch scan (west)")
+        BaselineStep.objects.create(baseline=second, definition=self.defn, order=0)
+
+        auto = Automation.objects.create(
+            name="patch", trigger=Automation.Trigger.SCHEDULE,
+            action_kind=Automation.ActionKind.BASELINE, baseline=second,
+        )
+        auto.refresh_from_db()
+        self.assertEqual(auto.baseline_id, second.id)
+        self.assertNotEqual(auto.baseline_id, first.id)
+
+    def test_deleting_the_baseline_nulls_the_reference(self):
+        b = Baseline.objects.create(name="temp")
+        auto = Automation.objects.create(
+            name="a", trigger=Automation.Trigger.SCHEDULE,
+            action_kind=Automation.ActionKind.BASELINE, baseline=b,
+        )
+        b.delete()
+        auto.refresh_from_db()
+        self.assertIsNone(auto.baseline_id)
+
+
+class RunHistoryTests(TestCase):
+    """Automation and baseline dispatches must be visible as runs, with a
+    resolved outcome — not a scatter of orphan tasks."""
+
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user("hist", password="x", is_staff=True)
+        self.client.force_login(self.admin)
+        wire()
+
+    def _fire(self):
+        d = make_def()
+        Automation.objects.create(
+            name="nightly", trigger="event", event="host_approved",
+            action_kind="task", task_definition=d, target="event_host",
+            created_by=self.admin)
+        host = make_host("run-01")
+        hooks.emit("host_approved", host=host, approved_by=self.admin)
+        return host
+
+    def test_an_automation_dispatch_creates_one_run(self):
+        from apps.tasks.models import TaskRun
+        self._fire()
+        run = TaskRun.objects.get()
+        self.assertEqual(run.source, TaskRun.Source.AUTOMATION)
+        self.assertEqual(run.automation.name, "nightly")
+        self.assertEqual(run.host_count, 1)
+        self.assertEqual(run.state, TaskRun.State.RUNNING)
+
+    def test_its_tasks_belong_to_that_run(self):
+        from apps.tasks.models import Task, TaskRun
+        self._fire()
+        run = TaskRun.objects.get()
+        self.assertEqual(Task.objects.filter(run=run).count(), 1)
+
+    def test_the_run_resolves_when_the_task_reports_back(self):
+        from apps.tasks.models import Task, TaskRun
+        host = self._fire()
+        task = Task.objects.get(run__isnull=False)
+        task.state = Task.State.DISPATCHED
+        task.save(update_fields=["state"])
+        resp = self.client.post(
+            "/api/v1/tasks/result/",
+            data=json.dumps({"task_id": str(task.id),
+                             "state": "completed", "output": "done"}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {host.agent_token}")
+        self.assertIn(resp.status_code, (200, 201), resp.content)
+        run = TaskRun.objects.get()
+        self.assertEqual(run.state, TaskRun.State.COMPLETED)
+        self.assertIsNotNone(run.finished_at)
+
+    def test_history_endpoint_filters_by_source(self):
+        self._fire()
+        rows = self.client.get("/api/v1/tasks/runs/?source=automation").json()
+        self.assertEqual(rows["count"], 1)
+        self.assertEqual(rows["results"][0]["automation_name"], "nightly")
+        self.assertEqual(self.client.get(
+            "/api/v1/tasks/runs/?source=baseline").json()["count"], 0)
+
+    def test_history_endpoint_rejects_an_unknown_source(self):
+        self.assertEqual(self.client.get(
+            "/api/v1/tasks/runs/?source=nonsense").status_code, 400)
+
+    def test_deleting_the_automation_keeps_the_history_row(self):
+        from apps.tasks.models import TaskRun
+        self._fire()
+        Automation.objects.get(name="nightly").delete()
+        run = TaskRun.objects.get()
+        self.assertIsNone(run.automation_id)
+        self.assertEqual(run.source, TaskRun.Source.AUTOMATION)
+        self.assertIn("nightly", run.name_snapshot)

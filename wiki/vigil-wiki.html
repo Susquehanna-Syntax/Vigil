@@ -190,6 +190,10 @@
       <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
       Deployment
     </a>
+    <a href="#remote-access" class="nav-link">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      Remote Access
+    </a>
     <a href="#editions" class="nav-link">
       <svg viewBox="0 0 24 24"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4z"/></svg>
       Tiers &amp; Licensing
@@ -570,10 +574,13 @@
             <tr><td><code>POSTGRES_DB</code></td><td><code>vigil</code></td><td>Database name</td></tr>
             <tr><td><code>POSTGRES_USER</code></td><td><code>vigil</code></td><td>Database user</td></tr>
             <tr><td><code>VIGIL_TIMEZONE</code></td><td><code>UTC</code></td><td>IANA timezone for display (e.g. <code>America/New_York</code>)</td></tr>
-            <tr><td><code>VIGIL_AGENT_VERSION</code></td><td><code>2026.2.2</code></td><td>Expected agent version; triggers alerts when agents are outdated. Bump in lockstep with each release.</td></tr>
+            <tr><td><code>VIGIL_AGENT_VERSION</code></td><td><code>2026.3.16</code></td><td>Expected agent version; triggers alerts when agents are outdated. Bump in lockstep with each release.</td></tr>
+            <tr><td><code>VIGIL_PUBLIC_URL</code></td><td><em>empty</em></td><td>External URL for off-LAN access; auto-populates <code>ALLOWED_HOSTS</code> and <code>CSRF_TRUSTED_ORIGINS</code></td></tr>
+            <tr><td><code>DJANGO_CSRF_TRUSTED_ORIGINS</code></td><td><em>empty</em></td><td>Comma-separated trusted POST origins, scheme included — needed behind a proxy on an external hostname</td></tr>
           </tbody>
         </table>
       </div>
+      <p class="prose" style="margin-top:8px;color:var(--text-3);font-size:12px;">These are the ones that matter for a first deploy — see <a href="#env" style="color:var(--sky)">Environment Variables</a> for the complete reference.</p>
 
       <div class="callout callout-warn">
         <div class="callout-icon">!</div>
@@ -607,6 +614,155 @@
             <tr><td><code>media</code></td><td>Manually uploaded agent binaries (overrides baked-in binaries)</td></tr>
           </tbody>
         </table>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- REMOTE ACCESS -->
+    <section class="section" id="remote-access">
+      <p class="section-label">Getting Started</p>
+      <h2 class="section-title" style="color:var(--sky)">Remote Access — checking in from outside the LAN</h2>
+      <p class="section-desc">Getting a laptop to keep reporting after it leaves the building. The short version: <strong>agents are outbound-only</strong>, so this is entirely about exposing the <em>server</em> — you never open a port on a monitored host.</p>
+
+      <div class="callout callout-info">
+        <div class="callout-icon">i</div>
+        <div>Vigil agents open HTTPS connections <strong>to</strong> the server and never listen for inbound traffic. So "remote access" means putting the server at an address the agent can reach — a public hostname or a VPN/overlay address. The agent protocol doesn't change; you point it at a new URL.</div>
+      </div>
+
+      <h3>The one knob</h3>
+      <p class="prose">Set <code>VIGIL_PUBLIC_URL</code> to the URL Vigil is reached at from outside. Its host is appended to <code>ALLOWED_HOSTS</code> and its origin to <code>CSRF_TRUSTED_ORIGINS</code> automatically, so you set <strong>one</strong> variable instead of three.</p>
+      <div class="code-block">
+        <div class="code-label">.env</div>
+<pre><span class="hl-comment"># The external URL — scheme included, no trailing slash.</span>
+<span class="hl-var">VIGIL_PUBLIC_URL</span>=https://vigil.example.com
+
+<span class="hl-comment"># Set when a proxy/tunnel terminates TLS in front of Vigil.</span>
+<span class="hl-var">VIGIL_TRUST_PROXY</span>=true
+<span class="hl-var">VIGIL_SECURE_COOKIES</span>=true</pre>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>VIGIL_PUBLIC_URL</code></td><td>The external URL. Auto-populates <code>ALLOWED_HOSTS</code> + <code>CSRF_TRUSTED_ORIGINS</code>, and is handed out in the agent install one-liner so new enrollments don't bake in a LAN address.</td></tr>
+            <tr><td><code>VIGIL_TRUST_PROXY</code></td><td>Honors <code>X-Forwarded-Proto</code>/<code>Host</code>, so <code>request.is_secure()</code>, secure cookies, and the login redirect allow-list all see the real public scheme and host.</td></tr>
+            <tr><td><code>VIGIL_SECURE_COOKIES</code></td><td>Marks session and CSRF cookies <code>Secure</code>. Turn on once you're serving HTTPS.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout callout-warn">
+        <div class="callout-icon">!</div>
+        <div><strong>Only enable <code>VIGIL_TRUST_PROXY</code> when the proxy is the ONLY route to Vigil.</strong> The shipped <code>docker-compose.yml</code> still publishes <code>9200:8000</code> for LAN use. If you rely on a tunnel exclusively, remove that <code>ports:</code> mapping (or firewall it) before turning this on — otherwise a client reaching the container directly can spoof <code>X-Forwarded-Proto</code> and be treated as HTTPS.</div>
+      </div>
+
+      <h3>Option A — Cloudflare Tunnel</h3>
+      <p class="prose">A real <code>https://vigil.example.com</code> on a domain you control, TLS handled by Cloudflare, and <strong>no inbound ports</strong> opened on your network. Best when you want the dashboard reachable from anywhere.</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-content">
+            <strong>Create the tunnel</strong><br>
+            In the Cloudflare Zero Trust dashboard → <strong>Networks → Tunnels</strong>, create a tunnel and copy its <strong>token</strong>.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>Add a public hostname</strong><br>
+            Point e.g. <code>vigil.example.com</code> → service <code>HTTP</code> → <code>http://web:8000</code> (the compose service name and internal port).
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>Fill in .env</strong>
+            <div class="code-block" style="margin-top:10px;">
+              <div class="code-label">.env</div>
+<pre><span class="hl-var">TUNNEL_TOKEN</span>=eyJhIjoi...           <span class="hl-comment"># from step 1</span>
+<span class="hl-var">VIGIL_PUBLIC_URL</span>=https://vigil.example.com
+<span class="hl-var">VIGIL_TRUST_PROXY</span>=true
+<span class="hl-var">VIGIL_SECURE_COOKIES</span>=true</pre>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>Start with the tunnel profile</strong>
+            <div class="code-block" style="margin-top:10px;">
+              <div class="code-label">Shell</div>
+<pre><span class="hl-cmd">docker compose --profile tunnel up -d</span></pre>
+            </div>
+            The bundled <code>cloudflared</code> sidecar connects out to Cloudflare. Agents and your browser reach the hostname from anywhere.
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-content">
+            <strong>Close the LAN port</strong><br>
+            Remove or firewall the <code>web</code> service's <code>9200:8000</code> mapping so the tunnel is the only path in — see the warning above.
+          </div>
+        </div>
+      </div>
+
+      <h3>Option B — Tailscale</h3>
+      <p class="prose">A private overlay: only your own devices and agent hosts on the tailnet can reach Vigil, and <strong>nothing is published to the public internet</strong>. Best when you don't need outside access.</p>
+      <div class="code-block">
+        <div class="code-label">.env</div>
+<pre><span class="hl-comment"># Use the MagicDNS name of the host running Vigil.</span>
+<span class="hl-var">VIGIL_PUBLIC_URL</span>=https://vigil-host.tailnet-name.ts.net
+
+<span class="hl-comment"># Only if you front it with Tailscale Serve/HTTPS. Plain http:// over the</span>
+<span class="hl-comment"># tailnet needs neither of these.</span>
+<span class="hl-var">VIGIL_TRUST_PROXY</span>=true
+<span class="hl-var">VIGIL_SECURE_COOKIES</span>=true</pre>
+      </div>
+
+      <h3>Option C — Reverse proxy (nginx / Caddy)</h3>
+      <p class="prose">You already terminate TLS somewhere. Point the proxy at <code>web:8000</code>, make sure it sets the forwarded headers, and set the same three variables.</p>
+      <div class="code-block">
+        <div class="code-label">nginx</div>
+<pre><span class="hl-var">proxy_set_header</span> Host <span class="hl-string">$host</span>;
+<span class="hl-var">proxy_set_header</span> X-Forwarded-Proto <span class="hl-string">$scheme</span>;
+<span class="hl-var">proxy_set_header</span> X-Forwarded-Host <span class="hl-string">$host</span>;
+<span class="hl-var">proxy_pass</span> http://web:8000;</pre>
+      </div>
+
+      <h3>Pointing agents at it</h3>
+      <p class="prose">Once <code>VIGIL_PUBLIC_URL</code> is set, the install one-liner under <strong>Settings → Agent Binary</strong> hands out that URL rather than whatever address you happen to be browsing from. So an agent enrolled while you're on the LAN still checks in after it leaves.</p>
+      <div class="callout callout-warn">
+        <div class="callout-icon">!</div>
+        <div><strong>Agents enrolled <em>before</em> you set <code>VIGIL_PUBLIC_URL</code> keep the old address.</strong> They'll work on the LAN and go silent off it. Fix each one by editing the server URL in its <code>agent.yml</code> and restarting the service, or re-running the install one-liner from the public URL. The pinned signing key survives the move — it's tied to the server's identity, not its address, so no re-enrollment ceremony is needed.</div>
+      </div>
+      <div class="code-block">
+        <div class="code-label">agent.yml (on the monitored host)</div>
+<pre><span class="hl-var">server_url</span>: <span class="hl-string">https://vigil.example.com</span></pre>
+      </div>
+
+      <h3>Verifying it works</h3>
+      <div class="code-block">
+        <div class="code-label">Shell (from off the LAN)</div>
+<pre><span class="hl-comment"># Should return {"status": "ok"} — no auth required.</span>
+<span class="hl-cmd">curl -fsSL https://vigil.example.com/api/v1/health/</span>
+
+<span class="hl-comment"># Confirm Django agrees about the public host (no DisallowedHost error).</span>
+<span class="hl-cmd">docker compose exec web python -c <span class="hl-string">"from django.conf import settings; print(settings.ALLOWED_HOSTS, settings.CSRF_TRUSTED_ORIGINS)"</span></span></pre>
+      </div>
+
+      <h3>Troubleshooting</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Symptom</th><th>Cause &amp; fix</th></tr></thead>
+          <tbody>
+            <tr><td><code>DisallowedHost</code> / <em>Invalid HTTP_HOST header</em></td><td><code>VIGIL_PUBLIC_URL</code> isn't set, or has a typo/trailing path. It must be scheme + host only.</td></tr>
+            <tr><td><em>Origin checking failed</em> / CSRF failure on login</td><td>The browser's origin isn't trusted. <code>VIGIL_PUBLIC_URL</code> covers one hostname; if you reach Vigil at several, add the rest to <code>DJANGO_CSRF_TRUSTED_ORIGINS</code> (comma-separated, <strong>scheme included</strong>).</td></tr>
+            <tr><td>Redirected to <code>http://</code> after login, or session drops</td><td>The proxy terminates TLS but Django doesn't know. Set <code>VIGIL_TRUST_PROXY=true</code> — and confirm the proxy actually sets <code>X-Forwarded-Proto</code>.</td></tr>
+            <tr><td>Agents online on the LAN, offline elsewhere</td><td>They were enrolled with a LAN address baked in. Update <code>server_url</code> in <code>agent.yml</code> — see the warning above.</td></tr>
+            <tr><td>Browser works, agents still fail</td><td>Usually TLS: the agent verifies certificates unconditionally and offers no way to disable it. A self-signed cert on the proxy will fail — use a real cert (Cloudflare/Let's Encrypt) or the tailnet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout callout-tip">
+        <div class="callout-icon">✓</div>
+        <div>Full recipes with per-provider detail live in <code>docs/REMOTE-ACCESS.md</code> in the repo.</div>
       </div>
     </section>
     <div class="divider"></div>
@@ -1789,32 +1945,140 @@
     <section class="section" id="env">
       <p class="section-label">Reference</p>
       <h2 class="section-title" style="color:var(--lemon)">Environment Variables</h2>
-      <p class="section-desc">Complete reference for all environment variables consumed by the Vigil server.</p>
+      <p class="section-desc">Every environment variable the Vigil server reads, grouped by what it configures. Defaults are the values baked into <code>server/vigil/settings.py</code>; where <code>docker-compose.yml</code> supplies a different default, both are noted.</p>
 
+      <h3>Core</h3>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
           <tbody>
-            <tr><td><code>DJANGO_SECRET_KEY</code></td><td><em>none</em></td><td>Django session signing key. Generate with <code>openssl rand -hex 32</code>. Required in production.</td></tr>
-            <tr><td><code>DJANGO_DEBUG</code></td><td><code>false</code></td><td>Set to <code>true</code> in development only. Never enable in production.</td></tr>
-            <tr><td><code>VIGIL_SIGNING_KEY_SEED</code></td><td><em>none</em></td><td>Base64-encoded 32-byte Ed25519 seed. Required for task signing.</td></tr>
-            <tr><td><code>VIGIL_TIMEZONE</code></td><td><code>UTC</code></td><td>IANA timezone name used for display and scheduling (e.g. <code>America/Chicago</code>).</td></tr>
-            <tr><td><code>VIGIL_AGENT_VERSION</code></td><td><code>2026.2.2</code></td><td>Expected agent version. Outdated agents trigger an alert. Keep in lockstep with the server release tag.</td></tr>
-            <tr><td><code>VIGIL_AGENT_DIST_DIR</code></td><td><code>/app/agent_dist</code></td><td>Filesystem path from which baked-in agent binaries are served.</td></tr>
-            <tr><td><code>POSTGRES_HOST</code></td><td><code>db</code></td><td>Postgres hostname (matches the Docker Compose service name).</td></tr>
+            <tr><td><code>DJANGO_SECRET_KEY</code></td><td><code>insecure-dev-key-change-me-in-production</code></td><td>Django session signing key. Generate with <code>openssl rand -hex 32</code>. <strong>Always set this in production</strong> — the fallback exists only so a fresh clone boots.</td></tr>
+            <tr><td><code>VIGIL_SIGNING_KEY_SEED</code></td><td><em>empty</em></td><td>Base64-encoded 32-byte Ed25519 seed for task signing. Exactly 44 chars ending in <code>=</code>. <strong>Quote it if inlined into YAML</strong> — a stripped <code>=</code> 500s every agent checkin.</td></tr>
+            <tr><td><code>DJANGO_DEBUG</code></td><td><code>false</code></td><td>Set <code>true</code> in development only. Defaults false so a forgotten variable never ships verbose error pages.</td></tr>
+            <tr><td><code>DJANGO_LOG_LEVEL</code></td><td><code>INFO</code></td><td>Root log level for the <code>vigil</code> loggers.</td></tr>
+            <tr><td><code>VIGIL_TIMEZONE</code></td><td><code>UTC</code></td><td>IANA timezone for display and scheduling (e.g. <code>America/Chicago</code>).</td></tr>
+            <tr><td><code>VIGIL_TIME_FORMAT</code></td><td><code>12h</code></td><td><code>12h</code> or <code>24h</code> clock display.</td></tr>
+            <tr><td><code>VIGIL_SKIP_STARTUP_CHECKS</code></td><td><em>unset</em></td><td>Set <code>1</code> to bypass startup validation. Escape hatch for tooling/CI — not for production.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Networking &amp; remote access</h3>
+      <p class="prose">Agents are outbound-only, so reaching Vigil from off-LAN is entirely about exposing the <strong>server</strong>. See <a href="#remote-access" style="color:var(--sky)">Remote Access</a> for the full walkthrough.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>DJANGO_ALLOWED_HOSTS</code></td><td><code>localhost,127.0.0.1</code></td><td>Comma-separated hostnames/IPs the server accepts requests for.</td></tr>
+            <tr><td><code>DJANGO_CSRF_TRUSTED_ORIGINS</code></td><td><em>empty</em></td><td>Comma-separated origins trusted for unsafe (POST) requests, <strong>scheme included</strong>. Without it, Django rejects logins behind a proxy with <em>"Origin checking failed"</em>. <code>VIGIL_PUBLIC_URL</code> covers the single-hostname case automatically.</td></tr>
+            <tr><td><code>VIGIL_PUBLIC_URL</code></td><td><em>empty</em></td><td>The external URL Vigil is reached at. Its host is auto-appended to <code>ALLOWED_HOSTS</code> and its origin to <code>CSRF_TRUSTED_ORIGINS</code> — one variable instead of three. Also handed out in the agent install one-liner, so enrollments don't bake in a LAN address.</td></tr>
+            <tr><td><code>VIGIL_TRUST_PROXY</code></td><td><code>false</code></td><td>Honor <code>X-Forwarded-Proto</code>/<code>Host</code> from a TLS-terminating proxy. <strong>Only enable when that proxy is the ONLY route in</strong> — otherwise a direct client can spoof the headers.</td></tr>
+            <tr><td><code>VIGIL_SECURE_COOKIES</code></td><td><code>false</code></td><td>Marks session and CSRF cookies <code>Secure</code>. Turn on once serving over HTTPS.</td></tr>
+            <tr><td><code>TUNNEL_TOKEN</code></td><td><em>empty</em></td><td>Cloudflare Tunnel token, consumed by the bundled <code>cloudflared</code> sidecar under <code>docker compose --profile tunnel up</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Database</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>POSTGRES_HOST</code></td><td><code>localhost</code> <em>(compose: <code>db</code>)</em></td><td>Postgres hostname.</td></tr>
+            <tr><td><code>POSTGRES_PORT</code></td><td><code>5432</code></td><td>Postgres port.</td></tr>
             <tr><td><code>POSTGRES_DB</code></td><td><code>vigil</code></td><td>Database name.</td></tr>
             <tr><td><code>POSTGRES_USER</code></td><td><code>vigil</code></td><td>Database user.</td></tr>
-            <tr><td><code>POSTGRES_PASSWORD</code></td><td><em>none</em></td><td>Database password. Required.</td></tr>
-            <tr><td><code>CELERY_BROKER_URL</code></td><td><code>redis://redis:6379/0</code></td><td>Celery broker connection string.</td></tr>
-            <tr><td><code>CELERY_RESULT_BACKEND</code></td><td><code>redis://redis:6379/0</code></td><td>Celery result backend connection string.</td></tr>
+            <tr><td><code>POSTGRES_PASSWORD</code></td><td><code>vigil</code></td><td>Database password. <strong>Never keep the default in production.</strong></td></tr>
+            <tr><td><code>USE_SQLITE</code></td><td><em>unset</em></td><td>Set <code>1</code> to run against SQLite instead of Postgres/TimescaleDB. Used by the test suite and local dev; not for production.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Celery &amp; Redis</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>CELERY_BROKER_URL</code></td><td><code>redis://localhost:6379/0</code> <em>(compose: <code>redis</code>)</em></td><td>Celery broker connection string.</td></tr>
+            <tr><td><code>CELERY_RESULT_BACKEND</code></td><td><code>redis://localhost:6379/0</code> <em>(compose: <code>redis</code>)</em></td><td>Celery result backend connection string.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Retention &amp; TimescaleDB</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>VIGIL_METRIC_RETENTION_DAYS</code></td><td><code>30</code></td><td>How long raw metric samples are kept before the retention policy drops them.</td></tr>
+            <tr><td><code>VIGIL_TS_CHUNK_INTERVAL</code></td><td><code>1 day</code></td><td>Hypertable chunk interval.</td></tr>
+            <tr><td><code>VIGIL_TS_COMPRESS_AFTER</code></td><td><code>7 days</code></td><td>Age at which chunks are compressed.</td></tr>
+            <tr><td><code>VIGIL_TS_HOURLY_RETENTION</code></td><td><code>365 days</code></td><td>Retention for the hourly continuous aggregate.</td></tr>
+            <tr><td><code>VIGIL_TS_DAILY_RETENTION</code></td><td><code>1825 days</code></td><td>Retention for the daily continuous aggregate (5 years).</td></tr>
+            <tr><td><code>VIGIL_TS_MIGRATE_EXISTING_DATA</code></td><td><code>false</code></td><td>Set <code>true</code> during the hypertable migration to copy existing history instead of discarding it.</td></tr>
+            <tr><td><code>VIGIL_DB_SIZE_WARN_GB</code></td><td><code>20</code></td><td>Database size that raises a warning banner.</td></tr>
+            <tr><td><code>VIGIL_DB_SIZE_CRIT_GB</code></td><td><code>40</code></td><td>Database size that raises a critical banner.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Licensing &amp; SSO</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>VIGIL_LICENSE_KEY</code></td><td><em>empty</em></td><td>Business license blob. Can also be stored in the database via the UI; the env var seeds it at boot. An unset key simply means Free tier — monitoring is never affected.</td></tr>
+            <tr><td><code>VIGIL_LICENSE_PUBLIC_KEY</code></td><td>dev key when <code>DEBUG</code>, else <em>empty</em></td><td>Ed25519 public key licenses are verified against. Empty means no license verifies.</td></tr>
+            <tr><td><code>CIVIL_URL</code></td><td><em>empty</em></td><td>Civil SSO base URL. Unset = Civil sign-in is off.</td></tr>
+            <tr><td><code>CIVIL_APP_SLUG</code></td><td><code>vigil</code></td><td>This app's slug when registering with Civil.</td></tr>
+            <tr><td><code>VIGIL_EXTRA_APPS</code></td><td><em>empty</em></td><td>Comma-separated extra Django apps to install — the community extension seam.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Agent distribution &amp; tasks</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>VIGIL_AGENT_VERSION</code></td><td><code>2026.3.16</code></td><td>Expected agent version; outdated agents raise an alert. Keep in lockstep with the release. <em>Note: <code>docker-compose.yml</code> still defaults this to <code>2026.3.8</code>.</em></td></tr>
+            <tr><td><code>VIGIL_AGENT_DIST_DIR</code></td><td><code>&lt;BASE_DIR&gt;/agent_dist</code></td><td>Filesystem path from which agent binaries are served.</td></tr>
+            <tr><td><code>VIGIL_TASK_EXPIRY_GRACE_SECONDS</code></td><td><code>3600</code></td><td>Grace window in which an agent may <em>start</em> a task. Not a runtime cap — a filesystem-wide Trivy scan legitimately takes minutes.</td></tr>
+            <tr><td><code>VIGIL_AI_TIMEOUT_SECONDS</code></td><td><code>300</code></td><td>Timeout for AI suggestion provider calls.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Email &amp; notifications</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>EMAIL_BACKEND</code></td><td><code>django.core.mail.backends.console.EmailBackend</code></td><td>Django email backend. Console by default, so alerts print rather than send until configured.</td></tr>
+            <tr><td><code>EMAIL_HOST</code></td><td><code>localhost</code></td><td>SMTP host.</td></tr>
+            <tr><td><code>EMAIL_PORT</code></td><td><code>587</code></td><td>SMTP port.</td></tr>
+            <tr><td><code>EMAIL_USE_TLS</code></td><td><code>true</code></td><td>Use STARTTLS for SMTP.</td></tr>
+            <tr><td><code>EMAIL_HOST_USER</code></td><td><em>empty</em></td><td>SMTP username.</td></tr>
+            <tr><td><code>EMAIL_HOST_PASSWORD</code></td><td><em>empty</em></td><td>SMTP password.</td></tr>
+            <tr><td><code>VIGIL_NOTIFICATION_FROM_EMAIL</code></td><td><code>vigil@localhost</code></td><td>From address on alert email.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Vulnerability scanners</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
             <tr><td><code>NESSUS_URL</code></td><td><em>empty</em></td><td>Nessus / Tenable server URL (e.g. <code>https://localhost:8834</code>). When unset, the Vulnerabilities tab shows a "not configured" empty state. From Docker on Linux use <code>https://172.17.0.1:8834</code>.</td></tr>
-            <tr><td><code>NESSUS_ACCESS_KEY</code></td><td><em>empty</em></td><td>Nessus API access key (generate in Nessus UI: <em>My Account → API Keys</em>).</td></tr>
+            <tr><td><code>NESSUS_ACCESS_KEY</code></td><td><em>empty</em></td><td>Nessus API access key (<em>My Account → API Keys</em>).</td></tr>
             <tr><td><code>NESSUS_SECRET_KEY</code></td><td><em>empty</em></td><td>Nessus API secret key.</td></tr>
-            <tr><td><code>NESSUS_VERIFY_SSL</code></td><td><code>true</code></td><td>Set to <code>false</code> when Nessus is self-signed (Essentials default).</td></tr>
-            <tr><td><code>GREENBONE_URL</code></td><td><em>empty</em></td><td>Greenbone GMP listener as <code>host:port</code> (e.g. <code>gvm.lan:9390</code>). Scheme prefix is optional and stripped.</td></tr>
+            <tr><td><code>NESSUS_VERIFY_SSL</code></td><td><code>true</code></td><td>Set <code>false</code> when Nessus is self-signed (Essentials default).</td></tr>
+            <tr><td><code>GREENBONE_URL</code></td><td><em>empty</em></td><td>Greenbone GMP listener as <code>host:port</code> (e.g. <code>gvm.lan:9390</code>). Scheme prefix optional and stripped.</td></tr>
             <tr><td><code>GREENBONE_USERNAME</code></td><td><em>empty</em></td><td>GMP username for the Vigil service account.</td></tr>
             <tr><td><code>GREENBONE_PASSWORD</code></td><td><em>empty</em></td><td>GMP password for that account.</td></tr>
-            <tr><td><code>GREENBONE_VERIFY_SSL</code></td><td><code>true</code></td><td>Set to <code>false</code> for the self-signed cert that ships with greenbone-community-container.</td></tr>
+            <tr><td><code>GREENBONE_VERIFY_SSL</code></td><td><code>true</code></td><td>Set <code>false</code> for the self-signed cert shipped with greenbone-community-container.</td></tr>
+            <tr><td><code>GREENBONE_PORT_LIST_ID</code></td><td><em>empty</em></td><td>Optional GMP port-list UUID to scan with.</td></tr>
           </tbody>
         </table>
       </div>

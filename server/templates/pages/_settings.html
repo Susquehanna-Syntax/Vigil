@@ -15,6 +15,9 @@
           <button class="settings-nav-item" data-pane="identity"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg>Shared Identity</button>
           <button class="settings-nav-item" data-pane="directory"><svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg>Directory Import</button>
           <button class="settings-nav-item" data-pane="agents"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3v4M8 3v4"/></svg>Agents</button>
+          <button class="settings-nav-item" data-pane="users"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>Users &amp; Roles</button>
+          <button class="settings-nav-item" data-pane="sites"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>Sites</button>
+          <button class="settings-nav-item" data-pane="branding"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>Branding</button>
           <button class="settings-nav-item" data-pane="display"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>Display</button>
           <button class="settings-nav-item" data-pane="distribution"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Agent Binary</button>
         </nav>
@@ -242,6 +245,72 @@
       {% endif %}
 
         </div>
+        <div class="settings-pane" data-pane="users">
+      <div class="section-label">Users</div>
+      <div class="totp-card">
+        <div class="totp-sub" style="margin-bottom:6px;">Manage who can sign in and what they can do. Admins configure Vigil and approve agents; Operators deploy tasks and acknowledge alerts; Viewers are read-only. The Operator role requires a Business license.</div>
+        <p id="users-seats" class="muted" style="margin-bottom:12px;"></p>
+        <div id="users-list"></div>
+      </div>
+
+      <div class="section-label" style="margin-top:32px;">Add a user</div>
+      <div class="totp-card">
+        <div class="setting-row"><label>Username</label><input type="text" class="form-control" id="nu-username" placeholder="e.g. jsmith" autocomplete="off"></div>
+        <div class="setting-row"><label>Email</label><input type="email" class="form-control" id="nu-email" placeholder="optional" autocomplete="off"></div>
+        <div class="setting-row"><label>Password</label><input type="password" class="form-control" id="nu-password" placeholder="at least 8 characters" autocomplete="new-password"></div>
+        <div class="setting-row"><label>Role</label>
+          <select class="form-control" id="nu-role">
+            <option value="viewer">Viewer</option>
+            <option value="operator">Operator (Business)</option>
+            <option value="admin">Admin</option>
+          </select></div>
+        <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
+          <button class="btn btn-mint btn-sm" id="nu-create" onclick="createUser()">Create user</button>
+          <span id="nu-result" class="muted"></span>
+        </div>
+      </div>
+
+        </div>
+        <div class="settings-pane" data-pane="sites">
+      <div class="section-label">Sites</div>
+      <div class="totp-card">
+        <div class="totp-sub" style="margin-bottom:12px;">Sites are administrative boundaries — a campus, a department, a client org — that group hosts. Free installs use the single default site; a Business license lets you add more and assign hosts.</div>
+        <div id="sites-list"></div>
+      </div>
+
+      <div class="section-label" style="margin-top:32px;">Add a site</div>
+      <div class="totp-card">
+        <div class="setting-row"><label>Name</label><input type="text" class="form-control" id="ns-name" placeholder="e.g. West Campus" autocomplete="off"></div>
+        <div class="setting-row"><label>Slug</label><input type="text" class="form-control" id="ns-slug" placeholder="west-campus" autocomplete="off"></div>
+        <div class="setting-row"><label>Description</label><input type="text" class="form-control" id="ns-description" placeholder="optional" autocomplete="off"></div>
+        <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
+          <button class="btn btn-mint btn-sm" id="ns-create" onclick="createSite()">Create site</button>
+          <span id="ns-note" class="muted"></span>
+        </div>
+      </div>
+
+        </div>
+        <div class="settings-pane" data-pane="branding">
+      <div class="section-label">Branding</div>
+      <div class="totp-card">
+        <div class="totp-sub" style="margin-bottom:12px;">Replace the Vigil identity with your own across the dashboard and the sign-in page. Leave a field blank to keep the Vigil default.</div>
+        <div class="setting-row"><label>Product name</label><input type="text" class="form-control" id="br-product" placeholder="Vigil" autocomplete="off" maxlength="60"></div>
+        <div class="setting-row"><label>Logo URL</label><input type="url" class="form-control" id="br-logo" placeholder="https://example.com/logo.png" autocomplete="off"></div>
+        <div class="setting-row"><label>Accent color</label>
+          <span style="display:flex;align-items:center;gap:8px;">
+            <input type="color" id="br-accent-picker" value="#82c4ee" style="width:38px;height:32px;padding:2px;border-radius:8px;border:1px solid var(--border);background:var(--s2);cursor:pointer;">
+            <input type="text" class="form-control" id="br-accent" placeholder="#82c4ee" autocomplete="off" maxlength="7" style="width:120px;">
+          </span>
+        </div>
+        <div class="setting-row"><label>Footer text</label><input type="text" class="form-control" id="br-footer" placeholder="Vigil — A Susquehanna Syntax product" autocomplete="off" maxlength="200"></div>
+        <div class="setting-row"><label>Support URL</label><input type="url" class="form-control" id="br-support" placeholder="https://example.com/support" autocomplete="off"></div>
+        <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
+          <button class="btn btn-mint btn-sm" id="br-save">Save branding</button>
+          <p id="br-note" class="muted" style="margin:0;"></p>
+        </div>
+      </div>
+
+        </div>
         <div class="settings-pane" data-pane="display">
       <div class="section-label" style="margin-top:32px;">Display & Timezone</div>
       <div class="totp-card">
@@ -251,6 +320,17 @@
         <div style="max-width:280px;">
           <label class="deploy-input-label">Server Timezone</label>
           <div class="form-control" style="background:var(--s3);cursor:default;color:var(--text-2);" id="settings-tz-display">{{ vigil_timezone }}</div>
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:32px;">Layout Density</div>
+      <div class="totp-card">
+        <div class="totp-sub" style="margin-bottom:14px;">
+          Cozy is the default, roomy layout. Compact tightens spacing to fit more on screen. Applies instantly and is remembered on this browser.
+        </div>
+        <div class="density-toggle">
+          <button type="button" class="btn btn-outline btn-sm" id="density-cozy" onclick="setDensity('cozy')">Cozy</button>
+          <button type="button" class="btn btn-outline btn-sm" id="density-compact" onclick="setDensity('compact')">Compact</button>
         </div>
       </div>
 
@@ -328,11 +408,19 @@
         </div>
       </div>
 
+      {{ vigil_public_url|default:""|json_script:"vigil-public-url" }}
       <script>
+        // Prefer VIGIL_PUBLIC_URL over the address this admin happens to be
+        // browsing from. Enrolling from a LAN IP would bake that IP into the
+        // agent, which then stops checking in the moment the host leaves the
+        // LAN. See docs/REMOTE-ACCESS.md.
+        const vigilEnrollOrigin =
+          JSON.parse(document.getElementById('vigil-public-url').textContent)
+          || window.location.origin;
         document.getElementById('install-cmd').textContent =
-          `curl -fsSL ${window.location.origin}/agent/install.sh | sudo bash`;
+          `curl -fsSL ${vigilEnrollOrigin}/agent/install.sh | sudo bash`;
         document.getElementById('install-cmd-ps1').textContent =
-          `irm ${window.location.origin}/agent/install.ps1 | iex`;
+          `irm ${vigilEnrollOrigin}/agent/install.ps1 | iex`;
         // vigil-settings.js loads after this inline block — defer the call.
         document.addEventListener('DOMContentLoaded', () => loadAgentInfo());
       </script>

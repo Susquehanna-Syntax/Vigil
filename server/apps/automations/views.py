@@ -8,6 +8,7 @@ from apps.accounts.permissions import IsAdmin
 from apps.baselines.models import Baseline
 from apps.hosts.models import Host
 from apps.tasks.models import TaskDefinition
+from vigil import scoping
 from vigil.hooks import KNOWN_EVENTS
 
 from .models import Automation
@@ -36,7 +37,9 @@ def _row(a: Automation) -> dict:
         "action_kind": a.action_kind,
         "task_definition": str(a.task_definition_id) if a.task_definition_id else None,
         "task_name": a.task_definition.name if a.task_definition_id else None,
-        "baseline_name": a.baseline_name,
+        # Still a name in the JSON: the UI works in names, and the FK is an
+        # internal correctness concern.
+        "baseline_name": a.baseline.name if a.baseline_id else "",
         "params_override": a.params_override or {},
         "target": a.target, "target_tags": a.target_tags,
         "target_host": str(a.target_host_id) if a.target_host_id else None,
@@ -79,8 +82,11 @@ def _apply(a: Automation, data) -> str | None:
     if "task_definition" in data:
         a.task_definition = (TaskDefinition.objects.filter(pk=data["task_definition"]).first()
                              if data["task_definition"] else None)
+    wanted_baseline = None
     if "baseline_name" in data:
-        a.baseline_name = (data["baseline_name"] or "").strip()
+        wanted_baseline = (data["baseline_name"] or "").strip()
+        a.baseline = (Baseline.objects.filter(name__iexact=wanted_baseline).first()
+                      if wanted_baseline else None)
     if "params_override" in data:
         a.params_override = data["params_override"] or {}
     if "target" in data:
@@ -100,8 +106,9 @@ def _apply(a: Automation, data) -> str | None:
     if a.action_kind == Automation.ActionKind.TASK and not a.task_definition_id:
         return "pick a task definition"
     if a.action_kind == Automation.ActionKind.BASELINE:
-        if not Baseline.objects.filter(name__iexact=a.baseline_name).exists():
-            return f"no baseline named {a.baseline_name!r}"
+        if a.baseline_id is None:
+            return (f"no baseline named {wanted_baseline!r}" if wanted_baseline
+                    else "pick a baseline")
         a.params_override = {}  # per-step inputs live on the baseline itself
     elif a.params_override and a.task_definition_id:
         from apps.tasks.spec import validate_params_override
@@ -120,8 +127,9 @@ def _apply(a: Automation, data) -> str | None:
 def automation_index(request):
     if request.method == "GET":
         return Response({
-            "automations": [_row(a) for a in Automation.objects.select_related(
-                "task_definition", "target_host")],
+            "automations": [_row(a) for a in scoping.filter_by_site(
+                Automation.objects.select_related("task_definition", "target_host"),
+                request.user, cascade_global=True)],
             "events": EVENT_LABELS,
         })
     a = Automation(created_by=request.user, trigger=request.data.get("trigger", "event"),
