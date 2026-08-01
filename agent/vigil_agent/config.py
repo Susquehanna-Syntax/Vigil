@@ -13,6 +13,20 @@ logger = logging.getLogger("vigil.config")
 
 _VALID_MODES = {"monitor", "managed", "full_control"}
 
+#: Actions that destroy the machine. Deliberately outside the mode system:
+#: full_control means "any action the server asks for", and wiping the disk
+#: must never be inside that promise. A compromised server cannot rebuild a
+#: host whose local config did not opt in. See docs/reprovisioning.md §4.1.
+#:
+#: reprovision_preflight is absent on purpose — it is read-only, so it stays
+#: an ordinary allowlistable action and an operator can survey rebuild
+#: readiness across a fleet without arming anything.
+REPROVISION_ACTIONS = frozenset({
+    "reprovision_stage",
+    "reprovision_commit",
+    "reprovision_cleanup",
+})
+
 _ALL_ACTIONS = {
     # Service management
     "restart_service", "start_service", "stop_service", "reload_service",
@@ -45,6 +59,13 @@ _ALL_ACTIONS = {
     # accept signed self-update tasks (the binary digest rides inside
     # the Ed25519-signed payload).
     "update_agent",
+    # Reprovisioning readiness probe — read-only, so it belongs in an
+    # allowlist like any other low-risk action. The three destructive
+    # reprovision actions are deliberately NOT here: they are not
+    # allowlistable at all, only allow_reprovision grants them, so naming
+    # one in an allowlist draws the "ignoring unknown action" warning
+    # rather than silently appearing to work.
+    "reprovision_preflight",
 }
 
 DEFAULT_CONFIG_PATHS = [
@@ -58,6 +79,9 @@ class AgentConfig:
     server_url: str
     agent_token: str
     mode: str = "managed"
+    # Permit this machine to be remotely wiped and reinstalled. NOT implied
+    # by full_control — see REPROVISION_ACTIONS above.
+    allow_reprovision: bool = False
     checkin_interval: int = 60
     # Seconds between Docker Hub image-update checks. The check uses
     # unmetered HEAD requests, but the floor keeps misconfigured agents
@@ -107,6 +131,11 @@ class AgentConfig:
         self.tags = cleaned
 
     def task_allowed(self, action: str) -> bool:
+        if action in REPROVISION_ACTIONS:
+            # Checked before mode so no later branch can grant it: not
+            # full_control, not the allowlist — this flag and nothing else.
+            # Monitor mode still executes nothing at all.
+            return self.allow_reprovision and self.mode != "monitor"
         if self.mode == "monitor":
             return False
         if self.mode == "full_control":
@@ -172,6 +201,7 @@ def load_config(path: Path | None = None) -> AgentConfig:
         logger.info("Generated new agent token")
 
     mode = raw.get("mode", "managed")
+    allow_reprovision = bool(raw.get("allow_reprovision", False))
     allowlist_raw = raw.get("allowlist", [])
     allowlist = set(allowlist_raw) if isinstance(allowlist_raw, list) else set()
 
@@ -185,6 +215,7 @@ def load_config(path: Path | None = None) -> AgentConfig:
         server_url=server_url,
         agent_token=agent_token,
         mode=mode,
+        allow_reprovision=allow_reprovision,
         checkin_interval=int(raw.get("checkin_interval", 60)),
         docker_check_interval=int(raw.get("docker_check_interval", 21600)),
         data_dir=data_dir,

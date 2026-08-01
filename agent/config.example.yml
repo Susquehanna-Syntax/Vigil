@@ -38,8 +38,29 @@ docker_check_interval: 21600
 #
 # The agent's mode is the final word. A compromised server cannot escalate
 # an agent beyond its configured mode.
+#
+# One exception, and it is deliberate: reprovisioning (wiping and
+# reinstalling this machine) is NOT included in full_control. It has its
+# own flag below.
 
 mode: managed
+
+
+# ── Remote reprovisioning ─────────────────────────────────────────────────────
+#
+# Permit Vigil to remotely WIPE THIS MACHINE and reinstall its operating
+# system, unattended, from an image chosen in the console.
+#
+# This is NOT implied by full_control, and it cannot be granted through the
+# allowlist below. The authority to destroy a machine lives on that machine,
+# so a compromised server cannot order a fleet to rebuild itself.
+#
+# Leave false unless you specifically want this host to be rebuildable.
+# The read-only readiness probe (reprovision_preflight) is unaffected by
+# this flag — allowlist it if you want to check rebuild-readiness without
+# arming anything.
+
+allow_reprovision: false
 
 
 # ── Allowlist (managed mode only) ────────────────────────────────────────────
