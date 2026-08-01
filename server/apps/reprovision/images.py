@@ -7,6 +7,7 @@ the bytes were what they claimed to be.
 """
 import hashlib
 import logging
+import os
 import shutil
 from pathlib import Path
 
@@ -111,6 +112,26 @@ def import_iso(image, iso_path: Path) -> None:
         image.save(update_fields=["status", "import_error"])
 
 
+def _safe_join(root: Path, *parts: str) -> Path:
+    """Join under *root*, refusing anything that escapes it.
+
+    Path names come out of the ISO image, which is attacker-controlled input
+    the moment anyone imports an image they did not build themselves. A
+    crafted Rock Ridge or Joliet name containing ``..`` would otherwise let
+    extraction write anywhere the Django user can reach — the ISO-Slip
+    variant of Zip Slip. Absolute names are equally rejected.
+    """
+    root = root.resolve()
+    target = root
+    for part in parts:
+        target = target / part.lstrip("/")
+    target = Path(os.path.normpath(target))
+    if target != root and root not in target.parents:
+        raise ImportError_(
+            f"ISO entry escapes the image directory: {'/'.join(parts)!r}")
+    return target
+
+
 def _extract_tree(iso, dest: Path) -> None:
     """Copy the whole ISO9660 tree to *dest*.
 
@@ -119,10 +140,10 @@ def _extract_tree(iso, dest: Path) -> None:
     stripped — the installer asks for the plain name.
     """
     for dirname, _dirlist, filelist in iso.walk(iso_path="/"):
-        target_dir = dest / dirname.lstrip("/")
+        target_dir = _safe_join(dest, dirname)
         target_dir.mkdir(parents=True, exist_ok=True)
         for filename in filelist:
             src = f"{dirname.rstrip('/')}/{filename}"
-            out = target_dir / filename.split(";")[0]
+            out = _safe_join(dest, dirname, filename.split(";")[0])
             with out.open("wb") as fh:
                 iso.get_file_from_iso_fp(fh, iso_path=src)

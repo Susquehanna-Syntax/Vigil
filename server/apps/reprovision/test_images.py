@@ -44,6 +44,48 @@ class ChecksumTests(TestCase):
         verify_checksum(big, digest)
 
 
+class PathTraversalTests(TestCase):
+    """ISO entry names are attacker-controlled the moment anyone imports an
+    image they did not build. A crafted Rock Ridge / Joliet name containing
+    '..' must not let extraction write outside the image directory."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "images"
+        self.root.mkdir()
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_plain_entry_stays_under_the_root(self):
+        from apps.reprovision.images import _safe_join
+
+        out = _safe_join(self.root, "/casper", "vmlinuz")
+        self.assertEqual(out, (self.root / "casper" / "vmlinuz").resolve())
+
+    def test_dotdot_in_a_directory_is_refused(self):
+        from apps.reprovision.images import _safe_join
+
+        with self.assertRaises(ImportError_):
+            _safe_join(self.root, "/../../etc", "passwd")
+
+    def test_dotdot_in_a_filename_is_refused(self):
+        from apps.reprovision.images import _safe_join
+
+        with self.assertRaises(ImportError_):
+            _safe_join(self.root, "/casper", "../../../../etc/cron.d/pwn")
+
+    def test_absolute_entry_is_reanchored_not_honoured(self):
+        from apps.reprovision.images import _safe_join
+
+        out = _safe_join(self.root, "/etc", "shadow")
+        self.assertTrue(str(out).startswith(str(self.root.resolve())))
+
+    def test_deep_traversal_is_refused(self):
+        from apps.reprovision.images import _safe_join
+
+        with self.assertRaises(ImportError_):
+            _safe_join(self.root, "a/b/../../../..", "x")
+
+
 class ImportFailureTests(TestCase):
     def setUp(self):
         self.root = tempfile.TemporaryDirectory()
