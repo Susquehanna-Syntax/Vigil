@@ -1121,6 +1121,30 @@ def _sync_systemd_proxy(config: AgentConfig) -> str:
         return f"failed: {exc}"
 
 
+def _reprovision_preflight(params: dict, config: AgentConfig) -> str:
+    from . import reprovision
+
+    return reprovision.preflight(params, config)
+
+
+def _reprovision_stage(params: dict, config: AgentConfig) -> str:
+    from . import reprovision
+
+    return reprovision.stage(params, config)
+
+
+def _reprovision_commit(params: dict, config: AgentConfig) -> str:
+    from . import reprovision
+
+    return reprovision.commit(params, config)
+
+
+def _reprovision_cleanup(params: dict, config: AgentConfig) -> str:
+    from . import reprovision
+
+    return reprovision.cleanup(params, config)
+
+
 def _update_agent(params: dict, config: AgentConfig) -> str:
     """Download the latest agent binary from the server and replace this binary.
 
@@ -1284,6 +1308,13 @@ _HANDLERS: dict[str, callable] = {
     "delete_cron_job": _delete_cron_job,
     # Self-management
     "update_agent": _update_agent,
+    # Reprovisioning. The three destructive ones are gated on
+    # allow_reprovision by AgentConfig.task_allowed, never by mode or the
+    # allowlist — see config.REPROVISION_ACTIONS.
+    "reprovision_preflight": _reprovision_preflight,
+    "reprovision_stage": _reprovision_stage,
+    "reprovision_commit": _reprovision_commit,
+    "reprovision_cleanup": _reprovision_cleanup,
 }
 
 
