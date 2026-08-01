@@ -12,3 +12,10 @@ def import_iso_task(image_id: str, iso_path: str) -> None:
     if image is None:
         return
     import_iso(image, Path(iso_path))
+
+
+@shared_task(name="reprovision.sweep_deadlines")
+def sweep_rebuild_deadlines() -> int:
+    from .jobs import sweep_deadlines
+
+    return sweep_deadlines()

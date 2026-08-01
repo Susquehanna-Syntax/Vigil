@@ -306,6 +306,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "alerts.evaluate_alert_rules",
         "schedule": 60.0,  # every 60 seconds
     },
+    "reprovision-deadline-sweep": {
+        "task": "reprovision.sweep_deadlines",
+        "schedule": 60.0,  # every 60s — a stuck rebuild should surface fast
+    },
     "expire-alert-acknowledgements": {
         "task": "alerts.expire_acknowledgements",
         "schedule": 60.0,  # every 60 seconds — re-fire lapsed timed acks promptly
