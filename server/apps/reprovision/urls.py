@@ -13,6 +13,7 @@ urlpatterns = [
          name="reprovision-profile-detail"),
     path("profiles/<uuid:profile_id>/preview/", views.profile_preview,
          name="reprovision-profile-preview"),
+    path("preflight/", views.preflight_check, name="reprovision-preflight"),
     path("jobs/", views.job_list, name="reprovision-jobs"),
     path("jobs/<uuid:job_id>/", views.job_detail,
          name="reprovision-job-detail"),
