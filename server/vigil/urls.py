@@ -16,6 +16,7 @@ from apps.accounts.views import login_view, logout_view, setup_view
 from apps.alerts.models import Alert
 from apps.hosts.models import Host
 from apps.hosts.views import checkin, register
+from apps.reprovision.installer_views import enroll as reprovision_enroll
 from apps.statuspage.views import public_status as status_public_view
 from apps.statuspage.views import public_status_data as status_public_data_view
 
@@ -131,6 +132,12 @@ urlpatterns = [
     path("api/v1/ai/", include("apps.aisuggest.urls")),
     path("api/v1/status-pages/", include("apps.statuspage.urls")),
     path("api/v1/automations/", include("apps.automations.urls")),
+    path("api/v1/reprovision/", include("apps.reprovision.urls")),
+    # Unauthenticated by necessity — the installer and the freshly-installed
+    # agent hold no credentials. Security is the unguessable one-time token;
+    # see docs/reprovisioning.md §4.2 and §4.3.
+    path("api/v1/reprovision/enroll", reprovision_enroll, name="reprovision-enroll"),
+    path("reprovision/", include("apps.reprovision.installer_urls")),
     path("", include("apps.civilsso.urls")),
     path("agent/", include("apps.agent_dist.urls")),
     path("status/<str:token>/", status_public_view, name="status-public"),
