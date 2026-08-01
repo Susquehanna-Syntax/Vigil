@@ -203,3 +203,60 @@ class ProfileValidationTests(TestCase):
         resp = self._post(admin_password="$6$rounds=5000$abc$def")
         self.assertNotIn("admin_password", resp.json())
         self.assertNotIn("admin_password_encrypted", resp.json())
+
+
+class PreflightEndpointTests(TestCase):
+    def setUp(self):
+        self.host = Host.objects.create(
+            hostname="pf-01", agent_token=f"tok-{uuid.uuid4()}",
+            status=Host.Status.ONLINE)
+
+    def _login(self, role):
+        user = User.objects.create_user(username=f"pf-{role}", password="pw")
+        UserProfile.objects.create(user=user, role=role)
+        self.client.force_login(user)
+        return user
+
+    def _post(self, **over):
+        body = {"host": str(self.host.id)}
+        body.update(over)
+        return self.client.post("/api/v1/reprovision/preflight/", body,
+                                content_type="application/json")
+
+    def test_dispatches_a_low_risk_probe(self):
+        from apps.tasks.models import Task
+
+        self._login(Role.ADMIN)
+        resp = self._post(disk_target="/dev/sda")
+        self.assertEqual(resp.status_code, 202)
+        task = Task.objects.get(host=self.host, action="reprovision_preflight")
+        self.assertEqual(task.risk_level, Task.RiskLevel.LOW)
+        self.assertEqual(task.params["disk_target"], "/dev/sda")
+
+    def test_viewer_may_check_readiness(self):
+        # Read-only, so it needs only the view capability — an operator can
+        # survey a fleet without arming anything.
+        self._login(Role.VIEWER)
+        self.assertEqual(self._post().status_code, 202)
+
+    def test_anonymous_is_refused(self):
+        self.assertIn(self._post().status_code, (401, 403))
+
+    def test_previous_result_is_returned_when_available(self):
+        import json
+
+        from django.utils.timezone import now as _now
+
+        from apps.tasks.models import Task
+
+        Task.objects.get_or_create(
+            host=self.host, action="reprovision_preflight",
+            defaults=dict(nonce=uuid.uuid4().hex,
+                          state=Task.State.COMPLETED,
+                          completed_at=_now(),
+                          result_output=json.dumps(
+                              {"ok": True, "disks": [{"name": "/dev/sda"}]})))
+        self._login(Role.ADMIN)
+        resp = self._post()
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["ok"])

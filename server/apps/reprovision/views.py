@@ -130,6 +130,51 @@ def profile_preview(request, profile_id):
     return Response({"files": rendered})
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def preflight_check(request):
+    """Dispatch a readiness probe, and return the most recent result.
+
+    Read-only on the agent side, so it needs only the `view` capability. The
+    probe is a normal signed task, which means the answer arrives on the
+    agent's next check-in rather than in this response — the caller gets the
+    previous result immediately and a fresh one shortly after.
+    """
+    import secrets
+
+    from apps.hosts.models import Host
+    from apps.tasks.models import Task
+
+    host = get_object_or_404(Host, pk=request.data.get("host"))
+    if not _may(request.user, host, "view"):
+        return Response({"error": "Not found"}, status=404)
+
+    params = {}
+    if disk := request.data.get("disk_target"):
+        params["disk_target"] = disk
+    if family := request.data.get("os_family"):
+        params["os_family"] = family
+
+    Task.objects.create(
+        host=host, requested_by=request.user,
+        step_label="rebuild readiness check",
+        action="reprovision_preflight", params=params,
+        risk_level=Task.RiskLevel.LOW, state=Task.State.PENDING,
+        nonce=secrets.token_hex(32),
+    )
+
+    last = Task.objects.filter(
+        host=host, action="reprovision_preflight",
+        state=Task.State.COMPLETED).order_by("-completed_at").first()
+    if last and last.result_output:
+        import json
+        try:
+            return Response(json.loads(last.result_output))
+        except ValueError:
+            logger.warning("host %s: unparseable preflight output", host.id)
+    return Response({"dispatched": True}, status=202)
+
+
 # ── Rebuild jobs ─────────────────────────────────────────────────────────────
 
 @api_view(["GET", "POST"])

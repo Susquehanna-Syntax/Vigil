@@ -65,7 +65,16 @@ function openHostDetail(card) {
       <button class="btn btn-sm btn-outline" disabled>Clear Temp Files</button>
       <button class="btn btn-sm btn-outline" disabled>Run Updates</button>
       ${d.mode === 'full_control' ? '<button class="btn btn-sm btn-rose" disabled>Reboot</button>' : ''}
+      <button class="btn btn-sm btn-rose" id="detail-rebuild-btn">Rebuild OS…</button>
     `;
+    // Rebuild is offered wherever tasks run. Whether this particular agent
+    // will accept it depends on allow_reprovision in its own agent.yml, and
+    // whether this user may ask depends on the reprovision capability — the
+    // server enforces both; this button only starts the conversation.
+    const rebuildBtn = document.getElementById('detail-rebuild-btn');
+    if (rebuildBtn) {
+      rebuildBtn.onclick = () => openRebuildModal(d.id, d.hostname);
+    }
   }
 
   // Store host identity on the panel for the delete button.
