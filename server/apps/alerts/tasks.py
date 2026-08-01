@@ -24,6 +24,19 @@ OPERATOR_MAP = {
 }
 
 
+def _not_in_maintenance():
+    """Q filter excluding hosts inside an alert-suppression window.
+
+    A rebuild means ~40 minutes of "host down". Without this the first real
+    rebuild pages everyone and teaches people to ignore the alerts. Set by
+    RebuildJob entering REBOOTING, cleared on every terminal state — see
+    docs/reprovisioning.md §6.
+    """
+    from django.db.models import Q
+
+    return Q(maintenance_until__isnull=True) | Q(maintenance_until__lte=now())
+
+
 def _check_rule(rule, host, current_time):
     """Evaluate a single AlertRule against a host's recent metrics.
 
@@ -68,7 +81,8 @@ def evaluate_alert_rules():
     if not rules.exists():
         return "No enabled rules"
 
-    online_hosts = Host.objects.filter(status=Host.Status.ONLINE)
+    online_hosts = Host.objects.filter(
+        status=Host.Status.ONLINE).filter(_not_in_maintenance())
     if not online_hosts.exists():
         return "No online hosts"
 
@@ -151,7 +165,11 @@ def mark_stale_hosts_offline():
         status=Host.Status.ONLINE,
         last_checkin__lt=cutoff,
     )
-    stale_list = list(stale)
+    # A host in a maintenance window is still marked offline — it genuinely
+    # is down, and hiding that would be lying. Only the page is suppressed,
+    # so stale_list (which drives alert creation) excludes it while stale
+    # (which drives the status update) does not.
+    stale_list = list(stale.filter(_not_in_maintenance()))
     count = stale.update(status=Host.Status.OFFLINE)
     if count:
         logger.info("Marked %d stale hosts as offline", count)
