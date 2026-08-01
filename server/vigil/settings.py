@@ -235,6 +235,12 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Extracted OS images for remote reprovisioning (docs/reprovisioning.md §6).
+# Kept out of MEDIA_ROOT: these trees are gigabytes, are served to installers
+# rather than browsers, and should sit on a volume an operator can size
+# independently of the rest of the app's uploads.
+VIGIL_IMAGE_ROOT = os.environ.get("VIGIL_IMAGE_ROOT", "/var/lib/vigil/images")
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---------------------------------------------------------------------------
