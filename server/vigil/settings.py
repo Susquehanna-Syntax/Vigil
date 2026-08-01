@@ -97,6 +97,7 @@ INSTALLED_APPS = [
     "apps.aisuggest",
     "apps.statuspage",
     "apps.automations",
+    "apps.reprovision",
     "apps.civilsso",
     # Business features (apps_business/LICENSE) — installed always, unlocked by license
     "apps_business.sites",
