@@ -212,9 +212,10 @@ The endpoint is throttled per IP exactly as `hosts.register()` already is.
 ### 4.4 Authorization
 
 The ceremony requires password **and** TOTP **and** the typed hostname — all
-three. This is deliberately stricter than the existing
-`require_totp_confirmation`, which accepts password *or* TOTP, so rebuild gets
-its own confirmation function rather than reusing that one. Re-authentication
+three. The existing `require_totp_confirmation` verifies **only** TOTP — the
+`"password": "..."` in `definition_deploy`'s docstring is stale and is never
+read — so rebuild gets its own confirmation function rather than reusing that
+one, and adds a real password check on top. Re-authentication
 happens at confirm time regardless of session age: an idle hijacked session
 must not be able to rebuild a fleet.
 
