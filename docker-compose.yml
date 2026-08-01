@@ -90,6 +90,9 @@ services:
         condition: service_healthy
     volumes:
       - media:/app/media
+      # Extracted OS install trees for reprovisioning. Shared with the
+      # worker: the worker imports, the web container serves to installers.
+      - images:/var/lib/vigil/images
 
   celery-worker:
     image: susquehannasyntax/vigil:latest
@@ -109,6 +112,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      # The worker runs the ISO import that writes these trees; the web
+      # container serves them to installers. Both need the same volume.
+      - images:/var/lib/vigil/images
 
   celery-beat:
     image: susquehannasyntax/vigil:latest
@@ -148,3 +155,4 @@ services:
 volumes:
   pgdata:
   media:
+  images:

@@ -635,6 +635,35 @@ Configure AD in **Settings → Active Directory**:
 
 The allowlist is defined in `agent.yml` and enforced locally by the agent — the server cannot override it.
 
+One action sits outside this table entirely. **Remote reprovisioning — wiping
+and reinstalling the machine — is not granted by `full_control`** and cannot be
+allowlisted. It requires its own flag:
+
+```yaml
+allow_reprovision: true   # default false, everywhere
+```
+
+The authority to destroy a machine lives on that machine, so a compromised
+Vigil server cannot order a fleet to rebuild itself.
+
+---
+
+## Remote Reprovisioning
+
+Rebuild a host's operating system from the console: pick an image and a
+profile, confirm with password + authenticator code + the typed hostname, and
+the machine wipes itself, installs unattended, re-enrols its agent against the
+same host record, takes a tag you chose, and optionally runs a baseline —
+taking a drifted or compromised box back to known-good without a site visit.
+
+Ubuntu, Debian, and the RHEL family. Free feature.
+
+**This destroys all data on the target disk, and there is no undo once the
+installer starts.** Read [docs/reprovisioning-runbook.md](docs/reprovisioning-runbook.md)
+before running one — including its note on why rebuild is *not* a guaranteed
+eradication path against an attacker with kernel-level persistence. Design
+rationale is in [docs/reprovisioning.md](docs/reprovisioning.md).
+
 ---
 
 ## API Reference
