@@ -301,6 +301,41 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": [],
         "optional": ["platform"],
     },
+    # ── Reprovisioning (docs/reprovisioning.md) ────────────────────────────
+    #
+    # The three destructive actions are NOT reachable via full_control or the
+    # allowlist: the agent gates them on allow_reprovision alone (§4.1). Keep
+    # this block in lockstep with vigil_agent.config.REPROVISION_ACTIONS —
+    # apps/reprovision/test_registry.py asserts the two agree.
+    "reprovision_preflight": {
+        "label": "Check rebuild readiness",
+        "risk": "low",
+        "required": [],
+        "optional": ["disk_target", "os_family"],
+    },
+    "reprovision_stage": {
+        "label": "Stage OS installer",
+        "risk": "high",
+        "required": ["job_id", "kernel_url", "initrd_url",
+                     "kernel_sha256", "initrd_sha256"],
+        "optional": [],
+    },
+    "reprovision_commit": {
+        "label": "Boot into OS installer (WIPES DISK)",
+        "risk": "high",
+        "required": ["job_id", "cmdline"],
+        "optional": [],
+    },
+    # High in the registry even though it only deletes staged files: the
+    # agent gates it on allow_reprovision, and the risk tier drives the
+    # server-side confirmation UI. Keeping the tier aligned with the gate
+    # avoids a task the server thinks is casual but the agent treats as armed.
+    "reprovision_cleanup": {
+        "label": "Remove staged installer files",
+        "risk": "high",
+        "required": ["job_id"],
+        "optional": [],
+    },
     # ── Vulnerability scanning ─────────────────────────────────────────────
     # The agent emits a "please scan me" marker; the server picks it up
     # on task completion and creates a VulnScan(requested). The actual
