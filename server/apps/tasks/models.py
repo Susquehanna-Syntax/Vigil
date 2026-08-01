@@ -79,6 +79,7 @@ class TaskRun(models.Model):
         MANUAL = "manual", "Manual deploy"
         AUTOMATION = "automation", "Automation"
         BASELINE = "baseline", "Baseline"
+        REPROVISION = "reprovision", "Reprovision"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     definition = models.ForeignKey(
