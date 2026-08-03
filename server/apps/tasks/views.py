@@ -742,7 +742,15 @@ def definition_deploy(request, definition_id):
                 step_order=0,
                 step_label=definition.name,
                 action="_script",
-                params={"steps": steps_payload},
+                # variables carries the resolved inputs the agent needs to
+                # evaluate `when: inputs.x ...`. Without it the agent's
+                # predicate context has an empty inputs dict, every
+                # comparison against a declared input comes out false, and
+                # the gated step is silently skipped on every run (#17).
+                # Always sent, even when empty, so "no inputs declared" is
+                # distinguishable from "inputs lost in the pipeline".
+                params={"steps": steps_payload,
+                        "variables": spec.get("resolved_inputs") or {}},
                 risk_level=risk,
                 state=Task.State.PENDING,
                 nonce=secrets.token_hex(32),
