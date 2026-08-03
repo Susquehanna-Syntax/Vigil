@@ -1351,6 +1351,16 @@ def execute_action(
     if handler is None:
         raise ValueError(f"Unknown action: {action!r}")
 
+    # A step-level `timeout:` arrives here as a keyword argument. It used to
+    # be accepted and then silently dropped — runtime.py documented the key,
+    # the server (once it started sending it) shipped it, and a long build
+    # still died at the 120s default with nothing to explain why.
+    #
+    # Handlers read their timeout from params, so fold it in there. An
+    # explicit params.timeout wins: it is the more specific of the two.
+    if timeout is not None and "timeout" not in params:
+        params = {**params, "timeout": timeout}
+
     return handler(params, config)
 
 

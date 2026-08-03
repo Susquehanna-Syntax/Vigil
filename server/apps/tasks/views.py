@@ -694,6 +694,10 @@ def definition_deploy(request, definition_id):
         when_expr = action.get("when") or ""
         if when_expr:
             step["when"] = when_expr
+        # Per-step timeout override. Omitted rather than sent as null when
+        # unset, so the agent simply falls back to its own default.
+        if action.get("timeout"):
+            step["timeout"] = action["timeout"]
         # Success criteria apply to every step in the script. The agent
         # evaluates these after each step's exit and marks the step failed
         # if criteria are not met (even if the action itself succeeded).
