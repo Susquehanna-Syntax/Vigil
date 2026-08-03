@@ -164,3 +164,42 @@ class ContractTests(TestCase):
         self.assertIn("%packages", body)
         self.assertIn("%post", body)
         self.assertIn("\nreboot\n", body)
+
+
+class InstallerContractTests(TestCase):
+    """The enrolment command must match what install.sh actually accepts.
+
+    It pointed at /api/v1/agent/install.sh (the app is mounted at /agent/)
+    and passed VIGIL_SERVER_URL (the script bakes in its own VIGIL_SERVER).
+    Every rebuilt machine would have 404'd on the installer and never
+    enrolled — invisible until the first real rebuild.
+    """
+
+    def test_installer_url_matches_the_mounted_route(self):
+        from django.urls import reverse
+
+        job = build_job("debian")
+        script = get_renderer("debian").render(
+            job, BASE_URL, ENROLL_TOKEN)["preseed.cfg"]
+        self.assertIn(f"{BASE_URL}{reverse('agent-install-script')}", script)
+
+    def test_installer_receives_the_enrol_token_variable(self):
+        job = build_job("debian")
+        script = get_renderer("debian").render(
+            job, BASE_URL, ENROLL_TOKEN)["preseed.cfg"]
+        self.assertIn(f"VIGIL_ENROLL_TOKEN={ENROLL_TOKEN}", script)
+
+    def test_install_script_implements_the_enrol_exchange(self):
+        """install.sh must know about VIGIL_ENROLL_TOKEN, or the whole
+        re-enrolment chain is a no-op."""
+        from django.template.loader import render_to_string
+
+        script = render_to_string("agent_install.sh", {"base_url": BASE_URL})
+        self.assertIn("VIGIL_ENROLL_TOKEN", script)
+        self.assertIn("/api/v1/reprovision/enroll", script)
+
+    def test_install_script_fails_loudly_on_a_rejected_enrolment(self):
+        from django.template.loader import render_to_string
+
+        script = render_to_string("agent_install.sh", {"base_url": BASE_URL})
+        self.assertIn("exit 1", script)

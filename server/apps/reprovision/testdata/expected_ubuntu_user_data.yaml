@@ -30,4 +30,4 @@ autoinstall:
     - curl
     - vim
   late-commands:
-    - curtin in-target --target=/target -- sh -c "curl -fsSL https://vigil.example.com/api/v1/agent/install.sh -o /tmp/vigil-install.sh && VIGIL_SERVER_URL=https://vigil.example.com VIGIL_ENROLL_TOKEN=enroll-token-fixture sh /tmp/vigil-install.sh && rm -f /tmp/vigil-install.sh"
+    - curtin in-target --target=/target -- sh -c "curl -fsSL https://vigil.example.com/agent/install.sh -o /tmp/vigil-install.sh && VIGIL_ENROLL_TOKEN=enroll-token-fixture sh /tmp/vigil-install.sh && rm -f /tmp/vigil-install.sh"

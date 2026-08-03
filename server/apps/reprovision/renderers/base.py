@@ -23,11 +23,14 @@ def enrolment_script(base_url: str, enroll_token: str) -> str:
 
     The one-time token is exchanged for a real agent token by install.sh; it
     grants exactly one thing, once: become this one existing host (§4.3).
+
+    The server URL is not passed: install.sh is rendered per-request with its
+    own origin baked in as VIGIL_SERVER, so telling it again would only
+    create a second source of truth that can disagree.
     """
     return (
-        f"curl -fsSL {base_url}/api/v1/agent/install.sh -o /tmp/vigil-install.sh && "
-        f"VIGIL_SERVER_URL={base_url} VIGIL_ENROLL_TOKEN={enroll_token} "
-        "sh /tmp/vigil-install.sh && "
+        f"curl -fsSL {base_url}/agent/install.sh -o /tmp/vigil-install.sh && "
+        f"VIGIL_ENROLL_TOKEN={enroll_token} sh /tmp/vigil-install.sh && "
         "rm -f /tmp/vigil-install.sh"
     )
 
