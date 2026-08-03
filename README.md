@@ -312,7 +312,25 @@ actions:
     params:
       service_name: "{{ inputs.service }}"
       expect: active
+
+  # Optional per-step keys
+  - id: build
+    type: run_command
+    when: 'inputs.run_build == "yes"'   # skip this step unless it matches
+    timeout: 1800                       # seconds, 1–3600 (default 120)
+    params:
+      command: "make -j8 all"
 ```
+
+**`when:`** gates a single step on a predicate over `agent.*` (platform facts:
+`os`, `arch`, `pkg_manager`, `hostname`) and `inputs.*` (the values supplied at
+deploy time). A step whose predicate is false is skipped and recorded, and does
+not block later steps. Referencing an input you did not declare is rejected when
+the task is saved — otherwise the step would silently never run.
+
+**`timeout:`** raises the per-step limit past the 120-second default, up to one
+hour. Use it for source builds, large image pulls, and filesystem scans on big
+volumes rather than detaching the work with `nohup` and polling for it.
 
 **Schedule windows** are evaluated in the server's `VIGIL_TIMEZONE`. Tasks outside the window stay `PENDING` and are dispatched on the next checkin that falls inside the window.
 

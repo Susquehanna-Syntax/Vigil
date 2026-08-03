@@ -376,6 +376,11 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
 }
 
 _RISK_ORDER = {"low": 0, "standard": 1, "high": 2}
+
+#: Ceiling for a per-step ``timeout:``, in seconds. Mirrors the agent's own
+#: validation in executor._run_command — the two must agree, or the server
+#: accepts a value the agent then rejects.
+_MAX_STEP_TIMEOUT = 3600
 _VALID_RISK = set(_RISK_ORDER)
 
 _INPUT_TYPES = {"text", "choice", "boolean", "number"}
@@ -929,6 +934,22 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                         f"under inputs:, or the step will silently never run"
                     )
 
+        # Optional per-step timeout, in seconds. The 1..3600 range mirrors
+        # the agent's own validation — a limit the server accepts but the
+        # agent refuses is just a confusing failure one hop later.
+        timeout_raw = entry.get("timeout")
+        step_timeout = None
+        if timeout_raw is not None:
+            if isinstance(timeout_raw, bool) or not isinstance(timeout_raw, int):
+                raise SpecError(
+                    f"action #{index + 1}: timeout must be a whole number of "
+                    f"seconds")
+            if not 1 <= timeout_raw <= _MAX_STEP_TIMEOUT:
+                raise SpecError(
+                    f"action #{index + 1}: timeout must be between 1 and "
+                    f"{_MAX_STEP_TIMEOUT} seconds")
+            step_timeout = timeout_raw
+
         parsed_actions.append({
             "id": action_id,
             "type": action_type,
@@ -936,6 +957,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
             "params": params,
             "risk": spec["risk"],
             "when": when_expr,
+            "timeout": step_timeout,
         })
 
         derived_risk_level = max(derived_risk_level, _RISK_ORDER[spec["risk"]])
