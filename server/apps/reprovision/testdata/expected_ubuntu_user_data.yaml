@@ -1,0 +1,33 @@
+#cloud-config
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  timezone: America/New_York
+  keyboard:
+    layout: us
+  network:
+    version: 2
+    ethernets:
+      primary:
+        match:
+          name: en*
+        dhcp4: true
+  storage:
+    layout:
+      name: lvm
+      match:
+        path: /dev/sda
+  identity:
+    hostname: web-01
+    username: vigil
+    password: "*"
+  ssh:
+    install-server: true
+    authorized-keys:
+      - ssh-ed25519 AAAAC3Nz test
+  packages:
+    - openssh-server
+    - curl
+    - vim
+  late-commands:
+    - curtin in-target --target=/target -- sh -c "curl -fsSL https://vigil.example.com/agent/install.sh -o /tmp/vigil-install.sh && VIGIL_ENROLL_TOKEN=enroll-token-fixture sh /tmp/vigil-install.sh && rm -f /tmp/vigil-install.sh"

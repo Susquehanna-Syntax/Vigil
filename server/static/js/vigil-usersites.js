@@ -9,14 +9,12 @@
 // Mirrors CAPABILITIES in apps/accounts/permissions.py. Kept in sync by
 // tests_rbac.CapabilityVocabularyTests on the server side; a drift here shows
 // up as a 400 from the grant endpoint rather than a silent wrong grant.
-const CAPABILITY_MATRIX = {
-  hosts: ['view', 'edit', 'approve', 'delete'],
-  tasks: ['view', 'run'],
-  baselines: ['view', 'run', 'edit'],
-  automations: ['view', 'edit', 'toggle'],
-  alerts: ['view', 'ack', 'silence'],
-  statuspages: ['view', 'edit'],
-};
+// Fetched from the server, never hardcoded. This used to be a duplicate of
+// CAPABILITIES in apps/accounts/permissions.py, which went silently stale the
+// moment a new app was added there — its verbs simply could not be granted
+// through this UI. apps/accounts/test_capabilities.py fails if the literal
+// comes back.
+let CAPABILITY_MATRIX = {};
 
 const USER_SITE_ROLES = ['viewer', 'operator', 'admin'];
 
@@ -40,9 +38,10 @@ async function openUserSites(user) {
   let sites = [];
   let grants = [];
   try {
-    [sites, grants] = await Promise.all([
+    [sites, grants, CAPABILITY_MATRIX] = await Promise.all([
       apiJson('/api/v1/sites/'),
       apiJson(`/api/v1/sites/roles/?user=${encodeURIComponent(user.id)}`),
+      apiJson('/api/v1/accounts/capabilities/'),
     ]);
   } catch (e) {
     m.close();

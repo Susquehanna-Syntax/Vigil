@@ -34,6 +34,13 @@ KNOWN_EVENTS = frozenset({
     "insight_created",   # payload: insight
     "alert_fired",       # payload: alert
     "task_completed",    # payload: task
+    # Reprovisioning (docs/reprovisioning.md §4.5). Audit subscribes to these
+    # rather than reprovision importing apps_business.audits — reprovision is
+    # Free, audits is Business, and the bus is the seam for exactly that.
+    "rebuild_requested",       # payload: job, actor, ip
+    "rebuild_state_changed",   # payload: job, previous, reason
+    "rebuild_answer_fetched",  # payload: job, ip, user_agent
+    "rebuild_completed",       # payload: job, host
 })
 
 _subscribers: dict[str, list[Callable]] = defaultdict(list)

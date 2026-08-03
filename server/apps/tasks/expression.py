@@ -111,6 +111,24 @@ def validate(expr: str) -> None:
     parse(expr)
 
 
+def referenced_inputs(expr: str | ast.Expression) -> set[str]:
+    """Every ``inputs.<name>`` the expression reads.
+
+    Used to reject a predicate naming an input that was never declared. The
+    evaluator treats an unknown key as None, and ``None == "yes"`` is merely
+    false — so without this check a typo'd input name makes the step skip
+    silently on every run forever, which is exactly how #17 presented.
+    """
+    tree = expr if isinstance(expr, ast.Expression) else parse(expr)
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "inputs"):
+            found.add(node.attr)
+    return found
+
+
 def _resolve(node: ast.AST, context: dict[str, Any]) -> Any:
     if isinstance(node, ast.Expression):
         return _resolve(node.body, context)

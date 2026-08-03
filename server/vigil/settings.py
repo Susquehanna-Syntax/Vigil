@@ -97,6 +97,7 @@ INSTALLED_APPS = [
     "apps.aisuggest",
     "apps.statuspage",
     "apps.automations",
+    "apps.reprovision",
     "apps.civilsso",
     # Business features (apps_business/LICENSE) — installed always, unlocked by license
     "apps_business.sites",
@@ -234,6 +235,12 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Extracted OS images for remote reprovisioning (docs/reprovisioning.md §6).
+# Kept out of MEDIA_ROOT: these trees are gigabytes, are served to installers
+# rather than browsers, and should sit on a volume an operator can size
+# independently of the rest of the app's uploads.
+VIGIL_IMAGE_ROOT = os.environ.get("VIGIL_IMAGE_ROOT", "/var/lib/vigil/images")
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---------------------------------------------------------------------------
@@ -298,6 +305,10 @@ CELERY_BEAT_SCHEDULE = {
     "evaluate-alert-rules": {
         "task": "alerts.evaluate_alert_rules",
         "schedule": 60.0,  # every 60 seconds
+    },
+    "reprovision-deadline-sweep": {
+        "task": "reprovision.sweep_deadlines",
+        "schedule": 60.0,  # every 60s — a stuck rebuild should surface fast
     },
     "expire-alert-acknowledgements": {
         "task": "alerts.expire_acknowledgements",

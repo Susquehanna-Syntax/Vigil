@@ -26,6 +26,10 @@ class Host(models.Model):
     tags = models.JSONField(default=list, blank=True)
     agent_version = models.CharField(max_length=50, blank=True, default="")
     last_checkin = models.DateTimeField(null=True, blank=True)
+    # Alert suppression window. A rebuild takes ~40 minutes, and without this
+    # the first one pages everyone and teaches people to ignore the alerts.
+    # Set by RebuildJob entering REBOOTING, cleared on every terminal state.
+    maintenance_until = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
