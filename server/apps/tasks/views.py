@@ -34,6 +34,13 @@ _TERMINAL_STATES = {
 }
 _UPDATABLE_STATES = {Task.State.DISPATCHED, Task.State.EXECUTING}
 
+#: Characters kept at each end of a Trivy scan output once it has been
+#: successfully ingested. A full report runs to megabytes and buries every
+#: step that ran after it in the run-detail modal; the findings themselves
+#: now live in VulnFinding rows, so the blob is redundant. Head and tail are
+#: preserved because in a multi-step run they are other steps' output.
+_TRIVY_OUTPUT_KEEP = 2000
+
 # ── Agent-facing: task result ────────────────────────────────────────────────
 
 
@@ -163,9 +170,14 @@ def _maybe_ingest_trivy_report(task: Task, output: str) -> None:
     via the ``_script`` wrapper), then hand the output to
     :meth:`TrivyScanner.ingest_report`.
 
-    Failures are swallowed (just logged) so a bad output payload can't
-    poison the task-result endpoint — the rest of the completion path
-    must still finish.
+    The outcome — counts on success, the reason on failure — is appended to
+    the task's own output so it shows up in run details. It used to go only
+    to the worker log, which meant a scan that ingested nothing looked
+    exactly like a scan that found nothing.
+
+    Failures still don't propagate: a bad output payload can't be allowed to
+    poison the task-result endpoint, and the rest of the completion path must
+    finish. But they are no longer invisible.
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -178,12 +190,40 @@ def _maybe_ingest_trivy_report(task: Task, output: str) -> None:
     if not has_trivy or not output:
         return
 
+    from apps.vulns.scanners.trivy import ScanIngestError, TrivyScanner
+
+    ingested = False
     try:
-        from apps.vulns.scanners import TrivyScanner
         status = TrivyScanner().ingest_report(task.host, output)
         logger.info("Trivy ingest for %s: %s", task.host.hostname, status)
-    except Exception:
+        note = f"[INGEST] {status}"
+        ingested = True
+    except ScanIngestError as exc:
+        # Expected, actionable, and the operator needs to see it: the scan
+        # ran but produced something we refused to trust.
+        logger.warning("Trivy ingest refused for %s: %s", task.host.hostname, exc)
+        note = f"[INGEST FAILED] {exc}"
+    except Exception as exc:  # noqa: BLE001
         logger.exception("Trivy ingest failed for task %s", task.id)
+        note = f"[INGEST FAILED] Unexpected error: {exc}"
+
+    try:
+        body = task.result_output or ""
+        if ingested and len(body) > _TRIVY_OUTPUT_KEEP * 2:
+            # The JSON has been fully consumed into VulnFinding rows, and a
+            # multi-megabyte blob in the middle of a run buries the steps
+            # that ran after it. Elide the middle rather than the whole
+            # thing: in a multi-step run the head and tail are other steps'
+            # output, which must survive. On failure nothing is elided —
+            # that is exactly when the raw report is needed.
+            body = (f"{body[:_TRIVY_OUTPUT_KEEP]}\n"
+                    f"[… {len(body) - _TRIVY_OUTPUT_KEEP * 2:,} characters of "
+                    f"scan JSON elided after successful ingest …]\n"
+                    f"{body[-_TRIVY_OUTPUT_KEEP:]}")
+        task.result_output = f"{body}\n{note}".strip()
+        task.save(update_fields=["result_output"])
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not attach ingest status to task %s", task.id)
 
 
 def _maybe_capture_inventory_column(task: Task, output: str) -> None:
