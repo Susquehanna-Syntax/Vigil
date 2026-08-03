@@ -125,12 +125,18 @@ class TrivyScanner(Scanner):
         # scan did not run the vulnerability scanner at all (an SBOM, or
         # --scanners set to something else). Only the former is ingestable.
         if not any("Vulnerabilities" in r for r in results if isinstance(r, dict)):
+            # Say what actually arrived: the usual cause is an agent older
+            # than 2026.2.6, which invoked Trivy without --scanners vuln.
+            version = ((data.get("Trivy") or {}).get("Version") or "unknown")
+            keys = sorted({k for r in results if isinstance(r, dict) for k in r})
             raise ScanIngestError(
-                "Trivy report has no Vulnerabilities section — this looks like "
-                "an SBOM rather than a vulnerability scan. Check that the scan "
-                "ran with --scanners vuln, and that the agent is up to date. "
-                "Refusing to ingest: doing so would mark every existing "
-                "finding as fixed.")
+                f"Trivy report has no Vulnerabilities section — this is an "
+                f"SBOM, not a vulnerability scan. Trivy version "
+                f"{version}; result keys present: {', '.join(keys) or 'none'}. "
+                f"Vigil invokes Trivy with --scanners vuln as of agent "
+                f"2026.2.6, so check the agent version on this host. "
+                f"Refusing to ingest: doing so would mark every existing "
+                f"finding as fixed and report the host clean.")
 
         seen_keys: set[str] = set()
         finding_count = 0
