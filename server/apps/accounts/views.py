@@ -295,6 +295,27 @@ def _user_row(u):
     }
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def capabilities_index(request):
+    """The permission vocabulary, for the operator capability matrix UI.
+
+    Served rather than duplicated in JavaScript: the frontend used to carry
+    its own copy, which silently went stale the moment a new app was added to
+    CAPABILITIES — the new verbs simply could not be granted through the UI.
+    """
+    from .permissions import CAPABILITIES
+
+    def ordered(verbs):
+        # "view" first, then alphabetical: frozensets have no order, and the
+        # matrix should not reshuffle between requests.
+        rest = sorted(v for v in verbs if v != "view")
+        return (["view"] if "view" in verbs else []) + rest
+
+    return Response({app: ordered(verbs) for app, verbs in
+                     sorted(CAPABILITIES.items())})
+
+
 @api_view(["GET", "POST"])
 def users_index(request):
     from vigil import licensing
