@@ -259,6 +259,13 @@ def checkin(request):
 
     host.save()
 
+    # A rebuilt host's first check-in closes out its rebuild job: operator
+    # tag applied, maintenance window cleared, baseline dispatched. No-op for
+    # every other host. Never raises.
+    from apps.reprovision.completion import complete_if_rebuilding
+
+    complete_if_rebuilding(host)
+
     # Inventory upsert — agent sends the snapshot on a slower cadence than
     # metrics. Custom columns (populated by collector tasks) are preserved.
     inv_payload = data.get("inventory")

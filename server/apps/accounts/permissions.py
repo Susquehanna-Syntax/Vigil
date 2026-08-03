@@ -25,6 +25,10 @@ CAPABILITIES = {
     "automations": frozenset({"view", "edit", "toggle"}),
     "alerts": frozenset({"view", "ack", "silence"}),
     "statuspages": frozenset({"view", "edit"}),
+    # Rebuild destroys data by design. Image management is deliberately NOT a
+    # verb here: uploading an ISO chooses what runs as root on every rebuilt
+    # machine, so it stays admin-only, like agent_dist.upload_agent.
+    "reprovision": frozenset({"view", "rebuild"}),
 }
 
 #: What an OPERATOR could do before per-site capabilities existed: deploy and
@@ -39,6 +43,9 @@ LEGACY_OPERATOR = frozenset({
     ("automations", "view"), ("automations", "toggle"),
     ("alerts", "view"), ("alerts", "ack"), ("alerts", "silence"),
     ("statuspages", "view"),
+    # Deliberately no ("reprovision", …): rebuild is destructive and must be
+    # granted explicitly per site, never inherited by operators who predate
+    # the feature.
 })
 
 

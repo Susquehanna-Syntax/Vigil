@@ -56,6 +56,15 @@ from .base import Scanner
 logger = logging.getLogger(__name__)
 
 
+class ScanIngestError(Exception):
+    """A scan report could not be trusted, so nothing was written.
+
+    Raised before any row is touched. The alternative — ingesting a report
+    we do not understand — silently marks existing findings as fixed and
+    presents an unscanned host as a clean one.
+    """
+
+
 # Trivy uses upper-case severity strings — map to our enum values.
 _TRIVY_SEVERITY_MAP = {
     "CRITICAL": VulnFinding.Severity.CRITICAL,
@@ -93,16 +102,43 @@ class TrivyScanner(Scanner):
           * any OPEN finding for this (host, scanner) that didn't
             appear in this report is marked ``FIXED``.
 
-        Returns a short status string for the task-completion logger.
+        Raises :class:`ScanIngestError` on any report we cannot trust,
+        *before* touching a single row. That distinction is the whole point:
+        a report with no ``Vulnerabilities`` section is not a clean host, it
+        is a scan that never looked for vulnerabilities. Treating the two
+        alike marked every existing finding FIXED and reported success —
+        destroying real findings while showing a green badge.
+
+        Returns a status string with the counts, surfaced in run details.
         """
         try:
             data = json.loads(raw_output)
         except json.JSONDecodeError as exc:
-            logger.warning("Trivy: invalid JSON from %s: %s", host.hostname, exc)
-            return f"invalid JSON: {exc}"
+            raise ScanIngestError(f"Trivy output was not valid JSON: {exc}") from exc
+
+        results = data.get("Results") or []
+        if not results:
+            raise ScanIngestError(
+                "Trivy report contained no Results — nothing was scanned.")
+
+        # An empty Vulnerabilities list means "clean". An absent key means the
+        # scan did not run the vulnerability scanner at all (an SBOM, or
+        # --scanners set to something else). Only the former is ingestable.
+        if not any("Vulnerabilities" in r for r in results if isinstance(r, dict)):
+            # Say what actually arrived: the usual cause is an agent older
+            # than 2026.2.6, which invoked Trivy without --scanners vuln.
+            version = ((data.get("Trivy") or {}).get("Version") or "unknown")
+            keys = sorted({k for r in results if isinstance(r, dict) for k in r})
+            raise ScanIngestError(
+                f"Trivy report has no Vulnerabilities section — this is an "
+                f"SBOM, not a vulnerability scan. Trivy version "
+                f"{version}; result keys present: {', '.join(keys) or 'none'}. "
+                f"Vigil invokes Trivy with --scanners vuln as of agent "
+                f"2026.2.6, so check the agent version on this host. "
+                f"Refusing to ingest: doing so would mark every existing "
+                f"finding as fixed and report the host clean.")
 
         seen_keys: set[str] = set()
-        results = data.get("Results") or []
         finding_count = 0
 
         for result in results:
@@ -149,5 +185,13 @@ class TrivyScanner(Scanner):
         if fixed_count:
             stale.update(state=VulnFinding.State.FIXED, resolved_at=now())
 
-        recompute_summary(host)
-        return f"trivy: {finding_count} finding(s), {fixed_count} fixed"
+        summary = recompute_summary(host)
+        # Only a report we actually trusted sets this. Without it a
+        # Trivy-scanned host reads as never-scanned forever, which is how a
+        # clean host and an unscanned one came to look identical — previously
+        # only the Nessus path ever wrote it.
+        summary.last_scan_at = now()
+        summary.save(update_fields=["last_scan_at"])
+
+        return (f"trivy: {finding_count} finding(s) ingested, "
+                f"{fixed_count} marked fixed")

@@ -301,6 +301,41 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": [],
         "optional": ["platform"],
     },
+    # ── Reprovisioning (docs/reprovisioning.md) ────────────────────────────
+    #
+    # The three destructive actions are NOT reachable via full_control or the
+    # allowlist: the agent gates them on allow_reprovision alone (§4.1). Keep
+    # this block in lockstep with vigil_agent.config.REPROVISION_ACTIONS —
+    # apps/reprovision/test_registry.py asserts the two agree.
+    "reprovision_preflight": {
+        "label": "Check rebuild readiness",
+        "risk": "low",
+        "required": [],
+        "optional": ["disk_target", "os_family"],
+    },
+    "reprovision_stage": {
+        "label": "Stage OS installer",
+        "risk": "high",
+        "required": ["job_id", "kernel_url", "initrd_url",
+                     "kernel_sha256", "initrd_sha256"],
+        "optional": [],
+    },
+    "reprovision_commit": {
+        "label": "Boot into OS installer (WIPES DISK)",
+        "risk": "high",
+        "required": ["job_id", "cmdline"],
+        "optional": [],
+    },
+    # High in the registry even though it only deletes staged files: the
+    # agent gates it on allow_reprovision, and the risk tier drives the
+    # server-side confirmation UI. Keeping the tier aligned with the gate
+    # avoids a task the server thinks is casual but the agent treats as armed.
+    "reprovision_cleanup": {
+        "label": "Remove staged installer files",
+        "risk": "high",
+        "required": ["job_id"],
+        "optional": [],
+    },
     # ── Vulnerability scanning ─────────────────────────────────────────────
     # The agent emits a "please scan me" marker; the server picks it up
     # on task completion and creates a VulnScan(requested). The actual
@@ -341,6 +376,11 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
 }
 
 _RISK_ORDER = {"low": 0, "standard": 1, "high": 2}
+
+#: Ceiling for a per-step ``timeout:``, in seconds. Mirrors the agent's own
+#: validation in executor._run_command — the two must agree, or the server
+#: accepts a value the agent then rejects.
+_MAX_STEP_TIMEOUT = 3600
 _VALID_RISK = set(_RISK_ORDER)
 
 _INPUT_TYPES = {"text", "choice", "boolean", "number"}
@@ -871,13 +911,44 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         if when_raw is not None:
             when_expr = _as_str(when_raw, f"actions[{index}].when", max_len=500)
             if when_expr:
-                from .expression import ExprError, validate as _validate_when
+                from .expression import (
+                    ExprError,
+                    referenced_inputs as _refs,
+                    validate as _validate_when,
+                )
                 try:
                     _validate_when(when_expr)
                 except ExprError as exc:
                     raise SpecError(
                         f"action #{index + 1}: when expression rejected: {exc}"
                     ) from exc
+                # An inputs.* reference that was never declared evaluates to
+                # None at runtime, and None == "yes" is simply false — so the
+                # step would skip silently on every run, forever. Fail the
+                # save instead.
+                unknown = _refs(when_expr) - declared_input_ids
+                if unknown:
+                    raise SpecError(
+                        f"action #{index + 1}: when expression references "
+                        f"undeclared input(s) {sorted(unknown)} — declare them "
+                        f"under inputs:, or the step will silently never run"
+                    )
+
+        # Optional per-step timeout, in seconds. The 1..3600 range mirrors
+        # the agent's own validation — a limit the server accepts but the
+        # agent refuses is just a confusing failure one hop later.
+        timeout_raw = entry.get("timeout")
+        step_timeout = None
+        if timeout_raw is not None:
+            if isinstance(timeout_raw, bool) or not isinstance(timeout_raw, int):
+                raise SpecError(
+                    f"action #{index + 1}: timeout must be a whole number of "
+                    f"seconds")
+            if not 1 <= timeout_raw <= _MAX_STEP_TIMEOUT:
+                raise SpecError(
+                    f"action #{index + 1}: timeout must be between 1 and "
+                    f"{_MAX_STEP_TIMEOUT} seconds")
+            step_timeout = timeout_raw
 
         parsed_actions.append({
             "id": action_id,
@@ -886,6 +957,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
             "params": params,
             "risk": spec["risk"],
             "when": when_expr,
+            "timeout": step_timeout,
         })
 
         derived_risk_level = max(derived_risk_level, _RISK_ORDER[spec["risk"]])

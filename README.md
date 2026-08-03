@@ -312,7 +312,25 @@ actions:
     params:
       service_name: "{{ inputs.service }}"
       expect: active
+
+  # Optional per-step keys
+  - id: build
+    type: run_command
+    when: 'inputs.run_build == "yes"'   # skip this step unless it matches
+    timeout: 1800                       # seconds, 1–3600 (default 120)
+    params:
+      command: "make -j8 all"
 ```
+
+**`when:`** gates a single step on a predicate over `agent.*` (platform facts:
+`os`, `arch`, `pkg_manager`, `hostname`) and `inputs.*` (the values supplied at
+deploy time). A step whose predicate is false is skipped and recorded, and does
+not block later steps. Referencing an input you did not declare is rejected when
+the task is saved — otherwise the step would silently never run.
+
+**`timeout:`** raises the per-step limit past the 120-second default, up to one
+hour. Use it for source builds, large image pulls, and filesystem scans on big
+volumes rather than detaching the work with `nohup` and polling for it.
 
 **Schedule windows** are evaluated in the server's `VIGIL_TIMEZONE`. Tasks outside the window stay `PENDING` and are dispatched on the next checkin that falls inside the window.
 
@@ -634,6 +652,35 @@ Configure AD in **Settings → Active Directory**:
 | `full_control` | Collected | Any action |
 
 The allowlist is defined in `agent.yml` and enforced locally by the agent — the server cannot override it.
+
+One action sits outside this table entirely. **Remote reprovisioning — wiping
+and reinstalling the machine — is not granted by `full_control`** and cannot be
+allowlisted. It requires its own flag:
+
+```yaml
+allow_reprovision: true   # default false, everywhere
+```
+
+The authority to destroy a machine lives on that machine, so a compromised
+Vigil server cannot order a fleet to rebuild itself.
+
+---
+
+## Remote Reprovisioning
+
+Rebuild a host's operating system from the console: pick an image and a
+profile, confirm with password + authenticator code + the typed hostname, and
+the machine wipes itself, installs unattended, re-enrols its agent against the
+same host record, takes a tag you chose, and optionally runs a baseline —
+taking a drifted or compromised box back to known-good without a site visit.
+
+Ubuntu, Debian, and the RHEL family. Free feature.
+
+**This destroys all data on the target disk, and there is no undo once the
+installer starts.** Read [docs/reprovisioning-runbook.md](docs/reprovisioning-runbook.md)
+before running one — including its note on why rebuild is *not* a guaranteed
+eradication path against an attacker with kernel-level persistence. Design
+rationale is in [docs/reprovisioning.md](docs/reprovisioning.md).
 
 ---
 

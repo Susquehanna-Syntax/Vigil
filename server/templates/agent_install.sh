@@ -51,6 +51,25 @@ EOF
   if [ -n "${VIGIL_TOKEN:-}" ]; then
     sed -i.bak "s|REPLACE_WITH_TOKEN|${VIGIL_TOKEN}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
     echo "Agent token configured from VIGIL_TOKEN."
+  elif [ -n "${VIGIL_ENROLL_TOKEN:-}" ]; then
+    # Post-rebuild re-enrolment (docs/reprovisioning.md §4.3). We generate the
+    # long-lived agent token here and exchange the one-time enrolment token
+    # for the right to bind it to the existing host record. Doing it this way
+    # round means the answer file only ever carried a single-use credential,
+    # already consumed by the time anyone could replay it.
+    NEW_TOKEN="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    ENROLL_BODY="{\"enroll_token\":\"${VIGIL_ENROLL_TOKEN}\",\"agent_token\":\"${NEW_TOKEN}\",\"hostname\":\"$(hostname)\"}"
+    if curl -fsS -X POST "${VIGIL_SERVER}/api/v1/reprovision/enroll" \
+         -H "Content-Type: application/json" -d "${ENROLL_BODY}" >/dev/null; then
+      sed -i.bak "s|REPLACE_WITH_TOKEN|${NEW_TOKEN}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+      echo "Re-enrolled against the existing host record."
+    else
+      # Fail loudly: a rebuilt machine that silently fails to enrol is
+      # invisible in the console and looks like a dead host.
+      echo "ERROR: re-enrolment was rejected by ${VIGIL_SERVER}." >&2
+      echo "The one-time token may have expired or already been used." >&2
+      exit 1
+    fi
   else
     echo "Config written to /etc/vigil/agent.yml — set agent_token before starting."
   fi

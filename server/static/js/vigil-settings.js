@@ -205,6 +205,11 @@ document.addEventListener('DOMContentLoaded', () => {
       item.classList.add('active');
       const pane = document.querySelector(`#page-settings .settings-pane[data-pane="${item.dataset.pane}"]`);
       if (pane) pane.classList.add('active');
+      // Load on reveal rather than on page load: the image catalog is an
+      // admin-only fetch most sessions never need.
+      if (item.dataset.pane === 'images' && typeof loadOSImages === 'function') {
+        loadOSImages();
+      }
     });
   });
 

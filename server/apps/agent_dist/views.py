@@ -139,9 +139,19 @@ def upload_agent(request, platform):
     Admin-only: whoever can replace the served binary controls code that
     runs as root on every enrolled host.
     """
+    from apps.accounts.totp import require_totp_confirmation
+
     valid_platforms = dict(AgentBinary.Platform.choices)
     if platform not in valid_platforms:
         return Response({"error": f"Unknown platform '{platform}'"}, status=400)
+
+    # 2FA, like host approval and task deploy. This action has a strictly
+    # larger blast radius than either: the uploaded file becomes the binary
+    # every enrolled host downloads and runs as root. A borrowed admin
+    # session must not be enough to backdoor a fleet.
+    error = require_totp_confirmation(request.user, request.data)
+    if error:
+        return Response({"error": error}, status=401)
 
     file_obj = request.FILES.get("binary")
     if not file_obj:
