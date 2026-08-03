@@ -906,13 +906,28 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         if when_raw is not None:
             when_expr = _as_str(when_raw, f"actions[{index}].when", max_len=500)
             if when_expr:
-                from .expression import ExprError, validate as _validate_when
+                from .expression import (
+                    ExprError,
+                    referenced_inputs as _refs,
+                    validate as _validate_when,
+                )
                 try:
                     _validate_when(when_expr)
                 except ExprError as exc:
                     raise SpecError(
                         f"action #{index + 1}: when expression rejected: {exc}"
                     ) from exc
+                # An inputs.* reference that was never declared evaluates to
+                # None at runtime, and None == "yes" is simply false — so the
+                # step would skip silently on every run, forever. Fail the
+                # save instead.
+                unknown = _refs(when_expr) - declared_input_ids
+                if unknown:
+                    raise SpecError(
+                        f"action #{index + 1}: when expression references "
+                        f"undeclared input(s) {sorted(unknown)} — declare them "
+                        f"under inputs:, or the step will silently never run"
+                    )
 
         parsed_actions.append({
             "id": action_id,
