@@ -192,3 +192,29 @@ class IngestSurfacingTests(TestCase):
         # A bad payload must not poison the task-result path.
         task = self._complete(sbom_report())
         self.assertEqual(task.state, self.Task.State.COMPLETED)
+
+
+class SbomDiagnosticsTests(TestCase):
+    """The refusal must be self-diagnosing (#18): the reported root cause was
+    a guess, and the operator needs the facts to check it themselves."""
+
+    def setUp(self):
+        self.host = Host.objects.create(
+            hostname="h3", agent_token="d" * 32, status=Host.Status.ONLINE)
+
+    def _refusal(self):
+        with self.assertRaises(ScanIngestError) as ctx:
+            TrivyScanner().ingest_report(self.host, sbom_report())
+        return str(ctx.exception)
+
+    def test_names_the_trivy_version(self):
+        self.assertIn("0.72.0", self._refusal())
+
+    def test_lists_the_keys_that_did_arrive(self):
+        self.assertIn("Packages", self._refusal())
+
+    def test_names_the_agent_version_that_fixed_the_flags(self):
+        self.assertIn("2026.2.6", self._refusal())
+
+    def test_explains_why_it_refused(self):
+        self.assertIn("mark every existing finding as fixed", self._refusal())
