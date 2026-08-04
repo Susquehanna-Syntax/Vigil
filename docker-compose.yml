@@ -21,9 +21,12 @@
 #   POSTGRES_DB            — default: vigil
 #   POSTGRES_USER          — default: vigil
 #   VIGIL_TIMEZONE         — IANA tz name, e.g. America/New_York (default: UTC)
-#   VIGIL_AGENT_VERSION    — agent version baked into this image (default: 2026.3.8)
-#                            Bump this default in lockstep with every release
-#                            tag, otherwise every host shows "Agent outdated".
+#
+# No longer used:
+#   VIGIL_AGENT_VERSION    — ignored. The expected agent version is detected
+#                            from the agent bundled in the image. Leaving it in
+#                            .env is harmless; the server logs a note at
+#                            startup if it is still set.
 #
 # Verify after deploy:
 #   docker exec <web-container> python -c \
@@ -62,7 +65,6 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-insecure-change-me}
       VIGIL_SIGNING_KEY_SEED: ${VIGIL_SIGNING_KEY_SEED:-}
       VIGIL_TIMEZONE: ${VIGIL_TIMEZONE:-UTC}
-      VIGIL_AGENT_VERSION: ${VIGIL_AGENT_VERSION:-2026.3.8}
       # Remote access (see docs/REMOTE-ACCESS.md). Set VIGIL_PUBLIC_URL to your
       # external URL and VIGIL_TRUST_PROXY=true when serving through Cloudflare
       # Tunnel / Tailscale / a reverse proxy. Both default to off (LAN-only).
