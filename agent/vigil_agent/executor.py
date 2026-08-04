@@ -509,6 +509,88 @@ _TRIVY_SKIP_DIRS = (
     "/var/snap",
 )
 
+# The only per-vulnerability fields the server reads — see
+# apps/vulns/scanners/trivy.py:TrivyScanner.ingest_report. Everything else
+# Trivy attaches to a finding (Description, References, CVSS, DataSource,
+# Layer, PkgIdentifier) is prose that no part of Vigil ever looks at.
+_TRIVY_VULN_FIELDS = (
+    "VulnerabilityID",
+    "PkgName",
+    "Severity",
+    "Title",
+    "InstalledVersion",
+    "FixedVersion",
+)
+
+# Per-result keys carrying bulk we never ingest. Packages is the big one: on a
+# stock Ubuntu workstation it was 21 MB of a 23.5 MB report — the full SBOM
+# inventory, listed alongside the 2.4 MB of findings we actually want.
+_TRIVY_RESULT_BULK = ("Packages", "Secrets", "Misconfigurations", "Licenses")
+
+
+def _condense_trivy_report(raw: str) -> str:
+    """Strip a Trivy report down to what the server ingests.
+
+    A real ``trivy fs /`` report is enormous — 30,159,056 characters measured
+    on a stock Ubuntu workstation, 379 results and 803 vulnerabilities. The
+    transport caps task output, so what reached the server was an unterminated
+    fragment of JSON and no scan was ever ingested. Condensing here takes that
+    same report to roughly 243,000 characters, which fits with room to spare.
+
+    Two properties the server depends on are preserved exactly:
+
+      * **every** result survives, even ones with no findings — the SBOM
+        refusal (#18) reasons over the whole ``Results`` list, and dropping
+        the empty ones would turn "this scan never looked for
+        vulnerabilities" into "nothing was scanned";
+      * the *presence or absence* of each result's ``Vulnerabilities`` key is
+        untouched. An empty list means a clean host; a missing key means the
+        vulnerability scanner never ran. Conflating those marks every real
+        finding fixed and reports the host clean (#19).
+
+    Anything we cannot parse is returned exactly as it came. The server's
+    diagnostics for a broken report are better than a guess made here, and
+    ``_run`` hands back stdout and stderr concatenated, so a Trivy WARN line
+    can sit on either side of the JSON — that text is kept as-is.
+    """
+    text = raw or ""
+    start = text.find("{")
+    if start == -1:
+        return text
+
+    decoder = json.JSONDecoder()
+    while start != -1:
+        try:
+            data, end = decoder.raw_decode(text, start)
+        except ValueError:
+            start = text.find("{", start + 1)
+            continue
+        if isinstance(data, dict) and "Results" in data:
+            break
+        start = text.find("{", start + 1)
+    else:
+        return text
+
+    condensed = {k: v for k, v in data.items() if k != "Results"}
+    results = []
+    for result in data.get("Results") or []:
+        if not isinstance(result, dict):
+            results.append(result)
+            continue
+        slim = {k: v for k, v in result.items()
+                if k not in _TRIVY_RESULT_BULK and k != "Vulnerabilities"}
+        if "Vulnerabilities" in result:
+            slim["Vulnerabilities"] = [
+                {f: v[f] for f in _TRIVY_VULN_FIELDS if v.get(f) is not None}
+                for v in (result["Vulnerabilities"] or [])
+                if isinstance(v, dict)
+            ]
+        results.append(slim)
+    condensed["Results"] = results
+
+    # Splice back in place so any surrounding stderr text is left intact.
+    return text[:start] + json.dumps(condensed, separators=(",", ":")) + text[end:]
+
 
 def _run_trivy_scan(params: dict, _config: AgentConfig) -> str:
     """Run ``trivy`` against the local filesystem or a named image.
@@ -518,8 +600,11 @@ def _run_trivy_scan(params: dict, _config: AgentConfig) -> str:
       * ``rootfs`` — alias for ``fs``
       * ``image:<name>`` — ``trivy image <name>``
 
-    Returns Trivy's raw JSON output. The server parses it on receipt —
-    we don't attempt any local interpretation here.
+    Returns the JSON report, condensed to the fields the server ingests (see
+    :func:`_condense_trivy_report`). No local interpretation happens — no
+    finding is judged or dropped here — but the SBOM package inventory and
+    the per-CVE prose are stripped, because a full report is ~30 MB and does
+    not survive the trip.
 
     The scan is restricted to the ``vuln`` scanner: a default ``fs`` scan also
     runs the *secret* scanner, which reads and analyses every file on disk.
@@ -560,7 +645,7 @@ def _run_trivy_scan(params: dict, _config: AgentConfig) -> str:
             raise ValueError(f"Invalid image name in trivy scope: {image_name!r}")
         cmd = ["trivy", "image", *common, image_name]
 
-    return _run(cmd, timeout=_TRIVY_SUBPROCESS_TIMEOUT)
+    return _condense_trivy_report(_run(cmd, timeout=_TRIVY_SUBPROCESS_TIMEOUT))
 
 
 def _trivy_db_update(_params: dict, _config: AgentConfig) -> str:

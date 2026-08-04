@@ -271,6 +271,22 @@ CSRF_COOKIE_SECURE = _secure_cookies
 VIGIL_SIGNING_KEY_SEED = os.environ.get("VIGIL_SIGNING_KEY_SEED", "")
 
 # ---------------------------------------------------------------------------
+# Request body size
+# ---------------------------------------------------------------------------
+# Django's default is 2.5 MB, and it is enforced in HttpRequest.body — before
+# any view runs. A body over the limit raises RequestDataTooBig and the whole
+# POST fails with a bare 400 that no Vigil code can annotate, leaving the task
+# DISPATCHED forever with nothing anywhere to explain it.
+#
+# Task results are the large payload: a Trivy scan report. The agent condenses
+# those to roughly 243 KB and caps any task output at 1,000,000 characters
+# (vigil_agent.client._MAX_OUTPUT), so this ceiling sits well clear of what an
+# agent can legitimately send while still bounding the memory one request can
+# take — Django buffers the whole body before parsing it.
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(
+    os.environ.get("VIGIL_MAX_REQUEST_BODY_BYTES", 8 * 1024 * 1024))
+
+# ---------------------------------------------------------------------------
 # Django REST Framework
 # ---------------------------------------------------------------------------
 REST_FRAMEWORK = {

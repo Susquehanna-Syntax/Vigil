@@ -65,6 +65,11 @@ class ScanIngestError(Exception):
     """
 
 
+#: What vigil_agent.client._cap_output writes when its ceiling bites. Its
+#: presence is proof the output was cut, not merely evidence.
+_AGENT_TRUNCATION_MARKER = "[OUTPUT TRUNCATED"
+
+
 def _extract_report(raw_output: str) -> dict:
     """Pull the Trivy JSON object out of a task's output.
 
@@ -101,6 +106,26 @@ def _extract_report(raw_output: str) -> dict:
         start = text.find("{", start + 1)
 
     preview = text[:200].replace("\n", " ")
+
+    # Nothing decoded. Distinguish "the report was cut off on the way here"
+    # from "there was never a report in this output" — the fixes have nothing
+    # in common, and for the life of the feature the first was being reported
+    # as the second. This is what was actually happening: the agent capped
+    # task output at 10,000 characters and a real `trivy fs /` report is
+    # ~30 MB, so what arrived was always an unterminated fragment.
+    if _AGENT_TRUNCATION_MARKER in text or any(
+            marker in text for marker in ('"SchemaVersion"', '"Results"')):
+        raise ScanIngestError(
+            f"The Trivy report is truncated — it starts but never finishes, "
+            f"so no finding could be read out of it and existing findings "
+            f"were left untouched. {len(text):,} characters arrived. A full "
+            f"filesystem report runs to tens of megabytes, so this is a "
+            f"transport limit rather than a bad scan: check that the agent on "
+            f"this host is new enough to condense reports before sending them "
+            f"(2026.6.2 and later), and that nothing between the agent and "
+            f"this server caps request bodies. First 200 characters were: "
+            f"{preview!r}")
+
     raise ScanIngestError(
         f"No Trivy JSON report found in the step output. First 200 "
         f"characters were: {preview!r}")
