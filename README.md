@@ -105,6 +105,8 @@ This brings up Django, PostgreSQL + TimescaleDB, Redis, Celery worker, and Celer
 | `VIGIL_SIGNING_KEY_SEED` | _(empty)_ | Base64 Ed25519 seed — required for task deployment |
 | `VIGIL_TIMEZONE` | `UTC` | IANA timezone for schedule window evaluation (e.g. `America/New_York`) |
 | `VIGIL_METRIC_RETENTION_DAYS` | `30` | Days to keep metric history |
+| `VIGIL_MAX_REQUEST_BODY_BYTES` | `8388608` (8 MB) | Largest request body Django will accept. Task results are the big payload — a Trivy scan report. Raising Django's 2.5 MB default matters because the limit is enforced before any view runs: an oversized result fails the whole POST with a bare `400` nothing can annotate, and the task stays `DISPATCHED` forever |
+| `VIGIL_AGENT_VERSION` | _(ignored)_ | **No longer used.** The expected agent version is detected from the agent bundled in the build. Leaving it set is harmless — the server logs a note at startup and carries on |
 | `NESSUS_URL` | _(empty)_ | Nessus/Tenable server URL |
 | `NESSUS_ACCESS_KEY` | _(empty)_ | Nessus API access key |
 | `NESSUS_SECRET_KEY` | _(empty)_ | Nessus API secret key |
@@ -369,7 +371,7 @@ actions:
 
 ### Available actions
 
-All 37 primitives are defined in `server/apps/tasks/spec.py` and executed in `agent/vigil_agent/executor.py`. `run_command` and `execute_script` require `full_control` mode; all others require `managed` or higher.
+All 49 primitives are defined in `server/apps/tasks/spec.py` and executed in `agent/vigil_agent/executor.py`. `run_command` and `execute_script` require `full_control` mode; all others require `managed` or higher.
 
 **Service management**
 
@@ -449,6 +451,37 @@ All 37 primitives are defined in `server/apps/tasks/spec.py` and executed in `ag
 |---|---|---|
 | `create_cron_job` | `schedule`, `command` | `user` |
 | `delete_cron_job` | `pattern` | `user` |
+
+**Vulnerability scanning**
+
+| Action | Params | Optional |
+|---|---|---|
+| `request_nessus_scan` | — | — |
+| `request_network_scan` | — | `engine` (`nessus` \| `greenbone`) |
+| `run_trivy_scan` | — | `scope` (`fs` \| `rootfs` \| `image:<name>`) |
+| `trivy_db_update` | — | — |
+
+The two `request_*` actions only leave a marker: the agent finishes, and the server creates a `VulnScan` for the central scanner to run. `run_trivy_scan` is the opposite — the scan *is* the task, and the findings arrive with its output. See [Vulnerability Management](#vulnerability-management).
+
+**Agent & baselines**
+
+| Action | Params | Optional |
+|---|---|---|
+| `baseline` | `name` | — |
+| `update_agent` | — | `platform` |
+
+`update_agent` replaces the agent executable, so the server stamps the verified SHA-256 of each platform binary into the signed task — TLS alone is not proof enough for that swap.
+
+**Reprovisioning** (see [`docs/reprovisioning.md`](docs/reprovisioning.md))
+
+| Action | Params | Optional |
+|---|---|---|
+| `reprovision_preflight` | — | `disk_target`, `os_family` |
+| `reprovision_stage` | `job_id`, `kernel_url`, `initrd_url`, `kernel_sha256`, `initrd_sha256` | — |
+| `reprovision_commit` | `job_id`, `cmdline` | — |
+| `reprovision_cleanup` | `job_id` | — |
+
+All except `reprovision_preflight` are high-risk and additionally gated by the agent's own `allow_reprovision` opt-in — a compromised server cannot wipe a host that never opted in.
 
 ### Deployment flow
 
@@ -571,11 +604,47 @@ Task deploys are blocked until enrolled. TOTP can be disabled from Settings (req
 
 ---
 
-## Vulnerability Management (Nessus)
+## Vulnerability Management
 
-Vigil ships a first-class Nessus / Tenable integration: it ingests scan findings, lets you launch scans without leaving the dashboard, and alerts on high-risk and critical findings.
+Vigil ingests findings from three scanners into one `VulnFinding` table, one host score, and one Vulnerabilities tab. Configure whichever you have — none are required, and an unconfigured scanner is skipped silently.
 
-### Server setup
+| Scanner | Where it runs | How Vigil gets findings | Setup |
+|---|---|---|---|
+| **Nessus / Tenable** | Central server you run | Vigil launches scans over the REST API and polls | `NESSUS_*` env vars |
+| **Greenbone / OpenVAS** | Container you run | Vigil launches scans over GMP (XML/TLS) and polls | `GREENBONE_*` env vars |
+| **Trivy** | The monitored host itself | The scan *is* an agent task; findings arrive with its output | Nothing server-side |
+
+`vulns.sync_vulns` (hourly beat) walks every registered scanner, skips the unconfigured ones, and isolates failures so one bad scanner can't break the rest. Trivy is event-driven and does nothing during that walk — its findings land when the task completes.
+
+> `vulns.sync_nessus_vulns` still exists as a deprecated alias for one release, for pinned callers. New code should call `sync_vulns`.
+
+### Trivy — agent-local, no server setup
+
+Trivy scans the monitored host's own filesystem and installed packages against a CVE database. Nothing listens on the network and there is no central scanner to run. Deploy a task using the `run_trivy_scan` action:
+
+```yaml
+name: Trivy filesystem scan
+risk: low
+actions:
+  - id: scan
+    type: run_trivy_scan
+    params: { scope: fs }      # or image:<name> for a container image
+```
+
+The agent needs the `trivy` binary — use the **Install Trivy on this host** task template, or install it by hand.
+
+> **`managed`-mode agents must allowlist the action.** The shipped `agent.yml` allowlist does *not* include `run_trivy_scan`, so a managed agent rejects the task and no findings ever arrive. Add it (and `trivy_db_update` if you refresh the DB explicitly) to the host's `allowlist:`. `full_control` agents ignore the allowlist entirely.
+
+On completion the server writes one `VulnFinding` per (package, CVE) pair, marks previously-open findings that didn't reappear as `FIXED`, and recomputes the host score. The outcome is appended to the task's own output, so run details show either `[INGEST] trivy: N finding(s) ingested` or `[INGEST FAILED] <reason>`.
+
+**Report size.** A full `trivy fs /` report is very large — around 30 MB on a stock Ubuntu workstation, of which roughly 90% is a package inventory Vigil never reads. The agent condenses the report to the fields the server ingests (~240 KB) before sending it. Two consequences worth knowing:
+
+- Agents older than **2026.6.2** send the raw report, which is truncated in transit and cannot be ingested. The Vulnerabilities tab stays empty and run details say the report is truncated. Update the agent.
+- If you put a proxy in front of Vigil, its request body limit must clear `VIGIL_MAX_REQUEST_BODY_BYTES` (8 MB by default), or results are rejected before Vigil ever sees them.
+
+**A report with no `Vulnerabilities` section is refused rather than ingested.** That shape means the scan never ran the vulnerability scanner — ingesting it would mark every existing finding fixed and report the host clean, which is the worst possible failure for a security feature. Existing findings are left untouched and the reason appears in run details.
+
+### Nessus setup
 
 1. Install **Nessus Essentials** (free, scans up to 16 IPs) — register at <https://www.tenable.com/products/nessus/nessus-essentials> for an activation code, then:
 
@@ -607,9 +676,9 @@ Vigil ships a first-class Nessus / Tenable integration: it ingests scan findings
 
 ### What runs automatically
 
-The `vulns.sync_nessus_vulns` Celery beat (hourly) does three things in order:
+The `vulns.sync_vulns` Celery beat (hourly) does three things in order, for each configured network scanner:
 
-1. **Launches** every `VulnScan` in the `requested` state by calling Nessus's `Basic Network Scan` template against the host's IP.
+1. **Launches** every `VulnScan` in the `requested` state by calling Nessus's `Basic Network Scan` template against the host's IP (or the Greenbone equivalent over GMP).
 2. **Polls** in-flight scans and updates their state in the dashboard.
 3. **Ingests** results from completed scans into `VulnSummary`, fires alerts on new criticals and new highs, and resolves them once findings clear.
 
@@ -625,12 +694,18 @@ Three paths, all converge on a `VulnScan` row visible in the **Recent scans** li
 
 One active scan per host is enforced — repeated requests while a scan is in flight return `409 Conflict`.
 
-### Two ready-made templates in the editor
+### Ready-made templates in the editor
 
-The task editor's **Start from template…** dropdown includes:
+The task editor's **Start from template…** dropdown covers all three scanners:
 
-- **Install Nessus Essentials on this host** — high-risk multi-step task that downloads, installs, and starts `nessusd`, then echoes the activation URL.
-- **Request a Nessus scan of this host** — low-risk single-step task using the `request_nessus_scan` action; the server picks up the marker on task completion and queues a scan.
+| Template | Risk | What it does |
+|---|---|---|
+| **Install Nessus Essentials on this host** | high | Downloads, installs and starts `nessusd`, then echoes the activation URL |
+| **Request a Nessus scan of this host** | low | `request_nessus_scan` — the server picks up the marker on completion and queues a scan |
+| **Install Greenbone Community Edition** | high | Drops the official CE compose stack into `/opt/greenbone` and brings it up (Linux, docker-capable hosts only) |
+| **Request a network scan of this host** | low | `request_network_scan` — engine-agnostic; the server picks Nessus or Greenbone |
+| **Install Trivy on this host** | high | Cross-platform install via apt / dnf / brew / winget, chosen by per-step `when:` predicates |
+| **Run a Trivy vulnerability scan** | low | `run_trivy_scan` — the scan runs on the host and the findings come back with the task |
 
 ---
 
