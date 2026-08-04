@@ -494,7 +494,6 @@
       <span class="hl-var">DJANGO_SECRET_KEY</span>: <span class="hl-string">${DJANGO_SECRET_KEY:-insecure-change-me}</span>
       <span class="hl-var">VIGIL_SIGNING_KEY_SEED</span>: <span class="hl-string">${VIGIL_SIGNING_KEY_SEED:-}</span>
       <span class="hl-var">VIGIL_TIMEZONE</span>: <span class="hl-string">${VIGIL_TIMEZONE:-UTC}</span>
-      <span class="hl-var">VIGIL_AGENT_VERSION</span>: <span class="hl-string">${VIGIL_AGENT_VERSION:-2026.2.2}</span>
       <span class="hl-var">POSTGRES_DB</span>: <span class="hl-string">${POSTGRES_DB:-vigil}</span>
       <span class="hl-var">POSTGRES_USER</span>: <span class="hl-string">${POSTGRES_USER:-vigil}</span>
       <span class="hl-var">POSTGRES_PASSWORD</span>: <span class="hl-string">${POSTGRES_PASSWORD:-vigil}</span>
@@ -574,7 +573,7 @@
             <tr><td><code>POSTGRES_DB</code></td><td><code>vigil</code></td><td>Database name</td></tr>
             <tr><td><code>POSTGRES_USER</code></td><td><code>vigil</code></td><td>Database user</td></tr>
             <tr><td><code>VIGIL_TIMEZONE</code></td><td><code>UTC</code></td><td>IANA timezone for display (e.g. <code>America/New_York</code>)</td></tr>
-            <tr><td><code>VIGIL_AGENT_VERSION</code></td><td><code>2026.3.16</code></td><td>Expected agent version; triggers alerts when agents are outdated. Bump in lockstep with each release.</td></tr>
+            <tr><td><code>VIGIL_AGENT_VERSION</code></td><td><em>ignored</em></td><td>No longer used. The expected agent version is detected from the agent bundled in the image, so there is nothing to keep in lockstep. Leaving it set is harmless — the server logs a note at startup and carries on.</td></tr>
             <tr><td><code>VIGIL_PUBLIC_URL</code></td><td><em>empty</em></td><td>External URL for off-LAN access; auto-populates <code>ALLOWED_HOSTS</code> and <code>CSRF_TRUSTED_ORIGINS</code></td></tr>
             <tr><td><code>DJANGO_CSRF_TRUSTED_ORIGINS</code></td><td><em>empty</em></td><td>Comma-separated trusted POST origins, scheme included — needed behind a proxy on an external hostname</td></tr>
           </tbody>
@@ -2041,7 +2040,7 @@
         <table>
           <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
           <tbody>
-            <tr><td><code>VIGIL_AGENT_VERSION</code></td><td><code>2026.3.16</code></td><td>Expected agent version; outdated agents raise an alert. Keep in lockstep with the release. <em>Note: <code>docker-compose.yml</code> still defaults this to <code>2026.3.8</code>.</em></td></tr>
+            <tr><td><code>VIGIL_AGENT_VERSION</code></td><td><em>ignored</em></td><td>No longer used. Detected instead, in order: <code>VERSION</code> stamped beside the bundled binaries at image build, the agent source in a checkout, then <code>VIGIL_VERSION</code>. Previously three copies of this number had to be bumped by hand and drifted apart, and the stale compose default silently won.</td></tr>
             <tr><td><code>VIGIL_AGENT_DIST_DIR</code></td><td><code>&lt;BASE_DIR&gt;/agent_dist</code></td><td>Filesystem path from which agent binaries are served.</td></tr>
             <tr><td><code>VIGIL_TASK_EXPIRY_GRACE_SECONDS</code></td><td><code>3600</code></td><td>Grace window in which an agent may <em>start</em> a task. Not a runtime cap — a filesystem-wide Trivy scan legitimately takes minutes.</td></tr>
             <tr><td><code>VIGIL_AI_TIMEOUT_SECONDS</code></td><td><code>300</code></td><td>Timeout for AI suggestion provider calls.</td></tr>
@@ -2098,7 +2097,7 @@
           <thead><tr><th>Field</th><th>Source</th></tr></thead>
           <tbody>
             <tr><td><code>vigil_version</code></td><td><code>VIGIL_VERSION</code> constant in <code>vigil/settings.py</code> — bumped in lockstep with each git release tag.</td></tr>
-            <tr><td><code>expected_agent_version</code></td><td><code>VIGIL_AGENT_VERSION</code> env var — what <code>check_outdated_agents</code> compares each host against.</td></tr>
+            <tr><td><code>expected_agent_version</code></td><td>Detected from the agent bundled in this build — what <code>check_outdated_agents</code> compares each host against. Not configurable.</td></tr>
             <tr><td><code>python_version</code></td><td>Live <code>sys.version_info</code>.</td></tr>
             <tr><td><code>database</code></td><td>Django settings — <code>postgresql</code>, <code>sqlite3</code>, etc.</td></tr>
             <tr><td><code>timezone</code></td><td><code>VIGIL_TIMEZONE</code> env var (display only).</td></tr>

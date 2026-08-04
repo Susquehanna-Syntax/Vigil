@@ -397,17 +397,71 @@ VIGIL_METRIC_RETENTION_DAYS = int(os.environ.get("VIGIL_METRIC_RETENTION_DAYS", 
 VIGIL_DB_SIZE_WARN_GB = float(os.environ.get("VIGIL_DB_SIZE_WARN_GB", "20"))
 VIGIL_DB_SIZE_CRIT_GB = float(os.environ.get("VIGIL_DB_SIZE_CRIT_GB", "40"))
 
+# Server build version — surfaced on the About page and the /api/v1/about/
+# endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
+# this constant should stay in lockstep.
+VIGIL_VERSION = "2026.6.2"
+
 # ---------------------------------------------------------------------------
 # Agent distribution — filesystem path where compiled binaries live.
 # In the Docker image this is pre-populated by the multi-stage build.
 # ---------------------------------------------------------------------------
 VIGIL_AGENT_DIST_DIR = Path(os.environ.get("VIGIL_AGENT_DIST_DIR", str(BASE_DIR / "agent_dist")))
-VIGIL_AGENT_VERSION = os.environ.get("VIGIL_AGENT_VERSION", "2026.6.2")
 
-# Server build version — surfaced on the About page and the /api/v1/about/
-# endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
-# this constant should stay in lockstep.
-VIGIL_VERSION = "2026.6.2"
+
+def _detect_agent_version() -> str:
+    """Work out which agent version this build actually ships.
+
+    This used to be ``os.environ.get("VIGIL_AGENT_VERSION", <a literal>)``, and
+    every release had to remember to bump the literal here, the default in
+    docker-compose.yml, and whatever each operator had in .env. Nobody did, so
+    the three drifted — compose said 2026.3.8, settings said 2026.3.16, the
+    wiki said 2026.2.2 — and because compose always passes the variable, its
+    stale default silently won everywhere. check_outdated_agents compares each
+    host against this value, so a wrong answer either alerts a whole fleet
+    that is perfectly current or stays quiet while every host runs an agent
+    too old to do its job.
+
+    So it is detected rather than configured, most specific source first:
+
+      1. ``VERSION`` beside the bundled binaries, stamped from the agent
+         source at image build time — authoritative in Docker, where the
+         agent source itself is not present;
+      2. the agent source, for a checkout where ``server/`` and ``agent/``
+         sit side by side (development, and the repo layout itself);
+      3. the server's own version, since both ship from this one repo.
+
+    Never raises: a version string is not worth failing startup over.
+    """
+    stamped = VIGIL_AGENT_DIST_DIR / "VERSION"
+    try:
+        version = stamped.read_text(encoding="utf-8").strip()
+        if version:
+            return version
+    except OSError:
+        pass
+
+    source = BASE_DIR.parent / "agent" / "vigil_agent" / "__version__.py"
+    try:
+        import re as _re
+
+        match = _re.search(r"""__version__\s*=\s*["']([^"']+)["']""",
+                           source.read_text(encoding="utf-8"))
+        if match:
+            return match.group(1)
+    except OSError:
+        pass
+
+    return VIGIL_VERSION
+
+
+VIGIL_AGENT_VERSION = _detect_agent_version()
+
+#: True when an operator still has VIGIL_AGENT_VERSION set. It is deliberately
+#: ignored now — honouring it is what let a stale compose default pin the whole
+#: fleet to a version that shipped months ago — but silently ignoring a
+#: variable someone set on purpose is its own trap, so startup says so once.
+VIGIL_AGENT_VERSION_ENV_IGNORED = bool(os.environ.get("VIGIL_AGENT_VERSION"))
 
 # ---------------------------------------------------------------------------
 # Display / locale
