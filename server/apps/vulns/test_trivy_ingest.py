@@ -90,7 +90,7 @@ class TrivyIngestTests(TestCase):
     def test_sbom_error_names_the_likely_cause(self):
         with self.assertRaises(ScanIngestError) as ctx:
             self.scanner.ingest_report(self.host, sbom_report())
-        self.assertIn("scanners", str(ctx.exception).lower())
+        self.assertIn("inconclusive", str(ctx.exception).lower())
 
     def test_invalid_json_is_refused(self):
         with self.assertRaises(ScanIngestError):
@@ -167,7 +167,7 @@ class IngestSurfacingTests(TestCase):
     def test_refusal_is_visible_in_run_details(self):
         task = self._complete(sbom_report())
         self.assertIn("[INGEST FAILED]", task.result_output)
-        self.assertIn("SBOM", task.result_output)
+        self.assertIn("inconclusive", task.result_output)
 
     def test_refusal_keeps_the_raw_report_for_diagnosis(self):
         task = self._complete(sbom_report())
@@ -213,8 +213,90 @@ class SbomDiagnosticsTests(TestCase):
     def test_lists_the_keys_that_did_arrive(self):
         self.assertIn("Packages", self._refusal())
 
-    def test_names_the_agent_version_that_fixed_the_flags(self):
-        self.assertIn("2026.2.6", self._refusal())
-
     def test_explains_why_it_refused(self):
-        self.assertIn("mark every existing finding as fixed", self._refusal())
+        self.assertIn("left untouched", self._refusal())
+
+
+def multistep_transcript(report_json):
+    """Exactly what a multi-step _script task returns: the runtime's
+    transcript, with each step's output prefixed. This is what ingest has
+    actually been receiving in production all along."""
+    return f"[OK] refresh_db: ok\n[OK] scan: {report_json}"
+
+
+class TranscriptExtractionTests(TestCase):
+    """Multi-step scans ship a transcript, not raw JSON (the real cause of
+    'nothing is ever ingested'). json.loads saw the leading '[', read it as
+    a JSON array, and died at char 1."""
+
+    def setUp(self):
+        self.host = Host.objects.create(
+            hostname="h4", agent_token="e" * 32, status=Host.Status.ONLINE)
+        self.scanner = TrivyScanner()
+
+    def _open(self):
+        return VulnFinding.objects.filter(
+            host=self.host, scanner=VulnScan.Scanner.TRIVY,
+            state=VulnFinding.State.OPEN)
+
+    def test_transcript_wrapped_report_is_ingested(self):
+        self.scanner.ingest_report(
+            self.host, multistep_transcript(vuln_report(CVE)))
+        self.assertEqual(self._open().count(), 1)
+
+    def test_bare_report_still_works(self):
+        self.scanner.ingest_report(self.host, vuln_report(CVE))
+        self.assertEqual(self._open().count(), 1)
+
+    def test_transcript_with_a_clean_report(self):
+        self.scanner.ingest_report(
+            self.host, multistep_transcript(vuln_report(CVE)))
+        self.scanner.ingest_report(
+            self.host, multistep_transcript(clean_report()))
+        self.assertEqual(self._open().count(), 0)
+
+    def test_leading_bracket_no_longer_breaks_parsing(self):
+        """Regression marker for the exact production error:
+        'Expecting value: line 1 column 2 (char 1)'."""
+        from apps.vulns.scanners.trivy import _extract_report
+
+        data = _extract_report(multistep_transcript(vuln_report(CVE)))
+        self.assertEqual(data["SchemaVersion"], 2)
+
+    def test_report_with_packages_before_vulnerabilities(self):
+        """Trivy emits Packages ahead of Vulnerabilities, so a truncated
+        view looks like an SBOM when it is not."""
+        import json as _json
+
+        report = _json.dumps({
+            "SchemaVersion": 2,
+            "Trivy": {"Version": "0.72.0"},
+            "Results": [{
+                "Class": "os-pkgs", "Type": "ubuntu",
+                "Packages": [{"Name": "adduser", "Version": "3.137"}],
+                "Vulnerabilities": [CVE],
+            }],
+        })
+        self.scanner.ingest_report(self.host, multistep_transcript(report))
+        self.assertEqual(self._open().count(), 1)
+
+    def test_trailing_step_output_after_the_report(self):
+        transcript = (f"[OK] refresh_db: ok\n[OK] scan: {vuln_report(CVE)}\n"
+                      f"[OK] cleanup: done")
+        self.scanner.ingest_report(self.host, transcript)
+        self.assertEqual(self._open().count(), 1)
+
+    def test_output_with_no_json_at_all_is_refused(self):
+        with self.assertRaises(ScanIngestError) as ctx:
+            self.scanner.ingest_report(
+                self.host, "[ERROR] scan: trivy: command not found")
+        self.assertIn("No Trivy JSON report", str(ctx.exception))
+
+    def test_refusal_shows_what_it_actually_got(self):
+        with self.assertRaises(ScanIngestError) as ctx:
+            self.scanner.ingest_report(self.host, "[ERROR] scan: boom")
+        self.assertIn("boom", str(ctx.exception))
+
+    def test_empty_output_is_refused(self):
+        with self.assertRaises(ScanIngestError):
+            self.scanner.ingest_report(self.host, "   ")

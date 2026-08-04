@@ -65,6 +65,47 @@ class ScanIngestError(Exception):
     """
 
 
+def _extract_report(raw_output: str) -> dict:
+    """Pull the Trivy JSON object out of a task's output.
+
+    A single-step task returns the report alone. A multi-step task returns
+    the runtime's transcript instead::
+
+        [OK] refresh_db: ok
+        [OK] scan: {"SchemaVersion": 2, ...}
+
+    Feeding that to json.loads fails on the leading bracket — it is read as
+    the start of a JSON array — with "Expecting value: line 1 column 2".
+    That is precisely what happened to every multi-step Trivy scan ever run:
+    the old code returned the parse error as a string that only reached the
+    worker log, so nothing was ingested and nothing said so.
+
+    Scans the output for the first balanced JSON object that looks like a
+    Trivy report, so both shapes work.
+    """
+    text = (raw_output or "").strip()
+    if not text:
+        raise ScanIngestError("Trivy step produced no output at all.")
+
+    decoder = json.JSONDecoder()
+    start = text.find("{")
+    while start != -1:
+        try:
+            candidate, _end = decoder.raw_decode(text, start)
+        except ValueError:
+            start = text.find("{", start + 1)
+            continue
+        if isinstance(candidate, dict) and (
+                "Results" in candidate or "SchemaVersion" in candidate):
+            return candidate
+        start = text.find("{", start + 1)
+
+    preview = text[:200].replace("\n", " ")
+    raise ScanIngestError(
+        f"No Trivy JSON report found in the step output. First 200 "
+        f"characters were: {preview!r}")
+
+
 # Trivy uses upper-case severity strings — map to our enum values.
 _TRIVY_SEVERITY_MAP = {
     "CRITICAL": VulnFinding.Severity.CRITICAL,
@@ -111,10 +152,7 @@ class TrivyScanner(Scanner):
 
         Returns a status string with the counts, surfaced in run details.
         """
-        try:
-            data = json.loads(raw_output)
-        except json.JSONDecodeError as exc:
-            raise ScanIngestError(f"Trivy output was not valid JSON: {exc}") from exc
+        data = _extract_report(raw_output)
 
         results = data.get("Results") or []
         if not results:
@@ -130,13 +168,14 @@ class TrivyScanner(Scanner):
             version = ((data.get("Trivy") or {}).get("Version") or "unknown")
             keys = sorted({k for r in results if isinstance(r, dict) for k in r})
             raise ScanIngestError(
-                f"Trivy report has no Vulnerabilities section — this is an "
-                f"SBOM, not a vulnerability scan. Trivy version "
-                f"{version}; result keys present: {', '.join(keys) or 'none'}. "
-                f"Vigil invokes Trivy with --scanners vuln as of agent "
-                f"2026.2.6, so check the agent version on this host. "
-                f"Refusing to ingest: doing so would mark every existing "
-                f"finding as fixed and report the host clean.")
+                f"Trivy report carries no Vulnerabilities section, so this "
+                f"scan is inconclusive — it may be a genuinely clean host "
+                f"whose section Trivy omitted, or a scan that never ran the "
+                f"vulnerability scanner. Trivy version {version}; result keys "
+                f"present: {', '.join(keys) or 'none'}. Existing findings for "
+                f"this host were left untouched: clearing them on an "
+                f"ambiguous report would turn a failed scan into a clean "
+                f"bill of health.")
 
         seen_keys: set[str] = set()
         finding_count = 0
