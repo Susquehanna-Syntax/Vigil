@@ -72,12 +72,40 @@ def checkin(
     return resp.json()
 
 
+#: Ceiling on task output, in characters. The old value was 10,000, applied as
+#: a silent ``output[:10_000]`` — which is why no Trivy scan was ever ingested:
+#: a real report is ~30 MB, so the server received an unterminated fragment of
+#: JSON and could only say it found no report at all. Scans are condensed
+#: agent-side now (~243,000 characters for that same report), and this leaves
+#: generous headroom above it while still bounding what one host can push.
+#: Must stay below the server's DATA_UPLOAD_MAX_MEMORY_SIZE, or Django rejects
+#: the whole POST with a 400 the agent cannot explain.
+_MAX_OUTPUT = 1_000_000
+
+
+def _cap_output(output: str | None) -> str:
+    """Bound task output, saying so when the bound actually bites.
+
+    Truncation used to be silent, so a result that arrived mangled was
+    indistinguishable from one that arrived whole. Anything that reads this
+    output — a human in run details, or the Trivy ingest path — can now tell
+    the difference.
+    """
+    text = output or ""
+    if len(text) <= _MAX_OUTPUT:
+        return text
+    dropped = len(text) - _MAX_OUTPUT
+    return (f"{text[:_MAX_OUTPUT]}\n"
+            f"[OUTPUT TRUNCATED — {dropped:,} of {len(text):,} characters "
+            f"dropped at the agent's {_MAX_OUTPUT:,}-character cap]")
+
+
 def report_result(config: AgentConfig, task_id: str, state: str, output: str) -> dict:
     """Report task execution result to the server."""
     payload = {
         "task_id": task_id,
         "state": state,
-        "output": output[:10_000],  # Cap output size
+        "output": _cap_output(output),
     }
     url = f"{config.server_url}/api/v1/tasks/result/"
     resp = requests.post(url, json=payload, headers=_headers(config), timeout=_TIMEOUT)

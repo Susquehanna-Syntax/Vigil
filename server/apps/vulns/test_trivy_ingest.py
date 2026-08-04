@@ -300,3 +300,106 @@ class TranscriptExtractionTests(TestCase):
     def test_empty_output_is_refused(self):
         with self.assertRaises(ScanIngestError):
             self.scanner.ingest_report(self.host, "   ")
+
+
+class TruncatedReportTests(TestCase):
+    """A report cut off in transit is not a report that never arrived.
+
+    This is what was actually happening to every Trivy scan: the agent capped
+    task output at 10,000 characters and a real ``trivy fs /`` report is ~30 MB
+    (30,159,056 characters measured on a stock Ubuntu workstation). The server
+    received an unterminated JSON fragment and reported "No Trivy JSON report
+    found", which reads as "the scan produced nothing" and sent everyone
+    looking in the wrong place. The two have completely different fixes, so
+    they must not share a message.
+    """
+
+    def setUp(self):
+        self.host = Host.objects.create(
+            hostname="h5", agent_token="f" * 32, status=Host.Status.ONLINE)
+        self.scanner = TrivyScanner()
+
+    def _cut_off(self, chars=400):
+        """A real report, sliced mid-object exactly as the cap sliced it."""
+        big = json.dumps({
+            "SchemaVersion": 2,
+            "Trivy": {"Version": "0.73.0"},
+            "Results": [{"Class": "os-pkgs", "Type": "ubuntu",
+                         "Packages": [{"Name": f"pkg{i}", "Version": "1.0"}
+                                      for i in range(200)],
+                         "Vulnerabilities": [CVE]}],
+        })
+        return big[:chars]
+
+    def _refusal(self, output):
+        with self.assertRaises(ScanIngestError) as ctx:
+            self.scanner.ingest_report(self.host, output)
+        return str(ctx.exception)
+
+    def test_a_cut_off_report_is_refused(self):
+        with self.assertRaises(ScanIngestError):
+            self.scanner.ingest_report(self.host, self._cut_off())
+
+    def test_a_cut_off_report_is_named_as_truncated(self):
+        self.assertIn("truncated", self._refusal(self._cut_off()).lower())
+
+    def test_it_does_not_claim_no_report_was_produced(self):
+        """The old message. It described a scan that never ran."""
+        self.assertNotIn("No Trivy JSON report found",
+                         self._refusal(self._cut_off()))
+
+    def test_a_cut_off_transcript_is_named_as_truncated(self):
+        transcript = f"[OK] refresh_db: ok\n[OK] scan: {self._cut_off()}"
+        self.assertIn("truncated", self._refusal(transcript).lower())
+
+    def test_the_agents_truncation_notice_is_recognised(self):
+        """When the agent's cap bites it says so — quote that back."""
+        output = (f"{self._cut_off()}\n[OUTPUT TRUNCATED — 29,000,000 of "
+                  f"30,159,056 characters dropped at the agent's "
+                  f"1,000,000-character cap]")
+        self.assertIn("truncated", self._refusal(output).lower())
+
+    def test_genuinely_absent_json_still_says_so(self):
+        """Don't over-fit: output with no report in it is a different bug."""
+        refusal = self._refusal("[ERROR] scan: trivy: command not found")
+        self.assertIn("No Trivy JSON report", refusal)
+        self.assertNotIn("truncated", refusal.lower())
+
+    def test_a_cut_off_report_does_not_destroy_existing_findings(self):
+        self.scanner.ingest_report(self.host, vuln_report(CVE))
+        open_before = VulnFinding.objects.filter(
+            host=self.host, state=VulnFinding.State.OPEN).count()
+        self.assertEqual(open_before, 1)
+        with self.assertRaises(ScanIngestError):
+            self.scanner.ingest_report(self.host, self._cut_off())
+        self.assertEqual(
+            VulnFinding.objects.filter(
+                host=self.host, state=VulnFinding.State.OPEN).count(), 1,
+            "a truncated report must not mark findings fixed")
+
+    def test_a_whole_report_is_still_ingested(self):
+        """Guard against the truncation check swallowing valid reports."""
+        self.scanner.ingest_report(self.host, vuln_report(CVE))
+        self.assertEqual(
+            VulnFinding.objects.filter(
+                host=self.host, state=VulnFinding.State.OPEN).count(), 1)
+
+
+class UploadLimitTests(TestCase):
+    """The agent's output cap must fit inside what Django will accept.
+
+    If the agent ships more than DATA_UPLOAD_MAX_MEMORY_SIZE, Django raises
+    RequestDataTooBig while reading the body and the whole POST fails with a
+    400 — before any Vigil code runs, so nothing can explain it. The task then
+    sits DISPATCHED forever.
+    """
+
+    def test_the_body_limit_clears_the_agents_output_cap(self):
+        from django.conf import settings
+
+        # Mirrors vigil_agent.client._MAX_OUTPUT. Hard-coded rather than
+        # imported: the agent is deployed separately and is not on the
+        # server's import path.
+        agent_cap = 1_000_000
+        self.assertIsNotNone(settings.DATA_UPLOAD_MAX_MEMORY_SIZE)
+        self.assertGreater(settings.DATA_UPLOAD_MAX_MEMORY_SIZE, agent_cap * 2)
