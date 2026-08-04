@@ -41,12 +41,20 @@ Plain and professional:
 
 ## Versioning
 
-Versions are `YYYY.MINOR.PATCH` (e.g. `2026.3.0`). On a release, bump **all four
-in lockstep** and tag the commit that contains them:
+Versions are `YYYY.MINOR.PATCH` (e.g. `2026.3.0`). On a release, bump **both**
+and tag the commit that contains them:
 
-- `server/vigil/settings.py` → `VIGIL_VERSION`, `VIGIL_AGENT_VERSION`
+- `server/vigil/settings.py` → `VIGIL_VERSION`
 - `agent/vigil_agent/__version__.py` → `__version__`
-- `docker-compose.yml` → `VIGIL_AGENT_VERSION` default (and the header comment)
+
+Nothing else carries a version number. The expected agent version — what
+`check_outdated_agents` compares each host against — is detected from the agent
+bundled in the build, so there is no third or fourth copy to keep in step.
+`VIGIL_AGENT_VERSION` is ignored if set.
+
+> This used to be four copies (`settings.py`, `docker-compose.yml`, `.env`, and
+> the agent), which drifted apart within a release or two. If you find yourself
+> adding a version literal somewhere new, derive it instead.
 
 Tag **after** the version-bump commit so `git checkout vX` reports `X`:
 
