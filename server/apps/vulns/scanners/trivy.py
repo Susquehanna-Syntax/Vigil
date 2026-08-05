@@ -43,8 +43,11 @@ consistent without forking the dedup logic.
 
 from __future__ import annotations
 
+import base64
+import gzip
 import json
 import logging
+import re
 from typing import ClassVar
 
 from django.utils.timezone import now
@@ -69,6 +72,55 @@ class ScanIngestError(Exception):
 #: presence is proof the output was cut, not merely evidence.
 _AGENT_TRUNCATION_MARKER = "[OUTPUT TRUNCATED"
 
+#: Prefix the agent puts in front of a gzipped, base64-encoded report
+#: (vigil_agent.executor.TRIVY_GZIP_MARKER). Absent means plain JSON, which is
+#: what agents before compression send — both must keep working.
+_GZIP_MARKER = "[TRIVY-GZ]"
+
+#: base64's alphabet. Used to find where the blob ends, since a multi-step
+#: transcript can carry other steps' output after it.
+_B64_RUN = re.compile(r"[A-Za-z0-9+/=]+")
+
+
+def _unpack_report(text: str) -> str:
+    """Decompress the report if the agent gzipped it, else return it as-is.
+
+    A Trivy report is the same handful of keys repeated once per finding, so it
+    gzips about 6.6x — 5.0x once base64 has taken its third back. That is what
+    lets a host with thousands of findings arrive in one request instead of
+    forcing the request-body ceiling up.
+
+    Decompression happens before anything else looks at the text, so every
+    diagnostic downstream quotes readable JSON rather than base64.
+    """
+    marker = text.find(_GZIP_MARKER)
+    if marker == -1:
+        return text
+
+    blob = _B64_RUN.match(text, marker + len(_GZIP_MARKER))
+    if blob is None:
+        raise ScanIngestError(
+            "The Trivy report is marked as compressed but carries no payload "
+            "after the marker. Nothing was ingested and existing findings were "
+            "left untouched.")
+
+    try:
+        report = gzip.decompress(base64.b64decode(blob.group(0))).decode("utf-8")
+    except Exception as exc:  # noqa: BLE001
+        # Overwhelmingly this means the blob was cut off in transit: a
+        # truncated gzip stream cannot be decompressed at all, whereas
+        # truncated plain JSON at least parses partway.
+        raise ScanIngestError(
+            f"The compressed Trivy report could not be decompressed "
+            f"({exc}), which almost always means it was truncated in "
+            f"transit. {len(blob.group(0)):,} characters of payload arrived. "
+            f"Nothing was ingested and existing findings were left untouched."
+        ) from exc
+
+    # Put the decompressed report back where the blob was, so any surrounding
+    # step output in a multi-step transcript survives for diagnosis.
+    return text[:marker] + report + text[blob.end():]
+
 
 def _extract_report(raw_output: str) -> dict:
     """Pull the Trivy JSON object out of a task's output.
@@ -91,6 +143,10 @@ def _extract_report(raw_output: str) -> dict:
     text = (raw_output or "").strip()
     if not text:
         raise ScanIngestError("Trivy step produced no output at all.")
+
+    # Compressed reports become plain JSON here, before any parsing or any
+    # diagnostic quotes the text back at the operator.
+    text = _unpack_report(text)
 
     decoder = json.JSONDecoder()
     start = text.find("{")

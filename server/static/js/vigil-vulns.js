@@ -490,9 +490,18 @@ async function _loadFindingsInto(container, summary) {
     const fix = document.createElement('button');
     fix.className = 'btn btn-sm btn-outline';
     fix.textContent = 'Suggest Fix';
-    fix.title = 'Coming in a later PR — Trivy/Greenbone findings get package-aware fixes';
-    fix.disabled = true;
-    fix.style.opacity = '0.45';
+    // Count the siblings the same upgrade would clear, so the built-in task
+    // can say so — one update_package fixes every CVE open against a package.
+    const siblings = f.package_name
+      ? findings.filter(o => o.package_name === f.package_name && o.id !== f.id).length
+      : 0;
+    fix.title = siblings
+      ? `Suggest a fix — also clears ${siblings} other finding(s) against ${f.package_name}`
+      : 'Suggest a remediation task for this finding';
+    fix.addEventListener('click', () => {
+      if (typeof suggestFixForVuln !== 'function') return;
+      suggestFixForVuln({ ...f, sibling_count: siblings });
+    });
     row.appendChild(fix);
 
     list.appendChild(row);

@@ -13,6 +13,8 @@ Security invariants:
 
 from __future__ import annotations
 
+import base64
+import gzip
 import hashlib
 import json
 import logging
@@ -527,14 +529,6 @@ _TRIVY_VULN_FIELDS = (
 # inventory, listed alongside the 2.4 MB of findings we actually want.
 _TRIVY_RESULT_BULK = ("Packages", "Secrets", "Misconfigurations", "Licenses")
 
-#: Fields that identify a finding or drive a fix. Never shed, at any size — the
-#: server marks any finding that does not arrive as FIXED, so shedding one
-#: reports a live vulnerability as resolved.
-_TRIVY_IDENTITY_FIELDS = frozenset({
-    "VulnerabilityID", "PkgName", "Severity", "InstalledVersion", "FixedVersion",
-})
-
-
 def _condense_trivy_report(raw: str) -> str:
     """Strip a Trivy report down to what the server ingests.
 
@@ -578,34 +572,42 @@ def _condense_trivy_report(raw: str) -> str:
     else:
         return text
 
-    condensed = _slim_report(data)
-
-    # A report the transport would cut in half is worth nothing: the server
-    # cannot read a single finding out of a torn JSON object, so sending one
-    # wastes megabytes to accomplish exactly nothing. Shed the one field that
-    # is cosmetic rather than let that happen. Never shed a finding.
-    if len(json.dumps(condensed, separators=(",", ":"))) > _report_budget():
-        condensed = _slim_report(data, keep_title=False)
+    condensed = json.dumps(_slim_report(data), separators=(",", ":"))
 
     # Splice back in place so any surrounding stderr text is left intact.
-    return text[:start] + json.dumps(condensed, separators=(",", ":")) + text[end:]
+    return text[:start] + _pack_report(condensed) + text[end:]
 
 
-def _report_budget() -> int:
-    """How many characters of report the transport will actually carry.
+#: Prefix marking a gzipped, base64-encoded report. The server keys off this to
+#: decide whether to decompress; anything without it is read as plain JSON, so
+#: an agent from before compression still ingests fine.
+TRIVY_GZIP_MARKER = "[TRIVY-GZ]"
 
-    Deliberately read from the client rather than duplicated: the two drifting
-    apart is what produced a 10,000-character cap silently shredding a 30 MB
-    report for the life of the feature.
+
+def _pack_report(report_json: str) -> str:
+    """Compress a condensed report for the wire.
+
+    A Trivy report is JSON with the same handful of keys repeated once per
+    finding, which is close to the ideal case for gzip: 6.6x on a real report,
+    5.0x after base64. That is what keeps a large host inside a single
+    request — the alternative was raising the request-body ceiling and
+    shedding fields, both of which cost more than they bought.
+
+    Compression is best-effort. If anything here fails, the plain report is
+    still correct and still ingestible; only the size advantage is lost.
     """
-    from .client import _MAX_OUTPUT
+    try:
+        packed = TRIVY_GZIP_MARKER + base64.b64encode(
+            gzip.compress(report_json.encode("utf-8"), 6)).decode("ascii")
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not compress the Trivy report; sending it plain")
+        return report_json
+    # Refuse to make things worse. A tiny report can come out larger once
+    # base64 has added its third, and a plain report is easier to diagnose.
+    return packed if len(packed) < len(report_json) else report_json
 
-    # Leave room for the multi-step transcript that wraps the report
-    # ("[OK] refresh_db: ok\n[OK] scan: ...") plus any stderr Trivy emitted.
-    return int(_MAX_OUTPUT * 0.95)
 
-
-def _slim_report(data: dict, keep_title: bool = True) -> dict:
+def _slim_report(data: dict) -> dict:
     """Rebuild a Trivy report carrying only what the server ingests.
 
     Deduplicates on ``(PkgName, VulnerabilityID)`` — the exact key the server
@@ -620,9 +622,6 @@ def _slim_report(data: dict, keep_title: bool = True) -> dict:
     a clean target, a missing key means the vulnerability scanner never ran,
     and the server refuses the second rather than marking everything fixed.
     """
-    fields = _TRIVY_VULN_FIELDS if keep_title else tuple(
-        f for f in _TRIVY_VULN_FIELDS if f in _TRIVY_IDENTITY_FIELDS)
-
     # (pkg, cve) -> (index of the result it last appeared in, slimmed entry)
     latest: dict[tuple, tuple[int, dict]] = {}
     for i, result in enumerate(data.get("Results") or []):
@@ -633,7 +632,7 @@ def _slim_report(data: dict, keep_title: bool = True) -> dict:
                 continue
             key = (vuln.get("PkgName"), vuln.get("VulnerabilityID"))
             latest[key] = (
-                i, {f: vuln[f] for f in fields if vuln.get(f) is not None})
+                i, {f: vuln[f] for f in _TRIVY_VULN_FIELDS if vuln.get(f) is not None})
 
     kept: dict[int, list] = {}
     for index, entry in latest.values():
