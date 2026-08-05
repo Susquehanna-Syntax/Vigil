@@ -72,15 +72,24 @@ def checkin(
     return resp.json()
 
 
-#: Ceiling on task output, in characters. The old value was 10,000, applied as
-#: a silent ``output[:10_000]`` — which is why no Trivy scan was ever ingested:
-#: a real report is ~30 MB, so the server received an unterminated fragment of
-#: JSON and could only say it found no report at all. Scans are condensed
-#: agent-side now (~243,000 characters for that same report), and this leaves
-#: generous headroom above it while still bounding what one host can push.
-#: Must stay below the server's DATA_UPLOAD_MAX_MEMORY_SIZE, or Django rejects
-#: the whole POST with a 400 the agent cannot explain.
-_MAX_OUTPUT = 1_000_000
+#: Ceiling on task output, in characters.
+#:
+#: Was 10,000, applied as a silent ``output[:10_000]``, which is why no Trivy
+#: scan was ever ingested: a raw report is ~30 MB, so the server received an
+#: unterminated fragment and could only report that it found no report at all.
+#:
+#: Then 1,000,000, which was sized from a single sample — a workstation with
+#: 265 unique findings condensing to 243 KB. That was too small for real
+#: servers: production hit this cap on three hosts at once, with condensed
+#: reports of 2-10 MB. Reports are deduplicated now (2.1x) and a finding costs
+#: about 430 characters, so this carries roughly 18,000 unique findings, well
+#: past anything a single host plausibly has.
+#:
+#: Must stay below the server's DATA_UPLOAD_MAX_MEMORY_SIZE with room for JSON
+#: string escaping, which inflates the body — every quote in the report becomes
+#: two characters on the wire. Otherwise Django rejects the whole POST with a
+#: 400 the agent cannot explain.
+_MAX_OUTPUT = 8_000_000
 
 
 def _cap_output(output: str | None) -> str:

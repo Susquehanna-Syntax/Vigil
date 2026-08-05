@@ -527,6 +527,13 @@ _TRIVY_VULN_FIELDS = (
 # inventory, listed alongside the 2.4 MB of findings we actually want.
 _TRIVY_RESULT_BULK = ("Packages", "Secrets", "Misconfigurations", "Licenses")
 
+#: Fields that identify a finding or drive a fix. Never shed, at any size — the
+#: server marks any finding that does not arrive as FIXED, so shedding one
+#: reports a live vulnerability as resolved.
+_TRIVY_IDENTITY_FIELDS = frozenset({
+    "VulnerabilityID", "PkgName", "Severity", "InstalledVersion", "FixedVersion",
+})
+
 
 def _condense_trivy_report(raw: str) -> str:
     """Strip a Trivy report down to what the server ingests.
@@ -571,25 +578,80 @@ def _condense_trivy_report(raw: str) -> str:
     else:
         return text
 
+    condensed = _slim_report(data)
+
+    # A report the transport would cut in half is worth nothing: the server
+    # cannot read a single finding out of a torn JSON object, so sending one
+    # wastes megabytes to accomplish exactly nothing. Shed the one field that
+    # is cosmetic rather than let that happen. Never shed a finding.
+    if len(json.dumps(condensed, separators=(",", ":"))) > _report_budget():
+        condensed = _slim_report(data, keep_title=False)
+
+    # Splice back in place so any surrounding stderr text is left intact.
+    return text[:start] + json.dumps(condensed, separators=(",", ":")) + text[end:]
+
+
+def _report_budget() -> int:
+    """How many characters of report the transport will actually carry.
+
+    Deliberately read from the client rather than duplicated: the two drifting
+    apart is what produced a 10,000-character cap silently shredding a 30 MB
+    report for the life of the feature.
+    """
+    from .client import _MAX_OUTPUT
+
+    # Leave room for the multi-step transcript that wraps the report
+    # ("[OK] refresh_db: ok\n[OK] scan: ...") plus any stderr Trivy emitted.
+    return int(_MAX_OUTPUT * 0.95)
+
+
+def _slim_report(data: dict, keep_title: bool = True) -> dict:
+    """Rebuild a Trivy report carrying only what the server ingests.
+
+    Deduplicates on ``(PkgName, VulnerabilityID)`` — the exact key the server
+    reconciles on. The same package/CVE is reported once per binary that links
+    it, 3.0x duplication on a real report, and every copy after the first is
+    transferred only to be collapsed by ``update_or_create`` at the far end.
+    The last occurrence wins, because that is the one whose values a host ends
+    up with today.
+
+    Every result survives even when dedup empties it, and each result's
+    ``Vulnerabilities`` key keeps its presence or absence: an empty list means
+    a clean target, a missing key means the vulnerability scanner never ran,
+    and the server refuses the second rather than marking everything fixed.
+    """
+    fields = _TRIVY_VULN_FIELDS if keep_title else tuple(
+        f for f in _TRIVY_VULN_FIELDS if f in _TRIVY_IDENTITY_FIELDS)
+
+    # (pkg, cve) -> (index of the result it last appeared in, slimmed entry)
+    latest: dict[tuple, tuple[int, dict]] = {}
+    for i, result in enumerate(data.get("Results") or []):
+        if not isinstance(result, dict):
+            continue
+        for vuln in (result.get("Vulnerabilities") or []):
+            if not isinstance(vuln, dict):
+                continue
+            key = (vuln.get("PkgName"), vuln.get("VulnerabilityID"))
+            latest[key] = (
+                i, {f: vuln[f] for f in fields if vuln.get(f) is not None})
+
+    kept: dict[int, list] = {}
+    for index, entry in latest.values():
+        kept.setdefault(index, []).append(entry)
+
     condensed = {k: v for k, v in data.items() if k != "Results"}
     results = []
-    for result in data.get("Results") or []:
+    for i, result in enumerate(data.get("Results") or []):
         if not isinstance(result, dict):
             results.append(result)
             continue
         slim = {k: v for k, v in result.items()
                 if k not in _TRIVY_RESULT_BULK and k != "Vulnerabilities"}
         if "Vulnerabilities" in result:
-            slim["Vulnerabilities"] = [
-                {f: v[f] for f in _TRIVY_VULN_FIELDS if v.get(f) is not None}
-                for v in (result["Vulnerabilities"] or [])
-                if isinstance(v, dict)
-            ]
+            slim["Vulnerabilities"] = kept.get(i, [])
         results.append(slim)
     condensed["Results"] = results
-
-    # Splice back in place so any surrounding stderr text is left intact.
-    return text[:start] + json.dumps(condensed, separators=(",", ":")) + text[end:]
+    return condensed
 
 
 def _run_trivy_scan(params: dict, _config: AgentConfig) -> str:

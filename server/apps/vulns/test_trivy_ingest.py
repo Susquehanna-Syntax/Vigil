@@ -400,6 +400,9 @@ class UploadLimitTests(TestCase):
         # Mirrors vigil_agent.client._MAX_OUTPUT. Hard-coded rather than
         # imported: the agent is deployed separately and is not on the
         # server's import path.
-        agent_cap = 1_000_000
+        agent_cap = 8_000_000
         self.assertIsNotNone(settings.DATA_UPLOAD_MAX_MEMORY_SIZE)
+        # Strictly greater, not equal: the report travels as a JSON string, so
+        # every quote in it costs two characters on the wire. A limit sized at
+        # the agent's cap rejects payloads the agent thinks are legal.
         self.assertGreater(settings.DATA_UPLOAD_MAX_MEMORY_SIZE, agent_cap * 2)
