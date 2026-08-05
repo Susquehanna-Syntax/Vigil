@@ -90,6 +90,16 @@ allowlist:
   - update_package
   - install_package
 
+  # Vulnerability scanning — uncomment to let this host be scanned.
+  # Without run_trivy_scan a managed agent rejects the scan task and the
+  # Vulnerabilities tab stays empty for this host, with the rejection the
+  # only clue. Trivy runs locally and reads the filesystem; the other two
+  # only leave a marker asking the server to schedule a network scan.
+  # - run_trivy_scan
+  # - trivy_db_update
+  # - request_network_scan
+  # - request_nessus_scan
+
   # Higher-risk actions — uncomment deliberately:
   # - execute_script   # runs a pre-approved script from scripts_dir
   # - reboot           # full system reboot
