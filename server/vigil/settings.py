@@ -279,12 +279,17 @@ VIGIL_SIGNING_KEY_SEED = os.environ.get("VIGIL_SIGNING_KEY_SEED", "")
 # DISPATCHED forever with nothing anywhere to explain it.
 #
 # Task results are the large payload: a Trivy scan report. The agent condenses
-# those to roughly 243 KB and caps any task output at 1,000,000 characters
-# (vigil_agent.client._MAX_OUTPUT), so this ceiling sits well clear of what an
-# agent can legitimately send while still bounding the memory one request can
-# take — Django buffers the whole body before parsing it.
+# and deduplicates those, then caps task output at 8,000,000 characters
+# (vigil_agent.client._MAX_OUTPUT).
+#
+# This must clear that cap with room to spare, because the report travels as a
+# JSON *string* inside the request body: every quote in it becomes two
+# characters on the wire, and a compact JSON report is largely quotes. Sizing
+# this at the agent's cap would reject a payload the agent considered legal —
+# and it would fail in HttpRequest.body, before any view runs, as a bare 400
+# that no Vigil code can annotate, leaving the task DISPATCHED forever.
 DATA_UPLOAD_MAX_MEMORY_SIZE = int(
-    os.environ.get("VIGIL_MAX_REQUEST_BODY_BYTES", 8 * 1024 * 1024))
+    os.environ.get("VIGIL_MAX_REQUEST_BODY_BYTES", 24 * 1024 * 1024))
 
 # ---------------------------------------------------------------------------
 # Django REST Framework
