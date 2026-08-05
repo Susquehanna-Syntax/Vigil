@@ -80,16 +80,18 @@ def checkin(
 #:
 #: Then 1,000,000, which was sized from a single sample — a workstation with
 #: 265 unique findings condensing to 243 KB. That was too small for real
-#: servers: production hit this cap on three hosts at once, with condensed
-#: reports of 2-10 MB. Reports are deduplicated now (2.1x) and a finding costs
-#: about 430 characters, so this carries roughly 18,000 unique findings, well
-#: past anything a single host plausibly has.
+#: servers: production hit it on three hosts at once, with condensed reports
+#: of 2-10 MB.
 #:
-#: Must stay below the server's DATA_UPLOAD_MAX_MEMORY_SIZE with room for JSON
-#: string escaping, which inflates the body — every quote in the report becomes
-#: two characters on the wire. Otherwise Django rejects the whole POST with a
-#: 400 the agent cannot explain.
-_MAX_OUTPUT = 8_000_000
+#: Reports are now deduplicated (2.1x) and gzipped (5.0x after base64), which
+#: is what keeps this number small instead of chasing the largest host in
+#: anyone's fleet. A host with 11,000 unique findings — far beyond the ones
+#: that broke — packs to under 1 MB, so this leaves room to spare without
+#: asking the server to buffer megabytes per request.
+#:
+#: Must stay below the server's DATA_UPLOAD_MAX_MEMORY_SIZE, or Django rejects
+#: the whole POST with a 400 the agent cannot explain.
+_MAX_OUTPUT = 2_000_000
 
 
 def _cap_output(output: str | None) -> str:

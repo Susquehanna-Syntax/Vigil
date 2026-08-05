@@ -46,6 +46,37 @@ actions:
   return { yaml, parsed: { name: `Update ${img}` }, risk: 'standard' };
 }
 
+// Deterministic package-upgrade task for a vulnerability — no AI needed.
+// Trivy reports the package and the version that fixes it, which is the whole
+// instruction; asking a model to restate it adds latency and a chance of being
+// wrong. Returns null when the scanner gave us no package or no fixed version,
+// because then there is nothing deterministic to say.
+function _staticVulnFix(f) {
+  if (!f.package_name || !f.fixed_version) return null;
+  const pkg = f.package_name;
+  const others = (f.sibling_count || 0);
+  // One upgrade clears every CVE open against the package, so say so rather
+  // than implying this task is scoped to the single CVE the operator clicked.
+  const covers = others
+    ? `\n# Also clears ${others} other open finding(s) against ${pkg} on this host.`
+    : '';
+  const yaml = `name: "Upgrade ${pkg} to ${f.fixed_version}"
+description: "Remediates ${f.cve_id || f.plugin_id_or_oid} on ${f.host_hostname || 'this host'} (installed ${f.installed_version || 'unknown'} -> fixed ${f.fixed_version})"${covers}
+risk: standard
+actions:
+  - type: update_package
+    params:
+      package_name: "${pkg}"`;
+  return {
+    yaml,
+    parsed: { name: `Upgrade ${pkg} to ${f.fixed_version}` },
+    risk: 'standard',
+    note: others
+      ? `${pkg} has ${others + 1} open findings on this host; one upgrade clears them all.`
+      : `Your package manager may cap the available version below ${f.fixed_version}.`,
+  };
+}
+
 /* ── Modal shell ─────────────────────────────────────────────────────── */
 let _aiModal = null;
 function _ensureAiModal() {
@@ -276,6 +307,21 @@ function suggestFixForContainer(hostId, container) {
     (pid) => apiJson(`/api/v1/ai/suggest/docker/${hostId}/${encodeURIComponent(cid)}/`,
       { method: 'POST', body: JSON.stringify({ provider_id: pid }) }),
     () => _staticDockerFix(c));
+}
+
+function suggestFixForVuln(finding) {
+  // `finding` is the full row from /api/v1/vulns/findings/ so the built-in
+  // suggestion can name the package and the version that fixes it without a
+  // round trip. The AI columns still run alongside it for anything the
+  // deterministic task cannot cover (no fixed version, no package at all).
+  const label = finding.cve_id || finding.plugin_id_or_oid;
+  const context = finding.package_name
+    ? `${label} · ${finding.package_name} ${finding.installed_version || ''}`.trim()
+    : label;
+  _openAi(context,
+    (pid) => apiJson(`/api/v1/ai/suggest/vuln/${finding.id}/`,
+      { method: 'POST', body: JSON.stringify({ provider_id: pid }) }),
+    () => _staticVulnFix(finding));
 }
 
 /* ── Providers manager (Settings) ────────────────────────────────────── */

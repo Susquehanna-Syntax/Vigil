@@ -105,7 +105,7 @@ This brings up Django, PostgreSQL + TimescaleDB, Redis, Celery worker, and Celer
 | `VIGIL_SIGNING_KEY_SEED` | _(empty)_ | Base64 Ed25519 seed — required for task deployment |
 | `VIGIL_TIMEZONE` | `UTC` | IANA timezone for schedule window evaluation (e.g. `America/New_York`) |
 | `VIGIL_METRIC_RETENTION_DAYS` | `30` | Days to keep metric history |
-| `VIGIL_MAX_REQUEST_BODY_BYTES` | `25165824` (24 MB) | Largest request body Django will accept. Task results are the big payload — a Trivy scan report. Raising Django's 2.5 MB default matters because the limit is enforced before any view runs: an oversized result fails the whole POST with a bare `400` nothing can annotate, and the task stays `DISPATCHED` forever |
+| `VIGIL_MAX_REQUEST_BODY_BYTES` | `8388608` (8 MB) | Largest request body Django will accept. Task results are the big payload — a Trivy scan report. Raising Django's 2.5 MB default matters because the limit is enforced before any view runs: an oversized result fails the whole POST with a bare `400` nothing can annotate, and the task stays `DISPATCHED` forever |
 | `VIGIL_AGENT_VERSION` | _(ignored)_ | **No longer used.** The expected agent version is detected from the agent bundled in the build. Leaving it set is harmless — the server logs a note at startup and carries on |
 | `NESSUS_URL` | _(empty)_ | Nessus/Tenable server URL |
 | `NESSUS_ACCESS_KEY` | _(empty)_ | Nessus API access key |
@@ -637,11 +637,29 @@ The agent needs the `trivy` binary — use the **Install Trivy on this host** ta
 
 On completion the server writes one `VulnFinding` per (package, CVE) pair, marks previously-open findings that didn't reappear as `FIXED`, and recomputes the host score. The outcome is appended to the task's own output, so run details show either `[INGEST] trivy: N finding(s) ingested` or `[INGEST FAILED] <reason>`.
 
-**Report size.** A full `trivy fs /` report is very large — around 30 MB on a stock Ubuntu workstation, of which roughly 90% is a package inventory Vigil never reads. The agent strips it to the fields the server ingests and deduplicates on (package, CVE) — the same package/CVE is reported once per binary that links it, so the raw report carries about 3x the findings the server actually stores. That workstation's report ends up at 114 KB, 265x smaller, with every finding intact. Two consequences worth knowing:
+**Report size.** A full `trivy fs /` report is very large — around 30 MB on a stock Ubuntu workstation, of which roughly 90% is a package inventory Vigil never reads. The agent strips it to the fields the server ingests, deduplicates on (package, CVE) — the same package/CVE is reported once per binary that links it, so a raw report carries about 3x the findings the server actually stores — and gzips the result. That workstation's report goes out at 22.9 KB, **1317x smaller**, with every finding intact. A host with thousands of findings still fits in one request. Two consequences worth knowing:
 
 - Agents older than **2026.6.2** send the raw report, which is truncated in transit and cannot be ingested. The Vulnerabilities tab stays empty and run details say the report is truncated. Update the agent.
-- If you put a proxy in front of Vigil, its request body limit must clear `VIGIL_MAX_REQUEST_BODY_BYTES` (24 MB by default), or results are rejected before Vigil ever sees them.
-- A host with an extraordinary number of findings sheds `Title` — cosmetic — rather than send a report the transport would cut in half. Findings are never dropped to fit: one that fails to arrive would be marked fixed and the host would read clean.
+- If you put a proxy in front of Vigil, its request body limit must clear `VIGIL_MAX_REQUEST_BODY_BYTES` (8 MB by default), or results are rejected before Vigil ever sees them.
+- Compression is transparent to the server: a plain report from an older agent still ingests, and a compressed one is decompressed before any diagnostic quotes it back, so refusal messages stay readable rather than showing base64.
+
+### Suggest Fix
+
+Every finding on the Vulnerabilities tab has a **Suggest Fix** button. Where the scanner reported a package and a fixed version — always the case for Trivy — it prefills a precise `update_package` task with **no model call at all**:
+
+```yaml
+name: "Upgrade openssl to 3.0.3"
+description: "Remediates CVE-2024-0001 on web-01 (installed 3.0.2 -> fixed 3.0.3)"
+risk: standard
+actions:
+  - type: update_package
+    params:
+      package_name: "openssl"
+```
+
+It is scoped to the **package**, not the CVE. One upgrade clears every CVE open against that package, so the suggestion says how many it covers rather than implying it fixes only the one you clicked.
+
+Any AI providers you have configured run alongside it, in parallel, for the cases a deterministic task cannot cover: no fixed version published, or no package at all (common for Nessus network findings, where the prompt asks for a diagnostic rather than an upgrade). Suggestions are still untrusted — everything passes through `parse_and_validate`, `update_agent` is dropped on sight, and nothing runs until you deploy it.
 
 **A report with no `Vulnerabilities` section is refused rather than ingested.** That shape means the scan never ran the vulnerability scanner — ingesting it would mark every existing finding fixed and report the host clean, which is the worst possible failure for a security feature. Existing findings are left untouched and the reason appears in run details.
 

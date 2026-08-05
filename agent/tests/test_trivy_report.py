@@ -84,20 +84,33 @@ def packages_only_result():
     }
 
 
+def condensed(raw):
+    """Condense a report and return it as a dict, decompressing if the agent
+    packed it — exactly what the server's _unpack_report does."""
+    import base64 as _b64, gzip as _gz
+
+    out = executor._condense_trivy_report(raw)
+    marker = executor.TRIVY_GZIP_MARKER
+    if marker in out:
+        body = out[out.index(marker) + len(marker):]
+        out = _gz.decompress(_b64.b64decode(body)).decode()
+    return json.loads(out)
+
+
 class CondenseTests(unittest.TestCase):
     def test_packages_are_dropped(self):
-        out = json.loads(executor._condense_trivy_report(report(vuln_result(CVE))))
+        out = condensed(report(vuln_result(CVE)))
         self.assertNotIn("Packages", out["Results"][0])
 
     def test_the_fields_the_server_ingests_survive(self):
-        out = json.loads(executor._condense_trivy_report(report(vuln_result(CVE))))
+        out = condensed(report(vuln_result(CVE)))
         vuln = out["Results"][0]["Vulnerabilities"][0]
         for field in ("VulnerabilityID", "PkgName", "Severity", "Title",
                       "InstalledVersion", "FixedVersion"):
             self.assertEqual(vuln[field], CVE[field], field)
 
     def test_prose_and_references_are_dropped(self):
-        out = json.loads(executor._condense_trivy_report(report(vuln_result(CVE))))
+        out = condensed(report(vuln_result(CVE)))
         vuln = out["Results"][0]["Vulnerabilities"][0]
         for field in ("Description", "References", "CVSS", "Layer",
                       "DataSource", "PkgIdentifier"):
@@ -108,25 +121,25 @@ class CondenseTests(unittest.TestCase):
         Dropping the ones without findings would turn 'this scan never looked
         for vulnerabilities' into 'nothing was scanned'."""
         raw = report(vuln_result(CVE), packages_only_result())
-        out = json.loads(executor._condense_trivy_report(raw))
+        out = condensed(raw)
         self.assertEqual(len(out["Results"]), 2)
 
     def test_a_missing_vulnerabilities_key_stays_missing(self):
         """That absence is exactly what the SBOM refusal keys off."""
         raw = report(vuln_result(CVE), packages_only_result())
-        out = json.loads(executor._condense_trivy_report(raw))
+        out = condensed(raw)
         self.assertIn("Vulnerabilities", out["Results"][0])
         self.assertNotIn("Vulnerabilities", out["Results"][1])
 
     def test_an_empty_vulnerabilities_list_stays_empty_not_absent(self):
         """A genuinely clean host must keep reading as clean, not as an SBOM."""
         clean = {"Target": "t", "Class": "os-pkgs", "Vulnerabilities": []}
-        out = json.loads(executor._condense_trivy_report(report(clean)))
+        out = condensed(report(clean))
         self.assertEqual(out["Results"][0]["Vulnerabilities"], [])
 
     def test_report_metadata_survives(self):
         """The SBOM refusal quotes the Trivy version back at the operator."""
-        out = json.loads(executor._condense_trivy_report(report(vuln_result(CVE))))
+        out = condensed(report(vuln_result(CVE)))
         self.assertEqual(out["SchemaVersion"], 2)
         self.assertEqual(out["Trivy"]["Version"], "0.73.0")
 
@@ -157,7 +170,7 @@ class DedupTests(unittest.TestCase):
     """
 
     def _vulns(self, raw):
-        out = json.loads(executor._condense_trivy_report(raw))
+        out = condensed(raw)
         return [v for r in out["Results"] for v in (r.get("Vulnerabilities") or [])]
 
     def test_a_repeated_package_cve_is_sent_once(self):
@@ -191,12 +204,12 @@ class DedupTests(unittest.TestCase):
         """Dropping now-empty results would turn 'scanned, nothing here' into
         'nothing was scanned' at the server."""
         raw = report(dup_result("a", CVE), dup_result("b", CVE))
-        out = json.loads(executor._condense_trivy_report(raw))
+        out = condensed(raw)
         self.assertEqual(len(out["Results"]), 2)
 
     def test_a_result_emptied_by_dedup_keeps_its_key(self):
         raw = report(dup_result("a", CVE), dup_result("b", CVE))
-        out = json.loads(executor._condense_trivy_report(raw))
+        out = condensed(raw)
         self.assertTrue(all("Vulnerabilities" in r for r in out["Results"]))
 
     def test_no_finding_is_ever_lost(self):
@@ -214,58 +227,55 @@ class DedupTests(unittest.TestCase):
         self.assertLess(len(executor._condense_trivy_report(raw)), len(raw) / 20)
 
 
-class OversizedReportTests(unittest.TestCase):
-    """A report too big for the transport must never be sent torn.
+class CompressionTests(unittest.TestCase):
+    """A Trivy report is the same keys repeated once per finding, which gzips
+    about 6.6x — 5.0x after base64. That is what keeps a host with thousands of
+    findings inside one request, instead of pushing the server's request-body
+    ceiling up and shedding fields to fit."""
 
-    A truncated report is worth exactly nothing — the server cannot read a
-    finding out of it — so shipping megabytes of one is pure waste, and this
-    is what production saw: 1,000,102 characters arriving and being refused.
-    Shed cosmetic fields first; never shed a finding, because a finding that
-    does not arrive is marked FIXED and the host reads clean.
-    """
+    def _unpack(self, packed):
+        import base64 as b64, gzip as gz
+        body = packed[packed.index(executor.TRIVY_GZIP_MARKER)
+                      + len(executor.TRIVY_GZIP_MARKER):]
+        return gz.decompress(b64.b64decode(body)).decode()
 
-    def _huge(self, n):
-        vulns = [{**CVE, "PkgName": f"pkg{i}", "VulnerabilityID": f"CVE-9-{i}",
-                  "Title": "T" * 300} for i in range(n)]
-        return report(dup_result("a", *vulns))
+    def _big(self, n=400):
+        return report(dup_result("a", *[
+            {**CVE, "PkgName": f"p{i}", "VulnerabilityID": f"CVE-7-{i}"}
+            for i in range(n)]))
 
-    def _condense_with_cap(self, raw, cap):
-        """Exercise the shedding ladder against a small cap, rather than
-        generating megabytes to reach the real one."""
-        with patch.object(client, "_MAX_OUTPUT", cap):
-            return executor._condense_trivy_report(raw)
+    def test_a_large_report_is_compressed(self):
+        self.assertIn(executor.TRIVY_GZIP_MARKER,
+                      executor._condense_trivy_report(self._big()))
 
-    def test_a_report_that_fits_keeps_its_titles(self):
-        out = json.loads(executor._condense_trivy_report(self._huge(5)))
-        self.assertIn("Title", out["Results"][0]["Vulnerabilities"][0])
+    def test_compression_round_trips_exactly(self):
+        out = executor._condense_trivy_report(self._big())
+        data = json.loads(self._unpack(out))
+        self.assertEqual(len(data["Results"][0]["Vulnerabilities"]), 400)
 
-    def test_titles_are_shed_before_the_budget_is_blown(self):
-        out = json.loads(self._condense_with_cap(self._huge(200), 20_000))
-        vulns = out["Results"][0]["Vulnerabilities"]
-        self.assertEqual(len(vulns), 200, "no finding may be dropped")
-        self.assertNotIn("Title", vulns[0])
+    def test_it_actually_gets_smaller(self):
+        raw = self._big()
+        self.assertLess(len(executor._condense_trivy_report(raw)), len(raw) / 20)
 
-    def test_identity_fields_survive_shedding(self):
-        out = json.loads(self._condense_with_cap(self._huge(200), 20_000))
-        v = out["Results"][0]["Vulnerabilities"][0]
-        for f in ("VulnerabilityID", "PkgName", "Severity",
-                  "InstalledVersion", "FixedVersion"):
-            self.assertIn(f, v, f)
+    def test_a_tiny_report_is_left_plain(self):
+        """base64 adds a third, so compressing a small report can make it
+        bigger — and a plain one is far easier to diagnose."""
+        out = executor._condense_trivy_report(report(vuln_result(CVE)))
+        self.assertNotIn(executor.TRIVY_GZIP_MARKER, out)
+        json.loads(out)
 
-    def test_shedding_buys_a_real_reduction(self):
-        raw = self._huge(200)
-        full = len(executor._condense_trivy_report(raw))
-        shed = len(self._condense_with_cap(raw, 20_000))
-        self.assertLess(shed, full / 2)
+    def test_surrounding_step_output_survives(self):
+        raw = f"WARN\tdb is old\n{self._big()}\nWARN\tdone"
+        out = executor._condense_trivy_report(raw)
+        self.assertTrue(out.startswith("WARN\tdb is old"))
+        self.assertTrue(out.endswith("WARN\tdone"))
 
-    def test_a_real_report_is_nowhere_near_the_cap(self):
-        """The regression that mattered: 1,000,000 was sized off one
-        workstation and three production hosts blew straight through it."""
-        raw = report(dup_result("a", *[
-            {**CVE, "PkgName": f"p{i}", "VulnerabilityID": f"CVE-8-{i}"}
-            for i in range(5000)]))
-        self.assertLess(len(executor._condense_trivy_report(raw)),
-                        client._MAX_OUTPUT)
+    def test_a_packed_report_fits_the_transport(self):
+        out = executor._condense_trivy_report(self._big(20_000))
+        self.assertLessEqual(len(out), client._MAX_OUTPUT)
+
+    def test_the_marker_matches_the_one_the_server_looks_for(self):
+        self.assertEqual(executor.TRIVY_GZIP_MARKER, "[TRIVY-GZ]")
 
 
 class CondensePassthroughTests(unittest.TestCase):
