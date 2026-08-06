@@ -296,3 +296,59 @@ class WindowsUnparsedRuleTests(unittest.TestCase):
         snap = self._snapshot(profiles="not json")
         self.assertEqual(snap["profiles"], [])
         self.assertTrue(snap["unparsed"])
+
+
+class WindowsUnknownStateTests(unittest.TestCase):
+    """A snapshot must never round an unknown state to a known one: a
+    failed profile read has to leave `enabled` as None (unknown), not False
+    (a confident "disabled"); a scalar PowerShell payload must not crash the
+    read; and an unrecognised rule action must not be guessed as "allow",
+    since that direction understates the host's exposure."""
+
+    def _snapshot(self, profiles=WIN_PROFILES, rules=WIN_RULES):
+        b = firewall.WindowsBackend()
+
+        def fake_run(cmd, timeout=None):
+            return profiles if "NetFirewallProfile" in " ".join(cmd) else rules
+
+        with patch.object(firewall, "_run", fake_run):
+            return b.snapshot()
+
+    def test_scalar_rules_payload_does_not_raise(self):
+        snap = self._snapshot(rules="5")
+        self.assertEqual(snap["rules"], [])
+        self.assertTrue(snap["unparsed"])
+
+    def test_scalar_profiles_payload_does_not_raise(self):
+        snap = self._snapshot(profiles="5")
+        self.assertEqual(snap["profiles"], [])
+
+    def test_enabled_is_none_when_profile_read_fails(self):
+        snap = self._snapshot(profiles="not json")
+        self.assertIsNone(snap["enabled"])
+
+    def test_enabled_is_false_when_every_profile_is_genuinely_off(self):
+        """Distinct from the failed-read case: a successful read of all-off
+        profiles is a known False, not an unknown None."""
+        off = _json.dumps([{"Name": "Public", "Enabled": False}])
+        snap = self._snapshot(profiles=off)
+        self.assertIs(snap["enabled"], False)
+
+    def test_unrecognised_action_produces_no_rule_but_is_recorded(self):
+        rules = _json.dumps([
+            {"port": "8443", "protocol": "TCP", "action": "NotConfigured",
+             "name": "Odd Rule"},
+        ])
+        snap = self._snapshot(rules=rules)
+        self.assertFalse(any(r["port"] == 8443 for r in snap["rules"]))
+        self.assertTrue(any("Odd Rule" in line and "NotConfigured" in line
+                            for line in snap["unparsed"]))
+
+    def test_allow_action_still_maps_to_allow(self):
+        rules = _json.dumps([
+            {"port": "8443", "protocol": "TCP", "action": "Allow",
+             "name": "Fine Rule"},
+        ])
+        snap = self._snapshot(rules=rules)
+        self.assertIn({"port": 8443, "protocol": "tcp", "action": "allow",
+                       "source": "any", "interface": ""}, snap["rules"])
