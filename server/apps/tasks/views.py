@@ -264,7 +264,13 @@ def _maybe_ingest_firewall_rules(task: Task, output: str) -> None:
         return
 
     # A multi-step task returns the runtime's transcript, so find the JSON
-    # object rather than assuming the whole output is one.
+    # object rather than assuming the whole output is one. The discriminator
+    # requires both "rules" and either "tool" or "supported" -- "rules" alone
+    # is a generic word an earlier, unrelated step's JSON output could carry,
+    # and latching onto that instead of the real snapshot would silently
+    # ingest the wrong data. Every backend (and the no-backend path in
+    # executor._list_firewall_rules) always emits "tool" and "supported", so
+    # this cannot reject a genuine snapshot.
     decoder = _json.JSONDecoder()
     start = output.find("{")
     data = None
@@ -274,7 +280,8 @@ def _maybe_ingest_firewall_rules(task: Task, output: str) -> None:
         except ValueError:
             start = output.find("{", start + 1)
             continue
-        if isinstance(candidate, dict) and "rules" in candidate:
+        if (isinstance(candidate, dict) and "rules" in candidate
+                and ("tool" in candidate or "supported" in candidate)):
             data = candidate
             break
         start = output.find("{", start + 1)
@@ -285,24 +292,51 @@ def _maybe_ingest_firewall_rules(task: Task, output: str) -> None:
                 f"step output. First 200 characters were: "
                 f"{output[:200].replace(chr(10), ' ')!r}")
     else:
-        HostFirewall.objects.update_or_create(
-            host=task.host,
-            defaults={
-                "tool": data.get("tool") or "",
-                "supported": bool(data.get("supported", True)),
-                # Tri-state: True / False / None (unknown). Passed through
-                # as-is -- coercing None to False would render an unread
-                # host as "disabled", which is the exact failure this
-                # tri-state exists to prevent.
-                "enabled": data.get("enabled"),
-                # Values can be "allow" / "deny" / "unknown"; stored as sent.
-                "defaults": data.get("defaults") or {},
-                "profiles": data.get("profiles") or [],
-                "rules": data.get("rules") or [],
-                "unparsed": data.get("unparsed") or [],
-            },
-        )
-        note = f"[FIREWALL] {len(data.get('rules') or [])} rule(s) recorded"
+        # This hook runs inside task_result's `with transaction.atomic():`
+        # block (views.py ~78-93), alongside the write that already saved
+        # the task's COMPLETED state in the same transaction. An exception
+        # escaping this block would not just lose the firewall snapshot --
+        # it would roll back that state write too, 500 the endpoint every
+        # agent uses to report every task, and strand the task. A snapshot
+        # is agent-reported JSON, off-contract data is expected (e.g.
+        # "enabled": "unknown" instead of true/false/null, which raises a
+        # ValidationError inside BooleanField.get_prep_value), so this must
+        # never be allowed to raise -- same discipline as the trivy hook
+        # this one is modelled on.
+        try:
+            rules_value = data.get("rules") or []
+            if not isinstance(rules_value, list):
+                # Off-contract: every real backend emits a list. Reject
+                # before writing rather than storing something that isn't a
+                # rules list -- a write that partially succeeds and then
+                # fails while formatting the note would clobber a
+                # previously good snapshot while reporting failure, which
+                # is worse than rejecting up front.
+                raise ValueError(
+                    f"'rules' must be a list, got "
+                    f"{type(rules_value).__name__}")
+            HostFirewall.objects.update_or_create(
+                host=task.host,
+                defaults={
+                    "tool": data.get("tool") or "",
+                    "supported": bool(data.get("supported", True)),
+                    # Tri-state: True / False / None (unknown). Passed
+                    # through as-is -- coercing None to False would render
+                    # an unread host as "disabled", which is the exact
+                    # failure this tri-state exists to prevent.
+                    "enabled": data.get("enabled"),
+                    # Values can be "allow" / "deny" / "unknown"; stored as
+                    # sent.
+                    "defaults": data.get("defaults") or {},
+                    "profiles": data.get("profiles") or [],
+                    "rules": rules_value,
+                    "unparsed": data.get("unparsed") or [],
+                },
+            )
+            note = f"[FIREWALL] {len(rules_value)} rule(s) recorded"
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Firewall ingest failed for task %s", task.id)
+            note = f"[FIREWALL INGEST FAILED] {exc}"
 
     try:
         task.result_output = f"{task.result_output or ''}\n{note}".strip()
