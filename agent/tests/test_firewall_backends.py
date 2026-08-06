@@ -27,6 +27,22 @@ To                         Action      From
 
 UFW_INACTIVE = "Status: inactive\n"
 
+# Covers three shapes _RULE must not silently drop or mis-parse:
+#   - an interface-bound rule ("22/tcp on eth0 ...")
+#   - a bare port with no protocol ("25 ...")
+#   - an app-profile rule with no numeric port at all ("OpenSSH ...")
+UFW_MIXED = """Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), disabled (routed)
+New profiles: skip
+
+To                         Action      From
+--                         ------      ----
+22/tcp on eth0             ALLOW IN    Anywhere
+25                         ALLOW IN    Anywhere
+OpenSSH                    ALLOW IN    Anywhere
+"""
+
 
 class UfwParseTests(unittest.TestCase):
     def _snapshot(self, output):
@@ -65,3 +81,36 @@ class UfwParseTests(unittest.TestCase):
 
     def test_an_inactive_firewall_has_no_rules(self):
         self.assertEqual(self._snapshot(UFW_INACTIVE)["rules"], [])
+
+
+class UfwUnparsedRuleTests(unittest.TestCase):
+    """Rule shapes _RULE must not drop silently: interface-bound rules,
+    bare ports with no protocol, and app profiles it can't parse at all."""
+
+    def _snapshot(self, output):
+        b = firewall.UfwBackend()
+        with patch.object(firewall, "_run", lambda cmd, timeout=None: output):
+            return b.snapshot()
+
+    def test_interface_bound_rule_is_parsed(self):
+        rules = self._snapshot(UFW_MIXED)["rules"]
+        self.assertIn({"port": 22, "protocol": "tcp", "action": "allow",
+                       "source": "any", "interface": "eth0"}, rules)
+
+    def test_bare_port_has_protocol_any(self):
+        rules = self._snapshot(UFW_MIXED)["rules"]
+        self.assertIn({"port": 25, "protocol": "any", "action": "allow",
+                       "source": "any", "interface": ""}, rules)
+
+    def test_app_profile_rule_lands_in_unparsed_not_dropped(self):
+        unparsed = self._snapshot(UFW_MIXED)["unparsed"]
+        self.assertTrue(any("OpenSSH" in line for line in unparsed))
+
+    def test_known_good_fixture_has_no_unparsed_lines(self):
+        self.assertEqual(self._snapshot(UFW_ACTIVE)["unparsed"], [])
+
+    def test_header_lines_never_land_in_unparsed(self):
+        unparsed = self._snapshot(UFW_MIXED)["unparsed"]
+        headers = ("Status:", "Logging:", "Default:", "New profiles:", "To", "--")
+        for line in unparsed:
+            self.assertFalse(line.startswith(headers), line)
