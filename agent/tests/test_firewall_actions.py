@@ -138,6 +138,41 @@ class FirewallCmdReloadTests(unittest.TestCase):
             any("--add-rich-rule" in c and "reject" in c for c in joined))
         self.assertFalse(any("--remove-port" in c for c in joined))
 
+    def test_a_deny_rule_is_removed_with_the_same_rich_rule_it_was_added_with(self):
+        # Finding 1 (critical): the deny path in add_rule writes a reject
+        # rich rule, not a port grant. If remove_rule ignores `action` and
+        # always runs --remove-port, the rich rule is never touched and the
+        # removal is a silent no-op reported as success -- the exact bug
+        # this task exists to fix, reintroduced in the sibling backend.
+        add_calls = self._cmds(executor._add_firewall_rule,
+                               {"port": 8080, "protocol": "tcp", "action": "deny"})
+        remove_calls = self._cmds(executor._remove_firewall_rule,
+                                  {"port": 8080, "protocol": "tcp", "action": "deny"})
+
+        added_rule = next(c for c in add_calls
+                          if any("--add-rich-rule=" in tok for tok in c))
+        added_rich_rule = next(tok for tok in added_rule
+                               if tok.startswith("--add-rich-rule="))[len("--add-rich-rule="):]
+
+        removed_joined = [" ".join(c) for c in remove_calls]
+        self.assertTrue(
+            any(f"--remove-rich-rule={added_rich_rule}" in c
+                for c in removed_joined),
+            "the removed rich rule must be the exact one add_rule wrote")
+        self.assertFalse(any("--remove-port" in c for c in removed_joined))
+
+    def test_an_allow_rule_is_still_removed_with_remove_port(self):
+        calls = self._cmds(executor._remove_firewall_rule,
+                           {"port": 8080, "protocol": "tcp", "action": "allow"})
+        joined = [" ".join(c) for c in calls]
+        self.assertTrue(any("--remove-port=8080/tcp" in c for c in joined))
+        self.assertFalse(any("--remove-rich-rule" in c for c in joined))
+
+    def test_a_deny_removal_still_reloads(self):
+        calls = self._cmds(executor._remove_firewall_rule,
+                           {"port": 8080, "protocol": "tcp", "action": "deny"})
+        self.assertTrue(any("--reload" in c for c in calls))
+
 
 class SourceValidationTests(unittest.TestCase):
     def test_a_valid_cidr_is_accepted(self):
@@ -175,6 +210,44 @@ class SourceValidationTests(unittest.TestCase):
             firewall.validate_source("/")
 
 
+class InterfaceValidationTests(unittest.TestCase):
+    def test_validate_interface_accepts_a_plain_name(self):
+        self.assertEqual(firewall.validate_interface("eth0"), "eth0")
+
+    def test_validate_interface_rejects_a_shell_metacharacter(self):
+        with self.assertRaises(ValueError):
+            firewall.validate_interface("eth0; rm -rf /")
+
+    def test_validate_interface_rejects_an_overlong_name(self):
+        with self.assertRaises(ValueError):
+            firewall.validate_interface("a" * 17)
+
+
+class UfwInterfaceTests(unittest.TestCase):
+    def test_an_interface_with_no_source_uses_the_full_form(self):
+        # Finding 3: ufw's documented syntax pairs `in on IFACE` with the
+        # full `to any port PORT proto PROTO` form. Mixing `in on IFACE`
+        # with the short PORT/PROTO form does not reliably parse.
+        backend = firewall.UfwBackend()
+        calls = []
+
+        def fake_run(cmd, timeout=None):
+            calls.append(cmd)
+            return "ok"
+
+        with patch.object(firewall, "_run", fake_run):
+            backend.add_rule(22, "tcp", "allow", source="any", interface="eth0")
+
+        self.assertEqual(len(calls), 1)
+        cmd = calls[0]
+        self.assertIn("in", cmd)
+        self.assertIn("on", cmd)
+        self.assertIn("eth0", cmd)
+        joined = " ".join(cmd)
+        self.assertIn("to any port 22 proto tcp", joined)
+        self.assertNotIn("22/tcp", cmd)
+
+
 class WindowsWriteTests(unittest.TestCase):
     def test_a_deny_add_produces_action_block(self):
         calls = []
@@ -190,3 +263,22 @@ class WindowsWriteTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertIn("action=block", calls[0])
         self.assertNotIn("action=allow", calls[0])
+
+    def test_remove_scopes_the_delete_to_inbound(self):
+        # Finding 2: matching on name=all + protocol + localport with no
+        # direction filter can delete unrelated outbound rules (and rules
+        # of the opposite action) that happen to share the port and
+        # protocol. A delete that matches more than it was asked to is
+        # worse than one that matches nothing.
+        calls = []
+
+        def fake_run(cmd, timeout=None):
+            calls.append(cmd)
+            return "ok"
+
+        backend = firewall.WindowsBackend()
+        with patch.object(firewall, "_run", fake_run):
+            backend.remove_rule(3389, "tcp")
+
+        self.assertEqual(len(calls), 1)
+        self.assertIn("dir=in", calls[0])
