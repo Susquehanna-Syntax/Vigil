@@ -43,6 +43,10 @@
   {# Logic: static/js/vigil-vulns.js | Data: client-side fetch /api/v1/vulns/ #}
   {% include "pages/_vulns.html" %}
 
+  {# Firewall page — host picker, rules, default policies #}
+  {# Logic: static/js/vigil-firewall.js | Data: /api/v1/hosts/<id>/firewall/ #}
+  {% include "pages/_firewall.html" %}
+
   {# Inventory page — sortable/filterable hardware snapshot table #}
   {# Logic: static/js/vigil-inventory.js | Data: client-side fetch /api/v1/hosts/inventory/ #}
   {% include "pages/_inventory.html" %}
