@@ -872,3 +872,151 @@ def host_rdp(request, host_id):
     response = HttpResponse(rdp_body, content_type="application/x-rdp")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+#: Only these may be driven from the Firewall tab. The task editor can express
+#: anything in ACTION_REGISTRY; this endpoint deliberately cannot. Must stay
+#: exactly in sync with the five action names firewall_guard.check_change
+#: recognises — it fails safe and refuses anything else, so drift here would
+#: make a legitimate action permanently refused.
+_FIREWALL_ACTIONS = {
+    "add_firewall_rule", "remove_firewall_rule",
+    "set_firewall_policy", "enable_firewall", "disable_firewall",
+}
+
+
+def _firewall_snapshot_dict(fw):
+    """Build the plain dict firewall_guard.check_change expects.
+
+    check_change calls .get() on this, so a HostFirewall model instance
+    would raise. The guard only reads a few of these keys today but is
+    handed the full shape in case it grows to consult more later.
+    """
+    return {
+        "tool": fw.tool,
+        "supported": fw.supported,
+        "enabled": fw.enabled,
+        "defaults": fw.defaults,
+        "rules": fw.rules,
+        "unparsed": fw.unparsed,
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def host_firewall(request, host_id):
+    """Return the last firewall snapshot read from this host.
+
+    Not gated — it changes nothing on the host, so the Firewall tab can
+    render before anyone has typed a 2FA code.
+    """
+    from .models import HostFirewall
+
+    try:
+        host = Host.objects.get(pk=host_id)
+    except Host.DoesNotExist:
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    fw = HostFirewall.objects.filter(host=host).first()
+    if fw is None:
+        # No read has ever landed. ``enabled`` stays None (unknown), not
+        # False — collapsing "never read" to "disabled" is the exact
+        # confident-wrong-answer failure the tri-state exists to prevent.
+        return Response({
+            "tool": "", "supported": True, "enabled": None,
+            "defaults": {}, "profiles": [], "rules": [], "unparsed": [],
+            "fetched_at": None,
+        })
+    return Response({
+        "tool": fw.tool, "supported": fw.supported, "enabled": fw.enabled,
+        "defaults": fw.defaults, "profiles": fw.profiles, "rules": fw.rules,
+        "unparsed": fw.unparsed, "fetched_at": fw.fetched_at,
+    })
+
+
+def _queue_firewall_task(host, user, action, params, risk):
+    return Task.objects.create(
+        host=host, requested_by=user, action=action, params=params or {},
+        risk_level=risk, state=Task.State.PENDING,
+        nonce=secrets.token_hex(32),
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def host_firewall_refresh(request, host_id):
+    """Queue a read of this host's firewall. Not 2FA-gated: it changes nothing."""
+    try:
+        host = Host.objects.get(pk=host_id)
+    except Host.DoesNotExist:
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if host.mode == Host.Mode.MONITOR:
+        return Response(
+            {"error": "Host is in monitor mode — it does not execute tasks"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Don't stack duplicate reads — if one is already queued or in flight,
+    # point the caller at it instead of firing off another.
+    existing = Task.objects.filter(
+        host=host, action="list_firewall_rules",
+        state__in=[Task.State.PENDING, Task.State.DISPATCHED, Task.State.EXECUTING],
+    ).first()
+    if existing:
+        return Response({"task_id": str(existing.id), "queued": False},
+                        status=status.HTTP_202_ACCEPTED)
+
+    task = _queue_firewall_task(host, request.user, "list_firewall_rules",
+                                {}, Task.RiskLevel.LOW)
+    return Response({"task_id": str(task.id), "queued": True},
+                    status=status.HTTP_202_ACCEPTED)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def host_firewall_apply(request, host_id):
+    """Apply one firewall change. Allowlist- and lockout-guarded, then 2FA-gated.
+
+    Order matters and is deliberate: the allowlist check and the lockout
+    guard both run before TOTP is checked. The refusal is about the change,
+    not the credential — making someone fetch a code and only then telling
+    them no is rude and teaches people to ignore the dialog.
+    """
+    from apps.accounts.totp import require_totp_confirmation
+
+    from .firewall_guard import check_change
+    from .models import HostFirewall
+
+    try:
+        host = Host.objects.get(pk=host_id)
+    except Host.DoesNotExist:
+        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if host.mode == Host.Mode.MONITOR:
+        return Response(
+            {"error": "Host is in monitor mode — it does not execute tasks"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    action = (request.data.get("action") or "").strip()
+    if action not in _FIREWALL_ACTIONS:
+        return Response(
+            {"error": f"action must be one of: {', '.join(sorted(_FIREWALL_ACTIONS))}"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    params = request.data.get("params") or {}
+
+    # Guard before TOTP — see docstring.
+    fw = HostFirewall.objects.filter(host=host).first()
+    snapshot = _firewall_snapshot_dict(fw) if fw is not None else None
+    refusal = check_change(host, snapshot, {"action": action, "params": params})
+    if refusal:
+        return Response({"error": refusal}, status=status.HTTP_400_BAD_REQUEST)
+
+    error = require_totp_confirmation(request.user, request.data)
+    if error:
+        return Response({"error": error}, status=status.HTTP_401_UNAUTHORIZED)
+
+    task = _queue_firewall_task(host, request.user, action, params, Task.RiskLevel.HIGH)
+    return Response({"task_id": str(task.id)}, status=status.HTTP_201_CREATED)
