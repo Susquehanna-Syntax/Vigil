@@ -262,6 +262,14 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": ["port", "protocol"],
         "optional": [],
     },
+    # Read-only, so low risk: it changes nothing and the Firewall tab needs it
+    # on every view. The write actions above stay high.
+    "list_firewall_rules": {
+        "label": "List firewall rules",
+        "risk": "low",
+        "required": [],
+        "optional": [],
+    },
     # ── User management ────────────────────────────────────────────────────
     "create_user": {
         "label": "Create user",

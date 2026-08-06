@@ -47,7 +47,7 @@ _ALL_ACTIONS = {
     # run_command intentionally excluded — full_control only, enforced in
     # the executor handler itself as defense-in-depth.
     # Networking
-    "add_firewall_rule", "remove_firewall_rule",
+    "add_firewall_rule", "remove_firewall_rule", "list_firewall_rules",
     # User management
     "create_user", "delete_user", "add_user_to_group",
     # Cron
