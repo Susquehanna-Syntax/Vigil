@@ -131,3 +131,51 @@ class LockoutGuardTests(TestCase):
     def test_set_firewall_policy_reject_outgoing_is_refused(self):
         self.assertNotEqual(
             check_change(Host(), LINUX, policy("outgoing", "reject")), "")
+
+    # --- Normalisation / fail-safe-default fixes (review follow-up) -------
+
+    def test_mis_cased_action_name_still_refuses_outbound_deny(self):
+        """`action` must be normalised the same way every other dispatch
+        field is -- an uppercase variant of a lockout-shaped action must not
+        slip past a bare `==` into the permissive fall-through."""
+        change = {"action": "Set_Firewall_Policy",
+                  "params": {"direction": "outgoing", "policy": "deny"}}
+        msg = check_change(Host(), LINUX, change)
+        self.assertIn("check in", msg.lower())
+
+    def test_mis_cased_add_firewall_rule_still_refuses_deny_on_port_22(self):
+        change = {"action": "Add_Firewall_Rule",
+                  "params": {"port": 22, "protocol": "tcp", "action": "DENY"}}
+        msg = check_change(Host(), LINUX, change)
+        self.assertIn("22", msg)
+
+    def test_direction_and_policy_with_whitespace_still_refuse_outbound(self):
+        change = {"action": "set_firewall_policy",
+                  "params": {"direction": "outgoing ", "policy": "deny"}}
+        msg = check_change(Host(), LINUX, change)
+        self.assertIn("check in", msg.lower())
+
+    def test_unknown_action_name_is_refused(self):
+        for name in ("reboot", "drop_all_traffic"):
+            change = {"action": name, "params": {}}
+            msg = check_change(Host(), LINUX, change)
+            self.assertNotEqual(msg, "")
+            self.assertIn(name, msg)
+
+    def test_enable_and_disable_firewall_are_still_allowed(self):
+        """The fail-safe default for unrecognised actions must not have
+        swallowed these two legitimate, deliberately-unrefused actions."""
+        self.assertEqual(
+            check_change(Host(), LINUX,
+                         {"action": "enable_firewall", "params": {}}), "")
+        self.assertEqual(
+            check_change(Host(), LINUX,
+                         {"action": "disable_firewall", "params": {}}), "")
+
+    def test_denying_an_unparseable_port_is_refused(self):
+        msg = check_change(Host(), LINUX, add("22.0", "deny"))
+        self.assertIn("unparseable", msg.lower())
+
+    def test_removing_a_rule_for_a_non_numeric_port_is_refused(self):
+        msg = check_change(Host(), LINUX, remove("ssh"))
+        self.assertIn("unparseable", msg.lower())
