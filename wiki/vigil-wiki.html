@@ -254,6 +254,10 @@
       <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
       Vulnerabilities
     </a>
+    <a href="#firewall" class="nav-link">
+      <svg viewBox="0 0 24 24"><rect x="2" y="4" width="9" height="7"/><rect x="13" y="4" width="9" height="7"/><rect x="2" y="14" width="9" height="6"/><rect x="13" y="14" width="9" height="6"/></svg>
+      Firewall
+    </a>
     <a href="#community" class="nav-link">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0 1 13 0"/></svg>
       Community
@@ -779,6 +783,7 @@
             <tr><td>Monitoring, alerting, smart defaults — unlimited agents, hosts, retention</td><td>✓</td><td>✓</td></tr>
             <tr><td>Remote task execution + agent (agent is 100% OSS, no tier awareness)</td><td>✓</td><td>✓</td></tr>
             <tr><td>Vuln scanning (Trivy / Nessus / Greenbone)</td><td>✓</td><td>✓</td></tr>
+            <tr><td>Firewall management (read + edit ufw / firewalld / Windows Firewall)</td><td>✓</td><td>✓</td></tr>
             <tr><td>Baselines — auto-dispatch tasks to newly approved hosts</td><td>✓</td><td>✓</td></tr>
             <tr><td>AI task suggestions — bring-your-own endpoint &amp; key</td><td>✓</td><td>✓</td></tr>
             <tr><td>Public status page (token URL, "Powered by Vigil" badge)</td><td>✓</td><td>✓</td></tr>
@@ -1637,6 +1642,67 @@
     <span class="hl-var">params</span>: { <span class="hl-var">engine</span>: <span class="hl-string">greenbone</span> }      <span class="hl-comment"># or "nessus"; omit to let the server pick</span></pre>
       </div>
       <p class="prose">The legacy <code>request_nessus_scan</code> action still works and always picks Nessus. Both honour the one-active-scan-per-(host, scanner) throttle.</p>
+    </section>
+    <div class="divider"></div>
+
+    <!-- FIREWALL MANAGEMENT -->
+    <section class="section" id="firewall">
+      <p class="section-label">Reference</p>
+      <h2 class="section-title" style="color:var(--rose)">Firewall Management</h2>
+      <p class="section-desc">The <strong>Firewall</strong> tab (sidebar, between Vulnerabilities and Monitor) reads and edits a host's <code>ufw</code>, <code>firewalld</code>, or Windows Firewall state through the same signed-task pipeline as every other action — nothing here talks to the host directly.</p>
+
+      <h3>Fetch-on-demand, not polled</h3>
+      <p class="prose">Firewall state is not part of the regular checkin. Selecting a host in the tab dispatches a <code>list_firewall_rules</code> task; the snapshot arrives with that host's <em>next</em> check-in, not instantly. <strong>The first view of any host is an empty "Nothing read yet" state — that is normal, not an error.</strong> Press <strong>Refresh</strong> (or wait for the checkin interval) and the tab fills in once the read lands. Edits don't trigger an automatic re-read either, so refresh again after applying a change to confirm it took.</p>
+
+      <h3>Three refusals</h3>
+      <p class="prose"><code>server/apps/hosts/firewall_guard.py</code> refuses three shapes of change before the 2FA prompt even appears:</p>
+      <ol class="prose">
+        <li><strong>Default outgoing policy set to <code>deny</code> or <code>reject</code>.</strong> The one to know: Vigil agents are outbound-only, so this severs the agent's own connection to the server. The host stops checking in, and since dispatch itself needs a check-in, no task can ever reach it to undo the change — recovery needs console access to the host.</li>
+        <li><strong>Denying the remote-access port, or removing the rule that allows it</strong> — port 22 always, plus 3389 on Windows.</li>
+        <li><strong>Default incoming policy set to <code>deny</code></strong> when no allow rule covers the remote-access port.</li>
+      </ol>
+      <p class="prose"><code>disable_firewall</code> is <strong>not</strong> one of these three — it opens the host rather than closing it, so it is high-risk and 2FA-gated like any other write, but the lockout guard has nothing to say about it.</p>
+
+      <div class="callout callout-info">
+        <div class="callout-icon">i</div>
+        <div>The task editor is a deliberate, unguarded escape hatch. The guard only sits in front of the Firewall tab's write endpoint (<code>POST /api/v1/hosts/{id}/firewall/apply/</code>) — a task written by hand using <code>set_firewall_policy</code>, <code>add_firewall_rule</code>, or <code>remove_firewall_rule</code> bypasses it entirely. A change the tab won't make from a form is still one you can make on purpose; that's what makes refusing in the tab reasonable instead of paternalistic.</div>
+      </div>
+
+      <div class="callout callout-warn">
+        <div class="callout-icon">!</div>
+        <div>The protected ports (22, and 3389 on Windows) are hard-coded well-known values &mdash; never read from the host. A host with SSH moved to a custom port is <strong>not</strong> protected by this guard: a deny, or a default-incoming-deny change, against it goes through, even though it would lock the host out just the same.</div>
+      </div>
+
+      <h3>Rules Vigil couldn't parse</h3>
+      <p class="prose">Some rules don't fit Vigil's port/protocol/source model &mdash; ufw app-profile rules (<code>ufw allow OpenSSH</code>), firewalld port ranges, Windows rules with a non-integer port. These are never silently dropped: they land in a separate "Unparsed rules" section on the tab as raw text, and can't be edited from there. A host whose SSH access comes entirely from an app-profile rule has no port-22 entry in the parsed rule list, so the lockout guard treats port 22 as uncovered and refuses a default-deny-incoming change against that host &mdash; the correct, conservative call, even though the host may in fact be fine.</p>
+
+      <h3>Allowlist on managed agents</h3>
+      <p class="prose">Same trap as <a href="#vulns" style="color:var(--sky)">Trivy</a>: the shipped <code>agent.yml</code> allowlist does not include any of the six firewall actions. On a <code>managed</code>-mode agent that hasn't added them, every firewall task &mdash; including the read &mdash; is rejected, and the tab just shows nothing for that host with no obvious error on screen. <code>full_control</code> agents ignore the allowlist entirely.</p>
+      <div class="code-block">
+        <div class="code-label">agent.yml</div>
+        <pre><span class="hl-var">allowlist</span>:
+  - <span class="hl-string">list_firewall_rules</span>
+  - <span class="hl-string">add_firewall_rule</span>
+  - <span class="hl-string">remove_firewall_rule</span>
+  - <span class="hl-string">set_firewall_policy</span>
+  - <span class="hl-string">enable_firewall</span>
+  - <span class="hl-string">disable_firewall</span></pre>
+      </div>
+
+      <h3>Firewall actions</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Action</th><th>Risk</th><th>Required Params</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>list_firewall_rules</code></td><td><span class="risk risk-low">low</span></td><td>—</td><td>Read-only snapshot: tool, enabled state, default policies, rules, profiles (Windows), and anything the backend couldn't parse. The only firewall action low-risk enough to dispatch on every tab view.</td></tr>
+            <tr><td><code>add_firewall_rule</code></td><td><span class="risk risk-high">high</span></td><td><code>port</code>, <code>protocol</code></td><td>Optional <code>action</code> (<code>allow</code> default, or <code>deny</code>), <code>source</code>, <code>interface</code>. Denying the remote-access port is refused by the Firewall tab — not by this action itself, which the task editor can still dispatch directly.</td></tr>
+            <tr><td><code>remove_firewall_rule</code></td><td><span class="risk risk-high">high</span></td><td><code>port</code>, <code>protocol</code></td><td>Optional <code>action</code>, <code>source</code>. Removing the rule permitting the remote-access port is refused by the Firewall tab.</td></tr>
+            <tr><td><code>set_firewall_policy</code></td><td><span class="risk risk-high">high</span></td><td><code>direction</code>, <code>policy</code></td><td><code>direction</code> is <code>incoming</code> or <code>outgoing</code>; <code>policy</code> is <code>allow</code>, <code>deny</code>, or <code>reject</code>. Both lockout shapes above route through this action.</td></tr>
+            <tr><td><code>enable_firewall</code></td><td><span class="risk risk-high">high</span></td><td>—</td><td>Turn the host firewall on.</td></tr>
+            <tr><td><code>disable_firewall</code></td><td><span class="risk risk-high">high</span></td><td>—</td><td>Turn the host firewall off. Not refused by the lockout guard &mdash; it opens the host rather than closing it.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
     <div class="divider"></div>
 

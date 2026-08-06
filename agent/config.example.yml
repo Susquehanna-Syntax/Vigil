@@ -100,6 +100,16 @@ allowlist:
   # - request_network_scan
   # - request_nessus_scan
 
+  # Firewall management — uncomment to let Vigil read and edit this host's
+  # firewall. list_firewall_rules only reads; the rest change the firewall and
+  # can take this host off the network.
+  # - list_firewall_rules
+  # - add_firewall_rule
+  # - remove_firewall_rule
+  # - set_firewall_policy
+  # - enable_firewall
+  # - disable_firewall
+
   # Higher-risk actions — uncomment deliberately:
   # - execute_script   # runs a pre-approved script from scripts_dir
   # - reboot           # full system reboot
