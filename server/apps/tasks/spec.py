@@ -254,13 +254,13 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "label": "Add firewall rule",
         "risk": "high",
         "required": ["port", "protocol"],
-        "optional": ["action"],
+        "optional": ["action", "source", "interface"],
     },
     "remove_firewall_rule": {
         "label": "Remove firewall rule",
         "risk": "high",
         "required": ["port", "protocol"],
-        "optional": [],
+        "optional": ["action", "source"],
     },
     # Read-only, so low risk: it changes nothing and the Firewall tab needs it
     # on every view. The write actions above stay high.

@@ -26,6 +26,25 @@ logger = logging.getLogger("vigil.firewall")
 
 _TIMEOUT = 30
 
+#: An IPv4/IPv6 address or CIDR, or the literal "any". Deliberately strict:
+#: this value reaches a command line.
+_SAFE_SOURCE = re.compile(r"^(any|[0-9a-fA-F:.]{2,45}(/\d{1,3})?)$")
+_SAFE_IFACE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,15}$")
+
+
+def validate_source(source: str) -> str:
+    source = (source or "any").strip()
+    if not _SAFE_SOURCE.match(source):
+        raise ValueError(f"Invalid source address: {source!r}")
+    return source
+
+
+def validate_interface(iface: str) -> str:
+    iface = (iface or "").strip()
+    if iface and not _SAFE_IFACE.match(iface):
+        raise ValueError(f"Invalid interface: {iface!r}")
+    return iface
+
 
 def _run(cmd: list[str], timeout: int = _TIMEOUT) -> str:
     """Run a command and return stdout+stderr. Never uses a shell.
@@ -46,6 +65,12 @@ class FirewallBackend:
         raise NotImplementedError
 
     def snapshot(self) -> dict:
+        raise NotImplementedError
+
+    def add_rule(self, port, protocol, action, source="any", interface="") -> str:
+        raise NotImplementedError
+
+    def remove_rule(self, port, protocol, action="allow", source="any") -> str:
         raise NotImplementedError
 
 
@@ -118,6 +143,29 @@ class UfwBackend(FirewallBackend):
         return {"tool": self.name, "enabled": enabled,
                 "defaults": defaults, "rules": rules, "unparsed": unparsed}
 
+    def add_rule(self, port, protocol, action, source="any", interface=""):
+        cmd = ["ufw", action]
+        if interface:
+            cmd += ["in", "on", interface]
+        if source and source != "any":
+            cmd += ["from", source, "to", "any", "port", str(port),
+                    "proto", protocol]
+        else:
+            cmd += [f"{port}/{protocol}"]
+        return _run(cmd)
+
+    def remove_rule(self, port, protocol, action="allow", source="any"):
+        # `action` is threaded through because `ufw delete` matches the whole
+        # rule: deleting a deny rule with "allow" in the pattern matches
+        # nothing and reports success.
+        cmd = ["ufw", "delete", action]
+        if source and source != "any":
+            cmd += ["from", source, "to", "any", "port", str(port),
+                    "proto", protocol]
+        else:
+            cmd += [f"{port}/{protocol}"]
+        return _run(cmd)
+
 
 class FirewallCmdBackend(FirewallBackend):
     name = "firewall-cmd"
@@ -160,6 +208,36 @@ class FirewallCmdBackend(FirewallBackend):
         return {"tool": self.name, "enabled": enabled,
                 "defaults": {"incoming": "deny", "outgoing": "allow"},
                 "rules": rules, "unparsed": unparsed}
+
+    def _reload(self) -> str:
+        # --permanent writes configuration; without a reload the running
+        # firewall is untouched and the caller is told it succeeded.
+        return _run(["firewall-cmd", "--reload"])
+
+    def add_rule(self, port, protocol, action, source="any", interface=""):
+        if action == "deny":
+            # firewalld expresses "not allowed" by absence -- there is no
+            # deny list to add to. Removing an allow is not the same thing
+            # as adding a deny (and is a silent no-op if the port was never
+            # open), so an explicit deny always adds a reject rich rule,
+            # scoped to `source` when one is given.
+            if source != "any":
+                rule = (f'rule family="ipv4" source address="{source}" '
+                        f'port port="{port}" protocol="{protocol}" reject')
+            else:
+                rule = (f'rule family="ipv4" '
+                        f'port port="{port}" protocol="{protocol}" reject')
+            out = _run(["firewall-cmd", "--permanent",
+                       f"--add-rich-rule={rule}"])
+        else:
+            out = _run(["firewall-cmd", "--permanent",
+                        f"--add-port={port}/{protocol}"])
+        return f"{out}\n{self._reload()}".strip()
+
+    def remove_rule(self, port, protocol, action="allow", source="any"):
+        out = _run(["firewall-cmd", "--permanent",
+                    f"--remove-port={port}/{protocol}"])
+        return f"{out}\n{self._reload()}".strip()
 
 
 _PS = ["powershell", "-NoProfile", "-NonInteractive", "-Command"]
@@ -277,6 +355,23 @@ class WindowsBackend(FirewallBackend):
             "rules": rules,
             "unparsed": unparsed,
         }
+
+    def add_rule(self, port, protocol, action, source="any", interface=""):
+        name = f"Vigil {protocol}/{port}"
+        cmd = ["netsh", "advfirewall", "firewall", "add", "rule",
+               f"name={name}", "dir=in",
+               f"action={'block' if action == 'deny' else 'allow'}",
+               f"protocol={protocol.upper()}", f"localport={port}"]
+        if source and source != "any":
+            cmd.append(f"remoteip={source}")
+        return _run(cmd)
+
+    def remove_rule(self, port, protocol, action="allow", source="any"):
+        # Matched on protocol and port rather than name, so a rule created
+        # outside Vigil can still be removed.
+        return _run(["netsh", "advfirewall", "firewall", "delete", "rule",
+                     "name=all", f"protocol={protocol.upper()}",
+                     f"localport={port}"])
 
 
 def detect() -> FirewallBackend | None:
