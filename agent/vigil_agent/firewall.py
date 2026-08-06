@@ -182,10 +182,20 @@ _PS_PROFILES = ("Get-NetFirewallProfile | "
 
 
 def _as_list(parsed):
-    """ConvertTo-Json emits a bare object when there is exactly one result."""
+    """ConvertTo-Json emits a bare object when there is exactly one result.
+
+    Returns (dicts, discarded): `dicts` is every list/object entry that is
+    actually a dict (the only shape callers can `.get()` off of); `discarded`
+    holds anything else -- a bare scalar (PowerShell emits e.g. a lone `5`
+    for some single-property results), so callers can record it in
+    `unparsed` rather than crashing on `.get()` or dropping it unseen.
+    """
     if parsed is None:
-        return []
-    return parsed if isinstance(parsed, list) else [parsed]
+        return [], []
+    items = parsed if isinstance(parsed, list) else [parsed]
+    dicts = [i for i in items if isinstance(i, dict)]
+    discarded = [i for i in items if not isinstance(i, dict)]
+    return dicts, discarded
 
 
 class WindowsBackend(FirewallBackend):
@@ -197,10 +207,15 @@ class WindowsBackend(FirewallBackend):
     def snapshot(self) -> dict:
         profiles: list[dict] = []
         unparsed: list[str] = []
+        profiles_ok = False
         try:
-            for p in _as_list(json.loads(_run(_PS + [_PS_PROFILES]))):
+            items, discarded = _as_list(json.loads(_run(_PS + [_PS_PROFILES])))
+            for p in items:
                 profiles.append({"name": str(p.get("Name", "")),
                                  "enabled": bool(p.get("Enabled"))})
+            for d in discarded:
+                unparsed.append(f"<unrecognised profile entry: {d!r}>")
+            profiles_ok = True
         except (ValueError, TypeError):
             logger.warning("Could not read Windows firewall profiles")
             # A snapshot that failed to read anything has to look different
@@ -209,7 +224,10 @@ class WindowsBackend(FirewallBackend):
 
         rules: list[dict] = []
         try:
-            for r in _as_list(json.loads(_run(_PS + [_PS_RULES]))):
+            items, discarded = _as_list(json.loads(_run(_PS + [_PS_RULES])))
+            for d in discarded:
+                unparsed.append(f"<unrecognised rule entry: {d!r}>")
+            for r in items:
                 port = str(r.get("port", "")).strip()
                 if not port.isdigit():
                     # Port ranges ("8000-8100") and comma-separated lists
@@ -221,20 +239,39 @@ class WindowsBackend(FirewallBackend):
                     name = str(r.get("name", "")).strip() or "<unnamed rule>"
                     unparsed.append(f"{name}: port={port}")
                     continue
-                action = str(r.get("action", "")).lower()
+                raw_action = str(r.get("action", "")).strip()
+                action = raw_action.lower()
+                name = str(r.get("name", "")).strip() or "<unnamed rule>"
+                # Map explicitly rather than defaulting unknown actions to
+                # "allow": rounding a rule we don't understand toward
+                # "permitted" would understate the host's exposure, which is
+                # the one direction a security view must never guess in.
+                if action.startswith("block"):
+                    mapped_action = "deny"
+                elif action.startswith("allow"):
+                    mapped_action = "allow"
+                else:
+                    unparsed.append(f"{name}: action={raw_action or '<empty>'}")
+                    continue
                 rules.append({
                     "port": int(port),
                     "protocol": str(r.get("protocol", "tcp")).lower(),
-                    "action": "deny" if action.startswith("block") else "allow",
+                    "action": mapped_action,
                     "source": "any", "interface": "",
                 })
         except (ValueError, TypeError):
             logger.warning("Could not read Windows firewall rules")
             unparsed.append("<failed to read Windows firewall rules>")
 
+        # An unknown firewall state must never render as a known one: if the
+        # profile read failed, `enabled` is None (unknown), not False. A
+        # status pill that says "disabled" for a host we simply couldn't
+        # read from would be a confident wrong answer -- worse than "unknown".
+        enabled = any(p["enabled"] for p in profiles) if profiles_ok else None
+
         return {
             "tool": self.name,
-            "enabled": any(p["enabled"] for p in profiles),
+            "enabled": enabled,
             "defaults": {"incoming": "deny", "outgoing": "allow"},
             "profiles": profiles,
             "rules": rules,
