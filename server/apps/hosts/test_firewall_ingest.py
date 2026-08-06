@@ -104,3 +104,49 @@ class FirewallIngestTests(TestCase):
         self._complete(json.dumps(snapshot))
         fw = HostFirewall.objects.get(host=self.host)
         self.assertEqual(fw.defaults, {"incoming": "unknown", "outgoing": "unknown"})
+
+    def test_off_contract_enabled_value_does_not_raise_or_corrupt_the_task(self):
+        # "enabled": "unknown" is well-formed JSON, merely off-contract --
+        # Django's nullable BooleanField raises a ValidationError for any
+        # value outside {True, False, None, "t"/"True"/"1", "f"/"False"/"0"}
+        # when the row is written. That must be caught inside the hook: an
+        # escape here runs inside task_result's transaction and would roll
+        # back the task's own COMPLETED state write alongside it, 500-ing
+        # the endpoint every agent uses to report every task.
+        bad = {**SNAPSHOT, "enabled": "unknown"}
+        task = self._complete(json.dumps(bad))
+        self.assertEqual(task.state, Task.State.COMPLETED)
+        self.assertIn("[FIREWALL INGEST FAILED]", task.result_output)
+
+    def test_non_list_rules_value_does_not_raise_or_corrupt_the_task(self):
+        bad = {**SNAPSHOT, "rules": "not-a-list"}
+        task = self._complete(json.dumps(bad))
+        self.assertEqual(task.state, Task.State.COMPLETED)
+        self.assertIn("[FIREWALL INGEST FAILED]", task.result_output)
+
+    def test_prior_good_snapshot_survives_both_kinds_of_bad_write(self):
+        self._complete(json.dumps(SNAPSHOT))
+        self._complete(json.dumps({**SNAPSHOT, "enabled": "unknown"}))
+        self._complete(json.dumps({**SNAPSHOT, "rules": "not-a-list"}))
+        fw = HostFirewall.objects.get(host=self.host)
+        self.assertTrue(fw.enabled)
+        self.assertEqual(fw.rules[0]["port"], 22)
+
+    def test_an_earlier_steps_generic_rules_key_does_not_win(self):
+        # A step's own output could legitimately be JSON with a "rules" key
+        # for unrelated reasons. The real firewall snapshot must still be
+        # the one selected -- the discriminator requires "tool" or
+        # "supported" alongside "rules", which only a real snapshot has.
+        decoy = json.dumps({"rules": ["not", "a", "firewall", "snapshot"]})
+        out = (f"[OK] earlier_step: {decoy}\n"
+               f"[OK] read: {json.dumps(SNAPSHOT)}")
+        task = Task.objects.create(
+            host=self.host, action="_script",
+            params={"steps": [{"action": "some_other_step"},
+                               {"action": "list_firewall_rules"}]},
+            state=Task.State.COMPLETED, nonce=secrets.token_hex(16),
+            result_output=out)
+        _maybe_ingest_firewall_rules(task, out)
+        fw = HostFirewall.objects.get(host=self.host)
+        self.assertEqual(fw.tool, "ufw")
+        self.assertEqual(fw.rules[0]["port"], 22)
