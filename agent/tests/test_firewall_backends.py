@@ -114,3 +114,78 @@ class UfwUnparsedRuleTests(unittest.TestCase):
         headers = ("Status:", "Logging:", "Default:", "New profiles:", "To", "--")
         for line in unparsed:
             self.assertFalse(line.startswith(headers), line)
+
+
+FIREWALLD_ALL = """public (active)
+  target: default
+  icmp-block-inversion: no
+  interfaces: eth0
+  sources:
+  services: ssh dhcpv6-client
+  ports: 80/tcp 443/tcp 5353/udp
+  protocols:
+  forward: yes
+  masquerade: no
+"""
+
+
+class FirewallCmdParseTests(unittest.TestCase):
+    def _snapshot(self, state="running", listing=FIREWALLD_ALL):
+        b = firewall.FirewallCmdBackend()
+
+        def fake_run(cmd, timeout=None):
+            return state if "--state" in cmd else listing
+
+        with patch.object(firewall, "_run", fake_run):
+            return b.snapshot()
+
+    def test_tool_is_named(self):
+        self.assertEqual(self._snapshot()["tool"], "firewall-cmd")
+
+    def test_enabled_is_read(self):
+        self.assertTrue(self._snapshot()["enabled"])
+        self.assertFalse(self._snapshot(state="not running")["enabled"])
+
+    def test_ports_are_parsed(self):
+        rules = self._snapshot()["rules"]
+        self.assertIn({"port": 443, "protocol": "tcp", "action": "allow",
+                       "source": "any", "interface": ""}, rules)
+
+    def test_udp_ports_are_parsed(self):
+        rules = self._snapshot()["rules"]
+        self.assertIn({"port": 5353, "protocol": "udp", "action": "allow",
+                       "source": "any", "interface": ""}, rules)
+
+    def test_an_open_port_is_always_an_allow(self):
+        """firewalld lists what is permitted; there is no deny list to read."""
+        self.assertTrue(all(r["action"] == "allow"
+                            for r in self._snapshot()["rules"]))
+
+    def test_no_ports_line_is_not_an_error(self):
+        snap = self._snapshot(listing="public (active)\n  target: default\n")
+        self.assertEqual(snap["rules"], [])
+
+
+class FirewallCmdUnparsedRuleTests(unittest.TestCase):
+    """Port ranges (e.g. 8000-8100/tcp) can't be expressed as a single
+    port/protocol rule; they must be surfaced, not silently dropped."""
+
+    def _snapshot(self, listing):
+        b = firewall.FirewallCmdBackend()
+
+        def fake_run(cmd, timeout=None):
+            return "running" if "--state" in cmd else listing
+
+        with patch.object(firewall, "_run", fake_run):
+            return b.snapshot()
+
+    def test_port_range_lands_in_unparsed_not_dropped(self):
+        listing = ("public (active)\n  target: default\n"
+                   "  ports: 80/tcp 8000-8100/tcp\n")
+        snap = self._snapshot(listing)
+        self.assertIn("8000-8100/tcp", snap["unparsed"])
+        self.assertIn({"port": 80, "protocol": "tcp", "action": "allow",
+                       "source": "any", "interface": ""}, snap["rules"])
+
+    def test_known_good_fixture_has_no_unparsed_lines(self):
+        self.assertEqual(self._snapshot(FIREWALLD_ALL)["unparsed"], [])
