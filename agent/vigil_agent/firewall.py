@@ -15,6 +15,7 @@ per-profile and the profiles can disagree with each other.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import shutil
@@ -161,9 +162,89 @@ class FirewallCmdBackend(FirewallBackend):
                 "rules": rules, "unparsed": unparsed}
 
 
+_PS = ["powershell", "-NoProfile", "-NonInteractive", "-Command"]
+
+# Joins each enabled inbound rule to its port filter. Rules with no specific
+# local port (LocalPort = "Any") are skipped: they are service-wide rules that
+# do not map onto Vigil's port/protocol model, and showing them as port 0 would
+# be a lie.
+_PS_RULES = (
+    "$o = Get-NetFirewallRule -Enabled True -Direction Inbound "
+    "-ErrorAction SilentlyContinue | ForEach-Object { "
+    "$f = $_ | Get-NetFirewallPortFilter; "
+    "if ($f.LocalPort -and $f.LocalPort -ne 'Any') { "
+    "[PSCustomObject]@{ port = $f.LocalPort; protocol = $f.Protocol; "
+    "action = $_.Action.ToString(); name = $_.DisplayName } } }; "
+    "$o | ConvertTo-Json -Compress"
+)
+_PS_PROFILES = ("Get-NetFirewallProfile | "
+                "Select-Object Name,Enabled | ConvertTo-Json -Compress")
+
+
+def _as_list(parsed):
+    """ConvertTo-Json emits a bare object when there is exactly one result."""
+    if parsed is None:
+        return []
+    return parsed if isinstance(parsed, list) else [parsed]
+
+
+class WindowsBackend(FirewallBackend):
+    name = "windows"
+
+    def available(self) -> bool:
+        return sys.platform == "win32"
+
+    def snapshot(self) -> dict:
+        profiles: list[dict] = []
+        unparsed: list[str] = []
+        try:
+            for p in _as_list(json.loads(_run(_PS + [_PS_PROFILES]))):
+                profiles.append({"name": str(p.get("Name", "")),
+                                 "enabled": bool(p.get("Enabled"))})
+        except (ValueError, TypeError):
+            logger.warning("Could not read Windows firewall profiles")
+            # A snapshot that failed to read anything has to look different
+            # from a host that legitimately has no profiles.
+            unparsed.append("<failed to read Windows firewall profiles>")
+
+        rules: list[dict] = []
+        try:
+            for r in _as_list(json.loads(_run(_PS + [_PS_RULES]))):
+                port = str(r.get("port", "")).strip()
+                if not port.isdigit():
+                    # Port ranges ("8000-8100") and comma-separated lists
+                    # ("80,443") are valid Windows Firewall rules but this
+                    # feature can only express a single port per rule.
+                    # Surface it instead of dropping it: a firewall view
+                    # that omits rules is worse than one that admits it
+                    # does not understand them.
+                    name = str(r.get("name", "")).strip() or "<unnamed rule>"
+                    unparsed.append(f"{name}: port={port}")
+                    continue
+                action = str(r.get("action", "")).lower()
+                rules.append({
+                    "port": int(port),
+                    "protocol": str(r.get("protocol", "tcp")).lower(),
+                    "action": "deny" if action.startswith("block") else "allow",
+                    "source": "any", "interface": "",
+                })
+        except (ValueError, TypeError):
+            logger.warning("Could not read Windows firewall rules")
+            unparsed.append("<failed to read Windows firewall rules>")
+
+        return {
+            "tool": self.name,
+            "enabled": any(p["enabled"] for p in profiles),
+            "defaults": {"incoming": "deny", "outgoing": "allow"},
+            "profiles": profiles,
+            "rules": rules,
+            "unparsed": unparsed,
+        }
+
+
 def detect() -> FirewallBackend | None:
     """Return the backend for this host, or None if no supported tool exists."""
-    for backend in (UfwBackend(), FirewallCmdBackend()):
+    for backend in (WindowsBackend(), UfwBackend(), FirewallCmdBackend()):
         if backend.available():
             return backend
     return None

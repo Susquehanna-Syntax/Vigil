@@ -189,3 +189,110 @@ class FirewallCmdUnparsedRuleTests(unittest.TestCase):
 
     def test_known_good_fixture_has_no_unparsed_lines(self):
         self.assertEqual(self._snapshot(FIREWALLD_ALL)["unparsed"], [])
+
+
+import json as _json
+
+WIN_PROFILES = _json.dumps([
+    {"Name": "Domain", "Enabled": True},
+    {"Name": "Private", "Enabled": True},
+    {"Name": "Public", "Enabled": False},
+])
+
+WIN_RULES = _json.dumps([
+    {"port": "22", "protocol": "TCP", "action": "Allow", "name": "OpenSSH"},
+    {"port": "3389", "protocol": "TCP", "action": "Allow", "name": "RDP"},
+    {"port": "445", "protocol": "TCP", "action": "Block", "name": "Vigil tcp/445"},
+])
+
+
+class WindowsParseTests(unittest.TestCase):
+    def _snapshot(self, profiles=WIN_PROFILES, rules=WIN_RULES):
+        b = firewall.WindowsBackend()
+
+        def fake_run(cmd, timeout=None):
+            return profiles if "NetFirewallProfile" in " ".join(cmd) else rules
+
+        with patch.object(firewall, "_run", fake_run):
+            return b.snapshot()
+
+    def test_tool_is_named(self):
+        self.assertEqual(self._snapshot()["tool"], "windows")
+
+    def test_enabled_when_any_profile_is_on(self):
+        self.assertTrue(self._snapshot()["enabled"])
+
+    def test_disabled_when_every_profile_is_off(self):
+        off = _json.dumps([{"Name": "Public", "Enabled": False}])
+        self.assertFalse(self._snapshot(profiles=off)["enabled"])
+
+    def test_profiles_are_reported(self):
+        """Windows profiles can disagree; the tab has to be able to show it."""
+        profiles = self._snapshot()["profiles"]
+        self.assertIn({"name": "Public", "enabled": False}, profiles)
+
+    def test_rules_are_normalised(self):
+        rules = self._snapshot()["rules"]
+        self.assertIn({"port": 22, "protocol": "tcp", "action": "allow",
+                       "source": "any", "interface": ""}, rules)
+
+    def test_block_becomes_deny(self):
+        """PowerShell says Block; the rest of Vigil says deny."""
+        rules = self._snapshot()["rules"]
+        self.assertIn({"port": 445, "protocol": "tcp", "action": "deny",
+                       "source": "any", "interface": ""}, rules)
+
+    def test_a_single_object_is_handled(self):
+        """ConvertTo-Json emits a bare object, not a list, for one result."""
+        one = _json.dumps({"port": "22", "protocol": "TCP", "action": "Allow",
+                           "name": "OpenSSH"})
+        self.assertEqual(len(self._snapshot(rules=one)["rules"]), 1)
+
+    def test_unparseable_output_yields_no_rules(self):
+        self.assertEqual(self._snapshot(rules="not json")["rules"], [])
+
+
+class WindowsUnparsedRuleTests(unittest.TestCase):
+    """Port shapes Vigil's single port/protocol rule model can't express,
+    and whole-payload read failures, must land in `unparsed` rather than
+    vanishing -- an empty rule list should never be confused with a read
+    that failed."""
+
+    def _snapshot(self, profiles=WIN_PROFILES, rules=WIN_RULES):
+        b = firewall.WindowsBackend()
+
+        def fake_run(cmd, timeout=None):
+            return profiles if "NetFirewallProfile" in " ".join(cmd) else rules
+
+        with patch.object(firewall, "_run", fake_run):
+            return b.snapshot()
+
+    def test_port_range_lands_in_unparsed_not_dropped(self):
+        rules = _json.dumps([
+            {"port": "8000-8100", "protocol": "TCP", "action": "Allow",
+             "name": "Range Rule"},
+        ])
+        unparsed = self._snapshot(rules=rules)["unparsed"]
+        self.assertTrue(any("Range Rule" in line and "8000-8100" in line
+                            for line in unparsed))
+
+    def test_port_list_lands_in_unparsed_not_dropped(self):
+        rules = _json.dumps([
+            {"port": "80,443", "protocol": "TCP", "action": "Allow",
+             "name": "List Rule"},
+        ])
+        unparsed = self._snapshot(rules=rules)["unparsed"]
+        self.assertTrue(any("List Rule" in line and "80,443" in line
+                            for line in unparsed))
+
+    def test_unparseable_rule_json_yields_nonempty_unparsed(self):
+        """A snapshot that failed to read rules has to be visibly different
+        from a host that legitimately has none."""
+        snap = self._snapshot(rules="not json")
+        self.assertEqual(snap["rules"], [])
+        self.assertTrue(snap["unparsed"])
+
+    def test_unparseable_profile_json_yields_nonempty_unparsed(self):
+        snap = self._snapshot(profiles="not json")
+        self.assertEqual(snap["profiles"], [])
+        self.assertTrue(snap["unparsed"])
