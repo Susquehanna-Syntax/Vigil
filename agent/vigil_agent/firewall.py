@@ -147,8 +147,13 @@ class UfwBackend(FirewallBackend):
         cmd = ["ufw", action]
         if interface:
             cmd += ["in", "on", interface]
-        if source and source != "any":
-            cmd += ["from", source, "to", "any", "port", str(port),
+        if (source and source != "any") or interface:
+            # ufw's documented syntax pairs `in on IFACE` with the full
+            # `from ... to any port PORT proto PROTO` form -- mixing `in on
+            # IFACE` with the short PORT/PROTO form does not reliably parse.
+            # So the full form is used whenever an interface is given, even
+            # with no source, not just when a source is given.
+            cmd += ["from", source or "any", "to", "any", "port", str(port),
                     "proto", protocol]
         else:
             cmd += [f"{port}/{protocol}"]
@@ -214,19 +219,23 @@ class FirewallCmdBackend(FirewallBackend):
         # firewall is untouched and the caller is told it succeeded.
         return _run(["firewall-cmd", "--reload"])
 
+    @staticmethod
+    def _reject_rich_rule(port, protocol, source="any") -> str:
+        # firewalld expresses "not allowed" by absence -- there is no deny
+        # list to add to. An explicit deny is instead a reject rich rule,
+        # scoped to `source` when one is given. Shared by add_rule and
+        # remove_rule so the rule string used to add a deny and the one used
+        # to remove it can never drift apart -- a remove that doesn't match
+        # what add actually wrote is a silent no-op reported as success.
+        if source != "any":
+            return (f'rule family="ipv4" source address="{source}" '
+                    f'port port="{port}" protocol="{protocol}" reject')
+        return (f'rule family="ipv4" '
+                f'port port="{port}" protocol="{protocol}" reject')
+
     def add_rule(self, port, protocol, action, source="any", interface=""):
         if action == "deny":
-            # firewalld expresses "not allowed" by absence -- there is no
-            # deny list to add to. Removing an allow is not the same thing
-            # as adding a deny (and is a silent no-op if the port was never
-            # open), so an explicit deny always adds a reject rich rule,
-            # scoped to `source` when one is given.
-            if source != "any":
-                rule = (f'rule family="ipv4" source address="{source}" '
-                        f'port port="{port}" protocol="{protocol}" reject')
-            else:
-                rule = (f'rule family="ipv4" '
-                        f'port port="{port}" protocol="{protocol}" reject')
+            rule = self._reject_rich_rule(port, protocol, source)
             out = _run(["firewall-cmd", "--permanent",
                        f"--add-rich-rule={rule}"])
         else:
@@ -235,8 +244,18 @@ class FirewallCmdBackend(FirewallBackend):
         return f"{out}\n{self._reload()}".strip()
 
     def remove_rule(self, port, protocol, action="allow", source="any"):
-        out = _run(["firewall-cmd", "--permanent",
-                    f"--remove-port={port}/{protocol}"])
+        # `action` is threaded through because a deny was added as a rich
+        # rule, not a port grant: removing it with --remove-port never
+        # touches the rich rule and is a silent no-op reported as success --
+        # the same bug class this task exists to fix, in the sibling
+        # backend.
+        if action == "deny":
+            rule = self._reject_rich_rule(port, protocol, source)
+            out = _run(["firewall-cmd", "--permanent",
+                       f"--remove-rich-rule={rule}"])
+        else:
+            out = _run(["firewall-cmd", "--permanent",
+                        f"--remove-port={port}/{protocol}"])
         return f"{out}\n{self._reload()}".strip()
 
 
@@ -368,9 +387,13 @@ class WindowsBackend(FirewallBackend):
 
     def remove_rule(self, port, protocol, action="allow", source="any"):
         # Matched on protocol and port rather than name, so a rule created
-        # outside Vigil can still be removed.
+        # outside Vigil can still be removed. `dir=in` matches add_rule's
+        # scope: without it, this also deletes unrelated outbound rules (and
+        # rules of the opposite action) that happen to share the port and
+        # protocol -- a delete that matches more than it was asked to is
+        # worse than one that matches nothing.
         return _run(["netsh", "advfirewall", "firewall", "delete", "rule",
-                     "name=all", f"protocol={protocol.upper()}",
+                     "name=all", "dir=in", f"protocol={protocol.upper()}",
                      f"localport={port}"])
 
 
