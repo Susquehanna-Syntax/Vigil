@@ -474,18 +474,40 @@ class WindowsBackend(FirewallBackend):
         # deliberately set on a host whose outbound was restrictive.
         verb = {"allow": "allow", "deny": "block", "reject": "block"}[policy]
         current = self._read_defaults()
-        # netsh's vocabulary mirrors ours except for "unknown" (profile read
-        # failed, or profiles disagreed), which is not a value netsh accepts
-        # -- fall back to Windows Firewall's own out-of-box default for that
-        # direction (block inbound, allow outbound) rather than omitting the
-        # argument entirely.
         netsh_verb = {"allow": "allow", "deny": "block"}
+
+        other = "outgoing" if direction == "incoming" else "incoming"
+        other_value = current[other]
+        if other_value not in netsh_verb:
+            # The direction we were NOT asked to change reads "unknown"
+            # (profiles disagree with each other, or the PowerShell read
+            # failed outright). "unknown" is not a value netsh accepts, and
+            # there is no safe value to guess: netsh writes both directions
+            # in a single call, so any guess here is applied to the host as
+            # if it were the operator's real, deliberate policy -- and a
+            # wrong guess of "allow" would silently loosen a host whose real
+            # policy is a deliberate `deny`. Refusing is the only option
+            # that cannot make things worse. This is the same discipline
+            # this backend already applies elsewhere: `enabled` is `None`
+            # rather than `False` when unknown, and unrecognised rule
+            # actions go to `unparsed` rather than defaulting to "allow".
+            # An unknown state must never be rendered as, or acted on as, a
+            # known one.
+            raise RuntimeError(
+                f"Cannot set the {direction} firewall policy: the current "
+                f"{other} policy could not be read (profiles may disagree "
+                f"with each other, or the read failed) and netsh sets both "
+                f"directions in a single call, so proceeding would mean "
+                f"guessing at a {other} policy that may be deliberately "
+                f"restrictive. Retry, or investigate why "
+                f"Get-NetFirewallProfile could not be read on this host."
+            )
 
         if direction == "incoming":
             in_verb = verb
-            out_verb = netsh_verb.get(current["outgoing"], "allow")
+            out_verb = netsh_verb[other_value]
         else:
-            in_verb = netsh_verb.get(current["incoming"], "block")
+            in_verb = netsh_verb[other_value]
             out_verb = verb
 
         return _run(["netsh", "advfirewall", "set", "allprofiles",
