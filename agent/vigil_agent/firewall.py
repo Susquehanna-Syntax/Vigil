@@ -118,9 +118,52 @@ class UfwBackend(FirewallBackend):
                 "defaults": defaults, "rules": rules, "unparsed": unparsed}
 
 
+class FirewallCmdBackend(FirewallBackend):
+    name = "firewall-cmd"
+
+    _PORTS = re.compile(r"^\s*ports:\s*(?P<ports>.*)$", re.M)
+    _PORT = re.compile(r"^(?P<port>\d+)/(?P<proto>tcp|udp)$", re.I)
+
+    def available(self) -> bool:
+        return shutil.which("firewall-cmd") is not None
+
+    def snapshot(self) -> dict:
+        enabled = _run(["firewall-cmd", "--state"]).strip().lower() == "running"
+        listing = _run(["firewall-cmd", "--list-all"])
+
+        rules: list[dict] = []
+        unparsed: list[str] = []
+        m = self._PORTS.search(listing)
+        if m:
+            for token in m.group("ports").split():
+                pm = self._PORT.match(token.strip())
+                if not pm:
+                    # Not a <port>/<proto> pair -- most commonly a port
+                    # *range* like "8000-8100/tcp", which firewalld allows
+                    # but this feature can't express as a single rule.
+                    # Surface it instead of dropping it: a firewall view
+                    # that omits rules is worse than one that admits it
+                    # does not understand them.
+                    unparsed.append(token.strip())
+                    continue
+                # firewalld lists what is permitted. There is no deny list to
+                # read back, so every parsed port is an allow.
+                rules.append({
+                    "port": int(pm.group("port")),
+                    "protocol": pm.group("proto").lower(),
+                    "action": "allow", "source": "any", "interface": "",
+                })
+
+        # firewalld's default is to drop what is not listed; it has no
+        # per-direction default policy in the ufw sense.
+        return {"tool": self.name, "enabled": enabled,
+                "defaults": {"incoming": "deny", "outgoing": "allow"},
+                "rules": rules, "unparsed": unparsed}
+
+
 def detect() -> FirewallBackend | None:
     """Return the backend for this host, or None if no supported tool exists."""
-    for backend in (UfwBackend(),):
+    for backend in (UfwBackend(), FirewallCmdBackend()):
         if backend.available():
             return backend
     return None
