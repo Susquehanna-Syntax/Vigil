@@ -31,6 +31,7 @@ import time
 from pathlib import Path
 
 from . import collector
+from . import firewall
 from .config import AgentConfig
 from .pkg_manager import detect as detect_pkg_manager
 
@@ -1056,6 +1057,25 @@ def _remove_firewall_rule(params: dict, _config: AgentConfig) -> str:
     raise RuntimeError("No supported firewall tool found (ufw or firewall-cmd)")
 
 
+def _list_firewall_rules(_params: dict, _config: AgentConfig) -> str:
+    """Return this host's firewall state as JSON.
+
+    A host with no supported firewall tool is a normal answer, not an error:
+    raising here would mark the task failed and bury the one fact the operator
+    needs behind a stack trace.
+    """
+    backend = firewall.detect()
+    if backend is None:
+        return json.dumps({
+            "tool": None, "supported": False, "enabled": False,
+            "defaults": {"incoming": "unknown", "outgoing": "unknown"},
+            "rules": [], "unparsed": [],
+        })
+    snapshot = backend.snapshot()
+    snapshot["supported"] = True
+    return json.dumps(snapshot)
+
+
 # ── User management ────────────────────────────────────────────────────────
 
 
@@ -1445,6 +1465,7 @@ _HANDLERS: dict[str, callable] = {
     # Networking
     "add_firewall_rule": _add_firewall_rule,
     "remove_firewall_rule": _remove_firewall_rule,
+    "list_firewall_rules": _list_firewall_rules,
     # User management
     "create_user": _create_user,
     "delete_user": _delete_user,
