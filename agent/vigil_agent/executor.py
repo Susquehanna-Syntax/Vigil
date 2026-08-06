@@ -1014,22 +1014,14 @@ def _add_firewall_rule(params: dict, _config: AgentConfig) -> str:
     action = str(params.get("action", "allow")).lower()
     if action not in ("allow", "deny"):
         raise ValueError(f"Action must be allow or deny, got {action!r}")
+    source = firewall.validate_source(params.get("source", "any"))
+    interface = firewall.validate_interface(params.get("interface", ""))
 
-    # Try ufw first, then firewall-cmd
-    for tool in ("ufw", "firewall-cmd"):
-        try:
-            _run(["which", tool], timeout=5)
-        except RuntimeError:
-            continue
-
-        if tool == "ufw":
-            return _run(["ufw", action, f"{port}/{protocol}"])
-        else:
-            flag = f"--add-port={port}/{protocol}" if action == "allow" \
-                else f"--remove-port={port}/{protocol}"
-            return _run(["firewall-cmd", "--permanent", flag])
-
-    raise RuntimeError("No supported firewall tool found (ufw or firewall-cmd)")
+    backend = firewall.detect()
+    if backend is None:
+        raise RuntimeError(
+            "No supported firewall tool found (ufw, firewall-cmd, or Windows)")
+    return backend.add_rule(port, protocol, action, source, interface)
 
 
 def _remove_firewall_rule(params: dict, _config: AgentConfig) -> str:
@@ -1039,22 +1031,16 @@ def _remove_firewall_rule(params: dict, _config: AgentConfig) -> str:
     protocol = str(params.get("protocol", "tcp")).lower()
     if protocol not in ("tcp", "udp"):
         raise ValueError(f"Protocol must be tcp or udp, got {protocol!r}")
+    action = str(params.get("action", "allow")).lower()
+    if action not in ("allow", "deny"):
+        raise ValueError(f"Action must be allow or deny, got {action!r}")
+    source = firewall.validate_source(params.get("source", "any"))
 
-    for tool in ("ufw", "firewall-cmd"):
-        try:
-            _run(["which", tool], timeout=5)
-        except RuntimeError:
-            continue
-
-        if tool == "ufw":
-            return _run(["ufw", "delete", "allow", f"{port}/{protocol}"])
-        else:
-            return _run([
-                "firewall-cmd", "--permanent",
-                f"--remove-port={port}/{protocol}",
-            ])
-
-    raise RuntimeError("No supported firewall tool found (ufw or firewall-cmd)")
+    backend = firewall.detect()
+    if backend is None:
+        raise RuntimeError(
+            "No supported firewall tool found (ufw, firewall-cmd, or Windows)")
+    return backend.remove_rule(port, protocol, action, source)
 
 
 def _list_firewall_rules(_params: dict, _config: AgentConfig) -> str:
