@@ -282,3 +282,189 @@ class WindowsWriteTests(unittest.TestCase):
 
         self.assertEqual(len(calls), 1)
         self.assertIn("dir=in", calls[0])
+
+
+class PolicyAndToggleTests(unittest.TestCase):
+    def _ufw(self, fn, params):
+        calls = []
+
+        def fake_run(cmd, timeout=None):
+            calls.append(cmd)
+            return "ok"
+
+        with patch.object(firewall, "_run", fake_run), \
+             patch.object(firewall.shutil, "which",
+                          lambda t: "/usr/sbin/ufw" if t == "ufw" else None):
+            fn(params, _config())
+        return calls
+
+    def test_incoming_policy_is_set(self):
+        calls = self._ufw(executor._set_firewall_policy,
+                          {"direction": "incoming", "policy": "deny"})
+        self.assertIn(["ufw", "default", "deny", "incoming"], calls)
+
+    def test_outgoing_policy_is_set(self):
+        calls = self._ufw(executor._set_firewall_policy,
+                          {"direction": "outgoing", "policy": "allow"})
+        self.assertIn(["ufw", "default", "allow", "outgoing"], calls)
+
+    def test_a_bogus_direction_is_rejected(self):
+        with self.assertRaises(ValueError):
+            executor._set_firewall_policy(
+                {"direction": "sideways", "policy": "deny"}, _config())
+
+    def test_a_bogus_policy_is_rejected(self):
+        with self.assertRaises(ValueError):
+            executor._set_firewall_policy(
+                {"direction": "incoming", "policy": "maybe"}, _config())
+
+    def test_enable(self):
+        calls = self._ufw(executor._enable_firewall, {})
+        self.assertIn(["ufw", "--force", "enable"], calls)
+
+    def test_disable(self):
+        calls = self._ufw(executor._disable_firewall, {})
+        self.assertIn(["ufw", "disable"], calls)
+
+    def test_all_three_are_registered(self):
+        # The dispatch table is named `_HANDLERS` in executor.py, not
+        # `ACTION_HANDLERS` -- see the note in ListRulesTests above.
+        for a in ("set_firewall_policy", "enable_firewall", "disable_firewall"):
+            self.assertIn(a, executor._HANDLERS, a)
+
+    def test_all_three_are_allowlistable(self):
+        from vigil_agent.config import _ALL_ACTIONS
+        for a in ("set_firewall_policy", "enable_firewall", "disable_firewall"):
+            self.assertIn(a, _ALL_ACTIONS, a)
+
+
+class FirewallCmdPolicyTests(unittest.TestCase):
+    """firewalld has no separate outgoing default policy -- set_policy must
+    refuse that direction rather than silently doing nothing."""
+
+    def test_outgoing_is_rejected(self):
+        backend = firewall.FirewallCmdBackend()
+        with self.assertRaises(ValueError):
+            backend.set_policy("outgoing", "deny")
+
+    def test_incoming_sets_the_target_and_reloads(self):
+        calls = []
+
+        def fake_run(cmd, timeout=None):
+            calls.append(cmd)
+            return "ok"
+
+        backend = firewall.FirewallCmdBackend()
+        with patch.object(firewall, "_run", fake_run):
+            backend.set_policy("incoming", "deny")
+
+        joined = [" ".join(c) for c in calls]
+        self.assertTrue(any("--set-target=DROP" in c for c in joined))
+        self.assertTrue(any("--reload" in c for c in joined))
+
+
+class WindowsPolicyPreservesOtherDirectionTests(unittest.TestCase):
+    """The brief's WindowsBackend.set_policy hardcodes the direction it was
+    not asked to change (`allowoutbound` when setting inbound, `blockinbound`
+    when setting outbound). netsh's `firewallpolicy` setter changes both
+    directions in one call, so that hardcoding silently resets whichever
+    direction the caller didn't touch. The fix reads the host's real current
+    policy for the other direction first and restates it unchanged."""
+
+    def _set_policy(self, profiles_json, direction, policy):
+        calls = []
+
+        def fake_run(cmd, timeout=None):
+            calls.append(cmd)
+            # First call reads current defaults (Get-NetFirewallProfile);
+            # everything after is the netsh policy-setting call.
+            if "Get-NetFirewallProfile" in cmd[-1]:
+                return profiles_json
+            return "ok"
+
+        backend = firewall.WindowsBackend()
+        with patch.object(firewall, "_run", fake_run):
+            backend.set_policy(direction, policy)
+        return calls
+
+    def test_setting_inbound_preserves_an_existing_outbound_block(self):
+        # Outbound is deliberately Block, not the hardcoded "allowoutbound"
+        # the brief's buggy code would emit -- this is the case that catches
+        # the bug.
+        profiles = json.dumps([
+            {"Name": "Domain", "Enabled": True,
+             "DefaultInboundAction": "Allow", "DefaultOutboundAction": "Block"},
+        ])
+        calls = self._set_policy(profiles, "incoming", "allow")
+        set_cmd = calls[-1]
+        joined = " ".join(set_cmd)
+        self.assertIn("allowinbound", joined)
+        self.assertIn("blockoutbound", joined,
+                       "setting the inbound policy must not reset outbound")
+
+    def test_setting_outbound_preserves_an_existing_inbound_allow(self):
+        # Inbound is deliberately Allow, not the hardcoded "blockinbound"
+        # the brief's buggy code would emit.
+        profiles = json.dumps([
+            {"Name": "Domain", "Enabled": True,
+             "DefaultInboundAction": "Allow", "DefaultOutboundAction": "Allow"},
+        ])
+        calls = self._set_policy(profiles, "outgoing", "deny")
+        set_cmd = calls[-1]
+        joined = " ".join(set_cmd)
+        self.assertIn("allowinbound", joined,
+                       "setting the outbound policy must not reset inbound")
+        self.assertIn("blockoutbound", joined)
+
+
+class WindowsRealDefaultsSnapshotTests(unittest.TestCase):
+    """Task 3 shipped WindowsBackend.snapshot() returning a literal
+    {"incoming": "deny", "outgoing": "allow"} regardless of the host's real
+    configuration. Now that policy is writable, that hardcoded lie would
+    render a policy just set as unchanged."""
+
+    def _snapshot(self, profiles_json, rules_json="[]"):
+        def fake_run(cmd, timeout=None):
+            if "Get-NetFirewallProfile" in cmd[-1]:
+                return profiles_json
+            return rules_json
+
+        backend = firewall.WindowsBackend()
+        with patch.object(firewall, "_run", fake_run):
+            return backend.snapshot()
+
+    def test_defaults_reflect_the_real_profile_values_not_hardcoded(self):
+        # The old hardcoded value was {"incoming": "deny", "outgoing":
+        # "allow"} -- deliberately using "deny" for outgoing here so a
+        # regression back to the hardcoded literal is caught.
+        profiles = json.dumps([
+            {"Name": "Domain", "Enabled": True,
+             "DefaultInboundAction": "Block", "DefaultOutboundAction": "Block"},
+        ])
+        snap = self._snapshot(profiles)
+        self.assertEqual(snap["defaults"],
+                         {"incoming": "deny", "outgoing": "deny"})
+
+    def test_disagreeing_profiles_report_unknown_for_that_direction(self):
+        profiles = json.dumps([
+            {"Name": "Domain", "Enabled": True,
+             "DefaultInboundAction": "Block", "DefaultOutboundAction": "Allow"},
+            {"Name": "Public", "Enabled": True,
+             "DefaultInboundAction": "Allow", "DefaultOutboundAction": "Allow"},
+        ])
+        snap = self._snapshot(profiles)
+        self.assertEqual(snap["defaults"],
+                         {"incoming": "unknown", "outgoing": "allow"})
+
+    def test_a_failed_profile_read_reports_unknown_for_both_directions(self):
+        def fake_run(cmd, timeout=None):
+            return "not valid json"
+
+        backend = firewall.WindowsBackend()
+        with patch.object(firewall, "_run", fake_run):
+            snap = backend.snapshot()
+        self.assertEqual(snap["defaults"],
+                         {"incoming": "unknown", "outgoing": "unknown"})
+        # Consistent with the tri-state `enabled` this backend already
+        # returns: a failed read must never render as a known value.
+        self.assertIsNone(snap["enabled"])

@@ -73,6 +73,12 @@ class FirewallBackend:
     def remove_rule(self, port, protocol, action="allow", source="any") -> str:
         raise NotImplementedError
 
+    def set_policy(self, direction, policy) -> str:
+        raise NotImplementedError
+
+    def set_enabled(self, enabled: bool) -> str:
+        raise NotImplementedError
+
 
 class UfwBackend(FirewallBackend):
     name = "ufw"
@@ -171,6 +177,15 @@ class UfwBackend(FirewallBackend):
             cmd += [f"{port}/{protocol}"]
         return _run(cmd)
 
+    def set_policy(self, direction, policy):
+        return _run(["ufw", "default", policy, direction])
+
+    def set_enabled(self, enabled):
+        # --force skips ufw's interactive "this may disrupt SSH" prompt; the
+        # agent has no tty to answer it on.
+        return _run(["ufw", "--force", "enable"] if enabled
+                    else ["ufw", "disable"])
+
 
 class FirewallCmdBackend(FirewallBackend):
     name = "firewall-cmd"
@@ -258,6 +273,17 @@ class FirewallCmdBackend(FirewallBackend):
                         f"--remove-port={port}/{protocol}"])
         return f"{out}\n{self._reload()}".strip()
 
+    def set_policy(self, direction, policy):
+        if direction != "incoming":
+            raise ValueError(
+                "firewalld has no separate outgoing default policy")
+        target = {"allow": "ACCEPT", "deny": "DROP", "reject": "REJECT"}[policy]
+        out = _run(["firewall-cmd", "--permanent", f"--set-target={target}"])
+        return f"{out}\n{self._reload()}".strip()
+
+    def set_enabled(self, enabled):
+        return _run(["systemctl", "start" if enabled else "stop", "firewalld"])
+
 
 _PS = ["powershell", "-NoProfile", "-NonInteractive", "-Command"]
 
@@ -274,8 +300,10 @@ _PS_RULES = (
     "action = $_.Action.ToString(); name = $_.DisplayName } } }; "
     "$o | ConvertTo-Json -Compress"
 )
-_PS_PROFILES = ("Get-NetFirewallProfile | "
-                "Select-Object Name,Enabled | ConvertTo-Json -Compress")
+_PS_PROFILES = (
+    "Get-NetFirewallProfile | Select-Object Name,Enabled,"
+    "DefaultInboundAction,DefaultOutboundAction | ConvertTo-Json -Compress"
+)
 
 
 def _as_list(parsed):
@@ -301,10 +329,49 @@ class WindowsBackend(FirewallBackend):
     def available(self) -> bool:
         return sys.platform == "win32"
 
+    @staticmethod
+    def _map_defaults(items: list[dict]) -> dict:
+        """Map parsed Get-NetFirewallProfile entries onto Vigil's
+        "allow"/"deny" default-policy vocabulary.
+
+        Profiles can disagree with each other (Domain vs Private vs Public),
+        and a value can be "NotConfigured" or something this backend does not
+        recognise. Either case collapses to "unknown" for that direction --
+        picking one profile's value arbitrarily would silently misreport the
+        host's real exposure, which is the one direction a security view must
+        never guess in.
+        """
+        def _one(key: str) -> str:
+            values = {str(p.get(key, "")).strip().lower() for p in items}
+            if len(values) != 1:
+                return "unknown"
+            return {"block": "deny", "allow": "allow"}.get(next(iter(values)), "unknown")
+
+        return {"incoming": _one("DefaultInboundAction"),
+                "outgoing": _one("DefaultOutboundAction")}
+
+    def _read_defaults(self) -> dict:
+        """Read the host's actual per-direction default policy.
+
+        Used by set_policy so that changing one direction never has to guess
+        at (and risk clobbering) the other -- see set_policy's docstring.
+        Failure modes mirror snapshot(): a read that fails outright, or a
+        host with no profiles at all, reports "unknown" for both directions
+        rather than a guessed value.
+        """
+        try:
+            items, _discarded = _as_list(json.loads(_run(_PS + [_PS_PROFILES])))
+        except (ValueError, TypeError):
+            items = []
+        if not items:
+            return {"incoming": "unknown", "outgoing": "unknown"}
+        return self._map_defaults(items)
+
     def snapshot(self) -> dict:
         profiles: list[dict] = []
         unparsed: list[str] = []
         profiles_ok = False
+        defaults = {"incoming": "unknown", "outgoing": "unknown"}
         try:
             items, discarded = _as_list(json.loads(_run(_PS + [_PS_PROFILES])))
             for p in items:
@@ -313,6 +380,7 @@ class WindowsBackend(FirewallBackend):
             for d in discarded:
                 unparsed.append(f"<unrecognised profile entry: {d!r}>")
             profiles_ok = True
+            defaults = self._map_defaults(items)
         except (ValueError, TypeError):
             logger.warning("Could not read Windows firewall profiles")
             # A snapshot that failed to read anything has to look different
@@ -369,7 +437,7 @@ class WindowsBackend(FirewallBackend):
         return {
             "tool": self.name,
             "enabled": enabled,
-            "defaults": {"incoming": "deny", "outgoing": "allow"},
+            "defaults": defaults,
             "profiles": profiles,
             "rules": rules,
             "unparsed": unparsed,
@@ -395,6 +463,37 @@ class WindowsBackend(FirewallBackend):
         return _run(["netsh", "advfirewall", "firewall", "delete", "rule",
                      "name=all", "dir=in", f"protocol={protocol.upper()}",
                      f"localport={port}"])
+
+    def set_policy(self, direction, policy):
+        # netsh's `firewallpolicy` setter changes BOTH directions in one
+        # call -- there is no per-direction setter. A call that changes only
+        # `direction` must therefore read the *other* direction's current
+        # value first and restate it unchanged; hardcoding the untouched
+        # direction (e.g. always "allowoutbound" when setting inbound) would
+        # silently reset it, quietly undoing a policy an operator
+        # deliberately set on a host whose outbound was restrictive.
+        verb = {"allow": "allow", "deny": "block", "reject": "block"}[policy]
+        current = self._read_defaults()
+        # netsh's vocabulary mirrors ours except for "unknown" (profile read
+        # failed, or profiles disagreed), which is not a value netsh accepts
+        # -- fall back to Windows Firewall's own out-of-box default for that
+        # direction (block inbound, allow outbound) rather than omitting the
+        # argument entirely.
+        netsh_verb = {"allow": "allow", "deny": "block"}
+
+        if direction == "incoming":
+            in_verb = verb
+            out_verb = netsh_verb.get(current["outgoing"], "allow")
+        else:
+            in_verb = netsh_verb.get(current["incoming"], "block")
+            out_verb = verb
+
+        return _run(["netsh", "advfirewall", "set", "allprofiles",
+                     "firewallpolicy", f"{in_verb}inbound,{out_verb}outbound"])
+
+    def set_enabled(self, enabled):
+        return _run(["netsh", "advfirewall", "set", "allprofiles", "state",
+                     "on" if enabled else "off"])
 
 
 def detect() -> FirewallBackend | None:

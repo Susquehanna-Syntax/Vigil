@@ -270,6 +270,24 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": [],
         "optional": [],
     },
+    "set_firewall_policy": {
+        "label": "Set firewall default policy",
+        "risk": "high",
+        "required": ["direction", "policy"],
+        "optional": [],
+    },
+    "enable_firewall": {
+        "label": "Enable the firewall",
+        "risk": "high",
+        "required": [],
+        "optional": [],
+    },
+    "disable_firewall": {
+        "label": "Disable the firewall",
+        "risk": "high",
+        "required": [],
+        "optional": [],
+    },
     # ── User management ────────────────────────────────────────────────────
     "create_user": {
         "label": "Create user",
