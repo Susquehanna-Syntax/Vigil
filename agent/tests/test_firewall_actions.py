@@ -417,6 +417,93 @@ class WindowsPolicyPreservesOtherDirectionTests(unittest.TestCase):
         self.assertIn("blockoutbound", joined)
 
 
+class WindowsPolicyRefusesOnUnknownOtherDirectionTests(unittest.TestCase):
+    """Finding 1 (critical, task-6 review): falling back to Windows' own
+    out-of-box default when the untouched direction can't be read is itself
+    a security-loosening guess -- a host whose real outbound policy is a
+    deliberate `deny`, hit by a transient read failure, would have it
+    silently reset to `allow` by a call that only asked to change inbound.
+    set_policy must refuse rather than guess when the direction it was NOT
+    asked to change reads "unknown"."""
+
+    def _refuses(self, run_fn, direction, policy):
+        backend = firewall.WindowsBackend()
+        with patch.object(firewall, "_run", run_fn):
+            with self.assertRaises(RuntimeError) as ctx:
+                backend.set_policy(direction, policy)
+        return str(ctx.exception)
+
+    def test_setting_inbound_refuses_when_profiles_disagree_on_outbound(self):
+        # Profiles disagree on DefaultOutboundAction -- _read_defaults
+        # reports "unknown" for outgoing.
+        profiles = json.dumps([
+            {"Name": "Domain", "Enabled": True,
+             "DefaultInboundAction": "Allow", "DefaultOutboundAction": "Block"},
+            {"Name": "Public", "Enabled": True,
+             "DefaultInboundAction": "Allow", "DefaultOutboundAction": "Allow"},
+        ])
+
+        def fake_run(cmd, timeout=None):
+            if "Get-NetFirewallProfile" in cmd[-1]:
+                return profiles
+            self.fail("netsh must not be invoked when the other direction "
+                      "is unknown")
+
+        message = self._refuses(fake_run, "incoming", "deny")
+        self.assertIn("outgoing", message)
+
+    def test_setting_inbound_refuses_when_the_profile_read_fails_outright(self):
+        def fake_run(cmd, timeout=None):
+            if "Get-NetFirewallProfile" in cmd[-1]:
+                return "not valid json"
+            self.fail("netsh must not be invoked when the profile read failed")
+
+        message = self._refuses(fake_run, "incoming", "deny")
+        self.assertIn("outgoing", message)
+
+    def test_setting_outbound_refuses_when_profiles_disagree_on_inbound(self):
+        profiles = json.dumps([
+            {"Name": "Domain", "Enabled": True,
+             "DefaultInboundAction": "Block", "DefaultOutboundAction": "Allow"},
+            {"Name": "Public", "Enabled": True,
+             "DefaultInboundAction": "Allow", "DefaultOutboundAction": "Allow"},
+        ])
+
+        def fake_run(cmd, timeout=None):
+            if "Get-NetFirewallProfile" in cmd[-1]:
+                return profiles
+            self.fail("netsh must not be invoked when the other direction "
+                      "is unknown")
+
+        message = self._refuses(fake_run, "outgoing", "allow")
+        self.assertIn("incoming", message)
+
+    def test_the_known_good_preservation_paths_still_work(self):
+        # No-regression check alongside the refusal tests above: a clean,
+        # agreeing profile read must still succeed and preserve the other
+        # direction, exactly as WindowsPolicyPreservesOtherDirectionTests
+        # already covers.
+        profiles = json.dumps([
+            {"Name": "Domain", "Enabled": True,
+             "DefaultInboundAction": "Allow", "DefaultOutboundAction": "Block"},
+        ])
+        calls = []
+
+        def fake_run(cmd, timeout=None):
+            calls.append(cmd)
+            if "Get-NetFirewallProfile" in cmd[-1]:
+                return profiles
+            return "ok"
+
+        backend = firewall.WindowsBackend()
+        with patch.object(firewall, "_run", fake_run):
+            backend.set_policy("incoming", "allow")
+
+        joined = " ".join(calls[-1])
+        self.assertIn("allowinbound", joined)
+        self.assertIn("blockoutbound", joined)
+
+
 class WindowsRealDefaultsSnapshotTests(unittest.TestCase):
     """Task 3 shipped WindowsBackend.snapshot() returning a literal
     {"incoming": "deny", "outgoing": "allow"} regardless of the host's real
