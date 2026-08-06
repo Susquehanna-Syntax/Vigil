@@ -24,6 +24,20 @@ this guard cannot interpret -- so `default deny incoming` against such a
 snapshot is refused. That is the correct, safe direction, even though it
 produces a false refusal for a host that is really fine; do not "fix" it
 into permissiveness.
+
+This fail-safe-when-uncertain rule also governs dispatch itself, not just
+snapshot interpretation. The top-level `action` name is normalised
+(stripped and lowercased) before comparison, the same as every other
+string field read out of `change`/`params` -- an uppercase or padded
+variant of a lockout-shaped action must refuse exactly like the canonical
+form, never slip past a bare `==` into the permissive fall-through. The
+five recognised actions are the only ones explicitly allowed
+(`enable_firewall`/`disable_firewall` outright; the other three per their
+own rules below); anything else -- a typo, a future action this guard has
+not been taught about yet -- is refused with a message saying so. An
+unrecognised action is closer to "unknown" than to "known safe," and this
+guard would rather be asked to update its allowlist than silently wave
+through something it has never been told the shape of.
 """
 from __future__ import annotations
 
@@ -57,14 +71,14 @@ def _params(change: dict) -> dict:
 def check_change(host, snapshot, change) -> str:
     """Return "" if the change is allowed, else a sentence saying why not."""
     change = change if isinstance(change, dict) else {}
-    action = change.get("action", "")
+    action = str(change.get("action", "")).strip().lower()
     params = _params(change)
     snapshot = snapshot if isinstance(snapshot, dict) else {}
     protected = _protected_ports(host, snapshot)
 
     if action == "set_firewall_policy":
-        direction = str(params.get("direction", "")).lower()
-        pol = str(params.get("policy", "")).lower()
+        direction = str(params.get("direction", "")).strip().lower()
+        pol = str(params.get("policy", "")).strip().lower()
 
         if direction == "outgoing" and pol in _LOCKOUT_POLICIES:
             return (
@@ -79,7 +93,8 @@ def check_change(host, snapshot, change) -> str:
             rules = raw_rules if isinstance(raw_rules, list) else []
             allowed = {
                 r.get("port") for r in rules
-                if isinstance(r, dict) and r.get("action") == "allow"
+                if isinstance(r, dict)
+                and str(r.get("action", "")).strip().lower() == "allow"
             }
             missing = sorted(p for p in protected if p not in allowed)
             if missing:
@@ -92,16 +107,30 @@ def check_change(host, snapshot, change) -> str:
 
     if action == "add_firewall_rule":
         port = _as_int(params.get("port"))
-        if str(params.get("action", "allow")).lower() == "deny" \
-                and port in protected:
-            return (
-                f"Refusing to deny port {port} -- that is how this host is "
-                f"reached, and Vigil could not undo it remotely. Write it "
-                f"as a task by hand if you really mean it.")
+        disposition = str(params.get("action", "allow")).strip().lower()
+        if disposition == "deny":
+            if port is None:
+                return (
+                    "Refusing to deny an unparseable port -- the guard "
+                    "cannot confirm this is not one of the ports that "
+                    "reach this host (22, or 3389 on Windows). Write it as "
+                    "a task by hand if you really mean it.")
+            if port in protected:
+                return (
+                    f"Refusing to deny port {port} -- that is how this "
+                    f"host is reached, and Vigil could not undo it "
+                    f"remotely. Write it as a task by hand if you really "
+                    f"mean it.")
         return ""
 
     if action == "remove_firewall_rule":
         port = _as_int(params.get("port"))
+        if port is None:
+            return (
+                "Refusing to remove a rule for an unparseable port -- the "
+                "guard cannot confirm this is not one of the ports that "
+                "reach this host (22, or 3389 on Windows). Write it as a "
+                "task by hand if you really mean it.")
         if port in protected:
             return (
                 f"Refusing to remove the rule permitting port {port} -- "
@@ -109,7 +138,16 @@ def check_change(host, snapshot, change) -> str:
                 f"hand if you really mean it.")
         return ""
 
-    # enable_firewall / disable_firewall are not lockouts. Disabling opens
-    # the host rather than closing it: high risk, and audited, but not
-    # refused here.
-    return ""
+    if action in ("enable_firewall", "disable_firewall"):
+        # Not lockouts. Disabling opens the host rather than closing it:
+        # high risk, and audited, but not refused here.
+        return ""
+
+    # Fail-safe default: an action this guard does not recognise is closer
+    # to "unknown" than to "known safe," and this endpoint only ever
+    # legitimately carries the five action names handled above. Refuse
+    # rather than silently falling through to an allow.
+    return (
+        f"Refusing an unrecognised firewall action ({action or '<empty>'!r})"
+        f" -- this guard does not know what it does and will not vouch for "
+        f"it. Write it as a task by hand if you really mean it.")
