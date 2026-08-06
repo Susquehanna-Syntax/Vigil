@@ -90,6 +90,7 @@ def task_result(request):
             _maybe_capture_inventory_column(task, output)
             _maybe_request_nessus_scan(task)
             _maybe_ingest_trivy_report(task, output)
+            _maybe_ingest_firewall_rules(task, output)
 
     return Response(TaskSerializer(task).data)
 
@@ -224,6 +225,91 @@ def _maybe_ingest_trivy_report(task: Task, output: str) -> None:
         task.save(update_fields=["result_output"])
     except Exception:  # noqa: BLE001
         logger.exception("Could not attach ingest status to task %s", task.id)
+
+
+def _maybe_ingest_firewall_rules(task: Task, output: str) -> None:
+    """Store a firewall snapshot if this task read one.
+
+    Detected the same way as the Trivy step: via ``task.action`` for a
+    single-step task, or ``task.params.steps`` for a multi-step task run
+    through the ``_script`` wrapper. A multi-step task's output is the
+    runtime's transcript (``[OK] step: <output>``), not bare JSON, so the
+    snapshot object is located within the output rather than assumed to be
+    the whole thing.
+
+    Failures never propagate — a bad payload must not poison the task-result
+    endpoint, which is how every agent task gets reported — but they are
+    attached to the task's own output so a read that stored nothing does not
+    look like a host with no rules.
+
+    ``enabled`` and the values inside ``defaults`` can be tri-state /
+    ``"unknown"`` (Windows reports ``enabled: null`` when a profile read
+    fails) and are stored exactly as sent, never coerced to a bool or
+    guessed at — an unknown firewall state must never render as a known one.
+    """
+    import json as _json
+    import logging
+
+    from apps.hosts.models import HostFirewall
+
+    logger = logging.getLogger(__name__)
+
+    steps = (task.params or {}).get("steps") or []
+    is_read = (
+        task.action == "list_firewall_rules"
+        or any(isinstance(s, dict) and s.get("action") == "list_firewall_rules"
+               for s in steps)
+    )
+    if not is_read or not output:
+        return
+
+    # A multi-step task returns the runtime's transcript, so find the JSON
+    # object rather than assuming the whole output is one.
+    decoder = _json.JSONDecoder()
+    start = output.find("{")
+    data = None
+    while start != -1:
+        try:
+            candidate, _end = decoder.raw_decode(output, start)
+        except ValueError:
+            start = output.find("{", start + 1)
+            continue
+        if isinstance(candidate, dict) and "rules" in candidate:
+            data = candidate
+            break
+        start = output.find("{", start + 1)
+
+    if data is None:
+        logger.warning("Firewall ingest found no snapshot for task %s", task.id)
+        note = ("[FIREWALL INGEST FAILED] No firewall snapshot found in the "
+                f"step output. First 200 characters were: "
+                f"{output[:200].replace(chr(10), ' ')!r}")
+    else:
+        HostFirewall.objects.update_or_create(
+            host=task.host,
+            defaults={
+                "tool": data.get("tool") or "",
+                "supported": bool(data.get("supported", True)),
+                # Tri-state: True / False / None (unknown). Passed through
+                # as-is -- coercing None to False would render an unread
+                # host as "disabled", which is the exact failure this
+                # tri-state exists to prevent.
+                "enabled": data.get("enabled"),
+                # Values can be "allow" / "deny" / "unknown"; stored as sent.
+                "defaults": data.get("defaults") or {},
+                "profiles": data.get("profiles") or [],
+                "rules": data.get("rules") or [],
+                "unparsed": data.get("unparsed") or [],
+            },
+        )
+        note = f"[FIREWALL] {len(data.get('rules') or [])} rule(s) recorded"
+
+    try:
+        task.result_output = f"{task.result_output or ''}\n{note}".strip()
+        task.save(update_fields=["result_output"])
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Could not attach firewall ingest status to task %s", task.id)
 
 
 def _maybe_capture_inventory_column(task: Task, output: str) -> None:

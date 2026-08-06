@@ -172,3 +172,35 @@ class UnmanagedDevice(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.device_type})"
+
+
+class HostFirewall(models.Model):
+    """The last firewall snapshot read from a host.
+
+    One row per host, overwritten on each read: current state is the point,
+    not history. Changes are already recorded as tasks in the audit trail.
+
+    ``enabled`` is tri-state: on Windows a failed profile read reports
+    ``None`` (unknown) rather than ``False`` (disabled) -- collapsing an
+    unread state to "disabled" would be a confident wrong answer, which is
+    worse than admitting the read failed. ``defaults`` values can likewise be
+    the string ``"unknown"`` for the same reason, not just "allow"/"deny".
+    ``unparsed`` holds anything a backend could not parse (ufw app-profile
+    rules, firewalld port ranges, Windows rules with non-integer ports, or a
+    whole-payload read failure) so a firewall view can admit what it did not
+    understand rather than silently showing fewer rules than the host has.
+    """
+
+    host = models.OneToOneField(Host, on_delete=models.CASCADE,
+                                related_name="firewall")
+    tool = models.CharField(max_length=32, blank=True, default="")
+    supported = models.BooleanField(default=True)
+    enabled = models.BooleanField(null=True, default=None)
+    defaults = models.JSONField(default=dict, blank=True)
+    profiles = models.JSONField(default=list, blank=True)
+    rules = models.JSONField(default=list, blank=True)
+    unparsed = models.JSONField(default=list, blank=True)
+    fetched_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"{self.host.hostname} firewall ({self.tool or 'none'})"
