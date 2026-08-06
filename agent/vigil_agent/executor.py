@@ -1043,6 +1043,35 @@ def _remove_firewall_rule(params: dict, _config: AgentConfig) -> str:
     return backend.remove_rule(port, protocol, action, source)
 
 
+def _set_firewall_policy(params: dict, _config: AgentConfig) -> str:
+    direction = str(params.get("direction", "")).lower()
+    if direction not in ("incoming", "outgoing"):
+        raise ValueError(
+            f"Direction must be incoming or outgoing, got {direction!r}")
+    policy = str(params.get("policy", "")).lower()
+    if policy not in ("allow", "deny", "reject"):
+        raise ValueError(
+            f"Policy must be allow, deny or reject, got {policy!r}")
+    backend = firewall.detect()
+    if backend is None:
+        raise RuntimeError("No supported firewall tool found")
+    return backend.set_policy(direction, policy)
+
+
+def _enable_firewall(_params: dict, _config: AgentConfig) -> str:
+    backend = firewall.detect()
+    if backend is None:
+        raise RuntimeError("No supported firewall tool found")
+    return backend.set_enabled(True)
+
+
+def _disable_firewall(_params: dict, _config: AgentConfig) -> str:
+    backend = firewall.detect()
+    if backend is None:
+        raise RuntimeError("No supported firewall tool found")
+    return backend.set_enabled(False)
+
+
 def _list_firewall_rules(_params: dict, _config: AgentConfig) -> str:
     """Return this host's firewall state as JSON.
 
@@ -1452,6 +1481,9 @@ _HANDLERS: dict[str, callable] = {
     "add_firewall_rule": _add_firewall_rule,
     "remove_firewall_rule": _remove_firewall_rule,
     "list_firewall_rules": _list_firewall_rules,
+    "set_firewall_policy": _set_firewall_policy,
+    "enable_firewall": _enable_firewall,
+    "disable_firewall": _disable_firewall,
     # User management
     "create_user": _create_user,
     "delete_user": _delete_user,
