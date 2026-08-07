@@ -26,6 +26,7 @@ class OSImage(models.Model):
         RHEL = "rhel", "RHEL family"
 
     class Status(models.TextChoices):
+        DOWNLOADING = "downloading", "Downloading"
         IMPORTING = "importing", "Importing"
         READY = "ready", "Ready"
         FAILED = "failed", "Failed"
@@ -43,6 +44,11 @@ class OSImage(models.Model):
     kernel_path = models.CharField(max_length=512, blank=True)
     initrd_path = models.CharField(max_length=512, blank=True)
     tree_path = models.CharField(max_length=512, blank=True)
+    # Set when the image was pulled rather than uploaded. Kept so the library
+    # can show where an image came from, and so a failed pull can be retried
+    # without the operator re-finding the URL.
+    source_url = models.URLField(blank=True, default="", max_length=1000)
+    bytes_downloaded = models.BigIntegerField(default=0)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True,
                                    on_delete=models.SET_NULL,
                                    related_name="os_images")
