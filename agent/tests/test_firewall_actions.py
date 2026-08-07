@@ -106,36 +106,43 @@ class RemoveDenyRuleTests(unittest.TestCase):
 
 
 class RemoveRuleNameThreadingTests(unittest.TestCase):
-    """executor._remove_firewall_rule must pass the caller's `name` param
-    through to backend.remove_rule -- WindowsBackend needs it to remove a
-    rule by identity instead of over-matching on port/protocol."""
+    """executor._remove_firewall_rule must pass the caller's `name` AND
+    `rule_id` params through to backend.remove_rule -- WindowsBackend
+    removes by `rule_id` (the unique identifier), not `name` (DisplayName,
+    not guaranteed unique)."""
 
-    def test_name_reaches_the_backend(self):
+    def test_name_and_rule_id_reach_the_backend(self):
         seen = {}
 
         class RecordingBackend:
             name = "windows"
 
             def remove_rule(self, port, protocol, action="allow",
-                            source="any", name=""):
-                seen["args"] = (port, protocol, action, source, name)
+                            source="any", name="", rule_id=""):
+                seen["args"] = (port, protocol, action, source, name, rule_id)
                 return "ok"
 
         with patch.object(firewall, "detect", lambda: RecordingBackend()):
             executor._remove_firewall_rule(
-                {"port": 3389, "protocol": "tcp", "name": "RDP"}, _config())
+                {"port": 3389, "protocol": "tcp", "name": "RDP",
+                 "rule_id": "{22222222-2222-2222-2222-222222222222}"},
+                _config())
 
-        self.assertEqual(seen["args"], (3389, "tcp", "allow", "any", "RDP"))
+        self.assertEqual(
+            seen["args"],
+            (3389, "tcp", "allow", "any", "RDP",
+             "{22222222-2222-2222-2222-222222222222}"))
 
-    def test_missing_name_reaches_the_backend_as_empty_string(self):
+    def test_missing_name_and_rule_id_reach_the_backend_as_empty_strings(self):
         seen = {}
 
         class RecordingBackend:
             name = "windows"
 
             def remove_rule(self, port, protocol, action="allow",
-                            source="any", name=""):
+                            source="any", name="", rule_id=""):
                 seen["name"] = name
+                seen["rule_id"] = rule_id
                 return "ok"
 
         with patch.object(firewall, "detect", lambda: RecordingBackend()):
@@ -143,6 +150,7 @@ class RemoveRuleNameThreadingTests(unittest.TestCase):
                 {"port": 3389, "protocol": "tcp"}, _config())
 
         self.assertEqual(seen["name"], "")
+        self.assertEqual(seen["rule_id"], "")
 
 
 class FirewallCmdReloadTests(unittest.TestCase):
@@ -325,18 +333,16 @@ class WindowsWriteTests(unittest.TestCase):
         self.assertIn("action=block", calls[0])
         self.assertNotIn("action=allow", calls[0])
 
-
-class WindowsRemoveByNameTests(unittest.TestCase):
-    """Task 12 (High, follow-up): netsh has no action filter, so
-    `delete rule name=all dir=in protocol=X localport=Y` deletes EVERY
-    inbound rule on that port -- allows and denies alike. A port carrying a
-    general allow plus a scoped deny loses both on one Remove, and under a
-    default-allow inbound policy that re-permits the previously-blocked
-    source. remove_rule must therefore remove by the rule's own identity
-    (DisplayName) via PowerShell, and must refuse outright -- never fall
-    back to the old netsh command -- when no name is given."""
-
-    def test_a_name_issues_remove_netfirewallrule_by_displayname(self):
+    def test_add_rule_gives_an_allow_and_a_deny_different_displaynames(self):
+        # CRITICAL (review, task-12 follow-up): the old naming scheme
+        # (`f"Vigil {protocol}/{port}"`) named every rule on a port
+        # identically regardless of action or source, so an allow and a
+        # later scoped deny on the same port collided on DisplayName --
+        # exactly the allow+scoped-deny pattern the removal fix's hand-trace
+        # used as its motivating example. Defense in depth only: removal
+        # itself must still key on rule_id, never on this name, but a
+        # naming scheme that *guarantees* a collision is its own latent
+        # trap.
         calls = []
 
         def fake_run(cmd, timeout=None):
@@ -345,7 +351,44 @@ class WindowsRemoveByNameTests(unittest.TestCase):
 
         backend = firewall.WindowsBackend()
         with patch.object(firewall, "_run", fake_run):
-            backend.remove_rule(3389, "tcp", name="Vigil tcp/3389")
+            backend.add_rule(8443, "tcp", "allow")
+            backend.add_rule(8443, "tcp", "deny", source="203.0.113.9")
+
+        allow_name = next(tok for tok in calls[0] if tok.startswith("name="))
+        deny_name = next(tok for tok in calls[1] if tok.startswith("name="))
+        self.assertNotEqual(allow_name, deny_name)
+        self.assertIn("allow", allow_name)
+        self.assertIn("deny", deny_name)
+
+
+class WindowsRemoveByRuleIdTests(unittest.TestCase):
+    """Task 12 (High) + CRITICAL follow-up: netsh has no action filter, so
+    `delete rule name=all dir=in protocol=X localport=Y` deletes EVERY
+    inbound rule on that port -- allows and denies alike. A port carrying a
+    general allow plus a scoped deny loses both on one Remove, and under a
+    default-allow inbound policy that re-permits the previously-blocked
+    source.
+
+    The first fix removed by DisplayName -- but DisplayName is NOT
+    guaranteed unique, and WindowsBackend.add_rule's own (then-)naming
+    scheme guaranteed a collision for exactly the allow+scoped-deny pattern
+    above (both named "Vigil tcp/<port>"). remove_rule must therefore
+    remove by the rule's unique Name (InstanceID, `rule_id`) via
+    PowerShell, and must refuse outright -- never fall back to the old
+    netsh command, and never fall back to DisplayName -- when no rule_id is
+    given."""
+
+    def test_a_rule_id_issues_remove_netfirewallrule_by_name(self):
+        calls = []
+
+        def fake_run(cmd, timeout=None):
+            calls.append(cmd)
+            return "ok"
+
+        backend = firewall.WindowsBackend()
+        with patch.object(firewall, "_run", fake_run):
+            backend.remove_rule(
+                3389, "tcp", rule_id="{22222222-2222-2222-2222-222222222222}")
 
         self.assertEqual(len(calls), 1)
         cmd = calls[0]
@@ -353,14 +396,15 @@ class WindowsRemoveByNameTests(unittest.TestCase):
         # existing _PS list-argv convention in firewall.py.
         joined = " ".join(cmd)
         self.assertIn("Remove-NetFirewallRule", joined)
-        self.assertIn("-DisplayName", joined)
-        self.assertIn("Vigil tcp/3389", joined)
+        self.assertIn("-Name", joined)
+        self.assertNotIn("-DisplayName", joined)
+        self.assertIn("{22222222-2222-2222-2222-222222222222}", joined)
 
-    def test_removing_by_name_never_issues_a_netsh_port_match(self):
-        # This is the over-match this task exists to close: the old
-        # command was `netsh advfirewall firewall delete rule name=all
-        # dir=in protocol=<P> localport=<N>`, which cannot distinguish an
-        # allow rule on a port from a deny rule on the same port.
+    def test_removing_by_rule_id_never_issues_a_netsh_port_match(self):
+        # This is the over-match the original fix closed: the old command
+        # was `netsh advfirewall firewall delete rule name=all dir=in
+        # protocol=<P> localport=<N>`, which cannot distinguish an allow
+        # rule on a port from a deny rule on the same port.
         calls = []
 
         def fake_run(cmd, timeout=None):
@@ -369,13 +413,32 @@ class WindowsRemoveByNameTests(unittest.TestCase):
 
         backend = firewall.WindowsBackend()
         with patch.object(firewall, "_run", fake_run):
-            backend.remove_rule(3389, "tcp", name="RDP")
+            backend.remove_rule(3389, "tcp", rule_id="{2222}")
 
         for cmd in calls:
             self.assertNotIn("netsh", cmd)
             self.assertNotIn("name=all", " ".join(cmd))
 
-    def test_no_name_refuses_rather_than_falling_back_to_netsh(self):
+    def test_a_name_with_no_rule_id_still_refuses(self):
+        # This is the CRITICAL the review found: the first fix accepted a
+        # `name` (DisplayName) alone as sufficient. It is not -- DisplayName
+        # collides by construction for rules add_rule itself creates. A
+        # DisplayName with no rule_id must still refuse, not silently fall
+        # back to -DisplayName.
+        calls = []
+
+        def fake_run(cmd, timeout=None):
+            calls.append(cmd)
+            return "ok"
+
+        backend = firewall.WindowsBackend()
+        with patch.object(firewall, "_run", fake_run):
+            with self.assertRaises(RuntimeError):
+                backend.remove_rule(3389, "tcp", name="Vigil tcp/3389 allow")
+
+        self.assertEqual(calls, [], "must refuse before running anything")
+
+    def test_no_rule_id_refuses_rather_than_falling_back_to_netsh(self):
         calls = []
 
         def fake_run(cmd, timeout=None):
@@ -389,55 +452,52 @@ class WindowsRemoveByNameTests(unittest.TestCase):
 
         self.assertEqual(calls, [], "must refuse before running anything")
         message = str(ctx.exception)
-        self.assertIn("name", message.lower())
+        self.assertIn("identifier", message.lower())
         self.assertIn("netsh", message.lower())
 
-    def test_a_blank_name_also_refuses(self):
+    def test_a_blank_rule_id_also_refuses(self):
         backend = firewall.WindowsBackend()
         with patch.object(firewall, "_run", lambda cmd, timeout=None: "ok"):
             with self.assertRaises(RuntimeError):
-                backend.remove_rule(3389, "tcp", name="   ")
+                backend.remove_rule(3389, "tcp", rule_id="   ")
 
-    def test_a_name_with_a_backtick_is_refused(self):
+    def test_a_rule_id_with_a_backtick_is_refused(self):
         backend = firewall.WindowsBackend()
         with patch.object(firewall, "_run", lambda cmd, timeout=None: "ok"):
             with self.assertRaises(ValueError):
-                backend.remove_rule(3389, "tcp", name="Bad`Name")
+                backend.remove_rule(3389, "tcp", rule_id="Bad`Id")
 
-    def test_a_name_with_a_semicolon_is_refused(self):
+    def test_a_rule_id_with_a_semicolon_is_refused(self):
         backend = firewall.WindowsBackend()
         with patch.object(firewall, "_run", lambda cmd, timeout=None: "ok"):
             with self.assertRaises(ValueError):
-                backend.remove_rule(3389, "tcp", name="Bad;Name")
+                backend.remove_rule(3389, "tcp", rule_id="Bad;Id")
 
-    def test_a_name_with_a_double_quote_is_refused(self):
+    def test_a_rule_id_with_a_double_quote_is_refused(self):
         backend = firewall.WindowsBackend()
         with patch.object(firewall, "_run", lambda cmd, timeout=None: "ok"):
             with self.assertRaises(ValueError):
-                backend.remove_rule(3389, "tcp", name='Bad"Name')
+                backend.remove_rule(3389, "tcp", rule_id='Bad"Id')
 
-    def test_a_name_with_a_single_quote_is_refused(self):
+    def test_a_rule_id_with_a_single_quote_is_refused(self):
         backend = firewall.WindowsBackend()
         with patch.object(firewall, "_run", lambda cmd, timeout=None: "ok"):
             with self.assertRaises(ValueError):
-                backend.remove_rule(3389, "tcp", name="Bad'Name")
+                backend.remove_rule(3389, "tcp", rule_id="Bad'Id")
 
-    def test_a_name_with_a_dollar_sign_is_refused(self):
+    def test_a_rule_id_with_a_dollar_sign_is_refused(self):
         backend = firewall.WindowsBackend()
         with patch.object(firewall, "_run", lambda cmd, timeout=None: "ok"):
             with self.assertRaises(ValueError):
-                backend.remove_rule(3389, "tcp", name="Bad$Name")
+                backend.remove_rule(3389, "tcp", rule_id="Bad$Id")
 
-    def test_an_overlong_name_is_refused(self):
+    def test_an_overlong_rule_id_is_refused(self):
         backend = firewall.WindowsBackend()
         with patch.object(firewall, "_run", lambda cmd, timeout=None: "ok"):
             with self.assertRaises(ValueError):
-                backend.remove_rule(3389, "tcp", name="x" * 256)
+                backend.remove_rule(3389, "tcp", rule_id="x" * 256)
 
-    def test_a_realistic_windows_display_name_with_spaces_and_parens_is_accepted(self):
-        # DisplayNames are free text and legitimately contain spaces,
-        # hyphens, and parentheses -- validate_rule_name must not reject
-        # ordinary Windows Firewall rule names.
+    def test_a_realistic_guid_rule_id_is_accepted(self):
         calls = []
 
         def fake_run(cmd, timeout=None):
@@ -448,12 +508,50 @@ class WindowsRemoveByNameTests(unittest.TestCase):
         with patch.object(firewall, "_run", fake_run):
             backend.remove_rule(
                 5355, "udp",
-                name="Core Networking - Multicast Listener Query (ICMPv6-In)")
+                rule_id="{6D5F1E2A-9C3B-4E7A-BF2D-1A2B3C4D5E6F}")
 
         self.assertEqual(len(calls), 1)
         self.assertIn(
-            "Core Networking - Multicast Listener Query (ICMPv6-In)",
+            "{6D5F1E2A-9C3B-4E7A-BF2D-1A2B3C4D5E6F}",
             " ".join(calls[0]))
+
+    def test_two_same_port_rules_sharing_a_displayname_remove_independently(self):
+        # The regression test for the Critical itself: an allow and a
+        # scoped deny on the same port, sharing the identical DisplayName
+        # "Vigil tcp/8443" (exactly what the pre-fix add_rule naming scheme
+        # produced), must still be removable independently by rule_id --
+        # and the argv for each must target only the one selected, never
+        # both, never the other rule's identifier.
+        allow_id = "{aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}"
+        deny_id = "{bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb}"
+        shared_display_name = "Vigil tcp/8443"
+
+        calls = []
+
+        def fake_run(cmd, timeout=None):
+            calls.append(cmd)
+            return "ok"
+
+        backend = firewall.WindowsBackend()
+        with patch.object(firewall, "_run", fake_run):
+            backend.remove_rule(8443, "tcp", action="allow",
+                                name=shared_display_name, rule_id=allow_id)
+            backend.remove_rule(8443, "tcp", action="deny",
+                                name=shared_display_name, rule_id=deny_id)
+
+        self.assertEqual(len(calls), 2)
+        allow_call, deny_call = " ".join(calls[0]), " ".join(calls[1])
+
+        self.assertIn(allow_id, allow_call)
+        self.assertNotIn(deny_id, allow_call)
+
+        self.assertIn(deny_id, deny_call)
+        self.assertNotIn(allow_id, deny_call)
+
+        # Neither call names the (shared, ambiguous) DisplayName as the
+        # match target -- both key exclusively on -Name.
+        self.assertNotIn("-DisplayName", allow_call)
+        self.assertNotIn("-DisplayName", deny_call)
 
 
 class RuleNameValidationTests(unittest.TestCase):

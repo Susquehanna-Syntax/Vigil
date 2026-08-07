@@ -260,11 +260,15 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "label": "Remove firewall rule",
         "risk": "high",
         "required": ["port", "protocol"],
-        # `name`: the rule's DisplayName, required in practice on Windows --
-        # netsh has no action filter, so WindowsBackend.remove_rule refuses
-        # to remove by port/protocol alone (it would delete every inbound
-        # rule sharing that port). ufw and firewall-cmd ignore it.
-        "optional": ["action", "source", "name"],
+        # `rule_id`: the rule's unique identifier (Windows Name/InstanceID),
+        # required in practice on Windows -- netsh has no action filter, so
+        # WindowsBackend.remove_rule refuses to remove by port/protocol
+        # alone (it would delete every inbound rule sharing that port), and
+        # deliberately does not accept `name` (DisplayName) as a substitute
+        # identifier either, since DisplayName is not guaranteed unique.
+        # `name` is carried for display/back-compat only. ufw and
+        # firewall-cmd ignore both.
+        "optional": ["action", "source", "name", "rule_id"],
     },
     # Read-only, so low risk: it changes nothing and the Firewall tab needs it
     # on every view. The write actions above stay high.

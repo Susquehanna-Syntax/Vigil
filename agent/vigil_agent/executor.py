@@ -1035,16 +1035,21 @@ def _remove_firewall_rule(params: dict, _config: AgentConfig) -> str:
     if action not in ("allow", "deny"):
         raise ValueError(f"Action must be allow or deny, got {action!r}")
     source = firewall.validate_source(params.get("source", "any"))
-    # Optional: only WindowsBackend uses it, and it validates the value
+    # Optional: only WindowsBackend uses these, and it validates rule_id
     # itself (see firewall.validate_rule_name) before it ever reaches
-    # PowerShell -- ufw and firewall-cmd ignore it.
+    # PowerShell -- ufw and firewall-cmd ignore both. `name` (DisplayName)
+    # is carried for display/back-compat only; WindowsBackend removes by
+    # `rule_id` (the unique Name/InstanceID), never by `name` -- DisplayName
+    # is not guaranteed unique. See firewall.WindowsBackend.remove_rule.
     name = str(params.get("name", "") or "")
+    rule_id = str(params.get("rule_id", "") or "")
 
     backend = firewall.detect()
     if backend is None:
         raise RuntimeError(
             "No supported firewall tool found (ufw, firewall-cmd, or Windows)")
-    return backend.remove_rule(port, protocol, action, source, name)
+    return backend.remove_rule(port, protocol, action, source,
+                               name=name, rule_id=rule_id)
 
 
 def _set_firewall_policy(params: dict, _config: AgentConfig) -> str:
