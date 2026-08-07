@@ -370,14 +370,19 @@ function _fwRenderRules(hostId, data) {
           // agent/vigil_agent/executor.py and remove_rule in
           // agent/vigil_agent/firewall.py (all three backends).
           //
-          // name is the rule's DisplayName, required by WindowsBackend so
-          // it can remove the exact rule by identity — netsh has no action
-          // filter, so a port/protocol-only match would delete every
-          // inbound rule sharing that port, allows and denies alike. ufw
-          // and firewall-cmd ignore it.
+          // rule_id is the rule's unique identifier (Windows
+          // Name/InstanceID), required by WindowsBackend so it can remove
+          // the exact rule by identity — netsh has no action filter, so a
+          // port/protocol-only match would delete every inbound rule
+          // sharing that port, allows and denies alike. name (DisplayName)
+          // is sent too but is NOT what Windows removal keys on — it is
+          // not guaranteed unique (two rules, e.g. an allow and a scoped
+          // deny on the same port, can share one), so WindowsBackend
+          // refuses to remove by name alone. ufw and firewall-cmd ignore
+          // both.
           applyFirewallChange(hostId, 'remove_firewall_rule',
             { port: r.port, protocol: r.protocol, action: r.action,
-              source: r.source, name: r.name }, rmBtn);
+              source: r.source, name: r.name, rule_id: r.rule_id }, rmBtn);
         });
         actTd.appendChild(rmBtn);
       }

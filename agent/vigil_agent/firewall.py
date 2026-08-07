@@ -7,8 +7,16 @@ the same snapshot contract so the server has a single format to parse:
     {"tool": "ufw", "enabled": True,
      "defaults": {"incoming": "deny", "outgoing": "allow"},
      "rules": [{"port": 22, "protocol": "tcp", "action": "allow",
-                "source": "any", "interface": ""}],
+                "source": "any", "interface": "", "name": "", "rule_id": ""}],
      "unparsed": []}
+
+``name`` is a rule's human-readable label (Windows DisplayName; empty on
+ufw/firewall-cmd, which have none). ``rule_id`` is a rule's *unique*
+identifier (Windows' Name/InstanceID property; likewise empty on
+ufw/firewall-cmd). The two are never interchangeable: DisplayName is NOT
+guaranteed unique on Windows -- WindowsBackend.add_rule's own naming scheme
+can produce two rules sharing a DisplayName (e.g. an allow and a scoped deny
+on the same port) -- so removal must key on ``rule_id``, never on ``name``.
 
 ``profiles`` is added by the Windows backend only, where firewall state is
 per-profile and the profiles can disagree with each other.
@@ -58,20 +66,23 @@ def validate_interface(iface: str) -> str:
 
 
 def validate_rule_name(name: str) -> str:
-    """Validate a firewall rule DisplayName before it reaches PowerShell.
+    """Validate a firewall rule identifier string before it reaches PowerShell.
 
-    The name comes from the host (or from a caller echoing back what a
-    snapshot reported), so it is untrusted. A name that fails validation is
-    refused outright -- never sanitised and passed through -- matching the
-    discipline the rest of this module already applies to source/interface.
+    Used for both a Windows rule's DisplayName and its unique Name
+    (InstanceID) -- whichever string is about to be interpolated into a
+    PowerShell command gets the same treatment, since both come from the
+    host (or from a caller echoing back what a snapshot reported) and are
+    therefore untrusted. A string that fails validation is refused outright
+    -- never sanitised and passed through -- matching the discipline the
+    rest of this module already applies to source/interface.
     """
     name = (name or "").strip()
     if not name:
-        raise ValueError("Rule name is required")
+        raise ValueError("Rule identifier is required")
     if len(name) > _MAX_RULE_NAME_LEN:
-        raise ValueError(f"Rule name too long ({len(name)} characters)")
+        raise ValueError(f"Rule identifier too long ({len(name)} characters)")
     if _UNSAFE_RULE_NAME_CHARS.search(name):
-        raise ValueError(f"Invalid rule name: {name!r}")
+        raise ValueError(f"Invalid rule identifier: {name!r}")
     return name
 
 
@@ -99,7 +110,8 @@ class FirewallBackend:
     def add_rule(self, port, protocol, action, source="any", interface="") -> str:
         raise NotImplementedError
 
-    def remove_rule(self, port, protocol, action="allow", source="any", name="") -> str:
+    def remove_rule(self, port, protocol, action="allow", source="any",
+                    name="", rule_id="") -> str:
         raise NotImplementedError
 
     def set_policy(self, direction, policy) -> str:
@@ -168,9 +180,11 @@ class UfwBackend(FirewallBackend):
                 "source": "any" if source.lower().startswith("anywhere") else source,
                 "interface": m.group("iface") or "",
                 # ufw has no per-rule identity to read back -- ufw delete
-                # matches on the rule's fields, not a name. Carried as ""
-                # so every backend's rule dicts share the same keys.
+                # matches on the rule's fields, not a name or an id. Both
+                # carried as "" so every backend's rule dicts share the
+                # same keys.
                 "name": "",
+                "rule_id": "",
             }
             key = (rule["port"], rule["protocol"], rule["action"],
                    rule["source"], rule["interface"])
@@ -198,12 +212,13 @@ class UfwBackend(FirewallBackend):
             cmd += [f"{port}/{protocol}"]
         return _run(cmd)
 
-    def remove_rule(self, port, protocol, action="allow", source="any", name=""):
+    def remove_rule(self, port, protocol, action="allow", source="any",
+                    name="", rule_id=""):
         # `action` is threaded through because `ufw delete` matches the whole
         # rule: deleting a deny rule with "allow" in the pattern matches
-        # nothing and reports success. `name` is accepted for contract
-        # uniformity with the other backends but unused -- ufw has no rule
-        # identity to remove by, only the field-based match below.
+        # nothing and reports success. `name`/`rule_id` are accepted for
+        # contract uniformity with the other backends but unused -- ufw has
+        # no rule identity to remove by, only the field-based match below.
         cmd = ["ufw", "delete", action]
         if source and source != "any":
             cmd += ["from", source, "to", "any", "port", str(port),
@@ -257,8 +272,9 @@ class FirewallCmdBackend(FirewallBackend):
                     "protocol": pm.group("proto").lower(),
                     "action": "allow", "source": "any", "interface": "",
                     # firewalld has no per-rule identity to read back either
-                    # -- carried as "" for contract uniformity across backends.
-                    "name": "",
+                    # -- both carried as "" for contract uniformity across
+                    # backends.
+                    "name": "", "rule_id": "",
                 })
 
         # firewalld's default is to drop what is not listed; it has no
@@ -296,13 +312,15 @@ class FirewallCmdBackend(FirewallBackend):
                         f"--add-port={port}/{protocol}"])
         return f"{out}\n{self._reload()}".strip()
 
-    def remove_rule(self, port, protocol, action="allow", source="any", name=""):
+    def remove_rule(self, port, protocol, action="allow", source="any",
+                    name="", rule_id=""):
         # `action` is threaded through because a deny was added as a rich
         # rule, not a port grant: removing it with --remove-port never
         # touches the rich rule and is a silent no-op reported as success --
         # the same bug class this task exists to fix, in the sibling
-        # backend. `name` is accepted for contract uniformity but unused --
-        # firewalld rules are removed by their field-based match, same as ufw.
+        # backend. `name`/`rule_id` are accepted for contract uniformity but
+        # unused -- firewalld rules are removed by their field-based match,
+        # same as ufw.
         if action == "deny":
             rule = self._reject_rich_rule(port, protocol, source)
             out = _run(["firewall-cmd", "--permanent",
@@ -330,13 +348,20 @@ _PS = ["powershell", "-NoProfile", "-NonInteractive", "-Command"]
 # local port (LocalPort = "Any") are skipped: they are service-wide rules that
 # do not map onto Vigil's port/protocol model, and showing them as port 0 would
 # be a lie.
+#
+# `name` is DisplayName -- human-readable, NOT guaranteed unique (two rules
+# can legitimately share one; add_rule's own naming scheme used to make that
+# the common case for an allow + a scoped deny on the same port).
+# `rule_id` is Name -- the InstanceID, which IS unique. remove_rule must key
+# on `rule_id`, never on `name`.
 _PS_RULES = (
     "$o = Get-NetFirewallRule -Enabled True -Direction Inbound "
     "-ErrorAction SilentlyContinue | ForEach-Object { "
     "$f = $_ | Get-NetFirewallPortFilter; "
     "if ($f.LocalPort -and $f.LocalPort -ne 'Any') { "
     "[PSCustomObject]@{ port = $f.LocalPort; protocol = $f.Protocol; "
-    "action = $_.Action.ToString(); name = $_.DisplayName } } }; "
+    "action = $_.Action.ToString(); name = $_.DisplayName; "
+    "rule_id = $_.Name } } }; "
     "$o | ConvertTo-Json -Compress"
 )
 _PS_PROFILES = (
@@ -446,11 +471,12 @@ class WindowsBackend(FirewallBackend):
                 raw_action = str(r.get("action", "")).strip()
                 action = raw_action.lower()
                 # Kept distinct from the "<unnamed rule>" placeholder used
-                # for display below: an empty `name` here means remove_rule
-                # correctly has nothing to identify the rule by and refuses,
-                # rather than trying to remove a rule literally named
-                # "<unnamed rule>".
+                # for display below: an empty `name`/`rule_id` here means
+                # remove_rule correctly has nothing to identify the rule by
+                # and refuses, rather than trying to remove a rule literally
+                # named "<unnamed rule>".
                 name = str(r.get("name", "")).strip()
+                rule_id = str(r.get("rule_id", "")).strip()
                 display_name = name or "<unnamed rule>"
                 # Map explicitly rather than defaulting unknown actions to
                 # "allow": rounding a rule we don't understand toward
@@ -468,11 +494,15 @@ class WindowsBackend(FirewallBackend):
                     "protocol": str(r.get("protocol", "tcp")).lower(),
                     "action": mapped_action,
                     "source": "any", "interface": "",
-                    # Threaded through so remove_rule can target this exact
-                    # rule by identity -- netsh has no action filter, so
-                    # removing by port/protocol alone would delete every
-                    # inbound rule on that port (see remove_rule below).
+                    # `name` (DisplayName) is shown to the operator.
+                    # `rule_id` (the unique Name/InstanceID) is what
+                    # remove_rule actually targets -- netsh has no action
+                    # filter, so removing by port/protocol alone would
+                    # delete every inbound rule on that port, and removing
+                    # by `name` alone is not safe either: DisplayName is not
+                    # guaranteed unique (see remove_rule below).
                     "name": name,
+                    "rule_id": rule_id,
                 })
         except (ValueError, TypeError):
             logger.warning("Could not read Windows firewall rules")
@@ -494,7 +524,19 @@ class WindowsBackend(FirewallBackend):
         }
 
     def add_rule(self, port, protocol, action, source="any", interface=""):
-        name = f"Vigil {protocol}/{port}"
+        # The DisplayName includes the disposition (and the source, when
+        # scoped) so two rules Vigil creates on the same port -- e.g. a
+        # general allow and a later scoped deny -- do not collide on their
+        # display name. This is defense in depth only, not the removal
+        # safeguard itself: DisplayName is still not guaranteed unique in
+        # general (nothing stops a rule created outside Vigil, or an older
+        # Vigil rule from before this change, from sharing one), so
+        # remove_rule below keys on the rule's unique Name/InstanceID
+        # (rule_id), never on this DisplayName.
+        disposition = "deny" if action == "deny" else "allow"
+        name = f"Vigil {protocol}/{port} {disposition}"
+        if source and source != "any":
+            name += f" from {source}"
         cmd = ["netsh", "advfirewall", "firewall", "add", "rule",
                f"name={name}", "dir=in",
                f"action={'block' if action == 'deny' else 'allow'}",
@@ -503,7 +545,8 @@ class WindowsBackend(FirewallBackend):
             cmd.append(f"remoteip={source}")
         return _run(cmd)
 
-    def remove_rule(self, port, protocol, action="allow", source="any", name=""):
+    def remove_rule(self, port, protocol, action="allow", source="any",
+                    name="", rule_id=""):
         # netsh has NO action filter: "delete rule name=all dir=in
         # protocol=X localport=Y" deletes every inbound rule on that port,
         # allows and denies alike. A port carrying a general allow plus a
@@ -515,26 +558,40 @@ class WindowsBackend(FirewallBackend):
         # security-loosening, so removal by port/protocol match is no
         # longer offered here at all.
         #
-        # Instead this removes by the rule's own identity via PowerShell,
-        # matching how the read path (snapshot/_PS_RULES) already uses
-        # PowerShell for structured work. Without a name there is nothing
-        # safe to match on, and guessing (falling back to the old netsh
-        # command) is exactly the over-match this exists to stop -- so this
-        # refuses rather than guessing, the same discipline set_policy
-        # already applies when the untouched direction can't be read, and
-        # the lockout guard applies to actions it doesn't recognise.
-        name = (name or "").strip()
-        if not name:
+        # Removing by DisplayName (`name`) is NOT safe either, and is
+        # deliberately not accepted here even though it is threaded through
+        # this method's signature for contract uniformity with the other
+        # backends: DisplayName is not guaranteed unique on Windows, and
+        # add_rule's OWN naming scheme (before this fix) produced exactly
+        # the allow+scoped-deny collision described above under the
+        # identical name "Vigil tcp/<port>" -- so a name-keyed removal could
+        # delete the wrong one of two same-named rules. Only Name
+        # (InstanceID, surfaced here as `rule_id`) is guaranteed unique, so
+        # that is what this removes by, via PowerShell -- matching how the
+        # read path (snapshot/_PS_RULES) already uses PowerShell for
+        # structured work.
+        #
+        # Without a rule_id there is nothing safe to match on, and guessing
+        # (falling back to the old netsh command, or to DisplayName) is
+        # exactly the over-match this exists to stop -- so this refuses
+        # rather than guessing, the same discipline set_policy already
+        # applies when the untouched direction can't be read, and the
+        # lockout guard applies to actions it doesn't recognise.
+        rule_id = (rule_id or "").strip()
+        if not rule_id:
             raise RuntimeError(
-                "Cannot remove a Windows firewall rule without its name: "
-                "netsh has no action filter, so removing by port and "
-                "protocol alone would delete every inbound rule on that "
-                "port -- allows and denies alike, including ones unrelated "
-                "to this change. Pass the rule's name (its DisplayName, as "
-                "reported by snapshot()) to remove it precisely."
+                "Cannot remove a Windows firewall rule without its unique "
+                "identifier: netsh has no action filter, so removing by "
+                "port and protocol alone would delete every inbound rule "
+                "on that port. Its DisplayName is not a safe substitute "
+                "either -- DisplayName is not guaranteed unique, and two "
+                "rules (e.g. an allow and a scoped deny on the same port) "
+                "can legitimately share one. Pass the rule's rule_id (its "
+                "unique Name/InstanceID, as reported by snapshot()) to "
+                "remove it precisely."
             )
-        name = validate_rule_name(name)
-        return _run(_PS + [f"Remove-NetFirewallRule -DisplayName '{name}'"])
+        rule_id = validate_rule_name(rule_id)
+        return _run(_PS + [f"Remove-NetFirewallRule -Name '{rule_id}'"])
 
     def set_policy(self, direction, policy):
         # netsh's `firewallpolicy` setter changes BOTH directions in one
