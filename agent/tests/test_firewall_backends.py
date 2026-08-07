@@ -65,12 +65,20 @@ class UfwParseTests(unittest.TestCase):
     def test_rules_are_parsed(self):
         rules = self._snapshot(UFW_ACTIVE)["rules"]
         self.assertIn({"port": 22, "protocol": "tcp", "action": "allow",
-                       "source": "any", "interface": ""}, rules)
+                       "source": "any", "interface": "", "name": ""}, rules)
 
     def test_deny_and_source_are_parsed(self):
         rules = self._snapshot(UFW_ACTIVE)["rules"]
         self.assertIn({"port": 8080, "protocol": "tcp", "action": "deny",
-                       "source": "10.0.0.0/8", "interface": ""}, rules)
+                       "source": "10.0.0.0/8", "interface": "", "name": ""}, rules)
+
+    def test_rules_carry_an_empty_name_for_contract_uniformity(self):
+        # ufw has no per-rule identity to read back, but every backend must
+        # emit the same keys so the server has a single format to parse.
+        rules = self._snapshot(UFW_ACTIVE)["rules"]
+        self.assertTrue(rules)
+        for r in rules:
+            self.assertEqual(r["name"], "")
 
     def test_v6_duplicates_are_collapsed(self):
         """ufw lists each rule twice on dual-stack hosts. Showing 22/tcp
@@ -95,12 +103,12 @@ class UfwUnparsedRuleTests(unittest.TestCase):
     def test_interface_bound_rule_is_parsed(self):
         rules = self._snapshot(UFW_MIXED)["rules"]
         self.assertIn({"port": 22, "protocol": "tcp", "action": "allow",
-                       "source": "any", "interface": "eth0"}, rules)
+                       "source": "any", "interface": "eth0", "name": ""}, rules)
 
     def test_bare_port_has_protocol_any(self):
         rules = self._snapshot(UFW_MIXED)["rules"]
         self.assertIn({"port": 25, "protocol": "any", "action": "allow",
-                       "source": "any", "interface": ""}, rules)
+                       "source": "any", "interface": "", "name": ""}, rules)
 
     def test_app_profile_rule_lands_in_unparsed_not_dropped(self):
         unparsed = self._snapshot(UFW_MIXED)["unparsed"]
@@ -149,12 +157,21 @@ class FirewallCmdParseTests(unittest.TestCase):
     def test_ports_are_parsed(self):
         rules = self._snapshot()["rules"]
         self.assertIn({"port": 443, "protocol": "tcp", "action": "allow",
-                       "source": "any", "interface": ""}, rules)
+                       "source": "any", "interface": "", "name": ""}, rules)
 
     def test_udp_ports_are_parsed(self):
         rules = self._snapshot()["rules"]
         self.assertIn({"port": 5353, "protocol": "udp", "action": "allow",
-                       "source": "any", "interface": ""}, rules)
+                       "source": "any", "interface": "", "name": ""}, rules)
+
+    def test_rules_carry_an_empty_name_for_contract_uniformity(self):
+        # firewalld has no per-rule identity to read back either, but every
+        # backend must emit the same keys so the server has a single format
+        # to parse.
+        rules = self._snapshot()["rules"]
+        self.assertTrue(rules)
+        for r in rules:
+            self.assertEqual(r["name"], "")
 
     def test_an_open_port_is_always_an_allow(self):
         """firewalld lists what is permitted; there is no deny list to read."""
@@ -185,7 +202,7 @@ class FirewallCmdUnparsedRuleTests(unittest.TestCase):
         snap = self._snapshot(listing)
         self.assertIn("8000-8100/tcp", snap["unparsed"])
         self.assertIn({"port": 80, "protocol": "tcp", "action": "allow",
-                       "source": "any", "interface": ""}, snap["rules"])
+                       "source": "any", "interface": "", "name": ""}, snap["rules"])
 
     def test_known_good_fixture_has_no_unparsed_lines(self):
         self.assertEqual(self._snapshot(FIREWALLD_ALL)["unparsed"], [])
@@ -234,13 +251,22 @@ class WindowsParseTests(unittest.TestCase):
     def test_rules_are_normalised(self):
         rules = self._snapshot()["rules"]
         self.assertIn({"port": 22, "protocol": "tcp", "action": "allow",
-                       "source": "any", "interface": ""}, rules)
+                       "source": "any", "interface": "", "name": "OpenSSH"}, rules)
 
     def test_block_becomes_deny(self):
         """PowerShell says Block; the rest of Vigil says deny."""
         rules = self._snapshot()["rules"]
         self.assertIn({"port": 445, "protocol": "tcp", "action": "deny",
-                       "source": "any", "interface": ""}, rules)
+                       "source": "any", "interface": "",
+                       "name": "Vigil tcp/445"}, rules)
+
+    def test_rules_carry_the_displayname(self):
+        # The DisplayName is read but previously discarded; it must be
+        # threaded through so remove_rule can target a rule by identity
+        # instead of over-matching on port/protocol alone.
+        rules = self._snapshot()["rules"]
+        names = {r["name"] for r in rules}
+        self.assertEqual(names, {"OpenSSH", "RDP", "Vigil tcp/445"})
 
     def test_a_single_object_is_handled(self):
         """ConvertTo-Json emits a bare object, not a list, for one result."""
@@ -351,4 +377,5 @@ class WindowsUnknownStateTests(unittest.TestCase):
         ])
         snap = self._snapshot(rules=rules)
         self.assertIn({"port": 8443, "protocol": "tcp", "action": "allow",
-                       "source": "any", "interface": ""}, snap["rules"])
+                       "source": "any", "interface": "", "name": "Fine Rule"},
+                      snap["rules"])

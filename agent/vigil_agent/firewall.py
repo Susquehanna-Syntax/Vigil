@@ -31,6 +31,17 @@ _TIMEOUT = 30
 _SAFE_SOURCE = re.compile(r"^(any|[0-9a-fA-F:.]{2,45}(/\d{1,3})?)$")
 _SAFE_IFACE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,15}$")
 
+#: Windows Firewall DisplayNames are free text (they can legitimately contain
+#: spaces, parentheses, slashes -- e.g. "Core Networking - Multicast Listener
+#: Query (ICMPv6-In)" or Vigil's own "Vigil tcp/445"), so this is a denylist
+#: of characters that matter to PowerShell rather than an allowlist: quotes
+#: (breaking out of the single-quoted literal the name is embedded in),
+#: backticks (PowerShell's escape character), `$` (variable/subexpression
+#: expansion), `;`/`|`/`&` (statement/pipeline/background separators), and
+#: newlines. This value reaches a PowerShell command line.
+_UNSAFE_RULE_NAME_CHARS = re.compile(r"[\"'`$;|&\r\n]")
+_MAX_RULE_NAME_LEN = 255
+
 
 def validate_source(source: str) -> str:
     source = (source or "any").strip()
@@ -44,6 +55,24 @@ def validate_interface(iface: str) -> str:
     if iface and not _SAFE_IFACE.match(iface):
         raise ValueError(f"Invalid interface: {iface!r}")
     return iface
+
+
+def validate_rule_name(name: str) -> str:
+    """Validate a firewall rule DisplayName before it reaches PowerShell.
+
+    The name comes from the host (or from a caller echoing back what a
+    snapshot reported), so it is untrusted. A name that fails validation is
+    refused outright -- never sanitised and passed through -- matching the
+    discipline the rest of this module already applies to source/interface.
+    """
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("Rule name is required")
+    if len(name) > _MAX_RULE_NAME_LEN:
+        raise ValueError(f"Rule name too long ({len(name)} characters)")
+    if _UNSAFE_RULE_NAME_CHARS.search(name):
+        raise ValueError(f"Invalid rule name: {name!r}")
+    return name
 
 
 def _run(cmd: list[str], timeout: int = _TIMEOUT) -> str:
@@ -70,7 +99,7 @@ class FirewallBackend:
     def add_rule(self, port, protocol, action, source="any", interface="") -> str:
         raise NotImplementedError
 
-    def remove_rule(self, port, protocol, action="allow", source="any") -> str:
+    def remove_rule(self, port, protocol, action="allow", source="any", name="") -> str:
         raise NotImplementedError
 
     def set_policy(self, direction, policy) -> str:
@@ -138,6 +167,10 @@ class UfwBackend(FirewallBackend):
                 "action": m.group("action").lower(),
                 "source": "any" if source.lower().startswith("anywhere") else source,
                 "interface": m.group("iface") or "",
+                # ufw has no per-rule identity to read back -- ufw delete
+                # matches on the rule's fields, not a name. Carried as ""
+                # so every backend's rule dicts share the same keys.
+                "name": "",
             }
             key = (rule["port"], rule["protocol"], rule["action"],
                    rule["source"], rule["interface"])
@@ -165,10 +198,12 @@ class UfwBackend(FirewallBackend):
             cmd += [f"{port}/{protocol}"]
         return _run(cmd)
 
-    def remove_rule(self, port, protocol, action="allow", source="any"):
+    def remove_rule(self, port, protocol, action="allow", source="any", name=""):
         # `action` is threaded through because `ufw delete` matches the whole
         # rule: deleting a deny rule with "allow" in the pattern matches
-        # nothing and reports success.
+        # nothing and reports success. `name` is accepted for contract
+        # uniformity with the other backends but unused -- ufw has no rule
+        # identity to remove by, only the field-based match below.
         cmd = ["ufw", "delete", action]
         if source and source != "any":
             cmd += ["from", source, "to", "any", "port", str(port),
@@ -221,6 +256,9 @@ class FirewallCmdBackend(FirewallBackend):
                     "port": int(pm.group("port")),
                     "protocol": pm.group("proto").lower(),
                     "action": "allow", "source": "any", "interface": "",
+                    # firewalld has no per-rule identity to read back either
+                    # -- carried as "" for contract uniformity across backends.
+                    "name": "",
                 })
 
         # firewalld's default is to drop what is not listed; it has no
@@ -258,12 +296,13 @@ class FirewallCmdBackend(FirewallBackend):
                         f"--add-port={port}/{protocol}"])
         return f"{out}\n{self._reload()}".strip()
 
-    def remove_rule(self, port, protocol, action="allow", source="any"):
+    def remove_rule(self, port, protocol, action="allow", source="any", name=""):
         # `action` is threaded through because a deny was added as a rich
         # rule, not a port grant: removing it with --remove-port never
         # touches the rich rule and is a silent no-op reported as success --
         # the same bug class this task exists to fix, in the sibling
-        # backend.
+        # backend. `name` is accepted for contract uniformity but unused --
+        # firewalld rules are removed by their field-based match, same as ufw.
         if action == "deny":
             rule = self._reject_rich_rule(port, protocol, source)
             out = _run(["firewall-cmd", "--permanent",
@@ -401,12 +440,18 @@ class WindowsBackend(FirewallBackend):
                     # Surface it instead of dropping it: a firewall view
                     # that omits rules is worse than one that admits it
                     # does not understand them.
-                    name = str(r.get("name", "")).strip() or "<unnamed rule>"
-                    unparsed.append(f"{name}: port={port}")
+                    display_name = str(r.get("name", "")).strip() or "<unnamed rule>"
+                    unparsed.append(f"{display_name}: port={port}")
                     continue
                 raw_action = str(r.get("action", "")).strip()
                 action = raw_action.lower()
-                name = str(r.get("name", "")).strip() or "<unnamed rule>"
+                # Kept distinct from the "<unnamed rule>" placeholder used
+                # for display below: an empty `name` here means remove_rule
+                # correctly has nothing to identify the rule by and refuses,
+                # rather than trying to remove a rule literally named
+                # "<unnamed rule>".
+                name = str(r.get("name", "")).strip()
+                display_name = name or "<unnamed rule>"
                 # Map explicitly rather than defaulting unknown actions to
                 # "allow": rounding a rule we don't understand toward
                 # "permitted" would understate the host's exposure, which is
@@ -416,13 +461,18 @@ class WindowsBackend(FirewallBackend):
                 elif action.startswith("allow"):
                     mapped_action = "allow"
                 else:
-                    unparsed.append(f"{name}: action={raw_action or '<empty>'}")
+                    unparsed.append(f"{display_name}: action={raw_action or '<empty>'}")
                     continue
                 rules.append({
                     "port": int(port),
                     "protocol": str(r.get("protocol", "tcp")).lower(),
                     "action": mapped_action,
                     "source": "any", "interface": "",
+                    # Threaded through so remove_rule can target this exact
+                    # rule by identity -- netsh has no action filter, so
+                    # removing by port/protocol alone would delete every
+                    # inbound rule on that port (see remove_rule below).
+                    "name": name,
                 })
         except (ValueError, TypeError):
             logger.warning("Could not read Windows firewall rules")
@@ -453,16 +503,38 @@ class WindowsBackend(FirewallBackend):
             cmd.append(f"remoteip={source}")
         return _run(cmd)
 
-    def remove_rule(self, port, protocol, action="allow", source="any"):
-        # Matched on protocol and port rather than name, so a rule created
-        # outside Vigil can still be removed. `dir=in` matches add_rule's
-        # scope: without it, this also deletes unrelated outbound rules (and
-        # rules of the opposite action) that happen to share the port and
-        # protocol -- a delete that matches more than it was asked to is
-        # worse than one that matches nothing.
-        return _run(["netsh", "advfirewall", "firewall", "delete", "rule",
-                     "name=all", "dir=in", f"protocol={protocol.upper()}",
-                     f"localport={port}"])
+    def remove_rule(self, port, protocol, action="allow", source="any", name=""):
+        # netsh has NO action filter: "delete rule name=all dir=in
+        # protocol=X localport=Y" deletes every inbound rule on that port,
+        # allows and denies alike. A port carrying a general allow plus a
+        # scoped deny (blocking one bad source -- a normal pattern, since
+        # block rules take precedence over allow) would lose BOTH on one
+        # remove. Under a default-allow inbound policy -- which this same
+        # backend lets an operator set via set_policy -- losing that deny
+        # re-permits the previously-blocked source. That is
+        # security-loosening, so removal by port/protocol match is no
+        # longer offered here at all.
+        #
+        # Instead this removes by the rule's own identity via PowerShell,
+        # matching how the read path (snapshot/_PS_RULES) already uses
+        # PowerShell for structured work. Without a name there is nothing
+        # safe to match on, and guessing (falling back to the old netsh
+        # command) is exactly the over-match this exists to stop -- so this
+        # refuses rather than guessing, the same discipline set_policy
+        # already applies when the untouched direction can't be read, and
+        # the lockout guard applies to actions it doesn't recognise.
+        name = (name or "").strip()
+        if not name:
+            raise RuntimeError(
+                "Cannot remove a Windows firewall rule without its name: "
+                "netsh has no action filter, so removing by port and "
+                "protocol alone would delete every inbound rule on that "
+                "port -- allows and denies alike, including ones unrelated "
+                "to this change. Pass the rule's name (its DisplayName, as "
+                "reported by snapshot()) to remove it precisely."
+            )
+        name = validate_rule_name(name)
+        return _run(_PS + [f"Remove-NetFirewallRule -DisplayName '{name}'"])
 
     def set_policy(self, direction, policy):
         # netsh's `firewallpolicy` setter changes BOTH directions in one

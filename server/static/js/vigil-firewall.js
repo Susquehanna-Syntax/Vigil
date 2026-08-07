@@ -345,6 +345,17 @@ function _fwRenderRules(hostId, data) {
         label.style.cssText = 'font-size:11px;color:var(--text-3);';
         label.textContent = '[protected]';
         actTd.appendChild(label);
+      } else if (r.action === 'reject') {
+        // ufw's parser also matches REJECT (see UfwBackend._RULE), but
+        // executor._remove_firewall_rule only accepts action in
+        // ("allow", "deny") and raises for anything else — Vigil cannot
+        // remove a reject rule. Offering a live Remove button here would
+        // always fail after "Change queued" — do not offer an action known
+        // to fail.
+        const label = document.createElement('span');
+        label.style.cssText = 'font-size:11px;color:var(--text-3);';
+        label.textContent = '[cannot remove]';
+        actTd.appendChild(label);
       } else {
         const rmBtn = document.createElement('button');
         rmBtn.className = 'btn btn-outline btn-sm';
@@ -358,8 +369,15 @@ function _fwRenderRules(hostId, data) {
           // "queued" to the operator. See _remove_firewall_rule in
           // agent/vigil_agent/executor.py and remove_rule in
           // agent/vigil_agent/firewall.py (all three backends).
+          //
+          // name is the rule's DisplayName, required by WindowsBackend so
+          // it can remove the exact rule by identity — netsh has no action
+          // filter, so a port/protocol-only match would delete every
+          // inbound rule sharing that port, allows and denies alike. ufw
+          // and firewall-cmd ignore it.
           applyFirewallChange(hostId, 'remove_firewall_rule',
-            { port: r.port, protocol: r.protocol, action: r.action, source: r.source }, rmBtn);
+            { port: r.port, protocol: r.protocol, action: r.action,
+              source: r.source, name: r.name }, rmBtn);
         });
         actTd.appendChild(rmBtn);
       }
