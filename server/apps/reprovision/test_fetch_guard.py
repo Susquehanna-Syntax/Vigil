@@ -126,3 +126,52 @@ class BypassTests(TestCase):
         covered, not merely documented as a gap."""
         with _resolves_to("::ffff:169.254.169.254"):
             self.assertNotEqual(check_url("https://mapped.example.com/x.iso"), "")
+
+    def test_ipv4_compatible_ipv6_form_of_metadata_is_blocked(self):
+        """::169.254.169.254 is the older, deprecated "IPv4-compatible"
+        IPv6 notation -- distinct from the "IPv4-mapped" ::ffff: form above.
+        `.ipv4_mapped` returns None for it, so it needs its own extraction
+        path (`_embedded_ipv4`'s top-96-bits-zero check) or it sails past
+        the guard even though the kernel accepts a connect() to it."""
+        with _resolves_to("::169.254.169.254"):
+            self.assertNotEqual(check_url("https://compat.example.com/x.iso"), "")
+
+    def test_ipv4_zero_address_is_blocked(self):
+        """0.0.0.0 is not "nowhere" -- on Linux, connect() to it reaches
+        whatever is bound to 127.0.0.1, so it needs the same refusal as the
+        literal loopback address."""
+        with _resolves_to("0.0.0.0"):
+            self.assertNotEqual(check_url("https://zero.example.com/x.iso"), "")
+
+    def test_ipv6_unspecified_address_is_blocked(self):
+        """:: is IPv6's unspecified address, the same "this host at
+        connect time" hazard as 0.0.0.0."""
+        with _resolves_to("::"):
+            self.assertNotEqual(check_url("https://unspec.example.com/x.iso"), "")
+
+    def test_alibaba_metadata_is_blocked(self):
+        """100.100.100.200 is Alibaba Cloud's instance metadata endpoint.
+        It is neither in 169.254.0.0/16 nor RFC1918, so it does not fall
+        under the deliberate private-range carve-out either -- it is a
+        metadata-only address with no legitimate ISO on it, exactly the
+        guard's own criterion for blocking."""
+        with _resolves_to("100.100.100.200"):
+            self.assertNotEqual(check_url("https://aliyun.example.com/x.iso"), "")
+
+    def test_trailing_dot_metadata_hostname_is_blocked(self):
+        """A fully-qualified hostname with a trailing dot is the same name
+        as without one. Not currently exploitable on its own -- resolution
+        of the trailing-dot form still lands on the same address and the
+        resolved-address check catches it regardless -- but the hostname
+        check should not rely on that lower layer to cover for it."""
+        with _resolves_to("169.254.169.254"):
+            self.assertNotEqual(
+                check_url("https://metadata.google.internal./x.iso"), "")
+
+    def test_private_range_mirror_still_allowed_after_these_fixes(self):
+        """None of the fixes above should have widened the guard into
+        blocking the internal-mirror workflow it deliberately permits."""
+        with _resolves_to("192.168.1.50"):
+            self.assertEqual(check_url("https://192.168.1.50/isos/x.iso"), "")
+        with _resolves_to("10.0.0.5"):
+            self.assertEqual(check_url("https://mirror.internal/x.iso"), "")
