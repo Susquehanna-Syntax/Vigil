@@ -350,7 +350,16 @@ function _fwRenderRules(hostId, data) {
         rmBtn.className = 'btn btn-outline btn-sm';
         rmBtn.textContent = 'Remove';
         rmBtn.addEventListener('click', () => {
-          applyFirewallChange(hostId, 'remove_firewall_rule', { port: r.port, protocol: r.protocol }, rmBtn);
+          // action and source must be the rule's own values, not left to
+          // the executor's defaults (allow / any) — ufw and firewall-cmd
+          // match the delete command against the exact rule that was
+          // added, so removing a deny or a source-scoped rule with the
+          // wrong action/source is a no-op or failure that still reports
+          // "queued" to the operator. See _remove_firewall_rule in
+          // agent/vigil_agent/executor.py and remove_rule in
+          // agent/vigil_agent/firewall.py (all three backends).
+          applyFirewallChange(hostId, 'remove_firewall_rule',
+            { port: r.port, protocol: r.protocol, action: r.action, source: r.source }, rmBtn);
         });
         actTd.appendChild(rmBtn);
       }
@@ -444,6 +453,12 @@ function _fwRenderRules(hostId, data) {
     sourceInput.className = 'form-control';
     sourceInput.style.cssText = 'width:220px;';
 
+    const ifaceInput = document.createElement('input');
+    ifaceInput.type = 'text';
+    ifaceInput.placeholder = 'Interface (optional)';
+    ifaceInput.className = 'form-control';
+    ifaceInput.style.cssText = 'width:160px;';
+
     const addBtn = document.createElement('button');
     addBtn.className = 'btn btn-outline btn-sm';
     addBtn.textContent = 'Add rule';
@@ -456,10 +471,12 @@ function _fwRenderRules(hostId, data) {
       const params = { port, protocol: protoSel.value, action: dispSel.value };
       const source = sourceInput.value.trim();
       if (source) params.source = source;
+      const iface = ifaceInput.value.trim();
+      if (iface) params.interface = iface;
       applyFirewallChange(hostId, 'add_firewall_rule', params, addBtn);
     });
 
-    row.append(portInput, protoSel, dispSel, sourceInput, addBtn);
+    row.append(portInput, protoSel, dispSel, sourceInput, ifaceInput, addBtn);
     formWrap.appendChild(row);
     el.appendChild(formWrap);
   }
