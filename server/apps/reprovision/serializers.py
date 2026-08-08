@@ -8,8 +8,9 @@ class OSImageSerializer(serializers.ModelSerializer):
         model = OSImage
         fields = ["id", "name", "os_family", "version", "architecture",
                   "sha256", "size_bytes", "status", "import_error",
-                  "created_at"]
-        read_only_fields = ["status", "import_error", "size_bytes", "created_at"]
+                  "source_url", "bytes_downloaded", "created_at"]
+        read_only_fields = ["status", "import_error", "size_bytes",
+                            "source_url", "bytes_downloaded", "created_at"]
 
 
 class InstallProfileSerializer(serializers.ModelSerializer):

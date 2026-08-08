@@ -4,8 +4,10 @@ Objects outside the caller's sites answer 404, not 403 — the convention set
 in 2026.5.0, so an id probe cannot confirm a resource exists.
 """
 import logging
+import shutil
 from datetime import timedelta
 
+from django.db.models import ProtectedError
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
 from rest_framework.decorators import api_view, permission_classes
@@ -16,10 +18,14 @@ from apps.accounts.permissions import IsAdmin, can
 from vigil import hooks, scoping
 
 from . import jobs
+from .catalog import CATALOG, get_entry
 from .ceremony import verify_rebuild_confirmation
+from .fetch_guard import check_url
+from .images import image_root
 from .models import InstallProfile, OSImage, RebuildJob
 from .serializers import (InstallProfileSerializer, OSImageSerializer,
                           RebuildJobSerializer)
+from .tasks import fetch_image
 
 logger = logging.getLogger("vigil.reprovision")
 
@@ -32,6 +38,83 @@ def _may(user, host, verb: str) -> bool:
 
 
 # ── Image catalog (admin only — see §4.4) ────────────────────────────────────
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def catalog_list(request):
+    """The distros Vigil knows how to fetch on its own. Static data, so
+    there is nothing here an operator can break by reading it — same `view`
+    gate as the image library itself."""
+    if not can(request.user, None, "reprovision", "view"):
+        return Response({"error": "Not found"}, status=404)
+    return Response(CATALOG)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def image_pull(request):
+    """Register an image and queue its download.
+
+    Either a `catalog_id` (URL and digest come from the catalog — never from
+    the request body, so a caller-supplied sha256 alongside a catalog_id is
+    ignored) or a custom `url` + `sha256` + `os_family` + `name`.
+
+    `check_url` runs before any row is created: a refused destination must
+    leave no `OSImage` behind, or the library fills with rows for fetches
+    Vigil never attempted.
+    """
+    if not IsAdmin().has_permission(request, None):
+        return Response({"error": "Admin required"}, status=403)
+
+    catalog_id = request.data.get("catalog_id")
+    if catalog_id:
+        entry = get_entry(catalog_id)
+        if entry is None:
+            return Response(
+                {"error": f"Unknown catalog id {catalog_id!r}"}, status=400)
+        url = entry["url"]
+        sha256 = entry["sha256"]
+        os_family = entry["os_family"]
+        name = entry["name"]
+        version = entry.get("version", "")
+        architecture = entry.get("architecture", "x86_64")
+        size_bytes = entry.get("size_bytes", 0)
+    else:
+        url = (request.data.get("url") or "").strip()
+        sha256 = (request.data.get("sha256") or "").strip()
+        os_family = request.data.get("os_family") or ""
+        name = (request.data.get("name") or "").strip()
+        version = request.data.get("version", "")
+        architecture = request.data.get("architecture") or "x86_64"
+        size_bytes = 0
+
+        if not url:
+            return Response({"error": "url is required"}, status=400)
+        if not sha256:
+            return Response(
+                {"error": "A custom URL requires a sha256 digest — Vigil "
+                          "cannot verify what it downloads without one."},
+                status=400)
+        if os_family not in OSImage.Family.values:
+            return Response(
+                {"error": f"Unknown os_family {os_family!r}; must be one "
+                          f"of {', '.join(OSImage.Family.values)}"},
+                status=400)
+        if not name:
+            return Response({"error": "name is required"}, status=400)
+
+    if refusal := check_url(url):
+        return Response({"error": refusal}, status=400)
+
+    image = OSImage.objects.create(
+        name=name, os_family=os_family, version=version,
+        architecture=architecture, sha256=sha256, size_bytes=size_bytes,
+        status=OSImage.Status.DOWNLOADING, source_url=url,
+        created_by=request.user,
+    )
+    fetch_image.delay(image.id)
+    return Response(OSImageSerializer(image).data, status=202)
+
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
@@ -63,7 +146,20 @@ def image_detail(request, image_id):
         return Response(OSImageSerializer(image).data)
     if not IsAdmin().has_permission(request, None):
         return Response({"error": "Admin required"}, status=403)
-    image.delete()
+    tree_dir = image_root() / str(image.id)
+    try:
+        image.delete()
+    except ProtectedError as exc:
+        job = next(iter(exc.protected_objects), None)
+        if isinstance(job, RebuildJob):
+            detail = f"rebuild job {job.id} for host {job.host.hostname}"
+        else:
+            detail = "a rebuild job"
+        return Response({
+            "error": f"Image is still referenced by {detail} and cannot "
+                     f"be deleted.",
+        }, status=409)
+    shutil.rmtree(tree_dir, ignore_errors=True)
     return Response(status=204)
 
 

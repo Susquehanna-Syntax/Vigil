@@ -5,6 +5,8 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path("catalog/", views.catalog_list, name="reprovision-catalog"),
+    path("images/pull/", views.image_pull, name="reprovision-images-pull"),
     path("images/", views.image_list, name="reprovision-images"),
     path("images/<uuid:image_id>/", views.image_detail,
          name="reprovision-image-detail"),
