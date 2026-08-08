@@ -37,6 +37,17 @@ def _may(user, host, verb: str) -> bool:
     return can(user, site, "reprovision", verb)
 
 
+def _first_serializer_error(errors) -> str:
+    """Flatten a DRF error dict into one sentence.
+
+    Every error response in this file is ``{"error": "<sentence>"}``, not
+    DRF's default per-field shape — this keeps a serializer-validated
+    endpoint speaking the same language as its hand-validated neighbours.
+    """
+    field, messages = next(iter(errors.items()))
+    return f"{field}: {messages[0]}"
+
+
 # ── Image catalog (admin only — see §4.4) ────────────────────────────────────
 
 @api_view(["GET"])
@@ -62,6 +73,15 @@ def image_pull(request):
     `check_url` runs before any row is created: a refused destination must
     leave no `OSImage` behind, or the library fills with rows for fetches
     Vigil never attempted.
+
+    Field validation — including the model's max_length constraints on
+    `name`/`version`/`architecture` — runs through `OSImageSerializer`
+    rather than a bare `.objects.create()`, the same shape `image_list`'s
+    POST branch already uses (`serializer.save(**kwargs)` to layer in the
+    fields the serializer marks read-only). Skipping it would let an
+    oversized value reach the database uncaught: Postgres raises `DataError`
+    there, surfacing as a 500 instead of the 4xx this file returns
+    everywhere else.
     """
     if not IsAdmin().has_permission(request, None):
         return Response({"error": "Admin required"}, status=403)
@@ -73,12 +93,13 @@ def image_pull(request):
             return Response(
                 {"error": f"Unknown catalog id {catalog_id!r}"}, status=400)
         url = entry["url"]
-        sha256 = entry["sha256"]
-        os_family = entry["os_family"]
-        name = entry["name"]
-        version = entry.get("version", "")
-        architecture = entry.get("architecture", "x86_64")
         size_bytes = entry.get("size_bytes", 0)
+        field_data = {
+            "name": entry["name"], "os_family": entry["os_family"],
+            "version": entry.get("version", ""),
+            "architecture": entry.get("architecture", "x86_64"),
+            "sha256": entry["sha256"],
+        }
     else:
         url = (request.data.get("url") or "").strip()
         sha256 = (request.data.get("sha256") or "").strip()
@@ -102,15 +123,29 @@ def image_pull(request):
                 status=400)
         if not name:
             return Response({"error": "name is required"}, status=400)
+        field_data = {
+            "name": name, "os_family": os_family, "version": version,
+            "architecture": architecture, "sha256": sha256,
+        }
 
     if refusal := check_url(url):
         return Response({"error": refusal}, status=400)
 
-    image = OSImage.objects.create(
-        name=name, os_family=os_family, version=version,
-        architecture=architecture, sha256=sha256, size_bytes=size_bytes,
+    serializer = OSImageSerializer(data=field_data)
+    # `version` has no model default, so ModelSerializer marks it required —
+    # right for the upload endpoint (image_list, where the caller always
+    # knows the version), wrong for a pull, whose only required fields per
+    # the brief are url/sha256/os_family/name. Relaxed on this instance
+    # only; length and every other constraint still apply.
+    serializer.fields["version"].required = False
+    serializer.fields["version"].allow_blank = True
+    if not serializer.is_valid():
+        return Response(
+            {"error": _first_serializer_error(serializer.errors)}, status=400)
+
+    image = serializer.save(
         status=OSImage.Status.DOWNLOADING, source_url=url,
-        created_by=request.user,
+        size_bytes=size_bytes, created_by=request.user,
     )
     fetch_image.delay(image.id)
     return Response(OSImageSerializer(image).data, status=202)
