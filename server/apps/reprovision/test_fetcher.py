@@ -40,6 +40,40 @@ class _FakeResponse:
         return False
 
 
+class _RedirectResponse:
+    """A real 302 (or similar), Location header and all — not just a
+    response whose `.url` has already been rewritten. Exercises the
+    fetcher's own redirect-following, the only way to prove it re-checks
+    the guard before connecting to each hop rather than after the fact."""
+
+    def __init__(self, status, location=None, chunks=(PAYLOAD,)):
+        self.status_code = status
+        self.headers = {}
+        if location is not None:
+            self.headers["Location"] = location
+        else:
+            self.headers["content-length"] = str(sum(len(c) for c in chunks))
+        self._chunks = chunks
+        self.url = location or "https://mirror.example.com/x.iso"
+        self.closed = False
+
+    def iter_content(self, chunk_size):
+        yield from self._chunks
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+    def close(self):
+        self.closed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
 class _BoomMidStream:
     """Simulates a network error partway through the response body."""
 
@@ -179,25 +213,101 @@ class FetcherTests(TestCase):
         self.assertTrue(image.import_error)
         self.assertEqual(self._leftovers(), [])
 
-    def test_a_redirect_to_a_refused_destination_aborts_and_cleans_up(self):
+    def test_a_redirect_to_a_refused_destination_is_never_connected_to(self):
+        """The guard must run on a hop's destination BEFORE the fetcher
+        connects to it -- not on `response.url` after the fact, by which
+        point the GET against the refused address would already have gone
+        out. This is what distinguishes a real guard from a decoration."""
         from . import fetcher
 
-        image = self._image()
+        refused = "http://169.254.169.254/x.iso"
+        source = "https://mirror.example.com/x.iso"
+        calls = []
 
         def fake_check_url(url, *a, **k):
-            if url == "https://169.254.169.254/x.iso":
+            if url == refused:
                 return "refusing to fetch cloud metadata"
             return ""
 
+        def fake_get(url, **kwargs):
+            calls.append(url)
+            return _RedirectResponse(302, location=refused)
+
+        image = self._image()
         with override_settings(VIGIL_IMAGE_ROOT=self.tmp.name), \
              patch.object(fetcher, "check_url", fake_check_url), \
-             patch.object(fetcher.requests, "get",
-                          lambda *a, **k: _FakeResponse(
-                              [PAYLOAD], url="https://169.254.169.254/x.iso")):
+             patch.object(fetcher.requests, "get", fake_get):
             fetcher.download_and_import(image.id)
         image.refresh_from_db()
+
+        # The refused address must never be requested -- only the source
+        # URL (which redirects to it) was.
+        self.assertEqual(calls, [source])
+        self.assertNotIn(refused, calls)
         self.assertEqual(image.status, OSImage.Status.FAILED)
         self.assertIn("refused", image.import_error.lower())
+        self.assertEqual(self._leftovers(), [])
+
+    def test_a_second_hop_redirect_to_a_refused_destination_is_caught(self):
+        """Proves the per-hop check runs on every hop, not just the first --
+        a guard that only re-checks once wouldn't catch a mirror that
+        redirects somewhere ordinary before redirecting somewhere refused."""
+        from . import fetcher
+
+        first_hop = "https://mirror.example.com/x.iso"
+        second_hop = "https://cdn.example.com/x.iso"
+        refused = "http://169.254.169.254/x.iso"
+        calls = []
+
+        def fake_check_url(url, *a, **k):
+            if url == refused:
+                return "refusing to fetch cloud metadata"
+            return ""
+
+        def fake_get(url, **kwargs):
+            calls.append(url)
+            if url == first_hop:
+                return _RedirectResponse(302, location=second_hop)
+            if url == second_hop:
+                return _RedirectResponse(302, location=refused)
+            raise AssertionError(f"unexpected request to {url}")
+
+        image = self._image()
+        with override_settings(VIGIL_IMAGE_ROOT=self.tmp.name), \
+             patch.object(fetcher, "check_url", fake_check_url), \
+             patch.object(fetcher.requests, "get", fake_get):
+            fetcher.download_and_import(image.id)
+        image.refresh_from_db()
+
+        self.assertEqual(calls, [first_hop, second_hop])
+        self.assertNotIn(refused, calls)
+        self.assertEqual(image.status, OSImage.Status.FAILED)
+        self.assertIn("refused", image.import_error.lower())
+        self.assertEqual(self._leftovers(), [])
+
+    def test_a_redirect_chain_longer_than_the_cap_is_refused(self):
+        """An endless redirect chain must not hang a worker -- and must not
+        be attempted forever trying to find out."""
+        from . import fetcher
+
+        calls = []
+
+        def fake_get(url, **kwargs):
+            calls.append(url)
+            # Always redirects to a new address; never terminates.
+            return _RedirectResponse(
+                302, location=f"https://mirror.example.com/hop{len(calls)}.iso")
+
+        image = self._image()
+        with override_settings(VIGIL_IMAGE_ROOT=self.tmp.name), \
+             patch.object(fetcher, "check_url", lambda *a, **k: ""), \
+             patch.object(fetcher.requests, "get", fake_get):
+            fetcher.download_and_import(image.id)
+        image.refresh_from_db()
+
+        self.assertEqual(len(calls), fetcher._MAX_REDIRECTS + 1)
+        self.assertEqual(image.status, OSImage.Status.FAILED)
+        self.assertIn("redirect", image.import_error.lower())
         self.assertEqual(self._leftovers(), [])
 
     def test_progress_counter_moves_during_a_multi_chunk_download(self):

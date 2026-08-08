@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from pathlib import Path
+from urllib.parse import urljoin
 
 import requests
 
@@ -33,6 +34,50 @@ logger = logging.getLogger("vigil.reprovision")
 
 _CHUNK = 1024 * 1024
 _TIMEOUT = (10, 60)  # connect, read
+_MAX_REDIRECTS = 5
+_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+
+
+class _RedirectRefused(Exception):
+    """A hop in the redirect chain landed somewhere the guard refuses."""
+
+
+def _connect(start_url: str):
+    """GET *start_url*, following redirects by hand.
+
+    `requests`' own `allow_redirects=True` connects to every hop in the
+    chain before any code gets a chance to look at where it landed — the
+    guard would only ever see the final URL, after Vigil already originated
+    a GET against every address in between. That is a blind-SSRF primitive
+    in its own right (side effects, internal probing by timing), even though
+    the response bodies of the intermediate hops are never surfaced and a
+    swapped final payload still fails the checksum.
+
+    So each hop is resolved one at a time, and `check_url` runs on a hop's
+    *destination* before this function ever connects to it — the same
+    contract `fetch_guard.check_url`'s docstring already promises callers
+    ("the caller re-checks after every redirect"). Capped at
+    `_MAX_REDIRECTS` so a redirect loop cannot hang a worker.
+
+    Returns the terminal (non-redirect) response, still open for the caller
+    to stream. Raises `_RedirectRefused` if a hop is refused, or a plain
+    exception for a missing `Location` header or too many hops — both land
+    on the image as FAILED via the caller's exception handling.
+    """
+    url = start_url
+    for _ in range(_MAX_REDIRECTS + 1):
+        response = requests.get(url, stream=True, timeout=_TIMEOUT,
+                                allow_redirects=False)
+        if response.status_code not in _REDIRECT_STATUSES:
+            return response
+        location = response.headers.get("Location")
+        response.close()
+        if not location:
+            raise ValueError(f"Redirect from {url} had no Location header")
+        url = urljoin(url, location)
+        if refusal := check_url(url):
+            raise _RedirectRefused(refusal)
+    raise ValueError(f"Too many redirects (more than {_MAX_REDIRECTS})")
 
 
 def _fail(image: OSImage, reason: str, temp: Path | None) -> None:
@@ -47,12 +92,13 @@ def _fail(image: OSImage, reason: str, temp: Path | None) -> None:
 
 def download_and_import(image_id) -> None:
     """Download, verify, import. Never raises — the outcome is on the row."""
-    image = OSImage.objects.filter(pk=image_id).first()
-    if image is None:
-        return
-
+    image = None
     temp: Path | None = None
     try:
+        image = OSImage.objects.filter(pk=image_id).first()
+        if image is None:
+            return
+
         # Two refusals cheap enough to make before a single byte moves.
         # images.verify_checksum refuses an empty digest anyway; discovering
         # that after several gigabytes would be both wasteful and an unkind
@@ -73,24 +119,16 @@ def download_and_import(image_id) -> None:
 
         digest = hashlib.sha256()
         written = 0
-        # allow_redirects=True (requests' default for GET) so `response.url`
-        # below reflects where the chain actually ended, and so the redirect
-        # count is bounded by requests' own default limit rather than
-        # unbounded — a custom lower cap would need a Session object, which
-        # would stop being interceptable at the `requests.get` seam these
-        # tests patch.
-        with requests.get(image.source_url, stream=True,
-                          timeout=_TIMEOUT, allow_redirects=True) as response:
+        try:
+            connection = _connect(image.source_url)
+        except _RedirectRefused as exc:
+            return _fail(
+                image,
+                f"Redirected to a refused destination: {exc}",
+                temp,
+            )
+        with connection as response:
             response.raise_for_status()
-            # check_url ran on the URL we were given; a redirect can land
-            # somewhere it would have refused, so re-check where we actually
-            # ended up before writing a single byte of the body to disk.
-            if refusal := check_url(response.url):
-                return _fail(
-                    image,
-                    f"Redirected to a refused destination: {refusal}",
-                    temp,
-                )
             with temp.open("wb") as fh:
                 for chunk in response.iter_content(chunk_size=_CHUNK):
                     if not chunk:
@@ -132,4 +170,5 @@ def download_and_import(image_id) -> None:
         image.save(update_fields=["status", "bytes_downloaded", "import_error"])
     except Exception as exc:  # noqa: BLE001 — a bad fetch must not take the worker down
         logger.exception("Image fetch failed for %s", image_id)
-        _fail(image, str(exc), temp)
+        if image is not None:
+            _fail(image, str(exc), temp)
