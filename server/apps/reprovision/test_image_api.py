@@ -10,6 +10,8 @@ from django.test import TestCase, override_settings
 from django.utils.timezone import now
 from datetime import timedelta
 
+from apps.accounts.models import Role, UserProfile
+
 from .catalog import CATALOG
 from .models import InstallProfile, OSImage, RebuildJob
 
@@ -65,6 +67,33 @@ class ImageApiTests(TestCase):
                               "os_family": "ubuntu", "name": "Custom"})
         self.assertEqual(resp.status_code, 400)
         self.assertIn("sha256", resp.json()["error"].lower())
+
+    def test_a_custom_pull_with_an_overlong_name_is_a_4xx_not_a_500(self):
+        """The model caps name at 160 chars. Skipping the serializer would
+        let this reach `.objects.create()` uncaught — a DataError on
+        Postgres, surfacing as an unhandled 500 instead of this file's usual
+        {"error": ...} 4xx. check_url is stubbed to pass so the failure
+        under test is the length check, not DNS."""
+        with patch("apps.reprovision.views.check_url", lambda *a, **k: ""):
+            resp, task = self._pull({
+                "url": "https://mirror.example.com/x.iso", "sha256": "a" * 64,
+                "os_family": "ubuntu", "name": "x" * 200})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn("error", resp.json())
+        self.assertFalse(OSImage.objects.exists())
+        task.delay.assert_not_called()
+
+    def test_a_custom_pull_with_an_overlong_version_is_a_4xx_not_a_500(self):
+        """version is capped at 40 chars — same DataError/500 risk as an
+        overlong name."""
+        with patch("apps.reprovision.views.check_url", lambda *a, **k: ""):
+            resp, task = self._pull({
+                "url": "https://mirror.example.com/x.iso", "sha256": "a" * 64,
+                "os_family": "ubuntu", "name": "Custom", "version": "v" * 60})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn("error", resp.json())
+        self.assertFalse(OSImage.objects.exists())
+        task.delay.assert_not_called()
 
     def test_a_bad_os_family_is_rejected(self):
         resp, task = self._pull({"url": "https://mirror.example.com/x.iso",
@@ -142,3 +171,15 @@ class ImageApiTests(TestCase):
 
             self.assertEqual(resp.status_code, 204)
             self.assertFalse(tree_dir.exists())
+
+    def test_catalog_requires_the_view_capability(self):
+        """A legacy operator (no per-site capability row) gets neither view
+        nor rebuild on reprovision — see test_rbac.py's
+        test_legacy_operators_get_no_rebuild_rights. The catalog read is
+        gated the same way as the image library itself, so it must 404 for
+        the same caller, not leak that the route exists."""
+        user = get_user_model().objects.create_user("op2", password="x")
+        UserProfile.objects.create(user=user, role=Role.OPERATOR)
+        self.client.force_login(user)
+        resp = self.client.get("/api/v1/reprovision/catalog/")
+        self.assertEqual(resp.status_code, 404)
