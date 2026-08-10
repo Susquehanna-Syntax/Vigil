@@ -815,6 +815,41 @@ before running one — including its note on why rebuild is *not* a guaranteed
 eradication path against an attacker with kernel-level persistence. Design
 rationale is in [docs/reprovisioning.md](docs/reprovisioning.md).
 
+### OS image library
+
+The **Reprovision** sidebar app manages the images a rebuild installs from. Vigil fetches an image once and serves it to every host that rebuilds against it — one download per fleet instead of one per host, and it means a rebuild works on a machine with no route to the internet at all, only to Vigil.
+
+`apps/reprovision/catalog.py` ships a small, hand-curated list of distros Vigil can pull on its own:
+
+| Catalog entry | Family |
+|---|---|
+| Ubuntu Server 24.04 LTS | `ubuntu` |
+| Ubuntu Server 22.04 LTS | `ubuntu` |
+| Debian 13 (netinst) | `debian` |
+| Rocky Linux 9 (minimal) | `rhel` |
+| AlmaLinux 9 (minimal) | `rhel` |
+
+Every entry needs a stable anonymous URL *and* a published SHA-256 — an entry that can't actually fetch would fail at the worst possible moment, after an operator has already chosen it for a rebuild. Entries go stale as distros cut new releases; the custom-URL path below covers the gap until `catalog.py` is updated.
+
+**RHEL proper and Windows are not in the catalog, on purpose.** RHEL needs an active Red Hat subscription to download, so there's no anonymous URL to point at; Microsoft publishes no stable direct download with a published hash. Neither is a Vigil limitation — both reach the library the same way: upload the ISO you're entitled to, or paste a URL (plus its SHA-256) to wherever you're already hosting it. **A digest is always required** — pulling from the catalog carries the published digest automatically, but a custom URL or an upload needs the operator to supply one; an image with no SHA-256 is refused before a single byte moves.
+
+**Windows images can't be imported yet.** The upload/pull buttons for it are disabled in the UI rather than silently failing after a multi-gigabyte transfer. Vigil's importer extracts a Linux-style `vmlinuz`/`initrd` pair to PXE-boot the installer; Windows boots from `bootmgr` against `boot.wim`, a different pipeline that doesn't exist yet. It's planned as its own piece of work, not a config flag someone forgot to flip.
+
+### The fetch guard
+
+Before Vigil fetches any URL — catalog or custom — `apps/reprovision/fetch_guard.py` checks the address it actually resolves to (re-checked after every redirect, so a hostname can't launder its way past the check). It refuses outright: loopback (`127.0.0.0/8`, `::1`), the unspecified address (`0.0.0.0`, `::`), link-local (`169.254.0.0/16`, `fe80::/10` — this range covers AWS/Azure instance metadata), and the metadata addresses specific to other clouds (`metadata.google.internal`/`metadata.goog`, Alibaba's `100.100.100.200`, AWS's IMDSv6 address). The reason is the same for all of them: on a cloud-hosted Vigil, the metadata service hands out credentials for the whole account, and Vigil's server sits where it can reach that service even though an operator's own workstation cannot — fetching a URL on the operator's behalf must not become a proxy into the account.
+
+**Private ranges are allowed on purpose.** An internal mirror is a completely legitimate image source, so RFC1918 addresses are never refused. A non-catalog URL shows a warning that Vigil will fetch it from inside your network, not from your browser — advisory, not a block.
+
+### Upload limits Vigil doesn't control
+
+An ISO upload passes through whatever sits in front of Vigil. **Cloudflare Tunnel** caps request bodies at 100 MB on free plans; **nginx** defaults `client_max_body_size` to 1 MB. Either one will fail a multi-gigabyte ISO upload with no explanation from Vigil itself — raise the limit on the proxy, or use the URL-pull path instead, which never touches the browser's upload connection.
+
+Two settings exist in this repo specifically because of the upload path — both are load-bearing, not leftovers:
+
+- **`server/Dockerfile`**'s gunicorn `--timeout 1800` — the 30-second default kills the worker mid-upload, because the ISO upload endpoint holds the request open synchronously for the whole transfer.
+- **`FILE_UPLOAD_TEMP_DIR`** (`server/vigil/settings.py`) — points Django's multipart spool at the `VIGIL_IMAGE_ROOT` volume instead of the container's writable layer, which a multi-gigabyte upload would otherwise fill.
+
 ---
 
 ## API Reference
@@ -872,6 +907,18 @@ rationale is in [docs/reprovisioning.md](docs/reprovisioning.md).
 | `GET` | `/api/v1/tasks/runs/{id}/` | Run detail with per-host step status |
 
 > The legacy single-action dispatch endpoint (`POST /api/v1/tasks/`) was removed in 2026.1.9 — it bypassed the TOTP gate. Use the definition-deploy endpoint instead. Community publish/unpublish endpoints were also removed; the community catalog now lives on GitHub (see [Community catalog](#community-catalog)).
+
+### Reprovisioning — image library
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/reprovision/catalog/` | The distros Vigil can fetch on its own (`view`) |
+| `POST` | `/api/v1/reprovision/images/pull/` | Queue a download — from `catalog_id`, or a custom `url` + `sha256` (admin only) |
+| `POST` | `/api/v1/reprovision/images/upload/` | Upload an ISO directly, synchronously verified and imported (admin only) |
+| `GET` `POST` | `/api/v1/reprovision/images/` | List the library (`view`) / register an image (admin only) |
+| `GET` `DELETE` | `/api/v1/reprovision/images/{id}/` | Image detail (`view`) / remove it (admin only) |
+
+Full job/profile/ceremony surface is in [docs/reprovisioning.md §9](docs/reprovisioning.md#9-api-surface).
 
 ### Misc
 
