@@ -137,7 +137,15 @@ def verify_and_import(image: OSImage, temp: Path, actual_digest: str,
     # call itself blew up; anything import_iso decided is already on the
     # row once it returns, and must not be overwritten below.
     import_iso(image, temp)
-    temp.unlink(missing_ok=True)
+    try:
+        temp.unlink(missing_ok=True)
+    except OSError as exc:
+        # A cleanup failure here must not undo a successful import — the
+        # row's status below is what the operator relies on. Worst case is
+        # a stray temp file and this log line, same shape as fail_image's
+        # own unlink guard above it in this module.
+        logger.warning("Image %s: could not remove temp file %s (%s)",
+                       image.id, temp, exc)
 
     image.refresh_from_db()
     if image.status == OSImage.Status.FAILED:

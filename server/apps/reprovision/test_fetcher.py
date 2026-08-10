@@ -199,6 +199,34 @@ class FetcherTests(TestCase):
         self._run(self._image())
         self.assertEqual(self._leftovers(), [])
 
+    def test_a_cleanup_failure_after_a_successful_import_does_not_undo_it(self):
+        """The unlink that runs after a successful import must not be able
+        to turn that success back into a failure. missing_ok=True only
+        swallows FileNotFoundError -- a permission error, the temp path
+        replaced by a directory, or an NFS hiccup all raise something else,
+        and letting that propagate out of verify_and_import would land in
+        download_and_import's outer except and call fail_image, flipping a
+        READY row back to FAILED (and, since fail_image never cleans up the
+        extracted tree, stranding gigabytes on disk while telling the
+        operator the import failed)."""
+        from . import fetcher
+
+        image = self._image()
+        with override_settings(VIGIL_IMAGE_ROOT=self.tmp.name), \
+             patch.object(fetcher, "check_url", lambda *a, **k: ""), \
+             patch.object(fetcher.requests, "get",
+                          lambda *a, **k: _FakeResponse([PAYLOAD])), \
+             patch.object(fetcher, "import_iso", lambda *a, **k: None), \
+             patch.object(fetcher.Path, "unlink",
+                          side_effect=PermissionError("permission denied")):
+            fetcher.download_and_import(image.id)
+        image.refresh_from_db()
+
+        self.assertEqual(image.status, OSImage.Status.READY)
+        # The failed cleanup is allowed to strand the temp file -- that is
+        # the acceptable cost this test exists to bound.
+        self.assertEqual(self._leftovers(), [f".download-{image.id}.iso"])
+
     def test_a_network_error_mid_stream_leaves_no_temp_file(self):
         from . import fetcher
 

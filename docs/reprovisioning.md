@@ -382,7 +382,7 @@ POST   /api/v1/reprovision/profiles/              create
 GET|PATCH|DELETE /api/v1/reprovision/profiles/{id}/
 POST   /api/v1/reprovision/profiles/{id}/preview/ render for a host, secrets redacted
 
-POST   /api/v1/hosts/{id}/preflight/              dispatch the probe
+POST   /api/v1/reprovision/preflight/             dispatch the probe (host in body)
 GET    /api/v1/reprovision/jobs/                  list, site-scoped via host
 POST   /api/v1/reprovision/jobs/                  create — the ceremony
 GET    /api/v1/reprovision/jobs/{id}/             detail + timeline
@@ -491,7 +491,7 @@ passed on SQLite while the migration was broken on PostgreSQL.
 
 ## 14. Deliberate deferrals
 
-- **Windows** — 2026.7/2026.8, seams in §12. As of 2026.7.0 this also covers
+- **Windows** — targeted at 2026.7.1, seams in §12. As of 2026.7.0 this also covers
   images specifically: `OSImage.Family` and `images.KERNEL_PATHS` have no
   Windows entry, so an upload or pull for it is refused rather than accepted
   and failed after the transfer. The UI's Windows button is disabled with the

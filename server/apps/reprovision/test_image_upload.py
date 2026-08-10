@@ -75,6 +75,19 @@ class ImageUploadTests(TestCase):
             self._upload()
         self.assertEqual(self._leftovers(), [])
 
+    def test_a_cleanup_failure_after_a_successful_upload_does_not_undo_it(self):
+        """Same contract as test_fetcher.py's equivalent -- both paths share
+        fetcher.verify_and_import, so a cleanup failure after a successful
+        import must not flip the row back to FAILED here either."""
+        with patch("apps.reprovision.fetcher.import_iso",
+                   self._fake_successful_import), \
+             patch("apps.reprovision.fetcher.Path.unlink",
+                  side_effect=PermissionError("permission denied")):
+            resp = self._upload()
+        self.assertEqual(resp.status_code, 201, resp.content)
+        image = OSImage.objects.get()
+        self.assertEqual(image.status, OSImage.Status.READY)
+
     def test_a_checksum_mismatch_fails_the_image_and_leaves_no_file(self):
         resp = self._upload(sha256="0" * 64)
         self.assertEqual(resp.status_code, 400)
