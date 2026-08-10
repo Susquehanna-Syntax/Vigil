@@ -1,0 +1,107 @@
+{# Reprovision page section #}
+{# Logic: static/js/vigil-reprovision.js | Data: client-side fetch /api/v1/reprovision/... #}
+    <section id="page-reprovision" class="page">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Reprovision<span>.</span></div>
+          <div class="page-sub">OS image library, pull controls, install profiles and rebuild jobs</div>
+        </div>
+      </div>
+
+      {# ── Image library ──────────────────────────────────────────────── #}
+      <div class="section-label" style="margin-top:0;">Image library</div>
+      <div style="background:var(--s1);border-radius:var(--r-lg);padding:20px;margin-bottom:8px;">
+        <div id="repro-images-list"></div>
+      </div>
+
+      {# ── Pull controls ──────────────────────────────────────────────── #}
+      <div class="section-label">Pull an image</div>
+      <div style="background:var(--s1);border-radius:var(--r-lg);padding:20px;">
+
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <select id="repro-catalog-select" class="form-control" style="max-width:380px;width:auto;flex:1;min-width:220px;"></select>
+          <button class="btn btn-mint btn-sm" id="repro-catalog-pull-btn">Pull from catalog</button>
+        </div>
+        <div id="repro-catalog-empty" class="muted-note" style="display:none;margin-top:10px;">
+          Catalog is unavailable — you may not have permission to view it, or
+          nothing is configured.
+        </div>
+
+        <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
+          <button class="btn btn-outline btn-sm" id="repro-rhel-btn" type="button">Get RHEL family image</button>
+          <button class="btn btn-outline btn-sm" id="repro-windows-btn" type="button" style="margin-left:10px;">Get Windows image</button>
+          <div class="muted-note" style="margin-top:12px;max-width:720px;">
+            RHEL proper needs an active Red Hat subscription, and Microsoft
+            publishes no stable direct-download URL with a published hash —
+            Vigil cannot fetch either one anonymously the way it fetches the
+            catalog images above. Get the ISO yourself from a source you're
+            entitled to use, host it somewhere Vigil's server can reach, then
+            paste the URL and its SHA-256 below. Legitimate sources:
+            <a href="https://access.redhat.com/downloads" target="_blank" rel="noopener noreferrer">Red Hat Customer Portal</a>
+            &middot;
+            <a href="https://www.microsoft.com/en-us/evalcenter/download-windows-server-2025" target="_blank" rel="noopener noreferrer">Microsoft Evaluation Center</a>.
+          </div>
+        </div>
+
+        <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
+          <div class="section-label" style="margin-top:0;">Custom URL</div>
+
+          <div style="background:rgba(242,160,184,0.08);border:1px solid var(--rose);border-radius:var(--r-md);padding:14px 16px;margin-bottom:18px;font-size:13px;color:var(--text-2);line-height:1.7;max-width:720px;">
+            <strong style="color:var(--rose);">Before you paste a URL here:</strong>
+            Vigil fetches this URL from inside your network, not from your
+            browser — the request comes from the Vigil server, which can
+            reach hosts, internal mirrors, and management networks your own
+            workstation cannot. Point this only at a source you trust.
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div class="form-group">
+              <label class="form-label" for="repro-custom-name">Name</label>
+              <input type="text" class="form-control" id="repro-custom-name" placeholder="e.g. RHEL 9.4 (internal mirror)" maxlength="160">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="repro-custom-family">OS family</label>
+              <select class="form-control" id="repro-custom-family">
+                <option value="ubuntu">Ubuntu</option>
+                <option value="debian">Debian</option>
+                <option value="rhel">RHEL family</option>
+                <option value="windows">Windows</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;">
+            <div class="form-group">
+              <label class="form-label" for="repro-custom-url">URL</label>
+              <input type="text" class="form-control" id="repro-custom-url" placeholder="https://mirror.example.com/image.iso">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="repro-custom-version">Version</label>
+              <input type="text" class="form-control" id="repro-custom-version" placeholder="optional" maxlength="40">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="repro-custom-sha256">SHA-256</label>
+            <input type="text" class="form-control mono" id="repro-custom-sha256" placeholder="64 hex characters">
+          </div>
+          <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--text-2);margin-bottom:16px;cursor:pointer;">
+            <input type="checkbox" id="repro-custom-ack" style="margin-top:3px;">
+            <span>I understand Vigil will fetch this URL from inside my network, and I trust the source.</span>
+          </label>
+          <button class="btn btn-mint btn-sm" id="repro-custom-submit" disabled>Register and download</button>
+        </div>
+      </div>
+
+      {# ── Profiles ────────────────────────────────────────────────────── #}
+      <div class="section-label">Install profiles</div>
+      <div style="background:var(--s1);border-radius:var(--r-lg);padding:20px;margin-bottom:8px;">
+        <div id="repro-profiles-list"></div>
+      </div>
+
+      {# ── Rebuild jobs ────────────────────────────────────────────────── #}
+      <div class="section-label">Rebuild jobs</div>
+      <div style="background:var(--s1);border-radius:var(--r-lg);padding:20px;">
+        <div id="repro-jobs-list"></div>
+      </div>
+
+    </section>
