@@ -31,7 +31,7 @@ class ImageUploadTests(TestCase):
         return SimpleUploadedFile("image.iso", payload,
                                   content_type="application/octet-stream")
 
-    def _upload(self, payload=None, **fields):
+    def _upload(self, payload=None, root=None, **fields):
         data = {
             "name": "Custom", "os_family": "ubuntu", "version": "1",
             "sha256": DIGEST,
@@ -39,9 +39,14 @@ class ImageUploadTests(TestCase):
         data.update(fields)
         if payload is not False:
             data["iso"] = self._file(payload if payload is not None else PAYLOAD)
-        with override_settings(VIGIL_IMAGE_ROOT=self.tmp.name):
+        # No format="multipart" — that's DRF APIClient syntax, not a real
+        # kwarg on django.test.Client.post (it would be silently absorbed
+        # into **extra). Client.post already defaults to multipart when
+        # given a dict containing a file, which is what actually exercises
+        # MultiPartParser here.
+        with override_settings(VIGIL_IMAGE_ROOT=root or self.tmp.name):
             return self.client.post("/api/v1/reprovision/images/upload/",
-                                    data, format="multipart")
+                                    data)
 
     def _leftovers(self):
         return [p.name for p in Path(self.tmp.name).iterdir()]
@@ -132,6 +137,25 @@ class ImageUploadTests(TestCase):
         tree_dir = Path(self.tmp.name) / str(image.id)
         self.assertFalse(tree_dir.exists())
         self.assertEqual(self._leftovers(), [])
+
+    def test_a_failing_mkdir_fails_the_image_rather_than_stranding_it(self):
+        """The row is saved at IMPORTING before the image root's mkdir runs.
+        If that mkdir raises (disk full, permissions, a path collision) and
+        isn't inside the same try/except as everything else, the row is
+        stuck at IMPORTING forever — never FAILED, never cleaned up, and
+        indistinguishable in the library from an import genuinely still in
+        progress."""
+        blocker = Path(self.tmp.name) / "blocker"
+        blocker.write_bytes(b"not a directory")
+        # mkdir(parents=True) under a plain file raises NotADirectoryError
+        # (an OSError subclass) — no mocking required.
+        bad_root = str(blocker / "images")
+
+        resp = self._upload(root=bad_root)
+        self.assertEqual(resp.status_code, 400)
+        image = OSImage.objects.get()
+        self.assertEqual(image.status, OSImage.Status.FAILED)
+        self.assertNotEqual(image.status, OSImage.Status.IMPORTING)
 
     def test_a_write_error_partway_through_cleans_up(self):
         """Simulates a disk error while streaming the upload to its temp

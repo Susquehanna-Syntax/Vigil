@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -261,14 +262,26 @@ FILE_UPLOAD_TEMP_DIR = os.environ.get(
     "VIGIL_UPLOAD_TEMP_DIR", str(Path(VIGIL_IMAGE_ROOT) / "tmp-uploads"))
 try:
     Path(FILE_UPLOAD_TEMP_DIR).mkdir(parents=True, exist_ok=True)
-except OSError:
+except OSError as _upload_dir_exc:
     # VIGIL_IMAGE_ROOT isn't writable in this environment (local dev
-    # without the volume mounted, a sandboxed test runner, ...). Django's
-    # own system check (files.E001) fails startup if FILE_UPLOAD_TEMP_DIR
-    # is set but does not exist, so falling back to its default of None
-    # (system temp dir) — the behaviour before this setting existed — keeps
-    # local/test runs working. Production containers mount VIGIL_IMAGE_ROOT
-    # writable, so this branch is not expected to be hit there.
+    # without the volume mounted, a sandboxed test runner, a hardened
+    # deployment running as a non-root user with a restrictively-permissioned
+    # volume, ...). Django's own system check (files.E001) fails startup if
+    # FILE_UPLOAD_TEMP_DIR is set but does not exist, so falling back to its
+    # default of None (system temp dir) — the behaviour before this setting
+    # existed — keeps the process starting at all. But that fallback is
+    # exactly the failure mode this setting exists to prevent (multi-
+    # gigabyte uploads spooling onto the container's writable layer instead
+    # of the sized volume), so it must not happen silently: a warning here
+    # is the only signal an operator gets, and without it the next person
+    # debugs a full disk instead of the permissions error that caused it.
+    logging.getLogger("vigil.reprovision").warning(
+        "FILE_UPLOAD_TEMP_DIR %r is not writable (%s) — falling back to the "
+        "system temp dir. Large ISO uploads will spool inside the "
+        "container instead of onto the VIGIL_IMAGE_ROOT volume. Fix the "
+        "permissions on %r or set VIGIL_UPLOAD_TEMP_DIR to a writable path.",
+        FILE_UPLOAD_TEMP_DIR, _upload_dir_exc, FILE_UPLOAD_TEMP_DIR,
+    )
     FILE_UPLOAD_TEMP_DIR = None
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

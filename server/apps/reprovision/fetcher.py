@@ -87,9 +87,22 @@ def fail_image(image: OSImage, reason: str, temp: Path | None) -> None:
     "something went wrong while bytes were landing on disk" case this
     exists for, and re-implementing the cleanup there would be exactly the
     duplication this module's docstring warns against.
+
+    The unlink is itself wrapped: `missing_ok=True` only swallows
+    FileNotFoundError, but this can be reached when *temp*'s parent isn't a
+    valid directory at all (e.g. the image root's own `mkdir` is what
+    failed, in which case there is nothing to unlink and trying raises
+    NotADirectoryError instead). Any OSError here just means there was
+    nothing on disk to clean up in the first place — it must never stop
+    this function from landing the row on FAILED, which is the one outcome
+    every caller is relying on it for.
     """
     if temp is not None:
-        temp.unlink(missing_ok=True)
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("Image %s: could not remove temp file %s (%s)",
+                           image.id, temp, exc)
     image.status = OSImage.Status.FAILED
     image.import_error = reason
     image.save(update_fields=["status", "import_error"])
