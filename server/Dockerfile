@@ -76,4 +76,11 @@ RUN VIGIL_SKIP_STARTUP_CHECKS=1 python manage.py collectstatic --noinput
 EXPOSE 8000
 
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["gunicorn", "vigil.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
+# --timeout 1800 (default is 30s): apps.reprovision.views.image_upload
+# streams a multipart ISO upload synchronously inside the request/response
+# cycle so the operator gets a real success/failure instead of a
+# fire-and-forget job. A multi-gigabyte upload over a slow link can easily
+# run past 30s, and the default kills the worker mid-upload — the arbiter
+# has no idea a legitimate transfer is still in progress. Do not trim this
+# back without an alternative (e.g. a background upload endpoint) in place.
+CMD ["gunicorn", "vigil.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "1800"]

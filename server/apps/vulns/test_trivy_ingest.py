@@ -400,6 +400,91 @@ class UploadLimitTests(TestCase):
         # Mirrors vigil_agent.client._MAX_OUTPUT. Hard-coded rather than
         # imported: the agent is deployed separately and is not on the
         # server's import path.
-        agent_cap = 1_000_000
+        agent_cap = 2_000_000
         self.assertIsNotNone(settings.DATA_UPLOAD_MAX_MEMORY_SIZE)
+        # Strictly greater, not equal: the report travels as a JSON string, so
+        # every quote in it costs two characters on the wire. A limit sized at
+        # the agent's cap rejects payloads the agent thinks are legal.
         self.assertGreater(settings.DATA_UPLOAD_MAX_MEMORY_SIZE, agent_cap * 2)
+
+
+def packed(report_json):
+    """What a compressing agent puts on the wire."""
+    import base64, gzip
+
+    return "[TRIVY-GZ]" + base64.b64encode(
+        gzip.compress(report_json.encode(), 6)).decode("ascii")
+
+
+class CompressedReportTests(TestCase):
+    """The agent gzips large reports so a host with thousands of findings fits
+    in one request. Plain reports must keep working regardless — agents from
+    before compression are still in the field, and a server that only spoke
+    the new format would silently stop ingesting from all of them."""
+
+    def setUp(self):
+        self.host = Host.objects.create(
+            hostname="h6", agent_token="g" * 32, status=Host.Status.ONLINE)
+        self.scanner = TrivyScanner()
+
+    def _open(self):
+        return VulnFinding.objects.filter(
+            host=self.host, scanner=VulnScan.Scanner.TRIVY,
+            state=VulnFinding.State.OPEN)
+
+    def test_a_compressed_report_is_ingested(self):
+        self.scanner.ingest_report(self.host, packed(vuln_report(CVE)))
+        self.assertEqual(self._open().count(), 1)
+
+    def test_a_plain_report_still_works(self):
+        self.scanner.ingest_report(self.host, vuln_report(CVE))
+        self.assertEqual(self._open().count(), 1)
+
+    def test_compressed_inside_a_multi_step_transcript(self):
+        out = f"[OK] refresh_db: ok\n[OK] scan: {packed(vuln_report(CVE))}"
+        self.scanner.ingest_report(self.host, out)
+        self.assertEqual(self._open().count(), 1)
+
+    def test_trailing_step_output_after_the_blob(self):
+        out = (f"[OK] scan: {packed(vuln_report(CVE))}\n[OK] cleanup: done")
+        self.scanner.ingest_report(self.host, out)
+        self.assertEqual(self._open().count(), 1)
+
+    def test_a_compressed_clean_report_marks_findings_fixed(self):
+        self.scanner.ingest_report(self.host, packed(vuln_report(CVE)))
+        self.scanner.ingest_report(self.host, packed(clean_report()))
+        self.assertEqual(self._open().count(), 0)
+
+    def test_a_compressed_sbom_is_still_refused(self):
+        """Compression must not smuggle a report past the #18 guard."""
+        with self.assertRaises(ScanIngestError) as ctx:
+            self.scanner.ingest_report(self.host, packed(sbom_report()))
+        self.assertIn("inconclusive", str(ctx.exception).lower())
+
+    def test_a_truncated_blob_is_refused_as_truncated(self):
+        blob = packed(vuln_report(CVE))
+        with self.assertRaises(ScanIngestError) as ctx:
+            self.scanner.ingest_report(self.host, blob[:len(blob) // 2])
+        self.assertIn("truncated", str(ctx.exception).lower())
+
+    def test_a_truncated_blob_does_not_destroy_findings(self):
+        self.scanner.ingest_report(self.host, vuln_report(CVE))
+        blob = packed(vuln_report(CVE))
+        with self.assertRaises(ScanIngestError):
+            self.scanner.ingest_report(self.host, blob[:len(blob) // 2])
+        self.assertEqual(self._open().count(), 1)
+
+    def test_a_marker_with_no_payload_is_refused(self):
+        with self.assertRaises(ScanIngestError) as ctx:
+            self.scanner.ingest_report(self.host, "[OK] scan: [TRIVY-GZ]")
+        self.assertIn("no payload", str(ctx.exception).lower())
+
+    def test_garbage_after_the_marker_is_refused(self):
+        with self.assertRaises(ScanIngestError):
+            self.scanner.ingest_report(self.host, "[TRIVY-GZ]bm90Z3ppcA==")
+
+    def test_diagnostics_quote_readable_json_not_base64(self):
+        """A refusal has to be actionable: decompress before quoting."""
+        with self.assertRaises(ScanIngestError) as ctx:
+            self.scanner.ingest_report(self.host, packed(sbom_report()))
+        self.assertIn("Packages", str(ctx.exception))

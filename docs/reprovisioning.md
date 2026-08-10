@@ -273,8 +273,21 @@ deliberate re-addressing, and the override is audited.
 
 **`OSImage`** — `name`, `os_family` (`ubuntu`/`debian`/`rhel`), `version`,
 `architecture`, `sha256`, `size_bytes`, `status`
-(`importing`/`ready`/`failed`), `import_error`, `kernel_path`, `initrd_path`,
-`tree_path`, `created_by`, `created_at`.
+(`downloading`/`importing`/`ready`/`failed`), `import_error`, `kernel_path`,
+`initrd_path`, `tree_path`, `source_url` (set when the image was pulled rather
+than uploaded), `bytes_downloaded`, `created_by`, `created_at`.
+
+Two ways to fill an `OSImage`: **pull** it (Vigil fetches the URL itself, from
+a curated catalog of anonymously-fetchable distros or a custom URL — see
+§9's `images/pull/` and `apps/reprovision/catalog.py`) or **upload** it (the
+operator POSTs the file directly, streamed to disk and hashed in one pass —
+see `images/upload/`). Every URL Vigil fetches, catalog or custom, is checked
+against `apps/reprovision/fetch_guard.py` before anything is created: it
+refuses cloud instance metadata addresses, loopback, and link-local ranges —
+the destinations with no legitimate ISO on them — while allowing private
+ranges, since an internal mirror is a legitimate source. A SHA-256 digest is
+required either way; `images.verify_checksum` refuses an empty one rather
+than importing unverified.
 
 On import Vigil reads the ISO with **`pycdlib`** — a pure-Python ISO9660
 reader, because a Docker container cannot loop-mount — extracts kernel and
@@ -356,8 +369,11 @@ can still abort with nothing damaged.
 ## 9. API surface
 
 ```
-GET    /api/v1/reprovision/images/                list catalog
-POST   /api/v1/reprovision/images/                register (admin only)
+GET    /api/v1/reprovision/catalog/               distros Vigil can fetch on its own
+POST   /api/v1/reprovision/images/pull/           queue a download (catalog id or custom url+sha256, admin only)
+POST   /api/v1/reprovision/images/upload/         upload an ISO directly (admin only)
+GET    /api/v1/reprovision/images/                list the library
+POST   /api/v1/reprovision/images/                register without fetching (admin only)
 GET    /api/v1/reprovision/images/{id}/           detail + import status
 DELETE /api/v1/reprovision/images/{id}/           admin only
 
@@ -366,7 +382,7 @@ POST   /api/v1/reprovision/profiles/              create
 GET|PATCH|DELETE /api/v1/reprovision/profiles/{id}/
 POST   /api/v1/reprovision/profiles/{id}/preview/ render for a host, secrets redacted
 
-POST   /api/v1/hosts/{id}/preflight/              dispatch the probe
+POST   /api/v1/reprovision/preflight/             dispatch the probe (host in body)
 GET    /api/v1/reprovision/jobs/                  list, site-scoped via host
 POST   /api/v1/reprovision/jobs/                  create — the ceremony
 GET    /api/v1/reprovision/jobs/{id}/             detail + timeline
@@ -475,11 +491,21 @@ passed on SQLite while the migration was broken on PostgreSQL.
 
 ## 14. Deliberate deferrals
 
-- **Windows** — 2026.7/2026.8, seams in §12.
+- **Windows** — targeted at 2026.7.1, seams in §12. As of 2026.7.0 this also covers
+  images specifically: `OSImage.Family` and `images.KERNEL_PATHS` have no
+  Windows entry, so an upload or pull for it is refused rather than accepted
+  and failed after the transfer. The UI's Windows button is disabled with the
+  same explanation. Vigil's importer extracts a PXE `vmlinuz`/`initrd` pair;
+  Windows boots `bootmgr` against `boot.wim`, a different pipeline that
+  doesn't exist yet.
 - **BMC/Redfish and PXE** — the eradication and dead-box paths, §1 and §11.
-- **Per-site image catalogs** — global in 6.0; the assignment-table pattern
-  from baselines applies when needed.
+- **Per-site image catalogs** — global, as in 6.0; the assignment-table
+  pattern from baselines applies when needed.
 - **GPG signature verification of distro images** — SHA-256 plus admin-only
-  upload is the floor for 6.0.
+  upload/pull is the floor. As of 2026.7.0, Vigil can also fetch a curated
+  catalog of images on its own (`apps/reprovision/catalog.py`) rather than
+  upload being the only path in — see the image library docs in the README
+  and wiki — but the images themselves are still verified by checksum only,
+  never a signature.
 - **Bulk rebuild** — one host per job. Fleet-wide rebuild multiplies the blast
   radius of every failure mode above and deserves its own design.

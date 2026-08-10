@@ -147,6 +147,29 @@ def suggest_for_container(request, host_id, container_id):
                          (request.data.get("note") or "").strip()[:500]))
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsOperator])
+def suggest_for_vuln(request, finding_id):
+    """Suggest a remediation for one vulnerability finding.
+
+    Scoped to the *package*, not the CVE. A single ``update_package openssl``
+    clears every open openssl CVE on the host at once, so asking for a fix to
+    one of them in isolation invites a suggestion that leaves the other twelve
+    behind — and invites the operator to run it thirteen times.
+    """
+    from apps.vulns.models import VulnFinding
+
+    if not AiProvider.objects.filter(enabled=True).exists():
+        return _no_providers()
+    finding = get_object_or_404(
+        VulnFinding.objects.select_related("host"), pk=finding_id)
+    provider_id = request.data.get("provider_id")
+    if not provider_id:
+        return Response({"detail": "provider_id required"}, status=400)
+    return _run_provider(int(provider_id), _vuln_prompt(
+        finding, (request.data.get("note") or "").strip()[:500]))
+
+
 def _no_providers():
     return Response(
         {"detail": "No AI providers are configured. Add one in Settings — bring "
@@ -183,6 +206,73 @@ def _alert_prompt(alert) -> str:
         v = getattr(alert, attr, None)
         if v:
             lines.append(f"{attr.capitalize()}: {v}")
+    return "\n".join(lines)
+
+
+#: How many sibling CVEs to name before summarising the rest. Enough for the
+#: model to see this is a package-level fix, short of burning the context
+#: window on a package with two hundred open CVEs.
+_SIBLING_LIMIT = 12
+
+
+def _vuln_prompt(finding, note: str = "") -> str:
+    """Describe a finding in the terms a remediation actually takes.
+
+    The useful unit is the package and the version it needs to reach, not the
+    CVE number: package managers upgrade packages. Trivy fills in
+    ``package_name``/``installed_version``/``fixed_version``, so for its
+    findings this is a precise instruction rather than a guess. Nessus network
+    findings often carry none of that, and the prompt says so plainly instead
+    of implying a package fix that cannot be written.
+    """
+    from apps.vulns.models import VulnFinding
+
+    host = finding.host
+    lines = [
+        f"Vulnerability on host {host.hostname} ({host.os or 'unknown OS'})",
+        f"Severity: {finding.get_severity_display()}",
+    ]
+    if finding.cve_id:
+        lines.append(f"CVE: {finding.cve_id}")
+    if finding.title:
+        lines.append(f"Title: {finding.title}")
+    lines.append(f"Reported by: {finding.scanner}")
+
+    if finding.package_name:
+        lines.append(f"Package: {finding.package_name}")
+        lines.append(f"Installed version: {finding.installed_version or 'unknown'}")
+        lines.append(
+            f"Fixed in version: {finding.fixed_version}" if finding.fixed_version
+            else "Fixed version: not published by the scanner — no upgrade "
+                 "target is known, so a mitigation may be the only option.")
+
+        # Everything else open against this package. One upgrade clears them
+        # all, and the model should be told that rather than left to guess.
+        siblings = list(VulnFinding.objects.filter(
+            host=host, package_name=finding.package_name,
+            state=VulnFinding.State.OPEN,
+        ).exclude(pk=finding.pk).order_by("cve_id")[:_SIBLING_LIMIT + 1])
+        if siblings:
+            shown = [s.cve_id or s.plugin_id_or_oid
+                     for s in siblings[:_SIBLING_LIMIT]]
+            extra = len(siblings) - len(shown)
+            tail = f" (and {extra} more)" if extra > 0 else ""
+            lines.append(
+                f"This host has {len(siblings)} further open finding(s) "
+                f"against the same package: {', '.join(shown)}{tail}. "
+                f"One upgrade of {finding.package_name} should clear them "
+                f"together — propose a single task, not one per CVE.")
+    else:
+        lines.append(
+            "The scanner reported no package for this finding, so it is "
+            "probably a service or configuration issue rather than something "
+            "a package upgrade fixes. Prefer a diagnostic task that confirms "
+            "the exposure before proposing any change.")
+
+    if host.tags:
+        lines.append(f"Host tags: {', '.join(map(str, host.tags))}")
+    if note:
+        lines.append(f"Operator note: {note}")
     return "\n".join(lines)
 
 

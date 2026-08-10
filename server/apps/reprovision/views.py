@@ -3,12 +3,16 @@
 Objects outside the caller's sites answer 404, not 403 — the convention set
 in 2026.5.0, so an id probe cannot confirm a resource exists.
 """
+import hashlib
 import logging
+import shutil
 from datetime import timedelta
 
+from django.db.models import ProtectedError
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, parser_classes, permission_classes
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -16,10 +20,15 @@ from apps.accounts.permissions import IsAdmin, can
 from vigil import hooks, scoping
 
 from . import jobs
+from .catalog import CATALOG, get_entry
 from .ceremony import verify_rebuild_confirmation
+from .fetch_guard import check_url
+from .fetcher import fail_image, verify_and_import
+from .images import image_root
 from .models import InstallProfile, OSImage, RebuildJob
 from .serializers import (InstallProfileSerializer, OSImageSerializer,
                           RebuildJobSerializer)
+from .tasks import fetch_image
 
 logger = logging.getLogger("vigil.reprovision")
 
@@ -31,7 +40,233 @@ def _may(user, host, verb: str) -> bool:
     return can(user, site, "reprovision", verb)
 
 
+def _first_serializer_error(errors) -> str:
+    """Flatten a DRF error dict into one sentence.
+
+    Every error response in this file is ``{"error": "<sentence>"}``, not
+    DRF's default per-field shape — this keeps a serializer-validated
+    endpoint speaking the same language as its hand-validated neighbours.
+    """
+    field, messages = next(iter(errors.items()))
+    return f"{field}: {messages[0]}"
+
+
 # ── Image catalog (admin only — see §4.4) ────────────────────────────────────
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def catalog_list(request):
+    """The distros Vigil knows how to fetch on its own. Static data, so
+    there is nothing here an operator can break by reading it — same `view`
+    gate as the image library itself."""
+    if not can(request.user, None, "reprovision", "view"):
+        return Response({"error": "Not found"}, status=404)
+    return Response(CATALOG)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def image_pull(request):
+    """Register an image and queue its download.
+
+    Either a `catalog_id` (URL and digest come from the catalog — never from
+    the request body, so a caller-supplied sha256 alongside a catalog_id is
+    ignored) or a custom `url` + `sha256` + `os_family` + `name`.
+
+    `check_url` runs before any row is created: a refused destination must
+    leave no `OSImage` behind, or the library fills with rows for fetches
+    Vigil never attempted.
+
+    Field validation — including the model's max_length constraints on
+    `name`/`version`/`architecture` — runs through `OSImageSerializer`
+    rather than a bare `.objects.create()`, the same shape `image_list`'s
+    POST branch already uses (`serializer.save(**kwargs)` to layer in the
+    fields the serializer marks read-only). Skipping it would let an
+    oversized value reach the database uncaught: Postgres raises `DataError`
+    there, surfacing as a 500 instead of the 4xx this file returns
+    everywhere else.
+    """
+    if not IsAdmin().has_permission(request, None):
+        return Response({"error": "Admin required"}, status=403)
+
+    catalog_id = request.data.get("catalog_id")
+    if catalog_id:
+        entry = get_entry(catalog_id)
+        if entry is None:
+            return Response(
+                {"error": f"Unknown catalog id {catalog_id!r}"}, status=400)
+        url = entry["url"]
+        size_bytes = entry.get("size_bytes", 0)
+        field_data = {
+            "name": entry["name"], "os_family": entry["os_family"],
+            "version": entry.get("version", ""),
+            "architecture": entry.get("architecture", "x86_64"),
+            "sha256": entry["sha256"],
+        }
+    else:
+        url = (request.data.get("url") or "").strip()
+        sha256 = (request.data.get("sha256") or "").strip()
+        os_family = request.data.get("os_family") or ""
+        name = (request.data.get("name") or "").strip()
+        version = request.data.get("version", "")
+        architecture = request.data.get("architecture") or "x86_64"
+        size_bytes = 0
+
+        if not url:
+            return Response({"error": "url is required"}, status=400)
+        if not sha256:
+            return Response(
+                {"error": "A custom URL requires a sha256 digest — Vigil "
+                          "cannot verify what it downloads without one."},
+                status=400)
+        if os_family not in OSImage.Family.values:
+            return Response(
+                {"error": f"Unknown os_family {os_family!r}; must be one "
+                          f"of {', '.join(OSImage.Family.values)}"},
+                status=400)
+        if not name:
+            return Response({"error": "name is required"}, status=400)
+        field_data = {
+            "name": name, "os_family": os_family, "version": version,
+            "architecture": architecture, "sha256": sha256,
+        }
+
+    if refusal := check_url(url):
+        return Response({"error": refusal}, status=400)
+
+    serializer = OSImageSerializer(data=field_data)
+    # `version` has no model default, so ModelSerializer marks it required —
+    # right for the upload endpoint (image_list, where the caller always
+    # knows the version), wrong for a pull, whose only required fields per
+    # the brief are url/sha256/os_family/name. Relaxed on this instance
+    # only; length and every other constraint still apply.
+    serializer.fields["version"].required = False
+    serializer.fields["version"].allow_blank = True
+    if not serializer.is_valid():
+        return Response(
+            {"error": _first_serializer_error(serializer.errors)}, status=400)
+
+    image = serializer.save(
+        status=OSImage.Status.DOWNLOADING, source_url=url,
+        size_bytes=size_bytes, created_by=request.user,
+    )
+    fetch_image.delay(image.id)
+    return Response(OSImageSerializer(image).data, status=202)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser])
+def image_upload(request):
+    """Register an image from a file the caller POSTs directly, instead of
+    a URL Vigil fetches on its own.
+
+    Exists for RHEL/Windows: neither has an anonymous URL with a published
+    digest (see catalog.py and the `image_pull` docstring), so an operator
+    who already has the ISO on their laptop was previously told to go host
+    it somewhere Vigil's server could reach and paste the URL — a bad ask
+    for a multi-gigabyte file. This is that operator's actual path.
+
+    Synchronous, unlike `image_pull`: there is no Celery task to hand a
+    polling client, and the browser is already holding the upload
+    connection open, so the response simply waits for the import to
+    finish. That requires two things outside this file to be true in
+    production or it degrades: `server/Dockerfile`'s gunicorn `--timeout`
+    must be well past the multipart upload's duration (30s default kills
+    it mid-stream — see the comment on that line), and any reverse proxy
+    in front of Vigil (nginx, Cloudflare Tunnel, ...) must allow a request
+    body of this size — limits Vigil's own settings cannot reach.
+
+    The upload is streamed straight to a temp file under `VIGIL_IMAGE_ROOT`
+    while hashed in one pass (`uploaded.chunks()`, never `.read()` — these
+    are gigabytes), then handed to `fetcher.verify_and_import`, the same
+    verify/import/cleanup tail `image_pull`'s download path uses. Every
+    non-success exit — missing digest, bad os_family, a checksum that
+    doesn't match, a failed import, a write error partway through — deletes
+    the temp file; see fetcher.py's module docstring for why that matters.
+    """
+    if not IsAdmin().has_permission(request, None):
+        return Response({"error": "Admin required"}, status=403)
+
+    # Cheap enough to check before a single byte of the (possibly
+    # multi-gigabyte) file is streamed anywhere.
+    sha256 = (request.data.get("sha256") or "").strip()
+    if not sha256:
+        return Response(
+            {"error": "An upload requires a sha256 digest — Vigil cannot "
+                      "verify what it imports without one."},
+            status=400)
+
+    os_family = request.data.get("os_family") or ""
+    if os_family not in OSImage.Family.values:
+        return Response(
+            {"error": f"Unknown os_family {os_family!r}; must be one "
+                      f"of {', '.join(OSImage.Family.values)}"},
+            status=400)
+
+    name = (request.data.get("name") or "").strip()
+    if not name:
+        return Response({"error": "name is required"}, status=400)
+
+    uploaded = request.FILES.get("iso")
+    if not uploaded:
+        return Response({"error": "No iso file in request"}, status=400)
+
+    field_data = {
+        "name": name, "os_family": os_family,
+        "version": request.data.get("version", ""),
+        "architecture": request.data.get("architecture") or "x86_64",
+        "sha256": sha256,
+    }
+    serializer = OSImageSerializer(data=field_data)
+    # version has no model default, so ModelSerializer marks it required —
+    # same relaxation image_pull's custom-URL branch applies, for the same
+    # reason: an uploaded ISO's only required fields are these four plus
+    # the file itself.
+    serializer.fields["version"].required = False
+    serializer.fields["version"].allow_blank = True
+    if not serializer.is_valid():
+        return Response(
+            {"error": _first_serializer_error(serializer.errors)}, status=400)
+
+    image = serializer.save(status=OSImage.Status.IMPORTING,
+                            created_by=request.user)
+
+    root = image_root()
+    temp = root / f".upload-{image.id}.iso"
+
+    # Mirrors fetcher.download_and_import's shape: everything from here on,
+    # including the mkdir, is wrapped in one try/except so that anything
+    # escaping it — the mkdir itself (disk full, permissions, a path
+    # collision), the write loop, or verify_and_import (a disk error, or
+    # import_iso raising instead of recording its own failure) — still
+    # lands the row on FAILED and cleans up the temp file. Without the
+    # mkdir in here, a failure there would strand the row at IMPORTING
+    # forever: never FAILED, never cleaned up, indistinguishable in the
+    # library from an import genuinely still running.
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+
+        digest = hashlib.sha256()
+        written = 0
+        with temp.open("wb") as fh:
+            for chunk in uploaded.chunks():
+                if not chunk:
+                    continue
+                fh.write(chunk)
+                digest.update(chunk)
+                written += len(chunk)
+
+        verify_and_import(image, temp, digest.hexdigest(), written)
+    except Exception as exc:  # noqa: BLE001 — a bad upload must not 500
+        logger.exception("Image upload failed for %s", image.id)
+        fail_image(image, str(exc), temp)
+        return Response({"error": image.import_error}, status=400)
+
+    if image.status == OSImage.Status.FAILED:
+        return Response({"error": image.import_error}, status=400)
+    return Response(OSImageSerializer(image).data, status=201)
+
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
@@ -63,7 +298,20 @@ def image_detail(request, image_id):
         return Response(OSImageSerializer(image).data)
     if not IsAdmin().has_permission(request, None):
         return Response({"error": "Admin required"}, status=403)
-    image.delete()
+    tree_dir = image_root() / str(image.id)
+    try:
+        image.delete()
+    except ProtectedError as exc:
+        job = next(iter(exc.protected_objects), None)
+        if isinstance(job, RebuildJob):
+            detail = f"rebuild job {job.id} for host {job.host.hostname}"
+        else:
+            detail = "a rebuild job"
+        return Response({
+            "error": f"Image is still referenced by {detail} and cannot "
+                     f"be deleted.",
+        }, status=409)
+    shutil.rmtree(tree_dir, ignore_errors=True)
     return Response(status=204)
 
 
