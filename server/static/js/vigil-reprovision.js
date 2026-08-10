@@ -562,15 +562,18 @@ async function _reproPullFromCatalog() {
   }
 }
 
-// RHEL/Windows buttons pre-set the custom-URL form's family field — neither
-// distro has an anonymous URL with a published digest (see catalog.py), so
-// both reach the library through this same custom path, not a separate
-// upload endpoint.
+// RHEL/Windows buttons pre-set the shared name/family fields above both the
+// upload and custom-URL forms — neither distro has an anonymous URL with a
+// published digest (see catalog.py), so both reach the library through one
+// of these two operator-driven paths rather than the catalog. Upload is the
+// better fit for an operator who already has the ISO on their laptop; the
+// URL path stays for an internal mirror, which is faster than a round trip
+// through the browser.
 function _reproPresetFamily(family) {
   const famSel = document.getElementById('repro-custom-family');
   if (famSel) famSel.value = family;
-  const urlInput = document.getElementById('repro-custom-url');
-  if (urlInput) urlInput.focus();
+  const fileInput = document.getElementById('repro-custom-file');
+  if (fileInput) fileInput.focus();
 }
 
 function _reproRefreshCustomGate() {
@@ -619,6 +622,68 @@ async function _reproSubmitCustom() {
     showToast(e.message || 'Could not queue the pull', 'error');
   } finally {
     _reproRefreshCustomGate();
+  }
+}
+
+// The upload counterpart to _reproSubmitCustom, above. Shares the
+// name/family/version/sha256 fields with the URL form (both register the
+// same OSImage row, they just differ in where the bytes come from) but
+// posts multipart/form-data straight to images/upload/ rather than JSON to
+// images/pull/ — apiJson always sends Content-Type: application/json,
+// which is wrong for a file body, so this uses fetch directly and lets the
+// browser set the multipart boundary itself.
+function _reproRefreshUploadGate() {
+  const btn = document.getElementById('repro-upload-submit');
+  if (!btn) return;
+  const name = document.getElementById('repro-custom-name');
+  const sha = document.getElementById('repro-custom-sha256');
+  const file = document.getElementById('repro-custom-file');
+  btn.disabled = !(name && name.value.trim() &&
+    sha && sha.value.trim() &&
+    file && file.files && file.files.length > 0);
+}
+
+async function _reproSubmitUpload() {
+  const btn = document.getElementById('repro-upload-submit');
+  if (!btn) return;
+  const nameEl = document.getElementById('repro-custom-name');
+  const familyEl = document.getElementById('repro-custom-family');
+  const versionEl = document.getElementById('repro-custom-version');
+  const shaEl = document.getElementById('repro-custom-sha256');
+  const fileEl = document.getElementById('repro-custom-file');
+  const file = fileEl && fileEl.files && fileEl.files[0];
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append('name', nameEl.value.trim());
+  formData.append('os_family', familyEl.value);
+  formData.append('version', versionEl.value.trim());
+  formData.append('sha256', shaEl.value.trim());
+  formData.append('iso', file);
+
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Uploading…';
+  try {
+    const resp = await fetch('/api/v1/reprovision/images/upload/', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'X-CSRFToken': getCsrf() },
+      body: formData,
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(body.error || 'Upload failed');
+    showToast('Image uploaded and imported', 'success');
+    nameEl.value = '';
+    versionEl.value = '';
+    shaEl.value = '';
+    fileEl.value = '';
+    _reproLoadImages();
+  } catch (e) {
+    showToast(e.message || 'Could not upload the image', 'error');
+  } finally {
+    btn.textContent = originalLabel;
+    _reproRefreshUploadGate();
   }
 }
 
@@ -774,11 +839,20 @@ document.getElementById('repro-catalog-pull-btn')?.addEventListener('click', _re
 document.getElementById('repro-rhel-btn')?.addEventListener('click', () => _reproPresetFamily('rhel'));
 document.getElementById('repro-windows-btn')?.addEventListener('click', () => _reproPresetFamily('windows'));
 document.getElementById('repro-custom-submit')?.addEventListener('click', _reproSubmitCustom);
+document.getElementById('repro-upload-submit')?.addEventListener('click', _reproSubmitUpload);
 for (const id of ['repro-custom-ack', 'repro-custom-name', 'repro-custom-url', 'repro-custom-sha256']) {
   const el = document.getElementById(id);
   if (!el) continue;
   el.addEventListener('input', _reproRefreshCustomGate);
   el.addEventListener('change', _reproRefreshCustomGate);
+}
+// name and sha256 are shared with the upload form above, so both gates
+// need to react to them; the file input only affects the upload gate.
+for (const id of ['repro-custom-name', 'repro-custom-sha256', 'repro-custom-file']) {
+  const el = document.getElementById(id);
+  if (!el) continue;
+  el.addEventListener('input', _reproRefreshUploadGate);
+  el.addEventListener('change', _reproRefreshUploadGate);
 }
 
 // Auto-load the first time the Reprovision tab is opened, following the

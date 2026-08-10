@@ -3,6 +3,7 @@
 Objects outside the caller's sites answer 404, not 403 — the convention set
 in 2026.5.0, so an id probe cannot confirm a resource exists.
 """
+import hashlib
 import logging
 import shutil
 from datetime import timedelta
@@ -10,7 +11,8 @@ from datetime import timedelta
 from django.db.models import ProtectedError
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, parser_classes, permission_classes
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -21,6 +23,7 @@ from . import jobs
 from .catalog import CATALOG, get_entry
 from .ceremony import verify_rebuild_confirmation
 from .fetch_guard import check_url
+from .fetcher import fail_image, verify_and_import
 from .images import image_root
 from .models import InstallProfile, OSImage, RebuildJob
 from .serializers import (InstallProfileSerializer, OSImageSerializer,
@@ -149,6 +152,117 @@ def image_pull(request):
     )
     fetch_image.delay(image.id)
     return Response(OSImageSerializer(image).data, status=202)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser])
+def image_upload(request):
+    """Register an image from a file the caller POSTs directly, instead of
+    a URL Vigil fetches on its own.
+
+    Exists for RHEL/Windows: neither has an anonymous URL with a published
+    digest (see catalog.py and the `image_pull` docstring), so an operator
+    who already has the ISO on their laptop was previously told to go host
+    it somewhere Vigil's server could reach and paste the URL — a bad ask
+    for a multi-gigabyte file. This is that operator's actual path.
+
+    Synchronous, unlike `image_pull`: there is no Celery task to hand a
+    polling client, and the browser is already holding the upload
+    connection open, so the response simply waits for the import to
+    finish. That requires two things outside this file to be true in
+    production or it degrades: `server/Dockerfile`'s gunicorn `--timeout`
+    must be well past the multipart upload's duration (30s default kills
+    it mid-stream — see the comment on that line), and any reverse proxy
+    in front of Vigil (nginx, Cloudflare Tunnel, ...) must allow a request
+    body of this size — limits Vigil's own settings cannot reach.
+
+    The upload is streamed straight to a temp file under `VIGIL_IMAGE_ROOT`
+    while hashed in one pass (`uploaded.chunks()`, never `.read()` — these
+    are gigabytes), then handed to `fetcher.verify_and_import`, the same
+    verify/import/cleanup tail `image_pull`'s download path uses. Every
+    non-success exit — missing digest, bad os_family, a checksum that
+    doesn't match, a failed import, a write error partway through — deletes
+    the temp file; see fetcher.py's module docstring for why that matters.
+    """
+    if not IsAdmin().has_permission(request, None):
+        return Response({"error": "Admin required"}, status=403)
+
+    # Cheap enough to check before a single byte of the (possibly
+    # multi-gigabyte) file is streamed anywhere.
+    sha256 = (request.data.get("sha256") or "").strip()
+    if not sha256:
+        return Response(
+            {"error": "An upload requires a sha256 digest — Vigil cannot "
+                      "verify what it imports without one."},
+            status=400)
+
+    os_family = request.data.get("os_family") or ""
+    if os_family not in OSImage.Family.values:
+        return Response(
+            {"error": f"Unknown os_family {os_family!r}; must be one "
+                      f"of {', '.join(OSImage.Family.values)}"},
+            status=400)
+
+    name = (request.data.get("name") or "").strip()
+    if not name:
+        return Response({"error": "name is required"}, status=400)
+
+    uploaded = request.FILES.get("iso")
+    if not uploaded:
+        return Response({"error": "No iso file in request"}, status=400)
+
+    field_data = {
+        "name": name, "os_family": os_family,
+        "version": request.data.get("version", ""),
+        "architecture": request.data.get("architecture") or "x86_64",
+        "sha256": sha256,
+    }
+    serializer = OSImageSerializer(data=field_data)
+    # version has no model default, so ModelSerializer marks it required —
+    # same relaxation image_pull's custom-URL branch applies, for the same
+    # reason: an uploaded ISO's only required fields are these four plus
+    # the file itself.
+    serializer.fields["version"].required = False
+    serializer.fields["version"].allow_blank = True
+    if not serializer.is_valid():
+        return Response(
+            {"error": _first_serializer_error(serializer.errors)}, status=400)
+
+    image = serializer.save(status=OSImage.Status.IMPORTING,
+                            created_by=request.user)
+
+    root = image_root()
+    root.mkdir(parents=True, exist_ok=True)
+    temp = root / f".upload-{image.id}.iso"
+
+    # Mirrors fetcher.download_and_import's shape: everything from here on
+    # is wrapped in one try/except so that anything escaping the write loop
+    # *or* verify_and_import (a disk error, or import_iso raising instead
+    # of recording its own failure) still lands the row on FAILED and
+    # cleans up the temp file, rather than surfacing as an unhandled 500
+    # with a half-written ISO left behind.
+    try:
+        digest = hashlib.sha256()
+        written = 0
+        with temp.open("wb") as fh:
+            for chunk in uploaded.chunks():
+                if not chunk:
+                    continue
+                fh.write(chunk)
+                digest.update(chunk)
+                written += len(chunk)
+
+        verify_and_import(image, temp, digest.hexdigest(), written)
+    except Exception as exc:  # noqa: BLE001 — a bad upload must not 500
+        logger.exception("Image upload failed for %s", image.id)
+        fail_image(image, str(exc), temp)
+        return Response({"error": image.import_error}, status=400)
+
+    image.refresh_from_db()
+    if image.status == OSImage.Status.FAILED:
+        return Response({"error": image.import_error}, status=400)
+    return Response(OSImageSerializer(image).data, status=201)
 
 
 @api_view(["GET", "POST"])

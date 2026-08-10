@@ -80,14 +80,60 @@ def _connect(start_url: str):
     raise ValueError(f"Too many redirects (more than {_MAX_REDIRECTS})")
 
 
-def _fail(image: OSImage, reason: str, temp: Path | None) -> None:
-    """Land the image on FAILED and make sure nothing was left on disk."""
+def fail_image(image: OSImage, reason: str, temp: Path | None) -> None:
+    """Land the image on FAILED and make sure nothing was left on disk.
+
+    Public (not `_fail`): the upload path in views.py hits the same
+    "something went wrong while bytes were landing on disk" case this
+    exists for, and re-implementing the cleanup there would be exactly the
+    duplication this module's docstring warns against.
+    """
     if temp is not None:
         temp.unlink(missing_ok=True)
     image.status = OSImage.Status.FAILED
     image.import_error = reason
     image.save(update_fields=["status", "import_error"])
     logger.warning("Image %s failed: %s", image.id, reason)
+
+
+def verify_and_import(image: OSImage, temp: Path, actual_digest: str,
+                      written: int) -> None:
+    """Shared tail of the download and upload paths.
+
+    Both paths stream their payload to *temp* while hashing it in one pass,
+    then land here with the digest they computed. From this point on the
+    two are identical: compare against the expected digest, hand off to
+    `import_iso` (which re-verifies internally and does the real work),
+    discard the temp file, and reconcile the row.
+
+    Never raises — the outcome, success or failure, ends up recorded on
+    *image* either way, same contract as `import_iso` and `fail_image`.
+    """
+    if actual_digest.lower() != image.sha256.lower():
+        return fail_image(
+            image,
+            f"SHA-256 checksum mismatch: expected {image.sha256}, "
+            f"got {actual_digest}",
+            temp,
+        )
+
+    # import_iso (apps/reprovision/images.py) verifies the checksum a
+    # second time, extracts kernel/initrd/tree, and never raises on an
+    # internal failure — it records FAILED on the image itself and
+    # returns normally. So only an exception escaping the call means the
+    # call itself blew up; anything import_iso decided is already on the
+    # row once it returns, and must not be overwritten below.
+    import_iso(image, temp)
+    temp.unlink(missing_ok=True)
+
+    image.refresh_from_db()
+    if image.status == OSImage.Status.FAILED:
+        OSImage.objects.filter(pk=image.pk).update(bytes_downloaded=written)
+        return
+    image.status = OSImage.Status.READY
+    image.bytes_downloaded = written
+    image.import_error = ""
+    image.save(update_fields=["status", "bytes_downloaded", "import_error"])
 
 
 def download_and_import(image_id) -> None:
@@ -104,14 +150,14 @@ def download_and_import(image_id) -> None:
         # that after several gigabytes would be both wasteful and an unkind
         # error message.
         if not image.sha256:
-            return _fail(
+            return fail_image(
                 image,
                 "No SHA-256 recorded — refusing to fetch an image whose "
                 "bytes cannot be verified.",
                 None,
             )
         if refusal := check_url(image.source_url):
-            return _fail(image, refusal, None)
+            return fail_image(image, refusal, None)
 
         root = image_root()
         root.mkdir(parents=True, exist_ok=True)
@@ -122,7 +168,7 @@ def download_and_import(image_id) -> None:
         try:
             connection = _connect(image.source_url)
         except _RedirectRefused as exc:
-            return _fail(
+            return fail_image(
                 image,
                 f"Redirected to a refused destination: {exc}",
                 temp,
@@ -142,33 +188,8 @@ def download_and_import(image_id) -> None:
                     OSImage.objects.filter(pk=image.pk).update(
                         bytes_downloaded=written)
 
-        actual = digest.hexdigest()
-        if actual.lower() != image.sha256.lower():
-            return _fail(
-                image,
-                f"SHA-256 checksum mismatch: expected {image.sha256}, "
-                f"got {actual}",
-                temp,
-            )
-
-        # import_iso (apps/reprovision/images.py) verifies the checksum a
-        # second time, extracts kernel/initrd/tree, and never raises on an
-        # internal failure — it records FAILED on the image itself and
-        # returns normally. So only an exception escaping the call means the
-        # call itself blew up; anything import_iso decided is already on the
-        # row once it returns, and must not be overwritten below.
-        import_iso(image, temp)
-        temp.unlink(missing_ok=True)
-
-        image.refresh_from_db()
-        if image.status == OSImage.Status.FAILED:
-            OSImage.objects.filter(pk=image.pk).update(bytes_downloaded=written)
-            return
-        image.status = OSImage.Status.READY
-        image.bytes_downloaded = written
-        image.import_error = ""
-        image.save(update_fields=["status", "bytes_downloaded", "import_error"])
+        verify_and_import(image, temp, digest.hexdigest(), written)
     except Exception as exc:  # noqa: BLE001 — a bad fetch must not take the worker down
         logger.exception("Image fetch failed for %s", image_id)
         if image is not None:
-            _fail(image, str(exc), temp)
+            fail_image(image, str(exc), temp)
