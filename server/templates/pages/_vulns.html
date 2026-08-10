@@ -1,11 +1,11 @@
 {# Vulnerabilities page section #}
-{# Logic: static/js/vigil-vulns.js | Styles: vigil.css .vuln-*, .stat-* | Data: client-side fetch /api/v1/vulns/ (returns empty if Nessus not configured) #}
+{# Logic: static/js/vigil-vulns.js | Styles: vigil.css .vuln-*, .stat-* | Data: client-side fetch /api/v1/vulns/ (returns empty until a scanner has reported) #}
     <section id="page-vulns" class="page">
 
       <div class="page-header">
         <div>
           <div class="page-title">Vulnerabilities<span>.</span></div>
-          <div class="page-sub">Nessus / Tenable scan findings per host</div>
+          <div class="page-sub">Scan findings per host, across every configured scanner</div>
         </div>
         <button class="btn btn-outline btn-sm" onclick="refreshVulns()" id="vulns-refresh-btn">
           <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
@@ -59,12 +59,14 @@
       <div id="vulns-not-configured" style="display:none;">
         <div style="background:var(--s1);border-radius:var(--r-lg);padding:48px;text-align:center;">
           <div style="font-size:42px;margin-bottom:16px;opacity:0.5;">🛡</div>
-          <div style="font-weight:600;font-size:16px;margin-bottom:10px;color:var(--text-1);">Nessus not configured</div>
-          <div style="color:var(--text-2);font-size:13px;max-width:440px;margin:0 auto;line-height:1.7;">
-            Set <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">NESSUS_URL</code>,
-            <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">NESSUS_ACCESS_KEY</code>, and
-            <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">NESSUS_SECRET_KEY</code>
-            environment variables to enable vulnerability sync.
+          <div style="font-weight:600;font-size:16px;margin-bottom:10px;color:var(--text-1);">No scanner has reported yet</div>
+          <div style="color:var(--text-2);font-size:13px;max-width:520px;margin:0 auto;line-height:1.7;">
+            Vigil ingests findings from three scanners into this one view. Set up whichever you have &mdash; none are required, and you can run more than one.
+            <div style="margin-top:14px;text-align:left;display:inline-block;">
+              <div style="margin-bottom:7px;"><strong style="color:var(--text-1);">Trivy</strong> &mdash; runs on the host itself, nothing to configure here. Deploy the <em>Install Trivy</em> and <em>Run a Trivy vulnerability scan</em> task templates.</div>
+              <div style="margin-bottom:7px;"><strong style="color:var(--text-1);">Nessus / Tenable</strong> &mdash; set <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">NESSUS_URL</code>, <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">NESSUS_ACCESS_KEY</code> and <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">NESSUS_SECRET_KEY</code>.</div>
+              <div><strong style="color:var(--text-1);">Greenbone / OpenVAS</strong> &mdash; set <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">GREENBONE_URL</code>, <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">GREENBONE_USERNAME</code> and <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">GREENBONE_PASSWORD</code>.</div>
+            </div>
           </div>
         </div>
       </div>

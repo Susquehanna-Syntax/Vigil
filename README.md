@@ -205,6 +205,7 @@ allowlist:
 | **Inventory** | Hardware table for all enrolled hosts. Columns: hostname, IP, OS, CPU, RAM, MAC, BIOS, disks, uptime, last user, timezone, and more. Scrollable, sortable (click header), filterable per-column (`=value` for exact, default contains), drag-to-reorder columns, column visibility toggled via Columns button. |
 | **Tasks** | YAML task editor (with **Submit to Community** that opens a GitHub PR) and your private library. The **History** tab lists every dispatched task with live polling — newest first, paginated. |
 | **Vulns** | Nessus/Tenable scan findings per host, with a **Scan now** button per row. The **Recent scans** section below shows every scan request — UI-launched or agent-requested — and its state. |
+| **Firewall** | Per-host firewall rules and default policies, fetched on demand (not polled). See [Firewall Management](#firewall-management). |
 | **Monitor** | Select a host for live SVG gauges (CPU, Memory, Disk, Load) and Chart.js time-series with 1h/6h/24h/7d range selector. RDP download button for Windows hosts. |
 | **Alerts** | Firing, acknowledged, and resolved alerts across the fleet. |
 | **Community** | Browse forks of approved community tasks. New submissions live on GitHub at [SusquehannaSyntax/Vigil-Approved-Scripts](https://github.com/SusquehannaSyntax/Vigil-Approved-Scripts) — use **Submit to Community** in the task editor to open a PR. |
@@ -371,7 +372,7 @@ actions:
 
 ### Available actions
 
-All 49 primitives are defined in `server/apps/tasks/spec.py` and executed in `agent/vigil_agent/executor.py`. `run_command` and `execute_script` require `full_control` mode; all others require `managed` or higher.
+All 53 primitives are defined in `server/apps/tasks/spec.py` and executed in `agent/vigil_agent/executor.py`. `run_command` and `execute_script` require `full_control` mode; all others require `managed` or higher.
 
 **Service management**
 
@@ -434,8 +435,14 @@ All 49 primitives are defined in `server/apps/tasks/spec.py` and executed in `ag
 
 | Action | Params | Optional |
 |---|---|---|
-| `add_firewall_rule` | `port`, `protocol` | `action` |
-| `remove_firewall_rule` | `port`, `protocol` | — |
+| `add_firewall_rule` | `port`, `protocol` | `action`, `source`, `interface` |
+| `remove_firewall_rule` | `port`, `protocol` | `action`, `source` |
+| `list_firewall_rules` (low risk — read-only) | — | — |
+| `set_firewall_policy` | `direction`, `policy` | — |
+| `enable_firewall` | — | — |
+| `disable_firewall` | — | — |
+
+`list_firewall_rules` is the only low-risk action in this group — it changes nothing, so the Firewall tab dispatches it freely. The other five are high-risk. See [Firewall Management](#firewall-management).
 
 **User management**
 
@@ -637,10 +644,29 @@ The agent needs the `trivy` binary — use the **Install Trivy on this host** ta
 
 On completion the server writes one `VulnFinding` per (package, CVE) pair, marks previously-open findings that didn't reappear as `FIXED`, and recomputes the host score. The outcome is appended to the task's own output, so run details show either `[INGEST] trivy: N finding(s) ingested` or `[INGEST FAILED] <reason>`.
 
-**Report size.** A full `trivy fs /` report is very large — around 30 MB on a stock Ubuntu workstation, of which roughly 90% is a package inventory Vigil never reads. The agent condenses the report to the fields the server ingests (~240 KB) before sending it. Two consequences worth knowing:
+**Report size.** A full `trivy fs /` report is very large — around 30 MB on a stock Ubuntu workstation, of which roughly 90% is a package inventory Vigil never reads. The agent strips it to the fields the server ingests, deduplicates on (package, CVE) — the same package/CVE is reported once per binary that links it, so a raw report carries about 3x the findings the server actually stores — and gzips the result. That workstation's report goes out at 22.9 KB, **1317x smaller**, with every finding intact. A host with thousands of findings still fits in one request. Two consequences worth knowing:
 
 - Agents older than **2026.6.2** send the raw report, which is truncated in transit and cannot be ingested. The Vulnerabilities tab stays empty and run details say the report is truncated. Update the agent.
 - If you put a proxy in front of Vigil, its request body limit must clear `VIGIL_MAX_REQUEST_BODY_BYTES` (8 MB by default), or results are rejected before Vigil ever sees them.
+- Compression is transparent to the server: a plain report from an older agent still ingests, and a compressed one is decompressed before any diagnostic quotes it back, so refusal messages stay readable rather than showing base64.
+
+### Suggest Fix
+
+Every finding on the Vulnerabilities tab has a **Suggest Fix** button. Where the scanner reported a package and a fixed version — always the case for Trivy — it prefills a precise `update_package` task with **no model call at all**:
+
+```yaml
+name: "Upgrade openssl to 3.0.3"
+description: "Remediates CVE-2024-0001 on web-01 (installed 3.0.2 -> fixed 3.0.3)"
+risk: standard
+actions:
+  - type: update_package
+    params:
+      package_name: "openssl"
+```
+
+It is scoped to the **package**, not the CVE. One upgrade clears every CVE open against that package, so the suggestion says how many it covers rather than implying it fixes only the one you clicked.
+
+Any AI providers you have configured run alongside it, in parallel, for the cases a deterministic task cannot cover: no fixed version published, or no package at all (common for Nessus network findings, where the prompt asks for a diagnostic rather than an upgrade). Suggestions are still untrusted — everything passes through `parse_and_validate`, `update_agent` is dropped on sight, and nothing runs until you deploy it.
 
 **A report with no `Vulnerabilities` section is refused rather than ingested.** That shape means the scan never ran the vulnerability scanner — ingesting it would mark every existing finding fixed and report the host clean, which is the worst possible failure for a security feature. Existing findings are left untouched and the reason appears in run details.
 
@@ -709,6 +735,38 @@ The task editor's **Start from template…** dropdown covers all three scanners:
 
 ---
 
+## Firewall Management
+
+The **Firewall** app (sidebar, between Vulns and Monitor) reads and edits a host's `ufw`, `firewalld`, or Windows Firewall state — rules, per-rule source/interface, and the default incoming/outgoing policy.
+
+### Fetch-on-demand, not polled
+
+Unlike metrics, firewall state is not part of the regular checkin. Selecting a host dispatches `list_firewall_rules`; the snapshot lands with the host's *next* check-in, not immediately. **The first view of a host is an empty "Nothing read yet" state — that's normal, not a bug.** Press Refresh (or wait for the interval) and the tab fills in once the read completes. The same is true after any edit: the tab doesn't re-read automatically, so re-refresh to confirm a change landed.
+
+### Three changes the tab refuses
+
+`server/apps/hosts/firewall_guard.py` refuses three shapes of change outright, before the 2FA prompt ever appears:
+
+1. **Setting the default outgoing policy to `deny` or `reject`.** Lead concern: Vigil agents are outbound-only, so this severs the agent's own connection back to the server. The host stops checking in, and — because dispatch itself requires the agent to check in — no task can ever be sent to undo it. Recovery needs console access to the host.
+2. **Denying the remote-access port, or removing the rule that allows it** — port 22 always, plus 3389 on Windows.
+3. **Setting the default incoming policy to `deny`** when no allow rule covers the remote-access port.
+
+`disable_firewall` is **not** refused — it opens the host rather than closing it, so it goes through the ordinary high-risk 2FA gate like any other write, not the lockout guard.
+
+**The task editor is the deliberate, unguarded escape hatch.** The guard only applies to the Firewall tab's write endpoint (`POST /api/v1/hosts/{id}/firewall/apply/`); a task written by hand in the YAML editor using `set_firewall_policy`, `add_firewall_rule`, or `remove_firewall_rule` bypasses it entirely. A rule Vigil won't write from the form is still one you can write on purpose — that's what makes refusing in the tab reasonable instead of paternalistic.
+
+**Known limitation, by design:** the protected ports (22, 3389) are the well-known ones, hard-coded — never read from the host. A host with SSH moved to a custom port is **not** protected by this guard; a `deny`/incoming-default change against it goes through even though it would lock the host out just the same.
+
+### `managed`-mode agents must allowlist the actions
+
+Same trap as [Trivy](#trivy--agent-local-no-server-setup): the shipped `agent.yml` allowlist does not include any of the six firewall actions. On a `managed`-mode agent that hasn't added them, every firewall task — including the read — is rejected, and the Firewall tab just shows nothing for that host, with no obvious error on screen. `full_control` agents ignore the allowlist entirely. See `agent/config.example.yml` for the commented-out block.
+
+### Rules Vigil couldn't parse
+
+Some rules don't fit Vigil's port/protocol/source model — ufw app-profile rules (`ufw allow OpenSSH`), firewalld port ranges, Windows rules with a non-integer port. These are never silently dropped: they land in a separate "Unparsed rules" section on the tab, listed as raw text ("these rules exist on the host but Vigil could not interpret them"), and cannot be edited from there. A host whose SSH access comes entirely from an app-profile rule has no port-22 entry in the parsed rule list — the lockout guard treats that as *not* covered and refuses a default-deny-incoming change, which is the correct, conservative call even though the host may in fact be fine.
+
+---
+
 ## Active Directory Import
 
 Configure AD in **Settings → Active Directory**:
@@ -756,6 +814,41 @@ installer starts.** Read [docs/reprovisioning-runbook.md](docs/reprovisioning-ru
 before running one — including its note on why rebuild is *not* a guaranteed
 eradication path against an attacker with kernel-level persistence. Design
 rationale is in [docs/reprovisioning.md](docs/reprovisioning.md).
+
+### OS image library
+
+The **Reprovision** sidebar app manages the images a rebuild installs from. Vigil fetches an image once and serves it to every host that rebuilds against it — one download per fleet instead of one per host, and it means a rebuild works on a machine with no route to the internet at all, only to Vigil.
+
+`apps/reprovision/catalog.py` ships a small, hand-curated list of distros Vigil can pull on its own:
+
+| Catalog entry | Family |
+|---|---|
+| Ubuntu Server 24.04 LTS | `ubuntu` |
+| Ubuntu Server 22.04 LTS | `ubuntu` |
+| Debian 13 (netinst) | `debian` |
+| Rocky Linux 9 (minimal) | `rhel` |
+| AlmaLinux 9 (minimal) | `rhel` |
+
+Every entry needs a stable anonymous URL *and* a published SHA-256 — an entry that can't actually fetch would fail at the worst possible moment, after an operator has already chosen it for a rebuild. Entries go stale as distros cut new releases; the custom-URL path below covers the gap until `catalog.py` is updated.
+
+**RHEL proper and Windows are not in the catalog, on purpose.** RHEL needs an active Red Hat subscription to download, so there's no anonymous URL to point at; Microsoft publishes no stable direct download with a published hash. Neither is a Vigil limitation — both reach the library the same way: upload the ISO you're entitled to, or paste a URL (plus its SHA-256) to wherever you're already hosting it. **A digest is always required** — pulling from the catalog carries the published digest automatically, but a custom URL or an upload needs the operator to supply one; an image with no SHA-256 is refused before a single byte moves.
+
+**Windows images can't be imported yet.** The upload/pull buttons for it are disabled in the UI rather than silently failing after a multi-gigabyte transfer. Vigil's importer extracts a Linux-style `vmlinuz`/`initrd` pair to PXE-boot the installer; Windows boots from `bootmgr` against `boot.wim`, a different pipeline that doesn't exist yet. It's planned as its own piece of work, not a config flag someone forgot to flip.
+
+### The fetch guard
+
+Before Vigil fetches any URL — catalog or custom — `apps/reprovision/fetch_guard.py` checks the address it actually resolves to (re-checked after every redirect, so a hostname can't launder its way past the check). It refuses outright: loopback (`127.0.0.0/8`, `::1`), the unspecified address (`0.0.0.0`, `::`), link-local (`169.254.0.0/16`, `fe80::/10` — this range covers AWS/Azure instance metadata), and the metadata addresses specific to other clouds (`metadata.google.internal`/`metadata.goog`, Alibaba's `100.100.100.200`, AWS's IMDSv6 address). The reason is the same for all of them: on a cloud-hosted Vigil, the metadata service hands out credentials for the whole account, and Vigil's server sits where it can reach that service even though an operator's own workstation cannot — fetching a URL on the operator's behalf must not become a proxy into the account.
+
+**Private ranges are allowed on purpose.** An internal mirror is a completely legitimate image source, so RFC1918 addresses are never refused. A non-catalog URL shows a warning that Vigil will fetch it from inside your network, not from your browser — advisory, not a block.
+
+### Upload limits Vigil doesn't control
+
+An ISO upload passes through whatever sits in front of Vigil. **Cloudflare Tunnel** caps request bodies at 100 MB on free plans; **nginx** defaults `client_max_body_size` to 1 MB. Either one will fail a multi-gigabyte ISO upload with no explanation from Vigil itself — raise the limit on the proxy, or use the URL-pull path instead, which never touches the browser's upload connection.
+
+Two settings exist in this repo specifically because of the upload path — both are load-bearing, not leftovers:
+
+- **`server/Dockerfile`**'s gunicorn `--timeout 1800` — the 30-second default kills the worker mid-upload, because the ISO upload endpoint holds the request open synchronously for the whole transfer.
+- **`FILE_UPLOAD_TEMP_DIR`** (`server/vigil/settings.py`) — points Django's multipart spool at the `VIGIL_IMAGE_ROOT` volume instead of the container's writable layer, which a multi-gigabyte upload would otherwise fill.
 
 ---
 
@@ -814,6 +907,18 @@ rationale is in [docs/reprovisioning.md](docs/reprovisioning.md).
 | `GET` | `/api/v1/tasks/runs/{id}/` | Run detail with per-host step status |
 
 > The legacy single-action dispatch endpoint (`POST /api/v1/tasks/`) was removed in 2026.1.9 — it bypassed the TOTP gate. Use the definition-deploy endpoint instead. Community publish/unpublish endpoints were also removed; the community catalog now lives on GitHub (see [Community catalog](#community-catalog)).
+
+### Reprovisioning — image library
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/reprovision/catalog/` | The distros Vigil can fetch on its own (`view`) |
+| `POST` | `/api/v1/reprovision/images/pull/` | Queue a download — from `catalog_id`, or a custom `url` + `sha256` (admin only) |
+| `POST` | `/api/v1/reprovision/images/upload/` | Upload an ISO directly, synchronously verified and imported (admin only) |
+| `GET` `POST` | `/api/v1/reprovision/images/` | List the library (`view`) / register an image (admin only) |
+| `GET` `DELETE` | `/api/v1/reprovision/images/{id}/` | Image detail (`view`) / remove it (admin only) |
+
+Full job/profile/ceremony surface is in [docs/reprovisioning.md §9](docs/reprovisioning.md#9-api-surface).
 
 ### Misc
 

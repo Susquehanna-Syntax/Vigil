@@ -13,6 +13,8 @@ Security invariants:
 
 from __future__ import annotations
 
+import base64
+import gzip
 import hashlib
 import json
 import logging
@@ -29,6 +31,7 @@ import time
 from pathlib import Path
 
 from . import collector
+from . import firewall
 from .config import AgentConfig
 from .pkg_manager import detect as detect_pkg_manager
 
@@ -527,7 +530,6 @@ _TRIVY_VULN_FIELDS = (
 # inventory, listed alongside the 2.4 MB of findings we actually want.
 _TRIVY_RESULT_BULK = ("Packages", "Secrets", "Misconfigurations", "Licenses")
 
-
 def _condense_trivy_report(raw: str) -> str:
     """Strip a Trivy report down to what the server ingests.
 
@@ -571,25 +573,85 @@ def _condense_trivy_report(raw: str) -> str:
     else:
         return text
 
+    condensed = json.dumps(_slim_report(data), separators=(",", ":"))
+
+    # Splice back in place so any surrounding stderr text is left intact.
+    return text[:start] + _pack_report(condensed) + text[end:]
+
+
+#: Prefix marking a gzipped, base64-encoded report. The server keys off this to
+#: decide whether to decompress; anything without it is read as plain JSON, so
+#: an agent from before compression still ingests fine.
+TRIVY_GZIP_MARKER = "[TRIVY-GZ]"
+
+
+def _pack_report(report_json: str) -> str:
+    """Compress a condensed report for the wire.
+
+    A Trivy report is JSON with the same handful of keys repeated once per
+    finding, which is close to the ideal case for gzip: 6.6x on a real report,
+    5.0x after base64. That is what keeps a large host inside a single
+    request — the alternative was raising the request-body ceiling and
+    shedding fields, both of which cost more than they bought.
+
+    Compression is best-effort. If anything here fails, the plain report is
+    still correct and still ingestible; only the size advantage is lost.
+    """
+    try:
+        packed = TRIVY_GZIP_MARKER + base64.b64encode(
+            gzip.compress(report_json.encode("utf-8"), 6)).decode("ascii")
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not compress the Trivy report; sending it plain")
+        return report_json
+    # Refuse to make things worse. A tiny report can come out larger once
+    # base64 has added its third, and a plain report is easier to diagnose.
+    return packed if len(packed) < len(report_json) else report_json
+
+
+def _slim_report(data: dict) -> dict:
+    """Rebuild a Trivy report carrying only what the server ingests.
+
+    Deduplicates on ``(PkgName, VulnerabilityID)`` — the exact key the server
+    reconciles on. The same package/CVE is reported once per binary that links
+    it, 3.0x duplication on a real report, and every copy after the first is
+    transferred only to be collapsed by ``update_or_create`` at the far end.
+    The last occurrence wins, because that is the one whose values a host ends
+    up with today.
+
+    Every result survives even when dedup empties it, and each result's
+    ``Vulnerabilities`` key keeps its presence or absence: an empty list means
+    a clean target, a missing key means the vulnerability scanner never ran,
+    and the server refuses the second rather than marking everything fixed.
+    """
+    # (pkg, cve) -> (index of the result it last appeared in, slimmed entry)
+    latest: dict[tuple, tuple[int, dict]] = {}
+    for i, result in enumerate(data.get("Results") or []):
+        if not isinstance(result, dict):
+            continue
+        for vuln in (result.get("Vulnerabilities") or []):
+            if not isinstance(vuln, dict):
+                continue
+            key = (vuln.get("PkgName"), vuln.get("VulnerabilityID"))
+            latest[key] = (
+                i, {f: vuln[f] for f in _TRIVY_VULN_FIELDS if vuln.get(f) is not None})
+
+    kept: dict[int, list] = {}
+    for index, entry in latest.values():
+        kept.setdefault(index, []).append(entry)
+
     condensed = {k: v for k, v in data.items() if k != "Results"}
     results = []
-    for result in data.get("Results") or []:
+    for i, result in enumerate(data.get("Results") or []):
         if not isinstance(result, dict):
             results.append(result)
             continue
         slim = {k: v for k, v in result.items()
                 if k not in _TRIVY_RESULT_BULK and k != "Vulnerabilities"}
         if "Vulnerabilities" in result:
-            slim["Vulnerabilities"] = [
-                {f: v[f] for f in _TRIVY_VULN_FIELDS if v.get(f) is not None}
-                for v in (result["Vulnerabilities"] or [])
-                if isinstance(v, dict)
-            ]
+            slim["Vulnerabilities"] = kept.get(i, [])
         results.append(slim)
     condensed["Results"] = results
-
-    # Splice back in place so any surrounding stderr text is left intact.
-    return text[:start] + json.dumps(condensed, separators=(",", ":")) + text[end:]
+    return condensed
 
 
 def _run_trivy_scan(params: dict, _config: AgentConfig) -> str:
@@ -952,22 +1014,14 @@ def _add_firewall_rule(params: dict, _config: AgentConfig) -> str:
     action = str(params.get("action", "allow")).lower()
     if action not in ("allow", "deny"):
         raise ValueError(f"Action must be allow or deny, got {action!r}")
+    source = firewall.validate_source(params.get("source", "any"))
+    interface = firewall.validate_interface(params.get("interface", ""))
 
-    # Try ufw first, then firewall-cmd
-    for tool in ("ufw", "firewall-cmd"):
-        try:
-            _run(["which", tool], timeout=5)
-        except RuntimeError:
-            continue
-
-        if tool == "ufw":
-            return _run(["ufw", action, f"{port}/{protocol}"])
-        else:
-            flag = f"--add-port={port}/{protocol}" if action == "allow" \
-                else f"--remove-port={port}/{protocol}"
-            return _run(["firewall-cmd", "--permanent", flag])
-
-    raise RuntimeError("No supported firewall tool found (ufw or firewall-cmd)")
+    backend = firewall.detect()
+    if backend is None:
+        raise RuntimeError(
+            "No supported firewall tool found (ufw, firewall-cmd, or Windows)")
+    return backend.add_rule(port, protocol, action, source, interface)
 
 
 def _remove_firewall_rule(params: dict, _config: AgentConfig) -> str:
@@ -977,22 +1031,73 @@ def _remove_firewall_rule(params: dict, _config: AgentConfig) -> str:
     protocol = str(params.get("protocol", "tcp")).lower()
     if protocol not in ("tcp", "udp"):
         raise ValueError(f"Protocol must be tcp or udp, got {protocol!r}")
+    action = str(params.get("action", "allow")).lower()
+    if action not in ("allow", "deny"):
+        raise ValueError(f"Action must be allow or deny, got {action!r}")
+    source = firewall.validate_source(params.get("source", "any"))
+    # Optional: only WindowsBackend uses these, and it validates rule_id
+    # itself (see firewall.validate_rule_name) before it ever reaches
+    # PowerShell -- ufw and firewall-cmd ignore both. `name` (DisplayName)
+    # is carried for display/back-compat only; WindowsBackend removes by
+    # `rule_id` (the unique Name/InstanceID), never by `name` -- DisplayName
+    # is not guaranteed unique. See firewall.WindowsBackend.remove_rule.
+    name = str(params.get("name", "") or "")
+    rule_id = str(params.get("rule_id", "") or "")
 
-    for tool in ("ufw", "firewall-cmd"):
-        try:
-            _run(["which", tool], timeout=5)
-        except RuntimeError:
-            continue
+    backend = firewall.detect()
+    if backend is None:
+        raise RuntimeError(
+            "No supported firewall tool found (ufw, firewall-cmd, or Windows)")
+    return backend.remove_rule(port, protocol, action, source,
+                               name=name, rule_id=rule_id)
 
-        if tool == "ufw":
-            return _run(["ufw", "delete", "allow", f"{port}/{protocol}"])
-        else:
-            return _run([
-                "firewall-cmd", "--permanent",
-                f"--remove-port={port}/{protocol}",
-            ])
 
-    raise RuntimeError("No supported firewall tool found (ufw or firewall-cmd)")
+def _set_firewall_policy(params: dict, _config: AgentConfig) -> str:
+    direction = str(params.get("direction", "")).lower()
+    if direction not in ("incoming", "outgoing"):
+        raise ValueError(
+            f"Direction must be incoming or outgoing, got {direction!r}")
+    policy = str(params.get("policy", "")).lower()
+    if policy not in ("allow", "deny", "reject"):
+        raise ValueError(
+            f"Policy must be allow, deny or reject, got {policy!r}")
+    backend = firewall.detect()
+    if backend is None:
+        raise RuntimeError("No supported firewall tool found")
+    return backend.set_policy(direction, policy)
+
+
+def _enable_firewall(_params: dict, _config: AgentConfig) -> str:
+    backend = firewall.detect()
+    if backend is None:
+        raise RuntimeError("No supported firewall tool found")
+    return backend.set_enabled(True)
+
+
+def _disable_firewall(_params: dict, _config: AgentConfig) -> str:
+    backend = firewall.detect()
+    if backend is None:
+        raise RuntimeError("No supported firewall tool found")
+    return backend.set_enabled(False)
+
+
+def _list_firewall_rules(_params: dict, _config: AgentConfig) -> str:
+    """Return this host's firewall state as JSON.
+
+    A host with no supported firewall tool is a normal answer, not an error:
+    raising here would mark the task failed and bury the one fact the operator
+    needs behind a stack trace.
+    """
+    backend = firewall.detect()
+    if backend is None:
+        return json.dumps({
+            "tool": None, "supported": False, "enabled": False,
+            "defaults": {"incoming": "unknown", "outgoing": "unknown"},
+            "rules": [], "unparsed": [],
+        })
+    snapshot = backend.snapshot()
+    snapshot["supported"] = True
+    return json.dumps(snapshot)
 
 
 # ── User management ────────────────────────────────────────────────────────
@@ -1384,6 +1489,10 @@ _HANDLERS: dict[str, callable] = {
     # Networking
     "add_firewall_rule": _add_firewall_rule,
     "remove_firewall_rule": _remove_firewall_rule,
+    "list_firewall_rules": _list_firewall_rules,
+    "set_firewall_policy": _set_firewall_policy,
+    "enable_firewall": _enable_firewall,
+    "disable_firewall": _disable_firewall,
     # User management
     "create_user": _create_user,
     "delete_user": _delete_user,

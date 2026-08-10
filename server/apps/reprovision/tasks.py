@@ -19,3 +19,10 @@ def sweep_rebuild_deadlines() -> int:
     from .jobs import sweep_deadlines
 
     return sweep_deadlines()
+
+
+@shared_task(name="reprovision.fetch_image")
+def fetch_image(image_id: str) -> None:
+    from .fetcher import download_and_import
+
+    download_and_import(image_id)

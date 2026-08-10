@@ -148,3 +148,147 @@ class ProviderCrudTests(TestCase):
         c = self.client_class()
         c.login(username="v", password="x")
         self.assertEqual(c.get("/api/v1/ai/providers/").status_code, 403)
+
+
+UPGRADE_YAML = """name: Upgrade openssl
+description: Upgrade openssl to the fixed version
+risk: standard
+actions:
+  - type: update_package
+    params:
+      package_name: openssl
+"""
+
+
+class VulnSuggestTests(TestCase):
+    """Remediating a vulnerability is a package operation, not a CVE
+    operation. One `update_package openssl` clears every open openssl CVE on
+    the host, so a prompt scoped to the single CVE the operator clicked invites
+    a suggestion that leaves the rest behind."""
+
+    def setUp(self):
+        from apps.vulns.models import VulnFinding
+
+        self.VulnFinding = VulnFinding
+        self.admin = get_user_model().objects.create_user(
+            "root", password="x", is_staff=True)
+        self.client.force_login(self.admin)
+        self.provider = make_provider()
+        self.host = Host.objects.create(
+            hostname="web-01", agent_token=uuid.uuid4().hex,
+            os="Ubuntu 24.04", tags=["prod"])
+        self.finding = self._finding("CVE-2024-0001")
+
+    def _finding(self, cve, package="openssl", fixed="3.0.3", **kw):
+        return self.VulnFinding.objects.create(
+            host=self.host, scanner="trivy", plugin_id_or_oid=f"{package}:{cve}",
+            cve_id=cve, title="heap overflow", severity="critical",
+            package_name=package, installed_version="3.0.2",
+            fixed_version=fixed, **kw)
+
+    def url(self, finding=None):
+        return f"/api/v1/ai/suggest/vuln/{(finding or self.finding).id}/"
+
+    def _prompt(self):
+        """Run a suggestion and return the prompt the provider actually saw."""
+        captured = {}
+
+        def _complete(system, prompt):
+            captured["prompt"] = prompt
+            return f"```yaml\n{UPGRADE_YAML}```\n"
+
+        with mock.patch("apps.aisuggest.views.provider_for",
+                        return_value=mock.Mock(
+                            complete=mock.Mock(side_effect=_complete))):
+            self.client.post(self.url(), {"provider_id": self.provider.id})
+        return captured["prompt"]
+
+    def test_a_suggestion_comes_back(self):
+        with fake_completion(f"```yaml\n{UPGRADE_YAML}```\n"):
+            resp = self.client.post(self.url(), {"provider_id": self.provider.id})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(len(resp.json()["suggestions"]), 1)
+
+    def test_the_prompt_carries_the_package_and_versions(self):
+        prompt = self._prompt()
+        for expected in ("openssl", "3.0.2", "3.0.3"):
+            self.assertIn(expected, prompt, expected)
+
+    def test_the_prompt_carries_the_host_and_cve(self):
+        prompt = self._prompt()
+        self.assertIn("web-01", prompt)
+        self.assertIn("Ubuntu 24.04", prompt)
+        self.assertIn("CVE-2024-0001", prompt)
+
+    def test_siblings_on_the_same_package_are_named(self):
+        self._finding("CVE-2024-0002")
+        self._finding("CVE-2024-0003")
+        prompt = self._prompt()
+        self.assertIn("CVE-2024-0002", prompt)
+        self.assertIn("CVE-2024-0003", prompt)
+        self.assertIn("not one per CVE", prompt)
+
+    def test_a_different_package_is_not_pulled_in(self):
+        self._finding("CVE-2024-0009", package="libxml2")
+        self.assertNotIn("CVE-2024-0009", self._prompt())
+
+    def test_fixed_findings_are_not_named_as_siblings(self):
+        self._finding("CVE-2024-0004", state=self.VulnFinding.State.FIXED)
+        self.assertNotIn("CVE-2024-0004", self._prompt())
+
+    def test_a_long_sibling_list_is_summarised(self):
+        for i in range(20):
+            self._finding(f"CVE-2025-{i:04d}")
+        prompt = self._prompt()
+        self.assertIn("more)", prompt, "must not dump every CVE into the prompt")
+
+    def test_a_finding_with_no_fixed_version_says_so(self):
+        f = self._finding("CVE-2024-0100", package="zlib", fixed="")
+        captured = {}
+
+        def _complete(system, prompt):
+            captured["prompt"] = prompt
+            return f"```yaml\n{UPGRADE_YAML}```\n"
+
+        with mock.patch("apps.aisuggest.views.provider_for",
+                        return_value=mock.Mock(
+                            complete=mock.Mock(side_effect=_complete))):
+            self.client.post(self.url(f), {"provider_id": self.provider.id})
+        self.assertIn("no upgrade target", captured["prompt"].lower())
+
+    def test_a_finding_with_no_package_asks_for_a_diagnostic(self):
+        """Nessus network findings frequently have no package — the prompt
+        must not imply a package upgrade that cannot be written."""
+        f = self.VulnFinding.objects.create(
+            host=self.host, scanner="nessus", plugin_id_or_oid="12345",
+            title="TLS 1.0 enabled", severity="medium")
+        captured = {}
+
+        def _complete(system, prompt):
+            captured["prompt"] = prompt
+            return f"```yaml\n{UPGRADE_YAML}```\n"
+
+        with mock.patch("apps.aisuggest.views.provider_for",
+                        return_value=mock.Mock(
+                            complete=mock.Mock(side_effect=_complete))):
+            self.client.post(self.url(f), {"provider_id": self.provider.id})
+        self.assertIn("no package", captured["prompt"].lower())
+        self.assertIn("diagnostic", captured["prompt"].lower())
+
+    def test_forbidden_actions_are_dropped_here_too(self):
+        with fake_completion(f"```yaml\n{FORBIDDEN_YAML}```\n"):
+            resp = self.client.post(self.url(), {"provider_id": self.provider.id})
+        self.assertEqual(resp.json()["suggestions"], [])
+
+    def test_provider_id_is_required(self):
+        self.assertEqual(self.client.post(self.url()).status_code, 400)
+
+    def test_an_unknown_finding_is_404(self):
+        resp = self.client.post(f"/api/v1/ai/suggest/vuln/{uuid.uuid4()}/",
+                                {"provider_id": self.provider.id})
+        self.assertEqual(resp.status_code, 404)
+
+    def test_no_providers_configured_is_409(self):
+        AiProvider.objects.all().delete()
+        resp = self.client.post(self.url(), {"provider_id": 1})
+        self.assertEqual(resp.status_code, 409)

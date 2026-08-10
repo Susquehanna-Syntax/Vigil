@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -241,6 +242,48 @@ MEDIA_ROOT = BASE_DIR / "media"
 # independently of the rest of the app's uploads.
 VIGIL_IMAGE_ROOT = os.environ.get("VIGIL_IMAGE_ROOT", "/var/lib/vigil/images")
 
+# Where Django spools a multipart upload above FILE_UPLOAD_MAX_MEMORY_SIZE
+# (ISO uploads for apps.reprovision.views.image_upload always are — the
+# default threshold is 2.5 MB). Left unset, Django spools to the system
+# temp dir *inside the container*, not the VIGIL_IMAGE_ROOT volume an
+# operator sized for multi-gigabyte images — a single upload could fill the
+# container's writable layer before the view ever gets to run. Pointing it
+# under VIGIL_IMAGE_ROOT keeps the spool on the same volume as everything
+# else this feature writes. Created here, not lazily by a view, because
+# Django checks this directory exists the first time a large upload
+# arrives, not before — an operator's first real ISO upload is a bad time
+# to discover a typo in a bind-mount path. The mkdir is wrapped in a
+# try/except because this module also loads in environments (local dev
+# without the volume mounted, sandboxed test runners) that cannot write to
+# VIGIL_IMAGE_ROOT's default path — settings import must never crash there;
+# it just means uploads fail at request time instead, with a clear
+# filesystem error, same as any other missing-volume misconfiguration.
+FILE_UPLOAD_TEMP_DIR = os.environ.get(
+    "VIGIL_UPLOAD_TEMP_DIR", str(Path(VIGIL_IMAGE_ROOT) / "tmp-uploads"))
+try:
+    Path(FILE_UPLOAD_TEMP_DIR).mkdir(parents=True, exist_ok=True)
+except OSError as _upload_dir_exc:
+    # VIGIL_IMAGE_ROOT isn't writable in this environment (local dev
+    # without the volume mounted, a sandboxed test runner, a hardened
+    # deployment running as a non-root user with a restrictively-permissioned
+    # volume, ...). Django's own system check (files.E001) fails startup if
+    # FILE_UPLOAD_TEMP_DIR is set but does not exist, so falling back to its
+    # default of None (system temp dir) — the behaviour before this setting
+    # existed — keeps the process starting at all. But that fallback is
+    # exactly the failure mode this setting exists to prevent (multi-
+    # gigabyte uploads spooling onto the container's writable layer instead
+    # of the sized volume), so it must not happen silently: a warning here
+    # is the only signal an operator gets, and without it the next person
+    # debugs a full disk instead of the permissions error that caused it.
+    logging.getLogger("vigil.reprovision").warning(
+        "FILE_UPLOAD_TEMP_DIR %r is not writable (%s) — falling back to the "
+        "system temp dir. Large ISO uploads will spool inside the "
+        "container instead of onto the VIGIL_IMAGE_ROOT volume. Fix the "
+        "permissions on %r or set VIGIL_UPLOAD_TEMP_DIR to a writable path.",
+        FILE_UPLOAD_TEMP_DIR, _upload_dir_exc, FILE_UPLOAD_TEMP_DIR,
+    )
+    FILE_UPLOAD_TEMP_DIR = None
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---------------------------------------------------------------------------
@@ -278,11 +321,16 @@ VIGIL_SIGNING_KEY_SEED = os.environ.get("VIGIL_SIGNING_KEY_SEED", "")
 # POST fails with a bare 400 that no Vigil code can annotate, leaving the task
 # DISPATCHED forever with nothing anywhere to explain it.
 #
-# Task results are the large payload: a Trivy scan report. The agent condenses
-# those to roughly 243 KB and caps any task output at 1,000,000 characters
-# (vigil_agent.client._MAX_OUTPUT), so this ceiling sits well clear of what an
-# agent can legitimately send while still bounding the memory one request can
-# take — Django buffers the whole body before parsing it.
+# Task results are the large payload: a Trivy scan report. The agent
+# deduplicates and gzips those before sending, so even a host with thousands of
+# findings arrives well under a megabyte, and it caps task output at 2,000,000
+# characters (vigil_agent.client._MAX_OUTPUT).
+#
+# This clears that cap several times over. It is deliberately not sized tight:
+# exceeding it fails in HttpRequest.body, before any view runs, as a bare 400
+# that no Vigil code can annotate — the task would sit DISPATCHED forever with
+# nothing anywhere to explain it. Cheap headroom buys a failure mode we never
+# have to diagnose.
 DATA_UPLOAD_MAX_MEMORY_SIZE = int(
     os.environ.get("VIGIL_MAX_REQUEST_BODY_BYTES", 8 * 1024 * 1024))
 
@@ -400,7 +448,7 @@ VIGIL_DB_SIZE_CRIT_GB = float(os.environ.get("VIGIL_DB_SIZE_CRIT_GB", "40"))
 # Server build version — surfaced on the About page and the /api/v1/about/
 # endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
 # this constant should stay in lockstep.
-VIGIL_VERSION = "2026.6.2"
+VIGIL_VERSION = "2026.7.0"
 
 # ---------------------------------------------------------------------------
 # Agent distribution — filesystem path where compiled binaries live.

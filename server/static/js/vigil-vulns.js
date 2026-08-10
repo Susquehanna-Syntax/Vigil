@@ -222,7 +222,7 @@ async function refreshVulnScans() {
 }
 
 async function startVulnScan(hostId, btn) {
-  const totp = (window.prompt('Enter your TOTP code to launch a Nessus scan:') || '').trim();
+  const totp = (window.prompt('Enter your TOTP code to launch a vulnerability scan:') || '').trim();
   if (!totp) return;
   try {
     btn.disabled = true; btn.style.opacity = '0.5';
@@ -230,7 +230,7 @@ async function startVulnScan(hostId, btn) {
       method: 'POST',
       body: JSON.stringify({ totp }),
     });
-    showToast('Scan queued — Nessus will pick it up shortly', 'success');
+    showToast('Scan queued — the scanner will pick it up shortly', 'success');
     setTimeout(refreshVulnScans, 600);
   } catch (e) {
     showToast('Scan request failed: ' + e.message, 'error');
@@ -276,7 +276,7 @@ function renderVulns(summaries) {
   if (!summaries.length) {
     const empty = document.createElement('div');
     empty.style.cssText = 'background:var(--s1);border-radius:var(--r-md);padding:40px;text-align:center;color:var(--text-3);font-size:13px;';
-    empty.textContent = 'No scan results yet. Configure Nessus credentials and the data will appear after the next hourly sync.';
+    empty.textContent = 'No scan results yet. Run a Trivy scan from the Tasks tab, or configure Nessus or Greenbone and results appear after the next hourly sync.';
     content.appendChild(empty);
     return;
   }
@@ -345,7 +345,7 @@ function renderVulns(summaries) {
     const btn = document.createElement('button');
     btn.className = 'btn btn-outline btn-sm';
     btn.textContent = 'Scan now';
-    btn.title = 'Launch a Nessus scan against this host';
+    btn.title = 'Launch a network scan against this host (Nessus or Greenbone, whichever is configured)';
     btn.addEventListener('click', (ev) => {
       ev.stopPropagation();         // don't expand the row
       startVulnScan(s.host, btn);
@@ -439,7 +439,7 @@ async function _loadFindingsInto(container, summary) {
     const empty = document.createElement('div');
     empty.style.color = 'var(--text-3)';
     empty.style.fontSize = '12px';
-    empty.textContent = 'No open findings for this host yet. (Nessus per-host detail lands on the next sync cycle.)';
+    empty.textContent = 'No open findings for this host yet. Network-scanner detail lands on the next sync cycle; Trivy findings arrive as soon as a scan task completes.';
     container.appendChild(empty);
     return;
   }
@@ -490,9 +490,18 @@ async function _loadFindingsInto(container, summary) {
     const fix = document.createElement('button');
     fix.className = 'btn btn-sm btn-outline';
     fix.textContent = 'Suggest Fix';
-    fix.title = 'Coming in a later PR — Trivy/Greenbone findings get package-aware fixes';
-    fix.disabled = true;
-    fix.style.opacity = '0.45';
+    // Count the siblings the same upgrade would clear, so the built-in task
+    // can say so — one update_package fixes every CVE open against a package.
+    const siblings = f.package_name
+      ? findings.filter(o => o.package_name === f.package_name && o.id !== f.id).length
+      : 0;
+    fix.title = siblings
+      ? `Suggest a fix — also clears ${siblings} other finding(s) against ${f.package_name}`
+      : 'Suggest a remediation task for this finding';
+    fix.addEventListener('click', () => {
+      if (typeof suggestFixForVuln !== 'function') return;
+      suggestFixForVuln({ ...f, sibling_count: siblings });
+    });
     row.appendChild(fix);
 
     list.appendChild(row);
@@ -535,7 +544,7 @@ function updateHostCardVulnBadges(summaries) {
   });
 }
 
-// Silently populate host card vuln badges on load (no error if Nessus not configured)
+// Silently populate host card vuln badges on load (no error if no scanner has reported)
 (async () => {
   try {
     const resp = await fetch('/api/v1/vulns/', { credentials: 'same-origin' });
