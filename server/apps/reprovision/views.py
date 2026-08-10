@@ -233,16 +233,20 @@ def image_upload(request):
                             created_by=request.user)
 
     root = image_root()
-    root.mkdir(parents=True, exist_ok=True)
     temp = root / f".upload-{image.id}.iso"
 
-    # Mirrors fetcher.download_and_import's shape: everything from here on
-    # is wrapped in one try/except so that anything escaping the write loop
-    # *or* verify_and_import (a disk error, or import_iso raising instead
-    # of recording its own failure) still lands the row on FAILED and
-    # cleans up the temp file, rather than surfacing as an unhandled 500
-    # with a half-written ISO left behind.
+    # Mirrors fetcher.download_and_import's shape: everything from here on,
+    # including the mkdir, is wrapped in one try/except so that anything
+    # escaping it — the mkdir itself (disk full, permissions, a path
+    # collision), the write loop, or verify_and_import (a disk error, or
+    # import_iso raising instead of recording its own failure) — still
+    # lands the row on FAILED and cleans up the temp file. Without the
+    # mkdir in here, a failure there would strand the row at IMPORTING
+    # forever: never FAILED, never cleaned up, indistinguishable in the
+    # library from an import genuinely still running.
     try:
+        root.mkdir(parents=True, exist_ok=True)
+
         digest = hashlib.sha256()
         written = 0
         with temp.open("wb") as fh:
@@ -259,7 +263,6 @@ def image_upload(request):
         fail_image(image, str(exc), temp)
         return Response({"error": image.import_error}, status=400)
 
-    image.refresh_from_db()
     if image.status == OSImage.Status.FAILED:
         return Response({"error": image.import_error}, status=400)
     return Response(OSImageSerializer(image).data, status=201)

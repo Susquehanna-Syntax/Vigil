@@ -562,13 +562,21 @@ async function _reproPullFromCatalog() {
   }
 }
 
-// RHEL/Windows buttons pre-set the shared name/family fields above both the
-// upload and custom-URL forms — neither distro has an anonymous URL with a
-// published digest (see catalog.py), so both reach the library through one
-// of these two operator-driven paths rather than the catalog. Upload is the
-// better fit for an operator who already has the ISO on their laptop; the
-// URL path stays for an internal mirror, which is faster than a round trip
-// through the browser.
+// The RHEL button pre-sets the shared name/family fields above both the
+// upload and custom-URL forms — RHEL has no anonymous URL with a published
+// digest (see catalog.py), so it reaches the library through one of these
+// two operator-driven paths rather than the catalog. Upload is the better
+// fit for an operator who already has the ISO on their laptop; the URL path
+// stays for an internal mirror, which is faster than a round trip through
+// the browser.
+//
+// There is no Windows equivalent: OSImage.Family and images.KERNEL_PATHS
+// have no Windows entry (it needs a WinPE boot.wim/bootmgr pipeline this
+// feature doesn't have yet, not the vmlinuz/initrd pair this extracts), so
+// the "Get Windows image" button is left `disabled` in the template rather
+// than wired to this — presetting a family the server will always refuse,
+// after the operator may have already picked a multi-gigabyte file, would
+// be worse than the button doing nothing.
 function _reproPresetFamily(family) {
   const famSel = document.getElementById('repro-custom-family');
   if (famSel) famSel.value = family;
@@ -837,7 +845,8 @@ function _reproStartPolling() {
 
 document.getElementById('repro-catalog-pull-btn')?.addEventListener('click', _reproPullFromCatalog);
 document.getElementById('repro-rhel-btn')?.addEventListener('click', () => _reproPresetFamily('rhel'));
-document.getElementById('repro-windows-btn')?.addEventListener('click', () => _reproPresetFamily('windows'));
+// repro-windows-btn is `disabled` in the template — see the comment on
+// _reproPresetFamily above for why it isn't wired to anything.
 document.getElementById('repro-custom-submit')?.addEventListener('click', _reproSubmitCustom);
 document.getElementById('repro-upload-submit')?.addEventListener('click', _reproSubmitUpload);
 for (const id of ['repro-custom-ack', 'repro-custom-name', 'repro-custom-url', 'repro-custom-sha256']) {

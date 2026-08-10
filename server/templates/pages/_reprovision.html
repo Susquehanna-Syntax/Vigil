@@ -30,18 +30,23 @@
 
         <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
           <button class="btn btn-outline btn-sm" id="repro-rhel-btn" type="button">Get RHEL family image</button>
-          <button class="btn btn-outline btn-sm" id="repro-windows-btn" type="button" style="margin-left:10px;">Get Windows image</button>
+          <button class="btn btn-outline btn-sm" id="repro-windows-btn" type="button" style="margin-left:10px;opacity:0.5;cursor:not-allowed;" disabled title="Windows images can't be imported yet — see the note below.">Get Windows image (not yet supported)</button>
           <div class="muted-note" style="margin-top:12px;max-width:720px;">
-            RHEL proper needs an active Red Hat subscription, and Microsoft
-            publishes no stable direct-download URL with a published hash —
-            Vigil cannot fetch either one anonymously the way it fetches the
-            catalog images above. Get the ISO yourself from a source you're
-            entitled to use, then either upload it below or, if it's already
-            hosted somewhere Vigil's server can reach, paste the URL and its
-            SHA-256 instead. Legitimate sources:
-            <a href="https://access.redhat.com/downloads" target="_blank" rel="noopener noreferrer">Red Hat Customer Portal</a>
-            &middot;
-            <a href="https://www.microsoft.com/en-us/evalcenter/download-windows-server-2025" target="_blank" rel="noopener noreferrer">Microsoft Evaluation Center</a>.
+            RHEL proper needs an active Red Hat subscription — Vigil cannot
+            fetch it anonymously the way it fetches the catalog images
+            above. Get the ISO yourself from a source you're entitled to
+            use, then either upload it below or, if it's already hosted
+            somewhere Vigil's server can reach, paste the URL and its
+            SHA-256 instead. Legitimate source:
+            <a href="https://access.redhat.com/downloads" target="_blank" rel="noopener noreferrer">Red Hat Customer Portal</a>.
+          </div>
+          <div class="muted-note" style="margin-top:8px;max-width:720px;color:var(--peach);">
+            Windows images can't be imported yet — Vigil extracts a PXE
+            kernel/initrd pair from the ISO, and a Windows installer needs a
+            different pipeline (<code>boot.wim</code>/<code>bootmgr</code>)
+            that doesn't exist here yet. Support for it is planned; until
+            then, uploading or pulling a Windows ISO is refused rather than
+            accepted and failed after the transfer.
           </div>
         </div>
 
@@ -59,8 +64,12 @@
                 <option value="ubuntu">Ubuntu</option>
                 <option value="debian">Debian</option>
                 <option value="rhel">RHEL family</option>
-                <option value="windows">Windows</option>
               </select>
+              <!-- No "windows" option: OSImage.Family and images.KERNEL_PATHS
+                   have no Windows entry, so the server refuses it either way
+                   — see the "not yet supported" note above the RHEL/Windows
+                   buttons. Offering it here would be a dead end with no
+                   explanation at the point of failure. -->
             </div>
           </div>
           <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;">
