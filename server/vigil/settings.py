@@ -241,6 +241,36 @@ MEDIA_ROOT = BASE_DIR / "media"
 # independently of the rest of the app's uploads.
 VIGIL_IMAGE_ROOT = os.environ.get("VIGIL_IMAGE_ROOT", "/var/lib/vigil/images")
 
+# Where Django spools a multipart upload above FILE_UPLOAD_MAX_MEMORY_SIZE
+# (ISO uploads for apps.reprovision.views.image_upload always are — the
+# default threshold is 2.5 MB). Left unset, Django spools to the system
+# temp dir *inside the container*, not the VIGIL_IMAGE_ROOT volume an
+# operator sized for multi-gigabyte images — a single upload could fill the
+# container's writable layer before the view ever gets to run. Pointing it
+# under VIGIL_IMAGE_ROOT keeps the spool on the same volume as everything
+# else this feature writes. Created here, not lazily by a view, because
+# Django checks this directory exists the first time a large upload
+# arrives, not before — an operator's first real ISO upload is a bad time
+# to discover a typo in a bind-mount path. The mkdir is wrapped in a
+# try/except because this module also loads in environments (local dev
+# without the volume mounted, sandboxed test runners) that cannot write to
+# VIGIL_IMAGE_ROOT's default path — settings import must never crash there;
+# it just means uploads fail at request time instead, with a clear
+# filesystem error, same as any other missing-volume misconfiguration.
+FILE_UPLOAD_TEMP_DIR = os.environ.get(
+    "VIGIL_UPLOAD_TEMP_DIR", str(Path(VIGIL_IMAGE_ROOT) / "tmp-uploads"))
+try:
+    Path(FILE_UPLOAD_TEMP_DIR).mkdir(parents=True, exist_ok=True)
+except OSError:
+    # VIGIL_IMAGE_ROOT isn't writable in this environment (local dev
+    # without the volume mounted, a sandboxed test runner, ...). Django's
+    # own system check (files.E001) fails startup if FILE_UPLOAD_TEMP_DIR
+    # is set but does not exist, so falling back to its default of None
+    # (system temp dir) — the behaviour before this setting existed — keeps
+    # local/test runs working. Production containers mount VIGIL_IMAGE_ROOT
+    # writable, so this branch is not expected to be hit there.
+    FILE_UPLOAD_TEMP_DIR = None
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---------------------------------------------------------------------------
