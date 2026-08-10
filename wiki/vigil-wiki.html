@@ -258,6 +258,10 @@
       <svg viewBox="0 0 24 24"><rect x="2" y="4" width="9" height="7"/><rect x="13" y="4" width="9" height="7"/><rect x="2" y="14" width="9" height="6"/><rect x="13" y="14" width="9" height="6"/></svg>
       Firewall
     </a>
+    <a href="#image-library" class="nav-link">
+      <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
+      Image Library
+    </a>
     <a href="#community" class="nav-link">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0 1 13 0"/></svg>
       Community
@@ -1703,6 +1707,87 @@
           </tbody>
         </table>
       </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- OS IMAGE LIBRARY -->
+    <section class="section" id="image-library">
+      <p class="section-label">Reference</p>
+      <h2 class="section-title" style="color:var(--peach)">OS Image Library</h2>
+      <p class="section-desc">The <strong>Reprovision</strong> app (sidebar) manages the images a rebuild installs from. See <a href="#tasks" style="color:var(--sky)">Task Execution</a> for the wipe-and-reinstall ceremony itself — this section is about getting an ISO into Vigil in the first place.</p>
+
+      <h3>Fetch once, serve every host</h3>
+      <p class="prose">Vigil downloads an image a single time and serves it to every host that rebuilds against it afterward — one download per fleet instead of one per host. The payoff that matters most: a rebuild works on a machine with no route to the internet at all, only to Vigil. Two ways to get an image in: <strong>pull</strong> a URL (Vigil fetches it) or <strong>upload</strong> a file directly (the operator's browser sends it). Both verify a SHA-256 digest before the image is marked ready, and both hand off to the same importer, which extracts the installer kernel/initrd pair and discards the ISO.</p>
+
+      <h3>The catalog</h3>
+      <p class="prose"><code>apps/reprovision/catalog.py</code> is a short, hand-curated list — data, not database rows, so a new distro release is a one-line change. An entry only belongs there if it has a stable anonymous URL <em>and</em> a published SHA-256; a catalog entry that can't actually fetch would fail at the worst possible moment, after an operator has already committed to it for a rebuild.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Catalog entry</th><th>Family</th></tr></thead>
+          <tbody>
+            <tr><td>Ubuntu Server 24.04 LTS</td><td><code>ubuntu</code></td></tr>
+            <tr><td>Ubuntu Server 22.04 LTS</td><td><code>ubuntu</code></td></tr>
+            <tr><td>Debian 13 (netinst)</td><td><code>debian</code></td></tr>
+            <tr><td>Rocky Linux 9 (minimal)</td><td><code>rhel</code></td></tr>
+            <tr><td>AlmaLinux 9 (minimal)</td><td><code>rhel</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose">Entries go stale as distros cut new point releases — expected, and the custom-URL path below covers the gap until <code>catalog.py</code> is updated.</p>
+
+      <div class="callout callout-info">
+        <div class="callout-icon">i</div>
+        <div><strong>RHEL proper and Windows are deliberately absent from the catalog</strong> — not a bug, not a Vigil limitation. RHEL needs an active Red Hat subscription to download, so there is no anonymous URL to fetch. Microsoft publishes no stable direct-download URL with a published hash. Both reach the library exactly the same way any other operator-supplied image does: upload the ISO you're entitled to, or paste a URL you're already hosting it at along with its SHA-256.</div>
+      </div>
+
+      <h3>A digest is always required</h3>
+      <p class="prose">Catalog pulls carry the published digest automatically, so it can't be mistyped. A custom URL or an uploaded file requires the operator to supply the SHA-256 by hand — <code>images.verify_checksum</code> refuses an empty digest outright, before import, rather than treating "no digest" as "don't bother checking."</p>
+
+      <h3>Windows images can't be imported yet</h3>
+      <p class="prose">The Windows buttons in the Reprovision tab are disabled rather than left to fail after a multi-gigabyte transfer. Vigil's importer extracts a PXE-style <code>vmlinuz</code>/<code>initrd</code> pair from the ISO — that's what every catalog family above boots from. Windows boots <code>bootmgr</code> against <code>boot.wim</code>, a completely different pipeline that doesn't exist in Vigil yet. It's planned as its own piece of work, not a config flag someone forgot to flip.</p>
+
+      <h3>The fetch guard</h3>
+      <p class="prose">Before Vigil fetches any URL — catalog or custom — <code>apps/reprovision/fetch_guard.py</code> resolves the hostname and checks the address it actually lands on, re-checking after every redirect hop so a hostname can't launder its way past the check on a later hop.</p>
+      <p class="prose">Refused outright, with no override:</p>
+      <ul class="prose">
+        <li>Loopback (<code>127.0.0.0/8</code>, <code>::1</code>) and the unspecified address (<code>0.0.0.0</code>, <code>::</code>) — on Linux a connect to either lands on whatever's bound to loopback.</li>
+        <li>Link-local (<code>169.254.0.0/16</code>, <code>fe80::/10</code>) — this range is also where AWS and Azure serve instance metadata.</li>
+        <li>Cloud metadata addresses specific to other providers: Google's <code>metadata.google.internal</code>/<code>metadata.goog</code>, Alibaba Cloud's <code>100.100.100.200</code>, and AWS's IMDSv6 address.</li>
+      </ul>
+      <p class="prose">The reason is the same for every entry on that list: on a cloud-hosted Vigil, the metadata service hands out credentials for the whole account, and Vigil's server sits somewhere it can reach that service even though the operator's own workstation cannot. Fetching a URL on the operator's behalf must never become a proxy into the account it runs in.</p>
+
+      <div class="callout callout-tip">
+        <div class="callout-icon">T</div>
+        <div><strong>Private ranges are allowed on purpose.</strong> An internal mirror is a completely ordinary, legitimate image source, so RFC1918 addresses are never refused. A non-catalog URL shows a warning that Vigil fetches it from inside your network, not from the browser — advisory, not a block.</div>
+      </div>
+
+      <h3>Upload limits Vigil doesn't control</h3>
+      <p class="prose">An ISO upload passes through whatever sits in front of Vigil, and those limits are outside Vigil's own settings entirely. <strong>Cloudflare Tunnel</strong> caps request bodies at 100 MB on free plans; <strong>nginx</strong> defaults <code>client_max_body_size</code> to 1 MB. Either one fails a multi-gigabyte ISO with no explanation from Vigil itself — raise the limit on the proxy, or pull from a URL instead, which never opens an upload connection through it.</p>
+      <p class="prose">Two settings in this repo exist specifically for the upload path:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Setting</th><th>Where</th><th>Why it's there</th></tr></thead>
+          <tbody>
+            <tr><td><code>--timeout 1800</code></td><td><code>server/Dockerfile</code> (gunicorn)</td><td>The 30-second default kills the worker mid-upload — the ISO upload endpoint holds the request open synchronously for the whole transfer so the operator gets a real success/failure.</td></tr>
+            <tr><td><code>FILE_UPLOAD_TEMP_DIR</code></td><td><code>server/vigil/settings.py</code></td><td>Points Django's multipart spool at the <code>VIGIL_IMAGE_ROOT</code> volume instead of the container's writable layer, which a multi-gigabyte upload would otherwise fill.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Endpoints</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Method</th><th>Endpoint</th><th>Auth</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET</code></td><td><code>/api/v1/reprovision/catalog/</code></td><td>Any user with <code>reprovision</code> view</td></tr>
+            <tr><td><code>POST</code></td><td><code>/api/v1/reprovision/images/pull/</code></td><td>Admin only</td></tr>
+            <tr><td><code>POST</code></td><td><code>/api/v1/reprovision/images/upload/</code></td><td>Admin only</td></tr>
+            <tr><td><code>GET</code> <code>POST</code></td><td><code>/api/v1/reprovision/images/</code></td><td>View / admin</td></tr>
+            <tr><td><code>GET</code> <code>DELETE</code></td><td><code>/api/v1/reprovision/images/{id}/</code></td><td>View / admin</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose">Image management has no per-site delegation — whoever can upload or pull an ISO chooses what code runs as root on every rebuilt machine, so it's admin-only everywhere, unlike the view/rebuild split the rest of Reprovisioning grants through the operator matrix. Full design rationale is in <code>docs/reprovisioning.md</code>.</p>
     </section>
     <div class="divider"></div>
 
