@@ -183,3 +183,103 @@ class ImageApiTests(TestCase):
         self.client.force_login(user)
         resp = self.client.get("/api/v1/reprovision/catalog/")
         self.assertEqual(resp.status_code, 404)
+
+
+class DuplicatePullTests(TestCase):
+    """One image per set of bytes.
+
+    Every pull used to create a fresh row. Because import was broken, the
+    natural response — pull it again — left the library holding several
+    identical "Ubuntu Server 24.04 LTS" entries, all failed, with no way to
+    tell them apart. The digest identifies the bytes exactly, which is the
+    whole reason it is mandatory on this endpoint.
+    """
+
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user(
+            "root", password="x", is_staff=True, is_superuser=True)
+        self.client.force_login(self.admin)
+        self.entry = CATALOG[0]
+
+    def _pull(self, payload=None):
+        with patch("apps.reprovision.views.fetch_image") as task:
+            resp = self.client.post(
+                "/api/v1/reprovision/images/pull/",
+                payload or {"catalog_id": self.entry["id"]},
+                content_type="application/json")
+            return resp, task
+
+    def test_pulling_the_same_catalog_entry_twice_makes_one_row(self):
+        self._pull()
+        resp, _ = self._pull()
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertEqual(
+            OSImage.objects.filter(sha256=self.entry["sha256"]).count(), 1)
+
+    def test_the_conflict_says_which_image_already_has_those_bytes(self):
+        self._pull()
+        resp, _ = self._pull()
+        body = resp.json()
+        self.assertIn(self.entry["name"], body["error"])
+        self.assertEqual(
+            body["image_id"],
+            str(OSImage.objects.get(sha256=self.entry["sha256"]).id))
+
+    def test_a_second_pull_does_not_queue_a_second_download(self):
+        """The point of refusing: not re-fetching gigabytes already held."""
+        self._pull()
+        _, task = self._pull()
+        task.delay.assert_not_called()
+
+    def test_retrying_a_failed_pull_reuses_the_row_and_refetches(self):
+        self._pull()
+        image = OSImage.objects.get(sha256=self.entry["sha256"])
+        image.status = OSImage.Status.FAILED
+        image.import_error = "No installer kernel/initrd found"
+        image.bytes_downloaded = 1234
+        image.save()
+
+        resp, task = self._pull()
+        self.assertEqual(resp.status_code, 202, resp.content)
+        self.assertEqual(
+            OSImage.objects.filter(sha256=self.entry["sha256"]).count(), 1)
+        task.delay.assert_called_once()
+
+        image.refresh_from_db()
+        self.assertEqual(image.status, OSImage.Status.DOWNLOADING)
+        self.assertEqual(image.import_error, "")
+        self.assertEqual(image.bytes_downloaded, 0)
+
+    def test_a_ready_image_is_refused_rather_than_refetched(self):
+        self._pull()
+        image = OSImage.objects.get(sha256=self.entry["sha256"])
+        image.status = OSImage.Status.READY
+        image.save()
+        resp, task = self._pull()
+        self.assertEqual(resp.status_code, 409)
+        task.delay.assert_not_called()
+
+    def test_a_different_image_is_unaffected(self):
+        self._pull()
+        other = CATALOG[1]
+        resp, task = self._pull({"catalog_id": other["id"]})
+        self.assertEqual(resp.status_code, 202, resp.content)
+        self.assertEqual(OSImage.objects.count(), 2)
+        task.delay.assert_called_once()
+
+    def test_a_custom_url_matching_an_existing_digest_is_refused(self):
+        """Same bytes reached by a different route is still the same image.
+
+        check_url is stubbed because it resolves DNS, which it does *before*
+        the digest check on purpose — a destination Vigil will not fetch from
+        is refused before any row is touched.
+        """
+        self._pull()
+        with patch("apps.reprovision.views.check_url", return_value=""):
+            resp, _ = self._pull({
+                "url": "https://mirror.example.com/other-name.iso",
+                "sha256": self.entry["sha256"], "os_family": "ubuntu",
+                "name": "A different name for the same bytes",
+            })
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertEqual(OSImage.objects.count(), 1)

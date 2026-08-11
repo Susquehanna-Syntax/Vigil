@@ -289,12 +289,30 @@ ranges, since an internal mirror is a legitimate source. A SHA-256 digest is
 required either way; `images.verify_checksum` refuses an empty one rather
 than importing unverified.
 
+A pull is keyed on the digest, so the same bytes cannot enter the library
+twice. Re-pulling an image that is already downloading, importing, or ready
+answers **409** naming the existing entry; re-pulling one that **failed**
+retries in place on the existing row instead of creating a second. Before
+2026.7.2 every pull created a new row, so retrying a failing import left the
+library holding several identical entries.
+
 On import Vigil reads the ISO with **`pycdlib`** — a pure-Python ISO9660
 reader, because a Docker container cannot loop-mount — extracts kernel and
 initrd, unpacks the install tree, verifies the checksum, then **discards the
 ISO and keeps the checksum**. Storage stays at roughly 1× per image rather
 than 2×. The trade-off is that the original cannot be re-verified later; it is
 verified once, at import, and the digest is recorded.
+
+**Naming inside the ISO.** The same file is reachable under up to three
+naming schemes, and pycdlib makes the caller say which one it means.
+`iso_path` is bare ISO-9660, where `/casper/vmlinuz` is spelled
+`/CASPER/VMLINUZ.;1`; Rock Ridge and Joliet carry the real names. Both
+`_find_record` (kernel/initrd) and `_extract_tree` (the install tree) ask
+Rock Ridge first, then Joliet, then munged ISO-9660. Getting this wrong is
+quiet in both directions: looking up a lowercase path under `iso_path` misses
+on every ISO ever made, and walking `iso_path` extracts a tree of uppercase
+names with trailing dots that imports cleanly and then 404s for every file
+the installer requests.
 
 **`InstallProfile`** — `name`, `image` FK, `disk_target`, `partition_scheme`,
 `filesystem`, `network_mode` (`dhcp`/`static`) with `static_address`,
@@ -491,7 +509,8 @@ passed on SQLite while the migration was broken on PostgreSQL.
 
 ## 14. Deliberate deferrals
 
-- **Windows** — targeted at 2026.7.1, seams in §12. As of 2026.7.0 this also covers
+- **Windows** — still deferred; 2026.7.1 shipped without it and no release is
+  committed to yet. Seams in §12. As of 2026.7.0 this also covers
   images specifically: `OSImage.Family` and `images.KERNEL_PATHS` have no
   Windows entry, so an upload or pull for it is refused rather than accepted
   and failed after the transfer. The UI's Windows button is disabled with the
