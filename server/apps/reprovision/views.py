@@ -134,6 +134,33 @@ def image_pull(request):
     if refusal := check_url(url):
         return Response({"error": refusal}, status=400)
 
+    # One image per set of bytes. Without this the library filled with
+    # duplicates: a pull that failed at import left its row behind, and the
+    # obvious response — pull it again — created a second row rather than
+    # retrying the first. A digest identifies the bytes exactly, which is
+    # the whole reason it is required here.
+    if existing := OSImage.objects.filter(
+            sha256__iexact=field_data["sha256"]).order_by("-created_at").first():
+        if existing.status != OSImage.Status.FAILED:
+            return Response(
+                {"error": f"{existing.name} is already in the library "
+                          f"({existing.get_status_display().lower()}). Delete "
+                          f"it first if you want to fetch it again.",
+                 "image_id": str(existing.id)},
+                status=409)
+        # A failed pull is retried in place, so retrying cannot accumulate
+        # corpses in the library.
+        existing.status = OSImage.Status.DOWNLOADING
+        existing.import_error = ""
+        existing.bytes_downloaded = 0
+        existing.source_url = url
+        existing.size_bytes = size_bytes
+        existing.save(update_fields=["status", "import_error",
+                                     "bytes_downloaded", "source_url",
+                                     "size_bytes"])
+        fetch_image.delay(existing.id)
+        return Response(OSImageSerializer(existing).data, status=202)
+
     serializer = OSImageSerializer(data=field_data)
     # `version` has no model default, so ModelSerializer marks it required —
     # right for the upload endpoint (image_list, where the caller always

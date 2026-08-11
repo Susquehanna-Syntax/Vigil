@@ -166,63 +166,260 @@ class ImportFailureTests(TestCase):
         self.assertEqual(image.status, OSImage.Status.FAILED)
 
 
+
+def build_iso(files, *, rock_ridge=True, joliet=True):
+    """Bytes of a real ISO containing *files*, a {path: payload} mapping.
+
+    Built with pycdlib rather than xorriso so the fixtures need no external
+    tool, and asserted against a genuine ISO structure rather than a stand-in
+    for one. The previous fake accepted a lowercase ``iso_path`` and so agreed
+    with code that could never work on a real image: every candidate lookup
+    missed, and every import failed with a message blaming the distro layout.
+    A fake that shares the code's wrong assumption tests nothing.
+
+    Distros ship Rock Ridge and Joliet (``xorriso -as mkisofs -r -J``), so
+    that is the default; the keyword arguments cover the degenerate ISOs.
+    """
+    import io
+
+    import pycdlib
+
+    iso = pycdlib.PyCdlib()
+    iso.new(rock_ridge="1.09" if rock_ridge else None,
+            joliet=3 if joliet else None, interchange_level=3)
+
+    def raw_dir(part):
+        # pycdlib enforces strict ISO9660 directory naming (A-Z, 0-9, _),
+        # where xorriso is permissive. Debian's /install.amd only survives in
+        # Rock Ridge here — which is the realistic case anyway, and proves
+        # resolution does not lean on the raw name matching.
+        return part.upper().replace(".", "_").replace("-", "_")
+
+    def raw(path):
+        parts = [p for p in path.strip("/").split("/") if p]
+        *dirs, name = parts
+        prefix = "/" + "".join(f"{raw_dir(d)}/" for d in dirs)
+        name = name.upper()
+        return f"{prefix}{name if '.' in name else name + '.'};1"
+
+    made = set()
+    for path in sorted(files):
+        parts = [p for p in path.strip("/").split("/") if p]
+        for depth in range(1, len(parts)):
+            branch = parts[:depth]
+            key = "/".join(branch)
+            if key in made:
+                continue
+            made.add(key)
+            iso.add_directory(
+                "/" + "/".join(raw_dir(b) for b in branch),
+                rr_name=branch[-1] if rock_ridge else None,
+                joliet_path="/" + key if joliet else None)
+        payload = files[path]
+        iso.add_fp(io.BytesIO(payload), len(payload), raw(path),
+                   rr_name=parts[-1] if rock_ridge else None,
+                   joliet_path=path if joliet else None)
+
+    out = io.BytesIO()
+    iso.write_fp(out)
+    iso.close()
+    return out.getvalue()
+
+
+def open_iso(data):
+    import io
+
+    import pycdlib
+
+    iso = pycdlib.PyCdlib()
+    iso.open_fp(io.BytesIO(data))
+    return iso
+
+
 class ResolveKernelPathsTests(TestCase):
     """The layout drifts between derivatives, and a mismatch is only
     discovered after the whole ISO has been downloaded — the most expensive
     moment to learn a filename. Ubuntu ships /casper/initrd; Linux Mint, built
-    on the same casper, ships initrd.lz."""
+    on the same casper, ships initrd.lz.
 
-    class _FakeIso:
-        """Stands in for pycdlib: knows which paths the ISO contains."""
+    Every case runs against a real ISO, because the bug these guard was a
+    namespace mistake that only a real ISO can express.
+    """
 
-        def __init__(self, present):
-            self.present = set(present)
-            self.asked = []
+    def _resolve(self, files, family, **kw):
+        from .images import _resolve_kernel_paths
 
-        def get_record(self, iso_path):
-            self.asked.append(iso_path)
-            if iso_path not in self.present:
-                raise OSError(f"not in ISO: {iso_path}")
-            return object()
+        iso = open_iso(build_iso(files, **kw))
+        try:
+            return _resolve_kernel_paths(iso, family)
+        finally:
+            iso.close()
+
+    def _reads(self, files, family, **kw):
+        """Resolve, then actually read both files back through the lookups."""
+        import io
+
+        from .images import _resolve_kernel_paths
+
+        iso = open_iso(build_iso(files, **kw))
+        try:
+            got = []
+            for lookup in _resolve_kernel_paths(iso, family):
+                buf = io.BytesIO()
+                iso.get_file_from_iso_fp(buf, **lookup)
+                got.append(buf.getvalue())
+            return got
+        finally:
+            iso.close()
 
     def test_the_first_matching_candidate_wins(self):
-        from .images import _resolve_kernel_paths
+        kernel, initrd = self._resolve(
+            {"/casper/vmlinuz": b"K", "/casper/initrd": b"I"}, "ubuntu")
+        self.assertEqual(kernel, {"rr_path": "/casper/vmlinuz"})
+        self.assertEqual(initrd, {"rr_path": "/casper/initrd"})
 
-        iso = self._FakeIso(["/casper/vmlinuz", "/casper/initrd"])
-        self.assertEqual(_resolve_kernel_paths(iso, "ubuntu"),
-                         ("/casper/vmlinuz", "/casper/initrd"))
+    def test_the_resolved_lookups_actually_read_the_files(self):
+        """The regression in full: resolution used to hand back a path that
+        no namespace could read."""
+        self.assertEqual(
+            self._reads({"/casper/vmlinuz": b"KERNEL",
+                         "/casper/initrd": b"INITRD"}, "ubuntu"),
+            [b"KERNEL", b"INITRD"])
 
     def test_a_mint_style_compressed_initrd_is_found(self):
-        from .images import _resolve_kernel_paths
+        self.assertEqual(
+            self._reads({"/casper/vmlinuz": b"KERNEL",
+                         "/casper/initrd.lz": b"LZ"}, "ubuntu"),
+            [b"KERNEL", b"LZ"])
 
-        iso = self._FakeIso(["/casper/vmlinuz", "/casper/initrd.lz"])
-        self.assertEqual(_resolve_kernel_paths(iso, "ubuntu"),
-                         ("/casper/vmlinuz", "/casper/initrd.lz"))
+    def test_a_joliet_only_iso_still_resolves(self):
+        kernel, _ = self._resolve(
+            {"/casper/vmlinuz": b"K", "/casper/initrd": b"I"}, "ubuntu",
+            rock_ridge=False)
+        self.assertEqual(kernel, {"joliet_path": "/casper/vmlinuz"})
+
+    def test_a_bare_iso9660_image_still_resolves(self):
+        """No Rock Ridge, no Joliet: the name really is /CASPER/VMLINUZ.;1."""
+        self.assertEqual(
+            self._reads({"/casper/vmlinuz": b"KERNEL",
+                         "/casper/initrd": b"INITRD"}, "ubuntu",
+                        rock_ridge=False, joliet=False),
+            [b"KERNEL", b"INITRD"])
+
+    def test_debian_and_rhel_layouts_resolve(self):
+        self.assertEqual(
+            self._reads({"/install.amd/vmlinuz": b"K",
+                         "/install.amd/initrd.gz": b"I"}, "debian"),
+            [b"K", b"I"])
+        self.assertEqual(
+            self._reads({"/images/pxeboot/vmlinuz": b"K",
+                         "/images/pxeboot/initrd.img": b"I"}, "rhel"),
+            [b"K", b"I"])
 
     def test_an_iso_with_no_installer_is_refused_with_what_was_tried(self):
         """A live-only image has no installer kernel. The error names the
         candidates so the operator can tell 'wrong variant' from 'Vigil does
         not know this layout'."""
-        from .images import ImportError_, _resolve_kernel_paths
+        from .images import ImportError_
 
-        iso = self._FakeIso(["/boot/grub/grub.cfg"])
         with self.assertRaises(ImportError_) as ctx:
-            _resolve_kernel_paths(iso, "ubuntu")
+            self._resolve({"/boot/grub/grub.cfg": b"x"}, "ubuntu")
         msg = str(ctx.exception)
         self.assertIn("/casper/initrd", msg)
         self.assertIn("/casper/initrd.lz", msg)
 
     def test_an_unknown_family_is_refused(self):
-        from .images import ImportError_, _resolve_kernel_paths
+        from .images import ImportError_
 
         with self.assertRaises(ImportError_):
-            _resolve_kernel_paths(self._FakeIso([]), "haiku")
+            self._resolve({"/casper/vmlinuz": b"K"}, "haiku")
 
     def test_a_half_present_candidate_is_not_accepted(self):
         """Kernel present, initrd absent: the pair must match, or extraction
         writes a kernel and then fails."""
-        from .images import ImportError_, _resolve_kernel_paths
+        from .images import ImportError_
 
-        iso = self._FakeIso(["/images/pxeboot/vmlinuz"])
         with self.assertRaises(ImportError_):
-            _resolve_kernel_paths(iso, "rhel")
+            self._resolve({"/images/pxeboot/vmlinuz": b"K"}, "rhel")
+
+
+class ExtractedTreeTests(TestCase):
+    """The installer fetches this tree over HTTP by its real filenames.
+
+    Walking the bare ISO-9660 namespace yields ``/CASPER/VMLINUZ.;1``, which
+    strips to ``VMLINUZ.`` — uppercase, trailing dot, matching nothing the
+    installer asks for. The import would look clean and every fetch would 404.
+    """
+
+    def _tree(self, files, **kw):
+        from .images import _extract_tree
+
+        iso = open_iso(build_iso(files, **kw))
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        dest = Path(tmp.name)
+        try:
+            _extract_tree(iso, dest)
+        finally:
+            iso.close()
+        return {str(p.relative_to(dest)): p.read_bytes()
+                for p in sorted(dest.rglob("*")) if p.is_file()}
+
+    def test_names_keep_their_real_case_and_extension(self):
+        self.assertEqual(
+            self._tree({"/casper/filesystem.squashfs": b"SQUASH",
+                        "/dists/stable/Release": b"REL"}),
+            {"casper/filesystem.squashfs": b"SQUASH",
+             "dists/stable/Release": b"REL"})
+
+    def test_no_extracted_name_carries_a_trailing_dot(self):
+        """The precise shape of the old defect."""
+        names = self._tree({"/casper/vmlinuz": b"K"})
+        self.assertEqual(list(names), ["casper/vmlinuz"])
+
+    def test_a_bare_iso9660_image_is_still_extracted(self):
+        names = self._tree({"/casper/vmlinuz": b"K"},
+                           rock_ridge=False, joliet=False)
+        self.assertEqual(list(names), ["CASPER/VMLINUZ."])
+
+
+class EndToEndImportTests(TestCase):
+    """import_iso against a real ISO — the path that failed in production."""
+
+    def _import(self, files):
+        from .images import import_iso
+
+        data = build_iso(files)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        iso_path = Path(tmp.name) / "image.iso"
+        iso_path.write_bytes(data)
+        image = OSImage.objects.create(
+            name="Ubuntu Server 24.04 LTS", os_family=OSImage.Family.UBUNTU,
+            version="24.04", architecture="x86_64",
+            sha256=hashlib.sha256(data).hexdigest(),
+        )
+        root = tempfile.TemporaryDirectory()
+        self.addCleanup(root.cleanup)
+        with override_settings(VIGIL_IMAGE_ROOT=root.name):
+            import_iso(image, iso_path)
+        image.refresh_from_db()
+        return image
+
+    def test_a_pulled_ubuntu_image_imports_and_lands_ready(self):
+        image = self._import({
+            "/casper/vmlinuz": b"KERNEL",
+            "/casper/initrd": b"INITRD",
+            "/casper/filesystem.squashfs": b"SQUASH",
+        })
+        self.assertEqual(image.status, OSImage.Status.READY, image.import_error)
+        self.assertEqual(Path(image.kernel_path).read_bytes(), b"KERNEL")
+        self.assertEqual(Path(image.initrd_path).read_bytes(), b"INITRD")
+        self.assertEqual(
+            (Path(image.tree_path) / "casper" / "filesystem.squashfs").read_bytes(),
+            b"SQUASH")
+
+    def test_a_live_only_image_still_fails_with_a_readable_reason(self):
+        image = self._import({"/boot/grub/grub.cfg": b"x"})
+        self.assertEqual(image.status, OSImage.Status.FAILED)
+        self.assertIn("No installer kernel", image.import_error)

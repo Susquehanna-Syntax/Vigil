@@ -54,6 +54,41 @@ async function apiJson(url, opts) {
 }
 
 /* ── Formatters ──────────────────────────────────────────────────────── */
+/* ── Version comparison ──────────────────────────────────────────────────
+   Mirrors _version_key/_is_older in apps/alerts/tasks.py — the alert and the
+   badge must agree about what "outdated" means, or the drawer contradicts
+   the alert list. Change one, change the other. */
+
+// [2026, 7, 1] for "2026.7.1", or null when it cannot be read. Trailing
+// letters are tolerated: Vigil has shipped "2026.1.8b".
+function parseVersion(version) {
+  if (!version) return null;
+  const parts = [];
+  for (const chunk of String(version).trim().replace(/^v/i, '').split('.')) {
+    const digits = /^\d+/.exec(chunk);
+    if (!digits) return null;
+    parts.push(parseInt(digits[0], 10));
+  }
+  return parts.length ? parts : null;
+}
+
+// True only when `reported` is provably behind `expected`. An agent NEWER
+// than the server is not outdated — rolling the server back used to flag the
+// whole fleet, telling operators to upgrade agents already ahead of it.
+// Unreadable on either side means unknown, and unknown never warns.
+function isOlderVersion(reported, expected) {
+  const left = parseVersion(reported);
+  const right = parseVersion(expected);
+  if (!left || !right) return false;
+  const width = Math.max(left.length, right.length);
+  for (let i = 0; i < width; i++) {
+    const a = left[i] || 0;
+    const b = right[i] || 0;
+    if (a !== b) return a < b;
+  }
+  return false;
+}
+
 function escHtml(str) {
   const d = document.createElement('div');
   d.textContent = str;
