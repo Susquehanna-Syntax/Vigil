@@ -18,7 +18,6 @@ logger = logging.getLogger("vigil.reprovision")
 _CHUNK = 1024 * 1024
 
 #: Where each family keeps its installer kernel and initrd inside the ISO.
-#: Where each family keeps its installer kernel and initrd inside the ISO.
 #:
 #: Each entry is a list of CANDIDATES tried in order, because the layout drifts
 #: between derivatives and between releases of the same distro. Ubuntu ships
@@ -26,6 +25,9 @@ _CHUNK = 1024 * 1024
 #: hardcoded path per family means a derivative fails extraction *after* a
 #: multi-gigabyte download, which is the most expensive moment to discover a
 #: filename.
+#:
+#: These are Rock Ridge / Joliet names — what the file is actually called.
+#: See _find_record for why that distinction is load-bearing.
 KERNEL_PATHS = {
     "ubuntu": (
         ("/casper/vmlinuz", "/casper/initrd"),
@@ -42,12 +44,61 @@ KERNEL_PATHS = {
 }
 
 
-def _resolve_kernel_paths(iso, family: str) -> tuple[str, str]:
+def _iso9660_names(path: str) -> list[str]:
+    """The same *path* as bare ISO-9660 would spell it.
+
+    ISO-9660 proper uppercases every name and appends a ``;1`` version suffix,
+    adding a bare ``.`` to names that have no extension: ``/casper/vmlinuz``
+    is stored as ``/CASPER/VMLINUZ.;1``. Only reached on an ISO carrying
+    neither Rock Ridge nor Joliet, which no mainstream distro ships.
+    """
+    parts = [p for p in path.strip("/").split("/") if p]
+    if not parts:
+        return []
+    *dirs, name = (p.upper() for p in parts)
+    prefix = "/" + "".join(f"{d}/" for d in dirs)
+    stem = name if "." in name else f"{name}."
+    return [f"{prefix}{stem};1", f"{prefix}{name}"]
+
+
+def _find_record(iso, path: str) -> dict | None:
+    """Locate *path*, returning the pycdlib keyword that found it.
+
+    An ISO carries the same file under up to three naming schemes, and
+    pycdlib makes you say which one you are asking about. ``iso_path`` is the
+    bare ISO-9660 namespace, where ``/casper/vmlinuz`` is spelled
+    ``/CASPER/VMLINUZ.;1`` — so looking up a lowercase path there misses on
+    *every* ISO ever made, which is precisely the bug this replaced: import
+    failed on every image with a message blaming the distro's layout.
+
+    Rock Ridge is asked first because it is the namespace whose names are the
+    real ones, Joliet second, and munged ISO-9660 last. The winning keyword
+    is returned rather than just True so extraction reads through the same
+    namespace the probe succeeded in.
+    """
+    candidates: list[dict] = []
+    for probe, keyword in ((iso.has_rock_ridge, "rr_path"),
+                           (iso.has_joliet, "joliet_path")):
+        try:
+            if probe():
+                candidates.append({keyword: path})
+        except Exception:  # noqa: BLE001 — pycdlib raises its own types
+            pass
+    candidates += [{"iso_path": name} for name in _iso9660_names(path)]
+
+    for lookup in candidates:
+        try:
+            iso.get_record(**lookup)
+        except Exception:  # noqa: BLE001 — pycdlib raises its own types
+            continue
+        return lookup
+    return None
+
+
+def _resolve_kernel_paths(iso, family: str) -> tuple[dict, dict]:
     """Pick the first candidate pair this ISO actually contains.
 
-    ISO-9660 paths are case-sensitive and often carry a ``;1`` version suffix,
-    so existence is probed by asking pycdlib for the record rather than by
-    listing and matching strings.
+    Returns the two pycdlib lookups that reach them — see _find_record.
     """
     try:
         candidates = KERNEL_PATHS[family]
@@ -56,17 +107,15 @@ def _resolve_kernel_paths(iso, family: str) -> tuple[str, str]:
 
     tried = []
     for kernel_src, initrd_src in candidates:
-        tried.append(initrd_src)
-        try:
-            for path in (kernel_src, initrd_src):
-                iso.get_record(iso_path=path)
-        except Exception:  # noqa: BLE001 — pycdlib raises its own types
-            continue
-        return kernel_src, initrd_src
+        tried.append(f"{kernel_src} + {initrd_src}")
+        kernel = _find_record(iso, kernel_src)
+        initrd = _find_record(iso, initrd_src)
+        if kernel and initrd:
+            return kernel, initrd
 
     raise ImportError_(
         f"No installer kernel/initrd found in this ISO for family {family!r}. "
-        f"Tried: {', '.join(tried)}. The image may be a live-only or "
+        f"Tried: {'; '.join(tried)}. The image may be a live-only or "
         f"non-installer variant, or a derivative with a layout Vigil does not "
         f"know yet.")
 
@@ -126,11 +175,13 @@ def import_iso(image, iso_path: Path) -> None:
         iso = pycdlib.PyCdlib()
         iso.open(str(iso_path))
         try:
-            kernel_src, initrd_src = _resolve_kernel_paths(iso, image.os_family)
-            for src, name in ((kernel_src, "vmlinuz"), (initrd_src, "initrd")):
+            kernel_lookup, initrd_lookup = _resolve_kernel_paths(
+                iso, image.os_family)
+            for lookup, name in ((kernel_lookup, "vmlinuz"),
+                                 (initrd_lookup, "initrd")):
                 out = dest / name
                 with out.open("wb") as fh:
-                    iso.get_file_from_iso_fp(fh, iso_path=src)
+                    iso.get_file_from_iso_fp(fh, **lookup)
             tree = dest / "tree"
             tree.mkdir(exist_ok=True)
             _extract_tree(iso, tree)
@@ -177,18 +228,39 @@ def _safe_join(root: Path, *parts: str) -> Path:
     return target
 
 
+def _tree_namespace(iso) -> str:
+    """The pycdlib keyword whose names are the ones the installer asks for.
+
+    The bare ISO-9660 namespace uppercases and version-suffixes everything,
+    so walking it yields ``/CASPER/VMLINUZ.;1`` — and stripping the ``;1``
+    leaves ``VMLINUZ.``, a name with a trailing dot that matches nothing the
+    installer requests. Extraction has to follow Rock Ridge or Joliet, where
+    the names are the real ones, or the tree serves 404s for every file
+    despite having imported cleanly.
+    """
+    for probe, keyword in ((iso.has_rock_ridge, "rr_path"),
+                           (iso.has_joliet, "joliet_path")):
+        try:
+            if probe():
+                return keyword
+        except Exception:  # noqa: BLE001 — pycdlib raises its own types
+            pass
+    return "iso_path"
+
+
 def _extract_tree(iso, dest: Path) -> None:
-    """Copy the whole ISO9660 tree to *dest*.
+    """Copy the whole ISO tree to *dest*.
 
     The installer fetches this over HTTP as its package source, so the layout
     has to survive intact. ISO9660 version suffixes (``FOO.TXT;1``) are
     stripped — the installer asks for the plain name.
     """
-    for dirname, _dirlist, filelist in iso.walk(iso_path="/"):
+    keyword = _tree_namespace(iso)
+    for dirname, _dirlist, filelist in iso.walk(**{keyword: "/"}):
         target_dir = _safe_join(dest, dirname)
         target_dir.mkdir(parents=True, exist_ok=True)
         for filename in filelist:
             src = f"{dirname.rstrip('/')}/{filename}"
             out = _safe_join(dest, dirname, filename.split(";")[0])
             with out.open("wb") as fh:
-                iso.get_file_from_iso_fp(fh, iso_path=src)
+                iso.get_file_from_iso_fp(fh, **{keyword: src})

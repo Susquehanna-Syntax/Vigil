@@ -9,9 +9,11 @@
         </div>
       </div>
 
-      {# Host selection is a control, not page furniture: it changes what the
-         whole page is about, so it sits with the content rather than in the
-         title row. #}
+      {% comment %}
+        Host selection is a control, not page furniture: it changes what the
+        whole page is about, so it sits with the content rather than in the
+        title row.
+      {% endcomment %}
       <div class="fw-controls">
         <label class="fw-controls-label" for="firewall-host-select">Host</label>
         <select id="firewall-host-select" class="form-control fw-host-select"></select>
