@@ -118,6 +118,14 @@ function osLogo(name) {
     return s('<circle cx="12" cy="12" r="10"/><path d="M7 12a5 5 0 0110 0 5 5 0 01-5 5 3 3 0 000-6 3 3 0 015.2-2" stroke="#1E1E2E" stroke-width="1.5" fill="none" stroke-linecap="round"/>', '#73BA25');
   if (n.includes('debian'))
     return s('<circle cx="12" cy="12" r="10"/><path d="M14 6a6 6 0 00-2 11.5A6 6 0 0014 6z" fill="#A80030"/>', '#A80030');
+  if (n.includes('rocky'))
+    return s('<circle cx="12" cy="12" r="10"/><path d="M17.5 8.5L9 17l-2.6-2.6 1.8-1.8L9 13.4l6.7-6.7z" fill="#1E1E2E"/>', '#10B981');
+  if (n.includes('alma'))
+    return s('<circle cx="12" cy="12" r="10"/><path d="M12 6l4.5 11h-2.4L12 10.8 9.9 17H7.5z" fill="#1E1E2E"/>', '#0B7AD1');
+  // Bazzite is Fedora Atomic underneath, but it ships as its own product and
+  // an operator picking it from the catalog should see its own mark.
+  if (n.includes('bazzite'))
+    return s('<circle cx="12" cy="12" r="10"/><path d="M12 5.5l5.5 3.2v6.6L12 18.5 6.5 15.3V8.7z" fill="#1E1E2E"/><circle cx="12" cy="12" r="2.2" fill="#B14AED"/>', '#B14AED');
   if (n.includes('red hat') || n.includes('rhel') || n.includes('redhat'))
     return s('<circle cx="12" cy="12" r="10"/><path d="M7 14s1-4 5-4 5 4 5 4H7z" fill="#EE0000"/><ellipse cx="12" cy="9" rx="4" ry="3" fill="#EE0000"/>', '#EE0000');
   if (n.includes('centos'))

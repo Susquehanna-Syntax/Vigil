@@ -427,8 +427,19 @@ function _reproImageRow(img) {
   const tr = document.createElement('tr');
 
   const nameTd = document.createElement('td');
-  // Operator-supplied on the custom-URL path — textContent only.
-  nameTd.textContent = img.name || '';
+  // The distro mark. osLogo() builds its SVG from hardcoded literals and never
+  // interpolates the name it is passed, so parsing it is safe; the name itself
+  // still goes in as textContent below, because it is operator-supplied on the
+  // custom-URL path.
+  try {
+    const doc = new DOMParser().parseFromString(osLogo(img.name || ''), 'image/svg+xml');
+    const mark = doc.documentElement;
+    if (mark && mark.nodeName !== 'parsererror') {
+      mark.setAttribute('class', 'os-logo');
+      nameTd.appendChild(document.adoptNode(mark));
+    }
+  } catch (e) { /* a missing mark is cosmetic — never block the row on it */ }
+  nameTd.appendChild(document.createTextNode(img.name || ''));
   tr.appendChild(nameTd);
 
   const familyTd = document.createElement('td');

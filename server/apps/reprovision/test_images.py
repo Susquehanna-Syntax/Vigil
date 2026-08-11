@@ -164,3 +164,65 @@ class ImportFailureTests(TestCase):
         import_iso(image, Path("/nonexistent/never.iso"))
         image.refresh_from_db()
         self.assertEqual(image.status, OSImage.Status.FAILED)
+
+
+class ResolveKernelPathsTests(TestCase):
+    """The layout drifts between derivatives, and a mismatch is only
+    discovered after the whole ISO has been downloaded — the most expensive
+    moment to learn a filename. Ubuntu ships /casper/initrd; Linux Mint, built
+    on the same casper, ships initrd.lz."""
+
+    class _FakeIso:
+        """Stands in for pycdlib: knows which paths the ISO contains."""
+
+        def __init__(self, present):
+            self.present = set(present)
+            self.asked = []
+
+        def get_record(self, iso_path):
+            self.asked.append(iso_path)
+            if iso_path not in self.present:
+                raise OSError(f"not in ISO: {iso_path}")
+            return object()
+
+    def test_the_first_matching_candidate_wins(self):
+        from .images import _resolve_kernel_paths
+
+        iso = self._FakeIso(["/casper/vmlinuz", "/casper/initrd"])
+        self.assertEqual(_resolve_kernel_paths(iso, "ubuntu"),
+                         ("/casper/vmlinuz", "/casper/initrd"))
+
+    def test_a_mint_style_compressed_initrd_is_found(self):
+        from .images import _resolve_kernel_paths
+
+        iso = self._FakeIso(["/casper/vmlinuz", "/casper/initrd.lz"])
+        self.assertEqual(_resolve_kernel_paths(iso, "ubuntu"),
+                         ("/casper/vmlinuz", "/casper/initrd.lz"))
+
+    def test_an_iso_with_no_installer_is_refused_with_what_was_tried(self):
+        """A live-only image has no installer kernel. The error names the
+        candidates so the operator can tell 'wrong variant' from 'Vigil does
+        not know this layout'."""
+        from .images import ImportError_, _resolve_kernel_paths
+
+        iso = self._FakeIso(["/boot/grub/grub.cfg"])
+        with self.assertRaises(ImportError_) as ctx:
+            _resolve_kernel_paths(iso, "ubuntu")
+        msg = str(ctx.exception)
+        self.assertIn("/casper/initrd", msg)
+        self.assertIn("/casper/initrd.lz", msg)
+
+    def test_an_unknown_family_is_refused(self):
+        from .images import ImportError_, _resolve_kernel_paths
+
+        with self.assertRaises(ImportError_):
+            _resolve_kernel_paths(self._FakeIso([]), "haiku")
+
+    def test_a_half_present_candidate_is_not_accepted(self):
+        """Kernel present, initrd absent: the pair must match, or extraction
+        writes a kernel and then fails."""
+        from .images import ImportError_, _resolve_kernel_paths
+
+        iso = self._FakeIso(["/images/pxeboot/vmlinuz"])
+        with self.assertRaises(ImportError_):
+            _resolve_kernel_paths(iso, "rhel")
