@@ -33,3 +33,11 @@ agent/data/
 REXYMCP.md
 .rexymcp/
 docs/dev/
+
+# Test artifacts: the agent_dist suite writes an uploaded binary here on every
+# run, so the directory fills with junk that is runtime upload, not source.
+# The two fixtures already tracked are kept with a negation so this rule
+# cannot silently untrack them.
+server/media/agent_binaries/*
+!server/media/agent_binaries/binary
+!server/media/agent_binaries/binary_LexSWBw
