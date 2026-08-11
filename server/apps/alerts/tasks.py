@@ -323,6 +323,51 @@ def check_docker_image_updates():
 # Outdated agent version alerts
 # ---------------------------------------------------------------------------
 
+def _version_key(version: str) -> tuple[int, ...] | None:
+    """(2026, 7, 1) for "2026.7.1", or None when that cannot be read.
+
+    Trailing letters are tolerated because Vigil has shipped them —
+    "2026.1.8b" sorts as (2026, 1, 8). None means "unparseable", which
+    callers must treat as unknown rather than as any particular ordering.
+    """
+    if not version:
+        return None
+    parts = []
+    for chunk in version.strip().lstrip("vV").split("."):
+        digits = ""
+        for char in chunk:
+            if not char.isdigit():
+                break
+            digits += char
+        if not digits:
+            return None
+        parts.append(int(digits))
+    return tuple(parts) or None
+
+
+def _is_older(reported: str, expected: str) -> bool:
+    """True only when *reported* is provably behind *expected*.
+
+    This used to be ``reported != expected``, which called an agent NEWER
+    than the server "outdated" — so rolling the server back lit up the whole
+    fleet with warnings telling operators to upgrade agents that were already
+    ahead. Nothing here is actionable in that direction: the server is the
+    thing that is behind, and the agent is fine.
+
+    Unparseable on either side returns False. An alert that cannot be
+    justified is worse than a missing one, because it trains people to
+    ignore the ones that matter.
+    """
+    left, right = _version_key(reported), _version_key(expected)
+    if left is None or right is None:
+        return False
+    # Compare on equal footing: (2026, 7) is not behind (2026, 7, 0).
+    width = max(len(left), len(right))
+    left += (0,) * (width - len(left))
+    right += (0,) * (width - len(right))
+    return left < right
+
+
 @shared_task(name="alerts.check_outdated_agents")
 def check_outdated_agents():
     """Fire an alert for any online host running an older agent version."""
@@ -338,7 +383,7 @@ def check_outdated_agents():
         if not host.agent_version:
             continue
 
-        is_outdated = host.agent_version != current_version
+        is_outdated = _is_older(host.agent_version, current_version)
 
         existing = Alert.objects.filter(
             host=host,

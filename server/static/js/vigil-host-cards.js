@@ -157,7 +157,7 @@ async function _renderDetailAgentVersion(reported) {
   }
   el.textContent = 'v' + reported;
   const expected = await _getExpectedAgentVersion();
-  if (expected && reported !== expected) {
+  if (expected && isOlderVersion(reported, expected)) {
     el.textContent = `v${reported} (outdated → v${expected})`;
     el.style.color = 'var(--peach)';
   } else if (expected) {

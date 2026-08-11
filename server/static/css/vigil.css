@@ -2486,3 +2486,128 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
   width: 16px; height: 16px; flex-shrink: 0;
   vertical-align: -3px; margin-right: 7px;
 }
+
+/* ── Reprovision: "Add an image" ─────────────────────────────────────────
+   Three ways in, each its own card. Previously one card with hairline
+   dividers, which read as a single long form and buried the fact that the
+   catalog route needs nothing but a click. */
+.repro-add-section { margin-bottom: 26px; }
+.repro-add-section:last-child { margin-bottom: 0; }
+
+.repro-add-card {
+  background: var(--s1);
+  border-radius: var(--r-lg);
+  padding: 20px;
+}
+
+.repro-add-lede { max-width: 720px; margin: 0 0 16px; }
+.repro-add-note { margin-top: 12px; max-width: 720px; }
+
+.repro-catalog-row,
+.repro-preset-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.repro-catalog-row .form-control {
+  flex: 1;
+  width: auto;
+  min-width: 220px;
+  max-width: 380px;
+}
+
+/* Disabled preset button: the reason lives in the note beneath it, so the
+   button only has to look unavailable rather than explain itself. */
+.repro-preset-row .btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Numbered steps — describe the image, then choose how it arrives. */
+.repro-step-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin-bottom: 14px;
+}
+.repro-step-head-spaced {
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.repro-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--s3);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.repro-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.repro-field-grid-wide { grid-template-columns: 2fr 1fr; }
+
+/* The two delivery methods sit side by side: they are alternatives, and
+   stacking them implied the second was a follow-on step. */
+.repro-method-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.repro-method {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 18px;
+}
+.repro-method-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin-bottom: 14px;
+}
+
+.repro-risk-box {
+  background: rgba(242, 160, 184, 0.08);
+  border: 1px solid var(--rose);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.7;
+}
+.repro-risk-box strong { color: var(--rose); }
+
+.repro-ack {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+  color: var(--text-2);
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+.repro-ack input[type="checkbox"] { margin-top: 3px; }
+
+/* One column once side-by-side stops being readable — the SHA-256 field and
+   the risk copy both need room. */
+@media (max-width: 900px) {
+  .repro-field-grid,
+  .repro-field-grid-wide,
+  .repro-method-grid { grid-template-columns: 1fr; }
+}
