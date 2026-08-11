@@ -2378,3 +2378,111 @@ select.form-control:hover { border-color: var(--s4); }
 @media (prefers-reduced-motion: reduce) {
   .modal-skeleton .sk-line { animation: none; }
 }
+
+/* ── Firewall + Reprovision (2026.7.1) ──────────────────────────────────────
+   Classes these two pages were already emitting with no rule behind them.
+   .btn-danger is the worst of them: it sits on the rebuild-confirm and abort
+   buttons, so the most destructive control in the product was rendering as an
+   unstyled default button. */
+
+/* Empty-state glyph — line art, matching the sidebar icons, replacing the
+   emoji these panels used to show. */
+.empty-glyph {
+  width: 42px; height: 42px; margin: 0 auto 16px; display: block;
+  stroke: var(--text-3); fill: none; stroke-width: 1.5;
+  stroke-linecap: round; stroke-linejoin: round; opacity: 0.55;
+}
+
+/* Control bar: host pickers and page-level actions that belong with the
+   content rather than in the title row. */
+.fw-controls {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--s1); border-radius: var(--r-md);
+  padding: 14px 18px; margin-bottom: 20px; flex-wrap: wrap;
+}
+.fw-controls-label {
+  font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--text-3); font-weight: 600;
+}
+.fw-host-select { min-width: 240px; max-width: 100%; }
+.fw-snapshot-age { font-size: 12px; color: var(--text-3); margin-left: auto; }
+
+/* Destructive action. Deliberately filled rather than outlined: rose-ghost
+   reads as "cancel", and these buttons wipe a machine. */
+.btn-danger { background: var(--rose); color: var(--bg); }
+.btn-danger:disabled,
+.btn:disabled {
+  opacity: 0.4; cursor: not-allowed; transform: none;
+}
+.btn-danger:disabled:hover,
+.btn:disabled:hover { transform: none; }
+
+/* Inline text tones used across the reprovision ceremony. */
+.muted { color: var(--text-3); font-size: 12px; }
+.ok    { color: var(--mint); }
+.bad   { color: var(--rose); }
+
+/* Rebuild ceremony. */
+.rb-summary { margin-bottom: 14px; line-height: 1.7; }
+.rb-state {
+  display: inline-block; padding: 3px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.4px;
+}
+.rb-disks {
+  margin: 10px 0 16px 0; padding-left: 20px;
+  color: var(--text-2); font-size: 13px; line-height: 1.8;
+}
+.rb-disks li { font-family: 'IBM Plex Mono', monospace; }
+.rb-preflight {
+  background: var(--s2); border-radius: var(--r-sm);
+  padding: 12px 16px; margin-bottom: 16px;
+  font-size: 13px; color: var(--text-2); line-height: 1.7;
+}
+/* The acknowledgement on an irreversible action — it should not be easy to
+   tick past without reading. */
+.rb-warn {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: rgba(242,160,184,0.10);
+  border: 1px solid rgba(242,160,184,0.35);
+  border-radius: var(--r-sm); padding: 14px 16px; margin: 16px 0;
+  font-size: 13px; color: var(--text-1); line-height: 1.65; cursor: pointer;
+}
+.rb-warn input[type="checkbox"] { margin-top: 3px; flex-shrink: 0; }
+
+/* Checkboxes were inheriting the browser default — grey, and visually
+   unrelated to everything around them. */
+input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  width: 16px; height: 16px; border-radius: 4px;
+  border: 1.5px solid var(--s3); background: var(--s2);
+  cursor: pointer; position: relative; vertical-align: middle;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+input[type="checkbox"]:hover { border-color: var(--text-3); }
+input[type="checkbox"]:checked { background: var(--sky); border-color: var(--sky); }
+input[type="checkbox"]:checked::after {
+  content: ''; position: absolute; left: 4.5px; top: 1px;
+  width: 4px; height: 8px; border: solid var(--bg);
+  border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Delete-per-row in the image library. */
+.img-del { color: var(--rose); border-color: rgba(242,160,184,0.35); }
+.img-del:hover { border-color: var(--rose); background: rgba(242,160,184,0.10); }
+
+/* Download / import progress in the image library. */
+.img-progress {
+  height: 4px; border-radius: 2px; background: var(--s3);
+  overflow: hidden; margin-top: 6px; min-width: 120px;
+}
+.img-progress-bar {
+  height: 100%; background: var(--sky); border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+/* Tiny distro mark beside a catalog entry or an image row. */
+.os-logo {
+  width: 16px; height: 16px; flex-shrink: 0;
+  vertical-align: -3px; margin-right: 7px;
+}

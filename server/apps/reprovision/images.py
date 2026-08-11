@@ -18,11 +18,57 @@ logger = logging.getLogger("vigil.reprovision")
 _CHUNK = 1024 * 1024
 
 #: Where each family keeps its installer kernel and initrd inside the ISO.
+#: Where each family keeps its installer kernel and initrd inside the ISO.
+#:
+#: Each entry is a list of CANDIDATES tried in order, because the layout drifts
+#: between derivatives and between releases of the same distro. Ubuntu ships
+#: /casper/initrd; Linux Mint, built on the same casper, ships initrd.lz. One
+#: hardcoded path per family means a derivative fails extraction *after* a
+#: multi-gigabyte download, which is the most expensive moment to discover a
+#: filename.
 KERNEL_PATHS = {
-    "ubuntu": ("/casper/vmlinuz", "/casper/initrd"),
-    "debian": ("/install.amd/vmlinuz", "/install.amd/initrd.gz"),
-    "rhel": ("/images/pxeboot/vmlinuz", "/images/pxeboot/initrd.img"),
+    "ubuntu": (
+        ("/casper/vmlinuz", "/casper/initrd"),
+        ("/casper/vmlinuz", "/casper/initrd.lz"),
+        ("/casper/vmlinuz", "/casper/initrd.gz"),
+    ),
+    "debian": (
+        ("/install.amd/vmlinuz", "/install.amd/initrd.gz"),
+        ("/install.amd/vmlinuz", "/install.amd/initrd"),
+    ),
+    "rhel": (
+        ("/images/pxeboot/vmlinuz", "/images/pxeboot/initrd.img"),
+    ),
 }
+
+
+def _resolve_kernel_paths(iso, family: str) -> tuple[str, str]:
+    """Pick the first candidate pair this ISO actually contains.
+
+    ISO-9660 paths are case-sensitive and often carry a ``;1`` version suffix,
+    so existence is probed by asking pycdlib for the record rather than by
+    listing and matching strings.
+    """
+    try:
+        candidates = KERNEL_PATHS[family]
+    except KeyError:
+        raise ImportError_(f"Unsupported family {family!r}")
+
+    tried = []
+    for kernel_src, initrd_src in candidates:
+        tried.append(initrd_src)
+        try:
+            for path in (kernel_src, initrd_src):
+                iso.get_record(iso_path=path)
+        except Exception:  # noqa: BLE001 — pycdlib raises its own types
+            continue
+        return kernel_src, initrd_src
+
+    raise ImportError_(
+        f"No installer kernel/initrd found in this ISO for family {family!r}. "
+        f"Tried: {', '.join(tried)}. The image may be a live-only or "
+        f"non-installer variant, or a derivative with a layout Vigil does not "
+        f"know yet.")
 
 
 class ImportError_(Exception):
@@ -73,15 +119,14 @@ def import_iso(image, iso_path: Path) -> None:
         dest = image_root() / str(image.id)
         verify_checksum(iso_path, image.sha256)
 
-        try:
-            kernel_src, initrd_src = KERNEL_PATHS[image.os_family]
-        except KeyError:
+        if image.os_family not in KERNEL_PATHS:
             raise ImportError_(f"Unsupported family {image.os_family!r}")
 
         dest.mkdir(parents=True, exist_ok=True)
         iso = pycdlib.PyCdlib()
         iso.open(str(iso_path))
         try:
+            kernel_src, initrd_src = _resolve_kernel_paths(iso, image.os_family)
             for src, name in ((kernel_src, "vmlinuz"), (initrd_src, "initrd")):
                 out = dest / name
                 with out.open("wb") as fh:

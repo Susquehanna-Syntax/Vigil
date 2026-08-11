@@ -5,18 +5,26 @@
       <div class="page-header">
         <div>
           <div class="page-title">Reprovision<span>.</span></div>
-          <div class="page-sub">OS image library, pull controls, install profiles and rebuild jobs</div>
+          <div class="page-sub">Fetch and hold OS images, author install profiles, and rebuild hosts</div>
         </div>
       </div>
 
-      {# ── Image library ──────────────────────────────────────────────── #}
-      <div class="section-label" style="margin-top:0;">Image library</div>
+      <div class="tab-bar" data-tab-group="reprovision">
+        <div class="tab t-mint active" data-tab="repro-tab-library">Image library</div>
+        <div class="tab t-sky" data-tab="repro-tab-add">Add an image</div>
+        <div class="tab t-lav" data-tab="repro-tab-profiles">Install profiles</div>
+        <div class="tab t-rose" data-tab="repro-tab-jobs">Rebuild jobs</div>
+      </div>
+
+      <div id="repro-tab-library" class="tab-content active">
       <div style="background:var(--s1);border-radius:var(--r-lg);padding:20px;margin-bottom:8px;">
         <div id="repro-images-list"></div>
       </div>
 
-      {# ── Pull controls ──────────────────────────────────────────────── #}
-      <div class="section-label">Pull an image</div>
+      </div>{# /repro-tab-library #}
+
+      <div id="repro-tab-add" class="tab-content">
+      <div class="section-label" style="margin-top:0;">Pull from the catalog</div>
       <div style="background:var(--s1);border-radius:var(--r-lg);padding:20px;">
 
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
@@ -120,16 +128,21 @@
         </div>
       </div>
 
-      {# ── Profiles ────────────────────────────────────────────────────── #}
-      <div class="section-label">Install profiles</div>
+      </div>{# /repro-tab-add #}
+
+      <div id="repro-tab-profiles" class="tab-content">
+      <div class="section-label" style="margin-top:0;">Install profiles</div>
       <div style="background:var(--s1);border-radius:var(--r-lg);padding:20px;margin-bottom:8px;">
         <div id="repro-profiles-list"></div>
       </div>
 
-      {# ── Rebuild jobs ────────────────────────────────────────────────── #}
-      <div class="section-label">Rebuild jobs</div>
+      </div>{# /repro-tab-profiles #}
+
+      <div id="repro-tab-jobs" class="tab-content">
+      <div class="section-label" style="margin-top:0;">Rebuild jobs</div>
       <div style="background:var(--s1);border-radius:var(--r-lg);padding:20px;">
         <div id="repro-jobs-list"></div>
       </div>
+      </div>{# /repro-tab-jobs #}
 
     </section>
