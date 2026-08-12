@@ -38,12 +38,17 @@
           <div class="repro-add-card">
             <p class="muted-note repro-add-lede">
               Images Vigil can fetch and verify on its own — the checksum is
-              published by the distro, so there is nothing to type.
+              published by the distro, so there is nothing to type. Anything
+              already in your library is marked as such; the same bytes are
+              never fetched twice.
             </p>
-            <div class="repro-catalog-row">
-              <select id="repro-catalog-select" class="form-control"></select>
-              <button class="btn btn-mint btn-sm" id="repro-catalog-pull-btn">Pull from catalog</button>
-            </div>
+            {% comment %}
+              Cards rather than a dropdown: a dropdown shows one option at a
+              time and cannot say which images you already hold, so the only
+              way to find out was to pull one and read the error.
+              Rendered by _reproRenderCatalog in static/js/vigil-reprovision.js.
+            {% endcomment %}
+            <div id="repro-catalog-grid" class="repro-catalog-grid"></div>
             <div id="repro-catalog-empty" class="muted-note" style="display:none;margin-top:10px;">
               Catalog is unavailable — you may not have permission to view it, or
               nothing is configured.
