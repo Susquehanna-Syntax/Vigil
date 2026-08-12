@@ -182,7 +182,15 @@
       </div>{# /repro-tab-add #}
 
       <div id="repro-tab-profiles" class="tab-content">
-      <div class="section-label" style="margin-top:0;">Install profiles</div>
+      <div class="repro-profiles-head">
+        <div class="section-label" style="margin-top:0;margin-bottom:0;">Install profiles</div>
+        <button class="btn btn-mint btn-sm" id="repro-profile-new-btn" type="button">+ New profile</button>
+      </div>
+      <p class="muted-note repro-add-lede">
+        The answers the installer needs so a rebuild runs unattended: which
+        image and disk, how the machine gets on the network, and who can log
+        in afterwards.
+      </p>
       <div style="background:var(--s1);border-radius:var(--r-lg);padding:20px;margin-bottom:8px;">
         <div id="repro-profiles-list"></div>
       </div>
@@ -197,3 +205,149 @@
       </div>{# /repro-tab-jobs #}
 
     </section>
+
+{% comment %}
+  Install profile editor. Sits outside .page so the overlay covers the
+  viewport rather than the page body, matching the baseline editor.
+  Logic: static/js/vigil-reprovision.js
+{% endcomment %}
+<div class="modal-overlay" id="repro-profile-overlay"></div>
+<div class="modal modal-wide" id="repro-profile-modal" data-editing="">
+  <div class="modal-header">
+    <span id="repro-profile-title">New install profile</span>
+    <button class="modal-close" id="repro-profile-close" aria-label="Close">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+
+  <div class="repro-prof-step">Image and disk</div>
+  <div class="repro-field-grid">
+    <div class="form-group">
+      <label class="form-label" for="repro-prof-name">Profile name</label>
+      <input type="text" class="form-control" id="repro-prof-name" placeholder="e.g. Web server, Ubuntu 24.04" maxlength="120">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="repro-prof-image">Image</label>
+      <select class="form-control" id="repro-prof-image"></select>
+      <div class="muted-note repro-prof-hint" id="repro-prof-image-hint"></div>
+    </div>
+  </div>
+  <div class="repro-field-grid">
+    <div class="form-group">
+      <label class="form-label" for="repro-prof-disk">Target disk</label>
+      <input type="text" class="form-control mono" id="repro-prof-disk" placeholder="/dev/sda" maxlength="120">
+      <div class="muted-note repro-prof-hint">Wiped completely. Name the device, not a partition.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="repro-prof-partition">Partitioning</label>
+      <select class="form-control" id="repro-prof-partition">
+        <option value="lvm">LVM</option>
+        <option value="plain">Plain</option>
+      </select>
+    </div>
+  </div>
+  <div class="repro-field-grid">
+    <div class="form-group">
+      <label class="form-label" for="repro-prof-fs">Filesystem</label>
+      <select class="form-control" id="repro-prof-fs">
+        <option value="ext4">ext4</option>
+        <option value="xfs">xfs</option>
+        <option value="btrfs">btrfs</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="repro-prof-deadline">Deadline (minutes)</label>
+      <input type="number" class="form-control" id="repro-prof-deadline" min="5" max="1440" value="60">
+      <div class="muted-note repro-prof-hint">A rebuild that has not reported by then is marked failed.</div>
+    </div>
+  </div>
+
+  <div class="repro-prof-step">Network</div>
+  <div class="repro-field-grid">
+    <div class="form-group">
+      <label class="form-label" for="repro-prof-netmode">Addressing</label>
+      <select class="form-control" id="repro-prof-netmode">
+        <option value="dhcp">DHCP</option>
+        <option value="static">Static</option>
+      </select>
+    </div>
+    <div class="form-group repro-prof-static">
+      <label class="form-label" for="repro-prof-address">Address / CIDR</label>
+      <input type="text" class="form-control mono" id="repro-prof-address" placeholder="192.168.1.50/24" maxlength="64">
+    </div>
+  </div>
+  <div class="repro-field-grid repro-prof-static">
+    <div class="form-group">
+      <label class="form-label" for="repro-prof-gateway">Gateway</label>
+      <input type="text" class="form-control mono" id="repro-prof-gateway" placeholder="192.168.1.1" maxlength="64">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="repro-prof-dns">DNS servers</label>
+      <input type="text" class="form-control mono" id="repro-prof-dns" placeholder="1.1.1.1, 9.9.9.9" maxlength="160">
+    </div>
+  </div>
+
+  <div class="repro-prof-step">Locale</div>
+  <div class="repro-field-grid repro-field-grid-three">
+    <div class="form-group">
+      <label class="form-label" for="repro-prof-timezone">Timezone</label>
+      <input type="text" class="form-control" id="repro-prof-timezone" value="UTC" maxlength="64">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="repro-prof-locale">Locale</label>
+      <input type="text" class="form-control" id="repro-prof-locale" value="en_US.UTF-8" maxlength="32">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="repro-prof-keyboard">Keyboard</label>
+      <input type="text" class="form-control" id="repro-prof-keyboard" value="us" maxlength="32">
+    </div>
+  </div>
+
+  <div class="repro-prof-step">Access</div>
+  {% comment %}
+    The serializer refuses a profile with neither a key nor a password hash:
+    it produces a machine nobody can log into, discovered after the disk is
+    already wiped. Said here so it is read before that happens.
+  {% endcomment %}
+  <div class="muted-note repro-prof-hint" style="margin-bottom:14px;">
+    Set at least one of these. A profile with neither leaves a rebuilt
+    machine nobody can log into.
+  </div>
+  <div class="repro-field-grid">
+    <div class="form-group">
+      <label class="form-label" for="repro-prof-user">Admin username</label>
+      <input type="text" class="form-control" id="repro-prof-user" placeholder="admin" maxlength="64">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="repro-prof-password">Admin password <em>hash</em></label>
+      <input type="text" class="form-control mono" id="repro-prof-password" placeholder="$6$rounds=…" autocomplete="new-password">
+      <div class="muted-note repro-prof-hint" id="repro-prof-password-hint">
+        A crypt hash, never a plaintext password — the answer file carries
+        it verbatim. Generate one with <code>mkpasswd -m sha-512</code>.
+      </div>
+    </div>
+  </div>
+  <div class="form-group">
+    <label class="form-label" for="repro-prof-keys">SSH authorized keys</label>
+    <textarea class="form-control mono" id="repro-prof-keys" rows="3" placeholder="ssh-ed25519 AAAA… you@laptop"></textarea>
+  </div>
+
+  <div class="repro-prof-step">Extras</div>
+  <div class="form-group">
+    <label class="form-label" for="repro-prof-packages">Extra packages</label>
+    <input type="text" class="form-control mono" id="repro-prof-packages" placeholder="curl, vim, htop">
+    <div class="muted-note repro-prof-hint">Comma-separated. Installed by the installer, before first boot.</div>
+  </div>
+  <div class="form-group">
+    <label class="form-label" for="repro-prof-raw">Appended verbatim to the answer file</label>
+    <textarea class="form-control mono" id="repro-prof-raw" rows="3" placeholder="Optional. Escape hatch for anything the fields above don't cover."></textarea>
+    <div class="muted-note repro-prof-hint">
+      Not validated. A syntax error here fails the install after the disk is wiped.
+    </div>
+  </div>
+
+  <div class="modal-actions">
+    <button class="btn btn-ghost" id="repro-profile-cancel" type="button">Cancel</button>
+    <button class="btn btn-mint" id="repro-profile-save" type="button">Save profile</button>
+  </div>
+</div>

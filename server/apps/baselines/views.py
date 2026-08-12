@@ -19,6 +19,7 @@ def _row(b: Baseline) -> dict:
         "description": b.description,
         "target_tags": b.target_tags,
         "enabled": b.enabled,
+        "allow_high_risk": b.allow_high_risk,
         "created_at": b.created_at.isoformat(),
         "steps": [
             {
@@ -33,10 +34,41 @@ def _row(b: Baseline) -> dict:
     }
 
 
+def _high_risk_gate(request, baseline: Baseline, requested) -> Response | None:
+    """Authorize a change to *baseline*'s allow_high_risk flag.
+
+    Turning it ON costs a fresh TOTP code. That one confirmation authorizes
+    every future unattended dispatch of this baseline's high-risk steps, so
+    it is the same class of act as deploying a high-risk task by hand — and
+    the only moment a human is present to make it. Turning it OFF is
+    unguarded: removing an authorization needs no authorization.
+    """
+    if requested is None or bool(requested) == baseline.allow_high_risk:
+        return None
+    if not requested:
+        baseline.allow_high_risk = False
+        return None
+
+    from apps.accounts.totp import require_totp_confirmation
+
+    if error := require_totp_confirmation(request.user, request.data):
+        return Response(
+            {"detail": f"Allowing high-risk steps needs confirmation: {error}",
+             "needs_totp": True},
+            status=403)
+    baseline.allow_high_risk = True
+    return None
+
+
 def _validate_and_set_steps(baseline: Baseline, definition_ids) -> Response | None:
     """Replace the sequence. Entries are bare definition ids or
     ``{"definition_id": ..., "params_override": {...}}`` dicts.
-    Returns an error Response or None."""
+    Returns an error Response or None.
+
+    Eligibility is judged against the baseline's own allow_high_risk flag, so
+    callers must set it before calling — otherwise a baseline created with
+    the flag on in the same request would still reject its high-risk steps.
+    """
     from apps.tasks.spec import validate_params_override
 
     if not isinstance(definition_ids, list) or not definition_ids:
@@ -52,7 +84,7 @@ def _validate_and_set_steps(baseline: Baseline, definition_ids) -> Response | No
         d = TaskDefinition.objects.filter(pk=did).first()
         if d is None:
             return Response({"detail": f"unknown definition {did}"}, status=400)
-        ok, why = eligible(d)
+        ok, why = eligible(d, allow_high_risk=baseline.allow_high_risk)
         if not ok:
             return Response({"detail": f"{d.name}: {why}"}, status=400)
         err = validate_params_override(d.parsed_spec or {}, override)
@@ -95,6 +127,13 @@ def baseline_index(request):
             enabled=bool(request.data.get("enabled", True)),
             created_by=request.user,
         )
+        # Before the steps are validated: eligibility is judged against this
+        # flag, so a baseline created with high-risk steps and the box ticked
+        # would otherwise reject its own steps.
+        if err := _high_risk_gate(request, baseline, request.data.get("allow_high_risk")):
+            transaction.set_rollback(True)
+            return err
+        baseline.save(update_fields=["allow_high_risk"])
         err = _validate_and_set_steps(baseline, request.data.get("definition_ids"))
         if err is not None:
             transaction.set_rollback(True)
@@ -132,6 +171,8 @@ def baseline_detail(request, baseline_id):
             return Response({"detail": "target_tags must be a list of strings"},
                             status=400)
         baseline.target_tags = [t.strip() for t in tags if t.strip()]
+    if err := _high_risk_gate(request, baseline, data.get("allow_high_risk")):
+        return err
     with transaction.atomic():
         baseline.save()
         if "definition_ids" in data:

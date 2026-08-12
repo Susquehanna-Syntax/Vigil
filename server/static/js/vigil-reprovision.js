@@ -842,9 +842,190 @@ function _reproProfileRow(prof) {
   user.style.color = 'var(--text-3)';
   user.textContent = prof.admin_username || '';
   meta.appendChild(user);
+
+  const edit = document.createElement('button');
+  edit.className = 'btn btn-outline btn-sm';
+  edit.type = 'button';
+  edit.textContent = 'Edit';
+  edit.addEventListener('click', () => _reproOpenProfile(prof));
+  meta.appendChild(edit);
+
+  const del = document.createElement('button');
+  del.className = 'btn btn-outline btn-sm img-del';
+  del.type = 'button';
+  del.textContent = 'Delete';
+  del.addEventListener('click', () => _reproDeleteProfile(prof));
+  meta.appendChild(del);
+
   row.appendChild(meta);
 
   return row;
+}
+
+/* ── Install profile editor ──────────────────────────────────────────────
+   Every field the installer needs to run unattended. The API has always
+   supported create/edit/delete; until now the page could only list what
+   someone had created through it directly. */
+
+// Non-empty means editing that profile; empty means creating one.
+function _reproProfileModal() {
+  return document.getElementById('repro-profile-modal');
+}
+
+function _reproSetProfileOpen(open) {
+  const modal = _reproProfileModal();
+  const overlay = document.getElementById('repro-profile-overlay');
+  if (!modal || !overlay) return;
+  modal.classList.toggle('open', open);
+  overlay.classList.toggle('open', open);
+}
+
+// Static/DHCP: the static fields are meaningless under DHCP, and the
+// serializer rejects static without an address and gateway.
+function _reproSyncProfileNetwork() {
+  const mode = document.getElementById('repro-prof-netmode')?.value;
+  for (const el of document.querySelectorAll('#repro-profile-modal .repro-prof-static')) {
+    el.style.display = mode === 'static' ? '' : 'none';
+  }
+}
+
+function _reproFillProfileImages(selectedId) {
+  const sel = document.getElementById('repro-prof-image');
+  const hint = document.getElementById('repro-prof-image-hint');
+  if (!sel) return;
+  sel.replaceChildren();
+  // Only READY images can be installed from — one still downloading has no
+  // extracted tree for the installer to fetch.
+  const ready = Object.values(_reproImagesById)
+    .filter(img => img && (img.status === 'ready' || img.id === selectedId));
+  for (const img of ready) {
+    const opt = document.createElement('option');
+    opt.value = img.id;
+    opt.textContent = `${img.name || img.id}${img.status === 'ready' ? '' : ' (not ready)'}`;
+    sel.appendChild(opt);
+  }
+  if (selectedId) sel.value = String(selectedId);
+  if (hint) {
+    hint.textContent = ready.length ? ''
+      : 'No image is ready yet — pull or upload one first.';
+  }
+}
+
+function _reproOpenProfile(prof) {
+  const modal = _reproProfileModal();
+  if (!modal) return;
+  const editing = prof && prof.id ? String(prof.id) : '';
+  modal.dataset.editing = editing;
+  document.getElementById('repro-profile-title').textContent =
+    editing ? 'Edit install profile' : 'New install profile';
+
+  const set = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.value = value;
+  };
+  set('repro-prof-name', prof?.name || '');
+  set('repro-prof-disk', prof?.disk_target || '');
+  set('repro-prof-partition', prof?.partition_scheme || 'lvm');
+  set('repro-prof-fs', prof?.filesystem || 'ext4');
+  set('repro-prof-deadline', prof?.deadline_minutes ?? 60);
+  set('repro-prof-netmode', prof?.network_mode || 'dhcp');
+  set('repro-prof-address', prof?.static_address || '');
+  set('repro-prof-gateway', prof?.gateway || '');
+  set('repro-prof-dns', prof?.dns || '');
+  set('repro-prof-timezone', prof?.timezone || 'UTC');
+  set('repro-prof-locale', prof?.locale || 'en_US.UTF-8');
+  set('repro-prof-keyboard', prof?.keyboard || 'us');
+  set('repro-prof-user', prof?.admin_username || '');
+  set('repro-prof-keys', prof?.ssh_authorized_keys || '');
+  set('repro-prof-raw', prof?.raw_append || '');
+  set('repro-prof-packages',
+      Array.isArray(prof?.extra_packages) ? prof.extra_packages.join(', ') : '');
+
+  // The API never returns a stored password, so the box always starts empty
+  // and blank means "leave whatever is stored alone" on an edit.
+  set('repro-prof-password', '');
+  const pwHint = document.getElementById('repro-prof-password-hint');
+  if (pwHint) {
+    pwHint.textContent = editing
+      ? 'Leave blank to keep the stored hash. A crypt hash, never a plaintext password.'
+      : 'A crypt hash, never a plaintext password — the answer file carries it verbatim. Generate one with mkpasswd -m sha-512.';
+  }
+
+  _reproFillProfileImages(prof?.image);
+  _reproSyncProfileNetwork();
+  _reproSetProfileOpen(true);
+}
+
+async function _reproSaveProfile() {
+  const modal = _reproProfileModal();
+  if (!modal) return;
+  const val = (id) => (document.getElementById(id)?.value || '').trim();
+  const editing = modal.dataset.editing;
+
+  const body = {
+    name: val('repro-prof-name'),
+    image: val('repro-prof-image'),
+    disk_target: val('repro-prof-disk'),
+    partition_scheme: val('repro-prof-partition'),
+    filesystem: val('repro-prof-fs'),
+    network_mode: val('repro-prof-netmode'),
+    static_address: val('repro-prof-address'),
+    gateway: val('repro-prof-gateway'),
+    dns: val('repro-prof-dns'),
+    timezone: val('repro-prof-timezone'),
+    locale: val('repro-prof-locale'),
+    keyboard: val('repro-prof-keyboard'),
+    admin_username: val('repro-prof-user'),
+    ssh_authorized_keys: val('repro-prof-keys'),
+    raw_append: val('repro-prof-raw'),
+    extra_packages: val('repro-prof-packages').split(',')
+      .map(p => p.trim()).filter(Boolean),
+    deadline_minutes: parseInt(val('repro-prof-deadline'), 10) || 60,
+  };
+  const password = val('repro-prof-password');
+  // Omitted rather than sent blank on an edit: the serializer reads a blank
+  // as "no password given" and would fail its own can-anyone-log-in check
+  // for a profile that already has one stored.
+  if (password) body.admin_password = password;
+
+  if (!body.name) return showToast('Give the profile a name', 'error');
+  if (!body.image) return showToast('Pick an image', 'error');
+  if (!body.disk_target) return showToast('Name the target disk', 'error');
+  if (!body.admin_username) return showToast('Set an admin username', 'error');
+
+  const btn = document.getElementById('repro-profile-save');
+  if (btn) btn.disabled = true;
+  try {
+    if (editing) {
+      await apiJson(`/api/v1/reprovision/profiles/${editing}/`,
+                    { method: 'PATCH', body: JSON.stringify(body) });
+    } else {
+      await apiJson('/api/v1/reprovision/profiles/',
+                    { method: 'POST', body: JSON.stringify(body) });
+    }
+    showToast('Profile saved', 'success');
+    _reproSetProfileOpen(false);
+    _reproLoadProfiles();
+  } catch (e) {
+    showToast(e.message || 'Could not save the profile', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function _reproDeleteProfile(prof) {
+  if (!prof || !prof.id) return;
+  const ok = await confirmModal(
+    `Delete install profile “${prof.name || prof.id}”?`,
+    { confirmText: 'Delete', danger: true });
+  if (!ok) return;
+  try {
+    await apiJson(`/api/v1/reprovision/profiles/${prof.id}/`, { method: 'DELETE' });
+    showToast('Profile deleted', 'success');
+    _reproLoadProfiles();
+  } catch (e) {
+    showToast(e.message || 'Could not delete the profile', 'error');
+  }
 }
 
 /* ── Rebuild jobs ─────────────────────────────────────────────────────── */
@@ -933,6 +1114,18 @@ function _reproStartPolling() {
 // No catalog-wide pull button: each card owns its own, bound in
 // _reproCatalogCard, because the button's label and enabled state depend on
 // whether that entry is already in the library.
+
+document.getElementById('repro-profile-new-btn')
+  ?.addEventListener('click', () => _reproOpenProfile(null));
+document.getElementById('repro-profile-save')
+  ?.addEventListener('click', _reproSaveProfile);
+document.getElementById('repro-prof-netmode')
+  ?.addEventListener('change', _reproSyncProfileNetwork);
+for (const id of ['repro-profile-close', 'repro-profile-cancel',
+                  'repro-profile-overlay']) {
+  document.getElementById(id)
+    ?.addEventListener('click', () => _reproSetProfileOpen(false));
+}
 document.getElementById('repro-rhel-btn')?.addEventListener('click', () => _reproPresetFamily('rhel'));
 // repro-windows-btn is `disabled` in the template — see the comment on
 // _reproPresetFamily above for why it isn't wired to anything.
