@@ -2665,3 +2665,63 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 @media (max-width: 600px) {
   .repro-catalog-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 }
+
+/* ── Baselines: high-risk opt-in ─────────────────────────────────────────
+   Shown only while the box is being ticked. A high-risk step run by hand
+   costs 2FA and a 60-second delay with someone watching; in a baseline it
+   runs unattended, so the authorization moves here. */
+.bl-highrisk-warn {
+  margin: 12px 0 4px;
+  padding: 14px 16px;
+  background: rgba(242, 160, 184, 0.08);
+  border: 1px solid var(--rose);
+  border-radius: var(--r-md);
+}
+.bl-highrisk-lede {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-2);
+  margin-bottom: 14px;
+}
+.bl-highrisk-lede strong { color: var(--rose); }
+.bl-highrisk-warn .form-control { max-width: 160px; letter-spacing: 2px; }
+
+/* ── Reprovision: install profile editor ─────────────────────────────────
+   The API has always supported create/edit/delete; the page could only
+   list what someone had created through it directly. */
+.repro-profiles-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+/* Section heading inside the editor — the form is long enough that it needs
+   to be read in stages rather than as one wall of fields. */
+.repro-prof-step {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin: 22px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.repro-prof-step:first-of-type { margin-top: 4px; }
+
+.repro-prof-hint { margin-top: 6px; font-size: 12px; }
+
+.repro-field-grid-three { grid-template-columns: 1fr 1fr 1fr; }
+
+/* Row actions sit at the end of the meta column. */
+#repro-profiles-list .site-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 900px) {
+  .repro-field-grid-three { grid-template-columns: 1fr; }
+}

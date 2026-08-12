@@ -37,12 +37,39 @@ function _filterBaselines() {
     b.steps.some(s => s.definition_name.toLowerCase().includes(q)));
 }
 
+// Whether the baseline being edited ALREADY had the flag on when it was
+// opened. A TOTP code is only spent turning it on, never re-confirming a
+// baseline that was already authorized.
+let _blHighRiskWasOn = false;
+
+// The TOTP prompt appears only while the box is being ticked for the first
+// time. Re-rendering the steps too: a high-risk step is ineligible or not
+// depending on this box, and the list has to say so as soon as it changes.
+function _blSyncHighRiskWarning() {
+  const warn = document.getElementById('bl-highrisk-warn');
+  if (warn) {
+    warn.style.display = (_blAllowsHighRisk() && !_blHighRiskWasOn) ? '' : 'none';
+  }
+  _renderEditorSteps();
+}
+
+// Whether the baseline being edited has opted in to high-risk steps. Read
+// from the checkbox rather than passed around, so the picker and the save
+// path cannot disagree about it.
+function _blAllowsHighRisk() {
+  const box = document.getElementById('bl-allow-high-risk');
+  return !!(box && box.checked);
+}
+
 function _blIneligible(def) {
   // Mirrors apps/baselines/models.py eligible(): baselines auto-run without
-  // per-dispatch 2FA, so high-risk and update_agent tasks stay out.
+  // per-dispatch 2FA, so update_agent always stays out, and high-risk stays
+  // out unless this baseline opted in — which costs a TOTP code to turn on.
   if (!def) return null;
   const risk = def.risk_level || def.risk || 'standard';
-  if (risk === 'high') return 'high risk — can’t run in a baseline';
+  if (risk === 'high' && !_blAllowsHighRisk()) {
+    return 'high risk — tick “Allow high-risk steps” to use it here';
+  }
   const acts = (def.parsed_spec && def.parsed_spec.actions) || [];
   if (acts.some(a => a.type === 'update_agent')) return 'update_agent — can’t run in a baseline';
   return null;
@@ -197,6 +224,15 @@ function _openEditor(data, editingId) {
   document.getElementById('bl-desc').value = data ? (data.description || '') : '';
   document.getElementById('bl-tags').value = data ? (data.target_tags || []).join(', ') : '';
   document.getElementById('bl-enabled').checked = data ? !!data.enabled : true;
+  // Duplicating a baseline does not inherit the authorization: editingId is
+  // null there, so the flag starts off and has to be re-confirmed. The
+  // original's TOTP authorized that baseline, not a copy of it.
+  _blHighRiskWasOn = !!(editingId && data && data.allow_high_risk);
+  const allowBox = document.getElementById('bl-allow-high-risk');
+  if (allowBox) allowBox.checked = _blHighRiskWasOn;
+  const totpInput = document.getElementById('bl-highrisk-totp');
+  if (totpInput) totpInput.value = '';
+  _blSyncHighRiskWarning();
   _editingSteps = data && data.steps
     ? data.steps.map(s => ({ id: String(s.definition_id), ov: s.params_override || {} }))
     : [];
@@ -215,14 +251,24 @@ function _startEdit(id) {
 }
 
 async function _saveBaseline() {
+  const allowHighRisk = _blAllowsHighRisk();
   const body = {
     name: document.getElementById('bl-name').value.trim(),
     description: document.getElementById('bl-desc').value.trim(),
     target_tags: document.getElementById('bl-tags').value.split(',').map(t => t.trim()).filter(Boolean),
     enabled: document.getElementById('bl-enabled').checked,
+    allow_high_risk: allowHighRisk,
     definition_ids: _editingSteps.map(s => ({ definition_id: s.id,
                                               params_override: s.ov || {} })),
   };
+  // Only sent when the flag is being turned on — the server ignores it
+  // otherwise, and a code spent on a no-op change is a code burned for
+  // nothing (they are single-use within their validity window).
+  if (allowHighRisk && !_blHighRiskWasOn) {
+    const totp = (document.getElementById('bl-highrisk-totp')?.value || '').trim();
+    if (!totp) return showToast('Enter your TOTP code to allow high-risk steps', 'error');
+    body.totp = totp;
+  }
   if (!body.name) return showToast('Give the baseline a name', 'error');
   if (!body.definition_ids.length) return showToast('Add at least one task', 'error');
   for (const s of _editingSteps) {
@@ -251,6 +297,8 @@ document.addEventListener('DOMContentLoaded', () => {
         _editingSteps.push({ id: String(item.key), ov: {} }); _renderEditorSteps();
       } });
   });
+  document.getElementById('bl-allow-high-risk')
+    ?.addEventListener('change', _blSyncHighRiskWarning);
   const save = document.getElementById('bl-save-btn');
   if (save) save.addEventListener('click', _saveBaseline);
   const nu = document.getElementById('bl-new-btn');
