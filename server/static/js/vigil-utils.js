@@ -143,16 +143,34 @@ function osLogo(name) {
     return s('<circle cx="12" cy="12" r="10"/><path d="M7 9h10l-10 6h10" stroke="#1E1E2E" stroke-width="2" stroke-linecap="round" fill="none"/>', '#15A6F0');
   if (n.includes('pop') || n.includes('pop!_os'))
     return s('<circle cx="12" cy="12" r="10"/><text x="12" y="16" text-anchor="middle" font-size="11" font-weight="bold" fill="#1E1E2E">P!</text>', '#48B9C7');
+  // The leaf this used to draw was filled #87CF3E on a #87CF3E disc — the
+  // same colour, so nothing but the small dark dot was ever visible. Mint's
+  // mark is a stylised "LM" monogram; the M alone survives 16px.
   if (n.includes('mint'))
-    return s('<circle cx="12" cy="12" r="10"/><path d="M12 5c-1 3-5 5-5 9a5 5 0 0010 0c0-4-4-6-5-9z" fill="#87CF3E"/><circle cx="12" cy="14" r="2" fill="#1E1E2E"/>', '#87CF3E');
+    return s('<circle cx="12" cy="12" r="10"/>'
+           + '<path d="M6.6 16V10.3c0-1.4 1.7-2.1 2.6-1l1.9 2.2c.5.6 1.3.6 1.8 0l1.9-2.2c.9-1.1 2.6-.4 2.6 1V16" stroke="#1E1E2E" stroke-width="2.1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>', '#87CF3E');
+  // Fedora's mark is a white "infinity f" on blue, so it is drawn in white
+  // rather than knocked out in the page background like its siblings — that
+  // is both what the real logo does and what survives 16px on the blue disc.
+  // The previous path (an arc from 12,6 to 12,18 closed by a straight line
+  // back up) drew a capital D, not an f.
+  //
+  // Strokes, not fills, and 2.5 units wide: at 16px one viewBox unit is
+  // 0.67px, so a hairline stem disappears entirely.
   if (n.includes('fedora'))
-    return s('<circle cx="12" cy="12" r="10"/><path d="M12 6a6 6 0 010 12V6zm0 0v12" stroke="#1E1E2E" stroke-width="2" fill="none"/>', '#51A2DA');
+    return s('<circle cx="12" cy="12" r="10"/>'
+           + '<path d="M11.4 18.2V9.8c0-2.9 2.1-4 4.2-2.9" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round"/>'
+           + '<path d="M8.6 11.4h5.6" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round"/>', '#51A2DA');
   if (n.includes('arch'))
     return s('<path d="M12 3l8.5 15H3.5z"/><path d="M12 8l4.5 8H7.5z" fill="#1E1E2E"/>', '#1793D1');
   if (n.includes('suse') || n.includes('opensuse'))
     return s('<circle cx="12" cy="12" r="10"/><path d="M7 12a5 5 0 0110 0 5 5 0 01-5 5 3 3 0 000-6 3 3 0 015.2-2" stroke="#1E1E2E" stroke-width="1.5" fill="none" stroke-linecap="round"/>', '#73BA25');
+  // Was a #A80030 swirl on a #A80030 disc: a plain red circle with nothing
+  // on it at all. White rather than the usual dark knockout because
+  // #1E1E2E on this red is too close to read at 16px.
   if (n.includes('debian'))
-    return s('<circle cx="12" cy="12" r="10"/><path d="M14 6a6 6 0 00-2 11.5A6 6 0 0014 6z" fill="#A80030"/>', '#A80030');
+    return s('<circle cx="12" cy="12" r="10"/>'
+           + '<path d="M14.6 16.6A5 5 0 1115.8 8.9a2.8 2.8 0 10-4.4 3.1" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/>', '#A80030');
   if (n.includes('rocky'))
     return s('<circle cx="12" cy="12" r="10"/><path d="M17.5 8.5L9 17l-2.6-2.6 1.8-1.8L9 13.4l6.7-6.7z" fill="#1E1E2E"/>', '#10B981');
   if (n.includes('alma'))
@@ -161,10 +179,15 @@ function osLogo(name) {
   // an operator picking it from the catalog should see its own mark.
   if (n.includes('bazzite'))
     return s('<circle cx="12" cy="12" r="10"/><path d="M12 5.5l5.5 3.2v6.6L12 18.5 6.5 15.3V8.7z" fill="#1E1E2E"/><circle cx="12" cy="12" r="2.2" fill="#B14AED"/>', '#B14AED');
+  // Brim and crown were #EE0000 on an #EE0000 disc — a plain red circle.
+  // White, like the real mark, and legible on this red where the dark
+  // knockout the other logos use is not.
   if (n.includes('red hat') || n.includes('rhel') || n.includes('redhat'))
-    return s('<circle cx="12" cy="12" r="10"/><path d="M7 14s1-4 5-4 5 4 5 4H7z" fill="#EE0000"/><ellipse cx="12" cy="9" rx="4" ry="3" fill="#EE0000"/>', '#EE0000');
+    return s('<circle cx="12" cy="12" r="10"/>'
+           + '<path d="M6.2 13.9h11.6c0 1.5-2.6 2.5-5.8 2.5s-5.8-1-5.8-2.5z" fill="#fff"/>'
+           + '<path d="M8.4 13.2c-.5-2.6 1.2-4.8 3.6-4.8 2 0 3.3 1.3 3.7 2.9.5-.5 1.4-.4 1.5.3.1.6-.5 1.1-1.2 1.3v.3z" fill="#fff"/>', '#EE0000');
   if (n.includes('centos'))
-    return s('<path d="M12 2l10 10-10 10L2 12z"/><path d="M12 2v20M2 12h20" stroke="#1E1E2E" stroke-width="1" fill="none"/>', '#932279');
+    return s('<path d="M12 2l10 10-10 10L2 12z"/><path d="M12 2v20M2 12h20" stroke="#1E1E2E" stroke-width="1.8" fill="none"/>', '#932279');
   if (n.includes('windows'))
     return s('<rect x="3" y="3" width="8.5" height="8.5" rx="1"/><rect x="12.5" y="3" width="8.5" height="8.5" rx="1"/><rect x="3" y="12.5" width="8.5" height="8.5" rx="1"/><rect x="12.5" y="12.5" width="8.5" height="8.5" rx="1"/>', '#0078D4');
   if (n.includes('macos') || n.includes('mac os') || n.includes('darwin'))

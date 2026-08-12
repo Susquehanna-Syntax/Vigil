@@ -389,6 +389,10 @@ async function _reproLoadImages() {
     if (img && img.id) _reproImagesById[img.id] = img;
   }
   _reproRenderImageTable(list, images);
+  // Catalog cards show what the library already holds, so they follow it —
+  // including on the 4s poll, which is how a card flips from "Downloading…"
+  // to "In library" without the operator reloading.
+  _reproRenderCatalog();
 }
 
 function _reproRenderImageTable(list, images) {
@@ -526,50 +530,122 @@ async function _reproDeleteImage(id, name) {
 
 /* ── Pull controls: catalog, RHEL/Windows presets, custom URL ──────────── */
 
+// The catalog is static server-shipped data (apps/reprovision/catalog.py),
+// fetched once. Cards re-render from this cache whenever the library
+// changes, so "already in your library" tracks a pull without a refetch.
+let _reproCatalogEntries = [];
+
 async function _reproLoadCatalog() {
-  const sel = document.getElementById('repro-catalog-select');
-  const empty = document.getElementById('repro-catalog-empty');
-  const pullBtn = document.getElementById('repro-catalog-pull-btn');
-  if (!sel) return;
-  let entries = [];
   try {
-    entries = await apiJson('/api/v1/reprovision/catalog/');
+    _reproCatalogEntries = await apiJson('/api/v1/reprovision/catalog/');
   } catch (e) {
-    entries = [];
+    _reproCatalogEntries = [];
   }
-  sel.replaceChildren();
-  for (const e of entries) {
-    if (!e || typeof e !== 'object' || !e.id) continue;
-    const opt = document.createElement('option');
-    opt.value = e.id;
-    // Catalog entries are static, server-shipped data (apps/reprovision/
-    // catalog.py), not operator input — but set via textContent regardless.
-    const label = `${e.name || e.id} (${[e.os_family, e.version].filter(Boolean).join(' ')})`;
-    opt.textContent = label;
-    sel.appendChild(opt);
-  }
-  const has = sel.options.length > 0;
-  sel.style.display = has ? '' : 'none';
-  if (pullBtn) pullBtn.style.display = has ? '' : 'none';
-  if (empty) empty.style.display = has ? 'none' : 'block';
+  _reproRenderCatalog();
 }
 
-async function _reproPullFromCatalog() {
-  const sel = document.getElementById('repro-catalog-select');
-  const btn = document.getElementById('repro-catalog-pull-btn');
-  if (!sel || !sel.value || !btn) return;
-  btn.disabled = true;
+// Digest → the library image holding those bytes. The server refuses a
+// second pull of the same digest (409), so the card has to say so before
+// the operator clicks rather than after.
+function _reproLibraryByDigest() {
+  const byDigest = {};
+  for (const img of Object.values(_reproImagesById)) {
+    if (img && img.sha256) byDigest[String(img.sha256).toLowerCase()] = img;
+  }
+  return byDigest;
+}
+
+function _reproRenderCatalog() {
+  const grid = document.getElementById('repro-catalog-grid');
+  const empty = document.getElementById('repro-catalog-empty');
+  if (!grid) return;
+
+  const entries = Array.isArray(_reproCatalogEntries) ? _reproCatalogEntries : [];
+  const held = _reproLibraryByDigest();
+  grid.replaceChildren();
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object' || !entry.id) continue;
+    grid.appendChild(_reproCatalogCard(entry, held[String(entry.sha256 || '').toLowerCase()]));
+  }
+  grid.style.display = entries.length ? '' : 'none';
+  if (empty) empty.style.display = entries.length ? 'none' : 'block';
+}
+
+// `existing` is the library image with these bytes, or undefined.
+function _reproCatalogCard(entry, existing) {
+  const card = document.createElement('div');
+  card.className = 'repro-cat-card';
+
+  const logo = document.createElement('div');
+  logo.className = 'repro-cat-logo';
+  // Name only, never the family: derivatives carry their parent's family, so
+  // appending it puts Ubuntu's logo on Linux Mint — osLogo tests 'ubuntu'
+  // before 'mint'. Every catalog name states its distro.
+  // The markup is built from a fixed set of literals keyed off the name; no
+  // operator input reaches it.
+  logo.innerHTML = osLogo(entry.name || '');
+  card.appendChild(logo);
+
+  const name = document.createElement('div');
+  name.className = 'repro-cat-name';
+  name.textContent = entry.name || entry.id;
+  card.appendChild(name);
+
+  const meta = document.createElement('div');
+  meta.className = 'repro-cat-meta';
+  meta.textContent = [entry.architecture, entry.size_bytes ? formatBytes(entry.size_bytes) : '']
+    .filter(Boolean).join(' · ');
+  card.appendChild(meta);
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-sm repro-cat-btn';
+  if (existing) {
+    // Greyed rather than hidden: the operator asked for this image, and a
+    // card that vanishes once pulled reads as the catalog having lost it.
+    card.classList.add('is-held');
+    btn.classList.add('btn-outline');
+    btn.disabled = true;
+    const status = String(existing.status || '').toLowerCase();
+    btn.textContent = status === 'ready' ? 'In library'
+      : status === 'failed' ? 'Retry pull'
+      : 'Downloading…';
+    if (status === 'failed') {
+      // A failed pull retries in place on the same row — the one case where
+      // pulling again is the right move rather than a duplicate.
+      btn.disabled = false;
+      btn.classList.add('repro-cat-retry');
+    }
+  } else {
+    btn.classList.add('btn-mint');
+    btn.textContent = 'Pull';
+  }
+  btn.addEventListener('click', () => _reproPullFromCatalog(entry.id, btn));
+  card.appendChild(btn);
+  return card;
+}
+
+async function _reproPullFromCatalog(catalogId, btn) {
+  if (!catalogId) return;
+  const label = btn ? btn.textContent : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Queueing…';
+  }
   try {
     await apiJson('/api/v1/reprovision/images/pull/', {
       method: 'POST',
-      body: JSON.stringify({ catalog_id: sel.value }),
+      body: JSON.stringify({ catalog_id: catalogId }),
     });
     showToast('Download queued', 'success');
-    _reproLoadImages();
+    // Repaints the card as held — _reproLoadImages re-renders the catalog.
+    await _reproLoadImages();
   } catch (e) {
     showToast(e.message || 'Could not queue the pull', 'error');
-  } finally {
-    btn.disabled = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
   }
 }
 
@@ -854,7 +930,9 @@ function _reproStartPolling() {
 
 /* ── Static control wiring ───────────────────────────────────────────── */
 
-document.getElementById('repro-catalog-pull-btn')?.addEventListener('click', _reproPullFromCatalog);
+// No catalog-wide pull button: each card owns its own, bound in
+// _reproCatalogCard, because the button's label and enabled state depend on
+// whether that entry is already in the library.
 document.getElementById('repro-rhel-btn')?.addEventListener('click', () => _reproPresetFamily('rhel'));
 // repro-windows-btn is `disabled` in the template — see the comment on
 // _reproPresetFamily above for why it isn't wired to anything.
