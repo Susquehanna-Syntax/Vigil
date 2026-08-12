@@ -2,6 +2,8 @@ import json
 import uuid
 
 from django.contrib.auth import get_user_model
+from unittest.mock import patch
+
 from django.test import TestCase
 
 from apps.hosts.models import Host
@@ -247,3 +249,147 @@ class BaselineNameScopeTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 400, resp.content)
+
+
+class HighRiskOptInTests(TestCase):
+    """High-risk steps are allowed in a baseline only when it opted in, and
+    opting in costs a TOTP code.
+
+    A baseline dispatches unattended on every matching enrollment. Run by
+    hand a high-risk task costs 2FA plus a 60-second delay with a human
+    watching; here there is nobody. So the authorization happens once, in
+    advance, at the moment the box is ticked.
+    """
+
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user(
+            "root", password="x", is_staff=True, is_superuser=True)
+        self.client.force_login(self.admin)
+        self.high = make_definition(risk="high")
+
+    # ── the rule itself ────────────────────────────────────────────────
+    def test_high_risk_is_refused_by_default(self):
+        ok, why = eligible(self.high)
+        self.assertFalse(ok)
+        self.assertIn("high-risk", why)
+
+    def test_high_risk_is_allowed_when_opted_in(self):
+        ok, _ = eligible(self.high, allow_high_risk=True)
+        self.assertTrue(ok)
+
+    def test_update_agent_stays_refused_even_when_opted_in(self):
+        """It replaces the executable that enforces the agent's allowlist —
+        the opt-in is about risk tier, not about that."""
+        definition = make_definition(
+            risk="standard", actions=[{"type": "update_agent", "params": {}}])
+        ok, why = eligible(definition, allow_high_risk=True)
+        self.assertFalse(ok)
+        self.assertIn("update_agent", why)
+
+    def test_the_default_is_off(self):
+        """The signature's default is what protects every caller that has
+        not been taught about the flag."""
+        self.assertFalse(Baseline().allow_high_risk)
+
+    # ── dispatch honours the flag ──────────────────────────────────────
+    def test_dispatch_skips_high_risk_steps_without_the_opt_in(self):
+        baseline = make_baseline(self.admin, definitions=[self.high])
+        baseline.allow_high_risk = False
+        baseline.save()
+        created = dispatch_to_host(make_host(), baselines=[baseline])
+        self.assertEqual(created, 0)
+
+    def test_dispatch_runs_high_risk_steps_once_opted_in(self):
+        """The half-working case this guards: saving succeeds, and then
+        dispatch silently skips the baseline forever."""
+        baseline = make_baseline(self.admin, definitions=[self.high])
+        baseline.allow_high_risk = True
+        baseline.save()
+        created = dispatch_to_host(make_host(), baselines=[baseline])
+        self.assertEqual(created, 1)
+
+    # ── the API gate ───────────────────────────────────────────────────
+    def _post(self, **extra):
+        body = {"name": f"bl-{uuid.uuid4().hex[:6]}",
+                "definition_ids": [str(self.high.id)], **extra}
+        return self.client.post("/api/v1/baselines/", json.dumps(body),
+                                content_type="application/json")
+
+    def test_creating_with_high_risk_steps_is_refused_without_the_flag(self):
+        resp = self._post()
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("high-risk", resp.json()["detail"])
+
+    def test_setting_the_flag_without_a_totp_code_is_refused(self):
+        resp = self._post(allow_high_risk=True)
+        self.assertEqual(resp.status_code, 403, resp.content)
+        self.assertTrue(resp.json().get("needs_totp"))
+        self.assertFalse(Baseline.objects.exists(),
+                         "a refused create must leave no baseline behind")
+
+    def test_a_bad_totp_code_is_refused(self):
+        with patch("apps.accounts.totp.require_totp_confirmation",
+                   return_value="Invalid TOTP code"):
+            resp = self._post(allow_high_risk=True, totp="000000")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_a_good_totp_code_creates_the_baseline_with_high_risk_steps(self):
+        with patch("apps.accounts.totp.require_totp_confirmation",
+                   return_value=None):
+            resp = self._post(allow_high_risk=True, totp="123456")
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertTrue(resp.json()["allow_high_risk"])
+        self.assertTrue(Baseline.objects.get().allow_high_risk)
+
+    def test_the_flag_is_set_before_steps_are_validated(self):
+        """Order matters: eligibility is judged against the flag, so setting
+        it after validation would reject the very steps it permits."""
+        with patch("apps.accounts.totp.require_totp_confirmation",
+                   return_value=None):
+            resp = self._post(allow_high_risk=True, totp="123456")
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(Baseline.objects.get().steps.count(), 1)
+
+    def test_turning_the_flag_on_by_patch_needs_a_code(self):
+        baseline = make_baseline(self.admin, definitions=[make_definition()])
+        resp = self.client.patch(
+            f"/api/v1/baselines/{baseline.id}/",
+            json.dumps({"allow_high_risk": True}),
+            content_type="application/json")
+        self.assertEqual(resp.status_code, 403)
+        baseline.refresh_from_db()
+        self.assertFalse(baseline.allow_high_risk)
+
+    def test_turning_the_flag_off_needs_no_code(self):
+        """Withdrawing an authorization requires no authorization."""
+        baseline = make_baseline(self.admin, definitions=[make_definition()])
+        baseline.allow_high_risk = True
+        baseline.save()
+        resp = self.client.patch(
+            f"/api/v1/baselines/{baseline.id}/",
+            json.dumps({"allow_high_risk": False}),
+            content_type="application/json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        baseline.refresh_from_db()
+        self.assertFalse(baseline.allow_high_risk)
+
+    def test_an_unrelated_patch_does_not_re_prompt(self):
+        """Editing the name of an already-authorized baseline must not spend
+        a code — they are single-use inside their validity window."""
+        baseline = make_baseline(self.admin, definitions=[self.high])
+        baseline.allow_high_risk = True
+        baseline.save()
+        resp = self.client.patch(
+            f"/api/v1/baselines/{baseline.id}/",
+            json.dumps({"description": "renamed"}),
+            content_type="application/json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        baseline.refresh_from_db()
+        self.assertTrue(baseline.allow_high_risk)
+
+    def test_the_flag_is_reported_in_the_row(self):
+        baseline = make_baseline(self.admin, definitions=[make_definition()])
+        resp = self.client.get("/api/v1/baselines/")
+        row = next(r for r in resp.json() if r["id"] == str(baseline.id))
+        self.assertIn("allow_high_risk", row)
+        self.assertFalse(row["allow_high_risk"])
