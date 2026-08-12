@@ -1,4 +1,5 @@
 import hashlib
+import os
 import tempfile
 from pathlib import Path
 
@@ -167,8 +168,11 @@ class ImportFailureTests(TestCase):
 
 
 
-def build_iso(files, *, rock_ridge=True, joliet=True):
+def build_iso(files, *, rock_ridge=True, joliet=True, symlinks=None):
     """Bytes of a real ISO containing *files*, a {path: payload} mapping.
+
+    *symlinks* is an optional {path: target} mapping — real distro ISOs are
+    full of them, and pycdlib refuses to hand over contents for one.
 
     Built with pycdlib rather than xorriso so the fixtures need no external
     tool, and asserted against a genuine ISO structure rather than a stand-in
@@ -219,6 +223,13 @@ def build_iso(files, *, rock_ridge=True, joliet=True):
         iso.add_fp(io.BytesIO(payload), len(payload), raw(path),
                    rr_name=parts[-1] if rock_ridge else None,
                    joliet_path=path if joliet else None)
+
+    for path, target in sorted((symlinks or {}).items()):
+        # Symlinks live in Rock Ridge only — there is nowhere to put one on an
+        # ISO built without it, which is exactly why extraction never met one
+        # while it walked the bare ISO-9660 namespace.
+        parts = [p for p in path.strip("/").split("/") if p]
+        iso.add_symlink(raw(path), rr_symlink_name=parts[-1], rr_path=target)
 
     out = io.BytesIO()
     iso.write_fp(out)
@@ -423,3 +434,113 @@ class EndToEndImportTests(TestCase):
         image = self._import({"/boot/grub/grub.cfg": b"x"})
         self.assertEqual(image.status, OSImage.Status.FAILED)
         self.assertIn("No installer kernel", image.import_error)
+
+
+class SymlinkTests(TestCase):
+    """Real distro ISOs are full of symlinks, and pycdlib refuses to hand
+    over contents for one: "Symlinks have no data associated with them".
+
+    They are invisible in the bare ISO-9660 namespace, so extraction never
+    met one until the walk moved to Rock Ridge to get the real filenames —
+    and then every import of a real image died on the first link.
+    """
+
+    def _tree(self, files, symlinks):
+        from .images import _extract_tree
+
+        iso = open_iso(build_iso(files, symlinks=symlinks))
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        dest = Path(tmp.name)
+        try:
+            _extract_tree(iso, dest)
+        finally:
+            iso.close()
+        return dest
+
+    def test_an_iso_with_a_symlink_extracts_at_all(self):
+        """The regression: this raised and failed the whole import."""
+        dest = self._tree({"/dists/bookworm/Release": b"REL"},
+                          {"/dists/stable": "bookworm"})
+        self.assertTrue((dest / "dists" / "bookworm" / "Release").is_file())
+
+    def test_an_in_tree_symlink_is_relinked_and_resolves(self):
+        """Debian's dists/stable points at the codename the installer needs,
+        so dropping it would quietly change what the tree serves."""
+        dest = self._tree({"/dists/bookworm/Release": b"REL"},
+                          {"/dists/stable": "bookworm"})
+        link = dest / "dists" / "stable"
+        self.assertTrue(link.is_symlink())
+        self.assertEqual((link / "Release").read_bytes(), b"REL")
+
+    def test_a_symlink_escaping_the_tree_is_refused(self):
+        """An ISO is attacker-controlled input, and a link is a name that
+        resolves later — the traversal guard has to cover it too."""
+        dest = self._tree({"/casper/vmlinuz": b"K"},
+                          {"/casper/escape": "../../../../etc/passwd"})
+        self.assertFalse((dest / "casper" / "escape").exists(),
+                         "an escaping symlink was recreated")
+        self.assertFalse((dest / "casper" / "escape").is_symlink())
+
+    def test_an_absolute_symlink_target_is_refused(self):
+        dest = self._tree({"/casper/vmlinuz": b"K"},
+                          {"/casper/abs": "/etc/shadow"})
+        self.assertFalse((dest / "casper" / "abs").is_symlink())
+
+    def test_a_self_referential_symlink_is_refused(self):
+        """Ubuntu ships /ubuntu -> . as a URL alias. Reproducing it gives the
+        tree infinite depth for anything that walks it."""
+        dest = self._tree({"/casper/vmlinuz": b"K"}, {"/ubuntu": "."})
+        self.assertFalse((dest / "ubuntu").is_symlink())
+
+    def test_a_link_to_its_own_parent_is_refused(self):
+        dest = self._tree({"/dists/bookworm/Release": b"R"},
+                          {"/dists/up": ".."})
+        self.assertFalse((dests := dest / "dists" / "up").is_symlink(), dests)
+
+    def test_the_extracted_tree_has_finite_depth(self):
+        """Walking must terminate — the practical consequence of refusing
+        loops, and what a serving process actually does to this tree."""
+        dest = self._tree(
+            {"/casper/vmlinuz": b"K", "/dists/bookworm/Release": b"R"},
+            {"/ubuntu": ".", "/dists/stable": "bookworm"})
+        seen = 0
+        for _root, _dirs, files in os.walk(dest, followlinks=True):
+            seen += len(files)
+            self.assertLess(seen, 500, "extraction produced a directory loop")
+
+    def test_a_regular_file_beside_a_symlink_is_untouched(self):
+        dest = self._tree({"/casper/vmlinuz": b"KERNEL"},
+                          {"/casper/link": "vmlinuz"})
+        self.assertEqual((dest / "casper" / "vmlinuz").read_bytes(), b"KERNEL")
+        self.assertFalse((dest / "casper" / "vmlinuz").is_symlink())
+
+
+class SymlinkImportTests(TestCase):
+    """End to end: a symlink-bearing ISO must import, not fail."""
+
+    def test_an_image_with_symlinks_imports_and_lands_ready(self):
+        from .images import import_iso
+
+        data = build_iso(
+            {"/casper/vmlinuz": b"KERNEL", "/casper/initrd": b"INITRD",
+             "/dists/bookworm/Release": b"REL"},
+            symlinks={"/dists/stable": "bookworm", "/ubuntu": "."})
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        iso_path = Path(tmp.name) / "image.iso"
+        iso_path.write_bytes(data)
+        image = OSImage.objects.create(
+            name="Ubuntu Server", os_family=OSImage.Family.UBUNTU,
+            version="24.04", architecture="x86_64",
+            sha256=hashlib.sha256(data).hexdigest(),
+        )
+        root = tempfile.TemporaryDirectory()
+        self.addCleanup(root.cleanup)
+        with override_settings(VIGIL_IMAGE_ROOT=root.name):
+            import_iso(image, iso_path)
+        image.refresh_from_db()
+        self.assertEqual(image.status, OSImage.Status.READY, image.import_error)
+        self.assertEqual(
+            (Path(image.tree_path) / "dists" / "stable" / "Release").read_bytes(),
+            b"REL")

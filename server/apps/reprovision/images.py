@@ -248,12 +248,63 @@ def _tree_namespace(iso) -> str:
     return "iso_path"
 
 
+def _symlink_target(iso, keyword: str, path: str) -> str | None:
+    """The link target if *path* is a symlink, else None.
+
+    Only Rock Ridge records symlinks — they are invisible in the bare
+    ISO-9660 and Joliet namespaces, which is why extraction never met one
+    until the walk moved to Rock Ridge.
+    """
+    if keyword != "rr_path":
+        return None
+    try:
+        record = iso.get_record(**{keyword: path})
+        if not record.is_symlink():
+            return None
+        target = record.rock_ridge.symlink_path()
+    except Exception:  # noqa: BLE001 — pycdlib raises its own types
+        return None
+    if isinstance(target, bytes):
+        target = target.decode("utf-8", "replace")
+    return target or None
+
+
+def _place_symlink(link: Path, target: str, root: Path) -> bool:
+    """Recreate a symlink under *root*, or decline it. True if created.
+
+    Two kinds are declined. A target that escapes the tree is the symlink
+    form of the traversal `_safe_join` already refuses for names — an ISO is
+    attacker-controlled input, and a link is a name that resolves later.
+
+    A target at or above its own directory is declined because it is a loop:
+    Ubuntu ships ``/ubuntu -> .`` as a URL alias, and reproducing it gives
+    the extracted tree an infinite depth for anything that walks it. The
+    installer is served paths Vigil generates, so the alias costs nothing.
+    """
+    root = root.resolve()
+    resolved = Path(os.path.normpath(link.parent / target))
+    if resolved != root and root not in resolved.parents:
+        logger.warning("skipping symlink escaping the tree: %s -> %s",
+                       link, target)
+        return False
+    if resolved == link.parent or resolved in link.parent.parents:
+        logger.info("skipping self-referential symlink: %s -> %s", link, target)
+        return False
+    link.symlink_to(target)
+    return True
+
+
 def _extract_tree(iso, dest: Path) -> None:
     """Copy the whole ISO tree to *dest*.
 
     The installer fetches this over HTTP as its package source, so the layout
     has to survive intact. ISO9660 version suffixes (``FOO.TXT;1``) are
     stripped — the installer asks for the plain name.
+
+    Symlinks are relinked rather than read: pycdlib refuses to hand over
+    contents for one ("Symlinks have no data associated with them"), and a
+    real distro ISO is full of them — Debian's ``dists/stable`` points at the
+    codename directory the installer actually needs.
     """
     keyword = _tree_namespace(iso)
     for dirname, _dirlist, filelist in iso.walk(**{keyword: "/"}):
@@ -262,5 +313,9 @@ def _extract_tree(iso, dest: Path) -> None:
         for filename in filelist:
             src = f"{dirname.rstrip('/')}/{filename}"
             out = _safe_join(dest, dirname, filename.split(";")[0])
+            link_target = _symlink_target(iso, keyword, src)
+            if link_target is not None:
+                _place_symlink(out, link_target, dest)
+                continue
             with out.open("wb") as fh:
                 iso.get_file_from_iso_fp(fh, **{keyword: src})
