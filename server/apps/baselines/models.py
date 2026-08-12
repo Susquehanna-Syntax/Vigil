@@ -33,6 +33,14 @@ class Baseline(models.Model):
     # callable from tasks (a function you no longer auto-run is still a
     # function).
     enabled = models.BooleanField(default=True)
+    # Opt-in to high-risk steps. Off by default, and turning it ON requires a
+    # fresh TOTP code — that confirmation IS the 2FA for every future
+    # unattended dispatch, exactly as baseline creation is for standard-risk
+    # steps. Interactively a high-risk task costs 2FA plus a 60-second delay;
+    # here nobody is watching, so the authorization has to happen once, in
+    # advance, and deliberately. update_agent stays excluded regardless: it
+    # replaces the executable that enforces the agent's own allowlist.
+    allow_high_risk = models.BooleanField(default=False)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         related_name="baselines",
@@ -76,11 +84,18 @@ class BaselineStep(models.Model):
         return f"{self.baseline.name}[{self.order}] = {self.definition.name}"
 
 
-def eligible(definition) -> tuple[bool, str]:
+def eligible(definition, *, allow_high_risk: bool = False) -> tuple[bool, str]:
     """Whether *definition* may be part of a baseline. Mirrors the deploy
-    path's packaging rules: no high risk, no update_agent (digest stamping
-    and the 2FA ceremony stay human-driven)."""
-    if definition.risk_level == definition.RiskLevel.HIGH:
+    path's packaging rules: no high risk unless the baseline opted in, and
+    never update_agent (digest stamping and the 2FA ceremony stay
+    human-driven).
+
+    *allow_high_risk* is the baseline's own flag, which an admin can only set
+    by passing a TOTP challenge — see Baseline.allow_high_risk. Callers must
+    pass it from the baseline being validated, never hardcode True: the
+    default is what keeps an un-opted-in baseline safe.
+    """
+    if definition.risk_level == definition.RiskLevel.HIGH and not allow_high_risk:
         return False, "high-risk definitions cannot be baselines"
     actions = (definition.parsed_spec or {}).get("actions") or []
     if any(a.get("type") == "update_agent" for a in actions):
@@ -145,7 +160,8 @@ def dispatch_to_host(host, *, baselines=None) -> int:
             if not baseline.matches(host):
                 continue
             bad = [s.definition.name for s in baseline.steps.all()
-                   if not eligible(s.definition)[0]]
+                   if not eligible(s.definition,
+                                   allow_high_risk=baseline.allow_high_risk)[0]]
             if bad:
                 logger.warning("skipping baseline %s: ineligible definitions %s",
                                baseline.name, bad)

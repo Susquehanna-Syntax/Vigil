@@ -73,6 +73,30 @@
     <input type="text" class="form-control" id="bl-tags" placeholder="os:linux, role:web">
   </div>
   <label class="setting-check"><input type="checkbox" id="bl-enabled" checked> Auto-dispatch when a matching host is approved</label>
+  <label class="setting-check"><input type="checkbox" id="bl-allow-high-risk"> Allow high-risk steps in this baseline</label>
+  {% comment %}
+    Shown only while the box is being ticked. Run by hand, a high-risk task
+    costs 2FA and a 60-second delay with someone watching; in a baseline it
+    runs unattended on every matching enrollment. So the authorization moves
+    to the moment the box is ticked, and that moment costs a TOTP code.
+    Untick freely — withdrawing an authorization needs none.
+  {% endcomment %}
+  <div class="bl-highrisk-warn" id="bl-highrisk-warn" style="display:none;">
+    <div class="bl-highrisk-lede">
+      High-risk steps will run <strong>unattended</strong> on every host this
+      baseline matches, with nobody at the keyboard to approve or stop them.
+      Confirm with your TOTP code to authorize that now — it stands for every
+      future enrollment.
+    </div>
+    <label class="form-label" for="bl-highrisk-totp">TOTP code</label>
+    <input type="text" class="form-control mono" id="bl-highrisk-totp"
+           inputmode="numeric" autocomplete="one-time-code" maxlength="6"
+           placeholder="123456">
+    <div class="muted-note" style="margin-top:8px;">
+      <code>update_agent</code> stays excluded either way — it replaces the
+      executable that enforces the agent's own allowlist.
+    </div>
+  </div>
   <div class="modal-actions">
     <button class="btn btn-ghost" id="bl-cancel-btn-2" type="button">Cancel</button>
     <button class="btn btn-mint" id="bl-save-btn">Save baseline</button>
