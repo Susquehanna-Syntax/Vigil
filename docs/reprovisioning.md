@@ -318,10 +318,29 @@ the installer requests.
 `filesystem`, `network_mode` (`dhcp`/`static`) with `static_address`,
 `gateway`, `dns`, `timezone`, `locale`, `keyboard`, `admin_username`,
 `admin_password_encrypted`, `ssh_authorized_keys`, `extra_packages` (JSON
-list), `raw_append`, `deadline_minutes`, `created_by`.
+list), `completion_tags` (JSON list), `raw_append`, `deadline_minutes`,
+`created_by`.
 
 `raw_append` is the escape hatch: appended verbatim to the rendered answer
 file for anything the typed fields do not model.
+
+`completion_tags` (2026.7.4) are applied to the host when the rebuilt machine
+checks back in — the standing equivalent of `RebuildJob.completion_tag`, which
+is typed into a single ceremony. Both are applied, profile first, deduplicated
+against each other and against what the host already carries; `agent:*` is
+refused in both, at save time and again at apply time. They are read at
+completion rather than snapshotted onto the job, matching `post_baseline`:
+editing the profile mid-rebuild changes what lands, and the window is one
+rebuild.
+
+Edited through **Reprovision → Install profiles** since 2026.7.3. The API
+predates the UI by several releases; before then the page could only list
+profiles created through the API directly. Two invariants the serializer
+enforces, both otherwise discovered after the disk is wiped: a profile needs
+an SSH key or a password hash or nobody can log into the result, and static
+addressing needs both an address and a gateway. `admin_password` is
+write-only — a blank value on an edit means *keep the stored hash*, since the
+API never returns one.
 
 **`RebuildJob`** — `host` FK, `image` FK, `profile` FK, `requested_by`,
 `requested_at`, `confirmed_ip`, `state`, `state_changed_at`, `deadline`,

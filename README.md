@@ -250,8 +250,16 @@ Tags are free-form strings attached to hosts. They enable tag-based task deploym
 2. Server-side tags — editable in the host detail panel (click any host card)
 3. Auto-tags — applied at checkin based on OS (`linux`, `windows`, `macos`) and mode (`managed`, `monitor`, `full_control`)
 4. AD import — tags from OU path segments (e.g. `OU=Servers,OU=IT` → `servers`, `it`)
+5. Tasks — the `add_tag` / `remove_tag` actions (2026.8.0), so a task or baseline can tag a host it just changed
+6. Install profiles — a rebuilt host is tagged when it checks back in (2026.7.4)
 
 **Deploy by tag** — in the deploy modal, switch the target toggle from "Individual Hosts" to "By Tag" to deploy to all online managed hosts with a given tag.
+
+**The `agent:` namespace is reserved.** Tags an agent asserts about itself at
+check-in live under `agent:`, and nothing else may write there — not a task,
+not an install profile, not the API. That separation is what stops a
+compromised agent from granting itself a tag that an operator's baselines or
+deploy rules target.
 
 ---
 
@@ -470,6 +478,32 @@ All 53 primitives are defined in `server/apps/tasks/spec.py` and executed in `ag
 
 The two `request_*` actions only leave a marker: the agent finishes, and the server creates a `VulnScan` for the central scanner to run. `run_trivy_scan` is the opposite — the scan *is* the task, and the findings arrive with its output. See [Vulnerability Management](#vulnerability-management).
 
+**Host tagging** *(2026.8.0 — needs an agent on 2026.8.0 or newer)*
+
+| Action | Params | Optional |
+|---|---|---|
+| `add_tag` | `tags` | — |
+| `remove_tag` | `tags` | — |
+
+`tags` is a **comma-separated string**, not a list — every param value has to
+be a primitive so the signed payload stays flat:
+
+```yaml
+actions:
+  - type: add_tag
+    when: has_docker            # evaluated on the host, so tagging is conditional
+    params:
+      tags: "role:docker, env:lab"
+```
+
+Like the `request_*` scan actions these only leave a marker; tags are
+server-side metadata about a host, not state on it, so the server applies the
+change when the result arrives. What it applies comes from the task it signed,
+**never from what the agent reports back** — a compromised agent can at most
+claim success on a tag you already wrote into the definition, it cannot choose
+one. The reserved `agent:` prefix is refused when the definition is saved and
+again when the tags are applied.
+
 **Agent & baselines**
 
 | Action | Params | Optional |
@@ -608,6 +642,25 @@ Vigil implements RFC 6238 TOTP natively. Task deployments require a 6-digit TOTP
 3. Enter a code from the app to confirm
 
 Task deploys are blocked until enrolled. TOTP can be disabled from Settings (requires a current code).
+
+### High-risk steps in a baseline
+
+A baseline dispatches **unattended**, on every host that matches it at
+enrollment. Run by hand, a high-risk task costs a TOTP code and a 60-second
+delay with somebody watching; in a baseline there is nobody to prompt. So
+baselines refused high-risk definitions outright.
+
+Since 2026.7.3 that is a per-baseline opt-in — **Allow high-risk steps in this
+baseline**, off by default. Ticking it costs a fresh TOTP code, and that one
+confirmation authorizes every future dispatch of that baseline, the same
+bargain baseline creation already makes for standard-risk steps. Unticking it
+costs nothing: withdrawing an authorization needs no authorization.
+Duplicating a baseline does not inherit the flag — the original's code
+authorized that baseline, not a copy of it.
+
+**`update_agent` stays excluded whatever the flag says.** It replaces the
+executable that enforces the agent's own allowlist, so it keeps the human and
+the digest ceremony in the loop.
 
 ---
 
@@ -821,19 +874,63 @@ The **Reprovision** sidebar app manages the images a rebuild installs from. Vigi
 
 `apps/reprovision/catalog.py` ships a small, hand-curated list of distros Vigil can pull on its own:
 
-| Catalog entry | Family |
-|---|---|
-| Ubuntu Server 24.04 LTS | `ubuntu` |
-| Ubuntu Server 22.04 LTS | `ubuntu` |
-| Debian 13 (netinst) | `debian` |
-| Rocky Linux 9 (minimal) | `rhel` |
-| AlmaLinux 9 (minimal) | `rhel` |
+| Catalog entry | Family | Size |
+|---|---|---|
+| Ubuntu Server 26.04 LTS | `ubuntu` | 2.9 GB |
+| Ubuntu Desktop 26.04 LTS | `ubuntu` | 6.5 GB |
+| Ubuntu Server 24.04 LTS | `ubuntu` | 3.4 GB |
+| Ubuntu Server 22.04 LTS | `ubuntu` | 2.1 GB |
+| Linux Mint 22.3 Cinnamon | `ubuntu` | 3.1 GB |
+| Debian 13 (netinst) | `debian` | 0.8 GB |
+| Fedora Server 43 | `rhel` | 3.5 GB |
+| Fedora Workstation 43 | `rhel` | 2.7 GB |
+| Bazzite (stable) | `rhel` | 7.9 GB |
+| Rocky Linux 9 (minimal) | `rhel` | 2.8 GB |
+| AlmaLinux 9 (minimal) | `rhel` | 2.8 GB |
+
+The **Add an image** tab shows these as cards, one per distro; anything
+already in your library is greyed out, because the same bytes are never
+fetched twice — a digest already present answers 409, and a *failed* pull
+retries in place rather than leaving a second row behind.
+
+Import needs room for the ISO **and** the extracted tree at the same time —
+roughly twice the size above, transiently, falling back to about one after
+the ISO is discarded. Import is also single-threaded pure Python (`pycdlib`,
+so no loop mount and no privileged container), so on a low-power host expect
+a long first import per image. It is a one-time cost per image, not per
+rebuild.
 
 Every entry needs a stable anonymous URL *and* a published SHA-256 — an entry that can't actually fetch would fail at the worst possible moment, after an operator has already chosen it for a rebuild. Entries go stale as distros cut new releases; the custom-URL path below covers the gap until `catalog.py` is updated.
 
 **RHEL proper and Windows are not in the catalog, on purpose.** RHEL needs an active Red Hat subscription to download, so there's no anonymous URL to point at; Microsoft publishes no stable direct download with a published hash. Neither is a Vigil limitation — both reach the library the same way: upload the ISO you're entitled to, or paste a URL (plus its SHA-256) to wherever you're already hosting it. **A digest is always required** — pulling from the catalog carries the published digest automatically, but a custom URL or an upload needs the operator to supply one; an image with no SHA-256 is refused before a single byte moves.
 
 **Windows images can't be imported yet.** The upload/pull buttons for it are disabled in the UI rather than silently failing after a multi-gigabyte transfer. Vigil's importer extracts a Linux-style `vmlinuz`/`initrd` pair to PXE-boot the installer; Windows boots from `bootmgr` against `boot.wim`, a different pipeline that doesn't exist yet. It's planned as its own piece of work, not a config flag someone forgot to flip.
+
+### Install profiles
+
+A profile is the set of answers the installer needs to run unattended — which
+image and disk, partitioning and filesystem, addressing, locale, and who can
+log in afterwards. **Reprovision → Install profiles → + New profile.**
+
+Two things the form enforces, because both are otherwise discovered after the
+disk has already been wiped:
+
+- **Somebody has to be able to log in.** A profile with neither an SSH key nor
+  an admin password hash is refused. The password field takes a *crypt hash*
+  (`mkpasswd -m sha-512`), never a plaintext password — the answer file
+  carries it verbatim.
+- **Static addressing needs an address and a gateway.** Those fields only
+  appear when you pick Static.
+
+Editing an existing profile leaves the password box blank, and blank means
+*keep the stored hash* — Vigil never hands a stored secret back, not even to
+the admin who set it.
+
+**Tag the host with** *(2026.7.4)* applies tags when the rebuilt machine
+checks back in, so baselines and alert rules that target those tags pick it up
+on its own without anyone remembering to tag it. The rebuild ceremony's own
+tag field still works alongside it for a one-off; both are applied, and the
+reserved `agent:` prefix is refused in either.
 
 ### The fetch guard
 
@@ -917,8 +1014,15 @@ Two settings exist in this repo specifically because of the upload path — both
 | `POST` | `/api/v1/reprovision/images/upload/` | Upload an ISO directly, synchronously verified and imported (admin only) |
 | `GET` `POST` | `/api/v1/reprovision/images/` | List the library (`view`) / register an image (admin only) |
 | `GET` `DELETE` | `/api/v1/reprovision/images/{id}/` | Image detail (`view`) / remove it (admin only) |
+| `GET` `POST` | `/api/v1/reprovision/profiles/` | List install profiles (`view`) / create one (admin only) |
+| `GET` `PATCH` `DELETE` | `/api/v1/reprovision/profiles/{id}/` | Profile detail (`view`) / edit or remove (admin only) |
+| `POST` | `/api/v1/reprovision/profiles/{id}/preview/` | Render the answer file this profile would produce, without running anything |
 
-Full job/profile/ceremony surface is in [docs/reprovisioning.md §9](docs/reprovisioning.md#9-api-surface).
+A pull of a digest already in the library answers **409** naming the existing
+image; a pull of one whose last attempt *failed* retries in place on the same
+row rather than adding a duplicate.
+
+Full job/ceremony surface is in [docs/reprovisioning.md §9](docs/reprovisioning.md#9-api-surface).
 
 ### Misc
 
