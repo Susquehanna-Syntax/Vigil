@@ -40,6 +40,17 @@ class InstallProfileSerializer(serializers.ModelSerializer):
                 "Set an SSH key or an admin password hash — otherwise the "
                 "rebuilt machine has no way for anyone to log in.")
 
+        # Refused here rather than skipped at completion: a tag that silently
+        # never appears is worse than one that will not save.
+        for tag in attrs.get("completion_tags", None) or []:
+            if not isinstance(tag, str):
+                raise serializers.ValidationError(
+                    "completion_tags must be a list of strings.")
+            if tag.strip().startswith("agent:"):
+                raise serializers.ValidationError(
+                    "The agent: tag namespace is reserved for tags the agent "
+                    "advertises about itself.")
+
         if attrs.get("network_mode") == InstallProfile.NetworkMode.STATIC:
             if not attrs.get("static_address") or not attrs.get("gateway"):
                 raise serializers.ValidationError(

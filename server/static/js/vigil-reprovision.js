@@ -831,6 +831,9 @@ function _reproProfileRow(prof) {
   if (prof.network_mode === 'static' && prof.static_address) {
     descText += ` ${prof.static_address}`;
   }
+  if (Array.isArray(prof.completion_tags) && prof.completion_tags.length) {
+    descText += ` · tags ${prof.completion_tags.join(', ')}`;
+  }
   desc.textContent = descText; // built from operator-authored fields — textContent
   main.appendChild(desc);
   row.appendChild(main);
@@ -940,6 +943,8 @@ function _reproOpenProfile(prof) {
   set('repro-prof-raw', prof?.raw_append || '');
   set('repro-prof-packages',
       Array.isArray(prof?.extra_packages) ? prof.extra_packages.join(', ') : '');
+  set('repro-prof-tags',
+      Array.isArray(prof?.completion_tags) ? prof.completion_tags.join(', ') : '');
 
   // The API never returns a stored password, so the box always starts empty
   // and blank means "leave whatever is stored alone" on an edit.
@@ -980,6 +985,8 @@ async function _reproSaveProfile() {
     raw_append: val('repro-prof-raw'),
     extra_packages: val('repro-prof-packages').split(',')
       .map(p => p.trim()).filter(Boolean),
+    completion_tags: val('repro-prof-tags').split(',')
+      .map(t => t.trim()).filter(Boolean),
     deadline_minutes: parseInt(val('repro-prof-deadline'), 10) || 60,
   };
   const password = val('repro-prof-password');

@@ -332,6 +332,17 @@
     <textarea class="form-control mono" id="repro-prof-keys" rows="3" placeholder="ssh-ed25519 AAAA… you@laptop"></textarea>
   </div>
 
+  <div class="repro-prof-step">After the rebuild</div>
+  <div class="form-group">
+    <label class="form-label" for="repro-prof-tags">Tag the host with</label>
+    <input type="text" class="form-control" id="repro-prof-tags" placeholder="role:web, env:lab">
+    <div class="muted-note repro-prof-hint">
+      Comma-separated, applied when the rebuilt machine checks back in — so
+      baselines and alert rules that target these tags pick it up on its own.
+      The <code>agent:</code> prefix is reserved.
+    </div>
+  </div>
+
   <div class="repro-prof-step">Extras</div>
   <div class="form-group">
     <label class="form-label" for="repro-prof-packages">Extra packages</label>
