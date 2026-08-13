@@ -85,12 +85,12 @@ async function openRebuildModal(hostId, hostname) {
     `<h3>Rebuild ${escHtml(hostname)}</h3>` +
     `<p class="bad"><strong>This erases everything on the target disk.</strong> ` +
     `There is no undo once the installer starts.</p>` +
-    `<label>Image<select id="rb-image">${imageOpts}</select></label>` +
-    `<label>Profile<select id="rb-profile"></select></label>` +
+    `<label>Image<select class="form-control" id="rb-image">${imageOpts}</select></label>` +
+    `<label>Profile<select class="form-control" id="rb-profile"></select></label>` +
     `<div id="rb-summary" class="rb-summary muted">Select an image and profile…</div>` +
     `<div id="rb-preflight" class="rb-preflight"><span class="muted">Checking rebuild readiness…</span></div>` +
-    `<label>Tag on completion<input id="rb-tag" placeholder="rebuilt:need config"></label>` +
-    `<label>Run baseline afterwards<select id="rb-baseline">${baselineOpts}</select></label>` +
+    `<label>Tag on completion<input class="form-control" id="rb-tag" placeholder="rebuilt:need config"></label>` +
+    `<label>Run baseline afterwards<select class="form-control" id="rb-baseline">${baselineOpts}</select></label>` +
     (insecure
       ? `<label class="rb-warn"><input type="checkbox" id="rb-ack-plain"> ` +
         `Vigil is served over plain HTTP. The answer file carries the admin ` +
@@ -98,11 +98,11 @@ async function openRebuildModal(hostId, hostname) {
         `Proceed anyway.</label>`
       : '') +
     `<hr>` +
-    `<label>Password<input type="password" id="rb-password" autocomplete="current-password"></label>` +
-    `<label>Authenticator code<input id="rb-totp" inputmode="numeric" autocomplete="one-time-code"></label>` +
+    `<label>Password<input class="form-control" type="password" id="rb-password" autocomplete="current-password"></label>` +
+    `<label>Authenticator code<input class="form-control mono" id="rb-totp" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label>` +
     // placeholder is set as a DOM property below, not interpolated: escHtml
     // does not escape quotes, and the hostname is agent-supplied.
-    `<label>Type the hostname to confirm<input id="rb-hostname" autocomplete="off"></label>` +
+    `<label>Type the hostname to confirm<input class="form-control mono" id="rb-hostname" autocomplete="off"></label>` +
     `<div class="modal-actions">` +
       `<button class="btn btn-outline" id="rb-cancel">Cancel</button>` +
       `<button class="btn btn-danger" id="rb-go" disabled>Rebuild this machine</button>` +

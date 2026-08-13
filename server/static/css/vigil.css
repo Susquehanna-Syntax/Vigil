@@ -2449,6 +2449,39 @@ select.form-control:hover { border-color: var(--s4); }
 }
 .rb-warn input[type="checkbox"] { margin-top: 3px; flex-shrink: 0; }
 
+/* The ceremony's own field layout. This modal is built by string
+   concatenation rather than from the page template, so its <label> wrappers
+   and headings never picked up the form styling every other form gets — the
+   selects and inputs rendered as browser defaults on a dark panel.
+   .form-control now covers the controls; these cover what wraps them.
+
+   :not(.rb-warn) matters: the acknowledgement is also a <label>, and an
+   id-scoped rule would beat its flex layout and flatten the checkbox row. */
+#rebuild-modal > label:not(.rb-warn) {
+  display: block;
+  margin-bottom: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+#rebuild-modal > label:not(.rb-warn) > .form-control { margin-top: 6px; }
+
+#rebuild-modal h3 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin-bottom: 12px;
+}
+#rebuild-modal > p { font-size: 13px; line-height: 1.7; margin-bottom: 18px; }
+
+/* Separates the choices above from the confirmation below — the point past
+   which the operator is authorising, not configuring. */
+#rebuild-modal hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 22px 0 20px;
+}
+
 /* Checkboxes were inheriting the browser default — grey, and visually
    unrelated to everything around them. */
 input[type="checkbox"] {
