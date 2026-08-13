@@ -88,11 +88,83 @@ def task_result(request):
         # successful run's output into the host's inventory custom columns.
         if new_state == Task.State.COMPLETED:
             _maybe_capture_inventory_column(task, output)
+            _maybe_apply_tags(task)
             _maybe_request_nessus_scan(task)
             _maybe_ingest_trivy_report(task, output)
             _maybe_ingest_firewall_rules(task, output)
 
     return Response(TaskSerializer(task).data)
+
+
+def _tag_steps(task: Task, actions: tuple[str, ...]) -> list[dict]:
+    """Every step of *task* whose action is one of *actions*.
+
+    Multi-step tasks arrive as ``action == "_script"`` with the individual
+    steps in ``params.steps``; single-action tasks carry it at the top level.
+    Unlike the scan marker, every match counts — a definition may legitimately
+    add two tags in two steps.
+    """
+    found = []
+    if task.action in actions:
+        found.append(task.params or {})
+    for step in (task.params or {}).get("steps") or []:
+        if isinstance(step, dict) and step.get("action") in actions:
+            found.append(step)
+    return found
+
+
+def _named_tags(step: dict) -> list[str]:
+    """Tags named by a tag step, as a list of non-empty strings."""
+    params = step.get("params") if isinstance(step.get("params"), dict) else step
+    raw = (params or {}).get("tags", "")
+    if isinstance(raw, str):
+        raw = raw.split(",")
+    return [str(t).strip() for t in (raw or []) if str(t).strip()]
+
+
+def _maybe_apply_tags(task: Task) -> None:
+    """Apply add_tag / remove_tag steps from a completed task.
+
+    The tags come from the task the server stored and signed, never from the
+    agent's reported output — so a compromised agent can at most claim success
+    on a tag an operator already wrote into the definition. It cannot choose
+    one. That is what lets these be low-risk actions while ``agent:`` stays
+    reserved for tags an agent asserts about itself at check-in.
+
+    Never raises: a task result must be recordable even if tagging fails.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    add_steps = _tag_steps(task, ("add_tag",))
+    remove_steps = _tag_steps(task, ("remove_tag",))
+    if not add_steps and not remove_steps:
+        return
+
+    try:
+        host = task.host
+        tags = list(host.tags or [])
+
+        for step in add_steps:
+            for tag in _named_tags(step):
+                # Reserved so a rogue agent cannot impersonate an
+                # operator-set tag. Refused at definition-save time too;
+                # this writes straight to the host, so it re-checks.
+                if tag.startswith("agent:") or tag in tags:
+                    continue
+                tags.append(tag)
+
+        for step in remove_steps:
+            doomed = {t for t in _named_tags(step) if not t.startswith("agent:")}
+            tags = [t for t in tags if t not in doomed]
+
+        if tags != list(host.tags or []):
+            host.tags = tags
+            host.save(update_fields=["tags"])
+            logger.info("task %s retagged %s: %s", task.id, host.hostname, tags)
+    except Exception:
+        logger.exception("task %s: could not apply tag changes", task.id)
 
 
 def _maybe_request_nessus_scan(task: Task) -> None:
