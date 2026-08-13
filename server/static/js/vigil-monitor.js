@@ -50,8 +50,7 @@ function selectMonitorHost(hostId) {
   const monLogo = document.getElementById('mon-os-logo');
   if (monLogo) {
     monLogo.replaceChildren();
-    const svgDoc = new DOMParser().parseFromString(osLogo(d.os), 'image/svg+xml');
-    monLogo.appendChild(document.adoptNode(svgDoc.documentElement));
+    monLogo.appendChild(osLogoNode(d.os));
   }
 
   renderPinBar();

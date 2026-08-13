@@ -145,6 +145,29 @@
       <span class="bl-hint">min hour dom mon dow</span>
     </div>
     <div class="bl-hint" id="auto-event-tags-wrap" style="margin-top:8px;">Only on hosts tagged (optional): <input type="text" class="form-control" id="auto-event-tags" placeholder="os:linux" style="display:inline-block;width:auto;"></div>
+    {% comment %}
+      Narrows which alerts fire this automation — not which hosts it runs on.
+      An automation can watch one host and act on another, so this is
+      deliberately separate from "Run on" below.
+    {% endcomment %}
+    <div class="bl-hint" id="auto-event-host-wrap" style="margin-top:8px;">Only for events on host (optional):
+      <select class="form-control" id="auto-event-host" style="display:inline-block;width:auto;">
+        <option value="">any host</option>
+      </select>
+    </div>
+    <div class="bl-hint" id="auto-match-wrap" style="margin-top:8px;">Only when the alert's
+      <select class="form-control" id="auto-match-field" style="display:inline-block;width:auto;">
+        <option value="any">name or description</option>
+        <option value="rule">name</option>
+        <option value="message">description</option>
+      </select>
+      <select class="form-control" id="auto-match-mode" style="display:inline-block;width:auto;">
+        <option value="contains">contains</option>
+        <option value="not_contains">does not contain</option>
+      </select>
+      <input type="text" class="form-control" id="auto-match-text" placeholder="e.g. /var" maxlength="200" style="display:inline-block;width:auto;">
+      <span class="bl-hint" style="display:block;margin-top:4px;">Leave the text blank for no text filter. Case-insensitive.</span>
+    </div>
   </div>
   <div class="bl-field">
     <label>Run</label>

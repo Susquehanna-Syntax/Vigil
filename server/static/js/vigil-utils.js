@@ -133,67 +133,71 @@ function computeRates(points) {
   return rates;
 }
 
-// Returns an inline SVG logo string for a given OS name, or a generic Linux icon.
-function osLogo(name) {
+// Distro marks. Real logo images rather than hand-drawn SVG paths: the paths
+// were hard to author and several were wrong for a long time without anything
+// failing — Mint, Debian and Red Hat each drew their glyph in the colour of
+// their own disc, so they rendered as flat circles, and Fedora's path drew a
+// capital D.
+//
+// The files are 96px PNGs in static/img/os/, built from Simple Icons
+// (CC0-1.0, so no attribution burden) on a brand-coloured disc. Windows and
+// Bazzite are drawn by hand in the same idiom — Simple Icons carries neither.
+// Bundled, not hot-linked: Vigil runs on networks with no route to the
+// internet.
+const OS_LOGOS = [
+  // Order matters: derivatives before their parents. Linux Mint's os_family
+  // is ubuntu and Bazzite's is rhel, so a parent listed first would claim
+  // both. Test the specific name first.
+  ['mint', 'linuxmint'],
+  ['bazzite', 'bazzite'],
+  ['zorin', 'zorin'],
+  ['pop', 'popos'],
+  ['ubuntu', 'ubuntu'],
+  ['debian', 'debian'],
+  ['fedora', 'fedora'],
+  ['rocky', 'rockylinux'],
+  ['alma', 'almalinux'],
+  ['arch', 'archlinux'],
+  ['suse', 'opensuse'],
+  ['centos', 'centos'],
+  ['red hat', 'redhat'],
+  ['redhat', 'redhat'],
+  ['rhel', 'redhat'],
+  ['windows', 'windows'],
+  ['macos', 'apple'],
+  ['mac os', 'apple'],
+  ['darwin', 'apple'],
+];
+
+// The file name for an OS, or 'linux' (Tux) when nothing matches.
+function osLogoSlug(name) {
   const n = (name || '').toLowerCase();
-  const s = (p, f) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="${f}" style="flex-shrink:0;vertical-align:middle">${p}</svg>`;
-  if (n.includes('ubuntu'))
-    return s('<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4" fill="#1E1E2E"/><circle cx="12" cy="4.5" r="2" fill="#1E1E2E"/><circle cx="19.1" cy="16.3" r="2" fill="#1E1E2E"/><circle cx="4.9" cy="16.3" r="2" fill="#1E1E2E"/>', '#E95420');
-  if (n.includes('zorin'))
-    return s('<circle cx="12" cy="12" r="10"/><path d="M7 9h10l-10 6h10" stroke="#1E1E2E" stroke-width="2" stroke-linecap="round" fill="none"/>', '#15A6F0');
-  if (n.includes('pop') || n.includes('pop!_os'))
-    return s('<circle cx="12" cy="12" r="10"/><text x="12" y="16" text-anchor="middle" font-size="11" font-weight="bold" fill="#1E1E2E">P!</text>', '#48B9C7');
-  // The leaf this used to draw was filled #87CF3E on a #87CF3E disc — the
-  // same colour, so nothing but the small dark dot was ever visible. Mint's
-  // mark is a stylised "LM" monogram; the M alone survives 16px.
-  if (n.includes('mint'))
-    return s('<circle cx="12" cy="12" r="10"/>'
-           + '<path d="M6.6 16V10.3c0-1.4 1.7-2.1 2.6-1l1.9 2.2c.5.6 1.3.6 1.8 0l1.9-2.2c.9-1.1 2.6-.4 2.6 1V16" stroke="#1E1E2E" stroke-width="2.1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>', '#87CF3E');
-  // Fedora's mark is a white "infinity f" on blue, so it is drawn in white
-  // rather than knocked out in the page background like its siblings — that
-  // is both what the real logo does and what survives 16px on the blue disc.
-  // The previous path (an arc from 12,6 to 12,18 closed by a straight line
-  // back up) drew a capital D, not an f.
-  //
-  // Strokes, not fills, and 2.5 units wide: at 16px one viewBox unit is
-  // 0.67px, so a hairline stem disappears entirely.
-  if (n.includes('fedora'))
-    return s('<circle cx="12" cy="12" r="10"/>'
-           + '<path d="M11.4 18.2V9.8c0-2.9 2.1-4 4.2-2.9" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round"/>'
-           + '<path d="M8.6 11.4h5.6" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round"/>', '#51A2DA');
-  if (n.includes('arch'))
-    return s('<path d="M12 3l8.5 15H3.5z"/><path d="M12 8l4.5 8H7.5z" fill="#1E1E2E"/>', '#1793D1');
-  if (n.includes('suse') || n.includes('opensuse'))
-    return s('<circle cx="12" cy="12" r="10"/><path d="M7 12a5 5 0 0110 0 5 5 0 01-5 5 3 3 0 000-6 3 3 0 015.2-2" stroke="#1E1E2E" stroke-width="1.5" fill="none" stroke-linecap="round"/>', '#73BA25');
-  // Was a #A80030 swirl on a #A80030 disc: a plain red circle with nothing
-  // on it at all. White rather than the usual dark knockout because
-  // #1E1E2E on this red is too close to read at 16px.
-  if (n.includes('debian'))
-    return s('<circle cx="12" cy="12" r="10"/>'
-           + '<path d="M14.6 16.6A5 5 0 1115.8 8.9a2.8 2.8 0 10-4.4 3.1" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/>', '#A80030');
-  if (n.includes('rocky'))
-    return s('<circle cx="12" cy="12" r="10"/><path d="M17.5 8.5L9 17l-2.6-2.6 1.8-1.8L9 13.4l6.7-6.7z" fill="#1E1E2E"/>', '#10B981');
-  if (n.includes('alma'))
-    return s('<circle cx="12" cy="12" r="10"/><path d="M12 6l4.5 11h-2.4L12 10.8 9.9 17H7.5z" fill="#1E1E2E"/>', '#0B7AD1');
-  // Bazzite is Fedora Atomic underneath, but it ships as its own product and
-  // an operator picking it from the catalog should see its own mark.
-  if (n.includes('bazzite'))
-    return s('<circle cx="12" cy="12" r="10"/><path d="M12 5.5l5.5 3.2v6.6L12 18.5 6.5 15.3V8.7z" fill="#1E1E2E"/><circle cx="12" cy="12" r="2.2" fill="#B14AED"/>', '#B14AED');
-  // Brim and crown were #EE0000 on an #EE0000 disc — a plain red circle.
-  // White, like the real mark, and legible on this red where the dark
-  // knockout the other logos use is not.
-  if (n.includes('red hat') || n.includes('rhel') || n.includes('redhat'))
-    return s('<circle cx="12" cy="12" r="10"/>'
-           + '<path d="M6.2 13.9h11.6c0 1.5-2.6 2.5-5.8 2.5s-5.8-1-5.8-2.5z" fill="#fff"/>'
-           + '<path d="M8.4 13.2c-.5-2.6 1.2-4.8 3.6-4.8 2 0 3.3 1.3 3.7 2.9.5-.5 1.4-.4 1.5.3.1.6-.5 1.1-1.2 1.3v.3z" fill="#fff"/>', '#EE0000');
-  if (n.includes('centos'))
-    return s('<path d="M12 2l10 10-10 10L2 12z"/><path d="M12 2v20M2 12h20" stroke="#1E1E2E" stroke-width="1.8" fill="none"/>', '#932279');
-  if (n.includes('windows'))
-    return s('<rect x="3" y="3" width="8.5" height="8.5" rx="1"/><rect x="12.5" y="3" width="8.5" height="8.5" rx="1"/><rect x="3" y="12.5" width="8.5" height="8.5" rx="1"/><rect x="12.5" y="12.5" width="8.5" height="8.5" rx="1"/>', '#0078D4');
-  if (n.includes('macos') || n.includes('mac os') || n.includes('darwin'))
-    return s('<path d="M17 2a4 4 0 00-3 1.5A4 4 0 0017 7a4 4 0 003-1.5A4 4 0 0017 2zM7 6C4.8 6 3 7.8 3 10c0 5 4 11 7 11 1.1 0 2-.6 3-.6s1.9.6 3 .6c3 0 7-6 7-11 0-2.2-1.8-4-4-4-1.2 0-2.2.5-3 .5S8.2 6 7 6z"/>', '#999999');
-  // Generic Linux penguin outline
-  return s('<ellipse cx="12" cy="9" rx="4" ry="5"/><ellipse cx="12" cy="9" rx="2" ry="3" fill="#1E1E2E"/><ellipse cx="12" cy="17" rx="5" ry="4"/><ellipse cx="12" cy="17" rx="3" ry="2.5" fill="#1E1E2E"/><circle cx="10.5" cy="7.5" r="1" fill="#F0C040"/><circle cx="13.5" cy="7.5" r="1" fill="#F0C040"/>', '#F0C040');
+  for (const [needle, slug] of OS_LOGOS) {
+    if (n.includes(needle)) return slug;
+  }
+  return 'linux';
+}
+
+function osLogoSrc(name) {
+  return `/static/img/os/${osLogoSlug(name)}.png`;
+}
+
+// An <img> element. Preferred over osLogo(): nothing is parsed, and the src
+// comes from the fixed list above, so no caller can inject through it.
+function osLogoNode(name, size) {
+  const img = document.createElement('img');
+  img.className = 'os-logo';
+  img.src = osLogoSrc(name);
+  img.alt = '';               // decorative; the OS name is always beside it
+  img.loading = 'lazy';
+  if (size) { img.width = size; img.height = size; }
+  return img;
+}
+
+// String form for innerHTML call sites. The only interpolated value is a slug
+// from the fixed list above.
+function osLogo(name) {
+  return `<img class="os-logo" src="${osLogoSrc(name)}" alt="" loading="lazy">`;
 }
 
 /* ── Modal helper ────────────────────────────────────────────────────────

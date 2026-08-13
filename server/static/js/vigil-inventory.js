@@ -354,13 +354,11 @@ function _hostCell(r) {
   return td;
 }
 
-// DOMParser is XSS-safe in SVG mode; osLogo() never interpolates user data into SVG strings.
 function _osNameCell(name) {
   const td = document.createElement('td');
   td.style.cssText = 'display:flex;align-items:center;gap:5px;';
   if (name) {
-    const doc = new DOMParser().parseFromString(osLogo(name), 'image/svg+xml');
-    td.appendChild(document.adoptNode(doc.documentElement));
+    td.appendChild(osLogoNode(name));
     td.appendChild(document.createTextNode(name));
   } else {
     const span = document.createElement('span');

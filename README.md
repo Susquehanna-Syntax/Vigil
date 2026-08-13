@@ -255,6 +255,12 @@ Tags are free-form strings attached to hosts. They enable tag-based task deploym
 
 **Deploy by tag** — in the deploy modal, switch the target toggle from "Individual Hosts" to "By Tag" to deploy to all online managed hosts with a given tag.
 
+**Distro logos** are real logo images bundled under `server/static/img/os/`
+(built from [Simple Icons](https://simpleicons.org), CC0-1.0, on a
+brand-coloured disc; Windows and Bazzite drawn by hand since Simple Icons
+carries neither). They are served from Vigil, never hot-linked — the console
+has to work on a network with no route to the internet.
+
 **The `agent:` namespace is reserved.** Tags an agent asserts about itself at
 check-in live under `agent:`, and nothing else may write there — not a task,
 not an install profile, not the API. That separation is what stops a
@@ -568,6 +574,29 @@ This replaces the older local "publish to community" flow — there is no per-se
 
 ---
 
+## Automations — event filters
+
+An event automation fires when a hook does. Beyond severity and alert rule,
+these narrow *which* alerts count:
+
+| Filter | Effect |
+|---|---|
+| **Only for events on host** | Fires only for alerts on that one host |
+| **Only when the alert's name/description contains…** | Substring match, case-insensitive |
+| **…does not contain** | Fires only when the text is absent |
+
+The alert's **name** is its rule's name; its **description** is the alert
+text. Matching "name or description" with *does not contain* means the text
+appears in **neither** — a filter meant to exclude something must not let it
+through because it matched the field you weren't thinking about.
+
+These scope the **trigger**, not the target: an automation can watch one host
+and act on another, which is why "Only for events on host" is separate from
+"Run on" below it. An alert Vigil raises directly (rather than from a rule)
+has no name, so *contains* cannot match it and *does not contain* passes it.
+
+---
+
 ## Alerting
 
 Vigil ships with **20 default alert rules** created automatically on first migration. Rules evaluate every 60 seconds via Celery beat. Alerts auto-resolve when the metric returns below the threshold.
@@ -853,6 +882,10 @@ Vigil server cannot order a fleet to rebuild itself.
 ---
 
 ## Remote Reprovisioning
+
+Start one from **Reprovision → Rebuild jobs → Rebuild a host…**, or from the
+host's detail drawer. Both open the same ceremony — picking the host up front
+only saves finding its card first, it does not shorten the confirmation.
 
 Rebuild a host's operating system from the console: pick an image and a
 profile, confirm with password + authenticator code + the typed hostname, and

@@ -2481,10 +2481,13 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
   transition: width 0.4s ease;
 }
 
-/* Tiny distro mark beside a catalog entry or an image row. */
+/* Tiny distro mark beside a catalog entry or an image row. Now a PNG rather
+   than inline SVG, so give it explicit dimensions — an <img> with no size
+   reflows the row while it loads. */
 .os-logo {
   width: 16px; height: 16px; flex-shrink: 0;
   vertical-align: -3px; margin-right: 7px;
+  object-fit: contain;
 }
 
 /* ── Reprovision: "Add an image" ─────────────────────────────────────────
@@ -2644,8 +2647,8 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .repro-cat-card.is-held { opacity: 0.62; }
 .repro-cat-card.is-held:hover { transform: none; }
 
-/* Beats the width/height attributes osLogo() writes for its 16px inline use. */
-.repro-cat-logo svg { width: 42px; height: 42px; }
+/* Beats the .os-logo default so the card mark is legible at card size. */
+.repro-cat-logo .os-logo { width: 42px; height: 42px; }
 
 .repro-cat-name {
   font-size: 13px;
