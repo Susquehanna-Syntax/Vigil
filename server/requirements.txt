@@ -1,13 +1,21 @@
-Django>=5.1,<6.0
-djangorestframework>=3.15,<4.0
-django-celery-beat>=2.7,<3.0
+# Django 5.2 is the current LTS — security support to April 2028. Vigil is
+# installed and left running, so the LTS line is the right default: 6.x
+# reaches end of life well before 5.2 does, and every dependency below
+# supports 5.2 today. Move to the next LTS, not to the next release.
+Django>=5.2,<6.0
+djangorestframework>=3.18,<4.0
+django-celery-beat>=2.9,<3.0
 celery[redis]>=5.4,<6.0
 psycopg[binary]>=3.2,<4.0
-gunicorn>=23.0,<24.0
+gunicorn>=26.0,<27.0
 whitenoise>=6.9,<7.0
 PyNaCl>=1.5,<2.0
 PyYAML>=6.0,<7.0
 requests>=2.32,<3.0
-cryptography>=42.0,<45.0
+# Encrypts secrets at rest (apps/hosts/crypto.py). The cap was <45 while 50
+# was current, which silently held back security fixes to the one dependency
+# where that matters most. Fernet's wire format is stable across the jump —
+# tokens written by the old version still decrypt.
+cryptography>=50.0,<51.0
 PyJWT[crypto]>=2.8,<3.0
 pycdlib>=1.14,<2.0
