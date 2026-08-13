@@ -156,6 +156,48 @@ def severity_ok(automation, alert) -> bool:
     return have >= need
 
 
+def host_ok(automation, host) -> bool:
+    """Scope the trigger to one host. Independent of `target`: an automation
+    may watch one host and act on another."""
+    if not automation.event_host_id:
+        return True
+    return host is not None and host.pk == automation.event_host_id
+
+
+def text_ok(automation, alert) -> bool:
+    """Match the alert's name and/or description against the filter.
+
+    The rule name is the alert's "name"; its message is the description.
+    Case-insensitive, since nobody filtering on "backup" means to be tripped
+    up by "Backup".
+
+    ``not_contains`` over both fields means the text appears in *neither* —
+    the intuitive reading of "does not contain", and the safe one: a filter
+    meant to exclude something must not let it through because it matched the
+    field the operator was not thinking about.
+
+    An alert with no rule (Vigil raises some directly) has an empty name, so
+    ``contains`` cannot match it and ``not_contains`` passes it.
+    """
+    needle = (automation.match_text or "").strip().lower()
+    if not needle or alert is None:
+        return True
+
+    F = automation.MatchField
+    rule = getattr(alert, "rule", None)
+    haystacks = {
+        F.RULE: [getattr(rule, "name", "") or ""],
+        F.MESSAGE: [getattr(alert, "message", "") or ""],
+    }
+    haystacks[F.ANY] = haystacks[F.RULE] + haystacks[F.MESSAGE]
+    fields = haystacks.get(automation.match_field, haystacks[F.ANY])
+
+    found = any(needle in text.lower() for text in fields)
+    if automation.match_mode == automation.MatchMode.NOT_CONTAINS:
+        return not found
+    return found
+
+
 def tags_ok(automation, host) -> bool:
     if not automation.event_tags:
         return True
@@ -177,11 +219,16 @@ def handle_event(event_name: str, payload: dict) -> None:
 
     autos = Automation.objects.filter(
         enabled=True, trigger=Automation.Trigger.EVENT, event=event_name)
-    for auto in autos.select_related("task_definition", "target_host", "event_rule"):
+    for auto in autos.select_related("task_definition", "target_host",
+                                     "event_rule", "event_host"):
         if alert is not None and not severity_ok(auto, alert):
             continue
         # Specific-rule filter: only fire for that exact alert rule.
         if auto.event_rule_id and getattr(alert, "rule_id", None) != auto.event_rule_id:
+            continue
+        if not host_ok(auto, host):
+            continue
+        if not text_ok(auto, alert):
             continue
         if not tags_ok(auto, host):
             continue

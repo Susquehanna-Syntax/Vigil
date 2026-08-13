@@ -371,3 +371,188 @@ class RunHistoryTests(TestCase):
         self.assertIsNone(run.automation_id)
         self.assertEqual(run.source, TaskRun.Source.AUTOMATION)
         self.assertIn("nightly", run.name_snapshot)
+
+
+class EventTextAndHostFilterTests(TestCase):
+    """Narrow which alerts fire an automation: by text, and by host.
+
+    Both scope the TRIGGER, not the target. An automation can watch one host
+    and act on another, so `event_host` is deliberately separate from
+    `target_host`.
+    """
+
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user(
+            "root", password="x", is_staff=True)
+        wire()
+        self.definition = make_def()
+
+    def _automation(self, **kw):
+        kw.setdefault("target", "event_host")
+        return Automation.objects.create(
+            name="a", trigger="event", event="alert_fired",
+            action_kind="task", task_definition=self.definition,
+            created_by=self.admin, **kw)
+
+    def _fire(self, host, *, rule_name="disk full", message="/var is at 95%"):
+        rule = AlertRule.objects.create(
+            name=rule_name, category="disk", metric="d", operator="gt",
+            threshold=90, severity="critical")
+        alert = Alert.objects.create(host=host, rule=rule,
+                                     severity="critical", message=message)
+        hooks.emit("alert_fired", alert=alert)
+        return alert
+
+    def _ran(self, host):
+        return Task.objects.filter(host=host).exists()
+
+    # ── contains ───────────────────────────────────────────────────────
+    def test_contains_matches_the_description(self):
+        self._automation(match_text="/var", match_mode="contains")
+        host = make_host("h1")
+        self._fire(host, message="/var is at 95%")
+        self.assertTrue(self._ran(host))
+
+    def test_contains_matches_the_name(self):
+        self._automation(match_text="disk", match_mode="contains")
+        host = make_host("h2")
+        self._fire(host, rule_name="disk full", message="nothing relevant")
+        self.assertTrue(self._ran(host))
+
+    def test_contains_does_not_fire_when_absent(self):
+        self._automation(match_text="postgres", match_mode="contains")
+        host = make_host("h3")
+        self._fire(host)
+        self.assertFalse(self._ran(host))
+
+    def test_matching_is_case_insensitive(self):
+        self._automation(match_text="DISK", match_mode="contains")
+        host = make_host("h4")
+        self._fire(host, rule_name="disk full")
+        self.assertTrue(self._ran(host))
+
+    # ── does not contain ───────────────────────────────────────────────
+    def test_not_contains_fires_when_absent(self):
+        self._automation(match_text="backup", match_mode="not_contains")
+        host = make_host("h5")
+        self._fire(host)
+        self.assertTrue(self._ran(host))
+
+    def test_not_contains_suppresses_when_present(self):
+        self._automation(match_text="backup", match_mode="not_contains")
+        host = make_host("h6")
+        self._fire(host, message="backup volume is at 95%")
+        self.assertFalse(self._ran(host))
+
+    def test_not_contains_over_both_fields_means_neither(self):
+        """A filter meant to exclude something must not let it through
+        because it matched the field the operator wasn't thinking about."""
+        self._automation(match_text="backup", match_mode="not_contains",
+                         match_field="any")
+        host = make_host("h7")
+        self._fire(host, rule_name="backup disk", message="/var is at 95%")
+        self.assertFalse(self._ran(host))
+
+    # ── field scoping ──────────────────────────────────────────────────
+    def test_field_message_ignores_the_name(self):
+        self._automation(match_text="disk", match_mode="contains",
+                         match_field="message")
+        host = make_host("h8")
+        self._fire(host, rule_name="disk full", message="/var is at 95%")
+        self.assertFalse(self._ran(host))
+
+    def test_field_rule_ignores_the_description(self):
+        self._automation(match_text="/var", match_mode="contains",
+                         match_field="rule")
+        host = make_host("h9")
+        self._fire(host, rule_name="disk full", message="/var is at 95%")
+        self.assertFalse(self._ran(host))
+
+    def test_an_alert_with_no_rule_has_an_empty_name(self):
+        """Vigil raises some alerts directly, with rule=None."""
+        self._automation(match_text="disk", match_mode="contains",
+                         match_field="rule")
+        host = make_host("h10")
+        alert = Alert.objects.create(host=host, rule=None, severity="warning",
+                                     message="Agent outdated: disk")
+        hooks.emit("alert_fired", alert=alert)
+        self.assertFalse(self._ran(host))
+
+    def test_blank_text_means_no_filter(self):
+        self._automation(match_text="", match_mode="contains")
+        host = make_host("h11")
+        self._fire(host)
+        self.assertTrue(self._ran(host))
+
+    # ── host scope ─────────────────────────────────────────────────────
+    def test_event_host_scope_fires_for_that_host(self):
+        watched = make_host("watched")
+        self._automation(event_host=watched)
+        self._fire(watched)
+        self.assertTrue(self._ran(watched))
+
+    def test_event_host_scope_ignores_other_hosts(self):
+        watched = make_host("watched2")
+        other = make_host("other2")
+        self._automation(event_host=watched)
+        self._fire(other)
+        self.assertFalse(self._ran(other))
+
+    def test_no_event_host_means_any_host(self):
+        self._automation()
+        host = make_host("anyhost")
+        self._fire(host)
+        self.assertTrue(self._ran(host))
+
+    def test_host_scope_and_text_filter_both_apply(self):
+        watched = make_host("both")
+        self._automation(event_host=watched, match_text="postgres",
+                         match_mode="contains")
+        self._fire(watched, message="/var is at 95%")
+        self.assertFalse(self._ran(watched), "text filter should have blocked")
+
+    def test_watching_one_host_can_act_on_another(self):
+        """event_host scopes the trigger; target decides where it runs."""
+        watched = make_host("sensor")
+        actor = make_host("actor")
+        self._automation(event_host=watched, target="host", target_host=actor)
+        self._fire(watched)
+        self.assertTrue(self._ran(actor))
+        self.assertFalse(self._ran(watched))
+
+
+class EventFilterApiTests(TestCase):
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user(
+            "root", password="x", is_staff=True, is_superuser=True)
+        self.client.force_login(self.admin)
+        self.definition = make_def()
+
+    def _create(self, **extra):
+        body = {"name": "a", "trigger": "event", "event": "alert_fired",
+                "action_kind": "task",
+                "task_definition": str(self.definition.id),
+                "target": "event_host", **extra}
+        return self.client.post("/api/v1/automations/", json.dumps(body),
+                                content_type="application/json")
+
+    def test_the_filters_round_trip(self):
+        host = make_host("api-host")
+        resp = self._create(match_text="/var", match_field="message",
+                            match_mode="not_contains",
+                            event_host=str(host.id))
+        self.assertEqual(resp.status_code, 201, resp.content)
+        row = self.client.get("/api/v1/automations/").json()["automations"][0]
+        self.assertEqual(row["match_text"], "/var")
+        self.assertEqual(row["match_field"], "message")
+        self.assertEqual(row["match_mode"], "not_contains")
+        self.assertEqual(row["event_host"], str(host.id))
+        self.assertEqual(row["event_host_name"], "api-host")
+
+    def test_an_invalid_match_mode_is_refused(self):
+        resp = self._create(match_mode="regex")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_an_invalid_match_field_is_refused(self):
+        resp = self._create(match_field="hostname")
+        self.assertEqual(resp.status_code, 400)

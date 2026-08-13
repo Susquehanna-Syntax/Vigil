@@ -31,6 +31,11 @@ def _row(a: Automation) -> dict:
         "event": a.event, "min_severity": a.min_severity, "event_tags": a.event_tags,
         "event_rule": str(a.event_rule_id) if a.event_rule_id else None,
         "event_rule_name": a.event_rule.name if a.event_rule_id else None,
+        "event_host": str(a.event_host_id) if a.event_host_id else None,
+        "event_host_name": a.event_host.hostname if a.event_host_id else None,
+        "match_text": a.match_text,
+        "match_field": a.match_field,
+        "match_mode": a.match_mode,
         "cron": {"minute": a.cron_minute, "hour": a.cron_hour, "dom": a.cron_dom,
                  "month": a.cron_month, "dow": a.cron_dow},
         "cron_display": a.cron_display,
@@ -70,6 +75,20 @@ def _apply(a: Automation, data) -> str | None:
                         if data["event_rule"] else None)
     if "event_tags" in data:
         a.event_tags = [t.strip() for t in (data["event_tags"] or []) if t.strip()]
+    if "event_host" in data:
+        from apps.hosts.models import Host
+        a.event_host = (Host.objects.filter(pk=data["event_host"]).first()
+                        if data["event_host"] else None)
+    if "match_text" in data:
+        a.match_text = (data["match_text"] or "").strip()[:200]
+    if "match_field" in data:
+        if data["match_field"] not in Automation.MatchField.values:
+            return "invalid match_field"
+        a.match_field = data["match_field"]
+    if "match_mode" in data:
+        if data["match_mode"] not in Automation.MatchMode.values:
+            return "invalid match_mode"
+        a.match_mode = data["match_mode"]
     cron = data.get("cron") or {}
     for k, field in (("minute", "cron_minute"), ("hour", "cron_hour"),
                      ("dom", "cron_dom"), ("month", "cron_month"), ("dow", "cron_dow")):

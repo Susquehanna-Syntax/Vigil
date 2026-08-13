@@ -101,6 +101,14 @@ function _fillEditorOptions() {
   const rule = document.getElementById('auto-event-rule');
   if (rule) rule.innerHTML = '<option value="">any alert</option>' +
     _autoRules.map(r => `<option value="${escHtml(String(r.id))}">${escHtml(r.name)} (${escHtml(r.severity)})</option>`).join('');
+  // Scopes which alerts fire this automation, not which hosts it runs on.
+  const evHost = document.getElementById('auto-event-host');
+  if (evHost) {
+    const keep = evHost.value;
+    evHost.innerHTML = '<option value="">any host</option>' +
+      _autoHosts.map(h => `<option value="${escHtml(String(h.id))}">${escHtml(h.hostname || String(h.id))}</option>`).join('');
+    evHost.value = keep;
+  }
 }
 
 // Open the picker for the current action kind and store the choice.
@@ -138,6 +146,12 @@ function _autoSyncVisibility() {
   const ev = document.getElementById('auto-event').value;
   document.getElementById('auto-sev-wrap').style.display = ev === 'alert_fired' ? '' : 'none';
   document.getElementById('auto-rule-wrap').style.display = ev === 'alert_fired' ? '' : 'none';
+  // A host scope makes sense for any event that carries one; the text filter
+  // reads the alert's name and message, so it is alert-only.
+  const hostWrap = document.getElementById('auto-event-host-wrap');
+  if (hostWrap) hostWrap.style.display = trig === 'event' ? '' : 'none';
+  const matchWrap = document.getElementById('auto-match-wrap');
+  if (matchWrap) matchWrap.style.display = (trig === 'event' && ev === 'alert_fired') ? '' : 'none';
 
   _autoRefreshActionLabel();
 
@@ -189,6 +203,10 @@ function _openAutoEditor(a) {
   set('auto-event-rule', a && a.event_rule ? a.event_rule : '');
   set('auto-sev', a ? a.min_severity : '');
   set('auto-event-tags', a ? (a.event_tags || []).join(', ') : '');
+  set('auto-event-host', a && a.event_host ? a.event_host : '');
+  set('auto-match-field', a && a.match_field ? a.match_field : 'any');
+  set('auto-match-mode', a && a.match_mode ? a.match_mode : 'contains');
+  set('auto-match-text', a ? (a.match_text || '') : '');
   const cron = (a && a.cron) || { minute: '0', hour: '2', dom: '*', month: '*', dow: '*' };
   set('auto-cron-min', cron.minute); set('auto-cron-hour', cron.hour); set('auto-cron-dom', cron.dom);
   set('auto-cron-mon', cron.month); set('auto-cron-dow', cron.dow);
@@ -239,6 +257,10 @@ async function _saveAutomation() {
     event_rule: v('auto-event-rule') || null,
     min_severity: v('auto-sev'),
     event_tags: v('auto-event-tags').split(',').map(s => s.trim()).filter(Boolean),
+    event_host: v('auto-event-host') || null,
+    match_field: v('auto-match-field'),
+    match_mode: v('auto-match-mode'),
+    match_text: v('auto-match-text'),
     cron: { minute: v('auto-cron-min'), hour: v('auto-cron-hour'), dom: v('auto-cron-dom'),
             month: v('auto-cron-mon'), dow: v('auto-cron-dow') },
     action_kind: v('auto-action-kind'),

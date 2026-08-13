@@ -198,7 +198,21 @@
       </div>{# /repro-tab-profiles #}
 
       <div id="repro-tab-jobs" class="tab-content">
-      <div class="section-label" style="margin-top:0;">Rebuild jobs</div>
+      <div class="repro-profiles-head">
+        <div class="section-label" style="margin-top:0;margin-bottom:0;">Rebuild jobs</div>
+        <button class="btn btn-rose btn-sm" id="repro-rebuild-btn" type="button">Rebuild a host…</button>
+      </div>
+      {% comment %}
+        Same ceremony the host drawer opens — image, profile, preflight,
+        password + authenticator code + the typed hostname. Reaching it from
+        here saves hunting for the host card first; it does not shorten the
+        confirmation.
+      {% endcomment %}
+      <p class="muted-note repro-add-lede">
+        Reinstalls a host's operating system from an image in the library.
+        <strong>This destroys everything on the target disk</strong> and cannot
+        be undone once the installer starts.
+      </p>
       <div style="background:var(--s1);border-radius:var(--r-lg);padding:20px;">
         <div id="repro-jobs-list"></div>
       </div>

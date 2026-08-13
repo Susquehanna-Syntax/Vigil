@@ -54,6 +54,31 @@ class Automation(models.Model):
         related_name="automations")
     # Only fire when the event's host carries one of these tags (blank = any).
     event_tags = models.JSONField(default=list, blank=True)
+    # Only fire for events on this specific host (null = any host). Narrower
+    # than event_tags and independent of it: both must pass. This scopes the
+    # TRIGGER, which is not the same as `target` below — an automation can
+    # watch one host and act on another.
+    event_host = models.ForeignKey(
+        "hosts.Host", null=True, blank=True, on_delete=models.CASCADE,
+        related_name="+")
+
+    # Text filter on the alert itself (alert events only; blank text = off).
+    # "Fire only when the alert mentions /var", or "never for anything
+    # mentioning backup".
+    class MatchField(models.TextChoices):
+        ANY = "any", "Name or description"
+        RULE = "rule", "Name (alert rule)"
+        MESSAGE = "message", "Description (alert text)"
+
+    class MatchMode(models.TextChoices):
+        CONTAINS = "contains", "contains"
+        NOT_CONTAINS = "not_contains", "does not contain"
+
+    match_text = models.CharField(max_length=200, blank=True, default="")
+    match_field = models.CharField(max_length=10, choices=MatchField.choices,
+                                   default=MatchField.ANY)
+    match_mode = models.CharField(max_length=14, choices=MatchMode.choices,
+                                  default=MatchMode.CONTAINS)
 
     # -- schedule trigger (crontab; beat-driven) --
     cron_minute = models.CharField(max_length=64, blank=True, default="0")

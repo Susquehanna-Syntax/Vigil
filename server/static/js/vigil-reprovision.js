@@ -68,7 +68,8 @@ async function openRebuildModal(hostId, hostname) {
   const ready = images.filter((i) => i.status === 'ready');
   if (!ready.length) {
     m.setBody('<h3>Rebuild host</h3>' +
-      '<p class="muted">No images are ready. Add one under Settings → OS Images.</p>' +
+      '<p class="muted">No images are ready. Pull or upload one under '
+      + 'Reprovision → Add an image.</p>' +
       '<div class="modal-actions"><button class="btn btn-outline" id="rb-cancel">Close</button></div>');
     document.getElementById('rb-cancel').onclick = m.close;
     return;
@@ -436,12 +437,7 @@ function _reproImageRow(img) {
   // still goes in as textContent below, because it is operator-supplied on the
   // custom-URL path.
   try {
-    const doc = new DOMParser().parseFromString(osLogo(img.name || ''), 'image/svg+xml');
-    const mark = doc.documentElement;
-    if (mark && mark.nodeName !== 'parsererror') {
-      mark.setAttribute('class', 'os-logo');
-      nameTd.appendChild(document.adoptNode(mark));
-    }
+    nameTd.appendChild(osLogoNode(img.name || ''));
   } catch (e) { /* a missing mark is cosmetic — never block the row on it */ }
   nameTd.appendChild(document.createTextNode(img.name || ''));
   tr.appendChild(nameTd);
@@ -579,11 +575,9 @@ function _reproCatalogCard(entry, existing) {
   const logo = document.createElement('div');
   logo.className = 'repro-cat-logo';
   // Name only, never the family: derivatives carry their parent's family, so
-  // appending it puts Ubuntu's logo on Linux Mint — osLogo tests 'ubuntu'
-  // before 'mint'. Every catalog name states its distro.
-  // The markup is built from a fixed set of literals keyed off the name; no
-  // operator input reaches it.
-  logo.innerHTML = osLogo(entry.name || '');
+  // appending it would put Ubuntu's logo on Linux Mint. Every catalog name
+  // states its own distro.
+  logo.appendChild(osLogoNode(entry.name || ''));
   card.appendChild(logo);
 
   const name = document.createElement('div');
@@ -1124,6 +1118,21 @@ function _reproStartPolling() {
 
 document.getElementById('repro-profile-new-btn')
   ?.addEventListener('click', () => _reproOpenProfile(null));
+
+// Start a rebuild without going to find the host card first. The ceremony
+// itself is unchanged — picking the host here only replaces the drawer as the
+// way in, and openRebuildModal still refuses a host that cannot be rebuilt.
+document.getElementById('repro-rebuild-btn')?.addEventListener('click', () => {
+  openPicker({
+    type: 'machine',
+    title: 'Which host should be rebuilt?',
+    allowAdd: false,
+    onSelect: (item) => {
+      closePicker();
+      openRebuildModal(item.key, item.name);
+    },
+  });
+});
 document.getElementById('repro-profile-save')
   ?.addEventListener('click', _reproSaveProfile);
 document.getElementById('repro-prof-netmode')

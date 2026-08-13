@@ -22,8 +22,7 @@ function openHostDetail(card) {
   const logoEl = document.getElementById('detail-os-logo');
   if (logoEl) {
     logoEl.replaceChildren();
-    const svgDoc = new DOMParser().parseFromString(osLogo(d.os), 'image/svg+xml');
-    logoEl.appendChild(document.adoptNode(svgDoc.documentElement));
+    logoEl.appendChild(osLogoNode(d.os));
   }
 
   const dot = document.getElementById('detail-status-dot');
@@ -630,13 +629,12 @@ async function refreshHostCards() {
 }
 
 // Inject OS logos into server-rendered host cards.
-// DOMParser in SVG mode is XSS-safe — scripts don't execute, and osLogo()
-// never interpolates user data into its SVG output strings.
+// osLogoNode() builds an <img> whose src comes from a fixed slug list, so
+// nothing here parses or interpolates the host-supplied OS string.
 function _injectOsLogos(root) {
   (root || document).querySelectorAll('.host-os-logo[data-os]').forEach(el => {
     if (el.firstChild) return;
-    const doc = new DOMParser().parseFromString(osLogo(el.dataset.os), 'image/svg+xml');
-    el.appendChild(document.adoptNode(doc.documentElement));
+    el.appendChild(osLogoNode(el.dataset.os));
   });
 }
 _injectOsLogos();
