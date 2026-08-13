@@ -463,6 +463,40 @@ def _recreate_container(params: dict, _config: AgentConfig) -> str:
     )
 
 
+def _tag_names(params: dict) -> list[str]:
+    """The tags named by an add_tag/remove_tag step.
+
+    Accepts a list or a comma-separated string so a hand-written YAML
+    definition can say either.
+    """
+    raw = params.get("tags", "")
+    if isinstance(raw, str):
+        raw = raw.split(",")
+    return [str(t).strip() for t in (raw or []) if str(t).strip()]
+
+
+def _add_tag(params: dict, _config: AgentConfig) -> str:
+    """Emit a marker so the server tags this host.
+
+    No work happens here: tags are server-side metadata about the host, not
+    state on it. The server applies the tags recorded in the signed task, so
+    what lands is what an operator authorized — this output is a report, not
+    an instruction.
+    """
+    tags = _tag_names(params)
+    if not tags:
+        raise ValueError("add_tag needs at least one tag")
+    return f"Tag requested: {', '.join(tags)} — server will apply"
+
+
+def _remove_tag(params: dict, _config: AgentConfig) -> str:
+    """Emit a marker so the server untags this host. See _add_tag."""
+    tags = _tag_names(params)
+    if not tags:
+        raise ValueError("remove_tag needs at least one tag")
+    return f"Tag removal requested: {', '.join(tags)} — server will apply"
+
+
 def _request_nessus_scan(_params: dict, _config: AgentConfig) -> str:
     """Emit a marker so the server records a Nessus scan request.
 
@@ -1460,6 +1494,8 @@ _HANDLERS: dict[str, callable] = {
     "pull_image": _pull_image,
     "recreate_container": _recreate_container,
     "check_docker_updates": _check_docker_updates,
+    "add_tag": _add_tag,
+    "remove_tag": _remove_tag,
     "request_nessus_scan": _request_nessus_scan,
     "request_network_scan": _request_network_scan,
     "run_trivy_scan": _run_trivy_scan,

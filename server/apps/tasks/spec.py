@@ -371,6 +371,34 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "optional": [],
     },
     # ── Vulnerability scanning ─────────────────────────────────────────────
+    # ── Host tagging ────────────────────────────────────────────────────────
+    #
+    # Tags live on the server, not the host, so these are marker actions in
+    # the same shape as request_nessus_scan: the agent reports the step, and
+    # the server applies the change on completion.
+    #
+    # The tags come from the task the SERVER stored and signed, never from
+    # what the agent sends back. A compromised agent can therefore only claim
+    # success on a tag an operator already authorized in the definition — it
+    # cannot choose the tag. That is why this can be low risk while the
+    # ``agent:`` namespace stays reserved for tags an agent asserts about
+    # itself at check-in.
+    #
+    # Sending them through the agent rather than applying them at dispatch is
+    # what makes them conditional: a ``when`` predicate is evaluated on the
+    # host, so "tag it role:docker if Docker is actually installed" works.
+    "add_tag": {
+        "label": "Add host tag",
+        "risk": "low",
+        "required": ["tags"],
+        "optional": [],
+    },
+    "remove_tag": {
+        "label": "Remove host tag",
+        "risk": "low",
+        "required": ["tags"],
+        "optional": [],
+    },
     # The agent emits a "please scan me" marker; the server picks it up
     # on task completion and creates a VulnScan(requested). The actual
     # scan is launched by the central Nessus instance, not the agent.
@@ -528,6 +556,37 @@ def _validate_inputs(raw_inputs: Any) -> list[dict[str, Any]]:
         })
 
     return canonical
+
+
+def _validate_tag_param(raw: Any, position: int, action_type: str) -> None:
+    """Check the ``tags`` param of an add_tag/remove_tag action.
+
+    Comma-separated, not a list: every param value has to be a primitive so
+    the signed payload stays flat (see the primitive check in
+    parse_and_validate).
+
+    A value containing ``{{ inputs.x }}`` cannot be judged here — it is
+    resolved per deploy. The server re-checks the reserved prefix when it
+    actually applies the tags, which is what covers that case.
+    """
+    if not isinstance(raw, str):
+        raise SpecError(
+            f"action #{position} ({action_type}): 'tags' must be a "
+            f"comma-separated string, not {type(raw).__name__}")
+    names = [t.strip() for t in raw.split(",") if t.strip()]
+    if not names:
+        raise SpecError(
+            f"action #{position} ({action_type}): 'tags' names no tags")
+    for name in names:
+        if name.startswith("agent:"):
+            raise SpecError(
+                f"action #{position} ({action_type}): the 'agent:' tag "
+                f"namespace is reserved for tags an agent advertises about "
+                f"itself")
+        if len(name) > 40:
+            raise SpecError(
+                f"action #{position} ({action_type}): tag {name!r} is longer "
+                f"than 40 characters")
 
 
 def _validate_schedule(raw: Any) -> dict[str, Any] | None:
@@ -920,6 +979,9 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                 raise SpecError(
                     f"action #{index + 1} ({action_type}) missing required param {required!r}"
                 )
+
+        if action_type in ("add_tag", "remove_tag"):
+            _validate_tag_param(params.get("tags", ""), index + 1, action_type)
 
         allowed = set(spec["required"]) | set(spec["optional"])
         extra = set(params) - allowed
