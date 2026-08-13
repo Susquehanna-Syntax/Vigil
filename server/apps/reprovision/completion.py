@@ -9,6 +9,31 @@ from .models import RebuildJob
 logger = logging.getLogger("vigil.reprovision")
 
 
+def _apply_completion_tags(job, host) -> None:
+    """Tag the rebuilt host: the profile's standing tags, then this job's
+    one-off, in that order and without duplicates.
+
+    ``agent:*`` is reserved for agent-advertised tags so a rogue agent cannot
+    impersonate operator-set ones. Both entry points reject it too; this
+    writes straight to the host, so it does not rely on either.
+    """
+    profile = job.profile
+    candidates = list(getattr(profile, "completion_tags", None) or [])
+    candidates.append(job.completion_tag or "")
+
+    existing = list(host.tags or [])
+    added = []
+    for candidate in candidates:
+        tag = str(candidate).strip()
+        if not tag or tag.startswith("agent:"):
+            continue
+        if tag not in existing and tag not in added:
+            added.append(tag)
+    if added:
+        host.tags = existing + added
+        host.save(update_fields=["tags"])
+
+
 def complete_if_rebuilding(host):
     """Finish the rebuild if this check-in is the one we were waiting for.
 
@@ -22,14 +47,7 @@ def complete_if_rebuilding(host):
     if job is None:
         return None
 
-    tag = (job.completion_tag or "").strip()
-    if tag and not tag.startswith("agent:"):
-        # agent:* is reserved for agent-advertised tags so a rogue agent
-        # cannot impersonate operator-set ones. The API rejects it too; this
-        # writes straight to the host, so it does not rely on that.
-        if tag not in host.tags:
-            host.tags = list(host.tags) + [tag]
-            host.save(update_fields=["tags"])
+    _apply_completion_tags(job, host)
 
     if job.post_baseline is not None:
         try:

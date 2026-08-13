@@ -90,6 +90,15 @@ class InstallProfile(models.Model):
     ssh_authorized_keys = models.TextField(blank=True)
     extra_packages = models.JSONField(default=list, blank=True)
     raw_append = models.TextField(blank=True)
+    # Tags applied to the host once a rebuild using this profile finishes and
+    # the machine checks back in. RebuildJob.completion_tag is the one-off
+    # equivalent typed into a single ceremony; this is the standing one, so
+    # "every box built from this profile is role:web" is stated once.
+    #
+    # Read at completion rather than snapshotted onto the job, matching how
+    # post_baseline already behaves: editing the profile mid-rebuild changes
+    # what lands. The window is one rebuild and the effect is a tag.
+    completion_tags = models.JSONField(default=list, blank=True)
     deadline_minutes = models.IntegerField(default=60)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True,
                                    on_delete=models.SET_NULL,
