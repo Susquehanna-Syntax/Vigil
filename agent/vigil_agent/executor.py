@@ -1134,6 +1134,67 @@ def _list_firewall_rules(_params: dict, _config: AgentConfig) -> str:
     return json.dumps(snapshot)
 
 
+# ── Windows Update ────────────────────────────────────────────────────────
+
+
+def _windows_update_scan(params: dict, _config: AgentConfig) -> str:
+    """Return pending Windows updates as JSON, filtered by the optional
+    ``classifications`` / ``include_kb`` / ``exclude_kb`` / ``severity_floor``
+    params (the same filters the install action applies)."""
+    from . import windows_update
+
+    backend = windows_update.detect()
+    if backend is None:
+        raise ValueError("windows_update_scan is only supported on Windows")
+    updates = windows_update.filter_updates(
+        backend.scan(),
+        classifications=params.get("classifications"),
+        include_kb=params.get("include_kb"),
+        exclude_kb=params.get("exclude_kb"),
+        severity_floor=params.get("severity_floor"),
+    )
+    return json.dumps({
+        "supported": True,
+        "count": len(updates),
+        "updates": updates,
+    })
+
+
+def _windows_update_install(params: dict, _config: AgentConfig) -> str:
+    """Install the pending Windows updates that survive the filter params.
+
+    Never reboots: the result reports ``reboot_required`` and the agent stops
+    there. ``reboot`` is a separate action; an install action that reboots a
+    machine is the failure this milestone exists to prevent.
+    """
+    from . import windows_update
+
+    backend = windows_update.detect()
+    if backend is None:
+        raise ValueError("windows_update_install is only supported on Windows")
+    updates = windows_update.filter_updates(
+        backend.scan(),
+        classifications=params.get("classifications"),
+        include_kb=params.get("include_kb"),
+        exclude_kb=params.get("exclude_kb"),
+        severity_floor=params.get("severity_floor"),
+    )
+    # Install() on an empty collection throws a COM error that reads like a
+    # real failure, so an empty filter result is reported, not installed.
+    if not updates:
+        return json.dumps({
+            "supported": True,
+            "result_code": windows_update.RESULT_NOT_STARTED,
+            "reboot_required": False,
+            "installed": [],
+            "failed": [],
+            "detail": "no updates matched the filter; nothing installed",
+        })
+    result = backend.install([u["update_id"] for u in updates])
+    result["supported"] = True
+    return json.dumps(result)
+
+
 # ── User management ────────────────────────────────────────────────────────
 
 
@@ -1529,6 +1590,9 @@ _HANDLERS: dict[str, callable] = {
     "set_firewall_policy": _set_firewall_policy,
     "enable_firewall": _enable_firewall,
     "disable_firewall": _disable_firewall,
+    # Windows Update
+    "windows_update_scan": _windows_update_scan,
+    "windows_update_install": _windows_update_install,
     # User management
     "create_user": _create_user,
     "delete_user": _delete_user,

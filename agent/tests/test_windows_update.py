@@ -8,10 +8,12 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from vigil_agent import windows_update
+from vigil_agent import executor, windows_update
+from vigil_agent.config import AgentConfig, _ALL_ACTIONS
 from vigil_agent.windows_update import (
     RESULT_SUCCEEDED,
     filter_updates,
@@ -321,6 +323,114 @@ class InstallTests(unittest.TestCase):
             sorted(result.keys()),
             sorted(["result_code", "reboot_required", "installed", "failed",
                     "detail"]))
+
+
+class ExecutorHandlerTests(unittest.TestCase):
+    """The wiring that turns the module into actions. The allowlist test is
+    the one that catches the silent half-working state: a managed-mode agent
+    rejects an action full_control accepts if the name is missing from
+    _ALL_ACTIONS."""
+
+    @staticmethod
+    def _config():
+        return AgentConfig(server_url="https://vigil.example.com",
+                           agent_token="t", mode="full_control")
+
+    def test_scan_handler_refuses_off_windows(self):
+        with patch.object(windows_update, "detect", return_value=None):
+            with self.assertRaises(ValueError) as ctx:
+                executor._windows_update_scan({}, self._config())
+        self.assertIn("Windows", str(ctx.exception))
+
+    def test_install_handler_refuses_off_windows(self):
+        with patch.object(windows_update, "detect", return_value=None):
+            with self.assertRaises(ValueError) as ctx:
+                executor._windows_update_install({}, self._config())
+        self.assertIn("Windows", str(ctx.exception))
+
+    def test_install_handler_skips_install_when_filter_empties(self):
+        class FakeBackend:
+            def scan(self, criteria_extra=""):
+                return [
+                    {"update_id": "1", "title": "Security update",
+                     "kb": "KB1", "severity": "critical",
+                     "categories": ["Security Updates"],
+                     "reboot_required": True, "is_downloaded": False,
+                     "is_mandatory": True},
+                ]
+
+            def install(self, update_ids):
+                self.installed = list(update_ids)
+                return {"result_code": RESULT_SUCCEEDED,
+                        "reboot_required": True, "installed": update_ids,
+                        "failed": [], "detail": "succeeded"}
+
+        backend = FakeBackend()
+        with patch.object(windows_update, "detect", return_value=backend):
+            out = executor._windows_update_install(
+                {"include_kb": ["KB9999999"]}, self._config())
+        data = json.loads(out)
+        self.assertFalse(hasattr(backend, "installed"),
+                         "install must not be called when the filter leaves "
+                         "zero updates")
+        self.assertEqual(data["installed"], [])
+        self.assertEqual(data["failed"], [])
+        self.assertIn("nothing installed", data["detail"])
+
+    def test_scan_handler_filters_and_reports(self):
+        updates = [
+            {"update_id": "1", "title": "Critical update", "kb": "KB1",
+             "severity": "critical", "categories": ["Security Updates"],
+             "reboot_required": False, "is_downloaded": True,
+             "is_mandatory": True},
+            {"update_id": "2", "title": "Low update", "kb": "KB2",
+             "severity": "low", "categories": ["Updates"],
+             "reboot_required": False, "is_downloaded": False,
+             "is_mandatory": False},
+        ]
+
+        class FakeBackend:
+            def scan(self, criteria_extra=""):
+                return list(updates)
+
+        with patch.object(windows_update, "detect", return_value=FakeBackend()):
+            out = executor._windows_update_scan(
+                {"severity_floor": "important"}, self._config())
+        data = json.loads(out)
+        self.assertTrue(data["supported"])
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["updates"][0]["update_id"], "1")
+
+    def test_install_handler_reports_reboot_without_rebooting(self):
+        class FakeBackend:
+            def scan(self, criteria_extra=""):
+                return [
+                    {"update_id": "1", "title": "Update", "kb": "KB1",
+                     "severity": "critical", "categories": [],
+                     "reboot_required": True, "is_downloaded": True,
+                     "is_mandatory": True},
+                ]
+
+            def install(self, update_ids):
+                return {"result_code": RESULT_SUCCEEDED,
+                        "reboot_required": True, "installed": list(update_ids),
+                        "failed": [], "detail": "succeeded"}
+
+        backend = FakeBackend()
+        with patch.object(windows_update, "detect", return_value=backend):
+            out = executor._windows_update_install({}, self._config())
+        data = json.loads(out)
+        self.assertTrue(data["reboot_required"])
+        self.assertEqual(data["installed"], ["1"])
+        json.dumps(data)
+
+    def test_handlers_registered(self):
+        self.assertIn("windows_update_scan", executor._HANDLERS)
+        self.assertIn("windows_update_install", executor._HANDLERS)
+
+    def test_actions_are_allowlistable(self):
+        self.assertIn("windows_update_scan", _ALL_ACTIONS)
+        self.assertIn("windows_update_install", _ALL_ACTIONS)
 
 
 if __name__ == "__main__":
