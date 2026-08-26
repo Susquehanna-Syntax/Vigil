@@ -2051,6 +2051,12 @@
 <span class="hl-var">description</span>: <span class="hl-string">Restart nginx, then curl /health.</span>
 <span class="hl-var">relevance</span>: <span class="hl-string">web servers</span>                    <span class="hl-comment"># optional — what hosts this fits</span>
 <span class="hl-var">risk</span>: <span class="hl-string">standard</span>                              <span class="hl-comment"># low | standard | high</span>
+<span class="hl-var">cves</span>:                                     <span class="hl-comment"># optional — CVE ids this task remediates</span>
+  - <span class="hl-string">CVE-2024-3094</span>
+<span class="hl-var">references</span>:                                  <span class="hl-comment"># optional — absolute http(s) advisory URLs</span>
+  - <span class="hl-string">https://nvd.nist.gov/vuln/detail/CVE-2024-3094</span>
+<span class="hl-var">platforms</span>:                                  <span class="hl-comment"># optional — linux | windows | darwin</span>
+  - <span class="hl-string">linux</span>
 <span class="hl-var">actions</span>:                                    <span class="hl-comment"># non-empty list of steps</span>
   - <span class="hl-var">id</span>: <span class="hl-string">bounce</span>
     <span class="hl-var">type</span>: <span class="hl-string">restart_service</span>
