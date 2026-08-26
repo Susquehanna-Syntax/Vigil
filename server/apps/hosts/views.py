@@ -27,6 +27,7 @@ from .serializers import (
     HostSerializer,
     UnmanagedDeviceSerializer,
 )
+from .versions import version_at_least
 
 _MAX_TOKEN_LEN = 255
 _MAX_HOSTNAME_LEN = 255
@@ -199,6 +200,52 @@ def register(request):
     )
 
 
+#: Reboot actions that an agent older than 2026.9.0 cannot honour — it
+#: drops these params and runs ``shutdown -r now`` instead.
+_REBOOT_GATED_PARAMS = {"notify", "defer_limit", "defer_minutes"}
+_REBOOT_MIN_AGENT_VERSION = "2026.9.0"
+
+
+def _refuse_outdated_reboot(host: Host) -> None:
+    """Fail every pending deferral-bearing reboot for a too-old agent.
+
+    Refusing is the only safe option: a 2026.8.0 agent drops
+    ``defer_limit``/``defer_minutes``/``notify`` and reboots immediately,
+    mid-call. A plain reboot (none of those params) is unaffected.
+    """
+    if version_at_least(host.agent_version, _REBOOT_MIN_AGENT_VERSION):
+        return
+    for task in Task.objects.filter(host=host, state=Task.State.PENDING):
+        params = task.params or {}
+        actions = ([task.action] if task.action else []) + [
+            step.get("action") for step in params.get("steps") or []
+            if isinstance(step, dict)
+        ]
+        if "reboot" not in actions:
+            continue
+        gated = {
+            key
+            for action_params in ([params] if task.action == "reboot" else [])
+            + [s.get("params") or {} for s in params.get("steps") or []
+               if isinstance(s, dict) and s.get("action") == "reboot"]
+            for key in action_params
+            if key in _REBOOT_GATED_PARAMS
+        }
+        if not gated:
+            continue
+        task.state = Task.State.FAILED
+        task.result_output = (
+            f"Refused: agent version {host.agent_version or '(unknown)'} cannot "
+            f"honour reboot {', '.join(sorted(gated))} — agent "
+            f"{_REBOOT_MIN_AGENT_VERSION} or newer is required"
+        )
+        task.completed_at = now()
+        task.save(update_fields=["state", "result_output", "completed_at"])
+        if task.run_id:
+            from apps.tasks.views import _advance_run_sequence
+            _advance_run_sequence(task)
+
+
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def checkin(request):
@@ -233,6 +280,11 @@ def checkin(request):
 
     if agent_ver := data.get("vigil_version"):
         host.agent_version = str(agent_ver)[:50]
+
+    # reboot_required: an ABSENT key means the agent is too old to report
+    # it — leave the stored value alone. An explicit False does write.
+    if data.get("reboot_required") is not None:
+        host.reboot_required = bool(data["reboot_required"])
 
     # Merge tags advertised by the agent.yml — namespaced under agent:*
     # so a rogue agent can't impersonate operator-set tags used for
@@ -380,6 +432,14 @@ def checkin(request):
     eligible: list[Task] = []
     candidates = list(Task.objects.filter(host=host, state=Task.State.PENDING))
     if candidates:
+        # Safety gate before the window check: a deferral-bearing reboot must
+        # never reach an agent too old to honour it. Refused tasks fail now;
+        # everything else follows the normal not_before / window path.
+        _refuse_outdated_reboot(host)
+        # Re-query: the gate saved state on its own queryset, and the
+        # in-memory candidates above are stale copies the bulk DISPATCHED
+        # update below would resurrect.
+        candidates = list(Task.objects.filter(host=host, state=Task.State.PENDING))
         weekday = _local.weekday()
         hour = _local.hour
         minute = _local.minute

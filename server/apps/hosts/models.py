@@ -30,6 +30,10 @@ class Host(models.Model):
     # the first one pages everyone and teaches people to ignore the alerts.
     # Set by RebuildJob entering REBOOTING, cleared on every terminal state.
     maintenance_until = models.DateTimeField(null=True, blank=True)
+    # Agent-reported "a reboot is pending" (e.g. after installing updates).
+    # An absent check-in field means the agent is too old to report it, so
+    # the checkin ingest only writes this when the key is present.
+    reboot_required = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
