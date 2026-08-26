@@ -249,7 +249,8 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "label": "Reboot host",
         "risk": "high",
         "required": [],
-        "optional": ["delay_seconds"],
+        "optional": ["delay_seconds", "notify", "notify_message",
+                     "defer_limit", "defer_minutes"],
     },
     "run_command": {
         "label": "Run shell command",
