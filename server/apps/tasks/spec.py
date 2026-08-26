@@ -219,6 +219,19 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": [],
         "optional": ["security_only"],
     },
+    # ── Windows Update ──────────────────────────────────────────────────────
+    "windows_update_scan": {
+        "label": "Scan for Windows updates",
+        "risk": "low",
+        "required": [],
+        "optional": ["classifications", "include_kb", "exclude_kb", "severity_floor"],
+    },
+    "windows_update_install": {
+        "label": "Install Windows updates",
+        "risk": "standard",
+        "required": [],
+        "optional": ["classifications", "include_kb", "exclude_kb", "severity_floor"],
+    },
     # ── System ──────────────────────────────────────────────────────────────
     "clear_temp_files": {
         "label": "Clear /tmp",

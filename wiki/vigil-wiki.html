@@ -2110,6 +2110,9 @@
             <tr><td><code>remove_package</code></td><td><span class="risk risk-std">standard</span></td><td><code>package_name</code></td><td>Remove package</td></tr>
             <tr><td><code>update_package</code></td><td><span class="risk risk-std">standard</span></td><td><code>package_name</code></td><td>Update package</td></tr>
             <tr><td><code>run_package_updates</code></td><td><span class="risk risk-std">standard</span></td><td>—</td><td>Run system updates — optional: <code>security_only</code></td></tr>
+            <tr class="group-row"><td colspan="4"><strong>Windows Update</strong></td></tr>
+            <tr><td><code>windows_update_scan</code></td><td><span class="risk risk-low">low</span></td><td>—</td><td>Scan for Windows updates — optional: <code>classifications</code>, <code>include_kb</code>, <code>exclude_kb</code>, <code>severity_floor</code></td></tr>
+            <tr><td><code>windows_update_install</code></td><td><span class="risk risk-std">standard</span></td><td>—</td><td>Install Windows updates — optional: <code>classifications</code>, <code>include_kb</code>, <code>exclude_kb</code>, <code>severity_floor</code></td></tr>
             <tr class="group-row"><td colspan="4"><strong>System</strong></td></tr>
             <tr><td><code>clear_temp_files</code></td><td><span class="risk risk-low">low</span></td><td>—</td><td>Clear /tmp — optional: <code>older_than_days</code></td></tr>
             <tr><td><code>execute_script</code></td><td><span class="risk risk-high">high</span></td><td><code>script_name</code></td><td>Execute allowlisted script</td></tr>
