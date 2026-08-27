@@ -213,6 +213,10 @@ class EscalationCurveTests(TestCase):
         for earlier, later in zip(values, values[1:]):
             self.assertLessEqual(earlier, later)
 
+    def test_curve_handles_none(self):
+        """No due date (info findings, pre-backfill rows) scores at base."""
+        self.assertEqual(escalation_multiplier(None), 1.0)
+
 
 class KevLoaderTests(TestCase):
     def test_load_bundled_reads_the_real_catalogue(self):
