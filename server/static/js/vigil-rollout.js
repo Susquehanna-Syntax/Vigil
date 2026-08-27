@@ -96,18 +96,40 @@ async function refreshRollouts() {
   try {
     const items = await apiJson('/api/v1/rollouts/');
     _rolloutState.items = items;
-    if (!items.length) {
-      box.innerHTML = `<div class="empty-state" style="padding:28px;">
-        <div class="empty-state-title">No rollouts yet</div>
-        <div style="color:var(--text-3);font-size:12px;margin-top:6px;">Start one from a task definition — it fans out wave by wave and halts itself on failure.</div>
-      </div>`;
-    } else {
-      box.innerHTML = items.map(_rolloutCard).join('');
-    }
+    _renderRollouts();
   } catch (e) {
     box.innerHTML = `<div class="empty-state" style="padding:28px;"><div class="empty-state-title">Failed to load rollouts: ${escHtml(e.message)}</div></div>`;
   }
   _scheduleRolloutPolling();
+}
+
+// Search filters what is already loaded rather than refetching — the list is
+// small and a round-trip per keystroke would fight the 5s poll.
+function _filterRollouts() {
+  const q = (document.getElementById('rollout-search')?.value || '').trim().toLowerCase();
+  if (!q) return _rolloutState.items;
+  return _rolloutState.items.filter(r =>
+    (r.definition_name || '').toLowerCase().includes(q) ||
+    (r.state || '').toLowerCase().includes(q) ||
+    (r.current_wave_name || '').toLowerCase().includes(q) ||
+    (r.waves || []).some(w => (w.name || '').toLowerCase().includes(q) ||
+                              (w.tags || []).some(t => (t || '').toLowerCase().includes(q))));
+}
+
+function _renderRollouts() {
+  const box = document.getElementById('rollout-list');
+  if (!box) return;
+  const items = _filterRollouts();
+  {
+    if (!items.length) {
+      box.innerHTML = `<div class="empty-state" style="padding:28px;">
+        <div class="empty-state-title">${_rolloutState.items.length ? 'No rollouts match that search' : 'No rollouts yet'}</div>
+        <div style="color:var(--text-3);font-size:12px;margin-top:6px;">${_rolloutState.items.length ? 'Clear the search to see them all.' : 'Start one from a task definition — it fans out wave by wave and halts itself on failure.'}</div>
+      </div>`;
+    } else {
+      box.innerHTML = items.map(_rolloutCard).join('');
+    }
+  }
 }
 
 function _rolloutsTabVisible() {
@@ -265,6 +287,8 @@ async function confirmRolloutAction() {
 // Refresh when the Rollouts sub-tab opens, and on navigation to Deployments.
 // Both live on the baselines page now — the sidebar entry is labelled
 // "Deployments" but its data-page is still `baselines`.
+document.getElementById('rollout-search')?.addEventListener('input', _renderRollouts);
+
 document.querySelectorAll('.sub-tab[data-subtab]').forEach(tab => {
   tab.addEventListener('click', () => {
     if (tab.dataset.subtab === 'rollout-panel') refreshRollouts();
