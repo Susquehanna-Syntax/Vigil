@@ -66,11 +66,42 @@ def _validate_definition(definition) -> dict:
         raise ValueError(f"definition {definition.name!r} cannot roll out: {exc}") from exc
 
 
+def _baseline_spec(baseline) -> dict:
+    """A one-action spec that expands into the baseline's steps.
+
+    `expand_actions` already inlines a `type: baseline` action, with cycle
+    detection and a depth limit, so rolling out a baseline needs no separate
+    expansion path — it reuses the same composition the task editor uses.
+    """
+    return {
+        "name": baseline.name,
+        "risk": "high" if baseline.allow_high_risk else "standard",
+        "actions": [{"type": "baseline", "params": {"name": baseline.name}}],
+    }
+
+
+def rollout_spec(rollout) -> dict:
+    """Re-derive the spec for a rollout, whichever target it carries.
+
+    Called on every wave advance, not just at start — a baseline rollout has no
+    `definition`, so anything that reaches for `rollout.definition` directly
+    breaks on wave 2 rather than wave 1, which is a nasty place to find out.
+    """
+    if rollout.action_kind == PatchRollout.ActionKind.BASELINE:
+        if rollout.baseline is None:
+            raise ValueError("rollout's baseline no longer exists")
+        return _baseline_spec(rollout.baseline)
+    if rollout.definition is None:
+        raise ValueError("rollout's task definition no longer exists")
+    return _validate_definition(rollout.definition)
+
+
 def start_rollout(
-    definition,
+    definition=None,
     user=None,
     failure_threshold_pct: int = 10,
     min_results_before_halt: int = 3,
+    baseline=None,
 ) -> PatchRollout:
     """Create a rollout and dispatch its first wave.
 
@@ -84,11 +115,22 @@ def start_rollout(
         raise ValueError("min_results_before_halt must be at least 1")
     if _first_enabled_wave() is None:
         raise ValueError("no enabled patch waves")
-    spec = _validate_definition(definition)
+    if (definition is None) == (baseline is None):
+        raise ValueError("a rollout needs exactly one of a definition or a baseline")
+
+    if baseline is not None:
+        if not baseline.enabled:
+            raise ValueError(f"baseline {baseline.name!r} is disabled")
+        spec = _baseline_spec(baseline)
+    else:
+        spec = _validate_definition(definition)
 
     ts = _now()
     rollout = PatchRollout.objects.create(
         definition=definition,
+        baseline=baseline,
+        action_kind=(PatchRollout.ActionKind.BASELINE if baseline is not None
+                     else PatchRollout.ActionKind.TASK),
         state=PatchRollout.State.RUNNING,
         current_wave=_first_enabled_wave(),
         failure_threshold_pct=failure_threshold_pct,
@@ -150,8 +192,8 @@ def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
     retry_delay = int(retry_cfg.get("delay_seconds", 0))
 
     run = TaskRun.objects.create(
-        definition=rollout.definition,
-        name_snapshot=rollout.definition.name,
+        definition=rollout.definition,   # None for a baseline rollout
+        name_snapshot=rollout.target_name,
         requested_by=rollout.created_by,
         rollout=rollout,
         wave=rollout.current_wave,
@@ -165,7 +207,7 @@ def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
             requested_by=rollout.created_by,
             run=run,
             step_order=0,
-            step_label=rollout.definition.name,
+            step_label=rollout.target_name,
             action="_script",
             params={"steps": steps_payload,
                     "variables": spec.get("resolved_inputs") or {}},
@@ -269,7 +311,7 @@ def _evaluate_locked(rollout: PatchRollout) -> None:
     rollout.state = PatchRollout.State.RUNNING
     rollout.save(update_fields=["current_wave", "wave_started_at", "state"])
     try:
-        spec = _validate_definition(rollout.definition)
+        spec = rollout_spec(rollout)
         _dispatch_wave(rollout, spec)
     except ValueError as exc:
         # The definition was valid at start; a failure here means the

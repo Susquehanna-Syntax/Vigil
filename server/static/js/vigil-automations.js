@@ -233,6 +233,7 @@ function _openAutoEditor(a) {
   set('auto-action-task', a && a.task_definition ? a.task_definition : '');
   set('auto-action-baseline', a ? a.baseline_name : '');
   set('auto-target', a ? a.target : 'event_host');
+  set('auto-dispatch-mode', a ? (a.dispatch_mode || 'direct') : 'direct');
   set('auto-target-tags', a ? (a.target_tags || []).join(', ') : '');
   set('auto-target-host', a && a.target_host ? a.target_host : '');
   _autoParamsOverride = (a && a.params_override) || {};
@@ -286,6 +287,7 @@ async function _saveAutomation() {
     task_definition: v('auto-action-task') || null,
     baseline_name: v('auto-action-baseline'),
     target: v('auto-target'),
+    dispatch_mode: v('auto-dispatch-mode'),
     target_tags: v('auto-target-tags').split(',').map(s => s.trim()).filter(Boolean),
     target_host: v('auto-target-host') || null,
     params_override: _autoParamsOverride,
@@ -333,4 +335,14 @@ document.addEventListener('DOMContentLoaded', () => {
     openInputsModal({ def, override: _autoParamsOverride,
       onSave: (ov) => { _autoParamsOverride = ov; } });
   });
+});
+
+
+document.addEventListener('DOMContentLoaded', () => {
+  const mode = document.getElementById('auto-dispatch-mode');
+  const note = document.getElementById('auto-dispatch-hint');
+  if (!mode || !note) return;
+  const sync = () => { note.hidden = mode.value !== 'rollout'; };
+  mode.addEventListener('change', sync);
+  sync();
 });

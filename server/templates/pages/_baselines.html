@@ -42,7 +42,7 @@
                placeholder="Search rollouts by definition, wave, or state…">
         <span class="field-hint" tabindex="0" aria-label="How rollouts work"
               data-hint="Patch a few machines first, then the rest. Each wave is a group of hosts, matched by tag, and waves run in order.&#10;&#10;After a wave finishes, the rollout waits out that wave's validation window before starting the next — time for a bad update to show itself. If too many hosts in a wave fail, it stops there and waits for you.&#10;&#10;A host in two waves is patched once, in the earlier one. A host in no wave is never patched.">?</span>
-        <button class="btn btn-sky" onclick="openRolloutStart()">Start rollout</button>
+        <button class="btn btn-mint" onclick="openRolloutStart()">New rollout</button>
       </div>
       <div id="rollout-list" style="display:flex;flex-direction:column;gap:10px;">
         <div class="empty-state"><div class="empty-state-title">Loading…</div></div>
@@ -225,6 +225,20 @@
       <input type="text" class="form-control" id="auto-target-tags" placeholder="role:backup" hidden>
       <button class="btn btn-outline picker-btn" id="auto-target-host-btn" type="button" hidden><span id="auto-target-host-label">Choose a host…</span></button>
       <input type="hidden" id="auto-target-host">
+    </div>
+  </div>
+  <div class="bl-field">
+    <label>How</label>
+    <div class="auto-when">
+      <select class="form-control" id="auto-dispatch-mode">
+        <option value="direct">All at once</option>
+        <option value="rollout">Wave by wave</option>
+      </select>
+      <span class="field-hint" tabindex="0" aria-label="Dispatch modes"
+            data-hint="All at once sends the work to every host matched by the target above.&#10;&#10;Wave by wave hands it to the rollout machinery instead — a canary wave first, then wider, halting if too many fail. In this mode the waves decide which hosts get it, so the target above is ignored.">?</span>
+    </div>
+    <div class="confirm-hint" id="auto-dispatch-hint" style="margin-top:4px;" hidden>
+      Waves decide which hosts get this &mdash; the target above is ignored.
     </div>
   </div>
   <label class="setting-check"><input type="checkbox" id="auto-enabled" checked> Enabled</label>

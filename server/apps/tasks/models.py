@@ -251,9 +251,26 @@ class PatchRollout(models.Model):
         COMPLETED = "completed", "Completed"
         CANCELLED = "cancelled", "Cancelled"
 
+    class ActionKind(models.TextChoices):
+        TASK = "task", "Task definition"
+        BASELINE = "baseline", "Baseline"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # A rollout carries either a task definition or a baseline — the same
+    # either/or shape Automation already uses, so the two read alike. Both are
+    # nullable at the database level and the constraint below enforces exactly
+    # one, which keeps a deleted definition from silently turning a rollout
+    # into a no-op.
+    action_kind = models.CharField(
+        max_length=12, choices=ActionKind.choices, default=ActionKind.TASK)
     definition = models.ForeignKey(
-        TaskDefinition, on_delete=models.CASCADE, related_name="rollouts"
+        TaskDefinition, on_delete=models.CASCADE, related_name="rollouts",
+        null=True, blank=True,
+    )
+    baseline = models.ForeignKey(
+        "baselines.Baseline", on_delete=models.CASCADE, related_name="rollouts",
+        null=True, blank=True,
     )
     state = models.CharField(max_length=12, choices=State.choices, default=State.PENDING)
     current_wave = models.ForeignKey(
@@ -287,10 +304,31 @@ class PatchRollout(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                # Exactly one target. Both-or-neither would make `rollout_target`
+                # ambiguous and is never a legitimate state.
+                condition=(
+                    models.Q(definition__isnull=False, baseline__isnull=True)
+                    | models.Q(definition__isnull=True, baseline__isnull=False)
+                ),
+                name="rollout_has_exactly_one_target",
+            ),
+        ]
+
+    @property
+    def target(self):
+        """The definition or baseline this rollout runs, whichever is set."""
+        return self.baseline if self.action_kind == self.ActionKind.BASELINE else self.definition
+
+    @property
+    def target_name(self) -> str:
+        target = self.target
+        return target.name if target else "(deleted)"
 
     def __str__(self):
         wave = self.current_wave.name if self.current_wave else "?"
-        return f"rollout:{self.definition_id} @ {wave} ({self.state})"
+        return f"rollout:{self.target_name} @ {wave} ({self.state})"
 
 
 def wave_host_ids(wave) -> list:

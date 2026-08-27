@@ -73,7 +73,7 @@ function _rolloutCard(r) {
     : '';
   return `<div class="def-card" style="padding:14px 16px;">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      <strong>${escHtml(r.definition_name)}</strong>
+      <strong>${escHtml(r.target_name || r.definition_name || r.baseline_name || '(deleted)')}</strong>${r.action_kind === 'baseline' ? ' <span class="chip">baseline</span>' : ''}
       <span style="color:${color};font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;">${escHtml(r.state)}</span>
       ${r.current_wave_name ? `<span style="color:var(--text-3);font-size:12px;">wave: ${escHtml(r.current_wave_name)}</span>` : ''}
       <span style="color:var(--text-3);font-size:11px;margin-left:auto;">${escHtml(r.created_by_name || '')} · started ${_fmtTs(r.started_at)}</span>
@@ -109,7 +109,7 @@ function _filterRollouts() {
   const q = (document.getElementById('rollout-search')?.value || '').trim().toLowerCase();
   if (!q) return _rolloutState.items;
   return _rolloutState.items.filter(r =>
-    (r.definition_name || '').toLowerCase().includes(q) ||
+    (r.target_name || r.definition_name || r.baseline_name || '').toLowerCase().includes(q) ||
     (r.state || '').toLowerCase().includes(q) ||
     (r.current_wave_name || '').toLowerCase().includes(q) ||
     (r.waves || []).some(w => (w.name || '').toLowerCase().includes(q) ||
@@ -160,20 +160,36 @@ async function openRolloutStart() {
   if (!sel || !modal) return;
   sel.innerHTML = '<option>Loading…</option>';
   try {
-    const defs = await apiJson('/api/v1/tasks/definitions/?scope=mine');
-    if (!defs.length) {
-      sel.innerHTML = '<option value="">No definitions in your library</option>';
+    // A rollout can carry a task definition or a baseline. They go in one
+    // select under two optgroups rather than behind a kind-toggle, because the
+    // question an operator is answering is "what am I rolling out", not
+    // "which of our two internal types is it".
+    const [defs, baselines] = await Promise.all([
+      apiJson('/api/v1/tasks/definitions/?scope=mine'),
+      apiJson('/api/v1/baselines/').catch(() => []),
+    ]);
+    const bl = (Array.isArray(baselines) ? baselines : (baselines.baselines || []))
+      .filter(b => b.enabled !== false);
+    if (!defs.length && !bl.length) {
+      sel.innerHTML = '<option value="">Nothing to roll out yet</option>';
       sel.disabled = true;
     } else {
-      sel.innerHTML = defs.map(d =>
-        `<option value="${d.id}">${escHtml(d.name)}${d.risk ? ` · ${escHtml(d.risk)}` : ''}</option>`
+      const defOpts = defs.map(d =>
+        `<option value="task:${d.id}">${escHtml(d.name)}${d.risk ? ` · ${escHtml(d.risk)}` : ''}</option>`
       ).join('');
+      const blOpts = bl.map(b =>
+        `<option value="baseline:${b.id}">${escHtml(b.name)}${
+          b.steps ? ` · ${b.steps.length} step${b.steps.length === 1 ? '' : 's'}` : ''}</option>`
+      ).join('');
+      sel.innerHTML =
+        (defOpts ? `<optgroup label="Task definitions">${defOpts}</optgroup>` : '') +
+        (blOpts ? `<optgroup label="Baselines">${blOpts}</optgroup>` : '');
       sel.disabled = false;
     }
   } catch (e) {
     sel.innerHTML = '<option value="">Failed to load</option>';
     sel.disabled = true;
-    showToast('Failed to load definitions: ' + e.message, 'error');
+    showToast('Failed to load: ' + e.message, 'error');
   }
   document.getElementById('rollout-start-totp').value = '';
   document.getElementById('rollout-start-overlay').classList.add('open');
@@ -191,14 +207,18 @@ async function submitRolloutStart() {
   const threshold = parseInt(document.getElementById('rollout-start-threshold').value, 10);
   const minResults = parseInt(document.getElementById('rollout-start-min').value, 10);
   const btn = document.getElementById('rollout-start-submit');
-  if (!sel.value) { showToast('Pick a task definition first', 'error'); return; }
+  if (!sel.value) { showToast('Pick something to roll out first', 'error'); return; }
   if (!/^\d{6}$/.test(totp)) { showToast('Enter the 6-digit TOTP code', 'error'); return; }
   btn.disabled = true;
   try {
     const r = await apiJson('/api/v1/rollouts/', {
       method: 'POST',
+      // The option value is "task:<id>" or "baseline:<id>"; the API wants
+      // exactly one of the two id fields and rejects both or neither.
       body: JSON.stringify({
-        definition_id: sel.value,
+        ...(sel.value.startsWith('baseline:')
+          ? { baseline_id: sel.value.slice('baseline:'.length) }
+          : { definition_id: sel.value.replace(/^task:/, '') }),
         failure_threshold_pct: threshold,
         min_results_before_halt: minResults,
         totp,
@@ -229,7 +249,7 @@ function promptRolloutAction(btn, kind) {
   if (!modal || !overlay) return;
   const rolloutId = btn ? btn.dataset.rlt : null;
   const r = _rolloutState.items.find(x => x.id === rolloutId);
-  const name = r ? r.definition_name : 'the rollout';
+  const name = r ? (r.target_name || r.definition_name || r.baseline_name) : 'the rollout';
   const title = kind === 'halt' ? 'Halt rollout' : 'Resume rollout';
   const message = kind === 'halt'
     ? `Stop ${name} now? The current wave keeps running; nothing new is dispatched. An admin TOTP is required.`
@@ -301,4 +321,14 @@ navigateTo = function (pageName) {
 };
 document.addEventListener('DOMContentLoaded', () => {
   if (_rolloutsTabVisible()) refreshRollouts();
+});
+
+
+// Escape closes the modal, matching the deploy modal and host detail. Without
+// it the overlay stays up and swallows every click on the page behind it.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('rollout-start-modal')?.classList.contains('open')) {
+    closeRolloutStart();
+  }
 });

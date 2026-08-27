@@ -1162,16 +1162,26 @@ def _rollout_response(rollout: PatchRollout):
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def rollout_collection(request):
-    """GET — list rollouts. POST — start one from a definition.
+    """GET — list rollouts. POST — start one from a definition or a baseline.
 
-    TOTP-gated like a manual deploy — it fans a definition out across
-    the whole fleet, wave by wave.
+    TOTP-gated like a manual deploy — it fans the work out across the whole
+    fleet, wave by wave.
     """
     if request.method == "POST":
+        from apps.baselines.models import Baseline
+
         definition_id = request.data.get("definition_id")
-        if not definition_id:
-            return Response({"detail": "definition_id is required"}, status=400)
-        definition = get_object_or_404(TaskDefinition, pk=definition_id)
+        baseline_id = request.data.get("baseline_id")
+        if bool(definition_id) == bool(baseline_id):
+            return Response(
+                {"detail": "supply exactly one of definition_id or baseline_id"},
+                status=400,
+            )
+        definition = baseline = None
+        if definition_id:
+            definition = get_object_or_404(TaskDefinition, pk=definition_id)
+        else:
+            baseline = get_object_or_404(Baseline, pk=baseline_id)
         error = _verify_confirmation(request.user, request.data)
         if error:
             return Response({"detail": error}, status=401)
@@ -1179,6 +1189,7 @@ def rollout_collection(request):
         try:
             rollout = start_rollout(
                 definition,
+                baseline=baseline,
                 user=request.user,
                 failure_threshold_pct=int(request.data.get("failure_threshold_pct", 10)),
                 min_results_before_halt=int(request.data.get("min_results_before_halt", 3)),
