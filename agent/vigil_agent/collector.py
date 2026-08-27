@@ -11,6 +11,7 @@ import platform
 import re
 import shutil
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -153,6 +154,59 @@ def collect_all() -> list[dict]:
         except Exception:
             logger.exception("Collector %s failed", fn.__name__)
     return metrics
+
+
+# ── Reboot-required probe ───────────────────────────────────────────────────
+#
+# Reported in the check-in payload as ``reboot_required`` (bool) so the fleet
+# view can show which hosts are waiting on a reboot. This is metrics: a
+# detection failure must never be reported as "needs reboot" and must never
+# raise into the collector and break a check-in — any probe error means False.
+
+
+def _reboot_required_linux() -> bool:
+    if Path("/var/run/reboot-required").exists():
+        return True
+    try:
+        proc = subprocess.run(
+            ["dnf", "needs-restarting", "-r"],
+            capture_output=True, text=True, timeout=10, shell=False,
+        )
+        return proc.returncode != 0
+    except Exception:
+        return False
+
+
+def _reboot_required_windows() -> bool:
+    # winreg is stdlib on Windows only — import it lazily so the module
+    # still imports on Linux.
+    import winreg
+
+    keys = (
+        r"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
+        r"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired",
+    )
+    for key_path in keys:
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def reboot_required() -> bool:
+    if sys.platform == "win32":
+        try:
+            return _reboot_required_windows()
+        except Exception:
+            return False
+    if sys.platform == "darwin":
+        return False
+    try:
+        return _reboot_required_linux()
+    except Exception:
+        return False
 
 
 # ── Inventory collection ────────────────────────────────────────────────────

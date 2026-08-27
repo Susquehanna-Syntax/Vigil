@@ -50,6 +50,7 @@ def checkin(
     metrics: list[dict],
     inventory: dict | None = None,
     docker_containers: list[dict] | None = None,
+    reboot_required: bool | None = None,
 ) -> dict:
     """Send metrics and receive tasks. Returns the full server response."""
     payload = {
@@ -58,6 +59,11 @@ def checkin(
         "mode": config.mode,
         "metrics": metrics,
     }
+    # The ingest distinguishes an absent key (agent too old to report it —
+    # stored value left alone) from an explicit False, so the key is only
+    # sent when the probe produced a value.
+    if reboot_required is not None:
+        payload["reboot_required"] = reboot_required
     if config.tags:
         payload["tags"] = list(config.tags)
     if inventory:
