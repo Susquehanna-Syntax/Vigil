@@ -9,6 +9,7 @@
   <div class="sub-tabs">
     <div class="sub-tab t-lav active" data-subtab="bl-panel">Baselines</div>
     <div class="sub-tab t-sky" data-subtab="auto-panel">Automation</div>
+    <div class="sub-tab t-lem" data-subtab="wave-panel">Waves</div>
     <div class="sub-tab t-peach" data-subtab="rollout-panel">Rollouts</div>
     <div class="sub-tab t-mint" data-subtab="hist-panel">History</div>
   </div>
@@ -20,6 +21,18 @@
       <button class="btn btn-mint" id="bl-new-btn">New baseline</button>
     </div>
     <div id="baselines-list" class="bl-list"></div>
+  </div>
+
+  <!-- ── Waves panel (ordered, tag-matched host groups for rollouts) ──── -->
+  <div class="sub-panel" id="wave-panel">
+    <div class="bl-toolbar">
+      <input type="text" class="form-control bl-search" id="wave-search"
+             placeholder="Search waves by name or tag…">
+      <span class="field-hint" tabindex="0" aria-label="How waves work"
+            data-hint="A wave is a group of machines, matched by tag, that get patched together. Rollouts walk the waves in order.&#10;&#10;Put a couple of spare machines in wave 1, the bulk in the last one. If an update breaks something you find out on the spare machines.&#10;&#10;A machine in two waves is patched once, in the earlier one. A machine in no wave is never patched.">?</span>
+      <button class="btn btn-mint" id="wave-new-btn">New wave</button>
+    </div>
+    <div id="waves-list" class="bl-list"></div>
   </div>
 
   <!-- ── Rollouts panel (staged patch rollouts, loaded from /api/v1/rollouts/) ── -->

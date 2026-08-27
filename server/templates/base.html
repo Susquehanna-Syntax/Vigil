@@ -365,6 +365,52 @@
   </form>
 </div>
 
+{# Wave editor — same shape as the baseline editor: overlay + modal + save/cancel. #}
+<div class="modal-overlay" id="wave-editor-overlay" onclick="closeWaveEditor()"></div>
+<div class="modal" id="wave-editor-modal">
+  <div class="modal-title">
+    <span id="wave-editor-title">New Wave</span>
+    <button class="modal-close" onclick="closeWaveEditor()">
+      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div style="overflow-y:auto;">
+    <div class="form-group">
+      <label class="form-label">Name</label>
+      <input type="text" class="form-control" id="wave-name" placeholder="Canary, Broad, Rest of fleet…" maxlength="120">
+    </div>
+    <div style="display:flex;gap:12px;">
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">Order</label>
+        <input type="number" class="form-control" id="wave-order" min="1" value="1">
+        <div class="confirm-hint" style="margin-top:4px;">Lower numbers patch first.</div>
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">Validation window (hours)</label>
+        <input type="number" class="form-control" id="wave-validation" min="0" max="720" value="24">
+        <div class="confirm-hint" style="margin-top:4px;">How long to wait after this wave before starting the next. 0 advances immediately.</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Host tags</label>
+      <input type="text" class="form-control" id="wave-tags" placeholder="canary, staging">
+      <div class="confirm-hint" style="margin-top:4px;">
+        Comma-separated. Any host carrying <em>any</em> of these tags is in the wave.
+        Tags are edited on the host itself &mdash; this only chooses which ones the wave matches.
+      </div>
+      <div class="confirm-hint" id="wave-match-preview" style="margin-top:6px;color:var(--sky);"></div>
+    </div>
+    <label class="form-check" style="margin-bottom:4px;">
+      <input type="checkbox" id="wave-enabled" checked>
+      <span>Enabled &mdash; a disabled wave is skipped entirely</span>
+    </label>
+  </div>
+  <div class="modal-actions">
+    <button class="btn btn-ghost" onclick="closeWaveEditor()">Cancel</button>
+    <button class="btn btn-mint" id="wave-save-btn" onclick="saveWave()">Save wave</button>
+  </div>
+</div>
+
 {# Rollout start modal — opened by openRolloutStart() in vigil-rollout.js; TOTP-gated like the deploy modal. #}
 <div class="modal-overlay" id="rollout-start-overlay" onclick="closeRolloutStart()"></div>
 <div class="modal modal-wide" id="rollout-start-modal">
@@ -681,6 +727,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <!-- vigil-tasks.js — task library, editor, dispatch modal, YAML highlighting -->
 <script src="{% static 'js/vigil-tasks.js' %}"></script>
 <script src="{% static 'js/vigil-rollout.js' %}"></script>
+<script src="{% static 'js/vigil-waves.js' %}"></script>
 <script src="{% static 'js/vigil-pickers.js' %}"></script>
 <script src="{% static 'js/vigil-ai.js' %}"></script>
 <script src="{% static 'js/vigil-baselines.js' %}"></script>

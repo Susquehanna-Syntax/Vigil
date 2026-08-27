@@ -12,4 +12,6 @@ urlpatterns = [
     path("rollouts/<uuid:rollout_id>/", views.rollout_detail, name="rollout-detail"),
     path("rollouts/<uuid:rollout_id>/halt/", views.rollout_halt, name="rollout-halt"),
     path("rollouts/<uuid:rollout_id>/resume/", views.rollout_resume, name="rollout-resume"),
+    path("waves/", views.wave_collection, name="wave-collection"),
+    path("waves/<int:wave_id>/", views.wave_detail, name="wave-detail"),
 ]

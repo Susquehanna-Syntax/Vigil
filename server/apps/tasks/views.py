@@ -1,7 +1,7 @@
 import secrets
 from datetime import timedelta
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
 from rest_framework.decorators import api_view, permission_classes
@@ -1247,3 +1247,83 @@ def rollout_resume(request, rollout_id):
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=400)
     return Response(_rollout_response(rollout))
+
+
+# ── Wave management ─────────────────────────────────────────────────────────
+#
+# Waves are edited like baselines and automations: list, create, edit, delete.
+# Reads are open to any authenticated user so the Deployments page can render;
+# writes are admin-only, because changing a wave's tags changes which machines
+# the next rollout touches.
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def wave_collection(request):
+    """List waves in order, or create one."""
+    from .models import PatchWave
+    from .rollout_serializers import PatchWaveSerializer
+
+    if request.method == "GET":
+        waves = PatchWave.objects.order_by("order", "id")
+        return Response(PatchWaveSerializer(waves, many=True).data)
+
+    if not IsAdmin().has_permission(request, None):
+        return Response({"detail": "Admin role required."}, status=403)
+    serializer = PatchWaveSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+    try:
+        serializer.save()
+    except IntegrityError:
+        # order is unique — say which number collided rather than surfacing a
+        # database error to the operator.
+        return Response(
+            {"order": [f"Wave {request.data.get('order')} already exists."]},
+            status=400,
+        )
+    return Response(serializer.data, status=201)
+
+
+@api_view(["GET", "PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+def wave_detail(request, wave_id):
+    """Read, edit, or delete one wave."""
+    from .models import PatchRollout, PatchWave
+    from .rollout_serializers import PatchWaveSerializer
+
+    wave = get_object_or_404(PatchWave, pk=wave_id)
+
+    if request.method == "GET":
+        return Response(PatchWaveSerializer(wave).data)
+
+    if not IsAdmin().has_permission(request, None):
+        return Response({"detail": "Admin role required."}, status=403)
+
+    if request.method == "DELETE":
+        # Refuse while a rollout is standing on this wave. Deleting it would
+        # null current_wave and strand the rollout with nothing to advance from.
+        active = PatchRollout.objects.filter(
+            current_wave=wave,
+            state__in=[PatchRollout.State.RUNNING, PatchRollout.State.VALIDATING,
+                       PatchRollout.State.HALTED],
+        ).exists()
+        if active:
+            return Response(
+                {"detail": "A rollout is currently on this wave. Halt or finish it first."},
+                status=409,
+            )
+        wave.delete()
+        return Response(status=204)
+
+    serializer = PatchWaveSerializer(wave, data=request.data, partial=True)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+    try:
+        serializer.save()
+    except IntegrityError:
+        return Response(
+            {"order": [f"Wave {request.data.get('order')} already exists."]},
+            status=400,
+        )
+    return Response(serializer.data)
