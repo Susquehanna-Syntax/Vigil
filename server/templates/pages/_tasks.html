@@ -15,7 +15,6 @@
 
       <div class="tab-bar" data-tab-group="tasks">
         <div class="tab t-lav active" data-tab="tasks-library">My Library</div>
-        <div class="tab t-sky" data-tab="tasks-rollouts">Rollouts</div>
         <div class="tab t-mint" data-tab="tasks-history">History</div>
       </div>
 
@@ -28,26 +27,7 @@
         <div id="task-library-grid" class="def-grid"></div>
       </div>
 
-      <!-- Rollouts (staged patch rollouts — loaded client-side from /api/v1/rollouts/) -->
-      <div class="tab-content" id="tasks-rollouts">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
-          <div class="totp-sub" style="margin:0;max-width:640px;">
-            Roll a task definition out ring by ring. A host in several rings patches in the
-            <strong>earliest</strong> ring only; a host in no ring is never patched. Between rings the
-            rollout soaks for the ring's soak window, and it halts itself when a ring's failure rate
-            goes over its threshold.
-          </div>
-          <button class="btn btn-sky btn-sm" onclick="openRolloutStart()">
-            <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            Start Rollout
-          </button>
-        </div>
-        <div id="rollout-list" style="display:flex;flex-direction:column;gap:10px;">
-          <div class="empty-state"><div class="empty-state-title">Loading…</div></div>
-        </div>
-      </div>
-
-      <!-- History (live-polled from /api/v1/tasks/history/) -->
+<!-- History (live-polled from /api/v1/tasks/history/) -->
       <div class="tab-content" id="tasks-history">
         <div id="task-history-list" class="task-list">
           <div class="empty-state">

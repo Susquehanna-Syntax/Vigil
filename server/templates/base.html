@@ -44,7 +44,7 @@
     <div class="sidebar-icon" data-page="tasks" data-tip="Tasks">
       <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="baselines" data-tip="Baselines">
+    <div class="sidebar-icon" data-page="baselines" data-tip="Deployments">
       <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><polyline points="3 18 4 19 6 17"/></svg>
     </div>
     <div class="sidebar-icon" data-page="vulns" data-tip="Vulnerabilities">
@@ -376,9 +376,10 @@
   </div>
   <div style="overflow-y:auto;">
     <div class="totp-sub" style="margin-bottom:14px;">
-      The definition is dispatched to ring 1 now; each later ring starts only after the previous
-      one passes the failure gate and finishes its soak window. Hosts are selected by the ring
-      tags — edit the rings' tags on the ring definitions if the fleet membership needs changing.
+      Wave 1 starts now. Every later wave waits for the one before it to finish, stay under the
+      failure limit, and sit out its validation window.<br>
+      Which hosts land in which wave comes from the wave's tags &mdash; change the tags to change
+      who gets patched.
     </div>
     <div class="form-group" style="margin-bottom:12px;">
       <label class="form-label">Task definition</label>

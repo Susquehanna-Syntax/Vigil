@@ -16,12 +16,12 @@ from apps.accounts.models import UserProfile
 from apps.accounts.totp import generate_secret, generate_totp
 from apps.hosts.models import Host
 from apps.tasks.models import (
-    PatchRing,
+    PatchWave,
     PatchRollout,
     Task,
     TaskDefinition,
-    ring_host_ids,
-    rollout_ring_plan,
+    wave_host_ids,
+    rollout_wave_plan,
 )
 from apps.tasks.rollout import (
     FAILURE_STATES,
@@ -48,10 +48,10 @@ def make_definition(user, name="Patch OS"):
     )
 
 
-def make_ring(name, order, tags, soak_hours=24, enabled=True):
-    return PatchRing.objects.create(
+def make_wave(name, order, tags, validation_hours=24, enabled=True):
+    return PatchWave.objects.create(
         name=name, order=order, tags=tags,
-        soak_hours=soak_hours, enabled=enabled,
+        validation_hours=validation_hours, enabled=enabled,
     )
 
 
@@ -77,32 +77,32 @@ class RolloutStartTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user("op", password="pw")
         self.definition = make_definition(self.user)
-        self.canary = make_ring("Canary", 1, ["patch:canary"], soak_hours=0)
-        self.broad = make_ring("Broad", 2, ["role:web"], soak_hours=0)
-        self.rest = make_ring("Rest of fleet", 3, ["role:db"], soak_hours=0)
+        self.canary = make_wave("Canary", 1, ["patch:canary"], validation_hours=0)
+        self.broad = make_wave("Broad", 2, ["role:web"], validation_hours=0)
+        self.rest = make_wave("Rest of fleet", 3, ["role:db"], validation_hours=0)
         self.canary_host = make_host("canary-1", ["patch:canary"])
         self.web1 = make_host("web-1", ["role:web"])
         self.web2 = make_host("web-2", ["role:web"])
         self.db1 = make_host("db-1", ["role:db"])
 
-    def test_only_first_ring_dispatches_initially(self):
+    def test_only_first_wave_dispatches_initially(self):
         rollout = start_rollout(self.definition, user=self.user)
         rollout.refresh_from_db()
         self.assertEqual(rollout.state, PatchRollout.State.RUNNING)
-        self.assertEqual(rollout.current_ring_id, self.canary.id)
+        self.assertEqual(rollout.current_wave_id, self.canary.id)
         self.assertIsNotNone(rollout.started_at)
-        self.assertIsNotNone(rollout.ring_started_at)
+        self.assertIsNotNone(rollout.wave_started_at)
         self.assertIsNone(rollout.finished_at)
 
         by_host = {t.host_id: t for t in Task.objects.filter(run__rollout=rollout)}
         self.assertEqual(set(by_host), {self.canary_host.id})
-        # Ring 2 and 3 hosts must have no task yet.
+        # Wave 2 and 3 hosts must have no task yet.
         self.assertEqual(Task.objects.filter(run__rollout=rollout, host=self.web1).count(), 0)
         self.assertEqual(Task.objects.filter(run__rollout=rollout, host=self.db1).count(), 0)
 
-    def test_start_without_any_ring_is_rejected(self):
-        PatchRing.objects.all().delete()
-        with self.assertRaisesRegex(ValueError, "no enabled patch rings"):
+    def test_start_without_any_wave_is_rejected(self):
+        PatchWave.objects.all().delete()
+        with self.assertRaisesRegex(ValueError, "no enabled patch waves"):
             start_rollout(self.definition, user=self.user)
         self.assertFalse(PatchRollout.objects.exists())
 
@@ -124,15 +124,15 @@ class HostSelectionTests(TestCase):
         self.user = get_user_model().objects.create_user("op", password="pw")
         self.definition = make_definition(self.user)
 
-    def test_host_in_two_rings_is_patched_once(self):
-        ring_a = make_ring("A", 1, ["patch:canary"], soak_hours=0)
-        ring_b = make_ring("B", 2, ["role:web"], soak_hours=0)
+    def test_host_in_two_waves_is_patched_once(self):
+        wave_a = make_wave("A", 1, ["patch:canary"], validation_hours=0)
+        wave_b = make_wave("B", 2, ["role:web"], validation_hours=0)
         overlap = make_host("overlap", ["patch:canary", "role:web"])
         only_b = make_host("only-b", ["role:web"])
 
-        plan = rollout_ring_plan(PatchRing.objects.all())
-        self.assertEqual(plan[ring_a.id], [overlap.id])
-        self.assertEqual(plan[ring_b.id], [only_b.id])
+        plan = rollout_wave_plan(PatchWave.objects.all())
+        self.assertEqual(plan[wave_a.id], [overlap.id])
+        self.assertEqual(plan[wave_b.id], [only_b.id])
 
         rollout = start_rollout(self.definition, user=self.user)
         set_task_states(
@@ -141,7 +141,7 @@ class HostSelectionTests(TestCase):
         )
         evaluate_rollout(rollout)
         rollout.refresh_from_db()
-        self.assertEqual(rollout.current_ring_id, ring_b.id)
+        self.assertEqual(rollout.current_wave_id, wave_b.id)
         # The overlapping host must have exactly one task in the whole rollout.
         self.assertEqual(
             Task.objects.filter(run__rollout=rollout, host=overlap).count(), 1
@@ -151,8 +151,8 @@ class HostSelectionTests(TestCase):
         )
 
     def test_untagged_host_is_never_patched(self):
-        make_ring("Canary", 1, ["patch:canary"], soak_hours=0)
-        make_ring("Broad", 2, ["role:web"], soak_hours=0)
+        make_wave("Canary", 1, ["patch:canary"], validation_hours=0)
+        make_wave("Broad", 2, ["role:web"], validation_hours=0)
         stranger = make_host("stranger", ["os:linux"])
         make_host("canary-1", ["patch:canary"])
         web_host = make_host("web-1", ["role:web"])
@@ -172,10 +172,10 @@ class HostSelectionTests(TestCase):
         self.assertEqual(Task.objects.filter(run__rollout=rollout, host=stranger).count(), 0)
 
     def test_rejected_host_is_excluded(self):
-        ring = make_ring("Canary", 1, ["patch:canary"], soak_hours=0)
+        wave = make_wave("Canary", 1, ["patch:canary"], validation_hours=0)
         make_host("dead", ["patch:canary"], status=Host.Status.REJECTED)
         live = make_host("canary-1", ["patch:canary"])
-        self.assertEqual(ring_host_ids(ring), [live.id])
+        self.assertEqual(wave_host_ids(wave), [live.id])
 
 
 class FailureGateTests(TestCase):
@@ -183,23 +183,23 @@ class FailureGateTests(TestCase):
         self.user = get_user_model().objects.create_user("op", password="pw")
         self.definition = make_definition(self.user)
 
-    def _ring_with_hosts(self, n, tag="patch:canary", soak_hours=0, threshold=10, minimum=3):
-        ring = make_ring("Canary", 1, [tag], soak_hours=soak_hours)
+    def _wave_with_hosts(self, n, tag="patch:canary", validation_hours=0, threshold=10, minimum=3):
+        wave = make_wave("Canary", 1, [tag], validation_hours=validation_hours)
         hosts = [make_host(f"h-{i}", [tag]) for i in range(n)]
         rollout = PatchRollout.objects.create(
             definition=self.definition,
             state=PatchRollout.State.RUNNING,
-            current_ring=ring,
+            current_wave=wave,
             failure_threshold_pct=threshold,
             min_results_before_halt=minimum,
             started_at=now(),
-            ring_started_at=now(),
+            wave_started_at=now(),
             created_by=self.user,
         )
-        from apps.tasks.rollout import _dispatch_ring, _validate_definition
+        from apps.tasks.rollout import _dispatch_wave, _validate_definition
 
         spec = _validate_definition(self.definition)
-        _dispatch_ring(rollout, spec)
+        _dispatch_wave(rollout, spec)
         return rollout, hosts
 
     def _all_tasks(self, rollout):
@@ -207,7 +207,7 @@ class FailureGateTests(TestCase):
 
     def test_halt_requires_minimum_results(self):
         # 1-of-1 failure, threshold 10, min 3 -> NOT halted (too few results).
-        rollout, (host,) = self._ring_with_hosts(1, minimum=3)
+        rollout, (host,) = self._wave_with_hosts(1, minimum=3)
         set_task_states(self._all_tasks(rollout), [Task.State.FAILED])
         evaluate_rollout(rollout)
         rollout.refresh_from_db()
@@ -215,7 +215,7 @@ class FailureGateTests(TestCase):
 
     def test_halts_above_threshold(self):
         # 2-of-10 at threshold 10 -> 20% > 10% -> halted.
-        rollout, hosts = self._ring_with_hosts(10)
+        rollout, hosts = self._wave_with_hosts(10)
         tasks = self._all_tasks(rollout)
         set_task_states(tasks, [Task.State.FAILED] * 2 + [Task.State.COMPLETED] * 8)
         evaluate_rollout(rollout)
@@ -227,22 +227,22 @@ class FailureGateTests(TestCase):
 
     def test_exactly_at_threshold_proceeds(self):
         # 1-of-10 at threshold 10 -> exactly 10% -> NOT strictly greater -> proceeds.
-        ring2 = make_ring("Broad", 2, ["role:web"], soak_hours=0)
+        ring2 = make_wave("Broad", 2, ["role:web"], validation_hours=0)
         make_host("web-1", ["role:web"])
-        rollout, hosts = self._ring_with_hosts(10)
+        rollout, hosts = self._wave_with_hosts(10)
         tasks = self._all_tasks(rollout)
         set_task_states(tasks, [Task.State.FAILED] + [Task.State.COMPLETED] * 9)
         evaluate_rollout(rollout)
         rollout.refresh_from_db()
         self.assertEqual(rollout.state, PatchRollout.State.RUNNING)
-        self.assertEqual(rollout.current_ring_id, ring2.id)
+        self.assertEqual(rollout.current_wave_id, ring2.id)
         self.assertEqual(
             Task.objects.filter(run__rollout=rollout, host=hosts[0]).count(), 1
         )
 
     def test_expires_count_as_failures(self):
         # EXPIRED and REJECTED are failure states for the gate.
-        rollout, hosts = self._ring_with_hosts(3)
+        rollout, hosts = self._wave_with_hosts(3)
         tasks = self._all_tasks(rollout)
         set_task_states(tasks, [Task.State.EXPIRED, Task.State.REJECTED, Task.State.COMPLETED])
         evaluate_rollout(rollout)
@@ -256,39 +256,39 @@ class SoakAndCompletionTests(TestCase):
         self.user = get_user_model().objects.create_user("op", password="pw")
         self.definition = make_definition(self.user)
 
-    def _two_rings(self, soak_hours=24):
-        ring1 = make_ring("Canary", 1, ["patch:canary"], soak_hours=soak_hours)
-        ring2 = make_ring("Broad", 2, ["role:web"], soak_hours=0)
+    def _two_rings(self, validation_hours=24):
+        ring1 = make_wave("Canary", 1, ["patch:canary"], validation_hours=validation_hours)
+        ring2 = make_wave("Broad", 2, ["role:web"], validation_hours=0)
         self.canary_host = make_host("canary-1", ["patch:canary"])
         self.web_host = make_host("web-1", ["role:web"])
         return ring1, ring2
 
-    def test_soak_blocks_advance_until_elapsed(self):
-        ring1, ring2 = self._two_rings(soak_hours=24)
+    def test_validation_blocks_advance_until_elapsed(self):
+        ring1, ring2 = self._two_rings(validation_hours=24)
         rollout = start_rollout(self.definition, user=self.user)
         set_task_states(
             list(Task.objects.filter(run__rollout=rollout)), [Task.State.COMPLETED]
         )
-        # Ring passed, soak window not over -> soaking, ring 2 NOT dispatched.
+        # Wave passed, validation window not over -> validating, wave 2 NOT dispatched.
         evaluate_rollout(rollout)
         rollout.refresh_from_db()
-        self.assertEqual(rollout.state, PatchRollout.State.SOAKING)
-        self.assertEqual(rollout.current_ring_id, ring1.id)
+        self.assertEqual(rollout.state, PatchRollout.State.VALIDATING)
+        self.assertEqual(rollout.current_wave_id, ring1.id)
         self.assertEqual(Task.objects.filter(run__rollout=rollout, host=self.web_host).count(), 0)
 
-        # Patch the clock 25h forward -> soaked -> advances to ring 2.
+        # Patch the clock 25h forward -> validated -> advances to wave 2.
         frozen = now() + timedelta(hours=25)
         with patch("apps.tasks.rollout._now", return_value=frozen):
             evaluate_rollout(rollout)
         rollout.refresh_from_db()
         self.assertEqual(rollout.state, PatchRollout.State.RUNNING)
-        self.assertEqual(rollout.current_ring_id, ring2.id)
+        self.assertEqual(rollout.current_wave_id, ring2.id)
         self.assertEqual(
             Task.objects.filter(run__rollout=rollout, host=self.web_host).count(), 1
         )
 
-    def test_soak_not_elapsed_yet_stays_soaking(self):
-        ring1, _ = self._two_rings(soak_hours=24)
+    def test_validation_not_elapsed_yet_stays_validating(self):
+        ring1, _ = self._two_rings(validation_hours=24)
         rollout = start_rollout(self.definition, user=self.user)
         set_task_states(
             list(Task.objects.filter(run__rollout=rollout)), [Task.State.COMPLETED]
@@ -297,11 +297,11 @@ class SoakAndCompletionTests(TestCase):
         with patch("apps.tasks.rollout._now", return_value=frozen):
             evaluate_rollout(rollout)
         rollout.refresh_from_db()
-        self.assertEqual(rollout.state, PatchRollout.State.SOAKING)
-        self.assertEqual(rollout.current_ring_id, ring1.id)
+        self.assertEqual(rollout.state, PatchRollout.State.VALIDATING)
+        self.assertEqual(rollout.current_wave_id, ring1.id)
 
     def test_completed_when_no_rings_remain(self):
-        self._two_rings(soak_hours=0)
+        self._two_rings(validation_hours=0)
         rollout = start_rollout(self.definition, user=self.user)
         set_task_states(
             list(Task.objects.filter(run__rollout=rollout)), [Task.State.COMPLETED]
@@ -319,9 +319,9 @@ class SoakAndCompletionTests(TestCase):
         self.assertEqual(Task.objects.filter(run__rollout=rollout, host=self.web_host).count(), 1)
 
     def test_disabled_ring_is_skipped(self):
-        ring1 = make_ring("Canary", 1, ["patch:canary"], soak_hours=0)
-        make_ring("Disabled", 2, ["role:db"], soak_hours=0, enabled=False)
-        ring3 = make_ring("Broad", 3, ["role:web"], soak_hours=0)
+        ring1 = make_wave("Canary", 1, ["patch:canary"], validation_hours=0)
+        make_wave("Disabled", 2, ["role:db"], validation_hours=0, enabled=False)
+        ring3 = make_wave("Broad", 3, ["role:web"], validation_hours=0)
         make_host("canary-1", ["patch:canary"])
         make_host("db-1", ["role:db"])
         make_host("web-1", ["role:web"])
@@ -332,14 +332,14 @@ class SoakAndCompletionTests(TestCase):
         )
         evaluate_rollout(rollout)
         rollout.refresh_from_db()
-        # Must land on ring 3, skipping the disabled ring 2.
-        self.assertEqual(rollout.current_ring_id, ring3.id)
+        # Must land on wave 3, skipping the disabled wave 2.
+        self.assertEqual(rollout.current_wave_id, ring3.id)
         self.assertEqual(rollout.state, PatchRollout.State.RUNNING)
 
-    def test_no_next_enabled_ring_completes(self):
-        # Last enabled ring passes with nothing after it.
-        ring1 = make_ring("Only", 1, ["patch:canary"], soak_hours=0)
-        make_ring("Disabled", 2, ["role:db"], soak_hours=0, enabled=False)
+    def test_no_next_enabled_wave_completes(self):
+        # Last enabled wave passes with nothing after it.
+        ring1 = make_wave("Only", 1, ["patch:canary"], validation_hours=0)
+        make_wave("Disabled", 2, ["role:db"], validation_hours=0, enabled=False)
         make_host("canary-1", ["patch:canary"])
         make_host("db-1", ["role:db"])
         rollout = start_rollout(self.definition, user=self.user)
@@ -356,7 +356,7 @@ class HaltResumeTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user("op", password="pw")
         self.definition = make_definition(self.user)
-        self.ring = make_ring("Canary", 1, ["patch:canary"], soak_hours=0)
+        self.wave = make_wave("Canary", 1, ["patch:canary"], validation_hours=0)
         self.host = make_host("canary-1", ["patch:canary"])
         self.rollout = start_rollout(self.definition, user=self.user)
 
@@ -407,8 +407,8 @@ class ConcurrencyTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user("op", password="pw")
         self.definition = make_definition(self.user)
-        self.ring1 = make_ring("Canary", 1, ["patch:canary"], soak_hours=0)
-        self.ring2 = make_ring("Broad", 2, ["role:web"], soak_hours=0)
+        self.ring1 = make_wave("Canary", 1, ["patch:canary"], validation_hours=0)
+        self.ring2 = make_wave("Broad", 2, ["role:web"], validation_hours=0)
         self.canary_host = make_host("canary-1", ["patch:canary"])
         self.web_host = make_host("web-1", ["role:web"])
 
@@ -417,14 +417,14 @@ class ConcurrencyTests(TestCase):
         set_task_states(
             list(Task.objects.filter(run__rollout=rollout)), [Task.State.COMPLETED]
         )
-        # Two beat ticks "at the same time": both see the ring as passed and
-        # both try to advance. The row lock must keep dispatch to one ring run.
+        # Two beat ticks "at the same time": both see the wave as passed and
+        # both try to advance. The row lock must keep dispatch to one wave run.
         evaluate_rollout(rollout)
         evaluate_rollout(rollout)
         rollout.refresh_from_db()
         self.assertEqual(rollout.state, PatchRollout.State.RUNNING)
-        self.assertEqual(rollout.current_ring_id, self.ring2.id)
-        # Exactly one task for the ring-2 host — not two.
+        self.assertEqual(rollout.current_wave_id, self.ring2.id)
+        # Exactly one task for the wave-2 host — not two.
         self.assertEqual(
             Task.objects.filter(run__rollout=rollout, host=self.web_host).count(), 1
         )
@@ -448,8 +448,8 @@ class RolloutApiTests(TestCase):
         self.client.force_authenticate(self.operator)
 
         self.definition = make_definition(self.operator)
-        make_ring("Canary", 1, ["patch:canary"], soak_hours=0)
-        make_ring("Broad", 2, ["role:web"], soak_hours=0)
+        make_wave("Canary", 1, ["patch:canary"], validation_hours=0)
+        make_wave("Broad", 2, ["role:web"], validation_hours=0)
         make_host("canary-1", ["patch:canary"])
         make_host("web-1", ["role:web"])
 
@@ -474,11 +474,11 @@ class RolloutApiTests(TestCase):
         rollout = PatchRollout.objects.get()
         self.assertEqual(rollout.state, PatchRollout.State.RUNNING)
         self.assertEqual(rollout.created_by, self.operator)
-        # Ring 1 only, with its ring progress in the payload.
-        rings = {r["name"]: r for r in resp.data["rings"]}
-        self.assertEqual(rings["Canary"]["status"], "running")
-        self.assertEqual(rings["Broad"]["status"], "pending")
-        self.assertEqual(rings["Canary"]["tasks_total"], 1)
+        # Wave 1 only, with its wave progress in the payload.
+        waves = {r["name"]: r for r in resp.data["waves"]}
+        self.assertEqual(waves["Canary"]["status"], "running")
+        self.assertEqual(waves["Broad"]["status"], "pending")
+        self.assertEqual(waves["Canary"]["tasks_total"], 1)
 
     def test_api_start_without_definition_is_rejected(self):
         resp = self.client.post(
