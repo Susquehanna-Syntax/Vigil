@@ -365,6 +365,69 @@
   </form>
 </div>
 
+{# Rollout start modal — opened by openRolloutStart() in vigil-rollout.js; TOTP-gated like the deploy modal. #}
+<div class="modal-overlay" id="rollout-start-overlay" onclick="closeRolloutStart()"></div>
+<div class="modal modal-wide" id="rollout-start-modal">
+  <div class="modal-title">
+    Start Rollout
+    <button class="modal-close" onclick="closeRolloutStart()">
+      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div style="overflow-y:auto;">
+    <div class="totp-sub" style="margin-bottom:14px;">
+      The definition is dispatched to ring 1 now; each later ring starts only after the previous
+      one passes the failure gate and finishes its soak window. Hosts are selected by the ring
+      tags — edit the rings' tags on the ring definitions if the fleet membership needs changing.
+    </div>
+    <div class="form-group" style="margin-bottom:12px;">
+      <label class="form-label">Task definition</label>
+      <select class="form-control" id="rollout-start-def"></select>
+      <div class="confirm-hint" id="rollout-start-def-hint" style="margin-top:4px;">Definitions with required inputs cannot be rolled out unattended.</div>
+    </div>
+    <div style="display:flex;gap:12px;margin-bottom:14px;">
+      <div class="form-group" style="flex:1;margin-bottom:0;">
+        <label class="form-label">Halt above failure&nbsp;%</label>
+        <input type="number" class="form-control" id="rollout-start-threshold" min="0" max="100" value="10">
+      </div>
+      <div class="form-group" style="flex:1;margin-bottom:0;">
+        <label class="form-label">Min results before halt</label>
+        <input type="number" class="form-control" id="rollout-start-min" min="1" value="3">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:4px;">
+      <label class="form-label">Confirm with TOTP</label>
+      <input class="form-control" type="text" id="rollout-start-totp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+      <div class="confirm-hint">Rollouts are 2FA-gated fleet-wide operations, same as deploys.</div>
+    </div>
+  </div>
+  <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
+    <button class="btn btn-ghost btn-sm" onclick="closeRolloutStart()">Cancel</button>
+    <button class="btn btn-sky btn-sm" id="rollout-start-submit" onclick="submitRolloutStart()">Start rollout</button>
+  </div>
+</div>
+
+{# Rollout halt/resume confirm — TOTP-gated operator actions. #}
+<div class="modal-overlay" id="rollout-action-overlay" onclick="closeRolloutAction()"></div>
+<div class="modal" id="rollout-action-modal">
+  <div class="modal-title">
+    <span id="rollout-action-title">Confirm</span>
+    <button class="modal-close" onclick="closeRolloutAction()">
+      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="totp-sub" style="margin-bottom:14px;" id="rollout-action-message"></div>
+  <div class="form-group" style="margin-bottom:4px;">
+    <label class="form-label">Confirm with TOTP</label>
+    <input class="form-control" type="text" id="rollout-action-totp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+    <div class="confirm-hint">Halting and resuming rollouts are 2FA-gated fleet-wide operations.</div>
+  </div>
+  <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
+    <button class="btn btn-ghost btn-sm" onclick="closeRolloutAction()">Cancel</button>
+    <button class="btn btn-sky btn-sm" id="rollout-action-confirm" onclick="confirmRolloutAction()">Confirm</button>
+  </div>
+</div>
+
 {# Submit-to-community modal — opened from the task editor (openCommunitySubmit) #}
 <div class="modal-overlay" id="community-submit-overlay" onclick="closeCommunitySubmit()"></div>
 <div class="modal" id="community-submit-modal">
@@ -616,6 +679,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-alerts.js' %}"></script>
 <!-- vigil-tasks.js — task library, editor, dispatch modal, YAML highlighting -->
 <script src="{% static 'js/vigil-tasks.js' %}"></script>
+<script src="{% static 'js/vigil-rollout.js' %}"></script>
 <script src="{% static 'js/vigil-pickers.js' %}"></script>
 <script src="{% static 'js/vigil-ai.js' %}"></script>
 <script src="{% static 'js/vigil-baselines.js' %}"></script>

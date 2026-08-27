@@ -21,7 +21,7 @@ from celery import shared_task
 from django.conf import settings
 from django.utils.timezone import now
 
-from .models import Task
+from .models import PatchRollout, Task
 
 logger = logging.getLogger(__name__)
 
@@ -83,3 +83,38 @@ def expire_stale_tasks() -> str:
     if not expired:
         return "no stale tasks"
     return f"expired {expired} task(s) across {len(runs)} run(s)"
+
+
+@shared_task(name="tasks.advance_rollouts")
+def advance_rollouts() -> str:
+    """Evaluate every active rollout once per beat tick.
+
+    ``evaluate_rollout`` takes the rollout row lock itself, so this sweep is
+    safe to run concurrently with itself: two overlapping ticks cannot both
+    advance the same rollout and double-dispatch a ring.
+    """
+    from .rollout import evaluate_rollout
+
+    rollouts = list(
+        PatchRollout.objects.filter(
+            state__in=[
+                PatchRollout.State.RUNNING,
+                PatchRollout.State.SOAKING,
+            ]
+        ).select_related("definition", "current_ring")
+    )
+    advanced = 0
+    for rollout in rollouts:
+        before = rollout.state
+        evaluate_rollout(rollout)
+        # evaluate_rollout works on a locked copy — refresh to see the result.
+        rollout.refresh_from_db()
+        if rollout.state != before:
+            advanced += 1
+            logger.info(
+                "Rollout %s advanced %s -> %s",
+                rollout.id, before, rollout.state,
+            )
+    if not rollouts:
+        return "no active rollouts"
+    return f"evaluated {len(rollouts)} rollout(s), {advanced} advanced"
