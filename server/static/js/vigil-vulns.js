@@ -292,7 +292,9 @@ function renderVulns(summaries) {
     ['Score', null],
     ['Critical', 'var(--rose)'], ['High', 'var(--coral)'],
     ['Medium', 'var(--lemon)'], ['Low', 'var(--sky)'],
-    ['Info', 'var(--text-3)'], ['Last Scan', null], ['', null],
+    ['Info', 'var(--text-3)'],
+    ['Overdue', 'var(--rose)'], ['Due soon', 'var(--lemon)'],
+    ['Last Scan', null], ['', null],
   ];
   for (const [label, color] of headers) {
     const th = document.createElement('th');
@@ -336,6 +338,8 @@ function renderVulns(summaries) {
     tr.appendChild(_vulnCountCell(s.medium,   'c-lemon'));
     tr.appendChild(_vulnCountCell(s.low,      'c-sky'));
     tr.appendChild(_vulnCountCell(s.info,     'c-dim'));
+    tr.appendChild(_vulnCountCell(s.overdue_count ?? 0, 'c-rose'));
+    tr.appendChild(_vulnCountCell(s.due_soon_count ?? 0, 'c-lemon'));
     tr.appendChild(_cell(
       s.last_scan_at ? new Date(s.last_scan_at).toLocaleDateString() : '—',
       { muted: true }
@@ -402,7 +406,7 @@ function _toggleFindingsRow(tr, summary) {
   drawer.className = 'vuln-findings-row';
   drawer.dataset.hostId = summary.host;
   const td = document.createElement('td');
-  td.colSpan = 11;
+  td.colSpan = 13;
   td.style.background = 'var(--s2)';
   td.style.padding = '14px 18px';
   const loading = document.createElement('div');
@@ -454,11 +458,15 @@ async function _loadFindingsInto(container, summary) {
   for (const f of findings) {
     const row = document.createElement('div');
     row.style.display = 'grid';
-    row.style.gridTemplateColumns = '60px 80px 1fr auto';
+    row.style.gridTemplateColumns = '60px 80px 1fr 96px auto';
     row.style.gap = '12px';
     row.style.alignItems = 'center';
     row.style.padding = '6px 0';
     row.style.borderBottom = '1px solid var(--s3)';
+    // Overdue findings are visually distinct — rose row tint + rose due
+    // cell. Same --rose value as .vuln-critical's existing rgba in the
+    // stylesheet, at a lighter alpha — no new colour literal.
+    if (f.overdue) row.style.background = 'rgba(242,160,184,0.07)';
 
     const sev = document.createElement('span');
     sev.className = 'mono';
@@ -477,15 +485,51 @@ async function _loadFindingsInto(container, summary) {
     row.appendChild(scanner);
 
     const title = document.createElement('div');
-    title.style.fontSize = '12px';
-    title.style.color = 'var(--text-1)';
-    title.style.overflow = 'hidden';
-    title.style.textOverflow = 'ellipsis';
-    title.style.whiteSpace = 'nowrap';
-    title.title = f.title || '';
+    title.style.display = 'flex';
+    title.style.alignItems = 'center';
+    title.style.gap = '8px';
+    title.style.minWidth = '0';
     const titleText = f.title || '(no title)';
-    title.textContent = f.cve_id ? `${f.cve_id} · ${titleText}` : titleText;
+    const text = document.createElement('span');
+    text.style.fontSize = '12px';
+    text.style.color = 'var(--text-1)';
+    text.style.overflow = 'hidden';
+    text.style.textOverflow = 'ellipsis';
+    text.style.whiteSpace = 'nowrap';
+    text.title = f.title || '';
+    text.textContent = f.cve_id ? `${f.cve_id} · ${titleText}` : titleText;
+    title.appendChild(text);
+    // reason is user-supplied free text — always through escHtml, never
+    // interpolated raw into innerHTML.
+    if (f.exception) {
+      const chip = document.createElement('span');
+      chip.className = 'mono';
+      chip.style.fontSize = '10px';
+      chip.style.color = 'var(--sky)';
+      chip.style.flexShrink = '0';
+      chip.title = `${f.exception.kind}: ${f.exception.reason} (until ${f.exception.expires_on})`;
+      chip.innerHTML =
+        `<span style="opacity:.7;">${escHtml(f.exception.kind)} ·</span> ` +
+        `${escHtml(f.exception.reason)}`;
+      title.appendChild(chip);
+    }
     row.appendChild(title);
+
+    const due = document.createElement('span');
+    due.className = 'mono';
+    due.style.fontSize = '11px';
+    if (f.due_date === null) {
+      due.style.color = 'var(--text-3)';
+      due.textContent = '—';
+    } else if (f.overdue) {
+      due.style.color = 'var(--rose)';
+      due.style.fontWeight = '600';
+      due.textContent = `${Math.abs(f.days_remaining)}d overdue`;
+    } else {
+      due.style.color = f.days_remaining <= 14 ? 'var(--lemon)' : 'var(--text-3)';
+      due.textContent = f.days_remaining === 0 ? 'due today' : `due in ${f.days_remaining}d`;
+    }
+    row.appendChild(due);
 
     const fix = document.createElement('button');
     fix.className = 'btn btn-sm btn-outline';

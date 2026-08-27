@@ -11,11 +11,11 @@ class VulnSummary(models.Model):
 
     Counts are de-duplicated across scanners by CVE (or by plugin id when
     the finding has no CVE) so two engines flagging the same vuln don't
-    double-penalize the host. The ``score`` is computed from those counts
-    with :func:`apps.vulns.scoring.compute_score` — 100 minus a weighted
-    deduction, with no floor. A host with 15 criticals lands at ``-50``;
-    the negativity is part of the message and the face badge keeps
-    escalating with it.
+    double-penalize the host. The ``score`` is the escalated one: each
+    finding's base weight is multiplied by its distance from its due date
+    (see :mod:`apps.vulns.remediation`). A host with 15 criticals can land
+    well below ``0`` — the negativity is part of the message and the face
+    badge keeps escalating with it.
     """
 
     host = models.OneToOneField(Host, on_delete=models.CASCADE, related_name="vuln_summary")
@@ -26,6 +26,11 @@ class VulnSummary(models.Model):
     medium = models.IntegerField(default=0)
     low = models.IntegerField(default=0)
     info = models.IntegerField(default=0)
+    # Open findings past their due date, excepted ones excluded.
+    overdue_count = models.PositiveIntegerField(default=0)
+    # Open findings due within 14 days (including today), excepted ones
+    # excluded. The "due soon" band on the fleet view.
+    due_soon_count = models.PositiveIntegerField(default=0)
     # Can go negative when deductions exceed 100. No separate "debt"
     # field — that was the floor's overflow indicator before the floor
     # was removed.
