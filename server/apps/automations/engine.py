@@ -98,6 +98,12 @@ def run_automation(automation, *, event_host=None) -> int:
     from apps.tasks.models import Task, TaskRun
 
     try:
+        # Wave-by-wave dispatch hands off to the rollout machinery entirely:
+        # it does its own host selection from wave tags, its own gating and
+        # its own history, so none of the direct path below applies.
+        if automation.dispatch_mode == automation.DispatchMode.ROLLOUT:
+            return _start_rollout_for(automation)
+
         built = _steps_for(automation)
         if not built:
             return 0
@@ -233,3 +239,31 @@ def handle_event(event_name: str, payload: dict) -> None:
         if not tags_ok(auto, host):
             continue
         run_automation(auto, event_host=host)
+
+
+def _start_rollout_for(automation) -> int:
+    """Start a staged rollout of the automation's task or baseline.
+
+    Returns 1 when a rollout started, 0 otherwise. Never raises into the
+    caller: an automation that cannot roll out (no enabled waves, a deleted
+    target) must not take down the event bus with it.
+    """
+    from apps.tasks.rollout import start_rollout
+
+    try:
+        if automation.action_kind == automation.ActionKind.BASELINE:
+            if automation.baseline is None:
+                logger.warning("automation %s: baseline missing, cannot roll out",
+                               automation.pk)
+                return 0
+            start_rollout(baseline=automation.baseline, user=automation.created_by)
+        else:
+            if automation.task_definition is None:
+                logger.warning("automation %s: definition missing, cannot roll out",
+                               automation.pk)
+                return 0
+            start_rollout(automation.task_definition, user=automation.created_by)
+    except ValueError as exc:
+        logger.warning("automation %s: rollout refused: %s", automation.pk, exc)
+        return 0
+    return 1

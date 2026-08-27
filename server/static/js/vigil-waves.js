@@ -186,3 +186,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 });
+
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('wave-editor-modal')?.classList.contains('open')) {
+    closeWaveEditor();
+  }
+});

@@ -31,6 +31,10 @@ class Automation(models.Model):
         TASK = "task", "Task definition"
         BASELINE = "baseline", "Baseline"
 
+    class DispatchMode(models.TextChoices):
+        DIRECT = "direct", "All at once"
+        ROLLOUT = "rollout", "Wave by wave"
+
     class Target(models.TextChoices):
         EVENT_HOST = "event_host", "The host from the event"
         TAGS = "tags", "Hosts matching tags"
@@ -92,6 +96,16 @@ class Automation(models.Model):
 
     # -- action --
     action_kind = models.CharField(max_length=12, choices=ActionKind.choices)
+
+    #: How the work reaches the hosts. ``direct`` dispatches to every matching
+    #: host at once, which is what automations have always done. ``rollout``
+    #: hands the same task or baseline to the wave machinery instead, so an
+    #: automation firing on an event can still patch a canary first. In rollout
+    #: mode the automation's own target selection is ignored — waves decide
+    #: membership by tag, and having two host-selection rules fight would be
+    #: worse than picking one.
+    dispatch_mode = models.CharField(
+        max_length=8, choices=DispatchMode.choices, default=DispatchMode.DIRECT)
     task_definition = models.ForeignKey(
         "tasks.TaskDefinition", null=True, blank=True,
         on_delete=models.CASCADE, related_name="automations")
