@@ -418,6 +418,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "tasks.expire_stale_tasks",
         "schedule": 600.0,  # every 10 minutes — sweep wedged DISPATCHED tasks
     },
+    "advance-rollouts": {
+        "task": "tasks.advance_rollouts",
+        "schedule": 300.0,  # every 5 minutes — advance/halt staged rollouts
+    },
     "check-db-disk-usage": {
         "task": "metrics.check_db_disk_usage",
         "schedule": 3600.0,  # every hour — storage safety valve (self-monitoring)

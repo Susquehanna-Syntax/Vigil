@@ -8,10 +8,18 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from apps.accounts.permissions import IsAdmin
 from apps.hosts.authentication import authenticate_agent
 from apps.hosts.models import Host
 
-from .models import Task, TaskDefinition, TaskRun
+from .models import PatchRollout, Task, TaskDefinition, TaskRun
+from .rollout_serializers import PatchRolloutSerializer
+from .rollout import (
+    FAILURE_STATES,
+    halt_rollout,
+    resume_rollout,
+    start_rollout,
+)
 from .serializers import (
     TaskDefinitionSerializer,
     TaskRunSerializer,
@@ -1060,3 +1068,182 @@ def task_detail(request, task_id):
 def action_registry(request):
     """Expose the action registry for the editor's autocomplete / validation."""
     return Response(ACTION_REGISTRY)
+
+
+# ── Staged rollouts ────────────────────────────────────────────────────────────
+# Halting and resuming a rollout are state-changing operations on fleet-wide
+# patching, so they follow the same gates as manual deploys: TOTP confirmation
+# for the operator (plus admin for halt — stopping a rollout mid-flight is the
+# heavier decision).
+
+
+def _rollout_ring_progress(rollout: PatchRollout) -> list:
+    """Per-ring counts for the serializer: every ring in order, annotated with
+    this rollout's dispatched tasks for that ring.
+
+    Ring display status:
+      * ``passed``    — ring fully reported, failure rate within threshold
+      * ``failed``    — ring fully reported, failure rate over threshold
+      * ``running``   — current ring, tasks still in flight
+      * ``soaking``   — current ring, passed, soak window not yet elapsed
+      * ``halted``    — the rollout halted on this ring
+      * ``pending``   — not yet reached by the rollout
+    """
+    from .models import PatchRing
+
+    SUCCESS_STATES = (Task.State.COMPLETED, Task.State.SKIPPED)
+    rings = list(PatchRing.objects.order_by("order", "id"))
+    per_ring: dict = {}
+    for run in rollout.runs.all():
+        if run.ring is None:
+            continue
+        total = run.tasks.count()
+        done = run.tasks.filter(state__in=SUCCESS_STATES).count()
+        failed = run.tasks.filter(state__in=FAILURE_STATES).count()
+        prev = per_ring.setdefault(
+            run.ring.id, {"hosts": 0, "tasks_total": 0, "tasks_done": 0, "tasks_failed": 0}
+        )
+        prev["hosts"] = max(prev["hosts"], run.host_count)
+        prev["tasks_total"] += total
+        prev["tasks_done"] += done
+        prev["tasks_failed"] += failed
+
+    out = []
+    for ring in rings:
+        counts = per_ring.get(
+            ring.id, {"hosts": 0, "tasks_total": 0, "tasks_done": 0, "tasks_failed": 0}
+        )
+        total = counts["tasks_total"]
+        reported = counts["tasks_done"] + counts["tasks_failed"]
+        pct = (counts["tasks_failed"] * 100) / reported if reported else 0.0
+        is_current = rollout.current_ring_id == ring.id
+        if not ring.enabled:
+            status = "pending"
+        elif is_current and rollout.state == PatchRollout.State.HALTED:
+            status = "halted"
+        elif is_current and rollout.state == PatchRollout.State.SOAKING:
+            status = "soaking"
+        elif is_current and rollout.state == PatchRollout.State.RUNNING and total and reported < total:
+            status = "running"
+        elif total and reported == total:
+            status = "failed" if pct > rollout.failure_threshold_pct else "passed"
+        elif total:
+            status = "running"
+        else:
+            status = "pending"
+        out.append({
+            "id": str(ring.id),
+            "name": ring.name,
+            "order": ring.order,
+            "tags": ring.tags or [],
+            "soak_hours": ring.soak_hours,
+            "enabled": ring.enabled,
+            **counts,
+            "status": status,
+        })
+    return out
+
+
+class _RolloutDetailSerializer(PatchRolloutSerializer):
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        data["rings"] = _rollout_ring_progress(obj)
+        return data
+
+
+def _rollout_response(rollout: PatchRollout):
+    return _RolloutDetailSerializer(
+        PatchRollout.objects.select_related(
+            "definition", "current_ring", "created_by", "halted_by", "resumed_by",
+        ).get(pk=rollout.pk)
+    ).data
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def rollout_collection(request):
+    """GET — list rollouts. POST — start one from a definition.
+
+    TOTP-gated like a manual deploy — it fans a definition out across
+    the whole fleet, ring by ring.
+    """
+    if request.method == "POST":
+        definition_id = request.data.get("definition_id")
+        if not definition_id:
+            return Response({"detail": "definition_id is required"}, status=400)
+        definition = get_object_or_404(TaskDefinition, pk=definition_id)
+        error = _verify_confirmation(request.user, request.data)
+        if error:
+            return Response({"detail": error}, status=401)
+
+        try:
+            rollout = start_rollout(
+                definition,
+                user=request.user,
+                failure_threshold_pct=int(request.data.get("failure_threshold_pct", 10)),
+                min_results_before_halt=int(request.data.get("min_results_before_halt", 3)),
+            )
+        except (ValueError, TypeError) as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(_rollout_response(rollout), status=201)
+
+    rollouts = PatchRollout.objects.select_related(
+        "definition", "current_ring", "created_by", "halted_by", "resumed_by",
+    ).order_by("-created_at")
+    raw = (request.query_params.get("state") or "").strip()
+    if raw:
+        wanted = [s for s in (v.strip() for v in raw.split(",")) if s]
+        valid = [s for s in wanted if s in PatchRollout.State.values]
+        if not valid:
+            return Response({"detail": f"unknown state {raw!r}"}, status=400)
+        rollouts = rollouts.filter(state__in=valid)
+    data = []
+    for r in rollouts:
+        data.append(_RolloutDetailSerializer(r).data)
+    return Response(data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def rollout_detail(request, rollout_id):
+    rollout = get_object_or_404(
+        PatchRollout.objects.select_related(
+            "definition", "current_ring", "created_by", "halted_by", "resumed_by",
+        ),
+        pk=rollout_id,
+    )
+    return Response(_RolloutDetailSerializer(rollout).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def rollout_halt(request, rollout_id):
+    """Stop the rollout now. Admin + TOTP: halting a fleet-wide patch
+    mid-flight is the heavier of the two operator calls."""
+    rollout = get_object_or_404(PatchRollout, pk=rollout_id)
+    error = _verify_confirmation(request.user, request.data)
+    if error:
+        return Response({"detail": error}, status=401)
+    reason = str(request.data.get("reason") or "").strip()
+    try:
+        halt_rollout(rollout, user=request.user, reason=reason)
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=400)
+    return Response(_rollout_response(rollout))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def rollout_resume(request, rollout_id):
+    """Clear a halt and continue from the same ring. TOTP-gated; records who
+    did it. Failed tasks on the ring are re-queued so the gate re-evaluates
+    over the whole ring."""
+    rollout = get_object_or_404(PatchRollout, pk=rollout_id)
+    error = _verify_confirmation(request.user, request.data)
+    if error:
+        return Response({"detail": error}, status=401)
+    try:
+        resume_rollout(rollout, user=request.user)
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=400)
+    return Response(_rollout_response(rollout))
