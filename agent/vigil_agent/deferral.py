@@ -54,7 +54,15 @@ class RebootDeferral:
             self._used, self._expires_at = 0, 0.0
 
     def _save(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
+        """Persist deferral state. Never raises.
+
+        A reboot must not fail because its bookkeeping file could not be
+        written — a read-only state directory or a permissions problem would
+        otherwise turn every reboot task into a hard failure. Losing the state
+        costs the user their deferral budget across an agent restart, which is
+        strictly better than never rebooting at all. ``_load`` and ``clear``
+        already degrade this way; this method was the odd one out.
+        """
         data = {
             "task_id": self._task_id,
             "limit": self._limit,
@@ -62,8 +70,12 @@ class RebootDeferral:
             "used": self._used,
             "expires_at": time.time() + self._expires_at if self._expires_at else 0.0,
         }
-        self._path.write_text(json.dumps(data))
-        self._path.chmod(0o600)
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            self._path.write_text(json.dumps(data))
+            self._path.chmod(0o600)
+        except OSError:
+            logger.warning("Failed to save reboot deferral state; continuing")
 
     # ── API ─────────────────────────────────────────────────────────────
 

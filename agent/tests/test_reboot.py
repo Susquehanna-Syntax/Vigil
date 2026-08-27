@@ -4,6 +4,7 @@ collector's reboot_required probe, and the check-in wiring (phases 08a/08c).
 The Windows argv is asserted here by test only; it has not run on Windows.
 """
 import json
+import os
 import re
 import sys
 import tempfile
@@ -362,3 +363,26 @@ class RebootRequiredProbeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DeferralStateFailureTests(unittest.TestCase):
+    """A reboot must never fail because its state file could not be written."""
+
+    def test_unwritable_state_dir_does_not_block_the_reboot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            readonly = Path(tmp) / "ro"
+            readonly.mkdir()
+            os.chmod(readonly, 0o500)
+            try:
+                config = AgentConfig(server_url="https://x", agent_token="t")
+                config.data_dir = readonly
+                with patch.object(executor, "_run") as run, \
+                     patch.object(executor.sys, "platform", "win32"):
+                    run.return_value = "ok"
+                    executor._reboot(
+                        {"delay_seconds": 0, "defer_limit": 3, "task_id": "t1"}, config
+                    )
+                argv = run.call_args[0][0]
+                self.assertEqual(argv[:4], ["shutdown", "/r", "/t", "0"])
+            finally:
+                os.chmod(readonly, 0o700)
