@@ -24,20 +24,12 @@
 
   <!-- ── Rollouts panel (staged patch rollouts, loaded from /api/v1/rollouts/) ── -->
     <div class="sub-panel" id="rollout-panel">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
-        <div class="totp-sub" style="margin:0;max-width:640px;">
-          Patch a few machines first, then the rest. Each wave is a group of hosts, matched
-          by tag, and waves run in order.<br>
-          After a wave finishes, the rollout waits out that wave's validation window before starting
-          the next &mdash; time for a bad update to show itself. If too many hosts in a wave
-          fail, it stops there and waits for you.<br>
-          A host in two waves is patched once, in the <strong>earlier</strong> one. A host in no
-          wave is never patched.
-        </div>
-        <button class="btn btn-sky btn-sm" onclick="openRolloutStart()">
-          <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          Start Rollout
-        </button>
+      <div class="bl-toolbar">
+        <input type="text" class="form-control bl-search" id="rollout-search"
+               placeholder="Search rollouts by definition, wave, or state…">
+        <span class="field-hint" tabindex="0" aria-label="How rollouts work"
+              data-hint="Patch a few machines first, then the rest. Each wave is a group of hosts, matched by tag, and waves run in order.&#10;&#10;After a wave finishes, the rollout waits out that wave's validation window before starting the next — time for a bad update to show itself. If too many hosts in a wave fail, it stops there and waits for you.&#10;&#10;A host in two waves is patched once, in the earlier one. A host in no wave is never patched.">?</span>
+        <button class="btn btn-sky" onclick="openRolloutStart()">Start rollout</button>
       </div>
       <div id="rollout-list" style="display:flex;flex-direction:column;gap:10px;">
         <div class="empty-state"><div class="empty-state-title">Loading…</div></div>
@@ -47,7 +39,8 @@
   <!-- ── Automation panel ────────────────────────────────────────────── -->
   <div class="sub-panel" id="auto-panel">
     <div class="bl-toolbar">
-      <div class="page-sub" style="flex:1;margin:0;">Run a task or baseline automatically — when an event fires, or on a schedule.</div>
+      <input type="text" class="form-control bl-search" id="auto-search"
+             placeholder="Search automations by name, trigger, task, or tag…">
       <button class="btn btn-mint" id="auto-new-btn">New automation</button>
     </div>
     <div id="automations-list" class="bl-list"></div>
@@ -56,7 +49,8 @@
   <!-- ── History panel ───────────────────────────────────────────────── -->
   <div class="sub-panel" id="hist-panel">
     <div class="bl-toolbar">
-      <div class="page-sub" style="flex:1;margin:0;">Every baseline and automation dispatch, newest first, with how it turned out.</div>
+      <input type="text" class="form-control bl-search" id="hist-search"
+             placeholder="Search history by name, host, or outcome…">
       <div class="sa-chips" id="hist-filters" style="margin:0;">
         <button type="button" class="sa-chip on" data-src="automation,baseline">All</button>
         <button type="button" class="sa-chip" data-src="baseline">Baselines</button>

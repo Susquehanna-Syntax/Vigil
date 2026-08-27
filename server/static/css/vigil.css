@@ -2761,3 +2761,36 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 @media (max-width: 900px) {
   .repro-field-grid-three { grid-template-columns: 1fr; }
 }
+
+/* ── Field hint ───────────────────────────────────────────────────────────
+   A small "?" beside a control that reveals a longer explanation on hover or
+   keyboard focus. Used where the explanation is worth having but not worth
+   permanently spending three lines of the panel on — the Rollouts toolbar is
+   the first of these. Multi-line: the tooltip honours \A in the data-hint. */
+.field-hint {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--s2); color: var(--text-3);
+  font-size: 11px; font-weight: 700; line-height: 1;
+  cursor: help; user-select: none;
+  transition: color 0.2s var(--ease-out-expo), border-color 0.2s var(--ease-out-expo);
+}
+.field-hint:hover, .field-hint:focus-visible {
+  color: var(--sky); border-color: var(--sky); outline: none;
+}
+.field-hint:hover::after, .field-hint:focus-visible::after {
+  content: attr(data-hint);
+  position: absolute; top: 26px; left: 50%;
+  transform: translateX(-50%);
+  width: max-content; max-width: 380px;
+  background: var(--s3); color: var(--text-2);
+  font-size: 12px; font-weight: 400; line-height: 1.55;
+  text-align: left; white-space: pre-line;
+  padding: 10px 13px; border-radius: 8px;
+  border: 1px solid var(--border);
+  pointer-events: none; z-index: 60;
+  animation: tooltipIn 0.3s var(--ease-out-expo) both;
+}

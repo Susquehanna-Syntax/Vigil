@@ -10,6 +10,7 @@ let _autoBaselines = [];   // baseline names
 let _autoHosts = [];       // selectable hosts
 let _autoRules = [];       // alert rules (for specific-event)
 let _autoParamsOverride = {};  // task input overrides for the automation being edited
+let _allAutomations = [];  // unfiltered, so the search box can re-filter without refetching
 
 async function loadAutomations() {
   const list = document.getElementById('automations-list');
@@ -29,11 +30,29 @@ async function loadAutomations() {
     _autoHosts = hosts;
     _autoRules = rules;
     _fillEditorOptions();
-    _renderAutomations(data.automations);
+    _allAutomations = data.automations;
+    _renderAutomations(_filterAutomations());
   } catch (e) {
     list.innerHTML = `<div class="empty-block"><h4>Couldn't load automations</h4><p>${escHtml(e.message)}</p></div>`;
   }
 }
+
+function _filterAutomations() {
+  const q = (document.getElementById('auto-search')?.value || '').trim().toLowerCase();
+  if (!q) return _allAutomations;
+  return _allAutomations.filter(a =>
+    (a.name || '').toLowerCase().includes(q) ||
+    (a.trigger || '').toLowerCase().includes(q) ||
+    (a.event || '').toLowerCase().includes(q) ||
+    (a.baseline_name || '').toLowerCase().includes(q) ||
+    (a.task_name || '').toLowerCase().includes(q) ||
+    (a.target_tags || []).some(t => t.toLowerCase().includes(q)));
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('auto-search')?.addEventListener(
+    'input', () => _renderAutomations(_filterAutomations()));
+});
 
 function _renderAutomations(autos) {
   const list = document.getElementById('automations-list');
