@@ -104,9 +104,9 @@ class TaskRun(models.Model):
         "tasks.PatchRollout", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="runs",
     )
-    # Which ring the rollout dispatched this run to, if any.
-    ring = models.ForeignKey(
-        "tasks.PatchRing", on_delete=models.SET_NULL, null=True, blank=True,
+    # Which wave the rollout dispatched this run to, if any.
+    wave = models.ForeignKey(
+        "tasks.PatchWave", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="runs",
     )
     name_snapshot = models.CharField(max_length=120, blank=True)
@@ -205,12 +205,12 @@ class Task(models.Model):
         return f"{self.action} → {self.host.hostname} ({self.state})"
 
 
-class PatchRing(models.Model):
+class PatchWave(models.Model):
     """One stage of a staged rollout: every host carrying any of its tags.
 
-    Rings are walked in ascending ``order``; a host that matches several
-    rings belongs to the earliest one only (see ``ring_host_ids``), so it is
-    never patched twice in one rollout. A host matching no ring is not
+    Waves are walked in ascending ``order``; a host that matches several
+    waves belongs to the earliest one only (see ``wave_host_ids``), so it is
+    never patched twice in one rollout. A host matching no wave is not
     patched by a rollout at all — that is deliberate: opting in by tag is
     safer than opting out.
     """
@@ -218,35 +218,35 @@ class PatchRing(models.Model):
     class Meta:
         ordering = ["order"]
         constraints = [
-            models.UniqueConstraint(fields=("order",), name="uniq_patch_ring_order"),
+            models.UniqueConstraint(fields=("order",), name="uniq_patch_wave_order"),
         ]
 
     name = models.CharField(max_length=120)
     order = models.PositiveIntegerField()
     tags = models.JSONField(default=list, blank=True)
-    # How long the ring must sit after completion before the next one may
-    # start. Zero means no soak — the beat advances immediately.
-    soak_hours = models.PositiveIntegerField(default=24)
+    # How long the wave must sit after completion before the next one may
+    # start. Zero means no validation — the beat advances immediately.
+    validation_hours = models.PositiveIntegerField(default=24)
     enabled = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"ring:{self.name} ({self.order})"
+        return f"wave:{self.name} ({self.order})"
 
 
 class PatchRollout(models.Model):
-    """One execution of a task definition across the patch rings.
+    """One execution of a task definition across the patch waves.
 
     State machine: ``pending`` → ``running`` (tasks dispatched for the first
-    ring) → ``soaking`` (ring passed, waiting out its soak window) → next
-    ring ``running`` … → ``completed``. ``halted`` is terminal until an
+    wave) → ``validating`` (wave passed, waiting out its validation window) → next
+    wave ``running`` … → ``completed``. ``halted`` is terminal until an
     operator resumes it; ``cancelled`` is terminal.
     """
 
     class State(models.TextChoices):
         PENDING = "pending", "Pending"
         RUNNING = "running", "Running"
-        SOAKING = "soaking", "Soaking"
+        VALIDATING = "validating", "Validating"
         HALTED = "halted", "Halted"
         COMPLETED = "completed", "Completed"
         CANCELLED = "cancelled", "Cancelled"
@@ -256,14 +256,14 @@ class PatchRollout(models.Model):
         TaskDefinition, on_delete=models.CASCADE, related_name="rollouts"
     )
     state = models.CharField(max_length=12, choices=State.choices, default=State.PENDING)
-    current_ring = models.ForeignKey(
-        PatchRing, on_delete=models.SET_NULL, null=True, blank=True,
+    current_wave = models.ForeignKey(
+        PatchWave, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="rollouts",
     )
-    # Halt when a ring's failure rate is strictly greater than this percent.
+    # Halt when a wave's failure rate is strictly greater than this percent.
     failure_threshold_pct = models.PositiveIntegerField(default=10)
     # Below this many reported results the rate is not evaluated at all —
-    # one failure in a one-host canary ring is a 100% failure rate, and
+    # one failure in a one-host canary wave is a 100% failure rate, and
     # without this guard every rollout would halt immediately.
     min_results_before_halt = models.PositiveIntegerField(default=3)
     halted_reason = models.TextField(blank=True)
@@ -277,7 +277,7 @@ class PatchRollout(models.Model):
         related_name="rollouts_resumed",
     )
     started_at = models.DateTimeField(null=True, blank=True)
-    ring_started_at = models.DateTimeField(null=True, blank=True)
+    wave_started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
@@ -289,17 +289,17 @@ class PatchRollout(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        ring = self.current_ring.name if self.current_ring else "?"
-        return f"rollout:{self.definition_id} @ {ring} ({self.state})"
+        wave = self.current_wave.name if self.current_wave else "?"
+        return f"rollout:{self.definition_id} @ {wave} ({self.state})"
 
 
-def ring_host_ids(ring) -> list:
-    """Host ids in *ring*: every host carrying any of the ring's tags.
+def wave_host_ids(wave) -> list:
+    """Host ids in *wave*: every host carrying any of the wave's tags.
 
     Mirrors the tag-matching approach used by ``definition_deploy`` (any-tag
     membership, case-insensitive, auto-classified tags included).
     """
-    tags = {str(t).lower() for t in (ring.tags or []) if str(t).strip()}
+    tags = {str(t).lower() for t in (wave.tags or []) if str(t).strip()}
     if not tags:
         return []
     return [
@@ -309,16 +309,16 @@ def ring_host_ids(ring) -> list:
     ]
 
 
-def rollout_ring_plan(rings) -> dict:
-    """Map ring id → host ids, deduplicating across rings in ``order``.
+def rollout_wave_plan(waves) -> dict:
+    """Map wave id → host ids, deduplicating across waves in ``order``.
 
-    A host in two rings belongs to the earliest ring only: hosts already
+    A host in two waves belongs to the earliest wave only: hosts already
     assigned are skipped so no host is patched twice in one rollout.
     """
     assigned: set = set()
     plan: dict = {}
-    for ring in sorted(rings, key=lambda r: r.order):
-        hosts = [h for h in ring_host_ids(ring) if h not in assigned]
+    for wave in sorted(waves, key=lambda r: r.order):
+        hosts = [h for h in wave_host_ids(wave) if h not in assigned]
         assigned.update(hosts)
-        plan[ring.id] = hosts
+        plan[wave.id] = hosts
     return plan

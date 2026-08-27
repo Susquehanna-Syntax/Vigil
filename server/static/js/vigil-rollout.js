@@ -1,5 +1,5 @@
 // vigil-rollout.js
-// Owns: staged rollout UI on the Tasks page (Rollouts tab) — the ring
+// Owns: staged rollout UI on the Tasks page (Rollouts tab) — the wave
 //   progression view, start/halt/resume actions, and the TOTP confirmations.
 // Depends on: vigil-utils.js (apiJson, showToast, navigateTo, el)
 // API: /api/v1/rollouts/ (GET list, POST start),
@@ -7,10 +7,10 @@
 // The server's beat task (tasks.advance_rollouts, every 5 min) advances the
 // state machine; this page only reads and sends operator actions.
 
-const RING_STATUS_COLOR = {
+const WAVE_STATUS_COLOR = {
   passed: 'var(--mint)',
   running: 'var(--sky)',
-  soaking: 'var(--sky)',
+  validating: 'var(--sky)',
   halted: 'var(--rose)',
   pending: 'var(--text-3)',
 };
@@ -18,7 +18,7 @@ const RING_STATUS_COLOR = {
 const ROLLOUT_STATE_COLOR = {
   pending: 'var(--text-3)',
   running: 'var(--sky)',
-  soaking: 'var(--sky)',
+  validating: 'var(--sky)',
   halted: 'var(--rose)',
   completed: 'var(--mint)',
   cancelled: 'var(--text-3)',
@@ -30,8 +30,8 @@ const _rolloutState = {
   pendingAction: null,   // { title, message, fn(totp) } for the confirm modal
 };
 
-function _ringDot(status) {
-  const color = RING_STATUS_COLOR[status] || 'var(--text-3)';
+function _waveDot(status) {
+  const color = WAVE_STATUS_COLOR[status] || 'var(--text-3)';
   return `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};box-shadow:0 0 6px ${status === 'pending' ? 'none' : color};"></span>`;
 }
 
@@ -40,25 +40,25 @@ function _fmtTs(ts) {
   return new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function _ringProgress(r) {
-  return (r.rings || []).map(ring => {
-    const color = RING_STATUS_COLOR[ring.status] || 'var(--text-3)';
-    const count = ring.tasks_total
-      ? `${ring.tasks_done + ring.tasks_failed}/${ring.tasks_total} reported`
-      : (ring.hosts ? 'queued' : 'no hosts');
-    const soak = ring.soak_hours ? ` · soak ${ring.soak_hours}h` : '';
+function _waveProgress(r) {
+  return (r.waves || []).map(wave => {
+    const color = WAVE_STATUS_COLOR[wave.status] || 'var(--text-3)';
+    const count = wave.tasks_total
+      ? `${wave.tasks_done + wave.tasks_failed}/${wave.tasks_total} reported`
+      : (wave.hosts ? 'queued' : 'no hosts');
+    const validation = wave.validation_hours ? ` · validation ${wave.validation_hours}h` : '';
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--s2);">
-      ${_ringDot(ring.status)}
-      <span style="min-width:130px;font-weight:600;color:${color};">${escHtml(ring.name)}</span>
-      <span style="color:var(--text-3);font-size:12px;">${ring.hosts} host${ring.hosts === 1 ? '' : 's'} · ${count}${soak}</span>
-      <span style="margin-left:auto;color:var(--text-3);font-size:11px;">${(ring.tags || []).map(escHtml).join(', ')}</span>
+      ${_waveDot(wave.status)}
+      <span style="min-width:130px;font-weight:600;color:${color};">${escHtml(wave.name)}</span>
+      <span style="color:var(--text-3);font-size:12px;">${wave.hosts} host${wave.hosts === 1 ? '' : 's'} · ${count}${validation}</span>
+      <span style="margin-left:auto;color:var(--text-3);font-size:11px;">${(wave.tags || []).map(escHtml).join(', ')}</span>
     </div>`;
   }).join('');
 }
 
 function _rolloutCard(r) {
   const color = ROLLOUT_STATE_COLOR[r.state] || 'var(--text-3)';
-  const active = r.state === 'running' || r.state === 'soaking';
+  const active = r.state === 'running' || r.state === 'validating';
   let actions = '';
   if (active) {
     actions = `<button class="btn btn-ghost btn-sm" data-rlt="${r.id}" onclick="promptRolloutAction(this,'halt')">Halt now</button>`;
@@ -75,11 +75,11 @@ function _rolloutCard(r) {
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <strong>${escHtml(r.definition_name)}</strong>
       <span style="color:${color};font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;">${escHtml(r.state)}</span>
-      ${r.current_ring_name ? `<span style="color:var(--text-3);font-size:12px;">ring: ${escHtml(r.current_ring_name)}</span>` : ''}
+      ${r.current_wave_name ? `<span style="color:var(--text-3);font-size:12px;">wave: ${escHtml(r.current_wave_name)}</span>` : ''}
       <span style="color:var(--text-3);font-size:11px;margin-left:auto;">${escHtml(r.created_by_name || '')} · started ${_fmtTs(r.started_at)}</span>
     </div>
     ${reason}
-    <div style="margin-top:10px;">${_ringProgress(r)}</div>
+    <div style="margin-top:10px;">${_waveProgress(r)}</div>
     <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;">
       <span style="color:var(--text-3);font-size:11px;">
         gate: halt above ${r.failure_threshold_pct}% · min ${r.min_results_before_halt} results
@@ -99,7 +99,7 @@ async function refreshRollouts() {
     if (!items.length) {
       box.innerHTML = `<div class="empty-state" style="padding:28px;">
         <div class="empty-state-title">No rollouts yet</div>
-        <div style="color:var(--text-3);font-size:12px;margin-top:6px;">Start one from a task definition — it fans out ring by ring and halts itself on failure.</div>
+        <div style="color:var(--text-3);font-size:12px;margin-top:6px;">Start one from a task definition — it fans out wave by wave and halts itself on failure.</div>
       </div>`;
     } else {
       box.innerHTML = items.map(_rolloutCard).join('');
@@ -111,17 +111,19 @@ async function refreshRollouts() {
 }
 
 function _rolloutsTabVisible() {
-  const tab = document.querySelector('.tab-bar[data-tab-group="tasks"] .tab[data-tab="tasks-rollouts"]');
+  // Rollouts moved from the Tasks page into Deployments (Baselines / Automation
+  // / Rollouts / History) — this is a sub-tab now, not a tab.
+  const tab = document.querySelector('.sub-tab[data-subtab="rollout-panel"]');
   return !!(tab && tab.classList.contains('active'));
 }
 
 function _anyRolloutActive() {
-  return _rolloutState.items.some(r => r.state === 'running' || r.state === 'soaking');
+  return _rolloutState.items.some(r => r.state === 'running' || r.state === 'validating');
 }
 
 function _scheduleRolloutPolling() {
   // Poll while the tab is visible and a rollout is moving; the server advances
-  // rings on its own 5-minute beat, so this only refreshes the read-out.
+  // waves on its own 5-minute beat, so this only refreshes the read-out.
   if (_rolloutState.pollTimer) { clearInterval(_rolloutState.pollTimer); _rolloutState.pollTimer = null; }
   if (_rolloutsTabVisible() && _anyRolloutActive()) {
     _rolloutState.pollTimer = setInterval(refreshRollouts, 5000);
@@ -181,7 +183,7 @@ async function submitRolloutStart() {
       }),
     });
     closeRolloutStart();
-    showToast(`Rollout started — ring 1 dispatched (${r.rings?.[0]?.tasks_total ?? 0} host(s))`, 'success');
+    showToast(`Rollout started — wave 1 dispatched (${r.waves?.[0]?.tasks_total ?? 0} host(s))`, 'success');
     refreshRollouts();
   } catch (e) {
     const msg = e.message || 'Request failed';
@@ -208,8 +210,8 @@ function promptRolloutAction(btn, kind) {
   const name = r ? r.definition_name : 'the rollout';
   const title = kind === 'halt' ? 'Halt rollout' : 'Resume rollout';
   const message = kind === 'halt'
-    ? `Stop ${name} now? The current ring keeps running; nothing new is dispatched. An admin TOTP is required.`
-    : `Restart ${name} at its current ring? Failed tasks on the ring are re-queued and the gate re-evaluates.`;
+    ? `Stop ${name} now? The current wave keeps running; nothing new is dispatched. An admin TOTP is required.`
+    : `Restart ${name} at its current wave? Failed tasks on the wave are re-queued and the gate re-evaluates.`;
   _rolloutState.pendingAction = { title, message, rolloutId, kind };
   document.getElementById('rollout-action-title').textContent = title;
   document.getElementById('rollout-action-message').textContent = message;
@@ -260,16 +262,18 @@ async function confirmRolloutAction() {
 
 /* ── Wiring ──────────────────────────────────────────────────────────── */
 
-// Refresh when the Rollouts tab opens, and on page navigation to Tasks.
-document.querySelectorAll('.tab-bar[data-tab-group="tasks"] .tab').forEach(tab => {
+// Refresh when the Rollouts sub-tab opens, and on navigation to Deployments.
+// Both live on the baselines page now — the sidebar entry is labelled
+// "Deployments" but its data-page is still `baselines`.
+document.querySelectorAll('.sub-tab[data-subtab]').forEach(tab => {
   tab.addEventListener('click', () => {
-    if (tab.dataset.tab === 'tasks-rollouts') refreshRollouts();
+    if (tab.dataset.subtab === 'rollout-panel') refreshRollouts();
   });
 });
 const _origNavigateForRollouts = navigateTo;
 navigateTo = function (pageName) {
   _origNavigateForRollouts(pageName);
-  if (pageName === 'tasks' && _rolloutsTabVisible()) refreshRollouts();
+  if (pageName === 'baselines' && _rolloutsTabVisible()) refreshRollouts();
 };
 document.addEventListener('DOMContentLoaded', () => {
   if (_rolloutsTabVisible()) refreshRollouts();

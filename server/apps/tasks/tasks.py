@@ -91,7 +91,7 @@ def advance_rollouts() -> str:
 
     ``evaluate_rollout`` takes the rollout row lock itself, so this sweep is
     safe to run concurrently with itself: two overlapping ticks cannot both
-    advance the same rollout and double-dispatch a ring.
+    advance the same rollout and double-dispatch a wave.
     """
     from .rollout import evaluate_rollout
 
@@ -99,9 +99,9 @@ def advance_rollouts() -> str:
         PatchRollout.objects.filter(
             state__in=[
                 PatchRollout.State.RUNNING,
-                PatchRollout.State.SOAKING,
+                PatchRollout.State.VALIDATING,
             ]
-        ).select_related("definition", "current_ring")
+        ).select_related("definition", "current_wave")
     )
     advanced = 0
     for rollout in rollouts:

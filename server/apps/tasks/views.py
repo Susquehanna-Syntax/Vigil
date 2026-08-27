@@ -1077,31 +1077,31 @@ def action_registry(request):
 # heavier decision).
 
 
-def _rollout_ring_progress(rollout: PatchRollout) -> list:
-    """Per-ring counts for the serializer: every ring in order, annotated with
-    this rollout's dispatched tasks for that ring.
+def _rollout_wave_progress(rollout: PatchRollout) -> list:
+    """Per-wave counts for the serializer: every wave in order, annotated with
+    this rollout's dispatched tasks for that wave.
 
-    Ring display status:
-      * ``passed``    — ring fully reported, failure rate within threshold
-      * ``failed``    — ring fully reported, failure rate over threshold
-      * ``running``   — current ring, tasks still in flight
-      * ``soaking``   — current ring, passed, soak window not yet elapsed
-      * ``halted``    — the rollout halted on this ring
+    Wave display status:
+      * ``passed``    — wave fully reported, failure rate within threshold
+      * ``failed``    — wave fully reported, failure rate over threshold
+      * ``running``   — current wave, tasks still in flight
+      * ``validating``   — current wave, passed, validation window not yet elapsed
+      * ``halted``    — the rollout halted on this wave
       * ``pending``   — not yet reached by the rollout
     """
-    from .models import PatchRing
+    from .models import PatchWave
 
     SUCCESS_STATES = (Task.State.COMPLETED, Task.State.SKIPPED)
-    rings = list(PatchRing.objects.order_by("order", "id"))
-    per_ring: dict = {}
+    waves = list(PatchWave.objects.order_by("order", "id"))
+    per_wave: dict = {}
     for run in rollout.runs.all():
-        if run.ring is None:
+        if run.wave is None:
             continue
         total = run.tasks.count()
         done = run.tasks.filter(state__in=SUCCESS_STATES).count()
         failed = run.tasks.filter(state__in=FAILURE_STATES).count()
-        prev = per_ring.setdefault(
-            run.ring.id, {"hosts": 0, "tasks_total": 0, "tasks_done": 0, "tasks_failed": 0}
+        prev = per_wave.setdefault(
+            run.wave.id, {"hosts": 0, "tasks_total": 0, "tasks_done": 0, "tasks_failed": 0}
         )
         prev["hosts"] = max(prev["hosts"], run.host_count)
         prev["tasks_total"] += total
@@ -1109,20 +1109,20 @@ def _rollout_ring_progress(rollout: PatchRollout) -> list:
         prev["tasks_failed"] += failed
 
     out = []
-    for ring in rings:
-        counts = per_ring.get(
-            ring.id, {"hosts": 0, "tasks_total": 0, "tasks_done": 0, "tasks_failed": 0}
+    for wave in waves:
+        counts = per_wave.get(
+            wave.id, {"hosts": 0, "tasks_total": 0, "tasks_done": 0, "tasks_failed": 0}
         )
         total = counts["tasks_total"]
         reported = counts["tasks_done"] + counts["tasks_failed"]
         pct = (counts["tasks_failed"] * 100) / reported if reported else 0.0
-        is_current = rollout.current_ring_id == ring.id
-        if not ring.enabled:
+        is_current = rollout.current_wave_id == wave.id
+        if not wave.enabled:
             status = "pending"
         elif is_current and rollout.state == PatchRollout.State.HALTED:
             status = "halted"
-        elif is_current and rollout.state == PatchRollout.State.SOAKING:
-            status = "soaking"
+        elif is_current and rollout.state == PatchRollout.State.VALIDATING:
+            status = "validating"
         elif is_current and rollout.state == PatchRollout.State.RUNNING and total and reported < total:
             status = "running"
         elif total and reported == total:
@@ -1132,12 +1132,12 @@ def _rollout_ring_progress(rollout: PatchRollout) -> list:
         else:
             status = "pending"
         out.append({
-            "id": str(ring.id),
-            "name": ring.name,
-            "order": ring.order,
-            "tags": ring.tags or [],
-            "soak_hours": ring.soak_hours,
-            "enabled": ring.enabled,
+            "id": str(wave.id),
+            "name": wave.name,
+            "order": wave.order,
+            "tags": wave.tags or [],
+            "validation_hours": wave.validation_hours,
+            "enabled": wave.enabled,
             **counts,
             "status": status,
         })
@@ -1147,14 +1147,14 @@ def _rollout_ring_progress(rollout: PatchRollout) -> list:
 class _RolloutDetailSerializer(PatchRolloutSerializer):
     def to_representation(self, obj):
         data = super().to_representation(obj)
-        data["rings"] = _rollout_ring_progress(obj)
+        data["waves"] = _rollout_wave_progress(obj)
         return data
 
 
 def _rollout_response(rollout: PatchRollout):
     return _RolloutDetailSerializer(
         PatchRollout.objects.select_related(
-            "definition", "current_ring", "created_by", "halted_by", "resumed_by",
+            "definition", "current_wave", "created_by", "halted_by", "resumed_by",
         ).get(pk=rollout.pk)
     ).data
 
@@ -1165,7 +1165,7 @@ def rollout_collection(request):
     """GET — list rollouts. POST — start one from a definition.
 
     TOTP-gated like a manual deploy — it fans a definition out across
-    the whole fleet, ring by ring.
+    the whole fleet, wave by wave.
     """
     if request.method == "POST":
         definition_id = request.data.get("definition_id")
@@ -1188,7 +1188,7 @@ def rollout_collection(request):
         return Response(_rollout_response(rollout), status=201)
 
     rollouts = PatchRollout.objects.select_related(
-        "definition", "current_ring", "created_by", "halted_by", "resumed_by",
+        "definition", "current_wave", "created_by", "halted_by", "resumed_by",
     ).order_by("-created_at")
     raw = (request.query_params.get("state") or "").strip()
     if raw:
@@ -1208,7 +1208,7 @@ def rollout_collection(request):
 def rollout_detail(request, rollout_id):
     rollout = get_object_or_404(
         PatchRollout.objects.select_related(
-            "definition", "current_ring", "created_by", "halted_by", "resumed_by",
+            "definition", "current_wave", "created_by", "halted_by", "resumed_by",
         ),
         pk=rollout_id,
     )
@@ -1235,9 +1235,9 @@ def rollout_halt(request, rollout_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def rollout_resume(request, rollout_id):
-    """Clear a halt and continue from the same ring. TOTP-gated; records who
-    did it. Failed tasks on the ring are re-queued so the gate re-evaluates
-    over the whole ring."""
+    """Clear a halt and continue from the same wave. TOTP-gated; records who
+    did it. Failed tasks on the wave are re-queued so the gate re-evaluates
+    over the whole wave."""
     rollout = get_object_or_404(PatchRollout, pk=rollout_id)
     error = _verify_confirmation(request.user, request.data)
     if error:
