@@ -180,6 +180,24 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('wave-new-btn')?.addEventListener('click', () => openWaveEditor(null));
   document.getElementById('wave-tags')?.addEventListener('input', _updateWaveMatchPreview);
 
+  // Pick from the tags that already exist, rather than retyping one and
+  // discovering later that the spelling matched nothing.
+  document.getElementById('wave-tags-pick')?.addEventListener('click', async () => {
+    await ensureTagsLoaded();
+    openTagPicker({
+      title: 'Add a tag to this wave',
+      selected: _waveTagsFromInput(),
+      onSelect: (tag) => {
+        const current = _waveTagsFromInput();
+        if (!current.some(t => t.toLowerCase() === String(tag.name).toLowerCase())) {
+          current.push(tag.name);
+        }
+        document.getElementById('wave-tags').value = current.join(', ');
+        _updateWaveMatchPreview();
+      },
+    });
+  });
+
   document.querySelectorAll('.sub-tab[data-subtab]').forEach(tab => {
     tab.addEventListener('click', () => {
       if (tab.dataset.subtab === 'wave-panel') loadWaves();

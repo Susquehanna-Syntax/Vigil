@@ -2,6 +2,7 @@ import secrets
 import zoneinfo
 
 from django.db import transaction
+from django.shortcuts import get_object_or_404
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import now
 from rest_framework import status
@@ -1080,3 +1081,153 @@ def host_firewall_apply(request, host_id):
 
     task = _queue_firewall_task(host, request.user, action, params, Task.RiskLevel.HIGH)
     return Response({"task_id": str(task.id)}, status=status.HTTP_201_CREATED)
+
+
+# ── Tag management ──────────────────────────────────────────────────────────
+#
+# Reads are open to any authenticated user so every tag picker can populate.
+# Writes are admin-only: a tag decides which machines a wave patches.
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def tag_collection(request):
+    """List tags with their usage counts, or create one."""
+    from .models import Tag
+
+    if request.method == "GET":
+        tags = Tag.objects.all().prefetch_related("hosts")
+        return Response([_tag_payload(t) for t in tags])
+
+    if not IsAdmin().has_permission(request, None):
+        return Response({"detail": "Admin role required."}, status=403)
+
+    name = str(request.data.get("name") or "")
+    if not name.strip():
+        return Response({"name": ["A tag needs a name."]}, status=400)
+    if Tag.is_reserved(name):
+        # os:/pkg:/arch: are rebuilt from inventory on every check-in and
+        # agent:* exists so a compromised agent cannot impersonate an
+        # operator tag. Neither is an operator's to create.
+        return Response(
+            {"name": [f"{name!r} uses a reserved prefix. Those tags are set by "
+                      f"Vigil itself, not by hand."]},
+            status=400,
+        )
+    if Tag.objects.filter(key=Tag.canonical_key(name)).exists():
+        return Response({"name": [f"A tag matching {name!r} already exists."]},
+                        status=400)
+    tag, _ = Tag.get_or_create_by_name(name)
+    if request.data.get("description"):
+        tag.description = str(request.data["description"])[:255]
+        tag.save(update_fields=["description"])
+    return Response(_tag_payload(tag), status=201)
+
+
+def _tag_payload(tag) -> dict:
+    return {
+        "id": tag.id,
+        "name": tag.name,
+        "key": tag.key,
+        "kind": tag.kind,
+        "description": tag.description,
+        "host_count": tag.hosts.count(),
+        "editable": tag.kind == tag.Kind.MANUAL,
+    }
+
+
+@api_view(["GET", "PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+def tag_detail(request, tag_id):
+    """Read, rename, or delete a tag."""
+    from .models import Tag
+
+    tag = get_object_or_404(Tag, pk=tag_id)
+    if request.method == "GET":
+        return Response(_tag_payload(tag))
+
+    if not IsAdmin().has_permission(request, None):
+        return Response({"detail": "Admin role required."}, status=403)
+
+    if tag.kind != Tag.Kind.MANUAL:
+        return Response(
+            {"detail": f"{tag.name!r} is maintained by Vigil, not by hand. "
+                       f"Auto and agent tags are rebuilt from what the host reports."},
+            status=400,
+        )
+
+    if request.method == "DELETE":
+        # Refuse while anything still selects on it, rather than silently
+        # emptying a wave. The message names what is using it.
+        users = []
+        if tag.hosts.exists():
+            users.append(f"{tag.hosts.count()} host(s)")
+        for rel, label in (("waves", "wave"), ("baselines", "baseline"),
+                           ("automations_by_event", "automation (event)"),
+                           ("automations_by_target", "automation (target)")):
+            manager = getattr(tag, rel, None)
+            if manager is not None and manager.exists():
+                users.append(f"{manager.count()} {label}(s)")
+        if users:
+            return Response(
+                {"detail": f"{tag.name!r} is still used by " + ", ".join(users)
+                           + ". Remove it from those first."},
+                status=409,
+            )
+        tag.delete()
+        return Response(status=204)
+
+    new_name = str(request.data.get("name") or "").strip()
+    if new_name:
+        if Tag.is_reserved(new_name):
+            return Response({"name": ["That prefix is reserved for Vigil."]},
+                            status=400)
+        clash = Tag.objects.filter(key=Tag.canonical_key(new_name)).exclude(pk=tag.pk)
+        if clash.exists():
+            return Response({"name": [f"A tag matching {new_name!r} already exists."]},
+                            status=400)
+        # Renaming the row renames it everywhere at once — that is the whole
+        # point of rows over strings. The mirrored string lists are updated
+        # too, so the two stay consistent until the strings are dropped.
+        old_key = tag.key
+        tag.name = new_name
+        tag.save()
+        _rename_in_string_mirrors(old_key, new_name)
+    if "description" in request.data:
+        tag.description = str(request.data.get("description") or "")[:255]
+        tag.save(update_fields=["description"])
+    return Response(_tag_payload(tag))
+
+
+def _rename_in_string_mirrors(old_key: str, new_name: str) -> None:
+    """Rewrite the string lists that still mirror the rows.
+
+    Rows are authoritative for matching, but the string fields are still the
+    write interface and still what the consistency tests compare against, so a
+    rename has to land in both or the two drift apart.
+    """
+    from apps.automations.models import Automation
+    from apps.baselines.models import Baseline
+    from apps.reprovision.models import InstallProfile
+    from apps.tasks.models import PatchWave
+
+    from .models import Host
+
+    def rewrite(queryset, field):
+        for row in queryset.iterator():
+            values = list(getattr(row, field) or [])
+            changed = False
+            for i, value in enumerate(values):
+                if str(value).lower() == old_key:
+                    values[i] = new_name
+                    changed = True
+            if changed:
+                setattr(row, field, values)
+                row.save()
+
+    rewrite(Host.objects.all(), "tags")
+    rewrite(PatchWave.objects.all(), "tags")
+    rewrite(Baseline.objects.all(), "target_tags")
+    rewrite(Automation.objects.all(), "event_tags")
+    rewrite(Automation.objects.all(), "target_tags")
+    rewrite(InstallProfile.objects.all(), "completion_tags")

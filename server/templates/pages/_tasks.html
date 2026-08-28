@@ -15,6 +15,7 @@
 
       <div class="tab-bar" data-tab-group="tasks">
         <div class="tab t-lav active" data-tab="tasks-library">My Library</div>
+        <div class="tab t-peach" data-tab="tasks-tags">Tags</div>
         <div class="tab t-mint" data-tab="tasks-history">History</div>
       </div>
 
@@ -28,6 +29,19 @@
       </div>
 
 <!-- History (live-polled from /api/v1/tasks/history/) -->
+      <!-- Tags — fleet-wide tag definitions. Waves, baselines and automations
+           all select on these, so this is the one place a tag is named. -->
+      <div class="tab-content" id="tasks-tags">
+        <div class="bl-toolbar">
+          <input type="text" class="form-control bl-search" id="tag-search"
+                 placeholder="Search tags by name…">
+          <span class="field-hint" tabindex="0" aria-label="About tags"
+                data-hint="A tag is a label you put on machines. Waves, baselines and automations all pick machines by tag, so this is where a tag gets its name.&#10;&#10;Renaming a tag here renames it everywhere at once.&#10;&#10;Tags starting with os:, pkg:, arch: or agent: are set by Vigil from what each machine reports, and cannot be edited by hand.">?</span>
+          <button class="btn btn-mint" id="tag-new-btn">New tag</button>
+        </div>
+        <div id="tags-list" class="bl-list"></div>
+      </div>
+
       <div class="tab-content" id="tasks-history">
         <div id="task-history-list" class="task-list">
           <div class="empty-state">

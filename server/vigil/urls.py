@@ -15,6 +15,7 @@ from rest_framework.response import Response
 from apps.accounts.views import login_view, logout_view, setup_view
 from apps.alerts.models import Alert
 from apps.hosts.models import Host
+from apps.hosts import views as hosts_views
 from apps.hosts.views import checkin, register
 from apps.reprovision.installer_views import enroll as reprovision_enroll
 from apps.statuspage.views import public_status as status_public_view
@@ -123,6 +124,8 @@ urlpatterns = [
     path("api/v1/alerts/", include("apps.alerts.urls")),
     path("api/v1/tasks/", include("apps.tasks.urls")),
     path("api/v1/", include("apps.tasks.rollout_urls")),
+    path("api/v1/tags/", hosts_views.tag_collection, name="tag-collection"),
+    path("api/v1/tags/<int:tag_id>/", hosts_views.tag_detail, name="tag-detail"),
     path("api/v1/vulns/", include("apps.vulns.urls")),
     path("api/v1/accounts/", include("apps.accounts.urls")),
     path("api/v1/sites/", include("apps_business.sites.urls")),
