@@ -3,7 +3,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 
-from apps.hosts.models import Host
+from apps.hosts.models import Host, TagRowSyncMixin
 
 
 class TaskDefinition(models.Model):
@@ -205,7 +205,7 @@ class Task(models.Model):
         return f"{self.action} → {self.host.hostname} ({self.state})"
 
 
-class PatchWave(models.Model):
+class PatchWave(TagRowSyncMixin, models.Model):
     """One stage of a staged rollout: every host carrying any of its tags.
 
     Waves are walked in ascending ``order``; a host that matches several
@@ -214,6 +214,8 @@ class PatchWave(models.Model):
     patched by a rollout at all — that is deliberate: opting in by tag is
     safer than opting out.
     """
+    tag_sync_fields = [("tags", "tag_rows")]
+
 
     class Meta:
         ordering = ["order"]
@@ -339,14 +341,23 @@ def wave_host_ids(wave) -> list:
     Mirrors the tag-matching approach used by ``definition_deploy`` (any-tag
     membership, case-insensitive, auto-classified tags included).
     """
-    tags = {str(t).lower() for t in (wave.tags or []) if str(t).strip()}
-    if not tags:
+    # Reads the tag rows rather than comparing strings. The semantics are
+    # unchanged because the rows encode them: a row's key is the tag name
+    # lowercased with whitespace preserved, so `Prod` and `prod` are the same
+    # row (they always matched) and `prod ` is a different one (it never did).
+    #
+    # A wave with no tags still matches no hosts — the opposite of a baseline
+    # with no target_tags, which matches all of them. That asymmetry predates
+    # this change and is pinned by test_tag_semantics.
+    tag_ids = list(wave.tag_rows.values_list("id", flat=True))
+    if not tag_ids:
         return []
-    return [
-        h.id
-        for h in Host.objects.exclude(status=Host.Status.REJECTED)
-        if not {str(t).lower() for t in (h.tags or [])}.isdisjoint(tags)
-    ]
+    return list(
+        Host.objects.exclude(status=Host.Status.REJECTED)
+        .filter(tag_rows__in=tag_ids)
+        .distinct()
+        .values_list("id", flat=True)
+    )
 
 
 def rollout_wave_plan(waves) -> dict:

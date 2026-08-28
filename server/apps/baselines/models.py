@@ -15,8 +15,12 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from apps.hosts.models import TagRowSyncMixin
 
-class Baseline(models.Model):
+
+class Baseline(TagRowSyncMixin, models.Model):
+
+    tag_sync_fields = [("target_tags", "target_tag_rows")]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     # The callable identity: `type: baseline, params: {name: ...}` resolves
     # case-insensitively against this.
@@ -56,10 +60,28 @@ class Baseline(models.Model):
     def matches(self, host) -> bool:
         if not self.enabled:
             return False
+        # No target tags means every host, which is the opposite of a wave
+        # with no tags. Long-standing asymmetry, pinned by test_tag_semantics.
         if not self.target_tags:
             return True
-        host_tags = {str(t).lower() for t in (host.tags or [])}
-        return not host_tags.isdisjoint({str(t).lower() for t in self.target_tags})
+        # An unsaved instance has no rows, and its strings are the only truth
+        # it has. Falling back keeps an in-memory Baseline comparing correctly
+        # instead of silently matching nothing — which is what a row-only
+        # implementation would do, and is a nasty thing to debug.
+        # NOT `self.pk is None`: the primary key is a UUIDField with a
+        # default, so an unsaved instance already has one. `_state.adding` is
+        # the only reliable "has this been written yet" check here.
+        if self._state.adding or host._state.adding:
+            host_tags = {str(t).lower() for t in (host.tags or [])}
+            return not host_tags.isdisjoint(
+                {str(t).lower() for t in self.target_tags})
+        # Compare row ids rather than strings. The row key already encodes the
+        # comparison — lowercase, whitespace preserved — so this matches
+        # exactly what the string version matched.
+        wanted = set(self.target_tag_rows.values_list("id", flat=True))
+        if not wanted:
+            return False
+        return bool(wanted & set(host.tag_rows.values_list("id", flat=True)))
 
 
 class BaselineStep(models.Model):
