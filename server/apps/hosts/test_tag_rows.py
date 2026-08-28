@@ -237,3 +237,74 @@ class MirrorConsistencyTests(TestCase):
         before = {t.pk for t in self.host.tag_rows.all()}
         self._link()
         self.assertEqual({t.pk for t in self.host.tag_rows.all()}, before)
+
+
+class WriteSyncTests(TestCase):
+    """Strings stay the write interface; rows follow automatically on save.
+
+    Six different places assign `host.tags`, so converting every caller would
+    be a losing game. The sync happens on save instead, which catches all of
+    them — including the check-in path that runs for every host every minute.
+    """
+
+    def test_creating_a_host_creates_its_rows(self):
+        host = Host.objects.create(hostname="ws1", ip_address="10.33.0.1",
+                                   agent_token="ws1", tags=["alpha", "beta"])
+        self.assertEqual({t.key for t in host.tag_rows.all()}, {"alpha", "beta"})
+
+    def test_adding_a_tag_adds_a_row(self):
+        host = Host.objects.create(hostname="ws2", ip_address="10.33.0.2",
+                                   agent_token="ws2", tags=["alpha"])
+        host.tags = ["alpha", "gamma"]
+        host.save()
+        self.assertEqual({t.key for t in host.tag_rows.all()}, {"alpha", "gamma"})
+
+    def test_removing_a_tag_removes_the_link_but_keeps_the_row(self):
+        """The Tag row survives — other hosts may still use it, and deleting
+        it here would make tag history disappear under them."""
+        host = Host.objects.create(hostname="ws3", ip_address="10.33.0.3",
+                                   agent_token="ws3", tags=["alpha", "beta"])
+        host.tags = ["alpha"]
+        host.save()
+        self.assertEqual({t.key for t in host.tag_rows.all()}, {"alpha"})
+        self.assertTrue(Tag.objects.filter(key="beta").exists())
+
+    def test_case_change_does_not_create_a_second_row(self):
+        host = Host.objects.create(hostname="ws4", ip_address="10.33.0.4",
+                                   agent_token="ws4", tags=["Alpha"])
+        host.tags = ["alpha"]
+        host.save()
+        self.assertEqual(Tag.objects.filter(key="alpha").count(), 1)
+
+    def test_whitespace_variant_creates_a_second_row(self):
+        """Consistent with the migration: `alpha ` is a different tag."""
+        host = Host.objects.create(hostname="ws5", ip_address="10.33.0.5",
+                                   agent_token="ws5", tags=["alpha", "alpha "])
+        self.assertEqual({t.key for t in host.tag_rows.all()}, {"alpha", "alpha "})
+
+    def test_blank_tags_never_become_rows(self):
+        host = Host.objects.create(hostname="ws6", ip_address="10.33.0.6",
+                                   agent_token="ws6", tags=["", "  ", "real"])
+        self.assertEqual({t.key for t in host.tag_rows.all()}, {"real"})
+
+    def test_unchanged_tags_do_no_writes(self):
+        """This runs on every check-in, so an unchanged save must be cheap."""
+        host = Host.objects.create(hostname="ws7", ip_address="10.33.0.7",
+                                   agent_token="ws7", tags=["alpha"])
+        from apps.hosts.models import sync_tag_rows
+        self.assertFalse(sync_tag_rows(host, "tags", "tag_rows"),
+                         "an unchanged save should report no change")
+
+    def test_wave_and_baseline_sync_too(self):
+        wave = PatchWave.objects.create(name="wsw", order=804, tags=["canary"])
+        self.assertEqual({t.key for t in wave.tag_rows.all()}, {"canary"})
+        baseline = Baseline.objects.create(name="wsb", target_tags=["web"])
+        self.assertEqual({t.key for t in baseline.target_tag_rows.all()}, {"web"})
+
+    def test_automation_syncs_both_of_its_lists(self):
+        auto = Automation.objects.create(
+            name="wsa", trigger=Automation.Trigger.EVENT, event="alert_fired",
+            action_kind=Automation.ActionKind.TASK,
+            event_tags=["evt"], target_tags=["tgt"])
+        self.assertEqual({t.key for t in auto.event_tag_rows.all()}, {"evt"})
+        self.assertEqual({t.key for t in auto.target_tag_rows.all()}, {"tgt"})

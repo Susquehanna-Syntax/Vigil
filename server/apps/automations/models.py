@@ -21,8 +21,12 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from apps.hosts.models import TagRowSyncMixin
 
-class Automation(models.Model):
+
+class Automation(TagRowSyncMixin, models.Model):
+
+    tag_sync_fields = [("event_tags", "event_tag_rows"), ("target_tags", "target_tag_rows")]
     class Trigger(models.TextChoices):
         EVENT = "event", "When an event fires"
         SCHEDULE = "schedule", "On a schedule"

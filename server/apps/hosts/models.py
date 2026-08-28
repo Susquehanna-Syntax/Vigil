@@ -28,6 +28,15 @@ class Host(models.Model):
     #: the migration to database-defined tags; the strings stay authoritative
     #: until the switch-over, and a consistency test asserts the two agree.
     tag_rows = models.ManyToManyField("hosts.Tag", blank=True, related_name="hosts")
+
+    #: (string field, row relation) pairs kept in step on save.
+    tag_sync_fields = [("tags", "tag_rows")]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Defined below this class, hence the local import.
+        for string_field, relation in self.tag_sync_fields:
+            sync_tag_rows(self, string_field, relation)
     agent_version = models.CharField(max_length=50, blank=True, default="")
     last_checkin = models.DateTimeField(null=True, blank=True)
     # Alert suppression window. A rebuild takes ~40 minutes, and without this
@@ -295,3 +304,47 @@ class Tag(models.Model):
         if existing:
             return existing, False
         return cls.objects.create(name=str(name), kind=cls.kind_for(name)), True
+
+
+def sync_tag_rows(instance, string_field: str, relation: str) -> bool:
+    """Reconcile a row relation with the string list it mirrors.
+
+    Strings stay the write interface — six different places assign
+    ``host.tags`` and it would be a losing game to convert them all — so the
+    rows are derived here instead, on save. Returns True when something
+    changed.
+
+    Cheap when nothing moved: one query for the current set, and no writes.
+    That matters because this runs on every check-in for every host.
+    """
+    names = [str(n) for n in (getattr(instance, string_field, None) or [])
+             if str(n).strip()]
+    wanted_keys = {Tag.canonical_key(n) for n in names}
+    manager = getattr(instance, relation)
+    current = {t.key: t for t in manager.all()}
+    if wanted_keys == set(current):
+        return False
+
+    tags = []
+    for name in names:
+        key = Tag.canonical_key(name)
+        tag = current.get(key) or Tag.objects.filter(key=key).first()
+        if tag is None:
+            tag = Tag.objects.create(name=name, kind=Tag.kind_for(name))
+        tags.append(tag)
+    manager.set(tags)
+    return True
+
+
+class TagRowSyncMixin:
+    """Keeps a model's row relation in step with its string field on save.
+
+    ``tag_sync_fields`` is a list of ``(string_field, relation)`` pairs.
+    """
+
+    tag_sync_fields: list = []
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        for string_field, relation in self.tag_sync_fields:
+            sync_tag_rows(self, string_field, relation)

@@ -9,7 +9,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 
-from apps.hosts.models import Host
+from apps.hosts.models import Host, TagRowSyncMixin
 
 
 class OSImage(models.Model):
@@ -61,8 +61,10 @@ class OSImage(models.Model):
         return f"{self.name} ({self.architecture})"
 
 
-class InstallProfile(models.Model):
+class InstallProfile(TagRowSyncMixin, models.Model):
     """Typed settings for an image, plus a verbatim escape hatch (§6)."""
+    tag_sync_fields = [("completion_tags", "completion_tag_rows")]
+
 
     class NetworkMode(models.TextChoices):
         DHCP = "dhcp", "DHCP"

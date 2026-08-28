@@ -82,10 +82,12 @@ def _resolve_hosts(automation, event_host):
     qs = Host.objects.exclude(status=Host.Status.PENDING).exclude(
         status=Host.Status.REJECTED).exclude(mode=Host.Mode.MONITOR)
     if automation.target == T.TAGS:
-        wanted = {str(t).lower() for t in (automation.target_tags or [])}
+        # Row ids, not strings — same comparison, encoded once in the row key
+        # rather than re-derived at each call site.
+        wanted = list(automation.target_tag_rows.values_list("id", flat=True))
         if not wanted:
             return []
-        return [h for h in qs if wanted & {str(t).lower() for t in (h.tags or [])}]
+        return list(qs.filter(tag_rows__in=wanted).distinct())
     return list(qs)  # ALL
 
 
@@ -209,8 +211,14 @@ def tags_ok(automation, host) -> bool:
         return True
     if host is None:
         return False
-    want = {str(t).lower() for t in automation.event_tags}
-    return bool(want & {str(t).lower() for t in (host.tags or [])})
+    # Same unsaved-instance fallback as Baseline.matches — see the note there.
+    if automation._state.adding or host._state.adding:
+        return bool({str(t).lower() for t in automation.event_tags}
+                    & {str(t).lower() for t in (host.tags or [])})
+    want = set(automation.event_tag_rows.values_list("id", flat=True))
+    if not want:
+        return False
+    return bool(want & set(host.tag_rows.values_list("id", flat=True)))
 
 
 def handle_event(event_name: str, payload: dict) -> None:
