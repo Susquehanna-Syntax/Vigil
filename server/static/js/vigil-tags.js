@@ -160,6 +160,48 @@ async function ensureTagsLoaded() {
   try { _allTags = await apiJson('/api/v1/tags/'); } catch { _allTags = []; }
 }
 
+/**
+ * Give a comma-separated tag input a "Pick…" button beside it.
+ *
+ * Every tag field in the app goes through here, so they all behave the same:
+ * the picker shows what already exists with machine counts, and picking
+ * appends rather than replaces. Typed entry still works — a tag that does not
+ * exist yet has to be typeable somewhere — but the list is now one click away,
+ * so a misspelling is a choice rather than an accident.
+ */
+function attachTagPicker(inputId, opts = {}) {
+  const input = document.getElementById(inputId);
+  if (!input || input.dataset.tagPicker) return;
+  input.dataset.tagPicker = '1';
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-outline btn-sm';
+  btn.textContent = 'Pick…';
+  btn.style.marginLeft = '8px';
+  btn.style.flex = 'none';
+  input.insertAdjacentElement('afterend', btn);
+
+  btn.addEventListener('click', async () => {
+    await ensureTagsLoaded();
+    const current = (input.value || '').split(',').map(t => t.trim()).filter(Boolean);
+    openTagPicker({
+      title: opts.title || 'Add a tag',
+      selected: current,
+      // Reprovision and host tagging can legitimately reference an
+      // inventory-derived tag; a wave selector normally should not.
+      includeReserved: opts.includeReserved === true,
+      onSelect: (tag) => {
+        if (!current.some(t => t.toLowerCase() === String(tag.name).toLowerCase())) {
+          current.push(tag.name);
+        }
+        input.value = current.join(', ');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      },
+    });
+  });
+}
+
 /* ── Wiring ───────────────────────────────────────────────────────────── */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -170,4 +212,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (tab.dataset.tab === 'tasks-tags') loadTags();
     });
   });
+
+  // Every tag field in the app, in one place so none gets forgotten.
+  attachTagPicker('wave-tags', { title: 'Machines in this wave are tagged' });
+  attachTagPicker('bl-tags', { title: 'Machines this baseline targets' });
+  attachTagPicker('auto-event-tags', { title: 'Only fire for hosts tagged' });
+  attachTagPicker('auto-target-tags', { title: 'Run on hosts tagged' });
+  attachTagPicker('repro-prof-tags', { title: 'Tag the rebuilt host with',
+                                       includeReserved: true });
+  attachTagPicker('detail-tag-input', { title: 'Add a tag to this machine' });
 });
