@@ -308,3 +308,114 @@ class WriteSyncTests(TestCase):
             event_tags=["evt"], target_tags=["tgt"])
         self.assertEqual({t.key for t in auto.event_tag_rows.all()}, {"evt"})
         self.assertEqual({t.key for t in auto.target_tag_rows.all()}, {"tgt"})
+
+
+class TagApiTests(TestCase):
+    """The Tags tab's backend. Reads open so every picker can populate; writes
+    admin-only, because a tag decides which machines a wave patches."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        self.admin = User.objects.create_user("tagadmin", password="x",
+                                              is_staff=True, is_superuser=True)
+        self.viewer = User.objects.create_user("tagviewer", password="x")
+        self.host = Host.objects.create(hostname="ta1", ip_address="10.34.0.1",
+                                        agent_token="ta1", tags=["prod", "os:debian"])
+
+    def test_list_shows_usage_counts(self):
+        self.client.force_login(self.viewer)
+        rows = {t["name"]: t for t in self.client.get("/api/v1/tags/").json()}
+        self.assertEqual(rows["prod"]["host_count"], 1)
+
+    def test_auto_tags_are_listed_but_not_editable(self):
+        self.client.force_login(self.viewer)
+        rows = {t["name"]: t for t in self.client.get("/api/v1/tags/").json()}
+        self.assertFalse(rows["os:debian"]["editable"])
+        self.assertTrue(rows["prod"]["editable"])
+
+    def test_viewer_cannot_create(self):
+        self.client.force_login(self.viewer)
+        r = self.client.post("/api/v1/tags/", {"name": "new"},
+                             content_type="application/json")
+        self.assertEqual(r.status_code, 403)
+
+    def test_admin_creates(self):
+        self.client.force_login(self.admin)
+        r = self.client.post("/api/v1/tags/", {"name": "staging"},
+                             content_type="application/json")
+        self.assertEqual(r.status_code, 201)
+        self.assertTrue(Tag.objects.filter(key="staging").exists())
+
+    def test_reserved_prefixes_are_refused(self):
+        """os:/pkg:/arch: are rebuilt from inventory and agent:* exists so a
+        compromised agent cannot impersonate an operator tag."""
+        self.client.force_login(self.admin)
+        for name in ("os:ubuntu", "agent:spoofed", "pkg:apt", "arch:arm64"):
+            with self.subTest(name=name):
+                r = self.client.post("/api/v1/tags/", {"name": name},
+                                     content_type="application/json")
+                self.assertEqual(r.status_code, 400)
+
+    def test_duplicate_by_case_is_refused(self):
+        self.client.force_login(self.admin)
+        r = self.client.post("/api/v1/tags/", {"name": "PROD"},
+                             content_type="application/json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_whitespace_variant_is_allowed_as_a_separate_tag(self):
+        """Consistent with the migration: `prod ` never matched `prod`."""
+        self.client.force_login(self.admin)
+        r = self.client.post("/api/v1/tags/", {"name": "prod "},
+                             content_type="application/json")
+        self.assertEqual(r.status_code, 201)
+
+    def test_rename_updates_the_string_mirrors_too(self):
+        """The point of rows: one rename lands everywhere."""
+        wave = PatchWave.objects.create(name="tw", order=805, tags=["prod"])
+        tag = Tag.objects.get(key="prod")
+        self.client.force_login(self.admin)
+        r = self.client.patch(f"/api/v1/tags/{tag.id}/", {"name": "production"},
+                              content_type="application/json")
+        self.assertEqual(r.status_code, 200)
+        self.host.refresh_from_db()
+        wave.refresh_from_db()
+        self.assertIn("production", self.host.tags)
+        self.assertNotIn("prod", self.host.tags)
+        self.assertIn("production", wave.tags)
+
+    def test_rename_keeps_wave_membership(self):
+        from apps.tasks.models import wave_host_ids
+
+        wave = PatchWave.objects.create(name="tw2", order=806, tags=["prod"])
+        before = set(wave_host_ids(wave))
+        tag = Tag.objects.get(key="prod")
+        self.client.force_login(self.admin)
+        self.client.patch(f"/api/v1/tags/{tag.id}/", {"name": "production"},
+                          content_type="application/json")
+        wave.refresh_from_db()
+        self.assertEqual(set(wave_host_ids(wave)), before,
+                         "renaming a tag must not move hosts between waves")
+
+    def test_auto_tag_cannot_be_renamed(self):
+        tag = Tag.objects.get(key="os:debian")
+        self.client.force_login(self.admin)
+        r = self.client.patch(f"/api/v1/tags/{tag.id}/", {"name": "os:other"},
+                              content_type="application/json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_delete_is_refused_while_in_use(self):
+        """Deleting a tag a wave selects on would silently empty that wave."""
+        PatchWave.objects.create(name="tw3", order=807, tags=["prod"])
+        tag = Tag.objects.get(key="prod")
+        self.client.force_login(self.admin)
+        r = self.client.delete(f"/api/v1/tags/{tag.id}/")
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("still used by", r.json()["detail"])
+
+    def test_delete_works_once_unused(self):
+        self.client.force_login(self.admin)
+        self.client.post("/api/v1/tags/", {"name": "orphan"},
+                         content_type="application/json")
+        tag = Tag.objects.get(key="orphan")
+        self.assertEqual(self.client.delete(f"/api/v1/tags/{tag.id}/").status_code, 204)
