@@ -94,7 +94,7 @@
     <input type="text" class="form-control" id="bl-desc" placeholder="What this baseline does" maxlength="2000">
   </div>
   <div class="bl-field">
-    <label>Steps — run top to bottom</label>
+    <label>Steps — run top to bottom</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Each step is a task. They run in order on the target machine, and a failed step stops the ones after it.">?</span>
     <div class="bl-editor-steps" id="bl-editor-steps"></div>
     <button class="btn btn-outline btn-sm" id="bl-add-step-btn" type="button" style="margin-top:8px;">+ Add step</button>
   </div>
@@ -147,7 +147,7 @@
     <input type="text" class="form-control" id="auto-name" placeholder="e.g. Clean disk when critical" maxlength="120">
   </div>
   <div class="bl-field">
-    <label>Trigger</label>
+    <label>Trigger</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="What starts this automation. An event fires it when something happens, like an alert. A schedule fires it on a clock.">?</span>
     <select class="form-control" id="auto-trigger">
       <option value="event">When an event fires</option>
       <option value="schedule">On a schedule</option>
@@ -181,9 +181,11 @@
       deliberately separate from "Run on" below.
     {% endcomment %}
     <div class="bl-hint" id="auto-event-host-wrap" style="margin-top:8px;">Only for events on host (optional):
-      <select class="form-control" id="auto-event-host" style="display:inline-block;width:auto;">
-        <option value="">any host</option>
-      </select>
+      <button class="btn btn-outline picker-btn" id="auto-event-host-btn" type="button">
+        <span id="auto-event-host-label">any host</span>
+      </button>
+      <button class="btn btn-ghost btn-sm" id="auto-event-host-clear" type="button">Clear</button>
+      <input type="hidden" id="auto-event-host">
     </div>
     <div class="bl-hint" id="auto-match-wrap" style="margin-top:8px;">Only when the alert's
       <select class="form-control" id="auto-match-field" style="display:inline-block;width:auto;">

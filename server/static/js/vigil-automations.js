@@ -121,13 +121,9 @@ function _fillEditorOptions() {
   if (rule) rule.innerHTML = '<option value="">any alert</option>' +
     _autoRules.map(r => `<option value="${escHtml(String(r.id))}">${escHtml(r.name)} (${escHtml(r.severity)})</option>`).join('');
   // Scopes which alerts fire this automation, not which hosts it runs on.
-  const evHost = document.getElementById('auto-event-host');
-  if (evHost) {
-    const keep = evHost.value;
-    evHost.innerHTML = '<option value="">any host</option>' +
-      _autoHosts.map(h => `<option value="${escHtml(String(h.id))}">${escHtml(h.hostname || String(h.id))}</option>`).join('');
-    evHost.value = keep;
-  }
+  // The host itself is chosen through the picker, so there is no <option>
+  // list to rebuild here — only the button's label needs refreshing.
+  _autoRefreshEventHostLabel();
 }
 
 // Open the picker for the current action kind and store the choice.
@@ -345,4 +341,32 @@ document.addEventListener('DOMContentLoaded', () => {
   const sync = () => { note.hidden = mode.value !== 'rollout'; };
   mode.addEventListener('change', sync);
   sync();
+});
+
+
+/* ── Event-host picker (which alerts fire this, not which hosts it runs on) ── */
+
+function _autoRefreshEventHostLabel() {
+  const hidden = document.getElementById('auto-event-host');
+  const label = document.getElementById('auto-event-host-label');
+  if (!hidden || !label) return;
+  const host = _autoHosts.find(h => String(h.id) === String(hidden.value));
+  label.textContent = hidden.value ? (host ? (host.hostname || hidden.value) : hidden.value) : 'any host';
+}
+
+function _autoPickEventHost() {
+  openPicker({ type: 'machine', title: 'Only fire for events on this host', allowAdd: false,
+    onSelect: (item) => {
+      if (!_autoHosts.some(h => String(h.id) === String(item.key))) _autoHosts.push(item.raw);
+      document.getElementById('auto-event-host').value = item.key;
+      _autoRefreshEventHostLabel();
+    } });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('auto-event-host-btn')?.addEventListener('click', _autoPickEventHost);
+  document.getElementById('auto-event-host-clear')?.addEventListener('click', () => {
+    document.getElementById('auto-event-host').value = '';
+    _autoRefreshEventHostLabel();
+  });
 });

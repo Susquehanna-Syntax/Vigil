@@ -341,6 +341,26 @@ def halt_rollout(rollout: PatchRollout, user=None, reason: str = "") -> None:
     rollout.save(update_fields=["state", "halted_reason", "halted_by"])
 
 
+def skip_validation(rollout: PatchRollout, user=None) -> None:
+    """End the current wave's validation window now and advance.
+
+    The window exists so a slow-burn failure has time to surface. Skipping it
+    is a judgement call an operator is entitled to make — they watched the
+    wave and are satisfied — so this backdates `wave_started_at` past the
+    window rather than bypassing the gate. The failure gate still applies:
+    a wave that failed its threshold stays halted and this does nothing for it.
+    """
+    if rollout.state != PatchRollout.State.VALIDATING:
+        raise ValueError("this rollout is not in a validation window")
+    wave = rollout.current_wave
+    hours = wave.validation_hours if wave else 0
+    # Backdate rather than special-case the evaluator: every other caller
+    # keeps reading one rule for "has the window elapsed".
+    rollout.wave_started_at = _now() - timedelta(hours=hours + 1)
+    rollout.save(update_fields=["wave_started_at"])
+    evaluate_rollout(rollout)
+
+
 def resume_rollout(rollout: PatchRollout, user=None) -> None:
     """Clear a halt and restart the current wave.
 

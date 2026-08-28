@@ -243,6 +243,10 @@
       <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="7" y1="9" x2="7" y2="9.01"/></svg>
       Docker Updates
     </a>
+    <a href="#deployments" class="nav-link">
+      <svg viewBox="0 0 24 24"><path d="M2 12h4l3 8 4-16 3 8h4"/></svg>
+      Deployments
+    </a>
     <a href="#windows-patching" class="nav-link">
       <svg viewBox="0 0 24 24"><path d="M3 5.5L10.5 4.5v7H3zM3 12.5h7.5v7L3 18.5zM11.5 4.3L21 3v8.5h-9.5zM11.5 12.5H21V21l-9.5-1.3z"/></svg>
       Windows Patching
@@ -1265,6 +1269,65 @@
     <div class="divider"></div>
 
     <!-- WINDOWS PATCHING -->
+    <section class="section" id="deployments">
+      <p class="section-label">OS Management</p>
+      <h2 class="section-title" style="color:var(--peach)">Deployments &mdash; waves and rollouts</h2>
+      <p class="section-desc">Three ways work reaches your machines, all on one page. <strong>Baselines</strong> run a fixed sequence of tasks. <strong>Automations</strong> run something when an event fires or on a schedule. <strong>Rollouts</strong> send a task or baseline out gradually, a few machines at a time, so a bad update is caught on a handful of machines instead of all of them.</p>
+
+      <h3>What a wave is</h3>
+      <p class="prose">A wave is a group of machines that get patched together, chosen by tag. You put waves in an order, and a rollout walks them one at a time.</p>
+      <p class="prose">The idea is simple: don't push an update to two hundred machines at once. Push it to three, watch, then thirty, watch, then everything. If the update is bad you found out on three machines.</p>
+      <p class="prose">A sensible starting shape for a small fleet:</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Order</th><th>Name</th><th>Tags</th><th>Validation window</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Canary</td><td><code>canary</code></td><td>1 hour</td></tr>
+          <tr><td>2</td><td>Broad</td><td><code>broad</code></td><td>24 hours</td></tr>
+          <tr><td>3</td><td>Rest of fleet</td><td><code>server</code></td><td>48 hours</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Two rules that surprise people</h3>
+      <p class="prose"><strong>A machine in two waves is patched once, in the earlier one.</strong> In the table above, a host tagged both <code>canary</code> and <code>server</code> belongs to Canary. It is not patched again in wave 3. This is why a wave card shows the number of hosts it will <em>actually</em> patch alongside how many merely match its tags &mdash; the two differ whenever an earlier wave has already claimed a machine.</p>
+      <p class="prose"><strong>A machine in no wave is never patched by a rollout.</strong> Membership is opt-in by tag. Forgetting to tag a machine means it gets skipped, which is safer than the reverse: forgetting to exclude it and having it patched by surprise.</p>
+
+      <h3>The validation window</h3>
+      <p class="prose">After a wave finishes, the rollout waits before starting the next one. That wait is the wave's <strong>validation window</strong> &mdash; dwell time, so a problem that takes an hour to show up has an hour to show up before you commit further. A window of 0 advances immediately.</p>
+      <p class="prose">You can end a window early. Open the rollout, and if it is validating there is a <strong>Skip validation, continue now</strong> button. It is for when you have checked the wave yourself and are satisfied. The failure gate still applies &mdash; skipping the window does not skip the check.</p>
+
+      <h3>The failure gate</h3>
+      <p class="prose">If too many machines in a wave fail, the rollout halts itself and waits for you. It does not carry on to the next wave. Two settings control it:</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Setting</th><th>Default</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td>Halt above failure %</td><td>10</td><td>If more than this share of the wave's machines fail, halt. Strictly greater &mdash; exactly 10% at a 10% threshold proceeds.</td></tr>
+          <tr><td>Min results before halt</td><td>3</td><td>How many machines must report before the percentage is trusted. Without it, one failure in a one-machine canary is a 100% failure rate and every rollout would halt immediately.</td></tr>
+        </tbody>
+      </table></div>
+      <p class="prose">A halted rollout never resumes on its own. Open it and choose <strong>Resume from this wave</strong>; the failed machines are re-queued and the gate re-checks over the whole wave.</p>
+
+      <h3>Rolling out a baseline</h3>
+      <p class="prose">A rollout can carry a single task or a whole baseline. Picking a baseline runs all of its steps on each machine, wave by wave &mdash; the same composition the task editor uses, so a baseline that works when deployed directly works the same way in a rollout.</p>
+      <p class="prose">One restriction: a task that needs someone to fill in an input cannot be rolled out. A rollout runs unattended across waves and has no value to supply, so it is refused when you start it rather than discovered halfway through.</p>
+
+      <h3>Automations that roll out</h3>
+      <p class="prose">An automation normally sends its work to every matching host at once. Set <strong>How</strong> to <em>Wave by wave</em> and it hands the work to the rollout machinery instead &mdash; so "when a critical alert fires, patch, but canary first" is expressible.</p>
+      <p class="prose">In wave mode the automation's own target selection is ignored. The waves decide which machines get it, by tag. Two competing host-selection rules would be worse than one, so the waves win and the editor says so.</p>
+
+      <h3>Operator actions</h3>
+      <p class="prose">Click any rollout to open it. Which actions appear depends on what the rollout is doing:</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>State</th><th>What you can do</th></tr></thead>
+        <tbody>
+          <tr><td><code>running</code></td><td>Halt now &mdash; stops where it is. The wave already dispatched keeps running; nothing new goes out.</td></tr>
+          <tr><td><code>validating</code></td><td>Skip validation to continue now, or halt.</td></tr>
+          <tr><td><code>halted</code></td><td>Resume from this wave &mdash; re-queues the failed machines and re-checks the gate.</td></tr>
+          <tr><td><code>completed</code></td><td>Nothing &mdash; it is finished.</td></tr>
+        </tbody>
+      </table></div>
+      <p class="prose">Halting, resuming, skipping validation and starting a rollout all need an admin and a TOTP code, the same as deploying a task by hand. They change what happens to the whole fleet.</p>
+    </section>
+
     <section class="section" id="windows-patching">
       <p class="section-label">OS Management</p>
       <h2 class="section-title" style="color:var(--lemon)">Windows Patching</h2>

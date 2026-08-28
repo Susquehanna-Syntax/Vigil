@@ -53,6 +53,13 @@ let _pickerItems = [];
 async function _loadPickerData(type) {
   const list = document.getElementById('picker-list');
   list.innerHTML = '<div class="picker-empty">Loading…</div>';
+  // A caller may supply its own items (a fixed in-page list, like the task
+  // editor's starter templates) rather than a type the picker knows how to
+  // fetch. Same modal, same search, no API round-trip.
+  if (Array.isArray(_pickerState?.items)) {
+    _pickerItems = _pickerState.items;
+    return;
+  }
   try {
     if (type === 'task') {
       const defs = await apiJson('/api/v1/tasks/definitions/');
@@ -60,6 +67,25 @@ async function _loadPickerData(type) {
         key: d.id, name: d.name, meta: (d.risk_level || 'standard') + ' · ' +
           ((d.parsed_spec && d.parsed_spec.actions ? d.parsed_spec.actions.length : d.action_count || 0) + ' action(s)'),
         risk: d.risk_level, editable: true, raw: d }));
+    } else if (type === 'rollout_target') {
+      // Tasks and baselines in one list — a rollout can carry either, and the
+      // question is "what am I rolling out", not "which internal type is it".
+      const [defs, bls] = await Promise.all([
+        apiJson('/api/v1/tasks/definitions/'),
+        apiJson('/api/v1/baselines/').catch(() => []),
+      ]);
+      const defList = Array.isArray(defs) ? defs : defs.results || [];
+      const blList = (Array.isArray(bls) ? bls : bls.baselines || []).filter(b => b.enabled !== false);
+      _pickerItems = [
+        ...defList.map(d => ({
+          key: 'task:' + d.id, name: d.name,
+          meta: 'task · ' + (d.risk_level || 'standard'),
+          risk: d.risk_level, editable: false, raw: d })),
+        ...blList.map(b => ({
+          key: 'baseline:' + b.id, name: b.name,
+          meta: 'baseline · ' + b.steps.length + (b.steps.length === 1 ? ' step' : ' steps'),
+          editable: false, raw: b })),
+      ];
     } else if (type === 'baseline') {
       const bl = await apiJson('/api/v1/baselines/');
       _pickerItems = bl.map(b => ({ key: b.name, name: b.name,
@@ -280,3 +306,14 @@ async function _teSave(yaml, close) {
     if (_taskModalSaved) _taskModalSaved(def);
   } catch (e) { showToast(e.message, 'error'); }
 }
+
+
+// Escape closes the picker, like the deploy modal and host detail. Without it
+// the overlay stays up and silently swallows every click on the page behind —
+// which reads as the whole UI having frozen.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('picker-modal')?.classList.contains('open')) {
+    closePicker();
+  }
+});

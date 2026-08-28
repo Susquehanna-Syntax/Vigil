@@ -453,14 +453,20 @@ actions:
 ];
 
 function _populateTemplatePicker() {
-  const sel = document.getElementById('editor-template-picker');
-  if (!sel || sel.children.length > 1) return;
-  for (const tpl of EDITOR_TEMPLATES) {
-    const opt = document.createElement('option');
-    opt.value = tpl.id;
-    opt.textContent = tpl.label;
-    sel.appendChild(opt);
-  }
+  // Templates are a fixed in-page list, so this opens a search modal over
+  // EDITOR_TEMPLATES rather than going through the API-backed openPicker.
+  const btn = document.getElementById('editor-template-btn');
+  if (!btn || btn.dataset.wired) return;
+  btn.dataset.wired = '1';
+  btn.addEventListener('click', () => {
+    openPicker({
+      type: 'editor_template',
+      title: 'Start from a template',
+      allowAdd: false,
+      items: EDITOR_TEMPLATES.map(t => ({ key: t.id, name: t.label, meta: 'template' })),
+      onSelect: (item) => loadEditorTemplate(item.key),
+    });
+  });
 }
 
 function loadEditorTemplate(id) {
@@ -470,12 +476,8 @@ function loadEditorTemplate(id) {
   const ta = document.getElementById('editor-yaml');
   const current = (ta.value || '').trim();
   const isPristine = !current || current === DEFAULT_YAML_TEMPLATE.trim();
-  if (!isPristine && !confirm('Replace the current YAML with the selected template?')) {
-    document.getElementById('editor-template-picker').value = '';
-    return;
-  }
+  if (!isPristine && !confirm('Replace the current YAML with the selected template?')) return;
   ta.value = tpl.yaml;
-  document.getElementById('editor-template-picker').value = '';
   onEditorInput();
 }
 
@@ -628,7 +630,6 @@ async function openDefinitionEditor(definitionId, initialYaml = null) {
   document.getElementById('editor-error').classList.remove('show');
   document.getElementById('editor-page-title').innerHTML = (definitionId ? 'Edit Task' : 'New Task') + '<span>.</span>';
   _populateTemplatePicker();
-  document.getElementById('editor-template-picker').value = '';
 
   if (definitionId) {
     try {

@@ -179,3 +179,69 @@ class AutomationRolloutDispatchTests(TestCase):
         Automation.objects.filter(pk=a.pk).update(task_definition=None)
         a.refresh_from_db()
         self.assertEqual(_start_rollout_for(a), 0)
+
+
+class SkipValidationTests(TestCase):
+    """Ending a validation window early — an operator judgement call, but the
+    failure gate still has the final say."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user("skip", password="x",
+                                             is_staff=True, is_superuser=True)
+        self.w1 = PatchWave.objects.create(name="Canary", order=1,
+                                           tags=["canary"], validation_hours=48)
+        self.w2 = PatchWave.objects.create(name="Broad", order=2,
+                                           tags=["broad"], validation_hours=0)
+        Host.objects.create(hostname="s1", ip_address="10.8.0.1",
+                            tags=["canary"], agent_token="tok-s1")
+        Host.objects.create(hostname="s2", ip_address="10.8.0.2",
+                            tags=["broad"], agent_token="tok-s2")
+        self.definition = TaskDefinition.objects.create(
+            name="S", owner=self.user, yaml_source=YAML,
+            parsed_spec=parse_and_validate(YAML), risk_level="low")
+
+    def _validating_rollout(self):
+        from apps.tasks.models import Task
+        from apps.tasks.rollout import evaluate_rollout
+        r = start_rollout(self.definition, user=self.user)
+        # Report the canary wave's tasks as done so the gate passes and the
+        # rollout parks in its 48h validation window.
+        Task.objects.filter(run__rollout=r).update(state=Task.State.COMPLETED)
+        evaluate_rollout(r)
+        r.refresh_from_db()
+        return r
+
+    def test_rollout_parks_in_validation(self):
+        r = self._validating_rollout()
+        self.assertEqual(r.state, PatchRollout.State.VALIDATING)
+        self.assertEqual(r.current_wave, self.w1)
+
+    def test_skip_advances_to_the_next_wave(self):
+        from apps.tasks.rollout import skip_validation
+        r = self._validating_rollout()
+        skip_validation(r, user=self.user)
+        r.refresh_from_db()
+        self.assertEqual(r.current_wave, self.w2)
+
+    def test_skip_is_refused_when_not_validating(self):
+        from apps.tasks.rollout import skip_validation
+        r = start_rollout(self.definition, user=self.user)
+        self.assertEqual(r.state, PatchRollout.State.RUNNING)
+        with self.assertRaises(ValueError):
+            skip_validation(r, user=self.user)
+
+    def test_endpoint_requires_admin(self):
+        r = self._validating_rollout()
+        viewer = get_user_model().objects.create_user("v2", password="x")
+        self.client.force_login(viewer)
+        resp = self.client.post(f"/api/v1/rollouts/{r.id}/skip-validation/", {},
+                                content_type="application/json")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_endpoint_requires_totp(self):
+        r = self._validating_rollout()
+        self.client.force_login(self.user)
+        resp = self.client.post(f"/api/v1/rollouts/{r.id}/skip-validation/", {},
+                                content_type="application/json")
+        self.assertEqual(resp.status_code, 401)
