@@ -258,15 +258,15 @@
             <div class="deploy-policy-help">When unchecked, tasks are only dispatched during this window (server timezone: <strong id="deploy-tz-label"></strong>). Outside the window, tasks stay queued until the next eligible check-in.</div>
             <div class="deploy-policy-grid" id="deploy-schedule-fields" style="margin-top:10px;">
               <div>
-                <label class="deploy-input-label">Start time</label>
+                <label class="deploy-input-label">Start time</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="The earliest time of day this task is allowed to run. Tasks queued outside the window wait rather than failing.">?</span>
                 <input type="time" class="form-control" id="deploy-schedule-start" value="08:00" disabled>
               </div>
               <div>
-                <label class="deploy-input-label">End time (inclusive)</label>
+                <label class="deploy-input-label">End time (inclusive)</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="The latest time of day this task is allowed to start. A task already running is not interrupted when the window closes.">?</span>
                 <input type="time" class="form-control" id="deploy-schedule-end" value="17:00" disabled>
               </div>
               <div class="full">
-                <label class="deploy-input-label">Allowed days</label>
+                <label class="deploy-input-label">Allowed days</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Which days of the week the window applies to. Leave them all on for every day.">?</span>
                 <div class="deploy-day-row" id="deploy-day-chips"></div>
               </div>
             </div>
@@ -277,11 +277,11 @@
             <div class="deploy-policy-help">When a step fails, the agent re-runs it up to this many times with a delay between attempts. Set attempts to 0 to disable retries.</div>
             <div class="deploy-policy-grid" style="margin-top:10px;">
               <div>
-                <label class="deploy-input-label">Retry attempts</label>
+                <label class="deploy-input-label">Retry attempts</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="How many extra times to try a step that fails. 0 means one attempt and no retries.">?</span>
                 <input type="number" min="0" max="10" class="form-control" id="deploy-retry-attempts" value="0">
               </div>
               <div>
-                <label class="deploy-input-label">Delay between retries (seconds)</label>
+                <label class="deploy-input-label">Delay between retries (seconds)</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="How long to wait before trying again. Useful when the thing you are waiting on takes a moment to settle, like a service restarting.">?</span>
                 <input type="number" min="0" max="3600" class="form-control" id="deploy-retry-delay" value="30">
               </div>
             </div>
@@ -292,16 +292,16 @@
             <div class="deploy-policy-help">Even if a step exits cleanly, the agent treats it as failed unless the output meets these criteria. Leave optional fields blank to skip them.</div>
             <div class="deploy-policy-grid" style="margin-top:10px;">
               <div>
-                <label class="deploy-input-label">Expected exit code</label>
+                <label class="deploy-input-label">Expected exit code</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="The exit code that counts as success. Usually 0. Anything else marks the step failed.">?</span>
                 <input type="number" class="form-control" id="deploy-criteria-exit" value="0">
               </div>
               <div></div>
               <div class="full">
-                <label class="deploy-input-label">Output must contain</label>
+                <label class="deploy-input-label">Output must contain</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Plain text that has to appear in the command's output for the step to count as successful. Leave blank to skip this check.">?</span>
                 <input type="text" class="form-control" id="deploy-criteria-contains" placeholder="(optional)">
               </div>
               <div class="full">
-                <label class="deploy-input-label">Output must match regex</label>
+                <label class="deploy-input-label">Output must match regex</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="A regular expression the output must match. Stricter than the contains check — use it when a substring would give false positives.">?</span>
                 <input type="text" class="form-control" id="deploy-criteria-regex" placeholder="(optional)" style="font-family:'IBM Plex Mono',monospace;">
               </div>
             </div>
@@ -411,6 +411,23 @@
   </div>
 </div>
 
+{% comment %}
+Rollout detail — opened by clicking a rollout card. Actions live here rather
+than on the card so the operator sees the wave progression and the gate
+settings before deciding anything.
+{% endcomment %}
+<div class="modal-overlay" id="rollout-detail-overlay" onclick="closeRolloutDetail()"></div>
+<div class="modal modal-wide" id="rollout-detail-modal">
+  <div class="modal-title">
+    <span id="rollout-detail-title">Rollout</span>
+    <button class="modal-close" onclick="closeRolloutDetail()">
+      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div style="overflow-y:auto;" id="rollout-detail-body"></div>
+  <div class="modal-actions" id="rollout-detail-actions" style="align-items:center;gap:10px;"></div>
+</div>
+
 {# Rollout start modal — opened by openRolloutStart() in vigil-rollout.js; TOTP-gated like the deploy modal. #}
 <div class="modal-overlay" id="rollout-start-overlay" onclick="closeRolloutStart()"></div>
 <div class="modal modal-wide" id="rollout-start-modal">
@@ -429,16 +446,19 @@
     </div>
     <div class="form-group" style="margin-bottom:12px;">
       <label class="form-label">Task definition</label>
-      <select class="form-control" id="rollout-start-def"></select>
-      <div class="confirm-hint" id="rollout-start-def-hint" style="margin-top:4px;">Definitions with required inputs cannot be rolled out unattended.</div>
+      <button class="btn btn-outline picker-btn" id="rollout-start-def-btn" type="button">
+        <span id="rollout-start-def-label">Choose a task or baseline…</span>
+      </button>
+      <input type="hidden" id="rollout-start-def">
+      <div class="confirm-hint" id="rollout-start-def-hint" style="margin-top:4px;">Tasks that need someone to fill in an input cannot be rolled out unattended &mdash; a rollout runs with nobody watching.</div>
     </div>
     <div style="display:flex;gap:12px;margin-bottom:14px;">
       <div class="form-group" style="flex:1;margin-bottom:0;">
-        <label class="form-label">Halt above failure&nbsp;%</label>
+        <label class="form-label">Halt above failure&nbsp;%</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="If more than this share of a wave's machines fail, the rollout stops and waits for you instead of moving to the next wave.&#10;&#10;10% is a sensible default. Set it to 0 to stop on any failure at all.">?</span>
         <input type="number" class="form-control" id="rollout-start-threshold" min="0" max="100" value="10">
       </div>
       <div class="form-group" style="flex:1;margin-bottom:0;">
-        <label class="form-label">Min results before halt</label>
+        <label class="form-label">Min results before halt</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="How many machines must report back before the failure percentage is trusted.&#10;&#10;Without this, one failure in a single-machine first wave is a 100% failure rate and every rollout would stop immediately.">?</span>
         <input type="number" class="form-control" id="rollout-start-min" min="1" value="3">
       </div>
     </div>

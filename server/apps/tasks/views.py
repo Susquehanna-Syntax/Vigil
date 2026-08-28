@@ -1338,3 +1338,25 @@ def wave_detail(request, wave_id):
             status=400,
         )
     return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def rollout_skip_validation(request, rollout_id):
+    """End the current wave's validation window early and advance.
+
+    Admin + TOTP, same as halting: it shortens the safety margin on a
+    fleet-wide patch, which is an operator decision worth authenticating.
+    """
+    from .rollout import skip_validation
+
+    rollout = get_object_or_404(PatchRollout, pk=rollout_id)
+    error = _verify_confirmation(request.user, request.data)
+    if error:
+        return Response({"detail": error}, status=401)
+    try:
+        skip_validation(rollout, user=request.user)
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=400)
+    rollout.refresh_from_db()
+    return Response(_rollout_response(rollout))
