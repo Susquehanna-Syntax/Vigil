@@ -58,6 +58,9 @@ class Automation(models.Model):
         related_name="automations")
     # Only fire when the event's host carries one of these tags (blank = any).
     event_tags = models.JSONField(default=list, blank=True)
+    #: Row-backed mirror of ``event_tags`` — see Host.tag_rows.
+    event_tag_rows = models.ManyToManyField("hosts.Tag", blank=True,
+                                            related_name="automations_by_event")
     # Only fire for events on this specific host (null = any host). Narrower
     # than event_tags and independent of it: both must pass. This scopes the
     # TRIGGER, which is not the same as `target` below — an automation can
@@ -124,6 +127,9 @@ class Automation(models.Model):
     target = models.CharField(max_length=12, choices=Target.choices,
                               default=Target.EVENT_HOST)
     target_tags = models.JSONField(default=list, blank=True)
+    #: Row-backed mirror of ``target_tags`` — see Host.tag_rows.
+    target_tag_rows = models.ManyToManyField("hosts.Tag", blank=True,
+                                             related_name="automations_by_target")
     target_host = models.ForeignKey(
         "hosts.Host", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="+")
