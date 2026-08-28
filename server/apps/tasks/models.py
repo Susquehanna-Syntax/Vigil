@@ -224,6 +224,8 @@ class PatchWave(models.Model):
     name = models.CharField(max_length=120)
     order = models.PositiveIntegerField()
     tags = models.JSONField(default=list, blank=True)
+    #: Row-backed mirror of ``tags`` — see Host.tag_rows.
+    tag_rows = models.ManyToManyField("hosts.Tag", blank=True, related_name="waves")
     # How long the wave must sit after completion before the next one may
     # start. Zero means no validation — the beat advances immediately.
     validation_hours = models.PositiveIntegerField(default=24)

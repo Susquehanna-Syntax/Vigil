@@ -29,6 +29,9 @@ class Baseline(models.Model):
     # Optional tag filter: only hosts carrying at least one of these tags
     # receive the baseline at enrollment (empty = every approved host).
     target_tags = models.JSONField(default=list, blank=True)
+    #: Row-backed mirror of ``target_tags`` — see Host.tag_rows.
+    target_tag_rows = models.ManyToManyField("hosts.Tag", blank=True,
+                                             related_name="baselines")
     # enabled gates AUTO-ENROLL dispatch only; a disabled baseline is still
     # callable from tasks (a function you no longer auto-run is still a
     # function).

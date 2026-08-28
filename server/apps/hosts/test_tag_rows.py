@@ -158,3 +158,82 @@ class MembershipUnchangedTests(TestCase):
         self.assertEqual(before, {a.id, b.id},
                          "case variants match; the whitespace variant does not")
         self.assertNotIn(spaced.id, after)
+
+
+class MirrorConsistencyTests(TestCase):
+    """The row relations must agree with the string fields they mirror.
+
+    This is the gate on the switch-over: until rows and strings say the same
+    thing for every object, flipping the matchers over would change what gets
+    patched. Run it against whatever the migration produced.
+    """
+
+    def _link(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        mod = importlib.import_module("apps.hosts.migrations.0014_link_tag_rows")
+        mod.link(django_apps, None)
+
+    def _seed_rows(self):
+        import importlib
+
+        from django.apps import apps as django_apps
+
+        mod = importlib.import_module("apps.hosts.migrations.0012_populate_tags")
+        mod.populate(django_apps, None)
+
+    def setUp(self):
+        self.host = Host.objects.create(
+            hostname="mir1", ip_address="10.32.0.1", agent_token="mir1",
+            tags=["Prod", "web", "os:debian"])
+        self.spaced = Host.objects.create(
+            hostname="mir2", ip_address="10.32.0.2", agent_token="mir2",
+            tags=["prod "])
+        self.wave = PatchWave.objects.create(name="mirw", order=803, tags=["prod"])
+        self.baseline = Baseline.objects.create(name="mirb", target_tags=["web"])
+        self._seed_rows()
+        self._link()
+
+    def test_host_rows_match_its_strings(self):
+        keys = {t.key for t in self.host.tag_rows.all()}
+        self.assertEqual(keys, {n.lower() for n in self.host.tags})
+
+    def test_whitespace_variant_links_to_its_own_row(self):
+        """The spaced host must not end up pointing at the `prod` row — that
+        would silently put it in every wave targeting `prod`."""
+        rows = list(self.spaced.tag_rows.all())
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].key, "prod ")
+        self.assertNotIn(rows[0].key, {"prod"})
+
+    def test_case_variants_share_one_row(self):
+        prod_row = self.host.tag_rows.get(key="prod")
+        self.assertEqual(prod_row.key, "prod")
+        # The wave's mirror points at the same row the host does.
+        self.assertIn(prod_row.pk, [t.pk for t in self.wave.tag_rows.all()])
+
+    def test_every_mirror_agrees_with_its_strings(self):
+        """The blanket assertion — no object may disagree with itself."""
+        mismatches = []
+        for obj, strings, relation in (
+            (self.host, self.host.tags, self.host.tag_rows),
+            (self.spaced, self.spaced.tags, self.spaced.tag_rows),
+            (self.wave, self.wave.tags, self.wave.tag_rows),
+            (self.baseline, self.baseline.target_tags, self.baseline.target_tag_rows),
+        ):
+            expected = {str(s).lower() for s in strings if str(s).strip()}
+            actual = {t.key for t in relation.all()}
+            if expected != actual:
+                mismatches.append(f"{obj!r}: strings={expected} rows={actual}")
+        self.assertEqual(mismatches, [], "row mirror disagrees with string field")
+
+    def test_auto_tags_keep_their_kind_through_linking(self):
+        os_row = self.host.tag_rows.get(key="os:debian")
+        self.assertEqual(os_row.kind, Tag.Kind.AUTO)
+
+    def test_linking_is_idempotent(self):
+        before = {t.pk for t in self.host.tag_rows.all()}
+        self._link()
+        self.assertEqual({t.pk for t in self.host.tag_rows.all()}, before)

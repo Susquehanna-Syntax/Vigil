@@ -24,6 +24,10 @@ class Host(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     mode = models.CharField(max_length=20, choices=Mode.choices, default=Mode.MONITOR)
     tags = models.JSONField(default=list, blank=True)
+    #: Row-backed mirror of ``tags``. Populated alongside the strings during
+    #: the migration to database-defined tags; the strings stay authoritative
+    #: until the switch-over, and a consistency test asserts the two agree.
+    tag_rows = models.ManyToManyField("hosts.Tag", blank=True, related_name="hosts")
     agent_version = models.CharField(max_length=50, blank=True, default="")
     last_checkin = models.DateTimeField(null=True, blank=True)
     # Alert suppression window. A rebuild takes ~40 minutes, and without this
