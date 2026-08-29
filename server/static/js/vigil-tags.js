@@ -176,10 +176,8 @@ function attachTagPicker(inputId, opts = {}) {
 
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'btn btn-outline btn-sm';
+  btn.className = 'btn btn-outline btn-sm tag-pick-btn';
   btn.textContent = 'Pick…';
-  btn.style.marginLeft = '8px';
-  btn.style.flex = 'none';
   input.insertAdjacentElement('afterend', btn);
 
   btn.addEventListener('click', async () => {
