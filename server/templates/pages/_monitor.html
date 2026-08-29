@@ -69,6 +69,8 @@
             <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="18" x2="12" y2="20"/></svg>
             RDP
           </button>
+          <span class="field-hint" tabindex="0" aria-label="About the time range"
+                data-hint="How far back the charts on this page look.&#10;&#10;Longer ranges hold more measurements than the chart has pixels, so Vigil shows every n-th real reading rather than averaging them together — a spike you can see is a spike that really happened.&#10;&#10;The newest reading is always included, so the right-hand edge is current.">?</span>
           <div class="time-range-bar">
             <button class="time-btn active" data-range="60" onclick="setTimeRange(60, this)">1h</button>
             <button class="time-btn" data-range="360" onclick="setTimeRange(360, this)">6h</button>

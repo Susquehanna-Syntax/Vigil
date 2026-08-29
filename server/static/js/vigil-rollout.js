@@ -149,9 +149,9 @@ function _anyRolloutActive() {
 function _scheduleRolloutPolling() {
   // Poll while the tab is visible and a rollout is moving; the server advances
   // waves on its own 5-minute beat, so this only refreshes the read-out.
-  if (_rolloutState.pollTimer) { clearInterval(_rolloutState.pollTimer); _rolloutState.pollTimer = null; }
+  if (_rolloutState.pollTimer) { clearPollingInterval(_rolloutState.pollTimer); _rolloutState.pollTimer = null; }
   if (_rolloutsTabVisible() && _anyRolloutActive()) {
-    _rolloutState.pollTimer = setInterval(refreshRollouts, 5000);
+    _rolloutState.pollTimer = pollingInterval(refreshRollouts, 5000);
   }
 }
 

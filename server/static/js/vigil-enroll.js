@@ -80,12 +80,12 @@ function enrollGoStep2() {
 
 function _startEnrollPoll() {
   _stopEnrollPoll();
-  _enrollPollTimer = setInterval(_pollForHost, 3000);
+  _enrollPollTimer = pollingInterval(_pollForHost, 3000);
 }
 
 function _stopEnrollPoll() {
   if (_enrollPollTimer) {
-    clearInterval(_enrollPollTimer);
+    clearPollingInterval(_enrollPollTimer);
     _enrollPollTimer = null;
   }
 }
