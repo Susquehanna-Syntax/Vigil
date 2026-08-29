@@ -550,8 +550,17 @@ class EventFilterApiTests(TestCase):
         self.assertEqual(row["event_host_name"], "api-host")
 
     def test_an_invalid_match_mode_is_refused(self):
-        resp = self._create(match_mode="regex")
+        # "regex" used to be the example of an unsupported mode. It is a real
+        # operator now (see test_text_match.OperatorTests), so this asserts
+        # against something that genuinely is not one.
+        resp = self._create(match_mode="sounds_like")
         self.assertEqual(resp.status_code, 400)
+
+    def test_the_new_operators_are_accepted(self):
+        for mode in ("equals", "not_equals", "starts_with", "ends_with",
+                     "regex", "not_regex"):
+            with self.subTest(mode=mode):
+                self.assertEqual(self._create(match_mode=mode).status_code, 201)
 
     def test_an_invalid_match_field_is_refused(self):
         resp = self._create(match_field="hostname")

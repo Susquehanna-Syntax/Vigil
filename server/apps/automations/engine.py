@@ -172,38 +172,111 @@ def host_ok(automation, host) -> bool:
     return host is not None and host.pk == automation.event_host_id
 
 
-def text_ok(automation, alert) -> bool:
-    """Match the alert's name and/or description against the filter.
+def event_text(payload: dict) -> tuple[str, str]:
+    """The (name, description) an event carries, whatever kind of event it is.
 
-    The rule name is the alert's "name"; its message is the description.
-    Case-insensitive, since nobody filtering on "backup" means to be tripped
-    up by "Backup".
+    This used to read `alert.rule.name` and `alert.message` and nothing else,
+    which meant a text filter on any event *other* than ``alert_fired`` was
+    silently ignored — the automation fired regardless of what the operator had
+    typed. Every event carries something nameable; this finds it.
 
-    ``not_contains`` over both fields means the text appears in *neither* —
+    Returns two empty strings when the payload holds nothing recognisable,
+    which the caller treats as "no match" rather than "matches everything".
+    """
+    alert = payload.get("alert")
+    if alert is not None:
+        rule = getattr(alert, "rule", None)
+        return (getattr(rule, "name", "") or "",
+                getattr(alert, "message", "") or "")
+
+    insight = payload.get("insight")
+    if insight is not None:
+        return (getattr(insight, "title", "") or "",
+                getattr(insight, "body", None) or getattr(insight, "message", "") or "")
+
+    task = payload.get("task")
+    if task is not None:
+        return (getattr(task, "step_label", "") or getattr(task, "action", "") or "",
+                getattr(task, "result_output", "") or "")
+
+    job = payload.get("job")
+    if job is not None:
+        profile = getattr(job, "profile", None)
+        return (getattr(profile, "name", "") or "rebuild",
+                getattr(job, "state", "") or "")
+
+    host = payload.get("host")
+    if host is not None:
+        return (getattr(host, "hostname", "") or "", "")
+
+    return ("", "")
+
+
+def _apply_operator(mode, needle: str, haystacks: list, choices) -> bool:
+    """Run one match operator over the candidate strings.
+
+    Negative operators are true when the text matches *none* of the fields —
     the intuitive reading of "does not contain", and the safe one: a filter
     meant to exclude something must not let it through because it matched the
     field the operator was not thinking about.
-
-    An alert with no rule (Vigil raises some directly) has an empty name, so
-    ``contains`` cannot match it and ``not_contains`` passes it.
     """
-    needle = (automation.match_text or "").strip().lower()
-    if not needle or alert is None:
-        return True
+    import re as _re
 
-    F = automation.MatchField
-    rule = getattr(alert, "rule", None)
-    haystacks = {
-        F.RULE: [getattr(rule, "name", "") or ""],
-        F.MESSAGE: [getattr(alert, "message", "") or ""],
+    lowered = [h.lower() for h in haystacks]
+
+    if mode in (choices.REGEX, choices.NOT_REGEX):
+        try:
+            pattern = _re.compile(needle, _re.IGNORECASE)
+        except _re.error:
+            # A malformed pattern must not fire the automation for everything.
+            # Refusing to match is the safe reading of "I could not evaluate
+            # this filter".
+            logger.warning("automation regex %r is invalid; treating as no match",
+                           needle)
+            return False
+        found = any(pattern.search(h) for h in haystacks)
+        return not found if mode == choices.NOT_REGEX else found
+
+    tests = {
+        choices.CONTAINS: lambda h: needle in h,
+        choices.NOT_CONTAINS: lambda h: needle in h,
+        choices.EQUALS: lambda h: h.strip() == needle,
+        choices.NOT_EQUALS: lambda h: h.strip() == needle,
+        choices.STARTS_WITH: lambda h: h.lstrip().startswith(needle),
+        choices.ENDS_WITH: lambda h: h.rstrip().endswith(needle),
     }
-    haystacks[F.ANY] = haystacks[F.RULE] + haystacks[F.MESSAGE]
-    fields = haystacks.get(automation.match_field, haystacks[F.ANY])
-
-    found = any(needle in text.lower() for text in fields)
-    if automation.match_mode == automation.MatchMode.NOT_CONTAINS:
+    test = tests.get(mode, tests[choices.CONTAINS])
+    found = any(test(h) for h in lowered)
+    if mode in (choices.NOT_CONTAINS, choices.NOT_EQUALS):
         return not found
     return found
+
+
+def text_ok(automation, alert, payload: dict | None = None) -> bool:
+    """Match the event's name and/or description against the filter.
+
+    Works for every event, not only alerts — see :func:`event_text`. The
+    ``alert`` argument is kept so existing callers and tests keep working; when
+    a full payload is supplied it takes precedence.
+
+    Case-insensitive, since nobody filtering on "backup" means to be tripped
+    up by "Backup".
+    """
+    needle = (automation.match_text or "").strip().lower()
+    if not needle:
+        return True
+
+    if payload is None:
+        payload = {"alert": alert} if alert is not None else {}
+    name, message = event_text(payload)
+
+    F = automation.MatchField
+    haystacks = {F.RULE: [name], F.MESSAGE: [message]}
+    haystacks[F.ANY] = [name, message]
+    fields = haystacks.get(automation.match_field, haystacks[F.ANY])
+
+    return _apply_operator(automation.match_mode, needle, fields,
+                           automation.MatchMode)
 
 
 def tags_ok(automation, host) -> bool:
@@ -242,7 +315,7 @@ def handle_event(event_name: str, payload: dict) -> None:
             continue
         if not host_ok(auto, host):
             continue
-        if not text_ok(auto, alert):
+        if not text_ok(auto, alert, payload):
             continue
         if not tags_ok(auto, host):
             continue

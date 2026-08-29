@@ -187,7 +187,7 @@
       <button class="btn btn-ghost btn-sm" id="auto-event-host-clear" type="button">Clear</button>
       <input type="hidden" id="auto-event-host">
     </div>
-    <div class="bl-hint" id="auto-match-wrap" style="margin-top:8px;">Only when the alert's
+    <div class="bl-hint" id="auto-match-wrap" style="margin-top:8px;">Only when the event's
       <select class="form-control" id="auto-match-field" style="display:inline-block;width:auto;">
         <option value="any">name or description</option>
         <option value="rule">name</option>
@@ -196,6 +196,12 @@
       <select class="form-control" id="auto-match-mode" style="display:inline-block;width:auto;">
         <option value="contains">contains</option>
         <option value="not_contains">does not contain</option>
+        <option value="equals">is exactly</option>
+        <option value="not_equals">is not</option>
+        <option value="starts_with">starts with</option>
+        <option value="ends_with">ends with</option>
+        <option value="regex">matches regex</option>
+        <option value="not_regex">does not match regex</option>
       </select>
       <input type="text" class="form-control" id="auto-match-text" placeholder="e.g. /var" maxlength="200" style="display:inline-block;width:auto;">
       <span class="bl-hint" style="display:block;margin-top:4px;">Leave the text blank for no text filter. Case-insensitive.</span>
