@@ -2772,6 +2772,11 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
   position: relative;
   display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px; flex: none;
+  /* Never flush against whatever sits beside it. In a flex toolbar the
+     container's gap does most of the work; in normal flow, next to a label,
+     this is the only thing keeping the "?" off the text. */
+  margin: 0 3px;
+  vertical-align: middle;
   border-radius: 50%;
   border: 1px solid var(--border);
   /* Sky rather than --text-3: at 18px on a dark surface the dim grey read as
@@ -2782,6 +2787,15 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
   cursor: help; user-select: none;
   transition: color 0.2s var(--ease-out-expo), border-color 0.2s var(--ease-out-expo);
 }
+/* Labels in these editors are display:block, which pushed a following hint
+   onto its own line underneath — reading as unrelated to the label it
+   explains. Only labels that actually have a hint are affected. */
+.bl-field > label:has(+ .field-hint),
+.form-group > .form-label:has(+ .field-hint) {
+  display: inline-block;
+  margin-right: 2px;
+}
+
 .field-hint:hover, .field-hint:focus-visible {
   color: var(--sky); border-color: var(--sky); outline: none;
 }
@@ -2798,3 +2812,23 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
   pointer-events: none; z-index: 60;
   animation: tooltipIn 0.3s var(--ease-out-expo) both;
 }
+
+/* ── Tag picker button ────────────────────────────────────────────────────
+   attachTagPicker() inserts this after every tag field. It has two layouts to
+   serve. After a full-width .form-control it wraps onto its own line, and it
+   was sitting flush against the input's bottom edge; that is what the top
+   margin is for. Inside a flex row it sits alongside the input instead, where
+   the container's gap already does the spacing and a top margin would drop it
+   out of line — hence the override below. */
+.tag-pick-btn {
+  flex: none;
+  margin: 8px 0 0 8px;
+  vertical-align: middle;
+}
+.host-tag-add-row .tag-pick-btn,
+.bl-hint .tag-pick-btn {
+  margin: 0 0 0 8px;
+}
+
+/* The "add a tag" row in the host detail drawer. */
+.host-tag-add-row { display: flex; gap: 8px; align-items: center; }
