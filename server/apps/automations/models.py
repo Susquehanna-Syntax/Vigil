@@ -84,11 +84,17 @@ class Automation(TagRowSyncMixin, models.Model):
     class MatchMode(models.TextChoices):
         CONTAINS = "contains", "contains"
         NOT_CONTAINS = "not_contains", "does not contain"
+        EQUALS = "equals", "is exactly"
+        NOT_EQUALS = "not_equals", "is not"
+        STARTS_WITH = "starts_with", "starts with"
+        ENDS_WITH = "ends_with", "ends with"
+        REGEX = "regex", "matches regex"
+        NOT_REGEX = "not_regex", "does not match regex"
 
     match_text = models.CharField(max_length=200, blank=True, default="")
     match_field = models.CharField(max_length=10, choices=MatchField.choices,
                                    default=MatchField.ANY)
-    match_mode = models.CharField(max_length=14, choices=MatchMode.choices,
+    match_mode = models.CharField(max_length=16, choices=MatchMode.choices,
                                   default=MatchMode.CONTAINS)
 
     # -- schedule trigger (crontab; beat-driven) --

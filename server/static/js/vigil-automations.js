@@ -165,8 +165,12 @@ function _autoSyncVisibility() {
   // reads the alert's name and message, so it is alert-only.
   const hostWrap = document.getElementById('auto-event-host-wrap');
   if (hostWrap) hostWrap.style.display = trig === 'event' ? '' : 'none';
+  // The text filter reads whatever the event names and describes — an alert's
+  // rule and message, an insight's title, a task's step, a rebuild's profile —
+  // so it applies to every event, not just alerts. It used to be alert-only,
+  // which meant a filter set on any other event was silently ignored.
   const matchWrap = document.getElementById('auto-match-wrap');
-  if (matchWrap) matchWrap.style.display = (trig === 'event' && ev === 'alert_fired') ? '' : 'none';
+  if (matchWrap) matchWrap.style.display = trig === 'event' ? '' : 'none';
 
   _autoRefreshActionLabel();
 

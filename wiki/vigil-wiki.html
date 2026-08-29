@@ -1310,6 +1310,26 @@
       <p class="prose">A rollout can carry a single task or a whole baseline. Picking a baseline runs all of its steps on each machine, wave by wave &mdash; the same composition the task editor uses, so a baseline that works when deployed directly works the same way in a rollout.</p>
       <p class="prose">One restriction: a task that needs someone to fill in an input cannot be rolled out. A rollout runs unattended across waves and has no value to supply, so it is refused when you start it rather than discovered halfway through.</p>
 
+      <h3>Filtering which events fire an automation</h3>
+      <p class="prose">An event automation can be narrowed by the text the event carries. Every event has a <strong>name</strong> and a <strong>description</strong>: for an alert those are the rule's name and the alert message, for an insight its title and body, for a finished task the step and its output, for a rebuild the profile and the job's state, and for a host event the hostname.</p>
+      <p class="prose">Pick which of those to read, then an operator:</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Operator</th><th>Fires when</th></tr></thead>
+        <tbody>
+          <tr><td>contains</td><td>the text appears anywhere in the field</td></tr>
+          <tr><td>does not contain</td><td>the text appears in <em>neither</em> field &mdash; an exclusion cannot leak through the field you were not thinking about</td></tr>
+          <tr><td>is exactly</td><td>the whole field equals the text</td></tr>
+          <tr><td>is not</td><td>the whole field is anything else</td></tr>
+          <tr><td>starts with / ends with</td><td>self-explanatory, ignoring surrounding whitespace</td></tr>
+          <tr><td>matches regex</td><td>a Python regular expression matches. An invalid pattern matches <em>nothing</em> &mdash; "I could not evaluate this filter" is not "this filter passed"</td></tr>
+          <tr><td>does not match regex</td><td>the pattern matches neither field</td></tr>
+        </tbody>
+      </table></div>
+      <p class="prose">Matching ignores case throughout, since nobody filtering on <code>backup</code> means to be tripped up by <code>Backup</code>. An event that carries no readable text does not match a filter &mdash; a filtered automation stays quiet rather than firing on everything.</p>
+      <div class="callout" style="border-left:3px solid var(--lemon);">
+        <p class="prose"><strong>Changed in 2026.9.0.</strong> This filter used to read only an alert's rule and message, so a filter set on any other event was silently ignored and the automation fired regardless. If you have automations on <code>insight_created</code>, <code>task_completed</code> or the rebuild events, their text filters are now actually applied &mdash; check they still say what you meant.</p>
+      </div>
+
       <h3>Automations that roll out</h3>
       <p class="prose">An automation normally sends its work to every matching host at once. Set <strong>How</strong> to <em>Wave by wave</em> and it hands the work to the rollout machinery instead &mdash; so "when a critical alert fires, patch, but canary first" is expressible.</p>
       <p class="prose">In wave mode the automation's own target selection is ignored. The waves decide which machines get it, by tag. Two competing host-selection rules would be worse than one, so the waves win and the editor says so.</p>
