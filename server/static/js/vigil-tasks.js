@@ -1078,7 +1078,7 @@ function _taskHistoryTabVisible() {
 
 function _startTaskHistoryPolling() {
   if (taskHistoryState.interval) return;
-  taskHistoryState.interval = setInterval(() => {
+  taskHistoryState.interval = pollingInterval(() => {
     if (_taskHistoryTabVisible()) refreshTaskHistory(taskHistoryState.page);
   }, 5000);
 }

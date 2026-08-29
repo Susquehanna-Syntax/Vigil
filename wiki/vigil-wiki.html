@@ -1145,6 +1145,32 @@
         </table>
       </div>
 
+      <h3>Reading the charts</h3>
+      <p>The buttons above the gauges — <code>1h</code>, <code>6h</code>, <code>24h</code>, <code>7d</code> — set how far back every chart on the page looks. Changing the range animates rather than snapping, so you can see which way the window moved.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Range</th><th>Points requested</th><th>Typical result at 1-minute check-ins</th></tr></thead>
+          <tbody>
+            <tr><td><code>1h</code></td><td>200</td><td>every measurement</td></tr>
+            <tr><td><code>6h</code></td><td>400</td><td>every measurement</td></tr>
+            <tr><td><code>24h</code></td><td>800</td><td>roughly every second measurement</td></tr>
+            <tr><td><code>7d</code></td><td>800</td><td>roughly one in twelve</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Wide ranges hold more measurements than a chart has pixels, so the server <strong>samples</strong> them: it walks the whole window at a fixed stride and returns every n-th real measurement, always including the newest one. It does not average. Averaging would flatten exactly the short spikes a monitoring chart exists to show; sampling can step over a spike, but every point drawn is a value that was really recorded.</p>
+      <p>If you are querying <code>GET /api/v1/metrics/{host}/{category}/{metric}/</code> yourself, two response headers tell you what happened:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Header</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>X-Vigil-Sampled</code></td><td><code>1</code> if the series was strided down to fit <code>limit</code>, <code>0</code> if you got every point in the window</td></tr>
+            <tr><td><code>X-Vigil-Total-Points</code></td><td>how many measurements the window actually contains</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><code>limit</code> is capped at 1000 per request. To read a wide window at full resolution, walk it in slices with <code>from</code> and <code>to</code> rather than raising <code>limit</code>.</p>
+
       <h3>Host Status States</h3>
       <div class="table-wrap">
         <table>

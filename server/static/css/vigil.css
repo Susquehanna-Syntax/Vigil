@@ -2766,7 +2766,8 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
    A small "?" beside a control that reveals a longer explanation on hover or
    keyboard focus. Used where the explanation is worth having but not worth
    permanently spending three lines of the panel on — the Rollouts toolbar is
-   the first of these. Multi-line: the tooltip honours \A in the data-hint. */
+   the first of these. Multi-line: put &#10; in the data-hint — attr() yields
+   the attribute's literal text, so a CSS \A escape would show as "\A". */
 .field-hint {
   position: relative;
   display: inline-flex; align-items: center; justify-content: center;

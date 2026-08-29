@@ -128,7 +128,9 @@ function computeRates(points) {
     const dt = (new Date(points[i].time) - new Date(points[i-1].time)) / 1000;
     if (dt <= 0) continue;
     const rate = Math.max(0, (points[i].value - points[i-1].value) / dt);
-    rates.push({ x: new Date(points[i].time), y: rate });
+    // Numeric x: the charts run with `parsing: false`, which hands this
+    // array straight to the time scale and expects milliseconds.
+    rates.push({ x: new Date(points[i].time).getTime(), y: rate });
   }
   return rates;
 }
@@ -351,4 +353,53 @@ document.addEventListener('keydown', (e) => {
     : null;
   if (overlay) overlay.classList.remove('open');
   else document.querySelectorAll('.modal-overlay.open').forEach(o => o.classList.remove('open'));
+});
+
+
+/* ── Polling that stops when nobody is looking ────────────────────────────
+ *
+ * The app polls in eight places. None of them checked whether the tab was
+ * visible, so every open Vigil tab kept fetching and redrawing charts forever
+ * — which is fine on a workstation and very much not fine on a low-power
+ * laptop with a few tabs open.
+ *
+ * `pollingInterval` behaves like setInterval, except the tick is skipped while
+ * the document is hidden, and it fires once immediately on becoming visible so
+ * the view is never showing stale data when you come back to it.
+ */
+const _pollTimers = new Map();   // id -> { fn, skipped }
+
+function pollingInterval(fn, ms) {
+  const id = setInterval(() => {
+    const rec = _pollTimers.get(id);
+    if (document.visibilityState === 'hidden') {
+      if (rec) rec.skipped = true;
+      return;
+    }
+    fn();
+  }, ms);
+  _pollTimers.set(id, { fn, skipped: false });
+  return id;
+}
+
+function clearPollingInterval(id) {
+  clearInterval(id);
+  _pollTimers.delete(id);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  // Catch up on return. Without this, coming back to the tab leaves stale
+  // numbers on screen for up to a full interval — 60s on the monitor page —
+  // which reads as the page having frozen.
+  for (const rec of _pollTimers.values()) {
+    if (!rec.skipped) continue;
+    rec.skipped = false;
+    try {
+      rec.fn();
+    } catch (e) {
+      // One broken poller must not stop the others catching up.
+      console.error('poll catch-up failed', e);
+    }
+  }
 });

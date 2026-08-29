@@ -193,14 +193,14 @@ function _runComparison(ids, runFn) {
       _renderColumn(id); _rankBest(ids);
       return;
     }
-    const timer = setInterval(() => {
+    const timer = pollingInterval(() => {
       const el = document.getElementById(`ai-time-${id}`);
       if (el) el.textContent = ((performance.now() - t0) / 1000).toFixed(1) + 's';
     }, 100);
     runFn(id)
       .then(data => { _aiResults[id] = data; })
       .catch(err => { _aiResults[id] = { error: err.message }; })
-      .finally(() => { clearInterval(timer); _renderColumn(id); _rankBest(ids); });
+      .finally(() => { clearPollingInterval(timer); _renderColumn(id); _rankBest(ids); });
   });
 }
 
