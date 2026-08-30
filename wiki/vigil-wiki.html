@@ -1694,7 +1694,8 @@
         <div class="code-label">Formula</div>
         <pre><span class="hl-var">score</span> = <span class="hl-num">100</span> - (<span class="hl-num">10</span>×critical + <span class="hl-num">3</span>×high + <span class="hl-num">1</span>×medium + <span class="hl-num">0.2</span>×low)</pre>
       </div>
-      <p class="prose">There's no floor. A host with 15 criticals lands at <code>-50</code> and the sad-face badge on the Vulnerabilities tab keeps escalating: smile → flat → frown → distraught → crying → X-eyes. The same CVE flagged by two scanners only counts once. The fleet headline averages every host's score; the worst-offender link drops you straight onto the broken host. Since 2026.9.0 each finding's weight is additionally <strong>multiplied by an escalation factor</strong> based on its remediate-by date, so the same formula reads "10×critical …" as the baseline and the live score climbs as dates approach. See <a href="#remediation" style="color:var(--sky)">Remediation Dates</a> below.</p>
+      <p class="prose">Those weights are what a finding costs <strong>on the day it is due</strong>. Since 2026.9.1 the score answers "am I keeping my remediation promises?", not "how many findings does this host have?" — the counts on the same card already answer the second question. A finding you are still inside the window for is work scheduled, not work overdue, so it is discounted steeply; a finding past its date is amplified. In practice <strong>one overdue critical costs more than twenty criticals you still have a month to fix</strong>. See <a href="#remediation" style="color:var(--sky)">Remediation Dates</a> below for the curve.</p>
+      <p class="prose">There's no floor. A host with 15 badly overdue criticals lands at <code>-500</code> and the sad-face badge on the Vulnerabilities tab keeps escalating: smile → flat → frown → distraught → crying → X-eyes. The same CVE flagged by two scanners only counts once, and dedup keeps the <em>soonest</em> due date so a second scanner cannot launder an overdue finding onto a later one. The fleet headline averages every host's score; the worst-offender link drops you straight onto the broken host.</p>
 
       <h3 id="remediation" style="margin-top:36px;">Remediation Dates</h3>
       <p class="prose">Every open finding that is not <code>info</code> carries a <code>due_date</code>, derived once at first detection from the active remediation policy and from whether the CVE is on the CISA KEV list. The date is stable across re-scans — it is anchored to the finding's <code>first_seen</code>, not to the latest scan — so a scanner re-running daily does not keep pushing the deadline out.</p>
@@ -1723,22 +1724,22 @@
       <p class="prose">Membership moves the finding to the KEV tier (14 days, or the CISA due date when the switch is on) instead of its severity tier, and that is it — KEV does not change the finding's severity or its base weight, it only pulls the deadline earlier. A critical CVE on KEV is due in 14 days instead of 15; a medium CVE on KEV is due in 14 days instead of 90. Escalation then applies to the resulting due date exactly as it does for anything else.</p>
 
       <h4>The escalation curve</h4>
-      <p class="prose">Each finding's base weight (10 / 3 / 1 / 0.2 by severity) is multiplied by a factor based on how far its due date is, evaluated per finding so two criticals on one host at different points on the clock are weighted differently:</p>
+      <p class="prose">Each finding's base weight (10 / 3 / 1 / 0.2 by severity) is multiplied by a factor based on how far its due date is, evaluated per finding so two criticals on one host at different points on the clock are weighted differently. Since 2026.9.1 the curve is anchored at the deadline: a finding is worth <strong>exactly its base weight on the day it is due</strong>, much less before, and much more after.</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Days until due</th><th>Multiplier</th><th>Meaning</th></tr></thead>
           <tbody>
-            <tr><td>no due date</td><td>1.0</td><td>Info findings and rows predating the backfill.</td></tr>
-            <tr><td>more than 30</td><td>1.0</td><td>Flat — there is runway.</td></tr>
-            <tr><td>15–30</td><td>1.25</td><td>Approaching.</td></tr>
-            <tr><td>1–14</td><td>1.6</td><td>Close.</td></tr>
-            <tr><td>due today</td><td>2.0</td><td>Due now.</td></tr>
-            <tr><td>1–30 days overdue</td><td>3.0</td><td>Overdue.</td></tr>
+            <tr><td>no due date</td><td>1.0</td><td>A data gap — an unrecognised severity, or a row predating the backfill. Scored at the deadline, which is the conservative read.</td></tr>
+            <tr><td>more than 30</td><td>0.1</td><td>Plenty of runway. Barely counts.</td></tr>
+            <tr><td>15–30</td><td>0.25</td><td>Approaching.</td></tr>
+            <tr><td>1–14</td><td>0.5</td><td>Close.</td></tr>
+            <tr><td>due today</td><td>1.0</td><td>The anchor — exactly the base weight.</td></tr>
+            <tr><td>1–30 days overdue</td><td>2.5</td><td>Overdue.</td></tr>
             <tr><td>more than 30 days overdue</td><td>4.0</td><td>Badly overdue.</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="prose">An <strong>excepted</strong> finding always scores at 1.0 regardless of its date — an accepted risk does not escalate. The summary on each host also carries <code>overdue_count</code> and <code>due_soon_count</code> (due within 14 days, including today), both excluding excepted findings, so the dashboard can show "3 overdue" without you having to read the findings list.</p>
+      <p class="prose">An <strong>excepted</strong> finding always scores at 0.1 regardless of its date — the same weight as a finding with plenty of runway, so an accepted risk does not escalate and, importantly, accepting one can never make a score worse than leaving it alone. The summary on each host also carries <code>overdue_count</code> and <code>due_soon_count</code> (due within 14 days, including today), both excluding excepted findings, so the dashboard can show "3 overdue" without you having to read the findings list.</p>
 
       <h4>Exceptions</h4>
       <p class="prose">An exception is a documented decision to not fix a finding by its due date, of kind <em>Accepted risk</em> or <em>Deferred</em>. It requires a written reason and an expiry date — there is deliberately no permanent exception, because a risk accepted forever is a risk nobody re-examines. While an exception is in force the finding is excluded from overdue counts and from escalation, but it is never hidden: it stays in the findings list, marked as excepted, so the exception is a reporting line rather than a delete button. When the expiry passes the exception simply stops matching — there is no sweep job — and the finding escalates normally from that day. Exceptions always expire; that is the whole point.</p>

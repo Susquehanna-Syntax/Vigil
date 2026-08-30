@@ -34,8 +34,7 @@ BATCH = 500
 
 
 def recompute_history(apps, schema_editor):
-    from apps.vulns.remediation import escalation_multiplier
-    from apps.vulns.scoring import SEVERITY_RANK, base_weight
+    from apps.vulns.scoring import SEVERITY_RANK, deduction_for
 
     History = apps.get_model("vulns", "VulnScoreHistory")
     Finding = apps.get_model("vulns", "VulnFinding")
@@ -88,9 +87,9 @@ def recompute_history(apps, schema_editor):
                     # Not detected yet at that historical date.
                     continue
                 days = (f.due_date - row_date).days if f.due_date else None
-                if f.id in excepted_ids:
-                    days = None  # accepted risk: no escalation
-                deduction += base_weight(f.severity) * escalation_multiplier(days)
+                deduction += deduction_for(
+                    f.severity, days_remaining=days,
+                    is_excepted=f.id in excepted_ids)
             row.score = 100 - int(round(deduction))
             batch.append(row)
             if len(batch) >= BATCH:

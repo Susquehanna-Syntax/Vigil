@@ -190,16 +190,16 @@ class EscalationCurveTests(TestCase):
     def test_curve_breakpoints(self):
         """Both sides of every band boundary."""
         cases = [
-            (None, 1.0),
-            (365, 1.0),
-            (31, 1.0),
-            (30, 1.25),
-            (15, 1.25),
-            (14, 1.6),
-            (1, 1.6),
-            (0, 2.0),
-            (-1, 3.0),
-            (-30, 3.0),
+            (None, 1.0),   # no deadline on record — scored at the deadline
+            (365, 0.1),
+            (31, 0.1),
+            (30, 0.25),
+            (15, 0.25),
+            (14, 0.5),
+            (1, 0.5),
+            (0, 1.0),      # due today — exactly the base weight
+            (-1, 2.5),
+            (-30, 2.5),
             (-31, 4.0),
             (-400, 4.0),
         ]
@@ -214,8 +214,26 @@ class EscalationCurveTests(TestCase):
             self.assertLessEqual(earlier, later)
 
     def test_curve_handles_none(self):
-        """No due date (info findings, pre-backfill rows) scores at base."""
-        self.assertEqual(escalation_multiplier(None), 1.0)
+        """No due date is a data gap, not a finding with runway.
+
+        Guessing "no rush" on a missing deadline is the wrong way to be wrong,
+        so it scores at the deadline itself.
+        """
+        from .remediation import NO_DEADLINE_MULTIPLIER, NO_ESCALATION
+
+        self.assertEqual(escalation_multiplier(None), NO_DEADLINE_MULTIPLIER)
+        self.assertGreater(escalation_multiplier(None), NO_ESCALATION)
+
+    def test_being_inside_the_window_costs_far_less_than_being_past_it(self):
+        """The point of the curve: the score tracks promises, not counts."""
+        inside = escalation_multiplier(60)
+        overdue = escalation_multiplier(-1)
+        self.assertGreater(overdue, inside * 20,
+                           "one overdue finding must outweigh twenty compliant ones")
+
+    def test_the_deadline_itself_is_the_base_weight(self):
+        """The anchor the rest of the table is expressed relative to."""
+        self.assertEqual(escalation_multiplier(0), 1.0)
 
 
 class KevLoaderTests(TestCase):

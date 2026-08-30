@@ -77,9 +77,11 @@ class EscalatedScoringTests(TestCase):
         score_a = recompute_summary(host_a).score
         score_b = recompute_summary(host_b).score
 
-        # A: 100 - round(10×1.0 + 10×1.0) = 80. B: 100 - round(10×1.0 + 10×4.0) = 50.
-        self.assertEqual(score_a, 80)
-        self.assertEqual(score_b, 50)
+        # A: 100 - round(10×0.1 + 10×0.1) = 98 — two criticals, both well
+        # inside their window, cost almost nothing.
+        # B: 100 - round(10×0.1 + 10×4.0) = 59 — one of them badly overdue.
+        self.assertEqual(score_a, 98)
+        self.assertEqual(score_b, 59)
         self.assertLess(score_b, score_a)
 
     def test_excepted_finding_does_not_escalate(self):
@@ -96,8 +98,9 @@ class EscalatedScoringTests(TestCase):
         summary = recompute_summary(self.host)
 
         # Without the exception: 100 - round(10×4.0 + 10×4.0) = 20.
-        # With it: 100 - round(10×4.0 + 10×1.0) = 50.
-        self.assertEqual(summary.score, 50)
+        # With it: 100 - round(10×4.0 + 10×0.1) = 59 — the accepted risk drops
+        # to the same weight as a finding with runway.
+        self.assertEqual(summary.score, 59)
         self.assertEqual(summary.overdue_count, 1)
         self.assertEqual(summary.due_soon_count, 0)
         # The exception itself must still be readable on the finding.
@@ -121,7 +124,8 @@ class EscalatedScoringTests(TestCase):
 
         # Deduped as one critical (worst severity) at the sooner date
         # (-45 days, x4.0): 100 - round(10×4.0) = 60. Had the 60-day date
-        # won it would have been 90.
+        # won it would have been 99 — which is the whole point: laundering an
+        # overdue finding onto a later date is now worth 39 points, not 30.
         self.assertEqual(summary.score, 60)
         self.assertEqual(summary.critical, 1)
         self.assertEqual(summary.high, 0)
@@ -139,7 +143,8 @@ class EscalatedScoringTests(TestCase):
         summary = recompute_summary(self.host)
         self.assertEqual(summary.critical, 1)
         self.assertEqual(summary.medium, 0)
-        self.assertEqual(summary.score, 90)
+        # One critical, 60 days of runway: 100 - round(10×0.1) = 99.
+        self.assertEqual(summary.score, 99)
 
     def test_summary_counts_unchanged_by_escalation(self):
         """Counts still equal the pre-change values for the same fixture.
@@ -171,10 +176,13 @@ class EscalatedScoringTests(TestCase):
         # And the pre-change score for exactly these counts:
         self.assertEqual(compute_score(2, 1, 1, 1), 100 - 24)
         # The escalated score reflects the due dates, not the counts:
-        # C-1 at -45d (x4.0), C-2 at -45d (x4.0), high 7d (x1.6),
-        # medium 20d (x1.25), low 40d (x1.0), info undated (x1.0).
-        expected = 100 - int(round(10 * 4.0 + 10 * 4.0 + 3 * 1.6 + 1 * 1.25 + 0.2 * 1.0 + 0.0))
+        # C-1 at -45d (x4.0), C-2 at -45d (x4.0), high 7d (x0.5),
+        # medium 20d (x0.25), low 40d (x0.1), info undated (weight 0).
+        expected = 100 - int(round(10 * 4.0 + 10 * 4.0 + 3 * 0.5 + 1 * 0.25 + 0.2 * 0.1))
         self.assertEqual(summary.score, expected)
+        # Nearly all of that deduction is the two overdue criticals; the three
+        # findings still inside their windows account for under two points.
+        self.assertEqual(expected, 18)
 
     def test_overdue_and_due_soon_counts(self):
         _set_due_date(_finding(self.host, severity="high", cve_id="C-1", plugin="a"), -1)
@@ -395,16 +403,17 @@ class HistoryBackfillTests(TestCase):
         # 200 days ago: nothing was detected yet → clean score.
         history[200].refresh_from_db()
         self.assertEqual(history[200].score, 100)
-        # 70 days ago: A exists and is due exactly that day (x2.0); C
-        # existed then too (detected 100 days ago) and is excepted, so it
-        # counts at base weight (x1.0); B was not detected yet.
-        # 100 - round(10×2.0 + 10×1.0) = 70.
+        # 70 days ago: A exists and is due exactly that day (x1.0, the
+        # anchor); C existed then too (detected 100 days ago) and is excepted,
+        # so it counts at the no-escalation weight (x0.1); B was not detected
+        # yet. 100 - round(10×1.0 + 10×0.1) = 89.
         history[70].refresh_from_db()
-        self.assertEqual(history[70].score, 70)
-        # Today: A 70 days overdue (x4.0), B 5 days overdue (x3.0),
-        # C excepted (x1.0). 100 - round(40 + 9 + 10) = 41.
+        self.assertEqual(history[70].score, 89)
+        # Today: A 70 days overdue (x4.0), B 5 days overdue (x2.5),
+        # C excepted (x0.1). That is 48.5, and Python rounds halves to even,
+        # so the deduction is 48 and the score is 52 — not 51.
         history[0].refresh_from_db()
-        self.assertEqual(history[0].score, 41)
+        self.assertEqual(history[0].score, 52)
 
     def test_backfill_is_idempotent(self):
         from django.apps import apps
@@ -466,3 +475,70 @@ class SummaryCountConsistencyTests(TestCase):
             with self.subTest(severity=name):
                 count = sum(1 for s in worst_per_cve.values() if s == name)
                 self.assertEqual(getattr(summary, name), count)
+
+
+class OverdueWeightedScoreTests(TestCase):
+    """2026.9.1: the score tracks remediation promises, not finding counts.
+
+    The behaviour these pin is the reason the curve was re-anchored — a host
+    that is doing everything right should not read as failing because its
+    scanner is thorough.
+    """
+
+    def test_a_host_inside_every_window_scores_near_perfect(self):
+        host = _host("compliant")
+        for i in range(20):
+            _set_due_date(_finding(host, severity="critical", plugin=f"c{i}"), 90)
+        score = recompute_summary(host).score
+        # 20 criticals, every one of them still 90 days from its deadline.
+        # Under the old curve this host scored -100.
+        self.assertEqual(score, 80)
+        self.assertGreater(score, 0)
+
+    def test_one_overdue_critical_outweighs_twenty_compliant_ones(self):
+        """The headline claim, stated as a test so it cannot quietly stop
+        being true."""
+        compliant = _host("many-compliant")
+        for i in range(20):
+            _set_due_date(_finding(compliant, severity="critical", plugin=f"c{i}"), 90)
+
+        one_overdue = _host("one-overdue")
+        _set_due_date(_finding(one_overdue, severity="critical", plugin="x"), -60)
+
+        self.assertLess(recompute_summary(one_overdue).score,
+                        recompute_summary(compliant).score)
+
+    def test_accepting_a_risk_never_makes_the_score_worse(self):
+        """The inversion this release fixed.
+
+        While findings inside their window weighed the same as excepted ones
+        this was trivially true. Once they were discounted, routing exceptions
+        through the no-deadline path would have made an accepted risk cost
+        more than an ignored one.
+        """
+        for days in (-45, -1, 0, 7, 90):
+            with self.subTest(days=days):
+                plain = _host(f"plain{days}")
+                _set_due_date(_finding(plain, severity="critical", plugin="p"), days)
+
+                accepted = _host(f"accepted{days}")
+                f = _set_due_date(
+                    _finding(accepted, severity="critical", plugin="p"), days)
+                VulnException.objects.create(
+                    finding=f, kind=VulnException.Kind.ACCEPTED,
+                    reason="Compensating control in place.",
+                    expires_on=localdate() + timedelta(days=30),
+                )
+
+                self.assertGreaterEqual(
+                    recompute_summary(accepted).score,
+                    recompute_summary(plain).score,
+                    "accepting a risk must never lower the score")
+
+    def test_overdue_findings_still_drive_the_score_negative(self):
+        """Discounting the compliant ones must not defang the overdue ones."""
+        host = _host("neglected")
+        for i in range(15):
+            _set_due_date(_finding(host, severity="critical", plugin=f"o{i}"), -60)
+        # 15 × 10 × 4.0 = 600.
+        self.assertEqual(recompute_summary(host).score, -500)

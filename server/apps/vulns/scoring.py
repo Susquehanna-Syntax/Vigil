@@ -5,11 +5,16 @@ the fleet headline. The formula is intentionally simple — users should
 be able to read it off the tooltip and instantly know why their host
 scored what it scored.
 
-Weights (per finding):
+Weights (per finding), as of the day a finding is due:
 
     critical: 10        high: 3        medium: 1        low: 0.2
 
     score = 100 - round(10×crit + 3×high + 1×med + 0.2×low)
+
+Those are the *base* weights. What actually reaches the score is each one
+multiplied by the finding's distance from its due date, so the stored score
+tracks whether remediation promises are being kept rather than how many
+findings a scanner happened to report.
 
 There's deliberately **no floor**. A host with 15 criticals lands at
 `-50`; that number being negative is part of the message. The face
@@ -21,9 +26,15 @@ once — see :func:`recompute_summary`.
 
 The score that is stored on ``VulnSummary`` is the *escalated* one: each
 finding's base weight is multiplied by its distance from its due date
-(see :mod:`apps.vulns.remediation`). The un-escalated weighted count —
-:func:`compute_score` — is kept as the baseline and is what a score would
-be if every due date were far enough away to matter not.
+(see :mod:`apps.vulns.remediation`). The weights above are what a finding
+costs **on the day it is due**; before that it is discounted steeply and
+after it is amplified, so the stored score reads as "am I keeping my
+remediation promises?" rather than "how many findings does this host have?".
+The counts answer the second question and sit on the same card.
+
+:func:`compute_score` is the un-escalated weighted count. It is not what
+gets stored — it is the reference formula, and what a host would score if
+every one of its findings came due today.
 """
 
 from __future__ import annotations
@@ -36,7 +47,7 @@ if TYPE_CHECKING:
     from apps.hosts.models import Host
     from .models import VulnFinding, VulnSummary
 
-from .remediation import escalation_multiplier
+from .remediation import NO_ESCALATION, escalation_multiplier
 
 # Weights are tuned for "harsh on highs, lows still count, criticals are
 # game over." Tweaking these changes the score for every host in the
@@ -95,6 +106,27 @@ def compute_escalated_score(deduction: float) -> int:
     return 100 - int(round(deduction))
 
 
+def deduction_for(severity: str, *, days_remaining: int | None,
+                  is_excepted: bool) -> float:
+    """The escalated deduction of one finding, from plain values.
+
+    Plain arguments rather than a model instance because the data migrations
+    hold *frozen* models, which have no ``is_excepted`` property and so cannot
+    call the model-shaped helper below. They used to reimplement this rule
+    instead, and the copy drifted: it routed excepted findings through the
+    no-deadline path, which — once findings inside their window stopped
+    counting — would have made accepting a risk score worse than ignoring it.
+    One implementation, called from both, is the fix.
+    """
+    if is_excepted:
+        # An accepted risk is a documented decision with a stated reason and an
+        # expiry, so it does not ride the clock. It scores at the same weight
+        # as a finding with plenty of runway — deliberately NOT the no-deadline
+        # weight, which is the conservative reading of a data gap.
+        return base_weight(severity) * NO_ESCALATION
+    return base_weight(severity) * escalation_multiplier(days_remaining)
+
+
 def _finding_deduction(
     finding: "VulnFinding",
     on_date: date | None = None,
@@ -114,11 +146,8 @@ def _finding_deduction(
         )
     else:
         days = finding.days_remaining
-    if finding.is_excepted:
-        # An accepted risk does not escalate. The curve stays a pure
-        # function of days; the policy decision is made at the call site.
-        days = None
-    return base_weight(finding.severity) * escalation_multiplier(days)
+    return deduction_for(finding.severity, days_remaining=days,
+                         is_excepted=finding.is_excepted)
 
 
 def _dedup_open_findings(host: "Host") -> list["VulnFinding"]:
