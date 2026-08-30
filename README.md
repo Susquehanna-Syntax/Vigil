@@ -25,7 +25,7 @@ Vigil is a lightweight monitoring system where agents on your hosts phone home t
 - Signed remote task execution with mode/allowlist enforcement on the agent
 - SQSY dark-theme dashboard with Chart.js visualizations
 
-## What's new in 2026.9.1
+## What's new in 2026.10.0
 
 - The Community tab has a sub-tab per content type — tasks, baselines and automations — each searchable, each forkable.
 - Forking a baseline or automation brings everything it needs with it, forking only what you do not already have, in one transaction. The card shows what it will pull in before you click.
