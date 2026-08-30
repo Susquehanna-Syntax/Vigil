@@ -22,6 +22,7 @@ class HostSerializer(serializers.ModelSerializer):
             "mode",
             "tags",
             "agent_version",
+            "reboot_required",
             "last_checkin",
             "created_at",
             "site",

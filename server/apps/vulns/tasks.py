@@ -78,3 +78,17 @@ def snapshot_scores() -> str:
         )
         written += 1
     return f"snapshotted {written} host score(s) for {today}"
+
+
+@shared_task(name="vulns.refresh_kev")
+def refresh_kev() -> str:
+    """Pull a fresh CISA KEV catalogue, if the operator enabled it.
+
+    A no-op when ``VIGIL_KEV_LIVE_REFRESH`` is off, and non-raising in every
+    failure mode — the bundled snapshot stays in place and scoring is
+    unaffected.
+    """
+    from . import kev
+
+    written = kev.fetch_live()
+    return f"refreshed {written} KEV entries"

@@ -40,4 +40,32 @@ def metric_history(request, host_id, category, metric_name):
             )
         qs = qs.filter(**{lookup: ts})
 
-    return Response(MetricPointSerializer(qs[:limit], many=True).data)
+    # Sample across the whole window rather than truncating to the newest N.
+    #
+    # `qs[:limit]` looked reasonable but silently broke the time-range buttons:
+    # ordering is newest-first, so a 7-day request over minute-resolution
+    # metrics returned the most recent 500 points — about eight hours. 24h and
+    # 7d rendered near-identical charts and the buttons looked inert.
+    #
+    # Stride sampling rather than bucket averaging: averaging would smooth away
+    # exactly the spikes a monitoring chart exists to show, and inventing a
+    # value that was never measured is the wrong trade for this tool. Sampling
+    # can miss a spike, but every point it returns is one that really happened.
+    total = qs.count()
+    if total <= limit:
+        points = list(qs[:limit])
+    else:
+        stride = total // limit + 1
+        # The newest point is always included — a chart whose right edge lags
+        # by up to `stride` samples looks stale even when it is current.
+        points = list(qs)[::stride]
+        if points and points[0] != qs.first():
+            points.insert(0, qs.first())
+
+    payload = MetricPointSerializer(points, many=True).data
+    response = Response(payload)
+    # Tells the caller the series is sampled, so a UI can say so rather than
+    # implying it is showing every measurement.
+    response["X-Vigil-Sampled"] = "1" if total > limit else "0"
+    response["X-Vigil-Total-Points"] = str(total)
+    return response

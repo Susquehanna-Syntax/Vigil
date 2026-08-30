@@ -122,6 +122,16 @@ async function loadRunHistory(page) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Client-side filter over the page already fetched. Deliberately not a
+  // server round-trip: history is paged, and re-querying on every keystroke
+  // would fight the pager.
+  document.getElementById('hist-search')?.addEventListener('input', (e) => {
+    const q = (e.target.value || '').trim().toLowerCase();
+    document.querySelectorAll('#hist-list .bl-card, #hist-list tr').forEach(row => {
+      row.style.display = !q || (row.textContent || '').toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+
   document.getElementById('hist-filters')?.addEventListener('click', (e) => {
     const b = e.target.closest('.sa-chip');
     if (!b) return;

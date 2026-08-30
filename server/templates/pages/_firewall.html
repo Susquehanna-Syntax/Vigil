@@ -16,7 +16,10 @@
       {% endcomment %}
       <div class="fw-controls">
         <label class="fw-controls-label" for="firewall-host-select">Host</label>
-        <select id="firewall-host-select" class="form-control fw-host-select"></select>
+        <button class="btn btn-outline picker-btn fw-host-select" id="firewall-host-btn" type="button">
+          <span id="firewall-host-label">Choose a host…</span>
+        </button>
+        <input type="hidden" id="firewall-host-select">
         <span id="firewall-snapshot-age" class="fw-snapshot-age"></span>
         <button class="btn btn-outline btn-sm" id="firewall-refresh-btn">
           <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>

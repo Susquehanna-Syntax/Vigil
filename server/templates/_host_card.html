@@ -8,6 +8,7 @@
      data-mode-display="{{ host.get_mode_display }}"
      data-last-checkin="{{ host.last_checkin|default:'' }}"
      data-agent-version="{{ host.agent_version|default:'' }}"
+     data-reboot-required="{% if host.reboot_required %}1{% endif %}"
      data-kernel="{{ host.kernel|default:'' }}"
      data-tags="{% for t in host.tags %}{{ t }}{% if not forloop.last %},{% endif %}{% endfor %}"
      {% if inactive %}data-inactive="1"{% endif %}>

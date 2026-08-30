@@ -49,6 +49,8 @@ _ALL_ACTIONS = {
     # Networking
     "add_firewall_rule", "remove_firewall_rule", "list_firewall_rules",
     "set_firewall_policy", "enable_firewall", "disable_firewall",
+    # Windows Update
+    "windows_update_scan", "windows_update_install",
     # User management
     "create_user", "delete_user", "add_user_to_group",
     # Cron

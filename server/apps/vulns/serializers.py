@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import VulnFinding, VulnScan, VulnScoreHistory, VulnSummary
+from .models import VulnException, VulnFinding, VulnScan, VulnScoreHistory, VulnSummary
 
 
 class VulnSummarySerializer(serializers.ModelSerializer):
@@ -18,6 +18,8 @@ class VulnSummarySerializer(serializers.ModelSerializer):
             "medium",
             "low",
             "info",
+            "overdue_count",
+            "due_soon_count",
             "score",
             "last_scan_at",
             "scanner_scan_id",
@@ -26,8 +28,20 @@ class VulnSummarySerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class VulnFindingExceptionSerializer(serializers.ModelSerializer):
+    """The accepted-risk / deferred exception on a finding, if any."""
+
+    class Meta:
+        model = VulnException
+        fields = ["kind", "reason", "expires_on"]
+        read_only_fields = fields
+
+
 class VulnFindingSerializer(serializers.ModelSerializer):
     host_hostname = serializers.CharField(source="host.hostname", read_only=True)
+    days_remaining = serializers.IntegerField(read_only=True)
+    overdue = serializers.BooleanField(read_only=True)
+    exception = VulnFindingExceptionSerializer(read_only=True)
 
     class Meta:
         model = VulnFinding
@@ -47,6 +61,10 @@ class VulnFindingSerializer(serializers.ModelSerializer):
             "first_seen",
             "last_seen",
             "resolved_at",
+            "due_date",
+            "days_remaining",
+            "overdue",
+            "exception",
         ]
         read_only_fields = fields
 

@@ -9,7 +9,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 
-from apps.hosts.models import Host
+from apps.hosts.models import Host, TagRowSyncMixin
 
 
 class OSImage(models.Model):
@@ -61,8 +61,10 @@ class OSImage(models.Model):
         return f"{self.name} ({self.architecture})"
 
 
-class InstallProfile(models.Model):
+class InstallProfile(TagRowSyncMixin, models.Model):
     """Typed settings for an image, plus a verbatim escape hatch (§6)."""
+    tag_sync_fields = [("completion_tags", "completion_tag_rows")]
+
 
     class NetworkMode(models.TextChoices):
         DHCP = "dhcp", "DHCP"
@@ -99,6 +101,9 @@ class InstallProfile(models.Model):
     # post_baseline already behaves: editing the profile mid-rebuild changes
     # what lands. The window is one rebuild and the effect is a tag.
     completion_tags = models.JSONField(default=list, blank=True)
+    #: Row-backed mirror of ``completion_tags`` — see Host.tag_rows.
+    completion_tag_rows = models.ManyToManyField("hosts.Tag", blank=True,
+                                                 related_name="install_profiles")
     deadline_minutes = models.IntegerField(default=60)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True,
                                    on_delete=models.SET_NULL,
@@ -166,6 +171,11 @@ class RebuildJob(models.Model):
 
     preflight = models.JSONField(default=dict, blank=True)
     completion_tag = models.CharField(max_length=120, blank=True)
+    #: Row-backed mirror of the singular ``completion_tag``. A FK, not an M2M —
+    #: a job carries at most one one-off tag.
+    completion_tag_row = models.ForeignKey(
+        "hosts.Tag", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="rebuild_jobs")
     post_baseline = models.ForeignKey(
         "baselines.Baseline", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="rebuild_jobs")

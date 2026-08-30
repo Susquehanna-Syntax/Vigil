@@ -44,7 +44,7 @@
     <div class="sidebar-icon" data-page="tasks" data-tip="Tasks">
       <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="baselines" data-tip="Baselines">
+    <div class="sidebar-icon" data-page="baselines" data-tip="Deployments">
       <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><polyline points="3 18 4 19 6 17"/></svg>
     </div>
     <div class="sidebar-icon" data-page="vulns" data-tip="Vulnerabilities">
@@ -190,7 +190,7 @@
   <div class="detail-section">
     <div class="detail-section-title">Tags</div>
     <div id="detail-tags-row" class="host-tag-row" style="margin-bottom:8px;"></div>
-    <div style="display:flex;gap:8px;">
+    <div class="host-tag-add-row">
       <input type="text" class="form-control" id="detail-tag-input" placeholder="Add tag (press Enter)" style="flex:1;font-size:12px;padding:7px 10px;">
       <button type="button" class="btn btn-ghost" id="detail-tag-add">Add</button>
     </div>
@@ -258,15 +258,15 @@
             <div class="deploy-policy-help">When unchecked, tasks are only dispatched during this window (server timezone: <strong id="deploy-tz-label"></strong>). Outside the window, tasks stay queued until the next eligible check-in.</div>
             <div class="deploy-policy-grid" id="deploy-schedule-fields" style="margin-top:10px;">
               <div>
-                <label class="deploy-input-label">Start time</label>
+                <label class="deploy-input-label">Start time</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="The earliest time of day this task is allowed to run. Tasks queued outside the window wait rather than failing.">?</span>
                 <input type="time" class="form-control" id="deploy-schedule-start" value="08:00" disabled>
               </div>
               <div>
-                <label class="deploy-input-label">End time (inclusive)</label>
+                <label class="deploy-input-label">End time (inclusive)</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="The latest time of day this task is allowed to start. A task already running is not interrupted when the window closes.">?</span>
                 <input type="time" class="form-control" id="deploy-schedule-end" value="17:00" disabled>
               </div>
               <div class="full">
-                <label class="deploy-input-label">Allowed days</label>
+                <label class="deploy-input-label">Allowed days</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Which days of the week the window applies to. Leave them all on for every day.">?</span>
                 <div class="deploy-day-row" id="deploy-day-chips"></div>
               </div>
             </div>
@@ -277,11 +277,11 @@
             <div class="deploy-policy-help">When a step fails, the agent re-runs it up to this many times with a delay between attempts. Set attempts to 0 to disable retries.</div>
             <div class="deploy-policy-grid" style="margin-top:10px;">
               <div>
-                <label class="deploy-input-label">Retry attempts</label>
+                <label class="deploy-input-label">Retry attempts</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="How many extra times to try a step that fails. 0 means one attempt and no retries.">?</span>
                 <input type="number" min="0" max="10" class="form-control" id="deploy-retry-attempts" value="0">
               </div>
               <div>
-                <label class="deploy-input-label">Delay between retries (seconds)</label>
+                <label class="deploy-input-label">Delay between retries (seconds)</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="How long to wait before trying again. Useful when the thing you are waiting on takes a moment to settle, like a service restarting.">?</span>
                 <input type="number" min="0" max="3600" class="form-control" id="deploy-retry-delay" value="30">
               </div>
             </div>
@@ -292,16 +292,16 @@
             <div class="deploy-policy-help">Even if a step exits cleanly, the agent treats it as failed unless the output meets these criteria. Leave optional fields blank to skip them.</div>
             <div class="deploy-policy-grid" style="margin-top:10px;">
               <div>
-                <label class="deploy-input-label">Expected exit code</label>
+                <label class="deploy-input-label">Expected exit code</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="The exit code that counts as success. Usually 0. Anything else marks the step failed.">?</span>
                 <input type="number" class="form-control" id="deploy-criteria-exit" value="0">
               </div>
               <div></div>
               <div class="full">
-                <label class="deploy-input-label">Output must contain</label>
+                <label class="deploy-input-label">Output must contain</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Plain text that has to appear in the command's output for the step to count as successful. Leave blank to skip this check.">?</span>
                 <input type="text" class="form-control" id="deploy-criteria-contains" placeholder="(optional)">
               </div>
               <div class="full">
-                <label class="deploy-input-label">Output must match regex</label>
+                <label class="deploy-input-label">Output must match regex</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="A regular expression the output must match. Stricter than the contains check — use it when a substring would give false positives.">?</span>
                 <input type="text" class="form-control" id="deploy-criteria-regex" placeholder="(optional)" style="font-family:'IBM Plex Mono',monospace;">
               </div>
             </div>
@@ -363,6 +363,136 @@
       </div>
     </div>
   </form>
+</div>
+
+{# Wave editor — same shape as the baseline editor: overlay + modal + save/cancel. #}
+<div class="modal-overlay" id="wave-editor-overlay" onclick="closeWaveEditor()"></div>
+<div class="modal" id="wave-editor-modal">
+  <div class="modal-title">
+    <span id="wave-editor-title">New Wave</span>
+    <button class="modal-close" onclick="closeWaveEditor()">
+      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div style="overflow-y:auto;">
+    <div class="form-group">
+      <label class="form-label">Name</label>
+      <input type="text" class="form-control" id="wave-name" placeholder="Canary, Broad, Rest of fleet…" maxlength="120">
+    </div>
+    <div style="display:flex;gap:12px;">
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">Order</label>
+        <input type="number" class="form-control" id="wave-order" min="1" value="1">
+        <div class="confirm-hint" style="margin-top:4px;">Lower numbers patch first.</div>
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">Validation window (hours)</label>
+        <input type="number" class="form-control" id="wave-validation" min="0" max="720" value="24">
+        <div class="confirm-hint" style="margin-top:4px;">How long to wait after this wave before starting the next. 0 advances immediately.</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Host tags</label>
+      <input type="text" class="form-control" id="wave-tags" placeholder="canary, staging">
+      <div class="confirm-hint" style="margin-top:4px;">
+        Comma-separated. Any host carrying <em>any</em> of these tags is in the wave.
+        Tags are edited on the host itself &mdash; this only chooses which ones the wave matches.
+      </div>
+      <div class="confirm-hint" id="wave-match-preview" style="margin-top:6px;color:var(--sky);"></div>
+    </div>
+    <label class="form-check" style="margin-bottom:4px;">
+      <input type="checkbox" id="wave-enabled" checked>
+      <span>Enabled &mdash; a disabled wave is skipped entirely</span>
+    </label>
+  </div>
+  <div class="modal-actions">
+    <button class="btn btn-ghost" onclick="closeWaveEditor()">Cancel</button>
+    <button class="btn btn-mint" id="wave-save-btn" onclick="saveWave()">Save wave</button>
+  </div>
+</div>
+
+{% comment %}
+Rollout detail — opened by clicking a rollout card. Actions live here rather
+than on the card so the operator sees the wave progression and the gate
+settings before deciding anything.
+{% endcomment %}
+<div class="modal-overlay" id="rollout-detail-overlay" onclick="closeRolloutDetail()"></div>
+<div class="modal modal-wide" id="rollout-detail-modal">
+  <div class="modal-title">
+    <span id="rollout-detail-title">Rollout</span>
+    <button class="modal-close" onclick="closeRolloutDetail()">
+      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div style="overflow-y:auto;" id="rollout-detail-body"></div>
+  <div class="modal-actions" id="rollout-detail-actions" style="align-items:center;gap:10px;"></div>
+</div>
+
+{# Rollout start modal — opened by openRolloutStart() in vigil-rollout.js; TOTP-gated like the deploy modal. #}
+<div class="modal-overlay" id="rollout-start-overlay" onclick="closeRolloutStart()"></div>
+<div class="modal modal-wide" id="rollout-start-modal">
+  <div class="modal-title">
+    Start Rollout
+    <button class="modal-close" onclick="closeRolloutStart()">
+      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div style="overflow-y:auto;">
+    <div class="totp-sub" style="margin-bottom:14px;">
+      Wave 1 starts now. Every later wave waits for the one before it to finish, stay under the
+      failure limit, and sit out its validation window.<br>
+      Which hosts land in which wave comes from the wave's tags &mdash; change the tags to change
+      who gets patched.
+    </div>
+    <div class="form-group" style="margin-bottom:12px;">
+      <label class="form-label">Task definition</label>
+      <button class="btn btn-outline picker-btn" id="rollout-start-def-btn" type="button">
+        <span id="rollout-start-def-label">Choose a task or baseline…</span>
+      </button>
+      <input type="hidden" id="rollout-start-def">
+      <div class="confirm-hint" id="rollout-start-def-hint" style="margin-top:4px;">Tasks that need someone to fill in an input cannot be rolled out unattended &mdash; a rollout runs with nobody watching.</div>
+    </div>
+    <div style="display:flex;gap:12px;margin-bottom:14px;">
+      <div class="form-group" style="flex:1;margin-bottom:0;">
+        <label class="form-label">Halt above failure&nbsp;%</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="If more than this share of a wave's machines fail, the rollout stops and waits for you instead of moving to the next wave.&#10;&#10;10% is a sensible default. Set it to 0 to stop on any failure at all.">?</span>
+        <input type="number" class="form-control" id="rollout-start-threshold" min="0" max="100" value="10">
+      </div>
+      <div class="form-group" style="flex:1;margin-bottom:0;">
+        <label class="form-label">Min results before halt</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="How many machines must report back before the failure percentage is trusted.&#10;&#10;Without this, one failure in a single-machine first wave is a 100% failure rate and every rollout would stop immediately.">?</span>
+        <input type="number" class="form-control" id="rollout-start-min" min="1" value="3">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:4px;">
+      <label class="form-label">Confirm with TOTP</label>
+      <input class="form-control" type="text" id="rollout-start-totp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+      <div class="confirm-hint">Rollouts are 2FA-gated fleet-wide operations, same as deploys.</div>
+    </div>
+  </div>
+  <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
+    <button class="btn btn-ghost btn-sm" onclick="closeRolloutStart()">Cancel</button>
+    <button class="btn btn-sky btn-sm" id="rollout-start-submit" onclick="submitRolloutStart()">Start rollout</button>
+  </div>
+</div>
+
+{# Rollout halt/resume confirm — TOTP-gated operator actions. #}
+<div class="modal-overlay" id="rollout-action-overlay" onclick="closeRolloutAction()"></div>
+<div class="modal" id="rollout-action-modal">
+  <div class="modal-title">
+    <span id="rollout-action-title">Confirm</span>
+    <button class="modal-close" onclick="closeRolloutAction()">
+      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="totp-sub" style="margin-bottom:14px;" id="rollout-action-message"></div>
+  <div class="form-group" style="margin-bottom:4px;">
+    <label class="form-label">Confirm with TOTP</label>
+    <input class="form-control" type="text" id="rollout-action-totp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+    <div class="confirm-hint">Halting and resuming rollouts are 2FA-gated fleet-wide operations.</div>
+  </div>
+  <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
+    <button class="btn btn-ghost btn-sm" onclick="closeRolloutAction()">Cancel</button>
+    <button class="btn btn-sky btn-sm" id="rollout-action-confirm" onclick="confirmRolloutAction()">Confirm</button>
+  </div>
 </div>
 
 {# Submit-to-community modal — opened from the task editor (openCommunitySubmit) #}
@@ -608,12 +738,17 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-nav.js' %}"></script>
 <!-- vigil-host-cards.js — dashboard host cards, pin bar, host detail drawer, RDP, host CRUD -->
 <script src="{% static 'js/vigil-host-cards.js' %}"></script>
+<!-- vigil-host-reboot.js — reboot_required pending marker on host cards -->
+<script src="{% static 'js/vigil-host-reboot.js' %}"></script>
 <!-- vigil-monitor.js — Monitor page charts, metric fetching, auto-refresh (wraps navigateTo) -->
 <script src="{% static 'js/vigil-monitor.js' %}"></script>
 <!-- vigil-alerts.js — client-rendered alert lists, ack/un-ack + bulk multi-select (wraps navigateTo) -->
 <script src="{% static 'js/vigil-alerts.js' %}"></script>
 <!-- vigil-tasks.js — task library, editor, dispatch modal, YAML highlighting -->
 <script src="{% static 'js/vigil-tasks.js' %}"></script>
+<script src="{% static 'js/vigil-rollout.js' %}"></script>
+<script src="{% static 'js/vigil-waves.js' %}"></script>
+<script src="{% static 'js/vigil-tags.js' %}"></script>
 <script src="{% static 'js/vigil-pickers.js' %}"></script>
 <script src="{% static 'js/vigil-ai.js' %}"></script>
 <script src="{% static 'js/vigil-baselines.js' %}"></script>

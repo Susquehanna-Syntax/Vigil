@@ -22,6 +22,7 @@ actions that the agent already knows how to run.
 from __future__ import annotations
 
 import re
+import urllib.parse
 from typing import Any
 
 import yaml
@@ -218,6 +219,19 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": [],
         "optional": ["security_only"],
     },
+    # ── Windows Update ──────────────────────────────────────────────────────
+    "windows_update_scan": {
+        "label": "Scan for Windows updates",
+        "risk": "low",
+        "required": [],
+        "optional": ["classifications", "include_kb", "exclude_kb", "severity_floor"],
+    },
+    "windows_update_install": {
+        "label": "Install Windows updates",
+        "risk": "standard",
+        "required": [],
+        "optional": ["classifications", "include_kb", "exclude_kb", "severity_floor"],
+    },
     # ── System ──────────────────────────────────────────────────────────────
     "clear_temp_files": {
         "label": "Clear /tmp",
@@ -235,7 +249,8 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "label": "Reboot host",
         "risk": "high",
         "required": [],
-        "optional": ["delay_seconds"],
+        "optional": ["delay_seconds", "notify", "notify_message",
+                     "defer_limit", "defer_minutes"],
     },
     "run_command": {
         "label": "Run shell command",
@@ -450,6 +465,13 @@ _INPUT_TYPES = {"text", "choice", "boolean", "number"}
 _VAR_PATTERN = re.compile(r"\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 _INPUT_ID_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 _ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+# Metadata fields (optional, community-repo oriented). A task may name the
+# CVEs it remediates, link the advisories it came from, and declare which
+# OS families it applies to. None of them affect execution or risk — they
+# exist so the Community tab and the vuln views can cross-reference.
+_CVE_PATTERN = re.compile(r"^CVE-\d{4}-\d{4,7}$", re.IGNORECASE)
+_VALID_PLATFORMS = {"linux", "windows", "darwin"}
 
 # Day-of-week aliases accepted in `schedule.window.days`. Stored canonically
 # as 0..6 with 0 = Monday (matches Python's datetime.weekday()).
@@ -892,6 +914,73 @@ def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[
     return {**parsed_spec, "actions": new_actions, "success_criteria": new_sc, "resolved_inputs": resolved}
 
 
+def _validate_cves(value: Any) -> list[str]:
+    """Optional ``cves`` list — at most 32 unique, normalized CVE ids."""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise SpecError("'cves' must be a list")
+    if len(value) > 32:
+        raise SpecError("'cves' may hold at most 32 entries")
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in value:
+        cve = str(item).strip().upper()
+        if not _CVE_PATTERN.match(cve):
+            raise SpecError(f"'cves' entry '{cve}' is not a valid CVE id")
+        if cve in seen:
+            raise SpecError(f"'cves' entry '{cve}' is duplicated")
+        seen.add(cve)
+        out.append(cve)
+    return out
+
+
+def _validate_references(value: Any) -> list[str]:
+    """Optional ``references`` list — absolute http(s) URLs only."""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise SpecError("'references' must be a list")
+    if len(value) > 16:
+        raise SpecError("'references' may hold at most 16 entries")
+    out: list[str] = []
+    for item in value:
+        ref = str(item).strip()
+        if len(ref) > 500:
+            raise SpecError("'references' entries must be at most 500 characters")
+        parsed = urllib.parse.urlparse(ref)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise SpecError(
+                f"'references' entry '{ref}' must be an absolute http(s) URL"
+            )
+        out.append(ref)
+    return out
+
+
+def _validate_platforms(value: Any) -> list[str]:
+    """Optional ``platforms`` list — a subset of the known OS families."""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise SpecError("'platforms' must be a list")
+    if len(value) > 3:
+        raise SpecError("'platforms' may hold at most 3 entries")
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in value:
+        platform = str(item).strip().lower()
+        if platform not in _VALID_PLATFORMS:
+            raise SpecError(
+                f"'platforms' entry '{platform}' is not a known platform "
+                f"({' or '.join(sorted(_VALID_PLATFORMS))})"
+            )
+        if platform in seen:
+            raise SpecError(f"'platforms' entry '{platform}' is duplicated")
+        seen.add(platform)
+        out.append(platform)
+    return out
+
+
 def parse_and_validate(yaml_source: str) -> dict[str, Any]:
     """Parse YAML, validate structure, return a canonical ``parsed_spec`` dict.
 
@@ -933,6 +1022,13 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
     created = _as_str(raw_created, "created", max_len=10)
     if created and not _ISO_DATE_PATTERN.match(created):
         raise SpecError("'created' must be an ISO-8601 date (YYYY-MM-DD)")
+
+    # Community-oriented metadata. None of it affects execution or risk; it
+    # exists so the Community tab and the vuln views can cross-reference a
+    # task with the advisories and platforms it targets.
+    cves = _validate_cves(raw.get("cves"))
+    references = _validate_references(raw.get("references"))
+    platforms = _validate_platforms(raw.get("platforms"))
 
     risk = _as_str(raw.get("risk") or "standard", "risk", max_len=16).lower()
     if risk not in _VALID_RISK:
@@ -1094,6 +1190,9 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         "relevance": relevance,
         "author": author,
         "created": created,
+        "cves": cves,
+        "references": references,
+        "platforms": platforms,
         "risk": effective_risk,
         "declared_risk": risk,
         "actions": parsed_actions,

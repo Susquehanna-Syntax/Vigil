@@ -40,6 +40,7 @@ def _row(a: Automation) -> dict:
                  "month": a.cron_month, "dow": a.cron_dow},
         "cron_display": a.cron_display,
         "action_kind": a.action_kind,
+        "dispatch_mode": a.dispatch_mode,
         "task_definition": str(a.task_definition_id) if a.task_definition_id else None,
         "task_name": a.task_definition.name if a.task_definition_id else None,
         # Still a name in the JSON: the UI works in names, and the FK is an
@@ -94,6 +95,10 @@ def _apply(a: Automation, data) -> str | None:
                      ("dom", "cron_dom"), ("month", "cron_month"), ("dow", "cron_dow")):
         if k in cron:
             setattr(a, field, str(cron[k]).strip() or "*")
+    if "dispatch_mode" in data:
+        if data["dispatch_mode"] not in Automation.DispatchMode.values:
+            return "dispatch_mode must be 'direct' or 'rollout'"
+        automation.dispatch_mode = data["dispatch_mode"]
     if "action_kind" in data:
         if data["action_kind"] not in Automation.ActionKind.values:
             return "invalid action_kind"

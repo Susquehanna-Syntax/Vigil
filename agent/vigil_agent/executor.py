@@ -33,6 +33,7 @@ from pathlib import Path
 from . import collector
 from . import firewall
 from .config import AgentConfig
+from .deferral import RebootDeferral
 from .pkg_manager import detect as detect_pkg_manager
 
 logger = logging.getLogger("vigil.executor")
@@ -1002,14 +1003,92 @@ def _execute_script(params: dict, config: AgentConfig) -> str:
     return _run([str(script_path)])
 
 
-def _reboot(params: dict, _config: AgentConfig) -> str:
+def _sanitize_notify_message(raw: str) -> str:
+    """Cap at 200 chars and strip anything outside the conservative
+    allowlist, before the text reaches a command line."""
+    text = re.sub(r"[^A-Za-z0-9 .,:;!?()\-'']", "", raw)[:200]
+    return " ".join(text.split())
+
+
+def _notify_user(message: str) -> None:
+    """Show the user a desktop notification. Any failure is logged and
+    swallowed — a missing notify tool must never become a reboot-blocker."""
+    if sys.platform == "win32":
+        cmd = ["msg", "*", message]
+    elif sys.platform == "darwin":
+        cmd = ["osascript", "-e",
+               'display notification "' + message + '" with title "Vigil"']
+    else:
+        cmd = ["notify-send", "Vigil", message]
+    try:
+        _run(cmd, timeout=15)
+    except FileNotFoundError:
+        if sys.platform != "darwin":
+            try:
+                _run(["wall", message], timeout=15)
+            except Exception:
+                logger.warning("Reboot notification failed: wall unavailable")
+        else:
+            logger.warning("Reboot notification failed: %s", "notify-send")
+    except Exception:
+        logger.warning("Reboot notification failed", exc_info=True)
+
+
+def _reboot(params: dict, config: AgentConfig) -> str:
     delay = int(params.get("delay_seconds", 0))
     if delay < 0:
         raise ValueError("delay_seconds must be non-negative")
-    if delay == 0:
-        return _run(["shutdown", "-r", "now"])
-    minutes = max(1, delay // 60)
-    return _run(["shutdown", "-r", f"+{minutes}"])
+    defer_limit = int(params.get("defer_limit", 0))
+    if not 0 <= defer_limit <= 8:
+        raise ValueError("defer_limit must be between 0 and 8")
+    defer_minutes = int(params.get("defer_minutes", 0))
+    if defer_minutes and not 5 <= defer_minutes <= 240:
+        raise ValueError("defer_minutes must be between 5 and 240")
+    message = _sanitize_notify_message(str(params.get("notify_message", "")))
+
+    task_id = str(params.get("task_id", ""))
+    deferral = RebootDeferral(config.data_dir)
+    deferral_active = bool(
+        task_id and (defer_limit > 0 or defer_minutes > 0)
+        and deferral.expiry_remaining() > 0
+        and deferral.exhausted() is False
+    )
+    # A new task id resets the deferral budget; the same id keeps counting.
+    if task_id:
+        deferral.record(task_id, defer_limit, defer_minutes)
+    # Capture exhaustion before clear(): a user who has used up every
+    # deferral may no longer block the reboot, so it must be forced.
+    force_close = defer_limit <= 0 or deferral.exhausted()
+    if deferral.expired():
+        deferral.clear()
+        deferral_active = False
+
+    if sys.platform == "win32":
+        # Windows shutdown.exe: /t takes raw seconds.
+        argv = ["shutdown", "/r", "/t", str(delay)]
+        # -r +N on Linux takes MINUTES while /t takes SECONDS — do not
+        # "tidy" the two into the same unit.
+        if message:
+            argv += ["/c", message]
+        # /f forces apps closed. Only when no deferral is in play: a
+        # fresh dispatch with a budget, or a dispatch inside an active
+        # deferral window, must not rip the user's work away; but once
+        # the budget is exhausted the user may no longer block it.
+        if force_close:
+            argv.append("/f")
+    else:
+        # coreutils shutdown: -r now / +N (minutes).
+        if delay == 0:
+            argv = ["shutdown", "-r", "now"]
+        else:
+            minutes = max(1, delay // 60)
+            argv = ["shutdown", "-r", f"+{minutes}"]
+
+    if params.get("notify") and message:
+        _notify_user(message)
+    output = _run(argv)
+    deferral.clear()
+    return output
 
 
 def _run_command(params: dict, config: AgentConfig) -> str:
@@ -1132,6 +1211,67 @@ def _list_firewall_rules(_params: dict, _config: AgentConfig) -> str:
     snapshot = backend.snapshot()
     snapshot["supported"] = True
     return json.dumps(snapshot)
+
+
+# ── Windows Update ────────────────────────────────────────────────────────
+
+
+def _windows_update_scan(params: dict, _config: AgentConfig) -> str:
+    """Return pending Windows updates as JSON, filtered by the optional
+    ``classifications`` / ``include_kb`` / ``exclude_kb`` / ``severity_floor``
+    params (the same filters the install action applies)."""
+    from . import windows_update
+
+    backend = windows_update.detect()
+    if backend is None:
+        raise ValueError("windows_update_scan is only supported on Windows")
+    updates = windows_update.filter_updates(
+        backend.scan(),
+        classifications=params.get("classifications"),
+        include_kb=params.get("include_kb"),
+        exclude_kb=params.get("exclude_kb"),
+        severity_floor=params.get("severity_floor"),
+    )
+    return json.dumps({
+        "supported": True,
+        "count": len(updates),
+        "updates": updates,
+    })
+
+
+def _windows_update_install(params: dict, _config: AgentConfig) -> str:
+    """Install the pending Windows updates that survive the filter params.
+
+    Never reboots: the result reports ``reboot_required`` and the agent stops
+    there. ``reboot`` is a separate action; an install action that reboots a
+    machine is the failure this milestone exists to prevent.
+    """
+    from . import windows_update
+
+    backend = windows_update.detect()
+    if backend is None:
+        raise ValueError("windows_update_install is only supported on Windows")
+    updates = windows_update.filter_updates(
+        backend.scan(),
+        classifications=params.get("classifications"),
+        include_kb=params.get("include_kb"),
+        exclude_kb=params.get("exclude_kb"),
+        severity_floor=params.get("severity_floor"),
+    )
+    # Install() on an empty collection throws a COM error that reads like a
+    # real failure, so an empty filter result is reported, not installed.
+    if not updates:
+        return json.dumps({
+            "supported": True,
+            "result_code": windows_update.RESULT_NOT_STARTED,
+            "reboot_required": False,
+            "installed": [],
+            "failed": [],
+            "detail": "no updates matched the filter; nothing installed",
+        })
+    result = backend.install([u["update_id"] for u in updates])
+    result["supported"] = True
+    return json.dumps(result)
 
 
 # ── User management ────────────────────────────────────────────────────────
@@ -1529,6 +1669,9 @@ _HANDLERS: dict[str, callable] = {
     "set_firewall_policy": _set_firewall_policy,
     "enable_firewall": _enable_firewall,
     "disable_firewall": _disable_firewall,
+    # Windows Update
+    "windows_update_scan": _windows_update_scan,
+    "windows_update_install": _windows_update_install,
     # User management
     "create_user": _create_user,
     "delete_user": _delete_user,
