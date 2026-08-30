@@ -86,35 +86,55 @@ def compute_due_date(
 #
 # THIS TABLE IS THE TUNING POINT FOR THE WHOLE PRODUCT. Changing a number here
 # re-weights every host's score at once. It is expressed as ordered breakpoints
-# rather than a chain of ifs so the whole shape is readable at a glance:
-# flat while there is runway, rising as the date nears, a hard step once past
-# due, and a second step for findings that have been ignored for a month.
+# rather than a chain of ifs so the whole shape is readable at a glance.
+#
+# The score answers "am I keeping my promises?", not "how many findings do I
+# have?" — the counts already answer that, and they are on the same card. A
+# finding you are still inside the remediation window for is work scheduled,
+# not work overdue, and a host doing everything right should not read as
+# failing because a scanner is thorough. So the curve is anchored at the
+# deadline: **due today scores exactly the base weight**, everything before it
+# is discounted steeply, and everything after it is amplified.
+#
+# The practical consequence, and the point of the whole table: one overdue
+# critical costs more than twenty criticals you still have a month to fix.
 #
 # Each pair is (minimum days_remaining for this band, multiplier). Evaluated
 # top-down; the first band whose threshold is met wins.
 _ESCALATION_BANDS: tuple[tuple[int, float], ...] = (
-    (31, 1.0),    # more than a month of runway — no penalty
-    (15, 1.25),   # 15..30 days — approaching
-    (1, 1.6),     # 1..14 days — close
-    (0, 2.0),     # due today
-    (-30, 3.0),   # 1..30 days overdue
+    (31, 0.1),    # more than a month of runway — barely counts
+    (15, 0.25),   # 15..30 days — approaching
+    (1, 0.5),     # 1..14 days — close
+    (0, 1.0),     # due today — the full base weight
+    (-30, 2.5),   # 1..30 days overdue
 )
 _ESCALATION_BADLY_OVERDUE = 4.0  # more than 30 days overdue
+
+#: The multiplier for a finding that is not being counted against the clock:
+#: one with plenty of runway. Named because two other places need exactly this
+#: value and must not drift from the table — see ``NO_DEADLINE_MULTIPLIER``
+#: below and the excepted branch in ``scoring._finding_deduction``.
+NO_ESCALATION = _ESCALATION_BANDS[0][1]
+
+#: A finding with no due date at all. Not the same thing as one with runway:
+#: a missing deadline is a data gap (an unrecognised severity, a row written
+#: before the backfill), and guessing "no rush" on a gap is the wrong way to
+#: be wrong. Scored at the deadline itself, which is the conservative read.
+NO_DEADLINE_MULTIPLIER = 1.0
 
 
 def escalation_multiplier(days_remaining: int | None) -> float:
     """Weight multiplier for a finding based on its distance from its due date.
 
-    ``None`` means the finding has no deadline (an ``info`` finding, or a row
-    predating the backfill) and is scored at its base weight.
+    ``None`` means the finding has no deadline — an ``info`` finding, or a row
+    predating the backfill — and is scored at ``NO_DEADLINE_MULTIPLIER``.
 
     This is a pure function of days. Whether a finding is *excepted* is not its
-    business — the caller drops excepted findings to 1.0, so that an accepted
-    risk is visibly a policy decision at the call site rather than a hidden
-    branch in here.
+    business — the caller handles that, so an accepted risk is visibly a policy
+    decision at the call site rather than a hidden branch in here.
     """
     if days_remaining is None:
-        return 1.0
+        return NO_DEADLINE_MULTIPLIER
     for threshold, multiplier in _ESCALATION_BANDS:
         if days_remaining >= threshold:
             return multiplier
