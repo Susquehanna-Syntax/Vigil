@@ -1,7 +1,8 @@
 // vigil-tasks.js
-// Owns: Tasks page — library grid, community grid, task editor (YAML +
-//   preview), fork, deploy launcher, community-submit (GitHub PR).
-// HTML: templates/pages/_tasks.html, templates/pages/_community.html,
+// Owns: Tasks page — library grid, task editor (YAML + preview), fork,
+//   deploy launcher, community-submit (GitHub PR). The Community page's own
+//   grids live in vigil-community.js.
+// HTML: templates/pages/_tasks.html,
 //   templates/pages/_task_editor.html, modals in templates/base.html.
 // Depends on: vigil-utils.js (apiJson, showToast, escHtml),
 //   vigil-deploy.js (openDeployModal triggered from def cards).
@@ -508,17 +509,12 @@ function defCardHtml(def, opts) {
   const attribution = (dateLabel || authorLabel)
     ? `<span class="dot-sep">·</span><span>${[dateLabel, authorLabel].filter(Boolean).join(' · ')}</span>`
     : '';
-  // Community cards come from the public GitHub repo (no local id) — Fork
-  // opens the template's YAML in the editor; saving adds it to the library.
-  // Submissions flow the other way via GitHub PR — see openCommunitySubmit().
-  const buttons = opts.mode === 'community'
-    ? `${def.html_url ? `<a class="btn btn-ghost btn-sm" style="color:var(--text-3);text-decoration:none;" href="${escHtml(def.html_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">View on GitHub</a>` : ''}
-       <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openCommunityTemplate('${encodeURIComponent(def.filename)}')">Fork</button>`
-    : `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openDefinitionEditor('${def.id}')">Edit</button>
-       <button class="btn btn-sky btn-sm" onclick="event.stopPropagation(); openDeployModal('${def.id}')">Deploy</button>`;
-  const cardClick = opts.mode === 'community'
-    ? `openCommunityTemplate('${encodeURIComponent(def.filename)}')`
-    : `openDefinitionEditor('${def.id}')`;
+  // Community cards live in vigil-community.js now — this renders the
+  // operator's own library only.
+  const buttons =
+    `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openDefinitionEditor('${def.id}')">Edit</button>
+     <button class="btn btn-sky btn-sm" onclick="event.stopPropagation(); openDeployModal('${def.id}')">Deploy</button>`;
+  const cardClick = `openDefinitionEditor('${def.id}')`;
   return `
     <div class="def-card" onclick="${cardClick}">
       <div class="def-card-body">
@@ -545,21 +541,12 @@ const LIBRARY_EMPTY_HTML = `
     <div class="empty-state-desc">Create your first task — describe what it does and list the actions that run in order.</div>
   </div>`;
 
-const COMMUNITY_EMPTY_HTML = `
-  <div class="empty-state">
-    <div class="empty-state-title">No community templates yet</div>
-    <div class="empty-state-desc">Templates come from the public
-      <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky);">Vigil-Approved-Scripts</a>
-      repo. Be the first to contribute — open any task in the editor and use Submit to Community.</div>
-  </div>`;
-
-// Cached unfiltered lists so search is purely client-side and instant.
-const taskGridCache = { library: [], community: [] };
+// Cached unfiltered list so search is purely client-side and instant.
+const taskGridCache = { library: [] };
 
 function _renderTaskGrid(scope) {
-  const cfg = scope === 'community'
-    ? { gridId: 'task-community-grid', searchId: 'task-community-search', mode: 'community', empty: COMMUNITY_EMPTY_HTML, showOwner: true }
-    : { gridId: 'task-library-grid',   searchId: 'task-library-search',   mode: 'library',   empty: LIBRARY_EMPTY_HTML,   showOwner: false };
+  const cfg = { gridId: 'task-library-grid', searchId: 'task-library-search',
+                mode: 'library', empty: LIBRARY_EMPTY_HTML, showOwner: false };
   const grid = document.getElementById(cfg.gridId);
   if (!grid) return;
   const all = taskGridCache[scope] || [];
@@ -592,25 +579,6 @@ async function refreshTaskLibrary() {
   } catch (e) {
     showToast('Failed to load library: ' + e.message, 'error');
   }
-}
-
-async function refreshTaskCommunity() {
-  try {
-    // Server-side proxy of the public Vigil-Approved-Scripts GitHub repo,
-    // cached for 10 minutes — see community_templates in apps/tasks/views.py.
-    taskGridCache.community = await apiJson('/api/v1/tasks/community/');
-    _renderTaskGrid('community');
-  } catch (e) {
-    showToast('Failed to load community: ' + e.message, 'error');
-  }
-}
-
-function openCommunityTemplate(encodedFilename) {
-  const filename = decodeURIComponent(encodedFilename);
-  const tpl = (taskGridCache.community || []).find(t => t.filename === filename);
-  if (!tpl || !tpl.yaml_source) { showToast('Template not loaded — refresh Community', 'error'); return; }
-  openDefinitionEditor(null, tpl.yaml_source);
-  showToast('Community template opened — save it to add it to your library', 'success');
 }
 
 async function forkDefinition(id) {
@@ -818,7 +786,6 @@ const originalNavigateForTasks = navigateTo;
 navigateTo = function (pageName) {
   originalNavigateForTasks(pageName);
   if (pageName === 'tasks') refreshTaskLibrary();
-  if (pageName === 'community') refreshTaskCommunity();
 };
 
 // Hook tab switches inside the tasks page so the library grid refreshes on demand.

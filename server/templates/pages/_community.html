@@ -1,27 +1,63 @@
-{# Community page section #}
-{# Logic: static/js/vigil-tasks.js (refreshTaskCommunity) | Styles: vigil.css .def-*, .task-* | Data: client-side fetch /api/v1/tasks/community/ (GitHub-backed, server-cached) #}
+{# Community page section — one sub-tab per content type #}
+{% comment %}
+Logic: static/js/vigil-community.js | Styles: vigil.css .def-*, .sub-tab, .task-search-*
+Data: client-side fetch /api/v1/tasks/community/<kind>/ (GitHub-backed, server-cached
+per kind). Forking a baseline or an automation resolves its slug references against
+the operator's own library, which is why a fork can fail with a list of what to get
+first — see openCommunityItem().
+{% endcomment %}
     <section id="page-community" class="page">
 
       <div class="page-header">
         <div>
           <div class="page-title">Community<span>.</span></div>
-          <div class="page-sub">Task templates from the public Vigil community repo. Fork any of them into your library.</div>
+          <div class="page-sub">Tasks, baselines and automations from the public Vigil community repo. Fork any of them into your library.</div>
         </div>
+        <button class="btn btn-outline btn-sm" id="community-refresh-btn" onclick="refreshCommunity(true)" title="Re-read the repo now instead of waiting out the ten-minute cache">
+          <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+          Refresh
+        </button>
       </div>
 
       <div style="background:var(--s1); border-left:2px solid var(--lavender); border-radius:var(--r-sm); padding:14px 18px; margin-bottom:18px; font-size:12px; color:var(--text-2); line-height:1.6;">
-        Templates are synced from
+        Content is synced from
         <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky);">Susquehanna-Syntax/Vigil-Approved-Scripts</a>
-        and reviewed by PR before they land. Fork opens a template in your editor — nothing runs
-        without your review, and deploying still requires 2FA. Share your own from the task editor
-        with <em>Submit to Community</em>.
+        and reviewed by PR before it lands. Fork opens an item in your editor — nothing runs
+        without your review, and deploying still requires 2FA. Share your own with
+        <em>Submit to Community</em> in any editor.
+        <span class="field-hint" tabindex="0" aria-label="How forking works"
+              data-hint="A baseline names its tasks by slug, and an automation names the task or baseline it runs the same way. Forking one resolves those names against your own library.&#10;&#10;If something it needs is missing, the fork stops and tells you exactly which items to fork first — rather than importing a baseline whose steps silently vanished.">?</span>
       </div>
 
-      <div class="task-search-bar">
-        <svg class="task-search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" class="task-search-input" id="task-community-search" placeholder="Search community templates…" oninput="filterTaskGrid('community')">
+      <div class="sub-tabs">
+        <div class="sub-tab t-lav active" data-subtab="community-tasks-panel" data-kind="tasks">Tasks</div>
+        <div class="sub-tab t-sky" data-subtab="community-baselines-panel" data-kind="baselines">Baselines</div>
+        <div class="sub-tab t-peach" data-subtab="community-automations-panel" data-kind="automations">Automations</div>
       </div>
 
-      <div id="task-community-grid" class="def-grid"></div>
+      {# One panel per kind. Identical shape so the JS can address them by kind. #}
+      <div class="sub-panel active" id="community-tasks-panel">
+        <div class="task-search-bar">
+          <svg class="task-search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" class="task-search-input" id="community-tasks-search" placeholder="Search community tasks…">
+        </div>
+        <div id="community-tasks-grid" class="def-grid"></div>
+      </div>
+
+      <div class="sub-panel" id="community-baselines-panel">
+        <div class="task-search-bar">
+          <svg class="task-search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" class="task-search-input" id="community-baselines-search" placeholder="Search community baselines…">
+        </div>
+        <div id="community-baselines-grid" class="def-grid"></div>
+      </div>
+
+      <div class="sub-panel" id="community-automations-panel">
+        <div class="task-search-bar">
+          <svg class="task-search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" class="task-search-input" id="community-automations-search" placeholder="Search community automations…">
+        </div>
+        <div id="community-automations-grid" class="def-grid"></div>
+      </div>
 
     </section>

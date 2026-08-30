@@ -181,3 +181,109 @@ def baseline_detail(request, baseline_id):
                 transaction.set_rollback(True)
                 return err
     return Response(_row(baseline))
+
+
+# ── Community YAML ───────────────────────────────────────────────────────────
+#
+# Export and import a baseline in the dialect the community repo speaks, so a
+# baseline can be shared the same way a task already could. Import routes
+# through _validate_and_set_steps and _high_risk_gate rather than writing rows
+# directly: a YAML file must not be a way around the eligibility rules or the
+# TOTP confirmation that guards allow_high_risk.
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def baseline_yaml(request, baseline_id):
+    """The baseline as community YAML, plus the filename it should be saved as."""
+    from datetime import date
+
+    from vigil.contentyaml import ContentYamlError, slugify
+
+    from .community_yaml import to_yaml
+
+    baseline = get_object_or_404(
+        scoping.filter_by_site(Baseline.objects.all(), request.user,
+                               cascade_global=True),
+        pk=baseline_id)
+    author = (request.user.get_full_name() or "").strip() or request.user.username
+    try:
+        text = to_yaml(baseline, author=author, created=date.today())
+    except ContentYamlError as exc:
+        return Response({"detail": str(exc)}, status=400)
+    return Response({
+        "yaml": text,
+        "filename": f"{slugify(baseline.name, fallback='baseline')}.yaml",
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def baseline_from_yaml(request):
+    """Create or replace a baseline from community YAML.
+
+    ``baseline_id`` in the body updates that baseline in place; without it a
+    new one is created. Importing over an existing baseline is how Fork →
+    edit → re-import works without accumulating duplicates.
+    """
+    from vigil.contentyaml import ContentYamlError
+
+    from .community_yaml import parse, resolve_steps
+
+    try:
+        parsed = parse(request.data.get("yaml") or "")
+    except ContentYamlError as exc:
+        return Response({"detail": str(exc)}, status=400)
+
+    from apps.tasks.views import community_names_by_slug
+
+    visible_defs = scoping.filter_by_site(
+        TaskDefinition.objects.all(), request.user, cascade_global=True)
+    try:
+        steps = resolve_steps(parsed["steps"], visible_defs,
+                              community_names_by_slug("tasks"))
+    except ContentYamlError as exc:
+        return Response({"detail": str(exc)}, status=400)
+    steps.sort(key=lambda s: s["order"])
+
+    baseline_id = request.data.get("baseline_id")
+    existing = None
+    if baseline_id:
+        existing = get_object_or_404(
+            scoping.filter_by_site(Baseline.objects.all(), request.user,
+                                   cascade_global=True),
+            pk=baseline_id)
+
+    clash = Baseline.objects.filter(name__iexact=parsed["name"])
+    if existing is not None:
+        clash = clash.exclude(pk=existing.pk)
+    if clash.exists():
+        return Response(
+            {"detail": f"a baseline named {parsed['name']!r} already exists"},
+            status=400)
+
+    with transaction.atomic():
+        baseline = existing or Baseline(created_by=request.user)
+        baseline.name = parsed["name"]
+        baseline.description = parsed["description"]
+        baseline.target_tags = parsed["target_tags"]
+        if existing is None:
+            baseline.save()
+        # The flag is a 2FA-guarded act whichever door it comes through. A
+        # YAML file asking for high-risk steps has to pass the same gate a
+        # checkbox does, or importing would be the way around it.
+        if err := _high_risk_gate(request, baseline, parsed["allow_high_risk"]):
+            transaction.set_rollback(True)
+            return err
+        baseline.save()
+        err = _validate_and_set_steps(
+            baseline,
+            [{"definition_id": str(s["definition"].id),
+              "params_override": s["params_override"]} for s in steps])
+        if err is not None:
+            transaction.set_rollback(True)
+            return err
+
+    return Response(_row(baseline),
+                    status=status.HTTP_200_OK if existing
+                    else status.HTTP_201_CREATED)

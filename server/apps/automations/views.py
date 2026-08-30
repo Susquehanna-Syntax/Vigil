@@ -98,7 +98,7 @@ def _apply(a: Automation, data) -> str | None:
     if "dispatch_mode" in data:
         if data["dispatch_mode"] not in Automation.DispatchMode.values:
             return "dispatch_mode must be 'direct' or 'rollout'"
-        automation.dispatch_mode = data["dispatch_mode"]
+        a.dispatch_mode = data["dispatch_mode"]
     if "action_kind" in data:
         if data["action_kind"] not in Automation.ActionKind.values:
             return "invalid action_kind"
@@ -192,3 +192,115 @@ def automation_run_now(request, automation_id):
     a = get_object_or_404(Automation, pk=automation_id)
     n = run_automation(a)
     return Response({"dispatched": n})
+
+
+# ── Community YAML ───────────────────────────────────────────────────────────
+#
+# Import funnels the parsed document through _apply, the same setter the JSON
+# API uses, rather than assigning fields directly. That keeps one set of rules
+# about what a valid automation is — the event must be known, a scheduled one
+# cannot target the event host, a baseline action cannot carry per-task
+# overrides — instead of a second, quietly diverging set for YAML.
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def automation_yaml(request, automation_id):
+    from datetime import date
+
+    from vigil.contentyaml import ContentYamlError, slugify
+
+    from .community_yaml import to_yaml
+
+    automation = get_object_or_404(
+        scoping.filter_by_site(
+            Automation.objects.select_related("task_definition", "baseline"),
+            request.user, cascade_global=True),
+        pk=automation_id)
+    author = (request.user.get_full_name() or "").strip() or request.user.username
+    try:
+        text = to_yaml(automation, author=author, created=date.today())
+    except ContentYamlError as exc:
+        # The unshareable cases — a specific target host, a specific watched
+        # host — are a 400 with the reason, not a 500. The message tells the
+        # operator what to change to make it shareable.
+        return Response({"detail": str(exc)}, status=400)
+    return Response({
+        "yaml": text,
+        "filename": f"{slugify(automation.name, fallback='automation')}.yaml",
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def automation_from_yaml(request):
+    """Create or replace an automation from community YAML."""
+    from vigil.contentyaml import ContentYamlError
+
+    from .community_yaml import parse, resolve_action
+
+    try:
+        parsed = parse(request.data.get("yaml") or "")
+    except ContentYamlError as exc:
+        return Response({"detail": str(exc)}, status=400)
+
+    definitions = scoping.filter_by_site(
+        TaskDefinition.objects.all(), request.user, cascade_global=True)
+    baselines = scoping.filter_by_site(
+        Baseline.objects.all(), request.user, cascade_global=True)
+    from apps.tasks.views import community_names_by_slug
+
+    try:
+        definition, baseline = resolve_action(
+            parsed, definitions=definitions, baselines=baselines,
+            task_names_by_slug=community_names_by_slug("tasks"),
+            baseline_names_by_slug=community_names_by_slug("baselines"))
+    except ContentYamlError as exc:
+        return Response({"detail": str(exc)}, status=400)
+
+    automation_id = request.data.get("automation_id")
+    automation = None
+    if automation_id:
+        automation = get_object_or_404(
+            scoping.filter_by_site(Automation.objects.all(), request.user,
+                                   cascade_global=True),
+            pk=automation_id)
+    if automation is None:
+        automation = Automation(created_by=request.user)
+
+    data = {
+        "name": parsed["name"],
+        "enabled": parsed["enabled"],
+        "trigger": parsed["trigger"],
+        "event": parsed["event"],
+        "min_severity": parsed["min_severity"],
+        "event_tags": parsed["event_tags"],
+        "match_text": parsed["match_text"],
+        "match_field": parsed["match_field"],
+        "match_mode": parsed["match_mode"],
+        "cron": parsed["cron"],
+        "action_kind": parsed["action_kind"],
+        "params_override": parsed["params_override"],
+        "target": parsed["target"],
+        "target_tags": parsed["target_tags"],
+        # Shared files never name a specific machine, so an import must clear
+        # any host pinned on the automation it is replacing. Leaving a stale
+        # host id behind would silently keep targeting it.
+        "target_host": None,
+        "event_host": None,
+    }
+    if parsed["action_kind"] == "task":
+        data["task_definition"] = str(definition.id)
+        data["baseline_name"] = ""
+    else:
+        data["task_definition"] = None
+        data["baseline_name"] = baseline.name
+
+    created = automation._state.adding
+    if err := _apply(automation, data):
+        return Response({"detail": err}, status=400)
+    automation.save()
+    sync_periodic_task(automation)
+    return Response(_row(automation),
+                    status=status.HTTP_201_CREATED if created
+                    else status.HTTP_200_OK)

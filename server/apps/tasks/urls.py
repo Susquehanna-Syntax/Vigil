@@ -6,7 +6,10 @@ urlpatterns = [
     path("history/", views.task_history, name="task-history"),
     path("result/", views.task_result, name="task-result"),
     path("actions/", views.action_registry, name="task-actions"),
+    # The bare path keeps the pre-2026.9.1 URL working; it means tasks.
     path("community/", views.community_templates, name="community-templates"),
+    path("community/<str:kind>/", views.community_templates,
+         name="community-templates-kind"),
     path("definitions/", views.definition_list, name="definition-list"),
     path("definitions/validate/", views.definition_validate, name="definition-validate"),
     path("definitions/<uuid:definition_id>/", views.definition_detail, name="definition-detail"),
