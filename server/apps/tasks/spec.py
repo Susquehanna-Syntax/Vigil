@@ -1023,6 +1023,19 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
     if created and not _ISO_DATE_PATTERN.match(created):
         raise SpecError("'created' must be an ISO-8601 date (YYYY-MM-DD)")
 
+    # ``uid`` is this task's identity in the community catalog, independent of
+    # its name and its filename. A baseline references its steps by uid, which
+    # is what lets the reference survive a rename and stops two tasks that
+    # happen to share a name from being confused for each other. Optional:
+    # everything written before uids existed has none, and a task that is never
+    # shared never needs one.
+    from vigil.contentyaml import ContentYamlError, parse_uid
+
+    try:
+        uid = parse_uid(raw, "task")
+    except ContentYamlError as exc:
+        raise SpecError(str(exc)) from exc
+
     # Community-oriented metadata. None of it affects execution or risk; it
     # exists so the Community tab and the vuln views can cross-reference a
     # task with the advisories and platforms it targets.
@@ -1188,6 +1201,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         "name": name,
         "description": description,
         "relevance": relevance,
+        "uid": uid,
         "author": author,
         "created": created,
         "cves": cves,

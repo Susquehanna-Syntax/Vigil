@@ -27,7 +27,9 @@ Vigil is a lightweight monitoring system where agents on your hosts phone home t
 
 ## What's new in 2026.9.1
 
-- The Community tab has a sub-tab per content type — tasks, baselines and automations — each searchable, each forkable. A baseline or automation that references something you do not have refuses to import and names what is missing.
+- The Community tab has a sub-tab per content type — tasks, baselines and automations — each searchable, each forkable.
+- Forking a baseline or automation brings everything it needs with it, forking only what you do not already have, in one transaction. The card shows what it will pull in before you click.
+- Catalog content carries a `uid`, so references survive a rename and task names do not have to be unique.
 - Baselines and automations have an **Edit as YAML** view, in the same dialect the community repo stores, with Copy and Submit to Community beside it.
 - The vulnerability score now weighs **overdue** findings rather than finding counts: a finding is worth its base weight on the day it is due, much less before, much more after. One overdue critical costs more than twenty criticals with a month of runway.
 

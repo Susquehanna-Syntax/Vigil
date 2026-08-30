@@ -17,6 +17,7 @@ mode this module is shaped to prevent.
 from __future__ import annotations
 
 import re
+import uuid as _uuid
 from typing import Any
 
 import yaml
@@ -119,3 +120,50 @@ def dump(fields: dict[str, Any]) -> str:
     text = yaml.dump(fields, sort_keys=False, allow_unicode=True,
                      default_flow_style=False, width=76)
     return text.rstrip() + "\n"
+
+
+def parse_uid(raw: dict, what: str) -> str:
+    """Read a content file's ``uid``: its identity across every installation.
+
+    A slug is a filename, so it changes when the file is renamed and collides
+    when two people pick the same name. A uid does neither, which is what lets
+    a baseline keep pointing at the right task after you have renamed your
+    copy of it, and lets two unrelated tasks both be called "Cleanup".
+
+    Optional. Everything already in the catalog predates uids and must keep
+    working, so the readers fall back to slug matching when it is absent.
+    """
+    value = raw.get("uid")
+    if value in (None, ""):
+        return ""
+    if not isinstance(value, str):
+        raise ContentYamlError(f"{what}: 'uid' must be a UUID string.")
+    try:
+        # Normalised through UUID rather than compared as text: the same uid
+        # written braced, or in upper case, must not read as a different one.
+        return str(_uuid.UUID(value.strip()))
+    except (ValueError, AttributeError) as exc:
+        raise ContentYamlError(
+            f"{what}: 'uid' is not a valid UUID ({value!r}).") from exc
+
+
+def parse_ref(entry: Any, key: str, what: str, where: str) -> dict[str, str]:
+    """Read one reference to another piece of content.
+
+    A reference carries a slug (readable, and what the catalog has always
+    used) and optionally a uid (exact). Both are kept: the uid resolves it,
+    and the slug is what a human reviewing the diff on GitHub can actually
+    follow.
+    """
+    if not isinstance(entry, dict):
+        raise ContentYamlError(
+            f"{what}: {where} must be a mapping with a '{key}' key.")
+    slug = entry.get(key)
+    if not isinstance(slug, str) or not slug.strip():
+        raise ContentYamlError(f"{what}: {where} is missing '{key}'.")
+    return {"slug": slug.strip(), "uid": parse_uid(entry, f"{what} {where}")}
+
+
+def new_uid() -> str:
+    """Mint a uid for content being exported for the first time."""
+    return str(_uuid.uuid4())

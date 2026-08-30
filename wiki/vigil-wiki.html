@@ -2121,6 +2121,7 @@
 
       <h3>Browsing in the console</h3>
       <p class="prose">The <strong>Community</strong> tab has a sub-tab per content type — <strong>Tasks</strong>, <strong>Baselines</strong> and <strong>Automations</strong> — each listing the matching directory of the catalog repo, each with its own search. Your server fetches and parses the YAML (<code>GET /api/v1/tasks/community/&lt;kind&gt;/</code>) and caches each kind for 10 minutes, so browsers never hit GitHub's rate limits themselves. A kind is only fetched when you open its tab. <strong>Refresh</strong> re-reads the repo immediately instead of waiting out the cache.</p>
+      <p class="prose">The <strong>Tasks</strong> sub-tab lists standalone tasks. A task that exists only to serve a baseline or an automation is folded away behind a one-line "show them" control, because the thing that needs it already offers it — listing it again shows the same task twice. It is folded, not hidden: such a task is still worth reading, and still forkable on its own.</p>
       <p class="prose">Nothing from the catalog runs without your review, and deploying still requires 2FA.</p>
 
       <h3>Forking</h3>
@@ -2130,13 +2131,30 @@
           <thead><tr><th>Type</th><th>Fork does</th></tr></thead>
           <tbody>
             <tr><td>Task</td><td>Opens the YAML in your task editor, unsaved. Saving adds it to your library.</td></tr>
-            <tr><td>Baseline</td><td>Imports server-side, resolving each step's task slug against your own library.</td></tr>
-            <tr><td>Automation</td><td>Imports server-side, resolving the task or baseline it runs against your own library.</td></tr>
+            <tr><td>Baseline</td><td>Imports server-side, forking any of its tasks you do not already have.</td></tr>
+            <tr><td>Automation</td><td>Imports server-side, forking the baseline it runs and that baseline's tasks, as needed.</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="prose">A baseline or automation that references something you do not have <strong>refuses to import and names what is missing</strong>, so you can fork those first and try again. It does not import a partial copy: a baseline whose steps silently vanished would be worse than a refusal, because it would look like it works.</p>
-      <p class="prose">Resolution is by name, not by id — the file has no ids to give. Vigil first slugifies the names in your library and looks for a match, then falls back to the catalog index to translate the slug into the name the catalog's file carries. The second pass matters because a slug is a <em>filename</em>, and the repo does not force a filename to equal the slugified <code>name</code> inside it.</p>
+      <p class="prose">Forking a baseline or an automation <strong>brings everything it needs with it</strong>. Vigil walks the whole graph — an automation pulls its baseline, and that baseline pulls its tasks — and forks only what you do not already have. The card says so before you click: it lists what the item pulls in, marks each one <em>already yours</em> or <em>will fork</em>, and the button reads <code>Fork all 3</code> rather than <code>Fork</code>. The same walk backs the preview and the fork itself, so the card cannot promise something different from what the button does.</p>
+      <p class="prose">It is one transaction. A half-forked baseline missing its third step is not a state worth leaving you in, so if any part fails nothing is created. Forking something you already have is a no-op that says so, not an error — so <strong>Fork</strong> is never a duplicate button.</p>
+      <p class="prose">If the catalog itself is missing a file that something references, the import refuses and names it. That case is a broken catalog rather than a gap in your library, and importing a baseline whose steps silently vanished would be worse than a refusal, because it would look like it works.</p>
+
+      <h3 id="content-uids">How references resolve</h3>
+      <p class="prose">Every piece of catalog content carries a <strong><code>uid</code></strong> — a UUID that identifies it on every Vigil installation. References name a slug too, because that is what a reviewer reading the diff on GitHub can follow, but Vigil resolves by uid first.</p>
+      <p class="prose">The distinction is the whole reason uids exist. A slug is a <em>filename</em>: it changes when a file is renamed, it collides when two contributors pick the same name, and the catalog does not force a filename to equal the slugified <code>name</code> inside it. So slug matching breaks in ways that are hard to see. Rename your copy of a task and the baseline that uses it stops resolving; write your own task that happens to be called "Install Nginx" and a fork could silently reuse it in place of the catalog's. A uid does neither, which is also why <strong>names do not have to be unique</strong>.</p>
+      <p class="prose">Resolution runs in three passes, in order:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Pass</th><th>Matches on</th><th>When it applies</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>uid</td><td>Whenever the file carries one. Authoritative — if nothing in your library holds that uid, it is treated as content you do not have, no matter what it is called.</td></tr>
+            <tr><td>2</td><td>slugified name</td><td>Files written before uids existed.</td></tr>
+            <tr><td>3</td><td>the catalog index</td><td>Same, when the filename and the name inside it disagree.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose">Vigil records the catalog's uid on your copy when you fork, and mints one the first time you export something of your own. A uid is the content's identity, not its version: it is never edited or reused, because changing it makes every installation treat the file as new and fork a second copy alongside the one people already have.</p>
 
       <h3>Editing as YAML</h3>
       <p class="prose">Baselines and automations have an <strong>Edit as YAML</strong> button in their editors, alongside the form. It shows the same document the catalog stores, so what you read is exactly what a submission would carry — there is no second rendering to drift from it. From that view you can save your edits back, copy the YAML, or submit it.</p>
@@ -2233,6 +2251,8 @@
             <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/history/?page=N</code></td><td>Paginated task history (50/page, polled by the History tab)</td></tr>
             <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/community/</code></td><td>Community tasks from the GitHub catalog (server-cached 10 min; <code>?refresh=1</code> busts the cache)</td></tr>
             <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/community/{kind}/</code></td><td>As above for <code>tasks</code>, <code>baselines</code> or <code>automations</code>; cached per kind</td></tr>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/community/{kind}/{file}/plan/</code></td><td>What forking this item would create, and what you already have. Creates nothing</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/tasks/community/{kind}/{file}/fork/</code></td><td>Fork the item and everything it needs, in one transaction. A no-op when you already have it</td></tr>
             <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/baselines/{id}/yaml/</code></td><td>The baseline as community YAML, with the filename it should be shared as</td></tr>
             <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/baselines/yaml/</code></td><td>Create from community YAML, or replace when <code>baseline_id</code> is given. Turning on <code>allow_high_risk</code> still costs a TOTP code</td></tr>
             <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/automations/{id}/yaml/</code></td><td>The automation as community YAML; 400 with a reason when it names one specific host</td></tr>

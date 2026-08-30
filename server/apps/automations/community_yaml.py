@@ -26,6 +26,8 @@ from vigil.contentyaml import (
     check_author,
     dump,
     load_mapping,
+    new_uid,
+    parse_uid,
     require_str,
     require_tag_list,
     slugify,
@@ -62,6 +64,10 @@ def to_yaml(automation, *, author: str = "", created=None) -> str:
             "before submitting.")
 
     fields: dict[str, Any] = {"name": automation.name}
+    if not automation.community_uid:
+        automation.community_uid = new_uid()
+        automation.save(update_fields=["community_uid"])
+    fields["uid"] = str(automation.community_uid)
     if author:
         fields["author"] = author
     if created is not None:
@@ -96,11 +102,15 @@ def to_yaml(automation, *, author: str = "", created=None) -> str:
             raise ContentYamlError(
                 "This automation runs a baseline but no baseline is set.")
         fields["baseline"] = slugify(automation.baseline.name, fallback="baseline")
+        if automation.baseline.community_uid:
+            fields["action_uid"] = str(automation.baseline.community_uid)
     else:
         if not automation.task_definition_id:
             raise ContentYamlError(
                 "This automation runs a task but no task is set.")
         fields["task"] = slugify(automation.task_definition.name, fallback="task")
+        if automation.task_definition.community_uid:
+            fields["action_uid"] = str(automation.task_definition.community_uid)
         if automation.params_override:
             fields["params_override"] = automation.params_override
 
@@ -114,6 +124,7 @@ def parse(text: str) -> dict[str, Any]:
     """Validate community automation YAML into a plain dict."""
     raw = load_mapping(text, _WHAT)
 
+    uid = parse_uid(raw, _WHAT)
     name = require_str(raw, "name", _WHAT, max_len=120)
     description = require_str(raw, "description", _WHAT, max_len=2000,
                               required=False)
@@ -131,6 +142,11 @@ def parse(text: str) -> dict[str, Any]:
             f"{_WHAT}: 'trigger' must be 'event' or 'schedule', not {trigger!r}.")
 
     out: dict[str, Any] = {
+        "uid": uid,
+        # The uid of the task or baseline this automation runs, when the file
+        # carries one. Named separately from `uid` so a file cannot confuse
+        # its own identity with its action's.
+        "action_uid": parse_uid({"uid": raw.get("action_uid")}, f"{_WHAT} action"),
         "name": name, "description": description, "author": author,
         "enabled": enabled, "trigger": trigger,
         "event": "", "min_severity": "", "event_tags": [],
@@ -225,14 +241,18 @@ def parse(text: str) -> dict[str, Any]:
     return out
 
 
-def _match(rows, slug: str, fallback: str, names_by_slug):
-    """Find the row a community slug refers to.
+def _match(rows, slug: str, fallback: str, names_by_slug, uid: str = ""):
+    """Find the row a community reference points at.
 
-    Two passes, for the same reason baselines resolve their steps twice: a slug
-    is a *filename* in the repo, and the repo does not require it to equal
-    ``slugify(name)``. Slugifying library names finds the common case; the
-    community index translates the rest.
+    uid first — it survives a rename on either side and does not require names
+    to be unique. The two slug passes below keep files written before uids
+    existed working: a slug is a *filename*, and the catalog does not require
+    it to equal ``slugify(name)``, so the community index translates the rest.
     """
+    if uid:
+        for row in rows:
+            if row.community_uid and str(row.community_uid) == uid:
+                return row
     for row in rows:
         if slugify(row.name, fallback=fallback) == slug:
             return row
@@ -252,14 +272,14 @@ def resolve_action(parsed: dict[str, Any], *, definitions, baselines,
     """
     if parsed["action_kind"] == "task":
         definition = _match(definitions, parsed["slug"], "task",
-                            task_names_by_slug)
+                            task_names_by_slug, parsed.get("action_uid", ""))
         if definition is not None:
             return definition, None
         raise ContentYamlError(
             f"This automation runs the task '{parsed['slug']}', which is not in "
             f"your library. Fork it from Community first.")
     baseline = _match(baselines, parsed["slug"], "baseline",
-                      baseline_names_by_slug)
+                      baseline_names_by_slug, parsed.get("action_uid", ""))
     if baseline is not None:
         return None, baseline
     raise ContentYamlError(

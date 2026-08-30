@@ -4,6 +4,7 @@ from datetime import timedelta
 from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
+from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -571,6 +572,11 @@ def _save_definition_from_yaml(definition: TaskDefinition, yaml_source: str) -> 
     definition.description = spec["description"]
     definition.relevance = spec["relevance"]
     definition.risk_level = spec["risk"]
+    # A task forked from the catalog keeps the catalog's identity for it, so a
+    # baseline that references it by uid still resolves after the operator
+    # renames their copy.
+    if spec.get("uid"):
+        definition.community_uid = spec["uid"]
 
 
 # ---------------------------------------------------------------------------
@@ -595,11 +601,14 @@ COMMUNITY_KINDS = ("tasks", "baselines", "automations")
 def _card_for_task(text: str) -> dict:
     spec = parse_and_validate(text)
     return {
+        "uid": spec.get("uid", ""),
         "name": spec["name"],
         "description": spec.get("description", ""),
+        "author": spec.get("author", ""),
         "relevance": spec.get("relevance", ""),
         "risk_level": spec.get("risk", "standard"),
         "parsed_spec": spec,
+        "requires": [],
     }
 
 
@@ -609,6 +618,7 @@ def _card_for_baseline(text: str) -> dict:
     parsed = parse_baseline(text)
     steps = parsed["steps"]
     return {
+        "uid": parsed["uid"],
         "name": parsed["name"],
         "description": parsed["description"],
         "author": parsed["author"],
@@ -616,7 +626,10 @@ def _card_for_baseline(text: str) -> dict:
         "risk_level": "high" if parsed["allow_high_risk"] else "standard",
         "step_count": len(steps),
         "summary": f"{len(steps)} step{'' if len(steps) == 1 else 's'}",
-        "requires": [step["task"] for step in steps],
+        # Structured, not bare slugs: the UI shows what a fork would pull in,
+        # and the cascade needs the uid to decide whether it is already held.
+        "requires": [{"kind": "tasks", "slug": step["task"],
+                      "uid": step.get("uid", "")} for step in steps],
     }
 
 
@@ -631,6 +644,7 @@ def _card_for_automation(text: str) -> dict:
         when = ("on schedule " + " ".join(
             cron[f] for f in ("minute", "hour", "dom", "month", "dow")))
     return {
+        "uid": parsed["uid"],
         "name": parsed["name"],
         "description": parsed["description"],
         "author": parsed["author"],
@@ -640,7 +654,11 @@ def _card_for_automation(text: str) -> dict:
         "relevance": when,
         "risk_level": "standard",
         "summary": f"runs {parsed['action_kind']} {parsed['slug']}",
-        "requires": [parsed["slug"]],
+        "requires": [{
+            "kind": "baselines" if parsed["action_kind"] == "baseline" else "tasks",
+            "slug": parsed["slug"],
+            "uid": parsed.get("action_uid", ""),
+        }],
     }
 
 
@@ -1468,3 +1486,265 @@ def rollout_skip_validation(request, rollout_id):
         return Response({"detail": str(exc)}, status=400)
     rollout.refresh_from_db()
     return Response(_rollout_response(rollout))
+
+
+# ---------------------------------------------------------------------------
+# Cascade fork — bring an item and everything it needs across in one act
+# ---------------------------------------------------------------------------
+#
+# A baseline is a sequence of tasks and an automation runs a task or a baseline,
+# so forking one of those alone lands you with something that cannot run. The
+# first version refused and listed what was missing, which was honest but left
+# the operator doing the resolution by hand — reading slugs off an error, then
+# hunting for each one in another tab.
+#
+# This resolves the whole graph server-side and forks only what is genuinely
+# absent. "Absent" is decided by community uid first and name second, so
+# re-forking is idempotent rather than a way to accumulate duplicates.
+
+
+def _library_index(model, user):
+    """Index an operator's existing library by uid and by name."""
+    from vigil import scoping
+
+    rows = scoping.filter_by_site(model.objects.all(), user, cascade_global=True)
+    by_uid, by_name = {}, {}
+    for row in rows:
+        if row.community_uid:
+            by_uid.setdefault(str(row.community_uid), row)
+        by_name.setdefault(row.name.strip().lower(), row)
+    return by_uid, by_name
+
+
+def _already_have(by_uid, by_name, uid, name):
+    """The operator's existing copy of a catalog item, if they have one.
+
+    When the catalog file carries a uid, that is the *only* thing consulted.
+    Falling back to the name there would undo what uids are for: a task the
+    operator wrote themselves that happens to also be called "Install Nginx"
+    is a different task, and treating it as the catalog's would silently skip
+    the fork and leave a baseline pointing at the wrong steps.
+
+    The name pass exists for catalog files written before uids, which have no
+    other identity to offer.
+    """
+    if uid:
+        return by_uid.get(str(uid))
+    return by_name.get((name or "").strip().lower())
+
+
+def _catalog(kind):
+    """The catalog for *kind*, indexed by slug and by uid."""
+    from django.core.cache import cache
+
+    cached = cache.get(f"{_COMMUNITY_CACHE_KEY}:{kind}")
+    if cached is None:
+        cached = _fetch_community_templates(kind)
+        cache.set(f"{_COMMUNITY_CACHE_KEY}:{kind}", cached, _COMMUNITY_CACHE_TTL)
+    by_slug, by_uid = {}, {}
+    for item in cached:
+        stem = item.get("filename", "").rsplit(".", 1)[0]
+        if stem:
+            by_slug[stem] = item
+        if item.get("uid"):
+            by_uid[str(item["uid"])] = item
+    return by_slug, by_uid
+
+
+def _find_in_catalog(by_slug, by_uid, ref):
+    """Locate a referenced catalog file from a ``{slug, uid}`` reference."""
+    uid = (ref.get("uid") or "").strip()
+    if uid and uid in by_uid:
+        return by_uid[uid]
+    return by_slug.get(ref.get("slug", ""))
+
+
+def _fork_task_from_catalog(item, user) -> TaskDefinition:
+    """Create a library task from one catalog file."""
+    definition = TaskDefinition(owner=user,
+                                visibility=TaskDefinition.Visibility.PRIVATE)
+    _save_definition_from_yaml(definition, item["yaml_source"])
+    definition.save()
+    return definition
+
+
+def _plan_fork(kind: str, filename: str, user) -> dict:
+    """Work out what forking one catalog item would create.
+
+    Returns the item, the ordered list of dependencies, and — for each — the
+    operator's existing copy if they have one. Read-only: the same walk backs
+    the preview on the card and the fork itself, so what the card promises is
+    what the fork does.
+    """
+    from apps.baselines.models import Baseline
+
+    task_by_slug, task_by_uid = _catalog("tasks")
+    item = None
+    if kind == "tasks":
+        item = task_by_slug.get(filename.rsplit(".", 1)[0])
+    else:
+        by_slug, _ = _catalog(kind)
+        item = by_slug.get(filename.rsplit(".", 1)[0])
+    if item is None:
+        return {"error": f"{filename} is not in the catalog"}
+
+    have_tasks_uid, have_tasks_name = _library_index(TaskDefinition, user)
+    have_bl_uid, have_bl_name = _library_index(Baseline, user)
+
+    needs = []
+    for ref in item.get("requires") or []:
+        if ref["kind"] == "tasks":
+            source = _find_in_catalog(task_by_slug, task_by_uid, ref)
+            existing = _already_have(have_tasks_uid, have_tasks_name,
+                                     ref.get("uid"),
+                                     source["name"] if source else ref["slug"])
+        else:
+            bl_by_slug, bl_by_uid = _catalog("baselines")
+            source = _find_in_catalog(bl_by_slug, bl_by_uid, ref)
+            existing = _already_have(have_bl_uid, have_bl_name, ref.get("uid"),
+                                     source["name"] if source else ref["slug"])
+            # A baseline dependency drags its own tasks along.
+            for inner in (source or {}).get("requires") or []:
+                inner_src = _find_in_catalog(task_by_slug, task_by_uid, inner)
+                needs.append({
+                    "kind": "tasks", "slug": inner["slug"],
+                    "name": inner_src["name"] if inner_src else inner["slug"],
+                    "found": inner_src is not None,
+                    "have": bool(_already_have(
+                        have_tasks_uid, have_tasks_name, inner.get("uid"),
+                        inner_src["name"] if inner_src else inner["slug"])),
+                    "source": inner_src,
+                })
+        needs.append({
+            "kind": ref["kind"], "slug": ref["slug"],
+            "name": source["name"] if source else ref["slug"],
+            "found": source is not None,
+            "have": existing is not None,
+            "source": source,
+        })
+
+    # Dedupe, keeping first occurrence: a baseline can use one task twice, and
+    # two steps of an automation's baseline can share one.
+    seen, ordered = set(), []
+    for need in needs:
+        key = (need["kind"], need["slug"])
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(need)
+
+    # Whether the operator already holds the item itself, not just its
+    # dependencies. Without this the cascade skips every dependency, then tries
+    # to import the item anyway and trips the duplicate-name check — which
+    # reads as a failure when the honest answer is "you already have this".
+    from apps.automations.models import Automation
+
+    model = {"tasks": TaskDefinition, "baselines": Baseline,
+             "automations": Automation}[kind]
+    have_uid, have_name = _library_index(model, user)
+    mine = _already_have(have_uid, have_name, item.get("uid"), item["name"])
+    return {"item": item, "needs": ordered, "have": mine is not None}
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def community_fork_plan(request, kind: str, filename: str):
+    """What forking this catalog item would create, without creating it."""
+    if kind not in COMMUNITY_KINDS:
+        return Response({"error": f"unknown content kind {kind!r}"}, status=404)
+    try:
+        plan = _plan_fork(kind, filename, request.user)
+    except Exception:
+        return Response({"error": "Community repo unreachable"}, status=502)
+    if "error" in plan:
+        return Response(plan, status=404)
+    return Response({
+        "name": plan["item"]["name"],
+        "have": plan["have"],
+        "needs": [{k: n[k] for k in ("kind", "slug", "name", "found", "have")}
+                  for n in plan["needs"]],
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def community_fork(request, kind: str, filename: str):
+    """Fork a catalog item and everything it needs, in dependency order.
+
+    Tasks first, then baselines, then the item itself — anything already held
+    is skipped rather than duplicated. The whole thing is one transaction: a
+    half-forked baseline missing its third step is not a state worth leaving
+    an operator in.
+    """
+    from apps.automations.views import automation_from_yaml
+    from apps.baselines.views import baseline_from_yaml
+
+    if kind not in COMMUNITY_KINDS:
+        return Response({"error": f"unknown content kind {kind!r}"}, status=404)
+    try:
+        plan = _plan_fork(kind, filename, request.user)
+    except Exception:
+        return Response({"error": "Community repo unreachable"}, status=502)
+    if "error" in plan:
+        return Response(plan, status=404)
+
+    if plan["have"]:
+        # Already held. A no-op with a clear answer beats a duplicate-name
+        # error, which reads as a failure when nothing is actually wrong.
+        return Response({"created": [], "already": True,
+                         "name": plan["item"]["name"]})
+
+    missing = [n["slug"] for n in plan["needs"] if not n["found"]]
+    if missing:
+        return Response(
+            {"detail": "The catalog is missing files this references: "
+                       + ", ".join(sorted(set(missing)))},
+            status=400)
+
+    created = []
+    with transaction.atomic():
+        # Tasks before baselines: a baseline import resolves its steps against
+        # the library, so its tasks have to be in there first.
+        for need in [n for n in plan["needs"] if n["kind"] == "tasks"]:
+            if need["have"]:
+                continue
+            _fork_task_from_catalog(need["source"], request.user)
+            created.append({"kind": "tasks", "name": need["name"]})
+
+        for need in [n for n in plan["needs"] if n["kind"] == "baselines"]:
+            if need["have"]:
+                continue
+            sub = _import_via(baseline_from_yaml, request, need["source"])
+            if sub.status_code >= 400:
+                transaction.set_rollback(True)
+                return sub
+            created.append({"kind": "baselines", "name": need["name"]})
+
+        item = plan["item"]
+        if kind == "tasks":
+            definition = _fork_task_from_catalog(item, request.user)
+            created.append({"kind": "tasks", "name": definition.name})
+        else:
+            view = baseline_from_yaml if kind == "baselines" else automation_from_yaml
+            result = _import_via(view, request, item)
+            if result.status_code >= 400:
+                transaction.set_rollback(True)
+                return result
+            created.append({"kind": kind, "name": item["name"]})
+
+    return Response({"created": created}, status=status.HTTP_201_CREATED)
+
+
+def _import_via(view, request, item):
+    """Run one of the YAML import views against a catalog file.
+
+    Reusing the view rather than its internals is deliberate: the eligibility
+    rules and the TOTP gate on ``allow_high_risk`` live there, and a cascade
+    fork must not be a way past either.
+    """
+    from rest_framework.test import APIRequestFactory, force_authenticate
+
+    factory = APIRequestFactory()
+    sub = factory.post("/", {"yaml": item["yaml_source"]}, format="json")
+    force_authenticate(sub, user=request.user)
+    return view(sub)
