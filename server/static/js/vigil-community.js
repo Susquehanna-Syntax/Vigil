@@ -17,6 +17,9 @@ const COMMUNITY_KINDS = ['tasks', 'baselines', 'automations'];
 const communityCache = { tasks: [], baselines: [], automations: [] };
 const communityLoaded = { tasks: false, baselines: false, automations: false };
 let communityKind = 'tasks';
+/* Whether the Tasks panel is also showing the tasks that exist to serve a
+   baseline. Off by default — those are offered by the thing that needs them. */
+let communityShowServing = false;
 
 const COMMUNITY_LABEL = { tasks: 'task', baselines: 'baseline', automations: 'automation' };
 
@@ -26,6 +29,54 @@ function _communityEmptyHtml(kind) {
     <div class="empty-state-desc">They come from the public
       <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky);">Vigil-Approved-Scripts</a>
       repo. Be the first to contribute — open one in its editor and use Submit to Community.</div>
+  </div>`;
+}
+
+/* Which catalog tasks exist only to serve a baseline or an automation.
+ *
+ * Those are forked along with whatever needs them, so listing them again as
+ * standalone entries shows the same thing twice. They stay one click away
+ * rather than being hidden outright — a task that serves a baseline is still
+ * a perfectly good task to read, or to fork on its own.
+ */
+function _referencedTaskKeys() {
+  const keys = new Set();
+  ['baselines', 'automations'].forEach(kind => {
+    (communityCache[kind] || []).forEach(item => {
+      (item.requires || []).forEach(ref => {
+        if (ref.kind !== 'tasks') return;
+        if (ref.uid) keys.add('uid:' + ref.uid);
+        if (ref.slug) keys.add('slug:' + ref.slug);
+      });
+    });
+  });
+  return keys;
+}
+
+function _isReferenced(item, keys) {
+  const stem = (item.filename || '').replace(/\.(ya?ml)$/, '');
+  return (item.uid && keys.has('uid:' + item.uid)) || keys.has('slug:' + stem);
+}
+
+/** What forking this item would pull in, rendered as a short list. */
+function _requiresHtml(item) {
+  const needs = item.requires || [];
+  const held = item.have
+    ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--mint);">Already in your library.</div>`
+    : '';
+  if (!needs.length) return held;
+  if (item.have) return held;
+  const rows = needs.map(ref => {
+    const held = ref.have === true;
+    const mark = held
+      ? '<span style="color:var(--mint);">already yours</span>'
+      : '<span style="color:var(--sky);">will fork</span>';
+    return `<div style="display:flex;justify-content:space-between;gap:10px;">
+      <span style="color:var(--text-2);">${escHtml(ref.name || ref.slug)}</span>${mark}</div>`;
+  }).join('');
+  return `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;">
+    <div style="color:var(--text-3);margin-bottom:5px;">Pulls in ${needs.length} item${needs.length === 1 ? '' : 's'}:</div>
+    ${rows}
   </div>`;
 }
 
@@ -53,12 +104,20 @@ function _communityCardHtml(item) {
           ${riskBadgeHtml(item.risk_level || 'standard')}
           ${meta.map(m => `<span class="dot-sep">·</span><span>${m}</span>`).join('')}
         </div>
+        ${_requiresHtml(item)}
       </div>
       <div class="def-card-footer">
         ${github}
-        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openCommunityItem(${arg})">Fork</button>
+        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openCommunityItem(${arg})">${escHtml(_forkLabel(item))}</button>
       </div>
     </div>`;
+}
+
+/** "Fork" for a lone task, "Fork all 3" when it drags things along. */
+function _forkLabel(item) {
+  if (item.have) return 'Already yours';
+  const outstanding = (item.requires || []).filter(r => r.have !== true).length;
+  return outstanding > 0 ? `Fork all ${outstanding + 1}` : 'Fork';
 }
 
 function _renderCommunity(kind) {
@@ -86,7 +145,43 @@ function _renderCommunity(kind) {
       <div class="empty-state-desc">Nothing in ${escHtml(kind)} matches “${escHtml(q)}”.</div></div>`;
     return;
   }
+
+  // Tasks that only exist to serve a baseline are already offered by that
+  // baseline's card, so listing them here as well shows the same thing twice.
+  // They fold away rather than disappearing — one is still worth reading, and
+  // still forkable on its own.
+  if (kind === 'tasks') {
+    const referenced = _referencedTaskKeys();
+    const standalone = visible.filter(i => !_isReferenced(i, referenced));
+    const serving = visible.filter(i => _isReferenced(i, referenced));
+    if (serving.length && !communityShowServing) {
+      grid.innerHTML = standalone.map(_communityCardHtml).join('')
+        + `<div class="empty-state" style="grid-column:1/-1;padding:18px;">
+             <div class="empty-state-desc">
+               ${serving.length} more task${serving.length === 1 ? ' is' : 's are'} used by a baseline or automation,
+               and come${serving.length === 1 ? 's' : ''} along when you fork it.
+               <button class="btn btn-ghost btn-sm" style="margin-left:8px;"
+                       onclick="toggleCommunityServing()">Show ${serving.length === 1 ? 'it' : 'them'}</button>
+             </div></div>`;
+      return;
+    }
+    if (serving.length) {
+      grid.innerHTML = standalone.concat(serving).map(_communityCardHtml).join('')
+        + `<div class="empty-state" style="grid-column:1/-1;padding:14px;">
+             <div class="empty-state-desc">
+               Showing tasks used by baselines.
+               <button class="btn btn-ghost btn-sm" style="margin-left:8px;"
+                       onclick="toggleCommunityServing()">Hide them</button>
+             </div></div>`;
+      return;
+    }
+  }
   grid.innerHTML = visible.map(_communityCardHtml).join('');
+}
+
+function toggleCommunityServing() {
+  communityShowServing = !communityShowServing;
+  _renderCommunity('tasks');
 }
 
 async function loadCommunityKind(kind, force) {
@@ -110,6 +205,38 @@ async function loadCommunityKind(kind, force) {
     }
   }
   _renderCommunity(kind);
+
+  // The Tasks panel cannot tell which tasks serve a baseline without the other
+  // two catalogs, and they are cached server-side, so pulling them is cheap.
+  if (kind === 'tasks') {
+    Promise.all(['baselines', 'automations'].map(k => loadCommunityKind(k)))
+      .then(() => _renderCommunity('tasks'));
+  }
+  _annotateFork(kind);
+}
+
+/* Ask the server what each item would pull in, and mark what you already have.
+ *
+ * The same walk backs this and the fork itself, so the card's promise and the
+ * button's behaviour cannot drift apart. One request per card, only for the
+ * kinds that reference anything. */
+async function _annotateFork(kind) {
+  if (kind === 'tasks') return;
+  const items = communityCache[kind] || [];
+  await Promise.all(items.map(async item => {
+    if (item._planned) return;
+    try {
+      const plan = await apiJson(
+        `/api/v1/tasks/community/${kind}/${encodeURIComponent(item.filename)}/plan/`);
+      item.requires = plan.needs || [];
+      item.have = plan.have === true;
+      item._planned = true;
+    } catch {
+      // Leave the card as it is; Fork still works and reports its own errors.
+      item._planned = true;
+    }
+  }));
+  _renderCommunity(kind);
 }
 
 /** Refresh the visible panel. With `force`, bypasses the server-side cache. */
@@ -130,23 +257,35 @@ async function openCommunityItem(kind, encodedFilename) {
     return;
   }
   if (kind === 'tasks') {
-    // Self-contained: straight into the editor, unsaved.
+    // Self-contained and nothing to resolve: straight into the editor,
+    // unsaved, so it can be read before it is kept.
     openDefinitionEditor(null, item.yaml_source);
     showToast('Community task opened — save it to add it to your library', 'success');
     return;
   }
-  // Baselines and automations reference other content by slug, so the server
-  // resolves them. It answers 400 naming anything missing.
-  const endpoint = kind === 'baselines' ? '/api/v1/baselines/yaml/'
-                                        : '/api/v1/automations/yaml/';
+  // A baseline is a sequence of tasks and an automation runs a task or a
+  // baseline, so forking one alone would land you with something that cannot
+  // run. The server walks the graph and forks only what is genuinely absent.
   try {
-    await apiJson(endpoint, {
-      method: 'POST', body: JSON.stringify({ yaml: item.yaml_source }),
-    });
-    showToast(`Forked “${item.name}” into your library`, 'success');
+    const result = await apiJson(
+      `/api/v1/tasks/community/${kind}/${encodeURIComponent(item.filename)}/fork/`,
+      { method: 'POST', body: JSON.stringify({}) });
+    if (result.already) {
+      showToast(`You already have “${item.name}”`, 'success');
+      item.have = true;
+      _renderCommunity(kind);
+      return;
+    }
+    const made = result.created || [];
+    const extra = made.length - 1;
+    showToast(
+      extra > 0
+        ? `Forked “${item.name}” and the ${extra} item${extra === 1 ? '' : 's'} it needs`
+        : `Forked “${item.name}” into your library`,
+      'success');
     navigateTo('baselines');
-    if (kind === 'baselines' && typeof loadBaselines === 'function') loadBaselines();
-    if (kind === 'automations' && typeof loadAutomations === 'function') loadAutomations();
+    if (typeof loadBaselines === 'function') loadBaselines();
+    if (typeof loadAutomations === 'function') loadAutomations();
   } catch (e) {
     showToast(e.message || `Could not fork this ${COMMUNITY_LABEL[kind]}`, 'error');
   }

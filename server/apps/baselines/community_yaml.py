@@ -21,6 +21,8 @@ from vigil.contentyaml import (
     check_author,
     dump,
     load_mapping,
+    new_uid,
+    parse_uid,
     require_str,
     require_tag_list,
     slugify,
@@ -33,6 +35,13 @@ _MAX_STEPS = 32
 def to_yaml(baseline, *, author: str = "", created=None) -> str:
     """Serialise *baseline* into the community repo's dialect."""
     fields: dict[str, Any] = {"name": baseline.name}
+    # The baseline's own identity in the catalog. Minted on first export and
+    # stored, so exporting the same baseline twice does not produce two
+    # different pieces of content.
+    if not baseline.community_uid:
+        baseline.community_uid = new_uid()
+        baseline.save(update_fields=["community_uid"])
+    fields["uid"] = str(baseline.community_uid)
     if author:
         fields["author"] = author
     if created is not None:
@@ -62,6 +71,10 @@ def to_yaml(baseline, *, author: str = "", created=None) -> str:
             "task": slugify(step.definition.name, fallback="task"),
             "order": position,
         }
+        # The slug stays because it is what a reviewer reading the diff can
+        # follow; the uid is what actually resolves on the far side.
+        if step.definition.community_uid:
+            entry["uid"] = str(step.definition.community_uid)
         if step.params_override:
             entry["params_override"] = step.params_override
         steps.append(entry)
@@ -79,6 +92,7 @@ def parse(text: str) -> dict[str, Any]:
     """
     raw = load_mapping(text, _WHAT)
 
+    uid = parse_uid(raw, _WHAT)
     name = require_str(raw, "name", _WHAT, max_len=120)
     description = require_str(raw, "description", _WHAT, max_len=2000,
                               required=False)
@@ -126,9 +140,11 @@ def parse(text: str) -> dict[str, Any]:
             raise ContentYamlError(
                 f"{_WHAT}: step {position} has a non-mapping 'params_override'.")
         steps.append({"task": slug.strip(), "order": order,
+                      "uid": parse_uid(entry, f"{_WHAT} step {position}"),
                       "params_override": override})
 
     return {
+        "uid": uid,
         "name": name,
         "description": description,
         "author": author,
@@ -155,15 +171,23 @@ def resolve_steps(steps: list[dict[str, Any]], definitions,
     it maps to. Without that second pass a baseline could refuse to import
     while the operator was looking at the very task it wanted.
     """
+    by_uid: dict[str, Any] = {}
     by_slug: dict[str, Any] = {}
     by_name: dict[str, Any] = {}
     for definition in definitions:
+        if definition.community_uid:
+            by_uid.setdefault(str(definition.community_uid), definition)
         by_slug.setdefault(slugify(definition.name, fallback="task"), definition)
         by_name.setdefault(definition.name.strip().lower(), definition)
 
     resolved, missing = [], []
     for step in steps:
-        definition = by_slug.get(step["task"])
+        # uid first: it survives a rename on either side and does not care
+        # whether two tasks share a name. The slug passes below are what keep
+        # files written before uids existed working.
+        definition = by_uid.get(step.get("uid") or "")
+        if definition is None:
+            definition = by_slug.get(step["task"])
         if definition is None and names_by_slug:
             wanted = names_by_slug.get(step["task"], "").strip().lower()
             definition = by_name.get(wanted) if wanted else None

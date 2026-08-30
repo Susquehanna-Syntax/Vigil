@@ -89,7 +89,8 @@ class BaselineYamlTests(TestCase):
         text = bl_yaml.to_yaml(self.baseline, author="Connor Haggerty")
         keys = [line.split(":")[0] for line in text.splitlines()
                 if line and not line.startswith((" ", "-"))]
-        self.assertEqual(keys[:3], ["name", "author", "description"])
+        # Identity first, then attribution, then prose, then the steps.
+        self.assertEqual(keys[:4], ["name", "uid", "author", "description"])
         self.assertEqual(keys[-1], "steps")
 
     def test_export_omits_allow_high_risk_when_false(self):

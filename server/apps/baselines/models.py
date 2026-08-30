@@ -52,6 +52,20 @@ class Baseline(TagRowSyncMixin, models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         related_name="baselines",
     )
+    #: Stable identity for this item in the community catalog, independent of
+    #: its name. Set when the item is forked from the catalog (copied out of
+    #: the file's ``uid``), or minted the first time it is exported.
+    #:
+    #: Community files used to reference each other by slug — the filename,
+    #: which the catalog does not force to match the slugified ``name``. That
+    #: made references break on a rename and collide between two items that
+    #: happened to be called the same thing. A uid is neither: it survives a
+    #: rename and it does not require names to be unique.
+    #:
+    #: Nullable because everything that predates it, and everything never
+    #: shared, legitimately has none.
+    community_uid = models.UUIDField(null=True, blank=True, db_index=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self) -> str:
