@@ -1,17 +1,25 @@
 import secrets
 from datetime import timedelta
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from apps.accounts.permissions import IsAdmin
 from apps.hosts.authentication import authenticate_agent
 from apps.hosts.models import Host
 
-from .models import Task, TaskDefinition, TaskRun
+from .models import PatchRollout, Task, TaskDefinition, TaskRun
+from .rollout_serializers import PatchRolloutSerializer
+from .rollout import (
+    FAILURE_STATES,
+    halt_rollout,
+    resume_rollout,
+    start_rollout,
+)
 from .serializers import (
     TaskDefinitionSerializer,
     TaskRunSerializer,
@@ -1060,3 +1068,295 @@ def task_detail(request, task_id):
 def action_registry(request):
     """Expose the action registry for the editor's autocomplete / validation."""
     return Response(ACTION_REGISTRY)
+
+
+# ── Staged rollouts ────────────────────────────────────────────────────────────
+# Halting and resuming a rollout are state-changing operations on fleet-wide
+# patching, so they follow the same gates as manual deploys: TOTP confirmation
+# for the operator (plus admin for halt — stopping a rollout mid-flight is the
+# heavier decision).
+
+
+def _rollout_wave_progress(rollout: PatchRollout) -> list:
+    """Per-wave counts for the serializer: every wave in order, annotated with
+    this rollout's dispatched tasks for that wave.
+
+    Wave display status:
+      * ``passed``    — wave fully reported, failure rate within threshold
+      * ``failed``    — wave fully reported, failure rate over threshold
+      * ``running``   — current wave, tasks still in flight
+      * ``validating``   — current wave, passed, validation window not yet elapsed
+      * ``halted``    — the rollout halted on this wave
+      * ``pending``   — not yet reached by the rollout
+    """
+    from .models import PatchWave
+
+    SUCCESS_STATES = (Task.State.COMPLETED, Task.State.SKIPPED)
+    waves = list(PatchWave.objects.order_by("order", "id"))
+    per_wave: dict = {}
+    for run in rollout.runs.all():
+        if run.wave is None:
+            continue
+        total = run.tasks.count()
+        done = run.tasks.filter(state__in=SUCCESS_STATES).count()
+        failed = run.tasks.filter(state__in=FAILURE_STATES).count()
+        prev = per_wave.setdefault(
+            run.wave.id, {"hosts": 0, "tasks_total": 0, "tasks_done": 0, "tasks_failed": 0}
+        )
+        prev["hosts"] = max(prev["hosts"], run.host_count)
+        prev["tasks_total"] += total
+        prev["tasks_done"] += done
+        prev["tasks_failed"] += failed
+
+    out = []
+    for wave in waves:
+        counts = per_wave.get(
+            wave.id, {"hosts": 0, "tasks_total": 0, "tasks_done": 0, "tasks_failed": 0}
+        )
+        total = counts["tasks_total"]
+        reported = counts["tasks_done"] + counts["tasks_failed"]
+        pct = (counts["tasks_failed"] * 100) / reported if reported else 0.0
+        is_current = rollout.current_wave_id == wave.id
+        if not wave.enabled:
+            status = "pending"
+        elif is_current and rollout.state == PatchRollout.State.HALTED:
+            status = "halted"
+        elif is_current and rollout.state == PatchRollout.State.VALIDATING:
+            status = "validating"
+        elif is_current and rollout.state == PatchRollout.State.RUNNING and total and reported < total:
+            status = "running"
+        elif total and reported == total:
+            status = "failed" if pct > rollout.failure_threshold_pct else "passed"
+        elif total:
+            status = "running"
+        else:
+            status = "pending"
+        out.append({
+            "id": str(wave.id),
+            "name": wave.name,
+            "order": wave.order,
+            "tags": wave.tags or [],
+            "validation_hours": wave.validation_hours,
+            "enabled": wave.enabled,
+            **counts,
+            "status": status,
+        })
+    return out
+
+
+class _RolloutDetailSerializer(PatchRolloutSerializer):
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        data["waves"] = _rollout_wave_progress(obj)
+        return data
+
+
+def _rollout_response(rollout: PatchRollout):
+    return _RolloutDetailSerializer(
+        PatchRollout.objects.select_related(
+            "definition", "current_wave", "created_by", "halted_by", "resumed_by",
+        ).get(pk=rollout.pk)
+    ).data
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def rollout_collection(request):
+    """GET — list rollouts. POST — start one from a definition or a baseline.
+
+    TOTP-gated like a manual deploy — it fans the work out across the whole
+    fleet, wave by wave.
+    """
+    if request.method == "POST":
+        from apps.baselines.models import Baseline
+
+        definition_id = request.data.get("definition_id")
+        baseline_id = request.data.get("baseline_id")
+        if bool(definition_id) == bool(baseline_id):
+            return Response(
+                {"detail": "supply exactly one of definition_id or baseline_id"},
+                status=400,
+            )
+        definition = baseline = None
+        if definition_id:
+            definition = get_object_or_404(TaskDefinition, pk=definition_id)
+        else:
+            baseline = get_object_or_404(Baseline, pk=baseline_id)
+        error = _verify_confirmation(request.user, request.data)
+        if error:
+            return Response({"detail": error}, status=401)
+
+        try:
+            rollout = start_rollout(
+                definition,
+                baseline=baseline,
+                user=request.user,
+                failure_threshold_pct=int(request.data.get("failure_threshold_pct", 10)),
+                min_results_before_halt=int(request.data.get("min_results_before_halt", 3)),
+            )
+        except (ValueError, TypeError) as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(_rollout_response(rollout), status=201)
+
+    rollouts = PatchRollout.objects.select_related(
+        "definition", "current_wave", "created_by", "halted_by", "resumed_by",
+    ).order_by("-created_at")
+    raw = (request.query_params.get("state") or "").strip()
+    if raw:
+        wanted = [s for s in (v.strip() for v in raw.split(",")) if s]
+        valid = [s for s in wanted if s in PatchRollout.State.values]
+        if not valid:
+            return Response({"detail": f"unknown state {raw!r}"}, status=400)
+        rollouts = rollouts.filter(state__in=valid)
+    data = []
+    for r in rollouts:
+        data.append(_RolloutDetailSerializer(r).data)
+    return Response(data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def rollout_detail(request, rollout_id):
+    rollout = get_object_or_404(
+        PatchRollout.objects.select_related(
+            "definition", "current_wave", "created_by", "halted_by", "resumed_by",
+        ),
+        pk=rollout_id,
+    )
+    return Response(_RolloutDetailSerializer(rollout).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def rollout_halt(request, rollout_id):
+    """Stop the rollout now. Admin + TOTP: halting a fleet-wide patch
+    mid-flight is the heavier of the two operator calls."""
+    rollout = get_object_or_404(PatchRollout, pk=rollout_id)
+    error = _verify_confirmation(request.user, request.data)
+    if error:
+        return Response({"detail": error}, status=401)
+    reason = str(request.data.get("reason") or "").strip()
+    try:
+        halt_rollout(rollout, user=request.user, reason=reason)
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=400)
+    return Response(_rollout_response(rollout))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def rollout_resume(request, rollout_id):
+    """Clear a halt and continue from the same wave. TOTP-gated; records who
+    did it. Failed tasks on the wave are re-queued so the gate re-evaluates
+    over the whole wave."""
+    rollout = get_object_or_404(PatchRollout, pk=rollout_id)
+    error = _verify_confirmation(request.user, request.data)
+    if error:
+        return Response({"detail": error}, status=401)
+    try:
+        resume_rollout(rollout, user=request.user)
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=400)
+    return Response(_rollout_response(rollout))
+
+
+# ── Wave management ─────────────────────────────────────────────────────────
+#
+# Waves are edited like baselines and automations: list, create, edit, delete.
+# Reads are open to any authenticated user so the Deployments page can render;
+# writes are admin-only, because changing a wave's tags changes which machines
+# the next rollout touches.
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def wave_collection(request):
+    """List waves in order, or create one."""
+    from .models import PatchWave
+    from .rollout_serializers import PatchWaveSerializer
+
+    if request.method == "GET":
+        waves = PatchWave.objects.order_by("order", "id")
+        return Response(PatchWaveSerializer(waves, many=True).data)
+
+    if not IsAdmin().has_permission(request, None):
+        return Response({"detail": "Admin role required."}, status=403)
+    serializer = PatchWaveSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+    try:
+        serializer.save()
+    except IntegrityError:
+        # order is unique — say which number collided rather than surfacing a
+        # database error to the operator.
+        return Response(
+            {"order": [f"Wave {request.data.get('order')} already exists."]},
+            status=400,
+        )
+    return Response(serializer.data, status=201)
+
+
+@api_view(["GET", "PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+def wave_detail(request, wave_id):
+    """Read, edit, or delete one wave."""
+    from .models import PatchRollout, PatchWave
+    from .rollout_serializers import PatchWaveSerializer
+
+    wave = get_object_or_404(PatchWave, pk=wave_id)
+
+    if request.method == "GET":
+        return Response(PatchWaveSerializer(wave).data)
+
+    if not IsAdmin().has_permission(request, None):
+        return Response({"detail": "Admin role required."}, status=403)
+
+    if request.method == "DELETE":
+        # Refuse while a rollout is standing on this wave. Deleting it would
+        # null current_wave and strand the rollout with nothing to advance from.
+        active = PatchRollout.objects.filter(
+            current_wave=wave,
+            state__in=[PatchRollout.State.RUNNING, PatchRollout.State.VALIDATING,
+                       PatchRollout.State.HALTED],
+        ).exists()
+        if active:
+            return Response(
+                {"detail": "A rollout is currently on this wave. Halt or finish it first."},
+                status=409,
+            )
+        wave.delete()
+        return Response(status=204)
+
+    serializer = PatchWaveSerializer(wave, data=request.data, partial=True)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+    try:
+        serializer.save()
+    except IntegrityError:
+        return Response(
+            {"order": [f"Wave {request.data.get('order')} already exists."]},
+            status=400,
+        )
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def rollout_skip_validation(request, rollout_id):
+    """End the current wave's validation window early and advance.
+
+    Admin + TOTP, same as halting: it shortens the safety margin on a
+    fleet-wide patch, which is an operator decision worth authenticating.
+    """
+    from .rollout import skip_validation
+
+    rollout = get_object_or_404(PatchRollout, pk=rollout_id)
+    error = _verify_confirmation(request.user, request.data)
+    if error:
+        return Response({"detail": error}, status=401)
+    try:
+        skip_validation(rollout, user=request.user)
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=400)
+    rollout.refresh_from_db()
+    return Response(_rollout_response(rollout))

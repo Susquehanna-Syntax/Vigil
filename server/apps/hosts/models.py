@@ -24,12 +24,29 @@ class Host(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     mode = models.CharField(max_length=20, choices=Mode.choices, default=Mode.MONITOR)
     tags = models.JSONField(default=list, blank=True)
+    #: Row-backed mirror of ``tags``. Populated alongside the strings during
+    #: the migration to database-defined tags; the strings stay authoritative
+    #: until the switch-over, and a consistency test asserts the two agree.
+    tag_rows = models.ManyToManyField("hosts.Tag", blank=True, related_name="hosts")
+
+    #: (string field, row relation) pairs kept in step on save.
+    tag_sync_fields = [("tags", "tag_rows")]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Defined below this class, hence the local import.
+        for string_field, relation in self.tag_sync_fields:
+            sync_tag_rows(self, string_field, relation)
     agent_version = models.CharField(max_length=50, blank=True, default="")
     last_checkin = models.DateTimeField(null=True, blank=True)
     # Alert suppression window. A rebuild takes ~40 minutes, and without this
     # the first one pages everyone and teaches people to ignore the alerts.
     # Set by RebuildJob entering REBOOTING, cleared on every terminal state.
     maintenance_until = models.DateTimeField(null=True, blank=True)
+    # Agent-reported "a reboot is pending" (e.g. after installing updates).
+    # An absent check-in field means the agent is too old to report it, so
+    # the checkin ingest only writes this when the key is present.
+    reboot_required = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -204,3 +221,130 @@ class HostFirewall(models.Model):
 
     def __str__(self) -> str:
         return f"{self.host.hostname} firewall ({self.tool or 'none'})"
+
+
+class Tag(models.Model):
+    """A tag as a row, rather than a string repeated across every model.
+
+    **Canonicalisation is by lowercasing only — never by stripping.** That is
+    not an aesthetic choice, it is what makes the migration from string tags
+    behaviour-preserving:
+
+      * ``Prod`` / ``prod`` / ``PROD`` already matched each other, because every
+        matcher folded case. They become one row and nothing changes.
+      * ``prod`` / ``prod `` never matched, because no matcher stripped. They
+        stay two rows and nothing changes.
+
+    If two spellings did not match before, they must not start matching now.
+    A trailing space therefore makes a genuinely different tag, exactly as it
+    does today — visible and odd, which is better than silently merged.
+    """
+
+    class Kind(models.TextChoices):
+        MANUAL = "manual", "Set by an operator"
+        AUTO = "auto", "Derived from inventory"
+        AGENT = "agent", "Advertised by the agent"
+
+    #: Namespaces the server owns. An operator may not create or edit a tag in
+    #: these, because the next check-in would overwrite it — and because
+    #: ``agent:*`` exists so a compromised agent cannot impersonate an
+    #: operator-set tag. Mirrors _AUTO_TAG_PREFIXES / _AGENT_TAG_PREFIX in
+    #: apps/hosts/views.py; keep the two in step.
+    RESERVED_PREFIXES = ("os:", "os_family:", "pkg:", "arch:", "agent:")
+
+    name = models.CharField(max_length=120)
+    #: ``name.lower()``. Whitespace deliberately preserved — see the class
+    #: docstring. Unique, so case variants cannot diverge into two rows.
+    key = models.CharField(max_length=120, unique=True, db_index=True)
+    kind = models.CharField(max_length=8, choices=Kind.choices, default=Kind.MANUAL)
+    description = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["key"]
+
+    def __str__(self):
+        return self.name
+
+    @staticmethod
+    def canonical_key(name) -> str:
+        """The comparison key for a tag name. Lowercase; whitespace kept."""
+        return str(name).lower()
+
+    @classmethod
+    def kind_for(cls, name) -> str:
+        lowered = str(name).lower()
+        if lowered.startswith("agent:"):
+            return cls.Kind.AGENT
+        if lowered.startswith(("os:", "os_family:", "pkg:", "arch:")):
+            return cls.Kind.AUTO
+        return cls.Kind.MANUAL
+
+    @classmethod
+    def is_reserved(cls, name) -> bool:
+        return str(name).lower().startswith(cls.RESERVED_PREFIXES)
+
+    def save(self, *args, **kwargs):
+        self.key = self.canonical_key(self.name)
+        if not self.kind or self.kind == self.Kind.MANUAL:
+            self.kind = self.kind_for(self.name)
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get_or_create_by_name(cls, name):
+        """Fetch or create the tag for ``name``, matching on the canonical key.
+
+        Returns ``(tag, created)``. Raises ``ValueError`` for a blank name —
+        an empty tag matches nothing and is never what the caller meant.
+        """
+        if not str(name).strip():
+            raise ValueError("a tag needs a name")
+        key = cls.canonical_key(name)
+        existing = cls.objects.filter(key=key).first()
+        if existing:
+            return existing, False
+        return cls.objects.create(name=str(name), kind=cls.kind_for(name)), True
+
+
+def sync_tag_rows(instance, string_field: str, relation: str) -> bool:
+    """Reconcile a row relation with the string list it mirrors.
+
+    Strings stay the write interface — six different places assign
+    ``host.tags`` and it would be a losing game to convert them all — so the
+    rows are derived here instead, on save. Returns True when something
+    changed.
+
+    Cheap when nothing moved: one query for the current set, and no writes.
+    That matters because this runs on every check-in for every host.
+    """
+    names = [str(n) for n in (getattr(instance, string_field, None) or [])
+             if str(n).strip()]
+    wanted_keys = {Tag.canonical_key(n) for n in names}
+    manager = getattr(instance, relation)
+    current = {t.key: t for t in manager.all()}
+    if wanted_keys == set(current):
+        return False
+
+    tags = []
+    for name in names:
+        key = Tag.canonical_key(name)
+        tag = current.get(key) or Tag.objects.filter(key=key).first()
+        if tag is None:
+            tag = Tag.objects.create(name=name, kind=Tag.kind_for(name))
+        tags.append(tag)
+    manager.set(tags)
+    return True
+
+
+class TagRowSyncMixin:
+    """Keeps a model's row relation in step with its string field on save.
+
+    ``tag_sync_fields`` is a list of ``(string_field, relation)`` pairs.
+    """
+
+    tag_sync_fields: list = []
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        for string_field, relation in self.tag_sync_fields:
+            sync_tag_rows(self, string_field, relation)

@@ -402,6 +402,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "vulns.snapshot_scores",
         "schedule": 86400.0,  # once daily — powers score sparklines + trend
     },
+    "refresh-kev-catalogue": {
+        "task": "vulns.refresh_kev",
+        "schedule": 86400.0,  # once daily — no-op unless VIGIL_KEV_LIVE_REFRESH
+    },
     "check-docker-image-updates": {
         "task": "alerts.check_docker_image_updates",
         "schedule": 600.0,  # every 10 minutes
@@ -413,6 +417,10 @@ CELERY_BEAT_SCHEDULE = {
     "expire-stale-tasks": {
         "task": "tasks.expire_stale_tasks",
         "schedule": 600.0,  # every 10 minutes — sweep wedged DISPATCHED tasks
+    },
+    "advance-rollouts": {
+        "task": "tasks.advance_rollouts",
+        "schedule": 300.0,  # every 5 minutes — advance/halt staged rollouts
     },
     "check-db-disk-usage": {
         "task": "metrics.check_db_disk_usage",
@@ -448,7 +456,12 @@ VIGIL_DB_SIZE_CRIT_GB = float(os.environ.get("VIGIL_DB_SIZE_CRIT_GB", "40"))
 # Server build version — surfaced on the About page and the /api/v1/about/
 # endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
 # this constant should stay in lockstep.
-VIGIL_VERSION = "2026.8.3"
+VIGIL_VERSION = "2026.9.0"
+
+# Opt-in daily refresh of the CISA KEV catalogue. Off by default: a self-hosted
+# install makes no outbound call unless its operator asks for one, and the
+# bundled snapshot in apps/vulns/data/ works fine air-gapped.
+VIGIL_KEV_LIVE_REFRESH = os.environ.get("VIGIL_KEV_LIVE_REFRESH", "") == "1"
 
 # ---------------------------------------------------------------------------
 # Agent distribution — filesystem path where compiled binaries live.

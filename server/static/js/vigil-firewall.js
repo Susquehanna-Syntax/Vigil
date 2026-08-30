@@ -52,6 +52,15 @@ async function loadFirewall() {
   if (sel && sel.value) await loadFirewallSnapshot(sel.value);
 }
 
+function pickFirewallHost() {
+  openPicker({ type: 'machine', title: 'Pick a host', allowAdd: false, onSelect: (item) => {
+    const hidden = document.getElementById('firewall-host-select');
+    hidden.value = item.key;
+    document.getElementById('firewall-host-label').textContent = item.name;
+    loadFirewallSnapshot(item.key);
+  } });
+}
+
 async function _fwPopulateHosts() {
   const sel = document.getElementById('firewall-host-select');
   const noHosts = document.getElementById('firewall-no-hosts');
@@ -551,3 +560,8 @@ navigateTo = function (page) {
   _fwNavigateTo(page);
   if (page === 'firewall') loadFirewall();
 };
+
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('firewall-host-btn')?.addEventListener('click', pickFirewallHost);
+});

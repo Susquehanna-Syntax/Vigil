@@ -25,6 +25,16 @@ Vigil is a lightweight monitoring system where agents on your hosts phone home t
 - Signed remote task execution with mode/allowlist enforcement on the agent
 - SQSY dark-theme dashboard with Chart.js visualizations
 
+## What's new in 2026.9.0
+
+- Windows hosts now patch themselves without WSUS — the agent drives the Windows Update Agent COM API locally, with no hosted binaries and no inbound ports.
+- Application updates still ride on winget and choco; Vigil does not maintain a repackaged catalogue, so third-party coverage is whatever those ecosystems carry.
+- The `reboot` action gained maintenance windows, native notification, bounded deferrals, and a version gate that refuses deferral-bearing reboots to agents older than 2026.9.0.
+- Every open finding carries a remediate-by date from an admin-editable policy (KEV-aware), and the host score escalates as that date approaches.
+- The community catalog now validates three content types — tasks, baselines, and automations — each with a schema and CI validator.
+
+The full details, with parameters and the honest limitations, live in the [wiki](wiki/vigil-wiki.html): [Windows Patching](wiki/vigil-wiki.html#windows-patching), [Reboot Behaviour](wiki/vigil-wiki.html#reboot), [Remediation Dates](wiki/vigil-wiki.html#remediation), and [Community Catalog](wiki/vigil-wiki.html#community).
+
 ---
 
 ## Quick Start (Local Dev — SQLite)

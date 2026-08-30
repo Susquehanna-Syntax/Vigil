@@ -397,6 +397,7 @@ def main() -> None:
             response = client.checkin(
                 config, metrics, inventory=inventory_payload,
                 docker_containers=docker_containers,
+                reboot_required=collector.reboot_required(),
             )
             consecutive_failures = 0
             docker_payload_pending = False

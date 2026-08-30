@@ -17,8 +17,30 @@ Chart.defaults.plugins.legend.display = false;
 Chart.defaults.elements.point.radius = 0;
 Chart.defaults.elements.point.hoverRadius = 4;
 Chart.defaults.elements.line.borderWidth = 2;
-Chart.defaults.elements.line.tension = 0.35;
-Chart.defaults.animation.duration = 600;
+// 0.35 looked nice and cost real frames: a bezier through every point is
+// recomputed on each redraw, and a redraw happens on every hover. 0.2 keeps
+// the curve readable at a fraction of the work.
+Chart.defaults.elements.line.tension = 0.2;
+// Animating a routine data refresh burns CPU for something nobody is looking
+// at. Range changes animate deliberately — see setTimeRange.
+Chart.defaults.animation.duration = 0;
+// Hover redraws the chart; without this it also re-tests every point.
+Chart.defaults.elements.point.hitRadius = 8;
+
+// `chart.update('none')` skips animation outright — which is what a routine
+// poll wants, and is also why the range-change zoom silently never played
+// until this existed. setTimeRange names a mode for exactly one refresh.
+let monitorZoomMode = null;
+const chartUpdateMode = () => monitorZoomMode || 'none';
+
+// Named update modes, declared once and referenced by `chart.update(mode)`.
+// Widening eases longer because more of the chart is changing.
+// A fresh object per chart: Chart.js caches resolved values onto the config
+// objects it is handed, so two charts must not share one literal.
+const zoomModes = () => ({
+  zoomOut: { animation: { duration: 480, easing: 'easeOutQuart' } },
+  zoomIn: { animation: { duration: 360, easing: 'easeOutQuart' } },
+});
 
 const CIRCUMFERENCE = 2 * Math.PI * 34; // gauge ring r=34
 
@@ -108,10 +130,30 @@ function copySshCommand() {
 
 // ── Time range ──
 function setTimeRange(minutes, btn) {
+  const widening = minutes > monitorTimeRange;
   monitorTimeRange = minutes;
   document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  if (monitorHostId) refreshMonitor();
+
+  // Routine refreshes animate at 0ms — animating data nobody asked to change
+  // is wasted CPU on a slow machine. A range change is different: it is a
+  // deliberate act and the chart is about to look completely different, so a
+  // short ease makes it legible as a zoom rather than a flicker. Widening gets
+  // slightly longer, because more is changing.
+  //
+  // This goes through a named transition mode rather than by writing to
+  // `chart.options`. `chart.options` is a Chart.js resolver proxy: assigning a
+  // nested object back onto it (`opts.transitions = opts.transitions || {}`)
+  // makes the proxy resolve through itself and blows the stack, which took the
+  // whole refresh down with it. zoomModes() is declared in the chart config,
+  // so nothing is mutated at runtime and there is nothing to restore.
+  monitorZoomMode = widening ? 'zoomOut' : 'zoomIn';
+  const done = () => { monitorZoomMode = null; };
+  if (monitorHostId) {
+    Promise.resolve(refreshMonitor()).finally(done);
+  } else {
+    done();
+  }
 }
 
 // ── Fetch metrics ──
@@ -156,7 +198,14 @@ function makeTimeChart(canvasId, color, label) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { intersect: false, mode: 'index' },
+      // `index` + `intersect:false` finds the nearest x rather than hit-testing
+      // every point, which is what made hovering expensive on a slow CPU.
+      interaction: { intersect: false, mode: 'index', axis: 'x' },
+      transitions: zoomModes(),
+      // Chart.js draws at most one point per pixel column; beyond that it is
+      // redrawing detail the screen cannot show.
+      parsing: false,
+      normalized: true,
       scales: {
         x: {
           type: 'time',
@@ -172,6 +221,7 @@ function makeTimeChart(canvasId, color, label) {
         }
       },
       plugins: {
+        decimation: { enabled: true, algorithm: 'lttb', samples: 250 },
         tooltip: {
           backgroundColor: '#232329',
           borderColor: '#3a3a43',
@@ -200,7 +250,14 @@ function makeNetChart(canvasId) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { intersect: false, mode: 'index' },
+      // `index` + `intersect:false` finds the nearest x rather than hit-testing
+      // every point, which is what made hovering expensive on a slow CPU.
+      interaction: { intersect: false, mode: 'index', axis: 'x' },
+      transitions: zoomModes(),
+      // Chart.js draws at most one point per pixel column; beyond that it is
+      // redrawing detail the screen cannot show.
+      parsing: false,
+      normalized: true,
       scales: {
         x: {
           type: 'time',
@@ -219,6 +276,7 @@ function makeNetChart(canvasId) {
         }
       },
       plugins: {
+        decimation: { enabled: true, algorithm: 'lttb', samples: 250 },
         legend: { display: false },
         tooltip: {
           backgroundColor: '#232329',
@@ -250,9 +308,12 @@ function updateChart(chart, points, labelFilter) {
       return true;
     });
   }
-  const data = filtered.map(p => ({ x: new Date(p.time), y: p.value })).sort((a, b) => a.x - b.x);
+  // Numeric timestamps, not Date objects: `parsing: false` hands the array
+  // straight to the time scale, which wants milliseconds.
+  const data = filtered.map(p => ({ x: new Date(p.time).getTime(), y: p.value }))
+    .sort((a, b) => a.x - b.x);
   chart.data.datasets[0].data = data;
-  chart.update('none');
+  chart.update(chartUpdateMode());
   return data;
 }
 
@@ -294,7 +355,7 @@ async function refreshMonitor() {
   const swapPoints = updateChart(chartSwap, swapData);
   const swapLatest = swapPoints.length ? swapPoints[swapPoints.length - 1].y : null;
   chartSwap.options.scales.y.max = 100;
-  chartSwap.update('none');
+  chartSwap.update(chartUpdateMode());
   document.getElementById('swap-chart-latest').textContent = swapLatest !== null ? swapLatest.toFixed(1) + '%' : '—';
 
   // ── Disk bars ──
@@ -318,7 +379,7 @@ async function refreshMonitor() {
     chartNet.data.datasets[0].data = [];
     chartNet.data.datasets[1].data = [];
   }
-  chartNet.update('none');
+  chartNet.update(chartUpdateMode());
 
   // ── Disk gauge (primary mount) ──
   const diskLatest = getLatestDiskPercent(diskData);
@@ -507,7 +568,7 @@ function renderDiskBars(diskData) {
 /* ── Auto-refresh (every 60s when monitor page is visible) ──────────── */
 function startAutoRefresh() {
   stopAutoRefresh();
-  monitorInterval = setInterval(() => {
+  monitorInterval = pollingInterval(() => {
     if (document.getElementById('page-monitor').classList.contains('active') && monitorHostId) {
       refreshMonitor();
     }
@@ -515,7 +576,7 @@ function startAutoRefresh() {
 }
 
 function stopAutoRefresh() {
-  if (monitorInterval) { clearInterval(monitorInterval); monitorInterval = null; }
+  if (monitorInterval) { clearPollingInterval(monitorInterval); monitorInterval = null; }
 }
 
 // Kick off the auto-refresh interval on script load.

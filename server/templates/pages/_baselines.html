@@ -1,14 +1,16 @@
 <section class="page" id="page-baselines">
   <div class="page-header">
     <div>
-      <div class="page-title">Baselines <span>&amp; Automation</span></div>
-      <div class="page-sub">Named task sequences and rules that run tasks automatically — on host enrollment, on events, or on a schedule.</div>
+      <div class="page-title">Deployments</div>
+      <div class="page-sub">The three ways work reaches your machines: baselines run a fixed sequence, automations run on a trigger, and rollouts go out wave by wave.</div>
     </div>
   </div>
 
   <div class="sub-tabs">
     <div class="sub-tab t-lav active" data-subtab="bl-panel">Baselines</div>
     <div class="sub-tab t-sky" data-subtab="auto-panel">Automation</div>
+    <div class="sub-tab t-lemon" data-subtab="wave-panel">Waves</div>
+    <div class="sub-tab t-peach" data-subtab="rollout-panel">Rollouts</div>
     <div class="sub-tab t-mint" data-subtab="hist-panel">History</div>
   </div>
 
@@ -21,10 +23,37 @@
     <div id="baselines-list" class="bl-list"></div>
   </div>
 
+  <!-- ── Waves panel (ordered, tag-matched host groups for rollouts) ──── -->
+  <div class="sub-panel" id="wave-panel">
+    <div class="bl-toolbar">
+      <input type="text" class="form-control bl-search" id="wave-search"
+             placeholder="Search waves by name or tag…">
+      <span class="field-hint" tabindex="0" aria-label="How waves work"
+            data-hint="A wave is a group of machines, matched by tag, that get patched together. Rollouts walk the waves in order.&#10;&#10;Put a couple of spare machines in wave 1, the bulk in the last one. If an update breaks something you find out on the spare machines.&#10;&#10;A machine in two waves is patched once, in the earlier one. A machine in no wave is never patched.">?</span>
+      <button class="btn btn-mint" id="wave-new-btn">New wave</button>
+    </div>
+    <div id="waves-list" class="bl-list"></div>
+  </div>
+
+  <!-- ── Rollouts panel (staged patch rollouts, loaded from /api/v1/rollouts/) ── -->
+    <div class="sub-panel" id="rollout-panel">
+      <div class="bl-toolbar">
+        <input type="text" class="form-control bl-search" id="rollout-search"
+               placeholder="Search rollouts by definition, wave, or state…">
+        <span class="field-hint" tabindex="0" aria-label="How rollouts work"
+              data-hint="Patch a few machines first, then the rest. Each wave is a group of hosts, matched by tag, and waves run in order.&#10;&#10;After a wave finishes, the rollout waits out that wave's validation window before starting the next — time for a bad update to show itself. If too many hosts in a wave fail, it stops there and waits for you.&#10;&#10;A host in two waves is patched once, in the earlier one. A host in no wave is never patched.">?</span>
+        <button class="btn btn-mint" onclick="openRolloutStart()">New rollout</button>
+      </div>
+      <div id="rollout-list" style="display:flex;flex-direction:column;gap:10px;">
+        <div class="empty-state"><div class="empty-state-title">Loading…</div></div>
+      </div>
+    </div>
+
   <!-- ── Automation panel ────────────────────────────────────────────── -->
   <div class="sub-panel" id="auto-panel">
     <div class="bl-toolbar">
-      <div class="page-sub" style="flex:1;margin:0;">Run a task or baseline automatically — when an event fires, or on a schedule.</div>
+      <input type="text" class="form-control bl-search" id="auto-search"
+             placeholder="Search automations by name, trigger, task, or tag…">
       <button class="btn btn-mint" id="auto-new-btn">New automation</button>
     </div>
     <div id="automations-list" class="bl-list"></div>
@@ -33,7 +62,8 @@
   <!-- ── History panel ───────────────────────────────────────────────── -->
   <div class="sub-panel" id="hist-panel">
     <div class="bl-toolbar">
-      <div class="page-sub" style="flex:1;margin:0;">Every baseline and automation dispatch, newest first, with how it turned out.</div>
+      <input type="text" class="form-control bl-search" id="hist-search"
+             placeholder="Search history by name, host, or outcome…">
       <div class="sa-chips" id="hist-filters" style="margin:0;">
         <button type="button" class="sa-chip on" data-src="automation,baseline">All</button>
         <button type="button" class="sa-chip" data-src="baseline">Baselines</button>
@@ -64,7 +94,7 @@
     <input type="text" class="form-control" id="bl-desc" placeholder="What this baseline does" maxlength="2000">
   </div>
   <div class="bl-field">
-    <label>Steps — run top to bottom</label>
+    <label>Steps — run top to bottom</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Each step is a task. They run in order on the target machine, and a failed step stops the ones after it.">?</span>
     <div class="bl-editor-steps" id="bl-editor-steps"></div>
     <button class="btn btn-outline btn-sm" id="bl-add-step-btn" type="button" style="margin-top:8px;">+ Add step</button>
   </div>
@@ -117,7 +147,7 @@
     <input type="text" class="form-control" id="auto-name" placeholder="e.g. Clean disk when critical" maxlength="120">
   </div>
   <div class="bl-field">
-    <label>Trigger</label>
+    <label>Trigger</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="What starts this automation. An event fires it when something happens, like an alert. A schedule fires it on a clock.">?</span>
     <select class="form-control" id="auto-trigger">
       <option value="event">When an event fires</option>
       <option value="schedule">On a schedule</option>
@@ -151,11 +181,13 @@
       deliberately separate from "Run on" below.
     {% endcomment %}
     <div class="bl-hint" id="auto-event-host-wrap" style="margin-top:8px;">Only for events on host (optional):
-      <select class="form-control" id="auto-event-host" style="display:inline-block;width:auto;">
-        <option value="">any host</option>
-      </select>
+      <button class="btn btn-outline picker-btn" id="auto-event-host-btn" type="button">
+        <span id="auto-event-host-label">any host</span>
+      </button>
+      <button class="btn btn-ghost btn-sm" id="auto-event-host-clear" type="button">Clear</button>
+      <input type="hidden" id="auto-event-host">
     </div>
-    <div class="bl-hint" id="auto-match-wrap" style="margin-top:8px;">Only when the alert's
+    <div class="bl-hint" id="auto-match-wrap" style="margin-top:8px;">Only when the event's
       <select class="form-control" id="auto-match-field" style="display:inline-block;width:auto;">
         <option value="any">name or description</option>
         <option value="rule">name</option>
@@ -164,6 +196,12 @@
       <select class="form-control" id="auto-match-mode" style="display:inline-block;width:auto;">
         <option value="contains">contains</option>
         <option value="not_contains">does not contain</option>
+        <option value="equals">is exactly</option>
+        <option value="not_equals">is not</option>
+        <option value="starts_with">starts with</option>
+        <option value="ends_with">ends with</option>
+        <option value="regex">matches regex</option>
+        <option value="not_regex">does not match regex</option>
       </select>
       <input type="text" class="form-control" id="auto-match-text" placeholder="e.g. /var" maxlength="200" style="display:inline-block;width:auto;">
       <span class="bl-hint" style="display:block;margin-top:4px;">Leave the text blank for no text filter. Case-insensitive.</span>
@@ -195,6 +233,20 @@
       <input type="text" class="form-control" id="auto-target-tags" placeholder="role:backup" hidden>
       <button class="btn btn-outline picker-btn" id="auto-target-host-btn" type="button" hidden><span id="auto-target-host-label">Choose a host…</span></button>
       <input type="hidden" id="auto-target-host">
+    </div>
+  </div>
+  <div class="bl-field">
+    <label>How</label>
+    <div class="auto-when">
+      <select class="form-control" id="auto-dispatch-mode">
+        <option value="direct">All at once</option>
+        <option value="rollout">Wave by wave</option>
+      </select>
+      <span class="field-hint" tabindex="0" aria-label="Dispatch modes"
+            data-hint="All at once sends the work to every host matched by the target above.&#10;&#10;Wave by wave hands it to the rollout machinery instead — a canary wave first, then wider, halting if too many fail. In this mode the waves decide which hosts get it, so the target above is ignored.">?</span>
+    </div>
+    <div class="confirm-hint" id="auto-dispatch-hint" style="margin-top:4px;" hidden>
+      Waves decide which hosts get this &mdash; the target above is ignored.
     </div>
   </div>
   <label class="setting-check"><input type="checkbox" id="auto-enabled" checked> Enabled</label>

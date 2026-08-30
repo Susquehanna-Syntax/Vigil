@@ -217,8 +217,8 @@ function _showJobProgress(m, job, hostname) {
   let poll = null;
 
   function stop() {
-    if (timer) clearInterval(timer);
-    if (poll) clearInterval(poll);
+    if (timer) clearPollingInterval(timer);
+    if (poll) clearPollingInterval(poll);
   }
 
   function render(current) {
@@ -259,11 +259,11 @@ function _showJobProgress(m, job, hostname) {
   }
 
   render(job);
-  timer = setInterval(() => {
+  timer = pollingInterval(() => {
     remaining -= 1;
-    if (remaining <= 0) clearInterval(timer);
+    if (remaining <= 0) clearPollingInterval(timer);
   }, 1000);
-  poll = setInterval(async () => {
+  poll = pollingInterval(async () => {
     try {
       const current = await apiJson(`/api/v1/reprovision/jobs/${job.id}/`);
       render(current);
@@ -1102,7 +1102,7 @@ function _reproPageVisible() {
 
 function _reproStartPolling() {
   if (_reproPollTimer) return;
-  _reproPollTimer = setInterval(() => {
+  _reproPollTimer = pollingInterval(() => {
     if (_reproPageVisible()) {
       _reproLoadImages();
       _reproLoadJobs();

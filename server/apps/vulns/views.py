@@ -1,4 +1,6 @@
-from django.db.models import Avg, Case, IntegerField, Value, When
+from datetime import timedelta
+
+from django.db.models import Avg, Case, F, IntegerField, Value, When
 from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -62,8 +64,21 @@ def finding_list(request):
       * ``scanner=nessus|greenbone|trivy``
       * ``severity=critical|high|medium|low|info``
       * ``state=open|fixed|suppressed`` (defaults to ``open``)
+      * ``overdue=1`` — only findings past their due date, not covered by
+        an unexpired exception
+      * ``due_within=<days>`` — findings due in the next N days; must be a
+        positive integer under 3651 or the request is a 400
+
+    ``sort`` is an explicit allowlist: ``due_date``, ``-due_date``,
+    ``severity``, ``-severity``. Anything else is a 400 — the raw value is
+    never interpolated into ``order_by()``. Findings without a due date
+    sort last in both directions. ``severity`` ranks through
+    ``SEVERITY_RANK`` (worst first), never the raw string column, where
+    ``"medium" > "critical"`` alphabetically.
     """
-    qs = VulnFinding.objects.select_related("host")
+    from django.utils.timezone import localdate
+
+    qs = VulnFinding.objects.select_related("host", "exception")
     if host_id := request.query_params.get("host"):
         qs = qs.filter(host_id=host_id)
     if scanner := request.query_params.get("scanner"):
@@ -73,17 +88,61 @@ def finding_list(request):
     state = request.query_params.get("state", VulnFinding.State.OPEN)
     qs = qs.filter(state=state)
 
-    # Worst-first. severity is a string column ("medium" sorts above
-    # "critical" alphabetically), so rank it numerically — this also
-    # guarantees criticals survive the 500-row cap.
+    today = localdate()
+
+    if request.query_params.get("overdue") == "1":
+        # Same definition as the finding's ``overdue`` property: past due,
+        # still open, not covered by an unexpired exception.
+        qs = qs.filter(
+            state=VulnFinding.State.OPEN,
+            due_date__lt=today,
+        ).exclude(exception__expires_on__gte=today)
+
+    due_within = request.query_params.get("due_within")
+    if due_within is not None:
+        # Validate before touching a timedelta: an unvalidated string here
+        # would reach the ORM as a literal.
+        if not due_within.isdigit() or not (1 <= int(due_within) < 3651):
+            return Response(
+                {"error": "due_within must be a positive integer under 3651"},
+                status=400,
+            )
+        qs = qs.filter(
+            due_date__gte=today,
+            due_date__lte=today + timedelta(days=int(due_within)),
+        )
+
+    # severity is a string column ("medium" sorts above "critical"
+    # alphabetically), so rank it numerically through SEVERITY_RANK.
     severity_rank = Case(
         *[When(severity=s, then=Value(r)) for s, r in SEVERITY_RANK.items()],
         default=Value(0),
         output_field=IntegerField(),
     )
-    qs = qs.annotate(_severity_rank=severity_rank).order_by(
-        "-_severity_rank", "-last_seen"
-    )
+
+    sort = request.query_params.get("sort")
+    if sort is None:
+        # Default: worst severity first, newest first within a tier.
+        # The annotation is only needed for the default; the explicit
+        # sorts use the rank as an expression directly.
+        qs = qs.annotate(_severity_rank=severity_rank).order_by(
+            "-_severity_rank", "-last_seen"
+        )
+    else:
+        # Fixed field expression per allowed value — the parameter is only
+        # ever a dict key, never part of the ordering itself.
+        sort_map = {
+            "due_date": [F("due_date").asc(nulls_last=True), F("id")],
+            "-due_date": [F("due_date").desc(nulls_last=True), F("id")],
+            "severity": [severity_rank.desc(), F("id")],
+            "-severity": [severity_rank.asc(), F("id")],
+        }
+        if sort not in sort_map:
+            return Response(
+                {"error": "sort must be one of: due_date, -due_date, severity, -severity"},
+                status=400,
+            )
+        qs = qs.order_by(*sort_map[sort])
     return Response(VulnFindingSerializer(qs[:500], many=True).data)
 
 

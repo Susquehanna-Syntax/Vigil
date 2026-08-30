@@ -21,8 +21,12 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from apps.hosts.models import TagRowSyncMixin
 
-class Automation(models.Model):
+
+class Automation(TagRowSyncMixin, models.Model):
+
+    tag_sync_fields = [("event_tags", "event_tag_rows"), ("target_tags", "target_tag_rows")]
     class Trigger(models.TextChoices):
         EVENT = "event", "When an event fires"
         SCHEDULE = "schedule", "On a schedule"
@@ -30,6 +34,10 @@ class Automation(models.Model):
     class ActionKind(models.TextChoices):
         TASK = "task", "Task definition"
         BASELINE = "baseline", "Baseline"
+
+    class DispatchMode(models.TextChoices):
+        DIRECT = "direct", "All at once"
+        ROLLOUT = "rollout", "Wave by wave"
 
     class Target(models.TextChoices):
         EVENT_HOST = "event_host", "The host from the event"
@@ -54,6 +62,9 @@ class Automation(models.Model):
         related_name="automations")
     # Only fire when the event's host carries one of these tags (blank = any).
     event_tags = models.JSONField(default=list, blank=True)
+    #: Row-backed mirror of ``event_tags`` — see Host.tag_rows.
+    event_tag_rows = models.ManyToManyField("hosts.Tag", blank=True,
+                                            related_name="automations_by_event")
     # Only fire for events on this specific host (null = any host). Narrower
     # than event_tags and independent of it: both must pass. This scopes the
     # TRIGGER, which is not the same as `target` below — an automation can
@@ -73,11 +84,17 @@ class Automation(models.Model):
     class MatchMode(models.TextChoices):
         CONTAINS = "contains", "contains"
         NOT_CONTAINS = "not_contains", "does not contain"
+        EQUALS = "equals", "is exactly"
+        NOT_EQUALS = "not_equals", "is not"
+        STARTS_WITH = "starts_with", "starts with"
+        ENDS_WITH = "ends_with", "ends with"
+        REGEX = "regex", "matches regex"
+        NOT_REGEX = "not_regex", "does not match regex"
 
     match_text = models.CharField(max_length=200, blank=True, default="")
     match_field = models.CharField(max_length=10, choices=MatchField.choices,
                                    default=MatchField.ANY)
-    match_mode = models.CharField(max_length=14, choices=MatchMode.choices,
+    match_mode = models.CharField(max_length=16, choices=MatchMode.choices,
                                   default=MatchMode.CONTAINS)
 
     # -- schedule trigger (crontab; beat-driven) --
@@ -92,6 +109,16 @@ class Automation(models.Model):
 
     # -- action --
     action_kind = models.CharField(max_length=12, choices=ActionKind.choices)
+
+    #: How the work reaches the hosts. ``direct`` dispatches to every matching
+    #: host at once, which is what automations have always done. ``rollout``
+    #: hands the same task or baseline to the wave machinery instead, so an
+    #: automation firing on an event can still patch a canary first. In rollout
+    #: mode the automation's own target selection is ignored — waves decide
+    #: membership by tag, and having two host-selection rules fight would be
+    #: worse than picking one.
+    dispatch_mode = models.CharField(
+        max_length=8, choices=DispatchMode.choices, default=DispatchMode.DIRECT)
     task_definition = models.ForeignKey(
         "tasks.TaskDefinition", null=True, blank=True,
         on_delete=models.CASCADE, related_name="automations")
@@ -110,6 +137,9 @@ class Automation(models.Model):
     target = models.CharField(max_length=12, choices=Target.choices,
                               default=Target.EVENT_HOST)
     target_tags = models.JSONField(default=list, blank=True)
+    #: Row-backed mirror of ``target_tags`` — see Host.tag_rows.
+    target_tag_rows = models.ManyToManyField("hosts.Tag", blank=True,
+                                             related_name="automations_by_target")
     target_host = models.ForeignKey(
         "hosts.Host", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="+")

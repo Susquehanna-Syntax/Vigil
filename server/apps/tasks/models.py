@@ -3,7 +3,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 
-from apps.hosts.models import Host
+from apps.hosts.models import Host, TagRowSyncMixin
 
 
 class TaskDefinition(models.Model):
@@ -96,6 +96,17 @@ class TaskRun(models.Model):
     )
     baseline = models.ForeignKey(
         "baselines.Baseline", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="runs",
+    )
+    # Which staged rollout this run belongs to, if any. Manual deploys and
+    # automation/baseline runs leave it null.
+    rollout = models.ForeignKey(
+        "tasks.PatchRollout", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="runs",
+    )
+    # Which wave the rollout dispatched this run to, if any.
+    wave = models.ForeignKey(
+        "tasks.PatchWave", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="runs",
     )
     name_snapshot = models.CharField(max_length=120, blank=True)
@@ -192,3 +203,173 @@ class Task(models.Model):
 
     def __str__(self):
         return f"{self.action} → {self.host.hostname} ({self.state})"
+
+
+class PatchWave(TagRowSyncMixin, models.Model):
+    """One stage of a staged rollout: every host carrying any of its tags.
+
+    Waves are walked in ascending ``order``; a host that matches several
+    waves belongs to the earliest one only (see ``wave_host_ids``), so it is
+    never patched twice in one rollout. A host matching no wave is not
+    patched by a rollout at all — that is deliberate: opting in by tag is
+    safer than opting out.
+    """
+    tag_sync_fields = [("tags", "tag_rows")]
+
+
+    class Meta:
+        ordering = ["order"]
+        constraints = [
+            models.UniqueConstraint(fields=("order",), name="uniq_patch_wave_order"),
+        ]
+
+    name = models.CharField(max_length=120)
+    order = models.PositiveIntegerField()
+    tags = models.JSONField(default=list, blank=True)
+    #: Row-backed mirror of ``tags`` — see Host.tag_rows.
+    tag_rows = models.ManyToManyField("hosts.Tag", blank=True, related_name="waves")
+    # How long the wave must sit after completion before the next one may
+    # start. Zero means no validation — the beat advances immediately.
+    validation_hours = models.PositiveIntegerField(default=24)
+    enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"wave:{self.name} ({self.order})"
+
+
+class PatchRollout(models.Model):
+    """One execution of a task definition across the patch waves.
+
+    State machine: ``pending`` → ``running`` (tasks dispatched for the first
+    wave) → ``validating`` (wave passed, waiting out its validation window) → next
+    wave ``running`` … → ``completed``. ``halted`` is terminal until an
+    operator resumes it; ``cancelled`` is terminal.
+    """
+
+    class State(models.TextChoices):
+        PENDING = "pending", "Pending"
+        RUNNING = "running", "Running"
+        VALIDATING = "validating", "Validating"
+        HALTED = "halted", "Halted"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    class ActionKind(models.TextChoices):
+        TASK = "task", "Task definition"
+        BASELINE = "baseline", "Baseline"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # A rollout carries either a task definition or a baseline — the same
+    # either/or shape Automation already uses, so the two read alike. Both are
+    # nullable at the database level and the constraint below enforces exactly
+    # one, which keeps a deleted definition from silently turning a rollout
+    # into a no-op.
+    action_kind = models.CharField(
+        max_length=12, choices=ActionKind.choices, default=ActionKind.TASK)
+    definition = models.ForeignKey(
+        TaskDefinition, on_delete=models.CASCADE, related_name="rollouts",
+        null=True, blank=True,
+    )
+    baseline = models.ForeignKey(
+        "baselines.Baseline", on_delete=models.CASCADE, related_name="rollouts",
+        null=True, blank=True,
+    )
+    state = models.CharField(max_length=12, choices=State.choices, default=State.PENDING)
+    current_wave = models.ForeignKey(
+        PatchWave, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="rollouts",
+    )
+    # Halt when a wave's failure rate is strictly greater than this percent.
+    failure_threshold_pct = models.PositiveIntegerField(default=10)
+    # Below this many reported results the rate is not evaluated at all —
+    # one failure in a one-host canary wave is a 100% failure rate, and
+    # without this guard every rollout would halt immediately.
+    min_results_before_halt = models.PositiveIntegerField(default=3)
+    halted_reason = models.TextField(blank=True)
+    # Who halted/resumed, and why/when — the fleet-wide audit for the gate.
+    halted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="rollouts_halted",
+    )
+    resumed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="rollouts_resumed",
+    )
+    started_at = models.DateTimeField(null=True, blank=True)
+    wave_started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name="rollouts_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                # Exactly one target. Both-or-neither would make `rollout_target`
+                # ambiguous and is never a legitimate state.
+                condition=(
+                    models.Q(definition__isnull=False, baseline__isnull=True)
+                    | models.Q(definition__isnull=True, baseline__isnull=False)
+                ),
+                name="rollout_has_exactly_one_target",
+            ),
+        ]
+
+    @property
+    def target(self):
+        """The definition or baseline this rollout runs, whichever is set."""
+        return self.baseline if self.action_kind == self.ActionKind.BASELINE else self.definition
+
+    @property
+    def target_name(self) -> str:
+        target = self.target
+        return target.name if target else "(deleted)"
+
+    def __str__(self):
+        wave = self.current_wave.name if self.current_wave else "?"
+        return f"rollout:{self.target_name} @ {wave} ({self.state})"
+
+
+def wave_host_ids(wave) -> list:
+    """Host ids in *wave*: every host carrying any of the wave's tags.
+
+    Mirrors the tag-matching approach used by ``definition_deploy`` (any-tag
+    membership, case-insensitive, auto-classified tags included).
+    """
+    # Reads the tag rows rather than comparing strings. The semantics are
+    # unchanged because the rows encode them: a row's key is the tag name
+    # lowercased with whitespace preserved, so `Prod` and `prod` are the same
+    # row (they always matched) and `prod ` is a different one (it never did).
+    #
+    # A wave with no tags still matches no hosts — the opposite of a baseline
+    # with no target_tags, which matches all of them. That asymmetry predates
+    # this change and is pinned by test_tag_semantics.
+    tag_ids = list(wave.tag_rows.values_list("id", flat=True))
+    if not tag_ids:
+        return []
+    return list(
+        Host.objects.exclude(status=Host.Status.REJECTED)
+        .filter(tag_rows__in=tag_ids)
+        .distinct()
+        .values_list("id", flat=True)
+    )
+
+
+def rollout_wave_plan(waves) -> dict:
+    """Map wave id → host ids, deduplicating across waves in ``order``.
+
+    A host in two waves belongs to the earliest wave only: hosts already
+    assigned are skipped so no host is patched twice in one rollout.
+    """
+    assigned: set = set()
+    plan: dict = {}
+    for wave in sorted(waves, key=lambda r: r.order):
+        hosts = [h for h in wave_host_ids(wave) if h not in assigned]
+        assigned.update(hosts)
+        plan[wave.id] = hosts
+    return plan

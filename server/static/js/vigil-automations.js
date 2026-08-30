@@ -10,6 +10,7 @@ let _autoBaselines = [];   // baseline names
 let _autoHosts = [];       // selectable hosts
 let _autoRules = [];       // alert rules (for specific-event)
 let _autoParamsOverride = {};  // task input overrides for the automation being edited
+let _allAutomations = [];  // unfiltered, so the search box can re-filter without refetching
 
 async function loadAutomations() {
   const list = document.getElementById('automations-list');
@@ -29,11 +30,29 @@ async function loadAutomations() {
     _autoHosts = hosts;
     _autoRules = rules;
     _fillEditorOptions();
-    _renderAutomations(data.automations);
+    _allAutomations = data.automations;
+    _renderAutomations(_filterAutomations());
   } catch (e) {
     list.innerHTML = `<div class="empty-block"><h4>Couldn't load automations</h4><p>${escHtml(e.message)}</p></div>`;
   }
 }
+
+function _filterAutomations() {
+  const q = (document.getElementById('auto-search')?.value || '').trim().toLowerCase();
+  if (!q) return _allAutomations;
+  return _allAutomations.filter(a =>
+    (a.name || '').toLowerCase().includes(q) ||
+    (a.trigger || '').toLowerCase().includes(q) ||
+    (a.event || '').toLowerCase().includes(q) ||
+    (a.baseline_name || '').toLowerCase().includes(q) ||
+    (a.task_name || '').toLowerCase().includes(q) ||
+    (a.target_tags || []).some(t => t.toLowerCase().includes(q)));
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('auto-search')?.addEventListener(
+    'input', () => _renderAutomations(_filterAutomations()));
+});
 
 function _renderAutomations(autos) {
   const list = document.getElementById('automations-list');
@@ -102,13 +121,9 @@ function _fillEditorOptions() {
   if (rule) rule.innerHTML = '<option value="">any alert</option>' +
     _autoRules.map(r => `<option value="${escHtml(String(r.id))}">${escHtml(r.name)} (${escHtml(r.severity)})</option>`).join('');
   // Scopes which alerts fire this automation, not which hosts it runs on.
-  const evHost = document.getElementById('auto-event-host');
-  if (evHost) {
-    const keep = evHost.value;
-    evHost.innerHTML = '<option value="">any host</option>' +
-      _autoHosts.map(h => `<option value="${escHtml(String(h.id))}">${escHtml(h.hostname || String(h.id))}</option>`).join('');
-    evHost.value = keep;
-  }
+  // The host itself is chosen through the picker, so there is no <option>
+  // list to rebuild here — only the button's label needs refreshing.
+  _autoRefreshEventHostLabel();
 }
 
 // Open the picker for the current action kind and store the choice.
@@ -150,8 +165,12 @@ function _autoSyncVisibility() {
   // reads the alert's name and message, so it is alert-only.
   const hostWrap = document.getElementById('auto-event-host-wrap');
   if (hostWrap) hostWrap.style.display = trig === 'event' ? '' : 'none';
+  // The text filter reads whatever the event names and describes — an alert's
+  // rule and message, an insight's title, a task's step, a rebuild's profile —
+  // so it applies to every event, not just alerts. It used to be alert-only,
+  // which meant a filter set on any other event was silently ignored.
   const matchWrap = document.getElementById('auto-match-wrap');
-  if (matchWrap) matchWrap.style.display = (trig === 'event' && ev === 'alert_fired') ? '' : 'none';
+  if (matchWrap) matchWrap.style.display = trig === 'event' ? '' : 'none';
 
   _autoRefreshActionLabel();
 
@@ -214,6 +233,7 @@ function _openAutoEditor(a) {
   set('auto-action-task', a && a.task_definition ? a.task_definition : '');
   set('auto-action-baseline', a ? a.baseline_name : '');
   set('auto-target', a ? a.target : 'event_host');
+  set('auto-dispatch-mode', a ? (a.dispatch_mode || 'direct') : 'direct');
   set('auto-target-tags', a ? (a.target_tags || []).join(', ') : '');
   set('auto-target-host', a && a.target_host ? a.target_host : '');
   _autoParamsOverride = (a && a.params_override) || {};
@@ -267,6 +287,7 @@ async function _saveAutomation() {
     task_definition: v('auto-action-task') || null,
     baseline_name: v('auto-action-baseline'),
     target: v('auto-target'),
+    dispatch_mode: v('auto-dispatch-mode'),
     target_tags: v('auto-target-tags').split(',').map(s => s.trim()).filter(Boolean),
     target_host: v('auto-target-host') || null,
     params_override: _autoParamsOverride,
@@ -313,5 +334,43 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!def) return showToast('Pick a task first', 'error');
     openInputsModal({ def, override: _autoParamsOverride,
       onSave: (ov) => { _autoParamsOverride = ov; } });
+  });
+});
+
+
+document.addEventListener('DOMContentLoaded', () => {
+  const mode = document.getElementById('auto-dispatch-mode');
+  const note = document.getElementById('auto-dispatch-hint');
+  if (!mode || !note) return;
+  const sync = () => { note.hidden = mode.value !== 'rollout'; };
+  mode.addEventListener('change', sync);
+  sync();
+});
+
+
+/* ── Event-host picker (which alerts fire this, not which hosts it runs on) ── */
+
+function _autoRefreshEventHostLabel() {
+  const hidden = document.getElementById('auto-event-host');
+  const label = document.getElementById('auto-event-host-label');
+  if (!hidden || !label) return;
+  const host = _autoHosts.find(h => String(h.id) === String(hidden.value));
+  label.textContent = hidden.value ? (host ? (host.hostname || hidden.value) : hidden.value) : 'any host';
+}
+
+function _autoPickEventHost() {
+  openPicker({ type: 'machine', title: 'Only fire for events on this host', allowAdd: false,
+    onSelect: (item) => {
+      if (!_autoHosts.some(h => String(h.id) === String(item.key))) _autoHosts.push(item.raw);
+      document.getElementById('auto-event-host').value = item.key;
+      _autoRefreshEventHostLabel();
+    } });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('auto-event-host-btn')?.addEventListener('click', _autoPickEventHost);
+  document.getElementById('auto-event-host-clear')?.addEventListener('click', () => {
+    document.getElementById('auto-event-host').value = '';
+    _autoRefreshEventHostLabel();
   });
 });
