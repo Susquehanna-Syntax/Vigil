@@ -129,7 +129,34 @@
   </div>
   <div class="modal-actions">
     <button class="btn btn-ghost" id="bl-cancel-btn-2" type="button">Cancel</button>
+    <button class="btn btn-outline" id="bl-yaml-btn" type="button" title="Edit this baseline as YAML, or copy it to share">Edit as YAML</button>
     <button class="btn btn-mint" id="bl-save-btn">Save baseline</button>
+  </div>
+</div>
+
+{% comment %}
+  The YAML view of a baseline or an automation. Same document the community
+  repo stores, so what you read here is exactly what a submission would carry.
+  Shared by both editors — one modal, told which kind it is opened for.
+{% endcomment %}
+<div class="modal-overlay" id="content-yaml-overlay"></div>
+<div class="modal modal-wide" id="content-yaml-modal">
+  <div class="modal-title">
+    <span id="content-yaml-title">Edit as YAML</span>
+    <span class="field-hint" tabindex="0" aria-label="About this view"
+          data-hint="This is the same YAML the community repo stores, so what you see here is exactly what a submission would carry.&#10;&#10;Steps and actions are named by slug rather than by id, because a shared file cannot reference rows on your server. Importing resolves those names against your own library.&#10;&#10;Saving replaces the item you opened it from.">?</span>
+  </div>
+  <div class="modal-body">
+    <textarea class="form-control" id="content-yaml-text" spellcheck="false"
+              style="min-height:340px;font-family:'IBM Plex Mono',monospace;font-size:13px;"></textarea>
+    <div class="editor-error" id="content-yaml-error"></div>
+    <div class="bl-hint" id="content-yaml-filename"></div>
+  </div>
+  <div class="modal-actions">
+    <button class="btn btn-ghost" id="content-yaml-cancel" type="button">Cancel</button>
+    <button class="btn btn-outline" id="content-yaml-copy" type="button">Copy</button>
+    <button class="btn btn-outline" id="content-yaml-submit" type="button" title="Open a pull request against the public community repo">Submit to Community</button>
+    <button class="btn btn-mint" id="content-yaml-save" type="button">Save from YAML</button>
   </div>
 </div>
 
@@ -252,6 +279,7 @@
   <label class="setting-check"><input type="checkbox" id="auto-enabled" checked> Enabled</label>
   <div class="modal-actions">
     <button class="btn btn-ghost" id="auto-cancel-btn-2" type="button">Cancel</button>
+    <button class="btn btn-outline" id="auto-yaml-btn" type="button" title="Edit this automation as YAML, or copy it to share">Edit as YAML</button>
     <button class="btn btn-mint" id="auto-save-btn">Save automation</button>
   </div>
 </div>

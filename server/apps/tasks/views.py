@@ -574,33 +574,103 @@ def _save_definition_from_yaml(definition: TaskDefinition, yaml_source: str) -> 
 
 
 # ---------------------------------------------------------------------------
-# Community templates — sourced from the public GitHub repo
+# Community content — sourced from the public GitHub repo
 # ---------------------------------------------------------------------------
-# The Community tab lists task YAMLs from the tasks/ directory of this repo.
-# Fetched server-side (avoids per-browser GitHub rate limits) and cached for
-# 10 minutes. Submissions still flow the other way via GitHub PR from the
-# editor — see openCommunitySubmit() in vigil-tasks.js.
+# The Community tab lists YAML from three directories of that repo: tasks/,
+# baselines/ and automations/. Fetched server-side (which avoids per-browser
+# GitHub rate limits) and cached for 10 minutes per kind. Submissions still
+# flow the other way as a GitHub PR opened from an editor — see
+# openCommunitySubmit() in vigil-tasks.js.
 VIGIL_COMMUNITY_REPO = "Susquehanna-Syntax/Vigil-Approved-Scripts"
 _COMMUNITY_CACHE_KEY = "vigil_community_templates"
 _COMMUNITY_CACHE_TTL = 600  # seconds
 _COMMUNITY_MAX_TEMPLATES = 50
 
+#: The directories the repo publishes, and how to read a file from each into
+#: the card fields the grid renders. Adding a fourth content type is a matter
+#: of adding a parser here and a sub-tab in the UI.
+COMMUNITY_KINDS = ("tasks", "baselines", "automations")
 
-def _fetch_community_templates() -> list[dict]:
-    """Pull and parse task YAMLs from the community repo's tasks/ directory.
+
+def _card_for_task(text: str) -> dict:
+    spec = parse_and_validate(text)
+    return {
+        "name": spec["name"],
+        "description": spec.get("description", ""),
+        "relevance": spec.get("relevance", ""),
+        "risk_level": spec.get("risk", "standard"),
+        "parsed_spec": spec,
+    }
+
+
+def _card_for_baseline(text: str) -> dict:
+    from apps.baselines.community_yaml import parse as parse_baseline
+
+    parsed = parse_baseline(text)
+    steps = parsed["steps"]
+    return {
+        "name": parsed["name"],
+        "description": parsed["description"],
+        "author": parsed["author"],
+        "relevance": ", ".join(parsed["target_tags"]),
+        "risk_level": "high" if parsed["allow_high_risk"] else "standard",
+        "step_count": len(steps),
+        "summary": f"{len(steps)} step{'' if len(steps) == 1 else 's'}",
+        "requires": [step["task"] for step in steps],
+    }
+
+
+def _card_for_automation(text: str) -> dict:
+    from apps.automations.community_yaml import parse as parse_automation
+
+    parsed = parse_automation(text)
+    if parsed["trigger"] == "event":
+        when = f"on {parsed['event']}"
+    else:
+        cron = parsed["cron"]
+        when = ("on schedule " + " ".join(
+            cron[f] for f in ("minute", "hour", "dom", "month", "dow")))
+    return {
+        "name": parsed["name"],
+        "description": parsed["description"],
+        "author": parsed["author"],
+        # `relevance` is the trigger and `summary` is the action. They are
+        # rendered as separate chips, so putting the trigger in both prints it
+        # twice on the card.
+        "relevance": when,
+        "risk_level": "standard",
+        "summary": f"runs {parsed['action_kind']} {parsed['slug']}",
+        "requires": [parsed["slug"]],
+    }
+
+
+_COMMUNITY_PARSERS = {
+    "tasks": _card_for_task,
+    "baselines": _card_for_baseline,
+    "automations": _card_for_automation,
+}
+
+
+def _fetch_community_templates(kind: str = "tasks") -> list[dict]:
+    """Pull and parse the YAML in one of the community repo's directories.
 
     Invalid or unparsable files are skipped — the repo gates quality through
     PR review, but a bad merge must not blank the whole tab.
     """
     import requests as _requests
 
+    if kind not in _COMMUNITY_PARSERS:
+        raise ValueError(f"unknown community kind {kind!r}")
+    to_card = _COMMUNITY_PARSERS[kind]
+
     listing = _requests.get(
-        f"https://api.github.com/repos/{VIGIL_COMMUNITY_REPO}/contents/tasks",
+        f"https://api.github.com/repos/{VIGIL_COMMUNITY_REPO}/contents/{kind}",
         headers={"Accept": "application/vnd.github+json"},
         timeout=10,
     )
     if listing.status_code == 404:
-        # Repo empty or tasks/ not created yet — a valid "no templates" state.
+        # Repo empty, or that directory not created yet — a valid "nothing
+        # here" state rather than an error.
         return []
     listing.raise_for_status()
 
@@ -617,41 +687,79 @@ def _fetch_community_templates() -> list[dict]:
         try:
             raw = _requests.get(entry["download_url"], timeout=10)
             raw.raise_for_status()
-            spec = parse_and_validate(raw.text)
+            card = to_card(raw.text)
         except Exception:
             continue
         templates.append({
+            "kind": kind,
             "filename": entry["name"],
             "html_url": entry.get("html_url", ""),
-            "name": spec["name"],
-            "description": spec.get("description", ""),
-            "relevance": spec.get("relevance", ""),
-            "risk_level": spec.get("risk", "standard"),
-            "parsed_spec": spec,
             "yaml_source": raw.text,
+            **card,
         })
     return templates
 
 
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def community_templates(request):
-    """List community task templates from the public GitHub repo (cached)."""
+def community_names_by_slug(kind: str) -> dict[str, str]:
+    """Map each community file's slug to the ``name`` inside it.
+
+    A slug in the repo is the **filename**, and the repo does not enforce that
+    the filename equals ``slugify(name)`` — ``docker-prune-and-restart-unhealthy.yaml``
+    is called "Docker Prune and Restart Unhealthy Container". So resolving a
+    reference by slugifying library names alone would refuse to import a
+    baseline whose task the operator demonstrably has.
+
+    Reads the same server-side cache the Community tab fills, so the common
+    path costs nothing. Returns ``{}`` when the repo is unreachable rather than
+    raising: an unresolvable slug is already handled, and a network blip must
+    not turn a working import into an error.
+    """
     from django.core.cache import cache
 
+    if kind not in COMMUNITY_KINDS:
+        return {}
+    cached = cache.get(f"{_COMMUNITY_CACHE_KEY}:{kind}")
+    if cached is None:
+        try:
+            cached = _fetch_community_templates(kind)
+        except Exception:
+            return {}
+        cache.set(f"{_COMMUNITY_CACHE_KEY}:{kind}", cached, _COMMUNITY_CACHE_TTL)
+    names = {}
+    for item in cached:
+        stem = item.get("filename", "").rsplit(".", 1)[0]
+        if stem and item.get("name"):
+            names[stem] = item["name"]
+    return names
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def community_templates(request, kind: str = "tasks"):
+    """List one kind of community content from the public GitHub repo (cached).
+
+    Cached per kind: the three directories are fetched independently, so a
+    slow or empty automations/ does not hold up the tasks tab.
+    """
+    from django.core.cache import cache
+
+    if kind not in COMMUNITY_KINDS:
+        return Response({"error": f"unknown content kind {kind!r}"}, status=404)
+
+    cache_key = f"{_COMMUNITY_CACHE_KEY}:{kind}"
     force = request.query_params.get("refresh") == "1"
     if not force:
-        cached = cache.get(_COMMUNITY_CACHE_KEY)
+        cached = cache.get(cache_key)
         if cached is not None:
             return Response(cached)
     try:
-        templates = _fetch_community_templates()
+        templates = _fetch_community_templates(kind)
     except Exception:
         return Response(
             {"error": "Community repo unreachable — check the server's internet access"},
             status=502,
         )
-    cache.set(_COMMUNITY_CACHE_KEY, templates, _COMMUNITY_CACHE_TTL)
+    cache.set(cache_key, templates, _COMMUNITY_CACHE_TTL)
     return Response(templates)
 
 
