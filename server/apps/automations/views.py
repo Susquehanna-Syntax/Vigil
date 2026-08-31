@@ -299,6 +299,9 @@ def automation_from_yaml(request):
     created = automation._state.adding
     if err := _apply(automation, data):
         return Response({"detail": err}, status=400)
+    # Keep the catalog's identity, for the same reason baselines do.
+    if parsed.get("uid"):
+        automation.community_uid = parsed["uid"]
     automation.save()
     sync_periodic_task(automation)
     return Response(_row(automation),
