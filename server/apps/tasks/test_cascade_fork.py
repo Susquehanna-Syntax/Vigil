@@ -141,12 +141,52 @@ class CascadeForkTests(TestCase):
                          "Standard Build")
 
     def test_forking_twice_creates_nothing_the_second_time(self):
-        """Idempotent by uid — otherwise Fork is a duplicate button."""
+        """Idempotent by uid — otherwise Fork is a duplicate button.
+
+        Asserting on the *response*, not only on the counts. Counts alone pass
+        when the second fork errors on the duplicate name and rolls back, which
+        is exactly the bug this is here to catch: nothing was created, but the
+        operator was shown a failure for doing something reasonable.
+        """
         self._fork("baselines", "standard-build.yaml")
         before = self._counts()
         second = self._fork("baselines", "standard-build.yaml")
-        self.assertEqual(self._counts(), before,
-                         f"second fork created rows: {second.content[:300]}")
+        self.assertEqual(second.status_code, 200, second.content[:300])
+        self.assertTrue(second.json().get("already"),
+                        "a second fork must be a clean no-op, not an error")
+        self.assertEqual(second.json()["created"], [])
+        self.assertEqual(self._counts(), before)
+
+    def test_a_forked_baseline_records_the_catalog_uid(self):
+        """What makes the no-op above possible."""
+        self._fork("baselines", "standard-build.yaml")
+        self.assertEqual(str(Baseline.objects.get(name="Standard Build").community_uid),
+                         "33333333-3333-4333-8333-333333333333")
+
+    def test_a_forked_automation_records_the_catalog_uid(self):
+        from apps.automations.models import Automation
+
+        self._fork("automations", "nightly-build.yaml")
+        self.assertEqual(
+            str(Automation.objects.get(name="Nightly Build").community_uid),
+            "44444444-4444-4444-8444-444444444444")
+
+    def test_re_forking_an_automation_is_also_a_clean_no_op(self):
+        self._fork("automations", "nightly-build.yaml")
+        second = self._fork("automations", "nightly-build.yaml")
+        self.assertEqual(second.status_code, 200, second.content[:300])
+        self.assertTrue(second.json().get("already"))
+
+    def test_a_renamed_baseline_is_still_recognised(self):
+        """Renaming your copy must not make Fork offer it again."""
+        self._fork("baselines", "standard-build.yaml")
+        baseline = Baseline.objects.get(name="Standard Build")
+        baseline.name = "My Build"
+        baseline.save()
+        second = self._fork("baselines", "standard-build.yaml")
+        self.assertEqual(second.status_code, 200, second.content[:300])
+        self.assertTrue(second.json().get("already"))
+        self.assertEqual(Baseline.objects.filter(community_uid=baseline.community_uid).count(), 1)
 
     def test_a_task_you_already_hold_is_not_duplicated(self):
         self._fork("tasks", "install-nginx.yaml")

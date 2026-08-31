@@ -267,6 +267,12 @@ def baseline_from_yaml(request):
         baseline.name = parsed["name"]
         baseline.description = parsed["description"]
         baseline.target_tags = parsed["target_tags"]
+        # Keep the catalog's identity for this baseline. Without it a second
+        # fork cannot tell it already has this one, and tries to import it
+        # again — which fails on the duplicate name and reads as an error when
+        # nothing is wrong.
+        if parsed.get("uid"):
+            baseline.community_uid = parsed["uid"]
         if existing is None:
             baseline.save()
         # The flag is a 2FA-guarded act whichever door it comes through. A

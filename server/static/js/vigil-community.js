@@ -244,6 +244,20 @@ function refreshCommunity(force) {
   loadCommunityKind(communityKind, force === true);
 }
 
+/* Forget every cached fork plan.
+ *
+ * The plans say "already yours" or "will fork" per item, and a single fork can
+ * change that answer on cards the operator never touched. Without this the
+ * card they just forked keeps offering itself. */
+function _invalidateForkPlans() {
+  COMMUNITY_KINDS.forEach(k => (communityCache[k] || []).forEach(i => {
+    i._planned = false;
+  }));
+  COMMUNITY_KINDS.forEach(k => {
+    if (communityLoaded[k]) _annotateFork(k);
+  });
+}
+
 function _communityItem(kind, encodedFilename) {
   const filename = decodeURIComponent(encodedFilename);
   return (communityCache[kind] || []).find(i => i.filename === filename);
@@ -276,6 +290,10 @@ async function openCommunityItem(kind, encodedFilename) {
       _renderCommunity(kind);
       return;
     }
+    // A fork changes what you hold, which changes what every other card would
+    // pull in — the baseline you just took may share tasks with the next one.
+    // Drop the cached plans so the cards re-read them.
+    _invalidateForkPlans();
     const made = result.created || [];
     const extra = made.length - 1;
     showToast(

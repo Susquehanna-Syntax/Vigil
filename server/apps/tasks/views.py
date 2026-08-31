@@ -1661,7 +1661,8 @@ def community_fork_plan(request, kind: str, filename: str):
     return Response({
         "name": plan["item"]["name"],
         "have": plan["have"],
-        "needs": [{k: n[k] for k in ("kind", "slug", "name", "found", "have")}
+        "needs": [{**{k: n[k] for k in ("kind", "slug", "name", "found", "have")},
+                   "uid": (n.get("source") or {}).get("uid", "")}
                   for n in plan["needs"]],
     })
 
