@@ -25,6 +25,12 @@ Vigil is a lightweight monitoring system where agents on your hosts phone home t
 - Signed remote task execution with mode/allowlist enforcement on the agent
 - SQSY dark-theme dashboard with Chart.js visualizations
 
+## What's new in 2026.10.1
+
+- **Critical agent fix — upgrade the agent on every host.** The agent ships as a PyInstaller `--onefile` binary, whose bootloader points `LD_LIBRARY_PATH` at its own `/tmp/_MEI…` extraction directory. Every child process inherited it, so an agent-driven package upgrade let `update-initramfs` resolve the compression libraries to paths that do not exist at boot, and wrote them into the initramfs. The host kept running and panicked on its next reboot, before journald started, leaving no log entry. Kernel installs were not the only trigger: `linux-firmware`, `cryptsetup-initramfs`, `lvm2` and `busybox-initramfs` rebuild the image for the *running* kernel, overwriting a known-good one. The agent now sanitizes the loader environment at every process it spawns.
+- After a package install or upgrade the agent scans `/boot` for images containing those ephemeral paths and fails the task loudly, naming each image, so a host poisoned by an earlier agent is found before it is rebooted rather than after. Rebuild any image it names with `update-initramfs -u -k <version>` from an interactive root shell.
+- The fix lives in the agent binary — a server-only upgrade changes nothing. Hosts still running an older agent now raise an **Agent outdated** alert.
+
 ## What's new in 2026.10.0
 
 - The Community tab has a sub-tab per content type — tasks, baselines and automations — each searchable, each forkable.
