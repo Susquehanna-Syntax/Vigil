@@ -30,6 +30,8 @@ import shutil
 import subprocess
 import sys
 
+from .procenv import clean_env
+
 logger = logging.getLogger("vigil.firewall")
 
 _TIMEOUT = 30
@@ -94,7 +96,8 @@ def _run(cmd: list[str], timeout: int = _TIMEOUT) -> str:
     perfectly good answer, not a failure.
     """
     result = subprocess.run(cmd, capture_output=True, text=True,
-                            timeout=timeout, shell=False)
+                            timeout=timeout, shell=False,
+                            env=clean_env())
     return (result.stdout + result.stderr).strip()
 
 

@@ -18,6 +18,8 @@ import sys
 from dataclasses import dataclass
 from typing import Optional
 
+from .procenv import clean_env
+
 logger = logging.getLogger("vigil.pkg_manager")
 
 _EXEC_TIMEOUT_SHORT = 30
@@ -32,6 +34,7 @@ def _which(name: str) -> bool:
             capture_output=True,
             timeout=5,
             shell=False,
+            env=clean_env(),
         )
         return result.returncode == 0
     except Exception:
@@ -46,6 +49,7 @@ def _run(cmd: list[str], timeout: int = _EXEC_TIMEOUT_LONG) -> str:
         text=True,
         timeout=timeout,
         shell=False,
+        env=clean_env(),
     )
     output = (result.stdout + result.stderr).strip()
     if result.returncode not in (0, 100):  # apt returns 100 when upgrades available
@@ -223,3 +227,42 @@ def _validate_package_name(name: str) -> None:
     invalid = set(name) - _SAFE_PKG_NAME_CHARS
     if invalid:
         raise ValueError(f"Package name contains invalid characters {invalid!r}: {name!r}")
+
+
+_INITRAMFS_DIR = "/boot"
+
+
+def poisoned_initramfs() -> list[str]:
+    """Return initramfs images containing PyInstaller extraction paths.
+
+    An image that references /tmp/_MEI… cannot decompress .ko.zst modules at
+    early boot, so the host panics before journald starts. Returns [] on any
+    platform or toolchain where the check cannot run — an inconclusive probe
+    must never be reported as a positive.
+    """
+    import glob
+    import shutil as _shutil
+
+    if sys.platform != "linux" or not _shutil.which("lsinitramfs"):
+        return []
+
+    poisoned = []
+    for image in sorted(glob.glob(f"{_INITRAMFS_DIR}/initrd.img-*")):
+        try:
+            result = subprocess.run(
+                ["lsinitramfs", image],
+                capture_output=True, text=True, timeout=120,
+                shell=False, env=clean_env(),
+            )
+        except Exception as exc:
+            logger.warning("Could not read %s (%s); poison check inconclusive",
+                           image, exc)
+            continue
+        if result.returncode != 0:
+            logger.warning("lsinitramfs %s exited %d; poison check inconclusive",
+                           image, result.returncode)
+            continue
+        if any(line.startswith("tmp/_MEI")
+               for line in result.stdout.splitlines()):
+            poisoned.append(image)
+    return poisoned
