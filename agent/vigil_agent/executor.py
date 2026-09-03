@@ -35,6 +35,7 @@ from . import firewall
 from .config import AgentConfig
 from .deferral import RebootDeferral
 from .pkg_manager import detect as detect_pkg_manager
+from .procenv import clean_env
 
 logger = logging.getLogger("vigil.executor")
 
@@ -146,6 +147,7 @@ def _run(cmd: list[str], timeout: int = _EXEC_TIMEOUT) -> str:
         text=True,
         timeout=timeout,
         shell=False,
+        env=clean_env(),
     )
     output = (result.stdout + result.stderr).strip()
     if result.returncode != 0:
@@ -199,6 +201,7 @@ def _check_service(params: dict, _config: AgentConfig) -> str:
     result = subprocess.run(
         ["systemctl", "is-active", name],
         capture_output=True, text=True, timeout=30, shell=False,
+        env=clean_env(),
     )
     actual = result.stdout.strip().lower()
     is_running = actual == "active"
@@ -910,13 +913,28 @@ def _set_permissions(params: dict, _config: AgentConfig) -> str:
 # ── Package management ──────────────────────────────────────────────────────
 
 
+def _assert_initramfs_clean(output: str) -> str:
+    from .pkg_manager import poisoned_initramfs
+
+    poisoned = poisoned_initramfs()
+    if not poisoned:
+        return output
+    raise RuntimeError(
+        "Package operation completed but these initramfs images contain "
+        "ephemeral PyInstaller paths and will NOT boot: "
+        f"{', '.join(poisoned)}. Rebuild each from an interactive root shell "
+        "with `update-initramfs -u -k <version>` before rebooting this host. "
+        f"Package output follows:\n{output}"
+    )
+
+
 def _install_package(params: dict, _config: AgentConfig) -> str:
     pkg_name = params.get("package_name", "")
     pm = detect_pkg_manager()
     if pm is None:
         raise RuntimeError("No supported package manager found")
     pm.refresh()
-    return pm.install(pkg_name)
+    return _assert_initramfs_clean(pm.install(pkg_name))
 
 
 def _remove_package(params: dict, _config: AgentConfig) -> str:
@@ -933,7 +951,7 @@ def _update_package(params: dict, _config: AgentConfig) -> str:
     if pm is None:
         raise RuntimeError("No supported package manager found")
     pm.refresh()
-    return pm.install(pkg_name)  # install upgrades if already present
+    return _assert_initramfs_clean(pm.install(pkg_name))  # install upgrades if already present
 
 
 def _run_package_updates(params: dict, _config: AgentConfig) -> str:
@@ -947,21 +965,21 @@ def _run_package_updates(params: dict, _config: AgentConfig) -> str:
     if security_only:
         # Security-only upgrades only supported for apt and dnf
         if pm.name in ("apt", "apt-get"):
-            return _run(
+            return _assert_initramfs_clean(_run(
                 ["apt-get", "upgrade", "-y", "-qq",
                  "-o", "Dir::Etc::SourceList=/etc/apt/sources.list"],
                 timeout=600,
-            )
+            ))
         if pm.name == "dnf":
-            return _run(
+            return _assert_initramfs_clean(_run(
                 ["dnf", "update", "-y", "-q", "--security"], timeout=600
-            )
+            ))
         logger.warning(
             "security_only not supported for %s, running full upgrade",
             pm.name,
         )
 
-    return pm.upgrade_all()
+    return _assert_initramfs_clean(pm.upgrade_all())
 
 
 # ── System ──────────────────────────────────────────────────────────────────
@@ -1350,6 +1368,7 @@ def _create_cron_job(params: dict, _config: AgentConfig) -> str:
         existing = subprocess.run(
             ["crontab", "-u", user, "-l"],
             capture_output=True, text=True, timeout=10, shell=False,
+            env=clean_env(),
         )
         current = existing.stdout if existing.returncode == 0 else ""
     except subprocess.TimeoutExpired:
@@ -1361,6 +1380,7 @@ def _create_cron_job(params: dict, _config: AgentConfig) -> str:
         ["crontab", "-u", user, "-"],
         input=new_crontab, capture_output=True, text=True,
         timeout=10, shell=False,
+        env=clean_env(),
     )
     if proc.returncode != 0:
         raise RuntimeError(f"Failed to set crontab: {proc.stderr.strip()}")
@@ -1380,6 +1400,7 @@ def _delete_cron_job(params: dict, _config: AgentConfig) -> str:
     result = subprocess.run(
         ["crontab", "-u", user, "-l"],
         capture_output=True, text=True, timeout=10, shell=False,
+        env=clean_env(),
     )
     if result.returncode != 0:
         return f"No crontab for user {user}"
@@ -1396,6 +1417,7 @@ def _delete_cron_job(params: dict, _config: AgentConfig) -> str:
         ["crontab", "-u", user, "-"],
         input=new_crontab, capture_output=True, text=True,
         timeout=10, shell=False,
+        env=clean_env(),
     )
     if proc.returncode != 0:
         raise RuntimeError(
@@ -1478,7 +1500,8 @@ def _sync_systemd_proxy(config: AgentConfig) -> str:
         drop_dir = Path("/etc/systemd/system/vigil-agent.service.d")
         drop_dir.mkdir(parents=True, exist_ok=True)
         (drop_dir / "10-vigil-proxy.conf").write_text(content)
-        subprocess.run(["systemctl", "daemon-reload"], timeout=10, capture_output=True)
+        subprocess.run(["systemctl", "daemon-reload"], timeout=10,
+                       capture_output=True, env=clean_env())
         return "applied proxy drop-in from /etc/environment"
     except Exception as exc:
         logger.warning("Proxy drop-in sync failed: %s", exc)
@@ -1587,23 +1610,25 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
         time.sleep(3)
         try:
             if sys.platform == "win32":
-                subprocess.run(["sc", "stop", "vigil-agent"], timeout=10, capture_output=True)
+                subprocess.run(["sc", "stop", "vigil-agent"], timeout=10,
+                               capture_output=True, env=clean_env())
                 time.sleep(2)
-                subprocess.run(["sc", "start", "vigil-agent"], timeout=10, capture_output=True)
+                subprocess.run(["sc", "start", "vigil-agent"], timeout=10,
+                               capture_output=True, env=clean_env())
             elif sys.platform == "darwin":
                 subprocess.run(
                     ["launchctl", "stop", "com.susquehannasyntax.vigil-agent"],
-                    timeout=10, capture_output=True,
+                    timeout=10, capture_output=True, env=clean_env(),
                 )
                 time.sleep(1)
                 subprocess.run(
                     ["launchctl", "start", "com.susquehannasyntax.vigil-agent"],
-                    timeout=10, capture_output=True,
+                    timeout=10, capture_output=True, env=clean_env(),
                 )
             else:
                 subprocess.run(
                     ["systemctl", "restart", "vigil-agent"],
-                    timeout=10, capture_output=True,
+                    timeout=10, capture_output=True, env=clean_env(),
                 )
         except Exception:
             pass

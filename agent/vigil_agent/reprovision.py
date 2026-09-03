@@ -14,6 +14,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from .procenv import clean_env
+
 logger = logging.getLogger("vigil.agent.reprovision")
 
 BOOT_DIR = Path("/boot")
@@ -37,7 +39,8 @@ class PreflightError(Exception):
 
 def _run(cmd: list[str], timeout: int = 120) -> str:
     return subprocess.run(cmd, capture_output=True, text=True,
-                          timeout=timeout, check=True).stdout
+                          timeout=timeout, check=True,
+                          env=clean_env()).stdout
 
 
 def detect_bootloader() -> str:
@@ -174,7 +177,7 @@ def commit(params: dict, _config) -> str:
     else:
         raise PreflightError("Unrecognised bootloader — refusing to commit")
 
-    subprocess.Popen(["systemctl", "reboot"])
+    subprocess.Popen(["systemctl", "reboot"], env=clean_env())
     return f"Committed job {params.get('job_id')}; rebooting into installer"
 
 

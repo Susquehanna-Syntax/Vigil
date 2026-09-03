@@ -18,6 +18,8 @@ from pathlib import Path
 import psutil
 import requests
 
+from .procenv import clean_env
+
 logger = logging.getLogger("vigil.collector")
 
 
@@ -171,6 +173,7 @@ def _reboot_required_linux() -> bool:
         proc = subprocess.run(
             ["dnf", "needs-restarting", "-r"],
             capture_output=True, text=True, timeout=10, shell=False,
+            env=clean_env(),
         )
         return proc.returncode != 0
     except Exception:
@@ -369,6 +372,7 @@ def collect_inventory() -> dict:
                 proc = subprocess.run(
                     ["dmidecode", "-s", dmi_arg],
                     capture_output=True, text=True, timeout=5, shell=False,
+                    env=clean_env(),
                 )
                 if proc.returncode == 0:
                     inv[field] = proc.stdout.strip()
