@@ -87,7 +87,7 @@ async function saveContentYaml() {
 
 async function copyContentYaml() {
   try {
-    await navigator.clipboard.writeText(_cyEl('text').value);
+    await copyText(_cyEl('text').value);
     showToast('YAML copied to clipboard', 'success');
   } catch {
     showToast('Clipboard blocked — select the text and copy it', 'error');

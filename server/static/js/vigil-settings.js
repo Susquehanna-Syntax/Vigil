@@ -117,12 +117,14 @@ async function loadAgentInfo() {
 
 function copyInstallCmd() {
   const cmd = `curl -fsSL ${window.location.origin}/agent/install.sh | sudo bash`;
-  navigator.clipboard.writeText(cmd).then(() => showToast('Copied', 'success'));
+  copyText(cmd).then((ok) => showToast(ok ? 'Copied' : 'Copy failed',
+                                       ok ? 'success' : 'error'));
 }
 
 function copyInstallCmdPs1() {
   const cmd = `irm ${window.location.origin}/agent/install.ps1 | iex`;
-  navigator.clipboard.writeText(cmd).then(() => showToast('Copied', 'success'));
+  copyText(cmd).then((ok) => showToast(ok ? 'Copied' : 'Copy failed',
+                                       ok ? 'success' : 'error'));
 }
 
 async function uploadAgentBinary() {
