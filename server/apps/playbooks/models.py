@@ -1,5 +1,11 @@
-"""Playbooks — named sequences of task definitions that auto-dispatch to
-newly approved hosts, and are callable from any task via ``type: playbook``.
+"""Playbooks — named sequences of task definitions, run against the hosts a
+tag selects, and callable from any task via ``type: playbook``.
+
+The usual way to run one across a fleet is a wave rollout. A playbook may also
+auto-enrol, dispatching itself to every matching host without anyone watching;
+that is off by default and requires a completion tag, which the playbook
+applies on success and then treats as "already done here" — so auto-enrolment
+converges on the fleet instead of re-running forever.
 
 Free for everyone (folded from the never-shipped Pro tier, 2026.4.0). The
 2FA that normally guards deployment happens at *playbook creation* instead of
@@ -36,10 +42,19 @@ class Playbook(TagRowSyncMixin, models.Model):
     #: Row-backed mirror of ``target_tags`` — see Host.tag_rows.
     target_tag_rows = models.ManyToManyField("hosts.Tag", blank=True,
                                              related_name="playbooks")
-    # enabled gates AUTO-ENROLL dispatch only; a disabled playbook is still
-    # callable from tasks (a function you no longer auto-run is still a
-    # function).
-    enabled = models.BooleanField(default=True)
+    # Unattended dispatch to every matching host, forever. OFF by default: the
+    # expected way to run a playbook across a fleet is a wave rollout, where
+    # the blast radius is staged and a bad step stops at the first wave. This
+    # gates auto-enrolment only — a playbook with it off is still callable from
+    # a task, still runnable by a rollout, still dispatchable by hand.
+    auto_enroll = models.BooleanField(default=False)
+    #: Applied to a host once the playbook finishes successfully there, and
+    #: excluded from targeting afterwards, so auto-enrolment converges instead
+    #: of re-running the same sequence on every reconcile. Required to turn
+    #: auto_enroll on: without it there is no "done" and the playbook would
+    #: dispatch forever. Clearing the tag off a host re-runs the playbook,
+    #: which is the intended way to ask for that.
+    completion_tag = models.CharField(max_length=120, blank=True, default="")
     # Opt-in to high-risk steps. Off by default, and turning it ON requires a
     # fresh TOTP code — that confirmation IS the 2FA for every future
     # unattended dispatch, exactly as playbook creation is for standard-risk
@@ -71,8 +86,25 @@ class Playbook(TagRowSyncMixin, models.Model):
     def __str__(self) -> str:
         return f"playbook:{self.name}"
 
+    def has_completed_on(self, host) -> bool:
+        """True when *host* already carries this playbook's completion tag.
+
+        Compared case-insensitively against the host's tag strings, the same
+        way target tags are, so "Done" and "done" are one tag.
+        """
+        if not self.completion_tag:
+            return False
+        wanted = self.completion_tag.strip().lower()
+        return any(str(t).strip().lower() == wanted for t in (host.tags or []))
+
     def matches(self, host) -> bool:
-        if not self.enabled:
+        """True when *host* is in this playbook's target set and has not run it.
+
+        Deliberately says nothing about ``auto_enroll``: a rollout, a task step
+        and a rebuild's post-playbook all dispatch a playbook whose
+        auto-enrolment is off, and that is the normal case now.
+        """
+        if self.has_completed_on(host):
             return False
         # No target tags means every host, which is the opposite of a wave
         # with no tags. Long-standing asymmetry, pinned by test_tag_semantics.
@@ -183,8 +215,12 @@ def build_agent_steps(playbook: "Playbook") -> tuple[list[dict], str]:
 def dispatch_to_host(host, *, playbooks=None) -> int:
     """Create pending tasks on *host* for every matching playbook.
 
-    Called from the host_approved hook. Never raises — enrollment approval
-    must succeed even if a playbook is broken; failures are logged.
+    With no explicit *playbooks*, only auto-enrolling ones are considered.
+    Passing them explicitly — a rebuild's post-playbook, a manual apply —
+    dispatches regardless of that flag, because someone chose them.
+
+    Never raises: enrollment approval must succeed even if a playbook is
+    broken, and a reconcile pass must not stop at the first bad one.
     """
     import logging
 
@@ -193,7 +229,8 @@ def dispatch_to_host(host, *, playbooks=None) -> int:
     logger = logging.getLogger("vigil.playbooks")
     created = 0
     rows = playbooks if playbooks is not None else (
-        Playbook.objects.filter(enabled=True).prefetch_related("steps__definition"))
+        Playbook.objects.filter(auto_enroll=True)
+        .prefetch_related("steps__definition"))
     for playbook in rows:
         try:
             if not playbook.matches(host):
@@ -233,3 +270,42 @@ def dispatch_to_host(host, *, playbooks=None) -> int:
         except Exception:  # noqa: BLE001
             logger.exception("playbook %s failed for host %s", playbook.pk, host.pk)
     return created
+
+
+def hosts_awaiting(playbook):
+    """Every approved, non-monitor host this playbook still has to run on."""
+    from apps.hosts.models import Host
+
+    candidates = Host.objects.exclude(
+        status__in=[Host.Status.PENDING, Host.Status.REJECTED],
+    ).exclude(mode="monitor").prefetch_related("tag_rows")
+    return [h for h in candidates if playbook.matches(h)]
+
+
+def reconcile(playbook=None, *, limit=None) -> int:
+    """Dispatch auto-enrolling playbooks to hosts that have not run them.
+
+    This is what makes a playbook keep applying: the host_approved hook only
+    ever fired at enrollment, so a host that gained a matching tag afterwards,
+    or was enrolled before the playbook existed, never ran it.
+
+    Idempotent through the completion tag rather than a ledger: a host that has
+    run the playbook carries the tag and stops matching. A host whose run
+    failed does not carry it, and is picked up again on the next pass.
+    """
+    import logging
+
+    logger = logging.getLogger("vigil.playbooks")
+    rows = [playbook] if playbook is not None else list(
+        Playbook.objects.filter(auto_enroll=True)
+        .exclude(completion_tag="")
+        .prefetch_related("steps__definition"))
+
+    dispatched = 0
+    for row in rows:
+        for host in hosts_awaiting(row):
+            if limit is not None and dispatched >= limit:
+                logger.info("reconcile hit its limit of %d dispatches", limit)
+                return dispatched
+            dispatched += dispatch_to_host(host, playbooks=[row])
+    return dispatched

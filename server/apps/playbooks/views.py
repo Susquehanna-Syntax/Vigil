@@ -18,7 +18,8 @@ def _row(b: Playbook) -> dict:
         "name": b.name,
         "description": b.description,
         "target_tags": b.target_tags,
-        "enabled": b.enabled,
+        "auto_enroll": b.auto_enroll,
+        "completion_tag": b.completion_tag,
         "allow_high_risk": b.allow_high_risk,
         "created_at": b.created_at.isoformat(),
         "steps": [
@@ -124,7 +125,11 @@ def playbook_index(request):
             name=name,
             description=(request.data.get("description") or "").strip(),
             target_tags=[t.strip() for t in tags if t.strip()],
-            enabled=bool(request.data.get("enabled", True)),
+            completion_tag=(request.data.get("completion_tag") or "").strip(),
+            # Never on at creation. Turning it on is a separate, deliberate
+            # act that the UI guards with its own confirmation, because it
+            # dispatches to every matching host the moment it is set.
+            auto_enroll=False,
             created_by=request.user,
         )
         # Before the steps are validated: eligibility is judged against this
@@ -163,8 +168,20 @@ def playbook_detail(request, playbook_id):
         playbook.name = name
     if "description" in data:
         playbook.description = (data["description"] or "").strip()
-    if "enabled" in data:
-        playbook.enabled = bool(data["enabled"])
+    if "completion_tag" in data:
+        playbook.completion_tag = (data["completion_tag"] or "").strip()
+    if "auto_enroll" in data:
+        want = bool(data["auto_enroll"])
+        # A playbook that auto-enrols with no completion tag never finishes:
+        # nothing marks a host done, so every reconcile pass dispatches it
+        # again to the whole target set. Refuse rather than ship that.
+        if want and not (playbook.completion_tag or "").strip():
+            return Response(
+                {"detail": "auto_enroll needs a completion_tag — without one "
+                           "the playbook re-runs on every matching host "
+                           "forever."},
+                status=400)
+        playbook.auto_enroll = want
     if "target_tags" in data:
         tags = data["target_tags"] or []
         if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):

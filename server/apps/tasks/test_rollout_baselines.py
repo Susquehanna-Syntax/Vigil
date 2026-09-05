@@ -73,11 +73,14 @@ class RolloutPlaybookTests(TestCase):
         with self.assertRaises(ValueError):
             start_rollout(user=self.user)
 
-    def test_disabled_playbook_is_refused(self):
-        self.playbook.enabled = False
-        self.playbook.save(update_fields=["enabled"])
-        with self.assertRaises(ValueError):
-            start_rollout(playbook=self.playbook, user=self.user)
+    def test_a_playbook_that_does_not_auto_enrol_can_still_be_rolled_out(self):
+        """auto_enroll is off by default and a rollout is the recommended way
+        to run a playbook, so refusing this combination refused the normal
+        case."""
+        self.playbook.auto_enroll = False
+        self.playbook.save(update_fields=["auto_enroll"])
+        rollout = start_rollout(playbook=self.playbook, user=self.user)
+        self.assertEqual(rollout.playbook_id, self.playbook.id)
 
     def test_deleting_the_playbook_cascades_to_its_rollouts(self):
         """Matches the pre-existing behaviour of the definition FK: deleting the

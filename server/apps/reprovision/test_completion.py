@@ -87,7 +87,7 @@ class CompletionTests(TestCase):
 
         from apps.playbooks.models import Playbook
 
-        self.job.post_playbook = Playbook.objects.create(name="b", enabled=True)
+        self.job.post_playbook = Playbook.objects.create(name="b")
         self.job.save(update_fields=["post_playbook"])
         with patch("apps.playbooks.models.dispatch_to_host",
                    side_effect=RuntimeError("boom")):

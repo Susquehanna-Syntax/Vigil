@@ -41,7 +41,7 @@ class TagNormalisationTests(TestCase):
 
     def test_matching_is_case_insensitive_everywhere(self):
         host = _host("h-case", ["PROD"])
-        self.assertTrue(Playbook(enabled=True, target_tags=["prod"]).matches(host))
+        self.assertTrue(Playbook(target_tags=["prod"]).matches(host))
         wave = PatchWave.objects.create(name="w-case", order=901, tags=["prod"])
         self.assertIn(host.id, wave_host_ids(wave))
 
@@ -50,7 +50,7 @@ class TagNormalisationTests(TestCase):
         is what happens today, and an operator typing "prod " into a playbook
         gets silence rather than an error."""
         host = _host("h-ws", ["prod"])
-        self.assertFalse(Playbook(enabled=True, target_tags=["prod "]).matches(host))
+        self.assertFalse(Playbook(target_tags=["prod "]).matches(host))
 
     def test_whitespace_is_NOT_stripped_by_waves_either(self):
         host = _host("h-ws2", ["prod"])
@@ -66,7 +66,7 @@ class TagNormalisationTests(TestCase):
 
     def test_unicode_tags_compare_by_simple_lowercasing(self):
         host = _host("h-uni", ["PRODUÇÃO"])
-        self.assertTrue(Playbook(enabled=True, target_tags=["produção"]).matches(host))
+        self.assertTrue(Playbook(target_tags=["produção"]).matches(host))
 
 
 class EmptyTagListTests(TestCase):
@@ -74,7 +74,7 @@ class EmptyTagListTests(TestCase):
 
     def test_playbook_with_no_target_tags_matches_EVERY_host(self):
         host = _host("h-any", [])
-        self.assertTrue(Playbook(enabled=True, target_tags=[]).matches(host))
+        self.assertTrue(Playbook(target_tags=[]).matches(host))
 
     def test_wave_with_no_tags_matches_NO_hosts(self):
         """Opposite of the playbook rule above. Same empty list, inverse
@@ -88,11 +88,11 @@ class MembershipTests(TestCase):
     def test_any_tag_overlap_is_enough(self):
         """Membership is OR, not AND: one tag in common puts the host in."""
         host = _host("h-or", ["linux", "web"])
-        self.assertTrue(Playbook(enabled=True, target_tags=["web", "db"]).matches(host))
+        self.assertTrue(Playbook(target_tags=["web", "db"]).matches(host))
 
     def test_a_host_with_no_tags_matches_no_tagged_selector(self):
         host = _host("h-untagged", [])
-        self.assertFalse(Playbook(enabled=True, target_tags=["web"]).matches(host))
+        self.assertFalse(Playbook(target_tags=["web"]).matches(host))
         wave = PatchWave.objects.create(name="w-or", order=905, tags=["web"])
         self.assertNotIn(host.id, wave_host_ids(wave))
 
@@ -105,11 +105,20 @@ class MembershipTests(TestCase):
         """Playbook.matches has no status check — the caller is expected to
         have filtered already. Different from waves, and worth knowing."""
         rejected = _host("h-rejected2", ["web"], status=Host.Status.REJECTED)
-        self.assertTrue(Playbook(enabled=True, target_tags=["web"]).matches(rejected))
+        self.assertTrue(Playbook(target_tags=["web"]).matches(rejected))
 
-    def test_disabled_playbook_matches_nothing(self):
-        host = _host("h-disabled", ["web"])
-        self.assertFalse(Playbook(enabled=False, target_tags=["web"]).matches(host))
+    def test_auto_enrolment_does_not_affect_matching(self):
+        """matches() answers "is this host in the target set", nothing more.
+        A rollout, a task step and a rebuild's post-playbook all run playbooks
+        whose auto-enrolment is off, which since 2026.11.0 is the default."""
+        host = _host("h-no-auto", ["web"])
+        self.assertTrue(
+            Playbook(auto_enroll=False, target_tags=["web"]).matches(host))
+
+    def test_a_host_carrying_the_completion_tag_stops_matching(self):
+        host = _host("h-done", ["web", "done"])
+        self.assertFalse(
+            Playbook(target_tags=["web"], completion_tag="done").matches(host))
 
 
 class WaveExclusivityTests(TestCase):

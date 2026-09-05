@@ -366,6 +366,13 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 # Vigil's beat tasks are fire-and-forget — don't accumulate results in Redis.
 CELERY_TASK_IGNORE_RESULT = True
 CELERY_BEAT_SCHEDULE = {
+    "reconcile-playbooks": {
+        "task": "playbooks.reconcile",
+        # Every 5 minutes. A host that gains a targeted tag should pick the
+        # playbook up soon after, without a reconcile pass running constantly
+        # against the whole fleet.
+        "schedule": 300.0,
+    },
     "evaluate-alert-rules": {
         "task": "alerts.evaluate_alert_rules",
         "schedule": 60.0,  # every 60 seconds
