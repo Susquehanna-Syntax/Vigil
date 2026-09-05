@@ -39,6 +39,11 @@ class Host(models.Model):
             sync_tag_rows(self, string_field, relation)
     agent_version = models.CharField(max_length=50, blank=True, default="")
     last_checkin = models.DateTimeField(null=True, blank=True)
+    #: When the agent last sent a docker_containers payload — including an
+    #: empty one. Distinguishes "this host currently runs no containers" from
+    #: "this agent does not report docker", which look identical in the
+    #: container table and decide whether a container alert may be resolved.
+    docker_snapshot_at = models.DateTimeField(null=True, blank=True)
     # Alert suppression window. A rebuild takes ~40 minutes, and without this
     # the first one pages everyone and teaches people to ignore the alerts.
     # Set by RebuildJob entering REBOOTING, cleared on every terminal state.

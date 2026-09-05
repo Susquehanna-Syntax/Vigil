@@ -122,10 +122,9 @@ function updateSshCommand() {
 
 function copySshCommand() {
   const cmd = document.getElementById('ssh-cmd').textContent;
-  navigator.clipboard.writeText(cmd).then(
-    () => showToast('Copied — paste into your terminal', 'success'),
-    () => showToast('Copy failed', 'error'),
-  );
+  copyText(cmd).then((ok) => showToast(
+    ok ? 'Copied — paste into your terminal' : 'Copy failed',
+    ok ? 'success' : 'error'));
 }
 
 // ── Time range ──

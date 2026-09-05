@@ -70,7 +70,8 @@ function closeEnrollWizard() {
 
 function copyEnrollCmd() {
   const cmd = document.getElementById('enroll-cmd').textContent;
-  navigator.clipboard.writeText(cmd).then(() => showToast('Copied to clipboard', 'success'));
+  copyText(cmd).then((ok) => showToast(
+    ok ? 'Copied to clipboard' : 'Copy failed', ok ? 'success' : 'error'));
 }
 
 function enrollGoStep2() {

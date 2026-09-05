@@ -390,6 +390,8 @@ def checkin(request):
             DockerContainer.objects.filter(host=host).delete()
             if rows:
                 DockerContainer.objects.bulk_create(rows)
+            host.docker_snapshot_at = now()
+            host.save(update_fields=["docker_snapshot_at"])
 
     # Pending hosts must wait for admin approval before receiving tasks
     if host.status == Host.Status.PENDING:

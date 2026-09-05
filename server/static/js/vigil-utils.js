@@ -10,6 +10,34 @@
 //                                  monitor + host-cards detail charts.
 
 /* ── HTTP / CSRF ─────────────────────────────────────────────────────── */
+
+// navigator.clipboard is undefined outside a secure context, and a self-hosted
+// Vigil is normally reached at http://10.x on the LAN. Every Copy button threw
+// a TypeError there and silently did nothing. Falls back to a hidden textarea
+// and execCommand, which still works on plain HTTP.
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) { /* fall through to the legacy path */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) {
+    return false;
+  }
+}
+
 function getCsrf() {
   const el = document.querySelector('[name=csrfmiddlewaretoken]');
   return el ? el.value : '';

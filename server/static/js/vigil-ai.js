@@ -255,7 +255,8 @@ function _renderColumn(id) {
     else if (typeof openDefinitionEditor === 'function') openDefinitionEditor(null, cur.yaml);
   });
   col.querySelector('[data-ai-copy]')?.addEventListener('click', () => {
-    navigator.clipboard.writeText(cur.yaml); showToast('YAML copied', 'success');
+    copyText(cur.yaml).then((ok) => showToast(
+      ok ? 'YAML copied' : 'Copy failed', ok ? 'success' : 'error'));
   });
 }
 

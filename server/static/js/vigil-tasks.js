@@ -750,7 +750,7 @@ async function copyCommunityYaml() {
   const yaml = window.__pendingCommunityYaml || '';
   if (!yaml) return;
   try {
-    await navigator.clipboard.writeText(yaml);
+    await copyText(yaml);
     showToast('YAML copied to clipboard', 'success');
   } catch {
     showToast('Clipboard blocked — copy from the editor manually', 'error');
