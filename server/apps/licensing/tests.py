@@ -72,7 +72,7 @@ class LicensingTests(TestCase):
         state = licensing.current_state()
         self.assertIs(state.status, licensing.Status.NONE)
         self.assertEqual(state.tier, "free")
-        self.assertTrue(licensing.has_feature("baselines"))
+        self.assertTrue(licensing.has_feature("playbooks"))
         self.assertTrue(licensing.has_feature("ai_suggestions"))
         self.assertFalse(licensing.has_feature("sites"))
         self.assertFalse(licensing.has_feature("audit_log"))
@@ -122,7 +122,7 @@ class LicensingTests(TestCase):
         state = licensing.current_state()
         self.assertIs(state.status, licensing.Status.LAPSED)
         self.assertFalse(licensing.has_feature("sites"))
-        self.assertTrue(licensing.has_feature("baselines"))  # free never blinks
+        self.assertTrue(licensing.has_feature("playbooks"))  # free never blinks
 
     def test_expiry_warning_ladder(self):
         for days, severity in ((25, "info"), (10, "warning"), (3, "critical")):
@@ -144,7 +144,7 @@ class LicensingTests(TestCase):
             self.assertIn(state.status,
                           (licensing.Status.INVALID,), msg=blob[:40])
             self.assertEqual(state.tier, "free")
-            self.assertTrue(licensing.has_feature("baselines"))
+            self.assertTrue(licensing.has_feature("playbooks"))
 
     # -- seat overage banners, never blocks (§6) -------------------------------
 
@@ -215,7 +215,7 @@ class LicenseApiTests(TestCase):
         self.assertEqual(d["tier"], "free")
         self.assertEqual(d["instance"], licensing.instance_id())
         names = {f["name"]: f for f in d["features"]}
-        self.assertTrue(names["baselines"]["active"])
+        self.assertTrue(names["playbooks"]["active"])
         self.assertFalse(names["sites"]["active"])
 
     def test_paste_valid_license_via_api(self):

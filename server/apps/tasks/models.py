@@ -92,7 +92,7 @@ class TaskRun(models.Model):
     class Source(models.TextChoices):
         MANUAL = "manual", "Manual deploy"
         AUTOMATION = "automation", "Automation"
-        BASELINE = "baseline", "Baseline"
+        PLAYBOOK = "playbook", "Playbook"
         REPROVISION = "reprovision", "Reprovision"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -100,7 +100,7 @@ class TaskRun(models.Model):
         TaskDefinition, on_delete=models.SET_NULL, null=True, related_name="runs"
     )
     # What kicked this off. Recorded explicitly rather than inferred from the
-    # FKs below, because those go null when the automation or baseline is
+    # FKs below, because those go null when the automation or playbook is
     # deleted and the history must still say what it was.
     source = models.CharField(
         max_length=12, choices=Source.choices, default=Source.MANUAL)
@@ -108,12 +108,12 @@ class TaskRun(models.Model):
         "automations.Automation", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="runs",
     )
-    baseline = models.ForeignKey(
-        "baselines.Baseline", on_delete=models.SET_NULL, null=True, blank=True,
+    playbook = models.ForeignKey(
+        "baselines.Playbook", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="runs",
     )
     # Which staged rollout this run belongs to, if any. Manual deploys and
-    # automation/baseline runs leave it null.
+    # automation/playbook runs leave it null.
     rollout = models.ForeignKey(
         "tasks.PatchRollout", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="runs",
@@ -271,11 +271,11 @@ class PatchRollout(models.Model):
 
     class ActionKind(models.TextChoices):
         TASK = "task", "Task definition"
-        BASELINE = "baseline", "Baseline"
+        PLAYBOOK = "playbook", "Playbook"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    # A rollout carries either a task definition or a baseline — the same
+    # A rollout carries either a task definition or a playbook — the same
     # either/or shape Automation already uses, so the two read alike. Both are
     # nullable at the database level and the constraint below enforces exactly
     # one, which keeps a deleted definition from silently turning a rollout
@@ -286,8 +286,8 @@ class PatchRollout(models.Model):
         TaskDefinition, on_delete=models.CASCADE, related_name="rollouts",
         null=True, blank=True,
     )
-    baseline = models.ForeignKey(
-        "baselines.Baseline", on_delete=models.CASCADE, related_name="rollouts",
+    playbook = models.ForeignKey(
+        "baselines.Playbook", on_delete=models.CASCADE, related_name="rollouts",
         null=True, blank=True,
     )
     state = models.CharField(max_length=12, choices=State.choices, default=State.PENDING)
@@ -327,8 +327,8 @@ class PatchRollout(models.Model):
                 # Exactly one target. Both-or-neither would make `rollout_target`
                 # ambiguous and is never a legitimate state.
                 condition=(
-                    models.Q(definition__isnull=False, baseline__isnull=True)
-                    | models.Q(definition__isnull=True, baseline__isnull=False)
+                    models.Q(definition__isnull=False, playbook__isnull=True)
+                    | models.Q(definition__isnull=True, playbook__isnull=False)
                 ),
                 name="rollout_has_exactly_one_target",
             ),
@@ -336,8 +336,8 @@ class PatchRollout(models.Model):
 
     @property
     def target(self):
-        """The definition or baseline this rollout runs, whichever is set."""
-        return self.baseline if self.action_kind == self.ActionKind.BASELINE else self.definition
+        """The definition or playbook this rollout runs, whichever is set."""
+        return self.playbook if self.action_kind == self.ActionKind.PLAYBOOK else self.definition
 
     @property
     def target_name(self) -> str:
@@ -360,7 +360,7 @@ def wave_host_ids(wave) -> list:
     # lowercased with whitespace preserved, so `Prod` and `prod` are the same
     # row (they always matched) and `prod ` is a different one (it never did).
     #
-    # A wave with no tags still matches no hosts — the opposite of a baseline
+    # A wave with no tags still matches no hosts — the opposite of a playbook
     # with no target_tags, which matches all of them. That asymmetry predates
     # this change and is pinned by test_tag_semantics.
     tag_ids = list(wave.tag_rows.values_list("id", flat=True))

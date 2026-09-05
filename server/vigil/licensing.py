@@ -54,7 +54,7 @@ GRACE_DAYS = 14
 #: Monitoring/alerting/agents are deliberately NOT feature names — they are
 #: not features, they are the product, and no code path may gate them.
 FREE_FEATURES = frozenset({
-    "baselines",
+    "playbooks",
     "ai_suggestions",   # BYO endpoint — same code path Business runs (§2)
     "status_pages",     # the basic page; branding/custom-domain is Business
     "jackil_integration",

@@ -1,7 +1,7 @@
 """Dispatch logic shared by event and scheduled automations.
 
 Both paths converge on :func:`run_automation`, which resolves the target
-host(s), builds the agent steps from the automation's task or baseline, and
+host(s), builds the agent steps from the automation's task or playbook, and
 creates the same signed-task rows as a manual deploy. Nothing here bypasses
 the agent's allowlist — an automation is just an automatic *request*.
 """
@@ -18,26 +18,26 @@ _SEVERITY_RANK = {"info": 0, "warning": 1, "critical": 2}
 
 def _steps_for(automation) -> tuple[list[dict], str] | None:
     """Return (agent_steps, risk) for the automation's action, or None if the
-    action is unresolvable (deleted definition, unknown baseline, ineligible)."""
-    from apps.baselines.expansion import BaselineExpandError, expand_actions, _max_risk
-    from apps.baselines.models import Baseline, build_agent_steps
+    action is unresolvable (deleted definition, unknown playbook, ineligible)."""
+    from apps.playbooks.expansion import PlaybookExpandError, expand_actions, _max_risk
+    from apps.playbooks.models import Playbook, build_agent_steps
 
-    if automation.action_kind == automation.ActionKind.BASELINE:
-        if automation.baseline_id is None:
-            logger.warning("automation %s: baseline missing or deleted", automation.pk)
+    if automation.action_kind == automation.ActionKind.PLAYBOOK:
+        if automation.playbook_id is None:
+            logger.warning("automation %s: playbook missing or deleted", automation.pk)
             return None
-        baseline = (Baseline.objects
-                    .filter(pk=automation.baseline_id)
+        playbook = (Playbook.objects
+                    .filter(pk=automation.playbook_id)
                     .prefetch_related("steps__definition")
                     .first())
-        if baseline is None:
-            logger.warning("automation %s: baseline %s no longer exists",
-                           automation.pk, automation.baseline_id)
+        if playbook is None:
+            logger.warning("automation %s: playbook %s no longer exists",
+                           automation.pk, automation.playbook_id)
             return None
         try:
-            return build_agent_steps(baseline)
-        except BaselineExpandError as exc:
-            logger.warning("automation %s: baseline expand failed: %s",
+            return build_agent_steps(playbook)
+        except PlaybookExpandError as exc:
+            logger.warning("automation %s: playbook expand failed: %s",
                            automation.pk, exc)
             return None
 
@@ -55,7 +55,7 @@ def _steps_for(automation) -> tuple[list[dict], str] | None:
         ]
     try:
         actions, risk = expand_actions(actions_src)
-    except BaselineExpandError as exc:
+    except PlaybookExpandError as exc:
         logger.warning("automation %s: task expand failed: %s", automation.pk, exc)
         return None
     steps = []
@@ -118,15 +118,15 @@ def run_automation(automation, *, event_host=None) -> int:
         if not hosts:
             return 0
         created = 0
-        label = (automation.baseline.name if automation.action_kind == "baseline"
-                 and automation.baseline
+        label = (automation.playbook.name if automation.action_kind == "playbook"
+                 and automation.playbook
                  else (automation.task_definition.name if automation.task_definition else automation.name))
         # Group the dispatch under a run so it shows up in history as one
         # event rather than a scatter of orphan tasks.
         run = TaskRun.objects.create(
             source=TaskRun.Source.AUTOMATION,
             automation=automation,
-            baseline=automation.baseline if automation.action_kind == "baseline" else None,
+            playbook=automation.playbook if automation.action_kind == "playbook" else None,
             definition=automation.task_definition,
             name_snapshot=f"{automation.name} → {label}"[:120],
             requested_by=automation.created_by,
@@ -284,7 +284,7 @@ def tags_ok(automation, host) -> bool:
         return True
     if host is None:
         return False
-    # Same unsaved-instance fallback as Baseline.matches — see the note there.
+    # Same unsaved-instance fallback as Playbook.matches — see the note there.
     if automation._state.adding or host._state.adding:
         return bool({str(t).lower() for t in automation.event_tags}
                     & {str(t).lower() for t in (host.tags or [])})
@@ -323,7 +323,7 @@ def handle_event(event_name: str, payload: dict) -> None:
 
 
 def _start_rollout_for(automation) -> int:
-    """Start a staged rollout of the automation's task or baseline.
+    """Start a staged rollout of the automation's task or playbook.
 
     Returns 1 when a rollout started, 0 otherwise. Never raises into the
     caller: an automation that cannot roll out (no enabled waves, a deleted
@@ -332,12 +332,12 @@ def _start_rollout_for(automation) -> int:
     from apps.tasks.rollout import start_rollout
 
     try:
-        if automation.action_kind == automation.ActionKind.BASELINE:
-            if automation.baseline is None:
-                logger.warning("automation %s: baseline missing, cannot roll out",
+        if automation.action_kind == automation.ActionKind.PLAYBOOK:
+            if automation.playbook is None:
+                logger.warning("automation %s: playbook missing, cannot roll out",
                                automation.pk)
                 return 0
-            start_rollout(baseline=automation.baseline, user=automation.created_by)
+            start_rollout(playbook=automation.playbook, user=automation.created_by)
         else:
             if automation.task_definition is None:
                 logger.warning("automation %s: definition missing, cannot roll out",

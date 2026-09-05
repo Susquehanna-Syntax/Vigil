@@ -503,15 +503,15 @@ def _create_job(request):
     if err := verify_rebuild_confirmation(request.user, request.data, host):
         return Response({"error": err}, status=401)
 
-    baseline = None
-    if baseline_id := request.data.get("post_baseline"):
-        from apps.baselines.models import Baseline
-        baseline = get_object_or_404(Baseline, pk=baseline_id)
+    playbook = None
+    if playbook_id := request.data.get("post_playbook"):
+        from apps.playbooks.models import Playbook
+        playbook = get_object_or_404(Playbook, pk=playbook_id)
 
     job = RebuildJob.objects.create(
         host=host, image=image, profile=profile, requested_by=request.user,
         confirmed_ip=request.META.get("REMOTE_ADDR"),
-        completion_tag=tag, post_baseline=baseline,
+        completion_tag=tag, post_playbook=playbook,
         deadline=now() + timedelta(minutes=profile.deadline_minutes),
     )
     _answer, enroll = jobs.mint_tokens(job)

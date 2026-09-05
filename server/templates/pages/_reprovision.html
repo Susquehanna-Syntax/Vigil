@@ -222,7 +222,7 @@
 
 {% comment %}
   Install profile editor. Sits outside .page so the overlay covers the
-  viewport rather than the page body, matching the baseline editor.
+  viewport rather than the page body, matching the playbook editor.
   Logic: static/js/vigil-reprovision.js
 {% endcomment %}
 <div class="modal-overlay" id="repro-profile-overlay"></div>
@@ -352,7 +352,7 @@
     <input type="text" class="form-control" id="repro-prof-tags" placeholder="role:web, env:lab">
     <div class="muted-note repro-prof-hint">
       Comma-separated, applied when the rebuilt machine checks back in — so
-      baselines and alert rules that target these tags pick it up on its own.
+      playbooks and alert rules that target these tags pick it up on its own.
       The <code>agent:</code> prefix is reserved.
     </div>
   </div>

@@ -76,7 +76,7 @@ function _rolloutCard(r) {
        onclick="openRolloutDetail('${r.id}')" role="button" tabindex="0"
        onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openRolloutDetail('${r.id}');}">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      <strong>${escHtml(r.target_name || r.definition_name || r.baseline_name || '(deleted)')}</strong>${r.action_kind === 'baseline' ? ' <span class="chip">baseline</span>' : ''}
+      <strong>${escHtml(r.target_name || r.definition_name || r.playbook_name || '(deleted)')}</strong>${r.action_kind === 'playbook' ? ' <span class="chip">playbook</span>' : ''}
       <span style="color:${color};font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;">${escHtml(r.state)}</span>
       ${r.current_wave_name ? `<span style="color:var(--text-3);font-size:12px;">wave: ${escHtml(r.current_wave_name)}</span>` : ''}
       <span style="color:var(--text-3);font-size:11px;margin-left:auto;">${escHtml(r.created_by_name || '')} · started ${_fmtTs(r.started_at)}</span>
@@ -112,7 +112,7 @@ function _filterRollouts() {
   const q = (document.getElementById('rollout-search')?.value || '').trim().toLowerCase();
   if (!q) return _rolloutState.items;
   return _rolloutState.items.filter(r =>
-    (r.target_name || r.definition_name || r.baseline_name || '').toLowerCase().includes(q) ||
+    (r.target_name || r.definition_name || r.playbook_name || '').toLowerCase().includes(q) ||
     (r.state || '').toLowerCase().includes(q) ||
     (r.current_wave_name || '').toLowerCase().includes(q) ||
     (r.waves || []).some(w => (w.name || '').toLowerCase().includes(q) ||
@@ -136,7 +136,7 @@ function _renderRollouts() {
 }
 
 function _rolloutsTabVisible() {
-  // Rollouts moved from the Tasks page into Deployments (Baselines / Automation
+  // Rollouts moved from the Tasks page into Deployments (Playbooks / Automation
   // / Rollouts / History) — this is a sub-tab now, not a tab.
   const tab = document.querySelector('.sub-tab[data-subtab="rollout-panel"]');
   return !!(tab && tab.classList.contains('active'));
@@ -162,7 +162,7 @@ async function openRolloutStart() {
   if (!modal) return;
   // Cleared on every open so a previous pick can't be submitted by accident.
   document.getElementById('rollout-start-def').value = '';
-  document.getElementById('rollout-start-def-label').textContent = 'Choose a task or baseline…';
+  document.getElementById('rollout-start-def-label').textContent = 'Choose a task or playbook…';
   document.getElementById('rollout-start-totp').value = '';
   document.getElementById('rollout-start-overlay').classList.add('open');
   modal.classList.add('open');
@@ -171,7 +171,7 @@ async function openRolloutStart() {
 function pickRolloutTarget() {
   openPicker({
     type: 'rollout_target',
-    title: 'Pick a task or baseline to roll out',
+    title: 'Pick a task or playbook to roll out',
     allowAdd: false,
     onSelect: (item) => {
       document.getElementById('rollout-start-def').value = item.key;
@@ -197,11 +197,11 @@ async function submitRolloutStart() {
   try {
     const r = await apiJson('/api/v1/rollouts/', {
       method: 'POST',
-      // The option value is "task:<id>" or "baseline:<id>"; the API wants
+      // The option value is "task:<id>" or "playbook:<id>"; the API wants
       // exactly one of the two id fields and rejects both or neither.
       body: JSON.stringify({
-        ...(sel.value.startsWith('baseline:')
-          ? { baseline_id: sel.value.slice('baseline:'.length) }
+        ...(sel.value.startsWith('playbook:')
+          ? { playbook_id: sel.value.slice('playbook:'.length) }
           : { definition_id: sel.value.replace(/^task:/, '') }),
         failure_threshold_pct: threshold,
         min_results_before_halt: minResults,
@@ -233,7 +233,7 @@ function promptRolloutAction(btn, kind) {
   if (!modal || !overlay) return;
   const rolloutId = btn ? btn.dataset.rlt : null;
   const r = _rolloutState.items.find(x => x.id === rolloutId);
-  const name = r ? (r.target_name || r.definition_name || r.baseline_name) : 'the rollout';
+  const name = r ? (r.target_name || r.definition_name || r.playbook_name) : 'the rollout';
   const title = kind === 'halt' ? 'Halt rollout'
     : kind === 'resume' ? 'Resume rollout'
     : 'Skip the validation window';
@@ -298,8 +298,8 @@ async function confirmRolloutAction() {
 /* ── Wiring ──────────────────────────────────────────────────────────── */
 
 // Refresh when the Rollouts sub-tab opens, and on navigation to Deployments.
-// Both live on the baselines page now — the sidebar entry is labelled
-// "Deployments" but its data-page is still `baselines`.
+// Both live on the playbooks page now — the sidebar entry is labelled
+// "Deployments" but its data-page is still `playbooks`.
 document.getElementById('rollout-search')?.addEventListener('input', _renderRollouts);
 document.getElementById('rollout-start-def-btn')?.addEventListener('click', pickRolloutTarget);
 
@@ -311,7 +311,7 @@ document.querySelectorAll('.sub-tab[data-subtab]').forEach(tab => {
 const _origNavigateForRollouts = navigateTo;
 navigateTo = function (pageName) {
   _origNavigateForRollouts(pageName);
-  if (pageName === 'baselines' && _rolloutsTabVisible()) refreshRollouts();
+  if (pageName === 'playbooks' && _rolloutsTabVisible()) refreshRollouts();
 };
 document.addEventListener('DOMContentLoaded', () => {
   if (_rolloutsTabVisible()) refreshRollouts();
@@ -345,7 +345,7 @@ async function openRolloutDetail(rolloutId) {
   if (!modal) return;
 
   document.getElementById('rollout-detail-title').textContent =
-    r.target_name || r.definition_name || r.baseline_name || 'Rollout';
+    r.target_name || r.definition_name || r.playbook_name || 'Rollout';
 
   const gate = `halts above ${r.failure_threshold_pct}% failures, once at least ` +
                `${r.min_results_before_halt} host${r.min_results_before_halt === 1 ? '' : 's'} have reported`;
@@ -354,7 +354,7 @@ async function openRolloutDetail(rolloutId) {
     ${r.halted_reason ? `<div style="margin-bottom:10px;padding:9px 11px;border:1px solid var(--rose);border-radius:6px;color:var(--rose);font-size:12px;">
         <strong>Halted:</strong> ${escHtml(r.halted_reason)}</div>` : ''}
     <div style="margin-bottom:12px;">${_waveProgress(r)}</div>
-    ${_detailRow('What is rolling out', (r.target_name || '') + (r.action_kind === 'baseline' ? ' (baseline)' : ' (task)'))}
+    ${_detailRow('What is rolling out', (r.target_name || '') + (r.action_kind === 'playbook' ? ' (playbook)' : ' (task)'))}
     ${_detailRow('State', r.state)}
     ${_detailRow('Current wave', r.current_wave_name)}
     ${_detailRow('Failure gate', gate)}

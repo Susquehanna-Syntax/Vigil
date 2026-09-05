@@ -313,7 +313,7 @@ def checkin(request):
     host.save()
 
     # A rebuilt host's first check-in closes out its rebuild job: operator
-    # tag applied, maintenance window cleared, baseline dispatched. No-op for
+    # tag applied, maintenance window cleared, playbook dispatched. No-op for
     # every other host. Never raises.
     from apps.reprovision.completion import complete_if_rebuilding
 
@@ -813,7 +813,7 @@ def host_approve(request, host_id):
     host.status = Host.Status.ONLINE
     host.save()
 
-    # Extension seam: Pro baselines auto-dispatch on this event; Enterprise
+    # Extension seam: Pro playbooks auto-dispatch on this event; Enterprise
     # audit logs record the approval. No-op in Community. See vigil/hooks.py.
     from vigil.hooks import emit
     emit("host_approved", host=host, approved_by=request.user)
@@ -1162,7 +1162,7 @@ def tag_detail(request, tag_id):
         users = []
         if tag.hosts.exists():
             users.append(f"{tag.hosts.count()} host(s)")
-        for rel, label in (("waves", "wave"), ("baselines", "baseline"),
+        for rel, label in (("waves", "wave"), ("playbooks", "playbook"),
                            ("automations_by_event", "automation (event)"),
                            ("automations_by_target", "automation (target)")):
             manager = getattr(tag, rel, None)
@@ -1207,7 +1207,7 @@ def _rename_in_string_mirrors(old_key: str, new_name: str) -> None:
     rename has to land in both or the two drift apart.
     """
     from apps.automations.models import Automation
-    from apps.baselines.models import Baseline
+    from apps.playbooks.models import Playbook
     from apps.reprovision.models import InstallProfile
     from apps.tasks.models import PatchWave
 
@@ -1227,7 +1227,7 @@ def _rename_in_string_mirrors(old_key: str, new_name: str) -> None:
 
     rewrite(Host.objects.all(), "tags")
     rewrite(PatchWave.objects.all(), "tags")
-    rewrite(Baseline.objects.all(), "target_tags")
+    rewrite(Playbook.objects.all(), "target_tags")
     rewrite(Automation.objects.all(), "event_tags")
     rewrite(Automation.objects.all(), "target_tags")
     rewrite(InstallProfile.objects.all(), "completion_tags")

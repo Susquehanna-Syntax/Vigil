@@ -1,6 +1,6 @@
 """Forking a catalog item brings everything it needs with it.
 
-Forking a baseline used to refuse and list what was missing. Honest, but it
+Forking a playbook used to refuse and list what was missing. Honest, but it
 left the operator doing the resolution by hand — reading slugs off an error
 and hunting each one down in another tab. This walks the graph instead.
 
@@ -13,7 +13,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from apps.baselines.models import Baseline
+from apps.playbooks.models import Playbook
 from apps.tasks.models import TaskDefinition
 
 TASK_A = """uid: 11111111-1111-4111-8111-111111111111
@@ -30,7 +30,7 @@ risk: low
 actions:
   - type: clear_temp_files
 """
-BASELINE = """uid: 33333333-3333-4333-8333-333333333333
+PLAYBOOK = """uid: 33333333-3333-4333-8333-333333333333
 name: Standard Build
 author: Connor Haggerty
 steps:
@@ -48,22 +48,22 @@ trigger: schedule
 cron:
   minute: "0"
   hour: "2"
-action_kind: baseline
-baseline: standard-build
+action_kind: playbook
+playbook: standard-build
 action_uid: 33333333-3333-4333-8333-333333333333
 target: all
 """
 
 
 def _fake_catalog(kind):
-    from apps.tasks.views import _card_for_automation, _card_for_baseline, _card_for_task
+    from apps.tasks.views import _card_for_automation, _card_for_playbook, _card_for_task
 
     files = {
         "tasks": [("install-nginx.yaml", TASK_A), ("clear-temp-files.yaml", TASK_B)],
-        "baselines": [("standard-build.yaml", BASELINE)],
+        "playbooks": [("standard-build.yaml", PLAYBOOK)],
         "automations": [("nightly-build.yaml", AUTOMATION)],
     }[kind]
-    card = {"tasks": _card_for_task, "baselines": _card_for_baseline,
+    card = {"tasks": _card_for_task, "playbooks": _card_for_playbook,
             "automations": _card_for_automation}[kind]
     return [{"kind": kind, "filename": name, "html_url": "",
              "yaml_source": text, **card(text)} for name, text in files]
@@ -83,11 +83,11 @@ class CascadeForkTests(TestCase):
         # A migration seeds built-in templates, so counts are measured as
         # deltas rather than against zero.
         self.tasks0 = TaskDefinition.objects.count()
-        self.baselines0 = Baseline.objects.count()
+        self.playbooks0 = Playbook.objects.count()
 
     def _counts(self):
         return (TaskDefinition.objects.count() - self.tasks0,
-                Baseline.objects.count() - self.baselines0)
+                Playbook.objects.count() - self.playbooks0)
 
     def _fork(self, kind, filename):
         return self.client.post(f"/api/v1/tasks/community/{kind}/{filename}/fork/")
@@ -97,8 +97,8 @@ class CascadeForkTests(TestCase):
 
     # ── The plan ────────────────────────────────────────────────────────────
 
-    def test_the_plan_lists_what_a_baseline_would_pull_in(self):
-        needs = self._plan("baselines", "standard-build.yaml").json()["needs"]
+    def test_the_plan_lists_what_a_playbook_would_pull_in(self):
+        needs = self._plan("playbooks", "standard-build.yaml").json()["needs"]
         self.assertEqual([n["name"] for n in needs],
                          ["Install Nginx", "Clear Temp Files"])
         self.assertTrue(all(n["found"] for n in needs))
@@ -106,18 +106,18 @@ class CascadeForkTests(TestCase):
 
     def test_the_plan_marks_what_you_already_have(self):
         self._fork("tasks", "install-nginx.yaml")
-        needs = self._plan("baselines", "standard-build.yaml").json()["needs"]
+        needs = self._plan("playbooks", "standard-build.yaml").json()["needs"]
         have = {n["name"]: n["have"] for n in needs}
         self.assertTrue(have["Install Nginx"])
         self.assertFalse(have["Clear Temp Files"])
 
-    def test_an_automation_plan_reaches_through_its_baseline(self):
-        """It needs the baseline *and* the baseline's tasks."""
+    def test_an_automation_plan_reaches_through_its_playbook(self):
+        """It needs the playbook *and* the playbook's tasks."""
         needs = self._plan("automations", "nightly-build.yaml").json()["needs"]
         self.assertEqual(
             {(n["kind"], n["name"]) for n in needs},
             {("tasks", "Install Nginx"), ("tasks", "Clear Temp Files"),
-             ("baselines", "Standard Build")})
+             ("playbooks", "Standard Build")})
 
     def test_the_plan_creates_nothing(self):
         self._plan("automations", "nightly-build.yaml")
@@ -125,19 +125,19 @@ class CascadeForkTests(TestCase):
 
     # ── The fork ────────────────────────────────────────────────────────────
 
-    def test_forking_a_baseline_brings_its_tasks(self):
-        r = self._fork("baselines", "standard-build.yaml")
+    def test_forking_a_playbook_brings_its_tasks(self):
+        r = self._fork("playbooks", "standard-build.yaml")
         self.assertEqual(r.status_code, 201, r.content[:400])
         self.assertEqual(self._counts(), (2, 1))
-        baseline = Baseline.objects.get(name="Standard Build")
-        self.assertEqual(baseline.steps.count(), 2)
+        playbook = Playbook.objects.get(name="Standard Build")
+        self.assertEqual(playbook.steps.count(), 2)
 
     def test_forking_an_automation_brings_the_whole_graph(self):
         r = self._fork("automations", "nightly-build.yaml")
         self.assertEqual(r.status_code, 201, r.content[:400])
         self.assertEqual(self._counts(), (2, 1))
         from apps.automations.models import Automation
-        self.assertEqual(Automation.objects.get(name="Nightly Build").baseline.name,
+        self.assertEqual(Automation.objects.get(name="Nightly Build").playbook.name,
                          "Standard Build")
 
     def test_forking_twice_creates_nothing_the_second_time(self):
@@ -148,19 +148,19 @@ class CascadeForkTests(TestCase):
         is exactly the bug this is here to catch: nothing was created, but the
         operator was shown a failure for doing something reasonable.
         """
-        self._fork("baselines", "standard-build.yaml")
+        self._fork("playbooks", "standard-build.yaml")
         before = self._counts()
-        second = self._fork("baselines", "standard-build.yaml")
+        second = self._fork("playbooks", "standard-build.yaml")
         self.assertEqual(second.status_code, 200, second.content[:300])
         self.assertTrue(second.json().get("already"),
                         "a second fork must be a clean no-op, not an error")
         self.assertEqual(second.json()["created"], [])
         self.assertEqual(self._counts(), before)
 
-    def test_a_forked_baseline_records_the_catalog_uid(self):
+    def test_a_forked_playbook_records_the_catalog_uid(self):
         """What makes the no-op above possible."""
-        self._fork("baselines", "standard-build.yaml")
-        self.assertEqual(str(Baseline.objects.get(name="Standard Build").community_uid),
+        self._fork("playbooks", "standard-build.yaml")
+        self.assertEqual(str(Playbook.objects.get(name="Standard Build").community_uid),
                          "33333333-3333-4333-8333-333333333333")
 
     def test_a_forked_automation_records_the_catalog_uid(self):
@@ -177,20 +177,20 @@ class CascadeForkTests(TestCase):
         self.assertEqual(second.status_code, 200, second.content[:300])
         self.assertTrue(second.json().get("already"))
 
-    def test_a_renamed_baseline_is_still_recognised(self):
+    def test_a_renamed_playbook_is_still_recognised(self):
         """Renaming your copy must not make Fork offer it again."""
-        self._fork("baselines", "standard-build.yaml")
-        baseline = Baseline.objects.get(name="Standard Build")
-        baseline.name = "My Build"
-        baseline.save()
-        second = self._fork("baselines", "standard-build.yaml")
+        self._fork("playbooks", "standard-build.yaml")
+        playbook = Playbook.objects.get(name="Standard Build")
+        playbook.name = "My Build"
+        playbook.save()
+        second = self._fork("playbooks", "standard-build.yaml")
         self.assertEqual(second.status_code, 200, second.content[:300])
         self.assertTrue(second.json().get("already"))
-        self.assertEqual(Baseline.objects.filter(community_uid=baseline.community_uid).count(), 1)
+        self.assertEqual(Playbook.objects.filter(community_uid=playbook.community_uid).count(), 1)
 
     def test_a_task_you_already_hold_is_not_duplicated(self):
         self._fork("tasks", "install-nginx.yaml")
-        self._fork("baselines", "standard-build.yaml")
+        self._fork("playbooks", "standard-build.yaml")
         self.assertEqual(
             TaskDefinition.objects.filter(name="Install Nginx").count(), 1)
 
@@ -202,19 +202,19 @@ class CascadeForkTests(TestCase):
                          "11111111-1111-4111-8111-111111111111")
 
     def test_a_renamed_local_copy_is_still_recognised(self):
-        """The reason uids exist. Rename your copy, re-fork the baseline, and
+        """The reason uids exist. Rename your copy, re-fork the playbook, and
         it must reuse yours rather than making a second one."""
         self._fork("tasks", "install-nginx.yaml")
         definition = TaskDefinition.objects.get(name="Install Nginx")
         definition.name = "My Renamed Nginx Task"
         definition.save()
 
-        self._fork("baselines", "standard-build.yaml")
+        self._fork("playbooks", "standard-build.yaml")
         self.assertEqual(self._counts(), (2, 1),
                          "the renamed copy should have been reused, not re-forked")
-        baseline = Baseline.objects.get(name="Standard Build")
+        playbook = Playbook.objects.get(name="Standard Build")
         self.assertIn(definition.id,
-                      [s.definition_id for s in baseline.steps.all()])
+                      [s.definition_id for s in playbook.steps.all()])
 
     def test_two_tasks_may_share_a_name(self):
         """Names are not unique locally, and the uid is what keeps that safe."""
@@ -229,7 +229,7 @@ class CascadeForkTests(TestCase):
             TaskDefinition.objects.filter(name="Install Nginx").count(), 2)
 
     def test_an_unknown_file_is_a_404(self):
-        self.assertEqual(self._fork("baselines", "nope.yaml").status_code, 404)
+        self.assertEqual(self._fork("playbooks", "nope.yaml").status_code, 404)
 
 
 class UidBeatsNameTests(CascadeForkTests):
@@ -237,7 +237,7 @@ class UidBeatsNameTests(CascadeForkTests):
 
     Falling back to the name would undo what uids are for: two unrelated things
     may share one, and treating the operator's own "Install Nginx" as the
-    catalog's would skip the fork and leave a baseline pointing at steps its
+    catalog's would skip the fork and leave a playbook pointing at steps its
     author never wrote.
     """
 
@@ -250,25 +250,25 @@ class UidBeatsNameTests(CascadeForkTests):
 
     def test_a_same_named_local_task_does_not_satisfy_a_uid_reference(self):
         mine = self._local_lookalike()
-        needs = self._plan("baselines", "standard-build.yaml").json()["needs"]
+        needs = self._plan("playbooks", "standard-build.yaml").json()["needs"]
         have = {n["name"]: n["have"] for n in needs}
         self.assertFalse(have["Install Nginx"],
                          "a name collision must not pass for the catalog's task")
 
-        self._fork("baselines", "standard-build.yaml")
+        self._fork("playbooks", "standard-build.yaml")
         catalog_copy = TaskDefinition.objects.get(
             community_uid="11111111-1111-4111-8111-111111111111")
         self.assertNotEqual(catalog_copy.id, mine.id)
-        baseline = Baseline.objects.get(name="Standard Build")
+        playbook = Playbook.objects.get(name="Standard Build")
         self.assertIn(catalog_copy.id,
-                      [s.definition_id for s in baseline.steps.all()])
+                      [s.definition_id for s in playbook.steps.all()])
         self.assertNotIn(mine.id,
-                         [s.definition_id for s in baseline.steps.all()])
+                         [s.definition_id for s in playbook.steps.all()])
 
     def test_the_uid_bearing_copy_is_still_deduped(self):
         """Uid matching must keep working with the lookalike present."""
         self._local_lookalike()
-        self._fork("baselines", "standard-build.yaml")
+        self._fork("playbooks", "standard-build.yaml")
         before = self._counts()
-        self._fork("baselines", "standard-build.yaml")
+        self._fork("playbooks", "standard-build.yaml")
         self.assertEqual(self._counts(), before)

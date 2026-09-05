@@ -18,7 +18,7 @@ approvals_seen: list[str] = []
 
 
 def _on_host_approved(host=None, approved_by=None, **_extra) -> None:
-    """Example handler: a real baselines app would dispatch baseline tasks here."""
+    """Example handler: a real playbooks app would dispatch playbook tasks here."""
     hostname = getattr(host, "hostname", str(host))
     approvals_seen.append(hostname)
     logger.info("example_extension saw host_approved for %s", hostname)

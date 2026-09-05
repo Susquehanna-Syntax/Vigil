@@ -94,7 +94,7 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.agent_dist",
     "apps.licensing",
-    "apps.baselines",
+    "apps.playbooks",
     "apps.aisuggest",
     "apps.statuspage",
     "apps.automations",

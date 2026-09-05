@@ -50,12 +50,12 @@ async function openRebuildModal(hostId, hostname) {
 
   let images = [];
   let profiles = [];
-  let baselines = [];
+  let playbooks = [];
   try {
-    [images, profiles, baselines] = await Promise.all([
+    [images, profiles, playbooks] = await Promise.all([
       apiJson('/api/v1/reprovision/images/'),
       apiJson('/api/v1/reprovision/profiles/'),
-      apiJson('/api/v1/baselines/').catch(() => []),
+      apiJson('/api/v1/playbooks/').catch(() => []),
     ]);
   } catch (e) {
     m.setBody('<h3>Rebuild host</h3>' +
@@ -78,8 +78,8 @@ async function openRebuildModal(hostId, hostname) {
   const insecure = window.location.protocol !== 'https:';
   const imageOpts = ready.map((i) =>
     `<option value="${escHtml(i.id)}">${escHtml(i.name)} (${escHtml(i.architecture)})</option>`).join('');
-  const baselineOpts = ['<option value="">None</option>'].concat(
-    baselines.map((b) => `<option value="${escHtml(b.id)}">${escHtml(b.name)}</option>`)).join('');
+  const playbookOpts = ['<option value="">None</option>'].concat(
+    playbooks.map((b) => `<option value="${escHtml(b.id)}">${escHtml(b.name)}</option>`)).join('');
 
   m.setBody(
     `<h3>Rebuild ${escHtml(hostname)}</h3>` +
@@ -90,7 +90,7 @@ async function openRebuildModal(hostId, hostname) {
     `<div id="rb-summary" class="rb-summary muted">Select an image and profile…</div>` +
     `<div id="rb-preflight" class="rb-preflight"><span class="muted">Checking rebuild readiness…</span></div>` +
     `<label>Tag on completion<input class="form-control" id="rb-tag" placeholder="rebuilt:need config"></label>` +
-    `<label>Run baseline afterwards<select class="form-control" id="rb-baseline">${baselineOpts}</select></label>` +
+    `<label>Run playbook afterwards<select class="form-control" id="rb-playbook">${playbookOpts}</select></label>` +
     (insecure
       ? `<label class="rb-warn"><input type="checkbox" id="rb-ack-plain"> ` +
         `Vigil is served over plain HTTP. The answer file carries the admin ` +
@@ -167,7 +167,7 @@ async function openRebuildModal(hostId, hostname) {
           image: imageSel.value,
           profile: profileSel.value,
           completion_tag: document.getElementById('rb-tag').value.trim(),
-          post_baseline: document.getElementById('rb-baseline').value || null,
+          post_playbook: document.getElementById('rb-playbook').value || null,
           password: document.getElementById('rb-password').value,
           totp: document.getElementById('rb-totp').value.trim(),
           typed_hostname: hostnameInput.value,

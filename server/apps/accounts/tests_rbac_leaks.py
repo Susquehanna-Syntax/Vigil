@@ -13,11 +13,11 @@ from django.test import TestCase
 from apps.accounts.models import Role
 from apps.alerts.models import Alert, AlertRule
 from apps.automations.models import Automation
-from apps.baselines.models import Baseline
+from apps.playbooks.models import Playbook
 from apps.hosts.models import Host
 from apps.tasks.models import TaskDefinition
 from apps_business.sites.models import (
-    AutomationSiteAssignment, BaselineSiteAssignment, HostSiteAssignment, Site,
+    AutomationSiteAssignment, PlaybookSiteAssignment, HostSiteAssignment, Site,
     UserSiteRole,
 )
 
@@ -25,7 +25,7 @@ from apps_business.sites.models import (
 SCOPED_LIST_ENDPOINTS = {
     "/api/v1/hosts/": lambda r: r["hostname"],
     "/api/v1/alerts/": lambda r: r["host_hostname"],
-    "/api/v1/baselines/": lambda r: r["name"],
+    "/api/v1/playbooks/": lambda r: r["name"],
     "/api/v1/automations/": lambda r: r["name"],
 }
 
@@ -56,8 +56,8 @@ class CrossSiteLeakTests(TestCase):
             Alert.objects.create(host=host, rule=rule, severity="warning",
                                  message=f"{tag} alert")
 
-            b = Baseline.objects.create(name=f"{tag}-baseline")
-            BaselineSiteAssignment.objects.create(baseline=b, site=site)
+            b = Playbook.objects.create(name=f"{tag}-playbook")
+            PlaybookSiteAssignment.objects.create(playbook=b, site=site)
 
             a = Automation.objects.create(
                 name=f"{tag}-automation", trigger=Automation.Trigger.SCHEDULE,
@@ -113,7 +113,7 @@ class CrossSiteLeakTests(TestCase):
         registry still matches it, so the leak test above cannot quietly stop
         covering something.
         """
-        expected = {"hosts", "alerts", "baselines", "automations"}
+        expected = {"hosts", "alerts", "playbooks", "automations"}
         covered = {u.strip("/").split("/")[-1] for u in SCOPED_LIST_ENDPOINTS}
         self.assertEqual(covered, expected)
 
@@ -187,24 +187,24 @@ class GlobalCascadeTests(TestCase):
         self.sam = get_user_model().objects.create_user("sam", password="x")
         UserSiteRole.objects.create(user=self.sam, site=self.lab, role=Role.ADMIN)
 
-        Baseline.objects.create(name="global-baseline")           # unassigned
-        lab_b = Baseline.objects.create(name="lab-baseline")
-        BaselineSiteAssignment.objects.create(baseline=lab_b, site=self.lab)
-        west_b = Baseline.objects.create(name="west-baseline")
-        BaselineSiteAssignment.objects.create(baseline=west_b, site=self.west)
+        Playbook.objects.create(name="global-playbook")           # unassigned
+        lab_b = Playbook.objects.create(name="lab-playbook")
+        PlaybookSiteAssignment.objects.create(playbook=lab_b, site=self.lab)
+        west_b = Playbook.objects.create(name="west-playbook")
+        PlaybookSiteAssignment.objects.create(playbook=west_b, site=self.west)
 
         # A host with no assignment belongs to Global, not to Lab.
         Host.objects.create(hostname="loose-host", agent_token="tok-loose")
         self.client.force_login(self.sam)
 
-    def test_a_site_admin_sees_the_global_baseline_that_governs_them(self):
-        names = {b["name"] for b in self.client.get("/api/v1/baselines/").json()}
-        self.assertIn("global-baseline", names)
-        self.assertIn("lab-baseline", names)
+    def test_a_site_admin_sees_the_global_playbook_that_governs_them(self):
+        names = {b["name"] for b in self.client.get("/api/v1/playbooks/").json()}
+        self.assertIn("global-playbook", names)
+        self.assertIn("lab-playbook", names)
 
-    def test_but_still_not_another_sites_baseline(self):
-        names = {b["name"] for b in self.client.get("/api/v1/baselines/").json()}
-        self.assertNotIn("west-baseline", names)
+    def test_but_still_not_another_sites_playbook(self):
+        names = {b["name"] for b in self.client.get("/api/v1/playbooks/").json()}
+        self.assertNotIn("west-playbook", names)
 
     def test_an_unassigned_host_is_not_visible_to_a_lab_only_user(self):
         """Hosts do not cascade: unassigned means it lives in Global."""

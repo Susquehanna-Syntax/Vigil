@@ -21,7 +21,7 @@ NONE = ""
 CAPABILITIES = {
     "hosts": frozenset({"view", "edit", "approve", "delete"}),
     "tasks": frozenset({"view", "run"}),
-    "baselines": frozenset({"view", "run", "edit"}),
+    "playbooks": frozenset({"view", "run", "edit"}),
     "automations": frozenset({"view", "edit", "toggle"}),
     "alerts": frozenset({"view", "ack", "silence"}),
     "statuspages": frozenset({"view", "edit"}),
@@ -39,7 +39,7 @@ CAPABILITIES = {
 LEGACY_OPERATOR = frozenset({
     ("hosts", "view"),
     ("tasks", "view"), ("tasks", "run"),
-    ("baselines", "view"), ("baselines", "run"),
+    ("playbooks", "view"), ("playbooks", "run"),
     ("automations", "view"), ("automations", "toggle"),
     ("alerts", "view"), ("alerts", "ack"), ("alerts", "silence"),
     ("statuspages", "view"),
