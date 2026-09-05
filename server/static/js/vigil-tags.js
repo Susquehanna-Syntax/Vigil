@@ -59,7 +59,7 @@ function _renderTags() {
     box.innerHTML = `<div class="empty-block">
       <h4>${searching ? 'No tags match that search' : 'No tags yet'}</h4>
       <p>${searching ? 'Clear the search to see them all.'
-        : 'Tags are how waves, baselines and automations pick machines. Create one here, then put it on a machine from its host card.'}</p>
+        : 'Tags are how waves, playbooks and automations pick machines. Create one here, then put it on a machine from its host card.'}</p>
     </div>`;
     return;
   }
@@ -96,7 +96,7 @@ async function renameTag(tagId) {
   const tag = _allTags.find(t => t.id === tagId);
   if (!tag) return;
   const name = prompt(
-    `Rename "${tag.name}". This renames it on every machine, wave, baseline and ` +
+    `Rename "${tag.name}". This renames it on every machine, wave, playbook and ` +
     `automation that uses it.`, tag.name);
   if (!name || name.trim() === tag.name) return;
   try {
@@ -213,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Every tag field in the app, in one place so none gets forgotten.
   attachTagPicker('wave-tags', { title: 'Machines in this wave are tagged' });
-  attachTagPicker('bl-tags', { title: 'Machines this baseline targets' });
+  attachTagPicker('bl-tags', { title: 'Machines this playbook targets' });
   attachTagPicker('auto-event-tags', { title: 'Only fire for hosts tagged' });
   attachTagPicker('auto-target-tags', { title: 'Run on hosts tagged' });
   attachTagPicker('repro-prof-tags', { title: 'Tag the rebuilt host with',

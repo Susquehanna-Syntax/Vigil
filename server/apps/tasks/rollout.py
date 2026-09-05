@@ -66,31 +66,31 @@ def _validate_definition(definition) -> dict:
         raise ValueError(f"definition {definition.name!r} cannot roll out: {exc}") from exc
 
 
-def _baseline_spec(baseline) -> dict:
-    """A one-action spec that expands into the baseline's steps.
+def _playbook_spec(playbook) -> dict:
+    """A one-action spec that expands into the playbook's steps.
 
-    `expand_actions` already inlines a `type: baseline` action, with cycle
-    detection and a depth limit, so rolling out a baseline needs no separate
+    `expand_actions` already inlines a `type: playbook` action, with cycle
+    detection and a depth limit, so rolling out a playbook needs no separate
     expansion path — it reuses the same composition the task editor uses.
     """
     return {
-        "name": baseline.name,
-        "risk": "high" if baseline.allow_high_risk else "standard",
-        "actions": [{"type": "baseline", "params": {"name": baseline.name}}],
+        "name": playbook.name,
+        "risk": "high" if playbook.allow_high_risk else "standard",
+        "actions": [{"type": "playbook", "params": {"name": playbook.name}}],
     }
 
 
 def rollout_spec(rollout) -> dict:
     """Re-derive the spec for a rollout, whichever target it carries.
 
-    Called on every wave advance, not just at start — a baseline rollout has no
+    Called on every wave advance, not just at start — a playbook rollout has no
     `definition`, so anything that reaches for `rollout.definition` directly
     breaks on wave 2 rather than wave 1, which is a nasty place to find out.
     """
-    if rollout.action_kind == PatchRollout.ActionKind.BASELINE:
-        if rollout.baseline is None:
-            raise ValueError("rollout's baseline no longer exists")
-        return _baseline_spec(rollout.baseline)
+    if rollout.action_kind == PatchRollout.ActionKind.PLAYBOOK:
+        if rollout.playbook is None:
+            raise ValueError("rollout's playbook no longer exists")
+        return _playbook_spec(rollout.playbook)
     if rollout.definition is None:
         raise ValueError("rollout's task definition no longer exists")
     return _validate_definition(rollout.definition)
@@ -101,7 +101,7 @@ def start_rollout(
     user=None,
     failure_threshold_pct: int = 10,
     min_results_before_halt: int = 3,
-    baseline=None,
+    playbook=None,
 ) -> PatchRollout:
     """Create a rollout and dispatch its first wave.
 
@@ -115,21 +115,21 @@ def start_rollout(
         raise ValueError("min_results_before_halt must be at least 1")
     if _first_enabled_wave() is None:
         raise ValueError("no enabled patch waves")
-    if (definition is None) == (baseline is None):
-        raise ValueError("a rollout needs exactly one of a definition or a baseline")
+    if (definition is None) == (playbook is None):
+        raise ValueError("a rollout needs exactly one of a definition or a playbook")
 
-    if baseline is not None:
-        if not baseline.enabled:
-            raise ValueError(f"baseline {baseline.name!r} is disabled")
-        spec = _baseline_spec(baseline)
+    if playbook is not None:
+        if not playbook.enabled:
+            raise ValueError(f"playbook {playbook.name!r} is disabled")
+        spec = _playbook_spec(playbook)
     else:
         spec = _validate_definition(definition)
 
     ts = _now()
     rollout = PatchRollout.objects.create(
         definition=definition,
-        baseline=baseline,
-        action_kind=(PatchRollout.ActionKind.BASELINE if baseline is not None
+        playbook=playbook,
+        action_kind=(PatchRollout.ActionKind.PLAYBOOK if playbook is not None
                      else PatchRollout.ActionKind.TASK),
         state=PatchRollout.State.RUNNING,
         current_wave=_first_enabled_wave(),
@@ -156,7 +156,7 @@ def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
     the gate then sees 0/0, passes, validates, and advances.
     Returns the number of tasks created.
     """
-    from apps.baselines.expansion import _max_risk, expand_actions
+    from apps.playbooks.expansion import _max_risk, expand_actions
     from apps.hosts.models import Host
 
     enabled = list(
@@ -192,7 +192,7 @@ def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
     retry_delay = int(retry_cfg.get("delay_seconds", 0))
 
     run = TaskRun.objects.create(
-        definition=rollout.definition,   # None for a baseline rollout
+        definition=rollout.definition,   # None for a playbook rollout
         name_snapshot=rollout.target_name,
         requested_by=rollout.created_by,
         rollout=rollout,

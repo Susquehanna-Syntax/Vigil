@@ -81,15 +81,15 @@ class CompletionTests(TestCase):
         self.host.refresh_from_db()
         self.assertEqual(self.host.tags.count("rebuilt:need config"), 1)
 
-    def test_job_still_completes_when_the_baseline_is_broken(self):
-        """A broken baseline must not strand the job in ENROLLING."""
+    def test_job_still_completes_when_the_playbook_is_broken(self):
+        """A broken playbook must not strand the job in ENROLLING."""
         from unittest.mock import patch
 
-        from apps.baselines.models import Baseline
+        from apps.playbooks.models import Playbook
 
-        self.job.post_baseline = Baseline.objects.create(name="b", enabled=True)
-        self.job.save(update_fields=["post_baseline"])
-        with patch("apps.baselines.models.dispatch_to_host",
+        self.job.post_playbook = Playbook.objects.create(name="b", enabled=True)
+        self.job.save(update_fields=["post_playbook"])
+        with patch("apps.playbooks.models.dispatch_to_host",
                    side_effect=RuntimeError("boom")):
             complete_if_rebuilding(self.host)
         self.job.refresh_from_db()

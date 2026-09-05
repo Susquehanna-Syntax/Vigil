@@ -11,12 +11,12 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase, override_settings
 from nacl.signing import SigningKey
 
-from apps.baselines.models import Baseline
+from apps.playbooks.models import Playbook
 from apps.hosts.models import Host
 from vigil import licensing
 
 from .models import (
-    AutomationSiteAssignment, BaselineSiteAssignment, ChannelSiteAssignment,
+    AutomationSiteAssignment, PlaybookSiteAssignment, ChannelSiteAssignment,
     GlobalSuppression, HostSiteAssignment, Site, SiteCapability, UserSiteRole,
 )
 
@@ -181,32 +181,32 @@ class GlobalSiteTests(TestCase):
 class ScopeAssignmentTests(TestCase):
     def setUp(self):
         self.site = Site.objects.create(name="West Campus", slug="west-campus")
-        self.baseline = Baseline.objects.create(name="Edge hardening")
+        self.playbook = Playbook.objects.create(name="Edge hardening")
 
-    def test_a_baseline_belongs_to_exactly_one_site(self):
-        BaselineSiteAssignment.objects.create(baseline=self.baseline, site=self.site)
+    def test_a_playbook_belongs_to_exactly_one_site(self):
+        PlaybookSiteAssignment.objects.create(playbook=self.playbook, site=self.site)
         other = Site.objects.create(name="Lab", slug="lab")
         with transaction.atomic(), self.assertRaises(IntegrityError):
-            BaselineSiteAssignment.objects.create(baseline=self.baseline, site=other)
+            PlaybookSiteAssignment.objects.create(playbook=self.playbook, site=other)
 
-    def test_deleting_the_baseline_removes_its_assignment(self):
-        BaselineSiteAssignment.objects.create(baseline=self.baseline, site=self.site)
-        self.baseline.delete()
-        self.assertEqual(BaselineSiteAssignment.objects.count(), 0)
+    def test_deleting_the_playbook_removes_its_assignment(self):
+        PlaybookSiteAssignment.objects.create(playbook=self.playbook, site=self.site)
+        self.playbook.delete()
+        self.assertEqual(PlaybookSiteAssignment.objects.count(), 0)
 
-    def test_deleting_the_site_removes_its_assignments_but_not_the_baseline(self):
-        BaselineSiteAssignment.objects.create(baseline=self.baseline, site=self.site)
+    def test_deleting_the_site_removes_its_assignments_but_not_the_playbook(self):
+        PlaybookSiteAssignment.objects.create(playbook=self.playbook, site=self.site)
         self.site.delete()
-        self.assertEqual(BaselineSiteAssignment.objects.count(), 0)
-        self.assertTrue(Baseline.objects.filter(pk=self.baseline.pk).exists())
+        self.assertEqual(PlaybookSiteAssignment.objects.count(), 0)
+        self.assertTrue(Playbook.objects.filter(pk=self.playbook.pk).exists())
 
     def test_suppression_is_unique_per_site_and_object(self):
-        ct = ContentType.objects.get_for_model(Baseline)
+        ct = ContentType.objects.get_for_model(Playbook)
         GlobalSuppression.objects.create(
-            site=self.site, content_type=ct, object_id=self.baseline.id)
+            site=self.site, content_type=ct, object_id=self.playbook.id)
         with transaction.atomic(), self.assertRaises(IntegrityError):
             GlobalSuppression.objects.create(
-                site=self.site, content_type=ct, object_id=self.baseline.id)
+                site=self.site, content_type=ct, object_id=self.playbook.id)
 
     def test_a_user_has_one_role_per_site(self):
         user = get_user_model().objects.create_user("dana", password="x")
@@ -256,7 +256,7 @@ class UserSiteRoleApiTests(TestCase):
     def _grant(self, **over):
         payload = {"user": self.dana.id, "site": str(self.west.id),
                    "role": "operator",
-                   "capabilities": [["baselines", "run"], ["alerts", "ack"]]}
+                   "capabilities": [["playbooks", "run"], ["alerts", "ack"]]}
         payload.update(over)
         return self.client.post("/api/v1/sites/roles/", data=json.dumps(payload),
                                 content_type="application/json")
@@ -271,7 +271,7 @@ class UserSiteRoleApiTests(TestCase):
         resp = self._grant()
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertEqual(
-            resp.json()["capabilities"], [["alerts", "ack"], ["baselines", "run"]])
+            resp.json()["capabilities"], [["alerts", "ack"], ["playbooks", "run"]])
 
     def test_unknown_capability_is_rejected(self):
         licensing.set_license(make_blob())
@@ -297,7 +297,7 @@ class UserSiteRoleApiTests(TestCase):
         licensing.set_license(make_blob())
         self._grant()
         licensing.set_license(make_blob(exp_delta=-30 * 86400))
-        self.assertTrue(can(self.dana, self.west, "baselines", "run"))
+        self.assertTrue(can(self.dana, self.west, "playbooks", "run"))
         self.assertFalse(can(self.dana, self.west, "hosts", "approve"))
 
     def test_revoking_is_not_gated(self):

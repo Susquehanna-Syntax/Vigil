@@ -149,9 +149,9 @@ class CanTests(TestCase):
         from apps_business.sites.models import SiteCapability
         u = mkuser("op")
         row = UserSiteRole.objects.create(user=u, site=self.west, role=Role.OPERATOR)
-        SiteCapability.objects.create(user_site_role=row, app="baselines", verb="run")
-        self.assertTrue(can(u, self.west, "baselines", "run"))
-        self.assertFalse(can(u, self.west, "baselines", "edit"))
+        SiteCapability.objects.create(user_site_role=row, app="playbooks", verb="run")
+        self.assertTrue(can(u, self.west, "playbooks", "run"))
+        self.assertFalse(can(u, self.west, "playbooks", "edit"))
         self.assertFalse(can(u, self.west, "hosts", "approve"))
 
     def test_operator_with_an_empty_matrix_can_do_nothing(self):

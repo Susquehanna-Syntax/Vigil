@@ -88,5 +88,5 @@ class RebuildJobSerializer(serializers.ModelSerializer):
         fields = ["id", "host", "hostname", "image", "image_name", "profile",
                   "profile_name", "state", "state_changed_at", "requested_at",
                   "deadline", "failure_reason", "completion_tag", "preflight",
-                  "answer_fetched_at", "post_baseline", "post_run"]
+                  "answer_fetched_at", "post_playbook", "post_run"]
         read_only_fields = fields

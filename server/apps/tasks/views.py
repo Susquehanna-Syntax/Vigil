@@ -573,7 +573,7 @@ def _save_definition_from_yaml(definition: TaskDefinition, yaml_source: str) -> 
     definition.relevance = spec["relevance"]
     definition.risk_level = spec["risk"]
     # A task forked from the catalog keeps the catalog's identity for it, so a
-    # baseline that references it by uid still resolves after the operator
+    # playbook that references it by uid still resolves after the operator
     # renames their copy.
     if spec.get("uid"):
         definition.community_uid = spec["uid"]
@@ -583,7 +583,7 @@ def _save_definition_from_yaml(definition: TaskDefinition, yaml_source: str) -> 
 # Community content — sourced from the public GitHub repo
 # ---------------------------------------------------------------------------
 # The Community tab lists YAML from three directories of that repo: tasks/,
-# baselines/ and automations/. Fetched server-side (which avoids per-browser
+# playbooks/ and automations/. Fetched server-side (which avoids per-browser
 # GitHub rate limits) and cached for 10 minutes per kind. Submissions still
 # flow the other way as a GitHub PR opened from an editor — see
 # openCommunitySubmit() in vigil-tasks.js.
@@ -595,7 +595,7 @@ _COMMUNITY_MAX_TEMPLATES = 50
 #: The directories the repo publishes, and how to read a file from each into
 #: the card fields the grid renders. Adding a fourth content type is a matter
 #: of adding a parser here and a sub-tab in the UI.
-COMMUNITY_KINDS = ("tasks", "baselines", "automations")
+COMMUNITY_KINDS = ("tasks", "playbooks", "automations")
 
 
 def _card_for_task(text: str) -> dict:
@@ -612,10 +612,10 @@ def _card_for_task(text: str) -> dict:
     }
 
 
-def _card_for_baseline(text: str) -> dict:
-    from apps.baselines.community_yaml import parse as parse_baseline
+def _card_for_playbook(text: str) -> dict:
+    from apps.playbooks.community_yaml import parse as parse_playbook
 
-    parsed = parse_baseline(text)
+    parsed = parse_playbook(text)
     steps = parsed["steps"]
     return {
         "uid": parsed["uid"],
@@ -655,7 +655,7 @@ def _card_for_automation(text: str) -> dict:
         "risk_level": "standard",
         "summary": f"runs {parsed['action_kind']} {parsed['slug']}",
         "requires": [{
-            "kind": "baselines" if parsed["action_kind"] == "baseline" else "tasks",
+            "kind": "playbooks" if parsed["action_kind"] == "playbook" else "tasks",
             "slug": parsed["slug"],
             "uid": parsed.get("action_uid", ""),
         }],
@@ -664,7 +664,7 @@ def _card_for_automation(text: str) -> dict:
 
 _COMMUNITY_PARSERS = {
     "tasks": _card_for_task,
-    "baselines": _card_for_baseline,
+    "playbooks": _card_for_playbook,
     "automations": _card_for_automation,
 }
 
@@ -725,7 +725,7 @@ def community_names_by_slug(kind: str) -> dict[str, str]:
     the filename equals ``slugify(name)`` — ``docker-prune-and-restart-unhealthy.yaml``
     is called "Docker Prune and Restart Unhealthy Container". So resolving a
     reference by slugifying library names alone would refuse to import a
-    baseline whose task the operator demonstrably has.
+    playbook whose task the operator demonstrably has.
 
     Reads the same server-side cache the Community tab fills, so the common
     path costs nothing. Returns ``{}`` when the repo is unreachable rather than
@@ -814,7 +814,7 @@ def definition_list(request):
 @api_view(["GET", "PUT"])
 @permission_classes([IsAuthenticated])
 def definition_detail(request, definition_id):
-    """Fetch or update a definition. Definitions can't be deleted — baselines
+    """Fetch or update a definition. Definitions can't be deleted — playbooks
     and automations reference them, and a vanished definition would silently
     gut those sequences."""
     definition = get_object_or_404(TaskDefinition, pk=definition_id)
@@ -961,12 +961,12 @@ def definition_deploy(request, definition_id):
         return Response({"error": str(exc)}, status=400)
 
     actions = spec.get("actions") or []
-    # Inline any `type: baseline` calls — agents only ever receive concrete
-    # actions (a baseline reference is a server-side macro, not an agent verb).
-    from apps.baselines.expansion import BaselineExpandError, expand_actions
+    # Inline any `type: playbook` calls — agents only ever receive concrete
+    # actions (a playbook reference is a server-side macro, not an agent verb).
+    from apps.playbooks.expansion import PlaybookExpandError, expand_actions
     try:
         actions, _expanded_risk = expand_actions(actions)
-    except BaselineExpandError as exc:
+    except PlaybookExpandError as exc:
         return Response({"error": str(exc)}, status=400)
     if not actions:
         return Response({"error": "definition has no actions"}, status=400)
@@ -1044,7 +1044,7 @@ def definition_deploy(request, definition_id):
                 s["params"] = {**(s.get("params") or {}), "binary_sha256": sha_map}
 
     # Effective risk is the highest risk across all actions.
-    from apps.baselines.expansion import _max_risk as _mr
+    from apps.playbooks.expansion import _max_risk as _mr
     risk = _mr(spec.get("risk", "standard"), _expanded_risk)
 
     # Schedule + retry policy are snapshotted onto each Task so a later edit
@@ -1130,7 +1130,7 @@ def task_history(request):
 def run_history(request):
     """Paginated run history, newest first.
 
-    ``?source=automation,baseline`` narrows to those kinds; omitted means
+    ``?source=automation,playbook`` narrows to those kinds; omitted means
     every run including manual deploys.
     """
     try:
@@ -1140,7 +1140,7 @@ def run_history(request):
     page_size = 25
 
     qs = TaskRun.objects.select_related(
-        "automation", "baseline", "requested_by").order_by("-created_at")
+        "automation", "playbook", "requested_by").order_by("-created_at")
 
     raw = (request.query_params.get("source") or "").strip()
     if raw:
@@ -1288,26 +1288,26 @@ def _rollout_response(rollout: PatchRollout):
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def rollout_collection(request):
-    """GET — list rollouts. POST — start one from a definition or a baseline.
+    """GET — list rollouts. POST — start one from a definition or a playbook.
 
     TOTP-gated like a manual deploy — it fans the work out across the whole
     fleet, wave by wave.
     """
     if request.method == "POST":
-        from apps.baselines.models import Baseline
+        from apps.playbooks.models import Playbook
 
         definition_id = request.data.get("definition_id")
-        baseline_id = request.data.get("baseline_id")
-        if bool(definition_id) == bool(baseline_id):
+        playbook_id = request.data.get("playbook_id")
+        if bool(definition_id) == bool(playbook_id):
             return Response(
-                {"detail": "supply exactly one of definition_id or baseline_id"},
+                {"detail": "supply exactly one of definition_id or playbook_id"},
                 status=400,
             )
-        definition = baseline = None
+        definition = playbook = None
         if definition_id:
             definition = get_object_or_404(TaskDefinition, pk=definition_id)
         else:
-            baseline = get_object_or_404(Baseline, pk=baseline_id)
+            playbook = get_object_or_404(Playbook, pk=playbook_id)
         error = _verify_confirmation(request.user, request.data)
         if error:
             return Response({"detail": error}, status=401)
@@ -1315,7 +1315,7 @@ def rollout_collection(request):
         try:
             rollout = start_rollout(
                 definition,
-                baseline=baseline,
+                playbook=playbook,
                 user=request.user,
                 failure_threshold_pct=int(request.data.get("failure_threshold_pct", 10)),
                 min_results_before_halt=int(request.data.get("min_results_before_halt", 3)),
@@ -1388,7 +1388,7 @@ def rollout_resume(request, rollout_id):
 
 # ── Wave management ─────────────────────────────────────────────────────────
 #
-# Waves are edited like baselines and automations: list, create, edit, delete.
+# Waves are edited like playbooks and automations: list, create, edit, delete.
 # Reads are open to any authenticated user so the Deployments page can render;
 # writes are admin-only, because changing a wave's tags changes which machines
 # the next rollout touches.
@@ -1492,7 +1492,7 @@ def rollout_skip_validation(request, rollout_id):
 # Cascade fork — bring an item and everything it needs across in one act
 # ---------------------------------------------------------------------------
 #
-# A baseline is a sequence of tasks and an automation runs a task or a baseline,
+# A playbook is a sequence of tasks and an automation runs a task or a playbook,
 # so forking one of those alone lands you with something that cannot run. The
 # first version refused and listed what was missing, which was honest but left
 # the operator doing the resolution by hand — reading slugs off an error, then
@@ -1523,7 +1523,7 @@ def _already_have(by_uid, by_name, uid, name):
     Falling back to the name there would undo what uids are for: a task the
     operator wrote themselves that happens to also be called "Install Nginx"
     is a different task, and treating it as the catalog's would silently skip
-    the fork and leave a baseline pointing at the wrong steps.
+    the fork and leave a playbook pointing at the wrong steps.
 
     The name pass exists for catalog files written before uids, which have no
     other identity to offer.
@@ -1576,7 +1576,7 @@ def _plan_fork(kind: str, filename: str, user) -> dict:
     the preview on the card and the fork itself, so what the card promises is
     what the fork does.
     """
-    from apps.baselines.models import Baseline
+    from apps.playbooks.models import Playbook
 
     task_by_slug, task_by_uid = _catalog("tasks")
     item = None
@@ -1589,7 +1589,7 @@ def _plan_fork(kind: str, filename: str, user) -> dict:
         return {"error": f"{filename} is not in the catalog"}
 
     have_tasks_uid, have_tasks_name = _library_index(TaskDefinition, user)
-    have_bl_uid, have_bl_name = _library_index(Baseline, user)
+    have_bl_uid, have_bl_name = _library_index(Playbook, user)
 
     needs = []
     for ref in item.get("requires") or []:
@@ -1599,11 +1599,11 @@ def _plan_fork(kind: str, filename: str, user) -> dict:
                                      ref.get("uid"),
                                      source["name"] if source else ref["slug"])
         else:
-            bl_by_slug, bl_by_uid = _catalog("baselines")
+            bl_by_slug, bl_by_uid = _catalog("playbooks")
             source = _find_in_catalog(bl_by_slug, bl_by_uid, ref)
             existing = _already_have(have_bl_uid, have_bl_name, ref.get("uid"),
                                      source["name"] if source else ref["slug"])
-            # A baseline dependency drags its own tasks along.
+            # A playbook dependency drags its own tasks along.
             for inner in (source or {}).get("requires") or []:
                 inner_src = _find_in_catalog(task_by_slug, task_by_uid, inner)
                 needs.append({
@@ -1623,8 +1623,8 @@ def _plan_fork(kind: str, filename: str, user) -> dict:
             "source": source,
         })
 
-    # Dedupe, keeping first occurrence: a baseline can use one task twice, and
-    # two steps of an automation's baseline can share one.
+    # Dedupe, keeping first occurrence: a playbook can use one task twice, and
+    # two steps of an automation's playbook can share one.
     seen, ordered = set(), []
     for need in needs:
         key = (need["kind"], need["slug"])
@@ -1639,7 +1639,7 @@ def _plan_fork(kind: str, filename: str, user) -> dict:
     # reads as a failure when the honest answer is "you already have this".
     from apps.automations.models import Automation
 
-    model = {"tasks": TaskDefinition, "baselines": Baseline,
+    model = {"tasks": TaskDefinition, "playbooks": Playbook,
              "automations": Automation}[kind]
     have_uid, have_name = _library_index(model, user)
     mine = _already_have(have_uid, have_name, item.get("uid"), item["name"])
@@ -1672,13 +1672,13 @@ def community_fork_plan(request, kind: str, filename: str):
 def community_fork(request, kind: str, filename: str):
     """Fork a catalog item and everything it needs, in dependency order.
 
-    Tasks first, then baselines, then the item itself — anything already held
+    Tasks first, then playbooks, then the item itself — anything already held
     is skipped rather than duplicated. The whole thing is one transaction: a
-    half-forked baseline missing its third step is not a state worth leaving
+    half-forked playbook missing its third step is not a state worth leaving
     an operator in.
     """
     from apps.automations.views import automation_from_yaml
-    from apps.baselines.views import baseline_from_yaml
+    from apps.playbooks.views import playbook_from_yaml
 
     if kind not in COMMUNITY_KINDS:
         return Response({"error": f"unknown content kind {kind!r}"}, status=404)
@@ -1704,7 +1704,7 @@ def community_fork(request, kind: str, filename: str):
 
     created = []
     with transaction.atomic():
-        # Tasks before baselines: a baseline import resolves its steps against
+        # Tasks before playbooks: a playbook import resolves its steps against
         # the library, so its tasks have to be in there first.
         for need in [n for n in plan["needs"] if n["kind"] == "tasks"]:
             if need["have"]:
@@ -1712,21 +1712,21 @@ def community_fork(request, kind: str, filename: str):
             _fork_task_from_catalog(need["source"], request.user)
             created.append({"kind": "tasks", "name": need["name"]})
 
-        for need in [n for n in plan["needs"] if n["kind"] == "baselines"]:
+        for need in [n for n in plan["needs"] if n["kind"] == "playbooks"]:
             if need["have"]:
                 continue
-            sub = _import_via(baseline_from_yaml, request, need["source"])
+            sub = _import_via(playbook_from_yaml, request, need["source"])
             if sub.status_code >= 400:
                 transaction.set_rollback(True)
                 return sub
-            created.append({"kind": "baselines", "name": need["name"]})
+            created.append({"kind": "playbooks", "name": need["name"]})
 
         item = plan["item"]
         if kind == "tasks":
             definition = _fork_task_from_catalog(item, request.user)
             created.append({"kind": "tasks", "name": definition.name})
         else:
-            view = baseline_from_yaml if kind == "baselines" else automation_from_yaml
+            view = playbook_from_yaml if kind == "playbooks" else automation_from_yaml
             result = _import_via(view, request, item)
             if result.status_code >= 400:
                 transaction.set_rollback(True)

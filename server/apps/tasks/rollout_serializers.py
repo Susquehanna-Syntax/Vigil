@@ -9,8 +9,8 @@ class PatchRolloutSerializer(serializers.ModelSerializer):
 
     definition_name = serializers.CharField(
         source="definition.name", read_only=True, default=None)
-    baseline_name = serializers.CharField(
-        source="baseline.name", read_only=True, default=None)
+    playbook_name = serializers.CharField(
+        source="playbook.name", read_only=True, default=None)
     target_name = serializers.CharField(read_only=True)
     current_wave_name = serializers.CharField(
         source="current_wave.name", read_only=True, default=None)
@@ -27,7 +27,7 @@ class PatchRolloutSerializer(serializers.ModelSerializer):
         model = PatchRollout
         fields = [
             "id", "action_kind", "definition", "definition_name",
-            "baseline", "baseline_name", "target_name", "state",
+            "playbook", "playbook_name", "target_name", "state",
             "current_wave", "current_wave_name", "current_wave_order",
             "failure_threshold_pct", "min_results_before_halt",
             "halted_reason", "halted_by_name", "resumed_by_name",

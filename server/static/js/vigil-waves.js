@@ -1,6 +1,6 @@
 /* Wave management — the Deployments › Waves panel.
  *
- * Built to the same shape as baselines and automations: a toolbar with search
+ * Built to the same shape as playbooks and automations: a toolbar with search
  * and a New button, a list of cards, and a modal editor. Nothing here edits a
  * host's tags. A wave only chooses which tags it matches; tags stay owned by
  * the host, so there is exactly one place a host's membership is decided.

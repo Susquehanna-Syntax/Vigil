@@ -803,7 +803,7 @@
             <tr><td>Remote task execution + agent (agent is 100% OSS, no tier awareness)</td><td>✓</td><td>✓</td></tr>
             <tr><td>Vuln scanning (Trivy / Nessus / Greenbone)</td><td>✓</td><td>✓</td></tr>
             <tr><td>Firewall management (read + edit ufw / firewalld / Windows Firewall)</td><td>✓</td><td>✓</td></tr>
-            <tr><td>Baselines — auto-dispatch tasks to newly approved hosts</td><td>✓</td><td>✓</td></tr>
+            <tr><td>Playbooks — auto-dispatch tasks to newly approved hosts</td><td>✓</td><td>✓</td></tr>
             <tr><td>AI task suggestions — bring-your-own endpoint &amp; key</td><td>✓</td><td>✓</td></tr>
             <tr><td>Public status page (token URL, "Powered by Vigil" badge)</td><td>✓</td><td>✓</td></tr>
             <tr><td>Jackil integration (alert → ticket)</td><td>✓</td><td>✓</td></tr>
@@ -838,11 +838,11 @@
         <table>
           <thead><tr><th>Addition</th><th>What it is</th></tr></thead>
           <tbody>
-            <tr><td><strong>Pro folded into Free</strong></td><td>The planned Pro tier was retired before ever shipping. Baselines, AI suggestions, and status pages landed free for everyone.</td></tr>
+            <tr><td><strong>Pro folded into Free</strong></td><td>The planned Pro tier was retired before ever shipping. Playbooks, AI suggestions, and status pages landed free for everyone.</td></tr>
             <tr><td><strong>Sites</strong> <em>(Business)</em></td><td>Named administrative boundaries with host assignment. Reads are open on every tier so you can see what you'd get; writes unlock with a license.</td></tr>
             <tr><td><strong>Audit log</strong> <em>(Business)</em></td><td>Who did what, to what, authenticated how — fed by lifecycle hooks and auth signals. Recording is on for every install from day one; the license unlocks the viewer and CSV export. Append-only, read-only in admin.</td></tr>
             <tr><td><strong>Seats &amp; roles</strong></td><td>Admin / Operator / Viewer roles on user profiles. Free ships Admin + Viewer (its 2 seats); granting Operator needs Business. Seat overage is a banner — user creation is never blocked.</td></tr>
-            <tr><td><strong>Baselines</strong></td><td>Pick task definitions that auto-dispatch to every newly approved host (tag-filterable). High-risk and <code>update_agent</code> definitions are excluded — those keep the human and 2FA in the loop.</td></tr>
+            <tr><td><strong>Playbooks</strong></td><td>Pick task definitions that auto-dispatch to every newly approved host (tag-filterable). High-risk and <code>update_agent</code> definitions are excluded — those keep the human and 2FA in the loop.</td></tr>
             <tr><td><strong>AI suggestions</strong></td><td>Point Vigil at any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio, OpenAI) or Anthropic, with your own key. Suggestions arrive as draft task YAML, validated like any editor input; nothing auto-executes.</td></tr>
             <tr><td><strong>Status pages</strong></td><td>A public, shareable, token-URL status page for every install. Business strips the badge, adds a logo, and unlocks additional per-site client pages.</td></tr>
             <tr><td><strong>Civil SSO</strong> <em>(opt-in)</em></td><td>One account across Vigil, Jackil, Sigil, and Turnstil via the new <a href="https://github.com/Susquehanna-Syntax/Civil">Civil</a> identity service. Off by default; single-container installs are unchanged, and Civil being down never affects existing sessions.</td></tr>
@@ -1298,7 +1298,7 @@
     <section class="section" id="deployments">
       <p class="section-label">OS Management</p>
       <h2 class="section-title" style="color:var(--peach)">Deployments &mdash; waves and rollouts</h2>
-      <p class="section-desc">Three ways work reaches your machines, all on one page. <strong>Baselines</strong> run a fixed sequence of tasks. <strong>Automations</strong> run something when an event fires or on a schedule. <strong>Rollouts</strong> send a task or baseline out gradually, a few machines at a time, so a bad update is caught on a handful of machines instead of all of them.</p>
+      <p class="section-desc">Three ways work reaches your machines, all on one page. <strong>Playbooks</strong> run a fixed sequence of tasks. <strong>Automations</strong> run something when an event fires or on a schedule. <strong>Rollouts</strong> send a task or playbook out gradually, a few machines at a time, so a bad update is caught on a handful of machines instead of all of them.</p>
 
       <h3>What a wave is</h3>
       <p class="prose">A wave is a group of machines that get patched together, chosen by tag. You put waves in an order, and a rollout walks them one at a time.</p>
@@ -1332,8 +1332,8 @@
       </table></div>
       <p class="prose">A halted rollout never resumes on its own. Open it and choose <strong>Resume from this wave</strong>; the failed machines are re-queued and the gate re-checks over the whole wave.</p>
 
-      <h3>Rolling out a baseline</h3>
-      <p class="prose">A rollout can carry a single task or a whole baseline. Picking a baseline runs all of its steps on each machine, wave by wave &mdash; the same composition the task editor uses, so a baseline that works when deployed directly works the same way in a rollout.</p>
+      <h3>Rolling out a playbook</h3>
+      <p class="prose">A rollout can carry a single task or a whole playbook. Picking a playbook runs all of its steps on each machine, wave by wave &mdash; the same composition the task editor uses, so a playbook that works when deployed directly works the same way in a rollout.</p>
       <p class="prose">One restriction: a task that needs someone to fill in an input cannot be rolled out. A rollout runs unattended across waves and has no value to supply, so it is refused when you start it rather than discovered halfway through.</p>
 
       <h3>Filtering which events fire an automation</h3>
@@ -1642,25 +1642,25 @@
         <li><strong>Task deploy</strong> — <code>POST /api/v1/tasks/definitions/{id}/deploy/</code></li>
         <li><strong>Host enrollment approval</strong> — <code>POST /api/v1/hosts/{id}/approve/</code> (an approved host immediately becomes eligible to receive signed tasks)</li>
         <li><strong>Launch Nessus scan</strong> — <code>POST /api/v1/vulns/scans/{host_id}/</code></li>
-        <li><strong>Allowing high-risk steps in a baseline</strong> — <code>POST</code>/<code>PATCH /api/v1/baselines/</code> when <code>allow_high_risk</code> is being turned on (2026.7.3)</li>
+        <li><strong>Allowing high-risk steps in a playbook</strong> — <code>POST</code>/<code>PATCH /api/v1/playbooks/</code> when <code>allow_high_risk</code> is being turned on (2026.7.3)</li>
         <li><strong>Requesting a rebuild</strong> — <code>POST /api/v1/reprovision/jobs/</code>, plus password and the typed hostname</li>
       </ul>
       <p class="prose">Codes are <strong>single-use</strong>: once a code has been consumed for a sensitive action, it can't be replayed within its 90-second validity window. An intercepted code is therefore worthless after one use.</p>
 
-      <h3>High-risk steps in a baseline</h3>
-      <p class="prose">A baseline dispatches <strong>unattended</strong>, to
+      <h3>High-risk steps in a playbook</h3>
+      <p class="prose">A playbook dispatches <strong>unattended</strong>, to
       every host that matches it at enrollment. Run by hand a high-risk task
       costs a TOTP code and a 60-second delay with somebody watching; in a
-      baseline there is nobody to prompt. So baselines refused high-risk
+      playbook there is nobody to prompt. So playbooks refused high-risk
       definitions outright.</p>
-      <p class="prose">Since 2026.7.3 that is a per-baseline opt-in —
-      <strong>Allow high-risk steps in this baseline</strong>, off by default.
+      <p class="prose">Since 2026.7.3 that is a per-playbook opt-in —
+      <strong>Allow high-risk steps in this playbook</strong>, off by default.
       Ticking it costs a fresh TOTP code, and that one confirmation authorizes
-      every future dispatch of that baseline: the same bargain baseline
+      every future dispatch of that playbook: the same bargain playbook
       creation already makes for standard-risk steps. Unticking it costs
       nothing, because withdrawing an authorization needs no authorization.
-      Duplicating a baseline does not inherit the flag — the original's code
-      authorized that baseline, not a copy of it.</p>
+      Duplicating a playbook does not inherit the flag — the original's code
+      authorized that playbook, not a copy of it.</p>
 
       <div class="callout callout-warn">
         <div class="callout-icon">!</div>
@@ -2059,7 +2059,7 @@
       secret back, not even to the admin who set it.</p>
 
       <p class="prose"><strong>Tag the host with</strong> (2026.7.4) applies
-      tags once the rebuilt machine checks back in, so baselines and alert
+      tags once the rebuilt machine checks back in, so playbooks and alert
       rules targeting those tags pick it up on its own. The rebuild ceremony's
       own tag field still works alongside it for a one-off; both are applied
       and deduplicated, and the reserved <code>agent:</code> prefix is refused
@@ -2120,8 +2120,8 @@
       <p class="section-desc">The Vigil community task catalog lives on GitHub at <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener">Susquehanna-Syntax/Vigil-Approved-Scripts</a>. Submissions are PR-reviewed by SQSY maintainers; once merged, every Vigil instance can browse the entry.</p>
 
       <h3>Browsing in the console</h3>
-      <p class="prose">The <strong>Community</strong> tab has a sub-tab per content type — <strong>Tasks</strong>, <strong>Baselines</strong> and <strong>Automations</strong> — each listing the matching directory of the catalog repo, each with its own search. Your server fetches and parses the YAML (<code>GET /api/v1/tasks/community/&lt;kind&gt;/</code>) and caches each kind for 10 minutes, so browsers never hit GitHub's rate limits themselves. A kind is only fetched when you open its tab. <strong>Refresh</strong> re-reads the repo immediately instead of waiting out the cache.</p>
-      <p class="prose">The <strong>Tasks</strong> sub-tab lists standalone tasks. A task that exists only to serve a baseline or an automation is folded away behind a one-line "show them" control, because the thing that needs it already offers it — listing it again shows the same task twice. It is folded, not hidden: such a task is still worth reading, and still forkable on its own.</p>
+      <p class="prose">The <strong>Community</strong> tab has a sub-tab per content type — <strong>Tasks</strong>, <strong>Playbooks</strong> and <strong>Automations</strong> — each listing the matching directory of the catalog repo, each with its own search. Your server fetches and parses the YAML (<code>GET /api/v1/tasks/community/&lt;kind&gt;/</code>) and caches each kind for 10 minutes, so browsers never hit GitHub's rate limits themselves. A kind is only fetched when you open its tab. <strong>Refresh</strong> re-reads the repo immediately instead of waiting out the cache.</p>
+      <p class="prose">The <strong>Tasks</strong> sub-tab lists standalone tasks. A task that exists only to serve a playbook or an automation is folded away behind a one-line "show them" control, because the thing that needs it already offers it — listing it again shows the same task twice. It is folded, not hidden: such a task is still worth reading, and still forkable on its own.</p>
       <p class="prose">Nothing from the catalog runs without your review, and deploying still requires 2FA.</p>
 
       <h3>Forking</h3>
@@ -2131,18 +2131,18 @@
           <thead><tr><th>Type</th><th>Fork does</th></tr></thead>
           <tbody>
             <tr><td>Task</td><td>Opens the YAML in your task editor, unsaved. Saving adds it to your library.</td></tr>
-            <tr><td>Baseline</td><td>Imports server-side, forking any of its tasks you do not already have.</td></tr>
-            <tr><td>Automation</td><td>Imports server-side, forking the baseline it runs and that baseline's tasks, as needed.</td></tr>
+            <tr><td>Playbook</td><td>Imports server-side, forking any of its tasks you do not already have.</td></tr>
+            <tr><td>Automation</td><td>Imports server-side, forking the playbook it runs and that playbook's tasks, as needed.</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="prose">Forking a baseline or an automation <strong>brings everything it needs with it</strong>. Vigil walks the whole graph — an automation pulls its baseline, and that baseline pulls its tasks — and forks only what you do not already have. The card says so before you click: it lists what the item pulls in, marks each one <em>already yours</em> or <em>will fork</em>, and the button reads <code>Fork all 3</code> rather than <code>Fork</code>. The same walk backs the preview and the fork itself, so the card cannot promise something different from what the button does.</p>
-      <p class="prose">It is one transaction. A half-forked baseline missing its third step is not a state worth leaving you in, so if any part fails nothing is created. Forking something you already have is a no-op that says so, not an error — so <strong>Fork</strong> is never a duplicate button.</p>
-      <p class="prose">If the catalog itself is missing a file that something references, the import refuses and names it. That case is a broken catalog rather than a gap in your library, and importing a baseline whose steps silently vanished would be worse than a refusal, because it would look like it works.</p>
+      <p class="prose">Forking a playbook or an automation <strong>brings everything it needs with it</strong>. Vigil walks the whole graph — an automation pulls its playbook, and that playbook pulls its tasks — and forks only what you do not already have. The card says so before you click: it lists what the item pulls in, marks each one <em>already yours</em> or <em>will fork</em>, and the button reads <code>Fork all 3</code> rather than <code>Fork</code>. The same walk backs the preview and the fork itself, so the card cannot promise something different from what the button does.</p>
+      <p class="prose">It is one transaction. A half-forked playbook missing its third step is not a state worth leaving you in, so if any part fails nothing is created. Forking something you already have is a no-op that says so, not an error — so <strong>Fork</strong> is never a duplicate button.</p>
+      <p class="prose">If the catalog itself is missing a file that something references, the import refuses and names it. That case is a broken catalog rather than a gap in your library, and importing a playbook whose steps silently vanished would be worse than a refusal, because it would look like it works.</p>
 
       <h3 id="content-uids">How references resolve</h3>
       <p class="prose">Every piece of catalog content carries a <strong><code>uid</code></strong> — a UUID that identifies it on every Vigil installation. References name a slug too, because that is what a reviewer reading the diff on GitHub can follow, but Vigil resolves by uid first.</p>
-      <p class="prose">The distinction is the whole reason uids exist. A slug is a <em>filename</em>: it changes when a file is renamed, it collides when two contributors pick the same name, and the catalog does not force a filename to equal the slugified <code>name</code> inside it. So slug matching breaks in ways that are hard to see. Rename your copy of a task and the baseline that uses it stops resolving; write your own task that happens to be called "Install Nginx" and a fork could silently reuse it in place of the catalog's. A uid does neither, which is also why <strong>names do not have to be unique</strong>.</p>
+      <p class="prose">The distinction is the whole reason uids exist. A slug is a <em>filename</em>: it changes when a file is renamed, it collides when two contributors pick the same name, and the catalog does not force a filename to equal the slugified <code>name</code> inside it. So slug matching breaks in ways that are hard to see. Rename your copy of a task and the playbook that uses it stops resolving; write your own task that happens to be called "Install Nginx" and a fork could silently reuse it in place of the catalog's. A uid does neither, which is also why <strong>names do not have to be unique</strong>.</p>
       <p class="prose">Resolution runs in three passes, in order:</p>
       <div class="table-wrap">
         <table>
@@ -2157,7 +2157,7 @@
       <p class="prose">Vigil records the catalog's uid on your copy when you fork, and mints one the first time you export something of your own. A uid is the content's identity, not its version: it is never edited or reused, because changing it makes every installation treat the file as new and fork a second copy alongside the one people already have.</p>
 
       <h3>Editing as YAML</h3>
-      <p class="prose">Baselines and automations have an <strong>Edit as YAML</strong> button in their editors, alongside the form. It shows the same document the catalog stores, so what you read is exactly what a submission would carry — there is no second rendering to drift from it. From that view you can save your edits back, copy the YAML, or submit it.</p>
+      <p class="prose">Playbooks and automations have an <strong>Edit as YAML</strong> button in their editors, alongside the form. It shows the same document the catalog stores, so what you read is exactly what a submission would carry — there is no second rendering to drift from it. From that view you can save your edits back, copy the YAML, or submit it.</p>
       <p class="prose">Two things follow from the format rather than from Vigil. Steps and actions appear as slugs rather than as the names you see in the form, because a shared file cannot reference rows on your server. And an automation pinned to <em>one specific host</em> has no YAML at all — Vigil says so rather than emitting a file that would target an arbitrary machine wherever it landed. Switch it to tags or all first.</p>
 
       <h3>The three content types</h3>
@@ -2166,23 +2166,23 @@
         <table>
           <thead><tr><th>Type</th><th>Directory</th><th>What it is</th></tr></thead>
           <tbody>
-            <tr><td>Task</td><td><code>tasks/</code></td><td>One named set of actions, run by hand or as a step of a baseline.</td></tr>
-            <tr><td>Baseline</td><td><code>baselines/</code></td><td>A named, ordered sequence of tasks that runs on enrollment or on demand.</td></tr>
-            <tr><td>Automation</td><td><code>automations/</code></td><td>A trigger (event or schedule) bound to a task or baseline and a target, run automatically on a set of hosts.</td></tr>
+            <tr><td>Task</td><td><code>tasks/</code></td><td>One named set of actions, run by hand or as a step of a playbook.</td></tr>
+            <tr><td>Playbook</td><td><code>playbooks/</code></td><td>A named, ordered sequence of tasks that runs on enrollment or on demand.</td></tr>
+            <tr><td>Automation</td><td><code>automations/</code></td><td>A trigger (event or schedule) bound to a task or playbook and a target, run automatically on a set of hosts.</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="prose">The server lists each directory through the GitHub contents API and does not recurse, so there are no subdirectories — a file in <code>baselines/linux/</code> is invisible to the console, and if a file belongs in one of these directories it belongs directly in it.</p>
-      <p class="prose"><strong>The slug reference rule:</strong> a baseline does not copy its tasks, it references them <em>by slug</em> — the filename without its extension. A step with <code>task: remove-pycharm-process-lock</code> refers to <code>tasks/remove-pycharm-process-lock.yaml</code>, and an automation that runs a baseline names it by the stem of the file in <code>baselines/</code>. Every reference must resolve to a file that exists in the repo; the validators resolve each slug against the filesystem and reject a file that points at nothing, because a baseline that silently does nothing is worse than a rejected file.</p>
+      <p class="prose">The server lists each directory through the GitHub contents API and does not recurse, so there are no subdirectories — a file in <code>playbooks/linux/</code> is invisible to the console, and if a file belongs in one of these directories it belongs directly in it.</p>
+      <p class="prose"><strong>The slug reference rule:</strong> a playbook does not copy its tasks, it references them <em>by slug</em> — the filename without its extension. A step with <code>task: remove-pycharm-process-lock</code> refers to <code>tasks/remove-pycharm-process-lock.yaml</code>, and an automation that runs a playbook names it by the stem of the file in <code>playbooks/</code>. Every reference must resolve to a file that exists in the repo; the validators resolve each slug against the filesystem and reject a file that points at nothing, because a playbook that silently does nothing is worse than a rejected file.</p>
       <p class="prose"><strong><code>target: host</code> is not supported in community automations.</strong> An automation can target <code>event_host</code> (the host that raised the event), <code>tags</code> (hosts carrying one of <code>target_tags</code>), or <code>all</code> — but never a single host by id. Host ids are not portable across installations: a file that names "host 42" is right on the author's Vigil and meaningless on yours, so the community schema does not accept it and the validator rejects it. If you need "the machines that are my web servers," that is a tag.</p>
 
       <h3>Submitting your work</h3>
-      <p class="prose">Every editor has a <strong>Submit to Community</strong> button — the task editor's toolbar, and the <em>Edit as YAML</em> view for baselines and automations. Each one targets its own directory in the catalog. Clicking it:</p>
+      <p class="prose">Every editor has a <strong>Submit to Community</strong> button — the task editor's toolbar, and the <em>Edit as YAML</em> view for playbooks and automations. Each one targets its own directory in the catalog. Clicking it:</p>
       <ol class="prose">
         <li>Reads the YAML currently in the editor and slugifies the task <code>name</code> into a filename (e.g. <code>restart-nginx-and-verify.yaml</code>).</li>
         <li><strong>Auto-injects attribution</strong> — adds <code>author: &lt;your-vigil-username&gt;</code> and <code>created: &lt;today&gt;</code> after the <code>name:</code> line if they aren't already declared. The catalog requires both fields; auto-injection means you never have to remember them.</li>
         <li>Opens a modal with two actions: <strong>Copy YAML</strong> (clipboard) and <strong>Open GitHub PR</strong>.</li>
-        <li><strong>Open GitHub PR</strong> deep-links to <code>github.com/Susquehanna-Syntax/Vigil-Approved-Scripts/new/main/&lt;tasks|baselines|automations&gt;?filename=&lt;slug&gt;.yaml&amp;value=&lt;your YAML&gt;</code> — GitHub's new-file editor with the body pre-filled. Vigil pushes nothing itself; it has no credentials on that repo and should not.</li>
+        <li><strong>Open GitHub PR</strong> deep-links to <code>github.com/Susquehanna-Syntax/Vigil-Approved-Scripts/new/main/&lt;tasks|playbooks|automations&gt;?filename=&lt;slug&gt;.yaml&amp;value=&lt;your YAML&gt;</code> — GitHub's new-file editor with the body pre-filled. Vigil pushes nothing itself; it has no credentials on that repo and should not.</li>
         <li>If you don't have write access, GitHub forks the repo into your account automatically. Click <strong>Propose new file</strong> → <strong>Create pull request</strong>.</li>
         <li>A SQSY maintainer reviews and merges. Once merged, every Vigil instance can browse the entry.</li>
       </ol>
@@ -2250,11 +2250,11 @@
             <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/tasks/result/</code></td><td>Agent reports task execution result (agent-only)</td></tr>
             <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/history/?page=N</code></td><td>Paginated task history (50/page, polled by the History tab)</td></tr>
             <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/community/</code></td><td>Community tasks from the GitHub catalog (server-cached 10 min; <code>?refresh=1</code> busts the cache)</td></tr>
-            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/community/{kind}/</code></td><td>As above for <code>tasks</code>, <code>baselines</code> or <code>automations</code>; cached per kind</td></tr>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/community/{kind}/</code></td><td>As above for <code>tasks</code>, <code>playbooks</code> or <code>automations</code>; cached per kind</td></tr>
             <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/community/{kind}/{file}/plan/</code></td><td>What forking this item would create, and what you already have. Creates nothing</td></tr>
             <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/tasks/community/{kind}/{file}/fork/</code></td><td>Fork the item and everything it needs, in one transaction. A no-op when you already have it</td></tr>
-            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/baselines/{id}/yaml/</code></td><td>The baseline as community YAML, with the filename it should be shared as</td></tr>
-            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/baselines/yaml/</code></td><td>Create from community YAML, or replace when <code>baseline_id</code> is given. Turning on <code>allow_high_risk</code> still costs a TOTP code</td></tr>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/playbooks/{id}/yaml/</code></td><td>The playbook as community YAML, with the filename it should be shared as</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/playbooks/yaml/</code></td><td>Create from community YAML, or replace when <code>playbook_id</code> is given. Turning on <code>allow_high_risk</code> still costs a TOTP code</td></tr>
             <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/automations/{id}/yaml/</code></td><td>The automation as community YAML; 400 with a reason when it names one specific host</td></tr>
             <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/automations/yaml/</code></td><td>Create from community YAML, or replace when <code>automation_id</code> is given</td></tr>
             <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/tasks/runs/{id}/</code></td><td>Run detail including stdout/stderr per step</td></tr>
@@ -2377,7 +2377,7 @@
           <thead><tr><th>Action</th><th>Risk</th><th>Required params</th><th>What it does</th></tr></thead>
           <tbody>
             <tr class="group-row"><td colspan="4"><strong>Composition (server-side — expanded before signing, never sent to an agent)</strong></td></tr>
-            <tr><td><code>baseline</code></td><td><span class="risk risk-std">standard</span></td><td><code>name</code></td><td>Run baseline</td></tr>
+            <tr><td><code>playbook</code></td><td><span class="risk risk-std">standard</span></td><td><code>name</code></td><td>Run playbook</td></tr>
             <tr class="group-row"><td colspan="4"><strong>Service management</strong></td></tr>
             <tr><td><code>restart_service</code></td><td><span class="risk risk-std">standard</span></td><td><code>service_name</code></td><td>Restart service</td></tr>
             <tr><td><code>start_service</code></td><td><span class="risk risk-std">standard</span></td><td><code>service_name</code></td><td>Start service</td></tr>
@@ -2469,8 +2469,8 @@
 
       <h3 style="margin-top:36px;">Changing a host's tags from a task</h3>
       <p class="prose"><code>add_tag</code> and <code>remove_tag</code>
-      (2026.8.0) let a task or baseline retag the host it just changed, so
-      anything keyed on tags — baselines, alert rules, deploy targeting — can
+      (2026.8.0) let a task or playbook retag the host it just changed, so
+      anything keyed on tags — playbooks, alert rules, deploy targeting — can
       be driven by automation instead of by hand.</p>
       <div class="code-block">
         <div class="code-label">YAML</div>

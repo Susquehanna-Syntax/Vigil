@@ -1,11 +1,11 @@
 // vigil-runhistory.js
-// Owns: Baselines → History sub-tab. Lists TaskRuns produced by baseline and
+// Owns: Playbooks → History sub-tab. Lists TaskRuns produced by playbook and
 // automation dispatch, newest first, with the outcome the run settled into.
 //
 // Before runs were attached to these dispatches, an execution left only loose
 // Task rows identified by a step_label string, so there was nothing to show.
 
-const runHistoryState = { page: 1, pages: 1, source: 'automation,baseline' };
+const runHistoryState = { page: 1, pages: 1, source: 'automation,playbook' };
 
 const _RUN_STATE_ACCENT = {
   running: 'peach',
@@ -36,10 +36,10 @@ function _buildRunRow(row) {
   const el = document.createElement('div');
   el.className = 'run-row';
   const accent = _RUN_STATE_ACCENT[row.state] || 'lav';
-  const kind = row.source === 'baseline' ? 'baseline' : 'automation';
+  const kind = row.source === 'playbook' ? 'playbook' : 'automation';
   // name_snapshot is captured at dispatch, so history still reads correctly
-  // after the automation or baseline it came from is deleted.
-  const name = row.name_snapshot || row.automation_name || row.baseline_name || 'run';
+  // after the automation or playbook it came from is deleted.
+  const name = row.name_snapshot || row.automation_name || row.playbook_name || 'run';
   const hosts = `${row.host_count} host${row.host_count === 1 ? '' : 's'}`;
   const steps = `${row.step_count} step${row.step_count === 1 ? '' : 's'}`;
   const dur = _runDuration(row);
@@ -114,7 +114,7 @@ async function loadRunHistory(page) {
   if (!body.results.length) {
     list.appendChild(_buildEmptyState(
       'No runs yet',
-      'Baseline and automation dispatches will appear here with their results.'));
+      'Playbook and automation dispatches will appear here with their results.'));
   } else {
     for (const row of body.results) list.appendChild(_buildRunRow(row));
   }
@@ -141,7 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadRunHistory(1);
   });
 
-  document.querySelectorAll('#page-baselines .sub-tab').forEach((tab) => {
+  document.querySelectorAll('#page-playbooks .sub-tab').forEach((tab) => {
     tab.addEventListener('click', () => {
       if (tab.dataset.subtab === 'hist-panel') loadRunHistory(1);
     });

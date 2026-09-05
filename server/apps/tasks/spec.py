@@ -37,10 +37,18 @@ class SpecError(ValueError):
 # Keep this list in lockstep with ``agent/vigil_agent/executor.py``. Each entry
 # records required params, a risk tier, and a human label for the UI.
 
+#: Action types that were renamed. A community file published before the rename,
+#: and any YAML an operator saved locally, keeps working: the old name resolves
+#: to the new one on the way in and is rewritten in place, so everything
+#: downstream — validation, expansion, export — only ever sees the new name.
+LEGACY_ACTION_ALIASES: dict[str, str] = {
+    "baseline": "playbook",
+}
+
 ACTION_REGISTRY: dict[str, dict[str, Any]] = {
     # ── Composition (server-side; expanded before signing, never sent to agents) ──
-    "baseline": {
-        "label": "Run baseline",
+    "playbook": {
+        "label": "Run playbook",
         "risk": "standard",
         "required": ["name"],
         "optional": [],
@@ -1024,7 +1032,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         raise SpecError("'created' must be an ISO-8601 date (YYYY-MM-DD)")
 
     # ``uid`` is this task's identity in the community catalog, independent of
-    # its name and its filename. A baseline references its steps by uid, which
+    # its name and its filename. A playbook references its steps by uid, which
     # is what lets the reference survive a rename and stops two tasks that
     # happen to share a name from being confused for each other. Optional:
     # everything written before uids existed has none, and a task that is never
@@ -1067,6 +1075,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         action_type = _as_str(entry.get("type"), f"actions[{index}].type", max_len=64)
         if not action_type:
             raise SpecError(f"action #{index + 1} missing 'type'")
+        action_type = LEGACY_ACTION_ALIASES.get(action_type, action_type)
+        entry["type"] = action_type
         if action_type not in ACTION_REGISTRY:
             raise SpecError(
                 f"action #{index + 1}: unknown type {action_type!r} — "
@@ -1255,7 +1265,7 @@ def _validate_target_tags(raw: Any) -> list[str]:
 def validate_params_override(spec: dict, override) -> str | None:
     """Validate a per-use params override against a parsed task spec.
 
-    Baseline steps and automations may override action params without editing
+    Playbook steps and automations may override action params without editing
     the shared definition. ``override`` maps stringified action indexes to
     ``{param: value}`` dicts; params must be declared (required or optional)
     by that action's registry entry and values must be scalars. Returns an

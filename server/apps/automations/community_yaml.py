@@ -4,7 +4,7 @@ The schema is ``schemas/automation.md`` in Vigil-Approved-Scripts. Two things
 about it shape this module:
 
 * The action is named by **slug** — ``task: install-nginx`` or
-  ``baseline: container-host-maintenance`` — exactly as baselines name their
+  ``playbook: container-host-maintenance`` — exactly as playbooks name their
   steps, and resolved the same way on import.
 * ``target: host`` and ``event_host`` are **not** representable. Both name a
   specific host by primary key, and a key from someone else's server means
@@ -97,13 +97,13 @@ def to_yaml(automation, *, author: str = "", created=None) -> str:
         }
 
     fields["action_kind"] = automation.action_kind
-    if automation.action_kind == "baseline":
-        if not automation.baseline_id:
+    if automation.action_kind == "playbook":
+        if not automation.playbook_id:
             raise ContentYamlError(
-                "This automation runs a baseline but no baseline is set.")
-        fields["baseline"] = slugify(automation.baseline.name, fallback="baseline")
-        if automation.baseline.community_uid:
-            fields["action_uid"] = str(automation.baseline.community_uid)
+                "This automation runs a playbook but no playbook is set.")
+        fields["playbook"] = slugify(automation.playbook.name, fallback="playbook")
+        if automation.playbook.community_uid:
+            fields["action_uid"] = str(automation.playbook.community_uid)
     else:
         if not automation.task_definition_id:
             raise ContentYamlError(
@@ -143,7 +143,7 @@ def parse(text: str) -> dict[str, Any]:
 
     out: dict[str, Any] = {
         "uid": uid,
-        # The uid of the task or baseline this automation runs, when the file
+        # The uid of the task or playbook this automation runs, when the file
         # carries one. Named separately from `uid` so a file cannot confuse
         # its own identity with its action's.
         "action_uid": parse_uid({"uid": raw.get("action_uid")}, f"{_WHAT} action"),
@@ -194,23 +194,23 @@ def parse(text: str) -> dict[str, Any]:
             out["cron"][field] = value
 
     action_kind = require_str(raw, "action_kind", _WHAT, max_len=12)
-    if action_kind not in ("task", "baseline"):
+    if action_kind not in ("task", "playbook"):
         raise ContentYamlError(
-            f"{_WHAT}: 'action_kind' must be 'task' or 'baseline'.")
+            f"{_WHAT}: 'action_kind' must be 'task' or 'playbook'.")
     out["action_kind"] = action_kind
 
     task_slug = raw.get("task")
-    baseline_slug = raw.get("baseline")
+    playbook_slug = raw.get("playbook")
     if action_kind == "task":
-        if baseline_slug is not None:
+        if playbook_slug is not None:
             raise ContentYamlError(
-                f"{_WHAT}: 'baseline' is not allowed when action_kind is 'task'.")
+                f"{_WHAT}: 'playbook' is not allowed when action_kind is 'task'.")
         out["slug"] = require_str(raw, "task", _WHAT, max_len=60)
     else:
         if task_slug is not None:
             raise ContentYamlError(
-                f"{_WHAT}: 'task' is not allowed when action_kind is 'baseline'.")
-        out["slug"] = require_str(raw, "baseline", _WHAT, max_len=60)
+                f"{_WHAT}: 'task' is not allowed when action_kind is 'playbook'.")
+        out["slug"] = require_str(raw, "playbook", _WHAT, max_len=60)
 
     override = raw.get("params_override") or {}
     if not isinstance(override, dict):
@@ -264,11 +264,11 @@ def _match(rows, slug: str, fallback: str, names_by_slug, uid: str = ""):
     return None
 
 
-def resolve_action(parsed: dict[str, Any], *, definitions, baselines,
-                   task_names_by_slug=None, baseline_names_by_slug=None):
+def resolve_action(parsed: dict[str, Any], *, definitions, playbooks,
+                   task_names_by_slug=None, playbook_names_by_slug=None):
     """Resolve the parsed automation's action slug to a real row.
 
-    Returns ``(task_definition, baseline)`` with exactly one of them set.
+    Returns ``(task_definition, playbook)`` with exactly one of them set.
     """
     if parsed["action_kind"] == "task":
         definition = _match(definitions, parsed["slug"], "task",
@@ -278,10 +278,10 @@ def resolve_action(parsed: dict[str, Any], *, definitions, baselines,
         raise ContentYamlError(
             f"This automation runs the task '{parsed['slug']}', which is not in "
             f"your library. Fork it from Community first.")
-    baseline = _match(baselines, parsed["slug"], "baseline",
-                      baseline_names_by_slug, parsed.get("action_uid", ""))
-    if baseline is not None:
-        return None, baseline
+    playbook = _match(playbooks, parsed["slug"], "playbook",
+                      playbook_names_by_slug, parsed.get("action_uid", ""))
+    if playbook is not None:
+        return None, playbook
     raise ContentYamlError(
-        f"This automation runs the baseline '{parsed['slug']}', which you do "
+        f"This automation runs the playbook '{parsed['slug']}', which you do "
         f"not have. Fork it from Community first.")

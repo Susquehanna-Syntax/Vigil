@@ -1,45 +1,45 @@
-// vigil-baselines.js
-// Owns: the Baselines page — a sequence editor for baselines (ordered task
+// vigil-playbooks.js
+// Owns: the Playbooks page — a sequence editor for playbooks (ordered task
 // definitions that auto-dispatch on host enrollment and are callable from any
-// task via `type: baseline`). Rich cards show each step and its action count;
+// task via `type: playbook`). Rich cards show each step and its action count;
 // the editor builds a sequence you can reorder.
 // Depends on: vigil-utils.js (apiJson, confirmModal, showToast, escHtml).
 
-let _baselineDefs = [];   // all task definitions, for the picker (id -> def)
+let _playbookDefs = [];   // all task definitions, for the picker (id -> def)
 let _editingSteps = [];   // editor steps in order: { id, ov } (definition id + params override)
-let _allBaselines = [];   // cached, for client-side search
+let _allPlaybooks = [];   // cached, for client-side search
 
-async function loadBaselines() {
-  const list = document.getElementById('baselines-list');
+async function loadPlaybooks() {
+  const list = document.getElementById('playbooks-list');
   if (!list) return;
   list.innerHTML = '<div class="empty-block"><p>Loading…</p></div>';
   try {
-    const [baselines, defs] = await Promise.all([
-      apiJson('/api/v1/baselines/'),
+    const [playbooks, defs] = await Promise.all([
+      apiJson('/api/v1/playbooks/'),
       apiJson('/api/v1/tasks/definitions/'),
     ]);
-    _baselineDefs = Array.isArray(defs) ? defs : (defs.results || []);
-    _allBaselines = baselines;
+    _playbookDefs = Array.isArray(defs) ? defs : (defs.results || []);
+    _allPlaybooks = playbooks;
     _renderDefPicker();
-    _renderBaselineList(_filterBaselines());
+    _renderPlaybookList(_filterPlaybooks());
   } catch (e) {
-    list.innerHTML = `<div class="empty-block"><h4>Couldn't load baselines</h4><p>${escHtml(e.message)}</p></div>`;
+    list.innerHTML = `<div class="empty-block"><h4>Couldn't load playbooks</h4><p>${escHtml(e.message)}</p></div>`;
   }
 }
 
-function _filterBaselines() {
+function _filterPlaybooks() {
   const q = (document.getElementById('bl-search')?.value || '').trim().toLowerCase();
-  if (!q) return _allBaselines;
-  return _allBaselines.filter(b =>
+  if (!q) return _allPlaybooks;
+  return _allPlaybooks.filter(b =>
     b.name.toLowerCase().includes(q) ||
     (b.description || '').toLowerCase().includes(q) ||
     (b.target_tags || []).some(t => t.toLowerCase().includes(q)) ||
     b.steps.some(s => s.definition_name.toLowerCase().includes(q)));
 }
 
-// Whether the baseline being edited ALREADY had the flag on when it was
+// Whether the playbook being edited ALREADY had the flag on when it was
 // opened. A TOTP code is only spent turning it on, never re-confirming a
-// baseline that was already authorized.
+// playbook that was already authorized.
 let _blHighRiskWasOn = false;
 
 // The TOTP prompt appears only while the box is being ticked for the first
@@ -53,7 +53,7 @@ function _blSyncHighRiskWarning() {
   _renderEditorSteps();
 }
 
-// Whether the baseline being edited has opted in to high-risk steps. Read
+// Whether the playbook being edited has opted in to high-risk steps. Read
 // from the checkbox rather than passed around, so the picker and the save
 // path cannot disagree about it.
 function _blAllowsHighRisk() {
@@ -62,42 +62,42 @@ function _blAllowsHighRisk() {
 }
 
 function _blIneligible(def) {
-  // Mirrors apps/baselines/models.py eligible(): baselines auto-run without
+  // Mirrors apps/playbooks/models.py eligible(): playbooks auto-run without
   // per-dispatch 2FA, so update_agent always stays out, and high-risk stays
-  // out unless this baseline opted in — which costs a TOTP code to turn on.
+  // out unless this playbook opted in — which costs a TOTP code to turn on.
   if (!def) return null;
   const risk = def.risk_level || def.risk || 'standard';
   if (risk === 'high' && !_blAllowsHighRisk()) {
     return 'high risk — tick “Allow high-risk steps” to use it here';
   }
   const acts = (def.parsed_spec && def.parsed_spec.actions) || [];
-  if (acts.some(a => a.type === 'update_agent')) return 'update_agent — can’t run in a baseline';
+  if (acts.some(a => a.type === 'update_agent')) return 'update_agent — can’t run in a playbook';
   return null;
 }
 
 function _defName(id) {
-  const d = _baselineDefs.find(x => String(x.id) === String(id));
+  const d = _playbookDefs.find(x => String(x.id) === String(id));
   return d ? d.name : id;
 }
 function _defRisk(id) {
-  const d = _baselineDefs.find(x => String(x.id) === String(id));
+  const d = _playbookDefs.find(x => String(x.id) === String(id));
   return d ? (d.risk_level || d.risk || 'standard') : 'standard';
 }
 function _defActionCount(id) {
-  const d = _baselineDefs.find(x => String(x.id) === String(id));
+  const d = _playbookDefs.find(x => String(x.id) === String(id));
   const acts = d && d.parsed_spec && d.parsed_spec.actions;
   return Array.isArray(acts) ? acts.length : null;
 }
 
-function _renderBaselineList(baselines) {
-  const list = document.getElementById('baselines-list');
-  if (!baselines.length) {
+function _renderPlaybookList(playbooks) {
+  const list = document.getElementById('playbooks-list');
+  if (!playbooks.length) {
     list.innerHTML = `<div class="empty-block">
-      <h4>No baselines yet</h4>
-      <p>A baseline is a named sequence of tasks that runs automatically when a matching host is approved — and can be called from any task with <code class="inline">type: baseline</code>. Create one to standardise how new machines get set up.</p></div>`;
+      <h4>No playbooks yet</h4>
+      <p>A playbook is a named sequence of tasks that runs automatically when a matching host is approved — and can be called from any task with <code class="inline">type: playbook</code>. Create one to standardise how new machines get set up.</p></div>`;
     return;
   }
-  list.innerHTML = baselines.map(b => {
+  list.innerHTML = playbooks.map(b => {
     const steps = b.steps.map(s => `
       <div class="bl-seq-step">
         <span class="bl-seq-num">${s.order + 1}</span>
@@ -128,27 +128,27 @@ function _renderBaselineList(baselines) {
       </div>
       <div class="bl-call">
         <div class="bl-call-label">Call from a task:</div>
-        <pre>${yamlToHtml('- type: baseline\n  params: { name: "' + b.name + '" }')}</pre>
+        <pre>${yamlToHtml('- type: playbook\n  params: { name: "' + b.name + '" }')}</pre>
       </div>
     </div>`;
   }).join('');
-  _wireCards(baselines);
+  _wireCards(playbooks);
 }
 
-function _wireCards(baselines) {
-  const list = document.getElementById('baselines-list');
+function _wireCards(playbooks) {
+  const list = document.getElementById('playbooks-list');
   list.querySelectorAll('[data-bl-del]').forEach(btn => btn.addEventListener('click', async () => {
-    if (!(await confirmModal('Delete this baseline? Tasks that call it by name will start failing.', { danger: true, confirmText: 'Delete' }))) return;
-    await fetch(`/api/v1/baselines/${btn.dataset.blDel}/`, { method: 'DELETE', headers: { 'X-CSRFToken': getCsrf() }, credentials: 'same-origin' });
-    loadBaselines();
+    if (!(await confirmModal('Delete this playbook? Tasks that call it by name will start failing.', { danger: true, confirmText: 'Delete' }))) return;
+    await fetch(`/api/v1/playbooks/${btn.dataset.blDel}/`, { method: 'DELETE', headers: { 'X-CSRFToken': getCsrf() }, credentials: 'same-origin' });
+    loadPlaybooks();
   }));
   list.querySelectorAll('[data-bl-toggle]').forEach(btn => btn.addEventListener('click', async () => {
-    await apiJson(`/api/v1/baselines/${btn.dataset.blToggle}/`, { method: 'PATCH', body: JSON.stringify({ enabled: btn.dataset.enabled !== 'true' }) });
-    loadBaselines();
+    await apiJson(`/api/v1/playbooks/${btn.dataset.blToggle}/`, { method: 'PATCH', body: JSON.stringify({ enabled: btn.dataset.enabled !== 'true' }) });
+    loadPlaybooks();
   }));
   list.querySelectorAll('[data-bl-edit]').forEach(btn => btn.addEventListener('click', () => _startEdit(btn.dataset.blEdit)));
   list.querySelectorAll('[data-bl-dup]').forEach(btn => btn.addEventListener('click', () => {
-    const b = baselines.find(x => x.id === btn.dataset.blDup);
+    const b = playbooks.find(x => x.id === btn.dataset.blDup);
     _openEditor({ name: b.name + ' (copy)', description: b.description,
       target_tags: b.target_tags, enabled: b.enabled,
       steps: b.steps.map(s => ({ definition_id: s.definition_id,
@@ -161,7 +161,7 @@ function _renderDefPicker() {
   const sel = document.getElementById('bl-def-picker');
   if (!sel) return;
   sel.innerHTML = '<option value="">+ Add a task to the sequence…</option>' +
-    _baselineDefs.map(d => `<option value="${d.id}">${escHtml(d.name)} · ${escHtml(d.risk_level || d.risk || 'standard')}</option>`).join('');
+    _playbookDefs.map(d => `<option value="${d.id}">${escHtml(d.name)} · ${escHtml(d.risk_level || d.risk || 'standard')}</option>`).join('');
 }
 
 function _renderEditorSteps() {
@@ -173,7 +173,7 @@ function _renderEditorSteps() {
   wrap.innerHTML = _editingSteps.map((s, i) => {
     const id = s.id;
     const count = _defActionCount(id);
-    const why = _blIneligible(_baselineDefs.find(d => String(d.id) === String(id)));
+    const why = _blIneligible(_playbookDefs.find(d => String(d.id) === String(id)));
     const nOv = Object.values(s.ov || {}).reduce((n, p) => n + Object.keys(p).length, 0);
     return `<div class="bl-editor-step">
       <div class="bl-editor-step-main">
@@ -193,7 +193,7 @@ function _renderEditorSteps() {
   }).join('');
   wrap.querySelectorAll('[data-inputs]').forEach(b => b.addEventListener('click', () => {
     const i = +b.dataset.inputs;
-    const def = _baselineDefs.find(d => String(d.id) === _editingSteps[i].id);
+    const def = _playbookDefs.find(d => String(d.id) === _editingSteps[i].id);
     if (!def) return showToast('Task not loaded yet', 'error');
     openInputsModal({ def, override: _editingSteps[i].ov, onSave: (ov) => {
       _editingSteps[i].ov = ov; _renderEditorSteps();
@@ -201,10 +201,10 @@ function _renderEditorSteps() {
   }));
   wrap.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', () => { _editingSteps.splice(+b.dataset.rm, 1); _renderEditorSteps(); }));
   wrap.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
-    // Edit the task in a stacked modal — keeps the baseline editor open behind.
+    // Edit the task in a stacked modal — keeps the playbook editor open behind.
     openTaskModal({ id: b.dataset.view, onSaved: (def) => {
-      const idx = _baselineDefs.findIndex(d => String(d.id) === String(def.id));
-      if (idx >= 0) _baselineDefs[idx] = def; else _baselineDefs.push(def);
+      const idx = _playbookDefs.findIndex(d => String(d.id) === String(def.id));
+      if (idx >= 0) _playbookDefs[idx] = def; else _playbookDefs.push(def);
       _renderEditorSteps();
     } });
   }));
@@ -219,14 +219,14 @@ function _renderEditorSteps() {
 function _openEditor(data, editingId) {
   const modal = document.getElementById('bl-editor-modal');
   modal.dataset.editing = editingId || '';
-  document.getElementById('bl-editor-title').textContent = editingId ? 'Edit baseline' : (data && data.name ? 'Duplicate baseline' : 'New baseline');
+  document.getElementById('bl-editor-title').textContent = editingId ? 'Edit playbook' : (data && data.name ? 'Duplicate playbook' : 'New playbook');
   document.getElementById('bl-name').value = data ? (data.name || '') : '';
   document.getElementById('bl-desc').value = data ? (data.description || '') : '';
   document.getElementById('bl-tags').value = data ? (data.target_tags || []).join(', ') : '';
   document.getElementById('bl-enabled').checked = data ? !!data.enabled : true;
-  // Duplicating a baseline does not inherit the authorization: editingId is
+  // Duplicating a playbook does not inherit the authorization: editingId is
   // null there, so the flag starts off and has to be re-confirmed. The
-  // original's TOTP authorized that baseline, not a copy of it.
+  // original's TOTP authorized that playbook, not a copy of it.
   _blHighRiskWasOn = !!(editingId && data && data.allow_high_risk);
   const allowBox = document.getElementById('bl-allow-high-risk');
   if (allowBox) allowBox.checked = _blHighRiskWasOn;
@@ -247,10 +247,10 @@ function _closeBlEditor() {
 }
 
 function _startEdit(id) {
-  apiJson(`/api/v1/baselines/${id}/`).then(b => _openEditor(b, id));
+  apiJson(`/api/v1/playbooks/${id}/`).then(b => _openEditor(b, id));
 }
 
-async function _saveBaseline() {
+async function _savePlaybook() {
   const allowHighRisk = _blAllowsHighRisk();
   const body = {
     name: document.getElementById('bl-name').value.trim(),
@@ -269,19 +269,19 @@ async function _saveBaseline() {
     if (!totp) return showToast('Enter your TOTP code to allow high-risk steps', 'error');
     body.totp = totp;
   }
-  if (!body.name) return showToast('Give the baseline a name', 'error');
+  if (!body.name) return showToast('Give the playbook a name', 'error');
   if (!body.definition_ids.length) return showToast('Add at least one task', 'error');
   for (const s of _editingSteps) {
-    const why = _blIneligible(_baselineDefs.find(d => String(d.id) === String(s.id)));
+    const why = _blIneligible(_playbookDefs.find(d => String(d.id) === String(s.id)));
     if (why) return showToast(`Fix ineligible steps first: ${_defName(s.id)} — ${why}`, 'error');
   }
   const editing = document.getElementById('bl-editor-modal').dataset.editing;
   try {
-    if (editing) await apiJson(`/api/v1/baselines/${editing}/`, { method: 'PATCH', body: JSON.stringify(body) });
-    else await apiJson('/api/v1/baselines/', { method: 'POST', body: JSON.stringify(body) });
-    showToast('Baseline saved', 'success');
+    if (editing) await apiJson(`/api/v1/playbooks/${editing}/`, { method: 'PATCH', body: JSON.stringify(body) });
+    else await apiJson('/api/v1/playbooks/', { method: 'POST', body: JSON.stringify(body) });
+    showToast('Playbook saved', 'success');
     _closeBlEditor();
-    loadBaselines();
+    loadPlaybooks();
   } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
 }
 
@@ -293,27 +293,27 @@ document.addEventListener('DOMContentLoaded', () => {
       onSelect: (item) => {
         // Make the just-picked task known to the step renderer (it may have
         // been created inside the picker, after the page's defs were loaded).
-        if (item.raw && !_baselineDefs.some(d => String(d.id) === String(item.key))) _baselineDefs.push(item.raw);
+        if (item.raw && !_playbookDefs.some(d => String(d.id) === String(item.key))) _playbookDefs.push(item.raw);
         _editingSteps.push({ id: String(item.key), ov: {} }); _renderEditorSteps();
       } });
   });
   document.getElementById('bl-allow-high-risk')
     ?.addEventListener('change', _blSyncHighRiskWarning);
   const save = document.getElementById('bl-save-btn');
-  if (save) save.addEventListener('click', _saveBaseline);
+  if (save) save.addEventListener('click', _savePlaybook);
   const nu = document.getElementById('bl-new-btn');
   if (nu) nu.addEventListener('click', () => _openEditor(null, null));
   document.getElementById('bl-cancel-btn')?.addEventListener('click', _closeBlEditor);
   document.getElementById('bl-cancel-btn-2')?.addEventListener('click', _closeBlEditor);
   document.getElementById('bl-editor-overlay')?.addEventListener('click', _closeBlEditor);
   const search = document.getElementById('bl-search');
-  if (search) search.addEventListener('input', () => _renderBaselineList(_filterBaselines()));
+  if (search) search.addEventListener('input', () => _renderPlaybookList(_filterPlaybooks()));
 
-  // Sub-tab switching (Baselines / Automation)
-  document.querySelectorAll('#page-baselines .sub-tab').forEach(tab => {
+  // Sub-tab switching (Playbooks / Automation)
+  document.querySelectorAll('#page-playbooks .sub-tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      document.querySelectorAll('#page-baselines .sub-tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('#page-baselines .sub-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('#page-playbooks .sub-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('#page-playbooks .sub-panel').forEach(p => p.classList.remove('active'));
       tab.classList.add('active');
       document.getElementById(tab.dataset.subtab).classList.add('active');
       if (tab.dataset.subtab === 'auto-panel' && typeof loadAutomations === 'function') loadAutomations();
@@ -322,6 +322,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 if (typeof navigateTo === 'function') {
-  const _origNavBaselines = navigateTo;
-  navigateTo = function (p) { _origNavBaselines(p); if (p === 'baselines') loadBaselines(); };
+  const _origNavPlaybooks = navigateTo;
+  navigateTo = function (p) { _origNavPlaybooks(p); if (p === 'playbooks') loadPlaybooks(); };
 }

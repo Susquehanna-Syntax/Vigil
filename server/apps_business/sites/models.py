@@ -23,7 +23,7 @@ class Site(models.Model):
     slug = models.SlugField(max_length=200, unique=True)
     description = models.TextField(blank=True, default="")
     # The one structural scope: it holds every unassigned host, and its
-    # baselines/automations/channels cascade into every other site. Exactly
+    # playbooks/automations/channels cascade into every other site. Exactly
     # one row carries this flag.
     is_global = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -51,12 +51,12 @@ class HostSiteAssignment(models.Model):
     assigned_at = models.DateTimeField(auto_now_add=True)
 
 
-class BaselineSiteAssignment(models.Model):
-    """Places a core Baseline in a Site. No row means the global scope."""
-    baseline = models.OneToOneField(
-        "baselines.Baseline", on_delete=models.CASCADE, related_name="site_assignment")
+class PlaybookSiteAssignment(models.Model):
+    """Places a core Playbook in a Site. No row means the global scope."""
+    playbook = models.OneToOneField(
+        "baselines.Playbook", on_delete=models.CASCADE, related_name="site_assignment")
     site = models.ForeignKey(Site, on_delete=models.CASCADE,
-                             related_name="baseline_assignments")
+                             related_name="playbook_assignments")
     assigned_at = models.DateTimeField(auto_now_add=True)
 
 

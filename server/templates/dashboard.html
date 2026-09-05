@@ -26,9 +26,9 @@
   {# Logic: static/js/vigil-monitor.js + vigil-host-cards.js | Data: client-side fetch /api/v1/metrics/{host}/{cat}/{metric}/ #}
   {% include "pages/_monitor.html" %}
 
-  {# Baselines page — sequence editor for auto-enroll task chains #}
-  {# Logic: static/js/vigil-baselines.js | Data: /api/v1/baselines/ + /api/v1/tasks/definitions/ #}
-  {% include "pages/_baselines.html" %}
+  {# Playbooks page — sequence editor for auto-enroll task chains #}
+  {# Logic: static/js/vigil-playbooks.js | Data: /api/v1/playbooks/ + /api/v1/tasks/definitions/ #}
+  {% include "pages/_playbooks.html" %}
 
   {# Status pages — public status page manager with machine select + naming #}
   {# Logic: static/js/vigil-statuspages.js | Data: /api/v1/status-pages/ (+ /hosts/) #}

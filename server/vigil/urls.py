@@ -17,6 +17,7 @@ from apps.alerts.models import Alert
 from apps.hosts.models import Host
 from apps.hosts import views as hosts_views
 from apps.hosts.views import checkin, register
+from apps.playbooks.urls import legacy_urlpatterns as _legacy_playbook_urls
 from apps.reprovision.installer_views import enroll as reprovision_enroll
 from apps.statuspage.views import public_status as status_public_view
 from apps.statuspage.views import public_status_data as status_public_data_view
@@ -132,7 +133,11 @@ urlpatterns = [
     path("api/v1/branding/", include("apps_business.branding.urls")),
     path("api/v1/audits/", include("apps_business.audits.urls")),
     path("api/v1/license/", include("apps.licensing.urls")),
-    path("api/v1/baselines/", include("apps.baselines.urls")),
+    path("api/v1/playbooks/", include("apps.playbooks.urls")),
+    # Playbooks were called baselines until 2026.11.0. Anything an operator
+    # already scripted against the old path keeps working; nothing in Vigil
+    # emits it any more.
+    path("api/v1/baselines/", include(_legacy_playbook_urls)),
     path("api/v1/ai/", include("apps.aisuggest.urls")),
     path("api/v1/status-pages/", include("apps.statuspage.urls")),
     path("api/v1/automations/", include("apps.automations.urls")),

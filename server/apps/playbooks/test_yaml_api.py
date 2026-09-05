@@ -1,7 +1,7 @@
-"""The YAML export/import endpoints for baselines and automations.
+"""The YAML export/import endpoints for playbooks and automations.
 
 The security question these exist to answer: importing a file must not be a
-way around a gate the UI enforces. A baseline's ``allow_high_risk`` flag costs
+way around a gate the UI enforces. A playbook's ``allow_high_risk`` flag costs
 a TOTP confirmation to turn on, because that one act authorizes every future
 unattended dispatch — so a YAML file asking for it has to pay the same price.
 """
@@ -13,7 +13,7 @@ from apps.automations.models import Automation
 from apps.tasks.models import TaskDefinition
 from apps.tasks.spec import parse_and_validate
 
-from .models import Baseline, BaselineStep
+from .models import Playbook, PlaybookStep
 
 
 def _definition(user, name, risk="low", action="clear_temp_files"):
@@ -23,114 +23,114 @@ def _definition(user, name, risk="low", action="clear_temp_files"):
         parsed_spec=parse_and_validate(src), risk_level=risk)
 
 
-class BaselineYamlApiTests(TestCase):
+class PlaybookYamlApiTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser(
             "ya", "ya@example.com", "x")
         self.client.force_login(self.user)
         self.definition = _definition(self.user, "Install Nginx")
 
-    def _baseline(self, **kw):
-        baseline = Baseline.objects.create(
+    def _playbook(self, **kw):
+        playbook = Playbook.objects.create(
             name=kw.pop("name", "Build"), created_by=self.user, **kw)
-        BaselineStep.objects.create(baseline=baseline,
+        PlaybookStep.objects.create(playbook=playbook,
                                     definition=self.definition, order=1)
-        return baseline
+        return playbook
 
     def test_export_returns_yaml_and_a_filename(self):
-        baseline = self._baseline(name="Standard Linux Server Build")
-        r = self.client.get(f"/api/v1/baselines/{baseline.id}/yaml/")
+        playbook = self._playbook(name="Standard Linux Server Build")
+        r = self.client.get(f"/api/v1/playbooks/{playbook.id}/yaml/")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["filename"],
                          "standard-linux-server-build.yaml")
         self.assertIn("task: install-nginx", r.json()["yaml"])
 
-    def test_import_creates_a_baseline(self):
-        r = self.client.post("/api/v1/baselines/yaml/", {
+    def test_import_creates_a_playbook(self):
+        r = self.client.post("/api/v1/playbooks/yaml/", {
             "yaml": "name: Imported\ndescription: From a file.\n"
                     "target_tags:\n  - linux\nsteps:\n  - task: install-nginx\n",
         }, content_type="application/json")
         self.assertEqual(r.status_code, 201, r.content[:400])
-        baseline = Baseline.objects.get(name="Imported")
-        self.assertEqual(baseline.target_tags, ["linux"])
+        playbook = Playbook.objects.get(name="Imported")
+        self.assertEqual(playbook.target_tags, ["linux"])
         self.assertEqual(
-            [s.definition_id for s in baseline.steps.all()], [self.definition.id])
+            [s.definition_id for s in playbook.steps.all()], [self.definition.id])
 
     def test_import_round_trips_an_export(self):
-        baseline = self._baseline(name="Round Trip")
+        playbook = self._playbook(name="Round Trip")
         exported = self.client.get(
-            f"/api/v1/baselines/{baseline.id}/yaml/").json()["yaml"]
-        baseline.delete()
-        r = self.client.post("/api/v1/baselines/yaml/", {"yaml": exported},
+            f"/api/v1/playbooks/{playbook.id}/yaml/").json()["yaml"]
+        playbook.delete()
+        r = self.client.post("/api/v1/playbooks/yaml/", {"yaml": exported},
                              content_type="application/json")
         self.assertEqual(r.status_code, 201, r.content[:400])
-        self.assertEqual(Baseline.objects.get(name="Round Trip").steps.count(), 1)
+        self.assertEqual(Playbook.objects.get(name="Round Trip").steps.count(), 1)
 
-    def test_import_over_an_existing_baseline_replaces_it(self):
-        baseline = self._baseline(name="Replace Me")
-        r = self.client.post("/api/v1/baselines/yaml/", {
-            "baseline_id": str(baseline.id),
+    def test_import_over_an_existing_playbook_replaces_it(self):
+        playbook = self._playbook(name="Replace Me")
+        r = self.client.post("/api/v1/playbooks/yaml/", {
+            "playbook_id": str(playbook.id),
             "yaml": "name: Replace Me\ndescription: Now with a description.\n"
                     "steps:\n  - task: install-nginx\n",
         }, content_type="application/json")
         self.assertEqual(r.status_code, 200, r.content[:400])
-        baseline.refresh_from_db()
-        self.assertEqual(baseline.description, "Now with a description.")
-        self.assertEqual(Baseline.objects.filter(name="Replace Me").count(), 1)
+        playbook.refresh_from_db()
+        self.assertEqual(playbook.description, "Now with a description.")
+        self.assertEqual(Playbook.objects.filter(name="Replace Me").count(), 1)
 
     def test_import_refuses_an_unknown_task_slug(self):
-        r = self.client.post("/api/v1/baselines/yaml/", {
+        r = self.client.post("/api/v1/playbooks/yaml/", {
             "yaml": "name: Broken\nsteps:\n  - task: nothing-like-this\n",
         }, content_type="application/json")
         self.assertEqual(r.status_code, 400)
         self.assertIn("nothing-like-this", r.json()["detail"])
-        self.assertFalse(Baseline.objects.filter(name="Broken").exists())
+        self.assertFalse(Playbook.objects.filter(name="Broken").exists())
 
     def test_import_refuses_a_duplicate_name(self):
-        self._baseline(name="Taken")
-        r = self.client.post("/api/v1/baselines/yaml/", {
+        self._playbook(name="Taken")
+        r = self.client.post("/api/v1/playbooks/yaml/", {
             "yaml": "name: Taken\nsteps:\n  - task: install-nginx\n",
         }, content_type="application/json")
         self.assertEqual(r.status_code, 400)
-        self.assertEqual(Baseline.objects.filter(name="Taken").count(), 1)
+        self.assertEqual(Playbook.objects.filter(name="Taken").count(), 1)
 
     # ── The gate ────────────────────────────────────────────────────────────
 
     def test_yaml_import_cannot_turn_on_high_risk_without_totp(self):
         """The one that matters: a file must not be a door around the 2FA."""
         _definition(self.user, "Wipe It", risk="high")
-        r = self.client.post("/api/v1/baselines/yaml/", {
+        r = self.client.post("/api/v1/playbooks/yaml/", {
             "yaml": "name: Sneaky\nallow_high_risk: true\n"
                     "steps:\n  - task: install-nginx\n",
         }, content_type="application/json")
         self.assertEqual(r.status_code, 403, r.content[:400])
         self.assertTrue(r.json().get("needs_totp"))
         self.assertFalse(
-            Baseline.objects.filter(name="Sneaky").exists(),
-            "the refused import must not leave a baseline behind")
+            Playbook.objects.filter(name="Sneaky").exists(),
+            "the refused import must not leave a playbook behind")
 
     def test_a_refused_import_rolls_back_completely(self):
         """The gate fires mid-transaction, after the row is first written."""
-        before = Baseline.objects.count()
-        self.client.post("/api/v1/baselines/yaml/", {
+        before = Playbook.objects.count()
+        self.client.post("/api/v1/playbooks/yaml/", {
             "yaml": "name: Rollback\nallow_high_risk: true\n"
                     "steps:\n  - task: install-nginx\n",
         }, content_type="application/json")
-        self.assertEqual(Baseline.objects.count(), before)
+        self.assertEqual(Playbook.objects.count(), before)
 
     def test_importing_a_high_risk_step_without_the_flag_is_refused(self):
         """Eligibility still applies to steps that arrive by file."""
         _definition(self.user, "Danger", risk="high")
-        r = self.client.post("/api/v1/baselines/yaml/", {
+        r = self.client.post("/api/v1/playbooks/yaml/", {
             "yaml": "name: Risky\nsteps:\n  - task: danger\n",
         }, content_type="application/json")
         self.assertEqual(r.status_code, 400)
-        self.assertFalse(Baseline.objects.filter(name="Risky").exists())
+        self.assertFalse(Playbook.objects.filter(name="Risky").exists())
 
     def test_export_requires_authentication(self):
-        baseline = self._baseline()
+        playbook = self._playbook()
         self.client.logout()
-        r = self.client.get(f"/api/v1/baselines/{baseline.id}/yaml/")
+        r = self.client.get(f"/api/v1/playbooks/{playbook.id}/yaml/")
         self.assertIn(r.status_code, (401, 403))
 
 
@@ -140,16 +140,16 @@ class AutomationYamlApiTests(TestCase):
             "aa", "aa@example.com", "x")
         self.client.force_login(self.user)
         self.definition = _definition(self.user, "Clear Temp Files")
-        self.baseline = Baseline.objects.create(
+        self.playbook = Playbook.objects.create(
             name="Container Host Maintenance", created_by=self.user)
-        BaselineStep.objects.create(baseline=self.baseline,
+        PlaybookStep.objects.create(playbook=self.playbook,
                                     definition=self.definition, order=1)
 
     def test_export_then_import_recreates_the_automation(self):
         automation = Automation.objects.create(
             name="Prune On Low Disk", trigger="event", event="alert_fired",
-            min_severity="warning", action_kind="baseline",
-            baseline=self.baseline, target="event_host", created_by=self.user)
+            min_severity="warning", action_kind="playbook",
+            playbook=self.playbook, target="event_host", created_by=self.user)
         exported = self.client.get(
             f"/api/v1/automations/{automation.id}/yaml/").json()["yaml"]
         automation.delete()
@@ -159,7 +159,7 @@ class AutomationYamlApiTests(TestCase):
         self.assertEqual(r.status_code, 201, r.content[:400])
         rebuilt = Automation.objects.get(name="Prune On Low Disk")
         self.assertEqual(rebuilt.event, "alert_fired")
-        self.assertEqual(rebuilt.baseline_id, self.baseline.id)
+        self.assertEqual(rebuilt.playbook_id, self.playbook.id)
 
     def test_export_of_a_host_pinned_automation_is_a_400_with_a_reason(self):
         from apps.hosts.models import Host
@@ -174,10 +174,10 @@ class AutomationYamlApiTests(TestCase):
         self.assertEqual(r.status_code, 400)
         self.assertIn("specific host", r.json()["detail"])
 
-    def test_import_refuses_an_unknown_baseline_slug(self):
+    def test_import_refuses_an_unknown_playbook_slug(self):
         r = self.client.post("/api/v1/automations/yaml/", {
             "yaml": "name: X\ntrigger: event\nevent: alert_fired\n"
-                    "action_kind: baseline\nbaseline: not-here\n",
+                    "action_kind: playbook\nplaybook: not-here\n",
         }, content_type="application/json")
         self.assertEqual(r.status_code, 400)
         self.assertIn("not-here", r.json()["detail"])

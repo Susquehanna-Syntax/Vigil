@@ -10,12 +10,12 @@ so the change is visible in review rather than discovered in production.
 The headline finding is that the four matchers do not agree with each other:
 
     matcher                whitespace   empty tag list   rejected hosts
-    Baseline.matches       not stripped  matches ALL      not excluded
+    Playbook.matches       not stripped  matches ALL      not excluded
     wave_host_ids          not stripped  matches NONE     excluded
     definition_deploy      STRIPPED      n/a              n/a
     automations            not stripped  n/a              n/a
 
-Empty-list handling is *opposite* between baselines and waves. Whitespace is
+Empty-list handling is *opposite* between playbooks and waves. Whitespace is
 stripped in exactly one of the four. Any of these is a plausible surprise for
 an operator, and unifying them is the main behavioural win of the migration.
 """
@@ -24,7 +24,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from apps.automations.models import Automation
-from apps.baselines.models import Baseline
+from apps.playbooks.models import Playbook
 from apps.hosts.models import Host
 from apps.tasks.models import PatchWave, wave_host_ids
 
@@ -41,16 +41,16 @@ class TagNormalisationTests(TestCase):
 
     def test_matching_is_case_insensitive_everywhere(self):
         host = _host("h-case", ["PROD"])
-        self.assertTrue(Baseline(enabled=True, target_tags=["prod"]).matches(host))
+        self.assertTrue(Playbook(enabled=True, target_tags=["prod"]).matches(host))
         wave = PatchWave.objects.create(name="w-case", order=901, tags=["prod"])
         self.assertIn(host.id, wave_host_ids(wave))
 
-    def test_whitespace_is_NOT_stripped_by_baselines(self):
+    def test_whitespace_is_NOT_stripped_by_playbooks(self):
         """A trailing space makes the tag a different tag. Arguably a bug; it
-        is what happens today, and an operator typing "prod " into a baseline
+        is what happens today, and an operator typing "prod " into a playbook
         gets silence rather than an error."""
         host = _host("h-ws", ["prod"])
-        self.assertFalse(Baseline(enabled=True, target_tags=["prod "]).matches(host))
+        self.assertFalse(Playbook(enabled=True, target_tags=["prod "]).matches(host))
 
     def test_whitespace_is_NOT_stripped_by_waves_either(self):
         host = _host("h-ws2", ["prod"])
@@ -66,18 +66,18 @@ class TagNormalisationTests(TestCase):
 
     def test_unicode_tags_compare_by_simple_lowercasing(self):
         host = _host("h-uni", ["PRODUÇÃO"])
-        self.assertTrue(Baseline(enabled=True, target_tags=["produção"]).matches(host))
+        self.assertTrue(Playbook(enabled=True, target_tags=["produção"]).matches(host))
 
 
 class EmptyTagListTests(TestCase):
     """The single most surprising disagreement between the matchers."""
 
-    def test_baseline_with_no_target_tags_matches_EVERY_host(self):
+    def test_playbook_with_no_target_tags_matches_EVERY_host(self):
         host = _host("h-any", [])
-        self.assertTrue(Baseline(enabled=True, target_tags=[]).matches(host))
+        self.assertTrue(Playbook(enabled=True, target_tags=[]).matches(host))
 
     def test_wave_with_no_tags_matches_NO_hosts(self):
-        """Opposite of the baseline rule above. Same empty list, inverse
+        """Opposite of the playbook rule above. Same empty list, inverse
         meaning, depending on which feature you are using."""
         _host("h-none", ["anything"])
         wave = PatchWave.objects.create(name="w-empty", order=904, tags=[])
@@ -88,11 +88,11 @@ class MembershipTests(TestCase):
     def test_any_tag_overlap_is_enough(self):
         """Membership is OR, not AND: one tag in common puts the host in."""
         host = _host("h-or", ["linux", "web"])
-        self.assertTrue(Baseline(enabled=True, target_tags=["web", "db"]).matches(host))
+        self.assertTrue(Playbook(enabled=True, target_tags=["web", "db"]).matches(host))
 
     def test_a_host_with_no_tags_matches_no_tagged_selector(self):
         host = _host("h-untagged", [])
-        self.assertFalse(Baseline(enabled=True, target_tags=["web"]).matches(host))
+        self.assertFalse(Playbook(enabled=True, target_tags=["web"]).matches(host))
         wave = PatchWave.objects.create(name="w-or", order=905, tags=["web"])
         self.assertNotIn(host.id, wave_host_ids(wave))
 
@@ -101,15 +101,15 @@ class MembershipTests(TestCase):
         wave = PatchWave.objects.create(name="w-rej", order=906, tags=["web"])
         self.assertNotIn(rejected.id, wave_host_ids(wave))
 
-    def test_baseline_matching_does_NOT_exclude_rejected_hosts(self):
-        """Baseline.matches has no status check — the caller is expected to
+    def test_playbook_matching_does_NOT_exclude_rejected_hosts(self):
+        """Playbook.matches has no status check — the caller is expected to
         have filtered already. Different from waves, and worth knowing."""
         rejected = _host("h-rejected2", ["web"], status=Host.Status.REJECTED)
-        self.assertTrue(Baseline(enabled=True, target_tags=["web"]).matches(rejected))
+        self.assertTrue(Playbook(enabled=True, target_tags=["web"]).matches(rejected))
 
-    def test_disabled_baseline_matches_nothing(self):
+    def test_disabled_playbook_matches_nothing(self):
         host = _host("h-disabled", ["web"])
-        self.assertFalse(Baseline(enabled=False, target_tags=["web"]).matches(host))
+        self.assertFalse(Playbook(enabled=False, target_tags=["web"]).matches(host))
 
 
 class WaveExclusivityTests(TestCase):
@@ -221,7 +221,7 @@ class ReprovisionTagTests(TestCase):
         self.assertIn("ticket-4412", self._apply(host, [], "ticket-4412"))
 
     def test_completion_tags_ARE_stripped(self):
-        """Unlike baselines and waves, this path strips. Fourth distinct
+        """Unlike playbooks and waves, this path strips. Fourth distinct
         normalisation rule in the codebase."""
         host = _host("h-rp3", [])
         self.assertIn("rebuilt", self._apply(host, ["  rebuilt  "]))
