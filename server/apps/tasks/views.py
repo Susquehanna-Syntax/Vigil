@@ -98,6 +98,7 @@ def task_result(request):
         if new_state == Task.State.COMPLETED:
             _maybe_capture_inventory_column(task, output)
             _maybe_apply_tags(task)
+            _maybe_apply_playbook_completion_tag(task)
             _maybe_request_nessus_scan(task)
             _maybe_ingest_trivy_report(task, output)
             _maybe_ingest_firewall_rules(task, output)
@@ -129,6 +130,40 @@ def _named_tags(step: dict) -> list[str]:
     if isinstance(raw, str):
         raw = raw.split(",")
     return [str(t).strip() for t in (raw or []) if str(t).strip()]
+
+
+def _maybe_apply_playbook_completion_tag(task: Task) -> None:
+    """Tag the host once the playbook that produced this task has succeeded.
+
+    The tag is what stops an auto-enrolling playbook dispatching to the same
+    host on every reconcile pass, so it is written from the run's own playbook
+    rather than anything the agent reported.
+
+    Never raises: a task result must be recordable even if tagging fails. A
+    failure here costs a repeat dispatch on the next pass, not a lost result.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    run = task.run
+    if run is None or run.playbook_id is None:
+        return
+    tag = (run.playbook.completion_tag or "").strip()
+    if not tag or tag.startswith("agent:"):
+        return
+
+    try:
+        host = task.host
+        tags = list(host.tags or [])
+        if any(str(t).strip().lower() == tag.lower() for t in tags):
+            return
+        host.tags = tags + [tag]
+        # Not update_fields=["tags"]: Host.save() syncs the tag rows the
+        # matcher actually reads, and it only runs on a full save.
+        host.save()
+    except Exception:
+        logger.exception("completion tag %r failed for host %s", tag, task.host_id)
 
 
 def _maybe_apply_tags(task: Task) -> None:

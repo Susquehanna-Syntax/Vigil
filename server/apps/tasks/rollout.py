@@ -119,8 +119,10 @@ def start_rollout(
         raise ValueError("a rollout needs exactly one of a definition or a playbook")
 
     if playbook is not None:
-        if not playbook.enabled:
-            raise ValueError(f"playbook {playbook.name!r} is disabled")
+        # Deliberately no auto_enroll check. That flag governs unattended
+        # enrolment; a rollout is the opposite — someone chose this playbook
+        # and is staging it wave by wave. Refusing here made the recommended
+        # path impossible for the recommended configuration.
         spec = _playbook_spec(playbook)
     else:
         spec = _validate_definition(definition)

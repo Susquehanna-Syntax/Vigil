@@ -29,10 +29,10 @@ def make_definition(*, risk="standard", actions=None, name=None):
     )
 
 
-def make_playbook(admin, *, name=None, definitions=None, tags=None, enabled=True):
+def make_playbook(admin, *, name=None, definitions=None, tags=None, auto_enroll=True):
     b = Playbook.objects.create(
         name=name or f"bl-{uuid.uuid4().hex[:6]}",
-        created_by=admin, target_tags=tags or [], enabled=enabled)
+        created_by=admin, target_tags=tags or [], auto_enroll=auto_enroll)
     for i, d in enumerate(definitions or [make_definition()]):
         PlaybookStep.objects.create(playbook=b, definition=d, order=i)
     return b
@@ -122,7 +122,7 @@ class PlaybookAsFunctionTests(TestCase):
 
     def test_disabled_playbook_is_still_callable(self):
         inner = make_definition()
-        make_playbook(self.admin, name="Retired", definitions=[inner], enabled=False)
+        make_playbook(self.admin, name="Retired", definitions=[inner], auto_enroll=False)
         actions, _ = expand_actions([{"type": "playbook", "params": {"name": "Retired"}}])
         self.assertEqual(len(actions), 1)
 
@@ -213,9 +213,9 @@ class PlaybookApiTests(TestCase):
 
     def test_toggle_and_delete(self):
         b = make_playbook(self.admin)
-        resp = self.client.patch(f"/api/v1/playbooks/{b.id}/", {"enabled": False},
+        resp = self.client.patch(f"/api/v1/playbooks/{b.id}/", {"auto_enroll": False},
                                  content_type="application/json")
-        self.assertFalse(resp.json()["enabled"])
+        self.assertFalse(resp.json()["auto_enroll"])
         self.assertEqual(self.client.delete(f"/api/v1/playbooks/{b.id}/").status_code, 204)
 
 

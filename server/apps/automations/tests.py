@@ -76,7 +76,7 @@ class EventAutomationTests(TestCase):
     def test_playbook_action_expands(self):
         d1, d2 = make_def("a"), make_def("b", actions=[{"type": "restart_service", "params": {"service_name": "nginx"}}])
         # auto-enroll off so only the automation dispatches (playbook stays callable)
-        b = Playbook.objects.create(name="Bootstrap", enabled=False, created_by=self.admin)
+        b = Playbook.objects.create(name="Bootstrap", created_by=self.admin)
         PlaybookStep.objects.create(playbook=b, definition=d1, order=0)
         PlaybookStep.objects.create(playbook=b, definition=d2, order=1)
         Automation.objects.create(

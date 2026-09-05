@@ -10,6 +10,6 @@ class PlaybookStepInline(admin.TabularInline):
 
 @admin.register(Playbook)
 class PlaybookAdmin(admin.ModelAdmin):
-    list_display = ("name", "enabled", "target_tags", "created_by", "created_at")
-    list_filter = ("enabled",)
+    list_display = ("name", "auto_enroll", "target_tags", "created_by", "created_at")
+    list_filter = ("auto_enroll",)
     inlines = [PlaybookStepInline]
