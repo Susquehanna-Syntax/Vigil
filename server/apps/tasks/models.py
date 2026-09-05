@@ -24,6 +24,12 @@ class TaskDefinition(models.Model):
         HIGH = "high", "High"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    #: Set when a definition is retired. Deleting one is not an option — a
+    #: playbook or automation that referenced it would silently lose a step —
+    #: so archiving is how a task leaves the working set. Everything already
+    #: pointing at it keeps working; it just stops appearing in lists and
+    #: pickers.
+    archived_at = models.DateTimeField(null=True, blank=True)
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -219,6 +225,48 @@ class Task(models.Model):
         return f"{self.action} → {self.host.hostname} ({self.state})"
 
 
+class PatchWaveGroup(models.Model):
+    """A named ladder of waves.
+
+    One global wave order could only ever describe one rollout shape, so a
+    fleet that patches its servers on a different ladder from its workstations
+    had nowhere to put the second one. A rollout walks the waves of exactly one
+    group, and wave order is unique within a group rather than globally.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=120, unique=True)
+    description = models.TextField(blank=True, default="")
+    #: The group a rollout uses when it does not name one. Exactly one row has
+    #: this set; the migration points it at the group holding the waves that
+    #: existed before groups did, so nothing changes shape on upgrade.
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+    @classmethod
+    def default(cls):
+        """The group waves land in when nobody picks one.
+
+        Created on demand rather than seeded, so a fresh install has no empty
+        group sitting in the UI until the first wave exists.
+        """
+        existing = cls.objects.filter(is_default=True).first()
+        if existing is not None:
+            return existing
+        group, _ = cls.objects.get_or_create(
+            name="Default", defaults={"is_default": True})
+        if not group.is_default:
+            group.is_default = True
+            group.save(update_fields=["is_default"])
+        return group
+
+
 class PatchWave(TagRowSyncMixin, models.Model):
     """One stage of a staged rollout: every host carrying any of its tags.
 
@@ -234,11 +282,22 @@ class PatchWave(TagRowSyncMixin, models.Model):
     class Meta:
         ordering = ["order"]
         constraints = [
-            models.UniqueConstraint(fields=("order",), name="uniq_patch_wave_order"),
+            models.UniqueConstraint(fields=("group", "order"),
+                                    name="uniq_patch_wave_order"),
         ]
 
+    group = models.ForeignKey("tasks.PatchWaveGroup", on_delete=models.CASCADE,
+                              related_name="waves", null=True)
     name = models.CharField(max_length=120)
     order = models.PositiveIntegerField()
+
+    def save(self, *args, **kwargs):
+        # A wave with no group would slip past uniq_patch_wave_order entirely:
+        # NULLs compare distinct, so two ungrouped waves could share an order
+        # and the ladder would have two rungs at the same height.
+        if self.group_id is None:
+            self.group = PatchWaveGroup.default()
+        super().save(*args, **kwargs)
     tags = models.JSONField(default=list, blank=True)
     #: Row-backed mirror of ``tags`` — see Host.tag_rows.
     tag_rows = models.ManyToManyField("hosts.Tag", blank=True, related_name="waves")
@@ -284,6 +343,12 @@ class PatchRollout(models.Model):
         max_length=12, choices=ActionKind.choices, default=ActionKind.TASK)
     definition = models.ForeignKey(
         TaskDefinition, on_delete=models.CASCADE, related_name="rollouts",
+        null=True, blank=True,
+    )
+    #: The wave ladder this rollout walks. Pinned at start so editing groups
+    #: later cannot change the shape of a rollout already in flight.
+    wave_group = models.ForeignKey(
+        "tasks.PatchWaveGroup", on_delete=models.PROTECT, related_name="rollouts",
         null=True, blank=True,
     )
     playbook = models.ForeignKey(

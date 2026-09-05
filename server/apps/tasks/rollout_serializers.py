@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import PatchRollout, PatchWave
+from .models import PatchWaveGroup, PatchRollout, PatchWave
 
 
 class PatchRolloutSerializer(serializers.ModelSerializer):
@@ -23,12 +23,16 @@ class PatchRolloutSerializer(serializers.ModelSerializer):
     resumed_by_name = serializers.CharField(
         source="resumed_by.username", read_only=True, default=None)
 
+    wave_group_name = serializers.CharField(
+        source="wave_group.name", read_only=True, default="")
+
     class Meta:
         model = PatchRollout
         fields = [
             "id", "action_kind", "definition", "definition_name",
             "playbook", "playbook_name", "target_name", "state",
             "current_wave", "current_wave_name", "current_wave_order",
+            "wave_group", "wave_group_name",
             "failure_threshold_pct", "min_results_before_halt",
             "halted_reason", "halted_by_name", "resumed_by_name",
             "started_at", "wave_started_at", "finished_at",
@@ -54,7 +58,7 @@ class PatchWaveSerializer(serializers.ModelSerializer):
         model = PatchWave
         fields = [
             "id", "name", "order", "tags", "validation_hours", "enabled",
-            "host_count", "exclusive_host_count",
+            "group", "host_count", "exclusive_host_count",
         ]
 
     def get_host_count(self, obj) -> int:
@@ -64,7 +68,11 @@ class PatchWaveSerializer(serializers.ModelSerializer):
     def get_exclusive_host_count(self, obj) -> int:
         """Hosts this wave actually patches, after earlier waves claim theirs."""
         from .models import PatchWave, rollout_wave_plan
-        plan = rollout_wave_plan(list(PatchWave.objects.filter(enabled=True).order_by("order")))
+        # Scoped to the wave's own group: a host claimed by an earlier wave of
+        # a different ladder is not claimed from this one.
+        siblings = PatchWave.objects.filter(
+            enabled=True, group_id=obj.group_id).order_by("order")
+        plan = rollout_wave_plan(list(siblings))
         return len(plan.get(obj.id, []))
 
     def validate_tags(self, value):
@@ -84,3 +92,16 @@ class PatchWaveSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "validation window cannot exceed 720 hours (30 days)")
         return value
+
+
+class PatchWaveGroupSerializer(serializers.ModelSerializer):
+    wave_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PatchWaveGroup
+        fields = ["id", "name", "description", "is_default", "wave_count",
+                  "created_at"]
+        read_only_fields = ["id", "is_default", "created_at"]
+
+    def get_wave_count(self, obj) -> int:
+        return obj.waves.count()

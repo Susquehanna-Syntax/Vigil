@@ -828,6 +828,10 @@ def definition_list(request):
             )
         else:
             qs = TaskDefinition.objects.filter(owner=request.user)
+        if request.query_params.get("archived") == "1":
+            qs = qs.filter(archived_at__isnull=False)
+        else:
+            qs = qs.filter(archived_at__isnull=True)
         qs = qs.select_related("owner").order_by("-updated_at")
         return Response(TaskDefinitionSerializer(qs, many=True).data)
 
@@ -1347,11 +1351,17 @@ def rollout_collection(request):
         if error:
             return Response({"detail": error}, status=401)
 
+        wave_group = None
+        if group_id := request.data.get("wave_group"):
+            from .models import PatchWaveGroup
+            wave_group = get_object_or_404(PatchWaveGroup, pk=group_id)
+
         try:
             rollout = start_rollout(
                 definition,
                 playbook=playbook,
                 user=request.user,
+                wave_group=wave_group,
                 failure_threshold_pct=int(request.data.get("failure_threshold_pct", 10)),
                 min_results_before_halt=int(request.data.get("min_results_before_halt", 3)),
             )
@@ -1437,8 +1447,11 @@ def wave_collection(request):
     from .rollout_serializers import PatchWaveSerializer
 
     if request.method == "GET":
-        waves = PatchWave.objects.order_by("order", "id")
-        return Response(PatchWaveSerializer(waves, many=True).data)
+        waves = PatchWave.objects.select_related("group")
+        if group_id := request.query_params.get("group"):
+            waves = waves.filter(group_id=group_id)
+        return Response(
+            PatchWaveSerializer(waves.order_by("order", "id"), many=True).data)
 
     if not IsAdmin().has_permission(request, None):
         return Response({"detail": "Admin role required."}, status=403)
@@ -1784,3 +1797,124 @@ def _import_via(view, request, item):
     sub = factory.post("/", {"yaml": item["yaml_source"]}, format="json")
     force_authenticate(sub, user=request.user)
     return view(sub)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def definition_archive(request, definition_id):
+    """Archive or restore a task definition.
+
+    Definitions are never deleted — a playbook or automation still pointing at
+    one would lose a step without saying so — and this is the retirement path
+    instead. Everything already referencing it keeps running.
+    """
+    definition = get_object_or_404(TaskDefinition, pk=definition_id)
+    if not _user_can_see(definition, request.user):
+        return Response({"error": "Not found"}, status=404)
+
+    restore = bool(request.data.get("restore"))
+    definition.archived_at = None if restore else now()
+    definition.save(update_fields=["archived_at"])
+    return Response(TaskDefinitionSerializer(definition).data)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def wave_group_collection(request):
+    """List wave groups, or create one."""
+    from .models import PatchWaveGroup
+    from .rollout_serializers import PatchWaveGroupSerializer
+
+    if request.method == "GET":
+        groups = PatchWaveGroup.objects.prefetch_related("waves")
+        return Response(PatchWaveGroupSerializer(groups, many=True).data)
+
+    if not IsAdmin().has_permission(request, None):
+        return Response({"detail": "Admin role required."}, status=403)
+    serializer = PatchWaveGroupSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+    try:
+        serializer.save()
+    except IntegrityError:
+        return Response(
+            {"name": [f"A group named {request.data.get('name')!r} already exists."]},
+            status=400)
+    return Response(serializer.data, status=201)
+
+
+@api_view(["GET", "PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+def wave_group_detail(request, group_id):
+    from .models import PatchWaveGroup
+    from .rollout_serializers import PatchWaveGroupSerializer
+
+    group = get_object_or_404(PatchWaveGroup, pk=group_id)
+    if request.method == "GET":
+        return Response(PatchWaveGroupSerializer(group).data)
+
+    if not IsAdmin().has_permission(request, None):
+        return Response({"detail": "Admin role required."}, status=403)
+
+    if request.method == "DELETE":
+        if group.is_default:
+            return Response(
+                {"detail": "The default group cannot be deleted — waves that "
+                           "name no group land in it."}, status=400)
+        if group.rollouts.exists():
+            return Response(
+                {"detail": "A rollout has already walked this group's waves. "
+                           "Deleting it would take its history with it."},
+                status=400)
+        group.delete()
+        return Response(status=204)
+
+    serializer = PatchWaveGroupSerializer(group, data=request.data, partial=True)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+    serializer.save()
+    return Response(serializer.data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def rollout_wave_hosts(request, rollout_id, wave_id):
+    """Every machine in one wave of one rollout, and how it went.
+
+    The wave summary only ever said how many failed. Finding out *which*
+    machines, and why, meant going to the run history and matching up hosts by
+    hand — so a halted rollout was hard to act on at the moment it mattered.
+    """
+    from .models import PatchRollout, Task
+
+    rollout = get_object_or_404(PatchRollout, pk=rollout_id)
+    tasks = (Task.objects
+             .filter(run__rollout=rollout, run__wave_id=wave_id, step_order=0)
+             .select_related("host", "run")
+             .order_by("host__hostname"))
+
+    rows = []
+    for task in tasks:
+        rows.append({
+            "task_id": str(task.id),
+            "host_id": str(task.host_id),
+            "hostname": task.host.hostname,
+            "ip_address": task.host.ip_address,
+            "state": task.state,
+            "failed": task.state in FAILURE_STATES,
+            "dispatched_at": task.dispatched_at.isoformat() if task.dispatched_at else None,
+            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+            "step_label": task.step_label,
+            # The operator is here because something failed; the output is the
+            # answer to "why", so it travels with the row rather than costing
+            # another request per machine.
+            "output": task.result_output or "",
+        })
+
+    return Response({
+        "rollout_id": str(rollout.id),
+        "wave_id": wave_id,
+        "total": len(rows),
+        "failed": sum(1 for r in rows if r["failed"]),
+        "hosts": rows,
+    })

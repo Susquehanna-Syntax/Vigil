@@ -13,6 +13,7 @@ from django.db import transaction
 from django.utils.timezone import now
 
 from .models import (
+    PatchWaveGroup,
     PatchWave,
     PatchRollout,
     Task,
@@ -40,16 +41,18 @@ def _now():
     return now()
 
 
-def _first_enabled_wave():
-    return PatchWave.objects.filter(enabled=True).order_by("order", "id").first()
+def _first_enabled_wave(group=None):
+    qs = PatchWave.objects.filter(enabled=True)
+    if group is not None:
+        qs = qs.filter(group=group)
+    return qs.order_by("order", "id").first()
 
 
-def _next_enabled_wave(after_order):
-    return (
-        PatchWave.objects.filter(enabled=True, order__gt=after_order)
-        .order_by("order", "id")
-        .first()
-    )
+def _next_enabled_wave(after_order, group=None):
+    qs = PatchWave.objects.filter(enabled=True, order__gt=after_order)
+    if group is not None:
+        qs = qs.filter(group=group)
+    return qs.order_by("order", "id").first()
 
 
 def _validate_definition(definition) -> dict:
@@ -102,6 +105,7 @@ def start_rollout(
     failure_threshold_pct: int = 10,
     min_results_before_halt: int = 3,
     playbook=None,
+    wave_group=None,
 ) -> PatchRollout:
     """Create a rollout and dispatch its first wave.
 
@@ -113,7 +117,9 @@ def start_rollout(
         raise ValueError("failure_threshold_pct must be between 0 and 100")
     if min_results_before_halt < 1:
         raise ValueError("min_results_before_halt must be at least 1")
-    if _first_enabled_wave() is None:
+    if wave_group is None:
+        wave_group = PatchWaveGroup.default()
+    if _first_enabled_wave(wave_group) is None:
         raise ValueError("no enabled patch waves")
     if (definition is None) == (playbook is None):
         raise ValueError("a rollout needs exactly one of a definition or a playbook")
@@ -134,7 +140,8 @@ def start_rollout(
         action_kind=(PatchRollout.ActionKind.PLAYBOOK if playbook is not None
                      else PatchRollout.ActionKind.TASK),
         state=PatchRollout.State.RUNNING,
-        current_wave=_first_enabled_wave(),
+        wave_group=wave_group,
+        current_wave=_first_enabled_wave(wave_group),
         failure_threshold_pct=failure_threshold_pct,
         min_results_before_halt=min_results_before_halt,
         started_at=ts,
@@ -301,7 +308,7 @@ def _evaluate_locked(rollout: PatchRollout) -> None:
             return
 
     # 7. Soaked — find the next enabled wave, dispatch, keep running.
-    nxt = _next_enabled_wave(wave.order)
+    nxt = _next_enabled_wave(wave.order, rollout.wave_group)
     if nxt is None:
         rollout.state = PatchRollout.State.COMPLETED
         rollout.finished_at = _now()
