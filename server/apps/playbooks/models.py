@@ -82,6 +82,10 @@ class Playbook(TagRowSyncMixin, models.Model):
     community_uid = models.UUIDField(null=True, blank=True, db_index=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
+    #: Set when a playbook is retired. An archived playbook never auto-enrols
+    #: and is hidden from lists and pickers, but stays callable from anything
+    #: that already references it, and keeps its run history.
+    archived_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self) -> str:
         return f"playbook:{self.name}"
@@ -229,7 +233,7 @@ def dispatch_to_host(host, *, playbooks=None) -> int:
     logger = logging.getLogger("vigil.playbooks")
     created = 0
     rows = playbooks if playbooks is not None else (
-        Playbook.objects.filter(auto_enroll=True)
+        Playbook.objects.filter(auto_enroll=True, archived_at__isnull=True)
         .prefetch_related("steps__definition"))
     for playbook in rows:
         try:
@@ -297,7 +301,7 @@ def reconcile(playbook=None, *, limit=None) -> int:
 
     logger = logging.getLogger("vigil.playbooks")
     rows = [playbook] if playbook is not None else list(
-        Playbook.objects.filter(auto_enroll=True)
+        Playbook.objects.filter(auto_enroll=True, archived_at__isnull=True)
         .exclude(completion_tag="")
         .prefetch_related("steps__definition"))
 

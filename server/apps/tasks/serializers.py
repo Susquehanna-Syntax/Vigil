@@ -46,6 +46,7 @@ class TaskDefinitionSerializer(serializers.ModelSerializer):
         model = TaskDefinition
         fields = [
             "id",
+            "archived_at",
             "owner",
             "owner_username",
             "name",

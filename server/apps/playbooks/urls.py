@@ -7,6 +7,7 @@ urlpatterns = [
     path("yaml/", views.playbook_from_yaml, name="playbook-from-yaml"),
     path("<uuid:playbook_id>/", views.playbook_detail, name="playbook-detail"),
     path("<uuid:playbook_id>/yaml/", views.playbook_yaml, name="playbook-yaml"),
+    path("<uuid:playbook_id>/archive/", views.playbook_archive, name="playbook-archive"),
 ]
 
 #: The pre-2026.11.0 path, mounted at /api/v1/baselines/ so anything an
@@ -18,4 +19,5 @@ legacy_urlpatterns = [
     path("yaml/", views.playbook_from_yaml),
     path("<uuid:playbook_id>/", views.playbook_detail),
     path("<uuid:playbook_id>/yaml/", views.playbook_yaml),
+    path("<uuid:playbook_id>/archive/", views.playbook_archive),
 ]

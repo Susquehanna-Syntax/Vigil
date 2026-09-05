@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -19,6 +20,7 @@ def _row(b: Playbook) -> dict:
         "description": b.description,
         "target_tags": b.target_tags,
         "auto_enroll": b.auto_enroll,
+        "archived_at": b.archived_at.isoformat() if b.archived_at else None,
         "completion_tag": b.completion_tag,
         "allow_high_risk": b.allow_high_risk,
         "created_at": b.created_at.isoformat(),
@@ -105,9 +107,13 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
 @permission_classes([IsAuthenticated, IsAdmin])
 def playbook_index(request):
     if request.method == "GET":
+        qs = Playbook.objects.prefetch_related("steps__definition")
+        if request.query_params.get("archived") == "1":
+            qs = qs.filter(archived_at__isnull=False)
+        else:
+            qs = qs.filter(archived_at__isnull=True)
         rows = scoping.filter_by_site(
-            Playbook.objects.prefetch_related("steps__definition"),
-            request.user, cascade_global=True).order_by("created_at")
+            qs, request.user, cascade_global=True).order_by("created_at")
         return Response([_row(b) for b in rows])
 
     name = (request.data.get("name") or "").strip()
@@ -310,3 +316,23 @@ def playbook_from_yaml(request):
     return Response(_row(playbook),
                     status=status.HTTP_200_OK if existing
                     else status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def playbook_archive(request, playbook_id):
+    """Archive or restore a playbook.
+
+    An archived playbook stops auto-enrolling and disappears from lists and
+    pickers, but anything already referencing it keeps working and its run
+    history stays intact.
+    """
+    playbook = get_object_or_404(Playbook, pk=playbook_id)
+    restore = bool(request.data.get("restore"))
+    playbook.archived_at = None if restore else now()
+    if not restore:
+        # An archived playbook that still auto-enrolled would keep dispatching
+        # from a list nobody can see any more.
+        playbook.auto_enroll = False
+    playbook.save(update_fields=["archived_at", "auto_enroll"])
+    return Response(_row(playbook))
