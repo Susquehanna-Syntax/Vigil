@@ -2902,3 +2902,82 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .dash-proc { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
 .dash-proc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dash-proc-value { font-family: var(--font-mono); color: var(--text-3); flex-shrink: 0; }
+
+/* ── Add-widget rail ────────────────────────────────────────────────────── */
+.dash-rail {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 330px; max-width: 92vw;
+  background: var(--s1);
+  border-left: 1px solid var(--border);
+  z-index: 260;                       /* above the grid, below a modal */
+  display: flex; flex-direction: column;
+  transform: translateX(100%);
+  transition: transform .32s var(--ease-out-expo);
+}
+.dash-rail.open { transform: translateX(0); }
+.rail-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 20px 14px; flex-shrink: 0;
+  font-family: var(--font-display); font-size: 17px;
+  border-bottom: 1px solid var(--border);
+}
+.rail-body { overflow-y: auto; padding: 6px 16px 24px; }
+.rail-group { margin-top: 18px; }
+.rail-group-label {
+  font-size: 11px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-3); margin-bottom: 8px;
+}
+
+.rail-card {
+  position: relative;
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px 46px 12px 14px;      /* room for the + at bottom-right */
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: border-color .2s, transform .2s var(--ease-out-expo);
+}
+.rail-card:hover { transform: translateY(-2px); }
+.rail-card-name { font-size: 13px; font-weight: 600; }
+.rail-card-desc { font-size: 11px; color: var(--text-3); margin-top: 3px; line-height: 1.45; }
+
+/* The + is filled in its group's accent, and goes clear on hover — the card
+   keeps the colour, the button gives it back. */
+.rail-add {
+  position: absolute; right: 12px; bottom: 12px;
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 1.5px solid transparent;
+  font-size: 17px; line-height: 1; font-weight: 500;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0;
+  color: var(--bg);
+  transition: background .2s, color .2s, border-color .2s, transform .2s var(--ease-out-expo);
+}
+/* background is set per-accent below at equal specificity, so the clear state
+   has to be declared there too — otherwise the glyph goes accent-on-accent and
+   disappears. */
+.rail-add:hover { transform: scale(1.12); }
+.rail-add:active { transform: scale(0.94); }
+.rail-add.btn-sky    { background: var(--sky); }
+.rail-add.btn-mint   { background: var(--mint); }
+.rail-add.btn-lav    { background: var(--lavender); }
+.rail-add.btn-peach  { background: var(--peach); }
+.rail-add.btn-lemon  { background: var(--lemon); }
+.rail-add.btn-rose   { background: var(--rose); }
+.rail-add.btn-sky:hover   { color: var(--sky);      border-color: var(--sky); }
+.rail-add.btn-mint:hover  { color: var(--mint);     border-color: var(--mint); }
+.rail-add.btn-lav:hover   { color: var(--lavender); border-color: var(--lavender); }
+.rail-add.btn-peach:hover { background: transparent; color: var(--peach);    border-color: var(--peach); }
+.rail-add.btn-lemon:hover { background: transparent; color: var(--lemon);    border-color: var(--lemon); }
+.rail-add.btn-rose:hover  { color: var(--rose);     border-color: var(--rose); }
+
+/* The card takes its group's accent on hover, so the section reads as a set. */
+.rail-fleet    .rail-card:hover { border-color: var(--sky); }
+.rail-health   .rail-card:hover { border-color: var(--mint); }
+.rail-work     .rail-card:hover { border-color: var(--lavender); }
+.rail-security .rail-card:hover { border-color: var(--peach); }
+.rail-utility  .rail-card:hover { border-color: var(--lemon); }
+.rail-business .rail-card:hover { border-color: var(--rose); }
+
+@media (max-width: 900px) { .dash-rail { width: 100vw; } }

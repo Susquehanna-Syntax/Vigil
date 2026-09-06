@@ -232,6 +232,99 @@ async function loadDashboards() {
   }, 15000);
 }
 
+
+/* ── Add-widget rail ───────────────────────────────────────────────────── */
+
+//: Group → SQSY accent. Sky for the everyday fleet widgets and peach for
+//: security were chosen; the rest follow the design language's own meanings —
+//: mint is healthy, lavender is information, lemon is a caution, rose is the
+//: one that costs money.
+const GROUP_ACCENT = {
+  fleet: 'sky', health: 'mint', work: 'lav',
+  security: 'peach', utility: 'lemon', business: 'rose',
+};
+const GROUP_LABEL = {
+  fleet: 'Fleet', health: 'Health', work: 'Work in flight',
+  security: 'Security', utility: 'Utility', business: 'Business',
+};
+const GROUP_ORDER = ['fleet', 'health', 'work', 'security', 'utility', 'business'];
+
+function _railHtml() {
+  const widgets = DASH.catalog.widgets || {};
+  const byGroup = new Map(GROUP_ORDER.map(g => [g, []]));
+  for (const [kind, spec] of Object.entries(widgets)) {
+    const bucket = byGroup.get(spec.group) || byGroup.get('utility');
+    bucket.push([kind, spec]);
+  }
+  const sections = GROUP_ORDER.map((group) => {
+    const items = (byGroup.get(group) || []).sort((a, b) =>
+      a[1].label.localeCompare(b[1].label));
+    if (!items.length) return '';
+    return `
+      <div class="rail-group rail-${escAttr(group)}">
+        <div class="rail-group-label">${escHtml(GROUP_LABEL[group] || group)}</div>
+        ${items.map(([kind, spec]) => `
+          <div class="rail-card" data-add-kind="${escAttr(kind)}"
+               title="${escAttr(spec.description || '')}">
+            <div class="rail-card-name">${escHtml(spec.label)}</div>
+            <div class="rail-card-desc">${escHtml(spec.description || '')}</div>
+            <button class="rail-add btn-${escAttr(GROUP_ACCENT[group] || 'sky')}"
+                    data-add-kind="${escAttr(kind)}"
+                    aria-label="Add ${escAttr(spec.label)}">+</button>
+          </div>`).join('')}
+      </div>`;
+  }).join('');
+  return `<aside class="dash-rail" id="dash-rail">
+    <div class="rail-head">
+      <span>Add a widget</span>
+      <button class="modal-close" id="rail-close" aria-label="Close">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="rail-body">${sections}</div>
+  </aside>`;
+}
+
+function _addWidgetOfKind(kind) {
+  const spec = (DASH.catalog.widgets || {})[kind];
+  if (!spec) return;
+  // No x/y: Gridstack finds the first free slot, which is what "add" means
+  // when the operator has not chosen a position.
+  const id = `new-${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const widget = {
+    id, kind,
+    w: spec.w, h: spec.h,
+    settings: Object.fromEntries(
+      Object.entries(spec.settings || {}).map(([k, f]) => [k, f.default])),
+  };
+  DASH.current.widgets.push(widget);
+  DASH.grid.addWidget({
+    w: spec.w, h: spec.h, minW: spec.min_w, minH: spec.min_h,
+    id, content: _widgetShell(widget),
+  });
+  DASH.dirty = true;
+  _dashBindChrome(document.getElementById('dash-root'));
+  _dashPaintAll();
+  showToast(`${spec.label} added`, 'success');
+}
+
+function openWidgetCatalog() {
+  const rail = document.getElementById('dash-rail');
+  if (rail) { rail.classList.toggle('open'); return; }
+  const host = document.getElementById('dash-root');
+  if (!host) return;
+  host.insertAdjacentHTML('beforeend', _railHtml());
+  const el = document.getElementById('dash-rail');
+  requestAnimationFrame(() => el.classList.add('open'));
+  el.querySelector('#rail-close').onclick = () => el.classList.remove('open');
+  el.querySelectorAll('[data-add-kind]').forEach((node) => {
+    node.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      _addWidgetOfKind(node.dataset.addKind);
+    });
+  });
+}
+
 /* The dashboard is the landing page, so it loads on boot as well as on every
    later navigation back to it — the wrap-navigateTo idiom the other feature
    files use (see vigil-nav.js). */
