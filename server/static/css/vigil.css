@@ -2833,3 +2833,57 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* The "add a tag" row in the host detail drawer. */
 .host-tag-add-row { display: flex; gap: 8px; align-items: center; }
+
+/* ── Widget dashboard ───────────────────────────────────────────────────── */
+.dash-root { margin-bottom: 22px; }
+.dash-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.dash-switch { width: auto; min-width: 190px; }
+
+/* Gridstack draws the item; this is the card inside it. */
+.dash-widget {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.dash-widget-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; flex-shrink: 0;
+}
+.dash-widget-title {
+  font-size: 12px; font-weight: 600; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--text-3);
+}
+/* The per-widget controls are an editing affordance, not chrome to look at. */
+.dash-widget-actions { display: none; gap: 6px; }
+.dash-editing .dash-widget-actions { display: flex; }
+.dash-editing .dash-widget { border-color: var(--sky); cursor: move; }
+.dash-widget-body { flex: 1; min-height: 0; overflow: auto; }
+.dash-empty { display: flex; align-items: center; justify-content: center; height: 100%; }
+
+.dash-stat { display: flex; flex-direction: column; justify-content: center; height: 100%; }
+.dash-stat-value { font-size: 34px; font-weight: 700; line-height: 1.1; font-family: var(--font-mono); }
+.dash-stat-label { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+
+.dash-hosts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.dash-host { display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+             background: var(--s2); border-radius: var(--r-sm); font-size: 12px; }
+.dash-host-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-host-meta { color: var(--text-3); margin-left: auto; font-size: 11px; }
+.dash-host-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); flex-shrink: 0; }
+.dash-dot-online { background: var(--mint); }
+.dash-dot-offline { background: var(--rose); }
+.dash-dot-pending { background: var(--peach); }
+
+.dash-alerts, .dash-rollouts { display: flex; flex-direction: column; gap: 7px; }
+.dash-alert { display: flex; align-items: center; gap: 9px; font-size: 12px; }
+.dash-alert-msg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-alert-host { color: var(--text-3); margin-left: auto; font-size: 11px; }
+.dash-rollout-name { font-weight: 600; font-size: 13px; }
+.dash-rollout-meta { color: var(--text-3); font-size: 11px; display: flex; align-items: center; gap: 6px; }
+
+/* Gridstack's own chrome, themed to SQSY. */
+.grid-stack-item-content { inset: 0; }
+.grid-stack > .grid-stack-item > .ui-resizable-handle { filter: invert(1) opacity(.35); }
