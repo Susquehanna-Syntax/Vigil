@@ -323,6 +323,18 @@ def require_feature(name: str):
         default_detail = upgrade_body(name)
         default_code = "license_required"
 
+        def __init__(self, detail=None, code=None):
+            super().__init__(detail, code)
+            # DRF runs the detail through ErrorDetail, which is a str subclass,
+            # so `"licensed": False` rendered as the string "False" — truthy in
+            # JavaScript, and therefore read by a client as *licensed*. The
+            # endpoints that build the body themselves (statuspage, accounts)
+            # answered with a real boolean, so the same field disagreed with
+            # itself depending on which gate refused. DRF's handler passes a
+            # plain dict through untouched, so the body is re-set after
+            # super() rather than coerced.
+            self.detail = upgrade_body(name)
+
     class _HasLicensedFeature(BasePermission):
         message = upgrade_body(name)
 
