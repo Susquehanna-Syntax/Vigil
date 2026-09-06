@@ -54,6 +54,7 @@ GRACE_DAYS = 14
 #: Monitoring/alerting/agents are deliberately NOT feature names — they are
 #: not features, they are the product, and no code path may gate them.
 FREE_FEATURES = frozenset({
+    "dashboards",
     "playbooks",
     "ai_suggestions",   # BYO endpoint — same code path Business runs (§2)
     "status_pages",     # the basic page; branding/custom-domain is Business
@@ -69,6 +70,7 @@ BUSINESS_FEATURES = frozenset({
     "branding",
     "status_branding",  # branded/public/custom-domain status pages
     "sso",
+    "dashboard_sharing",  # read-only sharing of a dashboard; the flag lives in core
 })
 
 #: Free-tier limits (soft — exceeded means a banner, never a block).
