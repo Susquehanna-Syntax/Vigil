@@ -98,6 +98,11 @@ WIDGET_REGISTRY: dict[str, dict] = {
 #: Grid width every layout is expressed against.
 GRID_COLUMNS = 12
 
+#: How tall one widget may be. A separate number from the column count: rows
+#: and columns are different axes, and a chart two screens tall is a layout
+#: nobody can read rather than one worth storing.
+GRID_MAX_ROWS = 24
+
 
 def default_settings(kind: str) -> dict:
     """The settings a freshly added widget of *kind* starts with."""

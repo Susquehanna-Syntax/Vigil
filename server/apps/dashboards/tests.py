@@ -238,3 +238,65 @@ class DashboardTests(TestCase):
         self.assertFalse(Dashboard.objects.filter(pk=board.pk).exists())
         self.assertEqual(DashboardWidget.objects.filter(
             dashboard_id=board.pk).count(), 0)
+
+
+class StarterRaceTests(TestCase):
+    """The starter dashboard is created from a GET, and a fresh user's browser
+    issues more than one of those before the first paint."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="racer", password="pw")
+
+    def test_creating_the_starter_dashboard_twice_is_harmless(self):
+        first = starter_dashboard(self.user)
+        second = starter_dashboard(self.user)
+        self.assertEqual(first.pk, second.pk)
+
+    def test_the_second_attempt_does_not_duplicate_the_widgets(self):
+        starter_dashboard(self.user)
+        starter_dashboard(self.user)
+        self.assertEqual(
+            DashboardWidget.objects.filter(dashboard__owner=self.user).count(), 7)
+
+    def test_listing_twice_leaves_exactly_one_dashboard(self):
+        client = APIClient()
+        client.force_authenticate(self.user)
+        client.get("/api/v1/dashboards/")
+        client.get("/api/v1/dashboards/")
+        self.assertEqual(Dashboard.objects.filter(owner=self.user).count(), 1)
+
+    def test_a_duplicate_name_is_refused_rather_than_erroring(self):
+        client = APIClient()
+        client.force_authenticate(self.user)
+        client.post("/api/v1/dashboards/", {"name": "Twice"}, format="json")
+        resp = client.post("/api/v1/dashboards/", {"name": "Twice"}, format="json")
+        self.assertEqual(resp.status_code, 400)
+
+
+class WidgetHeightTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="tall", password="pw")
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.board = starter_dashboard(self.user)
+
+    def test_a_widget_may_be_taller_than_the_grid_is_wide(self):
+        """Rows and columns are different axes. Clamping height to the column
+        count capped every widget at 12 rows for no reason."""
+        resp = self.client.put(
+            f"/api/v1/dashboards/{self.board.id}/layout/",
+            {"widgets": [{"kind": "metric_chart", "x": 0, "y": 0, "w": 6, "h": 16}]},
+            format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self.board.widgets.get(kind="metric_chart").h, 16)
+
+    def test_an_absurdly_tall_widget_is_still_clamped(self):
+        from .widgets import GRID_MAX_ROWS
+
+        resp = self.client.put(
+            f"/api/v1/dashboards/{self.board.id}/layout/",
+            {"widgets": [{"kind": "metric_chart", "x": 0, "y": 0, "w": 6, "h": 999}]},
+            format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self.board.widgets.get(kind="metric_chart").h, GRID_MAX_ROWS)
