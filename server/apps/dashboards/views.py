@@ -229,4 +229,10 @@ def dashboard_share(request, dashboard_id):
 @permission_classes([IsAuthenticated])
 def catalog(request):
     """The widget registry, plus the grid width layouts are expressed against."""
-    return Response({"widgets": WIDGET_REGISTRY, "grid_columns": GRID_COLUMNS})
+    from .widgets import settings_for
+
+    widgets = {
+        kind: {**spec, "settings": settings_for(kind)}
+        for kind, spec in WIDGET_REGISTRY.items()
+    }
+    return Response({"widgets": widgets, "grid_columns": GRID_COLUMNS})

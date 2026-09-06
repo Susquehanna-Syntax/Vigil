@@ -184,7 +184,12 @@ class DashboardTests(TestCase):
                                        "limit": "7"}}]}, format="json")
         self.assertEqual(resp.status_code, 200)
         widget = board.widgets.get(kind="alert_list")
-        self.assertEqual(widget.settings, {"severity": "critical", "limit": 7})
+        # Asserted by intent rather than by whole-dict equality: the point is
+        # that the injected key is gone, and every widget also carries the
+        # universal ones.
+        self.assertNotIn("injected", widget.settings)
+        self.assertEqual(widget.settings["severity"], "critical")
+        self.assertEqual(widget.settings["limit"], 7)
 
     def test_an_out_of_range_int_setting_is_clamped(self):
         board = starter_dashboard(self.user)
@@ -506,3 +511,50 @@ class RailAccentTests(TestCase):
         registry_groups = {spec["group"] for spec in WIDGET_REGISTRY.values()}
         self.assertTrue(registry_groups <= listed,
                         f"groups missing from GROUP_ORDER: {registry_groups - listed}")
+
+
+class CardTitleTests(TestCase):
+    """Every widget takes an operator-set card title.
+
+    A dashboard may hold three metric charts; "Metric chart" three times names
+    none of them.
+    """
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("titler", password="x")
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.board = starter_dashboard(self.user)
+
+    def test_every_widget_accepts_a_title(self):
+        from apps.dashboards.widgets import settings_for
+
+        for kind in WIDGET_REGISTRY:
+            self.assertIn("title", settings_for(kind), f"{kind} cannot be titled")
+
+    def test_a_title_survives_a_layout_save(self):
+        resp = self.client.put(
+            f"/api/v1/dashboards/{self.board.id}/layout/",
+            {"widgets": [{"kind": "gauge", "x": 0, "y": 0, "w": 3, "h": 3,
+                          "settings": {"title": "Web CPU", "host": "h1"}}]},
+            format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self.board.widgets.get(kind="gauge").settings["title"], "Web CPU")
+
+    def test_the_catalog_advertises_the_title_field(self):
+        body = self.client.get("/api/v1/dashboards/catalog/").json()
+        for kind, spec in body["widgets"].items():
+            self.assertIn("title", spec["settings"], f"{kind} offers no title in the form")
+
+    def test_notes_keeps_its_own_heading_separate_from_the_card_title(self):
+        from apps.dashboards.widgets import settings_for
+
+        names = settings_for("notes")
+        self.assertIn("title", names)
+        self.assertIn("heading", names)
+        self.assertEqual(names["title"]["label"], "Card title")
+
+    def test_an_untitled_widget_stores_an_empty_title_rather_than_dropping_it(self):
+        from apps.dashboards.widgets import default_settings
+
+        self.assertEqual(default_settings("alert_list")["title"], "")

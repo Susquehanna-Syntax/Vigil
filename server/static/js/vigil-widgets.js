@@ -355,7 +355,8 @@ function _settingsField(name, field, value, options) {
   // falls through to a plain text field rather than rendering nothing.
   return `<div class="form-group">${label}
     <input type="text" class="form-control" id="${escAttr(id)}"
-           data-setting="${escAttr(name)}" value="${escAttr(value ?? '')}"></div>`;
+           data-setting="${escAttr(name)}" value="${escAttr(value ?? '')}"
+           ${field.placeholder ? `placeholder="${escAttr(field.placeholder)}"` : ''}></div>`;
 }
 
 async function openWidgetSettings(widgetId) {
@@ -432,6 +433,12 @@ async function openWidgetSettings(widgetId) {
     widget.settings = next;
     DASH.dirty = true;
     m.close();
+    // The title lives in the widget's header, and _dashPaintAll only repaints
+    // bodies — so without this the new name does not appear until a reload.
+    const shell = document.querySelector(`[data-widget-body="${CSS.escape(String(widget.id))}"]`)
+      ?.closest('.dash-widget');
+    const heading = shell && shell.querySelector('.dash-widget-title');
+    if (heading) heading.textContent = (next.title || '').trim() || spec.label || widget.kind;
     // Repaint just this widget so the change is visible without a round trip;
     // the value itself is persisted with the rest of the layout on save.
     _dashPaintAll();
