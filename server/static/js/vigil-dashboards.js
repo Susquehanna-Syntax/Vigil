@@ -61,7 +61,9 @@ function _dashToolbar() {
 // of its content and left dead space below it.
 function _widgetShell(widget) {
   const spec = (DASH.catalog.widgets || {})[widget.kind] || {};
-  const title = spec.label || widget.kind;
+  // An operator-set title wins over the widget's own name: a dashboard may hold
+  // three metric charts, and "Metric chart" three times names none of them.
+  const title = ((widget.settings || {}).title || '').trim() || spec.label || widget.kind;
   return `
     <div class="dash-widget" data-kind="${escAttr(widget.kind)}">
       <div class="dash-widget-head">

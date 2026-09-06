@@ -243,7 +243,7 @@ WIDGET_REGISTRY: dict[str, dict] = {
         "description": "A note for whoever is looking at this dashboard.",
         "w": 4, "h": 3, "min_w": 2, "min_h": 2,
         "settings": {
-            "title": {"type": "text", "label": "Heading", "default": ""},
+            "heading": {"type": "text", "label": "Heading", "default": ""},
             "body": {"type": "longtext", "label": "Text", "default": ""},
         },
     },
@@ -297,6 +297,22 @@ WIDGET_REGISTRY: dict[str, dict] = {
     },
 }
 
+#: Settings every widget has, whatever its kind. The card title lives here
+#: rather than in each of the twenty-eight entries: a dashboard may hold three
+#: CPU charts, and "Metric chart" three times over names none of them.
+UNIVERSAL_SETTINGS: dict[str, dict] = {
+    "title": {"type": "text", "label": "Card title",
+              "placeholder": "Leave blank to use the widget's own name",
+              "default": ""},
+}
+
+
+def settings_for(kind: str) -> dict:
+    """Every setting a widget of *kind* accepts, universal ones first."""
+    spec = WIDGET_REGISTRY.get(kind) or {}
+    return {**UNIVERSAL_SETTINGS, **(spec.get("settings") or {})}
+
+
 #: Grid width every layout is expressed against.
 GRID_COLUMNS = 12
 
@@ -308,9 +324,8 @@ GRID_MAX_ROWS = 24
 
 def default_settings(kind: str) -> dict:
     """The settings a freshly added widget of *kind* starts with."""
-    spec = WIDGET_REGISTRY.get(kind) or {}
     return {name: field.get("default")
-            for name, field in (spec.get("settings") or {}).items()}
+            for name, field in settings_for(kind).items()}
 
 
 def clean_settings(kind: str, raw) -> dict:
@@ -320,8 +335,7 @@ def clean_settings(kind: str, raw) -> dict:
     let one widget's payload grow without bound and would leak whatever a
     client happened to send into every later read.
     """
-    spec = WIDGET_REGISTRY.get(kind) or {}
-    declared = spec.get("settings") or {}
+    declared = settings_for(kind)
     if not isinstance(raw, dict):
         return default_settings(kind)
     cleaned = default_settings(kind)
