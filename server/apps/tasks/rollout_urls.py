@@ -17,8 +17,6 @@ urlpatterns = [
     path("rollouts/<uuid:rollout_id>/waves/<int:wave_id>/hosts/",
          views.rollout_wave_hosts, name="rollout-wave-hosts"),
     path("wave-groups/", views.wave_group_collection, name="wave-group-collection"),
-    path("wave-groups/<uuid:group_id>/", views.wave_group_detail,
-         name="wave-group-detail"),
     path("waves/", views.wave_collection, name="wave-collection"),
     path("waves/<int:wave_id>/", views.wave_detail, name="wave-detail"),
 ]
