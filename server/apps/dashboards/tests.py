@@ -1,5 +1,7 @@
 """Dashboards — starter layout, ownership, layout replacement, settings hygiene."""
 
+from unittest import mock
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -300,3 +302,112 @@ class WidgetHeightTests(TestCase):
             format="json")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(self.board.widgets.get(kind="metric_chart").h, GRID_MAX_ROWS)
+
+
+class DashboardShareTests(TestCase):
+    """POST /api/v1/dashboards/<id>/share/ — the Business gate on sharing."""
+
+    def setUp(self):
+        self.owner = get_user_model().objects.create_user("own", password="x")
+        self.other = get_user_model().objects.create_user("oth", password="x")
+        self.board = starter_dashboard(self.owner)
+        self.url = f"/api/v1/dashboards/{self.board.id}/share/"
+
+    def _post(self, user, shared):
+        client = APIClient()
+        client.force_authenticate(user)
+        return client.post(self.url, {"shared": shared}, format="json")
+
+    def test_sharing_without_a_licence_answers_402(self):
+        r = self._post(self.owner, True)
+        self.assertEqual(r.status_code, 402)
+        self.assertFalse(Dashboard.objects.get(pk=self.board.pk).shared)
+
+    def test_the_402_body_names_the_feature_and_an_upgrade_url(self):
+        r = self._post(self.owner, True)
+        body = r.json()
+        self.assertEqual(body["feature"], "dashboard_sharing")
+        self.assertIn("upgrade_url", body)
+        self.assertTrue(body["upgrade_url"].startswith("https://"))
+
+    def test_sharing_with_a_licence_marks_the_dashboard_shared(self):
+        with mock.patch("vigil.licensing.has_feature", return_value=True):
+            r = self._post(self.owner, True)
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["shared"])
+        self.assertTrue(Dashboard.objects.get(pk=self.board.pk).shared)
+
+    def test_unsharing_needs_no_licence(self):
+        self.board.shared = True
+        self.board.save(update_fields=["shared"])
+        r = self._post(self.owner, False)  # no licence at all
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(r.json()["shared"])
+        self.assertFalse(Dashboard.objects.get(pk=self.board.pk).shared)
+
+    def test_a_non_owner_cannot_share_someone_elses_dashboard(self):
+        self.board.shared = True
+        self.board.save(update_fields=["shared"])
+        # 403 whether or not the instance is licensed…
+        r = self._post(self.other, True)
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.json()["error"], "only the owner may share this dashboard")
+        with mock.patch("vigil.licensing.has_feature", return_value=True):
+            r = self._post(self.other, True)
+        self.assertEqual(r.status_code, 403)
+        self.assertTrue(Dashboard.objects.get(pk=self.board.pk).shared)
+
+    def test_a_stranger_gets_404_for_a_private_dashboard_regardless_of_licence(self):
+        r = self._post(self.other, True)
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.json(), {"error": "not found"})
+        with mock.patch("vigil.licensing.has_feature", return_value=True):
+            r = self._post(self.other, True)
+        self.assertEqual(r.status_code, 404)
+        self.assertFalse(Dashboard.objects.get(pk=self.board.pk).shared)
+
+    def test_reading_a_shared_dashboard_still_works_without_a_licence(self):
+        self.board.shared = True
+        self.board.save(update_fields=["shared"])
+        client = APIClient()
+        client.force_authenticate(self.other)
+        r = client.get(f"/api/v1/dashboards/{self.board.id}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["shared"], True)
+        self.assertEqual(r.json()["owner"], "own")
+
+    def test_a_shared_dashboard_stays_readable_after_the_licence_lapses(self):
+        # A lapse degrades to a banner, never to data an operator can no longer see.
+        self.board.shared = True
+        self.board.save(update_fields=["shared"])
+        with mock.patch("vigil.licensing.has_feature", return_value=True):
+            # Readable while the licence was active…
+            client = APIClient()
+            client.force_authenticate(self.other)
+            self.assertEqual(
+                client.get(f"/api/v1/dashboards/{self.board.id}/").status_code, 200)
+        # …and still readable once the licence has lapsed (no patch — free tier).
+        client = APIClient()
+        client.force_authenticate(self.other)
+        r = client.get(f"/api/v1/dashboards/{self.board.id}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["shared"], True)
+        self.assertEqual(r.json()["owner"], "own")
+        self.assertEqual(len(r.json()["widgets"]), 7)
+
+    def test_sharing_does_not_make_the_dashboard_writable_by_others(self):
+        self.board.shared = True
+        self.board.save(update_fields=["shared"])
+        client = APIClient()
+        client.force_authenticate(self.other)
+        r = client.patch(f"/api/v1/dashboards/{self.board.id}/", {"name": "hijack"},
+                         format="json")
+        self.assertEqual(r.status_code, 403)
+        r = client.put(f"/api/v1/dashboards/{self.board.id}/layout/",
+                       {"widgets": [{"kind": "metric_chart", "settings": {}}]},
+                       format="json")
+        self.assertEqual(r.status_code, 403)
+        r = client.delete(f"/api/v1/dashboards/{self.board.id}/")
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(Dashboard.objects.filter(pk=self.board.pk).count(), 1)
+        self.assertEqual(Dashboard.objects.get(pk=self.board.pk).name, "Overview")
