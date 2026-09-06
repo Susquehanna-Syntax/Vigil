@@ -88,13 +88,12 @@ class WidgetDefaultsTests(TestCase):
     def test_metric_defaults_name_a_category_the_agent_reports(self):
         from apps.dashboards.widgets import WIDGET_REGISTRY
 
-        # What the collector actually emits; see apps/metrics ingest.
-        reported = {
-            "cpu": {"usage_percent", "load_1m"},
-            "memory": {"usage_percent", "swap_usage_percent"},
-            "disk": {"usage_percent"},
-            "network": {"bytes_sent", "bytes_recv"},
-        }
+        # One source of truth for what the collector emits.
+        from apps.metrics.views import COLLECTOR_METRICS
+
+        reported: dict[str, set[str]] = {}
+        for category, metric in COLLECTOR_METRICS:
+            reported.setdefault(category, set()).add(metric)
         for kind, spec in WIDGET_REGISTRY.items():
             settings = spec.get("settings") or {}
             if "metric" not in settings:
