@@ -22,3 +22,18 @@ the dashboard: drag, resize, collision and the serialisable layout the
 
 To upgrade: fetch the same two files at the new version, replace them, update
 the version and both digests above, and re-run the dashboard tests.
+
+## chart.js
+
+| | |
+|---|---|
+| Version | 4.5.1 (was `@4`, a floating major) |
+| Licence | MIT (`chart.js.LICENSE`) |
+| Upstream | https://github.com/chartjs/Chart.js |
+| `chart.umd.min.js` | sha256 `48444a82d4edcb5bec0f1965faacdde18d9c17db3063d042abada2f705c9f54a` |
+| `chartjs-adapter-date-fns.bundle.min.js` | sha256 `ea7ab30d26c38dcf1f2d26bb43e73a94537b58f1906f55e1a546dd09321b5615` (adapter 3.0.0, MIT) |
+
+Drives every time-series chart: the monitor page, the host detail drawer, and
+the dashboard's metric-chart widget. Was loaded from jsdelivr at a floating
+major version, which meant an air-gapped install had no charts at all and a
+CDN-side release could change the dashboard with no change here.

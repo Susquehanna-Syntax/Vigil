@@ -6,9 +6,17 @@
 <title>{% block title %}Vigil — Dashboard{% endblock %}</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-<!-- Chart.js — used by vigil-monitor.js (time-series) and vigil-host-cards.js (detail drawer) -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+{# Chart.js — vigil-monitor.js (time-series), vigil-host-cards.js (detail    #}
+{# drawer), and the dashboard's metric-chart widget. Vendored, not from a CDN: #}
+{# an air-gapped install is a supported deployment and had no charts at all,   #}
+{# and the old @4 was a floating major that could change under us. See         #}
+{# static/js/vendor/README.md.                                                 #}
+<script src="{% static 'js/vendor/chart.umd.min.js' %}"></script>
+<script src="{% static 'js/vendor/chartjs-adapter-date-fns.bundle.min.js' %}"></script>
+
+{# Gridstack — drag/resize for the dashboard's widget grid. #}
+<link rel="stylesheet" href="{% static 'css/vendor/gridstack.min.css' %}">
+<script src="{% static 'js/vendor/gridstack-all.js' %}"></script>
 
 <!-- Styles: static/css/vigil.css — all design tokens, layout, and component styles -->
 <link rel="stylesheet" href="{% static 'css/vigil.css' %}">
@@ -751,6 +759,10 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-utils.js' %}"></script>
 <!-- vigil-nav.js — navigateTo(), tab-bar switching -->
 <script src="{% static 'js/vigil-nav.js' %}"></script>
+<!-- vigil-widgets.js — one renderer per widget kind. Load before vigil-dashboards.js, which calls into WIDGET_RENDERERS. -->
+<script src="{% static 'js/vigil-widgets.js' %}"></script>
+<!-- vigil-dashboards.js — the Gridstack widget grid on the Dashboard page. -->
+<script src="{% static 'js/vigil-dashboards.js' %}"></script>
 <!-- vigil-host-cards.js — dashboard host cards, pin bar, host detail drawer, RDP, host CRUD -->
 <script src="{% static 'js/vigil-host-cards.js' %}"></script>
 <!-- vigil-host-reboot.js — reboot_required pending marker on host cards -->

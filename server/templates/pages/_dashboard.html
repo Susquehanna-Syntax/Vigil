@@ -13,6 +13,14 @@
         </button>
       </div>
 
+      {# Widget grid. Owns static/js/vigil-dashboards.js + vigil-widgets.js and #}
+      {# the layout at /api/v1/dashboards/. The fixed blocks below stay until   #}
+      {# every widget kind has a renderer — see M5 phase 07.                    #}
+      <div id="dash-root" class="dash-root fade-in d2"></div>
+
+      <details class="inactive-section fade-in d5" id="dash-classic">
+        <summary>Classic dashboard</summary>
+
       <!-- Stats -->
       <div class="stats-row fade-in d2">
         <div class="stat-card">
@@ -87,4 +95,5 @@
       </div>
       {% endif %}
 
+      </details>
     </section>

@@ -27,8 +27,16 @@ _SET_INTERVAL = re.compile(r"\bsetInterval\s*\(")
 
 
 def _js_files() -> list[Path]:
+    """Vigil's own JS.
+
+    ``vendor/`` is excluded: those files are third-party libraries checked in
+    verbatim (see static/js/vendor/README.md). Their timers are not ours to
+    rewrite, and editing them would make the next upgrade a merge instead of a
+    replace.
+    """
     root = Path(settings.BASE_DIR) / "static" / "js"
-    return sorted(p for p in root.rglob("*.js") if "node_modules" not in p.parts)
+    return sorted(p for p in root.rglob("*.js")
+                  if "node_modules" not in p.parts and "vendor" not in p.parts)
 
 
 class PollingGuardTests(TestCase):
