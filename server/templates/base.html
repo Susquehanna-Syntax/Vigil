@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}Vigil — Dashboard{% endblock %}</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+{# SQSY typefaces, self-hosted — see static/css/fonts.css #}
+<link rel="stylesheet" href="{% static 'css/fonts.css' %}">
 
 {# Chart.js — vigil-monitor.js (time-series), vigil-host-cards.js (detail    #}
 {# drawer), and the dashboard's metric-chart widget. Vendored, not from a CDN: #}

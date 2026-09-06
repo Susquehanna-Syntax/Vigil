@@ -119,6 +119,34 @@ def totp_disable(request):
 # Setup / login / logout — HTML views
 # ---------------------------------------------------------------------------
 
+def _totp_qr_svg(uri: str) -> str:
+    """The enrolment QR as inline SVG.
+
+    Drawn server-side rather than by a browser library. The setup page is the
+    first screen a new install shows, and it was fetching a QR generator from a
+    CDN — so on an air-gapped deployment, the one deployment Vigil most wants
+    to support, that screen rendered a broken image and left the operator to
+    type the key by hand.
+
+    Inline SVG rather than a data: URI so no img-src or base64 is involved, and
+    the SVG factory rather than PNG so Pillow is not pulled in.
+    """
+    import io
+
+    import qrcode
+    import qrcode.image.svg
+
+    code = qrcode.QRCode(
+        version=None, box_size=10, border=2,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+    )
+    code.add_data(uri)
+    code.make(fit=True)
+    buffer = io.BytesIO()
+    code.make_image(image_factory=qrcode.image.svg.SvgPathImage).save(buffer)
+    return buffer.getvalue().decode("utf-8")
+
+
 def setup_view(request):
     """First-time admin registration with mandatory TOTP enrollment.
 
@@ -173,6 +201,7 @@ def setup_view(request):
             "step": 2,
             "totp_secret": secret,
             "totp_uri": uri,
+            "totp_qr_svg": _totp_qr_svg(uri),
             "error": error,
         })
 
@@ -198,6 +227,7 @@ def setup_view(request):
                 "step": 2,
                 "totp_secret": secret,
                 "totp_uri": uri,
+                "totp_qr_svg": _totp_qr_svg(uri),
             })
 
     return render(request, "setup.html", {"step": 1, "error": error})
