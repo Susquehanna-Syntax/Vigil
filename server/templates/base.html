@@ -379,6 +379,15 @@
       <label class="form-label">Name</label>
       <input type="text" class="form-control" id="wave-name" placeholder="Canary, Broad, Rest of fleet…" maxlength="120">
     </div>
+    <div class="form-group">
+      <label class="form-label">Group</label>
+      <select class="form-control" id="wave-group"></select>
+      <div class="muted-note" style="margin-top:6px;">
+        A rollout walks one group's waves in order. Keep separate ladders for
+        machines that should not patch together — servers and workstations, say.
+        Order only has to be unique inside a group.
+      </div>
+    </div>
     <div style="display:flex;gap:12px;">
       <div class="form-group" style="flex:1;">
         <label class="form-label">Order</label>

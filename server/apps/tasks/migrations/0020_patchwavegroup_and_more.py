@@ -24,8 +24,15 @@ def create_default_group(apps, schema_editor):
 
 
 def drop_default_group(apps, schema_editor):
-    apps.get_model("tasks", "PatchWaveGroup").objects.filter(
-        is_default=True).delete()
+    Group = apps.get_model("tasks", "PatchWaveGroup")
+    Rollout = apps.get_model("tasks", "PatchRollout")
+    Wave = apps.get_model("tasks", "PatchWave")
+    groups = Group.objects.filter(is_default=True)
+    # PatchRollout.wave_group is PROTECT, so the references have to go first or
+    # the whole reverse migration fails on any deployment that ever ran one.
+    Rollout.objects.filter(wave_group__in=groups).update(wave_group=None)
+    Wave.objects.filter(group__in=groups).update(group=None)
+    groups.delete()
 
 
 class Migration(migrations.Migration):
