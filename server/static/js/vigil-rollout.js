@@ -48,13 +48,71 @@ function _waveProgress(r) {
       ? `${wave.tasks_done + wave.tasks_failed}/${wave.tasks_total} reported`
       : (wave.hosts ? 'queued' : 'no hosts');
     const validation = wave.validation_hours ? ` · validation ${wave.validation_hours}h` : '';
+    // A wave that dispatched anything is worth opening: the counts say how many
+    // failed, never which machines or why.
+    const openable = wave.tasks_total > 0;
+    const failed = wave.tasks_failed
+      ? `<span class="chip" style="background:var(--rose);color:var(--bg);">${wave.tasks_failed} failed</span>`
+      : '';
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--s2);">
       ${_waveDot(wave.status)}
       <span style="min-width:130px;font-weight:600;color:${color};">${escHtml(wave.name)}</span>
       <span style="color:var(--text-3);font-size:12px;">${wave.hosts} host${wave.hosts === 1 ? '' : 's'} · ${count}${validation}</span>
+      ${failed}
       <span style="margin-left:auto;color:var(--text-3);font-size:11px;">${(wave.tags || []).map(escHtml).join(', ')}</span>
+      ${openable ? `<button class="btn btn-sky btn-xs" onclick="openWaveHosts('${r.id}', ${wave.id}, '${escHtml(wave.name).replace(/'/g, "&#39;")}')">Machines</button>` : ''}
     </div>`;
   }).join('');
+}
+
+/* Every machine in one wave, and for a failure the output that explains it.
+   Without this, acting on a halted rollout meant matching hosts up by hand in
+   the run history. */
+async function openWaveHosts(rolloutId, waveId, waveName) {
+  const m = mountModal('wave-hosts', { xwide: true });
+  m.setBody(`<div class="modal-title"><span>Wave: ${escHtml(waveName)}</span>
+      <button class="modal-close" id="wh-x" aria-label="Close">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button></div>
+    <div id="wh-body"><span class="muted-note">Loading…</span></div>`);
+  m.modal.querySelector('#wh-x').onclick = m.close;
+  m.open();
+
+  let data;
+  try {
+    data = await apiJson(`/api/v1/rollouts/${rolloutId}/waves/${waveId}/hosts/`);
+  } catch (e) {
+    document.getElementById('wh-body').innerHTML =
+      `<span class="bad">${escHtml(e.message || 'Could not load this wave')}</span>`;
+    return;
+  }
+
+  const rows = (data.hosts || []).map((h) => {
+    const stateColor = h.failed ? 'var(--rose)'
+      : (h.state === 'completed' ? 'var(--mint)' : 'var(--text-3)');
+    const output = (h.output || '').trim();
+    return `<tr>
+      <td><strong>${escHtml(h.hostname)}</strong>
+        <div class="muted-note">${escHtml(h.ip_address || '')}</div></td>
+      <td style="color:${stateColor};font-weight:600;">${escHtml(h.state)}</td>
+      <td>${h.completed_at ? escHtml(new Date(h.completed_at).toLocaleString()) : '—'}</td>
+      <td>${output
+        ? `<pre style="white-space:pre-wrap;margin:0;font-size:11px;max-height:140px;overflow:auto;">${escHtml(output)}</pre>`
+        : '<span class="muted-note">no output</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('wh-body').innerHTML = `
+    <div class="muted-note" style="margin-bottom:10px;">
+      ${data.total} machine${data.total === 1 ? '' : 's'} ·
+      <span style="color:${data.failed ? 'var(--rose)' : 'var(--mint)'};font-weight:600;">${data.failed} failed</span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="vuln-table">
+        <thead><tr><th>Machine</th><th>State</th><th>Finished</th><th>Output</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="4" class="muted-note">Nothing dispatched in this wave.</td></tr>'}</tbody>
+      </table>
+    </div>`;
 }
 
 function _rolloutCard(r) {
