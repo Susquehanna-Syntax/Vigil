@@ -286,10 +286,6 @@ const WIDGET_RENDERERS = {
 
 /* ── Catalog and settings — phase 04 ───────────────────────────────────── */
 
-function openWidgetCatalog() {
-  showToast('The widget catalog lands in the next phase', 'info');
-}
-
 function openWidgetSettings(_widgetId) {
   showToast('Per-widget settings land in the next phase', 'info');
 }

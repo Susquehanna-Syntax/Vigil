@@ -473,3 +473,36 @@ class RegistryShapeTests(TestCase):
         self.assertEqual(len(body["widgets"]), len(WIDGET_REGISTRY))
         for kind, spec in body["widgets"].items():
             self.assertIn("group", spec, f"{kind} reaches the UI with no group")
+
+
+class RailAccentTests(TestCase):
+    """The rail colours each group's + button. A group the JS has no accent for
+    renders an uncoloured button, which looks like a bug rather than a default.
+    """
+
+    def _dashboards_js(self) -> str:
+        from django.conf import settings as s
+        from pathlib import Path
+
+        return (Path(s.BASE_DIR) / "static" / "js" / "vigil-dashboards.js").read_text()
+
+    def test_every_group_in_the_registry_has_an_accent_and_a_label(self):
+        import re
+
+        js = self._dashboards_js()
+        accents = set(re.findall(r"(\w+):\s*'(?:sky|mint|lav|peach|lemon|rose)'", js))
+        labels = set(re.findall(r"(\w+):\s*'(?:Fleet|Health|Work in flight|Security|Utility|Business)'", js))
+        for kind, spec in WIDGET_REGISTRY.items():
+            group = spec["group"]
+            self.assertIn(group, accents, f"{group!r} (used by {kind}) has no accent in the rail")
+            self.assertIn(group, labels, f"{group!r} (used by {kind}) has no rail heading")
+
+    def test_the_rail_orders_every_group_it_knows(self):
+        import re
+
+        js = self._dashboards_js()
+        order = re.search(r"GROUP_ORDER = \[([^\]]+)\]", js).group(1)
+        listed = set(re.findall(r"'(\w+)'", order))
+        registry_groups = {spec["group"] for spec in WIDGET_REGISTRY.values()}
+        self.assertTrue(registry_groups <= listed,
+                        f"groups missing from GROUP_ORDER: {registry_groups - listed}")
