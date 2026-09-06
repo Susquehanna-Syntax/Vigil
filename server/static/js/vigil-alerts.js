@@ -48,7 +48,7 @@ function _alertItemHtml(alert, tab) {
     sub = `${escHtml(alert.host_hostname || '—')} · ${escHtml(alert.severity)}` +
           (alert.metric_value != null ? ` · Value: ${alert.metric_value}` : '');
     time = `${_alertRelTime(alert.fired_at)}`;
-    const fixBtn = `<button class="btn btn-sm btn-outline" style="color:var(--mint);" data-alert-action="suggest-fix" data-alert-id="${alert.id}">Suggest Fix</button>`;
+    const fixBtn = `<button class="btn btn-sm btn-lav" data-alert-action="suggest-fix" data-alert-id="${alert.id}">Suggest Fix</button>`;
     actions = `
       <div class="alert-actions">
         ${fixBtn}
@@ -75,7 +75,7 @@ function _alertItemHtml(alert, tab) {
     time = `Fired ${_alertRelTime(alert.fired_at)}`;
     actions = `
       <div class="alert-actions">
-        <button class="btn btn-sm btn-outline" onclick="unacknowledgeAlert('${alert.id}')">Un-ack</button>
+        <button class="btn btn-sm btn-peach" onclick="unacknowledgeAlert('${alert.id}')">Un-ack</button>
       </div>`;
   } else {
     sub = `${escHtml(alert.host_hostname || '—')} · Resolved ${_alertRelTime(alert.resolved_at)}`;

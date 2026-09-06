@@ -111,14 +111,16 @@ function _renderPlaybookList(playbooks) {
       <div class="bl-card-head">
         <div>
           <span class="bl-name">${escHtml(b.name)}</span>
-          <span class="bl-badge ${b.enabled ? 'on' : 'off'}">${b.enabled ? 'auto-enroll on' : 'auto-enroll off'}</span>
+          <span class="bl-badge ${b.auto_enroll ? 'on' : 'off'}">${b.auto_enroll ? 'auto-enroll on' : 'auto-enroll off'}</span>
+          ${b.completion_tag ? `<span class="chip">done: ${escHtml(b.completion_tag)}</span>` : ''}
           ${b.description ? `<div class="muted-note" style="margin-top:4px;">${escHtml(b.description)}</div>` : ''}
         </div>
         <div class="card-actions">
-          <button class="btn btn-outline btn-xs" data-bl-toggle="${b.id}" data-enabled="${b.enabled}">${b.enabled ? 'Disable' : 'Enable'}</button>
-          <button class="btn btn-outline btn-xs" data-bl-dup="${b.id}">Duplicate</button>
-          <button class="btn btn-outline btn-xs" data-bl-edit="${b.id}">Edit</button>
-          <button class="btn btn-outline btn-xs" style="color:var(--rose);" data-bl-del="${b.id}">Delete</button>
+          <button class="btn btn-${b.auto_enroll ? 'lemon' : 'mint'} btn-xs" data-bl-toggle="${b.id}" data-enabled="${b.auto_enroll}" data-name="${escHtml(b.name)}" data-tags="${escHtml((b.target_tags || []).join(', '))}" data-done="${escHtml(b.completion_tag || '')}">${b.auto_enroll ? 'Turn auto-enroll off' : 'Turn auto-enroll on'}</button>
+          <button class="btn btn-peach btn-xs" data-bl-dup="${b.id}">Duplicate</button>
+          <button class="btn btn-sky btn-xs" data-bl-edit="${b.id}">Edit</button>
+          <button class="btn btn-lemon btn-xs" data-bl-archive="${b.id}">Archive</button>
+          <button class="btn btn-rose btn-xs" data-bl-del="${b.id}">Delete</button>
         </div>
       </div>
       <div class="bl-seq">${steps}</div>
@@ -143,14 +145,31 @@ function _wireCards(playbooks) {
     loadPlaybooks();
   }));
   list.querySelectorAll('[data-bl-toggle]').forEach(btn => btn.addEventListener('click', async () => {
-    await apiJson(`/api/v1/playbooks/${btn.dataset.blToggle}/`, { method: 'PATCH', body: JSON.stringify({ enabled: btn.dataset.enabled !== 'true' }) });
+    const turningOn = btn.dataset.enabled !== 'true';
+    if (turningOn && !(await _confirmAutoEnroll(btn.dataset))) return;
+    try {
+      await apiJson(`/api/v1/playbooks/${btn.dataset.blToggle}/`, {
+        method: 'PATCH', body: JSON.stringify({ auto_enroll: turningOn }) });
+    } catch (e) {
+      showToast(e.message || 'Could not change auto-enroll', 'error');
+      return;
+    }
+    loadPlaybooks();
+  }));
+  list.querySelectorAll('[data-bl-archive]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!(await confirmModal(
+      'Archive this playbook? It stops auto-enrolling and leaves the list. ' +
+      'Anything already referencing it keeps working, and its run history stays.',
+      { confirmText: 'Archive', danger: false }))) return;
+    await apiJson(`/api/v1/playbooks/${btn.dataset.blArchive}/archive/`, {
+      method: 'POST', body: JSON.stringify({}) });
     loadPlaybooks();
   }));
   list.querySelectorAll('[data-bl-edit]').forEach(btn => btn.addEventListener('click', () => _startEdit(btn.dataset.blEdit)));
   list.querySelectorAll('[data-bl-dup]').forEach(btn => btn.addEventListener('click', () => {
     const b = playbooks.find(x => x.id === btn.dataset.blDup);
     _openEditor({ name: b.name + ' (copy)', description: b.description,
-      target_tags: b.target_tags, enabled: b.enabled,
+      target_tags: b.target_tags, completion_tag: b.completion_tag,
       steps: b.steps.map(s => ({ definition_id: s.definition_id,
                                  params_override: s.params_override || {} })) }, null);
   }));
@@ -184,11 +203,11 @@ function _renderEditorSteps() {
         </div>
       </div>
       <span class="bl-editor-step-btns">
-        <button class="btn btn-outline btn-xs" data-inputs="${i}" title="Change this step's task inputs">Inputs${nOv ? ' · ' + nOv : ''}</button>
-        <button class="btn btn-outline btn-xs" data-view="${escHtml(String(id))}" title="View / edit this task">View / edit</button>
+        <button class="btn btn-lav btn-xs" data-inputs="${i}" title="Change this step's task inputs">Inputs${nOv ? ' · ' + nOv : ''}</button>
+        <button class="btn btn-sky btn-xs" data-view="${escHtml(String(id))}" title="View / edit this task">View / edit</button>
         <button class="btn btn-outline btn-xs" data-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>↑</button>
         <button class="btn btn-outline btn-xs" data-mv="${i}" data-dir="1" ${i === _editingSteps.length - 1 ? 'disabled' : ''}>↓</button>
-        <button class="btn btn-outline btn-xs" style="color:var(--rose);" data-rm="${i}">Remove</button>
+        <button class="btn btn-rose btn-xs" style="color:var(--rose);" data-rm="${i}">Remove</button>
       </span></div>`;
   }).join('');
   wrap.querySelectorAll('[data-inputs]').forEach(b => b.addEventListener('click', () => {
@@ -223,7 +242,7 @@ function _openEditor(data, editingId) {
   document.getElementById('bl-name').value = data ? (data.name || '') : '';
   document.getElementById('bl-desc').value = data ? (data.description || '') : '';
   document.getElementById('bl-tags').value = data ? (data.target_tags || []).join(', ') : '';
-  document.getElementById('bl-enabled').checked = data ? !!data.enabled : true;
+  document.getElementById('bl-completion-tag').value = data ? (data.completion_tag || '') : '';
   // Duplicating a playbook does not inherit the authorization: editingId is
   // null there, so the flag starts off and has to be re-confirmed. The
   // original's TOTP authorized that playbook, not a copy of it.
@@ -256,7 +275,7 @@ async function _savePlaybook() {
     name: document.getElementById('bl-name').value.trim(),
     description: document.getElementById('bl-desc').value.trim(),
     target_tags: document.getElementById('bl-tags').value.split(',').map(t => t.trim()).filter(Boolean),
-    enabled: document.getElementById('bl-enabled').checked,
+    completion_tag: document.getElementById('bl-completion-tag').value.trim(),
     allow_high_risk: allowHighRisk,
     definition_ids: _editingSteps.map(s => ({ definition_id: s.id,
                                               params_override: s.ov || {} })),
@@ -324,4 +343,43 @@ document.addEventListener('DOMContentLoaded', () => {
 if (typeof navigateTo === 'function') {
   const _origNavPlaybooks = navigateTo;
   navigateTo = function (p) { _origNavPlaybooks(p); if (p === 'playbooks') loadPlaybooks(); };
+}
+
+
+/* Turning auto-enrol on is the one action here that reaches every machine at
+   once, without anyone watching, so it says out loud what it is about to do
+   and how many hosts that is. */
+async function _confirmAutoEnroll(data) {
+  const tags = (data.tags || '').trim();
+  const target = tags
+    ? `every host tagged <strong>${escHtml(tags)}</strong>`
+    : '<strong>EVERY approved host</strong>';
+  if (!(data.done || '').trim()) {
+    showToast('Set a completion tag first — without one the playbook would '
+              + 'run again on every pass.', 'error');
+    return false;
+  }
+  let count = '';
+  try {
+    const hosts = await apiJson('/api/v1/hosts/');
+    const wanted = tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+    const done = (data.done || '').trim().toLowerCase();
+    const matching = (hosts.results || hosts || []).filter((h) => {
+      const ht = (h.tags || []).map(t => String(t).toLowerCase());
+      if (ht.includes(done)) return false;
+      return wanted.length ? wanted.some(t => ht.includes(t)) : true;
+    });
+    count = `<p><strong>${matching.length}</strong> host${matching.length === 1 ? '' : 's'} `
+          + `match right now and would start running it within five minutes.</p>`;
+  } catch (e) { /* the warning stands without a count */ }
+
+  return confirmModal(
+    `<p><strong>${escHtml(data.name)}</strong> will run unattended on ${target}.</p>`
+    + count
+    + `<p>Each host is tagged <code>${escHtml(data.done)}</code> when it finishes, `
+    + `and is not run again while it carries that tag.</p>`
+    + `<p class="muted-note">Rollouts are the staged alternative: they cover the `
+    + `same machines a wave at a time and stop at the first wave that fails.</p>`,
+    { title: 'Run this on every matching host?',
+      confirmText: 'Yes, turn auto-enroll on', danger: true, html: true });
 }

@@ -299,7 +299,7 @@ async function loadOSImages() {
           `<span class="${_stateClass(img.status === 'ready' ? 'completed' : img.status)}">` +
             `${escHtml(img.status)}</span>` +
           `<div class="site-row-actions">` +
-            `<button class="btn btn-outline btn-sm img-del" data-id="${escHtml(img.id)}">Delete</button>` +
+            `<button class="btn btn-rose btn-sm img-del" data-id="${escHtml(img.id)}">Delete</button>` +
           `</div>` +
         `</div>`;
       list.appendChild(row);

@@ -96,13 +96,21 @@
   <div class="bl-field">
     <label>Steps — run top to bottom</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Each step is a task. They run in order on the target machine, and a failed step stops the ones after it.">?</span>
     <div class="bl-editor-steps" id="bl-editor-steps"></div>
-    <button class="btn btn-outline btn-sm" id="bl-add-step-btn" type="button" style="margin-top:8px;">+ Add step</button>
+    <button class="btn btn-mint btn-sm" id="bl-add-step-btn" type="button" style="margin-top:8px;">+ Add step</button>
   </div>
   <div class="bl-field">
-    <label>Auto-run on hosts tagged <span style="color:var(--text-3);font-weight:400;">(comma-separated; blank = every approved host)</span></label>
+    <label>Runs on hosts tagged <span style="color:var(--text-3);font-weight:400;">(comma-separated; blank = every approved host)</span></label>
     <input type="text" class="form-control" id="bl-tags" placeholder="os:linux, role:web">
   </div>
-  <label class="setting-check"><input type="checkbox" id="bl-enabled" checked> Auto-dispatch when a matching host is approved</label>
+  <div class="bl-field">
+    <label>Completion tag <span style="color:var(--text-3);font-weight:400;">(applied to a host when the playbook finishes there)</span></label>
+    <input type="text" class="form-control" id="bl-completion-tag" placeholder="hardened" maxlength="120">
+    <div class="muted-note" style="margin-top:6px;">
+      A host carrying this tag is treated as done and is not run again. Remove
+      it from a host to run the playbook there a second time. Required before
+      auto-enrolment can be switched on.
+    </div>
+  </div>
   <label class="setting-check"><input type="checkbox" id="bl-allow-high-risk"> Allow high-risk steps in this playbook</label>
   {% comment %}
     Shown only while the box is being ticked. Run by hand, a high-risk task
@@ -129,7 +137,7 @@
   </div>
   <div class="modal-actions">
     <button class="btn btn-ghost" id="bl-cancel-btn-2" type="button">Cancel</button>
-    <button class="btn btn-outline" id="bl-yaml-btn" type="button" title="Edit this playbook as YAML, or copy it to share">Edit as YAML</button>
+    <button class="btn btn-lav" id="bl-yaml-btn" type="button" title="Edit this playbook as YAML, or copy it to share">Edit as YAML</button>
     <button class="btn btn-mint" id="bl-save-btn">Save playbook</button>
   </div>
 </div>
@@ -154,8 +162,8 @@
   </div>
   <div class="modal-actions">
     <button class="btn btn-ghost" id="content-yaml-cancel" type="button">Cancel</button>
-    <button class="btn btn-outline" id="content-yaml-copy" type="button">Copy</button>
-    <button class="btn btn-outline" id="content-yaml-submit" type="button" title="Open a pull request against the public community repo">Submit to Community</button>
+    <button class="btn btn-lav" id="content-yaml-copy" type="button">Copy</button>
+    <button class="btn btn-lav" id="content-yaml-submit" type="button" title="Open a pull request against the public community repo">Submit to Community</button>
     <button class="btn btn-mint" id="content-yaml-save" type="button">Save from YAML</button>
   </div>
 </div>
@@ -242,7 +250,7 @@
         <option value="playbook">Playbook</option>
       </select>
       <button class="btn btn-outline picker-btn" id="auto-action-btn" type="button"><span id="auto-action-label">Choose…</span></button>
-      <button class="btn btn-outline btn-sm" id="auto-view-action" type="button">View / edit</button>
+      <button class="btn btn-sky btn-sm" id="auto-view-action" type="button">View / edit</button>
       <button class="btn btn-outline btn-sm" id="auto-inputs-btn" type="button">Inputs</button>
     </div>
     <input type="hidden" id="auto-action-task">
@@ -279,7 +287,7 @@
   <label class="setting-check"><input type="checkbox" id="auto-enabled" checked> Enabled</label>
   <div class="modal-actions">
     <button class="btn btn-ghost" id="auto-cancel-btn-2" type="button">Cancel</button>
-    <button class="btn btn-outline" id="auto-yaml-btn" type="button" title="Edit this automation as YAML, or copy it to share">Edit as YAML</button>
+    <button class="btn btn-lav" id="auto-yaml-btn" type="button" title="Edit this automation as YAML, or copy it to share">Edit as YAML</button>
     <button class="btn btn-mint" id="auto-save-btn">Save automation</button>
   </div>
 </div>

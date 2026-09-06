@@ -42,9 +42,9 @@ async function loadSites() {
       const row = document.createElement('div');
       row.className = 'site-row';
       const actions = _sitesLicensed
-        ? `<button class="btn btn-outline btn-sm site-edit" data-id="${s.id}">Edit</button>` +
-          `<button class="btn btn-outline btn-sm site-assign" data-id="${s.id}">Hosts</button>` +
-          (s.is_global ? '' : `<button class="btn btn-outline btn-sm site-del" data-id="${s.id}">Delete</button>`)
+        ? `<button class="btn btn-sky btn-sm site-edit" data-id="${s.id}">Edit</button>` +
+          `<button class="btn btn-sky btn-sm site-assign" data-id="${s.id}">Hosts</button>` +
+          (s.is_global ? '' : `<button class="btn btn-rose btn-sm site-del" data-id="${s.id}">Delete</button>`)
         : '';
       row.innerHTML =
         `<div class="site-row-main">` +

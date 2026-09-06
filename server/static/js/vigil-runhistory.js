@@ -91,7 +91,7 @@ function _renderRunPager() {
   el.innerHTML =
     `<button class="btn btn-outline btn-sm" ${page <= 1 ? 'disabled' : ''} id="rh-prev">Previous</button>` +
     `<span class="muted">Page ${page} of ${pages}</span>` +
-    `<button class="btn btn-outline btn-sm" ${page >= pages ? 'disabled' : ''} id="rh-next">Next</button>`;
+    `<button class="btn btn-sky btn-sm" ${page >= pages ? 'disabled' : ''} id="rh-next">Next</button>`;
   el.querySelector('#rh-prev')?.addEventListener('click', () => loadRunHistory(page - 1));
   el.querySelector('#rh-next')?.addEventListener('click', () => loadRunHistory(page + 1));
 }

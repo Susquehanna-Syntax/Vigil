@@ -234,6 +234,9 @@ function osLogo(name) {
    The app's modals are a SIBLING overlay + modal, both toggled `.open`
    (a nested modal only opening the overlay renders as a blank blur). This
    helper mounts that pair once per id and returns open/close/setBody. */
+const MODAL_BASE_Z = 200;
+let _modalDepth = 0;
+
 function mountModal(id, opts) {
   opts = opts || {};
   let overlay = document.getElementById(id + '-overlay');
@@ -248,9 +251,26 @@ function mountModal(id, opts) {
     document.body.appendChild(overlay);
     document.body.appendChild(modal);
   }
-  const close = () => { overlay.classList.remove('open'); modal.classList.remove('open'); };
+  const close = () => {
+    overlay.classList.remove('open');
+    modal.classList.remove('open');
+    if (_modalDepth > 0) _modalDepth -= 1;
+  };
   overlay.onclick = close;
-  const open = () => { overlay.classList.add('open'); modal.classList.add('open'); };
+  // Every modal shares one z-index in the stylesheet, so which of two open
+  // modals sat on top came down to the order their elements happened to be
+  // appended to <body> — and mountModal reuses an element wherever it was
+  // first mounted. Opening "Edit as YAML" from an editor that mounted later
+  // put the YAML modal underneath the thing that opened it. Each open now
+  // claims the next layer up.
+  const open = () => {
+    _modalDepth += 1;
+    const base = MODAL_BASE_Z + _modalDepth * 2;
+    overlay.style.zIndex = String(base);
+    modal.style.zIndex = String(base + 1);
+    overlay.classList.add('open');
+    modal.classList.add('open');
+  };
   return { overlay, modal, open, close, setBody: (html) => { modal.innerHTML = html; } };
 }
 
@@ -272,9 +292,14 @@ function confirmModal(message, opts) {
         <button class="btn btn-sm" id="confirm-ok"></button>
       </div>`);
     m.modal.querySelector('#confirm-title').textContent = opts.title || 'Are you sure?';
-    m.modal.querySelector('#confirm-msg').textContent = message;
+    // textContent by default: almost every caller passes a plain sentence and
+    // must not be able to inject markup through it. opts.html is for the few
+    // confirmations that need emphasis, and those escape their own values.
+    const msgEl = m.modal.querySelector('#confirm-msg');
+    if (opts.html) msgEl.innerHTML = message;
+    else msgEl.textContent = message;
     const okBtn = m.modal.querySelector('#confirm-ok');
-    okBtn.textContent = opts.confirmText || 'Confirm';
+    okBtn.textContent = opts.confirmText || opts.confirmLabel || 'Confirm';
     okBtn.className = 'btn btn-sm ' + (opts.danger ? 'btn-rose' : 'btn-mint');
     const done = (val) => { m.close(); setTimeout(() => resolve(val), 200); };
     okBtn.onclick = () => done(true);

@@ -108,7 +108,7 @@ function _communityCardHtml(item) {
       </div>
       <div class="def-card-footer">
         ${github}
-        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openCommunityItem(${arg})">${escHtml(_forkLabel(item))}</button>
+        <button class="btn btn-mint btn-sm" onclick="event.stopPropagation(); openCommunityItem(${arg})">${escHtml(_forkLabel(item))}</button>
       </div>
     </div>`;
 }
