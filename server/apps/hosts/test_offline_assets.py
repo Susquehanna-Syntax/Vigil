@@ -21,19 +21,10 @@ _REMOTE = re.compile(
     r"""<(?:script|link|img)\b[^>]*?\b(?:src|href)\s*=\s*["']https?://""",
     re.I)
 
-#: setup.html still pulls QRious for the TOTP enrolment QR code. QRious is
-#: GPL v3, and Vigil ships a commercially-licensed apps_business/ alongside
-#: AGPL core, so vendoring it is a licensing decision rather than a mechanical
-#: one. Tracked; until it is made, the exception is written down rather than
-#: silently passing.
-KNOWN_REMOTE = {"setup.html"}
-
-#: Lines exempt by content rather than by file. The webfonts degrade to the
-#: fallback stacks in vigil.css rather than breaking anything, so they are a
-#: cosmetic loss on an air-gapped install rather than a functional one —
-#: unlike the charts, which simply did not render. Vendoring three variable
-#: families is a separate decision about repo weight.
-KNOWN_REMOTE_LINES = ("fonts.googleapis.com", "fonts.gstatic.com")
+#: Nothing is exempt. The QR generator is rendered server-side and the fonts
+#: are self-hosted, so every asset the UI needs is in this repo.
+KNOWN_REMOTE: set[str] = set()
+KNOWN_REMOTE_LINES: tuple[str, ...] = ()
 
 
 def _templates() -> list[Path]:
@@ -114,3 +105,51 @@ class WidgetDefaultsTests(TestCase):
                           f"{kind} defaults to category {category!r}, which nothing reports")
             self.assertIn(metric, reported[category],
                           f"{kind} defaults to {category}/{metric}, which nothing reports")
+
+
+class SelfHostedFontTests(TestCase):
+    """The SQSY typefaces ship with Vigil rather than being fetched per load."""
+
+    def test_the_font_css_exists_and_is_referenced(self):
+        base = (Path(settings.BASE_DIR) / "templates" / "base.html").read_text()
+        self.assertIn("css/fonts.css", base)
+        self.assertTrue((Path(settings.BASE_DIR) / "static" / "css" / "fonts.css").is_file())
+
+    def test_every_font_file_the_css_names_is_checked_in(self):
+        css_path = Path(settings.BASE_DIR) / "static" / "css" / "fonts.css"
+        css = css_path.read_text()
+        referenced = re.findall(r"url\('\.\./fonts/([^']+)'\)", css)
+        self.assertTrue(referenced, "fonts.css declares no font files")
+        fonts_dir = Path(settings.BASE_DIR) / "static" / "fonts"
+        for name in referenced:
+            self.assertTrue((fonts_dir / name).is_file(),
+                            f"fonts.css names {name}, which is not checked in")
+
+    def test_the_three_sqsy_families_are_all_present(self):
+        css = (Path(settings.BASE_DIR) / "static" / "css" / "fonts.css").read_text()
+        for family in ("DM Sans", "Fraunces", "IBM Plex Mono"):
+            self.assertIn(f"font-family: '{family}'", css)
+
+
+class ServerSideQrTests(TestCase):
+    """The setup page draws its enrolment QR without fetching a library."""
+
+    def test_the_qr_is_rendered_as_inline_svg(self):
+        from apps.accounts.views import _totp_qr_svg
+
+        svg = _totp_qr_svg("otpauth://totp/Vigil:admin?secret=ABCDEFGH&issuer=Vigil")
+        self.assertIn("<svg", svg)
+        self.assertIn("</svg>", svg)
+        self.assertGreater(len(svg), 500, "suspiciously small for a QR code")
+
+    def test_two_different_secrets_produce_different_codes(self):
+        from apps.accounts.views import _totp_qr_svg
+
+        a = _totp_qr_svg("otpauth://totp/Vigil:a?secret=AAAAAAAA&issuer=Vigil")
+        b = _totp_qr_svg("otpauth://totp/Vigil:b?secret=BBBBBBBB&issuer=Vigil")
+        self.assertNotEqual(a, b)
+
+    def test_the_setup_template_no_longer_loads_a_qr_library(self):
+        setup = (Path(settings.BASE_DIR) / "templates" / "setup.html").read_text()
+        self.assertNotIn("qrious", setup.lower())
+        self.assertIn("totp_qr_svg", setup)
