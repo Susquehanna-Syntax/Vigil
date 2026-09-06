@@ -84,3 +84,33 @@ class OfflineAssetTests(TestCase):
                           f"{path.name} is vendored but not described in vendor/README.md")
         self.assertIn("Licence", text)
         self.assertIn("sha256", text)
+
+
+class WidgetDefaultsTests(TestCase):
+    """A widget's default settings must name data the agent actually reports.
+
+    The metric widgets originally defaulted to category "system", metric
+    "cpu_percent" — neither of which exists. A freshly added chart rendered an
+    empty window, which reads as broken rather than unconfigured.
+    """
+
+    def test_metric_defaults_name_a_category_the_agent_reports(self):
+        from apps.dashboards.widgets import WIDGET_REGISTRY
+
+        # What the collector actually emits; see apps/metrics ingest.
+        reported = {
+            "cpu": {"usage_percent", "load_1m"},
+            "memory": {"usage_percent", "swap_usage_percent"},
+            "disk": {"usage_percent"},
+            "network": {"bytes_sent", "bytes_recv"},
+        }
+        for kind, spec in WIDGET_REGISTRY.items():
+            settings = spec.get("settings") or {}
+            if "metric" not in settings:
+                continue
+            category = settings["category"]["default"]
+            metric = settings["metric"]["default"]
+            self.assertIn(category, reported,
+                          f"{kind} defaults to category {category!r}, which nothing reports")
+            self.assertIn(metric, reported[category],
+                          f"{kind} defaults to {category}/{metric}, which nothing reports")

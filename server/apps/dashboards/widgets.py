@@ -5,6 +5,12 @@ are generated rather than hand-maintained in two places. Sizes are Gridstack
 grid units on a 12-column grid.
 """
 
+#: The metric defaults name a category/metric pair the agent actually reports
+#: (see MetricPoint rows: cpu/usage_percent, memory/usage_percent,
+#: disk/usage_percent, network/bytes_sent). A default that names nothing renders
+#: an empty window, which reads as a broken widget rather than an unconfigured
+#: one.
+#:
 #: Setting types the phase-04 form generator knows how to render.
 #: "host"   — a host picker      "metric"  — a metric picker
 #: "choice" — one of `options`   "int"     — a bounded number
@@ -47,8 +53,8 @@ WIDGET_REGISTRY: dict[str, dict] = {
         "w": 6, "h": 4, "min_w": 3, "min_h": 3,
         "settings": {
             "host": {"type": "host", "label": "Host", "default": ""},
-            "category": {"type": "text", "label": "Category", "default": "system"},
-            "metric": {"type": "metric", "label": "Metric", "default": "cpu_percent"},
+            "category": {"type": "text", "label": "Category", "default": "cpu"},
+            "metric": {"type": "metric", "label": "Metric", "default": "usage_percent"},
             "range_hours": {"type": "int", "label": "Hours back", "min": 1,
                              "max": 720, "default": 24},
         },
@@ -59,8 +65,8 @@ WIDGET_REGISTRY: dict[str, dict] = {
         "w": 3, "h": 3, "min_w": 2, "min_h": 2,
         "settings": {
             "host": {"type": "host", "label": "Host", "default": ""},
-            "category": {"type": "text", "label": "Category", "default": "system"},
-            "metric": {"type": "metric", "label": "Metric", "default": "cpu_percent"},
+            "category": {"type": "text", "label": "Category", "default": "cpu"},
+            "metric": {"type": "metric", "label": "Metric", "default": "usage_percent"},
         },
     },
     "docker_containers": {
