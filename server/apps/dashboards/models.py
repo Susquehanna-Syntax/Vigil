@@ -91,8 +91,19 @@ STARTER_WIDGETS = [
 
 
 def starter_dashboard(user):
-    """Create this user's first dashboard. Returns it."""
-    board = Dashboard.objects.create(owner=user, name="Overview", is_default=True)
+    """Create this user's first dashboard, or return the one they have.
+
+    Idempotent on purpose. It is called from a GET, and the first thing a fresh
+    user's browser does is issue more than one — the page load and its first
+    poll. Two of those racing both saw no dashboard and both tried to create
+    "Overview"; the loser hit the per-owner name constraint and the request
+    became a 500 on the very first screen. get_or_create re-reads on that
+    collision instead.
+    """
+    board, created = Dashboard.objects.get_or_create(
+        owner=user, name="Overview", defaults={"is_default": True})
+    if not created:
+        return board
     for kind, x, y, w, h, overrides in STARTER_WIDGETS:
         DashboardWidget.objects.create(
             dashboard=board, kind=kind, x=x, y=y, w=w, h=h,

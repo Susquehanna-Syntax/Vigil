@@ -1,11 +1,11 @@
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .models import Dashboard, DashboardWidget, starter_dashboard
-from .widgets import GRID_COLUMNS, WIDGET_REGISTRY
+from .widgets import GRID_COLUMNS, GRID_MAX_ROWS, WIDGET_REGISTRY
 
 
 def _serialize(dashboard, request_user):
@@ -63,9 +63,15 @@ def dashboard_list(request):
     if Dashboard.objects.filter(owner=request.user, name=name).exists():
         return Response({"error": f"You already have a dashboard named {name!r}"},
                         status=status.HTTP_400_BAD_REQUEST)
-    board = Dashboard.objects.create(
-        owner=request.user, name=name,
-        is_default=not Dashboard.objects.filter(owner=request.user).exists())
+    try:
+        board = Dashboard.objects.create(
+            owner=request.user, name=name,
+            is_default=not Dashboard.objects.filter(owner=request.user).exists())
+    except IntegrityError:
+        # The exists() check above is not a lock. A double-clicked Create wins
+        # it twice and the second insert still meets the constraint.
+        return Response({"error": f"You already have a dashboard named {name!r}"},
+                        status=status.HTTP_400_BAD_REQUEST)
     return Response(_serialize(board, request.user), status=status.HTTP_201_CREATED)
 
 
@@ -166,7 +172,7 @@ def layout_update(request, dashboard_id):
             return Response({"error": "w and h must be integers"},
                             status=status.HTTP_400_BAD_REQUEST)
         w = max(spec["min_w"], min(w, GRID_COLUMNS))
-        h = max(spec["min_h"], min(h, GRID_COLUMNS))
+        h = max(spec["min_h"], min(h, GRID_MAX_ROWS))
         planned.append((kind, x, y, w, h, entry.get("settings")))
 
     with transaction.atomic():
