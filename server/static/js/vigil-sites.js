@@ -165,7 +165,7 @@ async function assignHosts(site) {
   const qTags = new Set();
 
   const chip = (val, label, kind) =>
-    `<button type="button" class="sa-chip" data-kind="${kind}" data-val="${escHtml(val)}">${escHtml(label)}</button>`;
+    `<button type="button" class="sa-chip" data-kind="${kind}" data-val="${escAttr(val)}">${escHtml(label)}</button>`;
 
   m.setBody(`
     <div class="modal-title"><span>Hosts in ${escHtml(site.name)}</span>

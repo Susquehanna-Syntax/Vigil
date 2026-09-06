@@ -108,7 +108,7 @@ function openWaveEditor(waveId) {
   const groupSel = document.getElementById('wave-group');
   if (groupSel) {
     const opts = _waveGroups.map(g =>
-      `<option value="${escHtml(g.id)}">${escHtml(g.name)}</option>`).join('');
+      `<option value="${escAttr(g.id)}">${escHtml(g.name)}</option>`).join('');
     // A fresh install has no group until the first wave creates one, so offer
     // the default by name rather than showing an empty select.
     groupSel.innerHTML = opts || '<option value="">Default</option>';

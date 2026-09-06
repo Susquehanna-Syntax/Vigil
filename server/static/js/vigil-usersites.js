@@ -114,8 +114,8 @@ async function openUserSites(user) {
           <span class="us-app">${escHtml(app)}</span>
           <span class="us-verbs">${verbs.map((v) => `
             <label class="us-verb">
-              <input type="checkbox" data-gid="${g.id}" data-app="${escHtml(app)}"
-                     data-verb="${escHtml(v)}"${held.has(`${app}:${v}`) ? ' checked' : ''}>
+              <input type="checkbox" data-gid="${g.id}" data-app="${escAttr(app)}"
+                     data-verb="${escAttr(v)}"${held.has(`${app}:${v}`) ? ' checked' : ''}>
               ${escHtml(v)}
             </label>`).join('')}</span>
         </div>`).join('') +

@@ -110,14 +110,14 @@ function _renderPickerList(q) {
     // building a playbook) — show them greyed with the reason, not hidden.
     const why = _pickerState.ineligible ? _pickerState.ineligible(i) : null;
     return `
-    <div class="picker-row${why ? ' picker-row-disabled' : ''}" data-key="${escHtml(String(i.key))}">
+    <div class="picker-row${why ? ' picker-row-disabled' : ''}" data-key="${escAttr(String(i.key))}">
       <div class="picker-row-main">
         <span class="picker-row-name">${escHtml(i.name)}${i.risk ? ` <span class="risk-badge risk-${escHtml(i.risk)}">${escHtml(i.risk)}</span>` : ''}</span>
         <span class="picker-row-meta">${escHtml(i.meta || '')}${why ? ` · <span class="picker-why">${escHtml(why)}</span>` : ''}</span>
       </div>
       <div class="picker-row-actions">
         ${i.editable ? `<button class="btn btn-sky btn-xs" data-pick-edit="${idx}">Edit</button>` : ''}
-        <button class="btn btn-mint btn-xs" data-pick-sel="${idx}" ${why ? `disabled title="${escHtml(why)}"` : ''}>Select</button>
+        <button class="btn btn-mint btn-xs" data-pick-sel="${idx}" ${why ? `disabled title="${escAttr(why)}"` : ''}>Select</button>
       </div>
     </div>`;
   }).join('');
@@ -171,7 +171,7 @@ async function openInputsModal(opts) {
       const current = (override[String(i)] || {})[name];
       const fallback = (a.params || {})[name];
       return `<label>${escHtml(name)}${required ? ' *' : ''}</label>
-        <input type="text" class="form-control" data-inp-action="${i}" data-inp-name="${escHtml(name)}"
+        <input type="text" class="form-control" data-inp-action="${i}" data-inp-name="${escAttr(name)}"
           value="${current != null ? escHtml(String(current)) : ''}"
           placeholder="${fallback != null ? escHtml(String(fallback)) : ''}">`;
     }).join('');

@@ -92,7 +92,7 @@ function _communityCardHtml(item) {
   if (item.author) meta.push(`by ${escHtml(item.author)}`);
 
   const github = item.html_url
-    ? `<a class="btn btn-ghost btn-sm" style="color:var(--text-3);text-decoration:none;" href="${escHtml(item.html_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">View on GitHub</a>`
+    ? `<a class="btn btn-ghost btn-sm" style="color:var(--text-3);text-decoration:none;" href="${escAttr(item.html_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">View on GitHub</a>`
     : '';
   const arg = `'${item.kind}','${encodeURIComponent(item.filename)}'`;
   return `

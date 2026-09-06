@@ -60,7 +60,7 @@ function _waveProgress(r) {
       <span style="color:var(--text-3);font-size:12px;">${wave.hosts} host${wave.hosts === 1 ? '' : 's'} · ${count}${validation}</span>
       ${failed}
       <span style="margin-left:auto;color:var(--text-3);font-size:11px;">${(wave.tags || []).map(escHtml).join(', ')}</span>
-      ${openable ? `<button class="btn btn-sky btn-xs" onclick="openWaveHosts('${r.id}', ${wave.id}, '${escHtml(wave.name).replace(/'/g, "&#39;")}')">Machines</button>` : ''}
+      ${openable ? `<button class="btn btn-sky btn-xs" data-wave-hosts data-rollout="${escAttr(r.id)}" data-wave="${escAttr(wave.id)}">Machines</button>` : ''}
     </div>`;
   }).join('');
 }
@@ -68,7 +68,10 @@ function _waveProgress(r) {
 /* Every machine in one wave, and for a failure the output that explains it.
    Without this, acting on a halted rollout meant matching hosts up by hand in
    the run history. */
-async function openWaveHosts(rolloutId, waveId, waveName) {
+async function openWaveHosts(rolloutId, waveId) {
+  const rollout = (_rolloutState.items || []).find(r => String(r.id) === String(rolloutId));
+  const wave = ((rollout || {}).waves || []).find(w => String(w.id) === String(waveId));
+  const waveName = wave ? wave.name : 'Wave';
   const m = mountModal('wave-hosts', { xwide: true });
   m.setBody(`<div class="modal-title"><span>Wave: ${escHtml(waveName)}</span>
       <button class="modal-close" id="wh-x" aria-label="Close">
@@ -191,6 +194,20 @@ function _renderRollouts() {
       box.innerHTML = items.map(_rolloutCard).join('');
     }
   }
+  _bindWaveHostButtons(box);
+}
+
+/* Delegated so it survives every re-render of the list, which happens on a
+   5-second poll while the tab is visible. */
+function _bindWaveHostButtons(box) {
+  if (box.dataset.waveHostsBound) return;
+  box.dataset.waveHostsBound = '1';
+  box.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-wave-hosts]');
+    if (!btn || !box.contains(btn)) return;
+    ev.stopPropagation();
+    openWaveHosts(btn.dataset.rollout, btn.dataset.wave);
+  });
 }
 
 function _rolloutsTabVisible() {
