@@ -286,6 +286,155 @@ const WIDGET_RENDERERS = {
 
 /* ── Catalog and settings — phase 04 ───────────────────────────────────── */
 
-function openWidgetSettings(_widgetId) {
-  showToast('Per-widget settings land in the next phase', 'info');
+/* ── Per-widget settings ───────────────────────────────────────────────────
+   The form is generated from the registry's typed settings schema, so adding a
+   setting to a widget means editing one dict rather than a dict and a form. */
+
+//: Option lists for the picker field types, fetched once per settings open.
+async function _settingsOptions(type) {
+  if (type === 'host') {
+    const rows = _wRows(await _wCached('/api/v1/hosts/', 30000));
+    return rows.map(h => [h.id, h.hostname]);
+  }
+  if (type === 'playbook') {
+    const rows = _wRows(await _wCached('/api/v1/playbooks/', 30000));
+    return rows.map(b => [b.id, b.name]);
+  }
+  if (type === 'definition') {
+    const rows = _wRows(await _wCached('/api/v1/tasks/definitions/?scope=mine', 30000));
+    return rows.map(d => [d.id, d.name]);
+  }
+  if (type === 'metric') {
+    // Only what the fleet is actually reporting — a picker offering a metric
+    // nothing sends produces a widget that looks broken rather than unset.
+    //
+    // The value carries the category too. Several categories report a metric
+    // called usage_percent, so a value of just "usage_percent" is ambiguous:
+    // the select would land on whichever came first and could then disagree
+    // with the category field sitting next to it.
+    const rows = _wRows(await _wCached('/api/v1/metrics/catalog/', 30000));
+    return rows.map(m => [`${m.category}/${m.metric}`, m.label]);
+  }
+  return [];
+}
+
+function _settingsField(name, field, value, options) {
+  const id = `ws-${name}`;
+  const label = `<label class="form-label" for="${escAttr(id)}">${escHtml(field.label || name)}</label>`;
+  const t = field.type;
+
+  if (t === 'bool') {
+    return `<label class="setting-check">
+      <input type="checkbox" id="${escAttr(id)}" data-setting="${escAttr(name)}"
+             ${value ? 'checked' : ''}> ${escHtml(field.label || name)}</label>`;
+  }
+  if (t === 'longtext') {
+    return `<div class="form-group">${label}
+      <textarea class="form-control" id="${escAttr(id)}" rows="5"
+                data-setting="${escAttr(name)}">${escHtml(value ?? '')}</textarea></div>`;
+  }
+  if (t === 'int') {
+    return `<div class="form-group">${label}
+      <input type="number" class="form-control" id="${escAttr(id)}"
+             data-setting="${escAttr(name)}" value="${escAttr(value ?? field.default ?? 0)}"
+             ${field.min !== undefined ? `min="${escAttr(field.min)}"` : ''}
+             ${field.max !== undefined ? `max="${escAttr(field.max)}"` : ''}></div>`;
+  }
+  if (t === 'choice' || options.length) {
+    const list = t === 'choice'
+      ? (field.options || []).map(o => [o, o])
+      : options;
+    const blank = t === 'choice' ? '' : `<option value="">— none —</option>`;
+    return `<div class="form-group">${label}
+      <select class="form-control" id="${escAttr(id)}" data-setting="${escAttr(name)}">
+        ${blank}${list.map(([v, text]) =>
+          `<option value="${escAttr(v)}"${String(v) === String(value) ? ' selected' : ''}>${escHtml(text)}</option>`).join('')}
+      </select></div>`;
+  }
+  // A picker type whose list came back empty still needs to be editable, so it
+  // falls through to a plain text field rather than rendering nothing.
+  return `<div class="form-group">${label}
+    <input type="text" class="form-control" id="${escAttr(id)}"
+           data-setting="${escAttr(name)}" value="${escAttr(value ?? '')}"></div>`;
+}
+
+async function openWidgetSettings(widgetId) {
+  const widget = (DASH.current.widgets || []).find(w => String(w.id) === String(widgetId));
+  if (!widget) return;
+  const spec = (DASH.catalog.widgets || {})[widget.kind] || {};
+  const schema = spec.settings || {};
+
+  const m = mountModal('widget-settings');
+  m.setBody(`<div class="modal-title"><span>${escHtml(spec.label || widget.kind)}</span>
+      <button class="modal-close" id="ws-x" aria-label="Close">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button></div>
+    <div id="ws-body"><span class="muted-note">Loading…</span></div>`);
+  m.modal.querySelector('#ws-x').onclick = m.close;
+  m.open();
+
+  if (!Object.keys(schema).length) {
+    document.getElementById('ws-body').innerHTML =
+      `<p class="muted-note">${escHtml(spec.description || '')}</p>
+       <p class="muted-note">This widget has nothing to configure.</p>
+       <div class="modal-actions"><button class="btn btn-outline btn-sm" id="ws-close">Close</button></div>`;
+    document.getElementById('ws-close').onclick = m.close;
+    return;
+  }
+
+  // Fetch each picker's options once, in parallel, before drawing the form.
+  const types = [...new Set(Object.values(schema).map(f => f.type))];
+  const lists = {};
+  await Promise.all(types.map(async (t) => {
+    try { lists[t] = await _settingsOptions(t); } catch (e) { lists[t] = []; }
+  }));
+
+  // A metric picker chooses the category/metric pair together, so the separate
+  // category field beside it is not drawn — two controls for one fact is how
+  // they end up disagreeing.
+  const metricField = Object.entries(schema).find(([, f]) => f.type === 'metric');
+  const current = widget.settings || {};
+  const fields = Object.entries(schema)
+    .filter(([name]) => !(metricField && name === 'category'))
+    .map(([name, field]) => {
+      let value = current[name];
+      if (field.type === 'metric') value = `${current.category || ''}/${value || ''}`;
+      return _settingsField(name, field, value, lists[field.type] || []);
+    }).join('');
+
+  document.getElementById('ws-body').innerHTML =
+    `${spec.description ? `<p class="muted-note" style="margin-bottom:14px;">${escHtml(spec.description)}</p>` : ''}
+     ${fields}
+     <div class="modal-actions">
+       <button class="btn btn-outline btn-sm" id="ws-cancel">Cancel</button>
+       <button class="btn btn-mint btn-sm" id="ws-save">Save</button>
+     </div>`;
+
+  document.getElementById('ws-cancel').onclick = m.close;
+  document.getElementById('ws-save').onclick = () => {
+    const next = {};
+    for (const [name, field] of Object.entries(schema)) {
+      const el = document.querySelector(`[data-setting="${CSS.escape(name)}"]`);
+      if (!el) continue;
+      if (field.type === 'bool') next[name] = el.checked;
+      else if (field.type === 'int') next[name] = parseInt(el.value, 10);
+      else if (field.type === 'metric') {
+        const [category, metric] = String(el.value).split('/');
+        next[name] = metric || '';
+        if ('category' in schema) next.category = category || '';
+      } else next[name] = el.value;
+    }
+    // The category field was not drawn when a metric picker owns it; keep
+    // whatever the picker just derived, or what was there before.
+    if (metricField && 'category' in schema && next.category === undefined) {
+      next.category = current.category;
+    }
+    widget.settings = next;
+    DASH.dirty = true;
+    m.close();
+    // Repaint just this widget so the change is visible without a round trip;
+    // the value itself is persisted with the rest of the layout on save.
+    _dashPaintAll();
+    showToast('Widget updated — saved when you leave edit mode', 'success');
+  };
 }
