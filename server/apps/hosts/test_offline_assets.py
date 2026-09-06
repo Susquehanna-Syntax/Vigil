@@ -153,3 +153,38 @@ class ServerSideQrTests(TestCase):
         setup = (Path(settings.BASE_DIR) / "templates" / "setup.html").read_text()
         self.assertNotIn("qrious", setup.lower())
         self.assertIn("totp_qr_svg", setup)
+
+
+class GridstackContractTests(TestCase):
+    """Two things about Gridstack that are silent when they break.
+
+    Its default renderCB assigns widget content with ``textContent``, so markup
+    arrives on screen as literal angle brackets. And it supplies its own
+    ``.grid-stack-item-content`` wrapper — emitting a second one nests them, and
+    only the outer is stretched to the cell, so every widget collapses to the
+    height of its content. Neither throws; both just look wrong.
+    """
+
+    def _dashboards_js(self) -> str:
+        return (Path(settings.BASE_DIR) / "static" / "js" / "vigil-dashboards.js").read_text()
+
+    def test_the_vendored_bundle_still_defaults_to_textcontent(self):
+        """If an upgrade changes this, the override below can go."""
+        bundle = (Path(settings.BASE_DIR) / "static" / "js" / "vendor"
+                  / "gridstack-all.js").read_text()
+        self.assertIn("textContent=t.content", bundle,
+                      "Gridstack's default renderCB changed — re-check whether "
+                      "vigil-dashboards.js still needs to override it")
+
+    def test_we_override_rendercb_so_widget_markup_renders(self):
+        self.assertIn("GridStack.renderCB", self._dashboards_js())
+
+    def test_we_do_not_emit_our_own_grid_stack_item_content(self):
+        # Comment lines are stripped: the class name is worth explaining in
+        # prose, it is emitting it into markup that breaks the layout.
+        code = "\n".join(
+            line for line in self._dashboards_js().splitlines()
+            if not line.lstrip().startswith(("//", "*", "/*")))
+        self.assertNotIn("grid-stack-item-content", code,
+                         "Gridstack supplies that wrapper; a second one nests "
+                         "and collapses every widget to its content height")

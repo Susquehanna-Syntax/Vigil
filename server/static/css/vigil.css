@@ -2841,6 +2841,7 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* Gridstack draws the item; this is the card inside it. */
 .dash-widget {
+  height: 100%;
   background: var(--s1);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);

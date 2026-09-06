@@ -55,11 +55,15 @@ function _dashToolbar() {
     </div>`;
 }
 
+// Returns what goes *inside* Gridstack's own .grid-stack-item-content. Emitting
+// a second element with that class nested one inside the other, and only the
+// outer one is stretched to the cell — so every widget collapsed to the height
+// of its content and left dead space below it.
 function _widgetShell(widget) {
   const spec = (DASH.catalog.widgets || {})[widget.kind] || {};
   const title = spec.label || widget.kind;
   return `
-    <div class="grid-stack-item-content dash-widget" data-kind="${escAttr(widget.kind)}">
+    <div class="dash-widget" data-kind="${escAttr(widget.kind)}">
       <div class="dash-widget-head">
         <span class="dash-widget-title">${escHtml(title)}</span>
         <span class="dash-widget-actions">
@@ -85,6 +89,13 @@ function _dashRender() {
 
   host.innerHTML = _dashToolbar()
     + '<div class="grid-stack" id="dash-grid"></div>';
+
+  // Gridstack's default renderCB assigns widget content with textContent, so a
+  // markup string arrives on screen as literal angle brackets rather than as
+  // elements. Its reason is to stop a caller injecting HTML by accident; ours
+  // is built in _widgetShell with every interpolated value already through
+  // escHtml/escAttr, so innerHTML is the correct assignment here.
+  GridStack.renderCB = (el, widget) => { el.innerHTML = widget.content || ''; };
 
   // Gridstack rewrites the container, so it is rebuilt rather than reused.
   DASH.grid = GridStack.init({
