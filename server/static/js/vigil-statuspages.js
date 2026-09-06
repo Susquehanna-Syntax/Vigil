@@ -34,9 +34,9 @@ function _spCard(p) {
     const on = selected.has(String(h.id));
     const label = (p.host_labels || {})[String(h.id)] || '';
     return `<div class="sp-host">
-      <input type="checkbox" data-sp-host="${escHtml(String(h.id))}" ${on ? 'checked' : ''}>
-      <input type="text" class="sp-host-label" data-sp-hlabel="${escHtml(String(h.id))}"
-             placeholder="${escHtml(h.hostname)}" value="${escHtml(label)}">
+      <input type="checkbox" data-sp-host="${escAttr(String(h.id))}" ${on ? 'checked' : ''}>
+      <input type="text" class="sp-host-label" data-sp-hlabel="${escAttr(String(h.id))}"
+             placeholder="${escAttr(h.hostname)}" value="${escAttr(label)}">
       <span class="sp-host-status ${h.up ? 'up' : 'down'}">${h.up ? 'up' : 'down'}</span>
     </div>`;
   }).join('') || '<p class="muted-note">No hosts available yet.</p>';
@@ -49,12 +49,12 @@ function _spCard(p) {
 
   return `<div class="sp-card" data-sp-id="${p.id}">
     <div class="sp-card-head">
-      <input type="text" class="form-control sp-title-input" data-sp-title="${p.id}" value="${escHtml(p.title)}">
+      <input type="text" class="form-control sp-title-input" data-sp-title="${p.id}" value="${escAttr(p.title)}">
       <label class="setting-check"><input type="checkbox" data-sp-enabled="${p.id}" ${p.enabled ? 'checked' : ''}> Public</label>
       ${p.is_primary ? '<span class="chip">primary · free</span>' : '<span class="chip chip-muted">extra page</span>'}
     </div>
     <div class="sp-url">${p.enabled
-        ? `Live at <a href="${escHtml(url)}" target="_blank" rel="noopener">${escHtml(url)}</a>`
+        ? `Live at <a href="${escAttr(url)}" target="_blank" rel="noopener">${escHtml(url)}</a>`
         : '<span class="muted-note">Enable to publish. Nobody can see it while off.</span>'}</div>
     <div class="section-label" style="margin-top:0;">Machines on this page <span class="muted-note" style="text-transform:none;letter-spacing:0;font-weight:400;">— none checked = all hosts</span></div>
     <div class="sp-hosts">${hostRows}</div>

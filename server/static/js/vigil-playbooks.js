@@ -116,7 +116,7 @@ function _renderPlaybookList(playbooks) {
           ${b.description ? `<div class="muted-note" style="margin-top:4px;">${escHtml(b.description)}</div>` : ''}
         </div>
         <div class="card-actions">
-          <button class="btn btn-${b.auto_enroll ? 'lemon' : 'mint'} btn-xs" data-bl-toggle="${b.id}" data-enabled="${b.auto_enroll}" data-name="${escHtml(b.name)}" data-tags="${escHtml((b.target_tags || []).join(', '))}" data-done="${escHtml(b.completion_tag || '')}">${b.auto_enroll ? 'Turn auto-enroll off' : 'Turn auto-enroll on'}</button>
+          <button class="btn btn-${b.auto_enroll ? 'lemon' : 'mint'} btn-xs" data-bl-toggle="${b.id}" data-enabled="${b.auto_enroll}" data-name="${escAttr(b.name)}" data-tags="${escAttr((b.target_tags || []).join(', '))}" data-done="${escAttr(b.completion_tag || '')}">${b.auto_enroll ? 'Turn auto-enroll off' : 'Turn auto-enroll on'}</button>
           <button class="btn btn-peach btn-xs" data-bl-dup="${b.id}">Duplicate</button>
           <button class="btn btn-sky btn-xs" data-bl-edit="${b.id}">Edit</button>
           <button class="btn btn-lemon btn-xs" data-bl-archive="${b.id}">Archive</button>
@@ -204,7 +204,7 @@ function _renderEditorSteps() {
       </div>
       <span class="bl-editor-step-btns">
         <button class="btn btn-lav btn-xs" data-inputs="${i}" title="Change this step's task inputs">Inputs${nOv ? ' · ' + nOv : ''}</button>
-        <button class="btn btn-sky btn-xs" data-view="${escHtml(String(id))}" title="View / edit this task">View / edit</button>
+        <button class="btn btn-sky btn-xs" data-view="${escAttr(String(id))}" title="View / edit this task">View / edit</button>
         <button class="btn btn-outline btn-xs" data-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>↑</button>
         <button class="btn btn-outline btn-xs" data-mv="${i}" data-dir="1" ${i === _editingSteps.length - 1 ? 'disabled' : ''}>↓</button>
         <button class="btn btn-rose btn-xs" style="color:var(--rose);" data-rm="${i}">Remove</button>

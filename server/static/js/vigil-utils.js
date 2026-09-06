@@ -123,6 +123,18 @@ function escHtml(str) {
   return d.innerHTML;
 }
 
+// escHtml goes through textContent, which escapes & < > and nothing else — so
+// a value carrying a quote breaks straight out of an HTML attribute. Use this
+// for anything interpolated between quotes in a built-up tag.
+function escAttr(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function formatBytes(bytes) {
   if (bytes === 0) return '0 B';
   const k = 1024;

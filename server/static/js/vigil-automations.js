@@ -119,7 +119,7 @@ function _fillEditorOptions() {
   if (ev) ev.innerHTML = Object.entries(_autoEvents).map(([k, v]) => `<option value="${k}">${escHtml(v)}</option>`).join('');
   const rule = document.getElementById('auto-event-rule');
   if (rule) rule.innerHTML = '<option value="">any alert</option>' +
-    _autoRules.map(r => `<option value="${escHtml(String(r.id))}">${escHtml(r.name)} (${escHtml(r.severity)})</option>`).join('');
+    _autoRules.map(r => `<option value="${escAttr(String(r.id))}">${escHtml(r.name)} (${escHtml(r.severity)})</option>`).join('');
   // Scopes which alerts fire this automation, not which hosts it runs on.
   // The host itself is chosen through the picker, so there is no <option>
   // list to rebuild here — only the button's label needs refreshing.

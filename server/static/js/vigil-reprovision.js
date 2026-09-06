@@ -77,9 +77,9 @@ async function openRebuildModal(hostId, hostname) {
 
   const insecure = window.location.protocol !== 'https:';
   const imageOpts = ready.map((i) =>
-    `<option value="${escHtml(i.id)}">${escHtml(i.name)} (${escHtml(i.architecture)})</option>`).join('');
+    `<option value="${escAttr(i.id)}">${escHtml(i.name)} (${escHtml(i.architecture)})</option>`).join('');
   const playbookOpts = ['<option value="">None</option>'].concat(
-    playbooks.map((b) => `<option value="${escHtml(b.id)}">${escHtml(b.name)}</option>`)).join('');
+    playbooks.map((b) => `<option value="${escAttr(b.id)}">${escHtml(b.name)}</option>`)).join('');
 
   m.setBody(
     `<h3>Rebuild ${escHtml(hostname)}</h3>` +
@@ -135,7 +135,7 @@ async function openRebuildModal(hostId, hostname) {
   function refreshProfiles() {
     const forImage = profiles.filter((p) => p.image === imageSel.value);
     profileSel.innerHTML = forImage.length
-      ? forImage.map((p) => `<option value="${escHtml(p.id)}">${escHtml(p.name)}</option>`).join('')
+      ? forImage.map((p) => `<option value="${escAttr(p.id)}">${escHtml(p.name)}</option>`).join('')
       : '<option value="">No profile for this image</option>';
     refreshSummary();
   }
@@ -299,7 +299,7 @@ async function loadOSImages() {
           `<span class="${_stateClass(img.status === 'ready' ? 'completed' : img.status)}">` +
             `${escHtml(img.status)}</span>` +
           `<div class="site-row-actions">` +
-            `<button class="btn btn-rose btn-sm img-del" data-id="${escHtml(img.id)}">Delete</button>` +
+            `<button class="btn btn-rose btn-sm img-del" data-id="${escAttr(img.id)}">Delete</button>` +
           `</div>` +
         `</div>`;
       list.appendChild(row);
