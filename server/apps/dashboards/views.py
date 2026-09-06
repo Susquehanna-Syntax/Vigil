@@ -185,6 +185,46 @@ def layout_update(request, dashboard_id):
     return Response(_serialize(board, request.user))
 
 
+def _sharing_gate(request):
+    """The Business gate on sharing. Returns a 402 Response, or None."""
+    from rest_framework.exceptions import APIException
+
+    from vigil.licensing import require_feature
+
+    perm = require_feature("dashboard_sharing")()
+    try:
+        perm.has_permission(request, None)
+    except APIException as exc:
+        return Response(exc.detail, status=402)
+    return None
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def dashboard_share(request, dashboard_id):
+    """Share a dashboard with everyone on the instance, or stop sharing it.
+
+    Body: ``{"shared": true}`` or ``{"shared": false}``.
+
+    Sharing is read-only for everyone but the owner — the existing ownership
+    rules in dashboard_detail and layout_update already enforce that, and this
+    endpoint deliberately does not relax them.
+    """
+    board = Dashboard.objects.filter(id=dashboard_id).first()
+    if board is None or (board.owner_id != request.user.id and not board.shared):
+        return Response({"error": "not found"}, status=status.HTTP_404_NOT_FOUND)
+    if board.owner_id != request.user.id:
+        return Response({"error": "only the owner may share this dashboard"},
+                        status=status.HTTP_403_FORBIDDEN)
+
+    want = bool(request.data.get("shared"))
+    if want and (denied := _sharing_gate(request)) is not None:
+        return denied
+    board.shared = want
+    board.save(update_fields=["shared"])
+    return Response(_serialize(board, request.user))
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def catalog(request):
