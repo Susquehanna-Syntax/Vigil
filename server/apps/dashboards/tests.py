@@ -221,7 +221,9 @@ class DashboardTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual(sorted(body["widgets"]), sorted(WIDGET_REGISTRY))
-        self.assertEqual(len(body["widgets"]), 9)
+        # Compared against the registry, not a literal: the count is expected
+        # to grow, and a test that has to be edited to add a widget is noise.
+        self.assertEqual(len(body["widgets"]), len(WIDGET_REGISTRY))
         self.assertEqual(body["grid_columns"], GRID_COLUMNS)
         for kind, entry in body["widgets"].items():
             self.assertIn("label", entry)
@@ -411,3 +413,63 @@ class DashboardShareTests(TestCase):
         self.assertEqual(r.status_code, 403)
         self.assertEqual(Dashboard.objects.filter(pk=self.board.pk).count(), 1)
         self.assertEqual(Dashboard.objects.get(pk=self.board.pk).name, "Overview")
+
+
+class RegistryShapeTests(TestCase):
+    """The rail and the settings form are generated from the registry, so a
+    malformed entry is a broken screen rather than an exception."""
+
+    GROUPS = {"fleet", "health", "work", "security", "utility", "business"}
+    SETTING_TYPES = {"text", "longtext", "int", "bool", "choice",
+                     "host", "metric", "playbook", "definition"}
+
+    def test_every_widget_declares_the_fields_the_ui_reads(self):
+        for kind, spec in WIDGET_REGISTRY.items():
+            for field in ("group", "label", "description", "w", "h", "min_w", "min_h"):
+                self.assertIn(field, spec, f"{kind} is missing {field!r}")
+
+    def test_every_widget_is_in_a_known_group(self):
+        for kind, spec in WIDGET_REGISTRY.items():
+            self.assertIn(spec["group"], self.GROUPS, f"{kind} has group {spec['group']!r}")
+
+    def test_every_setting_has_a_type_the_form_can_render(self):
+        for kind, spec in WIDGET_REGISTRY.items():
+            for name, field in (spec.get("settings") or {}).items():
+                self.assertIn("type", field, f"{kind}.{name} has no type")
+                self.assertIn(field["type"], self.SETTING_TYPES,
+                              f"{kind}.{name} is type {field['type']!r}, which no form renders")
+                self.assertIn("label", field, f"{kind}.{name} has no label")
+                self.assertIn("default", field, f"{kind}.{name} has no default")
+
+    def test_a_choice_setting_offers_options_containing_its_default(self):
+        for kind, spec in WIDGET_REGISTRY.items():
+            for name, field in (spec.get("settings") or {}).items():
+                if field["type"] != "choice":
+                    continue
+                self.assertIn("options", field, f"{kind}.{name} is a choice with no options")
+                self.assertIn(field["default"], field["options"],
+                              f"{kind}.{name} defaults outside its own options")
+
+    def test_default_sizes_respect_their_own_minimums(self):
+        for kind, spec in WIDGET_REGISTRY.items():
+            self.assertGreaterEqual(spec["w"], spec["min_w"], f"{kind} w < min_w")
+            self.assertGreaterEqual(spec["h"], spec["min_h"], f"{kind} h < min_h")
+            self.assertLessEqual(spec["w"], GRID_COLUMNS, f"{kind} is wider than the grid")
+
+    def test_a_gated_widget_names_a_real_feature(self):
+        from vigil.licensing import BUSINESS_FEATURES, FREE_FEATURES
+
+        known = BUSINESS_FEATURES | FREE_FEATURES
+        for kind, spec in WIDGET_REGISTRY.items():
+            if "feature" in spec:
+                self.assertIn(spec["feature"], known,
+                              f"{kind} gates on {spec['feature']!r}, which no licence grants")
+
+    def test_the_catalog_reports_the_group_and_gate_for_each_widget(self):
+        user = get_user_model().objects.create_user("cat", password="x")
+        client = APIClient()
+        client.force_authenticate(user)
+        body = client.get("/api/v1/dashboards/catalog/").json()
+        self.assertEqual(len(body["widgets"]), len(WIDGET_REGISTRY))
+        for kind, spec in body["widgets"].items():
+            self.assertIn("group", spec, f"{kind} reaches the UI with no group")
