@@ -15,16 +15,24 @@ grid units on a 12-column grid.
 #: "host"   — a host picker      "metric"  — a metric picker
 #: "choice" — one of `options`   "int"     — a bounded number
 #: "text"   — a short string     "bool"    — a checkbox
+#: "longtext" — a textarea       "playbook"/"definition" — a picker
+#:
+#: ``group`` places a widget in the Add-widget rail: fleet, health, work,
+#: security, utility, business. ``feature`` names a licensed feature the widget
+#: needs; reads stay open so an unlicensed instance can grey-and-preview it.
 WIDGET_REGISTRY: dict[str, dict] = {
     "host_status_grid": {
+        "group": "fleet",
         "label": "Host status grid",
-        "description": "Every host as a card, with its status and tags.",
+        "description": "Every host, with status and tags. Searchable.",
         "w": 12, "h": 5, "min_w": 4, "min_h": 3,
         "settings": {
             "tag_filter": {"type": "text", "label": "Only hosts tagged", "default": ""},
+            "show_search": {"type": "bool", "label": "Show the search box", "default": True},
         },
     },
     "alert_list": {
+        "group": "fleet",
         "label": "Alerts",
         "description": "Firing alerts, newest first.",
         "w": 6, "h": 4, "min_w": 3, "min_h": 2,
@@ -37,6 +45,7 @@ WIDGET_REGISTRY: dict[str, dict] = {
         },
     },
     "stat_tile": {
+        "group": "fleet",
         "label": "Stat tile",
         "description": "One number: hosts, online, alerts firing, or pending.",
         "w": 3, "h": 2, "min_w": 2, "min_h": 2,
@@ -48,6 +57,7 @@ WIDGET_REGISTRY: dict[str, dict] = {
         },
     },
     "metric_chart": {
+        "group": "health",
         "label": "Metric chart",
         "description": "One metric for one host over time.",
         "w": 6, "h": 4, "min_w": 3, "min_h": 3,
@@ -60,6 +70,7 @@ WIDGET_REGISTRY: dict[str, dict] = {
         },
     },
     "gauge": {
+        "group": "health",
         "label": "Gauge",
         "description": "One metric's latest value as a ring.",
         "w": 3, "h": 3, "min_w": 2, "min_h": 2,
@@ -70,6 +81,7 @@ WIDGET_REGISTRY: dict[str, dict] = {
         },
     },
     "docker_containers": {
+        "group": "work",
         "label": "Docker containers",
         "description": "Containers on one host, with state and image.",
         "w": 6, "h": 4, "min_w": 4, "min_h": 3,
@@ -78,6 +90,7 @@ WIDGET_REGISTRY: dict[str, dict] = {
         },
     },
     "top_processes": {
+        "group": "health",
         "label": "Top processes",
         "description": "Busiest processes on one host.",
         "w": 6, "h": 4, "min_w": 4, "min_h": 3,
@@ -88,16 +101,199 @@ WIDGET_REGISTRY: dict[str, dict] = {
         },
     },
     "rollout_progress": {
+        "group": "work",
         "label": "Rollout progress",
         "description": "Running rollouts and the wave each one is on.",
         "w": 6, "h": 3, "min_w": 4, "min_h": 2,
         "settings": {},
     },
     "vuln_score": {
+        "group": "security",
         "label": "Vulnerability score",
         "description": "Fleet score and its trend.",
         "w": 4, "h": 3, "min_w": 3, "min_h": 2,
         "settings": {},
+    },
+    # ── Conversions of the fixed dashboard blocks ────────────────────────
+    "inactive_hosts": {
+        "group": "fleet",
+        "label": "Inactive hosts",
+        "description": "Offline and not seen for a long time — the fleet's forgotten corners.",
+        "w": 6, "h": 4, "min_w": 3, "min_h": 2,
+        "settings": {
+            "days": {"type": "int", "label": "Quiet for at least (days)",
+                      "min": 1, "max": 365, "default": 90},
+        },
+    },
+    "pending_enrollments": {
+        "group": "fleet",
+        "label": "Pending enrollments",
+        "description": "Agents waiting for approval, with approve and reject.",
+        "w": 6, "h": 3, "min_w": 4, "min_h": 2,
+        "settings": {},
+    },
+    # ── Fleet health ─────────────────────────────────────────────────────
+    "reboot_required": {
+        "group": "health",
+        "label": "Awaiting reboot",
+        "description": "Hosts holding a pending kernel or update reboot.",
+        "w": 4, "h": 3, "min_w": 3, "min_h": 2,
+        "settings": {},
+    },
+    "outdated_agents": {
+        "group": "health",
+        "label": "Outdated agents",
+        "description": "Hosts running a version older than this server ships.",
+        "w": 4, "h": 3, "min_w": 3, "min_h": 2,
+        "settings": {},
+    },
+    "disk_pressure": {
+        "group": "health",
+        "label": "Disk pressure",
+        "description": "The fullest disks across the fleet.",
+        "w": 6, "h": 4, "min_w": 3, "min_h": 2,
+        "settings": {
+            "limit": {"type": "int", "label": "How many", "min": 1, "max": 25, "default": 8},
+            "threshold": {"type": "int", "label": "Only above (%)", "min": 0,
+                           "max": 100, "default": 0},
+        },
+    },
+    "network_throughput": {
+        "group": "health",
+        "label": "Network throughput",
+        "description": "Bytes in and out for one host, over time.",
+        "w": 6, "h": 4, "min_w": 3, "min_h": 3,
+        "settings": {
+            "host": {"type": "host", "label": "Host", "default": ""},
+            "range_hours": {"type": "int", "label": "Hours back", "min": 1,
+                             "max": 720, "default": 24},
+        },
+    },
+    # ── Work in flight ───────────────────────────────────────────────────
+    "task_history": {
+        "group": "work",
+        "label": "Recent task runs",
+        "description": "What has run lately, and how it went.",
+        "w": 6, "h": 4, "min_w": 4, "min_h": 2,
+        "settings": {
+            "limit": {"type": "int", "label": "How many", "min": 1, "max": 50, "default": 10},
+            "failures_only": {"type": "bool", "label": "Only failures", "default": False},
+        },
+    },
+    "wave_status": {
+        "group": "work",
+        "label": "Waves",
+        "description": "Each wave and how many machines it holds.",
+        "w": 6, "h": 4, "min_w": 3, "min_h": 2,
+        "settings": {
+            "group_tag": {"type": "text", "label": "Only this wave group", "default": ""},
+        },
+    },
+    "playbook_coverage": {
+        "group": "work",
+        "label": "Playbook coverage",
+        "description": "Which targeted hosts have run a playbook, and which have not.",
+        "w": 6, "h": 3, "min_w": 3, "min_h": 2,
+        "settings": {
+            "playbook": {"type": "playbook", "label": "Playbook", "default": ""},
+        },
+    },
+    "automation_activity": {
+        "group": "work",
+        "label": "Automations",
+        "description": "Automations and when each last fired.",
+        "w": 6, "h": 4, "min_w": 3, "min_h": 2,
+        "settings": {
+            "limit": {"type": "int", "label": "How many", "min": 1, "max": 25, "default": 8},
+        },
+    },
+    # ── Security and compliance ──────────────────────────────────────────
+    "vuln_findings": {
+        "group": "security",
+        "label": "Vulnerability findings",
+        "description": "Open findings, worst first.",
+        "w": 6, "h": 4, "min_w": 4, "min_h": 2,
+        "settings": {
+            "severity": {"type": "choice", "label": "Minimum severity",
+                          "options": ["low", "medium", "high", "critical"],
+                          "default": "high"},
+            "limit": {"type": "int", "label": "How many", "min": 1, "max": 50, "default": 10},
+        },
+    },
+    "firewall_status": {
+        "group": "security",
+        "label": "Firewall",
+        "description": "One host's firewall backend and rule count.",
+        "w": 4, "h": 3, "min_w": 3, "min_h": 2,
+        "settings": {
+            "host": {"type": "host", "label": "Host", "default": ""},
+        },
+    },
+    "windows_patches": {
+        "group": "security",
+        "label": "Windows patch compliance",
+        "description": "Windows hosts and how many updates each is missing.",
+        "w": 6, "h": 4, "min_w": 3, "min_h": 2,
+        "settings": {},
+    },
+    # ── Utility ──────────────────────────────────────────────────────────
+    "notes": {
+        "group": "utility",
+        "label": "Notes",
+        "description": "A note for whoever is looking at this dashboard.",
+        "w": 4, "h": 3, "min_w": 2, "min_h": 2,
+        "settings": {
+            "title": {"type": "text", "label": "Heading", "default": ""},
+            "body": {"type": "longtext", "label": "Text", "default": ""},
+        },
+    },
+    "quick_deploy": {
+        "group": "utility",
+        "label": "Quick deploy",
+        "description": "One button that deploys a chosen task. Opens the usual confirmation.",
+        "w": 3, "h": 2, "min_w": 2, "min_h": 2,
+        "settings": {
+            "definition": {"type": "definition", "label": "Task", "default": ""},
+        },
+    },
+    "clock": {
+        "group": "utility",
+        "label": "Clock",
+        "description": "The time somewhere, for a wall display.",
+        "w": 3, "h": 2, "min_w": 2, "min_h": 2,
+        "settings": {
+            "timezone": {"type": "text", "label": "Timezone", "default": "UTC"},
+            "label": {"type": "text", "label": "Caption", "default": ""},
+        },
+    },
+    "uptime_bars": {
+        "group": "utility",
+        "label": "Uptime",
+        "description": "Daily uptime bars for one host.",
+        "w": 6, "h": 3, "min_w": 3, "min_h": 2,
+        "settings": {
+            "host": {"type": "host", "label": "Host", "default": ""},
+            "days": {"type": "int", "label": "Days", "min": 7, "max": 90, "default": 30},
+        },
+    },
+    # ── Business ─────────────────────────────────────────────────────────
+    "site_summary": {
+        "group": "business",
+        "label": "Sites",
+        "description": "Each site and the state of its machines.",
+        "w": 6, "h": 4, "min_w": 3, "min_h": 2,
+        "settings": {},
+        "feature": "sites",
+    },
+    "audit_tail": {
+        "group": "business",
+        "label": "Audit log",
+        "description": "The most recent audited actions.",
+        "w": 6, "h": 4, "min_w": 4, "min_h": 2,
+        "settings": {
+            "limit": {"type": "int", "label": "How many", "min": 1, "max": 50, "default": 10},
+        },
+        "feature": "audit_log",
     },
 }
 
@@ -148,6 +344,10 @@ def clean_settings(kind: str, raw) -> dict:
                 continue
         elif field["type"] == "bool":
             value = bool(value)
+        elif field["type"] == "longtext":
+            # A note is prose, not an identifier. Still bounded: this is stored
+            # per widget and read on every dashboard load.
+            value = str(value)[:4000]
         else:
             value = str(value)[:200]
         cleaned[name] = value
