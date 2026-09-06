@@ -33,7 +33,7 @@ function _tagCard(t) {
     ? '<span style="color:var(--text-3);">on no machines</span>'
     : `on ${t.host_count} machine${t.host_count === 1 ? '' : 's'}`;
   const actions = t.editable
-    ? `<button class="btn btn-outline btn-sm" onclick="renameTag(${t.id})">Rename</button>
+    ? `<button class="btn btn-sky btn-sm" onclick="renameTag(${t.id})">Rename</button>
        <button class="btn btn-ghost btn-sm" style="color:var(--rose);" onclick="deleteTag(${t.id})">Delete</button>`
     : '<span class="confirm-hint" style="margin:0;">maintained by Vigil</span>';
   return `<div class="bl-card">

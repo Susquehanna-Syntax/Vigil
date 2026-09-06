@@ -252,6 +252,7 @@ body {
 .btn-sky { background: var(--sky); color: var(--bg); }
 .btn-lav { background: var(--lavender); color: var(--bg); }
 .btn-peach { background: var(--peach); color: var(--bg); }
+.btn-lemon { background: var(--lemon); color: var(--bg); }
 .btn-outline {
   background: none; color: var(--text-2);
   border: 1.5px solid var(--border);

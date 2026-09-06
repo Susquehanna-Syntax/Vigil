@@ -41,7 +41,7 @@ function _waveCard(w) {
         <span class="bl-badge ${w.enabled ? 'on' : 'off'}">${w.enabled ? 'enabled' : 'off'}</span>
       </div>
       <div style="display:flex;gap:6px;">
-        <button class="btn btn-outline btn-sm" onclick="openWaveEditor(${w.id})">Edit</button>
+        <button class="btn btn-sky btn-sm" onclick="openWaveEditor(${w.id})">Edit</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--rose);" onclick="deleteWave(${w.id})">Delete</button>
       </div>
     </div>

@@ -74,7 +74,7 @@ async function openUserSites(user) {
                 ${USER_SITE_ROLES.map((r) =>
                   `<option value="${r}"${g.role === r ? ' selected' : ''}>${escHtml(ROLE_LABELS[r] || r)}</option>`).join('')}
               </select>
-              <button class="btn btn-outline btn-sm us-revoke" data-gid="${g.id}">Revoke</button>
+              <button class="btn btn-rose btn-sm us-revoke" data-gid="${g.id}">Revoke</button>
             </div>
             ${g.role === 'operator' ? capabilityGrid(g) : `
               <p class="muted us-note">${g.role === 'admin'
@@ -101,7 +101,7 @@ async function openUserSites(user) {
         </div>` : ''}
       <p class="muted" id="us-note"></p>
       <div class="confirm-actions">
-        <button class="btn btn-outline btn-sm" id="us-close">Done</button>
+        <button class="btn btn-mint btn-sm" id="us-close">Done</button>
       </div>`);
     wire();
   }

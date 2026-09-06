@@ -116,7 +116,7 @@ function _renderPickerList(q) {
         <span class="picker-row-meta">${escHtml(i.meta || '')}${why ? ` · <span class="picker-why">${escHtml(why)}</span>` : ''}</span>
       </div>
       <div class="picker-row-actions">
-        ${i.editable ? `<button class="btn btn-outline btn-xs" data-pick-edit="${idx}">Edit</button>` : ''}
+        ${i.editable ? `<button class="btn btn-sky btn-xs" data-pick-edit="${idx}">Edit</button>` : ''}
         <button class="btn btn-mint btn-xs" data-pick-sel="${idx}" ${why ? `disabled title="${escHtml(why)}"` : ''}>Select</button>
       </div>
     </div>`;
