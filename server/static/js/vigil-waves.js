@@ -20,11 +20,6 @@ function _filterWaves() {
     (w.tags || []).some(t => (t || '').toLowerCase().includes(q)));
 }
 
-function _waveGroupName(w) {
-  const g = (_waveGroups || []).find(x => x.id === w.group);
-  return g ? g.name : '';
-}
-
 function _waveCard(w) {
   const tags = (w.tags || []).length
     ? (w.tags || []).map(t => `<span class="chip">${escHtml(t)}</span>`).join(' ')
@@ -45,7 +40,7 @@ function _waveCard(w) {
       <div>
         <span class="bl-name">${escHtml(w.order)} &middot; ${escHtml(w.name)}</span>
         <span class="bl-badge ${w.enabled ? 'on' : 'off'}">${w.enabled ? 'enabled' : 'off'}</span>
-        ${_waveGroupName(w) ? `<span class="chip">${escHtml(_waveGroupName(w))}</span>` : ''}
+        ${(w.group_tags || []).map(t => `<span class="chip">${escHtml(t)}</span>`).join(' ')}
       </div>
       <div style="display:flex;gap:6px;">
         <button class="btn btn-sky btn-sm" onclick="openWaveEditor(${w.id})">Edit</button>
@@ -81,10 +76,12 @@ async function loadWaves() {
   if (!box) return;
   box.innerHTML = '<div class="empty-block"><p>Loading…</p></div>';
   try {
-    [_allWaves, _waveGroups] = await Promise.all([
+    const [waves, groups] = await Promise.all([
       apiJson('/api/v1/waves/'),
-      apiJson('/api/v1/wave-groups/').catch(() => []),
+      apiJson('/api/v1/wave-groups/').catch(() => ({ groups: [] })),
     ]);
+    _allWaves = waves;
+    _waveGroups = (groups && groups.groups) || [];
     _renderWaves();
   } catch (e) {
     box.innerHTML = `<div class="empty-block"><h4>Couldn't load waves</h4><p>${escHtml(e.message)}</p></div>`;
@@ -105,15 +102,8 @@ function openWaveEditor(waveId) {
   document.getElementById('wave-validation').value = w ? w.validation_hours : 24;
   document.getElementById('wave-tags').value = w ? (w.tags || []).join(', ') : '';
   document.getElementById('wave-enabled').checked = w ? w.enabled : true;
-  const groupSel = document.getElementById('wave-group');
-  if (groupSel) {
-    const opts = _waveGroups.map(g =>
-      `<option value="${escAttr(g.id)}">${escHtml(g.name)}</option>`).join('');
-    // A fresh install has no group until the first wave creates one, so offer
-    // the default by name rather than showing an empty select.
-    groupSel.innerHTML = opts || '<option value="">Default</option>';
-    if (w && w.group) groupSel.value = w.group;
-  }
+  const groupInput = document.getElementById('wave-group-tags');
+  if (groupInput) groupInput.value = w ? (w.group_tags || []).join(', ') : '';
   _updateWaveMatchPreview();
   document.getElementById('wave-editor-overlay').classList.add('open');
   document.getElementById('wave-editor-modal').classList.add('open');
@@ -157,10 +147,8 @@ async function saveWave() {
     tags: _waveTagsFromInput(),
     enabled: document.getElementById('wave-enabled').checked,
   };
-  const groupId = (document.getElementById('wave-group') || {}).value;
-  // Omitted rather than sent null: the model puts a wave with no group into
-  // the default one, and a null would defeat the per-group order constraint.
-  if (groupId) payload.group = groupId;
+  payload.group_tags = ((document.getElementById('wave-group-tags') || {}).value || '')
+    .split(',').map(t => t.trim()).filter(Boolean);
   if (!payload.name) { showToast('Give the wave a name', 'error'); return; }
   if (!payload.tags.length) { showToast('A wave needs at least one tag', 'error'); return; }
 

@@ -1351,17 +1351,12 @@ def rollout_collection(request):
         if error:
             return Response({"detail": error}, status=401)
 
-        wave_group = None
-        if group_id := request.data.get("wave_group"):
-            from .models import PatchWaveGroup
-            wave_group = get_object_or_404(PatchWaveGroup, pk=group_id)
-
         try:
             rollout = start_rollout(
                 definition,
                 playbook=playbook,
                 user=request.user,
-                wave_group=wave_group,
+                wave_group_tag=(request.data.get("wave_group_tag") or "").strip(),
                 failure_threshold_pct=int(request.data.get("failure_threshold_pct", 10)),
                 min_results_before_halt=int(request.data.get("min_results_before_halt", 3)),
             )
@@ -1439,6 +1434,28 @@ def rollout_resume(request, rollout_id):
 # the next rollout touches.
 
 
+def _wave_order_conflict(order, group_tags, exclude_pk=None):
+    """The wave already sitting at *order* on any of these ladders, or None.
+
+    Order used to be unique in the database. It cannot be any more: two ladders
+    each want their own wave 1, and a wave can sit on several. The invariant
+    that still matters is per-ladder, so it is checked here — two rungs at the
+    same height on one ladder have no defined walking order.
+    """
+    from .models import PatchWave
+
+    wanted = {str(t).strip().lower() for t in (group_tags or []) if str(t).strip()}
+    candidates = PatchWave.objects.filter(order=order)
+    if exclude_pk is not None:
+        candidates = candidates.exclude(pk=exclude_pk)
+    for other in candidates.prefetch_related("group_tag_rows"):
+        theirs = {t.key for t in other.group_tag_rows.all()}
+        # Two ungrouped waves share the one implicit ladder.
+        if (wanted & theirs) or (not wanted and not theirs):
+            return other
+    return None
+
+
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def wave_collection(request):
@@ -1447,9 +1464,9 @@ def wave_collection(request):
     from .rollout_serializers import PatchWaveSerializer
 
     if request.method == "GET":
-        waves = PatchWave.objects.select_related("group")
-        if group_id := request.query_params.get("group"):
-            waves = waves.filter(group_id=group_id)
+        waves = PatchWave.objects.prefetch_related("group_tag_rows")
+        if group_tag := (request.query_params.get("group") or "").strip():
+            waves = waves.filter(group_tag_rows__key=group_tag.lower())
         return Response(
             PatchWaveSerializer(waves.order_by("order", "id"), many=True).data)
 
@@ -1458,15 +1475,18 @@ def wave_collection(request):
     serializer = PatchWaveSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(serializer.errors, status=400)
-    try:
-        serializer.save()
-    except IntegrityError:
-        # order is unique — say which number collided rather than surfacing a
-        # database error to the operator.
+    clash = _wave_order_conflict(
+        serializer.validated_data.get("order"),
+        serializer.validated_data.get("group_tags") or [])
+    if clash is not None:
+        where = (f"the {clash.group_tag_rows.first().name} group"
+                 if clash.group_tag_rows.exists() else "the ungrouped waves")
         return Response(
-            {"order": [f"Wave {request.data.get('order')} already exists."]},
+            {"order": [f"Wave {serializer.validated_data.get('order')} "
+                       f"already exists in {where} ({clash.name})."]},
             status=400,
         )
+    serializer.save()
     return Response(serializer.data, status=201)
 
 
@@ -1818,62 +1838,32 @@ def definition_archive(request, definition_id):
     return Response(TaskDefinitionSerializer(definition).data)
 
 
-@api_view(["GET", "POST"])
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def wave_group_collection(request):
-    """List wave groups, or create one."""
-    from .models import PatchWaveGroup
-    from .rollout_serializers import PatchWaveGroupSerializer
+    """The ladders that exist, derived from the tags waves carry.
 
-    if request.method == "GET":
-        groups = PatchWaveGroup.objects.prefetch_related("waves")
-        return Response(PatchWaveGroupSerializer(groups, many=True).data)
+    There is no wave-group record to keep in step with anything: a group is a
+    tag, so this reports the distinct group tags in use and how many enabled
+    waves each one holds. That is what the wave editor and the rollout picker
+    need in order to offer them.
+    """
+    from .models import PatchWave
 
-    if not IsAdmin().has_permission(request, None):
-        return Response({"detail": "Admin role required."}, status=403)
-    serializer = PatchWaveGroupSerializer(data=request.data)
-    if not serializer.is_valid():
-        return Response(serializer.errors, status=400)
-    try:
-        serializer.save()
-    except IntegrityError:
-        return Response(
-            {"name": [f"A group named {request.data.get('name')!r} already exists."]},
-            status=400)
-    return Response(serializer.data, status=201)
+    counts = {}
+    for wave in PatchWave.objects.prefetch_related("group_tag_rows"):
+        for tag in wave.group_tag_rows.all():
+            entry = counts.setdefault(
+                tag.key, {"tag": tag.name, "waves": 0, "enabled_waves": 0})
+            entry["waves"] += 1
+            if wave.enabled:
+                entry["enabled_waves"] += 1
 
-
-@api_view(["GET", "PATCH", "DELETE"])
-@permission_classes([IsAuthenticated])
-def wave_group_detail(request, group_id):
-    from .models import PatchWaveGroup
-    from .rollout_serializers import PatchWaveGroupSerializer
-
-    group = get_object_or_404(PatchWaveGroup, pk=group_id)
-    if request.method == "GET":
-        return Response(PatchWaveGroupSerializer(group).data)
-
-    if not IsAdmin().has_permission(request, None):
-        return Response({"detail": "Admin role required."}, status=403)
-
-    if request.method == "DELETE":
-        if group.is_default:
-            return Response(
-                {"detail": "The default group cannot be deleted — waves that "
-                           "name no group land in it."}, status=400)
-        if group.rollouts.exists():
-            return Response(
-                {"detail": "A rollout has already walked this group's waves. "
-                           "Deleting it would take its history with it."},
-                status=400)
-        group.delete()
-        return Response(status=204)
-
-    serializer = PatchWaveGroupSerializer(group, data=request.data, partial=True)
-    if not serializer.is_valid():
-        return Response(serializer.errors, status=400)
-    serializer.save()
-    return Response(serializer.data)
+    ungrouped = PatchWave.objects.filter(group_tag_rows__isnull=True).count()
+    return Response({
+        "groups": sorted(counts.values(), key=lambda g: g["tag"].lower()),
+        "ungrouped_waves": ungrouped,
+    })
 
 
 @api_view(["GET"])

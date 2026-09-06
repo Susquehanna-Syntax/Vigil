@@ -225,48 +225,6 @@ class Task(models.Model):
         return f"{self.action} → {self.host.hostname} ({self.state})"
 
 
-class PatchWaveGroup(models.Model):
-    """A named ladder of waves.
-
-    One global wave order could only ever describe one rollout shape, so a
-    fleet that patches its servers on a different ladder from its workstations
-    had nowhere to put the second one. A rollout walks the waves of exactly one
-    group, and wave order is unique within a group rather than globally.
-    """
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=120, unique=True)
-    description = models.TextField(blank=True, default="")
-    #: The group a rollout uses when it does not name one. Exactly one row has
-    #: this set; the migration points it at the group holding the waves that
-    #: existed before groups did, so nothing changes shape on upgrade.
-    is_default = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["name"]
-
-    def __str__(self) -> str:
-        return self.name
-
-    @classmethod
-    def default(cls):
-        """The group waves land in when nobody picks one.
-
-        Created on demand rather than seeded, so a fresh install has no empty
-        group sitting in the UI until the first wave exists.
-        """
-        existing = cls.objects.filter(is_default=True).first()
-        if existing is not None:
-            return existing
-        group, _ = cls.objects.get_or_create(
-            name="Default", defaults={"is_default": True})
-        if not group.is_default:
-            group.is_default = True
-            group.save(update_fields=["is_default"])
-        return group
-
-
 class PatchWave(TagRowSyncMixin, models.Model):
     """One stage of a staged rollout: every host carrying any of its tags.
 
@@ -276,28 +234,26 @@ class PatchWave(TagRowSyncMixin, models.Model):
     patched by a rollout at all — that is deliberate: opting in by tag is
     safer than opting out.
     """
-    tag_sync_fields = [("tags", "tag_rows")]
-
+    tag_sync_fields = [("tags", "tag_rows"), ("group_tags", "group_tag_rows")]
 
     class Meta:
         ordering = ["order"]
-        constraints = [
-            models.UniqueConstraint(fields=("group", "order"),
-                                    name="uniq_patch_wave_order"),
-        ]
 
-    group = models.ForeignKey("tasks.PatchWaveGroup", on_delete=models.CASCADE,
-                              related_name="waves", null=True)
     name = models.CharField(max_length=120)
     order = models.PositiveIntegerField()
-
-    def save(self, *args, **kwargs):
-        # A wave with no group would slip past uniq_patch_wave_order entirely:
-        # NULLs compare distinct, so two ungrouped waves could share an order
-        # and the ladder would have two rungs at the same height.
-        if self.group_id is None:
-            self.group = PatchWaveGroup.default()
-        super().save(*args, **kwargs)
+    #: Which ladders this wave belongs to. A "wave group" is just a tag, the
+    #: same way everything else in Vigil selects things, so a wave can sit in
+    #: more than one ladder — a Canary wave is often the first rung of both the
+    #: server and the workstation rollout. Empty means the wave is ungrouped
+    #: and only a rollout that names no group walks it.
+    #:
+    #: Order is therefore NOT unique in the database: two ladders each want
+    #: their own wave 1. The API refuses a collision among waves that share a
+    #: group instead, which is the invariant that actually matters.
+    group_tags = models.JSONField(default=list, blank=True)
+    #: Row-backed mirror of ``group_tags`` — see Host.tag_rows.
+    group_tag_rows = models.ManyToManyField("hosts.Tag", blank=True,
+                                            related_name="wave_groups")
     tags = models.JSONField(default=list, blank=True)
     #: Row-backed mirror of ``tags`` — see Host.tag_rows.
     tag_rows = models.ManyToManyField("hosts.Tag", blank=True, related_name="waves")
@@ -345,12 +301,11 @@ class PatchRollout(models.Model):
         TaskDefinition, on_delete=models.CASCADE, related_name="rollouts",
         null=True, blank=True,
     )
-    #: The wave ladder this rollout walks. Pinned at start so editing groups
-    #: later cannot change the shape of a rollout already in flight.
-    wave_group = models.ForeignKey(
-        "tasks.PatchWaveGroup", on_delete=models.PROTECT, related_name="rollouts",
-        null=True, blank=True,
-    )
+    #: The wave ladder this rollout walks, as a group tag. Blank means every
+    #: enabled wave, which is what a rollout did before groups existed.
+    #: Snapshotted as a string rather than a relation so re-tagging a wave
+    #: later cannot reshape a rollout already in flight.
+    wave_group_tag = models.CharField(max_length=120, blank=True, default="")
     playbook = models.ForeignKey(
         "baselines.Playbook", on_delete=models.CASCADE, related_name="rollouts",
         null=True, blank=True,

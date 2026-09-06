@@ -239,6 +239,16 @@ async function openRolloutStart() {
   document.getElementById('rollout-start-def').value = '';
   document.getElementById('rollout-start-def-label').textContent = 'Choose a task or playbook…';
   document.getElementById('rollout-start-totp').value = '';
+  const groupInput = document.getElementById('rollout-start-group');
+  if (groupInput) {
+    groupInput.value = '';
+    if (!groupInput.dataset.hintBound) {
+      groupInput.dataset.hintBound = '1';
+      groupInput.addEventListener('input', _refreshRolloutGroupHint);
+      groupInput.addEventListener('change', _refreshRolloutGroupHint);
+    }
+  }
+  _refreshRolloutGroupHint();
   document.getElementById('rollout-start-overlay').classList.add('open');
   modal.classList.add('open');
 }
@@ -280,6 +290,7 @@ async function submitRolloutStart() {
           : { definition_id: sel.value.replace(/^task:/, '') }),
         failure_threshold_pct: threshold,
         min_results_before_halt: minResults,
+        wave_group_tag: (document.getElementById('rollout-start-group')?.value || '').trim(),
         totp,
       }),
     });
@@ -480,3 +491,32 @@ document.addEventListener('keydown', (e) => {
     closeRolloutDetail();
   }
 });
+
+
+/* The rollout picker is the one place the blast radius is chosen, so it says
+   how many waves and machines the named group covers before you start it. */
+async function _refreshRolloutGroupHint() {
+  const input = document.getElementById('rollout-start-group');
+  const hint = document.getElementById('rollout-start-group-hint');
+  if (!input || !hint) return;
+  const tag = (input.value || '').trim();
+  if (!tag) {
+    hint.textContent = 'Blank sends it to every enabled wave, in order.';
+    return;
+  }
+  try {
+    const waves = await apiJson(`/api/v1/waves/?group=${encodeURIComponent(tag)}`);
+    const live = waves.filter(w => w.enabled);
+    if (!live.length) {
+      hint.innerHTML = `<span class="bad">No enabled wave is tagged `
+        + `<strong>${escHtml(tag)}</strong> — the rollout would be refused.</span>`;
+      return;
+    }
+    const machines = live.reduce((n, w) => n + (w.exclusive_host_count || 0), 0);
+    hint.textContent = `${live.length} wave${live.length === 1 ? '' : 's'} · `
+      + `${machines} machine${machines === 1 ? '' : 's'}, walked in order. `
+      + `Nothing outside this group is touched.`;
+  } catch (e) {
+    hint.textContent = 'Send this to one ladder only.';
+  }
+}
