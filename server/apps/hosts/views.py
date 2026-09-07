@@ -21,7 +21,8 @@ from vigil.signing import get_public_key_b64, sign_task
 from .auto_tags import merge_auto_tags
 from .authentication import authenticate_agent
 from .crypto import encrypt_secret
-from .models import ADConfig, DockerContainer, Host, HostInventory, UnmanagedDevice
+from .models import (ADConfig, DockerContainer, Host, HostInventory, TransportAck,
+                     UnmanagedDevice)
 from .serializers import (
     DockerContainerSerializer,
     HostInventorySerializer,
@@ -652,6 +653,37 @@ def unmanaged_device_detail(request, device_id):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     serializer.save()
     return Response(serializer.data)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAdmin])
+def transport_ack(request):
+    """Read or set the standing acknowledgement that this instance runs on
+    plain HTTP.
+
+    Admin-only, and it records who: this is a deliberate downgrade of the
+    instance's security posture, not a preference. GET is safe for any admin
+    to call; POST with {"acknowledged": true|false} sets or withdraws it.
+    """
+    ack = TransportAck.load()
+
+    if request.method == "POST":
+        wanted = bool(request.data.get("acknowledged"))
+        ack.acknowledged = wanted
+        # Cleared rather than kept on withdrawal — a stale name beside a
+        # withdrawn acknowledgement reads as though it still stands.
+        ack.acknowledged_by = request.user if wanted else None
+        ack.acknowledged_at = now() if wanted else None
+        ack.save()
+
+    return Response({
+        "acknowledged": ack.acknowledged,
+        "acknowledged_by": ack.acknowledged_by.username if ack.acknowledged_by else "",
+        "acknowledged_at": ack.acknowledged_at,
+        # What the browser is talking over right now, so the pane can say
+        # whether the acknowledgement is presently doing anything.
+        "request_is_secure": request.is_secure(),
+    })
 
 
 @api_view(["GET", "POST"])

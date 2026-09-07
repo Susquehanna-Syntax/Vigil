@@ -1,5 +1,6 @@
 import uuid
 
+from django.conf import settings
 from django.db import models
 
 
@@ -91,6 +92,42 @@ class ADConfig(models.Model):
 
     def __str__(self):
         return f"AD: {self.ldap_url or 'unset'}"
+
+
+class TransportAck(models.Model):
+    """A standing acknowledgement that this instance is served over plain HTTP.
+
+    Singleton (pk=1). Vigil hands out secrets that only TLS protects — the
+    rebuild answer file carries an admin password hash, SSH keys and an
+    enrolment token — so the rebuild ceremony refuses to proceed on plain HTTP
+    unless someone says they understand that. Ticking that box inside every
+    rebuild made the acknowledgement part of the ceremony, where it reads as
+    another box to clear rather than a decision about the instance. Recorded
+    here instead: made once, by a named admin, visible in Settings, and
+    revocable.
+
+    Who and when are kept because this records a deliberate downgrade of the
+    instance's security posture, and "who agreed to this" is the question
+    asked afterwards.
+    """
+
+    acknowledged = models.BooleanField(default=False)
+    acknowledged_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+")
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"plaintext transport acknowledged: {self.acknowledged}"
 
 
 class HostInventory(models.Model):

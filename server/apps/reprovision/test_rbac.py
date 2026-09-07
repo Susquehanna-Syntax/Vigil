@@ -102,10 +102,29 @@ class RebuildEndpointAuthTests(TestCase):
         self.assertEqual(self._create().status_code, 400)
 
     @patch("apps.accounts.totp.require_totp_confirmation", return_value=None)
-    def test_job_rejects_a_reserved_tag_namespace(self, _totp):
+    def test_a_job_no_longer_takes_a_tag_or_a_playbook(self, _totp):
+        # Both moved off the ceremony: the install profile carries
+        # completion_tags, and a playbook that should run on a rebuilt machine
+        # is auto-enroll's job. Anything still sending them is ignored rather
+        # than refused, so an older client does not start failing.
         self._login(Role.ADMIN)
-        resp = self._create(completion_tag="agent:rebuilt")
-        self.assertEqual(resp.status_code, 400)
+        resp = self._create(completion_tag="agent:rebuilt",
+                            post_playbook="00000000-0000-0000-0000-000000000000")
+        self.assertEqual(resp.status_code, 201)
+        job = RebuildJob.objects.get(pk=resp.json()["id"])
+        self.assertEqual(job.completion_tag, "")
+        self.assertIsNone(job.post_playbook)
+
+    def test_the_reserved_tag_namespace_is_still_refused_on_the_profile(self):
+        # The guard the job used to carry now lives where tags are actually
+        # set — losing it with the field would have been the real regression.
+        self._login(Role.ADMIN)
+        resp = self.client.post("/api/v1/reprovision/profiles/", {
+            "name": "reserved", "image": str(self.image.id),
+            "disk_target": "/dev/sda", "admin_password_hash": "$6$x$y",
+            "completion_tags": ["agent:rebuilt"],
+        }, content_type="application/json")
+        self.assertEqual(resp.status_code, 400, resp.content)
 
     @patch("apps.accounts.totp.require_totp_confirmation", return_value=None)
     def test_job_rejects_a_profile_from_another_image(self, _totp):
