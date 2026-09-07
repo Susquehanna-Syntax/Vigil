@@ -263,6 +263,395 @@ async function _renderTopProcesses(body, settings) {
     </div>`).join('') + `</div>`;
 }
 
+
+/* ── Fleet conversions ─────────────────────────────────────────────────── */
+
+async function _renderInactiveHosts(body, settings) {
+  const rows = _wRows(await _wCached('/api/v1/hosts/'));
+  const days = Number(settings.days) || 90;
+  const cutoff = Date.now() - days * 86400000;
+  const quiet = rows.filter(h => h.status === 'offline'
+    && (!h.last_checkin || new Date(h.last_checkin).getTime() < cutoff));
+  if (!quiet.length) { _wEmpty(body, `Nothing quiet for ${days} days`); return; }
+  body.innerHTML = `<div class="dash-hosts">` + quiet.map(h => `
+    <div class="dash-host">
+      <span class="dash-host-dot dash-dot-offline"></span>
+      <span class="dash-host-name">${escHtml(h.hostname)}</span>
+      <span class="dash-host-meta">${h.last_checkin
+        ? escHtml(new Date(h.last_checkin).toLocaleDateString()) : 'never'}</span>
+    </div>`).join('') + `</div>`;
+}
+
+async function _renderPendingEnrollments(body) {
+  const rows = _wRows(await _wCached('/api/v1/hosts/', 5000))
+    .filter(h => h.status === 'pending');
+  if (!rows.length) { _wEmpty(body, 'Nothing waiting for approval'); return; }
+  body.innerHTML = `<div class="dash-alerts">` + rows.map(h => `
+    <div class="dash-alert">
+      <span class="dash-host-dot dash-dot-pending"></span>
+      <span class="dash-alert-msg"><strong>${escHtml(h.hostname)}</strong>
+        <span class="muted-note">${escHtml(h.ip_address || '')}</span></span>
+      <span style="margin-left:auto;display:flex;gap:6px;">
+        <button class="btn btn-mint btn-xs" data-approve="${escAttr(h.id)}">Approve</button>
+        <button class="btn btn-rose btn-xs" data-reject="${escAttr(h.id)}">Reject</button>
+      </span>
+    </div>`).join('') + `</div>`;
+  // Enrollment is a real decision, so it confirms rather than acting on a
+  // stray click in a widget somebody may only be glancing at.
+  body.querySelectorAll('[data-approve],[data-reject]').forEach((btn) => {
+    btn.onclick = async () => {
+      const approve = 'approve' in btn.dataset;
+      const id = approve ? btn.dataset.approve : btn.dataset.reject;
+      const name = btn.closest('.dash-alert').querySelector('strong').textContent;
+      if (!(await confirmModal(
+        `${approve ? 'Approve' : 'Reject'} ${name}?`,
+        { confirmText: approve ? 'Approve' : 'Reject', danger: !approve }))) return;
+      try {
+        await apiJson(`/api/v1/hosts/${id}/${approve ? 'approve' : 'reject'}/`,
+                      { method: 'POST', body: JSON.stringify({}) });
+        _WCACHE.delete('/api/v1/hosts/');
+        showToast(`${name} ${approve ? 'approved' : 'rejected'}`, 'success');
+        _dashPaintAll();
+      } catch (e) { showToast(e.message || 'Failed', 'error'); }
+    };
+  });
+}
+
+/* ── Fleet health ──────────────────────────────────────────────────────── */
+
+function _hostListWidget(body, rows, emptyMessage, meta) {
+  if (!rows.length) { _wEmpty(body, emptyMessage); return; }
+  body.innerHTML = `<div class="dash-hosts">` + rows.map(h => `
+    <div class="dash-host">
+      <span class="dash-host-dot dash-dot-${escAttr(h.status || 'offline')}"></span>
+      <span class="dash-host-name">${escHtml(h.hostname)}</span>
+      <span class="dash-host-meta">${escHtml(meta(h))}</span>
+    </div>`).join('') + `</div>`;
+}
+
+async function _renderRebootRequired(body) {
+  const rows = _wRows(await _wCached('/api/v1/hosts/')).filter(h => h.reboot_required);
+  _hostListWidget(body, rows, 'No host is waiting on a reboot', h => h.os || '');
+}
+
+async function _renderOutdatedAgents(body) {
+  const [hosts, about] = await Promise.all([
+    _wCached('/api/v1/hosts/'),
+    _wCached('/api/v1/about/', 60000).catch(() => ({})),
+  ]);
+  const current = about.expected_agent_version || '';
+  if (!current) { _wEmpty(body, 'Server does not report an expected version'); return; }
+  // isOlderVersion compares numerically per segment — "2026.10.0" is newer than
+  // "2026.9.0", which a string compare gets backwards.
+  const behind = _wRows(hosts).filter(h =>
+    h.agent_version && isOlderVersion(h.agent_version, current));
+  _hostListWidget(body, behind, `Every agent is on ${current}`,
+                  h => `${h.agent_version} → ${current}`);
+}
+
+async function _renderDiskPressure(body, settings) {
+  const hosts = _wRows(await _wCached('/api/v1/hosts/'));
+  const floor = Number(settings.threshold) || 0;
+  const limit = Number(settings.limit) || 8;
+  const readings = await Promise.all(hosts.map(async (h) => {
+    try {
+      const points = _wRows(await _wCached(
+        `/api/v1/metrics/${h.id}/disk/usage_percent/?limit=1`, 30000));
+      return points.length ? { host: h, value: Number(points[0].value) } : null;
+    } catch (e) { return null; }
+  }));
+  const rows = readings.filter(r => r && r.value >= floor)
+    .sort((a, b) => b.value - a.value).slice(0, limit);
+  if (!rows.length) { _wEmpty(body, 'No disk readings'); return; }
+  body.innerHTML = `<div class="dash-procs">` + rows.map(({ host, value }) => {
+    const colour = value >= 90 ? 'var(--rose)' : value >= 75 ? 'var(--lemon)' : 'var(--mint)';
+    return `<div class="dash-proc">
+      <span class="dash-proc-name">${escHtml(host.hostname)}</span>
+      <span class="dash-proc-value" style="color:${colour};">${value.toFixed(0)}%</span>
+    </div>`;
+  }).join('') + `</div>`;
+}
+
+async function _renderNetworkThroughput(body, settings, widget) {
+  if (_wNeedsHost(body, settings)) return;
+  const hours = Number(settings.range_hours) || 24;
+  const [sent, recv] = await Promise.all([
+    _wCached(_wMetricUrl({ host: settings.host, category: 'network', metric: 'bytes_sent' }, hours, 300), 12000),
+    _wCached(_wMetricUrl({ host: settings.host, category: 'network', metric: 'bytes_recv' }, hours, 300), 12000),
+  ]);
+  const series = [_wRows(sent), _wRows(recv)];
+  if (!series[0].length && !series[1].length) { _wEmpty(body, 'No readings in this window'); return; }
+  let chart = _WCHARTS.get(widget.id);
+  if (chart && !body.contains(chart.canvas)) { chart.destroy(); chart = null; }
+  if (!chart) {
+    body.innerHTML = '<div class="dash-chart"><canvas></canvas></div>';
+    chart = new Chart(body.querySelector('canvas').getContext('2d'), {
+      type: 'line',
+      data: { datasets: [
+        { label: 'out', data: [], borderColor: '#82c4ee', borderWidth: 2, pointRadius: 0, tension: .25 },
+        { label: 'in',  data: [], borderColor: '#7eddb5', borderWidth: 2, pointRadius: 0, tension: .25 },
+      ] },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          x: { type: 'time', ticks: { maxTicksLimit: 5, color: '#8b8ba3' },
+               grid: { color: 'rgba(255,255,255,.05)' } },
+          y: { beginAtZero: true, ticks: { maxTicksLimit: 4, color: '#8b8ba3' },
+               grid: { color: 'rgba(255,255,255,.05)' } },
+        },
+        plugins: { legend: { display: true, labels: { color: '#8b8ba3', boxWidth: 10 } } },
+      },
+    });
+    _WCHARTS.set(widget.id, chart);
+  }
+  series.forEach((points, i) => {
+    chart.data.datasets[i].data = points
+      .map(pt => ({ x: new Date(pt.time).getTime(), y: pt.value }))
+      .sort((a, b) => a.x - b.x);
+  });
+  chart.update('none');
+}
+
+/* ── Work in flight ────────────────────────────────────────────────────── */
+
+const _RUN_STATE_COLOUR = {
+  completed: 'var(--mint)', failed: 'var(--rose)', timeout: 'var(--rose)',
+  rejected: 'var(--rose)', running: 'var(--sky)', pending: 'var(--text-3)',
+  skipped: 'var(--text-3)',
+};
+
+async function _renderTaskHistory(body, settings) {
+  const rows = _wRows(await _wCached('/api/v1/tasks/history/', 8000));
+  const failures = new Set(['failed', 'timeout', 'rejected']);
+  const shown = rows
+    .filter(t => !settings.failures_only || failures.has(t.state))
+    .slice(0, Number(settings.limit) || 10);
+  if (!shown.length) {
+    _wEmpty(body, settings.failures_only ? 'No failures' : 'Nothing has run yet');
+    return;
+  }
+  body.innerHTML = `<div class="dash-alerts">` + shown.map(t => `
+    <div class="dash-alert">
+      <span class="dash-proc-value" style="color:${_RUN_STATE_COLOUR[t.state] || 'var(--text-3)'};">
+        ${escHtml(t.state)}</span>
+      <span class="dash-alert-msg">${escHtml(t.step_label || t.action || '')}</span>
+      <span class="dash-alert-host">${escHtml(t.host_hostname || '')}</span>
+    </div>`).join('') + `</div>`;
+}
+
+async function _renderWaveStatus(body, settings) {
+  const wanted = (settings.group_tag || '').trim();
+  const url = wanted ? `/api/v1/waves/?group=${encodeURIComponent(wanted)}` : '/api/v1/waves/';
+  const rows = _wRows(await _wCached(url));
+  if (!rows.length) { _wEmpty(body, wanted ? `No wave tagged ${wanted}` : 'No waves yet'); return; }
+  body.innerHTML = `<div class="dash-procs">` + rows.map(w => `
+    <div class="dash-proc">
+      <span class="dash-proc-name">
+        <strong>${escHtml(String(w.order))}</strong> · ${escHtml(w.name)}
+        ${(w.group_tags || []).map(t => `<span class="chip">${escHtml(t)}</span>`).join(' ')}
+      </span>
+      <span class="dash-proc-value">${w.exclusive_host_count ?? w.host_count ?? 0}</span>
+    </div>`).join('') + `</div>`;
+}
+
+async function _renderPlaybookCoverage(body, settings) {
+  if (!settings.playbook) { _wEmpty(body, 'Pick a playbook in this widget\u2019s settings'); return; }
+  const [playbooks, hosts] = await Promise.all([
+    _wCached('/api/v1/playbooks/'), _wCached('/api/v1/hosts/'),
+  ]);
+  const book = _wRows(playbooks).find(b => String(b.id) === String(settings.playbook));
+  if (!book) { _wEmpty(body, 'That playbook no longer exists'); return; }
+  const targets = (book.target_tags || []).map(t => String(t).toLowerCase());
+  const done = String(book.completion_tag || '').toLowerCase();
+  const matching = _wRows(hosts).filter((h) => {
+    const tags = (h.tags || []).map(t => String(t).toLowerCase());
+    return targets.length ? targets.some(t => tags.includes(t)) : true;
+  });
+  const ran = matching.filter(h =>
+    done && (h.tags || []).some(t => String(t).toLowerCase() === done));
+  const pct = matching.length ? Math.round(ran.length / matching.length * 100) : 0;
+  body.innerHTML = `
+    <div class="dash-stat">
+      <div class="dash-stat-value" style="color:${pct === 100 ? 'var(--mint)' : 'var(--lemon)'};">
+        ${ran.length}<span style="font-size:18px;color:var(--text-3);">/${matching.length}</span></div>
+      <div class="dash-stat-label">${escHtml(book.name)}${done ? '' : ' — no completion tag set'}</div>
+      <div class="dash-cover-bar"><span style="width:${pct}%;"></span></div>
+    </div>`;
+}
+
+async function _renderAutomationActivity(body, settings) {
+  const payload = await _wCached('/api/v1/automations/');
+  const rows = (payload && payload.automations) || _wRows(payload);
+  const shown = rows.slice(0, Number(settings.limit) || 8);
+  if (!shown.length) { _wEmpty(body, 'No automations yet'); return; }
+  body.innerHTML = `<div class="dash-procs">` + shown.map(a => `
+    <div class="dash-proc">
+      <span class="dash-proc-name">
+        <span class="dash-host-dot dash-dot-${a.enabled ? 'online' : 'offline'}"></span>
+        ${escHtml(a.name || '')}</span>
+      <span class="dash-proc-value">${a.last_fired_at
+        ? escHtml(new Date(a.last_fired_at).toLocaleDateString()) : 'never'}</span>
+    </div>`).join('') + `</div>`;
+}
+
+/* ── Security ──────────────────────────────────────────────────────────── */
+
+const _VULN_RANK = { low: 0, medium: 1, high: 2, critical: 3 };
+
+async function _renderVulnFindings(body, settings) {
+  const rows = _wRows(await _wCached('/api/v1/vulns/findings/'));
+  const floor = _VULN_RANK[settings.severity] ?? 2;
+  const shown = rows
+    .filter(f => f.state === 'open')
+    .filter(f => (_VULN_RANK[f.severity] ?? 0) >= floor)
+    .sort((a, b) => (_VULN_RANK[b.severity] ?? 0) - (_VULN_RANK[a.severity] ?? 0))
+    .slice(0, Number(settings.limit) || 10);
+  if (!shown.length) { _wEmpty(body, `Nothing open at ${settings.severity} or above`); return; }
+  body.innerHTML = `<div class="dash-alerts">` + shown.map(f => `
+    <div class="dash-alert">
+      <span class="sev sev-${escAttr(f.severity)}">${escHtml(f.severity)}</span>
+      <span class="dash-alert-msg">${escHtml(f.cve_id || f.title || '')}</span>
+      <span class="dash-alert-host">${escHtml(f.host_hostname || '')}</span>
+    </div>`).join('') + `</div>`;
+}
+
+async function _renderFirewallStatus(body, settings) {
+  if (_wNeedsHost(body, settings)) return;
+  let payload;
+  try {
+    payload = await _wCached(`/api/v1/hosts/${encodeURIComponent(settings.host)}/firewall/`, 20000);
+  } catch (e) { _wEmpty(body, 'No firewall data for this host'); return; }
+  const rules = _wRows(payload.rules || payload);
+  const backend = payload.backend || payload.name || 'unknown';
+  const active = payload.enabled ?? payload.active;
+  body.innerHTML = `
+    <div class="dash-stat">
+      <div class="dash-stat-value" style="color:${active === false ? 'var(--rose)' : 'var(--mint)'};font-size:22px;">
+        ${escHtml(String(backend))}</div>
+      <div class="dash-stat-label">${rules.length} rule${rules.length === 1 ? '' : 's'}${
+        active === false ? ' · inactive' : ''}</div>
+    </div>`;
+}
+
+async function _renderWindowsPatches(body) {
+  const rows = _wRows(await _wCached('/api/v1/hosts/'))
+    .filter(h => /windows/i.test(h.os || ''));
+  if (!rows.length) { _wEmpty(body, 'No Windows hosts'); return; }
+  // Per-host missing-update counts are not stored anywhere yet: the agent's
+  // Windows scan reports into a task's output rather than a queryable field.
+  // Showing what is known beats inventing a number.
+  body.innerHTML = `<div class="dash-hosts">` + rows.map(h => `
+    <div class="dash-host">
+      <span class="dash-host-dot dash-dot-${escAttr(h.status)}"></span>
+      <span class="dash-host-name">${escHtml(h.hostname)}</span>
+      <span class="dash-host-meta">${h.reboot_required ? 'reboot pending' : 'ok'}</span>
+    </div>`).join('') + `</div>
+    <div class="muted-note" style="margin-top:8px;">Update counts are not collected yet.</div>`;
+}
+
+/* ── Utility ───────────────────────────────────────────────────────────── */
+
+function _renderNotes(body, settings) {
+  const heading = (settings.heading || '').trim();
+  const text = (settings.body || '').trim();
+  if (!heading && !text) { _wEmpty(body, 'Write something in this widget\u2019s settings'); return; }
+  body.innerHTML =
+    `${heading ? `<div class="dash-note-head">${escHtml(heading)}</div>` : ''}
+     <div class="dash-note-body">${escHtml(text)}</div>`;
+}
+
+async function _renderQuickDeploy(body, settings) {
+  if (!settings.definition) { _wEmpty(body, 'Pick a task in this widget\u2019s settings'); return; }
+  const rows = _wRows(await _wCached('/api/v1/tasks/definitions/?scope=mine', 30000));
+  const def = rows.find(d => String(d.id) === String(settings.definition));
+  if (!def) { _wEmpty(body, 'That task no longer exists'); return; }
+  body.innerHTML = `
+    <div class="dash-stat" style="gap:10px;">
+      <div class="dash-stat-label">${escHtml(def.name)}</div>
+      <button class="btn btn-peach btn-sm" data-quick-deploy>Deploy…</button>
+    </div>`;
+  // Hands off to the normal deploy modal rather than dispatching from here:
+  // choosing hosts and passing 2FA is the ceremony, not a detail to skip.
+  body.querySelector('[data-quick-deploy]').onclick = () => {
+    if (typeof openDeployModal === 'function') openDeployModal(def.id);
+    else showToast('Open the Tasks page to deploy', 'info');
+  };
+}
+
+function _renderClock(body, settings) {
+  const zone = (settings.timezone || 'UTC').trim();
+  let time;
+  try {
+    time = new Date().toLocaleTimeString([], { timeZone: zone, hour: '2-digit', minute: '2-digit' });
+  } catch (e) { _wEmpty(body, `${zone} is not a timezone`); return; }
+  body.innerHTML = `
+    <div class="dash-stat">
+      <div class="dash-stat-value">${escHtml(time)}</div>
+      <div class="dash-stat-label">${escHtml((settings.label || '').trim() || zone)}</div>
+    </div>`;
+}
+
+async function _renderUptimeBars(body, settings) {
+  if (_wNeedsHost(body, settings)) return;
+  const days = Number(settings.days) || 30;
+  const rows = _wRows(await _wCached(
+    `/api/v1/status-pages/uptime/${encodeURIComponent(settings.host)}/?days=${days}`, 60000));
+  if (!rows.length) { _wEmpty(body, 'No uptime history for this host'); return; }
+  const mean = rows.reduce((n, r) => n + r.uptime, 0) / rows.length;
+  body.innerHTML = `
+    <div class="dash-uptime">
+      ${rows.map(r => {
+        const colour = r.uptime >= 99 ? 'var(--mint)'
+                     : r.uptime >= 90 ? 'var(--lemon)' : 'var(--rose)';
+        return `<span class="dash-uptime-bar" style="background:${colour};"
+                      title="${escAttr(r.day)} · ${r.uptime}%"></span>`;
+      }).join('')}
+    </div>
+    <div class="dash-stat-label">${mean.toFixed(1)}% over ${rows.length} days</div>`;
+}
+
+/* ── Business ──────────────────────────────────────────────────────────── */
+
+function _wLicensed(body, payload) {
+  // A gated read answers 402 with an upgrade body rather than data. Reads stay
+  // open elsewhere, so this is the widget greying itself rather than erroring.
+  if (payload && payload.upgrade_url) {
+    body.innerHTML = `<div class="dash-empty muted-note">
+      ${escHtml(payload.detail || 'Requires a Business licence')}</div>`;
+    return false;
+  }
+  return true;
+}
+
+async function _renderSiteSummary(body) {
+  let payload;
+  try { payload = await _wCached('/api/v1/sites/'); }
+  catch (e) { _wEmpty(body, 'Sites requires a Business licence'); return; }
+  if (!_wLicensed(body, payload)) return;
+  const rows = _wRows(payload);
+  if (!rows.length) { _wEmpty(body, 'No sites yet'); return; }
+  body.innerHTML = `<div class="dash-procs">` + rows.map(s => `
+    <div class="dash-proc">
+      <span class="dash-proc-name">${escHtml(s.name)}</span>
+      <span class="dash-proc-value">${s.host_count ?? 0}</span>
+    </div>`).join('') + `</div>`;
+}
+
+async function _renderAuditTail(body, settings) {
+  let payload;
+  try { payload = await _wCached('/api/v1/audits/'); }
+  catch (e) { _wEmpty(body, 'The audit log requires a Business licence'); return; }
+  if (!_wLicensed(body, payload)) return;
+  const rows = _wRows(payload).slice(0, Number(settings.limit) || 10);
+  if (!rows.length) { _wEmpty(body, 'Nothing audited yet'); return; }
+  body.innerHTML = `<div class="dash-alerts">` + rows.map(e => `
+    <div class="dash-alert">
+      <span class="dash-alert-msg">${escHtml(e.action || e.event || '')}</span>
+      <span class="dash-alert-host">${escHtml(e.actor || e.username || '')}</span>
+    </div>`).join('') + `</div>`;
+}
+
 /* Kinds whose renderers land in the next phase. Named rather than missing, so
    the widget says what it is instead of looking broken. */
 function _renderPending(body, _settings, widget) {
@@ -273,6 +662,25 @@ function _renderPending(body, _settings, widget) {
 }
 
 const WIDGET_RENDERERS = {
+  inactive_hosts: _renderInactiveHosts,
+  pending_enrollments: _renderPendingEnrollments,
+  reboot_required: _renderRebootRequired,
+  outdated_agents: _renderOutdatedAgents,
+  disk_pressure: _renderDiskPressure,
+  network_throughput: _renderNetworkThroughput,
+  task_history: _renderTaskHistory,
+  wave_status: _renderWaveStatus,
+  playbook_coverage: _renderPlaybookCoverage,
+  automation_activity: _renderAutomationActivity,
+  vuln_findings: _renderVulnFindings,
+  firewall_status: _renderFirewallStatus,
+  windows_patches: _renderWindowsPatches,
+  notes: _renderNotes,
+  quick_deploy: _renderQuickDeploy,
+  clock: _renderClock,
+  uptime_bars: _renderUptimeBars,
+  site_summary: _renderSiteSummary,
+  audit_tail: _renderAuditTail,
   stat_tile: _renderStatTile,
   host_status_grid: _renderHostStatusGrid,
   alert_list: _renderAlertList,

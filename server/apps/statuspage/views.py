@@ -185,3 +185,37 @@ def _apply(page, request):
         page.token = _token()
     page.save()
     return None
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def host_uptime(request, host_id):
+    """Daily up/down ratio for one host.
+
+    The samples already back the public status page's bars; this exposes them
+    to the dashboard's uptime widget so the two read the same history rather
+    than computing availability twice from different places.
+    """
+    from datetime import timedelta
+
+    from django.db.models import Avg
+    from django.db.models.functions import TruncDate
+    from django.utils.timezone import now
+
+    from .models import HostUptimeSample
+
+    try:
+        days = max(1, min(90, int(request.query_params.get("days", 30))))
+    except (TypeError, ValueError):
+        days = 30
+
+    rows = (HostUptimeSample.objects
+            .filter(host_id=host_id, time__gte=now() - timedelta(days=days))
+            .annotate(day=TruncDate("time"))
+            .values("day")
+            .annotate(ratio=Avg("up"))
+            .order_by("day"))
+    return Response([
+        {"day": r["day"].isoformat(), "uptime": round(float(r["ratio"] or 0) * 100, 1)}
+        for r in rows
+    ])

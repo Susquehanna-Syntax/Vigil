@@ -10,7 +10,7 @@ from nacl.signing import SigningKey
 from apps.hosts.models import Host
 from vigil import licensing
 
-from .models import StatusPage
+from .models import HostUptimeSample, StatusPage
 
 SK = SigningKey.generate()
 PUB = base64.b64encode(SK.verify_key.encode()).decode()
@@ -217,3 +217,56 @@ class UptimeHistoryTests(TestCase):
         page.save(update_fields=["enabled"])
         self.assertEqual(
             self.client_class().get(f"/status/{page.token}/data/").status_code, 404)
+
+
+class HostUptimeApiTests(TestCase):
+    """The dashboard's uptime widget reads the same samples the public status
+    page's bars do, rather than computing availability a second way."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("up", password="pw")
+        self.client.force_login(self.user)
+        self.host = Host.objects.create(
+            hostname="uh", ip_address="10.95.0.2", agent_token="tk",
+            status=Host.Status.ONLINE)
+
+    def _sample(self, up, days_ago):
+        from datetime import timedelta
+
+        from django.utils.timezone import now
+
+        HostUptimeSample.objects.create(
+            host=self.host, up=up, time=now() - timedelta(days=days_ago))
+
+    def _get(self, days=30):
+        return self.client.get(
+            f"/api/v1/status-pages/uptime/{self.host.id}/?days={days}")
+
+    def test_it_answers_rather_than_erroring(self):
+        """It shipped once with a NameError — the view imported nothing."""
+        self.assertEqual(self._get().status_code, 200)
+
+    def test_a_full_day_of_uptime_reads_as_one_hundred(self):
+        self._sample(True, 1)
+        self._sample(True, 1)
+        rows = self._get().json()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["uptime"], 100.0)
+
+    def test_a_half_day_down_reads_as_fifty(self):
+        self._sample(True, 2)
+        self._sample(False, 2)
+        self.assertEqual(self._get().json()[0]["uptime"], 50.0)
+
+    def test_samples_outside_the_window_are_not_counted(self):
+        self._sample(True, 1)
+        self._sample(False, 60)
+        self.assertEqual(len(self._get(days=7).json()), 1)
+
+    def test_the_window_is_clamped_to_something_sane(self):
+        self._sample(True, 1)
+        self.assertEqual(self._get(days=9999).status_code, 200)
+        self.assertEqual(self._get(days=-5).status_code, 200)
+
+    def test_a_host_with_no_samples_answers_empty_rather_than_failing(self):
+        self.assertEqual(self._get().json(), [])
