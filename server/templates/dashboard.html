@@ -6,12 +6,12 @@
 {# comes from (server-side context vars vs client-side API fetches).             #}
 
 {% block content %}
-  {# Dashboard page — host cards, pins, activity strip #}
-  {# Logic: static/js/vigil-host-cards.js | Data: active_hosts, inactive_hosts, alerts_firing from dashboard() view #}
+  {# Dashboard page — widget grid (#dash-root) + server-side header counts #}
+  {# Logic: static/js/vigil-dashboards.js + vigil-widgets.js | Data: host_count, online_count, alert_count from dashboard() view #}
   {% include "pages/_dashboard.html" %}
 
   {# Alerts page — firing / acknowledged / resolved tabs #}
-  {# Logic: static/js/vigil-alerts.js | Data: alerts_firing, alerts_ack, alerts_resolved from dashboard() view #}
+  {# Logic: static/js/vigil-alerts.js | Data: client-side fetch /api/v1/alerts/?state=... #}
   {% include "pages/_alerts.html" %}
 
   {# Tasks page — library + history #}

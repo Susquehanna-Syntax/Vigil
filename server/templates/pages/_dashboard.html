@@ -1,5 +1,6 @@
 {# Dashboard page section #}
-{# Logic: static/js/vigil-host-cards.js | Styles: vigil.css .host-*, .stat-*, .alert-* | Data: active_hosts, inactive_hosts, alerts_firing from dashboard() view #}
+{# The header sub-line (host / online / alert counts) is server-side from     #}
+{# dashboard(); everything else on this page is the client-side widget grid.  #}
     <section id="page-dashboard" class="page active">
 
       <div class="page-header fade-in d1">
@@ -14,86 +15,7 @@
       </div>
 
       {# Widget grid. Owns static/js/vigil-dashboards.js + vigil-widgets.js and #}
-      {# the layout at /api/v1/dashboards/. The fixed blocks below stay until   #}
-      {# every widget kind has a renderer — see M5 phase 07.                    #}
+      {# the layout at /api/v1/dashboards/.                                    #}
       <div id="dash-root" class="dash-root fade-in d2"></div>
 
-      <details class="inactive-section fade-in d5" id="dash-classic">
-        <summary>Classic dashboard</summary>
-
-      <!-- Stats -->
-      <div class="stats-row fade-in d2">
-        <div class="stat-card">
-          <div class="stat-label">Total Hosts</div>
-          <div class="stat-value" style="color: var(--lavender)">{{ host_count }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Online</div>
-          <div class="stat-value" style="color: var(--mint)">{{ online_count }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Alerts Firing</div>
-          <div class="stat-value" style="color: var(--rose)">{{ alert_count }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Pending</div>
-          <div class="stat-value" style="color: var(--peach)">{{ pending_count }}</div>
-        </div>
-      </div>
-
-      {% if active_hosts or inactive_hosts %}
-      <!-- Hosts -->
-      <div class="section-label fade-in d3">Hosts</div>
-      <input type="text" class="host-search-bar fade-in d4" id="host-search" placeholder="Search agents by hostname, IP, OS, or tag…" oninput="filterHostCards(this.value)">
-      <div class="host-grid fade-in d4" id="host-grid">
-        {% for host in active_hosts %}
-        {% include "_host_card.html" with host=host inactive=False %}
-        {% endfor %}
-      </div>
-
-      {% if inactive_hosts %}
-      <details class="inactive-section fade-in d5" id="inactive-hosts-section">
-        <summary>Inactive agents ({{ inactive_hosts|length }}) — no check-in in 90+ days</summary>
-        <div class="host-grid">
-          {% for host in inactive_hosts %}
-          {% include "_host_card.html" with host=host inactive=True %}
-          {% endfor %}
-        </div>
-      </details>
-      {% endif %}
-
-      {% if alerts_firing %}
-      <div class="section-label fade-in d5">Active Alerts</div>
-      <div class="alert-list fade-in d6">
-        {% for alert in alerts_firing %}
-        <div class="alert-item">
-          <div class="alert-dot" style="background: var({% if alert.severity == 'critical' %}--rose{% elif alert.severity == 'warning' %}--lemon{% else %}--lavender{% endif %});"></div>
-          <div class="alert-content">
-            <div class="alert-title">{{ alert.message }}</div>
-            <div class="alert-sub">{{ alert.host.hostname }} · {{ alert.get_severity_display }}</div>
-          </div>
-          <div class="alert-time">{{ alert.fired_at|timesince }} ago</div>
-        </div>
-        {% endfor %}
-      </div>
-      {% endif %}
-
-      {% else %}
-      <!-- Empty state -->
-      <div class="empty-state fade-in d3">
-        <div class="empty-state-icon">
-          <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-        </div>
-        <div class="empty-state-title">No hosts yet</div>
-        <div class="empty-state-desc">
-          Add your first machine — the wizard generates an install command and walks you through enrollment.
-        </div>
-        <button class="btn btn-mint" style="margin-top:8px;" onclick="openEnrollWizard()">
-          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add Host
-        </button>
-      </div>
-      {% endif %}
-
-      </details>
     </section>

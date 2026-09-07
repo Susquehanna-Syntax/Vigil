@@ -1,5 +1,3 @@
-from datetime import timedelta
-
 from django.conf import settings as django_settings
 from django.conf import settings
 from django.conf.urls.static import static
@@ -7,7 +5,6 @@ from django.contrib import admin
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.urls import include, path
-from django.utils.timezone import now
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -21,11 +18,6 @@ from apps.playbooks.urls import legacy_urlpatterns as _legacy_playbook_urls
 from apps.reprovision.installer_views import enroll as reprovision_enroll
 from apps.statuspage.views import public_status as status_public_view
 from apps.statuspage.views import public_status_data as status_public_data_view
-
-# Hosts that haven't checked in within this window are surfaced in a
-# collapsed "Inactive" section on the dashboard rather than mixed in with
-# the active fleet. 90 days matches typical IT inventory aging policies.
-INACTIVE_AFTER_DAYS = 90
 
 
 @api_view(["GET"])
@@ -77,31 +69,18 @@ def about(request):
 
 @login_required(login_url="/login/")
 def dashboard(request):
-    hosts = Host.objects.exclude(status=Host.Status.REJECTED).select_related("inventory")
-    cutoff = now() - timedelta(days=INACTIVE_AFTER_DAYS)
-    inactive_hosts = list(
-        hosts.filter(status=Host.Status.OFFLINE, last_checkin__lt=cutoff).order_by("hostname")
-    )
-    inactive_ids = {h.id for h in inactive_hosts}
-    active_hosts = [h for h in hosts.order_by("hostname") if h.id not in inactive_ids]
-
-    alerts_firing = Alert.objects.filter(state=Alert.State.FIRING).select_related("host", "rule")
-    alerts_ack = Alert.objects.filter(state=Alert.State.ACKNOWLEDGED).select_related("host", "rule").order_by("-fired_at")[:20]
-    alerts_resolved = Alert.objects.filter(state=Alert.State.RESOLVED).select_related("host", "rule").order_by("-resolved_at")[:20]
+    # The dashboard page itself is the widget grid; these feed the pages that
+    # still render host lists server-side (the Monitor host dropdown and the
+    # Settings "All Agents" table) plus the header sub-line counts.
+    hosts = Host.objects.exclude(status=Host.Status.REJECTED).select_related("inventory").order_by("hostname")
     pending_hosts = hosts.filter(status=Host.Status.PENDING)
 
     return render(request, "dashboard.html", {
-        "hosts": active_hosts,
-        "active_hosts": active_hosts,
-        "inactive_hosts": inactive_hosts,
+        "hosts": list(hosts),
         "host_count": hosts.count(),
         "online_count": hosts.filter(status=Host.Status.ONLINE).count(),
-        "offline_count": hosts.filter(status=Host.Status.OFFLINE).count(),
         "pending_count": pending_hosts.count(),
-        "alert_count": alerts_firing.count(),
-        "alerts_firing": alerts_firing,
-        "alerts_ack": alerts_ack,
-        "alerts_resolved": alerts_resolved,
+        "alert_count": Alert.objects.filter(state=Alert.State.FIRING).count(),
         "pending_hosts": pending_hosts,
         "vigil_timezone": django_settings.VIGIL_TIMEZONE,
         "vigil_time_format": django_settings.VIGIL_TIME_FORMAT,
