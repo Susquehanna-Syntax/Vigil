@@ -123,7 +123,12 @@ class ForceUpdateAgentTests(TestCase):
         from apps.accounts.totp import generate_secret
         self.client = APIClient()
         self.user = get_user_model().objects.create_user("op", password="pw")
-        profile = UserProfile.objects.create(user=self.user)
+        # Explicitly an admin. A profile defaults to VIEWER, and these tests are
+        # about the TOTP gate — before hosts.update_agent existed they passed
+        # because a read-only user could force an agent update at all.
+        from apps.accounts.models import Role
+
+        profile = UserProfile.objects.create(user=self.user, role=Role.ADMIN)
         self.secret = generate_secret()
         profile.totp_secret = self.secret
         profile.totp_confirmed_at = now()
