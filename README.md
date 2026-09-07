@@ -25,6 +25,10 @@ Vigil is a lightweight monitoring system where agents on your hosts phone home t
 - Signed remote task execution with mode/allowlist enforcement on the agent
 - SQSY dark-theme dashboard with Chart.js visualizations
 
+## What's new in 2026.11.1
+
+- **The "Add a widget" panel opens full height again.** It was rendered inside the dashboard's own container, which carries a finished `fade-in` animation — and an element with a transform becomes the containing block for anything `position: fixed` inside it. The panel therefore sized itself to the dashboard rather than to the window, so on a new layout with nothing on it yet the panel collapsed to the height of the empty grid and showed a sliver of the catalogue above blank space. It now hangs off the page body and scrolls through all of its widgets at any layout size.
+
 ## What's new in 2026.11.0
 
 - **The dashboard is now a grid of widgets you arrange.** Add from a catalogue of 28 widgets grouped by what they are for, drag and resize them, give each card your own name, and configure it — which host, which metric, how far back. Layouts are saved per operator, and you can keep several dashboards and switch between them. Sharing one with your team is a Business feature; arranging your own is free.
