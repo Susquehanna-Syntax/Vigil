@@ -247,3 +247,46 @@ class HostSitePayloadTests(TestCase):
         row = next(r for r in self.client.get("/api/v1/hosts/").json()
                    if r["hostname"] == "west-01")
         self.assertEqual(row["site_name"], "West Campus")
+
+
+class WindowsUpdateIngestTests(TestCase):
+    """The agent's update count, and the difference between zero and unknown."""
+
+    def setUp(self):
+        self.host = Host.objects.create(
+            hostname="win", ip_address="10.97.0.2", agent_token="wtok",
+            status=Host.Status.ONLINE, mode="managed")
+
+    def _checkin(self, payload):
+        return self.client.post(
+            "/api/v1/checkin", {"hostname": "win", **payload},
+            content_type="application/json", HTTP_AUTHORIZATION="Bearer wtok")
+
+    def test_a_reported_count_is_stored(self):
+        self._checkin({"windows_updates": {"pending": 7, "critical": 2,
+                                           "important": 3, "reboot_required": 1}})
+        self.host.refresh_from_db()
+        self.assertEqual(self.host.windows_updates["pending"], 7)
+        self.assertEqual(self.host.windows_updates["critical"], 2)
+        self.assertIsNotNone(self.host.windows_updates_at)
+
+    def test_an_absent_key_leaves_the_previous_count_alone(self):
+        """A Linux host, or an agent too old to count, must not zero it."""
+        self._checkin({"windows_updates": {"pending": 4}})
+        self._checkin({})
+        self.host.refresh_from_db()
+        self.assertEqual(self.host.windows_updates["pending"], 4)
+
+    def test_zero_pending_is_recorded_as_zero_not_unknown(self):
+        self._checkin({"windows_updates": {"pending": 0}})
+        self.host.refresh_from_db()
+        self.assertEqual(self.host.windows_updates["pending"], 0)
+
+    def test_a_host_that_never_reported_stays_null(self):
+        self.assertIsNone(self.host.windows_updates)
+
+    def test_junk_in_the_payload_does_not_break_a_checkin(self):
+        resp = self._checkin({"windows_updates": "not a dict"})
+        self.assertEqual(resp.status_code, 200)
+        self.host.refresh_from_db()
+        self.assertIsNone(self.host.windows_updates)

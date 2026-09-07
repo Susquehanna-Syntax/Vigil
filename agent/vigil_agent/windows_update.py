@@ -13,8 +13,11 @@ trusting a caller to hand back COM objects.
 """
 from __future__ import annotations
 
+import logging
 import sys
 from abc import ABC, abstractmethod
+
+logger = logging.getLogger("vigil.windows_update")
 
 # IUpdate.MsrcSeverity -> rank. Explicit dict, never string comparison: a
 # naive `>=` on the raw names would pass "Moderate" through an "important"
@@ -250,3 +253,56 @@ def detect() -> WindowsUpdateBackend | None:
     if WuaBackend.available():
         return WuaBackend()
     return None
+
+
+# ── Check-in summary ─────────────────────────────────────────────────────────
+#
+# Enumerating updates goes through COM and can take tens of seconds, so it is
+# not something to do on every check-in. The summary is scanned on a slow
+# cadence and the cached answer reported in between — the same shape the Docker
+# digest checks settled on, and for the same reason.
+
+SUMMARY_TTL_SECONDS = 6 * 3600
+
+_summary_cache: dict = {"at": 0.0, "value": None}
+
+
+def _severity_counts(updates: list[dict]) -> dict:
+    counts = {"pending": len(updates), "critical": 0, "important": 0,
+              "reboot_required": 0}
+    for update in updates:
+        severity = str(update.get("severity") or "").lower()
+        if severity in counts:
+            counts[severity] += 1
+        if update.get("reboot_required"):
+            counts["reboot_required"] += 1
+    return counts
+
+
+def summary(force: bool = False) -> dict | None:
+    """Counts of what this machine is missing, or None when not applicable.
+
+    None means "do not report" — not Windows, no backend, or the scan failed.
+    The caller omits the key entirely in that case, so the server keeps whatever
+    it already knew rather than being told zero by a machine that cannot count.
+    """
+    import time
+
+    now = time.time()
+    if not force and _summary_cache["value"] is not None \
+            and now - _summary_cache["at"] < SUMMARY_TTL_SECONDS:
+        return _summary_cache["value"]
+
+    backend = detect()
+    if backend is None:
+        return None
+    try:
+        updates = backend.scan()
+    except Exception:
+        logger.warning("Windows update scan failed; reporting no summary",
+                       exc_info=True)
+        return None
+
+    value = _severity_counts(updates)
+    _summary_cache.update({"at": now, "value": value})
+    return value

@@ -2951,3 +2951,4 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .dash-uptime { display: flex; gap: 2px; align-items: flex-end; height: 42px; margin-bottom: 8px; }
 .dash-uptime-bar { flex: 1; min-width: 2px; height: 100%; border-radius: 2px; opacity: .85; }
 .dash-uptime-bar:hover { opacity: 1; }
+.dash-toolbar-spacer { flex: 1; }

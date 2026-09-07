@@ -44,6 +44,7 @@ function _dashToolbar() {
     `<option value="${escAttr(b.id)}"${b.id === DASH.current.id ? ' selected' : ''}>`
     + `${escHtml(b.name)}${b.is_mine ? '' : ` (${escHtml(b.owner)})`}</option>`).join('');
   const mine = DASH.current.is_mine;
+  const board = DASH.current;
   return `
     <div class="dash-toolbar">
       <select class="form-control dash-switch" id="dash-switch">${opts}</select>
@@ -51,7 +52,16 @@ function _dashToolbar() {
         <button class="btn btn-${DASH.editing ? 'mint' : 'sky'} btn-sm" id="dash-edit">
           ${DASH.editing ? 'Done' : 'Edit layout'}</button>
         ${DASH.editing ? `<button class="btn btn-lav btn-sm" id="dash-add">+ Add widget</button>` : ''}
-      ` : `<span class="chip">shared by ${escHtml(DASH.current.owner)} · read-only</span>`}
+        <span class="dash-toolbar-spacer"></span>
+        <button class="btn btn-mint btn-sm" id="dash-new" title="New dashboard">+ New</button>
+        <button class="btn btn-sky btn-sm" id="dash-rename">Rename</button>
+        <button class="btn btn-${board.is_default ? 'lemon' : 'peach'} btn-sm" id="dash-default"
+                ${board.is_default ? 'disabled title="This is already your landing dashboard"' : ''}>
+          ${board.is_default ? 'Default' : 'Make default'}</button>
+        <button class="btn btn-${board.shared ? 'lemon' : 'lav'} btn-sm" id="dash-share">
+          ${board.shared ? 'Stop sharing' : 'Share'}</button>
+        <button class="btn btn-rose btn-sm" id="dash-delete">Delete</button>
+      ` : `<span class="chip">shared by ${escHtml(board.owner)} · read-only</span>`}
     </div>`;
 }
 
@@ -150,6 +160,70 @@ function _dashBindChrome(host) {
   const add = document.getElementById('dash-add');
   if (add) add.onclick = () => openWidgetCatalog();
 
+  const on = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.onclick = fn;
+  };
+
+  on('dash-new', async () => {
+    const name = await promptModal('Name the new dashboard', { placeholder: 'NOC wall' });
+    if (!name) return;
+    try {
+      const board = await apiJson('/api/v1/dashboards/', {
+        method: 'POST', body: JSON.stringify({ name }) });
+      DASH.boards.push(board);
+      DASH.current = board;
+      DASH.editing = false;
+      _dashRender();
+      showToast(`Created ${board.name}`, 'success');
+    } catch (e) { showToast(e.message || 'Could not create it', 'error'); }
+  });
+
+  on('dash-rename', async () => {
+    const name = await promptModal('Rename this dashboard', { value: DASH.current.name });
+    if (!name || name === DASH.current.name) return;
+    await _dashPatch({ name }, `Renamed to ${name}`);
+  });
+
+  on('dash-default', () =>
+    _dashPatch({ is_default: true }, 'This is now the dashboard you land on'));
+
+  on('dash-share', async () => {
+    const turningOn = !DASH.current.shared;
+    if (turningOn && !(await confirmModal(
+      'Share this dashboard with everyone on this Vigil? They will be able to '
+      + 'see it but not change it.', { confirmText: 'Share' }))) return;
+    try {
+      DASH.current = await apiJson(`/api/v1/dashboards/${DASH.current.id}/share/`, {
+        method: 'POST', body: JSON.stringify({ shared: turningOn }) });
+      _dashReplaceCurrent();
+      _dashRender();
+      showToast(turningOn ? 'Shared' : 'No longer shared', 'success');
+    } catch (e) {
+      // A 402 here is the Business gate, and its body explains itself.
+      showToast(e.message || 'Sharing needs a Business licence', 'error');
+    }
+  });
+
+  on('dash-delete', async () => {
+    if (DASH.boards.filter(b => b.is_mine).length < 2) {
+      showToast('This is your only dashboard — make another first', 'error');
+      return;
+    }
+    if (!(await confirmModal(
+      `Delete "${DASH.current.name}"? Its widgets and layout go with it.`,
+      { confirmText: 'Delete', danger: true }))) return;
+    const gone = DASH.current.id;
+    try {
+      await apiJson(`/api/v1/dashboards/${gone}/`, { method: 'DELETE' });
+    } catch (e) { showToast(e.message || 'Could not delete it', 'error'); return; }
+    DASH.boards = DASH.boards.filter(b => b.id !== gone);
+    DASH.current = DASH.boards.find(b => b.is_default && b.is_mine) || DASH.boards[0];
+    DASH.editing = false;
+    _dashRender();
+    showToast('Dashboard deleted', 'success');
+  });
+
   host.querySelectorAll('.dash-w-remove').forEach(btn => btn.onclick = () => {
     const el = btn.closest('.grid-stack-item');
     if (el) { DASH.grid.removeWidget(el); DASH.dirty = true; }
@@ -157,6 +231,28 @@ function _dashBindChrome(host) {
   host.querySelectorAll('.dash-w-settings').forEach(btn => btn.onclick = () => {
     openWidgetSettings(btn.dataset.id);
   });
+}
+
+function _dashReplaceCurrent() {
+  const i = DASH.boards.findIndex(b => b.id === DASH.current.id);
+  if (i >= 0) DASH.boards[i] = DASH.current;
+}
+
+async function _dashPatch(body, okMessage) {
+  try {
+    DASH.current = await apiJson(`/api/v1/dashboards/${DASH.current.id}/`, {
+      method: 'PATCH', body: JSON.stringify(body) });
+  } catch (e) {
+    showToast(e.message || 'Could not save that', 'error');
+    return;
+  }
+  // is_default is exclusive per owner, so the others in the list are stale.
+  if ('is_default' in body) {
+    DASH.boards.forEach(b => { if (b.is_mine) b.is_default = false; });
+  }
+  _dashReplaceCurrent();
+  _dashRender();
+  showToast(okMessage, 'success');
 }
 
 /* ── Persistence ───────────────────────────────────────────────────────── */

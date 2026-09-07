@@ -232,7 +232,7 @@ WIDGET_REGISTRY: dict[str, dict] = {
     "windows_patches": {
         "group": "security",
         "label": "Windows patch compliance",
-        "description": "Windows hosts and how many updates each is missing.",
+        "description": "Windows hosts and how many updates each is missing, worst first.",
         "w": 6, "h": 4, "min_w": 3, "min_h": 2,
         "settings": {},
     },

@@ -51,6 +51,7 @@ def checkin(
     inventory: dict | None = None,
     docker_containers: list[dict] | None = None,
     reboot_required: bool | None = None,
+    windows_updates: dict | None = None,
 ) -> dict:
     """Send metrics and receive tasks. Returns the full server response."""
     payload = {
@@ -64,6 +65,11 @@ def checkin(
     # sent when the probe produced a value.
     if reboot_required is not None:
         payload["reboot_required"] = reboot_required
+    # Same contract: absent means "this agent cannot count" — not Windows, no
+    # backend, or the scan failed — and the server keeps what it already knew
+    # rather than being told zero by a machine that cannot count.
+    if windows_updates is not None:
+        payload["windows_updates"] = windows_updates
     if config.tags:
         payload["tags"] = list(config.tags)
     if inventory:
