@@ -2961,6 +2961,39 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .dash-host-cards .host-card-actions .btn { padding: 4px 10px; font-size: 11px; }
 .dash-host-cards .host-checkin { margin-right: auto; }
 
+/* ── Process and GPU widgets ────────────────────────────────────────────── */
+/* A proportional bar under the name, scaled to the busiest row rather than to
+   100% — five processes at 2% each are indistinguishable on an absolute scale,
+   and the question the widget answers is which of them is the busiest. */
+.dash-proc-bar {
+  margin-top: 5px; height: 3px; border-radius: 2px;
+  background: var(--s4); overflow: hidden;
+}
+.dash-proc-fill { height: 100%; border-radius: 2px; transition: width .3s var(--ease-out-expo); }
+.dash-spark { width: 68px; height: 18px; flex-shrink: 0; opacity: .85; }
+.dash-proc-note { font-size: 11px; margin-top: 6px; }
+
+.dash-gpus { display: flex; flex-direction: column; gap: 10px; }
+.dash-gpu {
+  background: var(--s2); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 12px 14px;
+}
+.dash-gpu-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 10px;
+}
+.dash-gpu .host-metrics { grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 10px; }
+
+/* A widget setting backed by the picker modal: the current choice reads as
+   text, with the buttons that change it beside it. */
+.setting-picker { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.setting-picker-name {
+  flex: 1; min-width: 0; font-size: 13px; color: var(--text-1);
+  padding: 7px 10px; background: var(--s2);
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 /* ── Add-widget rail ────────────────────────────────────────────────────── */
 .dash-rail {
   position: fixed; top: 0; right: 0; bottom: 0;

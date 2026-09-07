@@ -140,9 +140,16 @@ def _row(p: StatusPage) -> dict:
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def selectable_hosts(request):
-    """Every non-pending host, for the status-page machine picker."""
-    hosts = Host.objects.exclude(status=Host.Status.PENDING).exclude(
-        status=Host.Status.REJECTED).order_by("hostname")
+    """Every non-pending host the caller may see, for the machine picker.
+
+    Scoped like every other host list: an admin confined to one site picking
+    machines for a status page must not be offered another site's hostnames.
+    """
+    hosts = scoping.filter_by_site(
+        Host.objects.exclude(status=Host.Status.PENDING).exclude(
+            status=Host.Status.REJECTED),
+        request.user,
+    ).order_by("hostname")
     return Response([{"id": str(h.id), "hostname": h.hostname,
                       "up": h.status == Host.Status.ONLINE} for h in hosts])
 
