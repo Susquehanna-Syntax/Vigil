@@ -6,6 +6,7 @@ from rest_framework.response import Response
 
 from apps.accounts.permissions import IsAdmin
 from apps.hosts.models import Host
+from vigil import scoping
 from vigil.licensing import has_feature, upgrade_body
 
 from .models import StatusPage
@@ -208,6 +209,13 @@ def host_uptime(request, host_id):
         days = max(1, min(90, int(request.query_params.get("days", 30))))
     except (TypeError, ValueError):
         days = 30
+
+    # Scoped, not just authenticated. The host *list* is narrowed by site, so a
+    # per-host read that is not would let an operator confined to one site pull
+    # another site's history by id — which is the whole point of Sites.
+    visible = scoping.filter_by_site(Host.objects.all(), request.user)
+    if not visible.filter(pk=host_id).exists():
+        return Response({"error": "Not found"}, status=http.HTTP_404_NOT_FOUND)
 
     rows = (HostUptimeSample.objects
             .filter(host_id=host_id, time__gte=now() - timedelta(days=days))
