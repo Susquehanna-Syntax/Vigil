@@ -507,9 +507,9 @@ def host_list(request):
 @api_view(["GET", "DELETE"])
 @permission_classes([IsAuthenticated])
 def host_detail(request, host_id):
-    host = scoping.visible_host(request.user, host_id)
-    if host is None:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
     # Out of scope reads as absent: a 403 would confirm the host exists in a
     # site this user cannot see.
     if not scoping.host_in_scope(request.user, host):
@@ -574,9 +574,9 @@ def inventory_list(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def inventory_detail(request, host_id):
-    host = scoping.visible_host(request.user, host_id)
-    if host is None:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
     inv = getattr(host, "inventory", None) or HostInventory(host=host)
     return Response(HostInventorySerializer(inv).data)
 
@@ -585,9 +585,9 @@ def inventory_detail(request, host_id):
 @permission_classes([IsAuthenticated])
 def host_containers(request, host_id):
     """Docker containers reported for one host, ordered by stack then name."""
-    host = scoping.visible_host(request.user, host_id)
-    if host is None:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
     qs = host.docker_containers.all()
     return Response(DockerContainerSerializer(qs, many=True).data)
 
@@ -708,9 +708,9 @@ def ad_sync_now(request):
 @permission_classes([IsAuthenticated])
 def host_tags(request, host_id):
     """Replace the tag set on a host (operator-driven from the console)."""
-    host = scoping.visible_host(request.user, host_id)
-    if host is None:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
     # Tags decide which wave patches this machine, which playbooks target it and
     # which automations fire on it — so retagging is a way to get work run on a
     # box, not a cosmetic edit.
@@ -743,9 +743,9 @@ def host_update_agent(request, host_id):
     from apps.accounts.totp import require_totp_confirmation
     from apps.agent_dist.views import all_binary_sha256
 
-    host = scoping.visible_host(request.user, host_id)
-    if host is None:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
     # TOTP proves who is asking, never that they may. Replacing the agent binary
     # swaps the executable that enforces the agent's own allowlist, so it needs
     # the capability as well as the code.
@@ -805,8 +805,10 @@ def host_approve(request, host_id):
     """
     from apps.accounts.totp import require_totp_confirmation
 
-    host = scoping.visible_host(request.user, host_id)
-    if host is None or host.status != Host.Status.PENDING:
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
+    if host.status != Host.Status.PENDING:
         return Response(
             {"error": "Host not found or not pending"},
             status=status.HTTP_404_NOT_FOUND,
@@ -831,8 +833,10 @@ def host_approve(request, host_id):
 @permission_classes([IsAdmin])
 def host_reject(request, host_id):
     """Reject a pending host enrollment. Admin-only, like approval."""
-    host = scoping.visible_host(request.user, host_id)
-    if host is None or host.status != Host.Status.PENDING:
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
+    if host.status != Host.Status.PENDING:
         return Response(
             {"error": "Host not found or not pending"},
             status=status.HTTP_404_NOT_FOUND,
@@ -855,9 +859,9 @@ def host_poll(request, host_id):
     returns the current host status; the agent will pick up any queued tasks
     on its next scheduled check-in.
     """
-    host = scoping.visible_host(request.user, host_id)
-    if host is None:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
     return Response(HostSerializer(host).data)
 
 
@@ -897,9 +901,9 @@ def host_rdp(request, host_id):
     """
     from django.http import HttpResponse
 
-    host = scoping.visible_host(request.user, host_id)
-    if host is None:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
 
     target = host.ip_address or host.hostname
     if not target:
@@ -976,9 +980,9 @@ def host_firewall(request, host_id):
     """
     from .models import HostFirewall
 
-    host = scoping.visible_host(request.user, host_id)
-    if host is None:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
 
     fw = HostFirewall.objects.filter(host=host).first()
     if fw is None:
@@ -1009,9 +1013,9 @@ def _queue_firewall_task(host, user, action, params, risk):
 @permission_classes([IsAuthenticated])
 def host_firewall_refresh(request, host_id):
     """Queue a read of this host's firewall. Not 2FA-gated: it changes nothing."""
-    host = scoping.visible_host(request.user, host_id)
-    if host is None:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
 
     if host.mode == Host.Mode.MONITOR:
         return Response(
@@ -1050,9 +1054,9 @@ def host_firewall_apply(request, host_id):
     from .firewall_guard import check_change
     from .models import HostFirewall
 
-    host = scoping.visible_host(request.user, host_id)
-    if host is None:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
     # Before the allowlist and lockout guards, because those are about the
     # change and this is about the caller: someone who may not touch the
     # firewall should not learn which changes would have been refused.

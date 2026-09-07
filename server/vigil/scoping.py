@@ -288,3 +288,20 @@ def visible_host(user, host_id):
     if host is None or not host_in_scope(user, host):
         return None
     return host
+
+
+def host_or_404(request, host_id):
+    """(host, None) when the caller may see it, else (None, a 404 Response).
+
+    Reads as:
+
+        host, denied = scoping.host_or_404(request, host_id)
+        if denied:
+            return denied
+    """
+    from rest_framework.response import Response
+
+    host = visible_host(request.user, host_id)
+    if host is None:
+        return None, Response({"error": "Not found"}, status=404)
+    return host, None

@@ -161,8 +161,9 @@ def score_history(request, host_id):
     days = max(1, min(days, 365))
     # Never fetched the host, so it never checked whether the caller may see
     # it — the score history of any machine was readable by id.
-    if scoping.visible_host(request.user, host_id) is None:
-        return Response({"error": "Not found"}, status=404)
+    _, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
     qs = VulnScoreHistory.objects.filter(host_id=host_id).order_by("-date")[:days]
     return Response(VulnScoreHistorySerializer(qs, many=True).data)
 
@@ -199,9 +200,9 @@ def scan_create(request, host_id):
 
     from .scanners import SCANNER_REGISTRY
 
-    host = scoping.visible_host(request.user, host_id)
-    if host is None:
-        return Response({"error": "Not found"}, status=404)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
 
     network_engines = (VulnScan.Scanner.NESSUS, VulnScan.Scanner.GREENBONE)
     requested = (request.data.get("scanner") or "").strip().lower()

@@ -347,6 +347,24 @@ def require_feature(name: str):
     return _HasLicensedFeature
 
 
+def licence_gate(request, name: str):
+    """Return a 402 Response when *name* is not licensed, else None.
+
+    The same six lines had been written out in sites, branding and dashboards,
+    differing only in the feature name. A gate copied per app is a gate that
+    drifts per app.
+    """
+    from rest_framework.exceptions import APIException
+    from rest_framework.response import Response
+
+    perm = require_feature(name)()
+    try:
+        perm.has_permission(request, None)
+    except APIException as exc:
+        return Response(exc.detail, status=402)
+    return None
+
+
 # --------------------------------------------------------------------------
 # Seats (§6: whatever holds the users counts them; Vigil reads its own view)
 
