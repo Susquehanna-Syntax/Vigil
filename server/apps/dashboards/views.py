@@ -4,6 +4,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from vigil.licensing import licence_gate
+
 from .models import Dashboard, DashboardWidget, starter_dashboard
 from .widgets import GRID_COLUMNS, GRID_MAX_ROWS, WIDGET_REGISTRY
 
@@ -185,20 +187,6 @@ def layout_update(request, dashboard_id):
     return Response(_serialize(board, request.user))
 
 
-def _sharing_gate(request):
-    """The Business gate on sharing. Returns a 402 Response, or None."""
-    from rest_framework.exceptions import APIException
-
-    from vigil.licensing import require_feature
-
-    perm = require_feature("dashboard_sharing")()
-    try:
-        perm.has_permission(request, None)
-    except APIException as exc:
-        return Response(exc.detail, status=402)
-    return None
-
-
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def dashboard_share(request, dashboard_id):
@@ -218,7 +206,7 @@ def dashboard_share(request, dashboard_id):
                         status=status.HTTP_403_FORBIDDEN)
 
     want = bool(request.data.get("shared"))
-    if want and (denied := _sharing_gate(request)) is not None:
+    if want and (denied := licence_gate(request, "dashboard_sharing")) is not None:
         return denied
     board.shared = want
     board.save(update_fields=["shared"])

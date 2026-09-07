@@ -13,9 +13,9 @@ from .serializers import MetricPointSerializer
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def metric_history(request, host_id, category, metric_name):
-    host = scoping.visible_host(request.user, host_id)
-    if host is None:
-        return Response({"error": "Host not found"}, status=404)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
 
     qs = MetricPoint.objects.filter(
         host=host, category=category, metric=metric_name

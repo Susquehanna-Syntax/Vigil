@@ -7,23 +7,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.permissions import IsAdmin
+from vigil.licensing import licence_gate
 
 from .models import BrandingConfig
 from .serializers import BrandingConfigSerializer
-
-
-def _gate(request):
-    """The write gate. Returns a 402 Response, or None when licensed."""
-    from rest_framework.exceptions import APIException
-
-    from vigil.licensing import require_feature
-
-    perm = require_feature("branding")()
-    try:
-        perm.has_permission(request, None)
-    except APIException as exc:
-        return Response(exc.detail, status=402)
-    return None
 
 
 @api_view(["GET", "PATCH"])
@@ -33,7 +20,7 @@ def branding_config(request):
         return Response(BrandingConfigSerializer(BrandingConfig.load()).data)
 
     # PATCH path: license gate first, then admin check
-    denied = _gate(request)
+    denied = licence_gate(request, "branding")
     if denied is not None:
         return denied
 

@@ -14,7 +14,7 @@ from django.contrib.auth import get_user_model
 from apps.accounts.models import Role
 from apps.accounts.permissions import IsAdmin
 from apps.hosts.models import Host
-from vigil.licensing import require_feature
+from vigil.licensing import licence_gate, require_feature
 
 from .models import (
     HostSiteAssignment, Site, SiteCapability, UserSiteRole,
@@ -22,23 +22,11 @@ from .models import (
 from .serializers import SiteSerializer
 
 
-def _gate(request):
-    """The write gate. Returns a 402 Response, or None when licensed."""
-    from rest_framework.exceptions import APIException
-
-    perm = require_feature("sites")()
-    try:
-        perm.has_permission(request, None)
-    except APIException as exc:
-        return Response(exc.detail, status=402)
-    return None
-
-
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def site_index(request):
     if request.method == "POST":
-        denied = _gate(request)
+        denied = licence_gate(request, "sites")
         if denied is not None:
             return denied
         ser = SiteSerializer(data=request.data)
@@ -66,7 +54,7 @@ def site_detail(request, site_id):
     if request.method == "GET":
         return Response(SiteSerializer(site).data)
 
-    denied = _gate(request)
+    denied = licence_gate(request, "sites")
     if denied is not None:
         return denied
 

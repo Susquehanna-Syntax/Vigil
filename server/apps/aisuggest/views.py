@@ -138,9 +138,9 @@ def suggest_for_container(request, host_id, container_id):
 
     if not AiProvider.objects.filter(enabled=True).exists():
         return _no_providers()
-    host = scoping.visible_host(request.user, host_id)
-    if host is None:
-        return Response({"error": "Not found"}, status=404)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
     container = get_object_or_404(DockerContainer, host=host,
                                   container_id=container_id)
     provider_id = request.data.get("provider_id")
