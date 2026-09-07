@@ -24,10 +24,15 @@ WIDGET_REGISTRY: dict[str, dict] = {
     "host_status_grid": {
         "group": "fleet",
         "label": "Host status grid",
-        "description": "Every host, with status and tags. Searchable.",
-        "w": 12, "h": 5, "min_w": 4, "min_h": 3,
+        "description": "Full host cards with live CPU, memory, disk and network.",
+        # Taller by default than the old text list: these are the same cards the
+        # hosts page shows, and one row of them does not fit in five.
+        "w": 12, "h": 9, "min_w": 4, "min_h": 4,
         "settings": {
             "tag_filter": {"type": "text", "label": "Only hosts tagged", "default": ""},
+            "status": {"type": "choice", "label": "Only hosts that are",
+                       "options": ["any", "online", "offline", "pending"],
+                       "default": "any"},
             "show_search": {"type": "bool", "label": "Show the search box", "default": True},
         },
     },
