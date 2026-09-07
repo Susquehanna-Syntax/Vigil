@@ -243,7 +243,7 @@ allowlist:
 
 | Page | Description |
 |---|---|
-| **Dashboard** | Host card grid — status dots, CPU/Memory/Disk/Network mini-bars, RDP, Deploy, Remove buttons. Searchable. Inactive agents (90+ days) collapse into a separate section. |
+| **Dashboard** | A grid of widgets you arrange, resize and name. Add from a catalogue grouped by what they are for; keep several dashboards and switch between them. The **Host status** widget carries the full host cards — status dot, OS logo, tags, mode badge, live CPU/Memory/Disk/Network bars, RDP, Deploy, Remove — and opens the host detail drawer on click. |
 | **Inventory** | Hardware table for all enrolled hosts. Columns: hostname, IP, OS, CPU, RAM, MAC, BIOS, disks, uptime, last user, timezone, and more. Scrollable, sortable (click header), filterable per-column (`=value` for exact, default contains), drag-to-reorder columns, column visibility toggled via Columns button. |
 | **Tasks** | YAML task editor (with **Submit to Community** that opens a GitHub PR) and your private library. The **History** tab lists every dispatched task with live polling — newest first, paginated. |
 | **Vulns** | Nessus/Tenable scan findings per host, with a **Scan now** button per row. The **Recent scans** section below shows every scan request — UI-launched or agent-requested — and its state. |
@@ -1056,6 +1056,29 @@ Two settings exist in this repo specifically because of the upload path — both
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/api/v1/metrics/{host}/{cat}/{metric}/` | Metric history (supports `?from=`, `?to=`, `?limit=`) |
+| `GET` | `/api/v1/metrics/catalog/` | The category/metric pairs this fleet is actually reporting |
+
+Categories the agent emits: `cpu`, `memory`, `disk`, `network`, `process`,
+`temperature`, and `gpu`.
+
+**Processes.** The agent reports the ten busiest by CPU and the ten busiest by
+memory, labelled `name`, `pid` and `rank`. Names listed under `process_watch`
+in `agent.yml` are additionally sampled at *every* check-in regardless of
+rank, labelled `watched=1` — without that, a chart of one named service has
+holes exactly when the service is behaving, and an outage looks the same as a
+quiet period. Processes sharing a name are summed, with the live count
+reported as `process/instances`, so a watched name that is not running reports
+zero rather than nothing.
+
+**GPUs.** Collected from `nvidia-smi` and `rocm-smi` when either is on the
+PATH, and skipped silently when neither is — no configuration needed. Per GPU,
+labelled `vendor`, `index` and `name`: `utilization_percent`,
+`memory_used_mb`, `memory_total_mb`, `memory_percent`, `temperature_celsius`
+and `power_watts`. Setting `gpu_extended: true` adds `fan_percent`,
+`clock_graphics_mhz`, `clock_memory_mhz`, `memory_bandwidth_percent`,
+`pcie_generation`, `pcie_width` and ECC counters where the card reports them —
+roughly twice the points per GPU per check-in, which is worth being deliberate
+about on a multi-GPU host.
 
 ### Alerts
 
