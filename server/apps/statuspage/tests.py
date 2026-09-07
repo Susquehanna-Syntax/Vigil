@@ -270,3 +270,18 @@ class HostUptimeApiTests(TestCase):
 
     def test_a_host_with_no_samples_answers_empty_rather_than_failing(self):
         self.assertEqual(self._get().json(), [])
+
+    def test_a_host_outside_your_sites_is_not_readable_by_id(self):
+        """The host list is site-scoped; a per-host read that is not would let
+        an operator confined to one site pull another site's history by id."""
+        from unittest.mock import patch
+
+        self._sample(True, 1)
+        with patch("vigil.scoping.filter_by_site",
+                   side_effect=lambda qs, *a, **k: qs.none()):
+            resp = self._get()
+        self.assertEqual(resp.status_code, 404)
+
+    def test_a_host_inside_your_sites_is_readable(self):
+        self._sample(True, 1)
+        self.assertEqual(self._get().status_code, 200)

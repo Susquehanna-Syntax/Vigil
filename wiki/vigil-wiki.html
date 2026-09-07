@@ -231,6 +231,10 @@
       <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
       Monitoring
     </a>
+    <a href="#widgets" class="nav-link">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Dashboards
+    </a>
     <a href="#alerts" class="nav-link">
       <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       Alerts
@@ -1183,6 +1187,50 @@
             <tr><td><span class="badge badge-rose" style="color:var(--rose);background:rgba(242,160,184,0.1);">critical</span></td><td>One or more metrics exceed critical thresholds</td></tr>
           </tbody>
         </table>
+      </div>
+    </section>
+    <div class="divider"></div>
+
+    <!-- DASHBOARD WIDGETS -->
+    <section class="section" id="widgets">
+      <p class="section-label">Dashboard</p>
+      <h2 class="section-title" style="color:var(--lavender)">Dashboards &mdash; widgets</h2>
+      <p class="section-desc">The dashboard is a grid you arrange. Widgets are added from a catalogue, moved, resized, titled and configured, and each dashboard is saved per operator.</p>
+
+      <h3>Arranging one</h3>
+      <p class="prose">Press <strong>Edit layout</strong>. The grid unlocks: drag a widget to move it, drag its corner to resize, and press <strong>&times;</strong> to remove it. Press <strong>Done</strong> and the arrangement is saved &mdash; once, for the whole grid, rather than on every nudge, because dragging a widget across a row produces dozens of intermediate layouts and none of them is the one you meant to keep.</p>
+      <p class="prose">Nothing is lost by rearranging. A widget you remove can be added back from the catalogue, and <strong>every dashboard is per-operator</strong>: yours is yours, and rearranging it changes nobody else's.</p>
+
+      <h3>Adding a widget</h3>
+      <p class="prose"><strong>+ Add widget</strong> opens a rail on the right listing every widget grouped by what it is for &mdash; fleet, health, work in flight, security, utility, and the Business ones. Each card carries a <strong>+</strong> in its corner, coloured by its section, that drops the widget into the first free slot on the grid.</p>
+
+      <h3>Naming and configuring</h3>
+      <p class="prose">Every widget takes a <strong>card title</strong>. A dashboard may hold three metric charts, and "Metric chart" three times names none of them &mdash; so call them what they are. Leave it blank and the widget uses its own name.</p>
+      <p class="prose"><strong>Settings</strong> on a widget opens a form built from what that widget accepts: which host, which metric, how far back, how many rows, a minimum severity. The pickers only offer what exists &mdash; the metric picker lists what your fleet is actually reporting, because one offering a metric nothing sends produces a chart that draws an empty window and reads as broken rather than unconfigured.</p>
+
+      <h3>The catalogue</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Group</th><th>Widgets</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Fleet</strong></td><td>Stat tile &middot; Host grid (searchable) &middot; Alerts &middot; Inactive hosts &middot; Pending enrollments</td></tr>
+          <tr><td><strong>Health</strong></td><td>Metric chart &middot; Gauge &middot; Top processes &middot; Awaiting reboot &middot; Outdated agents &middot; Disk pressure &middot; Network throughput</td></tr>
+          <tr><td><strong>Work in flight</strong></td><td>Docker containers &middot; Rollout progress &middot; Recent task runs &middot; Waves &middot; Playbook coverage &middot; Automations</td></tr>
+          <tr><td><strong>Security</strong></td><td>Vulnerability score &middot; Vulnerability findings &middot; Firewall &middot; Windows patch compliance</td></tr>
+          <tr><td><strong>Utility</strong></td><td>Notes &middot; Quick deploy &middot; Clock &middot; Uptime</td></tr>
+          <tr><td><strong>Business</strong></td><td>Sites &middot; Audit log</td></tr>
+        </tbody>
+      </table></div>
+      <p class="prose"><strong>Playbook coverage</strong> is worth calling out: it shows how many of a playbook's targeted hosts carry its completion tag &mdash; the question "has this actually been applied everywhere" asked directly.</p>
+
+      <h3>Two that ask before they act</h3>
+      <p class="prose"><strong>Pending enrollments</strong> approves and rejects agents from the dashboard, and confirms first: approving a machine into your fleet is a real decision, and a dashboard is something people glance at. <strong>Quick deploy</strong> opens the normal deploy dialog rather than dispatching straight away &mdash; choosing hosts and passing 2FA is the ceremony, not a detail to skip because the button happens to be on the dashboard.</p>
+
+      <h3>Several dashboards</h3>
+      <p class="prose">The selector at the top switches between the dashboards you own and any shared with you. A shared dashboard is <strong>read-only for everyone but its owner</strong>. Sharing is a Business feature; arranging your own is free, and stays free.</p>
+
+      <div class="callout">
+        <div class="callout-icon">i</div>
+        <div>Windows patch compliance lists your Windows hosts and whether each is waiting on a reboot. Per-host <em>missing update counts</em> are not collected yet &mdash; the agent's Windows scan reports into a task's output rather than a field Vigil can query &mdash; and the widget says so rather than showing a number it cannot stand behind.</div>
       </div>
     </section>
     <div class="divider"></div>
