@@ -19,7 +19,13 @@ NONE = ""
 
 #: The permission vocabulary. Fixed on purpose: a typo must raise, not deny.
 CAPABILITIES = {
-    "hosts": frozenset({"view", "edit", "approve", "delete"}),
+    # update_agent and firewall are their own verbs rather than folding into
+    # "edit". Replacing the agent binary swaps the executable that enforces the
+    # agent's own allowlist, and firewall rules decide what can reach a machine
+    # at all — both are worth delegating deliberately rather than as a side
+    # effect of being allowed to rename a host.
+    "hosts": frozenset({"view", "edit", "approve", "delete",
+                        "update_agent", "firewall"}),
     "tasks": frozenset({"view", "run"}),
     "playbooks": frozenset({"view", "run", "edit"}),
     "automations": frozenset({"view", "edit", "toggle"}),
@@ -37,7 +43,7 @@ CAPABILITIES = {
 #: feature on does not silently strip every existing operator. An operator
 #: with a row consults the matrix instead, where absence means denial.
 LEGACY_OPERATOR = frozenset({
-    ("hosts", "view"),
+    ("hosts", "view"), ("hosts", "edit"),
     ("tasks", "view"), ("tasks", "run"),
     ("playbooks", "view"), ("playbooks", "run"),
     ("automations", "view"), ("automations", "toggle"),
@@ -45,7 +51,9 @@ LEGACY_OPERATOR = frozenset({
     ("statuspages", "view"),
     # Deliberately no ("reprovision", …): rebuild is destructive and must be
     # granted explicitly per site, never inherited by operators who predate
-    # the feature.
+    # the feature. Same reasoning for ("hosts", "update_agent") and
+    # ("hosts", "firewall") — both were reachable by anyone with a TOTP code
+    # before this, and the fix is not to hand them back automatically.
 })
 
 

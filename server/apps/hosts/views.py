@@ -11,7 +11,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 
-from apps.accounts.permissions import IsAdmin
+from apps.accounts.permissions import IsAdmin, can
 from apps.metrics.models import MetricPoint
 from apps.tasks.models import Task
 from apps.tasks.spec import schedule_window_active
@@ -711,6 +711,11 @@ def host_tags(request, host_id):
     host = scoping.visible_host(request.user, host_id)
     if host is None:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    # Tags decide which wave patches this machine, which playbooks target it and
+    # which automations fire on it — so retagging is a way to get work run on a
+    # box, not a cosmetic edit.
+    if not can(request.user, scoping.scope_of(host), "hosts", "edit"):
+        return Response({"error": "Not permitted"}, status=status.HTTP_403_FORBIDDEN)
 
     raw = request.data.get("tags")
     if not isinstance(raw, list):
@@ -741,6 +746,11 @@ def host_update_agent(request, host_id):
     host = scoping.visible_host(request.user, host_id)
     if host is None:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    # TOTP proves who is asking, never that they may. Replacing the agent binary
+    # swaps the executable that enforces the agent's own allowlist, so it needs
+    # the capability as well as the code.
+    if not can(request.user, scoping.scope_of(host), "hosts", "update_agent"):
+        return Response({"error": "Not permitted"}, status=status.HTTP_403_FORBIDDEN)
 
     if host.mode == Host.Mode.MONITOR:
         return Response(
@@ -1043,6 +1053,11 @@ def host_firewall_apply(request, host_id):
     host = scoping.visible_host(request.user, host_id)
     if host is None:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    # Before the allowlist and lockout guards, because those are about the
+    # change and this is about the caller: someone who may not touch the
+    # firewall should not learn which changes would have been refused.
+    if not can(request.user, scoping.scope_of(host), "hosts", "firewall"):
+        return Response({"error": "Not permitted"}, status=status.HTTP_403_FORBIDDEN)
 
     if host.mode == Host.Mode.MONITOR:
         return Response(

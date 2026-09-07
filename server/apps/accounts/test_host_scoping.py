@@ -16,6 +16,7 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils.timezone import now
 from unittest.mock import patch
 
 from apps.hosts.models import Host
@@ -107,3 +108,88 @@ class OutOfScopeHostIsInvisibleTests(TestCase):
                 ok += 1
         self.assertGreater(ok, 3, "in-scope reads are not working; the scoping "
                                   "test above proves nothing")
+
+
+class PerHostRoleMatrixTests(TestCase):
+    """What each role may do to a host, stated once, in a table.
+
+    Five of these endpoints had no role check at all, and two were gated by
+    TOTP alone — which proves who is asking, never that they may. A viewer with
+    2FA enrolled could replace an agent's binary.
+    """
+
+    #: (method, path suffix, admin, operator, viewer). A tuple of statuses means
+    #: any of them is an acceptable "allowed" answer — several of these fail
+    #: later for reasons that are not about authorization (no TOTP supplied, no
+    #: agent binaries built) and that is fine: the test is about who gets past
+    #: the gate, not what happens after.
+    ALLOWED = (200, 201, 202, 204, 400, 401, 404, 409, 503)
+    DENIED = (403,)
+
+    MATRIX = (
+        ("GET",   "",                   "allow", "allow", "allow"),
+        ("GET",   "inventory/",         "allow", "allow", "allow"),
+        ("GET",   "containers/",        "allow", "allow", "allow"),
+        ("GET",   "firewall/",          "allow", "allow", "allow"),
+        ("PATCH", "tags/",              "allow", "allow", "deny"),
+        ("POST",  "update-agent/",      "allow", "deny",  "deny"),
+        ("POST",  "firewall/apply/",    "allow", "deny",  "deny"),
+        # Deliberately open: neither changes anything durable, and a viewer
+        # asking "refresh and look again" is a support workflow, not a risk.
+        ("POST",  "poll/",              "allow", "allow", "allow"),
+        ("POST",  "firewall/refresh/",  "allow", "allow", "allow"),
+    )
+
+    def setUp(self):
+        from apps.accounts.models import Role, UserProfile
+
+        self.host = Host.objects.create(
+            hostname="matrix", ip_address="10.98.0.2", agent_token="tk",
+            status=Host.Status.ONLINE, mode="managed")
+        self.users = {}
+        for label, role in (("admin", Role.ADMIN), ("operator", Role.OPERATOR),
+                            ("viewer", Role.VIEWER)):
+            user = get_user_model().objects.create_user(label, password="pw")
+            UserProfile.objects.create(user=user, role=role)
+            self.users[label] = user
+
+    def _call(self, user, method, suffix):
+        self.client.force_login(user)
+        url = f"/api/v1/hosts/{self.host.id}/{suffix}"
+        if method == "GET":
+            return self.client.get(url)
+        if method == "PATCH":
+            return self.client.patch(url, {"tags": ["x"]},
+                                     content_type="application/json")
+        return self.client.post(url, {}, content_type="application/json")
+
+    def test_each_role_gets_what_the_matrix_says(self):
+        wrong = []
+        for method, suffix, *expected in self.MATRIX:
+            for label, want in zip(("admin", "operator", "viewer"), expected):
+                code = self._call(self.users[label], method, suffix).status_code
+                ok = code in (self.ALLOWED if want == "allow" else self.DENIED)
+                if not ok:
+                    wrong.append(f"{label:8} {method:5} {suffix or '<detail>':18} "
+                                 f"-> {code} (wanted {want})")
+        self.assertEqual(wrong, [], "authorization does not match the matrix:\n  "
+                         + "\n  ".join(wrong))
+
+    def test_a_viewer_cannot_retag_a_host(self):
+        """Tags decide wave membership and playbook targeting, so retagging is
+        a way to get work run on a machine."""
+        before = list(self.host.tags or [])
+        self._call(self.users["viewer"], "PATCH", "tags/")
+        self.host.refresh_from_db()
+        self.assertEqual(self.host.tags, before)
+
+    def test_a_viewer_cannot_replace_an_agent_binary_even_with_a_totp_code(self):
+        from apps.accounts.models import UserProfile
+        from apps.accounts.totp import generate_secret
+
+        profile = UserProfile.objects.get(user=self.users["viewer"])
+        profile.totp_secret = generate_secret()
+        profile.totp_confirmed_at = now()
+        profile.save()
+        resp = self._call(self.users["viewer"], "POST", "update-agent/")
+        self.assertEqual(resp.status_code, 403)
