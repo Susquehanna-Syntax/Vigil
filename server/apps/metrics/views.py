@@ -3,6 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from vigil import scoping
 from apps.hosts.models import Host
 
 from .models import MetricPoint
@@ -12,9 +13,8 @@ from .serializers import MetricPointSerializer
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def metric_history(request, host_id, category, metric_name):
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
+    host = scoping.visible_host(request.user, host_id)
+    if host is None:
         return Response({"error": "Host not found"}, status=404)
 
     qs = MetricPoint.objects.filter(

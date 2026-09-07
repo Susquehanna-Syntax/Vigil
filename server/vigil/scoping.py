@@ -268,3 +268,23 @@ def host_in_scope(user, host) -> bool:
     # Unassigned means Global.
     glob = mods.Site.objects.filter(is_global=True).values_list("id", flat=True).first()
     return glob in ids
+
+
+def visible_host(user, host_id):
+    """The host with this id, or None when *user* may not reach it.
+
+    Returning None for "does not exist" and "exists in a site you cannot see"
+    alike is deliberate: callers answer 404 either way, so a scoped operator
+    cannot learn that a host exists elsewhere by probing ids.
+
+    Every per-host endpoint should route its lookup through this. The host list
+    has always been narrowed by site, but the per-host reads and writes behind
+    it were not, so an operator confined to one site could read another site's
+    metrics — and approve, reboot or re-firewall its machines — by id.
+    """
+    from apps.hosts.models import Host
+
+    host = Host.objects.filter(pk=host_id).first()
+    if host is None or not host_in_scope(user, host):
+        return None
+    return host

@@ -277,8 +277,7 @@ class HostUptimeApiTests(TestCase):
         from unittest.mock import patch
 
         self._sample(True, 1)
-        with patch("vigil.scoping.filter_by_site",
-                   side_effect=lambda qs, *a, **k: qs.none()):
+        with patch("vigil.scoping.host_in_scope", return_value=False):
             resp = self._get()
         self.assertEqual(resp.status_code, 404)
 
