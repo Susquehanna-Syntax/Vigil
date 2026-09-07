@@ -406,15 +406,27 @@ function _addWidgetOfKind(kind) {
   showToast(`${spec.label} added`, 'success');
 }
 
+//: The rail is fixed-position, so it has to hang off <body>. #dash-root
+//: carries .fade-in, whose `both` fill mode leaves transform: translateY(0)
+//: on the element permanently — and a transformed ancestor becomes the
+//: containing block for its fixed children. Mounted inside #dash-root the
+//: rail sized itself to the dashboard's box instead of the viewport, so on a
+//: near-empty layout it collapsed to the header plus a sliver of cards.
+function closeWidgetCatalog(remove) {
+  const el = document.getElementById('dash-rail');
+  if (!el) return;
+  el.classList.remove('open');
+  if (remove) el.remove();
+}
+
 function openWidgetCatalog() {
   const rail = document.getElementById('dash-rail');
   if (rail) { rail.classList.toggle('open'); return; }
-  const host = document.getElementById('dash-root');
-  if (!host) return;
-  host.insertAdjacentHTML('beforeend', _railHtml());
+  if (!document.getElementById('dash-root')) return;
+  document.body.insertAdjacentHTML('beforeend', _railHtml());
   const el = document.getElementById('dash-rail');
   requestAnimationFrame(() => el.classList.add('open'));
-  el.querySelector('#rail-close').onclick = () => el.classList.remove('open');
+  el.querySelector('#rail-close').onclick = () => closeWidgetCatalog();
   el.querySelectorAll('[data-add-kind]').forEach((node) => {
     node.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -430,6 +442,8 @@ function openWidgetCatalog() {
   const previous = window.navigateTo;
   window.navigateTo = function (pageName) {
     previous.apply(this, arguments);
+    // Body-mounted, so it no longer disappears with the page that owns it.
+    if (pageName !== 'dashboard') closeWidgetCatalog(true);
     if (pageName === 'dashboard') loadDashboards();
   };
   document.addEventListener('DOMContentLoaded', () => {
