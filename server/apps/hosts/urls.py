@@ -9,6 +9,7 @@ urlpatterns = [
     path("docker/overview/", views.docker_overview, name="docker-overview"),
     path("devices/", views.unmanaged_devices, name="unmanaged-devices"),
     path("devices/<uuid:device_id>/", views.unmanaged_device_detail, name="unmanaged-device-detail"),
+    path("transport-ack/", views.transport_ack, name="transport-ack"),
     path("ad/", views.ad_config, name="ad-config"),
     path("ad/sync/", views.ad_sync_now, name="ad-sync"),
     path("<uuid:host_id>/firewall/", views.host_firewall, name="host-firewall"),

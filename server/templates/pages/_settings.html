@@ -149,6 +149,25 @@
         </div>
       </div>
 
+      {# Logic: static/js/vigil-settings.js (transportAckLoad / transportAckSet) #}
+      <div class="section-label" style="margin-top:32px;">Transport Security</div>
+      <div class="totp-card">
+        <div class="totp-status" id="transport-status-line">Loading…</div>
+        <div class="totp-sub" id="transport-sub-line">
+          Vigil hands out secrets that only TLS protects — a rebuild answer file
+          carries an admin password hash, SSH keys and an enrolment token. Over
+          plain HTTP those cross the network in the clear.
+        </div>
+        <div class="totp-actions" style="margin-top:16px;">
+          <button class="btn btn-peach btn-sm" id="transport-ack-btn"
+                  style="display:none;" onclick="transportAckSet(true)">
+            Acknowledge plain-text transport</button>
+          <button class="btn btn-rose btn-sm" id="transport-revoke-btn"
+                  style="display:none;" onclick="transportAckSet(false)">
+            Withdraw acknowledgement</button>
+        </div>
+      </div>
+
         </div>
         <div class="settings-pane" data-pane="directory">
       <div class="section-label" style="margin-top:32px;">Active Directory Import</div>

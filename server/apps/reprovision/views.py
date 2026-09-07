@@ -513,36 +513,37 @@ def _create_job(request):
         return Response({"error": "Profile does not belong to that image"},
                         status=400)
 
-    tag = (request.data.get("completion_tag") or "").strip()
-    if tag.startswith("agent:"):
-        # Reserved for agent-advertised tags so a rogue agent cannot
-        # impersonate operator-set ones.
-        return Response(
-            {"error": "The agent: tag namespace is reserved"}, status=400)
+    # A standing acknowledgement made once in Settings, by a named admin,
+    # counts. The per-request flag stays accepted for API callers and for the
+    # instance that has not made the standing one.
+    from apps.hosts.models import TransportAck
 
     if (not request.is_secure()
             and not _served_on_a_private_network(request)
-            and not request.data.get("acknowledge_plaintext_transport")):
+            and not request.data.get("acknowledge_plaintext_transport")
+            and not TransportAck.load().acknowledged):
         return Response({
             "error": "Vigil is being served over plain HTTP. The answer file "
                      "carries the admin password hash, SSH keys, and the "
-                     "enrolment token in clear text. Re-send with "
-                     "acknowledge_plaintext_transport to proceed anyway.",
+                     "enrolment token in clear text. Acknowledge plain-text "
+                     "transport under Settings \u2192 Identity & Security, or "
+                     "re-send with acknowledge_plaintext_transport.",
             "code": "plaintext_transport",
         }, status=400)
 
     if err := verify_rebuild_confirmation(request.user, request.data, host):
         return Response({"error": err}, status=401)
 
-    playbook = None
-    if playbook_id := request.data.get("post_playbook"):
-        from apps.playbooks.models import Playbook
-        playbook = get_object_or_404(Playbook, pk=playbook_id)
-
+    # Neither a one-off tag nor a post-rebuild playbook is taken from the
+    # request any more. The install profile already carries completion_tags,
+    # and a playbook that should run on a rebuilt machine is what auto-enroll
+    # is for — it fires when the machine checks back in carrying the profile's
+    # tags, and it keeps working for a machine rebuilt by any other route. Two
+    # ways to say the same thing meant the ceremony asked twice and the answers
+    # could disagree. The columns stay so existing jobs still read back.
     job = RebuildJob.objects.create(
         host=host, image=image, profile=profile, requested_by=request.user,
         confirmed_ip=request.META.get("REMOTE_ADDR"),
-        completion_tag=tag, post_playbook=playbook,
         deadline=now() + timedelta(minutes=profile.deadline_minutes),
     )
     _answer, enroll = jobs.mint_tokens(job)
