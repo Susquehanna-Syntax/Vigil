@@ -46,6 +46,7 @@ class TaskDefinitionSerializer(serializers.ModelSerializer):
         model = TaskDefinition
         fields = [
             "id",
+            "archived_at",
             "owner",
             "owner_username",
             "name",
@@ -80,8 +81,8 @@ class TaskRunSummarySerializer(serializers.ModelSerializer):
 
     automation_name = serializers.CharField(
         source="automation.name", read_only=True, default=None)
-    baseline_name = serializers.CharField(
-        source="baseline.name", read_only=True, default=None)
+    playbook_name = serializers.CharField(
+        source="playbook.name", read_only=True, default=None)
     requested_by_username = serializers.CharField(
         source="requested_by.username", read_only=True, default=None)
 
@@ -92,8 +93,8 @@ class TaskRunSummarySerializer(serializers.ModelSerializer):
             "source",
             "automation",
             "automation_name",
-            "baseline",
-            "baseline_name",
+            "playbook",
+            "playbook_name",
             "name_snapshot",
             "requested_by_username",
             "host_count",

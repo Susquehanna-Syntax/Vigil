@@ -11,7 +11,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 
-from apps.accounts.permissions import IsAdmin
+from apps.accounts.permissions import IsAdmin, can
 from apps.metrics.models import MetricPoint
 from apps.tasks.models import Task
 from apps.tasks.spec import schedule_window_active
@@ -313,7 +313,7 @@ def checkin(request):
     host.save()
 
     # A rebuilt host's first check-in closes out its rebuild job: operator
-    # tag applied, maintenance window cleared, baseline dispatched. No-op for
+    # tag applied, maintenance window cleared, playbook dispatched. No-op for
     # every other host. Never raises.
     from apps.reprovision.completion import complete_if_rebuilding
 
@@ -359,6 +359,18 @@ def checkin(request):
         # only the colon-prefixed namespace we manage gets refreshed.
         _sync_host_auto_tags(host, inv_payload)
 
+    # Absent means the agent cannot count (not Windows, too old, or the scan
+    # failed), so the stored value is left alone rather than being zeroed by a
+    # machine that does not know.
+    win = data.get("windows_updates")
+    if isinstance(win, dict):
+        host.windows_updates = {
+            key: int(win.get(key) or 0)
+            for key in ("pending", "critical", "important", "reboot_required")
+        }
+        host.windows_updates_at = now()
+        host.save(update_fields=["windows_updates", "windows_updates_at"])
+
     # Docker container snapshot — replace the host's set wholesale. Absent key
     # means the agent didn't report (old agent / no docker) and we leave the
     # existing rows alone; an explicit empty list means "no containers now".
@@ -390,6 +402,8 @@ def checkin(request):
             DockerContainer.objects.filter(host=host).delete()
             if rows:
                 DockerContainer.objects.bulk_create(rows)
+            host.docker_snapshot_at = now()
+            host.save(update_fields=["docker_snapshot_at"])
 
     # Pending hosts must wait for admin approval before receiving tasks
     if host.status == Host.Status.PENDING:
@@ -505,10 +519,9 @@ def host_list(request):
 @api_view(["GET", "DELETE"])
 @permission_classes([IsAuthenticated])
 def host_detail(request, host_id):
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
     # Out of scope reads as absent: a 403 would confirm the host exists in a
     # site this user cannot see.
     if not scoping.host_in_scope(request.user, host):
@@ -573,10 +586,9 @@ def inventory_list(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def inventory_detail(request, host_id):
-    try:
-        host = Host.objects.select_related("inventory").get(pk=host_id)
-    except Host.DoesNotExist:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
     inv = getattr(host, "inventory", None) or HostInventory(host=host)
     return Response(HostInventorySerializer(inv).data)
 
@@ -585,10 +597,9 @@ def inventory_detail(request, host_id):
 @permission_classes([IsAuthenticated])
 def host_containers(request, host_id):
     """Docker containers reported for one host, ordered by stack then name."""
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
     qs = host.docker_containers.all()
     return Response(DockerContainerSerializer(qs, many=True).data)
 
@@ -709,10 +720,14 @@ def ad_sync_now(request):
 @permission_classes([IsAuthenticated])
 def host_tags(request, host_id):
     """Replace the tag set on a host (operator-driven from the console)."""
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
+    # Tags decide which wave patches this machine, which playbooks target it and
+    # which automations fire on it — so retagging is a way to get work run on a
+    # box, not a cosmetic edit.
+    if not can(request.user, scoping.scope_of(host), "hosts", "edit"):
+        return Response({"error": "Not permitted"}, status=status.HTTP_403_FORBIDDEN)
 
     raw = request.data.get("tags")
     if not isinstance(raw, list):
@@ -740,10 +755,14 @@ def host_update_agent(request, host_id):
     from apps.accounts.totp import require_totp_confirmation
     from apps.agent_dist.views import all_binary_sha256
 
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
+    # TOTP proves who is asking, never that they may. Replacing the agent binary
+    # swaps the executable that enforces the agent's own allowlist, so it needs
+    # the capability as well as the code.
+    if not can(request.user, scoping.scope_of(host), "hosts", "update_agent"):
+        return Response({"error": "Not permitted"}, status=status.HTTP_403_FORBIDDEN)
 
     if host.mode == Host.Mode.MONITOR:
         return Response(
@@ -798,9 +817,10 @@ def host_approve(request, host_id):
     """
     from apps.accounts.totp import require_totp_confirmation
 
-    try:
-        host = Host.objects.get(pk=host_id, status=Host.Status.PENDING)
-    except Host.DoesNotExist:
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
+    if host.status != Host.Status.PENDING:
         return Response(
             {"error": "Host not found or not pending"},
             status=status.HTTP_404_NOT_FOUND,
@@ -813,7 +833,7 @@ def host_approve(request, host_id):
     host.status = Host.Status.ONLINE
     host.save()
 
-    # Extension seam: Pro baselines auto-dispatch on this event; Enterprise
+    # Extension seam: Pro playbooks auto-dispatch on this event; Enterprise
     # audit logs record the approval. No-op in Community. See vigil/hooks.py.
     from vigil.hooks import emit
     emit("host_approved", host=host, approved_by=request.user)
@@ -825,9 +845,10 @@ def host_approve(request, host_id):
 @permission_classes([IsAdmin])
 def host_reject(request, host_id):
     """Reject a pending host enrollment. Admin-only, like approval."""
-    try:
-        host = Host.objects.get(pk=host_id, status=Host.Status.PENDING)
-    except Host.DoesNotExist:
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
+    if host.status != Host.Status.PENDING:
         return Response(
             {"error": "Host not found or not pending"},
             status=status.HTTP_404_NOT_FOUND,
@@ -850,10 +871,9 @@ def host_poll(request, host_id):
     returns the current host status; the agent will pick up any queued tasks
     on its next scheduled check-in.
     """
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
     return Response(HostSerializer(host).data)
 
 
@@ -893,10 +913,9 @@ def host_rdp(request, host_id):
     """
     from django.http import HttpResponse
 
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
 
     target = host.ip_address or host.hostname
     if not target:
@@ -973,10 +992,9 @@ def host_firewall(request, host_id):
     """
     from .models import HostFirewall
 
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
 
     fw = HostFirewall.objects.filter(host=host).first()
     if fw is None:
@@ -1007,10 +1025,9 @@ def _queue_firewall_task(host, user, action, params, risk):
 @permission_classes([IsAuthenticated])
 def host_firewall_refresh(request, host_id):
     """Queue a read of this host's firewall. Not 2FA-gated: it changes nothing."""
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
 
     if host.mode == Host.Mode.MONITOR:
         return Response(
@@ -1049,10 +1066,14 @@ def host_firewall_apply(request, host_id):
     from .firewall_guard import check_change
     from .models import HostFirewall
 
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
-        return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
+    # Before the allowlist and lockout guards, because those are about the
+    # change and this is about the caller: someone who may not touch the
+    # firewall should not learn which changes would have been refused.
+    if not can(request.user, scoping.scope_of(host), "hosts", "firewall"):
+        return Response({"error": "Not permitted"}, status=status.HTTP_403_FORBIDDEN)
 
     if host.mode == Host.Mode.MONITOR:
         return Response(
@@ -1162,7 +1183,7 @@ def tag_detail(request, tag_id):
         users = []
         if tag.hosts.exists():
             users.append(f"{tag.hosts.count()} host(s)")
-        for rel, label in (("waves", "wave"), ("baselines", "baseline"),
+        for rel, label in (("waves", "wave"), ("playbooks", "playbook"),
                            ("automations_by_event", "automation (event)"),
                            ("automations_by_target", "automation (target)")):
             manager = getattr(tag, rel, None)
@@ -1207,7 +1228,7 @@ def _rename_in_string_mirrors(old_key: str, new_name: str) -> None:
     rename has to land in both or the two drift apart.
     """
     from apps.automations.models import Automation
-    from apps.baselines.models import Baseline
+    from apps.playbooks.models import Playbook
     from apps.reprovision.models import InstallProfile
     from apps.tasks.models import PatchWave
 
@@ -1227,7 +1248,7 @@ def _rename_in_string_mirrors(old_key: str, new_name: str) -> None:
 
     rewrite(Host.objects.all(), "tags")
     rewrite(PatchWave.objects.all(), "tags")
-    rewrite(Baseline.objects.all(), "target_tags")
+    rewrite(Playbook.objects.all(), "target_tags")
     rewrite(Automation.objects.all(), "event_tags")
     rewrite(Automation.objects.all(), "target_tags")
     rewrite(InstallProfile.objects.all(), "completion_tags")

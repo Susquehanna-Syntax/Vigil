@@ -1,9 +1,9 @@
-/* "Edit as YAML" and "Submit to Community" for baselines and automations.
+/* "Edit as YAML" and "Submit to Community" for playbooks and automations.
  *
  * Tasks have had this since the beginning, because a task *is* its YAML — the
- * editor stores the source. A baseline and an automation are rows, so their
+ * editor stores the source. A playbook and an automation are rows, so their
  * YAML is generated on the server and parsed back there too: the document
- * names tasks and baselines by slug rather than by id, and only the server can
+ * names tasks and playbooks by slug rather than by id, and only the server can
  * resolve a slug against the operator's library.
  *
  * That is why every button here is a round trip rather than a string built in
@@ -12,8 +12,8 @@
  */
 
 const CONTENT_YAML_ENDPOINTS = {
-  baseline: { get: id => `/api/v1/baselines/${id}/yaml/`, put: '/api/v1/baselines/yaml/',
-              idField: 'baseline_id', dir: 'baselines' },
+  playbook: { get: id => `/api/v1/playbooks/${id}/yaml/`, put: '/api/v1/playbooks/yaml/',
+              idField: 'playbook_id', dir: 'playbooks' },
   automation: { get: id => `/api/v1/automations/${id}/yaml/`, put: '/api/v1/automations/yaml/',
                 idField: 'automation_id', dir: 'automations' },
 };
@@ -36,7 +36,7 @@ function closeContentYaml() {
 }
 
 /**
- * Open the YAML view for a saved baseline or automation.
+ * Open the YAML view for a saved playbook or automation.
  *
  * Only for saved items: the document is generated server-side from the stored
  * row, so there is nothing to show for an item that has never been saved. The
@@ -76,7 +76,7 @@ async function saveContentYaml() {
     await apiJson(cfg.put, { method: 'POST', body: JSON.stringify(body) });
     showToast('Saved', 'success');
     closeContentYaml();
-    if (typeof loadBaselines === 'function') loadBaselines();
+    if (typeof loadPlaybooks === 'function') loadPlaybooks();
     if (typeof loadAutomations === 'function') loadAutomations();
   } catch (e) {
     _cyError(e.message || 'Save failed');
@@ -87,7 +87,7 @@ async function saveContentYaml() {
 
 async function copyContentYaml() {
   try {
-    await navigator.clipboard.writeText(_cyEl('text').value);
+    await copyText(_cyEl('text').value);
     showToast('YAML copied to clipboard', 'success');
   } catch {
     showToast('Clipboard blocked — select the text and copy it', 'error');
@@ -126,8 +126,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Empty means "new", and there is no server-side document for that yet.
   document.getElementById('bl-yaml-btn')?.addEventListener('click', () => {
     const id = document.getElementById('bl-editor-modal')?.dataset.editing;
-    if (!id) { showToast('Save the baseline first, then edit it as YAML', 'error'); return; }
-    openContentYaml('baseline', id);
+    if (!id) { showToast('Save the playbook first, then edit it as YAML', 'error'); return; }
+    openContentYaml('playbook', id);
   });
   document.getElementById('auto-yaml-btn')?.addEventListener('click', () => {
     const id = document.getElementById('auto-editor-modal')?.dataset.editing;

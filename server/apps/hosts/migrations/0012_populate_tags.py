@@ -22,7 +22,10 @@ from django.db import migrations
 LIST_SOURCES = [
     ("hosts", "Host", "tags"),
     ("tasks", "PatchWave", "tags"),
-    ("baselines", "Baseline", "target_tags"),
+    # Baseline was renamed to Playbook. Historical migration state still
+    # calls it Baseline; the live registry calls it Playbook, and the tests
+    # run this collector against the live one. Accept either.
+    ("baselines", ("Playbook", "Baseline"), "target_tags"),
     ("automations", "Automation", "event_tags"),
     ("automations", "Automation", "target_tags"),
     ("reprovision", "InstallProfile", "completion_tags"),
@@ -47,6 +50,16 @@ def _kind_for(name):
     return "manual"
 
 
+def _resolve(apps, app, model):
+    """Return (Model, name) for the first candidate name that resolves."""
+    for candidate in (model if isinstance(model, tuple) else (model,)):
+        try:
+            return apps.get_model(app, candidate), candidate
+        except LookupError:
+            continue
+    return None, None
+
+
 def collect_tag_names(apps):
     """Every distinct tag string in the database, with where it came from."""
     seen = {}   # canonical key -> {"names": set, "sources": set}
@@ -63,9 +76,8 @@ def collect_tag_names(apps):
         entry["sources"].add(source)
 
     for app, model, field in LIST_SOURCES:
-        try:
-            Model = apps.get_model(app, model)
-        except LookupError:
+        Model, model = _resolve(apps, app, model)
+        if Model is None:
             continue
         for row in Model.objects.all().iterator():
             for raw in (getattr(row, field, None) or []):

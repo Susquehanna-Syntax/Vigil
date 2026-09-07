@@ -4,11 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}Vigil — Dashboard{% endblock %}</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+{# SQSY typefaces, self-hosted — see static/css/fonts.css #}
+<link rel="stylesheet" href="{% static 'css/fonts.css' %}">
 
-<!-- Chart.js — used by vigil-monitor.js (time-series) and vigil-host-cards.js (detail drawer) -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+{# Chart.js — vigil-monitor.js (time-series), vigil-host-cards.js (detail    #}
+{# drawer), and the dashboard's metric-chart widget. Vendored, not from a CDN: #}
+{# an air-gapped install is a supported deployment and had no charts at all,   #}
+{# and the old @4 was a floating major that could change under us. See         #}
+{# static/js/vendor/README.md.                                                 #}
+<script src="{% static 'js/vendor/chart.umd.min.js' %}"></script>
+<script src="{% static 'js/vendor/chartjs-adapter-date-fns.bundle.min.js' %}"></script>
+
+{# Gridstack — drag/resize for the dashboard's widget grid. #}
+<link rel="stylesheet" href="{% static 'css/vendor/gridstack.min.css' %}">
+<script src="{% static 'js/vendor/gridstack-all.js' %}"></script>
 
 <!-- Styles: static/css/vigil.css — all design tokens, layout, and component styles -->
 <link rel="stylesheet" href="{% static 'css/vigil.css' %}">
@@ -44,7 +53,7 @@
     <div class="sidebar-icon" data-page="tasks" data-tip="Tasks">
       <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     </div>
-    <div class="sidebar-icon" data-page="baselines" data-tip="Deployments">
+    <div class="sidebar-icon" data-page="playbooks" data-tip="Deployments">
       <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><polyline points="3 6 4 7 6 5"/><polyline points="3 12 4 13 6 11"/><polyline points="3 18 4 19 6 17"/></svg>
     </div>
     <div class="sidebar-icon" data-page="vulns" data-tip="Vulnerabilities">
@@ -131,7 +140,7 @@
 
   <div class="detail-section" id="detail-score-section" style="display:none;">
     <div class="detail-section-title">Security score</div>
-    <div style="display:flex;align-items:baseline;gap:12px;">
+    <div style="display:flex;align-items:playbook;gap:12px;">
       <span class="mono" id="detail-score" style="font-size:28px;font-weight:600;line-height:1;">—</span>
       <span style="font-size:12px;color:var(--text-3);">/ 100</span>
     </div>
@@ -365,7 +374,7 @@
   </form>
 </div>
 
-{# Wave editor — same shape as the baseline editor: overlay + modal + save/cancel. #}
+{# Wave editor — same shape as the playbook editor: overlay + modal + save/cancel. #}
 <div class="modal-overlay" id="wave-editor-overlay" onclick="closeWaveEditor()"></div>
 <div class="modal" id="wave-editor-modal">
   <div class="modal-title">
@@ -378,6 +387,16 @@
     <div class="form-group">
       <label class="form-label">Name</label>
       <input type="text" class="form-control" id="wave-name" placeholder="Canary, Broad, Rest of fleet…" maxlength="120">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Groups <span style="color:var(--text-3);font-weight:400;">(comma-separated; blank = ungrouped)</span></label>
+      <input type="text" class="form-control" id="wave-group-tags" placeholder="servers, workstations">
+      <div class="muted-note" style="margin-top:6px;">
+        A group is just a tag. A rollout walks one group's waves in order, so
+        keep separate ladders for machines that should not patch together. A
+        wave can sit on more than one ladder — a canary wave is often the first
+        rung of both. Order only has to be unique within a group.
+      </div>
     </div>
     <div style="display:flex;gap:12px;">
       <div class="form-group" style="flex:1;">
@@ -447,10 +466,15 @@ settings before deciding anything.
     <div class="form-group" style="margin-bottom:12px;">
       <label class="form-label">Task definition</label>
       <button class="btn btn-outline picker-btn" id="rollout-start-def-btn" type="button">
-        <span id="rollout-start-def-label">Choose a task or baseline…</span>
+        <span id="rollout-start-def-label">Choose a task or playbook…</span>
       </button>
       <input type="hidden" id="rollout-start-def">
       <div class="confirm-hint" id="rollout-start-def-hint" style="margin-top:4px;">Tasks that need someone to fill in an input cannot be rolled out unattended &mdash; a rollout runs with nobody watching.</div>
+    </div>
+    <div class="form-group" style="margin-bottom:14px;">
+      <label class="form-label">Wave group <span style="color:var(--text-3);font-weight:400;">(blank = every enabled wave)</span></label>
+      <input type="text" class="form-control" id="rollout-start-group" placeholder="servers">
+      <div class="confirm-hint" id="rollout-start-group-hint" style="margin-top:4px;">Send this to one ladder only. The rollout walks that group's waves in order and never touches a machine outside it.</div>
     </div>
     <div style="display:flex;gap:12px;margin-bottom:14px;">
       <div class="form-group" style="flex:1;margin-bottom:0;">
@@ -736,6 +760,10 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-utils.js' %}"></script>
 <!-- vigil-nav.js — navigateTo(), tab-bar switching -->
 <script src="{% static 'js/vigil-nav.js' %}"></script>
+<!-- vigil-widgets.js — one renderer per widget kind. Load before vigil-dashboards.js, which calls into WIDGET_RENDERERS. -->
+<script src="{% static 'js/vigil-widgets.js' %}"></script>
+<!-- vigil-dashboards.js — the Gridstack widget grid on the Dashboard page. -->
+<script src="{% static 'js/vigil-dashboards.js' %}"></script>
 <!-- vigil-host-cards.js — dashboard host cards, pin bar, host detail drawer, RDP, host CRUD -->
 <script src="{% static 'js/vigil-host-cards.js' %}"></script>
 <!-- vigil-host-reboot.js — reboot_required pending marker on host cards -->
@@ -753,11 +781,11 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-tags.js' %}"></script>
 <script src="{% static 'js/vigil-pickers.js' %}"></script>
 <script src="{% static 'js/vigil-ai.js' %}"></script>
-<script src="{% static 'js/vigil-baselines.js' %}"></script>
-<!-- vigil-contentyaml.js — "Edit as YAML" / "Submit to Community" for baselines and automations -->
+<script src="{% static 'js/vigil-playbooks.js' %}"></script>
+<!-- vigil-contentyaml.js — "Edit as YAML" / "Submit to Community" for playbooks and automations -->
 <script src="{% static 'js/vigil-contentyaml.js' %}"></script>
 <script src="{% static 'js/vigil-automations.js' %}"></script>
-<!-- vigil-runhistory.js — Baselines → History sub-tab (baseline + automation runs) -->
+<!-- vigil-runhistory.js — Playbooks → History sub-tab (playbook + automation runs) -->
 <script src="{% static 'js/vigil-runhistory.js' %}"></script>
 <script src="{% static 'js/vigil-statuspages.js' %}"></script>
 <!-- vigil-deploy.js — deploy modal, fleet cache, schedule/retry/success-criteria policy (wraps navigateTo) -->

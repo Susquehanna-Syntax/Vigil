@@ -62,7 +62,7 @@ class EditionsTests(TestCase):
         # features as on — always.
         self.assertEqual(editions.active_edition(), editions.FREE)
         self.assertFalse(editions.feature_enabled("sites"))
-        self.assertTrue(editions.feature_enabled("baselines"))
+        self.assertTrue(editions.feature_enabled("playbooks"))
 
     def test_extension_registration_lights_a_feature(self):
         editions.register_feature("sites")

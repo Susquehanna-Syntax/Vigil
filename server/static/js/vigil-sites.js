@@ -42,9 +42,9 @@ async function loadSites() {
       const row = document.createElement('div');
       row.className = 'site-row';
       const actions = _sitesLicensed
-        ? `<button class="btn btn-outline btn-sm site-edit" data-id="${s.id}">Edit</button>` +
-          `<button class="btn btn-outline btn-sm site-assign" data-id="${s.id}">Hosts</button>` +
-          (s.is_global ? '' : `<button class="btn btn-outline btn-sm site-del" data-id="${s.id}">Delete</button>`)
+        ? `<button class="btn btn-sky btn-sm site-edit" data-id="${s.id}">Edit</button>` +
+          `<button class="btn btn-sky btn-sm site-assign" data-id="${s.id}">Hosts</button>` +
+          (s.is_global ? '' : `<button class="btn btn-rose btn-sm site-del" data-id="${s.id}">Delete</button>`)
         : '';
       row.innerHTML =
         `<div class="site-row-main">` +
@@ -165,7 +165,7 @@ async function assignHosts(site) {
   const qTags = new Set();
 
   const chip = (val, label, kind) =>
-    `<button type="button" class="sa-chip" data-kind="${kind}" data-val="${escHtml(val)}">${escHtml(label)}</button>`;
+    `<button type="button" class="sa-chip" data-kind="${kind}" data-val="${escAttr(val)}">${escHtml(label)}</button>`;
 
   m.setBody(`
     <div class="modal-title"><span>Hosts in ${escHtml(site.name)}</span>

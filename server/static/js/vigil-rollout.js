@@ -48,13 +48,74 @@ function _waveProgress(r) {
       ? `${wave.tasks_done + wave.tasks_failed}/${wave.tasks_total} reported`
       : (wave.hosts ? 'queued' : 'no hosts');
     const validation = wave.validation_hours ? ` · validation ${wave.validation_hours}h` : '';
+    // A wave that dispatched anything is worth opening: the counts say how many
+    // failed, never which machines or why.
+    const openable = wave.tasks_total > 0;
+    const failed = wave.tasks_failed
+      ? `<span class="chip" style="background:var(--rose);color:var(--bg);">${wave.tasks_failed} failed</span>`
+      : '';
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--s2);">
       ${_waveDot(wave.status)}
       <span style="min-width:130px;font-weight:600;color:${color};">${escHtml(wave.name)}</span>
       <span style="color:var(--text-3);font-size:12px;">${wave.hosts} host${wave.hosts === 1 ? '' : 's'} · ${count}${validation}</span>
+      ${failed}
       <span style="margin-left:auto;color:var(--text-3);font-size:11px;">${(wave.tags || []).map(escHtml).join(', ')}</span>
+      ${openable ? `<button class="btn btn-sky btn-xs" data-wave-hosts data-rollout="${escAttr(r.id)}" data-wave="${escAttr(wave.id)}">Machines</button>` : ''}
     </div>`;
   }).join('');
+}
+
+/* Every machine in one wave, and for a failure the output that explains it.
+   Without this, acting on a halted rollout meant matching hosts up by hand in
+   the run history. */
+async function openWaveHosts(rolloutId, waveId) {
+  const rollout = (_rolloutState.items || []).find(r => String(r.id) === String(rolloutId));
+  const wave = ((rollout || {}).waves || []).find(w => String(w.id) === String(waveId));
+  const waveName = wave ? wave.name : 'Wave';
+  const m = mountModal('wave-hosts', { xwide: true });
+  m.setBody(`<div class="modal-title"><span>Wave: ${escHtml(waveName)}</span>
+      <button class="modal-close" id="wh-x" aria-label="Close">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button></div>
+    <div id="wh-body"><span class="muted-note">Loading…</span></div>`);
+  m.modal.querySelector('#wh-x').onclick = m.close;
+  m.open();
+
+  let data;
+  try {
+    data = await apiJson(`/api/v1/rollouts/${rolloutId}/waves/${waveId}/hosts/`);
+  } catch (e) {
+    document.getElementById('wh-body').innerHTML =
+      `<span class="bad">${escHtml(e.message || 'Could not load this wave')}</span>`;
+    return;
+  }
+
+  const rows = (data.hosts || []).map((h) => {
+    const stateColor = h.failed ? 'var(--rose)'
+      : (h.state === 'completed' ? 'var(--mint)' : 'var(--text-3)');
+    const output = (h.output || '').trim();
+    return `<tr>
+      <td><strong>${escHtml(h.hostname)}</strong>
+        <div class="muted-note">${escHtml(h.ip_address || '')}</div></td>
+      <td style="color:${stateColor};font-weight:600;">${escHtml(h.state)}</td>
+      <td>${h.completed_at ? escHtml(new Date(h.completed_at).toLocaleString()) : '—'}</td>
+      <td>${output
+        ? `<pre style="white-space:pre-wrap;margin:0;font-size:11px;max-height:140px;overflow:auto;">${escHtml(output)}</pre>`
+        : '<span class="muted-note">no output</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('wh-body').innerHTML = `
+    <div class="muted-note" style="margin-bottom:10px;">
+      ${data.total} machine${data.total === 1 ? '' : 's'} ·
+      <span style="color:${data.failed ? 'var(--rose)' : 'var(--mint)'};font-weight:600;">${data.failed} failed</span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="vuln-table">
+        <thead><tr><th>Machine</th><th>State</th><th>Finished</th><th>Output</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="4" class="muted-note">Nothing dispatched in this wave.</td></tr>'}</tbody>
+      </table>
+    </div>`;
 }
 
 function _rolloutCard(r) {
@@ -76,7 +137,7 @@ function _rolloutCard(r) {
        onclick="openRolloutDetail('${r.id}')" role="button" tabindex="0"
        onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openRolloutDetail('${r.id}');}">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      <strong>${escHtml(r.target_name || r.definition_name || r.baseline_name || '(deleted)')}</strong>${r.action_kind === 'baseline' ? ' <span class="chip">baseline</span>' : ''}
+      <strong>${escHtml(r.target_name || r.definition_name || r.playbook_name || '(deleted)')}</strong>${r.action_kind === 'playbook' ? ' <span class="chip">playbook</span>' : ''}
       <span style="color:${color};font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;">${escHtml(r.state)}</span>
       ${r.current_wave_name ? `<span style="color:var(--text-3);font-size:12px;">wave: ${escHtml(r.current_wave_name)}</span>` : ''}
       <span style="color:var(--text-3);font-size:11px;margin-left:auto;">${escHtml(r.created_by_name || '')} · started ${_fmtTs(r.started_at)}</span>
@@ -112,7 +173,7 @@ function _filterRollouts() {
   const q = (document.getElementById('rollout-search')?.value || '').trim().toLowerCase();
   if (!q) return _rolloutState.items;
   return _rolloutState.items.filter(r =>
-    (r.target_name || r.definition_name || r.baseline_name || '').toLowerCase().includes(q) ||
+    (r.target_name || r.definition_name || r.playbook_name || '').toLowerCase().includes(q) ||
     (r.state || '').toLowerCase().includes(q) ||
     (r.current_wave_name || '').toLowerCase().includes(q) ||
     (r.waves || []).some(w => (w.name || '').toLowerCase().includes(q) ||
@@ -133,10 +194,24 @@ function _renderRollouts() {
       box.innerHTML = items.map(_rolloutCard).join('');
     }
   }
+  _bindWaveHostButtons(box);
+}
+
+/* Delegated so it survives every re-render of the list, which happens on a
+   5-second poll while the tab is visible. */
+function _bindWaveHostButtons(box) {
+  if (box.dataset.waveHostsBound) return;
+  box.dataset.waveHostsBound = '1';
+  box.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-wave-hosts]');
+    if (!btn || !box.contains(btn)) return;
+    ev.stopPropagation();
+    openWaveHosts(btn.dataset.rollout, btn.dataset.wave);
+  });
 }
 
 function _rolloutsTabVisible() {
-  // Rollouts moved from the Tasks page into Deployments (Baselines / Automation
+  // Rollouts moved from the Tasks page into Deployments (Playbooks / Automation
   // / Rollouts / History) — this is a sub-tab now, not a tab.
   const tab = document.querySelector('.sub-tab[data-subtab="rollout-panel"]');
   return !!(tab && tab.classList.contains('active'));
@@ -162,8 +237,18 @@ async function openRolloutStart() {
   if (!modal) return;
   // Cleared on every open so a previous pick can't be submitted by accident.
   document.getElementById('rollout-start-def').value = '';
-  document.getElementById('rollout-start-def-label').textContent = 'Choose a task or baseline…';
+  document.getElementById('rollout-start-def-label').textContent = 'Choose a task or playbook…';
   document.getElementById('rollout-start-totp').value = '';
+  const groupInput = document.getElementById('rollout-start-group');
+  if (groupInput) {
+    groupInput.value = '';
+    if (!groupInput.dataset.hintBound) {
+      groupInput.dataset.hintBound = '1';
+      groupInput.addEventListener('input', _refreshRolloutGroupHint);
+      groupInput.addEventListener('change', _refreshRolloutGroupHint);
+    }
+  }
+  _refreshRolloutGroupHint();
   document.getElementById('rollout-start-overlay').classList.add('open');
   modal.classList.add('open');
 }
@@ -171,7 +256,7 @@ async function openRolloutStart() {
 function pickRolloutTarget() {
   openPicker({
     type: 'rollout_target',
-    title: 'Pick a task or baseline to roll out',
+    title: 'Pick a task or playbook to roll out',
     allowAdd: false,
     onSelect: (item) => {
       document.getElementById('rollout-start-def').value = item.key;
@@ -197,14 +282,15 @@ async function submitRolloutStart() {
   try {
     const r = await apiJson('/api/v1/rollouts/', {
       method: 'POST',
-      // The option value is "task:<id>" or "baseline:<id>"; the API wants
+      // The option value is "task:<id>" or "playbook:<id>"; the API wants
       // exactly one of the two id fields and rejects both or neither.
       body: JSON.stringify({
-        ...(sel.value.startsWith('baseline:')
-          ? { baseline_id: sel.value.slice('baseline:'.length) }
+        ...(sel.value.startsWith('playbook:')
+          ? { playbook_id: sel.value.slice('playbook:'.length) }
           : { definition_id: sel.value.replace(/^task:/, '') }),
         failure_threshold_pct: threshold,
         min_results_before_halt: minResults,
+        wave_group_tag: (document.getElementById('rollout-start-group')?.value || '').trim(),
         totp,
       }),
     });
@@ -233,7 +319,7 @@ function promptRolloutAction(btn, kind) {
   if (!modal || !overlay) return;
   const rolloutId = btn ? btn.dataset.rlt : null;
   const r = _rolloutState.items.find(x => x.id === rolloutId);
-  const name = r ? (r.target_name || r.definition_name || r.baseline_name) : 'the rollout';
+  const name = r ? (r.target_name || r.definition_name || r.playbook_name) : 'the rollout';
   const title = kind === 'halt' ? 'Halt rollout'
     : kind === 'resume' ? 'Resume rollout'
     : 'Skip the validation window';
@@ -298,8 +384,8 @@ async function confirmRolloutAction() {
 /* ── Wiring ──────────────────────────────────────────────────────────── */
 
 // Refresh when the Rollouts sub-tab opens, and on navigation to Deployments.
-// Both live on the baselines page now — the sidebar entry is labelled
-// "Deployments" but its data-page is still `baselines`.
+// Both live on the playbooks page now — the sidebar entry is labelled
+// "Deployments" but its data-page is still `playbooks`.
 document.getElementById('rollout-search')?.addEventListener('input', _renderRollouts);
 document.getElementById('rollout-start-def-btn')?.addEventListener('click', pickRolloutTarget);
 
@@ -311,7 +397,7 @@ document.querySelectorAll('.sub-tab[data-subtab]').forEach(tab => {
 const _origNavigateForRollouts = navigateTo;
 navigateTo = function (pageName) {
   _origNavigateForRollouts(pageName);
-  if (pageName === 'baselines' && _rolloutsTabVisible()) refreshRollouts();
+  if (pageName === 'playbooks' && _rolloutsTabVisible()) refreshRollouts();
 };
 document.addEventListener('DOMContentLoaded', () => {
   if (_rolloutsTabVisible()) refreshRollouts();
@@ -345,7 +431,7 @@ async function openRolloutDetail(rolloutId) {
   if (!modal) return;
 
   document.getElementById('rollout-detail-title').textContent =
-    r.target_name || r.definition_name || r.baseline_name || 'Rollout';
+    r.target_name || r.definition_name || r.playbook_name || 'Rollout';
 
   const gate = `halts above ${r.failure_threshold_pct}% failures, once at least ` +
                `${r.min_results_before_halt} host${r.min_results_before_halt === 1 ? '' : 's'} have reported`;
@@ -354,7 +440,7 @@ async function openRolloutDetail(rolloutId) {
     ${r.halted_reason ? `<div style="margin-bottom:10px;padding:9px 11px;border:1px solid var(--rose);border-radius:6px;color:var(--rose);font-size:12px;">
         <strong>Halted:</strong> ${escHtml(r.halted_reason)}</div>` : ''}
     <div style="margin-bottom:12px;">${_waveProgress(r)}</div>
-    ${_detailRow('What is rolling out', (r.target_name || '') + (r.action_kind === 'baseline' ? ' (baseline)' : ' (task)'))}
+    ${_detailRow('What is rolling out', (r.target_name || '') + (r.action_kind === 'playbook' ? ' (playbook)' : ' (task)'))}
     ${_detailRow('State', r.state)}
     ${_detailRow('Current wave', r.current_wave_name)}
     ${_detailRow('Failure gate', gate)}
@@ -405,3 +491,32 @@ document.addEventListener('keydown', (e) => {
     closeRolloutDetail();
   }
 });
+
+
+/* The rollout picker is the one place the blast radius is chosen, so it says
+   how many waves and machines the named group covers before you start it. */
+async function _refreshRolloutGroupHint() {
+  const input = document.getElementById('rollout-start-group');
+  const hint = document.getElementById('rollout-start-group-hint');
+  if (!input || !hint) return;
+  const tag = (input.value || '').trim();
+  if (!tag) {
+    hint.textContent = 'Blank sends it to every enabled wave, in order.';
+    return;
+  }
+  try {
+    const waves = await apiJson(`/api/v1/waves/?group=${encodeURIComponent(tag)}`);
+    const live = waves.filter(w => w.enabled);
+    if (!live.length) {
+      hint.innerHTML = `<span class="bad">No enabled wave is tagged `
+        + `<strong>${escHtml(tag)}</strong> — the rollout would be refused.</span>`;
+      return;
+    }
+    const machines = live.reduce((n, w) => n + (w.exclusive_host_count || 0), 0);
+    hint.textContent = `${live.length} wave${live.length === 1 ? '' : 's'} · `
+      + `${machines} machine${machines === 1 ? '' : 's'}, walked in order. `
+      + `Nothing outside this group is touched.`;
+  } catch (e) {
+    hint.textContent = 'Send this to one ladder only.';
+  }
+}

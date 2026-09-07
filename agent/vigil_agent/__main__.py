@@ -12,7 +12,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import client, collector, verify
+from . import client, collector, verify, windows_update
 from .config import load_config
 from .executor import execute_action
 from .nonce_store import NonceStore
@@ -398,6 +398,7 @@ def main() -> None:
                 config, metrics, inventory=inventory_payload,
                 docker_containers=docker_containers,
                 reboot_required=collector.reboot_required(),
+                windows_updates=windows_update.summary(),
             )
             consecutive_failures = 0
             docker_payload_pending = False

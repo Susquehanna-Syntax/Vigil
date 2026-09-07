@@ -19,3 +19,6 @@ requests>=2.32,<3.0
 cryptography>=50.0,<51.0
 PyJWT[crypto]>=2.8,<3.0
 pycdlib>=1.14,<2.0
+# TOTP enrolment QR, rendered server-side so the setup page needs no CDN.
+# SVG factory only — Pillow is deliberately not installed.
+qrcode>=8.0,<9

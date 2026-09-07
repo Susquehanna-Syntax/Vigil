@@ -1,12 +1,13 @@
 /* Wave management — the Deployments › Waves panel.
  *
- * Built to the same shape as baselines and automations: a toolbar with search
+ * Built to the same shape as playbooks and automations: a toolbar with search
  * and a New button, a list of cards, and a modal editor. Nothing here edits a
  * host's tags. A wave only chooses which tags it matches; tags stay owned by
  * the host, so there is exactly one place a host's membership is decided.
  */
 
 let _allWaves = [];
+let _waveGroups = [];
 let _editingWaveId = null;
 
 /* ── List ─────────────────────────────────────────────────────────────── */
@@ -39,9 +40,10 @@ function _waveCard(w) {
       <div>
         <span class="bl-name">${escHtml(w.order)} &middot; ${escHtml(w.name)}</span>
         <span class="bl-badge ${w.enabled ? 'on' : 'off'}">${w.enabled ? 'enabled' : 'off'}</span>
+        ${(w.group_tags || []).map(t => `<span class="chip">${escHtml(t)}</span>`).join(' ')}
       </div>
       <div style="display:flex;gap:6px;">
-        <button class="btn btn-outline btn-sm" onclick="openWaveEditor(${w.id})">Edit</button>
+        <button class="btn btn-sky btn-sm" onclick="openWaveEditor(${w.id})">Edit</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--rose);" onclick="deleteWave(${w.id})">Delete</button>
       </div>
     </div>
@@ -74,7 +76,12 @@ async function loadWaves() {
   if (!box) return;
   box.innerHTML = '<div class="empty-block"><p>Loading…</p></div>';
   try {
-    _allWaves = await apiJson('/api/v1/waves/');
+    const [waves, groups] = await Promise.all([
+      apiJson('/api/v1/waves/'),
+      apiJson('/api/v1/wave-groups/').catch(() => ({ groups: [] })),
+    ]);
+    _allWaves = waves;
+    _waveGroups = (groups && groups.groups) || [];
     _renderWaves();
   } catch (e) {
     box.innerHTML = `<div class="empty-block"><h4>Couldn't load waves</h4><p>${escHtml(e.message)}</p></div>`;
@@ -95,6 +102,8 @@ function openWaveEditor(waveId) {
   document.getElementById('wave-validation').value = w ? w.validation_hours : 24;
   document.getElementById('wave-tags').value = w ? (w.tags || []).join(', ') : '';
   document.getElementById('wave-enabled').checked = w ? w.enabled : true;
+  const groupInput = document.getElementById('wave-group-tags');
+  if (groupInput) groupInput.value = w ? (w.group_tags || []).join(', ') : '';
   _updateWaveMatchPreview();
   document.getElementById('wave-editor-overlay').classList.add('open');
   document.getElementById('wave-editor-modal').classList.add('open');
@@ -138,6 +147,8 @@ async function saveWave() {
     tags: _waveTagsFromInput(),
     enabled: document.getElementById('wave-enabled').checked,
   };
+  payload.group_tags = ((document.getElementById('wave-group-tags') || {}).value || '')
+    .split(',').map(t => t.trim()).filter(Boolean);
   if (!payload.name) { showToast('Give the wave a name', 'error'); return; }
   if (!payload.tags.length) { showToast('A wave needs at least one tag', 'error'); return; }
 

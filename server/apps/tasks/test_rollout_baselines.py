@@ -1,7 +1,7 @@
-"""Rolling out a baseline, and automations that dispatch wave by wave.
+"""Rolling out a playbook, and automations that dispatch wave by wave.
 
-A rollout can carry either a task definition or a baseline. The baseline case
-reuses the existing `type: baseline` composition rather than a second expansion
+A rollout can carry either a task definition or a playbook. The playbook case
+reuses the existing `type: playbook` composition rather than a second expansion
 path, so these tests mostly prove the plumbing picks the right target and keeps
 picking it on later waves — which is where a `rollout.definition` assumption
 would break rather than at start.
@@ -11,7 +11,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from apps.automations.models import Automation
-from apps.baselines.models import Baseline, BaselineStep
+from apps.playbooks.models import Playbook, PlaybookStep
 from apps.hosts.models import Host
 
 from .models import PatchRollout, PatchWave, TaskDefinition
@@ -22,7 +22,7 @@ YAML = ("name: Patch\nrisk: low\nactions:\n"
         "  - type: clear_temp_files\n    params:\n      older_than_days: 7\n")
 
 
-class RolloutBaselineTests(TestCase):
+class RolloutPlaybookTests(TestCase):
     def setUp(self):
         User = get_user_model()
         self.user = User.objects.create_user("ro", password="x",
@@ -34,9 +34,9 @@ class RolloutBaselineTests(TestCase):
         self.definition = TaskDefinition.objects.create(
             name="Clear temp", owner=self.user, yaml_source=YAML,
             parsed_spec=parse_and_validate(YAML), risk_level="low")
-        self.baseline = Baseline.objects.create(name="Nightly tidy",
+        self.playbook = Playbook.objects.create(name="Nightly tidy",
                                                 created_by=self.user)
-        BaselineStep.objects.create(baseline=self.baseline,
+        PlaybookStep.objects.create(playbook=self.playbook,
                                     definition=self.definition, order=1)
 
     def test_rollout_from_a_definition_still_works(self):
@@ -44,47 +44,50 @@ class RolloutBaselineTests(TestCase):
         self.assertEqual(r.action_kind, PatchRollout.ActionKind.TASK)
         self.assertEqual(r.target_name, "Clear temp")
 
-    def test_rollout_from_a_baseline(self):
-        r = start_rollout(baseline=self.baseline, user=self.user)
-        self.assertEqual(r.action_kind, PatchRollout.ActionKind.BASELINE)
+    def test_rollout_from_a_playbook(self):
+        r = start_rollout(playbook=self.playbook, user=self.user)
+        self.assertEqual(r.action_kind, PatchRollout.ActionKind.PLAYBOOK)
         self.assertIsNone(r.definition)
         self.assertEqual(r.target_name, "Nightly tidy")
 
-    def test_baseline_rollout_dispatches_the_baselines_steps(self):
-        r = start_rollout(baseline=self.baseline, user=self.user)
+    def test_playbook_rollout_dispatches_the_playbooks_steps(self):
+        r = start_rollout(playbook=self.playbook, user=self.user)
         run = r.runs.first()
         self.assertIsNotNone(run)
         self.assertEqual(run.host_count, 1)
         self.assertEqual(run.name_snapshot, "Nightly tidy")
 
     def test_spec_is_re_derivable_for_later_waves(self):
-        """The advance path re-derives the spec. A baseline rollout has no
+        """The advance path re-derives the spec. A playbook rollout has no
         definition, so anything reaching for it breaks on wave 2, not wave 1."""
-        r = start_rollout(baseline=self.baseline, user=self.user)
+        r = start_rollout(playbook=self.playbook, user=self.user)
         spec = rollout_spec(r)
-        self.assertEqual(spec["actions"][0]["type"], "baseline")
+        self.assertEqual(spec["actions"][0]["type"], "playbook")
         self.assertEqual(spec["actions"][0]["params"]["name"], "Nightly tidy")
 
     def test_both_targets_is_rejected(self):
         with self.assertRaises(ValueError):
-            start_rollout(self.definition, baseline=self.baseline, user=self.user)
+            start_rollout(self.definition, playbook=self.playbook, user=self.user)
 
     def test_neither_target_is_rejected(self):
         with self.assertRaises(ValueError):
             start_rollout(user=self.user)
 
-    def test_disabled_baseline_is_refused(self):
-        self.baseline.enabled = False
-        self.baseline.save(update_fields=["enabled"])
-        with self.assertRaises(ValueError):
-            start_rollout(baseline=self.baseline, user=self.user)
+    def test_a_playbook_that_does_not_auto_enrol_can_still_be_rolled_out(self):
+        """auto_enroll is off by default and a rollout is the recommended way
+        to run a playbook, so refusing this combination refused the normal
+        case."""
+        self.playbook.auto_enroll = False
+        self.playbook.save(update_fields=["auto_enroll"])
+        rollout = start_rollout(playbook=self.playbook, user=self.user)
+        self.assertEqual(rollout.playbook_id, self.playbook.id)
 
-    def test_deleting_the_baseline_cascades_to_its_rollouts(self):
+    def test_deleting_the_playbook_cascades_to_its_rollouts(self):
         """Matches the pre-existing behaviour of the definition FK: deleting the
         thing a rollout ran removes the rollout with it. Worth knowing, because
-        it means deleting a baseline also discards its rollout history."""
-        r = start_rollout(baseline=self.baseline, user=self.user)
-        self.baseline.delete()
+        it means deleting a playbook also discards its rollout history."""
+        r = start_rollout(playbook=self.playbook, user=self.user)
+        self.playbook.delete()
         self.assertFalse(PatchRollout.objects.filter(pk=r.pk).exists())
 
     def test_database_refuses_a_rollout_with_no_target(self):
@@ -94,13 +97,13 @@ class RolloutBaselineTests(TestCase):
         guard is unreachable in practice — the row cannot exist.
         """
         from django.db.utils import IntegrityError
-        r = start_rollout(baseline=self.baseline, user=self.user)
+        r = start_rollout(playbook=self.playbook, user=self.user)
         with self.assertRaises(IntegrityError):
-            PatchRollout.objects.filter(pk=r.pk).update(baseline=None)
+            PatchRollout.objects.filter(pk=r.pk).update(playbook=None)
 
     def test_database_refuses_a_rollout_with_two_targets(self):
         from django.db.utils import IntegrityError
-        r = start_rollout(baseline=self.baseline, user=self.user)
+        r = start_rollout(playbook=self.playbook, user=self.user)
         with self.assertRaises(IntegrityError):
             PatchRollout.objects.filter(pk=r.pk).update(definition=self.definition)
 
@@ -114,15 +117,15 @@ class RolloutApiTargetTests(TestCase):
         self.definition = TaskDefinition.objects.create(
             name="D", owner=self.user, yaml_source=YAML,
             parsed_spec=parse_and_validate(YAML), risk_level="low")
-        self.baseline = Baseline.objects.create(name="B", created_by=self.user)
-        BaselineStep.objects.create(baseline=self.baseline,
+        self.playbook = Playbook.objects.create(name="B", created_by=self.user)
+        PlaybookStep.objects.create(playbook=self.playbook,
                                     definition=self.definition, order=1)
         self.client.force_login(self.user)
 
     def test_supplying_both_targets_is_a_400(self):
         r = self.client.post("/api/v1/rollouts/",
                              {"definition_id": str(self.definition.id),
-                              "baseline_id": str(self.baseline.id)},
+                              "playbook_id": str(self.playbook.id)},
                              content_type="application/json")
         self.assertEqual(r.status_code, 400)
         self.assertIn("exactly one", r.json()["detail"])

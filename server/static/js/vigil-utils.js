@@ -10,6 +10,34 @@
 //                                  monitor + host-cards detail charts.
 
 /* ── HTTP / CSRF ─────────────────────────────────────────────────────── */
+
+// navigator.clipboard is undefined outside a secure context, and a self-hosted
+// Vigil is normally reached at http://10.x on the LAN. Every Copy button threw
+// a TypeError there and silently did nothing. Falls back to a hidden textarea
+// and execCommand, which still works on plain HTTP.
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) { /* fall through to the legacy path */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) {
+    return false;
+  }
+}
+
 function getCsrf() {
   const el = document.querySelector('[name=csrfmiddlewaretoken]');
   return el ? el.value : '';
@@ -93,6 +121,18 @@ function escHtml(str) {
   const d = document.createElement('div');
   d.textContent = str;
   return d.innerHTML;
+}
+
+// escHtml goes through textContent, which escapes & < > and nothing else — so
+// a value carrying a quote breaks straight out of an HTML attribute. Use this
+// for anything interpolated between quotes in a built-up tag.
+function escAttr(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function formatBytes(bytes) {
@@ -206,6 +246,9 @@ function osLogo(name) {
    The app's modals are a SIBLING overlay + modal, both toggled `.open`
    (a nested modal only opening the overlay renders as a blank blur). This
    helper mounts that pair once per id and returns open/close/setBody. */
+const MODAL_BASE_Z = 200;
+let _modalDepth = 0;
+
 function mountModal(id, opts) {
   opts = opts || {};
   let overlay = document.getElementById(id + '-overlay');
@@ -220,9 +263,26 @@ function mountModal(id, opts) {
     document.body.appendChild(overlay);
     document.body.appendChild(modal);
   }
-  const close = () => { overlay.classList.remove('open'); modal.classList.remove('open'); };
+  const close = () => {
+    overlay.classList.remove('open');
+    modal.classList.remove('open');
+    if (_modalDepth > 0) _modalDepth -= 1;
+  };
   overlay.onclick = close;
-  const open = () => { overlay.classList.add('open'); modal.classList.add('open'); };
+  // Every modal shares one z-index in the stylesheet, so which of two open
+  // modals sat on top came down to the order their elements happened to be
+  // appended to <body> — and mountModal reuses an element wherever it was
+  // first mounted. Opening "Edit as YAML" from an editor that mounted later
+  // put the YAML modal underneath the thing that opened it. Each open now
+  // claims the next layer up.
+  const open = () => {
+    _modalDepth += 1;
+    const base = MODAL_BASE_Z + _modalDepth * 2;
+    overlay.style.zIndex = String(base);
+    modal.style.zIndex = String(base + 1);
+    overlay.classList.add('open');
+    modal.classList.add('open');
+  };
   return { overlay, modal, open, close, setBody: (html) => { modal.innerHTML = html; } };
 }
 
@@ -244,9 +304,14 @@ function confirmModal(message, opts) {
         <button class="btn btn-sm" id="confirm-ok"></button>
       </div>`);
     m.modal.querySelector('#confirm-title').textContent = opts.title || 'Are you sure?';
-    m.modal.querySelector('#confirm-msg').textContent = message;
+    // textContent by default: almost every caller passes a plain sentence and
+    // must not be able to inject markup through it. opts.html is for the few
+    // confirmations that need emphasis, and those escape their own values.
+    const msgEl = m.modal.querySelector('#confirm-msg');
+    if (opts.html) msgEl.innerHTML = message;
+    else msgEl.textContent = message;
     const okBtn = m.modal.querySelector('#confirm-ok');
-    okBtn.textContent = opts.confirmText || 'Confirm';
+    okBtn.textContent = opts.confirmText || opts.confirmLabel || 'Confirm';
     okBtn.className = 'btn btn-sm ' + (opts.danger ? 'btn-rose' : 'btn-mint');
     const done = (val) => { m.close(); setTimeout(() => resolve(val), 200); };
     okBtn.onclick = () => done(true);
@@ -254,6 +319,44 @@ function confirmModal(message, opts) {
     m.modal.querySelector('#confirm-x').onclick = () => done(false);
     m.overlay.onclick = () => done(false);
     requestAnimationFrame(m.open);
+  });
+}
+
+/* ── Text prompt (replaces window.prompt) ─────────────────────────────── */
+function promptModal(message, opts) {
+  opts = opts || {};
+  return new Promise((resolve) => {
+    const m = mountModal('prompt');
+    m.setBody(`
+      <div class="modal-title">
+        <span id="prompt-title"></span>
+        <button class="modal-close" id="prompt-x" aria-label="Close">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="form-group">
+        <input type="text" class="form-control" id="prompt-input" maxlength="120">
+      </div>
+      <div class="confirm-actions">
+        <button class="btn btn-outline btn-sm" id="prompt-cancel">Cancel</button>
+        <button class="btn btn-mint btn-sm" id="prompt-ok"></button>
+      </div>`);
+    m.modal.querySelector('#prompt-title').textContent = message;
+    const input = m.modal.querySelector('#prompt-input');
+    input.value = opts.value || '';
+    if (opts.placeholder) input.placeholder = opts.placeholder;
+    m.modal.querySelector('#prompt-ok').textContent = opts.confirmText || 'Save';
+
+    const done = (val) => { m.close(); setTimeout(() => resolve(val), 200); };
+    m.modal.querySelector('#prompt-ok').onclick = () => done(input.value.trim() || null);
+    m.modal.querySelector('#prompt-cancel').onclick = () => done(null);
+    m.modal.querySelector('#prompt-x').onclick = () => done(null);
+    m.overlay.onclick = () => done(null);
+    input.onkeydown = (ev) => {
+      if (ev.key === 'Enter') done(input.value.trim() || null);
+      if (ev.key === 'Escape') done(null);
+    };
+    requestAnimationFrame(() => { m.open(); input.focus(); input.select(); });
   });
 }
 
@@ -403,3 +506,63 @@ document.addEventListener('visibilitychange', () => {
     }
   }
 });
+
+
+/* ── Field hints ───────────────────────────────────────────────────────────
+   The "?" markers carry their text in data-hint. The bubble used to be a
+   ::after on the marker, which meant any hint inside a modal was clipped: a
+   modal sets overflow-y:auto so it can scroll, and that makes it a scroll
+   container on both axes. A 380px bubble hanging off an 18px marker near the
+   modal's edge was cut off — visible as a hint that simply is not there.
+
+   So the bubble lives on <body>, positioned fixed against the marker's rect
+   and clamped to the viewport. One listener pair, delegated, so hints added to
+   the DOM later work without re-binding. */
+(function () {
+  let bubble = null;
+
+  function hide() {
+    if (bubble) { bubble.remove(); bubble = null; }
+  }
+
+  function show(marker) {
+    const text = marker.dataset.hint;
+    if (!text) return;
+    hide();
+    bubble = document.createElement('div');
+    bubble.className = 'field-hint-bubble';
+    bubble.textContent = text;          // never innerHTML: this is authored copy
+    document.body.appendChild(bubble);
+
+    const at = marker.getBoundingClientRect();
+    const box = bubble.getBoundingClientRect();
+    const margin = 12;
+    // Centre on the marker, then pull back inside whichever edge it crosses.
+    let left = at.left + at.width / 2 - box.width / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - box.width - margin));
+    // Below by default; above when there is no room, which is what happens for
+    // a hint near the bottom of a tall modal.
+    let top = at.bottom + 8;
+    if (top + box.height > window.innerHeight - margin) {
+      top = Math.max(margin, at.top - box.height - 8);
+    }
+    bubble.style.left = `${Math.round(left)}px`;
+    bubble.style.top = `${Math.round(top)}px`;
+  }
+
+  const enter = (ev) => {
+    const marker = ev.target.closest && ev.target.closest('.field-hint');
+    if (marker) show(marker);
+  };
+  document.addEventListener('mouseover', enter);
+  document.addEventListener('focusin', enter);
+  document.addEventListener('mouseout', (ev) => {
+    if (ev.target.closest && ev.target.closest('.field-hint')) hide();
+  });
+  document.addEventListener('focusout', (ev) => {
+    if (ev.target.closest && ev.target.closest('.field-hint')) hide();
+  });
+  // A bubble pinned to a rect goes stale the moment anything moves.
+  window.addEventListener('scroll', hide, true);
+  window.addEventListener('resize', hide);
+})();

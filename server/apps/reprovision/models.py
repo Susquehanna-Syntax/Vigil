@@ -98,7 +98,7 @@ class InstallProfile(TagRowSyncMixin, models.Model):
     # "every box built from this profile is role:web" is stated once.
     #
     # Read at completion rather than snapshotted onto the job, matching how
-    # post_baseline already behaves: editing the profile mid-rebuild changes
+    # post_playbook already behaves: editing the profile mid-rebuild changes
     # what lands. The window is one rebuild and the effect is a tag.
     completion_tags = models.JSONField(default=list, blank=True)
     #: Row-backed mirror of ``completion_tags`` — see Host.tag_rows.
@@ -176,8 +176,8 @@ class RebuildJob(models.Model):
     completion_tag_row = models.ForeignKey(
         "hosts.Tag", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="rebuild_jobs")
-    post_baseline = models.ForeignKey(
-        "baselines.Baseline", null=True, blank=True,
+    post_playbook = models.ForeignKey(
+        "baselines.Playbook", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="rebuild_jobs")
     post_run = models.ForeignKey(
         "tasks.TaskRun", null=True, blank=True,

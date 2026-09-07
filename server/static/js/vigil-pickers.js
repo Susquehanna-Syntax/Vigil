@@ -1,7 +1,7 @@
 // vigil-pickers.js
-// Owns: two reusable stacked modals used from the baseline/automation editors
+// Owns: two reusable stacked modals used from the playbook/automation editors
 // (and the AI "Use this" flow):
-//   openPicker({type, onSelect})  — a searchable list of tasks / baselines /
+//   openPicker({type, onSelect})  — a searchable list of tasks / playbooks /
 //                                    machines with Add-new and per-item Edit,
 //                                    stacking on top of whatever opened it.
 //   openTaskModal({id?, yaml?, onSaved?}) — a lightweight task-definition
@@ -15,7 +15,7 @@
 let _pickerState = null;
 
 async function openPicker(opts) {
-  // opts: { type: 'task'|'baseline'|'machine', title, onSelect(item), allowAdd }
+  // opts: { type: 'task'|'playbook'|'machine', title, onSelect(item), allowAdd }
   _pickerState = opts;
   const m = mountModal('picker', { wide: true });
   m.modal.querySelector('#picker-close') || m.setBody(`
@@ -35,7 +35,7 @@ async function openPicker(opts) {
     opts.title || ('Pick a ' + opts.type);
   const addBtn = m.modal.querySelector('#picker-add');
   addBtn.style.display = opts.allowAdd === false ? 'none' : '';
-  addBtn.textContent = opts.type === 'baseline' ? 'New baseline'
+  addBtn.textContent = opts.type === 'playbook' ? 'New playbook'
     : opts.type === 'task' ? 'New task' : 'Add';
   addBtn.onclick = () => _pickerAdd(opts.type);
   const search = m.modal.querySelector('#picker-search');
@@ -68,26 +68,26 @@ async function _loadPickerData(type) {
           ((d.parsed_spec && d.parsed_spec.actions ? d.parsed_spec.actions.length : d.action_count || 0) + ' action(s)'),
         risk: d.risk_level, editable: true, raw: d }));
     } else if (type === 'rollout_target') {
-      // Tasks and baselines in one list — a rollout can carry either, and the
+      // Tasks and playbooks in one list — a rollout can carry either, and the
       // question is "what am I rolling out", not "which internal type is it".
       const [defs, bls] = await Promise.all([
         apiJson('/api/v1/tasks/definitions/'),
-        apiJson('/api/v1/baselines/').catch(() => []),
+        apiJson('/api/v1/playbooks/').catch(() => []),
       ]);
       const defList = Array.isArray(defs) ? defs : defs.results || [];
-      const blList = (Array.isArray(bls) ? bls : bls.baselines || []).filter(b => b.enabled !== false);
+      const blList = (Array.isArray(bls) ? bls : bls.playbooks || []).filter(b => b.enabled !== false);
       _pickerItems = [
         ...defList.map(d => ({
           key: 'task:' + d.id, name: d.name,
           meta: 'task · ' + (d.risk_level || 'standard'),
           risk: d.risk_level, editable: false, raw: d })),
         ...blList.map(b => ({
-          key: 'baseline:' + b.id, name: b.name,
-          meta: 'baseline · ' + b.steps.length + (b.steps.length === 1 ? ' step' : ' steps'),
+          key: 'playbook:' + b.id, name: b.name,
+          meta: 'playbook · ' + b.steps.length + (b.steps.length === 1 ? ' step' : ' steps'),
           editable: false, raw: b })),
       ];
-    } else if (type === 'baseline') {
-      const bl = await apiJson('/api/v1/baselines/');
+    } else if (type === 'playbook') {
+      const bl = await apiJson('/api/v1/playbooks/');
       _pickerItems = bl.map(b => ({ key: b.name, name: b.name,
         meta: b.steps.length + ' step(s)' + (b.enabled ? '' : ' · auto-enroll off'),
         editable: true, raw: b }));
@@ -107,17 +107,17 @@ function _renderPickerList(q) {
   if (!items.length) { list.innerHTML = `<div class="picker-empty">${_pickerItems.length ? 'No matches.' : 'Nothing here yet — use “Add new”.'}</div>`; return; }
   list.innerHTML = items.map((i, idx) => {
     // Some contexts can't accept every item (e.g. high-risk tasks while
-    // building a baseline) — show them greyed with the reason, not hidden.
+    // building a playbook) — show them greyed with the reason, not hidden.
     const why = _pickerState.ineligible ? _pickerState.ineligible(i) : null;
     return `
-    <div class="picker-row${why ? ' picker-row-disabled' : ''}" data-key="${escHtml(String(i.key))}">
+    <div class="picker-row${why ? ' picker-row-disabled' : ''}" data-key="${escAttr(String(i.key))}">
       <div class="picker-row-main">
         <span class="picker-row-name">${escHtml(i.name)}${i.risk ? ` <span class="risk-badge risk-${escHtml(i.risk)}">${escHtml(i.risk)}</span>` : ''}</span>
         <span class="picker-row-meta">${escHtml(i.meta || '')}${why ? ` · <span class="picker-why">${escHtml(why)}</span>` : ''}</span>
       </div>
       <div class="picker-row-actions">
-        ${i.editable ? `<button class="btn btn-outline btn-xs" data-pick-edit="${idx}">Edit</button>` : ''}
-        <button class="btn btn-mint btn-xs" data-pick-sel="${idx}" ${why ? `disabled title="${escHtml(why)}"` : ''}>Select</button>
+        ${i.editable ? `<button class="btn btn-sky btn-xs" data-pick-edit="${idx}">Edit</button>` : ''}
+        <button class="btn btn-mint btn-xs" data-pick-sel="${idx}" ${why ? `disabled title="${escAttr(why)}"` : ''}>Select</button>
       </div>
     </div>`;
   }).join('');
@@ -130,9 +130,9 @@ function _renderPickerList(q) {
     const item = items[+b.dataset.pickEdit];
     if (_pickerState.type === 'task') {
       openTaskModal({ id: item.key, onSaved: () => { _loadPickerData('task').then(() => _renderPickerList(document.getElementById('picker-search').value)); } });
-    } else if (_pickerState.type === 'baseline') {
+    } else if (_pickerState.type === 'playbook') {
       closePicker();
-      // Reuse the baselines editor modal for the baseline.
+      // Reuse the playbooks editor modal for the playbook.
       if (typeof _startEdit === 'function') _startEdit(item.raw.id);
     }
   }));
@@ -144,9 +144,9 @@ function _pickerAdd(type) {
       _loadPickerData('task').then(() => _renderPickerList(''));
       showToast('Task created', 'success');
     } });
-  } else if (type === 'baseline') {
+  } else if (type === 'playbook') {
     closePicker();
-    if (typeof _openEditor === 'function') _openEditor(null, null);   // baselines editor
+    if (typeof _openEditor === 'function') _openEditor(null, null);   // playbooks editor
   }
 }
 
@@ -171,7 +171,7 @@ async function openInputsModal(opts) {
       const current = (override[String(i)] || {})[name];
       const fallback = (a.params || {})[name];
       return `<label>${escHtml(name)}${required ? ' *' : ''}</label>
-        <input type="text" class="form-control" data-inp-action="${i}" data-inp-name="${escHtml(name)}"
+        <input type="text" class="form-control" data-inp-action="${i}" data-inp-name="${escAttr(name)}"
           value="${current != null ? escHtml(String(current)) : ''}"
           placeholder="${fallback != null ? escHtml(String(fallback)) : ''}">`;
     }).join('');

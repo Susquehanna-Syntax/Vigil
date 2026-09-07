@@ -1,17 +1,17 @@
-"""Automations — run a task or baseline automatically, on an event or a
-schedule. Free for everyone (part of the baselines/automation surface).
+"""Automations — run a task or playbook automatically, on an event or a
+schedule. Free for everyone (part of the playbooks/automation surface).
 
 Two trigger kinds:
 
 - **event**: a lifecycle hook fires (an alert, a host approval, …) and, if the
   optional filters match, the action runs. Alert events target the host that
   raised the alert by default, which is the useful case: "when disk-critical
-  fires on a host, run the cleanup baseline on THAT host."
+  fires on a host, run the cleanup playbook on THAT host."
 - **schedule**: a crontab drives it via Celery beat. "Every night at 2am, run
   the backup task on the backup hosts."
 
-The action is either a single task definition or a named baseline (expanded
-through the baseline machinery, so a scheduled automation can run a whole
+The action is either a single task definition or a named playbook (expanded
+through the playbook machinery, so a scheduled automation can run a whole
 sequence). Dispatch reuses the same signed-task path as everything else — the
 agent still validates every action against its own allowlist.
 """
@@ -33,7 +33,7 @@ class Automation(TagRowSyncMixin, models.Model):
 
     class ActionKind(models.TextChoices):
         TASK = "task", "Task definition"
-        BASELINE = "baseline", "Baseline"
+        PLAYBOOK = "playbook", "Playbook"
 
     class DispatchMode(models.TextChoices):
         DIRECT = "direct", "All at once"
@@ -112,7 +112,7 @@ class Automation(TagRowSyncMixin, models.Model):
 
     #: How the work reaches the hosts. ``direct`` dispatches to every matching
     #: host at once, which is what automations have always done. ``rollout``
-    #: hands the same task or baseline to the wave machinery instead, so an
+    #: hands the same task or playbook to the wave machinery instead, so an
     #: automation firing on an event can still patch a canary first. In rollout
     #: mode the automation's own target selection is ignored — waves decide
     #: membership by tag, and having two host-selection rules fight would be
@@ -122,11 +122,11 @@ class Automation(TagRowSyncMixin, models.Model):
     task_definition = models.ForeignKey(
         "tasks.TaskDefinition", null=True, blank=True,
         on_delete=models.CASCADE, related_name="automations")
-    # The baseline to run when action_kind == BASELINE. A real FK, not a name:
-    # once baselines are site-scoped, two sites may hold same-named baselines
+    # The playbook to run when action_kind == PLAYBOOK. A real FK, not a name:
+    # once playbooks are site-scoped, two sites may hold same-named playbooks
     # and a name lookup could execute the wrong site's steps.
-    baseline = models.ForeignKey(
-        "baselines.Baseline", on_delete=models.SET_NULL,
+    playbook = models.ForeignKey(
+        "baselines.Playbook", on_delete=models.SET_NULL,
         null=True, blank=True, related_name="automations",
     )
     # Input overrides for the task action: {"<action_index>": {"<param>": value}}

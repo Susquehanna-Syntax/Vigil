@@ -54,7 +54,8 @@ GRACE_DAYS = 14
 #: Monitoring/alerting/agents are deliberately NOT feature names — they are
 #: not features, they are the product, and no code path may gate them.
 FREE_FEATURES = frozenset({
-    "baselines",
+    "dashboards",
+    "playbooks",
     "ai_suggestions",   # BYO endpoint — same code path Business runs (§2)
     "status_pages",     # the basic page; branding/custom-domain is Business
     "jackil_integration",
@@ -69,6 +70,7 @@ BUSINESS_FEATURES = frozenset({
     "branding",
     "status_branding",  # branded/public/custom-domain status pages
     "sso",
+    "dashboard_sharing",  # read-only sharing of a dashboard; the flag lives in core
 })
 
 #: Free-tier limits (soft — exceeded means a banner, never a block).
@@ -321,6 +323,18 @@ def require_feature(name: str):
         default_detail = upgrade_body(name)
         default_code = "license_required"
 
+        def __init__(self, detail=None, code=None):
+            super().__init__(detail, code)
+            # DRF runs the detail through ErrorDetail, which is a str subclass,
+            # so `"licensed": False` rendered as the string "False" — truthy in
+            # JavaScript, and therefore read by a client as *licensed*. The
+            # endpoints that build the body themselves (statuspage, accounts)
+            # answered with a real boolean, so the same field disagreed with
+            # itself depending on which gate refused. DRF's handler passes a
+            # plain dict through untouched, so the body is re-set after
+            # super() rather than coerced.
+            self.detail = upgrade_body(name)
+
     class _HasLicensedFeature(BasePermission):
         message = upgrade_body(name)
 
@@ -331,6 +345,24 @@ def require_feature(name: str):
 
     _HasLicensedFeature.__name__ = f"Requires_{name}"
     return _HasLicensedFeature
+
+
+def licence_gate(request, name: str):
+    """Return a 402 Response when *name* is not licensed, else None.
+
+    The same six lines had been written out in sites, branding and dashboards,
+    differing only in the feature name. A gate copied per app is a gate that
+    drifts per app.
+    """
+    from rest_framework.exceptions import APIException
+    from rest_framework.response import Response
+
+    perm = require_feature(name)()
+    try:
+        perm.has_permission(request, None)
+    except APIException as exc:
+        return Response(exc.detail, status=402)
+    return None
 
 
 # --------------------------------------------------------------------------

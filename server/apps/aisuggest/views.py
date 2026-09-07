@@ -14,6 +14,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from vigil import scoping
 from apps.accounts.permissions import IsAdmin, IsOperator
 from apps.alerts.models import Alert
 from apps.tasks.spec import SpecError, parse_and_validate
@@ -137,7 +138,9 @@ def suggest_for_container(request, host_id, container_id):
 
     if not AiProvider.objects.filter(enabled=True).exists():
         return _no_providers()
-    host = get_object_or_404(Host, pk=host_id)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
     container = get_object_or_404(DockerContainer, host=host,
                                   container_id=container_id)
     provider_id = request.data.get("provider_id")

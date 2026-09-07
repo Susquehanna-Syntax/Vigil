@@ -34,8 +34,8 @@ async function loadUsers() {
         `</div>` +
         `<div class="user-row-actions">` +
           `<select class="form-control user-role-select" data-uid="${u.id}"${isMe ? ' disabled' : ''}>${opts}</select>` +
-          `<button class="btn btn-outline btn-sm user-sites" data-uid="${u.id}">Sites</button>` +
-          (isMe ? '' : `<button class="btn btn-outline btn-sm user-del" data-uid="${u.id}">Delete</button>`) +
+          `<button class="btn btn-sky btn-sm user-sites" data-uid="${u.id}">Sites</button>` +
+          (isMe ? '' : `<button class="btn btn-rose btn-sm user-del" data-uid="${u.id}">Delete</button>`) +
         `</div>`;
       list.appendChild(row);
     });

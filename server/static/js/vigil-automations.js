@@ -1,12 +1,12 @@
 // vigil-automations.js
-// Owns: the Automation sub-panel on the Baselines page. Create rules that run
-// a task or baseline when an event fires (with severity/tag filters) or on a
+// Owns: the Automation sub-panel on the Playbooks page. Create rules that run
+// a task or playbook when an event fires (with severity/tag filters) or on a
 // cron schedule. Backed by /api/v1/automations/.
 // Depends on: vigil-utils.js (apiJson, confirmModal, showToast, escHtml).
 
 let _autoEvents = {};      // event name -> label
 let _autoDefs = [];        // task definitions
-let _autoBaselines = [];   // baseline names
+let _autoPlaybooks = [];   // playbook names
 let _autoHosts = [];       // selectable hosts
 let _autoRules = [];       // alert rules (for specific-event)
 let _autoParamsOverride = {};  // task input overrides for the automation being edited
@@ -17,16 +17,16 @@ async function loadAutomations() {
   if (!list) return;
   list.innerHTML = '<div class="empty-block"><p>Loading…</p></div>';
   try {
-    const [data, defs, baselines, hosts, rules] = await Promise.all([
+    const [data, defs, playbooks, hosts, rules] = await Promise.all([
       apiJson('/api/v1/automations/'),
       apiJson('/api/v1/tasks/definitions/'),
-      apiJson('/api/v1/baselines/'),
+      apiJson('/api/v1/playbooks/'),
       apiJson('/api/v1/status-pages/hosts/'),
       apiJson('/api/v1/alerts/rules/').catch(() => []),
     ]);
     _autoEvents = data.events || {};
     _autoDefs = Array.isArray(defs) ? defs : (defs.results || []);
-    _autoBaselines = baselines;
+    _autoPlaybooks = playbooks;
     _autoHosts = hosts;
     _autoRules = rules;
     _fillEditorOptions();
@@ -44,7 +44,7 @@ function _filterAutomations() {
     (a.name || '').toLowerCase().includes(q) ||
     (a.trigger || '').toLowerCase().includes(q) ||
     (a.event || '').toLowerCase().includes(q) ||
-    (a.baseline_name || '').toLowerCase().includes(q) ||
+    (a.playbook_name || '').toLowerCase().includes(q) ||
     (a.task_name || '').toLowerCase().includes(q) ||
     (a.target_tags || []).some(t => t.toLowerCase().includes(q)));
 }
@@ -59,15 +59,15 @@ function _renderAutomations(autos) {
   if (!autos.length) {
     list.innerHTML = `<div class="empty-block">
       <h4>No automations yet</h4>
-      <p>Run a task or baseline automatically — for example "when a critical alert fires, run the cleanup baseline on that host," or "every night at 2am, run backups on the backup hosts."</p></div>`;
+      <p>Run a task or playbook automatically — for example "when a critical alert fires, run the cleanup playbook on that host," or "every night at 2am, run backups on the backup hosts."</p></div>`;
     return;
   }
   list.innerHTML = autos.map(a => {
     const when = a.trigger === 'event'
       ? `<span class="automation-badge event">on event</span> when <b>${escHtml(_autoEvents[a.event] || a.event)}</b>${a.event_rule_name ? ` — <b>${escHtml(a.event_rule_name)}</b>` : ''}${a.min_severity ? ` (≥ ${escHtml(a.min_severity)})` : ''}${(a.event_tags || []).length ? ` on <span class="chip">${a.event_tags.map(escHtml).join('</span> <span class="chip">')}</span>` : ''}`
       : `<span class="automation-badge schedule">scheduled</span> cron <code class="inline">${escHtml(a.cron_display)}</code>`;
-    const action = a.action_kind === 'baseline'
-      ? `baseline <b>${escHtml(a.baseline_name)}</b>` : `task <b>${escHtml(a.task_name || '?')}</b>`;
+    const action = a.action_kind === 'playbook'
+      ? `playbook <b>${escHtml(a.playbook_name)}</b>` : `task <b>${escHtml(a.task_name || '?')}</b>`;
     const target = { event_host: 'the event host', tags: 'hosts tagged ' + (a.target_tags || []).join(', '),
                      host: 'a specific host', all: 'all managed hosts' }[a.target] || a.target;
     const last = a.last_run ? new Date(a.last_run).toLocaleString() : 'never';
@@ -78,10 +78,10 @@ function _renderAutomations(autos) {
           <span class="bl-badge ${a.enabled ? 'on' : 'off'}">${a.enabled ? 'enabled' : 'off'}</span>
         </div>
         <div class="card-actions">
-          <button class="btn btn-outline btn-xs" data-au-run="${a.id}">Run now</button>
-          <button class="btn btn-outline btn-xs" data-au-toggle="${a.id}" data-en="${a.enabled}">${a.enabled ? 'Disable' : 'Enable'}</button>
-          <button class="btn btn-outline btn-xs" data-au-edit="${a.id}">Edit</button>
-          <button class="btn btn-outline btn-xs" style="color:var(--rose);" data-au-del="${a.id}">Delete</button>
+          <button class="btn btn-sky btn-xs" data-au-run="${a.id}">Run now</button>
+          <button class="btn btn-${a.enabled ? 'lemon' : 'mint'} btn-xs" data-au-toggle="${a.id}" data-en="${a.enabled}">${a.enabled ? 'Disable' : 'Enable'}</button>
+          <button class="btn btn-sky btn-xs" data-au-edit="${a.id}">Edit</button>
+          <button class="btn btn-rose btn-xs" data-au-del="${a.id}">Delete</button>
         </div>
       </div>
       <div class="muted-note" style="margin-bottom:8px;">${when} → run ${action} on ${escHtml(target)}.</div>
@@ -113,13 +113,13 @@ function _wireAutoCards(autos) {
 
 /* ── Editor ──────────────────────────────────────────────────────────── */
 function _fillEditorOptions() {
-  // Only the event trigger is still a native select; task/baseline/host are
+  // Only the event trigger is still a native select; task/playbook/host are
   // chosen through the searchable picker modal.
   const ev = document.getElementById('auto-event');
   if (ev) ev.innerHTML = Object.entries(_autoEvents).map(([k, v]) => `<option value="${k}">${escHtml(v)}</option>`).join('');
   const rule = document.getElementById('auto-event-rule');
   if (rule) rule.innerHTML = '<option value="">any alert</option>' +
-    _autoRules.map(r => `<option value="${escHtml(String(r.id))}">${escHtml(r.name)} (${escHtml(r.severity)})</option>`).join('');
+    _autoRules.map(r => `<option value="${escAttr(String(r.id))}">${escHtml(r.name)} (${escHtml(r.severity)})</option>`).join('');
   // Scopes which alerts fire this automation, not which hosts it runs on.
   // The host itself is chosen through the picker, so there is no <option>
   // list to rebuild here — only the button's label needs refreshing.
@@ -137,9 +137,9 @@ function _autoPickAction() {
       _autoRefreshActionLabel();
     } });
   } else {
-    openPicker({ type: 'baseline', title: 'Pick a baseline to run', onSelect: (item) => {
-      if (!_autoBaselines.some(b => b.name === item.key)) _autoBaselines.push(item.raw);
-      document.getElementById('auto-action-baseline').value = item.key;
+    openPicker({ type: 'playbook', title: 'Pick a playbook to run', onSelect: (item) => {
+      if (!_autoPlaybooks.some(b => b.name === item.key)) _autoPlaybooks.push(item.raw);
+      document.getElementById('auto-action-playbook').value = item.key;
       _autoRefreshActionLabel();
     } });
   }
@@ -195,8 +195,8 @@ function _autoRefreshActionLabel() {
     const d = _autoDefs.find(x => String(x.id) === String(id));
     label.textContent = d ? d.name : 'Choose a task…';
   } else {
-    const name = document.getElementById('auto-action-baseline').value;
-    label.textContent = name || 'Choose a baseline…';
+    const name = document.getElementById('auto-action-playbook').value;
+    label.textContent = name || 'Choose a playbook…';
   }
 }
 
@@ -231,7 +231,7 @@ function _openAutoEditor(a) {
   set('auto-cron-mon', cron.month); set('auto-cron-dow', cron.dow);
   set('auto-action-kind', a ? a.action_kind : 'task');
   set('auto-action-task', a && a.task_definition ? a.task_definition : '');
-  set('auto-action-baseline', a ? a.baseline_name : '');
+  set('auto-action-playbook', a ? a.playbook_name : '');
   set('auto-target', a ? a.target : 'event_host');
   set('auto-dispatch-mode', a ? (a.dispatch_mode || 'direct') : 'direct');
   set('auto-target-tags', a ? (a.target_tags || []).join(', ') : '');
@@ -245,8 +245,8 @@ function _openAutoEditor(a) {
   modal.classList.add('open');
 }
 
-// View/edit the referenced task (opens the task editor) or baseline (opens
-// its editor). Baselines are edited on the Baselines sub-tab.
+// View/edit the referenced task (opens the task editor) or playbook (opens
+// its editor). Playbooks are edited on the Playbooks sub-tab.
 function _viewAutoAction() {
   const kind = document.getElementById('auto-action-kind').value;
   if (kind === 'task') {
@@ -259,11 +259,11 @@ function _viewAutoAction() {
       _autoRefreshActionLabel();
     } });
   } else {
-    const name = document.getElementById('auto-action-baseline').value;
-    if (!name) return showToast('Pick a baseline first', 'error');
-    const b = _autoBaselines.find(x => x.name === name);
+    const name = document.getElementById('auto-action-playbook').value;
+    if (!name) return showToast('Pick a playbook first', 'error');
+    const b = _autoPlaybooks.find(x => x.name === name);
     _closeAutoEditor();
-    document.querySelector('#page-baselines .sub-tab[data-subtab="bl-panel"]')?.click();
+    document.querySelector('#page-playbooks .sub-tab[data-subtab="bl-panel"]')?.click();
     if (b && typeof _startEdit === 'function') _startEdit(b.id);
   }
 }
@@ -285,7 +285,7 @@ async function _saveAutomation() {
             month: v('auto-cron-mon'), dow: v('auto-cron-dow') },
     action_kind: v('auto-action-kind'),
     task_definition: v('auto-action-task') || null,
-    baseline_name: v('auto-action-baseline'),
+    playbook_name: v('auto-action-playbook'),
     target: v('auto-target'),
     dispatch_mode: v('auto-dispatch-mode'),
     target_tags: v('auto-target-tags').split(',').map(s => s.trim()).filter(Boolean),
@@ -319,16 +319,16 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('auto-view-action')?.addEventListener('click', _viewAutoAction);
   document.getElementById('auto-action-btn')?.addEventListener('click', _autoPickAction);
   document.getElementById('auto-target-host-btn')?.addEventListener('click', _autoPickHost);
-  // Changing task↔baseline clears the previous choice so the label is honest.
+  // Changing task↔playbook clears the previous choice so the label is honest.
   document.getElementById('auto-action-kind')?.addEventListener('change', () => {
     document.getElementById('auto-action-task').value = '';
-    document.getElementById('auto-action-baseline').value = '';
+    document.getElementById('auto-action-playbook').value = '';
     _autoParamsOverride = {};
     _autoRefreshActionLabel();
   });
   document.getElementById('auto-inputs-btn')?.addEventListener('click', () => {
     if (document.getElementById('auto-action-kind').value !== 'task')
-      return showToast('Inputs apply to tasks — edit the baseline’s steps instead', 'error');
+      return showToast('Inputs apply to tasks — edit the playbook’s steps instead', 'error');
     const id = document.getElementById('auto-action-task').value;
     const def = _autoDefs.find(d => String(d.id) === String(id));
     if (!def) return showToast('Pick a task first', 'error');

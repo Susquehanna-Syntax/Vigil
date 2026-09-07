@@ -6,6 +6,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from vigil import scoping
 from apps.hosts.models import Host
 
 from .models import VulnFinding, VulnScan, VulnScoreHistory, VulnSummary
@@ -158,6 +159,11 @@ def score_history(request, host_id):
     except (TypeError, ValueError):
         days = 30
     days = max(1, min(days, 365))
+    # Never fetched the host, so it never checked whether the caller may see
+    # it — the score history of any machine was readable by id.
+    _, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
     qs = VulnScoreHistory.objects.filter(host_id=host_id).order_by("-date")[:days]
     return Response(VulnScoreHistorySerializer(qs, many=True).data)
 
@@ -194,7 +200,9 @@ def scan_create(request, host_id):
 
     from .scanners import SCANNER_REGISTRY
 
-    host = get_object_or_404(Host, pk=host_id)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
 
     network_engines = (VulnScan.Scanner.NESSUS, VulnScan.Scanner.GREENBONE)
     requested = (request.data.get("scanner") or "").strip().lower()

@@ -33,7 +33,7 @@ function _tagCard(t) {
     ? '<span style="color:var(--text-3);">on no machines</span>'
     : `on ${t.host_count} machine${t.host_count === 1 ? '' : 's'}`;
   const actions = t.editable
-    ? `<button class="btn btn-outline btn-sm" onclick="renameTag(${t.id})">Rename</button>
+    ? `<button class="btn btn-sky btn-sm" onclick="renameTag(${t.id})">Rename</button>
        <button class="btn btn-ghost btn-sm" style="color:var(--rose);" onclick="deleteTag(${t.id})">Delete</button>`
     : '<span class="confirm-hint" style="margin:0;">maintained by Vigil</span>';
   return `<div class="bl-card">
@@ -59,7 +59,7 @@ function _renderTags() {
     box.innerHTML = `<div class="empty-block">
       <h4>${searching ? 'No tags match that search' : 'No tags yet'}</h4>
       <p>${searching ? 'Clear the search to see them all.'
-        : 'Tags are how waves, baselines and automations pick machines. Create one here, then put it on a machine from its host card.'}</p>
+        : 'Tags are how waves, playbooks and automations pick machines. Create one here, then put it on a machine from its host card.'}</p>
     </div>`;
     return;
   }
@@ -96,7 +96,7 @@ async function renameTag(tagId) {
   const tag = _allTags.find(t => t.id === tagId);
   if (!tag) return;
   const name = prompt(
-    `Rename "${tag.name}". This renames it on every machine, wave, baseline and ` +
+    `Rename "${tag.name}". This renames it on every machine, wave, playbook and ` +
     `automation that uses it.`, tag.name);
   if (!name || name.trim() === tag.name) return;
   try {
@@ -213,7 +213,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Every tag field in the app, in one place so none gets forgotten.
   attachTagPicker('wave-tags', { title: 'Machines in this wave are tagged' });
-  attachTagPicker('bl-tags', { title: 'Machines this baseline targets' });
+  attachTagPicker('wave-group-tags', { title: 'Ladders this wave belongs to' });
+  attachTagPicker('rollout-start-group', { title: 'Send this to the wave group' });
+  attachTagPicker('bl-tags', { title: 'Machines this playbook targets' });
   attachTagPicker('auto-event-tags', { title: 'Only fire for hosts tagged' });
   attachTagPicker('auto-target-tags', { title: 'Run on hosts tagged' });
   attachTagPicker('repro-prof-tags', { title: 'Tag the rebuilt host with',

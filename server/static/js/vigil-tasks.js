@@ -511,9 +511,11 @@ function defCardHtml(def, opts) {
     : '';
   // Community cards live in vigil-community.js now — this renders the
   // operator's own library only.
-  const buttons =
-    `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openDefinitionEditor('${def.id}')">Edit</button>
-     <button class="btn btn-sky btn-sm" onclick="event.stopPropagation(); openDeployModal('${def.id}')">Deploy</button>`;
+  const buttons = def.archived_at
+    ? `<button class="btn btn-mint btn-sm" onclick="event.stopPropagation(); setDefinitionArchived('${def.id}', false)">Restore</button>`
+    : `<button class="btn btn-sky btn-sm" onclick="event.stopPropagation(); openDefinitionEditor('${def.id}')">Edit</button>
+     <button class="btn btn-peach btn-sm" onclick="event.stopPropagation(); openDeployModal('${def.id}')">Deploy</button>
+     <button class="btn btn-lemon btn-sm" onclick="event.stopPropagation(); setDefinitionArchived('${def.id}', true)">Archive</button>`;
   const cardClick = `openDefinitionEditor('${def.id}')`;
   return `
     <div class="def-card" onclick="${cardClick}">
@@ -572,9 +574,10 @@ function _renderTaskGrid(scope) {
 
 function filterTaskGrid(scope) { _renderTaskGrid(scope); }
 
-async function refreshTaskLibrary() {
+async function refreshTaskLibrary(archived) {
   try {
-    taskGridCache.library = await apiJson('/api/v1/tasks/definitions/?scope=mine');
+    taskGridCache.library = await apiJson(
+      '/api/v1/tasks/definitions/?scope=mine' + (archived ? '&archived=1' : ''));
     _renderTaskGrid('library');
   } catch (e) {
     showToast('Failed to load library: ' + e.message, 'error');
@@ -750,7 +753,7 @@ async function copyCommunityYaml() {
   const yaml = window.__pendingCommunityYaml || '';
   if (!yaml) return;
   try {
-    await navigator.clipboard.writeText(yaml);
+    await copyText(yaml);
     showToast('YAML copied to clipboard', 'success');
   } catch {
     showToast('Clipboard blocked — copy from the editor manually', 'error');
@@ -1057,3 +1060,22 @@ document.querySelectorAll('.tab-bar[data-tab-group="tasks"] .tab').forEach(tab =
     if (tab.dataset.tab === 'tasks-history') refreshTaskHistory(1);
   });
 });
+
+
+/* A definition is never deleted — a playbook or automation still pointing at
+   it would lose a step without saying so — so archiving is how one is retired. */
+async function setDefinitionArchived(id, archived) {
+  if (archived && !(await confirmModal(
+    'Archive this task? It leaves the list and the pickers. Playbooks and '
+    + 'automations already using it keep working.',
+    { confirmText: 'Archive' }))) return;
+  try {
+    await apiJson(`/api/v1/tasks/definitions/${id}/archive/`, {
+      method: 'POST', body: JSON.stringify({ restore: !archived }) });
+  } catch (e) {
+    showToast(e.message || 'Could not archive', 'error');
+    return;
+  }
+  showToast(archived ? 'Task archived' : 'Task restored', 'success');
+  refreshTaskLibrary();
+}
