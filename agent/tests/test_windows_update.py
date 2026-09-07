@@ -8,7 +8,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -435,3 +435,62 @@ class ExecutorHandlerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SummaryTests(unittest.TestCase):
+    """The check-in summary: counts, caching, and refusing to guess."""
+
+    def setUp(self):
+        windows_update._summary_cache.update({"at": 0.0, "value": None})
+
+    def test_counts_by_severity_and_reboot(self):
+        updates = [
+            {"severity": "critical", "reboot_required": True},
+            {"severity": "critical", "reboot_required": False},
+            {"severity": "important", "reboot_required": True},
+            {"severity": "moderate", "reboot_required": False},
+        ]
+        counts = windows_update._severity_counts(updates)
+        self.assertEqual(counts["pending"], 4)
+        self.assertEqual(counts["critical"], 2)
+        self.assertEqual(counts["important"], 1)
+        self.assertEqual(counts["reboot_required"], 2)
+
+    def test_no_backend_reports_nothing_rather_than_zero(self):
+        """A machine that cannot count must not tell the server it is clean."""
+        with patch.object(windows_update, "detect", return_value=None):
+            self.assertIsNone(windows_update.summary())
+
+    def test_a_failed_scan_reports_nothing_rather_than_zero(self):
+        backend = MagicMock()
+        backend.scan.side_effect = OSError("COM is having a day")
+        with patch.object(windows_update, "detect", return_value=backend):
+            self.assertIsNone(windows_update.summary())
+
+    def test_a_successful_scan_is_cached_rather_than_repeated(self):
+        backend = MagicMock()
+        backend.scan.return_value = [{"severity": "critical", "reboot_required": False}]
+        with patch.object(windows_update, "detect", return_value=backend):
+            first = windows_update.summary()
+            second = windows_update.summary()
+        self.assertEqual(first, second)
+        self.assertEqual(backend.scan.call_count, 1,
+                         "scanning goes through COM and is slow; it must not "
+                         "run on every check-in")
+
+    def test_force_rescans_even_inside_the_window(self):
+        backend = MagicMock()
+        backend.scan.return_value = []
+        with patch.object(windows_update, "detect", return_value=backend):
+            windows_update.summary()
+            windows_update.summary(force=True)
+        self.assertEqual(backend.scan.call_count, 2)
+
+    def test_the_cache_expires(self):
+        backend = MagicMock()
+        backend.scan.return_value = []
+        with patch.object(windows_update, "detect", return_value=backend):
+            windows_update.summary()
+            windows_update._summary_cache["at"] -= windows_update.SUMMARY_TTL_SECONDS + 1
+            windows_update.summary()
+        self.assertEqual(backend.scan.call_count, 2)

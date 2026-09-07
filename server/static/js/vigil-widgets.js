@@ -538,16 +538,30 @@ async function _renderWindowsPatches(body) {
   const rows = _wRows(await _wCached('/api/v1/hosts/'))
     .filter(h => /windows/i.test(h.os || ''));
   if (!rows.length) { _wEmpty(body, 'No Windows hosts'); return; }
-  // Per-host missing-update counts are not stored anywhere yet: the agent's
-  // Windows scan reports into a task's output rather than a queryable field.
-  // Showing what is known beats inventing a number.
-  body.innerHTML = `<div class="dash-hosts">` + rows.map(h => `
-    <div class="dash-host">
-      <span class="dash-host-dot dash-dot-${escAttr(h.status)}"></span>
-      <span class="dash-host-name">${escHtml(h.hostname)}</span>
-      <span class="dash-host-meta">${h.reboot_required ? 'reboot pending' : 'ok'}</span>
-    </div>`).join('') + `</div>
-    <div class="muted-note" style="margin-top:8px;">Update counts are not collected yet.</div>`;
+  // Sort by what is missing, worst first; hosts that have never reported sink
+  // to the bottom rather than reading as clean.
+  const counted = rows.map(h => ({ host: h, u: h.windows_updates || null }));
+  counted.sort((a, b) => (b.u ? b.u.pending : -1) - (a.u ? a.u.pending : -1));
+  body.innerHTML = `<div class="dash-procs">` + counted.map(({ host, u }) => {
+    if (!u) {
+      return `<div class="dash-proc">
+        <span class="dash-proc-name">${escHtml(host.hostname)}</span>
+        <span class="dash-proc-value muted-note" title="No agent has counted yet">—</span>
+      </div>`;
+    }
+    const colour = u.critical ? 'var(--rose)'
+                 : u.pending ? 'var(--lemon)' : 'var(--mint)';
+    const detail = u.critical ? `${u.critical} critical` : (u.pending ? 'pending' : 'up to date');
+    return `<div class="dash-proc">
+      <span class="dash-proc-name">
+        <span class="dash-host-dot dash-dot-${escAttr(host.status)}"></span>
+        ${escHtml(host.hostname)}
+        ${host.reboot_required ? '<span class="chip">reboot</span>' : ''}
+      </span>
+      <span class="dash-proc-value" style="color:${colour};"
+            title="${escAttr(detail)}">${u.pending}</span>
+    </div>`;
+  }).join('') + `</div>`;
 }
 
 /* ── Utility ───────────────────────────────────────────────────────────── */

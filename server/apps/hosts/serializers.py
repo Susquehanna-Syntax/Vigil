@@ -13,6 +13,8 @@ class HostSerializer(serializers.ModelSerializer):
     class Meta:
         model = Host
         fields = [
+            "windows_updates",
+            "windows_updates_at",
             "id",
             "hostname",
             "os",

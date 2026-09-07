@@ -359,6 +359,18 @@ def checkin(request):
         # only the colon-prefixed namespace we manage gets refreshed.
         _sync_host_auto_tags(host, inv_payload)
 
+    # Absent means the agent cannot count (not Windows, too old, or the scan
+    # failed), so the stored value is left alone rather than being zeroed by a
+    # machine that does not know.
+    win = data.get("windows_updates")
+    if isinstance(win, dict):
+        host.windows_updates = {
+            key: int(win.get(key) or 0)
+            for key in ("pending", "critical", "important", "reboot_required")
+        }
+        host.windows_updates_at = now()
+        host.save(update_fields=["windows_updates", "windows_updates_at"])
+
     # Docker container snapshot — replace the host's set wholesale. Absent key
     # means the agent didn't report (old agent / no docker) and we leave the
     # existing rows alone; an explicit empty list means "no containers now".

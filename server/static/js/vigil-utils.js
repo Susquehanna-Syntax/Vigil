@@ -322,6 +322,44 @@ function confirmModal(message, opts) {
   });
 }
 
+/* ── Text prompt (replaces window.prompt) ─────────────────────────────── */
+function promptModal(message, opts) {
+  opts = opts || {};
+  return new Promise((resolve) => {
+    const m = mountModal('prompt');
+    m.setBody(`
+      <div class="modal-title">
+        <span id="prompt-title"></span>
+        <button class="modal-close" id="prompt-x" aria-label="Close">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="form-group">
+        <input type="text" class="form-control" id="prompt-input" maxlength="120">
+      </div>
+      <div class="confirm-actions">
+        <button class="btn btn-outline btn-sm" id="prompt-cancel">Cancel</button>
+        <button class="btn btn-mint btn-sm" id="prompt-ok"></button>
+      </div>`);
+    m.modal.querySelector('#prompt-title').textContent = message;
+    const input = m.modal.querySelector('#prompt-input');
+    input.value = opts.value || '';
+    if (opts.placeholder) input.placeholder = opts.placeholder;
+    m.modal.querySelector('#prompt-ok').textContent = opts.confirmText || 'Save';
+
+    const done = (val) => { m.close(); setTimeout(() => resolve(val), 200); };
+    m.modal.querySelector('#prompt-ok').onclick = () => done(input.value.trim() || null);
+    m.modal.querySelector('#prompt-cancel').onclick = () => done(null);
+    m.modal.querySelector('#prompt-x').onclick = () => done(null);
+    m.overlay.onclick = () => done(null);
+    input.onkeydown = (ev) => {
+      if (ev.key === 'Enter') done(input.value.trim() || null);
+      if (ev.key === 'Escape') done(null);
+    };
+    requestAnimationFrame(() => { m.open(); input.focus(); input.select(); });
+  });
+}
+
 /* ── Lightweight YAML syntax coloring (display only) ─────────────────── */
 function yamlToHtml(src) {
   const esc = (s) => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
