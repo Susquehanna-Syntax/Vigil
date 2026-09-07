@@ -558,3 +558,28 @@ class CardTitleTests(TestCase):
         from apps.dashboards.widgets import default_settings
 
         self.assertEqual(default_settings("alert_list")["title"], "")
+
+
+class RendererCoverageTests(TestCase):
+    """Every registered widget must have a renderer, and every renderer a
+    widget. A kind with no renderer shows "no renderer for this widget"; a
+    renderer with no kind is dead code nobody notices."""
+
+    def _renderer_map(self) -> set[str]:
+        import re
+        from pathlib import Path
+
+        from django.conf import settings as s
+
+        js = (Path(s.BASE_DIR) / "static" / "js" / "vigil-widgets.js").read_text()
+        block = re.search(r"const WIDGET_RENDERERS = \{(.*?)\n\};", js, re.S)
+        self.assertIsNotNone(block, "WIDGET_RENDERERS is not where the test expects")
+        return set(re.findall(r"^\s*(\w+):", block.group(1), re.M))
+
+    def test_every_registered_widget_has_a_renderer(self):
+        missing = set(WIDGET_REGISTRY) - self._renderer_map()
+        self.assertEqual(missing, set(), f"no renderer for: {sorted(missing)}")
+
+    def test_no_renderer_points_at_a_widget_that_does_not_exist(self):
+        orphans = self._renderer_map() - set(WIDGET_REGISTRY)
+        self.assertEqual(orphans, set(), f"renderers with no widget: {sorted(orphans)}")

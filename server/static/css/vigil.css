@@ -2981,3 +2981,10 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .rail-business .rail-card:hover { border-color: var(--rose); }
 
 @media (max-width: 900px) { .dash-rail { width: 100vw; } }
+.dash-cover-bar { height: 6px; border-radius: 3px; background: var(--s3); margin-top: 10px; overflow: hidden; }
+.dash-cover-bar span { display: block; height: 100%; background: var(--mint); transition: width .4s var(--ease-out-expo); }
+.dash-note-head { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+.dash-note-body { font-size: 12px; color: var(--text-2); line-height: 1.6; white-space: pre-wrap; }
+.dash-uptime { display: flex; gap: 2px; align-items: flex-end; height: 42px; margin-bottom: 8px; }
+.dash-uptime-bar { flex: 1; min-width: 2px; height: 100%; border-radius: 2px; opacity: .85; }
+.dash-uptime-bar:hover { opacity: 1; }
