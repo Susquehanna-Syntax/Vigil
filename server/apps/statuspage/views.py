@@ -199,8 +199,8 @@ def host_uptime(request, host_id):
     """
     from datetime import timedelta
 
-    from django.db.models import Avg
-    from django.db.models.functions import TruncDate
+    from django.db.models import Avg, IntegerField
+    from django.db.models.functions import Cast, TruncDate
     from django.utils.timezone import now
 
     from .models import HostUptimeSample
@@ -221,7 +221,10 @@ def host_uptime(request, host_id):
             .filter(host_id=host_id, time__gte=now() - timedelta(days=days))
             .annotate(day=TruncDate("time"))
             .values("day")
-            .annotate(ratio=Avg("up"))
+            # Cast to int before averaging: PostgreSQL has no avg(boolean), so
+            # a bare Avg("up") is a 500 there even though SQLite accepts it.
+            # Integer, not float — Postgres will not cast boolean to float8.
+            .annotate(ratio=Avg(Cast("up", IntegerField())))
             .order_by("day"))
     return Response([
         {"day": r["day"].isoformat(), "uptime": round(float(r["ratio"] or 0) * 100, 1)}
