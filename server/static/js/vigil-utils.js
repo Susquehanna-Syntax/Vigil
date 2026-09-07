@@ -468,3 +468,63 @@ document.addEventListener('visibilitychange', () => {
     }
   }
 });
+
+
+/* ── Field hints ───────────────────────────────────────────────────────────
+   The "?" markers carry their text in data-hint. The bubble used to be a
+   ::after on the marker, which meant any hint inside a modal was clipped: a
+   modal sets overflow-y:auto so it can scroll, and that makes it a scroll
+   container on both axes. A 380px bubble hanging off an 18px marker near the
+   modal's edge was cut off — visible as a hint that simply is not there.
+
+   So the bubble lives on <body>, positioned fixed against the marker's rect
+   and clamped to the viewport. One listener pair, delegated, so hints added to
+   the DOM later work without re-binding. */
+(function () {
+  let bubble = null;
+
+  function hide() {
+    if (bubble) { bubble.remove(); bubble = null; }
+  }
+
+  function show(marker) {
+    const text = marker.dataset.hint;
+    if (!text) return;
+    hide();
+    bubble = document.createElement('div');
+    bubble.className = 'field-hint-bubble';
+    bubble.textContent = text;          // never innerHTML: this is authored copy
+    document.body.appendChild(bubble);
+
+    const at = marker.getBoundingClientRect();
+    const box = bubble.getBoundingClientRect();
+    const margin = 12;
+    // Centre on the marker, then pull back inside whichever edge it crosses.
+    let left = at.left + at.width / 2 - box.width / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - box.width - margin));
+    // Below by default; above when there is no room, which is what happens for
+    // a hint near the bottom of a tall modal.
+    let top = at.bottom + 8;
+    if (top + box.height > window.innerHeight - margin) {
+      top = Math.max(margin, at.top - box.height - 8);
+    }
+    bubble.style.left = `${Math.round(left)}px`;
+    bubble.style.top = `${Math.round(top)}px`;
+  }
+
+  const enter = (ev) => {
+    const marker = ev.target.closest && ev.target.closest('.field-hint');
+    if (marker) show(marker);
+  };
+  document.addEventListener('mouseover', enter);
+  document.addEventListener('focusin', enter);
+  document.addEventListener('mouseout', (ev) => {
+    if (ev.target.closest && ev.target.closest('.field-hint')) hide();
+  });
+  document.addEventListener('focusout', (ev) => {
+    if (ev.target.closest && ev.target.closest('.field-hint')) hide();
+  });
+  // A bubble pinned to a rect goes stale the moment anything moves.
+  window.addEventListener('scroll', hide, true);
+  window.addEventListener('resize', hide);
+})();

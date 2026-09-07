@@ -62,7 +62,7 @@ function _spCard(p) {
     <div class="sp-card-actions">
       <button class="btn btn-mint btn-sm" data-sp-save="${p.id}">Save</button>
       <button class="btn btn-peach btn-sm" data-sp-rotate="${p.id}">Rotate URL</button>
-      <button class="btn btn-rose btn-sm" style="color:var(--rose);" data-sp-del="${p.id}">Delete</button>
+      <button class="btn btn-rose btn-sm" data-sp-del="${p.id}">Delete</button>
     </div>
   </div>`;
 }

@@ -207,7 +207,7 @@ function _renderEditorSteps() {
         <button class="btn btn-sky btn-xs" data-view="${escAttr(String(id))}" title="View / edit this task">View / edit</button>
         <button class="btn btn-outline btn-xs" data-mv="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>↑</button>
         <button class="btn btn-outline btn-xs" data-mv="${i}" data-dir="1" ${i === _editingSteps.length - 1 ? 'disabled' : ''}>↓</button>
-        <button class="btn btn-rose btn-xs" style="color:var(--rose);" data-rm="${i}">Remove</button>
+        <button class="btn btn-rose btn-xs" data-rm="${i}">Remove</button>
       </span></div>`;
   }).join('');
   wrap.querySelectorAll('[data-inputs]').forEach(b => b.addEventListener('click', () => {

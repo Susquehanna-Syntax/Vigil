@@ -2800,17 +2800,21 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .field-hint:hover, .field-hint:focus-visible {
   color: var(--sky); border-color: var(--sky); outline: none;
 }
-.field-hint:hover::after, .field-hint:focus-visible::after {
-  content: attr(data-hint);
-  position: absolute; top: 26px; left: 50%;
-  transform: translateX(-50%);
-  width: max-content; max-width: 380px;
+/* The bubble is a real element on <body>, not a ::after on the marker — see
+   vigil-utils.js attachFieldHints(). Anything absolutely positioned inside
+   .modal is clipped by it: the modal sets overflow-y:auto to scroll, which
+   makes it a scroll container horizontally too, so a 380px bubble hanging off
+   an 18px marker near the modal's edge was simply cut off. Fixed positioning
+   on body escapes that, and the script clamps it to the viewport. */
+.field-hint-bubble {
+  position: fixed;
+  width: max-content; max-width: min(380px, calc(100vw - 24px));
   background: var(--s3); color: var(--text-2);
   font-size: 12px; font-weight: 400; line-height: 1.55;
   text-align: left; white-space: pre-line;
   padding: 10px 13px; border-radius: 8px;
   border: 1px solid var(--border);
-  pointer-events: none; z-index: 60;
+  pointer-events: none; z-index: 400;
   animation: tooltipIn 0.3s var(--ease-out-expo) both;
 }
 

@@ -342,7 +342,7 @@ async function loadAiProviders() {
         <div class="card-actions">
           <button class="btn btn-sky btn-xs" data-ap-edit="${p.id}">Edit</button>
           <button class="btn btn-${p.enabled ? 'lemon' : 'mint'} btn-xs" data-ap-toggle="${p.id}" data-en="${p.enabled}">${p.enabled ? 'Disable' : 'Enable'}</button>
-          <button class="btn btn-rose btn-xs" style="color:var(--rose);" data-ap-del="${p.id}">Delete</button>
+          <button class="btn btn-rose btn-xs" data-ap-del="${p.id}">Delete</button>
         </div>
       </div>`).join('') : '<p class="muted-note">No providers yet. Add your first model endpoint below.</p>';
     list.querySelectorAll('[data-ap-del]').forEach(b => b.addEventListener('click', async () => {

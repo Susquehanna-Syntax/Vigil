@@ -81,7 +81,7 @@ function _renderAutomations(autos) {
           <button class="btn btn-sky btn-xs" data-au-run="${a.id}">Run now</button>
           <button class="btn btn-${a.enabled ? 'lemon' : 'mint'} btn-xs" data-au-toggle="${a.id}" data-en="${a.enabled}">${a.enabled ? 'Disable' : 'Enable'}</button>
           <button class="btn btn-sky btn-xs" data-au-edit="${a.id}">Edit</button>
-          <button class="btn btn-rose btn-xs" style="color:var(--rose);" data-au-del="${a.id}">Delete</button>
+          <button class="btn btn-rose btn-xs" data-au-del="${a.id}">Delete</button>
         </div>
       </div>
       <div class="muted-note" style="margin-bottom:8px;">${when} → run ${action} on ${escHtml(target)}.</div>
