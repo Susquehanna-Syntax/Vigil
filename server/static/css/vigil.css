@@ -2866,6 +2866,101 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .dash-proc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dash-proc-value { font-family: var(--font-mono); color: var(--text-3); flex-shrink: 0; }
 
+/* ── Dashboard list cards ───────────────────────────────────────────────
+   The list widgets used to emit flat rows of text, which read as a wall at any
+   size. Each row is now a skinny card carrying a left edge in the colour of
+   whatever the row is about, so severity and state are legible without a word
+   spent on them. Cards that lead somewhere say so on hover. */
+.dash-cards { display: flex; flex-direction: column; gap: 6px; }
+.dash-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px;
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-3);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  transition: background .18s, border-color .18s, transform .18s var(--ease-out-expo);
+}
+.dash-card[data-nav], .dash-card[data-nav-host] { cursor: pointer; }
+.dash-card[data-nav]:hover, .dash-card[data-nav-host]:hover {
+  background: var(--s3); border-color: var(--s4); transform: translateX(2px);
+}
+.dash-card[data-nav]:active, .dash-card[data-nav-host]:active { transform: translateX(1px) scale(0.995); }
+.dash-card-main { flex: 1; min-width: 0; }
+.dash-card-title {
+  font-weight: 600; color: var(--text-1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dash-card-sub {
+  margin-top: 2px; font-size: 11px; color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dash-card-right {
+  flex-shrink: 0; text-align: right;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-2);
+}
+.dash-card-right .dash-card-sub { text-align: right; }
+.dash-card-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--text-3); }
+
+/* The edge colour is the row's meaning: severity for alerts and findings,
+   run state for history, up/down for containers and automations. */
+.dash-card.edge-rose  { border-left-color: var(--rose); }
+.dash-card.edge-peach { border-left-color: var(--peach); }
+.dash-card.edge-lemon { border-left-color: var(--lemon); }
+.dash-card.edge-mint  { border-left-color: var(--mint); }
+.dash-card.edge-sky   { border-left-color: var(--sky); }
+.dash-card.edge-lav   { border-left-color: var(--lavender); }
+.dash-card.edge-grey  { border-left-color: var(--text-3); }
+.dash-card-dot.edge-rose  { background: var(--rose); }
+.dash-card-dot.edge-peach { background: var(--peach); }
+.dash-card-dot.edge-lemon { background: var(--lemon); }
+.dash-card-dot.edge-mint  { background: var(--mint); }
+.dash-card-dot.edge-sky   { background: var(--sky); }
+.dash-card-dot.edge-lav   { background: var(--lavender); }
+.dash-card-dot.edge-grey  { background: var(--text-3); }
+
+/* Briefly marks whatever a widget navigated to, so the click lands somewhere
+   visible rather than dropping the operator on a long page. */
+@keyframes dashFlash {
+  0%   { box-shadow: inset 0 0 0 2px var(--sky); }
+  100% { box-shadow: inset 0 0 0 2px transparent; }
+}
+.dash-flash { animation: dashFlash 1.6s var(--ease-out-expo) both; border-radius: var(--r-md); }
+
+/* Host cards inside a widget. The page's own grid is sized for a full-width
+   column; in a widget the cards have to reflow to whatever the operator sized
+   the tile to, and the list scrolls rather than clipping. */
+.dash-host-search {
+  margin-bottom: 10px; padding: 6px 10px; font-size: 12px;
+}
+.dash-host-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+  align-content: start;
+}
+/* The page's card is a three-column band that wants ~600px. A widget column is
+   often half that, so inside a widget the same card stacks: identity, then the
+   five metrics, then the actions. */
+.dash-host-cards .host-card {
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--s2);
+  min-width: 0;
+}
+/* auto-fit rather than a fixed five, so a narrow tile folds the row instead of
+   crushing five numbers into it. No container query needed. */
+.dash-host-cards .host-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  gap: 10px;
+}
+.dash-host-cards .host-card-actions { flex-direction: row; flex-wrap: wrap; align-items: center; }
+.dash-host-cards .host-card-actions .btn { padding: 4px 10px; font-size: 11px; }
+.dash-host-cards .host-checkin { margin-right: auto; }
+
 /* ── Add-widget rail ────────────────────────────────────────────────────── */
 .dash-rail {
   position: fixed; top: 0; right: 0; bottom: 0;

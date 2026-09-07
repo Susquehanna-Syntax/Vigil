@@ -544,9 +544,12 @@ document.querySelectorAll('.host-dropdown-item').forEach(item => {
 });
 
 /* ── Live host card metrics + filter ─────────────────────────────────── */
-async function refreshHostCards() {
+// `root` scopes the refresh to one subtree — the dashboard's host widget
+// renders the same cards, and refreshing the whole document from there would
+// re-fetch five metric series for every card on the hosts page as well.
+async function refreshHostCards(root) {
   // Skip cards inside the collapsed inactive section — no live data needed.
-  const cards = document.querySelectorAll('.host-card:not([data-inactive="1"])');
+  const cards = (root || document).querySelectorAll('.host-card:not([data-inactive="1"])');
   for (const card of cards) {
     const hostId = card.dataset.id;
     if (!hostId || card.dataset.status !== 'online') continue;

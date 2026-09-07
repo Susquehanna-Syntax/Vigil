@@ -33,6 +33,79 @@ function _wEmpty(body, message) {
   body.innerHTML = `<div class="dash-empty muted-note">${escHtml(message)}</div>`;
 }
 
+/* ── List cards ────────────────────────────────────────────────────────────
+   Every list widget renders through _dashCard so they read alike: a coloured
+   left edge for what the row is about, a title, a thin sub-line, and an
+   optional right column. Cards carrying data-nav lead somewhere. */
+
+//: Row meaning → SQSY accent. Shared by alerts and findings, whose severity
+//: vocabularies overlap but are not identical.
+const _EDGE_BY_SEVERITY = {
+  critical: 'rose', high: 'rose', warning: 'lemon', medium: 'peach',
+  info: 'sky', low: 'sky',
+};
+const _EDGE_BY_RUN_STATE = {
+  completed: 'mint', failed: 'rose', timeout: 'rose', rejected: 'rose',
+  running: 'sky', pending: 'grey', skipped: 'grey',
+};
+
+function _dashCard(o) {
+  const edge = `edge-${o.edge || 'grey'}`;
+  //: The nav target rides on the card as data, never as an onclick string —
+  //: these fields carry hostnames and container names, which come from agents.
+  const nav = o.nav
+    ? ` data-nav="${escAttr(o.nav.page)}"`
+      + (o.nav.tab ? ` data-nav-tab="${escAttr(o.nav.tab)}"` : '')
+      + (o.nav.anchor ? ` data-nav-anchor="${escAttr(o.nav.anchor)}"` : '')
+      + (o.nav.host ? ` data-nav-host="${escAttr(o.nav.host)}"` : '')
+    : '';
+  const right = (o.right || o.rightSub)
+    ? `<div class="dash-card-right">${o.right ? escHtml(o.right) : ''}`
+      + `${o.rightSub ? `<div class="dash-card-sub">${escHtml(o.rightSub)}</div>` : ''}</div>`
+    : '';
+  return `<div class="dash-card ${edge}"${nav} title="${escAttr(o.tip || o.title || '')}">
+    ${o.dot ? `<span class="dash-card-dot ${edge}"></span>` : ''}
+    <div class="dash-card-main">
+      <div class="dash-card-title">${escHtml(o.title || '')}</div>
+      ${o.sub ? `<div class="dash-card-sub">${escHtml(o.sub)}</div>` : ''}
+    </div>
+    ${right}
+  </div>`;
+}
+
+function _dashCards(items) {
+  return `<div class="dash-cards">${items.join('')}</div>`;
+}
+
+//: Take the operator to the thing the card names. A host card opens the host
+//: detail instead of navigating, because hosts have no page of their own.
+function _dashNavFromCard(card) {
+  const d = card.dataset;
+  if (d.navHost) {
+    const real = document.querySelector(`.host-card[data-id="${CSS.escape(d.navHost)}"]`);
+    if (real && typeof openHostDetail === 'function') { openHostDetail(real); return; }
+  }
+  if (!d.nav) return;
+  navigateTo(d.nav);
+  if (d.navTab) document.querySelector(`.tab[data-tab="${CSS.escape(d.navTab)}"]`)?.click();
+  if (d.navAnchor) {
+    const target = document.getElementById(d.navAnchor);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.classList.remove('dash-flash');
+      void target.offsetWidth;                 // restart the animation
+      target.classList.add('dash-flash');
+    }
+  }
+}
+
+//: Bound once on the document — widget bodies are replaced on every refresh
+//: poll, so a listener attached to a card would not survive the next paint.
+document.addEventListener('click', (ev) => {
+  const card = ev.target.closest && ev.target.closest('.dash-card[data-nav], .dash-card[data-nav-host]');
+  if (card) _dashNavFromCard(card);
+});
+
 /* ── Renderers ─────────────────────────────────────────────────────────── */
 
 async function _renderStatTile(body, settings) {
@@ -61,22 +134,129 @@ async function _renderStatTile(body, settings) {
      </div>`;
 }
 
+//: Mirrors Host.Mode.choices. The host list API sends the raw value; the
+//: badge wants the label the server-rendered card shows.
+const _MODE_LABEL = { monitor: 'Monitor', managed: 'Managed', full_control: 'Full Control' };
+
+/* The widget builds the same .host-card markup templates/_host_card.html
+   renders, carrying the same data-* attributes. That is deliberate rather than
+   duplicative: openHostDetail() reads only the dataset, and refreshHostCards()
+   finds cards by class, so matching the contract gives the widget the detail
+   modal, the OS logo and the five live metric bars without re-implementing any
+   of them. */
+function _dashHostCard(h) {
+  const os = h.os || 'Unknown OS';
+  const tags = (h.tags || []).map(String);
+  return `<div class="host-card" data-id="${escAttr(h.id)}"
+       data-hostname="${escAttr(h.hostname)}"
+       data-os="${escAttr(os)}"
+       data-ip="${escAttr(h.ip_address || '—')}"
+       data-status="${escAttr(h.status)}"
+       data-mode="${escAttr(h.mode)}"
+       data-mode-display="${escAttr(_MODE_LABEL[h.mode] || h.mode)}"
+       data-last-checkin="${escAttr(h.last_checkin || '')}"
+       data-agent-version="${escAttr(h.agent_version || '')}"
+       data-reboot-required="${h.reboot_required ? '1' : ''}"
+       data-kernel="${escAttr(h.kernel || '')}"
+       data-tags="${escAttr(tags.join(','))}">
+    <div class="host-card-id">
+      <div class="host-card-id-row">
+        <div class="status-dot ${escAttr(h.status)}"></div>
+        <div class="host-name">${escHtml(h.hostname)}</div>
+        <div class="mode-badge mode-${escAttr(h.mode)}">${escHtml(_MODE_LABEL[h.mode] || h.mode)}</div>
+      </div>
+      <div class="host-card-id-meta">
+        <span class="host-os-logo" data-os="${escAttr(os)}"></span>
+        ${escHtml(os)} · ${escHtml(h.ip_address || '—')}
+      </div>
+      ${tags.length ? `<div class="host-tag-row">${
+        tags.map(t => `<span class="host-tag-chip">${escHtml(t)}</span>`).join('')}</div>` : ''}
+    </div>
+    <div class="host-metrics">
+      ${[['cpu', 'CPU', 'sky'], ['memory', 'Memory', 'lavender'], ['disk', 'Disk', 'mint'],
+         ['net-in', 'Net In', 'peach'], ['net-out', 'Net Out', 'lemon']].map(([k, label, colour]) => `
+        <div class="host-metric" data-metric="${k}">
+          <div class="host-metric-label">${label}</div>
+          <div class="host-metric-value">—</div>
+          <div class="host-metric-bar">
+            <div class="host-metric-fill" style="width: 0%; background: var(--${colour});"></div>
+          </div>
+        </div>`).join('')}
+    </div>
+    <div class="host-card-actions">
+      <div class="host-checkin">${escHtml(h.last_checkin ? timeAgo(h.last_checkin) : 'Never')}</div>
+      <button type="button" class="btn btn-ghost" data-host-act="rdp">RDP</button>
+      <button type="button" class="btn btn-sky" data-host-act="deploy">Deploy</button>
+      <button type="button" class="btn btn-ghost btn-rose-ghost" data-host-act="remove"
+              title="Remove agent">Remove</button>
+    </div>
+  </div>`;
+}
+
+/* templates/_host_card.html carries these as inline onclick attributes built by
+   the template engine — but nothing has included that template since the
+   classic dashboard was retired, so this widget is the only place host cards
+   exist now and it owns their behaviour. The values are hostnames reported by
+   agents, so they stay in data-* and every handler is delegated. */
+document.addEventListener('click', (ev) => {
+  const card = ev.target.closest && ev.target.closest('.dash-host-cards .host-card');
+  if (card && !ev.target.closest('[data-host-act]') && typeof openHostDetail === 'function') {
+    openHostDetail(card);
+  }
+});
+
+document.addEventListener('click', (ev) => {
+  const btn = ev.target.closest && ev.target.closest('.dash-host-cards [data-host-act]');
+  if (!btn) return;
+  ev.stopPropagation();                      // never also open the detail modal
+  const card = btn.closest('.host-card');
+  const { id, hostname } = card.dataset;
+  const act = btn.dataset.hostAct;
+  if (act === 'rdp' && typeof downloadHostRdp === 'function') downloadHostRdp(id, hostname);
+  if (act === 'deploy' && typeof openDeployForHost === 'function') openDeployForHost(id);
+  if (act === 'remove' && typeof deleteHost === 'function') deleteHost(id, hostname, btn);
+});
+
 async function _renderHostStatusGrid(body, settings) {
   const rows = _wRows(await _wCached('/api/v1/hosts/'));
   const want = (settings.tag_filter || '').trim().toLowerCase();
-  const shown = want
+  let shown = want
     ? rows.filter(h => (h.tags || []).some(t => String(t).toLowerCase() === want))
     : rows;
+  if (settings.status && settings.status !== 'any') {
+    shown = shown.filter(h => h.status === settings.status);
+  }
   if (!shown.length) {
     _wEmpty(body, want ? `No hosts tagged ${settings.tag_filter}` : 'No hosts yet');
     return;
   }
-  body.innerHTML = `<div class="dash-hosts">` + shown.map(h => `
-    <div class="dash-host" title="${escAttr(h.hostname)}">
-      <span class="dash-host-dot dash-dot-${escAttr(h.status)}"></span>
-      <span class="dash-host-name">${escHtml(h.hostname)}</span>
-      <span class="dash-host-meta">${escHtml(h.os || '')}</span>
-    </div>`).join('') + `</div>`;
+  // Offline and pending first: a fleet view is read for what is wrong with it.
+  const rank = { offline: 0, pending: 1, online: 2 };
+  shown = [...shown].sort((a, b) =>
+    (rank[a.status] ?? 3) - (rank[b.status] ?? 3) || a.hostname.localeCompare(b.hostname));
+
+  // show_search has been in the registry since the widget shipped but was
+  // never rendered. The filter is local to this widget's cards.
+  const search = settings.show_search === false ? '' :
+    `<input type="text" class="form-control dash-host-search" placeholder="Filter hosts…">`;
+  body.innerHTML = search
+    + `<div class="dash-host-cards">${shown.map(_dashHostCard).join('')}</div>`;
+
+  const input = body.querySelector('.dash-host-search');
+  if (input) {
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase();
+      body.querySelectorAll('.host-card').forEach((card) => {
+        const d = card.dataset;
+        const hay = `${d.hostname} ${d.os} ${d.ip} ${d.tags}`.toLowerCase();
+        card.classList.toggle('hidden', Boolean(q) && !hay.includes(q));
+      });
+    });
+  }
+  // The logos and the live metric bars come from the hosts page's own code,
+  // scoped to this widget so it does not re-fetch metrics for the whole page.
+  if (typeof _injectOsLogos === 'function') _injectOsLogos(body);
+  if (typeof refreshHostCards === 'function') refreshHostCards(body);
 }
 
 const _SEVERITY_RANK = { info: 0, warning: 1, critical: 2 };
@@ -90,12 +270,14 @@ async function _renderAlertList(body, settings) {
     .filter(a => (_SEVERITY_RANK[a.severity] ?? 1) >= floor)
     .slice(0, limit);
   if (!shown.length) { _wEmpty(body, 'Nothing firing'); return; }
-  body.innerHTML = `<div class="dash-alerts">` + shown.map(a => `
-    <div class="dash-alert">
-      <span class="sev sev-${escAttr(a.severity || 'warning')}">${escHtml(a.severity || '')}</span>
-      <span class="dash-alert-msg">${escHtml(a.message || '')}</span>
-      <span class="dash-alert-host">${escHtml(a.host_hostname || '')}</span>
-    </div>`).join('') + `</div>`;
+  body.innerHTML = _dashCards(shown.map(a => _dashCard({
+    edge: _EDGE_BY_SEVERITY[a.severity] || 'lemon',
+    title: a.message || '(no message)',
+    sub: [a.host_hostname, timeAgo(a.fired_at)].filter(Boolean).join(' · '),
+    right: a.severity || '',
+    tip: `${a.severity || ''} · ${a.message || ''}`,
+    nav: { page: 'alerts' },
+  })));
 }
 
 async function _renderRolloutProgress(body) {
@@ -235,12 +417,16 @@ async function _renderDockerContainers(body, settings) {
   const rows = _wRows(await _wCached(
     `/api/v1/hosts/${encodeURIComponent(settings.host)}/containers/`));
   if (!rows.length) { _wEmpty(body, 'No containers reported'); return; }
-  body.innerHTML = `<div class="dash-hosts">` + rows.map(c => `
-    <div class="dash-host" title="${escAttr(c.image || '')}">
-      <span class="dash-host-dot dash-dot-${c.state === 'running' ? 'online' : 'offline'}"></span>
-      <span class="dash-host-name">${escHtml(c.name || '')}</span>
-      <span class="dash-host-meta">${escHtml(c.status || c.state || '')}</span>
-    </div>`).join('') + `</div>`;
+  body.innerHTML = _dashCards(rows.map(c => _dashCard({
+    edge: c.state === 'running' ? 'mint' : 'grey',
+    dot: true,
+    title: c.name || '(unnamed)',
+    sub: c.image || '',
+    right: c.state || '',
+    rightSub: c.status || '',
+    tip: c.image || c.name || '',
+    nav: { page: 'inventory', host: settings.host },
+  })));
 }
 
 async function _renderTopProcesses(body, settings) {
@@ -431,13 +617,15 @@ async function _renderTaskHistory(body, settings) {
     _wEmpty(body, settings.failures_only ? 'No failures' : 'Nothing has run yet');
     return;
   }
-  body.innerHTML = `<div class="dash-alerts">` + shown.map(t => `
-    <div class="dash-alert">
-      <span class="dash-proc-value" style="color:${_RUN_STATE_COLOUR[t.state] || 'var(--text-3)'};">
-        ${escHtml(t.state)}</span>
-      <span class="dash-alert-msg">${escHtml(t.step_label || t.action || '')}</span>
-      <span class="dash-alert-host">${escHtml(t.host_hostname || '')}</span>
-    </div>`).join('') + `</div>`;
+  body.innerHTML = _dashCards(shown.map(t => _dashCard({
+    edge: _EDGE_BY_RUN_STATE[t.state] || 'grey',
+    title: t.step_label || t.action || '(no step)',
+    sub: [t.host_hostname, timeAgo(t.completed_at || t.created_at)]
+      .filter(Boolean).join(' · '),
+    right: t.state || '',
+    tip: `${t.state || ''} · ${t.step_label || t.action || ''}`,
+    nav: { page: 'tasks', tab: 'tasks-history' },
+  })));
 }
 
 async function _renderWaveStatus(body, settings) {
@@ -445,14 +633,15 @@ async function _renderWaveStatus(body, settings) {
   const url = wanted ? `/api/v1/waves/?group=${encodeURIComponent(wanted)}` : '/api/v1/waves/';
   const rows = _wRows(await _wCached(url));
   if (!rows.length) { _wEmpty(body, wanted ? `No wave tagged ${wanted}` : 'No waves yet'); return; }
-  body.innerHTML = `<div class="dash-procs">` + rows.map(w => `
-    <div class="dash-proc">
-      <span class="dash-proc-name">
-        <strong>${escHtml(String(w.order))}</strong> · ${escHtml(w.name)}
-        ${(w.group_tags || []).map(t => `<span class="chip">${escHtml(t)}</span>`).join(' ')}
-      </span>
-      <span class="dash-proc-value">${w.exclusive_host_count ?? w.host_count ?? 0}</span>
-    </div>`).join('') + `</div>`;
+  body.innerHTML = _dashCards(rows.map(w => _dashCard({
+    edge: 'lav',
+    title: `${w.order} · ${w.name}`,
+    sub: (w.group_tags || []).join(' · '),
+    right: String(w.exclusive_host_count ?? w.host_count ?? 0),
+    rightSub: 'hosts',
+    tip: w.name,
+    nav: { page: 'playbooks', anchor: 'wave-panel' },
+  })));
 }
 
 async function _renderPlaybookCoverage(body, settings) {
@@ -485,14 +674,16 @@ async function _renderAutomationActivity(body, settings) {
   const rows = (payload && payload.automations) || _wRows(payload);
   const shown = rows.slice(0, Number(settings.limit) || 8);
   if (!shown.length) { _wEmpty(body, 'No automations yet'); return; }
-  body.innerHTML = `<div class="dash-procs">` + shown.map(a => `
-    <div class="dash-proc">
-      <span class="dash-proc-name">
-        <span class="dash-host-dot dash-dot-${a.enabled ? 'online' : 'offline'}"></span>
-        ${escHtml(a.name || '')}</span>
-      <span class="dash-proc-value">${a.last_fired_at
-        ? escHtml(new Date(a.last_fired_at).toLocaleDateString()) : 'never'}</span>
-    </div>`).join('') + `</div>`;
+  body.innerHTML = _dashCards(shown.map(a => _dashCard({
+    edge: a.enabled ? 'mint' : 'grey',
+    dot: true,
+    title: a.name || '(unnamed)',
+    sub: a.enabled ? 'enabled' : 'disabled',
+    right: a.last_run ? timeAgo(a.last_run) : 'never',
+    rightSub: a.last_run ? 'last run' : '',
+    tip: a.name || '',
+    nav: { page: 'playbooks', anchor: 'automations-list' },
+  })));
 }
 
 /* ── Security ──────────────────────────────────────────────────────────── */
@@ -508,12 +699,22 @@ async function _renderVulnFindings(body, settings) {
     .sort((a, b) => (_VULN_RANK[b.severity] ?? 0) - (_VULN_RANK[a.severity] ?? 0))
     .slice(0, Number(settings.limit) || 10);
   if (!shown.length) { _wEmpty(body, `Nothing open at ${settings.severity} or above`); return; }
-  body.innerHTML = `<div class="dash-alerts">` + shown.map(f => `
-    <div class="dash-alert">
-      <span class="sev sev-${escAttr(f.severity)}">${escHtml(f.severity)}</span>
-      <span class="dash-alert-msg">${escHtml(f.cve_id || f.title || '')}</span>
-      <span class="dash-alert-host">${escHtml(f.host_hostname || '')}</span>
-    </div>`).join('') + `</div>`;
+  body.innerHTML = _dashCards(shown.map(f => _dashCard({
+    edge: _EDGE_BY_SEVERITY[f.severity] || 'grey',
+    title: f.cve_id || f.title || '(untitled finding)',
+    // The title often restates the CVE already in the heading, so it only
+    // earns its place when it says something the heading does not.
+    sub: [f.host_hostname, f.package_name,
+          (f.cve_id && f.title && !f.title.includes(f.cve_id)) ? f.title : '']
+      .filter(Boolean).join(' · '),
+    right: f.severity || '',
+    // days_remaining goes negative once a finding is past due; trust the
+    // number rather than only the flag, so nothing reads "-51d left".
+    rightSub: (f.overdue || (f.days_remaining ?? 0) < 0) ? 'overdue'
+      : (typeof f.days_remaining === 'number' ? `${f.days_remaining}d left` : ''),
+    tip: f.title || f.cve_id || '',
+    nav: { page: 'vulns' },
+  })));
 }
 
 async function _renderFirewallStatus(body, settings) {
