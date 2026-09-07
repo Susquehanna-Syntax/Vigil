@@ -213,8 +213,7 @@ def host_uptime(request, host_id):
     # Scoped, not just authenticated. The host *list* is narrowed by site, so a
     # per-host read that is not would let an operator confined to one site pull
     # another site's history by id — which is the whole point of Sites.
-    visible = scoping.filter_by_site(Host.objects.all(), request.user)
-    if not visible.filter(pk=host_id).exists():
+    if scoping.visible_host(request.user, host_id) is None:
         return Response({"error": "Not found"}, status=http.HTTP_404_NOT_FOUND)
 
     rows = (HostUptimeSample.objects

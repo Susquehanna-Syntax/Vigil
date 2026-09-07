@@ -507,9 +507,8 @@ def host_list(request):
 @api_view(["GET", "DELETE"])
 @permission_classes([IsAuthenticated])
 def host_detail(request, host_id):
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
+    host = scoping.visible_host(request.user, host_id)
+    if host is None:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
     # Out of scope reads as absent: a 403 would confirm the host exists in a
     # site this user cannot see.
@@ -575,9 +574,8 @@ def inventory_list(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def inventory_detail(request, host_id):
-    try:
-        host = Host.objects.select_related("inventory").get(pk=host_id)
-    except Host.DoesNotExist:
+    host = scoping.visible_host(request.user, host_id)
+    if host is None:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
     inv = getattr(host, "inventory", None) or HostInventory(host=host)
     return Response(HostInventorySerializer(inv).data)
@@ -587,9 +585,8 @@ def inventory_detail(request, host_id):
 @permission_classes([IsAuthenticated])
 def host_containers(request, host_id):
     """Docker containers reported for one host, ordered by stack then name."""
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
+    host = scoping.visible_host(request.user, host_id)
+    if host is None:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
     qs = host.docker_containers.all()
     return Response(DockerContainerSerializer(qs, many=True).data)
@@ -711,9 +708,8 @@ def ad_sync_now(request):
 @permission_classes([IsAuthenticated])
 def host_tags(request, host_id):
     """Replace the tag set on a host (operator-driven from the console)."""
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
+    host = scoping.visible_host(request.user, host_id)
+    if host is None:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
     raw = request.data.get("tags")
@@ -742,9 +738,8 @@ def host_update_agent(request, host_id):
     from apps.accounts.totp import require_totp_confirmation
     from apps.agent_dist.views import all_binary_sha256
 
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
+    host = scoping.visible_host(request.user, host_id)
+    if host is None:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
     if host.mode == Host.Mode.MONITOR:
@@ -800,9 +795,8 @@ def host_approve(request, host_id):
     """
     from apps.accounts.totp import require_totp_confirmation
 
-    try:
-        host = Host.objects.get(pk=host_id, status=Host.Status.PENDING)
-    except Host.DoesNotExist:
+    host = scoping.visible_host(request.user, host_id)
+    if host is None or host.status != Host.Status.PENDING:
         return Response(
             {"error": "Host not found or not pending"},
             status=status.HTTP_404_NOT_FOUND,
@@ -827,9 +821,8 @@ def host_approve(request, host_id):
 @permission_classes([IsAdmin])
 def host_reject(request, host_id):
     """Reject a pending host enrollment. Admin-only, like approval."""
-    try:
-        host = Host.objects.get(pk=host_id, status=Host.Status.PENDING)
-    except Host.DoesNotExist:
+    host = scoping.visible_host(request.user, host_id)
+    if host is None or host.status != Host.Status.PENDING:
         return Response(
             {"error": "Host not found or not pending"},
             status=status.HTTP_404_NOT_FOUND,
@@ -852,9 +845,8 @@ def host_poll(request, host_id):
     returns the current host status; the agent will pick up any queued tasks
     on its next scheduled check-in.
     """
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
+    host = scoping.visible_host(request.user, host_id)
+    if host is None:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
     return Response(HostSerializer(host).data)
 
@@ -895,9 +887,8 @@ def host_rdp(request, host_id):
     """
     from django.http import HttpResponse
 
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
+    host = scoping.visible_host(request.user, host_id)
+    if host is None:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
     target = host.ip_address or host.hostname
@@ -975,9 +966,8 @@ def host_firewall(request, host_id):
     """
     from .models import HostFirewall
 
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
+    host = scoping.visible_host(request.user, host_id)
+    if host is None:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
     fw = HostFirewall.objects.filter(host=host).first()
@@ -1009,9 +999,8 @@ def _queue_firewall_task(host, user, action, params, risk):
 @permission_classes([IsAuthenticated])
 def host_firewall_refresh(request, host_id):
     """Queue a read of this host's firewall. Not 2FA-gated: it changes nothing."""
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
+    host = scoping.visible_host(request.user, host_id)
+    if host is None:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
     if host.mode == Host.Mode.MONITOR:
@@ -1051,9 +1040,8 @@ def host_firewall_apply(request, host_id):
     from .firewall_guard import check_change
     from .models import HostFirewall
 
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
+    host = scoping.visible_host(request.user, host_id)
+    if host is None:
         return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
     if host.mode == Host.Mode.MONITOR:
