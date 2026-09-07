@@ -426,24 +426,6 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 /* ═══════════════════════════════════════════
    HOST CARDS — full-width row layout
    ═══════════════════════════════════════════ */
-.host-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.host-search-bar {
-  width: 100%;
-  background: var(--s2);
-  border: 1.5px solid var(--border);
-  border-radius: var(--r-md);
-  color: var(--text-1);
-  font-family: inherit; font-size: 13px;
-  padding: 10px 14px;
-  margin-bottom: 14px;
-  outline: none;
-  transition: border-color 0.18s;
-}
-.host-search-bar:focus { border-color: var(--sky); }
 .host-card {
   display: grid;
   grid-template-columns: minmax(220px, 1.6fr) 3fr minmax(160px, 1fr);
@@ -545,28 +527,6 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   text-align: right;
   margin-bottom: 2px;
 }
-
-.inactive-section { margin-top: 24px; }
-.inactive-section summary {
-  cursor: pointer;
-  list-style: none;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  color: var(--text-3);
-  text-transform: uppercase;
-  padding: 10px 0;
-  border-top: 1px solid var(--border);
-  user-select: none;
-}
-.inactive-section summary::-webkit-details-marker { display: none; }
-.inactive-section summary::before {
-  content: '▸ ';
-  display: inline-block;
-  transition: transform 0.18s;
-}
-.inactive-section[open] summary::before { transform: rotate(90deg); }
-.inactive-section .host-grid { margin-top: 10px; }
 
 /* ═══════════════════════════════════════════
    ALERT LIST
@@ -2214,7 +2174,6 @@ select.form-control:hover { border-color: var(--s4); }
 :root[data-density="compact"] .main { padding: 20px 26px 40px; }
 :root[data-density="compact"] .page-header { margin-bottom: 18px; }
 :root[data-density="compact"] .section-label { margin: 22px 0 10px; }
-:root[data-density="compact"] .host-grid { gap: 7px; }
 :root[data-density="compact"] .host-card { padding: 14px; gap: 12px; }
 :root[data-density="compact"] .stat-card { padding: 15px; }
 :root[data-density="compact"] .totp-card { padding: 16px 18px; }
