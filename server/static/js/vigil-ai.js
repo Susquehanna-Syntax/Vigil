@@ -236,7 +236,7 @@ function _renderColumn(id) {
       </div>
       ${nav}
       <div class="ai-sug-actions">
-        <button class="btn btn-outline btn-sm" data-ai-copy>Copy YAML</button>
+        <button class="btn btn-lav btn-sm" data-ai-copy>Copy YAML</button>
         <button class="btn btn-mint btn-sm" data-ai-open>Use this</button>
       </div>
     </div>`;
@@ -255,7 +255,8 @@ function _renderColumn(id) {
     else if (typeof openDefinitionEditor === 'function') openDefinitionEditor(null, cur.yaml);
   });
   col.querySelector('[data-ai-copy]')?.addEventListener('click', () => {
-    navigator.clipboard.writeText(cur.yaml); showToast('YAML copied', 'success');
+    copyText(cur.yaml).then((ok) => showToast(
+      ok ? 'YAML copied' : 'Copy failed', ok ? 'success' : 'error'));
   });
 }
 
@@ -339,9 +340,9 @@ async function loadAiProviders() {
           <span class="provider-row-sub">${escHtml(p.kind)} · ${escHtml(p.model || 'no model')} · ${escHtml(p.base_url || 'default endpoint')}${p.api_key_set ? ' · key set' : ''}</span>
         </div>
         <div class="card-actions">
-          <button class="btn btn-outline btn-xs" data-ap-edit="${p.id}">Edit</button>
-          <button class="btn btn-outline btn-xs" data-ap-toggle="${p.id}" data-en="${p.enabled}">${p.enabled ? 'Disable' : 'Enable'}</button>
-          <button class="btn btn-outline btn-xs" style="color:var(--rose);" data-ap-del="${p.id}">Delete</button>
+          <button class="btn btn-sky btn-xs" data-ap-edit="${p.id}">Edit</button>
+          <button class="btn btn-${p.enabled ? 'lemon' : 'mint'} btn-xs" data-ap-toggle="${p.id}" data-en="${p.enabled}">${p.enabled ? 'Disable' : 'Enable'}</button>
+          <button class="btn btn-rose btn-xs" data-ap-del="${p.id}">Delete</button>
         </div>
       </div>`).join('') : '<p class="muted-note">No providers yet. Add your first model endpoint below.</p>';
     list.querySelectorAll('[data-ap-del]').forEach(b => b.addEventListener('click', async () => {

@@ -3,6 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from vigil import scoping
 from apps.hosts.models import Host
 
 from .models import MetricPoint
@@ -12,10 +13,9 @@ from .serializers import MetricPointSerializer
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def metric_history(request, host_id, category, metric_name):
-    try:
-        host = Host.objects.get(pk=host_id)
-    except Host.DoesNotExist:
-        return Response({"error": "Host not found"}, status=404)
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
 
     qs = MetricPoint.objects.filter(
         host=host, category=category, metric=metric_name
@@ -69,3 +69,56 @@ def metric_history(request, host_id, category, metric_name):
     response["X-Vigil-Sampled"] = "1" if total > limit else "0"
     response["X-Vigil-Total-Points"] = str(total)
     return response
+
+#: How far back the catalogue looks. Bounded on purpose — an unbounded DISTINCT
+#: over the metrics table is a scan of the one table that grows without limit —
+#: but a week rather than a day: a host that was off over a weekend should not
+#: drop out of the picker, taking its metrics with it.
+CATALOG_WINDOW_HOURS = 24 * 7
+
+
+#: What the agent's collector emits, as (category, metric). The single source
+#: of truth for that claim — the widget-defaults test asserts against this, and
+#: it is the fallback below. Keep in step with agent/vigil_agent/collector.py.
+COLLECTOR_METRICS = (
+    ("cpu", "usage_percent"),
+    ("cpu", "load_1m"),
+    ("memory", "usage_percent"),
+    ("memory", "swap_usage_percent"),
+    ("disk", "usage_percent"),
+    ("network", "bytes_sent"),
+    ("network", "bytes_recv"),
+)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def metric_catalog(request):
+    """The category/metric pairs this fleet is actually reporting.
+
+    Exists so a picker can only offer metrics that exist. Offering a name
+    nothing reports produces a widget that draws an empty window and reads as
+    broken rather than as misconfigured — which is precisely how the dashboard
+    widgets' own defaults shipped wrong the first time.
+    """
+    from datetime import timedelta
+
+    from django.utils.timezone import now
+
+    since = now() - timedelta(hours=CATALOG_WINDOW_HOURS)
+    pairs = (MetricPoint.objects
+             .filter(time__gte=since)
+             .values_list("category", "metric")
+             .distinct()
+             .order_by("category", "metric"))
+    rows = list(pairs)
+    if not rows:
+        # A fleet that has not reported for a while — a fresh install, or every
+        # agent offline. Offering nothing reads as a broken picker, so fall back
+        # to what the collector emits; the operator can still pick sensibly and
+        # live data takes precedence the moment any arrives.
+        rows = list(COLLECTOR_METRICS)
+    return Response([
+        {"category": category, "metric": metric, "label": f"{category} / {metric}"}
+        for category, metric in rows
+    ])

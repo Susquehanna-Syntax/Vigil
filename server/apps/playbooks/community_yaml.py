@@ -1,13 +1,13 @@
-"""Baseline ⇄ community YAML.
+"""Playbook ⇄ community YAML.
 
-The schema is ``schemas/baseline.md`` in Vigil-Approved-Scripts. The shape
-that matters here is the step reference: a baseline in the repo names its
-tasks by **slug**, while a Baseline on the server holds foreign keys to
+The schema is ``schemas/playbook.md`` in Vigil-Approved-Scripts. The shape
+that matters here is the step reference: a playbook in the repo names its
+tasks by **slug**, while a Playbook on the server holds foreign keys to
 TaskDefinition rows. Export slugifies the definition's name; import resolves
 the slug back against the operator's own library.
 
-Import deliberately does **not** create the tasks it cannot find. A baseline
-whose steps silently vanished would import as a baseline that does nothing,
+Import deliberately does **not** create the tasks it cannot find. A playbook
+whose steps silently vanished would import as a playbook that does nothing,
 which is worse than a refusal — so a missing slug is an error that names
 every slug it could not resolve, and the operator forks those tasks first.
 """
@@ -28,31 +28,31 @@ from vigil.contentyaml import (
     slugify,
 )
 
-_WHAT = "baseline"
+_WHAT = "playbook"
 _MAX_STEPS = 32
 
 
-def to_yaml(baseline, *, author: str = "", created=None) -> str:
-    """Serialise *baseline* into the community repo's dialect."""
-    fields: dict[str, Any] = {"name": baseline.name}
-    # The baseline's own identity in the catalog. Minted on first export and
-    # stored, so exporting the same baseline twice does not produce two
+def to_yaml(playbook, *, author: str = "", created=None) -> str:
+    """Serialise *playbook* into the community repo's dialect."""
+    fields: dict[str, Any] = {"name": playbook.name}
+    # The playbook's own identity in the catalog. Minted on first export and
+    # stored, so exporting the same playbook twice does not produce two
     # different pieces of content.
-    if not baseline.community_uid:
-        baseline.community_uid = new_uid()
-        baseline.save(update_fields=["community_uid"])
-    fields["uid"] = str(baseline.community_uid)
+    if not playbook.community_uid:
+        playbook.community_uid = new_uid()
+        playbook.save(update_fields=["community_uid"])
+    fields["uid"] = str(playbook.community_uid)
     if author:
         fields["author"] = author
     if created is not None:
         # Left as a date object, not a string: PyYAML emits it unquoted,
         # matching every file already in the repo.
         fields["created"] = created
-    if baseline.description:
-        fields["description"] = baseline.description
-    if baseline.target_tags:
-        fields["target_tags"] = list(baseline.target_tags)
-    if baseline.allow_high_risk:
+    if playbook.description:
+        fields["description"] = playbook.description
+    if playbook.target_tags:
+        fields["target_tags"] = list(playbook.target_tags)
+    if playbook.allow_high_risk:
         # Only emitted when true. The schema defaults it to false, and a file
         # that spells out every default is harder to review than one that
         # states only what is unusual about it.
@@ -62,10 +62,10 @@ def to_yaml(baseline, *, author: str = "", created=None) -> str:
     # Numbered 1..N by position, not by the stored ``order`` column. The server
     # writes that column 0-based as an internal sort key, while the community
     # schema's ``order`` is 1-based — exporting the raw value emitted
-    # ``order: 0`` for the first step of any normally-created baseline, which
+    # ``order: 0`` for the first step of any normally-created playbook, which
     # this module's own parser then rejected. What the file needs is the
     # sequence, and the rows are already fetched in it.
-    ordered = baseline.steps.select_related("definition").order_by("order")
+    ordered = playbook.steps.select_related("definition").order_by("order")
     for position, step in enumerate(ordered, start=1):
         entry: dict[str, Any] = {
             "task": slugify(step.definition.name, fallback="task"),
@@ -83,7 +83,7 @@ def to_yaml(baseline, *, author: str = "", created=None) -> str:
 
 
 def parse(text: str) -> dict[str, Any]:
-    """Validate community baseline YAML into a plain dict.
+    """Validate community playbook YAML into a plain dict.
 
     Returns the parsed fields with ``steps`` as a list of
     ``{"task": slug, "order": int, "params_override": dict}``. Resolving those
@@ -129,7 +129,7 @@ def parse(text: str) -> dict[str, Any]:
             raise ContentYamlError(
                 f"{_WHAT}: step {position} has a non-positive-integer 'order'.")
         if order in seen_orders:
-            # Mirrors the server's unique constraint on (baseline, order).
+            # Mirrors the server's unique constraint on (playbook, order).
             # Catching it here gives a readable message instead of an
             # IntegrityError from the save.
             raise ContentYamlError(
@@ -162,13 +162,13 @@ def resolve_steps(steps: list[dict[str, Any]], definitions,
     *definitions* is any iterable of TaskDefinition rows — the caller decides
     what the operator is allowed to see, so this never queries. Raises with
     every unresolved slug at once: fixing them one error at a time would be a
-    miserable way to import a twelve-step baseline.
+    miserable way to import a twelve-step playbook.
 
     A slug in the repo is a *filename*, and the repo does not require that it
     equal ``slugify(name)``. So the match is tried twice: first by slugifying
     each library task's name, then — for anything still missing — by looking
     the slug up in *names_by_slug* (the community index) and matching the name
-    it maps to. Without that second pass a baseline could refuse to import
+    it maps to. Without that second pass a playbook could refuse to import
     while the operator was looking at the very task it wanted.
     """
     by_uid: dict[str, Any] = {}
@@ -198,7 +198,7 @@ def resolve_steps(steps: list[dict[str, Any]], definitions,
 
     if missing:
         raise ContentYamlError(
-            "This baseline references tasks that are not in your library: "
+            "This playbook references tasks that are not in your library: "
             + ", ".join(sorted(set(missing)))
-            + ". Fork them from Community first, then import the baseline.")
+            + ". Fork them from Community first, then import the playbook.")
     return resolved

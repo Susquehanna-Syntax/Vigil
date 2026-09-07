@@ -1,4 +1,4 @@
-"""Baselines and automations as community YAML: export, import, round-trip.
+"""Playbooks and automations as community YAML: export, import, round-trip.
 
 The contract these pin is that the server and the Vigil-Approved-Scripts repo
 agree about the dialect. The repo is the authority — its validators run in its
@@ -19,7 +19,7 @@ from apps.tasks.spec import parse_and_validate
 from vigil.contentyaml import ContentYamlError, slugify
 
 from . import community_yaml as bl_yaml
-from .models import Baseline, BaselineStep
+from .models import Playbook, PlaybookStep
 
 
 def _definition(user, name):
@@ -65,28 +65,28 @@ class SlugTests(TestCase):
                 self.assertFalse(slugify("ab " * n).endswith("-"))
 
 
-class BaselineYamlTests(TestCase):
+class PlaybookYamlTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser(
             "cy", "cy@example.com", "x")
         self.a = _definition(self.user, "Install Nginx")
         self.b = _definition(self.user, "Clear Temp Files")
-        self.baseline = Baseline.objects.create(
+        self.playbook = Playbook.objects.create(
             name="Standard Linux Server Build",
             description="Bring a fresh host to a known state.",
             target_tags=["linux", "server"], created_by=self.user)
-        BaselineStep.objects.create(baseline=self.baseline, definition=self.a, order=1)
-        BaselineStep.objects.create(baseline=self.baseline, definition=self.b, order=2,
+        PlaybookStep.objects.create(playbook=self.playbook, definition=self.a, order=1)
+        PlaybookStep.objects.create(playbook=self.playbook, definition=self.b, order=2,
                                     params_override={"0": {"older_than_days": 3}})
 
     def test_export_names_tasks_by_slug(self):
-        parsed = yaml.safe_load(bl_yaml.to_yaml(self.baseline, author="Connor Haggerty"))
+        parsed = yaml.safe_load(bl_yaml.to_yaml(self.playbook, author="Connor Haggerty"))
         self.assertEqual([s["task"] for s in parsed["steps"]],
                          ["install-nginx", "clear-temp-files"])
 
     def test_export_emits_the_repos_field_order(self):
         """A reviewer reading a diff should see the same shape every time."""
-        text = bl_yaml.to_yaml(self.baseline, author="Connor Haggerty")
+        text = bl_yaml.to_yaml(self.playbook, author="Connor Haggerty")
         keys = [line.split(":")[0] for line in text.splitlines()
                 if line and not line.startswith((" ", "-"))]
         # Identity first, then attribution, then prose, then the steps.
@@ -94,36 +94,36 @@ class BaselineYamlTests(TestCase):
         self.assertEqual(keys[-1], "steps")
 
     def test_export_omits_allow_high_risk_when_false(self):
-        self.assertNotIn("allow_high_risk", bl_yaml.to_yaml(self.baseline))
+        self.assertNotIn("allow_high_risk", bl_yaml.to_yaml(self.playbook))
 
     def test_export_states_allow_high_risk_when_true(self):
-        self.baseline.allow_high_risk = True
-        self.assertIn("allow_high_risk: true", bl_yaml.to_yaml(self.baseline))
+        self.playbook.allow_high_risk = True
+        self.assertIn("allow_high_risk: true", bl_yaml.to_yaml(self.playbook))
 
     def test_created_is_emitted_unquoted(self):
         """Every file in the repo has a bare date; a quoted one is a diff."""
-        text = bl_yaml.to_yaml(self.baseline, created=date(2026, 8, 29))
+        text = bl_yaml.to_yaml(self.playbook, created=date(2026, 8, 29))
         self.assertIn("created: 2026-08-29", text)
 
     def test_round_trip_preserves_every_field(self):
         parsed = bl_yaml.parse(
-            bl_yaml.to_yaml(self.baseline, author="Connor Haggerty"))
-        self.assertEqual(parsed["name"], self.baseline.name)
-        self.assertEqual(parsed["description"], self.baseline.description)
+            bl_yaml.to_yaml(self.playbook, author="Connor Haggerty"))
+        self.assertEqual(parsed["name"], self.playbook.name)
+        self.assertEqual(parsed["description"], self.playbook.description)
         self.assertEqual(parsed["target_tags"], ["linux", "server"])
         self.assertEqual(len(parsed["steps"]), 2)
         self.assertEqual(parsed["steps"][1]["params_override"],
                          {"0": {"older_than_days": 3}})
 
     def test_resolve_steps_maps_slugs_back_to_definitions(self):
-        parsed = bl_yaml.parse(bl_yaml.to_yaml(self.baseline))
+        parsed = bl_yaml.parse(bl_yaml.to_yaml(self.playbook))
         resolved = bl_yaml.resolve_steps(parsed["steps"],
                                          TaskDefinition.objects.all())
         self.assertEqual([s["definition"].id for s in resolved],
                          [self.a.id, self.b.id])
 
     def test_resolve_steps_names_every_missing_task_at_once(self):
-        """Fixing a twelve-step baseline one error at a time is miserable."""
+        """Fixing a twelve-step playbook one error at a time is miserable."""
         parsed = bl_yaml.parse(
             "name: X\nsteps:\n  - task: not-here\n  - task: also-missing\n")
         with self.assertRaises(ContentYamlError) as caught:
@@ -139,8 +139,8 @@ class BaselineYamlTests(TestCase):
                           "  - task: b\n    order: 1\n")
         self.assertIn("order", str(caught.exception))
 
-    def test_a_baseline_with_no_steps_is_refused(self):
-        """It would import as a baseline that silently does nothing."""
+    def test_a_playbook_with_no_steps_is_refused(self):
+        """It would import as a playbook that silently does nothing."""
         with self.assertRaises(ContentYamlError):
             bl_yaml.parse("name: X\nsteps: []\n")
 
@@ -163,16 +163,16 @@ class AutomationYamlTests(TestCase):
         self.user = get_user_model().objects.create_superuser(
             "ay", "ay@example.com", "x")
         self.definition = _definition(self.user, "Clear Temp Files")
-        self.baseline = Baseline.objects.create(
+        self.playbook = Playbook.objects.create(
             name="Container Host Maintenance", created_by=self.user)
-        BaselineStep.objects.create(baseline=self.baseline,
+        PlaybookStep.objects.create(playbook=self.playbook,
                                     definition=self.definition, order=1)
 
     def _automation(self, **kw):
         defaults = dict(
             name="Prune Docker On Low Disk", trigger="event",
             event="alert_fired", min_severity="warning",
-            action_kind="baseline", baseline=self.baseline,
+            action_kind="playbook", playbook=self.playbook,
             target="event_host", created_by=self.user)
         return Automation.objects.create(**{**defaults, **kw})
 
@@ -181,7 +181,7 @@ class AutomationYamlTests(TestCase):
         self.assertEqual(parsed["trigger"], "event")
         self.assertEqual(parsed["event"], "alert_fired")
         self.assertEqual(parsed["min_severity"], "warning")
-        self.assertEqual(parsed["action_kind"], "baseline")
+        self.assertEqual(parsed["action_kind"], "playbook")
         self.assertEqual(parsed["slug"], "container-host-maintenance")
 
     def test_round_trip_of_a_scheduled_automation(self):
@@ -250,10 +250,10 @@ class AutomationYamlTests(TestCase):
             auto_yaml.parse("name: X\ntrigger: event\nevent: alert_fired\n"
                             "action_kind: task\ntask: t\ntarget: tags\n")
 
-    def test_naming_both_a_task_and_a_baseline_is_refused(self):
+    def test_naming_both_a_task_and_a_playbook_is_refused(self):
         with self.assertRaises(ContentYamlError):
             auto_yaml.parse("name: X\ntrigger: event\nevent: alert_fired\n"
-                            "action_kind: task\ntask: t\nbaseline: b\n")
+                            "action_kind: task\ntask: t\nplaybook: b\n")
 
 
 class SlugIsAFilenameTests(TestCase):
@@ -262,7 +262,7 @@ class SlugIsAFilenameTests(TestCase):
     The repo does not enforce that the two agree, and one file already differs:
     ``docker-prune-and-restart-unhealthy.yaml`` holds a task called "Docker
     Prune and Restart Unhealthy Container". Resolving by slugifying library
-    names alone refuses to import a baseline whose task the operator has.
+    names alone refuses to import a playbook whose task the operator has.
     """
 
     def setUp(self):
@@ -312,15 +312,15 @@ class SlugIsAFilenameTests(TestCase):
         parsed = auto_yaml.parse(
             "name: A\ntrigger: event\nevent: alert_fired\naction_kind: task\n"
             "task: docker-prune-and-restart-unhealthy\n")
-        definition, baseline = auto_yaml.resolve_action(
-            parsed, definitions=TaskDefinition.objects.all(), baselines=[],
+        definition, playbook = auto_yaml.resolve_action(
+            parsed, definitions=TaskDefinition.objects.all(), playbooks=[],
             task_names_by_slug=self.index)
         self.assertEqual(definition.id, self.definition.id)
-        self.assertIsNone(baseline)
+        self.assertIsNone(playbook)
 
 
 class ZeroBasedOrderTests(TestCase):
-    """A baseline created through the UI stores 0-based step orders.
+    """A playbook created through the UI stores 0-based step orders.
 
     The community schema's ``order`` is 1-based, so exporting the stored value
     emitted ``order: 0`` and the export failed to import — through this
@@ -331,23 +331,23 @@ class ZeroBasedOrderTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser(
             "zb", "zb@example.com", "x")
-        self.baseline = Baseline.objects.create(name="Zero Based",
+        self.playbook = Playbook.objects.create(name="Zero Based",
                                                 created_by=self.user)
         for i, name in enumerate(("Install Nginx", "Clear Temp Files")):
-            BaselineStep.objects.create(
-                baseline=self.baseline, definition=_definition(self.user, name),
+            PlaybookStep.objects.create(
+                playbook=self.playbook, definition=_definition(self.user, name),
                 order=i)   # 0-based, as _validate_and_set_steps writes them
 
     def test_export_numbers_steps_from_one(self):
-        parsed = yaml.safe_load(bl_yaml.to_yaml(self.baseline))
+        parsed = yaml.safe_load(bl_yaml.to_yaml(self.playbook))
         self.assertEqual([s["order"] for s in parsed["steps"]], [1, 2])
 
     def test_the_export_can_be_imported_again(self):
         """The round trip that was broken."""
-        reparsed = bl_yaml.parse(bl_yaml.to_yaml(self.baseline))
+        reparsed = bl_yaml.parse(bl_yaml.to_yaml(self.playbook))
         self.assertEqual(len(reparsed["steps"]), 2)
 
     def test_step_sequence_survives_the_round_trip(self):
-        reparsed = bl_yaml.parse(bl_yaml.to_yaml(self.baseline))
+        reparsed = bl_yaml.parse(bl_yaml.to_yaml(self.playbook))
         self.assertEqual([s["task"] for s in reparsed["steps"]],
                          ["install-nginx", "clear-temp-files"])

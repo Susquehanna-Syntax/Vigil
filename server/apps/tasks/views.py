@@ -98,6 +98,7 @@ def task_result(request):
         if new_state == Task.State.COMPLETED:
             _maybe_capture_inventory_column(task, output)
             _maybe_apply_tags(task)
+            _maybe_apply_playbook_completion_tag(task)
             _maybe_request_nessus_scan(task)
             _maybe_ingest_trivy_report(task, output)
             _maybe_ingest_firewall_rules(task, output)
@@ -129,6 +130,40 @@ def _named_tags(step: dict) -> list[str]:
     if isinstance(raw, str):
         raw = raw.split(",")
     return [str(t).strip() for t in (raw or []) if str(t).strip()]
+
+
+def _maybe_apply_playbook_completion_tag(task: Task) -> None:
+    """Tag the host once the playbook that produced this task has succeeded.
+
+    The tag is what stops an auto-enrolling playbook dispatching to the same
+    host on every reconcile pass, so it is written from the run's own playbook
+    rather than anything the agent reported.
+
+    Never raises: a task result must be recordable even if tagging fails. A
+    failure here costs a repeat dispatch on the next pass, not a lost result.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    run = task.run
+    if run is None or run.playbook_id is None:
+        return
+    tag = (run.playbook.completion_tag or "").strip()
+    if not tag or tag.startswith("agent:"):
+        return
+
+    try:
+        host = task.host
+        tags = list(host.tags or [])
+        if any(str(t).strip().lower() == tag.lower() for t in tags):
+            return
+        host.tags = tags + [tag]
+        # Not update_fields=["tags"]: Host.save() syncs the tag rows the
+        # matcher actually reads, and it only runs on a full save.
+        host.save()
+    except Exception:
+        logger.exception("completion tag %r failed for host %s", tag, task.host_id)
 
 
 def _maybe_apply_tags(task: Task) -> None:
@@ -573,7 +608,7 @@ def _save_definition_from_yaml(definition: TaskDefinition, yaml_source: str) -> 
     definition.relevance = spec["relevance"]
     definition.risk_level = spec["risk"]
     # A task forked from the catalog keeps the catalog's identity for it, so a
-    # baseline that references it by uid still resolves after the operator
+    # playbook that references it by uid still resolves after the operator
     # renames their copy.
     if spec.get("uid"):
         definition.community_uid = spec["uid"]
@@ -583,7 +618,7 @@ def _save_definition_from_yaml(definition: TaskDefinition, yaml_source: str) -> 
 # Community content — sourced from the public GitHub repo
 # ---------------------------------------------------------------------------
 # The Community tab lists YAML from three directories of that repo: tasks/,
-# baselines/ and automations/. Fetched server-side (which avoids per-browser
+# playbooks/ and automations/. Fetched server-side (which avoids per-browser
 # GitHub rate limits) and cached for 10 minutes per kind. Submissions still
 # flow the other way as a GitHub PR opened from an editor — see
 # openCommunitySubmit() in vigil-tasks.js.
@@ -595,7 +630,7 @@ _COMMUNITY_MAX_TEMPLATES = 50
 #: The directories the repo publishes, and how to read a file from each into
 #: the card fields the grid renders. Adding a fourth content type is a matter
 #: of adding a parser here and a sub-tab in the UI.
-COMMUNITY_KINDS = ("tasks", "baselines", "automations")
+COMMUNITY_KINDS = ("tasks", "playbooks", "automations")
 
 
 def _card_for_task(text: str) -> dict:
@@ -612,10 +647,10 @@ def _card_for_task(text: str) -> dict:
     }
 
 
-def _card_for_baseline(text: str) -> dict:
-    from apps.baselines.community_yaml import parse as parse_baseline
+def _card_for_playbook(text: str) -> dict:
+    from apps.playbooks.community_yaml import parse as parse_playbook
 
-    parsed = parse_baseline(text)
+    parsed = parse_playbook(text)
     steps = parsed["steps"]
     return {
         "uid": parsed["uid"],
@@ -655,7 +690,7 @@ def _card_for_automation(text: str) -> dict:
         "risk_level": "standard",
         "summary": f"runs {parsed['action_kind']} {parsed['slug']}",
         "requires": [{
-            "kind": "baselines" if parsed["action_kind"] == "baseline" else "tasks",
+            "kind": "playbooks" if parsed["action_kind"] == "playbook" else "tasks",
             "slug": parsed["slug"],
             "uid": parsed.get("action_uid", ""),
         }],
@@ -664,7 +699,7 @@ def _card_for_automation(text: str) -> dict:
 
 _COMMUNITY_PARSERS = {
     "tasks": _card_for_task,
-    "baselines": _card_for_baseline,
+    "playbooks": _card_for_playbook,
     "automations": _card_for_automation,
 }
 
@@ -725,7 +760,7 @@ def community_names_by_slug(kind: str) -> dict[str, str]:
     the filename equals ``slugify(name)`` — ``docker-prune-and-restart-unhealthy.yaml``
     is called "Docker Prune and Restart Unhealthy Container". So resolving a
     reference by slugifying library names alone would refuse to import a
-    baseline whose task the operator demonstrably has.
+    playbook whose task the operator demonstrably has.
 
     Reads the same server-side cache the Community tab fills, so the common
     path costs nothing. Returns ``{}`` when the repo is unreachable rather than
@@ -793,6 +828,10 @@ def definition_list(request):
             )
         else:
             qs = TaskDefinition.objects.filter(owner=request.user)
+        if request.query_params.get("archived") == "1":
+            qs = qs.filter(archived_at__isnull=False)
+        else:
+            qs = qs.filter(archived_at__isnull=True)
         qs = qs.select_related("owner").order_by("-updated_at")
         return Response(TaskDefinitionSerializer(qs, many=True).data)
 
@@ -814,7 +853,7 @@ def definition_list(request):
 @api_view(["GET", "PUT"])
 @permission_classes([IsAuthenticated])
 def definition_detail(request, definition_id):
-    """Fetch or update a definition. Definitions can't be deleted — baselines
+    """Fetch or update a definition. Definitions can't be deleted — playbooks
     and automations reference them, and a vanished definition would silently
     gut those sequences."""
     definition = get_object_or_404(TaskDefinition, pk=definition_id)
@@ -961,12 +1000,12 @@ def definition_deploy(request, definition_id):
         return Response({"error": str(exc)}, status=400)
 
     actions = spec.get("actions") or []
-    # Inline any `type: baseline` calls — agents only ever receive concrete
-    # actions (a baseline reference is a server-side macro, not an agent verb).
-    from apps.baselines.expansion import BaselineExpandError, expand_actions
+    # Inline any `type: playbook` calls — agents only ever receive concrete
+    # actions (a playbook reference is a server-side macro, not an agent verb).
+    from apps.playbooks.expansion import PlaybookExpandError, expand_actions
     try:
         actions, _expanded_risk = expand_actions(actions)
-    except BaselineExpandError as exc:
+    except PlaybookExpandError as exc:
         return Response({"error": str(exc)}, status=400)
     if not actions:
         return Response({"error": "definition has no actions"}, status=400)
@@ -1044,7 +1083,7 @@ def definition_deploy(request, definition_id):
                 s["params"] = {**(s.get("params") or {}), "binary_sha256": sha_map}
 
     # Effective risk is the highest risk across all actions.
-    from apps.baselines.expansion import _max_risk as _mr
+    from apps.playbooks.expansion import _max_risk as _mr
     risk = _mr(spec.get("risk", "standard"), _expanded_risk)
 
     # Schedule + retry policy are snapshotted onto each Task so a later edit
@@ -1130,7 +1169,7 @@ def task_history(request):
 def run_history(request):
     """Paginated run history, newest first.
 
-    ``?source=automation,baseline`` narrows to those kinds; omitted means
+    ``?source=automation,playbook`` narrows to those kinds; omitted means
     every run including manual deploys.
     """
     try:
@@ -1140,7 +1179,7 @@ def run_history(request):
     page_size = 25
 
     qs = TaskRun.objects.select_related(
-        "automation", "baseline", "requested_by").order_by("-created_at")
+        "automation", "playbook", "requested_by").order_by("-created_at")
 
     raw = (request.query_params.get("source") or "").strip()
     if raw:
@@ -1288,26 +1327,26 @@ def _rollout_response(rollout: PatchRollout):
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def rollout_collection(request):
-    """GET — list rollouts. POST — start one from a definition or a baseline.
+    """GET — list rollouts. POST — start one from a definition or a playbook.
 
     TOTP-gated like a manual deploy — it fans the work out across the whole
     fleet, wave by wave.
     """
     if request.method == "POST":
-        from apps.baselines.models import Baseline
+        from apps.playbooks.models import Playbook
 
         definition_id = request.data.get("definition_id")
-        baseline_id = request.data.get("baseline_id")
-        if bool(definition_id) == bool(baseline_id):
+        playbook_id = request.data.get("playbook_id")
+        if bool(definition_id) == bool(playbook_id):
             return Response(
-                {"detail": "supply exactly one of definition_id or baseline_id"},
+                {"detail": "supply exactly one of definition_id or playbook_id"},
                 status=400,
             )
-        definition = baseline = None
+        definition = playbook = None
         if definition_id:
             definition = get_object_or_404(TaskDefinition, pk=definition_id)
         else:
-            baseline = get_object_or_404(Baseline, pk=baseline_id)
+            playbook = get_object_or_404(Playbook, pk=playbook_id)
         error = _verify_confirmation(request.user, request.data)
         if error:
             return Response({"detail": error}, status=401)
@@ -1315,8 +1354,9 @@ def rollout_collection(request):
         try:
             rollout = start_rollout(
                 definition,
-                baseline=baseline,
+                playbook=playbook,
                 user=request.user,
+                wave_group_tag=(request.data.get("wave_group_tag") or "").strip(),
                 failure_threshold_pct=int(request.data.get("failure_threshold_pct", 10)),
                 min_results_before_halt=int(request.data.get("min_results_before_halt", 3)),
             )
@@ -1388,10 +1428,32 @@ def rollout_resume(request, rollout_id):
 
 # ── Wave management ─────────────────────────────────────────────────────────
 #
-# Waves are edited like baselines and automations: list, create, edit, delete.
+# Waves are edited like playbooks and automations: list, create, edit, delete.
 # Reads are open to any authenticated user so the Deployments page can render;
 # writes are admin-only, because changing a wave's tags changes which machines
 # the next rollout touches.
+
+
+def _wave_order_conflict(order, group_tags, exclude_pk=None):
+    """The wave already sitting at *order* on any of these ladders, or None.
+
+    Order used to be unique in the database. It cannot be any more: two ladders
+    each want their own wave 1, and a wave can sit on several. The invariant
+    that still matters is per-ladder, so it is checked here — two rungs at the
+    same height on one ladder have no defined walking order.
+    """
+    from .models import PatchWave
+
+    wanted = {str(t).strip().lower() for t in (group_tags or []) if str(t).strip()}
+    candidates = PatchWave.objects.filter(order=order)
+    if exclude_pk is not None:
+        candidates = candidates.exclude(pk=exclude_pk)
+    for other in candidates.prefetch_related("group_tag_rows"):
+        theirs = {t.key for t in other.group_tag_rows.all()}
+        # Two ungrouped waves share the one implicit ladder.
+        if (wanted & theirs) or (not wanted and not theirs):
+            return other
+    return None
 
 
 @api_view(["GET", "POST"])
@@ -1402,23 +1464,29 @@ def wave_collection(request):
     from .rollout_serializers import PatchWaveSerializer
 
     if request.method == "GET":
-        waves = PatchWave.objects.order_by("order", "id")
-        return Response(PatchWaveSerializer(waves, many=True).data)
+        waves = PatchWave.objects.prefetch_related("group_tag_rows")
+        if group_tag := (request.query_params.get("group") or "").strip():
+            waves = waves.filter(group_tag_rows__key=group_tag.lower())
+        return Response(
+            PatchWaveSerializer(waves.order_by("order", "id"), many=True).data)
 
     if not IsAdmin().has_permission(request, None):
         return Response({"detail": "Admin role required."}, status=403)
     serializer = PatchWaveSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(serializer.errors, status=400)
-    try:
-        serializer.save()
-    except IntegrityError:
-        # order is unique — say which number collided rather than surfacing a
-        # database error to the operator.
+    clash = _wave_order_conflict(
+        serializer.validated_data.get("order"),
+        serializer.validated_data.get("group_tags") or [])
+    if clash is not None:
+        where = (f"the {clash.group_tag_rows.first().name} group"
+                 if clash.group_tag_rows.exists() else "the ungrouped waves")
         return Response(
-            {"order": [f"Wave {request.data.get('order')} already exists."]},
+            {"order": [f"Wave {serializer.validated_data.get('order')} "
+                       f"already exists in {where} ({clash.name})."]},
             status=400,
         )
+    serializer.save()
     return Response(serializer.data, status=201)
 
 
@@ -1492,7 +1560,7 @@ def rollout_skip_validation(request, rollout_id):
 # Cascade fork — bring an item and everything it needs across in one act
 # ---------------------------------------------------------------------------
 #
-# A baseline is a sequence of tasks and an automation runs a task or a baseline,
+# A playbook is a sequence of tasks and an automation runs a task or a playbook,
 # so forking one of those alone lands you with something that cannot run. The
 # first version refused and listed what was missing, which was honest but left
 # the operator doing the resolution by hand — reading slugs off an error, then
@@ -1523,7 +1591,7 @@ def _already_have(by_uid, by_name, uid, name):
     Falling back to the name there would undo what uids are for: a task the
     operator wrote themselves that happens to also be called "Install Nginx"
     is a different task, and treating it as the catalog's would silently skip
-    the fork and leave a baseline pointing at the wrong steps.
+    the fork and leave a playbook pointing at the wrong steps.
 
     The name pass exists for catalog files written before uids, which have no
     other identity to offer.
@@ -1576,7 +1644,7 @@ def _plan_fork(kind: str, filename: str, user) -> dict:
     the preview on the card and the fork itself, so what the card promises is
     what the fork does.
     """
-    from apps.baselines.models import Baseline
+    from apps.playbooks.models import Playbook
 
     task_by_slug, task_by_uid = _catalog("tasks")
     item = None
@@ -1589,7 +1657,7 @@ def _plan_fork(kind: str, filename: str, user) -> dict:
         return {"error": f"{filename} is not in the catalog"}
 
     have_tasks_uid, have_tasks_name = _library_index(TaskDefinition, user)
-    have_bl_uid, have_bl_name = _library_index(Baseline, user)
+    have_bl_uid, have_bl_name = _library_index(Playbook, user)
 
     needs = []
     for ref in item.get("requires") or []:
@@ -1599,11 +1667,11 @@ def _plan_fork(kind: str, filename: str, user) -> dict:
                                      ref.get("uid"),
                                      source["name"] if source else ref["slug"])
         else:
-            bl_by_slug, bl_by_uid = _catalog("baselines")
+            bl_by_slug, bl_by_uid = _catalog("playbooks")
             source = _find_in_catalog(bl_by_slug, bl_by_uid, ref)
             existing = _already_have(have_bl_uid, have_bl_name, ref.get("uid"),
                                      source["name"] if source else ref["slug"])
-            # A baseline dependency drags its own tasks along.
+            # A playbook dependency drags its own tasks along.
             for inner in (source or {}).get("requires") or []:
                 inner_src = _find_in_catalog(task_by_slug, task_by_uid, inner)
                 needs.append({
@@ -1623,8 +1691,8 @@ def _plan_fork(kind: str, filename: str, user) -> dict:
             "source": source,
         })
 
-    # Dedupe, keeping first occurrence: a baseline can use one task twice, and
-    # two steps of an automation's baseline can share one.
+    # Dedupe, keeping first occurrence: a playbook can use one task twice, and
+    # two steps of an automation's playbook can share one.
     seen, ordered = set(), []
     for need in needs:
         key = (need["kind"], need["slug"])
@@ -1639,7 +1707,7 @@ def _plan_fork(kind: str, filename: str, user) -> dict:
     # reads as a failure when the honest answer is "you already have this".
     from apps.automations.models import Automation
 
-    model = {"tasks": TaskDefinition, "baselines": Baseline,
+    model = {"tasks": TaskDefinition, "playbooks": Playbook,
              "automations": Automation}[kind]
     have_uid, have_name = _library_index(model, user)
     mine = _already_have(have_uid, have_name, item.get("uid"), item["name"])
@@ -1672,13 +1740,13 @@ def community_fork_plan(request, kind: str, filename: str):
 def community_fork(request, kind: str, filename: str):
     """Fork a catalog item and everything it needs, in dependency order.
 
-    Tasks first, then baselines, then the item itself — anything already held
+    Tasks first, then playbooks, then the item itself — anything already held
     is skipped rather than duplicated. The whole thing is one transaction: a
-    half-forked baseline missing its third step is not a state worth leaving
+    half-forked playbook missing its third step is not a state worth leaving
     an operator in.
     """
     from apps.automations.views import automation_from_yaml
-    from apps.baselines.views import baseline_from_yaml
+    from apps.playbooks.views import playbook_from_yaml
 
     if kind not in COMMUNITY_KINDS:
         return Response({"error": f"unknown content kind {kind!r}"}, status=404)
@@ -1704,7 +1772,7 @@ def community_fork(request, kind: str, filename: str):
 
     created = []
     with transaction.atomic():
-        # Tasks before baselines: a baseline import resolves its steps against
+        # Tasks before playbooks: a playbook import resolves its steps against
         # the library, so its tasks have to be in there first.
         for need in [n for n in plan["needs"] if n["kind"] == "tasks"]:
             if need["have"]:
@@ -1712,21 +1780,21 @@ def community_fork(request, kind: str, filename: str):
             _fork_task_from_catalog(need["source"], request.user)
             created.append({"kind": "tasks", "name": need["name"]})
 
-        for need in [n for n in plan["needs"] if n["kind"] == "baselines"]:
+        for need in [n for n in plan["needs"] if n["kind"] == "playbooks"]:
             if need["have"]:
                 continue
-            sub = _import_via(baseline_from_yaml, request, need["source"])
+            sub = _import_via(playbook_from_yaml, request, need["source"])
             if sub.status_code >= 400:
                 transaction.set_rollback(True)
                 return sub
-            created.append({"kind": "baselines", "name": need["name"]})
+            created.append({"kind": "playbooks", "name": need["name"]})
 
         item = plan["item"]
         if kind == "tasks":
             definition = _fork_task_from_catalog(item, request.user)
             created.append({"kind": "tasks", "name": definition.name})
         else:
-            view = baseline_from_yaml if kind == "baselines" else automation_from_yaml
+            view = playbook_from_yaml if kind == "playbooks" else automation_from_yaml
             result = _import_via(view, request, item)
             if result.status_code >= 400:
                 transaction.set_rollback(True)
@@ -1749,3 +1817,94 @@ def _import_via(view, request, item):
     sub = factory.post("/", {"yaml": item["yaml_source"]}, format="json")
     force_authenticate(sub, user=request.user)
     return view(sub)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def definition_archive(request, definition_id):
+    """Archive or restore a task definition.
+
+    Definitions are never deleted — a playbook or automation still pointing at
+    one would lose a step without saying so — and this is the retirement path
+    instead. Everything already referencing it keeps running.
+    """
+    definition = get_object_or_404(TaskDefinition, pk=definition_id)
+    if not _user_can_see(definition, request.user):
+        return Response({"error": "Not found"}, status=404)
+
+    restore = bool(request.data.get("restore"))
+    definition.archived_at = None if restore else now()
+    definition.save(update_fields=["archived_at"])
+    return Response(TaskDefinitionSerializer(definition).data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def wave_group_collection(request):
+    """The ladders that exist, derived from the tags waves carry.
+
+    There is no wave-group record to keep in step with anything: a group is a
+    tag, so this reports the distinct group tags in use and how many enabled
+    waves each one holds. That is what the wave editor and the rollout picker
+    need in order to offer them.
+    """
+    from .models import PatchWave
+
+    counts = {}
+    for wave in PatchWave.objects.prefetch_related("group_tag_rows"):
+        for tag in wave.group_tag_rows.all():
+            entry = counts.setdefault(
+                tag.key, {"tag": tag.name, "waves": 0, "enabled_waves": 0})
+            entry["waves"] += 1
+            if wave.enabled:
+                entry["enabled_waves"] += 1
+
+    ungrouped = PatchWave.objects.filter(group_tag_rows__isnull=True).count()
+    return Response({
+        "groups": sorted(counts.values(), key=lambda g: g["tag"].lower()),
+        "ungrouped_waves": ungrouped,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def rollout_wave_hosts(request, rollout_id, wave_id):
+    """Every machine in one wave of one rollout, and how it went.
+
+    The wave summary only ever said how many failed. Finding out *which*
+    machines, and why, meant going to the run history and matching up hosts by
+    hand — so a halted rollout was hard to act on at the moment it mattered.
+    """
+    from .models import PatchRollout, Task
+
+    rollout = get_object_or_404(PatchRollout, pk=rollout_id)
+    tasks = (Task.objects
+             .filter(run__rollout=rollout, run__wave_id=wave_id, step_order=0)
+             .select_related("host", "run")
+             .order_by("host__hostname"))
+
+    rows = []
+    for task in tasks:
+        rows.append({
+            "task_id": str(task.id),
+            "host_id": str(task.host_id),
+            "hostname": task.host.hostname,
+            "ip_address": task.host.ip_address,
+            "state": task.state,
+            "failed": task.state in FAILURE_STATES,
+            "dispatched_at": task.dispatched_at.isoformat() if task.dispatched_at else None,
+            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+            "step_label": task.step_label,
+            # The operator is here because something failed; the output is the
+            # answer to "why", so it travels with the row rather than costing
+            # another request per machine.
+            "output": task.result_output or "",
+        })
+
+    return Response({
+        "rollout_id": str(rollout.id),
+        "wave_id": wave_id,
+        "total": len(rows),
+        "failed": sum(1 for r in rows if r["failed"]),
+        "hosts": rows,
+    })

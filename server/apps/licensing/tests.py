@@ -72,7 +72,7 @@ class LicensingTests(TestCase):
         state = licensing.current_state()
         self.assertIs(state.status, licensing.Status.NONE)
         self.assertEqual(state.tier, "free")
-        self.assertTrue(licensing.has_feature("baselines"))
+        self.assertTrue(licensing.has_feature("playbooks"))
         self.assertTrue(licensing.has_feature("ai_suggestions"))
         self.assertFalse(licensing.has_feature("sites"))
         self.assertFalse(licensing.has_feature("audit_log"))
@@ -122,7 +122,7 @@ class LicensingTests(TestCase):
         state = licensing.current_state()
         self.assertIs(state.status, licensing.Status.LAPSED)
         self.assertFalse(licensing.has_feature("sites"))
-        self.assertTrue(licensing.has_feature("baselines"))  # free never blinks
+        self.assertTrue(licensing.has_feature("playbooks"))  # free never blinks
 
     def test_expiry_warning_ladder(self):
         for days, severity in ((25, "info"), (10, "warning"), (3, "critical")):
@@ -144,7 +144,7 @@ class LicensingTests(TestCase):
             self.assertIn(state.status,
                           (licensing.Status.INVALID,), msg=blob[:40])
             self.assertEqual(state.tier, "free")
-            self.assertTrue(licensing.has_feature("baselines"))
+            self.assertTrue(licensing.has_feature("playbooks"))
 
     # -- seat overage banners, never blocks (§6) -------------------------------
 
@@ -215,7 +215,7 @@ class LicenseApiTests(TestCase):
         self.assertEqual(d["tier"], "free")
         self.assertEqual(d["instance"], licensing.instance_id())
         names = {f["name"]: f for f in d["features"]}
-        self.assertTrue(names["baselines"]["active"])
+        self.assertTrue(names["playbooks"]["active"])
         self.assertFalse(names["sites"]["active"])
 
     def test_paste_valid_license_via_api(self):
@@ -237,3 +237,39 @@ class LicenseApiTests(TestCase):
             c.post("/api/v1/license/", {"license": "x"}).status_code, 403)
         # but GET works for any signed-in user
         self.assertEqual(c.get("/api/v1/license/").status_code, 200)
+
+
+class UpgradeBodyShapeTests(TestCase):
+    """Every 402 must describe the licence the same way.
+
+    `licensed` exists so a client can branch on it. Rendered through DRF's
+    ErrorDetail it became the string "False" — truthy in JavaScript — while the
+    endpoints that build the body by hand returned a real boolean, so the field
+    contradicted itself depending on which gate refused.
+    """
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="gate", password="pw", is_staff=True, is_superuser=True)
+        self.client.force_login(self.user)
+
+    def test_a_gated_endpoint_reports_licensed_as_a_real_boolean(self):
+        resp = self.client.post("/api/v1/sites/", {"name": "X"},
+                                content_type="application/json")
+        self.assertEqual(resp.status_code, 402)
+        body = resp.json()
+        self.assertIs(body["licensed"], False)
+        self.assertEqual(body["feature"], "sites")
+
+    def test_the_permission_class_path_agrees_with_the_helper_path(self):
+        """audits gates through the permission class, sites through _gate."""
+        gated = self.client.get("/api/v1/audits/")
+        self.assertEqual(gated.status_code, 402)
+        self.assertIs(gated.json()["licensed"], False)
+
+    def test_a_hand_built_upgrade_body_has_the_same_shape(self):
+        from vigil.licensing import upgrade_body
+
+        body = upgrade_body("sites")
+        self.assertIs(body["licensed"], False)
+        self.assertEqual(sorted(body), ["detail", "feature", "licensed", "upgrade_url"])

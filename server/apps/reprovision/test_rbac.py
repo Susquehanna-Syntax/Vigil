@@ -2,7 +2,7 @@ import uuid
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from apps.accounts.models import Role, UserProfile
 from apps.accounts.permissions import CAPABILITIES, LEGACY_OPERATOR
@@ -260,3 +260,38 @@ class PreflightEndpointTests(TestCase):
         resp = self._post()
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["ok"])
+
+
+class PlainHttpOnALanTests(TestCase):
+    """A self-hosted Vigil is normally reached at http://10.x on the LAN, with
+    no certificate to be had. Refusing the rebuild there blocked the feature
+    outright rather than protecting anything."""
+
+    def _refused(self, host):
+        from apps.reprovision.views import _served_on_a_private_network
+
+        class _Req:
+            def get_host(self):
+                return host
+
+        return not _served_on_a_private_network(_Req())
+
+    def test_rfc1918_addresses_are_treated_as_private(self):
+        for host in ("10.0.0.109:8000", "192.168.1.50", "172.16.4.9:8080"):
+            self.assertFalse(self._refused(host), host)
+
+    def test_loopback_is_private(self):
+        self.assertFalse(self._refused("127.0.0.1:8000"))
+        self.assertFalse(self._refused("localhost:8000"))
+
+    def test_lan_names_are_private(self):
+        for host in ("vigil.local", "vigil.lan", "nas.internal", "box.home"):
+            self.assertFalse(self._refused(host), host)
+
+    def test_a_public_name_still_requires_the_acknowledgement(self):
+        for host in ("vigil.example.com", "93.184.216.34"):
+            self.assertTrue(self._refused(host), host)
+
+    def test_the_override_setting_demands_it_everywhere(self):
+        with override_settings(VIGIL_REQUIRE_HTTPS_FOR_REBUILD=True):
+            self.assertTrue(self._refused("10.0.0.109:8000"))

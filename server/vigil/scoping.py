@@ -17,7 +17,7 @@ logger = logging.getLogger("vigil.scoping")
 #: Every assignment model uses the reverse accessor ``site_assignment``, which
 #: is what lets the queries below stay uniform.
 _ASSIGNMENTS = {
-    "baselines.Baseline": ("BaselineSiteAssignment", "baseline"),
+    "baselines.Playbook": ("PlaybookSiteAssignment", "playbook"),
     "automations.Automation": ("AutomationSiteAssignment", "automation"),
     "alerts.NotificationChannel": ("ChannelSiteAssignment", "channel"),
 }
@@ -120,7 +120,7 @@ def unsuppress(site, obj):
 def execution_allowed(obj) -> bool:
     """May this resource's action run right now?
 
-    Site-scoped automations and baselines pause under a lapsed license; global
+    Site-scoped automations and playbooks pause under a lapsed license; global
     ones never do. NotificationChannel is never gated here — alert delivery is
     not a licensable behavior (§6).
     """
@@ -208,16 +208,16 @@ def filter_by_site(qs, user, path="", cascade_global=False):
     """Narrow `qs` to what `user` may see, by site.
 
     `path` is the ORM path from the queryset's model to whatever carries the
-    site assignment: "" when the model itself does (Host, Baseline,
+    site assignment: "" when the model itself does (Host, Playbook,
     Automation), "host__" when it hangs off a host (Alert).
 
     `cascade_global` distinguishes the two meanings of "global":
 
     * **False** (hosts, alerts) — unassigned means *membership* of the global
       site, so only someone who can see Global sees those rows.
-    * **True** (baselines, automations, channels) — global means *applies
+    * **True** (playbooks, automations, channels) — global means *applies
       everywhere*, so anyone with access to any site must see it. A Lab-only
-      admin has to see the global baseline that governs Lab.
+      admin has to see the global playbook that governs Lab.
 
     Unscoped users get the queryset back untouched, which is what keeps
     existing installs behaving exactly as before.
@@ -268,3 +268,40 @@ def host_in_scope(user, host) -> bool:
     # Unassigned means Global.
     glob = mods.Site.objects.filter(is_global=True).values_list("id", flat=True).first()
     return glob in ids
+
+
+def visible_host(user, host_id):
+    """The host with this id, or None when *user* may not reach it.
+
+    Returning None for "does not exist" and "exists in a site you cannot see"
+    alike is deliberate: callers answer 404 either way, so a scoped operator
+    cannot learn that a host exists elsewhere by probing ids.
+
+    Every per-host endpoint should route its lookup through this. The host list
+    has always been narrowed by site, but the per-host reads and writes behind
+    it were not, so an operator confined to one site could read another site's
+    metrics — and approve, reboot or re-firewall its machines — by id.
+    """
+    from apps.hosts.models import Host
+
+    host = Host.objects.filter(pk=host_id).first()
+    if host is None or not host_in_scope(user, host):
+        return None
+    return host
+
+
+def host_or_404(request, host_id):
+    """(host, None) when the caller may see it, else (None, a 404 Response).
+
+    Reads as:
+
+        host, denied = scoping.host_or_404(request, host_id)
+        if denied:
+            return denied
+    """
+    from rest_framework.response import Response
+
+    host = visible_host(request.user, host_id)
+    if host is None:
+        return None, Response({"error": "Not found"}, status=404)
+    return host, None

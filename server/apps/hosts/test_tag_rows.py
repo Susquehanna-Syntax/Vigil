@@ -8,7 +8,7 @@ already matched; whitespace variants stay separate because they never did.
 from django.test import TestCase
 
 from apps.automations.models import Automation
-from apps.baselines.models import Baseline
+from apps.playbooks.models import Playbook
 from apps.hosts.models import Host, Tag
 from apps.tasks.models import PatchWave
 
@@ -100,7 +100,7 @@ class PopulationTests(TestCase):
         Host.objects.create(hostname="h3", ip_address="10.30.0.3",
                             agent_token="t3", tags=["prod "])   # trailing space
         PatchWave.objects.create(name="w", order=801, tags=["canary"])
-        Baseline.objects.create(name="b", target_tags=["web"])
+        Playbook.objects.create(name="b", target_tags=["web"])
         Automation.objects.create(name="a", trigger=Automation.Trigger.EVENT,
                                   event="alert_fired",
                                   action_kind=Automation.ActionKind.TASK,
@@ -131,7 +131,7 @@ class PopulationTests(TestCase):
     def test_sources_are_recorded_for_reporting(self):
         seen = self._collect()
         self.assertIn("Host.tags", seen["web"]["sources"])
-        self.assertIn("Baseline.target_tags", seen["web"]["sources"])
+        self.assertIn("Playbook.target_tags", seen["web"]["sources"])
 
 
 class MembershipUnchangedTests(TestCase):
@@ -192,7 +192,7 @@ class MirrorConsistencyTests(TestCase):
             hostname="mir2", ip_address="10.32.0.2", agent_token="mir2",
             tags=["prod "])
         self.wave = PatchWave.objects.create(name="mirw", order=803, tags=["prod"])
-        self.baseline = Baseline.objects.create(name="mirb", target_tags=["web"])
+        self.playbook = Playbook.objects.create(name="mirb", target_tags=["web"])
         self._seed_rows()
         self._link()
 
@@ -221,7 +221,7 @@ class MirrorConsistencyTests(TestCase):
             (self.host, self.host.tags, self.host.tag_rows),
             (self.spaced, self.spaced.tags, self.spaced.tag_rows),
             (self.wave, self.wave.tags, self.wave.tag_rows),
-            (self.baseline, self.baseline.target_tags, self.baseline.target_tag_rows),
+            (self.playbook, self.playbook.target_tags, self.playbook.target_tag_rows),
         ):
             expected = {str(s).lower() for s in strings if str(s).strip()}
             actual = {t.key for t in relation.all()}
@@ -295,11 +295,11 @@ class WriteSyncTests(TestCase):
         self.assertFalse(sync_tag_rows(host, "tags", "tag_rows"),
                          "an unchanged save should report no change")
 
-    def test_wave_and_baseline_sync_too(self):
+    def test_wave_and_playbook_sync_too(self):
         wave = PatchWave.objects.create(name="wsw", order=804, tags=["canary"])
         self.assertEqual({t.key for t in wave.tag_rows.all()}, {"canary"})
-        baseline = Baseline.objects.create(name="wsb", target_tags=["web"])
-        self.assertEqual({t.key for t in baseline.target_tag_rows.all()}, {"web"})
+        playbook = Playbook.objects.create(name="wsb", target_tags=["web"])
+        self.assertEqual({t.key for t in playbook.target_tag_rows.all()}, {"web"})
 
     def test_automation_syncs_both_of_its_lists(self):
         auto = Automation.objects.create(

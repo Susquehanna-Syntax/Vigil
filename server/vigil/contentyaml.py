@@ -1,7 +1,7 @@
 """The community repo's YAML dialect, shared by every content type.
 
-Vigil's own storage is relational: a baseline holds foreign keys to task
-definitions, an automation holds a foreign key to a baseline. The community
+Vigil's own storage is relational: a playbook holds foreign keys to task
+definitions, an automation holds a foreign key to a playbook. The community
 repo has no database and no primary keys, so it references content the only
 way a directory of files can — by **slug**, the filename without its
 extension. ``task: install-nginx`` means ``tasks/install-nginx.yaml``.
@@ -127,7 +127,7 @@ def parse_uid(raw: dict, what: str) -> str:
 
     A slug is a filename, so it changes when the file is renamed and collides
     when two people pick the same name. A uid does neither, which is what lets
-    a baseline keep pointing at the right task after you have renamed your
+    a playbook keep pointing at the right task after you have renamed your
     copy of it, and lets two unrelated tasks both be called "Cleanup".
 
     Optional. Everything already in the catalog predates uids and must keep

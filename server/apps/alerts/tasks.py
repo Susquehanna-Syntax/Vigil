@@ -316,7 +316,51 @@ def check_docker_image_updates():
                 logger.info("Docker alert resolved: %s on %s", container_name, host.hostname)
                 dispatch_alert_notification(existing, event="resolved")
 
+        resolved += _resolve_alerts_for_departed_containers(host, rule, window)
+
     return f"Docker image check: {fired} fired, {resolved} resolved"
+
+
+def _resolve_alerts_for_departed_containers(host, rule, window) -> int:
+    """Resolve outdated-image alerts for containers the host no longer runs.
+
+    A container that is removed stops emitting metric points altogether, and
+    the resolve branch above only ever runs when a *fresh* point arrives saying
+    the image is current. So tearing down a stack left its alerts firing for
+    good, pointing at containers that no longer existed.
+
+    The container table is refreshed wholesale on every check-in that carries a
+    docker payload, so it is the authority on what is actually running. It is
+    only trustworthy when a payload arrived recently: a host whose agent has
+    stopped reporting docker has an empty table too, and resolving on that
+    would hide real alerts rather than stale ones.
+    """
+    if not host.docker_snapshot_at or host.docker_snapshot_at < window:
+        return 0
+
+    running = {
+        name.strip().lower()
+        for name in host.docker_containers.values_list("name", flat=True)
+        if name
+    }
+
+    resolved = 0
+    open_alerts = Alert.objects.filter(
+        host=host, rule=rule,
+        state__in=[Alert.State.FIRING, Alert.State.ACKNOWLEDGED],
+    )
+    for alert in open_alerts:
+        name = (alert.fix_context or {}).get("container_name", "")
+        if not name or name.strip().lower() in running:
+            continue
+        alert.state = Alert.State.RESOLVED
+        alert.resolved_at = now()
+        alert.save(update_fields=["state", "resolved_at"])
+        resolved += 1
+        logger.info("Docker alert resolved (container gone): %s on %s",
+                    name, host.hostname)
+        dispatch_alert_notification(alert, event="resolved")
+    return resolved
 
 
 # ---------------------------------------------------------------------------

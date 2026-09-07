@@ -8,6 +8,7 @@ import logging
 import shutil
 from datetime import timedelta
 
+from django.conf import settings as django_settings
 from django.db.models import ProtectedError
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
@@ -52,6 +53,35 @@ def _first_serializer_error(errors) -> str:
 
 
 # ── Image catalog (admin only — see §4.4) ────────────────────────────────────
+
+def _served_on_a_private_network(request) -> bool:
+    """True when this Vigil is reached over a private address or a LAN name.
+
+    The plain-HTTP refusal exists because the answer file carries an admin
+    password hash, SSH keys and an enrolment token. Over the open internet that
+    is worth blocking on. On the LAN address a self-hosted Vigil is normally
+    reached at, with no certificate to be had, it blocked the feature outright
+    rather than protecting anything — the installer it talks to is on the same
+    wire. Set VIGIL_REQUIRE_HTTPS_FOR_REBUILD=1 to demand the acknowledgement
+    everywhere regardless.
+    """
+    import ipaddress
+
+    if getattr(django_settings, "VIGIL_REQUIRE_HTTPS_FOR_REBUILD", False):
+        return False
+
+    hostname = (request.get_host() or "").split(":")[0].strip().rstrip(".").lower()
+    if not hostname:
+        return False
+    if hostname == "localhost" or hostname.endswith(
+            (".local", ".lan", ".internal", ".home", ".arpa")):
+        return True
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        return False
+    return address.is_private or address.is_loopback or address.is_link_local
+
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -490,8 +520,9 @@ def _create_job(request):
         return Response(
             {"error": "The agent: tag namespace is reserved"}, status=400)
 
-    if not request.is_secure() and not request.data.get(
-            "acknowledge_plaintext_transport"):
+    if (not request.is_secure()
+            and not _served_on_a_private_network(request)
+            and not request.data.get("acknowledge_plaintext_transport")):
         return Response({
             "error": "Vigil is being served over plain HTTP. The answer file "
                      "carries the admin password hash, SSH keys, and the "
@@ -503,15 +534,15 @@ def _create_job(request):
     if err := verify_rebuild_confirmation(request.user, request.data, host):
         return Response({"error": err}, status=401)
 
-    baseline = None
-    if baseline_id := request.data.get("post_baseline"):
-        from apps.baselines.models import Baseline
-        baseline = get_object_or_404(Baseline, pk=baseline_id)
+    playbook = None
+    if playbook_id := request.data.get("post_playbook"):
+        from apps.playbooks.models import Playbook
+        playbook = get_object_or_404(Playbook, pk=playbook_id)
 
     job = RebuildJob.objects.create(
         host=host, image=image, profile=profile, requested_by=request.user,
         confirmed_ip=request.META.get("REMOTE_ADDR"),
-        completion_tag=tag, post_baseline=baseline,
+        completion_tag=tag, post_playbook=playbook,
         deadline=now() + timedelta(minutes=profile.deadline_minutes),
     )
     _answer, enroll = jobs.mint_tokens(job)

@@ -37,23 +37,23 @@ def _apply_completion_tags(job, host) -> None:
 def complete_if_rebuilding(host):
     """Finish the rebuild if this check-in is the one we were waiting for.
 
-    Never raises: a broken baseline must not stop a host checking in, and it
+    Never raises: a broken playbook must not stop a host checking in, and it
     must not strand the job in ENROLLING either — the job completes even when
     the post-rebuild dispatch fails, with the failure logged.
     """
     job = RebuildJob.objects.filter(
         host=host, state=RebuildJob.State.ENROLLING).select_related(
-            "post_baseline").first()
+            "post_playbook").first()
     if job is None:
         return None
 
     _apply_completion_tags(job, host)
 
-    if job.post_baseline is not None:
+    if job.post_playbook is not None:
         try:
-            from apps.baselines.models import dispatch_to_host
+            from apps.playbooks.models import dispatch_to_host
 
-            dispatch_to_host(host, baselines=[job.post_baseline])
+            dispatch_to_host(host, playbooks=[job.post_playbook])
             run_id = host.tasks.filter(run__isnull=False).order_by(
                 "-created_at").values_list("run", flat=True).first()
             if run_id:
@@ -61,7 +61,7 @@ def complete_if_rebuilding(host):
                 job.save(update_fields=["post_run"])
         except Exception:
             logger.exception(
-                "rebuild %s: post-rebuild baseline dispatch failed", job.id)
+                "rebuild %s: post-rebuild playbook dispatch failed", job.id)
 
     try:
         jobs.advance(job, RebuildJob.State.COMPLETED)

@@ -37,7 +37,7 @@
         <form id="license-paste-form" style="margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
           <input type="text" class="form-control" id="license-paste" placeholder="Paste a license key (SQSY-LICENSE-V1.…)" style="flex:1; min-width:280px;">
           <button type="submit" class="btn btn-mint btn-sm">Apply</button>
-          <a class="btn btn-outline btn-sm" id="license-get" target="_blank" rel="noopener">Get a license</a>
+          <a class="btn btn-sky btn-sm" id="license-get" target="_blank" rel="noopener">Get a license</a>
         </form>
         <p id="license-paste-result" class="muted"></p>
       </div>
@@ -95,7 +95,7 @@
           <div class="setting-row"><label>API key</label><input type="password" class="form-control" id="ap-key" placeholder="blank = keyless local / keep current"><p class="bl-hint" id="ap-key-note"></p></div>
           <div class="bl-editor-actions">
             <button class="btn btn-mint btn-sm" id="ap-save">Save provider</button>
-            <button class="btn btn-outline btn-sm" id="ap-new">Clear</button>
+            <button class="btn btn-peach btn-sm" id="ap-new">Clear</button>
           </div>
         </div>
       </div>
@@ -119,7 +119,7 @@
         <p class="muted" id="civil-state"></p>
         <div style="margin-top:12px;">
           <button class="btn btn-mint btn-sm" id="civil-save-btn">Save</button>
-          <button class="btn btn-outline btn-sm" id="civil-test-btn">Test connection &amp; fetch key</button>
+          <button class="btn btn-mint btn-sm" id="civil-test-btn">Test connection &amp; fetch key</button>
         </div>
       </div>
 
@@ -145,7 +145,7 @@
         </div>
         <div class="totp-actions" id="totp-actions" style="margin-top:16px;">
           <button class="btn btn-sky btn-sm" id="totp-start-btn" onclick="totpStart()">Enroll TOTP</button>
-          <button class="btn btn-outline btn-sm" id="totp-disable-btn" style="display:none;" onclick="totpDisablePrompt()">Disable…</button>
+          <button class="btn btn-rose btn-sm" id="totp-disable-btn" style="display:none;" onclick="totpDisablePrompt()">Disable…</button>
         </div>
       </div>
 
@@ -183,7 +183,7 @@
         <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;">
           <div class="confirm-hint" id="ad-status">—</div>
           <div style="display:flex;gap:8px;">
-            <button class="btn btn-outline btn-sm" onclick="adSaveConfig()">Save</button>
+            <button class="btn btn-mint btn-sm" onclick="adSaveConfig()">Save</button>
             <button class="btn btn-sky btn-sm" onclick="adSyncNow()">Import Now</button>
           </div>
         </div>
@@ -202,7 +202,7 @@
           </div>
           <div class="enroll-actions">
             <button class="btn btn-sm btn-mint" onclick="approveHost('{{ host.id }}', this)">Approve</button>
-            <button class="btn btn-sm btn-outline" onclick="rejectHost('{{ host.id }}', this)">Reject</button>
+            <button class="btn btn-sm btn-rose" onclick="rejectHost('{{ host.id }}', this)">Reject</button>
           </div>
         </div>
         {% endfor %}

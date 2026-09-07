@@ -2,7 +2,7 @@
 {% comment %}
 Logic: static/js/vigil-community.js | Styles: vigil.css .def-*, .sub-tab, .task-search-*
 Data: client-side fetch /api/v1/tasks/community/<kind>/ (GitHub-backed, server-cached
-per kind). Forking a baseline or an automation resolves its slug references against
+per kind). Forking a playbook or an automation resolves its slug references against
 the operator's own library, which is why a fork can fail with a list of what to get
 first — see openCommunityItem().
 {% endcomment %}
@@ -11,7 +11,7 @@ first — see openCommunityItem().
       <div class="page-header">
         <div>
           <div class="page-title">Community<span>.</span></div>
-          <div class="page-sub">Tasks, baselines and automations from the public Vigil community repo. Fork any of them into your library.</div>
+          <div class="page-sub">Tasks, playbooks and automations from the public Vigil community repo. Fork any of them into your library.</div>
         </div>
         <button class="btn btn-outline btn-sm" id="community-refresh-btn" onclick="refreshCommunity(true)" title="Re-read the repo now instead of waiting out the ten-minute cache">
           <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
@@ -26,12 +26,12 @@ first — see openCommunityItem().
         without your review, and deploying still requires 2FA. Share your own with
         <em>Submit to Community</em> in any editor.
         <span class="field-hint" tabindex="0" aria-label="How forking works"
-              data-hint="A baseline names its tasks by slug, and an automation names the task or baseline it runs the same way. Forking one resolves those names against your own library.&#10;&#10;If something it needs is missing, the fork stops and tells you exactly which items to fork first — rather than importing a baseline whose steps silently vanished.">?</span>
+              data-hint="A playbook names its tasks by slug, and an automation names the task or playbook it runs the same way. Forking one resolves those names against your own library.&#10;&#10;If something it needs is missing, the fork stops and tells you exactly which items to fork first — rather than importing a playbook whose steps silently vanished.">?</span>
       </div>
 
       <div class="sub-tabs">
         <div class="sub-tab t-lav active" data-subtab="community-tasks-panel" data-kind="tasks">Tasks</div>
-        <div class="sub-tab t-sky" data-subtab="community-baselines-panel" data-kind="baselines">Baselines</div>
+        <div class="sub-tab t-sky" data-subtab="community-playbooks-panel" data-kind="playbooks">Playbooks</div>
         <div class="sub-tab t-peach" data-subtab="community-automations-panel" data-kind="automations">Automations</div>
       </div>
 
@@ -44,12 +44,12 @@ first — see openCommunityItem().
         <div id="community-tasks-grid" class="def-grid"></div>
       </div>
 
-      <div class="sub-panel" id="community-baselines-panel">
+      <div class="sub-panel" id="community-playbooks-panel">
         <div class="task-search-bar">
           <svg class="task-search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" class="task-search-input" id="community-baselines-search" placeholder="Search community baselines…">
+          <input type="text" class="task-search-input" id="community-playbooks-search" placeholder="Search community playbooks…">
         </div>
-        <div id="community-baselines-grid" class="def-grid"></div>
+        <div id="community-playbooks-grid" class="def-grid"></div>
       </div>
 
       <div class="sub-panel" id="community-automations-panel">

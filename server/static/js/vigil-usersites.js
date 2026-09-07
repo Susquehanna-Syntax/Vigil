@@ -74,7 +74,7 @@ async function openUserSites(user) {
                 ${USER_SITE_ROLES.map((r) =>
                   `<option value="${r}"${g.role === r ? ' selected' : ''}>${escHtml(ROLE_LABELS[r] || r)}</option>`).join('')}
               </select>
-              <button class="btn btn-outline btn-sm us-revoke" data-gid="${g.id}">Revoke</button>
+              <button class="btn btn-rose btn-sm us-revoke" data-gid="${g.id}">Revoke</button>
             </div>
             ${g.role === 'operator' ? capabilityGrid(g) : `
               <p class="muted us-note">${g.role === 'admin'
@@ -101,7 +101,7 @@ async function openUserSites(user) {
         </div>` : ''}
       <p class="muted" id="us-note"></p>
       <div class="confirm-actions">
-        <button class="btn btn-outline btn-sm" id="us-close">Done</button>
+        <button class="btn btn-mint btn-sm" id="us-close">Done</button>
       </div>`);
     wire();
   }
@@ -114,8 +114,8 @@ async function openUserSites(user) {
           <span class="us-app">${escHtml(app)}</span>
           <span class="us-verbs">${verbs.map((v) => `
             <label class="us-verb">
-              <input type="checkbox" data-gid="${g.id}" data-app="${escHtml(app)}"
-                     data-verb="${escHtml(v)}"${held.has(`${app}:${v}`) ? ' checked' : ''}>
+              <input type="checkbox" data-gid="${g.id}" data-app="${escAttr(app)}"
+                     data-verb="${escAttr(v)}"${held.has(`${app}:${v}`) ? ' checked' : ''}>
               ${escHtml(v)}
             </label>`).join('')}</span>
         </div>`).join('') +

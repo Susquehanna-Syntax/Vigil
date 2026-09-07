@@ -24,6 +24,12 @@ class TaskDefinition(models.Model):
         HIGH = "high", "High"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    #: Set when a definition is retired. Deleting one is not an option — a
+    #: playbook or automation that referenced it would silently lose a step —
+    #: so archiving is how a task leaves the working set. Everything already
+    #: pointing at it keeps working; it just stops appearing in lists and
+    #: pickers.
+    archived_at = models.DateTimeField(null=True, blank=True)
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -92,7 +98,7 @@ class TaskRun(models.Model):
     class Source(models.TextChoices):
         MANUAL = "manual", "Manual deploy"
         AUTOMATION = "automation", "Automation"
-        BASELINE = "baseline", "Baseline"
+        PLAYBOOK = "playbook", "Playbook"
         REPROVISION = "reprovision", "Reprovision"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -100,7 +106,7 @@ class TaskRun(models.Model):
         TaskDefinition, on_delete=models.SET_NULL, null=True, related_name="runs"
     )
     # What kicked this off. Recorded explicitly rather than inferred from the
-    # FKs below, because those go null when the automation or baseline is
+    # FKs below, because those go null when the automation or playbook is
     # deleted and the history must still say what it was.
     source = models.CharField(
         max_length=12, choices=Source.choices, default=Source.MANUAL)
@@ -108,12 +114,12 @@ class TaskRun(models.Model):
         "automations.Automation", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="runs",
     )
-    baseline = models.ForeignKey(
-        "baselines.Baseline", on_delete=models.SET_NULL, null=True, blank=True,
+    playbook = models.ForeignKey(
+        "baselines.Playbook", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="runs",
     )
     # Which staged rollout this run belongs to, if any. Manual deploys and
-    # automation/baseline runs leave it null.
+    # automation/playbook runs leave it null.
     rollout = models.ForeignKey(
         "tasks.PatchRollout", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="runs",
@@ -228,17 +234,26 @@ class PatchWave(TagRowSyncMixin, models.Model):
     patched by a rollout at all — that is deliberate: opting in by tag is
     safer than opting out.
     """
-    tag_sync_fields = [("tags", "tag_rows")]
-
+    tag_sync_fields = [("tags", "tag_rows"), ("group_tags", "group_tag_rows")]
 
     class Meta:
         ordering = ["order"]
-        constraints = [
-            models.UniqueConstraint(fields=("order",), name="uniq_patch_wave_order"),
-        ]
 
     name = models.CharField(max_length=120)
     order = models.PositiveIntegerField()
+    #: Which ladders this wave belongs to. A "wave group" is just a tag, the
+    #: same way everything else in Vigil selects things, so a wave can sit in
+    #: more than one ladder — a Canary wave is often the first rung of both the
+    #: server and the workstation rollout. Empty means the wave is ungrouped
+    #: and only a rollout that names no group walks it.
+    #:
+    #: Order is therefore NOT unique in the database: two ladders each want
+    #: their own wave 1. The API refuses a collision among waves that share a
+    #: group instead, which is the invariant that actually matters.
+    group_tags = models.JSONField(default=list, blank=True)
+    #: Row-backed mirror of ``group_tags`` — see Host.tag_rows.
+    group_tag_rows = models.ManyToManyField("hosts.Tag", blank=True,
+                                            related_name="wave_groups")
     tags = models.JSONField(default=list, blank=True)
     #: Row-backed mirror of ``tags`` — see Host.tag_rows.
     tag_rows = models.ManyToManyField("hosts.Tag", blank=True, related_name="waves")
@@ -271,11 +286,11 @@ class PatchRollout(models.Model):
 
     class ActionKind(models.TextChoices):
         TASK = "task", "Task definition"
-        BASELINE = "baseline", "Baseline"
+        PLAYBOOK = "playbook", "Playbook"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    # A rollout carries either a task definition or a baseline — the same
+    # A rollout carries either a task definition or a playbook — the same
     # either/or shape Automation already uses, so the two read alike. Both are
     # nullable at the database level and the constraint below enforces exactly
     # one, which keeps a deleted definition from silently turning a rollout
@@ -286,8 +301,13 @@ class PatchRollout(models.Model):
         TaskDefinition, on_delete=models.CASCADE, related_name="rollouts",
         null=True, blank=True,
     )
-    baseline = models.ForeignKey(
-        "baselines.Baseline", on_delete=models.CASCADE, related_name="rollouts",
+    #: The wave ladder this rollout walks, as a group tag. Blank means every
+    #: enabled wave, which is what a rollout did before groups existed.
+    #: Snapshotted as a string rather than a relation so re-tagging a wave
+    #: later cannot reshape a rollout already in flight.
+    wave_group_tag = models.CharField(max_length=120, blank=True, default="")
+    playbook = models.ForeignKey(
+        "baselines.Playbook", on_delete=models.CASCADE, related_name="rollouts",
         null=True, blank=True,
     )
     state = models.CharField(max_length=12, choices=State.choices, default=State.PENDING)
@@ -327,8 +347,8 @@ class PatchRollout(models.Model):
                 # Exactly one target. Both-or-neither would make `rollout_target`
                 # ambiguous and is never a legitimate state.
                 condition=(
-                    models.Q(definition__isnull=False, baseline__isnull=True)
-                    | models.Q(definition__isnull=True, baseline__isnull=False)
+                    models.Q(definition__isnull=False, playbook__isnull=True)
+                    | models.Q(definition__isnull=True, playbook__isnull=False)
                 ),
                 name="rollout_has_exactly_one_target",
             ),
@@ -336,8 +356,8 @@ class PatchRollout(models.Model):
 
     @property
     def target(self):
-        """The definition or baseline this rollout runs, whichever is set."""
-        return self.baseline if self.action_kind == self.ActionKind.BASELINE else self.definition
+        """The definition or playbook this rollout runs, whichever is set."""
+        return self.playbook if self.action_kind == self.ActionKind.PLAYBOOK else self.definition
 
     @property
     def target_name(self) -> str:
@@ -360,7 +380,7 @@ def wave_host_ids(wave) -> list:
     # lowercased with whitespace preserved, so `Prod` and `prod` are the same
     # row (they always matched) and `prod ` is a different one (it never did).
     #
-    # A wave with no tags still matches no hosts — the opposite of a baseline
+    # A wave with no tags still matches no hosts — the opposite of a playbook
     # with no target_tags, which matches all of them. That asymmetry predates
     # this change and is pinned by test_tag_semantics.
     tag_ids = list(wave.tag_rows.values_list("id", flat=True))

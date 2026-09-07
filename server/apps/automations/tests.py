@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from apps.alerts.models import Alert, AlertRule
-from apps.baselines.models import Baseline, BaselineStep
+from apps.playbooks.models import Playbook, PlaybookStep
 from apps.hosts.models import Host
 from apps.tasks.models import Task, TaskDefinition
 from vigil import hooks
@@ -73,15 +73,15 @@ class EventAutomationTests(TestCase):
         self.assertTrue(Task.objects.filter(host=linux).exists())
         self.assertFalse(Task.objects.filter(host=windows).exists())
 
-    def test_baseline_action_expands(self):
+    def test_playbook_action_expands(self):
         d1, d2 = make_def("a"), make_def("b", actions=[{"type": "restart_service", "params": {"service_name": "nginx"}}])
-        # auto-enroll off so only the automation dispatches (baseline stays callable)
-        b = Baseline.objects.create(name="Bootstrap", enabled=False, created_by=self.admin)
-        BaselineStep.objects.create(baseline=b, definition=d1, order=0)
-        BaselineStep.objects.create(baseline=b, definition=d2, order=1)
+        # auto-enroll off so only the automation dispatches (playbook stays callable)
+        b = Playbook.objects.create(name="Bootstrap", created_by=self.admin)
+        PlaybookStep.objects.create(playbook=b, definition=d1, order=0)
+        PlaybookStep.objects.create(playbook=b, definition=d2, order=1)
         Automation.objects.create(
             name="bootstrap new", trigger="event", event="host_approved",
-            action_kind="baseline", baseline=b, target="event_host",
+            action_kind="playbook", playbook=b, target="event_host",
             created_by=self.admin)
         host = make_host()
         hooks.emit("host_approved", host=host, approved_by=self.admin)
@@ -100,10 +100,10 @@ class EventAutomationTests(TestCase):
         self.assertFalse(Task.objects.filter(host=host).exists())
 
     def test_broken_action_never_breaks_the_event(self):
-        # The baseline reference points nowhere (deleted) → handle_event must not raise.
+        # The playbook reference points nowhere (deleted) → handle_event must not raise.
         Automation.objects.create(
             name="broken", trigger="event", event="host_approved",
-            action_kind="baseline", baseline=None, target="event_host",
+            action_kind="playbook", playbook=None, target="event_host",
             created_by=self.admin)
         host = make_host()
         handle_event("host_approved", {"host": host})  # no exception = pass
@@ -266,42 +266,42 @@ class SpecificEventTests(TestCase):
         self.assertEqual(resp.json()["event_rule_name"], "CPU spike")
 
 
-class AutomationBaselineReferenceTests(TestCase):
-    """The automation must point at ONE specific baseline, not a name that
-    could match several once baselines become site-scoped."""
+class AutomationPlaybookReferenceTests(TestCase):
+    """The automation must point at ONE specific playbook, not a name that
+    could match several once playbooks become site-scoped."""
 
     def setUp(self):
         self.defn = make_def("echo")
 
-    def test_automation_resolves_its_own_baseline_not_a_namesake(self):
-        first = Baseline.objects.create(name="Nightly patch scan")
-        BaselineStep.objects.create(baseline=first, definition=self.defn, order=0)
+    def test_automation_resolves_its_own_playbook_not_a_namesake(self):
+        first = Playbook.objects.create(name="Nightly patch scan")
+        PlaybookStep.objects.create(playbook=first, definition=self.defn, order=0)
 
-        # A second baseline that a name lookup could ambiguously match.
-        second = Baseline.objects.create(name="nightly patch scan (west)")
-        BaselineStep.objects.create(baseline=second, definition=self.defn, order=0)
+        # A second playbook that a name lookup could ambiguously match.
+        second = Playbook.objects.create(name="nightly patch scan (west)")
+        PlaybookStep.objects.create(playbook=second, definition=self.defn, order=0)
 
         auto = Automation.objects.create(
             name="patch", trigger=Automation.Trigger.SCHEDULE,
-            action_kind=Automation.ActionKind.BASELINE, baseline=second,
+            action_kind=Automation.ActionKind.PLAYBOOK, playbook=second,
         )
         auto.refresh_from_db()
-        self.assertEqual(auto.baseline_id, second.id)
-        self.assertNotEqual(auto.baseline_id, first.id)
+        self.assertEqual(auto.playbook_id, second.id)
+        self.assertNotEqual(auto.playbook_id, first.id)
 
-    def test_deleting_the_baseline_nulls_the_reference(self):
-        b = Baseline.objects.create(name="temp")
+    def test_deleting_the_playbook_nulls_the_reference(self):
+        b = Playbook.objects.create(name="temp")
         auto = Automation.objects.create(
             name="a", trigger=Automation.Trigger.SCHEDULE,
-            action_kind=Automation.ActionKind.BASELINE, baseline=b,
+            action_kind=Automation.ActionKind.PLAYBOOK, playbook=b,
         )
         b.delete()
         auto.refresh_from_db()
-        self.assertIsNone(auto.baseline_id)
+        self.assertIsNone(auto.playbook_id)
 
 
 class RunHistoryTests(TestCase):
-    """Automation and baseline dispatches must be visible as runs, with a
+    """Automation and playbook dispatches must be visible as runs, with a
     resolved outcome — not a scatter of orphan tasks."""
 
     def setUp(self):
@@ -357,7 +357,7 @@ class RunHistoryTests(TestCase):
         self.assertEqual(rows["count"], 1)
         self.assertEqual(rows["results"][0]["automation_name"], "nightly")
         self.assertEqual(self.client.get(
-            "/api/v1/tasks/runs/?source=baseline").json()["count"], 0)
+            "/api/v1/tasks/runs/?source=playbook").json()["count"], 0)
 
     def test_history_endpoint_rejects_an_unknown_source(self):
         self.assertEqual(self.client.get(

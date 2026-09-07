@@ -1,27 +1,27 @@
-/* The Community page — tasks, baselines and automations from the public repo.
+/* The Community page — tasks, playbooks and automations from the public repo.
  *
  * Each kind is fetched and cached independently (server-side, ten minutes) so
  * a slow or empty directory does not hold up the others, and each panel keeps
  * its own search so switching tabs does not carry a stale filter across.
  *
  * Forking is where the three kinds differ. A task is self-contained: its YAML
- * opens in the editor and saving adds it. A baseline names its tasks by slug
- * and an automation names the task or baseline it runs the same way, so those
+ * opens in the editor and saving adds it. A playbook names its tasks by slug
+ * and an automation names the task or playbook it runs the same way, so those
  * two are imported server-side, which resolves the names against your own
  * library. When something is missing the import refuses and says which items
- * to fork first — a baseline whose steps quietly vanished would be worse than
+ * to fork first — a playbook whose steps quietly vanished would be worse than
  * a refusal.
  */
 
-const COMMUNITY_KINDS = ['tasks', 'baselines', 'automations'];
-const communityCache = { tasks: [], baselines: [], automations: [] };
-const communityLoaded = { tasks: false, baselines: false, automations: false };
+const COMMUNITY_KINDS = ['tasks', 'playbooks', 'automations'];
+const communityCache = { tasks: [], playbooks: [], automations: [] };
+const communityLoaded = { tasks: false, playbooks: false, automations: false };
 let communityKind = 'tasks';
 /* Whether the Tasks panel is also showing the tasks that exist to serve a
-   baseline. Off by default — those are offered by the thing that needs them. */
+   playbook. Off by default — those are offered by the thing that needs them. */
 let communityShowServing = false;
 
-const COMMUNITY_LABEL = { tasks: 'task', baselines: 'baseline', automations: 'automation' };
+const COMMUNITY_LABEL = { tasks: 'task', playbooks: 'playbook', automations: 'automation' };
 
 function _communityEmptyHtml(kind) {
   return `<div class="empty-state">
@@ -32,16 +32,16 @@ function _communityEmptyHtml(kind) {
   </div>`;
 }
 
-/* Which catalog tasks exist only to serve a baseline or an automation.
+/* Which catalog tasks exist only to serve a playbook or an automation.
  *
  * Those are forked along with whatever needs them, so listing them again as
  * standalone entries shows the same thing twice. They stay one click away
- * rather than being hidden outright — a task that serves a baseline is still
+ * rather than being hidden outright — a task that serves a playbook is still
  * a perfectly good task to read, or to fork on its own.
  */
 function _referencedTaskKeys() {
   const keys = new Set();
-  ['baselines', 'automations'].forEach(kind => {
+  ['playbooks', 'automations'].forEach(kind => {
     (communityCache[kind] || []).forEach(item => {
       (item.requires || []).forEach(ref => {
         if (ref.kind !== 'tasks') return;
@@ -92,7 +92,7 @@ function _communityCardHtml(item) {
   if (item.author) meta.push(`by ${escHtml(item.author)}`);
 
   const github = item.html_url
-    ? `<a class="btn btn-ghost btn-sm" style="color:var(--text-3);text-decoration:none;" href="${escHtml(item.html_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">View on GitHub</a>`
+    ? `<a class="btn btn-ghost btn-sm" style="color:var(--text-3);text-decoration:none;" href="${escAttr(item.html_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">View on GitHub</a>`
     : '';
   const arg = `'${item.kind}','${encodeURIComponent(item.filename)}'`;
   return `
@@ -108,7 +108,7 @@ function _communityCardHtml(item) {
       </div>
       <div class="def-card-footer">
         ${github}
-        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); openCommunityItem(${arg})">${escHtml(_forkLabel(item))}</button>
+        <button class="btn btn-mint btn-sm" onclick="event.stopPropagation(); openCommunityItem(${arg})">${escHtml(_forkLabel(item))}</button>
       </div>
     </div>`;
 }
@@ -146,8 +146,8 @@ function _renderCommunity(kind) {
     return;
   }
 
-  // Tasks that only exist to serve a baseline are already offered by that
-  // baseline's card, so listing them here as well shows the same thing twice.
+  // Tasks that only exist to serve a playbook are already offered by that
+  // playbook's card, so listing them here as well shows the same thing twice.
   // They fold away rather than disappearing — one is still worth reading, and
   // still forkable on its own.
   if (kind === 'tasks') {
@@ -158,7 +158,7 @@ function _renderCommunity(kind) {
       grid.innerHTML = standalone.map(_communityCardHtml).join('')
         + `<div class="empty-state" style="grid-column:1/-1;padding:18px;">
              <div class="empty-state-desc">
-               ${serving.length} more task${serving.length === 1 ? ' is' : 's are'} used by a baseline or automation,
+               ${serving.length} more task${serving.length === 1 ? ' is' : 's are'} used by a playbook or automation,
                and come${serving.length === 1 ? 's' : ''} along when you fork it.
                <button class="btn btn-ghost btn-sm" style="margin-left:8px;"
                        onclick="toggleCommunityServing()">Show ${serving.length === 1 ? 'it' : 'them'}</button>
@@ -169,7 +169,7 @@ function _renderCommunity(kind) {
       grid.innerHTML = standalone.concat(serving).map(_communityCardHtml).join('')
         + `<div class="empty-state" style="grid-column:1/-1;padding:14px;">
              <div class="empty-state-desc">
-               Showing tasks used by baselines.
+               Showing tasks used by playbooks.
                <button class="btn btn-ghost btn-sm" style="margin-left:8px;"
                        onclick="toggleCommunityServing()">Hide them</button>
              </div></div>`;
@@ -206,10 +206,10 @@ async function loadCommunityKind(kind, force) {
   }
   _renderCommunity(kind);
 
-  // The Tasks panel cannot tell which tasks serve a baseline without the other
+  // The Tasks panel cannot tell which tasks serve a playbook without the other
   // two catalogs, and they are cached server-side, so pulling them is cheap.
   if (kind === 'tasks') {
-    Promise.all(['baselines', 'automations'].map(k => loadCommunityKind(k)))
+    Promise.all(['playbooks', 'automations'].map(k => loadCommunityKind(k)))
       .then(() => _renderCommunity('tasks'));
   }
   _annotateFork(kind);
@@ -277,8 +277,8 @@ async function openCommunityItem(kind, encodedFilename) {
     showToast('Community task opened — save it to add it to your library', 'success');
     return;
   }
-  // A baseline is a sequence of tasks and an automation runs a task or a
-  // baseline, so forking one alone would land you with something that cannot
+  // A playbook is a sequence of tasks and an automation runs a task or a
+  // playbook, so forking one alone would land you with something that cannot
   // run. The server walks the graph and forks only what is genuinely absent.
   try {
     const result = await apiJson(
@@ -291,7 +291,7 @@ async function openCommunityItem(kind, encodedFilename) {
       return;
     }
     // A fork changes what you hold, which changes what every other card would
-    // pull in — the baseline you just took may share tasks with the next one.
+    // pull in — the playbook you just took may share tasks with the next one.
     // Drop the cached plans so the cards re-read them.
     _invalidateForkPlans();
     const made = result.created || [];
@@ -301,8 +301,8 @@ async function openCommunityItem(kind, encodedFilename) {
         ? `Forked “${item.name}” and the ${extra} item${extra === 1 ? '' : 's'} it needs`
         : `Forked “${item.name}” into your library`,
       'success');
-    navigateTo('baselines');
-    if (typeof loadBaselines === 'function') loadBaselines();
+    navigateTo('playbooks');
+    if (typeof loadPlaybooks === 'function') loadPlaybooks();
     if (typeof loadAutomations === 'function') loadAutomations();
   } catch (e) {
     showToast(e.message || `Could not fork this ${COMMUNITY_LABEL[kind]}`, 'error');
