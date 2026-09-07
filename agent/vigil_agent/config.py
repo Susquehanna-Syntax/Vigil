@@ -102,6 +102,15 @@ class AgentConfig:
     # tags take precedence: this list is used to seed/augment, never to
     # overwrite tags an operator has set in the console.
     tags: list[str] = field(default_factory=list)
+    # Process names sampled at every scrape whether or not they rank in the
+    # top ten. Without this a quiet process is invisible: the collector only
+    # ships the busiest processes, so a chart of one named service would be
+    # full of holes exactly when the service is behaving.
+    process_watch: list[str] = field(default_factory=list)
+    # GPU telemetry beyond the core four (utilisation, memory, temperature,
+    # power). Off by default: the wide set is roughly three times the points
+    # per GPU per scrape, which is a real cost on a multi-GPU host.
+    gpu_extended: bool = False
     config_path: Path | None = None
 
     def __post_init__(self):
@@ -137,6 +146,21 @@ class AgentConfig:
             seen.add(t)
             cleaned.append(t)
         self.tags = cleaned
+        # Same normalisation as tags, minus the lowercasing: process names are
+        # case-sensitive on every platform the agent runs on.
+        watched: list[str] = []
+        seen_procs: set[str] = set()
+        for name in self.process_watch or []:
+            if not isinstance(name, str):
+                continue
+            n = name.strip()
+            if not n or n in seen_procs:
+                continue
+            if len(n) > 120:
+                raise ValueError(f"process_watch entry {name!r} too long (max 120 chars)")
+            seen_procs.add(n)
+            watched.append(n)
+        self.process_watch = watched
 
     def task_allowed(self, action: str) -> bool:
         if action in REPROVISION_ACTIONS:
@@ -219,6 +243,10 @@ def load_config(path: Path | None = None) -> AgentConfig:
     if not isinstance(raw_tags, list):
         raise ValueError("tags must be a list of strings")
 
+    raw_watch = raw.get("process_watch") or []
+    if not isinstance(raw_watch, list):
+        raise ValueError("process_watch must be a list of process names")
+
     config = AgentConfig(
         server_url=server_url,
         agent_token=agent_token,
@@ -230,6 +258,8 @@ def load_config(path: Path | None = None) -> AgentConfig:
         allowlist=allowlist,
         scripts_dir=Path(raw.get("scripts_dir", "/etc/vigil/scripts")),
         tags=raw_tags,
+        process_watch=raw_watch,
+        gpu_extended=bool(raw.get("gpu_extended", False)),
         config_path=path,
     )
 
