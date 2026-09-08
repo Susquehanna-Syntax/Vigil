@@ -10,10 +10,11 @@ from apps.accounts.permissions import IsAdmin
 from apps.tasks.models import TaskDefinition
 from vigil import scoping
 
-from .models import Playbook, PlaybookStep, eligible
+from .models import (Playbook, PlaybookStep, dispatch_to_host, eligible,
+                     failing_counts, hosts_failing)
 
 
-def _row(b: Playbook) -> dict:
+def _row(b: Playbook, *, failing: int | None = None) -> dict:
     return {
         "id": str(b.id),
         "name": b.name,
@@ -24,6 +25,11 @@ def _row(b: Playbook) -> dict:
         "completion_tag": b.completion_tag,
         "allow_high_risk": b.allow_high_risk,
         "created_at": b.created_at.isoformat(),
+        # How many hosts auto-enrolment has stopped trying, because the last
+        # run failed there. Zero is the ordinary answer and the card says
+        # nothing; anything else is the thing on this page worth reading.
+        "failing_hosts": (failing if failing is not None
+                          else len(hosts_failing(b))),
         "steps": [
             {
                 "definition_id": str(s.definition_id),
@@ -112,9 +118,10 @@ def playbook_index(request):
             qs = qs.filter(archived_at__isnull=False)
         else:
             qs = qs.filter(archived_at__isnull=True)
-        rows = scoping.filter_by_site(
-            qs, request.user, cascade_global=True).order_by("created_at")
-        return Response([_row(b) for b in rows])
+        rows = list(scoping.filter_by_site(
+            qs, request.user, cascade_global=True).order_by("created_at"))
+        counts = failing_counts(rows)
+        return Response([_row(b, failing=counts.get(b.id, 0)) for b in rows])
 
     name = (request.data.get("name") or "").strip()
     if not name:
@@ -336,3 +343,75 @@ def playbook_archive(request, playbook_id):
         playbook.auto_enroll = False
     playbook.save(update_fields=["archived_at", "auto_enroll"])
     return Response(_row(playbook))
+
+
+def _last_failure(playbook, host) -> dict:
+    """What went wrong the last time *playbook* ran on *host*.
+
+    Read from the task rows rather than stored on the playbook: the run
+    history is already the record, and a summary kept beside it would be one
+    more thing that can disagree with it.
+    """
+    from apps.tasks.models import Task
+
+    task = (Task.objects
+            .filter(run__playbook=playbook, host=host)
+            .order_by("-run__created_at", "-created_at")
+            .first())
+    if task is None:
+        return {}
+    return {
+        "state": task.state,
+        "step_label": task.step_label,
+        "output": (task.result_output or "")[-4000:],
+        "at": task.completed_at.isoformat() if task.completed_at else None,
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def playbook_failures(request, playbook_id):
+    """The hosts auto-enrolment has stopped trying, and why.
+
+    A quarantine nobody can see is just a playbook that silently stopped
+    working, which is the failure mode this replaced.
+    """
+    playbook = get_object_or_404(Playbook, pk=playbook_id)
+    return Response([
+        {"host_id": str(host.id), "hostname": host.hostname,
+         "status": host.status, **_last_failure(playbook, host)}
+        for host in hosts_failing(playbook)
+    ])
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def playbook_retry(request, playbook_id):
+    """Dispatch *playbook* again to the hosts it is held back on.
+
+    Pass ``host`` to retry one, or nothing to retry all of them. No TOTP: the
+    authorization for an unattended dispatch of this playbook was given when
+    auto-enrolment was turned on, and a retry is that same dispatch, to a host
+    it already targets. Retrying is also the only way out of a quarantine, so
+    guarding it harder than the thing that created it would be backwards.
+
+    The new run is what clears the quarantine — nothing is erased, the newer
+    attempt simply outranks the older one.
+    """
+    playbook = get_object_or_404(Playbook, pk=playbook_id)
+    if playbook.archived_at is not None:
+        return Response({"detail": "an archived playbook does not dispatch"},
+                        status=400)
+
+    wanted = request.data.get("host")
+    targets = hosts_failing(playbook)
+    if wanted:
+        targets = [h for h in targets if str(h.id) == str(wanted)]
+        if not targets:
+            return Response(
+                {"detail": "that host is not being held back by this playbook"},
+                status=404)
+
+    dispatched = sum(dispatch_to_host(h, playbooks=[playbook]) for h in targets)
+    return Response({"dispatched": dispatched,
+                     "hosts": [h.hostname for h in targets]})

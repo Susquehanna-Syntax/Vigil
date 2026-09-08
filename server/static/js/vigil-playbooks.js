@@ -113,10 +113,12 @@ function _renderPlaybookList(playbooks) {
           <span class="bl-name">${escHtml(b.name)}</span>
           <span class="bl-badge ${b.auto_enroll ? 'on' : 'off'}">${b.auto_enroll ? 'auto-enroll on' : 'auto-enroll off'}</span>
           ${b.completion_tag ? `<span class="chip">done: ${escHtml(b.completion_tag)}</span>` : ''}
+          ${b.failing_hosts ? `<span class="chip chip-rose">held back on ${b.failing_hosts} host${b.failing_hosts === 1 ? '' : 's'}</span>` : ''}
           ${b.description ? `<div class="muted-note" style="margin-top:4px;">${escHtml(b.description)}</div>` : ''}
         </div>
         <div class="card-actions">
           <button class="btn btn-${b.auto_enroll ? 'lemon' : 'mint'} btn-xs" data-bl-toggle="${b.id}" data-enabled="${b.auto_enroll}" data-name="${escAttr(b.name)}" data-tags="${escAttr((b.target_tags || []).join(', '))}" data-done="${escAttr(b.completion_tag || '')}">${b.auto_enroll ? 'Turn auto-enroll off' : 'Turn auto-enroll on'}</button>
+          ${b.failing_hosts ? `<button class="btn btn-rose btn-xs" data-bl-failures="${b.id}" data-name="${escAttr(b.name)}">Review failures</button>` : ''}
           <button class="btn btn-peach btn-xs" data-bl-dup="${b.id}">Duplicate</button>
           <button class="btn btn-sky btn-xs" data-bl-edit="${b.id}">Edit</button>
           <button class="btn btn-lemon btn-xs" data-bl-archive="${b.id}">Archive</button>
@@ -165,6 +167,8 @@ function _wireCards(playbooks) {
       method: 'POST', body: JSON.stringify({}) });
     loadPlaybooks();
   }));
+  list.querySelectorAll('[data-bl-failures]').forEach(btn => btn.addEventListener(
+    'click', () => _openFailures(btn.dataset.blFailures, btn.dataset.name)));
   list.querySelectorAll('[data-bl-edit]').forEach(btn => btn.addEventListener('click', () => _startEdit(btn.dataset.blEdit)));
   list.querySelectorAll('[data-bl-dup]').forEach(btn => btn.addEventListener('click', () => {
     const b = playbooks.find(x => x.id === btn.dataset.blDup);
@@ -173,6 +177,67 @@ function _wireCards(playbooks) {
       steps: b.steps.map(s => ({ definition_id: s.definition_id,
                                  params_override: s.params_override || {} })) }, null);
   }));
+}
+
+/* ── Held-back hosts ─────────────────────────────────────────────────── */
+/* Auto-enrolment stops on a host whose last run of the playbook failed. That
+   is the whole point — a broken playbook used to redispatch to the same
+   machine every five minutes for good — but a quarantine nobody can see is
+   just a playbook that silently stopped working, so it gets a screen of its
+   own with the output that explains each one and the retry that clears it. */
+async function _openFailures(playbookId, name) {
+  const m = mountModal('bl-failures', { wide: true });
+  const head = `<div class="modal-title">
+      <span>Held back — ${escHtml(name || 'playbook')}</span>
+      <button class="modal-close" data-blf-close aria-label="Close">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>`;
+  m.setBody(head + '<p class="muted-note">Loading…</p>');
+  m.open();
+
+  let rows = [];
+  try {
+    rows = await apiJson(`/api/v1/playbooks/${playbookId}/failures/`);
+  } catch (e) {
+    m.setBody(head + `<p class="muted-note">Could not read the failures: ${escHtml(String(e.message || e))}</p>`);
+    m.modal.querySelectorAll('[data-blf-close]').forEach(b => b.addEventListener('click', m.close));
+    return;
+  }
+
+  const body = rows.length
+    ? rows.map(r => `<div class="blf-row">
+        <div class="blf-head">
+          <span class="blf-host">${escHtml(r.hostname)}</span>
+          <span class="chip chip-muted">${escHtml(r.state || 'failed')}</span>
+          ${r.at ? `<span class="muted-note">${escHtml(new Date(r.at).toLocaleString())}</span>` : ''}
+          <button class="btn btn-mint btn-xs" data-blf-retry="${escAttr(r.host_id)}">Retry here</button>
+        </div>
+        ${r.output ? `<pre class="blf-output">${escHtml(r.output)}</pre>`
+                   : '<p class="muted-note">The agent reported no output.</p>'}
+      </div>`).join('')
+    : '<p class="muted-note">Nothing is held back any more.</p>';
+
+  m.setBody(head
+    + '<p class="muted-note">Auto-enrolment stops on a host when its last run of this '
+    + 'playbook failed there, so one broken playbook cannot redispatch to the same machine '
+    + 'every five minutes. Retrying dispatches it again — that new run is what clears this.</p>'
+    + `<div class="blf-list">${body}</div>`
+    + `<div class="modal-actions">
+         ${rows.length ? `<button class="btn btn-mint" data-blf-retry-all>Retry all ${rows.length}</button>` : ''}
+         <button class="btn btn-outline" data-blf-close>Close</button>
+       </div>`);
+
+  const retry = async (payload) => {
+    await apiJson(`/api/v1/playbooks/${playbookId}/retry/`, {
+      method: 'POST', body: JSON.stringify(payload) });
+    m.close();
+    loadPlaybooks();
+  };
+  m.modal.querySelectorAll('[data-blf-close]').forEach(b => b.addEventListener('click', m.close));
+  m.modal.querySelectorAll('[data-blf-retry]').forEach(b => b.addEventListener(
+    'click', () => retry({ host: b.dataset.blfRetry })));
+  m.modal.querySelector('[data-blf-retry-all]')?.addEventListener('click', () => retry({}));
 }
 
 /* ── Editor ──────────────────────────────────────────────────────────── */
