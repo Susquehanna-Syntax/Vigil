@@ -276,14 +276,121 @@ def dispatch_to_host(host, *, playbooks=None) -> int:
     return created
 
 
-def hosts_awaiting(playbook):
-    """Every approved, non-monitor host this playbook still has to run on."""
+#: Task states that mean this playbook is still going on the host. A host
+#: sitting in one of them must not be dispatched to again: the reconcile beat
+#: runs every five minutes, so a host that is merely switched off would
+#: otherwise collect a fresh run on every pass and execute all of them at once
+#: when it came back.
+IN_FLIGHT_STATES = frozenset({"blocked", "pending", "dispatched", "executing"})
+
+#: Task states that mean it finished badly there. ``skipped`` is not among
+#: them — a step whose ``when:`` predicate said no did what it was told.
+#: ``expired`` is: a task only expires after an agent fetched it and never
+#: reported back, which is a run that went wrong, not a host that was away —
+#: a task for an offline host stays pending and counts as in flight.
+FAILED_STATES = frozenset({"failed", "rejected", "expired"})
+
+
+def outcomes_for(playbooks) -> dict:
+    """``playbook id → {host id: "ok" | "failed" | "in_flight"}`` for each
+    host's most recent run of each playbook.
+
+    Only the newest run counts. A host that failed last month and has been
+    dispatched to again since is judged on the newer attempt, which is what
+    lets a retry clear a quarantine without anything having to erase history.
+
+    Takes a list so a page listing playbooks costs one query rather than one
+    per row.
+    """
+    from apps.tasks.models import Task
+
+    ids = [b.id for b in playbooks]
+    if not ids:
+        return {}
+    rows = (Task.objects.filter(run__playbook_id__in=ids)
+            .order_by("run__created_at", "run_id")
+            .values_list("run__playbook_id", "host_id", "run_id", "state"))
+
+    # Ordered oldest run first, so overwriting whenever the run changes leaves
+    # each host holding the states of its newest one.
+    newest: dict = {}
+    for playbook_id, host_id, run_id, state in rows:
+        entry = newest.setdefault(playbook_id, {}).get(host_id)
+        if entry is None or entry["run"] != run_id:
+            entry = newest[playbook_id][host_id] = {"run": run_id, "states": set()}
+        entry["states"].add(state)
+
+    outcomes: dict = {}
+    for playbook_id, hosts in newest.items():
+        for host_id, entry in hosts.items():
+            states = entry["states"]
+            if states & IN_FLIGHT_STATES:
+                verdict = "in_flight"
+            elif states & FAILED_STATES:
+                verdict = "failed"
+            else:
+                verdict = "ok"
+            outcomes.setdefault(playbook_id, {})[host_id] = verdict
+    return outcomes
+
+
+def last_outcomes(playbook) -> dict:
+    """:func:`outcomes_for` for a single playbook."""
+    return outcomes_for([playbook]).get(playbook.id, {})
+
+
+def failing_counts(playbooks) -> dict:
+    """``playbook id → how many hosts it is currently held back on``.
+
+    One host query for the whole list, not one per playbook.
+    """
+    outcomes = outcomes_for(playbooks)
+    candidates = _candidate_hosts()
+    return {b.id: sum(1 for h in candidates
+                      if outcomes.get(b.id, {}).get(h.id) == "failed"
+                      and b.matches(h))
+            for b in playbooks}
+
+
+def _candidate_hosts():
+    """Every host a playbook may be dispatched to at all."""
     from apps.hosts.models import Host
 
-    candidates = Host.objects.exclude(
+    return list(Host.objects.exclude(
         status__in=[Host.Status.PENDING, Host.Status.REJECTED],
-    ).exclude(mode="monitor").prefetch_related("tag_rows")
-    return [h for h in candidates if playbook.matches(h)]
+    ).exclude(mode="monitor").prefetch_related("tag_rows"))
+
+
+def _matching_hosts(playbook):
+    """Every approved, non-monitor host whose tags this playbook targets."""
+    return [h for h in _candidate_hosts() if playbook.matches(h)]
+
+
+def hosts_awaiting(playbook):
+    """Every host this playbook should be dispatched to right now.
+
+    Matching the target tags is necessary but not sufficient. A host whose
+    most recent run of this playbook failed is held back until someone retries
+    it: the completion tag only lands on success, so without this a broken
+    playbook redispatches to the same host every five minutes for good, and
+    the failure that needs looking at is buried under a thousand identical
+    ones. A host whose run is still in flight is held back too — that one is
+    not a failure, just not finished.
+    """
+    outcomes = last_outcomes(playbook)
+    return [h for h in _matching_hosts(playbook)
+            if outcomes.get(h.id) not in ("failed", "in_flight")]
+
+
+def hosts_failing(playbook):
+    """Hosts held back because their last run of *playbook* failed.
+
+    The other half of :func:`hosts_awaiting`: what auto-enrol has stopped
+    trying, so the UI can say so and offer the retry that clears it.
+    """
+    outcomes = last_outcomes(playbook)
+    return [h for h in _matching_hosts(playbook)
+            if outcomes.get(h.id) == "failed"]
 
 
 def reconcile(playbook=None, *, limit=None) -> int:
@@ -295,7 +402,8 @@ def reconcile(playbook=None, *, limit=None) -> int:
 
     Idempotent through the completion tag rather than a ledger: a host that has
     run the playbook carries the tag and stops matching. A host whose run
-    failed does not carry it, and is picked up again on the next pass.
+    failed does not carry it and is held back by ``hosts_awaiting`` instead,
+    until someone retries it — see there for why.
     """
     import logging
 

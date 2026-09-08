@@ -26,6 +26,12 @@
   /* Business branding overrides this at runtime; unset branding is a no-op. */
   --brand: var(--sky);
 
+  /* The metric/terminal face from the SQSY design language. Five rules
+     already asked for --font-mono and nothing defined it, so every number
+     meant to be monospaced — dashboard stat tiles, gauges, process values —
+     silently rendered in the UI face instead. */
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
   --r-sm: 10px;
   --r-md: 14px;
   --r-lg: 20px;
@@ -1894,8 +1900,23 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .chip { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600;
   padding: 3px 10px; border-radius: 20px; background: rgba(130,196,238,0.14); color: var(--sky); }
 .chip-muted { background: var(--s3); color: var(--text-2); }
+.chip-rose { background: rgba(243,139,168,0.14); color: var(--rose); }
 .pill-on  { background: rgba(126,221,181,0.15); color: var(--mint); }
 .pill-off { background: var(--s3); color: var(--text-3); }
+
+/* Held-back hosts, in the playbook failures modal. One block per host: who,
+   what state it ended in, when, and the agent's own words underneath — the
+   output is the reason anyone opened this. */
+.blf-list { display: flex; flex-direction: column; gap: 12px; max-height: 52vh; overflow-y: auto; }
+.blf-row { background: var(--s2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px 14px; }
+.blf-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.blf-host { font-weight: 600; }
+.blf-head .btn { margin-left: auto; }
+.blf-output {
+  margin: 10px 0 0; padding: 10px 12px; max-height: 180px; overflow: auto;
+  background: var(--s1); border-radius: var(--r-sm); font-family: var(--font-mono);
+  font-size: 11px; line-height: 1.6; color: var(--text-2); white-space: pre-wrap;
+}
 
 /* Baselines */
 .bl-editor { background: var(--s1); border: 1px solid var(--border); border-radius: var(--r-lg);
