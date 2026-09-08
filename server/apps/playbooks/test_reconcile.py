@@ -5,11 +5,14 @@ hook, so a host enrolled before the playbook existed, or tagged afterwards,
 never ran it and nothing said why.
 """
 
+import secrets
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from apps.hosts.models import Host
-from apps.playbooks.models import Playbook, PlaybookStep, hosts_awaiting, reconcile
+from apps.playbooks.models import (Playbook, PlaybookStep, hosts_awaiting,
+                                   hosts_failing, reconcile)
 from apps.tasks.models import Task, TaskDefinition
 
 
@@ -198,3 +201,177 @@ class CompletionTaggingTests(TestCase):
         self._apply()
         self.assertIn("hardened",
                       [t.name for t in self.host.tag_rows.all()])
+
+
+class FailureQuarantineTests(TestCase):
+    """A playbook that fails on a host must stop auto-enrolling to it.
+
+    The completion tag only lands on success, so before 2026.11.3 a host that
+    could not run the playbook was picked up again by every reconcile pass —
+    every five minutes, for good. Nothing converged, and the one failure worth
+    reading was buried under a thousand identical ones.
+    """
+
+    def setUp(self):
+        from apps.tasks.models import TaskRun
+
+        self.TaskRun = TaskRun
+        self.admin = get_user_model().objects.create_user(
+            username="admin", password="pw", is_staff=True, is_superuser=True)
+        definition = TaskDefinition.objects.create(
+            name="Harden", risk_level="standard", yaml_source="",
+            parsed_spec={"risk": "standard",
+                         "actions": [{"type": "restart_service",
+                                      "params": {"service_name": "ssh"}}]})
+        self.playbook = Playbook.objects.create(
+            name="Linux hardening", created_by=self.admin,
+            target_tags=["prod"], completion_tag="hardened", auto_enroll=True)
+        PlaybookStep.objects.create(
+            playbook=self.playbook, definition=definition, order=0)
+        self.host = _host("box", ["prod"])
+
+    def _run(self, state, playbook=None):
+        """One dispatch of *playbook* to the host, ending in *state*."""
+        run = self.TaskRun.objects.create(
+            source=self.TaskRun.Source.PLAYBOOK,
+            playbook=playbook or self.playbook,
+            name_snapshot="Linux hardening", host_count=1, step_count=1)
+        return Task.objects.create(
+            host=self.host, run=run, step_label="playbook",
+            action="_script", params={"steps": []},
+            state=state, nonce=secrets.token_hex(32))
+
+    def test_a_failed_run_stops_the_next_dispatch(self):
+        self._run(Task.State.FAILED)
+        self.assertEqual(hosts_awaiting(self.playbook), [])
+        self.assertEqual(reconcile(), 0)
+
+    def test_a_failed_host_is_reported_as_failing(self):
+        self._run(Task.State.FAILED)
+        self.assertEqual(hosts_failing(self.playbook), [self.host])
+
+    def test_rejected_and_expired_count_as_failures(self):
+        for state in (Task.State.REJECTED, Task.State.EXPIRED):
+            with self.subTest(state=state):
+                Task.objects.all().delete()
+                self.TaskRun.objects.all().delete()
+                self._run(state)
+                self.assertEqual(hosts_awaiting(self.playbook), [])
+
+    def test_a_run_still_in_flight_stops_the_next_dispatch(self):
+        """The pile-up half of the same bug: a host that is merely switched
+        off collected a fresh run every five minutes and ran all of them at
+        once when it came back."""
+        self._run(Task.State.PENDING)
+        self.assertEqual(hosts_awaiting(self.playbook), [])
+        self.assertEqual(reconcile(), 0)
+
+    def test_a_retry_clears_the_quarantine(self):
+        self._run(Task.State.FAILED)
+        self.assertEqual(hosts_failing(self.playbook), [self.host])
+        # A retry is simply a newer run. Only the newest counts.
+        self._run(Task.State.PENDING)
+        self.assertEqual(hosts_failing(self.playbook), [])
+
+    def test_a_newer_failure_after_a_success_quarantines_again(self):
+        self._run(Task.State.COMPLETED)
+        self._run(Task.State.FAILED)
+        self.assertEqual(hosts_failing(self.playbook), [self.host])
+        self.assertEqual(hosts_awaiting(self.playbook), [])
+
+    def test_another_playbooks_failure_does_not_quarantine_this_one(self):
+        other = Playbook.objects.create(
+            name="Other", created_by=self.admin, target_tags=["prod"],
+            completion_tag="othered", auto_enroll=True)
+        self._run(Task.State.FAILED, playbook=other)
+        self.assertEqual(hosts_awaiting(self.playbook), [self.host])
+
+    def test_a_failure_on_one_host_does_not_hold_back_another(self):
+        healthy = _host("box2", ["prod"])
+        self._run(Task.State.FAILED)
+        self.assertEqual(hosts_awaiting(self.playbook), [healthy])
+
+    def test_a_skipped_step_is_not_a_failure(self):
+        self._run(Task.State.SKIPPED)
+        self.assertEqual(hosts_failing(self.playbook), [])
+
+
+class FailureApiTests(TestCase):
+    """The quarantine has to be visible and clearable from the UI, or it is
+    just a playbook that silently stopped working."""
+
+    def setUp(self):
+        from apps.tasks.models import TaskRun
+
+        self.TaskRun = TaskRun
+        self.admin = get_user_model().objects.create_user(
+            username="admin", password="pw", is_staff=True, is_superuser=True)
+        self.client.force_login(self.admin)
+        definition = TaskDefinition.objects.create(
+            name="Harden", risk_level="standard", yaml_source="",
+            parsed_spec={"risk": "standard",
+                         "actions": [{"type": "restart_service",
+                                      "params": {"service_name": "ssh"}}]})
+        self.playbook = Playbook.objects.create(
+            name="Linux hardening", created_by=self.admin,
+            target_tags=["prod"], completion_tag="hardened", auto_enroll=True)
+        PlaybookStep.objects.create(
+            playbook=self.playbook, definition=definition, order=0)
+        self.host = _host("box", ["prod"])
+        run = TaskRun.objects.create(
+            source=TaskRun.Source.PLAYBOOK, playbook=self.playbook,
+            name_snapshot="Linux hardening", host_count=1, step_count=1)
+        Task.objects.create(
+            host=self.host, run=run, step_label="playbook: Linux hardening",
+            action="_script", params={"steps": []}, state=Task.State.FAILED,
+            result_output="sshd refused to restart", nonce=secrets.token_hex(32))
+
+    def test_the_list_row_counts_the_held_back_hosts(self):
+        resp = self.client.get("/api/v1/playbooks/")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()[0]["failing_hosts"], 1)
+
+    def test_the_failures_endpoint_says_which_host_and_why(self):
+        resp = self.client.get(f"/api/v1/playbooks/{self.playbook.id}/failures/")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        row = resp.json()[0]
+        self.assertEqual(row["hostname"], "box")
+        self.assertEqual(row["state"], "failed")
+        self.assertIn("sshd refused", row["output"])
+
+    def test_retrying_dispatches_again_and_clears_the_quarantine(self):
+        resp = self.client.post(f"/api/v1/playbooks/{self.playbook.id}/retry/",
+                                {}, content_type="application/json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()["dispatched"], 1)
+        self.assertEqual(hosts_failing(self.playbook), [])
+        self.assertEqual(
+            Task.objects.filter(host=self.host,
+                                state=Task.State.PENDING).count(), 1)
+
+    def test_retrying_a_host_that_is_not_held_back_is_a_404(self):
+        other = _host("box2", ["prod"])
+        resp = self.client.post(f"/api/v1/playbooks/{self.playbook.id}/retry/",
+                                {"host": str(other.id)},
+                                content_type="application/json")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_an_archived_playbook_does_not_retry(self):
+        from django.utils.timezone import now
+
+        self.playbook.archived_at = now()
+        self.playbook.save(update_fields=["archived_at"])
+        resp = self.client.post(f"/api/v1/playbooks/{self.playbook.id}/retry/",
+                                {}, content_type="application/json")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_the_endpoints_are_admin_only(self):
+        self.client.logout()
+        operator = get_user_model().objects.create_user(
+            username="op", password="pw")
+        self.client.force_login(operator)
+        self.assertEqual(self.client.get(
+            f"/api/v1/playbooks/{self.playbook.id}/failures/").status_code, 403)
+        self.assertEqual(self.client.post(
+            f"/api/v1/playbooks/{self.playbook.id}/retry/", {},
+            content_type="application/json").status_code, 403)

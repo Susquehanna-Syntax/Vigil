@@ -25,6 +25,12 @@ Vigil is a lightweight monitoring system where agents on your hosts phone home t
 - Signed remote task execution with mode/allowlist enforcement on the agent
 - SQSY dark-theme dashboard with Chart.js visualizations
 
+## What's new in 2026.11.3
+
+- **A playbook that fails on a host stops auto-enrolling to it.** The completion tag only lands on success, so a playbook that could not run on a machine was picked up again by every reconcile pass — every five minutes, for good. Nothing converged, and the one failure worth reading was buried under a thousand identical ones. A failure now holds the playbook back on that host: the card says how many hosts it is held back on, **Review failures** lists each with the agent's own output, and **Retry** dispatches it again. That newer run is what clears the hold, so nothing is erased and only the newest attempt counts.
+- **An offline host no longer collects a run every five minutes.** The same pass ignored whether a host's previous run had finished, so a machine that was merely switched off accumulated one pending dispatch per pass and executed all of them at once when it came back. A run still in flight now holds the next one back.
+- **The monospaced numbers are monospaced.** Five rules asked for a `--font-mono` token that nothing defined, so the dashboard's stat tiles, gauges and process values quietly rendered in the UI face instead of IBM Plex Mono.
+
 ## What's new in 2026.11.2
 
 - **GPU telemetry, from `nvidia-smi` and `rocm-smi`.** Utilisation, memory, temperature and power per card, collected only when one of those tools is on the PATH and silent when neither is — a host with no GPU is the ordinary case, not a failure. Fan speed, clocks, PCIe link and ECC counters sit behind `gpu_extended: true` because the wide set is roughly twice the points per GPU per check-in. The new **GPU status** widget draws a card per card.
