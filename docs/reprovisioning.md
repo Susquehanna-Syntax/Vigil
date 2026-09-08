@@ -181,10 +181,20 @@ token that is already consumed. Not nothing; not a foothold.
 
 **Transport.** If `VIGIL_PUBLIC_URL` is plain HTTP, that file crosses the LAN
 in the clear. This is not hard-blocked, because that would break exactly the
-homelab setups Vigil targets — but the ceremony surfaces an explicit warning
-that must be acknowledged (`acknowledge_plaintext_transport`), and the
-acknowledgement is recorded in the audit event. The insecure path stays
-available and stops being silent.
+homelab setups Vigil targets — but it must be acknowledged, and the insecure
+path stops being silent.
+
+Since 2026.12.0 the acknowledgement is a **standing decision about the
+instance**, made under Settings → Identity & Security → Transport Security and
+stored on `hosts.TransportAck` with the admin who made it and when. It can be
+withdrawn. Asked inside every rebuild it read as one more box on the way to the
+button, which is the opposite of what an acknowledgement is for; asked once, by
+name, it is a posture decision someone owns.
+
+`acknowledge_plaintext_transport` on the ceremony payload still works, for API
+callers and for an instance that has not recorded the standing one. The
+rebuild is refused only when neither is present (and the request is neither
+HTTPS nor from a private network).
 
 ### 4.3 Credential rotation and revocation
 
@@ -325,13 +335,15 @@ list), `completion_tags` (JSON list), `raw_append`, `deadline_minutes`,
 file for anything the typed fields do not model.
 
 `completion_tags` (2026.7.4) are applied to the host when the rebuilt machine
-checks back in — the standing equivalent of `RebuildJob.completion_tag`, which
-is typed into a single ceremony. Both are applied, profile first, deduplicated
-against each other and against what the host already carries; `agent:*` is
-refused in both, at save time and again at apply time. They are read at
-completion rather than snapshotted onto the job, matching `post_baseline`:
-editing the profile mid-rebuild changes what lands, and the window is one
-rebuild.
+checks back in. As of 2026.12.0 they are the **only** way a rebuild tags a
+host: `RebuildJob.completion_tag` is no longer accepted from the ceremony, and
+the one-off field has gone from the dialog. Two ways to say the same thing
+meant the ceremony asked twice and the answers could disagree. The column
+remains so existing jobs read back, and a request still sending the field is
+ignored rather than refused. `agent:*` is refused at save time on the profile
+and again at apply time. They are read at completion rather than snapshotted
+onto the job, so editing the profile mid-rebuild changes what lands; the
+window is one rebuild and the effect is a tag.
 
 Edited through **Reprovision → Install profiles** since 2026.7.3. The API
 predates the UI by several releases; before then the page could only list
@@ -346,8 +358,11 @@ API never returns one.
 `requested_at`, `confirmed_ip`, `state`, `state_changed_at`, `deadline`,
 `answer_token_hash`, `answer_fetched_at`, `answer_fetch_ip`,
 `enroll_token_hash`, `enroll_consumed_at`, `preflight` (JSON snapshot),
-`completion_tag`, `post_baseline` FK (nullable), `post_run` FK to `TaskRun`
+`completion_tag`, `post_playbook` FK (nullable), `post_run` FK to `TaskRun`
 (nullable), `failure_reason`.
+
+`completion_tag` and `post_playbook` are no longer written by the ceremony as
+of 2026.12.0 — the columns are retained so historical jobs still read back.
 
 The job holds the `TaskRun` FK, so `apps/tasks` needs no new column —
 `TaskRun.Source` gains a `REPROVISION` choice and nothing else.
@@ -438,13 +453,18 @@ Ceremony payload:
 ```json
 {
   "host": "<uuid>", "image": "<uuid>", "profile": "<uuid>",
-  "completion_tag": "rebuilt:need config",
-  "post_baseline": "<uuid>|null",
   "password": "...", "totp": "123456",
   "typed_hostname": "web-01",
   "acknowledge_plaintext_transport": true
 }
 ```
+
+`completion_tag` and `post_playbook` were removed from this payload in
+2026.12.0 — tags come from the install profile, and a playbook that should run
+on a rebuilt machine is auto-enroll's job: it fires when the machine checks
+back in carrying the profile's tags, and it keeps working for a machine
+rebuilt by any other route. `acknowledge_plaintext_transport` is optional when
+the standing acknowledgement is recorded (§4.2).
 
 ## 10. Completion chain
 

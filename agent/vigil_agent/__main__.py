@@ -364,7 +364,7 @@ def main() -> None:
     docker_payload_pending = False  # fresh results awaiting a successful checkin
     while not _shutdown:
         try:
-            metrics = collector.collect_all()
+            metrics = collector.collect_all(config)
             inventory_payload = None
             if time.monotonic() >= inventory_refresh_after:
                 try:

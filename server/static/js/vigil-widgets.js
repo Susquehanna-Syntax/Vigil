@@ -33,6 +33,79 @@ function _wEmpty(body, message) {
   body.innerHTML = `<div class="dash-empty muted-note">${escHtml(message)}</div>`;
 }
 
+/* ── List cards ────────────────────────────────────────────────────────────
+   Every list widget renders through _dashCard so they read alike: a coloured
+   left edge for what the row is about, a title, a thin sub-line, and an
+   optional right column. Cards carrying data-nav lead somewhere. */
+
+//: Row meaning → SQSY accent. Shared by alerts and findings, whose severity
+//: vocabularies overlap but are not identical.
+const _EDGE_BY_SEVERITY = {
+  critical: 'rose', high: 'rose', warning: 'lemon', medium: 'peach',
+  info: 'sky', low: 'sky',
+};
+const _EDGE_BY_RUN_STATE = {
+  completed: 'mint', failed: 'rose', timeout: 'rose', rejected: 'rose',
+  running: 'sky', pending: 'grey', skipped: 'grey',
+};
+
+function _dashCard(o) {
+  const edge = `edge-${o.edge || 'grey'}`;
+  //: The nav target rides on the card as data, never as an onclick string —
+  //: these fields carry hostnames and container names, which come from agents.
+  const nav = o.nav
+    ? ` data-nav="${escAttr(o.nav.page)}"`
+      + (o.nav.tab ? ` data-nav-tab="${escAttr(o.nav.tab)}"` : '')
+      + (o.nav.anchor ? ` data-nav-anchor="${escAttr(o.nav.anchor)}"` : '')
+      + (o.nav.host ? ` data-nav-host="${escAttr(o.nav.host)}"` : '')
+    : '';
+  const right = (o.right || o.rightSub)
+    ? `<div class="dash-card-right">${o.right ? escHtml(o.right) : ''}`
+      + `${o.rightSub ? `<div class="dash-card-sub">${escHtml(o.rightSub)}</div>` : ''}</div>`
+    : '';
+  return `<div class="dash-card ${edge}"${nav} title="${escAttr(o.tip || o.title || '')}">
+    ${o.dot ? `<span class="dash-card-dot ${edge}"></span>` : ''}
+    <div class="dash-card-main">
+      <div class="dash-card-title">${escHtml(o.title || '')}</div>
+      ${o.sub ? `<div class="dash-card-sub">${escHtml(o.sub)}</div>` : ''}
+    </div>
+    ${right}
+  </div>`;
+}
+
+function _dashCards(items) {
+  return `<div class="dash-cards">${items.join('')}</div>`;
+}
+
+//: Take the operator to the thing the card names. A host card opens the host
+//: detail instead of navigating, because hosts have no page of their own.
+function _dashNavFromCard(card) {
+  const d = card.dataset;
+  if (d.navHost) {
+    const real = document.querySelector(`.host-card[data-id="${CSS.escape(d.navHost)}"]`);
+    if (real && typeof openHostDetail === 'function') { openHostDetail(real); return; }
+  }
+  if (!d.nav) return;
+  navigateTo(d.nav);
+  if (d.navTab) document.querySelector(`.tab[data-tab="${CSS.escape(d.navTab)}"]`)?.click();
+  if (d.navAnchor) {
+    const target = document.getElementById(d.navAnchor);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.classList.remove('dash-flash');
+      void target.offsetWidth;                 // restart the animation
+      target.classList.add('dash-flash');
+    }
+  }
+}
+
+//: Bound once on the document — widget bodies are replaced on every refresh
+//: poll, so a listener attached to a card would not survive the next paint.
+document.addEventListener('click', (ev) => {
+  const card = ev.target.closest && ev.target.closest('.dash-card[data-nav], .dash-card[data-nav-host]');
+  if (card) _dashNavFromCard(card);
+});
+
 /* ── Renderers ─────────────────────────────────────────────────────────── */
 
 async function _renderStatTile(body, settings) {
@@ -61,22 +134,129 @@ async function _renderStatTile(body, settings) {
      </div>`;
 }
 
+//: Mirrors Host.Mode.choices. The host list API sends the raw value; the
+//: badge wants the label the server-rendered card shows.
+const _MODE_LABEL = { monitor: 'Monitor', managed: 'Managed', full_control: 'Full Control' };
+
+/* The widget builds the same .host-card markup templates/_host_card.html
+   renders, carrying the same data-* attributes. That is deliberate rather than
+   duplicative: openHostDetail() reads only the dataset, and refreshHostCards()
+   finds cards by class, so matching the contract gives the widget the detail
+   modal, the OS logo and the five live metric bars without re-implementing any
+   of them. */
+function _dashHostCard(h) {
+  const os = h.os || 'Unknown OS';
+  const tags = (h.tags || []).map(String);
+  return `<div class="host-card" data-id="${escAttr(h.id)}"
+       data-hostname="${escAttr(h.hostname)}"
+       data-os="${escAttr(os)}"
+       data-ip="${escAttr(h.ip_address || '—')}"
+       data-status="${escAttr(h.status)}"
+       data-mode="${escAttr(h.mode)}"
+       data-mode-display="${escAttr(_MODE_LABEL[h.mode] || h.mode)}"
+       data-last-checkin="${escAttr(h.last_checkin || '')}"
+       data-agent-version="${escAttr(h.agent_version || '')}"
+       data-reboot-required="${h.reboot_required ? '1' : ''}"
+       data-kernel="${escAttr(h.kernel || '')}"
+       data-tags="${escAttr(tags.join(','))}">
+    <div class="host-card-id">
+      <div class="host-card-id-row">
+        <div class="status-dot ${escAttr(h.status)}"></div>
+        <div class="host-name">${escHtml(h.hostname)}</div>
+        <div class="mode-badge mode-${escAttr(h.mode)}">${escHtml(_MODE_LABEL[h.mode] || h.mode)}</div>
+      </div>
+      <div class="host-card-id-meta">
+        <span class="host-os-logo" data-os="${escAttr(os)}"></span>
+        ${escHtml(os)} · ${escHtml(h.ip_address || '—')}
+      </div>
+      ${tags.length ? `<div class="host-tag-row">${
+        tags.map(t => `<span class="host-tag-chip">${escHtml(t)}</span>`).join('')}</div>` : ''}
+    </div>
+    <div class="host-metrics">
+      ${[['cpu', 'CPU', 'sky'], ['memory', 'Memory', 'lavender'], ['disk', 'Disk', 'mint'],
+         ['net-in', 'Net In', 'peach'], ['net-out', 'Net Out', 'lemon']].map(([k, label, colour]) => `
+        <div class="host-metric" data-metric="${k}">
+          <div class="host-metric-label">${label}</div>
+          <div class="host-metric-value">—</div>
+          <div class="host-metric-bar">
+            <div class="host-metric-fill" style="width: 0%; background: var(--${colour});"></div>
+          </div>
+        </div>`).join('')}
+    </div>
+    <div class="host-card-actions">
+      <div class="host-checkin">${escHtml(h.last_checkin ? timeAgo(h.last_checkin) : 'Never')}</div>
+      <button type="button" class="btn btn-ghost" data-host-act="rdp">RDP</button>
+      <button type="button" class="btn btn-sky" data-host-act="deploy">Deploy</button>
+      <button type="button" class="btn btn-ghost btn-rose-ghost" data-host-act="remove"
+              title="Remove agent">Remove</button>
+    </div>
+  </div>`;
+}
+
+/* templates/_host_card.html carries these as inline onclick attributes built by
+   the template engine — but nothing has included that template since the
+   classic dashboard was retired, so this widget is the only place host cards
+   exist now and it owns their behaviour. The values are hostnames reported by
+   agents, so they stay in data-* and every handler is delegated. */
+document.addEventListener('click', (ev) => {
+  const card = ev.target.closest && ev.target.closest('.dash-host-cards .host-card');
+  if (card && !ev.target.closest('[data-host-act]') && typeof openHostDetail === 'function') {
+    openHostDetail(card);
+  }
+});
+
+document.addEventListener('click', (ev) => {
+  const btn = ev.target.closest && ev.target.closest('.dash-host-cards [data-host-act]');
+  if (!btn) return;
+  ev.stopPropagation();                      // never also open the detail modal
+  const card = btn.closest('.host-card');
+  const { id, hostname } = card.dataset;
+  const act = btn.dataset.hostAct;
+  if (act === 'rdp' && typeof downloadHostRdp === 'function') downloadHostRdp(id, hostname);
+  if (act === 'deploy' && typeof openDeployForHost === 'function') openDeployForHost(id);
+  if (act === 'remove' && typeof deleteHost === 'function') deleteHost(id, hostname, btn);
+});
+
 async function _renderHostStatusGrid(body, settings) {
   const rows = _wRows(await _wCached('/api/v1/hosts/'));
   const want = (settings.tag_filter || '').trim().toLowerCase();
-  const shown = want
+  let shown = want
     ? rows.filter(h => (h.tags || []).some(t => String(t).toLowerCase() === want))
     : rows;
+  if (settings.status && settings.status !== 'any') {
+    shown = shown.filter(h => h.status === settings.status);
+  }
   if (!shown.length) {
     _wEmpty(body, want ? `No hosts tagged ${settings.tag_filter}` : 'No hosts yet');
     return;
   }
-  body.innerHTML = `<div class="dash-hosts">` + shown.map(h => `
-    <div class="dash-host" title="${escAttr(h.hostname)}">
-      <span class="dash-host-dot dash-dot-${escAttr(h.status)}"></span>
-      <span class="dash-host-name">${escHtml(h.hostname)}</span>
-      <span class="dash-host-meta">${escHtml(h.os || '')}</span>
-    </div>`).join('') + `</div>`;
+  // Offline and pending first: a fleet view is read for what is wrong with it.
+  const rank = { offline: 0, pending: 1, online: 2 };
+  shown = [...shown].sort((a, b) =>
+    (rank[a.status] ?? 3) - (rank[b.status] ?? 3) || a.hostname.localeCompare(b.hostname));
+
+  // show_search has been in the registry since the widget shipped but was
+  // never rendered. The filter is local to this widget's cards.
+  const search = settings.show_search === false ? '' :
+    `<input type="text" class="form-control dash-host-search" placeholder="Filter hosts…">`;
+  body.innerHTML = search
+    + `<div class="dash-host-cards">${shown.map(_dashHostCard).join('')}</div>`;
+
+  const input = body.querySelector('.dash-host-search');
+  if (input) {
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase();
+      body.querySelectorAll('.host-card').forEach((card) => {
+        const d = card.dataset;
+        const hay = `${d.hostname} ${d.os} ${d.ip} ${d.tags}`.toLowerCase();
+        card.classList.toggle('hidden', Boolean(q) && !hay.includes(q));
+      });
+    });
+  }
+  // The logos and the live metric bars come from the hosts page's own code,
+  // scoped to this widget so it does not re-fetch metrics for the whole page.
+  if (typeof _injectOsLogos === 'function') _injectOsLogos(body);
+  if (typeof refreshHostCards === 'function') refreshHostCards(body);
 }
 
 const _SEVERITY_RANK = { info: 0, warning: 1, critical: 2 };
@@ -90,12 +270,14 @@ async function _renderAlertList(body, settings) {
     .filter(a => (_SEVERITY_RANK[a.severity] ?? 1) >= floor)
     .slice(0, limit);
   if (!shown.length) { _wEmpty(body, 'Nothing firing'); return; }
-  body.innerHTML = `<div class="dash-alerts">` + shown.map(a => `
-    <div class="dash-alert">
-      <span class="sev sev-${escAttr(a.severity || 'warning')}">${escHtml(a.severity || '')}</span>
-      <span class="dash-alert-msg">${escHtml(a.message || '')}</span>
-      <span class="dash-alert-host">${escHtml(a.host_hostname || '')}</span>
-    </div>`).join('') + `</div>`;
+  body.innerHTML = _dashCards(shown.map(a => _dashCard({
+    edge: _EDGE_BY_SEVERITY[a.severity] || 'lemon',
+    title: a.message || '(no message)',
+    sub: [a.host_hostname, timeAgo(a.fired_at)].filter(Boolean).join(' · '),
+    right: a.severity || '',
+    tip: `${a.severity || ''} · ${a.message || ''}`,
+    nav: { page: 'alerts' },
+  })));
 }
 
 async function _renderRolloutProgress(body) {
@@ -235,32 +417,194 @@ async function _renderDockerContainers(body, settings) {
   const rows = _wRows(await _wCached(
     `/api/v1/hosts/${encodeURIComponent(settings.host)}/containers/`));
   if (!rows.length) { _wEmpty(body, 'No containers reported'); return; }
-  body.innerHTML = `<div class="dash-hosts">` + rows.map(c => `
-    <div class="dash-host" title="${escAttr(c.image || '')}">
-      <span class="dash-host-dot dash-dot-${c.state === 'running' ? 'online' : 'offline'}"></span>
-      <span class="dash-host-name">${escHtml(c.name || '')}</span>
-      <span class="dash-host-meta">${escHtml(c.status || c.state || '')}</span>
-    </div>`).join('') + `</div>`;
+  body.innerHTML = _dashCards(rows.map(c => _dashCard({
+    edge: c.state === 'running' ? 'mint' : 'grey',
+    dot: true,
+    title: c.name || '(unnamed)',
+    sub: c.image || '',
+    right: c.state || '',
+    rightSub: c.status || '',
+    tip: c.image || c.name || '',
+    nav: { page: 'inventory', host: settings.host },
+  })));
+}
+
+/* An inline SVG sparkline. Deliberately not Chart.js: one chart instance per
+   process row would be a dozen canvases inside a tile, and this needs no
+   library, no canvas lifecycle and no teardown when the body is rebuilt. */
+function _sparkline(values, colour) {
+  if (!values || values.length < 2) return '';
+  const w = 68, h = 18;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const step = w / (values.length - 1);
+  const points = values
+    .map((v, i) => `${(i * step).toFixed(1)},${(h - ((v - min) / span) * (h - 2) - 1).toFixed(1)}`)
+    .join(' ');
+  return `<svg class="dash-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"
+    aria-hidden="true"><polyline points="${points}" fill="none"
+    stroke="var(--${colour})" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+}
+
+//: Group metric points by their process name, oldest first, so each name has a
+//: series to draw rather than a single reading.
+function _seriesByProcess(points) {
+  const series = new Map();
+  for (const pt of points) {
+    const name = (pt.labels || {}).process || (pt.labels || {}).name || '?';
+    if (!series.has(name)) series.set(name, []);
+    series.get(name).push(pt);
+  }
+  for (const rows of series.values()) {
+    rows.sort((a, b) => new Date(a.time) - new Date(b.time));
+  }
+  return series;
 }
 
 async function _renderTopProcesses(body, settings) {
   if (_wNeedsHost(body, settings)) return;
   const metric = settings.sort_by === 'memory' ? 'memory_percent' : 'cpu_percent';
+  const colour = settings.sort_by === 'memory' ? 'lavender' : 'sky';
+  // Wide enough that each process has a series behind it rather than one
+  // reading — ten processes a scrape over an hour is a few hundred points.
   const points = _wRows(await _wCached(
-    _wMetricUrl({ host: settings.host, category: 'process', metric }, 1, 50), 12000));
+    _wMetricUrl({ host: settings.host, category: 'process', metric }, 1, 600), 12000));
   if (!points.length) { _wEmpty(body, 'No process data reported'); return; }
-  // One point per process per scrape; keep the newest reading for each name.
-  const latest = new Map();
-  for (const pt of points) {
-    const name = (pt.labels || {}).process || (pt.labels || {}).name || '?';
-    if (!latest.has(name)) latest.set(name, pt.value);
+
+  const series = _seriesByProcess(points);
+  const rows = [...series.entries()]
+    .map(([name, pts]) => [name, pts[pts.length - 1].value, pts.map(p => p.value)])
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, Number(settings.limit) || 10);
+  const peak = Math.max(...rows.map(r => r[1]), 1);
+
+  body.innerHTML = _dashCards(rows.map(([name, value, history]) => `
+    <div class="dash-card edge-${colour === 'sky' ? 'sky' : 'lav'}">
+      <div class="dash-card-main">
+        <div class="dash-card-title">${escHtml(name)}</div>
+        <div class="dash-proc-bar">
+          <div class="dash-proc-fill" style="width:${(100 * value / peak).toFixed(1)}%;
+               background:var(--${colour});"></div>
+        </div>
+      </div>
+      ${_sparkline(history.slice(-24), colour)}
+      <div class="dash-card-right">${Number(value).toFixed(1)}%</div>
+    </div>`));
+}
+
+/* Watch one named process over time. Backed by the agent's process_watch list:
+   without a host configured to watch this name the series only exists while the
+   process is busy enough to rank, which the empty state says outright. */
+async function _renderProcessMonitor(body, settings, widget) {
+  if (_wNeedsHost(body, settings)) return;
+  const wanted = (settings.process || '').trim();
+  if (!wanted) { _wEmpty(body, 'Name a process in this widget\u2019s settings'); return; }
+  const metric = settings.measure === 'memory' ? 'memory_percent' : 'cpu_percent';
+  const hours = Number(settings.range_hours) || 6;
+  const points = _wRows(await _wCached(
+    _wMetricUrl({ host: settings.host, category: 'process', metric }, hours, 1000), 12000));
+  const mine = points.filter(pt => ((pt.labels || {}).name
+    || (pt.labels || {}).process || '') === wanted);
+
+  let chart = _WCHARTS.get(widget.id);
+  if (chart && !body.contains(chart.canvas)) { chart.destroy(); chart = null; }
+  if (!mine.length) {
+    if (chart) { chart.destroy(); _WCHARTS.delete(widget.id); }
+    _wEmpty(body, `Nothing reported for ${wanted}. Add it to the agent\u2019s `
+      + `process_watch list to sample it every scrape.`);
+    return;
   }
-  const rows = [...latest.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
-  body.innerHTML = `<div class="dash-procs">` + rows.map(([name, value]) => `
-    <div class="dash-proc">
-      <span class="dash-proc-name">${escHtml(name)}</span>
-      <span class="dash-proc-value">${Number(value).toFixed(1)}%</span>
-    </div>`).join('') + `</div>`;
+  const watched = mine.some(pt => (pt.labels || {}).watched === '1');
+  if (!chart) {
+    body.innerHTML = '<div class="dash-chart"><canvas></canvas></div>'
+      + `<div class="dash-proc-note muted-note">${
+        watched ? 'watched — sampled every scrape'
+                : 'not on the agent\u2019s watch list — gaps mean it dropped out '
+                  + 'of the top ten, not that it stopped'}</div>`;
+    chart = new Chart(body.querySelector('canvas').getContext('2d'), {
+      type: 'line',
+      data: { datasets: [{
+        label: wanted, data: [], borderColor: 'var(--mint)',
+        backgroundColor: 'rgba(126,221,181,.14)',
+        borderWidth: 2, pointRadius: 0, fill: true, tension: 0.25,
+      }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          x: { type: 'time', ticks: { maxTicksLimit: 5, color: '#8b8ba3' },
+               grid: { color: 'rgba(255,255,255,.05)' } },
+          y: { beginAtZero: true, ticks: { maxTicksLimit: 4, color: '#8b8ba3' },
+               grid: { color: 'rgba(255,255,255,.05)' } },
+        },
+        plugins: { legend: { display: false } },
+      },
+    });
+    _WCHARTS.set(widget.id, chart);
+  }
+  chart.data.datasets[0].data = mine
+    .map(pt => ({ x: new Date(pt.time).getTime(), y: pt.value }))
+    .sort((a, b) => a.x - b.x);
+  chart.update('none');
+}
+
+//: GPU points carry vendor/index/name labels; one card per physical card.
+async function _renderGpuStatus(body, settings) {
+  if (_wNeedsHost(body, settings)) return;
+  const wanted = ['utilization_percent', 'memory_percent', 'memory_used_mb',
+                  'memory_total_mb', 'temperature_celsius', 'power_watts'];
+  const results = await Promise.all(wanted.map(m => _wCached(
+    _wMetricUrl({ host: settings.host, category: 'gpu', metric: m }, 1, 200), 12000)
+    .catch(() => [])));
+
+  // Newest reading per (card, metric).
+  const cards = new Map();
+  wanted.forEach((metric, i) => {
+    for (const pt of _wRows(results[i])) {
+      const l = pt.labels || {};
+      const key = `${l.vendor || '?'}/${l.index || '0'}`;
+      if (!cards.has(key)) cards.set(key, { label: l, values: {} });
+      if (!(metric in cards.get(key).values)) cards.get(key).values[metric] = pt.value;
+    }
+  });
+  if (!cards.size) {
+    _wEmpty(body, 'No GPU reported. The agent collects this only when '
+      + 'nvidia-smi or rocm-smi is installed.');
+    return;
+  }
+
+  const bar = (label, pct, colour, text) => `
+    <div class="host-metric">
+      <div class="host-metric-label">${label}</div>
+      <div class="host-metric-value">${escHtml(text)}</div>
+      <div class="host-metric-bar">
+        <div class="host-metric-fill" style="width:${Math.max(0, Math.min(100, pct)).toFixed(0)}%;
+             background:var(--${colour});"></div>
+      </div>
+    </div>`;
+
+  body.innerHTML = `<div class="dash-gpus">` + [...cards.values()].map(({ label, values }) => {
+    const v = values;
+    const used = v.memory_used_mb, total = v.memory_total_mb;
+    const memPct = v.memory_percent ?? (total ? (100 * used / total) : 0);
+    return `<div class="dash-gpu">
+      <div class="dash-gpu-head">
+        <span class="dash-card-title">${escHtml(label.name || 'GPU')}</span>
+        <span class="chip">${escHtml(String(label.vendor || ''))} ${escHtml(String(label.index || ''))}</span>
+      </div>
+      <div class="host-metrics">
+        ${bar('Utilisation', v.utilization_percent ?? 0, 'sky',
+              v.utilization_percent != null ? `${v.utilization_percent.toFixed(0)}%` : '—')}
+        ${bar('Memory', memPct, 'lavender', total
+              ? `${(used / 1024).toFixed(1)}/${(total / 1024).toFixed(1)} GB` : '—')}
+        ${bar('Temp', v.temperature_celsius ?? 0, 'peach',
+              v.temperature_celsius != null ? `${v.temperature_celsius.toFixed(0)}\u00B0C` : '—')}
+        ${bar('Power', v.power_watts ?? 0, 'lemon',
+              v.power_watts != null ? `${v.power_watts.toFixed(0)} W` : '—')}
+      </div>
+    </div>`;
+  }).join('') + `</div>`;
 }
 
 
@@ -431,13 +775,15 @@ async function _renderTaskHistory(body, settings) {
     _wEmpty(body, settings.failures_only ? 'No failures' : 'Nothing has run yet');
     return;
   }
-  body.innerHTML = `<div class="dash-alerts">` + shown.map(t => `
-    <div class="dash-alert">
-      <span class="dash-proc-value" style="color:${_RUN_STATE_COLOUR[t.state] || 'var(--text-3)'};">
-        ${escHtml(t.state)}</span>
-      <span class="dash-alert-msg">${escHtml(t.step_label || t.action || '')}</span>
-      <span class="dash-alert-host">${escHtml(t.host_hostname || '')}</span>
-    </div>`).join('') + `</div>`;
+  body.innerHTML = _dashCards(shown.map(t => _dashCard({
+    edge: _EDGE_BY_RUN_STATE[t.state] || 'grey',
+    title: t.step_label || t.action || '(no step)',
+    sub: [t.host_hostname, timeAgo(t.completed_at || t.created_at)]
+      .filter(Boolean).join(' · '),
+    right: t.state || '',
+    tip: `${t.state || ''} · ${t.step_label || t.action || ''}`,
+    nav: { page: 'tasks', tab: 'tasks-history' },
+  })));
 }
 
 async function _renderWaveStatus(body, settings) {
@@ -445,14 +791,15 @@ async function _renderWaveStatus(body, settings) {
   const url = wanted ? `/api/v1/waves/?group=${encodeURIComponent(wanted)}` : '/api/v1/waves/';
   const rows = _wRows(await _wCached(url));
   if (!rows.length) { _wEmpty(body, wanted ? `No wave tagged ${wanted}` : 'No waves yet'); return; }
-  body.innerHTML = `<div class="dash-procs">` + rows.map(w => `
-    <div class="dash-proc">
-      <span class="dash-proc-name">
-        <strong>${escHtml(String(w.order))}</strong> · ${escHtml(w.name)}
-        ${(w.group_tags || []).map(t => `<span class="chip">${escHtml(t)}</span>`).join(' ')}
-      </span>
-      <span class="dash-proc-value">${w.exclusive_host_count ?? w.host_count ?? 0}</span>
-    </div>`).join('') + `</div>`;
+  body.innerHTML = _dashCards(rows.map(w => _dashCard({
+    edge: 'lav',
+    title: `${w.order} · ${w.name}`,
+    sub: (w.group_tags || []).join(' · '),
+    right: String(w.exclusive_host_count ?? w.host_count ?? 0),
+    rightSub: 'hosts',
+    tip: w.name,
+    nav: { page: 'playbooks', anchor: 'wave-panel' },
+  })));
 }
 
 async function _renderPlaybookCoverage(body, settings) {
@@ -485,14 +832,16 @@ async function _renderAutomationActivity(body, settings) {
   const rows = (payload && payload.automations) || _wRows(payload);
   const shown = rows.slice(0, Number(settings.limit) || 8);
   if (!shown.length) { _wEmpty(body, 'No automations yet'); return; }
-  body.innerHTML = `<div class="dash-procs">` + shown.map(a => `
-    <div class="dash-proc">
-      <span class="dash-proc-name">
-        <span class="dash-host-dot dash-dot-${a.enabled ? 'online' : 'offline'}"></span>
-        ${escHtml(a.name || '')}</span>
-      <span class="dash-proc-value">${a.last_fired_at
-        ? escHtml(new Date(a.last_fired_at).toLocaleDateString()) : 'never'}</span>
-    </div>`).join('') + `</div>`;
+  body.innerHTML = _dashCards(shown.map(a => _dashCard({
+    edge: a.enabled ? 'mint' : 'grey',
+    dot: true,
+    title: a.name || '(unnamed)',
+    sub: a.enabled ? 'enabled' : 'disabled',
+    right: a.last_run ? timeAgo(a.last_run) : 'never',
+    rightSub: a.last_run ? 'last run' : '',
+    tip: a.name || '',
+    nav: { page: 'playbooks', anchor: 'automations-list' },
+  })));
 }
 
 /* ── Security ──────────────────────────────────────────────────────────── */
@@ -508,12 +857,22 @@ async function _renderVulnFindings(body, settings) {
     .sort((a, b) => (_VULN_RANK[b.severity] ?? 0) - (_VULN_RANK[a.severity] ?? 0))
     .slice(0, Number(settings.limit) || 10);
   if (!shown.length) { _wEmpty(body, `Nothing open at ${settings.severity} or above`); return; }
-  body.innerHTML = `<div class="dash-alerts">` + shown.map(f => `
-    <div class="dash-alert">
-      <span class="sev sev-${escAttr(f.severity)}">${escHtml(f.severity)}</span>
-      <span class="dash-alert-msg">${escHtml(f.cve_id || f.title || '')}</span>
-      <span class="dash-alert-host">${escHtml(f.host_hostname || '')}</span>
-    </div>`).join('') + `</div>`;
+  body.innerHTML = _dashCards(shown.map(f => _dashCard({
+    edge: _EDGE_BY_SEVERITY[f.severity] || 'grey',
+    title: f.cve_id || f.title || '(untitled finding)',
+    // The title often restates the CVE already in the heading, so it only
+    // earns its place when it says something the heading does not.
+    sub: [f.host_hostname, f.package_name,
+          (f.cve_id && f.title && !f.title.includes(f.cve_id)) ? f.title : '']
+      .filter(Boolean).join(' · '),
+    right: f.severity || '',
+    // days_remaining goes negative once a finding is past due; trust the
+    // number rather than only the flag, so nothing reads "-51d left".
+    rightSub: (f.overdue || (f.days_remaining ?? 0) < 0) ? 'overdue'
+      : (typeof f.days_remaining === 'number' ? `${f.days_remaining}d left` : ''),
+    tip: f.title || f.cve_id || '',
+    nav: { page: 'vulns' },
+  })));
 }
 
 async function _renderFirewallStatus(body, settings) {
@@ -704,6 +1063,8 @@ const WIDGET_RENDERERS = {
   gauge: _renderGauge,
   docker_containers: _renderDockerContainers,
   top_processes: _renderTopProcesses,
+  process_monitor: _renderProcessMonitor,
+  gpu_status: _renderGpuStatus,
 };
 
 /* ── Catalog and settings — phase 04 ───────────────────────────────────── */
@@ -740,6 +1101,65 @@ async function _settingsOptions(type) {
   return [];
 }
 
+//: Widget setting type → the picker modal's own vocabulary. Anything not
+//: listed here keeps its <select> or text input.
+const _PICKER_TYPE = { definition: 'task', playbook: 'playbook', host: 'machine' };
+
+//: Host rows for the picker, from the site-scoped host list.
+async function _hostPickerItems() {
+  const rows = _wRows(await _wCached('/api/v1/hosts/', 30000));
+  return rows.map(h => ({
+    key: h.id, name: h.hostname,
+    meta: [h.status, h.os, h.ip_address].filter(Boolean).join(' \u00B7 '),
+    editable: false, raw: h,
+  }));
+}
+
+//: Delegated because the settings form is rebuilt every time the modal opens.
+document.addEventListener('click', async (ev) => {
+  const open = ev.target.closest && ev.target.closest('[data-open-picker]');
+  if (open) {
+    const input = document.getElementById(open.dataset.for);
+    const type = _PICKER_TYPE[open.dataset.openPicker];
+    if (!input || !type || typeof openPicker !== 'function') return;
+    const hostItems = type === 'machine' ? await _hostPickerItems() : null;
+    openPicker({
+      type,
+      title: 'Choose a ' + (type === 'machine' ? 'host' : type),
+      allowAdd: type === 'task',
+      // Hosts come from the list the widget itself uses. The picker's own
+      // machine list is the status-page one, which is admin-only and not
+      // site-scoped — routing widget settings through it would show an
+      // operator nothing, or show them hosts outside their sites.
+      ...(hostItems ? { items: hostItems } : {}),
+      onSelect: (item) => {
+        // Playbook rows key on the name; the widget stores the id, as the
+        // list endpoint and every other consumer do.
+        input.value = type === 'playbook' ? (item.raw && item.raw.id) || item.key : item.key;
+        const row = input.closest('.setting-picker');
+        row.querySelector('[data-picker-name]').textContent = item.name;
+        if (!row.querySelector('[data-clear-picker]')) {
+          open.insertAdjacentHTML('afterend',
+            `<button type="button" class="btn btn-outline btn-sm" data-clear-picker
+                     data-for="${escAttr(input.id)}">Clear</button>`);
+        }
+        open.textContent = 'Change\u2026';
+      },
+    });
+    return;
+  }
+  const clear = ev.target.closest && ev.target.closest('[data-clear-picker]');
+  if (clear) {
+    const input = document.getElementById(clear.dataset.for);
+    if (!input) return;
+    input.value = '';
+    const row = input.closest('.setting-picker');
+    row.querySelector('[data-picker-name]').textContent = '\u2014 none \u2014';
+    row.querySelector('[data-open-picker]').textContent = 'Choose\u2026';
+    clear.remove();
+  }
+});
+
 function _settingsField(name, field, value, options) {
   const id = `ws-${name}`;
   const label = `<label class="form-label" for="${escAttr(id)}">${escHtml(field.label || name)}</label>`;
@@ -761,6 +1181,23 @@ function _settingsField(name, field, value, options) {
              data-setting="${escAttr(name)}" value="${escAttr(value ?? field.default ?? 0)}"
              ${field.min !== undefined ? `min="${escAttr(field.min)}"` : ''}
              ${field.max !== undefined ? `max="${escAttr(field.max)}"` : ''}></div>`;
+  }
+  // Tasks, playbooks and hosts get the searchable picker modal the playbook and
+  // automation editors already use, not a <select>. A dropdown is unusable once
+  // a fleet has more than a screenful of either, and it cannot search.
+  if (_PICKER_TYPE[t]) {
+    const chosen = options.find(([v]) => String(v) === String(value));
+    return `<div class="form-group">${label}
+      <div class="setting-picker">
+        <input type="hidden" id="${escAttr(id)}" data-setting="${escAttr(name)}"
+               value="${escAttr(value ?? '')}">
+        <span class="setting-picker-name" data-picker-name>${
+          escHtml(chosen ? chosen[1] : '— none —')}</span>
+        <button type="button" class="btn btn-sky btn-sm" data-open-picker="${escAttr(t)}"
+                data-for="${escAttr(id)}">${chosen ? 'Change' : 'Choose'}\u2026</button>
+        ${chosen ? `<button type="button" class="btn btn-outline btn-sm"
+                            data-clear-picker data-for="${escAttr(id)}">Clear</button>` : ''}
+      </div></div>`;
   }
   if (t === 'choice' || options.length) {
     const list = t === 'choice'

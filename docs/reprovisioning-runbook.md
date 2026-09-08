@@ -33,8 +33,9 @@ out-of-band reinstall, which Vigil does not yet offer.
 **Serve Vigil over HTTPS.** The answer file carries the admin password hash,
 your SSH keys, and the one-time enrolment token. Over plain HTTP that crosses
 the network in the clear. Vigil will not stop you — homelab installs are a
-real case — but the ceremony makes you tick a box saying you understand, and
-records that you did.
+real case — but it will not proceed until someone acknowledges it under
+Settings → Identity & Security → Transport Security, and it records which
+admin did, and when. Withdraw the acknowledgement once you are behind TLS.
 
 ---
 

@@ -24,10 +24,15 @@ WIDGET_REGISTRY: dict[str, dict] = {
     "host_status_grid": {
         "group": "fleet",
         "label": "Host status grid",
-        "description": "Every host, with status and tags. Searchable.",
-        "w": 12, "h": 5, "min_w": 4, "min_h": 3,
+        "description": "Full host cards with live CPU, memory, disk and network.",
+        # Taller by default than the old text list: these are the same cards the
+        # hosts page shows, and one row of them does not fit in five.
+        "w": 12, "h": 9, "min_w": 4, "min_h": 4,
         "settings": {
             "tag_filter": {"type": "text", "label": "Only hosts tagged", "default": ""},
+            "status": {"type": "choice", "label": "Only hosts that are",
+                       "options": ["any", "online", "offline", "pending"],
+                       "default": "any"},
             "show_search": {"type": "bool", "label": "Show the search box", "default": True},
         },
     },
@@ -92,12 +97,42 @@ WIDGET_REGISTRY: dict[str, dict] = {
     "top_processes": {
         "group": "health",
         "label": "Top processes",
-        "description": "Busiest processes on one host.",
-        "w": 6, "h": 4, "min_w": 4, "min_h": 3,
+        "description": "Busiest processes on one host, each with its recent trend.",
+        "w": 6, "h": 5, "min_w": 4, "min_h": 3,
         "settings": {
             "host": {"type": "host", "label": "Host", "default": ""},
             "sort_by": {"type": "choice", "label": "Sort by",
                          "options": ["cpu", "memory"], "default": "cpu"},
+            "limit": {"type": "int", "label": "How many", "default": 10,
+                       "min": 3, "max": 25},
+        },
+    },
+    "process_monitor": {
+        "group": "health",
+        "label": "Process monitor",
+        "description": "One named process charted over time. Add the name to the "
+                       "agent's process_watch list so it is sampled every scrape.",
+        "w": 6, "h": 5, "min_w": 3, "min_h": 3,
+        "settings": {
+            "host": {"type": "host", "label": "Host", "default": ""},
+            "process": {"type": "text", "label": "Process name", "default": ""},
+            # Named "measure", not "metric": a setting called metric is the
+            # metric-picker convention, and a guard asserts those name a
+            # category/metric pair the collector actually reports.
+            "measure": {"type": "choice", "label": "Measure",
+                         "options": ["cpu", "memory"], "default": "cpu"},
+            "range_hours": {"type": "int", "label": "Hours of history",
+                             "default": 6, "min": 1, "max": 168},
+        },
+    },
+    "gpu_status": {
+        "group": "health",
+        "label": "GPU status",
+        "description": "Utilisation, memory, temperature and power per GPU. "
+                       "Needs nvidia-smi or rocm-smi on the host.",
+        "w": 6, "h": 5, "min_w": 3, "min_h": 3,
+        "settings": {
+            "host": {"type": "host", "label": "Host", "default": ""},
         },
     },
     "rollout_progress": {
