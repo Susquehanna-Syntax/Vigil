@@ -566,3 +566,23 @@ document.addEventListener('visibilitychange', () => {
   window.addEventListener('scroll', hide, true);
   window.addEventListener('resize', hide);
 })();
+
+/* ── Relative time ─────────────────────────────────────────────────────────
+   Dashboard cards are narrow, so a timestamp has to fit in a few characters.
+   Returns '' for a missing or unparseable value, so a caller can drop the
+   whole clause rather than print "Invalid Date". */
+function timeAgo(value) {
+  if (!value) return '';
+  const then = new Date(value);
+  if (Number.isNaN(then.getTime())) return '';
+  const secs = Math.round((Date.now() - then.getTime()) / 1000);
+  if (secs < 0) return 'just now';           // clock skew reads better as now
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return then.toLocaleDateString();
+}

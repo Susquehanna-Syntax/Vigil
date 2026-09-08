@@ -96,7 +96,10 @@ class WidgetDefaultsTests(TestCase):
             reported.setdefault(category, set()).add(metric)
         for kind, spec in WIDGET_REGISTRY.items():
             settings = spec.get("settings") or {}
-            if "metric" not in settings:
+            # The type, not the name: a widget may have a setting called
+            # "metric" that is an ordinary choice rather than a metric picker,
+            # and only a real picker has a category beside it.
+            if (settings.get("metric") or {}).get("type") != "metric":
                 continue
             category = settings["category"]["default"]
             metric = settings["metric"]["default"]

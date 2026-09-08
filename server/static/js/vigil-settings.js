@@ -193,6 +193,87 @@ async function saveCivilSettings(opts) {
   } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
 }
 
+
+/* ── Transport security ────────────────────────────────────────────────────
+   A standing acknowledgement that this instance is served over plain HTTP.
+   Made once here by a named admin rather than ticked inside every rebuild,
+   where it read as another box to clear rather than a decision. */
+async function refreshTransportAck() {
+  const status = document.getElementById('transport-status-line');
+  if (!status) return;
+  const sub = document.getElementById('transport-sub-line');
+  const ackBtn = document.getElementById('transport-ack-btn');
+  const revokeBtn = document.getElementById('transport-revoke-btn');
+  try {
+    const data = await apiJson('/api/v1/hosts/transport-ack/');
+    const secure = data.request_is_secure;
+    if (secure) {
+      status.textContent = 'Served over HTTPS';
+      status.className = 'totp-status enabled';
+      sub.textContent = 'Secrets are encrypted in transit. No acknowledgement is needed.';
+      ackBtn.style.display = 'none';
+      // Still offer to withdraw a stale one — an instance that moved to TLS
+      // should not keep an acknowledgement that would apply if it moved back.
+      revokeBtn.style.display = data.acknowledged ? '' : 'none';
+      if (data.acknowledged) {
+        sub.textContent += ' A plain-text acknowledgement is still on record'
+          + (data.acknowledged_by ? ` from ${data.acknowledged_by}` : '') + '.';
+      }
+      return;
+    }
+    if (data.acknowledged) {
+      status.textContent = 'Plain-text transport acknowledged';
+      status.className = 'totp-status pending';
+      sub.textContent = 'Rebuilds proceed without asking again. Acknowledged'
+        + (data.acknowledged_by ? ` by ${data.acknowledged_by}` : '')
+        + (data.acknowledged_at
+            ? ` on ${new Date(data.acknowledged_at).toLocaleString()}` : '')
+        + '. Put Vigil behind TLS and withdraw this.';
+      ackBtn.style.display = 'none';
+      revokeBtn.style.display = '';
+    } else {
+      status.textContent = 'Served over plain HTTP';
+      status.className = 'totp-status disabled';
+      sub.textContent = 'A rebuild answer file carries an admin password hash, '
+        + 'SSH keys and an enrolment token, and they cross the network in the '
+        + 'clear. Rebuilds ask for an acknowledgement every time until one is '
+        + 'recorded here.';
+      ackBtn.style.display = '';
+      revokeBtn.style.display = 'none';
+    }
+  } catch (e) {
+    // Not an admin, or the pane is not open. Say nothing rather than alarm.
+    status.textContent = '';
+    if (sub) sub.textContent = '';
+    if (ackBtn) ackBtn.style.display = 'none';
+    if (revokeBtn) revokeBtn.style.display = 'none';
+  }
+}
+
+async function transportAckSet(acknowledged) {
+  if (acknowledged && typeof confirmModal === 'function') {
+    const ok = await confirmModal(
+      'Vigil will stop asking during rebuilds. The answer file\u2019s admin '
+      + 'password hash, SSH keys and enrolment token will keep crossing the '
+      + 'network unencrypted until Vigil is served over HTTPS. This is '
+      + 'recorded against your account.',
+      { title: 'Acknowledge plain-text transport',
+        confirmText: 'I understand', danger: true });
+    if (!ok) return;
+  }
+  try {
+    await apiJson('/api/v1/hosts/transport-ack/', {
+      method: 'POST',
+      body: JSON.stringify({ acknowledged: !!acknowledged }),
+    });
+    showToast(acknowledged ? 'Plain-text transport acknowledged'
+                           : 'Acknowledgement withdrawn', 'success');
+  } catch (e) {
+    showToast(e.message || 'Could not save that', 'error');
+  }
+  refreshTransportAck();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const cs = document.getElementById('civil-save-btn');
   if (cs) cs.addEventListener('click', () => saveCivilSettings());
@@ -216,4 +297,5 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   loadCivilSettings();
+  refreshTransportAck();
 });

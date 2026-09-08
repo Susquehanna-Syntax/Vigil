@@ -50,12 +50,14 @@ async function openRebuildModal(hostId, hostname) {
 
   let images = [];
   let profiles = [];
-  let playbooks = [];
+  let transport = { acknowledged: false };
   try {
-    [images, profiles, playbooks] = await Promise.all([
+    [images, profiles, transport] = await Promise.all([
       apiJson('/api/v1/reprovision/images/'),
       apiJson('/api/v1/reprovision/profiles/'),
-      apiJson('/api/v1/playbooks/').catch(() => []),
+      // A standing acknowledgement made in Settings means this ceremony does
+      // not ask again.
+      apiJson('/api/v1/hosts/transport-ack/').catch(() => ({ acknowledged: false })),
     ]);
   } catch (e) {
     m.setBody('<h3>Rebuild host</h3>' +
@@ -75,11 +77,9 @@ async function openRebuildModal(hostId, hostname) {
     return;
   }
 
-  const insecure = window.location.protocol !== 'https:';
+  const insecure = window.location.protocol !== 'https:' && !transport.acknowledged;
   const imageOpts = ready.map((i) =>
     `<option value="${escAttr(i.id)}">${escHtml(i.name)} (${escHtml(i.architecture)})</option>`).join('');
-  const playbookOpts = ['<option value="">None</option>'].concat(
-    playbooks.map((b) => `<option value="${escAttr(b.id)}">${escHtml(b.name)}</option>`)).join('');
 
   m.setBody(
     `<h3>Rebuild ${escHtml(hostname)}</h3>` +
@@ -89,8 +89,6 @@ async function openRebuildModal(hostId, hostname) {
     `<label>Profile<select class="form-control" id="rb-profile"></select></label>` +
     `<div id="rb-summary" class="rb-summary muted">Select an image and profile…</div>` +
     `<div id="rb-preflight" class="rb-preflight"><span class="muted">Checking rebuild readiness…</span></div>` +
-    `<label>Tag on completion<input class="form-control" id="rb-tag" placeholder="rebuilt:need config"></label>` +
-    `<label>Run playbook afterwards<select class="form-control" id="rb-playbook">${playbookOpts}</select></label>` +
     (insecure
       ? `<label class="rb-warn"><input type="checkbox" id="rb-ack-plain"> ` +
         `Vigil is served over plain HTTP. The answer file carries the admin ` +
@@ -166,8 +164,6 @@ async function openRebuildModal(hostId, hostname) {
           host: hostId,
           image: imageSel.value,
           profile: profileSel.value,
-          completion_tag: document.getElementById('rb-tag').value.trim(),
-          post_playbook: document.getElementById('rb-playbook').value || null,
           password: document.getElementById('rb-password').value,
           totp: document.getElementById('rb-totp').value.trim(),
           typed_hostname: hostnameInput.value,

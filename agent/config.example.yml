@@ -139,3 +139,31 @@ tags:
   # - rack-3
   # - web-server
   # - site-london
+
+# ── Process watch list ───────────────────────────────────────────────────────
+# Process names sampled at every check-in whether or not they are among the
+# busiest ten. Without this, a process is only reported while it is busy enough
+# to rank — so a chart of one named service is full of holes exactly when the
+# service is behaving, and an outage looks identical to a quiet period.
+#
+# Names are matched exactly and are case-sensitive. Processes sharing a name
+# are summed, with the live count reported alongside as `process/instances`,
+# so a watched name that is not running reports zero rather than nothing.
+#
+# Feeds the dashboard's "Process monitor" widget.
+
+process_watch: []
+  # - postgres
+  # - nginx
+  # - dockerd
+
+# ── GPU telemetry ────────────────────────────────────────────────────────────
+# GPU metrics are collected automatically when nvidia-smi or rocm-smi is on the
+# PATH, and skipped silently when neither is — no configuration needed. The core
+# set is utilisation, memory, temperature and power, per GPU.
+#
+# gpu_extended adds fan speed, clocks, PCIe link and ECC counters where the card
+# reports them. That is roughly twice the points per GPU per check-in, which is
+# worth being deliberate about on a multi-GPU host.
+
+gpu_extended: false

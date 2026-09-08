@@ -25,6 +25,16 @@ Vigil is a lightweight monitoring system where agents on your hosts phone home t
 - Signed remote task execution with mode/allowlist enforcement on the agent
 - SQSY dark-theme dashboard with Chart.js visualizations
 
+## What's new in 2026.11.2
+
+- **GPU telemetry, from `nvidia-smi` and `rocm-smi`.** Utilisation, memory, temperature and power per card, collected only when one of those tools is on the PATH and silent when neither is — a host with no GPU is the ordinary case, not a failure. Fan speed, clocks, PCIe link and ECC counters sit behind `gpu_extended: true` because the wide set is roughly twice the points per GPU per check-in. The new **GPU status** widget draws a card per card.
+- **Named processes are sampled at every check-in.** The agent only ever reported the ten busiest, so a chart of one named service was full of holes exactly when the service was behaving, and an outage looked the same as a quiet period. Names listed under `process_watch` in `agent.yml` are now sampled regardless of rank; processes sharing a name are summed with the live count beside them, so a watched name that is not running reports zero rather than nothing at all. The **Process monitor** widget charts one of them, and says outright when the name is not on the watch list.
+- **The list widgets are cards.** Six widgets rendered flat rows of text into a scroll box, which read as a wall at any tile size. Each row is now a card with a left edge in the colour of what it is about — severity for alerts and findings, run state for history, up or down for containers and automations — and clicking one goes to the page that owns it and flashes the panel it landed on. **Top processes** is cards too, each with its own inline sparkline.
+- **Host cards are back.** The host widget was a dot, a name and an OS string. It renders the real host card again: OS logo, tags, mode badge, the five live metric bars, the action buttons and the detail drawer. Three widgets were also reading field names the API does not use, which is why every automation reported "never".
+- **Widget settings that pick a task, playbook or host use the searchable picker** instead of a dropdown, which cannot be searched and is unusable past a few dozen entries.
+- **Plain-text transport is acknowledged once, in Settings.** The rebuild ceremony asked on every rebuild whether you understood that Vigil was served over plain HTTP, where it read as another box to clear on the way to the button — the opposite of what an acknowledgement is for. It is now a standing decision about the instance, recorded under **Settings → Identity & Security → Transport Security** with the admin who made it and when, because this is a deliberate downgrade of the instance's posture and "who agreed to this" is the question asked afterwards. It can be withdrawn, and the pane says whether it is presently doing anything.
+- **The rebuild ceremony stopped asking the same question twice.** It offered a completion tag and a playbook to run afterwards, both of which already had a home: the install profile carries `completion_tags`, and a playbook that should run on a rebuilt machine is what auto-enrolment is for — it fires when the machine checks back in carrying the profile's tags, and it keeps working for a machine rebuilt by any other route. Two ways to say the same thing meant the answers could disagree. Existing jobs still read back, and an API caller still sending either field is ignored rather than refused.
+
 ## What's new in 2026.11.1
 
 - **The "Add a widget" panel opens full height again.** It was rendered inside the dashboard's own container, which carries a finished `fade-in` animation — and an element with a transform becomes the containing block for anything `position: fixed` inside it. The panel therefore sized itself to the dashboard rather than to the window, so on a new layout with nothing on it yet the panel collapsed to the height of the empty grid and showed a sliver of the catalogue above blank space. It now hangs off the page body and scrolls through all of its widgets at any layout size.
@@ -243,7 +253,7 @@ allowlist:
 
 | Page | Description |
 |---|---|
-| **Dashboard** | Host card grid — status dots, CPU/Memory/Disk/Network mini-bars, RDP, Deploy, Remove buttons. Searchable. Inactive agents (90+ days) collapse into a separate section. |
+| **Dashboard** | A grid of widgets you arrange, resize and name. Add from a catalogue grouped by what they are for; keep several dashboards and switch between them. The **Host status** widget carries the full host cards — status dot, OS logo, tags, mode badge, live CPU/Memory/Disk/Network bars, RDP, Deploy, Remove — and opens the host detail drawer on click. |
 | **Inventory** | Hardware table for all enrolled hosts. Columns: hostname, IP, OS, CPU, RAM, MAC, BIOS, disks, uptime, last user, timezone, and more. Scrollable, sortable (click header), filterable per-column (`=value` for exact, default contains), drag-to-reorder columns, column visibility toggled via Columns button. |
 | **Tasks** | YAML task editor (with **Submit to Community** that opens a GitHub PR) and your private library. The **History** tab lists every dispatched task with live polling — newest first, paginated. |
 | **Vulns** | Nessus/Tenable scan findings per host, with a **Scan now** button per row. The **Recent scans** section below shows every scan request — UI-launched or agent-requested — and its state. |
@@ -1056,6 +1066,29 @@ Two settings exist in this repo specifically because of the upload path — both
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/api/v1/metrics/{host}/{cat}/{metric}/` | Metric history (supports `?from=`, `?to=`, `?limit=`) |
+| `GET` | `/api/v1/metrics/catalog/` | The category/metric pairs this fleet is actually reporting |
+
+Categories the agent emits: `cpu`, `memory`, `disk`, `network`, `process`,
+`temperature`, and `gpu`.
+
+**Processes.** The agent reports the ten busiest by CPU and the ten busiest by
+memory, labelled `name`, `pid` and `rank`. Names listed under `process_watch`
+in `agent.yml` are additionally sampled at *every* check-in regardless of
+rank, labelled `watched=1` — without that, a chart of one named service has
+holes exactly when the service is behaving, and an outage looks the same as a
+quiet period. Processes sharing a name are summed, with the live count
+reported as `process/instances`, so a watched name that is not running reports
+zero rather than nothing.
+
+**GPUs.** Collected from `nvidia-smi` and `rocm-smi` when either is on the
+PATH, and skipped silently when neither is — no configuration needed. Per GPU,
+labelled `vendor`, `index` and `name`: `utilization_percent`,
+`memory_used_mb`, `memory_total_mb`, `memory_percent`, `temperature_celsius`
+and `power_watts`. Setting `gpu_extended: true` adds `fan_percent`,
+`clock_graphics_mhz`, `clock_memory_mhz`, `memory_bandwidth_percent`,
+`pcie_generation`, `pcie_width` and ECC counters where the card reports them —
+roughly twice the points per GPU per check-in, which is worth being deliberate
+about on a multi-GPU host.
 
 ### Alerts
 
