@@ -8,6 +8,8 @@ urlpatterns = [
     path("<uuid:playbook_id>/", views.playbook_detail, name="playbook-detail"),
     path("<uuid:playbook_id>/yaml/", views.playbook_yaml, name="playbook-yaml"),
     path("<uuid:playbook_id>/archive/", views.playbook_archive, name="playbook-archive"),
+    path("<uuid:playbook_id>/failures/", views.playbook_failures, name="playbook-failures"),
+    path("<uuid:playbook_id>/retry/", views.playbook_retry, name="playbook-retry"),
 ]
 
 #: The pre-2026.11.0 path, mounted at /api/v1/baselines/ so anything an
@@ -20,4 +22,6 @@ legacy_urlpatterns = [
     path("<uuid:playbook_id>/", views.playbook_detail),
     path("<uuid:playbook_id>/yaml/", views.playbook_yaml),
     path("<uuid:playbook_id>/archive/", views.playbook_archive),
+    path("<uuid:playbook_id>/failures/", views.playbook_failures),
+    path("<uuid:playbook_id>/retry/", views.playbook_retry),
 ]
