@@ -167,9 +167,21 @@ def layout_update(request, dashboard_id):
         if x < 0 or y < 0:
             return Response({"error": "x and y must be non-negative"},
                             status=status.HTTP_400_BAD_REQUEST)
+        # Absent geometry is refused rather than defaulted. It used to fall
+        # back to the registry's *default* size, which is larger than the
+        # minimum — so a client that omitted w (Gridstack's save() drops it
+        # when the width equals the widget's minimum) silently had every
+        # minimum-sized widget grown to catalogue size on save, and the grid
+        # reflowed around it. The server cannot know the intended size, so the
+        # honest answer is to say the request is incomplete.
+        if entry.get("w") is None or entry.get("h") is None:
+            return Response(
+                {"error": "each widget must carry w and h; a widget with no "
+                          "size cannot be placed"},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
-            w = int(entry.get("w", spec["w"]))
-            h = int(entry.get("h", spec["h"]))
+            w = int(entry["w"])
+            h = int(entry["h"])
         except (TypeError, ValueError):
             return Response({"error": "w and h must be integers"},
                             status=status.HTTP_400_BAD_REQUEST)

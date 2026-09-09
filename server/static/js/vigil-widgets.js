@@ -239,6 +239,41 @@ async function _renderHostStatusGrid(body, settings) {
   // never rendered. The filter is local to this widget's cards.
   const search = settings.show_search === false ? '' :
     `<input type="text" class="form-control dash-host-search" placeholder="Filter hosts…">`;
+  // The dashboard repaints every widget on a 15-second poll, and this renderer
+  // used to rebuild all of its cards each time. Every rebuilt card starts with
+  // `width: 0%` on its five metric bars (see _dashHostCard) and only reaches
+  // real values once refreshHostCards' async fetch returns — so the bars sat
+  // at zero for a whole round-trip, four times a minute, then animated up over
+  // the 0.8s transition. The filter box was destroyed and recreated with them,
+  // wiping whatever was being typed into it.
+  //
+  // Rebuild only when the cards would actually differ. Otherwise leave the DOM
+  // alone and let refreshHostCards move the existing bars from their current
+  // values, which is what that transition was for.
+  const signature = JSON.stringify([
+    settings.show_search === false,
+    shown.map(h => [h.id, h.status, h.hostname, h.os, h.ip_address, h.mode,
+                    (h.tags || []).join(','), h.agent_version,
+                    h.reboot_required ? 1 : 0, h.kernel]),
+  ]);
+  const existing = body.querySelector('.dash-host-cards');
+  if (existing && body.dataset.hostSig === signature) {
+    // last_checkin is deliberately outside the signature: it changes on every
+    // check-in, so including it would rebuild the grid on every poll — the bug
+    // this guard exists to stop. It drives one piece of text, updated in place.
+    for (const h of shown) {
+      const card = existing.querySelector(
+        `.host-card[data-id="${CSS.escape(String(h.id))}"]`);
+      if (!card) continue;
+      card.dataset.lastCheckin = h.last_checkin || '';
+      const when = card.querySelector('.host-checkin');
+      if (when) when.textContent = h.last_checkin ? timeAgo(h.last_checkin) : 'Never';
+    }
+    if (typeof refreshHostCards === 'function') refreshHostCards(body);
+    return;
+  }
+
+  body.dataset.hostSig = signature;
   body.innerHTML = search
     + `<div class="dash-host-cards">${shown.map(_dashHostCard).join('')}</div>`;
 
