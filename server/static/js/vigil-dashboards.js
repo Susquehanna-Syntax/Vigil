@@ -266,7 +266,20 @@ function _dashCollectLayout() {
     const original = byId.get(String(node.id)) || {};
     return {
       kind: original.kind,
-      x: node.x, y: node.y, w: node.w, h: node.h,
+      x: node.x, y: node.y,
+      // Gridstack's removeInternalForSave (gridstack-all.js, v12.4.0) ends with
+      //   1!==e.w && e.w!==e.minW || delete e.w
+      // — it deletes w when the width is 1 OR equal to the node's minW, and h
+      // on the same rule. _dashRender passes minW/minH from the catalogue into
+      // every addWidget, so any widget sitting at its minimum size came back
+      // from save() with no geometry at all. Sending undefined let
+      // JSON.stringify drop the key, and layout_update read an absent w as
+      // "use the catalogue default" — which is larger than the minimum. Every
+      // minimum-sized widget therefore grew on every save, and float:false
+      // gravity reflowed the whole grid around it. Fall back to what the
+      // widget already is, so the size we send is always the size on screen.
+      w: node.w ?? original.w,
+      h: node.h ?? original.h,
       settings: original.settings || {},
     };
   }).filter(w => w.kind);

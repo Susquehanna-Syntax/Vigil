@@ -161,6 +161,44 @@ class DashboardTests(TestCase):
         widget = board.widgets.get(kind="host_status_grid")
         self.assertEqual(widget.w, GRID_COLUMNS)
 
+    def test_a_widget_with_no_size_is_refused_rather_than_resized(self):
+        """Absent geometry used to fall back to the registry default.
+
+        Gridstack's save() drops w when the width equals the widget's own
+        minimum, so the browser really did send widgets with no size — and the
+        server grew each one to catalogue size, which reflowed the whole grid.
+        A request that cannot say how big a widget is, is incomplete.
+        """
+        board = starter_dashboard(self.user)
+        self._login(self.user)
+        resp = self.client.put(
+            f"/api/v1/dashboards/{board.id}/layout/",
+            {"widgets": [{"kind": "host_status_grid", "x": 0, "y": 0}]},
+            format="json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("w and h", resp.json()["error"])
+        self.assertEqual(board.widgets.count(), 7)  # original layout intact
+
+    def test_a_minimum_sized_widget_survives_a_save_round_trip(self):
+        """The shape of the scramble: a widget saved at its minimum must read
+        back at its minimum, not at the catalogue default."""
+        board = starter_dashboard(self.user)
+        self._login(self.user)
+        spec = WIDGET_REGISTRY["host_status_grid"]
+        self.assertNotEqual(spec["min_w"], spec["w"],
+                            "this test is meaningless if min == default")
+        resp = self.client.put(
+            f"/api/v1/dashboards/{board.id}/layout/",
+            {"widgets": [{"kind": "host_status_grid", "x": 0, "y": 0,
+                          "w": spec["min_w"], "h": spec["min_h"]}]},
+            format="json")
+        self.assertEqual(resp.status_code, 200)
+        widget = board.widgets.get(kind="host_status_grid")
+        self.assertEqual((widget.w, widget.h), (spec["min_w"], spec["min_h"]))
+        # And again, from the values the API just handed back.
+        row = resp.json()["widgets"][0]
+        self.assertEqual((row["w"], row["h"]), (spec["min_w"], spec["min_h"]))
+
     def test_a_widget_smaller_than_its_minimum_is_clamped(self):
         board = starter_dashboard(self.user)
         self._login(self.user)
