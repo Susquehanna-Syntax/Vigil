@@ -201,3 +201,44 @@ class TokenPermissionTests(unittest.TestCase):
             before = os.stat(path).st_mtime_ns
             cfg.load_config(path)
             self.assertEqual(os.stat(path).st_mtime_ns, before)
+
+
+class PrivilegeMismatchTests(unittest.TestCase):
+    """The installer runs a monitor-mode agent unprivileged. If someone later
+    edits agent.yml to a mode that executes tasks, the unit still says
+    User=vigil-agent, and without this the only symptom is every task failing
+    with a permission error one at a time."""
+
+    def _config(self, mode):
+        cfg = MagicMock()
+        cfg.mode = mode
+        return cfg
+
+    def test_a_task_mode_without_root_warns(self):
+        from vigil_agent.__main__ import _warn_on_privilege_mismatch
+
+        for mode in ("managed", "full_control"):
+            with self.subTest(mode=mode):
+                with patch("vigil_agent.__main__.os.geteuid", return_value=1000), \
+                        patch("vigil_agent.__main__.logger") as log:
+                    _warn_on_privilege_mismatch(self._config(mode))
+                self.assertTrue(log.warning.called, f"{mode} did not warn")
+                said = log.warning.call_args.args[0]
+                self.assertIn("not running as root", said)
+
+    def test_monitor_mode_is_silent(self):
+        """Unprivileged monitoring is the intended state, not a problem."""
+        from vigil_agent.__main__ import _warn_on_privilege_mismatch
+
+        with patch("vigil_agent.__main__.os.geteuid", return_value=1000), \
+                patch("vigil_agent.__main__.logger") as log:
+            _warn_on_privilege_mismatch(self._config("monitor"))
+        self.assertFalse(log.warning.called)
+
+    def test_running_as_root_is_silent(self):
+        from vigil_agent.__main__ import _warn_on_privilege_mismatch
+
+        with patch("vigil_agent.__main__.os.geteuid", return_value=0), \
+                patch("vigil_agent.__main__.logger") as log:
+            _warn_on_privilege_mismatch(self._config("full_control"))
+        self.assertFalse(log.warning.called)

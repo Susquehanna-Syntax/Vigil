@@ -143,6 +143,59 @@ Environment=no_proxy=${_np_full}"
     echo "Detected proxy — baking egress config into the agent service."
   fi
 
+  # Only a mode that executes tasks needs root. A monitor-mode agent reads
+  # /proc and /sys and posts the numbers, which any user can do — the one
+  # thing it loses unprivileged is dmidecode's manufacturer/model, and that
+  # call already degrades to an absent field rather than failing.
+  #
+  # This matters because monitor is the mode this installer writes by default,
+  # so most agents were running as root to do a job that needs none of it.
+  AGENT_MODE="$(sed -n 's/^mode:[[:space:]]*//p' /etc/vigil/agent.yml 2>/dev/null | head -1)"
+  AGENT_MODE="${AGENT_MODE:-monitor}"
+
+  RUN_AS=""
+  HARDENING=""
+  if [ "$AGENT_MODE" = "monitor" ]; then
+    if ! id vigil-agent >/dev/null 2>&1; then
+      useradd --system --no-create-home --shell /usr/sbin/nologin vigil-agent 2>/dev/null || true
+    fi
+    if id vigil-agent >/dev/null 2>&1; then
+      mkdir -p /var/lib/vigil-agent
+      chown -R vigil-agent /var/lib/vigil-agent
+      chown vigil-agent /etc/vigil/agent.yml 2>/dev/null || true
+      chmod 600 /etc/vigil/agent.yml 2>/dev/null || true
+      RUN_AS="User=vigil-agent"
+      # Safe for a process that only reads counters. Deliberately NOT applied
+      # to managed or full_control: an agent whose job is systemctl and
+      # apt-get needs to write /etc and /usr, and ProtectSystem would leave it
+      # failing every task it was asked to run.
+      HARDENING="NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+ReadWritePaths=/var/lib/vigil-agent
+CapabilityBoundingSet="
+      echo "Monitor mode: running the agent as the unprivileged 'vigil-agent' user."
+    fi
+  else
+    # Root, because the mode's whole purpose needs it — but still deny the
+    # gaining of *new* privileges through setuid binaries, which a task that
+    # legitimately runs as root never needs to do.
+    HARDENING="NoNewPrivileges=yes
+ProtectKernelModules=yes
+RestrictRealtime=yes
+LockPersonality=yes"
+    echo "Mode '$AGENT_MODE' executes tasks, so the agent runs as root."
+    echo "  Switch to monitor mode to run it unprivileged."
+  fi
+
   cat > /etc/systemd/system/vigil-agent.service << EOF
 [Unit]
 Description=Vigil Monitoring Agent
@@ -154,6 +207,8 @@ Type=simple
 ExecStart=/usr/local/bin/vigil-agent
 Restart=always
 RestartSec=10
+${RUN_AS}
+${HARDENING}
 ${PROXY_LINES}
 
 [Install]
