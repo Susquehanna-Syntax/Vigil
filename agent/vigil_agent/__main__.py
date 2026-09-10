@@ -7,6 +7,7 @@ Usage:
 
 import argparse
 import logging
+import os
 import signal
 import time
 from datetime import datetime, timedelta, timezone
@@ -303,6 +304,36 @@ def _report_skipped(config, task: dict, output: str) -> None:
         logger.exception("Failed to report task %s skip", task.get("id"))
 
 
+def _warn_on_privilege_mismatch(config) -> None:
+    """Say so when the mode needs root and this process does not have it.
+
+    The installer runs a monitor-mode agent as the unprivileged 'vigil-agent'
+    user, because reading /proc needs nothing more. If someone later edits
+    agent.yml to managed or full_control, the service unit still says
+    User=vigil-agent — and without this the only symptom is every task failing
+    with a permission error, one at a time, for as long as it takes someone to
+    connect the two facts.
+
+    A warning, not a refusal: an agent that stops monitoring because it cannot
+    execute is worse than one that monitors and says it cannot execute.
+    """
+    if config.mode == "monitor":
+        return
+    try:
+        if os.geteuid() == 0:
+            return
+    except AttributeError:      # Windows has no geteuid
+        return
+
+    logger.warning(
+        "Mode is %r but this agent is not running as root (uid=%d). Task "
+        "execution needs root — systemctl, package installs and firewall "
+        "changes will all fail. Either set mode back to 'monitor', or remove "
+        "the 'User=' line from /etc/systemd/system/vigil-agent.service and "
+        "run `systemctl daemon-reload && systemctl restart vigil-agent`.",
+        config.mode, os.geteuid())
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Vigil monitoring agent")
     parser.add_argument("-c", "--config", type=Path, help="Path to agent.yml")
@@ -320,6 +351,7 @@ def main() -> None:
     )
 
     config = load_config(args.config)
+    _warn_on_privilege_mismatch(config)
     logger.info(
         "Vigil agent starting — server=%s mode=%s interval=%ds",
         config.server_url,
