@@ -32,7 +32,11 @@ def sample_uptime():
         HostUptimeSample(host=h, time=ts, up=(h.status == Host.Status.ONLINE))
         for h in hosts
     ]
-    HostUptimeSample.objects.bulk_create(samples)
+    # ignore_conflicts: the unique constraint on (host, time) is what stops a
+    # second overlapping run doubling the sample set, and hitting it means the
+    # work was already done — that is success, not an error to raise into the
+    # beat log.
+    HostUptimeSample.objects.bulk_create(samples, ignore_conflicts=True)
     return f"sampled {len(samples)} hosts"
 
 
