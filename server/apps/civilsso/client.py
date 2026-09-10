@@ -77,6 +77,13 @@ def verify_sso_token(token: str) -> dict | None:
         return jwt.decode(
             token, pem, algorithms=["EdDSA"],
             audience=app_slug(), issuer="civil",
+            # PyJWT verifies exp only when the claim is present and requires
+            # nothing by default, so a Civil token issued without one was valid
+            # forever — and this token arrives as a query parameter, which puts
+            # it in the access log, the proxy log and the browser's history.
+            # Vigil cannot control what Civil mints, so it requires the claim
+            # on its own side.
+            options={"require": ["exp"]},
         )
     except jwt.PyJWTError as exc:
         logger.warning("Civil SSO token rejected: %s", exc)

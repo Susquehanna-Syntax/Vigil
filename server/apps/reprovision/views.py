@@ -65,22 +65,30 @@ def _served_on_a_private_network(request) -> bool:
     wire. Set VIGIL_REQUIRE_HTTPS_FOR_REBUILD=1 to demand the acknowledgement
     everywhere regardless.
     """
-    import ipaddress
+    from vigil.netutils import is_private_hostname
 
     if getattr(django_settings, "VIGIL_REQUIRE_HTTPS_FOR_REBUILD", False):
         return False
 
-    hostname = (request.get_host() or "").split(":")[0].strip().rstrip(".").lower()
-    if not hostname:
+    # REMOTE_ADDR — the socket peer — and deliberately NOT request.get_host().
+    # get_host() returns the Host header, which the client chooses; it is only
+    # checked against ALLOWED_HOSTS, and ALLOWED_HOSTS keeps its default
+    # ["localhost", "127.0.0.1"] even after VIGIL_PUBLIC_URL appends to it. So
+    # on an internet-facing Vigil configured exactly as documented, a request
+    # carrying `Host: 127.0.0.1` read as private and skipped this gate, and the
+    # answer file — admin password hash, SSH keys, enrolment token — went out
+    # over plain HTTP with nothing recorded. The peer address is established by
+    # the TCP handshake and cannot be chosen by the client.
+    #
+    # Behind a TLS-terminating proxy the peer is the proxy, which is normally a
+    # private address — correct here, because the leg Vigil actually serves is
+    # the private one, and the public leg is the proxy's HTTPS. That path also
+    # reaches request.is_secure() first via SECURE_PROXY_SSL_HEADER, so this
+    # gate is not what decides it.
+    peer = (request.META.get("REMOTE_ADDR") or "").strip()
+    if not peer:
         return False
-    if hostname == "localhost" or hostname.endswith(
-            (".local", ".lan", ".internal", ".home", ".arpa")):
-        return True
-    try:
-        address = ipaddress.ip_address(hostname)
-    except ValueError:
-        return False
-    return address.is_private or address.is_loopback or address.is_link_local
+    return is_private_hostname(peer)
 
 
 @api_view(["GET"])

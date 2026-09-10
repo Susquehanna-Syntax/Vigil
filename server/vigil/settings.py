@@ -159,6 +159,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.accounts.middleware.SetupRedirectMiddleware",
+    "apps.accounts.csp.ContentSecurityPolicyMiddleware",
 ]
 
 ROOT_URLCONF = "vigil.urls"

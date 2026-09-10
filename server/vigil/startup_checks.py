@@ -41,13 +41,27 @@ _GENERATE_SEED = (
     'print(base64.b64encode(os.urandom(32)).decode())"')
 
 
-def _running_tests() -> bool:
-    """True when this process is the test runner.
+#: Management commands that inspect or prepare the project rather than serve
+#: it. A missing public URL is not their problem, and failing them would make
+#: `manage.py check` — this project's build gate — a configuration test.
+#:
+#: Serving is what matters: gunicorn imports the WSGI application, which calls
+#: django.setup(), which reaches this. So a misconfigured deployment still
+#: fails loudly at the moment it would otherwise start answering requests, and
+#: the operator still sees the whole list in `docker compose logs`.
+NON_SERVING_COMMANDS = frozenset({
+    "check", "test", "migrate", "makemigrations", "showmigrations",
+    "sqlmigrate", "collectstatic", "createsuperuser", "changepassword",
+    "shell", "dbshell", "diffsettings", "loaddata", "dumpdata",
+})
 
-    The suite deliberately runs without a public URL and without a real secret
-    key; failing it here would make every test a configuration test.
-    """
-    return "test" in sys.argv or os.environ.get("VIGIL_TESTING") == "1"
+
+def _is_non_serving_command() -> bool:
+    """True when this process will never answer an HTTP request."""
+    if os.environ.get("VIGIL_TESTING") == "1":
+        return True
+    # sys.argv[0] is manage.py; argv[1] is the subcommand, when there is one.
+    return len(sys.argv) > 1 and sys.argv[1] in NON_SERVING_COMMANDS
 
 
 def collect_problems() -> list[str]:
@@ -94,7 +108,8 @@ def validate_or_die() -> None:
     ``VIGIL_SKIP_STARTUP_CHECKS=1`` bypasses this — it exists for build steps
     like ``collectstatic`` that run without the production environment.
     """
-    if os.environ.get("VIGIL_SKIP_STARTUP_CHECKS") == "1" or _running_tests():
+    if (os.environ.get("VIGIL_SKIP_STARTUP_CHECKS") == "1"
+            or _is_non_serving_command()):
         return
 
     problems = collect_problems()

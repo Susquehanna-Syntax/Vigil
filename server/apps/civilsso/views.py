@@ -105,6 +105,28 @@ def _provision_user(claims: dict):
     return user
 
 
+def _is_safe_civil_url(url: str) -> bool:
+    """True when *url* is safe to fetch Civil's signing key from.
+
+    HTTPS anywhere; plain HTTP only on a private network. Vigil is a homelab
+    product and a Civil on the LAN reached over a switch the operator owns is
+    an ordinary deployment, not a mistake — the same judgement the rebuild
+    ceremony makes about its own transport. Plain HTTP to a *public* address is
+    the case that matters: the key fetched over it authenticates every SSO
+    login, and anyone on the path can replace it.
+    """
+    from urllib.parse import urlsplit
+
+    from vigil.netutils import is_private_hostname
+
+    parts = urlsplit(url)
+    if parts.scheme == "https":
+        return True
+    if parts.scheme == "http":
+        return is_private_hostname(parts.hostname or "")
+    return False
+
+
 def civil_settings_api(request):
     """GET/POST the Civil connection config. Admin-only, CSRF-protected by
     the session middleware; framework-light so the same file ports across
@@ -115,8 +137,16 @@ def civil_settings_api(request):
 
     from .models import CachedCivilKey, CivilConfig
 
+    # role_of, not is_staff. They disagree: role_of consults per-site role rows
+    # first and, for a user who has any, never looks at is_staff at all — so a
+    # site-scoped Viewer carrying is_staff was refused by IsAdmin everywhere in
+    # Vigil and accepted right here, on the endpoint that can replace the key
+    # every SSO login is verified against.
+    from apps.accounts.permissions import OWNER, Role, role_of
+
     user = getattr(request, "user", None)
-    if not (user and user.is_authenticated and (user.is_staff or user.is_superuser)):
+    if not (user and user.is_authenticated
+            and role_of(user) in (Role.ADMIN, OWNER)):
         return JsonResponse({"detail": "Administrator access required."}, status=403)
 
     cfg = CivilConfig.current()
@@ -127,7 +157,22 @@ def civil_settings_api(request):
         except ValueError:
             return JsonResponse({"detail": "invalid JSON"}, status=400)
         if "url" in data:
-            cfg.url = (data["url"] or "").strip().rstrip("/")
+            new_url = (data["url"] or "").strip().rstrip("/")
+            # Refuse plain HTTP. This URL is where the public key that
+            # authenticates every SSO login is fetched from, over a bare
+            # urlopen with no pinning — one MITM of that single request
+            # substitutes the key and mints tokens for any account. A
+            # loopback URL stays allowed so a developer can run Civil locally.
+            if new_url and not _is_safe_civil_url(new_url):
+                return JsonResponse(
+                    {"detail": "A public Civil URL must be https://. The "
+                               "public key that verifies every SSO login is "
+                               "fetched from it with no pinning, so plain HTTP "
+                               "over the internet lets anyone on the path "
+                               "replace that key. Plain HTTP to a LAN address "
+                               "is still accepted."},
+                    status=400)
+            cfg.url = new_url
         if "app_slug" in data:
             cfg.app_slug = (data["app_slug"] or "").strip()
         if "enabled" in data:
