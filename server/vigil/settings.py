@@ -399,6 +399,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "statuspage.sample_uptime",
         "schedule": 300.0,  # every 5 minutes — feeds the status-page uptime bars
     },
+    "prune-old-alerts": {
+        "task": "alerts.prune_old_alerts",
+        "schedule": 86400.0,  # daily — nothing pruned alerts_alert before
+    },
     "prune-old-uptime-samples": {
         "task": "statuspage.prune_old_uptime_samples",
         "schedule": 86400.0,  # once daily
@@ -456,6 +460,11 @@ VIGIL_TASK_EXPIRY_GRACE_SECONDS = int(
 # survives raw expiry. Chunks older than VIGIL_TS_COMPRESS_AFTER are compressed
 # (~10-20x). See docs/timescaledb-storage.md.
 VIGIL_METRIC_RETENTION_DAYS = int(os.environ.get("VIGIL_METRIC_RETENTION_DAYS", "30"))
+
+#: How long a *resolved* alert is kept. Firing and acknowledged alerts are live
+#: state and are never pruned. 0 disables pruning entirely, for an operator who
+#: wants the whole history and has the disk for it.
+VIGIL_ALERT_RETENTION_DAYS = int(os.environ.get("VIGIL_ALERT_RETENTION_DAYS", "90"))
 
 # Storage safety valve — metrics.check_db_disk_usage logs WARNING/ERROR when the
 # database trends toward the disk limit. Set to 0 to disable a threshold.

@@ -22,6 +22,7 @@ from django.conf import settings
 from django.db import models
 
 from apps.hosts.models import TagRowSyncMixin
+from vigil.locks import advisory_lock
 
 
 class Playbook(TagRowSyncMixin, models.Model):
@@ -404,10 +405,30 @@ def reconcile(playbook=None, *, limit=None) -> int:
     run the playbook carries the tag and stops matching. A host whose run
     failed does not carry it and is held back by ``hosts_awaiting`` instead,
     until someone retries it — see there for why.
+
+    Serialized against itself with an advisory lock. The state-based guards
+    above close the *sequential* case completely and the *concurrent* one not
+    at all: two overlapping passes can both read a host as awaiting before
+    either writes its Task row, and dispatch_to_host takes no row lock and
+    creates unconditionally, so the host collects a duplicate run and executes
+    the sequence twice. The pass runs every five minutes and takes minutes on a
+    large fleet, so overlap is not hypothetical. A whole-task lock is the right
+    grain here — the work is one sweep, and a second concurrent sweep has
+    nothing useful to add.
     """
     import logging
 
     logger = logging.getLogger("vigil.playbooks")
+
+    with advisory_lock("playbooks.reconcile") as acquired:
+        if not acquired:
+            logger.info("reconcile already running — skipping this pass")
+            return 0
+        return _reconcile_locked(playbook, limit, logger)
+
+
+def _reconcile_locked(playbook, limit, logger) -> int:
+    """The body of :func:`reconcile`, with the lock already held."""
     rows = [playbook] if playbook is not None else list(
         Playbook.objects.filter(auto_enroll=True, archived_at__isnull=True)
         .exclude(completion_tag="")

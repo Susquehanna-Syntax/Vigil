@@ -173,9 +173,15 @@ class UptimeHistoryTests(TestCase):
         h = make_host("web-1")
         today = now()
         # Today: fully up. Yesterday: half down (degraded/down). 2 days ago: no data.
+        # Two samples an hour apart, not two at the same instant: the beat
+        # samples on a schedule, and (host, time) is unique now — the identical
+        # timestamps this used to write are the duplicate the constraint
+        # exists to prevent.
         HostUptimeSample.objects.create(host=h, time=today, up=True)
-        HostUptimeSample.objects.create(host=h, time=today - timedelta(days=1), up=True)
-        HostUptimeSample.objects.create(host=h, time=today - timedelta(days=1), up=False)
+        HostUptimeSample.objects.create(
+            host=h, time=today - timedelta(days=1), up=True)
+        HostUptimeSample.objects.create(
+            host=h, time=today - timedelta(days=1, hours=1), up=False)
         hist = _uptime_history([h])[str(h.id)]
         self.assertEqual(len(hist["bars"]), 90)
         self.assertEqual(hist["bars"][-1]["state"], "up")        # today

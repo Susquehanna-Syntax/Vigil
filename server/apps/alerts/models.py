@@ -75,6 +75,11 @@ class Alert(models.Model):
     resolved_at = models.DateTimeField(null=True, blank=True)
     fix_context = models.JSONField(blank=True, default=dict)
 
+    #: How many times this alert has re-fired inside the flap window without
+    #: paging again. Zero is the ordinary case; a high number is the signal
+    #: that a threshold is set where a metric lives.
+    flap_count = models.PositiveIntegerField(default=0)
+
     class Meta:
         ordering = ["-fired_at"]
 

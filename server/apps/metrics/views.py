@@ -51,16 +51,45 @@ def metric_history(request, host_id, category, metric_name):
     # exactly the spikes a monitoring chart exists to show, and inventing a
     # value that was never measured is the wrong trade for this tool. Sampling
     # can miss a spike, but every point it returns is one that really happened.
-    total = qs.count()
-    if total <= limit:
-        points = list(qs[:limit])
+    # `limit=1` means "the latest reading", and the answer is the first row of
+    # an index the database already has. It used to fall into the sampling
+    # branch below — because total > 1 is true for any host that has ever
+    # reported twice — and materialize the entire series to return points[0].
+    # The Disk Pressure widget asks exactly this, once per host, in parallel,
+    # on every 15-second poll: at 50 hosts that was 200 whole-series fetches a
+    # minute to read 50 numbers.
+    if limit == 1:
+        newest = qs.first()
+        points = [newest] if newest else []
+        total = qs.count() if newest else 0
     else:
-        stride = total // limit + 1
-        # The newest point is always included — a chart whose right edge lags
-        # by up to `stride` samples looks stale even when it is current.
-        points = list(qs)[::stride]
-        if points and points[0] != qs.first():
-            points.insert(0, qs.first())
+        total = qs.count()
+        if total <= limit:
+            points = list(qs[:limit])
+        else:
+            stride = total // limit + 1
+            # Stride over primary keys streamed from the database rather than
+            # over model instances held in memory. `list(qs)` pulled every
+            # matching row — a year for one host is tens of millions, each with
+            # a JSON labels column — into the worker just to throw away all but
+            # a thousand of them. The keys arrive in chunks and only the ones
+            # actually wanted are kept, so peak memory is the sample size
+            # rather than the series size.
+            wanted = [
+                pk for i, pk in enumerate(
+                    qs.values_list("pk", flat=True).iterator(chunk_size=5000))
+                if i % stride == 0
+            ][:limit]
+            # Re-read in the same order the caller expects; `pk__in` does not
+            # preserve ordering on its own.
+            by_pk = {p.pk: p for p in qs.filter(pk__in=wanted)}
+            points = [by_pk[pk] for pk in wanted if pk in by_pk]
+            # The newest point is always included — a chart whose right edge
+            # lags by up to `stride` samples looks stale even when it is
+            # current.
+            newest = qs.first()
+            if newest and (not points or points[0].pk != newest.pk):
+                points.insert(0, newest)
 
     payload = MetricPointSerializer(points, many=True).data
     response = Response(payload)

@@ -7,6 +7,15 @@ from django.conf import settings
 from django.db.models import Avg
 from django.utils.timezone import now
 
+from vigil.locks import advisory_lock
+
+#: A breach that returns within this many seconds of resolving is treated as
+#: the same episode rather than a new alert. Long enough to absorb a metric
+#: oscillating around its threshold, short enough that a genuinely new problem
+#: an hour later still pages.
+FLAP_WINDOW_SECONDS = 900
+
+
 from apps.hosts.models import Host
 from apps.metrics.models import MetricPoint
 
@@ -76,7 +85,23 @@ def _check_rule(rule, host, current_time):
 
 @shared_task(name="alerts.evaluate_alert_rules")
 def evaluate_alert_rules():
-    """Periodic task: evaluate all enabled AlertRules against online hosts."""
+    """Periodic task: evaluate all enabled AlertRules against online hosts.
+
+    Serialized against itself. The guard on firing is check-then-create —
+    "is there already a FIRING alert for this rule and host" — with no lock and
+    no uniqueness on the table, so two overlapping passes both saw no alert and
+    both created one, and dispatch_alert_notification ran for each. The
+    operator got paged twice for one condition and had two rows to resolve.
+    This beat runs every 60 seconds over a host x rule loop, so it overlaps
+    itself exactly when the fleet is big enough for that to hurt.
+    """
+    with advisory_lock("alerts.evaluate_alert_rules") as acquired:
+        if not acquired:
+            return "alerts.evaluate_alert_rules already running — skipped"
+        return _evaluate_alert_rules()
+
+
+def _evaluate_alert_rules():
     rules = AlertRule.objects.filter(enabled=True)
     if not rules.exists():
         return "No enabled rules"
@@ -102,13 +127,51 @@ def evaluate_alert_rules():
             ).first()
 
             if is_breaching and not existing:
+                message = (f"{rule.name}: {rule.category}/{rule.metric} is "
+                           f"{latest_value:.2f} (threshold: {rule.operator} "
+                           f"{rule.threshold})")
+
+                # Flap suppression. The `existing` check above only stops two
+                # simultaneous FIRING alerts; it does nothing about the cycle
+                # that actually happens — breach, recover, breach again — which
+                # produced a new row and a fresh page every time. A disk
+                # oscillating across 90% once a minute meant 1,440 rows and
+                # 2,880 notifications a day from one host, and the operator
+                # learned to ignore the channel.
+                #
+                # A breach that returns soon after a resolve is the same
+                # episode, so the alert that just resolved re-opens instead:
+                # one row, a flap count that says what is happening, and no
+                # second page for a condition already reported.
+                recent = Alert.objects.filter(
+                    rule=rule, host=host, state=Alert.State.RESOLVED,
+                    resolved_at__gte=current_time - timedelta(
+                        seconds=FLAP_WINDOW_SECONDS),
+                ).order_by("-resolved_at").first()
+
+                if recent is not None:
+                    recent.state = Alert.State.FIRING
+                    recent.resolved_at = None
+                    recent.metric_value = latest_value
+                    recent.message = message
+                    recent.flap_count = (recent.flap_count or 0) + 1
+                    recent.save(update_fields=["state", "resolved_at",
+                                               "metric_value", "message",
+                                               "flap_count"])
+                    fired += 1
+                    logger.info(
+                        "Alert re-firing within the flap window (%s on %s, "
+                        "flap %d) — not re-notifying",
+                        rule.name, host.hostname, recent.flap_count)
+                    continue
+
                 # Fire new alert
                 alert = Alert.objects.create(
                     host=host,
                     rule=rule,
                     state=Alert.State.FIRING,
                     severity=rule.severity,
-                    message=f"{rule.name}: {rule.category}/{rule.metric} is {latest_value:.2f} (threshold: {rule.operator} {rule.threshold})",
+                    message=message,
                     metric_value=latest_value,
                 )
                 fired += 1
@@ -160,6 +223,13 @@ def expire_acknowledgements():
 @shared_task(name="alerts.mark_stale_hosts_offline")
 def mark_stale_hosts_offline():
     """Mark hosts that haven't checked in for 5 minutes as offline."""
+    with advisory_lock("alerts.mark_stale_hosts_offline") as acquired:
+        if not acquired:
+            return "alerts.mark_stale_hosts_offline already running — skipped"
+        return _mark_stale_hosts_offline()
+
+
+def _mark_stale_hosts_offline():
     cutoff = now() - timedelta(minutes=5)
     stale = Host.objects.filter(
         status=Host.Status.ONLINE,
@@ -259,6 +329,13 @@ def _get_or_create_docker_rule() -> AlertRule:
 @shared_task(name="alerts.check_docker_image_updates")
 def check_docker_image_updates():
     """Evaluate docker/image_outdated metrics and fire or resolve per-container alerts."""
+    with advisory_lock("alerts.check_docker_image_updates") as acquired:
+        if not acquired:
+            return "alerts.check_docker_image_updates already running — skipped"
+        return _check_docker_image_updates()
+
+
+def _check_docker_image_updates():
     rule = _get_or_create_docker_rule()
     online_hosts = Host.objects.filter(status=Host.Status.ONLINE)
     window = now() - timedelta(minutes=15)
@@ -415,6 +492,13 @@ def _is_older(reported: str, expected: str) -> bool:
 @shared_task(name="alerts.check_outdated_agents")
 def check_outdated_agents():
     """Fire an alert for any online host running an older agent version."""
+    with advisory_lock("alerts.check_outdated_agents") as acquired:
+        if not acquired:
+            return "alerts.check_outdated_agents already running — skipped"
+        return _check_outdated_agents()
+
+
+def _check_outdated_agents():
     from django.conf import settings as _s
     current_version = getattr(_s, "VIGIL_AGENT_VERSION", "")
     if not current_version:
@@ -462,3 +546,27 @@ def check_outdated_agents():
             logger.info("Agent outdated alert resolved: %s", host.hostname)
 
     return f"Agent version check: {fired} fired, {resolved} resolved"
+
+
+@shared_task(name="alerts.prune_old_alerts")
+def prune_old_alerts() -> str:
+    """Delete resolved alerts past their retention window.
+
+    Nothing pruned alerts_alert, and it is the one growing table whose rate is
+    set by how often the evaluator runs rather than by how much hardware
+    exists: every firing left a row forever. Only RESOLVED rows are removed —
+    a firing or acknowledged alert is live state, and an operator deleting
+    their own history is a different decision from Vigil doing it silently.
+    """
+    from django.conf import settings
+
+    days = int(getattr(settings, "VIGIL_ALERT_RETENTION_DAYS", 90))
+    if days <= 0:
+        return "Alert retention disabled (VIGIL_ALERT_RETENTION_DAYS=0)"
+    cutoff = now() - timedelta(days=days)
+    deleted, _ = Alert.objects.filter(
+        state=Alert.State.RESOLVED, resolved_at__lt=cutoff).delete()
+    if deleted:
+        logger.info("Pruned %d resolved alert(s) older than %d days",
+                    deleted, days)
+    return f"Pruned {deleted} resolved alert(s) older than {days} days"
