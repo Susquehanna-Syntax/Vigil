@@ -565,3 +565,81 @@ class EventFilterApiTests(TestCase):
     def test_an_invalid_match_field_is_refused(self):
         resp = self._create(match_field="hostname")
         self.assertEqual(resp.status_code, 400)
+
+
+class AutomationHighRiskGateTests(TestCase):
+    """Automations dispatch unattended, exactly like an auto-enrolling
+    playbook, and had no risk gate of any kind — risk was computed, stamped on
+    the Task for the record, and never consulted.
+    """
+
+    def setUp(self):
+        from apps.tasks.models import TaskDefinition
+
+        self.admin = get_user_model().objects.create_user(
+            username="admin", password="pw", is_staff=True, is_superuser=True)
+        self.client.force_login(self.admin)
+        self.host = Host.objects.create(
+            hostname="box", ip_address="10.0.0.31", agent_token="tok-auto",
+            mode="full_control", status=Host.Status.ONLINE)
+        self.high = TaskDefinition.objects.create(
+            name="Reboot", risk_level="high", yaml_source="", owner=self.admin,
+            parsed_spec={"risk": "high",
+                         "actions": [{"id": "a", "type": "reboot", "params": {}}]})
+
+    def _automation(self, **over):
+        from apps.automations.models import Automation
+
+        kwargs = dict(name="nightly", created_by=self.admin, enabled=True,
+                      trigger=Automation.Trigger.SCHEDULE, action_kind="task",
+                      task_definition=self.high, target=Automation.Target.ALL)
+        kwargs.update(over)
+        return Automation.objects.create(**kwargs)
+
+    def test_a_high_risk_automation_does_not_dispatch_without_the_flag(self):
+        from apps.automations.engine import run_automation
+        from apps.tasks.models import Task
+
+        automation = self._automation()
+        self.assertEqual(run_automation(automation), 0)
+        self.assertEqual(Task.objects.count(), 0)
+
+    def test_it_dispatches_once_the_flag_is_set(self):
+        from apps.automations.engine import run_automation
+        from apps.tasks.models import Task
+
+        automation = self._automation(allow_high_risk=True)
+        self.assertEqual(run_automation(automation), 1)
+        self.assertEqual(Task.objects.count(), 1)
+
+    def test_turning_the_flag_on_over_the_api_requires_totp(self):
+        automation = self._automation()
+        resp = self.client.patch(
+            f"/api/v1/automations/{automation.id}/",
+            {"allow_high_risk": True}, content_type="application/json")
+        self.assertEqual(resp.status_code, 401)
+        self.assertTrue(resp.json().get("needs_totp"))
+        automation.refresh_from_db()
+        self.assertFalse(automation.allow_high_risk)
+
+    def test_turning_it_off_needs_no_confirmation(self):
+        """Removing an authorization needs no authorization."""
+        automation = self._automation(allow_high_risk=True)
+        resp = self.client.patch(
+            f"/api/v1/automations/{automation.id}/",
+            {"allow_high_risk": False}, content_type="application/json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        automation.refresh_from_db()
+        self.assertFalse(automation.allow_high_risk)
+
+    def test_the_yaml_import_path_cannot_route_around_the_gate(self):
+        """_apply is shared with the community importer, so setting the flag
+        there would make importing the way around the TOTP — the exact hole
+        the playbook importer carries a comment about avoiding."""
+        from apps.automations.views import _apply
+
+        automation = self._automation()
+        _apply(automation, {"allow_high_risk": True, "name": "renamed"})
+        self.assertEqual(automation.name, "renamed")
+        self.assertFalse(automation.allow_high_risk,
+                         "_apply set the 2FA-guarded flag")

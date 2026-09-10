@@ -39,6 +39,17 @@ class Automation(TagRowSyncMixin, models.Model):
         DIRECT = "direct", "All at once"
         ROLLOUT = "rollout", "Wave by wave"
 
+    #: Opt-in to high-risk steps, mirroring Playbook.allow_high_risk. Off by
+    #: default, and turning it ON requires a fresh TOTP code — that
+    #: confirmation IS the 2FA for every future unattended dispatch, exactly as
+    #: it is for a playbook.
+    #:
+    #: An automation and an auto-enrolling playbook are the same class of
+    #: thing: a task definition sent to a fleet with nobody watching. The
+    #: playbook path made that a deliberate, once-only, 2FA-guarded decision
+    #: and this one did not ask at all, which is the asymmetry this closes.
+    allow_high_risk = models.BooleanField(default=False)
+
     class Target(models.TextChoices):
         EVENT_HOST = "event_host", "The host from the event"
         TAGS = "tags", "Hosts matching tags"

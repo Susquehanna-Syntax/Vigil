@@ -133,9 +133,52 @@ def sweep_deadlines() -> int:
     for job in stale:
         with transaction.atomic():
             try:
-                advance(job, S.TIMED_OUT, reason="Deadline exceeded")
+                # select_for_update so two overlapping sweeps cannot both read
+                # the job as live, both pass the transition check against their
+                # own in-memory copy, and both emit rebuild_state_changed for
+                # the same timeout.
+                fresh = (RebuildJob.objects.select_for_update()
+                         .filter(pk=job.pk)
+                         .exclude(state__in=RebuildJob.TERMINAL_STATES)
+                         .first())
+                if fresh is None:
+                    continue          # another sweep got there first
+                advance(fresh, S.TIMED_OUT, reason="Deadline exceeded")
                 moved += 1
+                _alert_rebuild_timed_out(fresh)
             except InvalidTransition:
                 logger.warning("rebuild %s could not time out from %s",
                                job.id, job.state)
     return moved
+
+
+def _alert_rebuild_timed_out(job) -> None:
+    """Raise an alert for a machine that went away and did not come back.
+
+    This is the disaster case for the whole feature — the host has been wiped,
+    the installer did not report in, and somewhere there is bare metal with no
+    operating system on it. It was also the quiet case: the job moved to
+    TIMED_OUT, the host aged into OFFLINE like any unreachable machine, and
+    nothing distinguished "this one is mid-rebuild and stuck" from "this one is
+    switched off".
+
+    Never raises: a rebuild timing out must be recorded even if alerting is
+    broken.
+    """
+    try:
+        from apps.alerts.models import Alert
+
+        message = (f"Rebuild timed out: {job.host.hostname} did not check back "
+                   f"in before its deadline. The machine may be mid-install "
+                   f"with no operating system — check it physically.")
+        if Alert.objects.filter(
+                host=job.host, rule=None, message__startswith="Rebuild timed out:",
+                state__in=[Alert.State.FIRING, Alert.State.ACKNOWLEDGED]).exists():
+            return
+        Alert.objects.create(
+            host=job.host, rule=None, state=Alert.State.FIRING,
+            severity="critical", message=message)
+        logger.error("rebuild %s timed out on %s — alert raised",
+                     job.id, job.host.hostname)
+    except Exception:  # noqa: BLE001
+        logger.exception("could not raise a rebuild-timeout alert for %s", job.id)

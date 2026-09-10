@@ -112,6 +112,18 @@ def run_automation(automation, *, event_host=None) -> int:
         steps, risk = built
         if not steps:
             return 0
+
+        # The gate playbooks have and automations did not. `risk` was computed,
+        # stamped onto the Task for the record, and never consulted — so an
+        # automation attached to a reboot or a run_command fired on its
+        # schedule with no confirmation ever having been given for unattended
+        # high-risk execution.
+        if risk == "high" and not automation.allow_high_risk:
+            logger.warning(
+                "automation %s wants a high-risk step but allow_high_risk is "
+                "off — refusing to dispatch. Turn it on in the automation's "
+                "settings, which asks for a TOTP code.", automation.name)
+            return 0
         hosts = _resolve_hosts(automation, event_host)
         # A monitor-mode host can't execute; skip it silently.
         hosts = [h for h in hosts if getattr(h, "mode", None) != "monitor"]

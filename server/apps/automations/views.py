@@ -27,6 +27,7 @@ EVENT_LABELS = {
 def _row(a: Automation) -> dict:
     return {
         "id": str(a.id), "name": a.name, "enabled": a.enabled,
+        "allow_high_risk": a.allow_high_risk,
         "trigger": a.trigger,
         "event": a.event, "min_severity": a.min_severity, "event_tags": a.event_tags,
         "event_rule": str(a.event_rule_id) if a.event_rule_id else None,
@@ -54,8 +55,43 @@ def _row(a: Automation) -> dict:
     }
 
 
+def _high_risk_gate(request, automation: Automation, requested) -> "Response | None":
+    """Authorize a change to *automation*'s allow_high_risk flag.
+
+    The same shape as apps/playbooks/views.py:_high_risk_gate, and for the same
+    reason: turning it ON costs a fresh TOTP code, and that one confirmation
+    authorizes every future unattended dispatch of this automation's high-risk
+    steps. Turning it OFF is unguarded — removing an authorization needs no
+    authorization.
+
+    An automation and an auto-enrolling playbook are the same class of thing.
+    Playbooks asked; automations did not ask at all.
+    """
+    if requested is None or bool(requested) == automation.allow_high_risk:
+        return None
+    if not requested:
+        automation.allow_high_risk = False
+        return None
+
+    from apps.accounts.totp import require_totp_confirmation
+
+    if error := require_totp_confirmation(request.user, request.data):
+        return Response(
+            {"detail": f"Allowing high-risk steps needs confirmation: {error}",
+             "needs_totp": True},
+            status=status.HTTP_401_UNAUTHORIZED)
+    automation.allow_high_risk = True
+    return None
+
+
 def _apply(a: Automation, data) -> str | None:
-    """Set fields from *data*; returns an error string or None."""
+    """Set fields from *data*; returns an error string or None.
+
+    Deliberately does NOT set allow_high_risk: that one is 2FA-guarded and goes
+    through _high_risk_gate, which needs the request. Setting it here would
+    make the YAML import path the way around the gate — the exact hole the
+    playbook importer has a comment about avoiding.
+    """
     if "name" in data:
         a.name = (data["name"] or "").strip()
     if "enabled" in data:
@@ -161,6 +197,8 @@ def automation_index(request):
     err = _apply(a, request.data)
     if err:
         return Response({"detail": err}, status=400)
+    if denied := _high_risk_gate(request, a, request.data.get("allow_high_risk")):
+        return denied
     a.save()
     sync_periodic_task(a)
     return Response(_row(a), status=status.HTTP_201_CREATED)
@@ -178,6 +216,8 @@ def automation_detail(request, automation_id):
     err = _apply(a, request.data)
     if err:
         return Response({"detail": err}, status=400)
+    if denied := _high_risk_gate(request, a, request.data.get("allow_high_risk")):
+        return denied
     a.save()
     sync_periodic_task(a)
     return Response(_row(a))
