@@ -25,6 +25,61 @@ Vigil is a lightweight monitoring system where agents on your hosts phone home t
 - Signed remote task execution with mode/allowlist enforcement on the agent
 - SQSY dark-theme dashboard with Chart.js visualizations
 
+## What's new in 2026.12.0
+
+This release is the result of an audit rather than a feature plan. Nine passes
+over the codebase asked one question — what does a stranger, on their own
+hardware, hit on day one and on day ninety — and this is the answer to it.
+Fifty-two findings, plus three defects reported from use.
+
+**Vigil refuses to start misconfigured, and says everything at once.** The
+compose file called four variables required and then supplied a default for
+every one, so skipping one bought a silent downgrade instead of an error: no
+`DJANGO_SECRET_KEY` and the stack came up fully working, signing every session
+with a constant published in this repository. Missing variables now produce a
+single startup message naming all of them, rather than dying on whichever was
+checked first.
+
+**The agent installer verifies what it installs.** It piped an unverified
+binary into `/usr/local/bin` and handed it to systemd as root. It now checks
+the SHA-256 the server publishes and refuses without one — and the server had
+to change too, because only manually-uploaded binaries carried a digest while
+the bundled build artifact, which is what every real install downloads,
+published none.
+
+**Three injection holes closed**, all by removing inline event handlers rather
+than escaping harder — a hostname in an `onclick` attribute is the one place
+where Django's autoescaping *creates* the injection, writing `&#x27;` that the
+browser hands back to the JavaScript parser as a live quote. Agent-reported
+container images and package names no longer splice raw into task YAML either,
+where a crafted value could rewrite the task an operator was reviewing.
+
+**The 60-second high-risk delay now exists.** It was documented in two places
+and implemented in none: the check-in gate that withholds a task was built and
+working, and nothing ever set the timestamp it reads.
+
+**Automations are gated like playbooks.** An automation and an auto-enrolling
+playbook are the same thing — a task sent to a fleet with nobody watching — and
+playbooks had a TOTP-guarded flag while automations had nothing at all.
+
+**The dashboard stops fighting you.** Saving a layout no longer scrambles it,
+host cards no longer reset to zero four times a minute, and a save moves
+widgets instead of destroying and recreating them.
+
+**It survives its own data.** The metric history endpoint pulled entire series
+into memory to sample them — worst of all for `?limit=1`, which one widget asks
+per host on every poll. Alert lists are capped, resolved alerts are pruned, and
+a flapping metric no longer pages on every cycle.
+
+**And it can be backed up.** There was no backup path in this repository at
+all. `scripts/vigil-backup.sh` and `vigil-restore.sh` are that path, and the
+README has Upgrading and Backups sections describing what actually happens.
+
+Also: healthchecks on every service, the web container drops root, dependency
+lockfiles, advisory locks on the periodic tasks, a Content-Security-Policy, a
+critical alert when a machine never returns from a rebuild, and bounded
+check-in payloads so one broken host cannot fill the database.
+
 ## What's new in 2026.11.3
 
 - **A playbook that fails on a host stops auto-enrolling to it.** The completion tag only lands on success, so a playbook that could not run on a machine was picked up again by every reconcile pass — every five minutes, for good. Nothing converged, and the one failure worth reading was buried under a thousand identical ones. A failure now holds the playbook back on that host: the card says how many hosts it is held back on, **Review failures** lists each with the agent's own output, and **Retry** dispatches it again. That newer run is what clears the hold, so nothing is erased and only the newest attempt counts.
