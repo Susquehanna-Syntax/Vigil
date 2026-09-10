@@ -30,7 +30,15 @@
                 <span class="host-os-logo" data-os="{{ host.inventory.os_name|default:host.os|default:'' }}"></span>
                 {{ host.inventory.os_name|default:host.os|default:"" }}
               </div>
-              <button class="hdi-pin" onclick="event.stopPropagation(); togglePin('{{ host.id }}', '{{ host.hostname }}', '{{ host.status }}', this)" title="Pin host">
+              {% comment %}
+                No inline handler: the hostname is agent-reported, and an
+                onclick attribute is the one context Django's autoescaping
+                makes worse rather than better — it escapes the quote to
+                &#x27;, and the browser decodes it back before the JS parser
+                sees it. vigil-host-cards.js binds this from the parent
+                item's data-* attributes instead.
+              {% endcomment %}
+              <button class="hdi-pin" type="button" title="Pin host">
                 <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
               </button>
             </div>

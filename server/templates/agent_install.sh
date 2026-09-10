@@ -34,8 +34,47 @@ esac
 
 echo "Installing Vigil agent for $PLATFORM..."
 
-curl -fsSL -o /usr/local/bin/vigil-agent "${VIGIL_SERVER}/agent/download/${PLATFORM}/"
-chmod +x /usr/local/bin/vigil-agent
+# Download to a temp file and verify it before anything makes it executable.
+# This binary becomes a root process under systemd, so an unverified download
+# is a root compromise for anyone who can substitute the bytes in flight. The
+# server publishes the digest in an X-Vigil-SHA256 response header; the agent's
+# own self-updater already refuses to swap its binary without checking exactly
+# this (agent/vigil_agent/executor.py), and the first install must not be the
+# one step that skips it.
+TMP_AGENT="$(mktemp)"
+trap 'rm -f "$TMP_AGENT"' EXIT
+
+HDRS="$(mktemp)"
+curl -fsSL -D "$HDRS" -o "$TMP_AGENT" "${VIGIL_SERVER}/agent/download/${PLATFORM}/"
+EXPECTED_SHA="$(awk 'BEGIN{IGNORECASE=1} /^x-vigil-sha256:/ {gsub(/\r/,"",$2); print tolower($2)}' "$HDRS")"
+rm -f "$HDRS"
+
+if [ -z "$EXPECTED_SHA" ]; then
+  echo "ERROR: the server did not publish a SHA-256 for this agent binary." >&2
+  echo "Refusing to install an unverified binary that would run as root." >&2
+  echo "Upload the agent through Settings so its digest is recorded, or set" >&2
+  echo "VIGIL_ALLOW_UNVERIFIED_AGENT=1 to override (not recommended)." >&2
+  [ "${VIGIL_ALLOW_UNVERIFIED_AGENT:-}" = "1" ] || exit 1
+else
+  if command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL_SHA="$(sha256sum "$TMP_AGENT" | awk '{print tolower($1)}')"
+  elif command -v shasum >/dev/null 2>&1; then
+    ACTUAL_SHA="$(shasum -a 256 "$TMP_AGENT" | awk '{print tolower($1)}')"
+  else
+    echo "ERROR: neither sha256sum nor shasum is available to verify the download." >&2
+    exit 1
+  fi
+  if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+    echo "ERROR: agent binary failed SHA-256 verification." >&2
+    echo "  expected: $EXPECTED_SHA" >&2
+    echo "  actual:   $ACTUAL_SHA" >&2
+    echo "The download was corrupted or tampered with. Nothing was installed." >&2
+    exit 1
+  fi
+  echo "Verified agent binary (sha256 $ACTUAL_SHA)."
+fi
+
+install -m 0755 "$TMP_AGENT" /usr/local/bin/vigil-agent
 
 mkdir -p /etc/vigil
 

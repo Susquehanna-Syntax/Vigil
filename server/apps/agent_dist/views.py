@@ -95,6 +95,14 @@ def download_agent(request, platform):
         # bundled.name keeps the .exe suffix for Windows downloads
         response["Content-Disposition"] = f'attachment; filename="{bundled.name}"'
         response["X-Vigil-Version"] = getattr(settings, "VIGIL_AGENT_VERSION", "")
+        # The installer verifies this before it makes the file executable
+        # and refuses without it. Only the manually-uploaded DB record used to
+        # carry a digest, so the path every default install actually takes —
+        # the bundled build artifact — was the one that shipped unverifiable.
+        # binary_sha256 is the same function that stamps digests into
+        # update_agent tasks, so the installer and the self-updater check the
+        # same number by construction rather than by coincidence.
+        response["X-Vigil-SHA256"] = binary_sha256(platform)
         return response
 
     # Fall back to DB record (manually uploaded override)
