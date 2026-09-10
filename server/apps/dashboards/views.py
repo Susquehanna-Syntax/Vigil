@@ -187,13 +187,33 @@ def layout_update(request, dashboard_id):
                             status=status.HTTP_400_BAD_REQUEST)
         w = max(spec["min_w"], min(w, GRID_COLUMNS))
         h = max(spec["min_h"], min(h, GRID_MAX_ROWS))
-        planned.append((kind, x, y, w, h, entry.get("settings")))
+        planned.append((entry.get("id"), kind, x, y, w, h, entry.get("settings")))
 
+    # Update in place rather than delete-and-recreate. Every save used to mint
+    # a new UUID for every widget on the board, so any state keyed by widget id
+    # was invalidated on each save — including the client's own lookup of kind
+    # and settings, whose miss dropped the widget from the next payload.
+    #
+    # Widgets the client did not send are gone, and only those are deleted.
     with transaction.atomic():
-        board.widgets.all().delete()
-        for kind, x, y, w, h, settings in planned:
-            DashboardWidget.objects.create(
-                dashboard=board, kind=kind, x=x, y=y, w=w, h=h, settings=settings)
+        existing = {str(w.id): w for w in board.widgets.all()}
+        kept: set[str] = set()
+
+        for widget_id, kind, x, y, w, h, settings in planned:
+            current = existing.get(str(widget_id)) if widget_id else None
+            if current is not None:
+                current.kind = kind
+                current.x, current.y, current.w, current.h = x, y, w, h
+                current.settings = settings
+                current.save()
+                kept.add(str(current.id))
+            else:
+                created = DashboardWidget.objects.create(
+                    dashboard=board, kind=kind, x=x, y=y, w=w, h=h,
+                    settings=settings)
+                kept.add(str(created.id))
+
+        board.widgets.exclude(id__in=kept).delete()
 
     board.refresh_from_db()
     return Response(_serialize(board, request.user))

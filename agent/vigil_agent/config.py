@@ -266,8 +266,30 @@ def load_config(path: Path | None = None) -> AgentConfig:
     # Persist auto-generated token back to config file
     if token_generated:
         raw["agent_token"] = agent_token
-        with open(path, "w") as f:
-            yaml.safe_dump(raw, f, default_flow_style=False)
-        logger.info("Saved generated token to %s", path)
+        # 0600 before anything is written into it. This file holds the bearer
+        # credential that authenticates this machine to the server, and the
+        # write-back used to inherit the umask — 0644 under the default, so a
+        # fresh install left a world-readable token on every monitored box and
+        # only logged a warning about it. The pinned server key and the nonce
+        # store next to it were both already chmod'd; this one was missed.
+        #
+        # os.open with the mode set at creation, rather than open() then
+        # chmod(), so there is no window where the file exists with the token
+        # in it and the wrong permissions on it.
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            with os.fdopen(fd, "w") as f:
+                yaml.safe_dump(raw, f, default_flow_style=False)
+        except Exception:
+            os.close(fd) if not os.path.exists(path) else None
+            raise
+        # An existing file keeps its old mode through O_CREAT, so tighten it
+        # too — an install upgraded from a version that wrote 0644 should not
+        # stay 0644 forever.
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            logger.warning("Could not set 0600 on %s — check it by hand", path)
+        logger.info("Saved generated token to %s (mode 0600)", path)
 
     return config

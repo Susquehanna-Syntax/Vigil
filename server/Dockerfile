@@ -32,11 +32,28 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libpq-dev && \
+    apt-get install -y --no-install-recommends libpq-dev gosu && \
     rm -rf /var/lib/apt/lists/*
 
-COPY server/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Gunicorn and every request it serves ran as UID 0, so a code-execution bug in
+# the web app was an immediate root shell in a container that also mounts the
+# shared images volume. The process drops to this user at the end of the
+# entrypoint.
+#
+# Not a `USER` directive: the entrypoint has to chown the mounted volumes
+# first, and on an existing install those volumes are owned by root because
+# every previous version ran as root. A USER line would leave an upgraded
+# install unable to write its own media and image directories, which is a
+# worse failure than the one being fixed.
+RUN groupadd --system --gid 1000 vigil && \
+    useradd --system --uid 1000 --gid vigil --home-dir /app --shell /usr/sbin/nologin vigil
+
+COPY server/requirements.txt server/requirements.lock ./
+# Ranges express intent; the lock decides the build. Applying the lock as a
+# constraints file rather than installing it directly keeps requirements.txt
+# as the single place dependencies are declared — the lock can never add a
+# package, only pin the version of one already asked for.
+RUN pip install --no-cache-dir -r requirements.txt -c requirements.lock
 
 COPY server/ .
 

@@ -41,3 +41,9 @@ docs/dev/
 server/media/agent_binaries/*
 !server/media/agent_binaries/binary
 !server/media/agent_binaries/binary_LexSWBw
+
+# Local development settings. A real Ed25519 signing seed was committed here
+# once; the file generates its own into settings_local_secret.py now, and
+# neither belongs in git.
+server/vigil/settings_local.py
+server/vigil/settings_local_secret.py
