@@ -1,3 +1,4 @@
+import logging
 import secrets
 import zoneinfo
 
@@ -13,6 +14,32 @@ from rest_framework.throttling import AnonRateThrottle
 
 from apps.accounts.permissions import IsAdmin, can
 from apps.metrics.models import MetricPoint
+
+logger = logging.getLogger(__name__)
+
+
+#: Most metrics one check-in may write. An ordinary machine reports ~65 and a
+#: large one a few hundred; anything past this is a bug or an attempt.
+MAX_METRICS_PER_CHECKIN = 5000
+
+#: Most containers one host may report in a snapshot.
+MAX_CONTAINERS_PER_CHECKIN = 500
+
+#: Most label keys kept on a single metric point, and the longest key or value.
+#: labels is a JSON column with no schema, so without this a host could store
+#: whatever it liked, at whatever size it liked, on every point it wrote.
+MAX_LABELS_PER_POINT = 20
+MAX_LABEL_LENGTH = 200
+
+
+def _bounded_labels(raw):
+    """The labels an agent reported, trimmed to something storable."""
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for key, value in list(raw.items())[:MAX_LABELS_PER_POINT]:
+        out[str(key)[:MAX_LABEL_LENGTH]] = str(value)[:MAX_LABEL_LENGTH]
+    return out
 from apps.tasks.models import Task
 from apps.tasks.spec import schedule_window_active
 from vigil import scoping
@@ -274,11 +301,29 @@ def checkin(request):
         if val := data.get(field):
             setattr(host, field, val)
 
-    # Sync mode from agent config so the server always reflects what the agent will accept.
+    # Sync mode from agent config so the server always reflects what the agent
+    # will accept. This is the design and stays: CLAUDE.md is explicit that the
+    # agent's mode is authoritative, and 07b of the M6 audit confirmed nothing
+    # the server sends can change it — so a host claiming full_control it does
+    # not have receives tasks its own allowlist then refuses. It cannot
+    # escalate; it can only misrepresent itself.
+    #
+    # But mode decides what an operator believes they can deploy where, so a
+    # change to it is worth a line in the log. Silently accepting a host that
+    # went from monitor to full_control is how an operator ends up targeting a
+    # machine on the strength of something the machine said about itself.
     if agent_mode := data.get("mode"):
         valid_modes = {m.value for m in Host.Mode}
         if agent_mode in valid_modes:
+            if agent_mode != host.mode:
+                logger.info(
+                    "host %s reported a mode change: %s -> %s",
+                    host.hostname, host.mode, agent_mode)
             host.mode = agent_mode
+        else:
+            logger.warning(
+                "host %s reported an unknown mode %r — keeping %s",
+                host.hostname, agent_mode, host.mode)
 
     if agent_ver := data.get("vigil_version"):
         host.agent_version = str(agent_ver)[:50]
@@ -399,6 +444,11 @@ def checkin(request):
                 mem_percent=_safe_float(c.get("mem_percent")),
                 ports=c.get("ports") if isinstance(c.get("ports"), list) else [],
             ))
+        if len(rows) > MAX_CONTAINERS_PER_CHECKIN:
+            logger.warning(
+                "host %s reported %d containers; keeping the first %d",
+                host.hostname, len(rows), MAX_CONTAINERS_PER_CHECKIN)
+            rows = rows[:MAX_CONTAINERS_PER_CHECKIN]
         with transaction.atomic():
             DockerContainer.objects.filter(host=host).delete()
             if rows:
@@ -413,6 +463,19 @@ def checkin(request):
     # Ingest metrics
     raw_metrics = data.get("metrics", [])
     if raw_metrics:
+        # A check-in body is whatever the machine sent, and a machine that is
+        # compromised or simply broken can send as much of it as it likes.
+        # Nothing bounded this: every entry became a row, so one host could
+        # write the database full on its own. The agent reports roughly 65
+        # metrics per check-in for an ordinary machine and a few hundred for a
+        # large one, so this ceiling is far above any honest payload and far
+        # below a useful attack.
+        if len(raw_metrics) > MAX_METRICS_PER_CHECKIN:
+            logger.warning(
+                "host %s sent %d metrics in one check-in; keeping the first %d",
+                host.hostname, len(raw_metrics), MAX_METRICS_PER_CHECKIN)
+            raw_metrics = raw_metrics[:MAX_METRICS_PER_CHECKIN]
+
         points = []
         for m in raw_metrics:
             try:
@@ -421,10 +484,14 @@ def checkin(request):
                     MetricPoint(
                         host=host,
                         time=time_val or now(),
-                        category=m["category"],
-                        metric=m["metric"],
+                        # Truncated to the column widths rather than left to
+                        # raise: the model declares max_length and an
+                        # over-long value from an agent used to reach the
+                        # database and fail the whole batch.
+                        category=str(m["category"])[:50],
+                        metric=str(m["metric"])[:100],
                         value=float(m["value"]),
-                        labels=m.get("labels", {}),
+                        labels=_bounded_labels(m.get("labels")),
                     )
                 )
             except (KeyError, ValueError, TypeError):

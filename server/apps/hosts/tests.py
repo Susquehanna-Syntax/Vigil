@@ -4,6 +4,7 @@ from django.utils.timezone import now
 from rest_framework.test import APIClient
 
 from apps.hosts.models import Host
+from apps.metrics.models import MetricPoint
 
 
 class RegisterTests(TestCase):
@@ -290,3 +291,64 @@ class WindowsUpdateIngestTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.host.refresh_from_db()
         self.assertIsNone(self.host.windows_updates)
+
+
+class CheckinPayloadLimitTests(TestCase):
+    """A check-in body is whatever the machine sent.
+
+    Nothing bounded it: every metric entry became a row, so one compromised or
+    simply broken host could write the database full on its own.
+    """
+
+    def setUp(self):
+        self.host = Host.objects.create(
+            hostname="loud", ip_address="10.0.0.66", agent_token="tok-loud",
+            mode="managed", status=Host.Status.ONLINE)
+
+    def _checkin(self, body):
+        return self.client.post(
+            "/api/v1/checkin", body, content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer tok-loud")
+
+    def test_a_flood_of_metrics_is_truncated_not_stored(self):
+        from apps.hosts.views import MAX_METRICS_PER_CHECKIN
+
+        flood = [{"category": "cpu", "metric": f"m{i}", "value": 1.0}
+                 for i in range(MAX_METRICS_PER_CHECKIN + 500)]
+        resp = self._checkin({"metrics": flood})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(MetricPoint.objects.filter(host=self.host).count(),
+                         MAX_METRICS_PER_CHECKIN)
+
+    def test_an_ordinary_payload_is_untouched(self):
+        """The ceiling must sit far above any honest agent."""
+        normal = [{"category": "cpu", "metric": f"core{i}", "value": 5.0}
+                  for i in range(120)]
+        self._checkin({"metrics": normal})
+        self.assertEqual(MetricPoint.objects.filter(host=self.host).count(), 120)
+
+    def test_oversized_names_are_truncated_rather_than_failing_the_batch(self):
+        """The columns declare max_length; an over-long value used to reach the
+        database and take the whole bulk_create down with it."""
+        resp = self._checkin({"metrics": [
+            {"category": "c" * 400, "metric": "m" * 400, "value": 1.0},
+            {"category": "cpu", "metric": "usage", "value": 2.0},
+        ]})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(MetricPoint.objects.filter(host=self.host).count(), 2)
+        stored = MetricPoint.objects.get(metric__startswith="mmm")
+        self.assertEqual(len(stored.category), 50)
+        self.assertEqual(len(stored.metric), 100)
+
+    def test_labels_are_bounded_in_count_and_length(self):
+        """labels is a schemaless JSON column — without a bound a host could
+        store whatever it liked, at whatever size, on every point."""
+        from apps.hosts.views import MAX_LABEL_LENGTH, MAX_LABELS_PER_POINT
+
+        self._checkin({"metrics": [{
+            "category": "cpu", "metric": "usage", "value": 1.0,
+            "labels": {f"k{i}": "v" * 900 for i in range(MAX_LABELS_PER_POINT + 30)},
+        }]})
+        labels = MetricPoint.objects.get(host=self.host).labels
+        self.assertEqual(len(labels), MAX_LABELS_PER_POINT)
+        self.assertTrue(all(len(v) <= MAX_LABEL_LENGTH for v in labels.values()))

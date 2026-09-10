@@ -309,6 +309,27 @@ _secure_cookies = os.environ.get("VIGIL_SECURE_COOKIES", "false").lower() in ("t
 SESSION_COOKIE_SECURE = _secure_cookies
 CSRF_COOKIE_SECURE = _secure_cookies
 
+# `manage.py check --deploy` flagged SECURE_HSTS_SECONDS and SECURE_SSL_REDIRECT
+# and neither appeared anywhere in this file, so an operator who wanted to fix
+# the warning had nothing to set. They are knobs now, and both stay off by
+# default because Vigil's ordinary deployment is a LAN address with no
+# certificate — turning on an HTTPS redirect there makes the product
+# unreachable, and HSTS makes that state sticky in every browser that saw it.
+#
+# VIGIL_SECURE_COOKIES=true is the signal that this instance is served over
+# HTTPS, so it is the sensible thing to turn these on beside.
+SECURE_SSL_REDIRECT = os.environ.get(
+    "VIGIL_SSL_REDIRECT", "false").lower() in ("true", "1", "yes")
+
+#: Seconds. 0 disables HSTS. Start small (a day) and raise it once you are sure
+#: the certificate renews — a browser that has seen a long max-age will refuse
+#: plain HTTP to this host for that long, whatever you do to the server.
+SECURE_HSTS_SECONDS = int(os.environ.get("VIGIL_HSTS_SECONDS", "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = os.environ.get(
+    "VIGIL_HSTS_INCLUDE_SUBDOMAINS", "false").lower() in ("true", "1", "yes")
+SECURE_HSTS_PRELOAD = os.environ.get(
+    "VIGIL_HSTS_PRELOAD", "false").lower() in ("true", "1", "yes")
+
 # ---------------------------------------------------------------------------
 # Task signing — Ed25519
 # Generate with: python -c "import base64; from nacl.signing import SigningKey; print(base64.b64encode(bytes(SigningKey.generate())).decode())"
