@@ -648,12 +648,17 @@ function renderEditorPreview(spec) {
   // The whole task's steps share ONE pastel — the task's derived risk — so a
   // task reads as a single coloured unit rather than a mixed-colour ladder.
   const taskRisk = spec.derived_risk || spec.risk || 'standard';
+  // Every interpolation below is escaped, including the param keys and values.
+  // Those are not the operator's own words: Suggest Fix pre-fills this editor
+  // from container images, package names and CVE fields an agent reported, so
+  // a compromised host could otherwise put script into the preview of the task
+  // the operator is about to sign.
   const actionsHtml = spec.actions.map((a, i) => `
     <div class="preview-step task-${taskRisk}">
       <div class="preview-step-num">${i + 1}</div>
       <div class="preview-step-body">
         <div class="preview-step-title">${escHtml(a.id)} — ${escHtml(a.label || a.type)}</div>
-        <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => `${k}=${v}`).join(' ') : ''}</div>
+        <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => `${escHtml(String(k))}=${escHtml(String(v))}`).join(' ') : ''}</div>
       </div>
     </div>`).join('');
   const inputs = spec.inputs || [];

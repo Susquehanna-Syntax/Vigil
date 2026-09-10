@@ -289,19 +289,24 @@ function suggestAgentUpdate(hostId) {
 function suggestDockerFix(hostId, containerName, image) {
   // recreate_container (not restart_container): a restart keeps the container
   // on its original image, so the pulled update would never actually apply.
+  // The image and container name come from the agent, so they are quoted as
+  // YAML scalars rather than pasted between literal quotes — a value carrying
+  // a quote would otherwise close its scalar and rewrite the task the operator
+  // is about to review. Double-quoted YAML escapes exactly like JSON.
+  const y = (v) => JSON.stringify(String(v == null ? '' : v));
   const yaml = [
-    `name: "Update Docker Image: ${image}"`,
-    `description: "Pull the latest ${image} and recreate ${containerName} on it"`,
+    `name: ${y(`Update Docker Image: ${image}`)}`,
+    `description: ${y(`Pull the latest ${image} and recreate ${containerName} on it`)}`,
     `actions:`,
     `  - id: pull_new_image`,
     `    type: pull_image`,
     `    params:`,
-    `      image: "${image}"`,
+    `      image: ${y(image)}`,
     `  - id: recreate`,
     `    type: recreate_container`,
     `    params:`,
-    `      container_name: "${containerName}"`,
-    `      image: "${image}"`,
+    `      container_name: ${y(containerName)}`,
+    `      image: ${y(image)}`,
   ].join('\n');
   openDefinitionEditor(null, yaml);
 }

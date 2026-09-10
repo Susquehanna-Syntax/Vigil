@@ -21,6 +21,11 @@ class HostsConfig(AppConfig):
         # in a build step that doesn't have the seed yet).
         if os.environ.get("VIGIL_SKIP_STARTUP_CHECKS") == "1":
             return
+        # Everything wrong with the configuration, in one message. Dying on
+        # whichever variable happened to be checked first made an operator fix
+        # their compose file one restart at a time.
+        from vigil.startup_checks import validate_or_die
+        validate_or_die()
         from vigil.signing import get_signing_key
         get_signing_key()
 

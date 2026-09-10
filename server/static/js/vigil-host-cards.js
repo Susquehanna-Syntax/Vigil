@@ -500,6 +500,23 @@ function togglePin(hostId, hostname, status, btnEl) {
   renderPinBar();
 }
 
+/* The pin button in the host dropdown used to carry
+   onclick="togglePin('{{ host.hostname }}', …)". Django escapes the quote in
+   that hostname to &#x27;, and the browser turns it back into a live quote
+   when it parses the attribute — so the autoescaping produced the injection
+   rather than preventing it. The button now carries no handler at all and the
+   values come from the dropdown item's existing data-* attributes, which is
+   the pattern base.html already uses for the detail-panel delete button. */
+document.addEventListener('click', (ev) => {
+  const btn = ev.target.closest && ev.target.closest('.hdi-pin');
+  if (!btn) return;
+  ev.stopPropagation();
+  const item = btn.closest('.host-dropdown-item');
+  if (!item) return;
+  const { hostId, hostname, status } = item.dataset;
+  togglePin(hostId, hostname, status, btn);
+});
+
 function renderPinBar() {
   const bar = document.getElementById('pin-bar');
   const selectorWrap = bar.querySelector('.host-selector-wrap');
@@ -511,7 +528,29 @@ function renderPinBar() {
     const chip = document.createElement('div');
     chip.className = 'pin-chip' + (pin.id === monitorHostId ? ' selected' : '');
     const dotColor = pin.status === 'online' ? 'var(--mint)' : pin.status === 'pending' ? 'var(--peach)' : 'var(--rose)';
-    chip.innerHTML = `<div class="pin-dot" style="background:${dotColor}"></div>${pin.hostname}<button class="pin-remove" onclick="event.stopPropagation();togglePin('${pin.id}','${pin.hostname}','${pin.status}',null)">&times;</button>`;
+
+    // Built element by element rather than as an HTML string. A hostname is
+    // whatever an agent reported, and this used to interpolate it twice into
+    // markup — once as raw HTML, once inside a single-quoted JS string in an
+    // onclick attribute. escHtml would not have saved the second one: the
+    // escaping there is for the wrong context, because the browser decodes the
+    // attribute before the JS parser ever sees it. textContent and a real
+    // listener have no such context to get wrong.
+    const dot = document.createElement('div');
+    dot.className = 'pin-dot';
+    dot.style.background = dotColor;
+    chip.appendChild(dot);
+    chip.appendChild(document.createTextNode(pin.hostname));
+
+    const remove = document.createElement('button');
+    remove.className = 'pin-remove';
+    remove.innerHTML = '&times;';
+    remove.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      togglePin(pin.id, pin.hostname, pin.status, null);
+    });
+    chip.appendChild(remove);
+
     chip.addEventListener('click', () => selectMonitorHost(pin.id));
     bar.insertBefore(chip, selectorWrap);
   });
