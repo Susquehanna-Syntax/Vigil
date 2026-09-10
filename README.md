@@ -146,23 +146,68 @@ This brings up Django, PostgreSQL + TimescaleDB, Redis, Celery worker, and Celer
 
 ---
 
+## Upgrading
+
+```bash
+./scripts/vigil-backup.sh          # takes a dump first — see Backups below
+docker compose pull
+docker compose up -d
+```
+
+What that does, so nothing is a surprise:
+
+- **Migrations run automatically**, from the entrypoint of whichever container
+  starts first. They are applied once and are safe to attempt concurrently.
+- **In-flight tasks are lost.** Replacing the worker container drops whatever
+  it was executing; Vigil expires those tasks server-side rather than leaving
+  them `DISPATCHED` forever, and you re-run them. Upgrade when a rollout is not
+  mid-wave.
+- **Agents keep working across the upgrade.** They retry with backoff and
+  reconnect on their own; you do not need to touch them.
+- **A new agent version in the image does not update your fleet.** Deploy the
+  `update_agent` task when you want that, which verifies the new binary's
+  SHA-256 against the digest in the signed task before replacing anything.
+
+Downgrading is not supported: migrations are one-way. Restore a backup instead.
+
+## Backups
+
+There are three named volumes — `pgdata`, `media` and `images` — and deleting
+any of them deletes exactly what it holds, with no copy anywhere else.
+
+```bash
+./scripts/vigil-backup.sh /mnt/backups     # db + media + a manifest
+./scripts/vigil-restore.sh /mnt/backups/vigil-20260910T120000Z
+```
+
+`images` is deliberately not included: those are multi-gigabyte OS install
+trees that can be re-imported from source, and copying them would make a
+routine backup too expensive to run often. The manifest records what was
+registered so it can be fetched again.
+
+Run the backup from cron and keep a copy off the machine. A backup on the same
+disk as the database is a copy, not a backup.
+
+---
+
 ## Environment Variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `DJANGO_SECRET_KEY` | `insecure-dev-key-…` | Django secret key — **change in production** |
-| `DJANGO_DEBUG` | `true` | Set to `false` in production |
+| `DJANGO_SECRET_KEY` | _(none — required)_ | Django secret key. Vigil refuses to start without it; the compose file no longer substitutes a default |
+| `DJANGO_DEBUG` | `false` | Leave it off. On, it disables the production configuration checks and serves verbose error pages |
 | `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated allowed hosts |
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | _(empty)_ | Comma-separated origins trusted for POSTs, scheme included — required behind a proxy or external hostname, else `Origin checking failed` |
 | `USE_SQLITE` | _(unset)_ | Set to `true` to use SQLite instead of PostgreSQL |
 | `POSTGRES_DB` | `vigil` | PostgreSQL database name |
 | `POSTGRES_USER` | `vigil` | PostgreSQL user |
 | `POSTGRES_PASSWORD` | `vigil` | PostgreSQL password |
-| `POSTGRES_HOST` | `localhost` | PostgreSQL host |
-| `CELERY_BROKER_URL` | `redis://localhost:6379/0` | Redis URL for Celery |
+| `POSTGRES_HOST` | `db` in compose, `localhost` otherwise | PostgreSQL host. The compose file sets this itself — editing it in `.env` changes nothing |
+| `CELERY_BROKER_URL` | `redis://redis:6379/0` in compose | Redis URL. The compose file sets this itself — editing it in `.env` changes nothing |
 | `VIGIL_SIGNING_KEY_SEED` | _(empty)_ | Base64 Ed25519 seed — required for task deployment |
 | `VIGIL_TIMEZONE` | `UTC` | IANA timezone for schedule window evaluation (e.g. `America/New_York`) |
-| `VIGIL_METRIC_RETENTION_DAYS` | `30` | Days to keep metric history |
+| `VIGIL_METRIC_RETENTION_DAYS` | `30` | Days of raw metric history to keep |
+| `VIGIL_ALERT_RETENTION_DAYS` | `90` | Days to keep *resolved* alerts. Firing and acknowledged alerts are never pruned. `0` disables pruning |
 | `VIGIL_MAX_REQUEST_BODY_BYTES` | `8388608` (8 MB) | Largest request body Django will accept. Task results are the big payload — a Trivy scan report. Raising Django's 2.5 MB default matters because the limit is enforced before any view runs: an oversized result fails the whole POST with a bare `400` nothing can annotate, and the task stays `DISPATCHED` forever |
 | `VIGIL_AGENT_VERSION` | _(ignored)_ | **No longer used.** The expected agent version is detected from the agent bundled in the build. Leaving it set is harmless — the server logs a note at startup and carries on |
 | `NESSUS_URL` | _(empty)_ | Nessus/Tenable server URL |

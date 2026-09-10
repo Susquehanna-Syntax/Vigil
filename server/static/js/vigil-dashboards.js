@@ -265,6 +265,13 @@ function _dashCollectLayout() {
   return DASH.grid.save(false).map((node) => {
     const original = byId.get(String(node.id)) || {};
     return {
+      // The widget's own id, so a save moves widgets instead of destroying and
+      // recreating them. Without it layout_update deleted every row and minted
+      // fresh UUIDs, so anything keyed by widget id was invalidated on every
+      // save — and _dashCollectLayout recovers kind and settings by looking up
+      // exactly that id, so a miss dropped the widget from the payload
+      // entirely: a save that deleted a widget rather than moving it.
+      id: original.id,
       kind: original.kind,
       x: node.x, y: node.y,
       // Gridstack's removeInternalForSave (gridstack-all.js, v12.4.0) ends with
