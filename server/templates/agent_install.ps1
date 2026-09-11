@@ -20,12 +20,19 @@ $BinaryPath  = Join-Path $InstallDir "vigil-agent.exe"
 $ConfigPath  = Join-Path $ConfigDir  "agent.yml"
 $ServiceName = "vigil-agent"
 $Platform    = "windows-amd64"
+# The agent's data_dir default is /var/lib/vigil-agent on every platform. On
+# Windows that resolves to C:\var\lib\vigil-agent — a drive root where the
+# default ACL lets any authenticated user create directories. That directory
+# holds the nonce store and the pinned server public key, so it does not belong
+# there. Pin it under ProgramData and lock it below.
+$DataDir     = Join-Path $ConfigDir "data"
 
 Write-Host "Installing Vigil agent for $Platform..."
 
 # Create directories
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 New-Item -ItemType Directory -Force -Path $ConfigDir  | Out-Null
+New-Item -ItemType Directory -Force -Path $DataDir    | Out-Null
 
 # Download to a temp file and verify it before anything makes it the service
 # binary. This binary becomes a LocalSystem service, so an unverified download
@@ -102,6 +109,7 @@ server_url: "$VigilServer"
 agent_token: "$token"
 mode: monitor
 checkin_interval: 30
+data_dir: "$DataDir"
 "@ | Set-Content -Path $ConfigPath -Encoding UTF8
 
     # agent.yml holds the agent token. install.sh writes it 0600; the Windows
@@ -124,14 +132,70 @@ if ($svc) {
     Start-Sleep -Seconds 2
 }
 
-& sc.exe create $ServiceName binPath= "`"$BinaryPath`"" start= auto DisplayName= "Vigil Monitoring Agent" | Out-Null
+# --service is required. Without it the SCM starts a console process that never
+# calls StartServiceCtrlDispatcher, waits ~30s, and fails with 1053 — which is
+# what this installer produced for its whole life, because no Windows binary
+# existed to try starting.
+$BinPathArg = "`"$BinaryPath`" --service"
+
+# Mirror install.sh: monitor mode gives up privilege, task-executing modes
+# cannot. NT SERVICE\vigil-agent is a virtual account — the SCM creates and
+# manages it, there is no password to store, and it is scoped to this service
+# alone rather than shared like LocalService.
+$AgentMode = "monitor"
+if (Test-Path $ConfigPath) {
+    $modeLine = Select-String -Path $ConfigPath -Pattern '^\s*mode:\s*(\S+)' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($modeLine) { $AgentMode = $modeLine.Matches[0].Groups[1].Value.Trim('"').Trim("'") }
+}
+
+if ($AgentMode -eq "monitor") {
+    $ServiceAccount = "NT SERVICE\$ServiceName"
+    # Route sc.exe through cmd.exe. PowerShell splits `obj= "NT SERVICE\name"`
+    # in a way sc rejects with 1639 and a usage dump — the value contains a
+    # space and PowerShell's native argument passing does not preserve what
+    # sc's own parser expects.
+    $create = 'sc create ' + $ServiceName + ' binPath= "\"' + $BinaryPath + '\" --service" start= auto obj= "' + $ServiceAccount + '" DisplayName= "Vigil Monitoring Agent"'
+    cmd.exe /c $create | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Could not create the service under a virtual account; falling back to LocalSystem."
+        cmd.exe /c ('sc create ' + $ServiceName + ' binPath= "\"' + $BinaryPath + '\" --service" start= auto DisplayName= "Vigil Monitoring Agent"') | Out-Null
+        $ServiceAccount = "LocalSystem"
+    } else {
+        # The virtual account exists only once the service does, so grant its
+        # access now: read the config and binary, write its own state.
+        & icacls.exe $ConfigPath /grant "$($ServiceAccount):(R)" | Out-Null
+        & icacls.exe $DataDir /inheritance:r /grant "SYSTEM:(OI)(CI)(F)" /grant "Administrators:(OI)(CI)(F)" /grant "$($ServiceAccount):(OI)(CI)(M)" | Out-Null
+        & icacls.exe $BinaryPath /grant "$($ServiceAccount):(RX)" | Out-Null
+        Write-Host "Monitor mode: running the agent as the unprivileged '$ServiceAccount'."
+    }
+} else {
+    cmd.exe /c ('sc create ' + $ServiceName + ' binPath= "\"' + $BinaryPath + '\" --service" start= auto DisplayName= "Vigil Monitoring Agent"') | Out-Null
+    $ServiceAccount = "LocalSystem"
+    & icacls.exe $DataDir /inheritance:r /grant "SYSTEM:(OI)(CI)(F)" /grant "Administrators:(OI)(CI)(F)" | Out-Null
+    Write-Host "Mode '$AgentMode' executes tasks, so the agent runs as LocalSystem."
+}
 & sc.exe description $ServiceName "Vigil agent — outbound-only monitoring and managed tasks." | Out-Null
 & sc.exe failure $ServiceName reset= 60 actions= restart/10000/restart/10000/restart/30000 | Out-Null
 
 if ($env:VIGIL_TOKEN) {
-    Start-Service -Name $ServiceName
+    # Verify it actually reaches Running. A service that fails to start reports
+    # nothing useful unless you go looking, and this installer spent its whole
+    # life creating one that could never start: a PyInstaller --onefile build
+    # extracts and re-executes, so the process the SCM is watching never calls
+    # StartServiceCtrlDispatcher and the start times out with error 1053.
+    Start-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 3
+    $state = (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue).Status
+    if ($state -ne "Running") {
+        Write-Host ""
+        Write-Host "ERROR: the service was installed but did not start (state: $state)."
+        Write-Host "Check the System event log for Service Control Manager errors."
+        Write-Host "A 1053 timeout here means the agent build cannot host a Windows"
+        Write-Host "service — it must be a --onedir build, not --onefile."
+        exit 1
+    }
     Write-Host ""
-    Write-Host "Vigil agent installed and started."
+    Write-Host "Vigil agent installed and started as $ServiceAccount."
     Write-Host "Approve this host in Vigil Settings > Enrollment Queue."
 } else {
     Write-Host ""

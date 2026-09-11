@@ -9,6 +9,7 @@ import argparse
 import logging
 import os
 import signal
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -28,6 +29,17 @@ _shutdown = False
 def _handle_signal(signum, _frame):
     global _shutdown
     logger.info("Received signal %s, shutting down gracefully", signum)
+    _shutdown = True
+
+
+def request_shutdown() -> None:
+    """Ask the check-in loop to stop after its current cycle.
+
+    The Windows service host has no signal to send — SvcStop calls this, which
+    is the same path SIGTERM takes on Linux.
+    """
+    global _shutdown
+    logger.info("Shutdown requested, finishing current cycle")
     _shutdown = True
 
 
@@ -334,7 +346,14 @@ def _warn_on_privilege_mismatch(config) -> None:
         config.mode, os.geteuid())
 
 
+#: Set by main() so run_agent() can be called with no arguments from the
+#: Windows service host, which does not get the command line.
+_cli_config_path: Path | None = None
+
+
 def main() -> None:
+    global _cli_config_path
+
     parser = argparse.ArgumentParser(description="Vigil monitoring agent")
     parser.add_argument("-c", "--config", type=Path, help="Path to agent.yml")
     parser.add_argument(
@@ -342,15 +361,49 @@ def main() -> None:
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
+    parser.add_argument(
+        "--service",
+        action="store_true",
+        help="Run as a Windows service (used by install.ps1; not for interactive use)",
+    )
+    parser.add_argument(
+        "--log-file",
+        type=Path,
+        help="Write logs here instead of stdout. Implied by --service, which has no console.",
+    )
     args = parser.parse_args()
+
+    _cli_config_path = args.config
+
+    log_file = args.log_file
+    if args.service and log_file is None:
+        # A service has no stdout. Without this every log line goes nowhere and
+        # a misbehaving agent is undiagnosable.
+        log_file = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "Vigil" / "agent.log"
+        try:
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            log_file = None
 
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="[%(asctime)s] %(levelname)s %(name)s %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
+        **({"filename": str(log_file)} if log_file else {}),
     )
 
-    config = load_config(args.config)
+    if args.service:
+        from .winservice import run_service
+
+        raise SystemExit(run_service())
+
+    run_agent()
+
+
+def run_agent() -> None:
+    """The check-in loop. Called directly by main(), or on a worker thread by
+    the Windows service host."""
+    config = load_config(_cli_config_path)
     _warn_on_privilege_mismatch(config)
     logger.info(
         "Vigil agent starting — server=%s mode=%s interval=%ds",
@@ -370,8 +423,12 @@ def main() -> None:
     except Exception:
         logger.exception("Registration failed — will retry on first checkin")
 
-    signal.signal(signal.SIGTERM, _handle_signal)
-    signal.signal(signal.SIGINT, _handle_signal)
+    # Only the main thread may install signal handlers. Under the Windows
+    # service host this runs on a worker thread, where signal.signal() raises
+    # ValueError — which would kill the loop before its first check-in.
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, _handle_signal)
+        signal.signal(signal.SIGINT, _handle_signal)
 
     verify_key = verify.get_pinned_key(config.data_dir)
 
