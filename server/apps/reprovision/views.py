@@ -219,6 +219,23 @@ def image_pull(request):
     return Response(OSImageSerializer(image).data, status=202)
 
 
+def _free_bytes_for_images():
+    """Free space on the volume images are written to, or None if unknowable.
+
+    None rather than an exception: a preflight check that cannot run must not
+    become the reason a legitimate upload is refused.
+    """
+    import shutil
+
+    root = getattr(django_settings, "VIGIL_IMAGE_ROOT", None)
+    if not root:
+        return None
+    try:
+        return shutil.disk_usage(str(root)).free
+    except OSError:
+        return None
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 @parser_classes([MultiPartParser])
@@ -276,6 +293,35 @@ def image_upload(request):
     uploaded = request.FILES.get("iso")
     if not uploaded:
         return Response({"error": "No iso file in request"}, status=400)
+
+    # Refuse before streaming rather than fail partway through. The spool
+    # directory shares a volume with the image store by design — it keeps a
+    # large upload off the container's own filesystem — but it means an upload
+    # that runs out of room fills the volume holding every registered image,
+    # and the failure surfaces as an ENOSPC from whatever happened to write
+    # next rather than as a rejected upload.
+    declared = getattr(uploaded, "size", None)
+    if declared is not None:
+        max_bytes = int(getattr(django_settings, "VIGIL_MAX_IMAGE_BYTES", 0))
+        if max_bytes and declared > max_bytes:
+            return Response(
+                {"error": f"That image is {declared / 1024 ** 3:.1f} GB, over "
+                          f"the {max_bytes / 1024 ** 3:.0f} GB limit. Raise "
+                          f"VIGIL_MAX_IMAGE_BYTES if this is expected."},
+                status=413)
+
+        free = _free_bytes_for_images()
+        # Headroom, not just room: landing an image with nothing left over
+        # means the next thing to write is what fails.
+        needed = declared * 2 + (1024 ** 3)
+        if free is not None and free < needed:
+            return Response(
+                {"error": f"Not enough space to import this image: "
+                          f"{free / 1024 ** 3:.1f} GB free, about "
+                          f"{needed / 1024 ** 3:.1f} GB needed (the upload is "
+                          f"spooled and then extracted). Free some space or "
+                          f"point VIGIL_IMAGE_ROOT at a larger volume."},
+                status=507)
 
     field_data = {
         "name": name, "os_family": os_family,

@@ -43,8 +43,8 @@ function _waveCard(w) {
         ${(w.group_tags || []).map(t => `<span class="chip">${escHtml(t)}</span>`).join(' ')}
       </div>
       <div style="display:flex;gap:6px;">
-        <button class="btn btn-sky btn-sm" onclick="openWaveEditor(${w.id})">Edit</button>
-        <button class="btn btn-ghost btn-sm" style="color:var(--rose);" onclick="deleteWave(${w.id})">Delete</button>
+        <button class="btn btn-sky btn-sm" data-wave-edit="${escAttr(w.id)}">Edit</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--rose);" data-wave-del="${escAttr(w.id)}">Delete</button>
       </div>
     </div>
     <div class="bl-card-body" style="color:var(--text-2);font-size:12px;line-height:1.7;">
@@ -206,3 +206,9 @@ document.addEventListener('keydown', (e) => {
     closeWaveEditor();
   }
 });
+
+
+/* Wave row buttons. The ids are server integers, so Number() keeps the
+   argument the same type the inline attribute passed. */
+delegateClick('[data-wave-edit]', (el) => openWaveEditor(Number(el.dataset.waveEdit)));
+delegateClick('[data-wave-del]', (el) => deleteWave(Number(el.dataset.waveDel)));

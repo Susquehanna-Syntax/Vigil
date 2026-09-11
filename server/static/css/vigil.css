@@ -1901,6 +1901,22 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   padding: 3px 10px; border-radius: 20px; background: rgba(130,196,238,0.14); color: var(--sky); }
 .chip-muted { background: var(--s3); color: var(--text-2); }
 .chip-rose { background: rgba(243,139,168,0.14); color: var(--rose); }
+
+/* A widget that could not load, as opposed to one with nothing in it. The two
+   used to render identically, so a broken metrics endpoint said "No GPU
+   reported" — a wrong diagnosis stated as a fact. */
+.dash-failed {
+  display: flex; align-items: center; justify-content: center;
+  flex-wrap: wrap; gap: 8px; text-align: center;
+  color: var(--rose);
+}
+.dash-failed .muted-note { color: var(--text-3); }
+.dash-failed-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+  background: rgba(243,139,168,0.14); color: var(--rose);
+  font-weight: 700; font-size: 12px; line-height: 1;
+}
 .pill-on  { background: rgba(126,221,181,0.15); color: var(--mint); }
 .pill-off { background: var(--s3); color: var(--text-3); }
 

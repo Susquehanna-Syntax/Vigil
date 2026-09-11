@@ -140,12 +140,12 @@
           </div>
           <div class="totp-verify-row">
             <input type="text" inputmode="numeric" maxlength="6" class="totp-code-input mono" id="totp-verify-code" placeholder="123456" />
-            <button class="btn btn-mint btn-sm" onclick="totpConfirm()">Verify & Enable</button>
+            <button class="btn btn-mint btn-sm" data-act="totpConfirm">Verify & Enable</button>
           </div>
         </div>
         <div class="totp-actions" id="totp-actions" style="margin-top:16px;">
-          <button class="btn btn-sky btn-sm" id="totp-start-btn" onclick="totpStart()">Enroll TOTP</button>
-          <button class="btn btn-rose btn-sm" id="totp-disable-btn" style="display:none;" onclick="totpDisablePrompt()">Disable…</button>
+          <button class="btn btn-sky btn-sm" id="totp-start-btn" data-act="totpStart">Enroll TOTP</button>
+          <button class="btn btn-rose btn-sm" id="totp-disable-btn" style="display:none;" data-act="totpDisablePrompt">Disable…</button>
         </div>
       </div>
 
@@ -160,10 +160,10 @@
         </div>
         <div class="totp-actions" style="margin-top:16px;">
           <button class="btn btn-peach btn-sm" id="transport-ack-btn"
-                  style="display:none;" onclick="transportAckSet(true)">
+                  style="display:none;" data-act="transportAckSet" data-a1="$true">
             Acknowledge plain-text transport</button>
           <button class="btn btn-rose btn-sm" id="transport-revoke-btn"
-                  style="display:none;" onclick="transportAckSet(false)">
+                  style="display:none;" data-act="transportAckSet" data-a1="$false">
             Withdraw acknowledgement</button>
         </div>
       </div>
@@ -202,8 +202,8 @@
         <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;">
           <div class="confirm-hint" id="ad-status">—</div>
           <div style="display:flex;gap:8px;">
-            <button class="btn btn-mint btn-sm" onclick="adSaveConfig()">Save</button>
-            <button class="btn btn-sky btn-sm" onclick="adSyncNow()">Import Now</button>
+            <button class="btn btn-mint btn-sm" data-act="adSaveConfig">Save</button>
+            <button class="btn btn-sky btn-sm" data-act="adSyncNow">Import Now</button>
           </div>
         </div>
       </div>
@@ -220,8 +220,8 @@
             <div class="enroll-meta">{{ host.os|default:"Unknown OS" }} · {{ host.ip_address|default:"Unknown IP" }} · First seen {{ host.created_at|timesince }} ago</div>
           </div>
           <div class="enroll-actions">
-            <button class="btn btn-sm btn-mint" onclick="approveHost('{{ host.id }}', this)">Approve</button>
-            <button class="btn btn-sm btn-rose" onclick="rejectHost('{{ host.id }}', this)">Reject</button>
+            <button class="btn btn-sm btn-mint" data-act="approveHost" data-a1="{{ host.id }}" data-a2="$el">Approve</button>
+            <button class="btn btn-sm btn-rose" data-act="rejectHost" data-a1="{{ host.id }}" data-a2="$el">Reject</button>
           </div>
         </div>
         {% endfor %}
@@ -285,7 +285,7 @@
             <option value="admin">Admin</option>
           </select></div>
         <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
-          <button class="btn btn-mint btn-sm" id="nu-create" onclick="createUser()">Create user</button>
+          <button class="btn btn-mint btn-sm" id="nu-create" data-act="createUser">Create user</button>
           <span id="nu-result" class="muted"></span>
         </div>
       </div>
@@ -317,7 +317,7 @@
         <div class="setting-row"><label>Slug</label><input type="text" class="form-control" id="ns-slug" placeholder="west-campus" autocomplete="off"></div>
         <div class="setting-row"><label>Description</label><input type="text" class="form-control" id="ns-description" placeholder="optional" autocomplete="off"></div>
         <div style="margin-top:12px;display:flex;align-items:center;gap:12px;">
-          <button class="btn btn-mint btn-sm" id="ns-create" onclick="createSite()">Create site</button>
+          <button class="btn btn-mint btn-sm" id="ns-create" data-act="createSite">Create site</button>
           <span id="ns-note" class="muted"></span>
         </div>
       </div>
@@ -362,8 +362,8 @@
           Cozy is the default, roomy layout. Compact tightens spacing to fit more on screen. Applies instantly and is remembered on this browser.
         </div>
         <div class="density-toggle">
-          <button type="button" class="btn btn-outline btn-sm" id="density-cozy" onclick="setDensity('cozy')">Cozy</button>
-          <button type="button" class="btn btn-outline btn-sm" id="density-compact" onclick="setDensity('compact')">Compact</button>
+          <button type="button" class="btn btn-outline btn-sm" id="density-cozy" data-act="setDensity" data-a1="cozy">Cozy</button>
+          <button type="button" class="btn btn-outline btn-sm" id="density-compact" data-act="setDensity" data-a1="compact">Compact</button>
         </div>
       </div>
 
@@ -409,9 +409,9 @@
 
         <!-- One-liner install commands -->
         <label class="deploy-input-label">Linux / macOS one-liner</label>
-        <div class="code-block mono" id="install-cmd" style="cursor:pointer;user-select:all;" onclick="copyInstallCmd()" title="Click to copy"></div>
+        <div class="code-block mono" id="install-cmd" style="cursor:pointer;user-select:all;" data-act="copyInstallCmd" title="Click to copy"></div>
         <label class="deploy-input-label" style="margin-top:10px;">Windows (PowerShell, run as Administrator)</label>
-        <div class="code-block mono" id="install-cmd-ps1" style="cursor:pointer;user-select:all;" onclick="copyInstallCmdPs1()" title="Click to copy"></div>
+        <div class="code-block mono" id="install-cmd-ps1" style="cursor:pointer;user-select:all;" data-act="copyInstallCmdPs1" title="Click to copy"></div>
         <div id="agent-versions" style="margin-top:10px;font-size:12px;color:var(--text-3);min-height:16px;"></div>
 
         <!-- Upload new binary -->
@@ -436,7 +436,7 @@
               <label class="deploy-input-label">Binary file</label>
               <input type="file" id="upload-binary" style="color:var(--text-2);font-size:13px;width:100%;">
             </div>
-            <button class="btn btn-sky btn-sm" onclick="uploadAgentBinary()">Upload</button>
+            <button class="btn btn-sky btn-sm" data-act="uploadAgentBinary">Upload</button>
           </div>
         </div>
       </div>

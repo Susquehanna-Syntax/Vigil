@@ -7,7 +7,7 @@ from apps.accounts.models import UserProfile
 from apps.accounts.totp import generate_secret, generate_totp
 from apps.hosts.models import Host
 
-from .models import VulnFinding, VulnScan
+from .models import VulnFinding, VulnScan, VulnScoreHistory
 from .scanners.greenbone import _parse_gmp_url
 from .scoring import compute_score, recompute_summary
 
@@ -184,3 +184,46 @@ class ScanCreateTests(TestCase):
             format="json",
         )
         self.assertEqual(resp.status_code, 503)
+
+
+class ScoreHistoryRetentionTests(TestCase):
+    """The model deferred pruning to "a future maintenance task"."""
+
+    def setUp(self):
+        self.host = Host.objects.create(
+            hostname="box", ip_address="10.0.0.77", agent_token="tok-score",
+            mode="managed", status=Host.Status.ONLINE)
+
+    def _snapshot(self, days_ago, score=50):
+        from datetime import timedelta
+
+        from django.utils.timezone import now
+
+        return VulnScoreHistory.objects.create(
+            host=self.host, date=(now() - timedelta(days=days_ago)).date(),
+            score=score)
+
+    def test_snapshots_past_the_window_are_pruned(self):
+        from apps.vulns.tasks import prune_old_score_history
+
+        self._snapshot(days_ago=900)
+        recent = self._snapshot(days_ago=30)
+        prune_old_score_history()
+        self.assertEqual(list(VulnScoreHistory.objects.all()), [recent])
+
+    def test_the_long_trend_is_deliberately_kept(self):
+        """Two years is generous on purpose — the value of this table is the
+        trend, so a year-old snapshot must survive."""
+        from apps.vulns.tasks import prune_old_score_history
+
+        self._snapshot(days_ago=365)
+        prune_old_score_history()
+        self.assertEqual(VulnScoreHistory.objects.count(), 1)
+
+    @override_settings(VIGIL_SCORE_HISTORY_RETENTION_DAYS=0)
+    def test_retention_can_be_switched_off(self):
+        from apps.vulns.tasks import prune_old_score_history
+
+        self._snapshot(days_ago=5000)
+        prune_old_score_history()
+        self.assertEqual(VulnScoreHistory.objects.count(), 1)

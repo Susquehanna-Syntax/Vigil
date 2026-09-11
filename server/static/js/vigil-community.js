@@ -92,11 +92,15 @@ function _communityCardHtml(item) {
   if (item.author) meta.push(`by ${escHtml(item.author)}`);
 
   const github = item.html_url
-    ? `<a class="btn btn-ghost btn-sm" style="color:var(--text-3);text-decoration:none;" href="${escAttr(item.html_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">View on GitHub</a>`
+    ? `<a class="btn btn-ghost btn-sm" style="color:var(--text-3);text-decoration:none;" href="${escAttr(item.html_url)}" target="_blank" rel="noopener" data-stop>View on GitHub</a>`
     : '';
-  const arg = `'${item.kind}','${encodeURIComponent(item.filename)}'`;
+  // Was built as a JS argument string: `'${item.kind}','${encodeURIComponent(
+  // item.filename)}'` spliced into an onclick. encodeURIComponent is the wrong
+  // escaping for a JS string literal — it leaves ' untouched — so a community
+  // filename containing an apostrophe broke out of the quotes. Data attributes
+  // have no such context to get wrong.
   return `
-    <div class="def-card" onclick="openCommunityItem(${arg})">
+    <div class="def-card" data-comm-kind="${escAttr(item.kind)}" data-comm-file="${escAttr(item.filename)}">
       <div class="def-card-body">
         <div class="def-card-title">${escHtml(item.name || 'Untitled')}</div>
         <div class="def-card-desc">${escHtml(item.description || 'No description provided.')}</div>
@@ -108,7 +112,7 @@ function _communityCardHtml(item) {
       </div>
       <div class="def-card-footer">
         ${github}
-        <button class="btn btn-mint btn-sm" onclick="event.stopPropagation(); openCommunityItem(${arg})">${escHtml(_forkLabel(item))}</button>
+        <button class="btn btn-mint btn-sm" data-comm-open data-comm-kind="${escAttr(item.kind)}" data-comm-file="${escAttr(item.filename)}" data-stop>${escHtml(_forkLabel(item))}</button>
       </div>
     </div>`;
 }
@@ -161,7 +165,7 @@ function _renderCommunity(kind) {
                ${serving.length} more task${serving.length === 1 ? ' is' : 's are'} used by a playbook or automation,
                and come${serving.length === 1 ? 's' : ''} along when you fork it.
                <button class="btn btn-ghost btn-sm" style="margin-left:8px;"
-                       onclick="toggleCommunityServing()">Show ${serving.length === 1 ? 'it' : 'them'}</button>
+                       data-comm-serving>Show ${serving.length === 1 ? 'it' : 'them'}</button>
              </div></div>`;
       return;
     }
@@ -171,7 +175,7 @@ function _renderCommunity(kind) {
              <div class="empty-state-desc">
                Showing tasks used by playbooks.
                <button class="btn btn-ghost btn-sm" style="margin-left:8px;"
-                       onclick="toggleCommunityServing()">Hide them</button>
+                       data-comm-serving>Hide them</button>
              </div></div>`;
       return;
     }
@@ -338,3 +342,16 @@ if (typeof navigateTo === 'function') {
     if (page === 'community') loadCommunityKind(communityKind);
   };
 }
+
+
+/* Community cards. openCommunityItem still takes (kind, filename); the values
+   now travel in data attributes instead of being spliced into a JS string
+   inside an HTML attribute, where encodeURIComponent was doing escaping for
+   the wrong context. */
+delegateClick('[data-comm-kind]', (el, ev) => {
+  if (el.hasAttribute('data-stop')) ev.stopPropagation();
+  else if (ev.target.closest('button, a')) return;
+  openCommunityItem(el.dataset.commKind, el.dataset.commFile);
+});
+delegateClick('[data-comm-serving]', () => toggleCommunityServing());
+delegateClick('a[data-stop]', (el, ev) => ev.stopPropagation());

@@ -20,21 +20,21 @@
         <span class="bulk-bar-count" id="alerts-bulk-count">0 selected</span>
         <div class="bulk-bar-actions">
           <div class="ack-menu-wrap">
-            <button class="btn btn-sm btn-peach" onclick="toggleAckMenu(event, 'bulk')">
+            <button class="btn btn-sm btn-peach" data-act="toggleAckMenu" data-a1="$event" data-a2="bulk">
               Ack selected
               <svg viewBox="0 0 24 24" style="width:11px;height:11px;"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             <div class="ack-menu" id="ack-menu-bulk">
-              <div class="ack-menu-item" onclick="bulkAlertAction('acknowledge', 3600)">For 1 hour</div>
-              <div class="ack-menu-item" onclick="bulkAlertAction('acknowledge', 28800)">For 8 hours</div>
-              <div class="ack-menu-item" onclick="bulkAlertAction('acknowledge', 86400)">For 24 hours</div>
-              <div class="ack-menu-item" onclick="bulkAlertAction('acknowledge', 604800)">For 7 days</div>
+              <div class="ack-menu-item" data-act="bulkAlertAction" data-a1="acknowledge" data-a2="3600">For 1 hour</div>
+              <div class="ack-menu-item" data-act="bulkAlertAction" data-a1="acknowledge" data-a2="28800">For 8 hours</div>
+              <div class="ack-menu-item" data-act="bulkAlertAction" data-a1="acknowledge" data-a2="86400">For 24 hours</div>
+              <div class="ack-menu-item" data-act="bulkAlertAction" data-a1="acknowledge" data-a2="604800">For 7 days</div>
               <div class="ack-menu-divider"></div>
-              <div class="ack-menu-item" onclick="bulkAlertAction('acknowledge', null)">Permanently</div>
+              <div class="ack-menu-item" data-act="bulkAlertAcknowledgePermanently">Permanently</div>
             </div>
           </div>
-          <button class="btn btn-sm btn-peach" onclick="bulkAlertAction('unacknowledge')">Un-ack selected</button>
-          <button class="btn btn-sm btn-ghost" onclick="clearAlertSelection()">Clear</button>
+          <button class="btn btn-sm btn-peach" data-act="bulkAlertAction" data-a1="unacknowledge">Un-ack selected</button>
+          <button class="btn btn-sm btn-ghost" data-act="clearAlertSelection">Clear</button>
         </div>
       </div>
 

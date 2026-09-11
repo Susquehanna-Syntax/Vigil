@@ -244,6 +244,12 @@ MEDIA_ROOT = BASE_DIR / "media"
 # independently of the rest of the app's uploads.
 VIGIL_IMAGE_ROOT = os.environ.get("VIGIL_IMAGE_ROOT", "/var/lib/vigil/images")
 
+#: Largest ISO an operator may upload. 0 disables the ceiling. Generous by
+#: default — a Windows Server ISO is comfortably over 5 GB — because the point
+#: is to catch a mistake, not to police legitimate images.
+VIGIL_MAX_IMAGE_BYTES = int(os.environ.get(
+    "VIGIL_MAX_IMAGE_BYTES", str(16 * 1024 ** 3)))
+
 # Where Django spools a multipart upload above FILE_UPLOAD_MAX_MEMORY_SIZE
 # (ISO uploads for apps.reprovision.views.image_upload always are — the
 # default threshold is 2.5 MB). Left unset, Django spools to the system
@@ -424,6 +430,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "alerts.prune_old_alerts",
         "schedule": 86400.0,  # daily — nothing pruned alerts_alert before
     },
+    "prune-old-score-history": {
+        "task": "vulns.prune_old_score_history",
+        "schedule": 86400.0,  # daily; the model deferred this to "a future task"
+    },
     "prune-old-uptime-samples": {
         "task": "statuspage.prune_old_uptime_samples",
         "schedule": 86400.0,  # once daily
@@ -486,6 +496,12 @@ VIGIL_METRIC_RETENTION_DAYS = int(os.environ.get("VIGIL_METRIC_RETENTION_DAYS", 
 #: state and are never pruned. 0 disables pruning entirely, for an operator who
 #: wants the whole history and has the disk for it.
 VIGIL_ALERT_RETENTION_DAYS = int(os.environ.get("VIGIL_ALERT_RETENTION_DAYS", "90"))
+
+#: How long per-host vulnerability score snapshots are kept. One row per host
+#: per day, so two years is ~36k rows at 50 hosts — generous on purpose, since
+#: the value of this table is the long trend. 0 disables pruning.
+VIGIL_SCORE_HISTORY_RETENTION_DAYS = int(os.environ.get(
+    "VIGIL_SCORE_HISTORY_RETENTION_DAYS", "730"))
 
 # Storage safety valve — metrics.check_db_disk_usage logs WARNING/ERROR when the
 # database trends toward the disk limit. Set to 0 to disable a threshold.

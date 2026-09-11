@@ -586,3 +586,90 @@ function timeAgo(value) {
   if (days < 30) return `${days}d ago`;
   return then.toLocaleDateString();
 }
+
+
+/* ── Delegated click handlers ──────────────────────────────────────────────
+   Inline onclick attributes are why the Content-Security-Policy had to keep
+   'unsafe-inline' for scripts, which is the directive that would otherwise
+   contain an injected <script>. They are also the wrong tool twice over: the
+   escaping needed inside an attribute-delimited JS string is not the escaping
+   Django or escHtml applies, and a handler built by string concatenation is
+   one interpolation away from being an injection.
+
+   delegateClick binds once, at the document, for markup that does not exist
+   yet — which is what every one of these call sites actually needed. */
+function delegateClick(selector, handler) {
+  document.addEventListener('click', (ev) => {
+    const el = ev.target.closest && ev.target.closest(selector);
+    if (!el) return;
+    handler(el, ev);
+  });
+}
+
+
+/* ── Declarative handlers ──────────────────────────────────────────────────
+   Templates carried ~110 inline onclick/onchange attributes. None was
+   injectable — they are author-written strings, not built from data — but
+   `script-src` cannot allow inline handlers selectively: keeping any of them
+   means keeping 'unsafe-inline', which is the directive that would otherwise
+   stop an injected <script> from running at all.
+
+   So they became attributes a dispatcher reads:
+
+       onclick="setDeployTab('yaml')"     ->  data-act="setDeployTab" data-a1="yaml"
+       onclick="setTimeRange(60, this)"   ->  data-act="setTimeRange" data-a1="60" data-a2="$el"
+       onchange="toggleAll(this.checked)" ->  data-change="toggleAll" data-a1="$checked"
+
+   No eval and no new Function: CSP blocks both, and reaching for them here
+   would have swapped one hole for a worse one. */
+
+const _ACT_TOKENS = {
+  $el: (el) => el,
+  $event: (el, ev) => ev,
+  $checked: (el) => !!el.checked,
+  $value: (el) => el.value,
+  $true: () => true,
+  $false: () => false,
+};
+
+function _actArg(raw, el, ev) {
+  if (raw === undefined) return undefined;
+  if (Object.prototype.hasOwnProperty.call(_ACT_TOKENS, raw)) return _ACT_TOKENS[raw](el, ev);
+  if (/^-?\d+(\.\d+)?$/.test(raw)) return Number(raw);
+  return raw;
+}
+
+function _runAct(el, ev, name) {
+  const fn = window[name];
+  if (typeof fn !== 'function') {
+    // Loud, because the failure mode this replaces is a button that silently
+    // does nothing — which is exactly what a typo here would reintroduce.
+    console.error(`vigil: no handler named ${name} for`, el);
+    return;
+  }
+  const args = [];
+  for (let i = 1; i <= 4; i += 1) {
+    const raw = el.dataset['a' + i];
+    if (raw === undefined) break;
+    args.push(_actArg(raw, el, ev));
+  }
+  if (el.hasAttribute('data-stop')) ev.stopPropagation();
+  fn(...args);
+}
+
+document.addEventListener('click', (ev) => {
+  const el = ev.target.closest && ev.target.closest('[data-act]');
+  if (el) _runAct(el, ev, el.dataset.act);
+});
+document.addEventListener('change', (ev) => {
+  const el = ev.target.closest && ev.target.closest('[data-change]');
+  if (el) _runAct(el, ev, el.dataset.change);
+});
+document.addEventListener('input', (ev) => {
+  const el = ev.target.closest && ev.target.closest('[data-input]');
+  if (el) _runAct(el, ev, el.dataset.input);
+});
+document.addEventListener('submit', (ev) => {
+  const el = ev.target.closest && ev.target.closest('[data-submit]');
+  if (el) _runAct(el, ev, el.dataset.submit);
+});

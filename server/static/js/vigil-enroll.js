@@ -134,3 +134,11 @@ async function enrollApproveHost() {
     showToast('Approval failed: ' + e.message, 'error');
   }
 }
+
+
+/* The wizard's Done button ran two statements from one attribute. A name for
+   the pair, so the attribute is just a name. */
+function closeEnrollWizardAndReload() {
+  closeEnrollWizard();
+  location.reload();
+}
