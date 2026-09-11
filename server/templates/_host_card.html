@@ -1,4 +1,4 @@
-<div class="host-card{% if inactive %} inactive{% endif %}" onclick="openHostDetail(this)"
+<div class="host-card{% if inactive %} inactive{% endif %}" data-act="openHostDetail" data-a1="$el"
      data-id="{{ host.id }}"
      data-hostname="{{ host.hostname }}"
      data-os="{{ host.inventory.os_name|default:host.os|default:'Unknown OS' }}"
@@ -62,15 +62,15 @@
     <div class="host-checkin">
       {% if host.last_checkin %}{{ host.last_checkin|timesince }} ago{% else %}Never{% endif %}
     </div>
-    <button type="button" class="btn btn-ghost" onclick="event.stopPropagation(); downloadHostRdp('{{ host.id }}', '{{ host.hostname }}')">
+    <button type="button" class="btn btn-ghost" data-act="downloadHostRdp" data-a1="{{ host.id }}" data-a2="{{ host.hostname }}" data-stop>
       <svg viewBox="0 0 24 24" width="13" height="13"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
       RDP
     </button>
-    <button type="button" class="btn btn-sky" onclick="event.stopPropagation(); openDeployForHost('{{ host.id }}')">
+    <button type="button" class="btn btn-sky" data-act="openDeployForHost" data-a1="{{ host.id }}" data-stop>
       <svg viewBox="0 0 24 24" width="13" height="13"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
       Deploy
     </button>
-    <button type="button" class="btn btn-ghost btn-rose-ghost" onclick="event.stopPropagation(); deleteHost('{{ host.id }}', '{{ host.hostname }}', this)" title="Remove agent">
+    <button type="button" class="btn btn-ghost btn-rose-ghost" data-act="deleteHost" data-a1="{{ host.id }}" data-a2="{{ host.hostname }}" data-a3="$el" data-stop title="Remove agent">
       <svg viewBox="0 0 24 24" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
       Remove
     </button>

@@ -142,7 +142,7 @@ async function _openAi(context, runFn, staticResult) {
   if (!_aiProviders.length && !_staticResolver) {
     document.getElementById('ai-picker-wrap').innerHTML =
       `<div class="ai-empty">No AI providers are configured.
-       <button class="btn btn-mint btn-sm" style="margin-left:8px;" onclick="_closeAi();navigateTo('settings');">Add one in Settings</button></div>`;
+       <button class="btn btn-mint btn-sm" style="margin-left:8px;" data-ai-settings>Add one in Settings</button></div>`;
     return;
   }
   picker.innerHTML = staticChip + _aiProviders.map(p => `
@@ -408,3 +408,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (add) add.addEventListener('click', () => _editProvider(null));
   loadAiProviders();
 });
+
+
+delegateClick('[data-ai-settings]', () => { _closeAi(); navigateTo('settings'); });

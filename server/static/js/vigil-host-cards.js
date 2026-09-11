@@ -719,3 +719,12 @@ function downloadHostRdp(hostId, hostname) {
 
 // Initial render of pinned-hosts bar.
 renderPinBar();
+
+
+/* The detail-panel delete button used to reach into the DOM from inside its
+   own onclick attribute. Named here so the attribute is just a name. */
+function deleteHostFromDetailPanel(btn) {
+  const panel = document.getElementById('detail-panel');
+  if (!panel) return;
+  deleteHost(panel.dataset.hostId, panel.dataset.hostname, btn);
+}

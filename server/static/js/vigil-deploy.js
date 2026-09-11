@@ -136,8 +136,18 @@ function _renderDeployTagChips() {
   wrap.replaceChildren();
   if (!deployState.availableTags.length) {
     const empty = document.createElement('div');
-    empty.className = 'deploy-policy-help';
-    empty.textContent = 'No tags exist yet. Tag agents in the host detail panel or via agent.yml.';
+    // "We could not ask" and "there are none" send an operator in opposite
+    // directions: one waits, the other goes off tagging hosts that are
+    // already tagged.
+    if (deployState.tagsUnavailable) {
+      empty.className = 'deploy-policy-help dash-failed';
+      empty.textContent =
+        'Could not load the tag list — the request failed. Close and reopen '
+        + 'this dialog to try again; deploying by host still works.';
+    } else {
+      empty.className = 'deploy-policy-help';
+      empty.textContent = 'No tags exist yet. Tag agents in the host detail panel or via agent.yml.';
+    }
     wrap.appendChild(empty);
     return;
   }
@@ -447,13 +457,20 @@ let _deployFleetFetchedAt = 0;
 async function _ensureFleetCache(force) {
   const age = Date.now() - _deployFleetFetchedAt;
   if (!force && _deployHostCache && age < 60_000) return;
+  // null, not []: an empty array is a statement that the fleet has no tags,
+  // and the By Tag tab renders it as exactly that. A failed request has to
+  // stay tellable apart from a true answer — and it must not be cached for a
+  // minute as though it were one, or the tab keeps lying after the endpoint
+  // has recovered.
   const [hosts, tags] = await Promise.all([
     apiJson('/api/v1/hosts/'),
-    apiJson('/api/v1/hosts/tags/').catch(() => []),
+    apiJson('/api/v1/hosts/tags/').catch(() => null),
   ]);
   _deployHostCache = hosts.filter(h => h.status === 'online' && h.mode !== 'monitor');
-  _deployTagCache  = Array.isArray(tags) ? tags : [];
-  _deployFleetFetchedAt = Date.now();
+  _deployTagCache  = Array.isArray(tags) ? tags : null;
+  // Only a real answer counts as fresh. A failure expires immediately so the
+  // next open retries instead of serving the gap for another minute.
+  _deployFleetFetchedAt = _deployTagCache === null ? 0 : Date.now();
 }
 
 async function openDeployModal(definitionId) {
@@ -492,6 +509,7 @@ async function openDeployModal(definitionId) {
 
     deployState.availableHosts = _deployHostCache || [];
     deployState.availableTags  = _deployTagCache  || [];
+    deployState.tagsUnavailable = _deployTagCache === null;
     _renderDeployTagChips();
 
     if (window._pendingDeployPreselectHost) {

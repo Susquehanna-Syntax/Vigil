@@ -33,6 +33,37 @@ function _wEmpty(body, message) {
   body.innerHTML = `<div class="dash-empty muted-note">${escHtml(message)}</div>`;
 }
 
+/* "We could not ask" is not "there is nothing". A swallowed fetch error used
+   to render as the ordinary empty state, so a GPU server whose metric endpoint
+   was down said "No GPU reported. The agent collects this only when nvidia-smi
+   or rocm-smi is installed" — a wrong diagnosis, stated as a fact, that sends
+   an operator off to install a driver on a machine that already has one.
+
+   Failures look different from emptiness now, and say what failed. */
+function _wFailed(body, what, err) {
+  const detail = err && err.message ? String(err.message) : '';
+  body.innerHTML =
+    `<div class="dash-empty dash-failed">` +
+    `<span class="dash-failed-mark" aria-hidden="true">!</span>` +
+    `<span>Could not load ${escHtml(what)}.</span>` +
+    (detail ? `<span class="muted-note">${escHtml(detail)}</span>` : '') +
+    `</div>`;
+}
+
+/* Runs `fn`, and renders the failure rather than letting a caller mistake it
+   for no data. Returns a sentinel the caller checks, so a partial render can
+   still decide what to do. */
+const WIDGET_FAILED = Symbol('widget-failed');
+
+async function _wTry(body, what, fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    _wFailed(body, what, err);
+    return WIDGET_FAILED;
+  }
+}
+
 /* ── List cards ────────────────────────────────────────────────────────────
    Every list widget renders through _dashCard so they read alike: a coloured
    left edge for what the row is about, a title, a thin sub-line, and an
@@ -589,14 +620,23 @@ async function _renderGpuStatus(body, settings) {
   if (_wNeedsHost(body, settings)) return;
   const wanted = ['utilization_percent', 'memory_percent', 'memory_used_mb',
                   'memory_total_mb', 'temperature_celsius', 'power_watts'];
+  // Every one of these failing means the endpoint is unreachable, which is a
+  // different sentence from "this host has no GPU". Only the all-failed case
+  // is treated as an error: one metric missing while others answer really is
+  // an absent series.
+  let failure = null;
   const results = await Promise.all(wanted.map(m => _wCached(
     _wMetricUrl({ host: settings.host, category: 'gpu', metric: m }, 1, 200), 12000)
-    .catch(() => [])));
+    .catch((err) => { failure = err; return null; })));
+  if (results.every(r => r === null)) {
+    _wFailed(body, 'GPU metrics', failure);
+    return;
+  }
 
   // Newest reading per (card, metric).
   const cards = new Map();
   wanted.forEach((metric, i) => {
-    for (const pt of _wRows(results[i])) {
+    for (const pt of _wRows(results[i] || [])) {
       const l = pt.labels || {};
       const key = `${l.vendor || '?'}/${l.index || '0'}`;
       if (!cards.has(key)) cards.set(key, { label: l, values: {} });

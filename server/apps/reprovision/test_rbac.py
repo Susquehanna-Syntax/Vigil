@@ -358,3 +358,73 @@ class PlainHttpOnALanTests(TestCase):
     def test_the_override_setting_demands_it_everywhere(self):
         with override_settings(VIGIL_REQUIRE_HTTPS_FOR_REBUILD=True):
             self.assertTrue(self._refused("10.0.0.109:8000"))
+
+
+class ImageUploadPreflightTests(TestCase):
+    """An ISO upload that runs out of room fills the volume holding every
+    registered image, and surfaces as an ENOSPC from whatever happened to write
+    next. The spool sharing that volume is deliberate; the missing preflight
+    was the gap.
+
+    The size is driven by the real file and the configured ceiling rather than
+    by faking `uploaded.size` — DRF's parser builds its own UploadedFile, so
+    patching the test's SimpleUploadedFile never reaches the view.
+    """
+
+    def setUp(self):
+        import tempfile
+
+        from django.contrib.auth import get_user_model
+        from django.test import override_settings
+
+        # Never the real /var/lib/vigil: these tests are about the preflight,
+        # and the ones that get past it must not depend on a volume that only
+        # exists inside a container.
+        self._tmp = tempfile.TemporaryDirectory()
+        self._settings = override_settings(VIGIL_IMAGE_ROOT=self._tmp.name)
+        self._settings.enable()
+        self.addCleanup(self._settings.disable)
+        self.addCleanup(self._tmp.cleanup)
+
+        self.admin = get_user_model().objects.create_user(
+            username="admin", password="pw", is_staff=True, is_superuser=True)
+        self.client.force_login(self.admin)
+
+    def _upload(self, free_bytes=500 * 1024 ** 3):
+        from unittest.mock import patch
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        iso = SimpleUploadedFile("x.iso", b"x" * 4096,
+                                 content_type="application/octet-stream")
+        with patch("apps.reprovision.views._free_bytes_for_images",
+                   return_value=free_bytes):
+            return self.client.post("/api/v1/reprovision/images/upload/", {
+                "name": "Ubuntu", "os_family": "ubuntu", "version": "24.04",
+                "sha256": "a" * 64, "iso": iso,
+            })
+
+    @override_settings(VIGIL_MAX_IMAGE_BYTES=1024)
+    def test_an_upload_larger_than_the_ceiling_is_refused(self):
+        resp = self._upload()
+        self.assertEqual(resp.status_code, 413, resp.content)
+        self.assertIn("over the", resp.json()["error"])
+
+    def test_an_upload_with_nowhere_to_land_is_refused(self):
+        """Refused before a byte is streamed, not discovered halfway through."""
+        resp = self._upload(free_bytes=0)
+        self.assertEqual(resp.status_code, 507, resp.content)
+        self.assertIn("Not enough space", resp.json()["error"])
+
+    def test_an_upload_that_fits_is_not_blocked_by_the_preflight(self):
+        """The check must not become the reason a good upload fails: this one
+        gets past it and on to the real verify/import path, where it is
+        rejected for the checksum it was given — which is the next gate, not
+        this one."""
+        resp = self._upload()
+        self.assertNotIn(resp.status_code, (413, 507))
+
+    def test_an_unknowable_free_space_does_not_refuse(self):
+        """A preflight that cannot run must not refuse a legitimate upload."""
+        resp = self._upload(free_bytes=None)
+        self.assertNotIn(resp.status_code, (413, 507))

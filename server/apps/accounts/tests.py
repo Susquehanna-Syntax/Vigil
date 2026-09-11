@@ -352,3 +352,74 @@ class UserDeleteTests(TestCase):
         self.assertEqual(self.client.delete(self._url(other)).status_code, 204)
         # Only the viewer-admin remains; it cannot delete itself (self-guard).
         self.assertEqual(self.client.delete(self._url(self.viewer)).status_code, 400)
+
+
+class ContentSecurityPolicyTests(TestCase):
+    """The policy is only worth having if it actually forbids inline script.
+
+    'unsafe-inline' in script-src is the directive that would let an injected
+    <script> run, so the whole point of the inline-handler sweep was being able
+    to drop it. A future change that puts it back would be silent without this.
+    """
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="op", password="pw", is_staff=True, is_superuser=True)
+        self.client.force_login(self.user)
+
+    def _policy(self):
+        resp = self.client.get("/")
+        return resp, resp.headers.get("Content-Security-Policy", "")
+
+    def test_script_src_does_not_allow_inline(self):
+        _resp, policy = self._policy()
+        script = next(d for d in policy.split(";") if d.strip().startswith("script-src"))
+        self.assertNotIn("'unsafe-inline'", script)
+        self.assertNotIn("'unsafe-eval'", script)
+
+    def test_the_policy_carries_a_nonce_that_matches_the_page(self):
+        """The two genuinely inline blocks in base.html run on this nonce; if
+        the header and the page disagree, the page silently loses its theme
+        bootstrap and every handler registration."""
+        import re
+
+        resp, policy = self._policy()
+        match = re.search(r"'nonce-([A-Za-z0-9_-]+)'", policy)
+        self.assertIsNotNone(match, f"no nonce in policy: {policy}")
+        self.assertIn(f'nonce="{match.group(1)}"', resp.content.decode())
+
+    def test_the_nonce_changes_between_requests(self):
+        """A fixed nonce is the same as no nonce."""
+        import re
+
+        first = re.search(r"'nonce-([A-Za-z0-9_-]+)'",
+                          self._policy()[1]).group(1)
+        second = re.search(r"'nonce-([A-Za-z0-9_-]+)'",
+                           self._policy()[1]).group(1)
+        self.assertNotEqual(first, second)
+
+    def test_the_dangerous_directives_are_locked_down(self):
+        _resp, policy = self._policy()
+        self.assertIn("object-src 'none'", policy)
+        self.assertIn("frame-ancestors 'none'", policy)
+        self.assertIn("base-uri 'self'", policy)
+        self.assertIn("form-action 'self'", policy)
+
+    def test_an_existing_policy_is_not_overwritten(self):
+        """An operator fronting Vigil with a proxy that sets a stricter policy
+        should win."""
+        from apps.accounts.csp import ContentSecurityPolicyMiddleware
+
+        class _Resp(dict):
+            def __contains__(self, key):
+                return dict.__contains__(self, key)
+
+        existing = _Resp()
+        existing["Content-Security-Policy"] = "default-src 'none'"
+        mw = ContentSecurityPolicyMiddleware(lambda req: existing)
+
+        class _Req:
+            pass
+
+        out = mw(_Req())
+        self.assertEqual(out["Content-Security-Policy"], "default-src 'none'")
