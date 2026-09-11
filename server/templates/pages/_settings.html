@@ -41,7 +41,7 @@
         </form>
         <p id="license-paste-result" class="muted"></p>
       </div>
-      <script>
+      <script nonce="{{ request.csp_nonce }}">
       (function () {
         function render(d) {
           document.getElementById("license-summary").textContent =
@@ -442,7 +442,7 @@
       </div>
 
       {{ vigil_public_url|default:""|json_script:"vigil-public-url" }}
-      <script>
+      <script nonce="{{ request.csp_nonce }}">
         // Prefer VIGIL_PUBLIC_URL over the address this admin happens to be
         // browsing from. Enrolling from a LAN IP would bake that IP into the
         // agent, which then stops checking in the moment the host leaves the
