@@ -7,6 +7,11 @@ __pycache__/
 *.pyo
 db.sqlite3
 db.sqlite3.bak.*
+
+# Bundled agent binaries. The server serves whatever is in here, and CI builds
+# them per-platform — they are release artifacts, not source. Left untracked,
+# a local PyInstaller build drops ~14MB per platform straight into a commit.
+server/agent_dist/
 staticfiles/
 *.egg-info/
 .venv/

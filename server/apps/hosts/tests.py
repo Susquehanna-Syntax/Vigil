@@ -161,7 +161,11 @@ class ForceUpdateAgentTests(TestCase):
         )
         self.assertEqual(resp.status_code, 401)
 
+    @override_settings(VIGIL_AGENT_DIST_DIR="/nonexistent-vigil-test-dist")
     def test_no_binaries_503(self):
+        """Pin the dist dir, or this passes only while the developer's tree
+        happens to hold no built agent. Building one locally turned this
+        green test red without any code changing."""
         resp = self.client.post(
             f"/api/v1/hosts/{self.host.id}/update-agent/",
             {"totp": self._totp()}, format="json",
