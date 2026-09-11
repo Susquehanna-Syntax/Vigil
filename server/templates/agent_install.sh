@@ -46,7 +46,11 @@ trap 'rm -f "$TMP_AGENT"' EXIT
 
 HDRS="$(mktemp)"
 curl -fsSL -D "$HDRS" -o "$TMP_AGENT" "${VIGIL_SERVER}/agent/download/${PLATFORM}/"
-EXPECTED_SHA="$(awk 'BEGIN{IGNORECASE=1} /^x-vigil-sha256:/ {gsub(/\r/,"",$2); print tolower($2)}' "$HDRS")"
+# Match with tolower($0) rather than awk's IGNORECASE: that is a gawk
+# extension, and Debian and Ubuntu default to mawk, which ignores it in
+# silence. Under mawk the pattern simply never matched the real, capitalised
+# header, so this script refused every install on its main target platform.
+EXPECTED_SHA="$(awk 'tolower($0) ~ /^x-vigil-sha256:/ {gsub(/\r/,"",$2); print tolower($2)}' "$HDRS")"
 rm -f "$HDRS"
 
 if [ -z "$EXPECTED_SHA" ]; then
