@@ -162,9 +162,19 @@ jobs:
       - name: Build binary (macOS)
         if: runner.os == 'macOS'
         run: pyinstaller --onefile --target-arch universal2 --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
+      # The pywin32 service modules are imported inside a try/except in
+      # vigil_agent/winservice.py, so PyInstaller's static analysis does not
+      # find them and the frozen build silently lacks them — --service then
+      # reports pywin32 missing and the service cannot start.
       - name: Build binary (Windows)
         if: runner.os == 'Windows'
-        run: pyinstaller --onefile --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
+        run: >-
+          pyinstaller --onefile --name ${{ matrix.out }}
+          --collect-all cffi --collect-all nacl
+          --hidden-import win32serviceutil --hidden-import win32service
+          --hidden-import win32event --hidden-import servicemanager
+          --hidden-import win32timezone
+          vigil_agent_main.py
       # Build inside python:3.12-slim (Debian 12) rather than on the runner
       # directly — a binary linked against the runner's glibc 2.39 would not
       # start on Debian 11 / Ubuntu 20.04 era hosts. This matches the glibc
