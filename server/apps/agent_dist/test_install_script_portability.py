@@ -12,6 +12,7 @@ only appeared when the script ran on a machine with mawk. These tests are the
 cheap half of that lesson. The expensive half is scripts/smoke-browser.py's
 sibling problem — some things must actually be executed.
 """
+import re
 import shutil
 import subprocess
 
@@ -89,3 +90,88 @@ class InstallScriptUsesPortableAwk(SimpleTestCase):
         if not gawk:
             self.skipTest("gawk not installed")
         self.assertEqual(self._run_under(gawk), EXPECTED)
+
+
+class BothInstallersVerifyBeforeInstalling(SimpleTestCase):
+    """install.ps1 must refuse an unverified binary, like install.sh does.
+
+    It did not, for the whole of 2026. The digest check landed on the Linux
+    side in 3083b15 and the Windows side was never brought along, so Windows
+    downloaded whatever bytes arrived and ran them as a LocalSystem service —
+    the same attack the Linux script refuses, at a higher privilege level.
+
+    Nothing caught it because nothing compared the two installers. That is what
+    this class is for.
+    """
+
+    #: PowerShell comments: <# block #> and # to end of line.
+    PS_BLOCK = re.compile(r"<#.*?#>", re.DOTALL)
+
+    @classmethod
+    def _strip_ps_comments(cls, script):
+        """Comments blanked, newlines kept.
+
+        This is the fourth guard in this codebase to flag the prose documenting
+        it — after the CSP sweep, the inline-handler sweep and the gawk scan.
+        The comment below the download `catch` says "Write-Host, not
+        Write-Error" and explains why; scanning raw text reads that as the
+        offence. If you add a guard here, strip comments first.
+        """
+        script = cls.PS_BLOCK.sub(
+            lambda m: re.sub(r"[^\n]", " ", m.group(0)), script)
+        return "\n".join(
+            ln for ln in script.splitlines() if not ln.lstrip().startswith("#")
+        )
+
+    def setUp(self):
+        self.sh = render_to_string(
+            "agent_install.sh", {"base_url": "https://vigil.example.com"})
+        self.ps1 = render_to_string(
+            "agent_install.ps1", {"base_url": "https://vigil.example.com"})
+        self.ps1_code = self._strip_ps_comments(self.ps1)
+
+    def test_powershell_installer_computes_a_sha256(self):
+        self.assertIn("Get-FileHash", self.ps1)
+        self.assertIn("SHA256", self.ps1)
+
+    def test_powershell_installer_reads_the_digest_header(self):
+        self.assertIn("x-vigil-sha256", self.ps1.lower())
+
+    def test_powershell_installer_does_not_download_straight_to_the_service_binary(self):
+        """Download to temp, verify, then move.
+
+        Writing the download directly to $BinaryPath means a failed or tampered
+        download has already replaced the installed agent by the time anything
+        is checked — and the check then has nothing left to protect.
+        """
+        for line in self.ps1_code.splitlines():
+            if "Invoke-WebRequest" in line and "-OutFile" in line:
+                self.assertNotIn(
+                    "$BinaryPath", line,
+                    "install.ps1 downloads directly onto the service binary; "
+                    "download to a temp path and Move-Item after verifying:\n"
+                    f"  {line.strip()}",
+                )
+
+    def test_powershell_installer_restricts_the_config_acl(self):
+        """agent.yml carries the agent token.
+
+        install.sh writes it 0600. C:\\ProgramData's default ACL lets any local
+        user read it, so the Windows side needs an explicit icacls.
+        """
+        self.assertIn("icacls", self.ps1)
+        self.assertIn("/inheritance:r", self.ps1)
+
+    def test_both_installers_offer_the_same_override(self):
+        """One documented escape hatch, spelled the same way in both."""
+        for name, script in (("install.sh", self.sh), ("install.ps1", self.ps1)):
+            self.assertIn(
+                "VIGIL_ALLOW_UNVERIFIED_AGENT", script,
+                f"{name} has no documented override for the digest check",
+            )
+
+    def test_powershell_installer_reports_failure_without_a_stack_trace(self):
+        """Write-Error emits CategoryInfo, FullyQualifiedErrorId and a caret
+        diagram of the failing line. install.sh prints one line; a download
+        failure is an ordinary condition, not a crash."""
+        self.assertNotIn("Write-Error", self.ps1_code)
