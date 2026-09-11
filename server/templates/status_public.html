@@ -206,7 +206,7 @@
     {% endif %}
   </div>
 
-  <script>
+  <script nonce="{{ request.csp_nonce }}">
     // Poll for fresh status instead of a full-page meta-refresh, so the entry
     // animations don't replay every minute — only the changed values update.
     (function () {

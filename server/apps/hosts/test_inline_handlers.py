@@ -139,3 +139,62 @@ class DeclarativeHandlersResolveTests(SimpleTestCase):
         code = _strip_comments((JS / "vigil-utils.js").read_text())
         self.assertNotIn("eval(", code, "vigil-utils.js calls eval")
         self.assertNotIn("new Function", code, "vigil-utils.js calls new Function")
+
+
+class InlineScriptBlocksCarryTheNonce(SimpleTestCase):
+    """Every inline <script> must carry the per-request nonce.
+
+    Removing 'unsafe-inline' from script-src blocks inline handlers *and*
+    inline <script> blocks. The sweep above covered the handlers and had tests
+    for them; the blocks did not, so two of them in _settings.html shipped
+    without a nonce and were silently refused by the browser. Nothing failed
+    loudly: the suite passed, the page rendered, and the agent install command
+    was simply never written into it.
+
+    The unit tests could not have caught that, because they never rendered a
+    page. This one reads the templates directly, which is enough — a block
+    either has the attribute or it does not.
+    """
+
+    #: Opening <script> tags, capturing their attributes.
+    SCRIPT_TAG = re.compile(r"<script\b([^>]*)>", re.IGNORECASE)
+
+    #: Django comments. The block above base.html's config script explains
+    #: this very rule and quotes `<script src>` while doing it, so scanning
+    #: raw text reports the documentation as the violation.
+    HASH_COMMENT = re.compile(r"\{#.*?#\}", re.DOTALL)
+    BLOCK_COMMENT = re.compile(
+        r"\{%\s*comment\s*%\}.*?\{%\s*endcomment\s*%\}", re.DOTALL
+    )
+
+    @classmethod
+    def _strip_django_comments(cls, text: str) -> str:
+        """Comments blanked, newlines kept so line numbers still line up."""
+
+        def blank(m):
+            return re.sub(r"[^\n]", " ", m.group(0))
+
+        return cls.HASH_COMMENT.sub(blank, cls.BLOCK_COMMENT.sub(blank, text))
+
+    def test_no_template_has_an_inline_script_without_a_nonce(self):
+        offenders = []
+        for path in sorted(TEMPLATES.rglob("*.html")):
+            source = self._strip_django_comments(path.read_text())
+            for lineno, line in enumerate(source.splitlines(), start=1):
+                for attrs in self.SCRIPT_TAG.findall(line):
+                    if "src=" in attrs:
+                        continue  # external file, governed by 'self'
+                    if "csp_nonce" in attrs:
+                        continue
+                    if 'type="application/json"' in attrs:
+                        continue  # data, never executed
+                    offenders.append(
+                        f"{path.relative_to(REPO)}:{lineno} <script{attrs}>"
+                    )
+        self.assertEqual(
+            offenders,
+            [],
+            "Inline <script> without nonce=\"{{ request.csp_nonce }}\" — the "
+            "browser will refuse to run these and the page will quietly lose "
+            "whatever they did:\n  " + "\n  ".join(offenders),
+        )
