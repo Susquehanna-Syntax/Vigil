@@ -175,3 +175,57 @@ class BothInstallersVerifyBeforeInstalling(SimpleTestCase):
         diagram of the failing line. install.sh prints one line; a download
         failure is an ordinary condition, not a crash."""
         self.assertNotIn("Write-Error", self.ps1_code)
+
+
+class TheGeneratedAgentConfigIsValidYaml(SimpleTestCase):
+    """install.ps1 must write a config the agent can actually parse.
+
+    It did not. `data_dir: "C:\\ProgramData\\Vigil\\data"` is a double-quoted
+    YAML scalar, which processes backslash escapes the way JSON does — so it
+    fails on \\P with
+
+        yaml.scanner.ScannerError: found unknown escape character 'V'
+
+    and the agent exits before its first check-in. Nothing caught it because
+    the Windows service could not start for an unrelated reason, so the broken
+    config was written and never read.
+
+    Rendering the template is not enough; the YAML has to be parsed.
+    """
+
+    #: Realistic values for the PowerShell variables the heredoc interpolates.
+    PS_VARS = {
+        "$VigilServer": "https://vigil.example.com",
+        "$token": "a" * 64,
+        "$DataDir": r"C:\ProgramData\Vigil\data",
+        "$ConfigPath": r"C:\ProgramData\Vigil\agent.yml",
+    }
+
+    def _config_block(self, script):
+        """The YAML between the PowerShell here-string markers."""
+        m = re.search(r'@"\n(.*?)\n"@', script, re.DOTALL)
+        self.assertIsNotNone(m, "no here-string found in install.ps1")
+        block = m.group(1)
+        for var, val in self.PS_VARS.items():
+            block = block.replace(var, val)
+        return block
+
+    def test_the_config_install_ps1_writes_parses_as_yaml(self):
+        import yaml
+
+        script = render_to_string(
+            "agent_install.ps1", {"base_url": "https://vigil.example.com"})
+        block = self._config_block(script)
+        try:
+            parsed = yaml.safe_load(block)
+        except yaml.YAMLError as exc:
+            self.fail(
+                "install.ps1 writes an agent.yml the agent cannot parse — it "
+                f"will exit at startup:\n{exc}\n\n--- config ---\n{block}"
+            )
+        self.assertIn("server_url", parsed)
+        self.assertIn("agent_token", parsed)
+        self.assertEqual(
+            parsed.get("data_dir"), r"C:\ProgramData\Vigil\data",
+            "data_dir did not survive YAML parsing with its backslashes intact",
+        )
