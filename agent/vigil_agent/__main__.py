@@ -326,6 +326,19 @@ def _warn_on_privilege_mismatch(config) -> None:
     with a permission error, one at a time, for as long as it takes someone to
     connect the two facts.
 
+    This used to advise removing the User= line, which is not sufficient and
+    was found not to be by running it: the monitor-mode unit also carries
+    ProtectSystem=strict, and under that /boot is read-only *even for root* —
+
+        # systemd-run --property=ProtectSystem=strict \
+            /bin/sh -c 'id -u; mkdir -p /boot/vigil-probe-test'
+        0
+        mkdir: Read-only file system
+
+    so a reprovision stage still fails with "[Errno 30] Read-only file
+    system: '/boot/vigil-reprovision'". Re-running the installer regenerates
+    the unit from the mode in agent.yml and is the only complete fix.
+
     A warning, not a refusal: an agent that stops monitoring because it cannot
     execute is worse than one that monitors and says it cannot execute.
     """
@@ -340,9 +353,12 @@ def _warn_on_privilege_mismatch(config) -> None:
     logger.warning(
         "Mode is %r but this agent is not running as root (uid=%d). Task "
         "execution needs root — systemctl, package installs and firewall "
-        "changes will all fail. Either set mode back to 'monitor', or remove "
-        "the 'User=' line from /etc/systemd/system/vigil-agent.service and "
-        "run `systemctl daemon-reload && systemctl restart vigil-agent`.",
+        "changes will all fail. Either set mode back to 'monitor', or "
+        "re-run the installer so the unit is regenerated for this mode: "
+        "curl -fsSL <server>/agent/install.sh | sudo bash. Editing the unit "
+        "by hand is not enough — dropping 'User=' still leaves "
+        "ProtectSystem=strict, which makes /boot and /etc read-only even for "
+        "root, so reprovision and package installs keep failing.",
         config.mode, os.geteuid())
 
 
