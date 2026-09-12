@@ -87,6 +87,24 @@ _ALL_ACTIONS = {
     "reprovision_preflight",
 }
 
+def _default_scripts_dir(is_windows: bool | None = None) -> Path:
+    """Where execute_script looks for scripts, per platform.
+
+    "/etc/vigil/scripts" on Windows resolves to a path on the current drive
+    that nothing creates — the same shape of bug as the config search path.
+
+    *is_windows* is a parameter for the same reason as _default_config_paths:
+    patching os.name makes pathlib build a WindowsPath on Linux and raise.
+    """
+    if is_windows is None:
+        is_windows = os.name == "nt"
+    if is_windows:
+        program_data = os.environ.get("ProgramData")
+        if program_data:
+            return Path(program_data) / "Vigil" / "scripts"
+    return Path("/etc/vigil/scripts")
+
+
 def _default_config_paths(is_windows: bool | None = None) -> list[Path]:
     """Where to look for agent.yml when no -c and no VIGIL_CONFIG_PATH.
 
@@ -139,7 +157,7 @@ class AgentConfig:
     docker_check_interval: int = 21600
     data_dir: Path = field(default_factory=lambda: Path("/var/lib/vigil-agent"))
     allowlist: set[str] = field(default_factory=set)
-    scripts_dir: Path = field(default_factory=lambda: Path("/etc/vigil/scripts"))
+    scripts_dir: Path = field(default_factory=lambda: _default_scripts_dir())
     # Free-form tags advertised to the server at every checkin. Server-side
     # tags take precedence: this list is used to seed/augment, never to
     # overwrite tags an operator has set in the console.
@@ -330,7 +348,8 @@ def load_config(path: Path | None = None) -> AgentConfig:
         docker_check_interval=int(raw.get("docker_check_interval", 21600)),
         data_dir=data_dir,
         allowlist=allowlist,
-        scripts_dir=Path(raw.get("scripts_dir", "/etc/vigil/scripts")),
+        scripts_dir=Path(raw["scripts_dir"]) if raw.get("scripts_dir")
+        else _default_scripts_dir(),
         tags=raw_tags,
         process_watch=raw_watch,
         gpu_extended=bool(raw.get("gpu_extended", False)),

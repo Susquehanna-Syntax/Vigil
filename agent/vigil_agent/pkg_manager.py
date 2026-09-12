@@ -12,10 +12,12 @@ All commands use subprocess with explicit argument lists (never shell=True).
 """
 
 import logging
+import os
 import platform
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from .procenv import clean_env
@@ -60,6 +62,15 @@ def _run(cmd: list[str], timeout: int = _EXEC_TIMEOUT_LONG) -> str:
 @dataclass
 class PackageManager:
     name: str
+    #: Absolute path to the binary, when it is not resolvable from PATH.
+    #: winget on Windows is a per-user App Execution Alias living under
+    #: %LOCALAPPDATA%, so a service running as LocalSystem — which has no user
+    #: profile — cannot find it by name and reported "No supported package
+    #: manager found" on a machine that plainly had one.
+    path: str = ""
+
+    def _bin(self) -> str:
+        return self.path or self.name
 
     # ── Public interface ──────────────────────────────────────────────────
 
@@ -98,7 +109,7 @@ class PackageManager:
         if self.name == "brew":
             return _run(["brew", "update", "--quiet"])
         if self.name == "winget":
-            return _run(["winget", "source", "update", "--disable-interactivity"])
+            return _run([self._bin(), "source", "update", "--disable-interactivity"])
         if self.name == "snap":
             return _run(["snap", "refresh", "--list"])
         raise RuntimeError(f"refresh not implemented for {self.name}")
@@ -119,7 +130,7 @@ class PackageManager:
         if self.name == "brew":
             return _run(["brew", "upgrade", "--quiet"])
         if self.name == "winget":
-            return _run(["winget", "upgrade", "--all", "--disable-interactivity", "--accept-package-agreements", "--accept-source-agreements"])
+            return _run([self._bin(), "upgrade", "--all", "--disable-interactivity", "--accept-package-agreements", "--accept-source-agreements"])
         if self.name == "snap":
             return _run(["snap", "refresh"])
         raise RuntimeError(f"upgrade_all not implemented for {self.name}")
@@ -140,7 +151,7 @@ class PackageManager:
         if self.name == "brew":
             return _run(["brew", "install", "--quiet", pkg])
         if self.name == "winget":
-            return _run(["winget", "install", pkg, "--disable-interactivity", "--accept-package-agreements", "--accept-source-agreements"])
+            return _run([self._bin(), "install", pkg, "--disable-interactivity", "--accept-package-agreements", "--accept-source-agreements"])
         if self.name == "snap":
             return _run(["snap", "install", pkg])
         raise RuntimeError(f"install not implemented for {self.name}")
@@ -161,7 +172,7 @@ class PackageManager:
         if self.name == "brew":
             return _run(["brew", "uninstall", "--quiet", pkg])
         if self.name == "winget":
-            return _run(["winget", "uninstall", pkg, "--disable-interactivity"])
+            return _run([self._bin(), "uninstall", pkg, "--disable-interactivity"])
         if self.name == "snap":
             return _run(["snap", "remove", pkg])
         raise RuntimeError(f"remove not implemented for {self.name}")
@@ -182,7 +193,7 @@ class PackageManager:
         if self.name == "brew":
             return _run(["brew", "outdated", "--quiet"], timeout=_EXEC_TIMEOUT_SHORT)
         if self.name == "winget":
-            return _run(["winget", "upgrade", "--disable-interactivity"], timeout=_EXEC_TIMEOUT_SHORT)
+            return _run([self._bin(), "upgrade", "--disable-interactivity"], timeout=_EXEC_TIMEOUT_SHORT)
         if self.name == "snap":
             return _run(["snap", "refresh", "--list"], timeout=_EXEC_TIMEOUT_SHORT)
         raise RuntimeError(f"list_upgradable not implemented for {self.name}")
@@ -208,8 +219,45 @@ def detect() -> Optional[PackageManager]:
             logger.debug("Detected package manager: %s", name)
             return PackageManager(name=name)
 
+    if system == "Windows":
+        resolved = _resolve_winget()
+        if resolved:
+            logger.debug("Detected winget outside PATH at %s", resolved)
+            return PackageManager(name="winget", path=resolved)
+
     logger.warning("No supported package manager found on this system")
     return None
+
+
+def _resolve_winget() -> str:
+    """Absolute path to winget.exe when it is not on PATH.
+
+    winget ships as the Microsoft.DesktopAppInstaller package and is exposed
+    to interactive users through an App Execution Alias in
+    %LOCALAPPDATA%\\Microsoft\\WindowsApps. A service running as LocalSystem
+    has no such profile, so `where winget` fails and every package action was
+    unavailable in the only supported way to run the agent. The package itself
+    is machine-wide, so resolve it there instead.
+
+    Returns "" when it genuinely is not installed, which leaves detect()
+    reporting no package manager exactly as before.
+    """
+    if sys.platform != "win32":
+        return ""
+    root = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "WindowsApps"
+    try:
+        candidates = sorted(
+            root.glob("Microsoft.DesktopAppInstaller_*_x64__*/winget.exe"),
+            reverse=True,
+        )
+    except OSError:
+        # WindowsApps is heavily ACL'd; a denial here is not an error worth
+        # failing on, it just means we cannot offer package management.
+        return ""
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    return ""
 
 
 _SAFE_PKG_NAME_CHARS = frozenset(
