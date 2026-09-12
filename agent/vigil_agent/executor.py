@@ -986,12 +986,48 @@ def _run_package_updates(params: dict, _config: AgentConfig) -> str:
 
 
 def _clear_temp_files(params: dict, _config: AgentConfig) -> str:
+    """Delete files in the system temp directory older than N days.
+
+    Done in Python rather than by shelling out. The previous implementation ran
+
+        find /tmp -type f -mtime +N -delete
+
+    unconditionally, which on Windows resolved "find" to
+    C:\\Windows\\System32\\FIND.exe — a string-search tool that shares only a
+    name — and failed with "FIND: Invalid switch". /tmp does not exist there
+    either. Doing the walk here means one implementation, no shell, and the
+    same semantics everywhere.
+    """
     days = int(params.get("older_than_days", 7))
     if days < 0:
         raise ValueError("older_than_days must be non-negative")
-    return _run(
-        ["find", "/tmp", "-type", "f", "-mtime", f"+{days}", "-delete"]
-    )
+
+    temp_root = Path(tempfile.gettempdir())
+    cutoff = time.time() - days * 86400
+    removed = 0
+    freed = 0
+    skipped = 0
+    for path in temp_root.rglob("*"):
+        try:
+            if not path.is_file() or path.is_symlink():
+                continue
+            st = path.stat()
+            if st.st_mtime >= cutoff:
+                continue
+            size = st.st_size
+            path.unlink()
+        except OSError:
+            # A temp directory always has files something else holds open,
+            # and on Windows that is the normal case rather than the
+            # exception. One locked file must not fail the whole task.
+            skipped += 1
+            continue
+        removed += 1
+        freed += size
+
+    return (f"Removed {removed} file(s) older than {days} day(s) from "
+            f"{temp_root}, freeing {freed // 1024} KiB"
+            + (f"; {skipped} in use or not permitted" if skipped else ""))
 
 
 def _execute_script(params: dict, config: AgentConfig) -> str:
@@ -1002,8 +1038,11 @@ def _execute_script(params: dict, config: AgentConfig) -> str:
     scripts_dir = config.scripts_dir.resolve()
     script_path = (scripts_dir / script_name).resolve()
 
-    # Path traversal protection
-    if not str(script_path).startswith(str(scripts_dir) + "/"):
+    # Path traversal protection. is_relative_to() rather than a string
+    # startswith on str(scripts_dir) + "/": that hardcoded separator never
+    # matches a Windows path, so every script was refused there — fail-safe,
+    # but it meant execute_script could not work on Windows at all.
+    if not script_path.is_relative_to(scripts_dir):
         raise ValueError(
             f"Script path escapes scripts directory: {script_name!r}"
         )
@@ -1011,12 +1050,17 @@ def _execute_script(params: dict, config: AgentConfig) -> str:
     if not script_path.is_file():
         raise ValueError(f"Script not found: {script_name}")
 
-    st = script_path.stat()
-    if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
-        raise ValueError(
-            f"Script {script_name} is writable by group/others — refusing "
-            f"to execute. Run: chmod go-w {script_path}"
-        )
+    if os.name == "posix":
+        # POSIX mode bits only. Python synthesises st_mode on Windows, so this
+        # check there is meaningless and its remedy — chmod — is not a command
+        # the operator has. Windows access is governed by the ACL on
+        # scripts_dir, which the installer restricts.
+        st = script_path.stat()
+        if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            raise ValueError(
+                f"Script {script_name} is writable by group/others — refusing "
+                f"to execute. Run: chmod go-w {script_path}"
+            )
 
     return _run([str(script_path)])
 
