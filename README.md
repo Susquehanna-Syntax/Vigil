@@ -310,6 +310,14 @@ checkin_interval: 15     # faster for testing
 data_dir: ./data
 ```
 
+> **Monitor mode runs unprivileged**, on Windows as well as Linux — as
+> `vigil-agent` under systemd hardening, or as the `NT SERVICE\vigil-agent`
+> virtual account. Switching to `managed` or `full_control` runs it privileged
+> and is one config line plus a re-run of the installer. See
+> [docs/AGENT-PRIVILEGES.md](docs/AGENT-PRIVILEGES.md) for what each mode can
+> and cannot do — notably, an unprivileged Windows agent cannot report Windows
+> Update status, and cannot stage a reprovision.
+
 Run the agent:
 
 ```bash

@@ -1532,6 +1532,76 @@ def _reprovision_cleanup(params: dict, config: AgentConfig) -> str:
     return reprovision.cleanup(params, config)
 
 
+def _looks_like_zip(path: str) -> bool:
+    """True when the downloaded artifact is a zip rather than a bare binary."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(2) == b"PK"
+    except OSError:
+        return False
+
+
+def _stage_onedir_update(archive_path: str, current_exe: Path) -> None:
+    """Unpack a onedir update beside the install and swap it in on restart.
+
+    Windows cannot replace a running executable — the file is locked for as
+    long as the process lives, and a onedir build is a whole directory of DLLs
+    besides. So the new build is extracted next to the old one and a detached
+    helper does the swap once the service has actually stopped.
+
+    Refuses rather than improvises if the layout is not what it expects. A
+    half-swapped agent directory is worse than a failed update: the update can
+    be retried, a broken install needs someone at the machine.
+    """
+    import zipfile
+
+    install_dir = current_exe.parent
+    if sys.platform != "win32":
+        raise ValueError(
+            "received a zip agent artifact on a non-Windows platform; "
+            "refusing to self-update")
+
+    staging = install_dir.parent / (install_dir.name + ".new")
+    backup = install_dir.parent / (install_dir.name + ".old")
+    for path in (staging, backup):
+        shutil.rmtree(path, ignore_errors=True)
+
+    with zipfile.ZipFile(archive_path) as zf:
+        zf.extractall(staging)
+    os.unlink(archive_path)
+
+    if not list(staging.rglob(current_exe.name)):
+        shutil.rmtree(staging, ignore_errors=True)
+        raise ValueError(
+            f"the update archive contains no {current_exe.name}; "
+            "refusing to swap it in")
+
+    # A detached cmd: this process is about to be stopped, so the swap cannot
+    # run inside it. Waits for the service to stop before touching anything.
+    script = install_dir.parent / "vigil-agent-update.cmd"
+    script.write_text(
+        "@echo off\r\n"
+        "sc stop vigil-agent >nul 2>&1\r\n"
+        "for /l %%i in (1,1,30) do (\r\n"
+        '  sc query vigil-agent | find "STOPPED" >nul && goto swap\r\n'
+        "  timeout /t 1 /nobreak >nul\r\n"
+        ")\r\n"
+        ":swap\r\n"
+        f'rmdir /s /q "{backup}" >nul 2>&1\r\n'
+        f'move "{install_dir}" "{backup}" >nul 2>&1\r\n'
+        f'move "{staging}" "{install_dir}" >nul 2>&1\r\n'
+        f'if not exist "{install_dir}\\{current_exe.name}" '
+        f'move "{backup}" "{install_dir}" >nul 2>&1\r\n'
+        "sc start vigil-agent >nul 2>&1\r\n"
+        f'rmdir /s /q "{backup}" >nul 2>&1\r\n',
+        encoding="ascii")
+    subprocess.Popen(
+        ["cmd", "/c", "start", "/b", "", str(script)],
+        env=clean_env(), close_fds=True,
+        creationflags=getattr(subprocess, "DETACHED_PROCESS", 0),
+    )
+
+
 def _update_agent(params: dict, config: AgentConfig) -> str:
     """Download the latest agent binary from the server and replace this binary.
 
@@ -1589,8 +1659,16 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
                 f"Downloaded agent binary failed SHA-256 verification: "
                 f"expected {expected_sha}, got {actual_sha}"
             )
-        os.chmod(tmp_path, 0o755)
-        os.replace(tmp_path, current_exe)
+        if _looks_like_zip(tmp_path):
+            # Windows ships a PyInstaller --onedir build as a zip, because a
+            # --onefile executable cannot host a Windows service. Writing that
+            # archive over the service binary would replace the agent with a
+            # zip file and brick the host, so the whole directory is swapped
+            # instead, after the service has stopped and released its files.
+            _stage_onedir_update(tmp_path, current_exe)
+        else:
+            os.chmod(tmp_path, 0o755)
+            os.replace(tmp_path, current_exe)
     except Exception:
         try:
             os.unlink(tmp_path)
