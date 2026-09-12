@@ -375,14 +375,21 @@ def main() -> None:
 
     _cli_config_path = args.config
 
+    if args.service and os.name != "nt":
+        # Refuse before touching the filesystem. The ProgramData fallback below
+        # is a Windows path; on Linux it is just a filename containing a
+        # backslash, and mkdir(parents=True) duly created a directory called
+        # "C:\ProgramData" in the working directory. Found exactly that way.
+        parser.error("--service is only supported on Windows")
+
     log_file = args.log_file
     if args.service and log_file is None:
         # A service has no stdout. Without this every log line goes nowhere and
         # a misbehaving agent is undiagnosable.
-        log_file = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "Vigil" / "agent.log"
+        log_file = Path(os.environ["ProgramData"]) / "Vigil" / "agent.log"
         try:
             log_file.parent.mkdir(parents=True, exist_ok=True)
-        except OSError:
+        except (OSError, KeyError):
             log_file = None
 
     logging.basicConfig(

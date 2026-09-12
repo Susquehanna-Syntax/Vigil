@@ -103,7 +103,21 @@ Move-Item -Force -Path $TmpAgent -Destination $BinaryPath
 
 # Write config if not present
 if (-not (Test-Path $ConfigPath)) {
-    $token = if ($env:VIGIL_TOKEN) { $env:VIGIL_TOKEN } else { "REPLACE_WITH_TOKEN" }
+    # Generate the token rather than leaving a placeholder. The server stores
+    # whatever the agent presents, so a literal "REPLACE_WITH_TOKEN" left in
+    # place is a working credential published in this very script — and
+    # register() being idempotent on the token means a second machine using it
+    # inherits this host's already-approved identity with no admin action.
+    # RNGCryptoServiceProvider, not Get-Random: this is a credential, and
+    # PowerShell 5.1 on .NET Framework has no RandomNumberGenerator.Fill.
+    if ($env:VIGIL_TOKEN) {
+        $token = $env:VIGIL_TOKEN
+    } else {
+        $rngBytes = New-Object byte[] 32
+        $rng = New-Object System.Security.Cryptography.RNGCryptoServiceProvider
+        try { $rng.GetBytes($rngBytes) } finally { $rng.Dispose() }
+        $token = -join ($rngBytes | ForEach-Object { $_.ToString("x2") })
+    }
     @"
 server_url: "$VigilServer"
 agent_token: "$token"
@@ -120,7 +134,7 @@ data_dir: "$DataDir"
     if ($env:VIGIL_TOKEN) {
         Write-Host "Agent token configured from VIGIL_TOKEN."
     } else {
-        Write-Host "Config written to $ConfigPath — set agent_token before starting."
+        Write-Host "Config written to $ConfigPath with a generated agent token."
     }
 }
 
@@ -200,8 +214,7 @@ if ($env:VIGIL_TOKEN) {
 } else {
     Write-Host ""
     Write-Host "Vigil agent installed."
-    Write-Host "  1. Edit $ConfigPath and set agent_token"
-    Write-Host "  2. Start-Service $ServiceName"
-    Write-Host "  3. Approve the host in Vigil Settings > Enrollment Queue"
+    Write-Host "  1. Start-Service $ServiceName"
+    Write-Host "  2. Approve the host in Vigil Settings > Enrollment Queue"
 }
 {% endautoescape %}

@@ -58,6 +58,13 @@ from .serializers import (
 )
 from .versions import version_at_least
 
+#: Tokens the installers once wrote for the operator to replace. They are
+#: published in the install scripts, so they are credentials in name only.
+PLACEHOLDER_AGENT_TOKENS = frozenset({
+    "REPLACE_WITH_TOKEN",
+    "REPLACE_WITH_SERVER_URL",
+})
+
 _MAX_TOKEN_LEN = 255
 _MAX_HOSTNAME_LEN = 255
 
@@ -201,6 +208,34 @@ def register(request):
     if len(token) > _MAX_TOKEN_LEN or len(hostname) > _MAX_HOSTNAME_LEN:
         return Response(
             {"error": "Field value too long"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # The installers used to leave this literal string in agent.yml for the
+    # operator to replace. Since the server stores whatever token an agent
+    # presents, an agent started before that edit authenticated with a value
+    # published in the install script itself — and because this endpoint is
+    # idempotent on the token, a second machine presenting it inherited the
+    # first host's already-approved identity, with no admin action and no new
+    # pending record. Refusing it here closes that path.
+    #
+    # Deliberately only on registration: an existing host stuck on this token
+    # keeps checking in and keeps being monitored. Breaking ingest to punish a
+    # weak credential would be the worse failure, and rotating it is an
+    # operator action, not something to force mid-flight.
+    if token in PLACEHOLDER_AGENT_TOKENS:
+        logger.warning(
+            "Refused registration for %r using a placeholder agent token. "
+            "Reinstall the agent so the installer generates one.", hostname,
+        )
+        return Response(
+            {
+                "error": (
+                    "That agent token is the installer's placeholder, which is "
+                    "public. Reinstall the agent so a real token is generated, "
+                    "or set one explicitly via VIGIL_TOKEN."
+                )
+            },
             status=status.HTTP_400_BAD_REQUEST,
         )
 

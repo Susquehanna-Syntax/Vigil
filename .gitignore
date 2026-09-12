@@ -52,3 +52,6 @@ server/media/agent_binaries/*
 # neither belongs in git.
 server/vigil/settings_local.py
 server/vigil/settings_local_secret.py
+
+# rexymcp executor scratch
+.scratch/

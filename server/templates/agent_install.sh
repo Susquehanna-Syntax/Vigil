@@ -114,7 +114,18 @@ EOF
       exit 1
     fi
   else
-    echo "Config written to /etc/vigil/agent.yml — set agent_token before starting."
+    # Generate the token here rather than leaving a placeholder. The server
+    # takes whatever token the agent presents and stores it verbatim, so a
+    # literal "REPLACE_WITH_TOKEN" left in place becomes a working credential
+    # that is published in this very script. Anyone who could reach the API
+    # could then authenticate as this host, read its task queue, and — because
+    # register() is idempotent on the token — enrol a second machine that
+    # inherits this host's already-approved identity without any admin action.
+    # The reprovision branch above has generated a real token all along; this
+    # branch simply never did.
+    NEW_TOKEN="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    sed -i.bak "s|REPLACE_WITH_TOKEN|${NEW_TOKEN}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+    echo "Config written to /etc/vigil/agent.yml with a generated agent token."
   fi
 fi
 
@@ -225,10 +236,9 @@ EOF
     echo "Vigil agent installed and started."
     echo "Approve this host in Vigil Settings > Enrollment Queue."
   else
-    echo "Vigil agent installed."
-    echo "  1. Edit /etc/vigil/agent.yml and set agent_token"
-    echo "  2. systemctl start vigil-agent"
-    echo "  3. Approve the host in Vigil Settings > Enrollment Queue"
+    echo "Vigil agent installed with a generated agent token."
+    echo "  1. systemctl start vigil-agent"
+    echo "  2. Approve the host in Vigil Settings > Enrollment Queue"
   fi
 
 elif [ "$OS" = "darwin" ]; then
@@ -261,10 +271,9 @@ EOF
     echo "Vigil agent installed and started."
     echo "Approve this host in Vigil Settings > Enrollment Queue."
   else
-    echo "Vigil agent installed."
-    echo "  1. Edit /etc/vigil/agent.yml and set agent_token"
-    echo "  2. launchctl start com.susquehannasyntax.vigil-agent"
-    echo "  3. Approve the host in Vigil Settings > Enrollment Queue"
+    echo "Vigil agent installed with a generated agent token."
+    echo "  1. launchctl start com.susquehannasyntax.vigil-agent"
+    echo "  2. Approve the host in Vigil Settings > Enrollment Queue"
   fi
 
 else
