@@ -19,16 +19,31 @@ def _dist_dir() -> Path:
 
 
 def _bundled_path(platform: str) -> Path:
-    """Path of the bundled binary for *platform*, tolerating a ``.exe`` suffix.
+    """Path of the bundled artifact for *platform*.
 
-    PyInstaller appends ``.exe`` on Windows and the CI artifact keeps it, so
-    the Windows bundle lands on disk as ``vigil-agent-windows-amd64.exe``.
-    Prefer the exact name, fall back to the ``.exe`` variant.
+    Three shapes, checked in this order:
+
+    ``.zip``
+        A PyInstaller ``--onedir`` build, zipped. Windows needs this: a
+        ``--onefile`` executable cannot host a Windows service, because its
+        bootloader extracts and re-executes, so the process the SCM is
+        watching never calls StartServiceCtrlDispatcher and the start times
+        out with error 1053. Preferred where present, since it is the only
+        Windows artifact that can actually run as a service.
+    exact name
+        A ``--onefile`` build for Linux and macOS.
+    ``.exe``
+        A ``--onefile`` Windows build. Still served so existing deployments
+        keep working, but it cannot be installed as a service.
     """
-    exact = _dist_dir() / f"vigil-agent-{platform}"
+    d = _dist_dir()
+    as_zip = d / f"vigil-agent-{platform}.zip"
+    if as_zip.is_file():
+        return as_zip
+    exact = d / f"vigil-agent-{platform}"
     if exact.is_file():
         return exact
-    with_exe = _dist_dir() / f"vigil-agent-{platform}.exe"
+    with_exe = d / f"vigil-agent-{platform}.exe"
     if with_exe.is_file():
         return with_exe
     return exact

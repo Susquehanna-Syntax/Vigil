@@ -92,14 +92,52 @@ if ([string]::IsNullOrWhiteSpace($ExpectedSha)) {
 }
 
 # Only now does it become the service binary. Stop the service first: a running
-# agent holds its own exe open and Move-Item would fail after verification,
+# agent holds its own exe open, and replacing it would fail after verification,
 # leaving a verified binary that never got installed.
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existing -and $existing.Status -eq "Running") {
     Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 }
-Move-Item -Force -Path $TmpAgent -Destination $BinaryPath
+
+# Two artifact shapes. A .zip is a PyInstaller --onedir build, which is the
+# only one that can host a Windows service: a --onefile executable extracts
+# and re-executes itself, so the process the SCM is watching never calls
+# StartServiceCtrlDispatcher and Start-Service fails with 1053.
+#
+# Sniff the magic bytes rather than trusting the filename — the server sets
+# Content-Disposition from whatever is on disk, and a mislabelled artifact
+# should not decide how the service is installed.
+$magic = [System.IO.File]::ReadAllBytes($TmpAgent)[0..1]
+$IsZip = ($magic[0] -eq 0x50 -and $magic[1] -eq 0x4B)   # "PK"
+
+if ($IsZip) {
+    $ZipPath = "$TmpAgent.zip"
+    Move-Item -Force -Path $TmpAgent -Destination $ZipPath
+    # Clear the previous install so a renamed or removed file from an older
+    # build cannot linger next to the new one.
+    if (Test-Path $InstallDir) {
+        Get-ChildItem -Path $InstallDir -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Expand-Archive -Path $ZipPath -DestinationPath $InstallDir -Force
+    Remove-Item -Force $ZipPath
+
+    # PyInstaller --onedir nests everything under a directory named for the
+    # build. Find the agent executable wherever it landed.
+    $found = Get-ChildItem -Path $InstallDir -Filter "vigil-agent*.exe" -Recurse -File |
+             Select-Object -First 1
+    if (-not $found) {
+        Write-Host "ERROR: the downloaded archive contains no vigil-agent executable."
+        exit 1
+    }
+    $BinaryPath = $found.FullName
+    Write-Host "Installed a onedir build; service binary: $BinaryPath"
+} else {
+    Move-Item -Force -Path $TmpAgent -Destination $BinaryPath
+    Write-Host "WARNING: this is a --onefile build. It runs fine from a console,"
+    Write-Host "but Windows cannot host it as a service — Start-Service will fail"
+    Write-Host "with error 1053. Publish a --onedir zip to install the service."
+}
 
 # Write config if not present
 if (-not (Test-Path $ConfigPath)) {
@@ -162,7 +200,13 @@ if ($svc) {
 # calls StartServiceCtrlDispatcher, waits ~30s, and fails with 1053 — which is
 # what this installer produced for its whole life, because no Windows binary
 # existed to try starting.
-$BinPathArg = "`"$BinaryPath`" --service"
+# -c explicitly: the service must not depend on default-path resolution. The
+# agent looked only at /etc/vigil/agent.yml and ./agent.yml, so on Windows it
+# found nothing and exited immediately after the SCM started it.
+$BinPathArg = "`"$BinaryPath`" --service -c `"$ConfigPath`""
+# The same value as cmd.exe needs to see it: sc's binPath is one argument, so
+# the inner quotes around the paths are escaped for cmd, not for PowerShell.
+$BinPathQuoted = '"\"' + $BinaryPath + '\" --service -c \"' + $ConfigPath + '\""' 
 
 # Mirror install.sh: monitor mode gives up privilege, task-executing modes
 # cannot. NT SERVICE\vigil-agent is a virtual account — the SCM creates and
@@ -180,22 +224,26 @@ if ($AgentMode -eq "monitor") {
     # in a way sc rejects with 1639 and a usage dump — the value contains a
     # space and PowerShell's native argument passing does not preserve what
     # sc's own parser expects.
-    $create = 'sc create ' + $ServiceName + ' binPath= "\"' + $BinaryPath + '\" --service" start= auto obj= "' + $ServiceAccount + '" DisplayName= "Vigil Monitoring Agent"'
+    $create = 'sc create ' + $ServiceName + ' binPath= ' + $BinPathQuoted + ' start= auto obj= "' + $ServiceAccount + '" DisplayName= "Vigil Monitoring Agent"'
     cmd.exe /c $create | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Could not create the service under a virtual account; falling back to LocalSystem."
-        cmd.exe /c ('sc create ' + $ServiceName + ' binPath= "\"' + $BinaryPath + '\" --service" start= auto DisplayName= "Vigil Monitoring Agent"') | Out-Null
+        cmd.exe /c ('sc create ' + $ServiceName + ' binPath= ' + $BinPathQuoted + ' start= auto DisplayName= "Vigil Monitoring Agent"') | Out-Null
         $ServiceAccount = "LocalSystem"
     } else {
         # The virtual account exists only once the service does, so grant its
         # access now: read the config and binary, write its own state.
         & icacls.exe $ConfigPath /grant "$($ServiceAccount):(R)" | Out-Null
         & icacls.exe $DataDir /inheritance:r /grant "SYSTEM:(OI)(CI)(F)" /grant "Administrators:(OI)(CI)(F)" /grant "$($ServiceAccount):(OI)(CI)(M)" | Out-Null
-        & icacls.exe $BinaryPath /grant "$($ServiceAccount):(RX)" | Out-Null
+        # The whole install tree, not just the exe. A onedir build is an exe
+        # plus an _internal directory of DLLs and data; granting the account
+        # access to the exe alone starts a process that dies immediately
+        # because it cannot load anything beside it.
+        & icacls.exe $InstallDir /grant "$($ServiceAccount):(OI)(CI)(RX)" /T | Out-Null
         Write-Host "Monitor mode: running the agent as the unprivileged '$ServiceAccount'."
     }
 } else {
-    cmd.exe /c ('sc create ' + $ServiceName + ' binPath= "\"' + $BinaryPath + '\" --service" start= auto DisplayName= "Vigil Monitoring Agent"') | Out-Null
+    cmd.exe /c ('sc create ' + $ServiceName + ' binPath= ' + $BinPathQuoted + ' start= auto DisplayName= "Vigil Monitoring Agent"') | Out-Null
     $ServiceAccount = "LocalSystem"
     & icacls.exe $DataDir /inheritance:r /grant "SYSTEM:(OI)(CI)(F)" /grant "Administrators:(OI)(CI)(F)" | Out-Null
     Write-Host "Mode '$AgentMode' executes tasks, so the agent runs as LocalSystem."
