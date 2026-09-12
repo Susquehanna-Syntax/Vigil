@@ -27,6 +27,17 @@ REPROVISION_ACTIONS = frozenset({
     "reprovision_cleanup",
 })
 
+#: Real actions that are never allowlistable, and why they are refused.
+#: run_command is arbitrary command execution — full_control only, enforced
+#: again in the executor as defence in depth. The three destructive
+#: reprovision actions are granted by allow_reprovision instead.
+_NEVER_ALLOWLISTABLE = {
+    "run_command",
+    "reprovision_stage",
+    "reprovision_commit",
+    "reprovision_cleanup",
+}
+
 _ALL_ACTIONS = {
     # Service management
     "restart_service", "start_service", "stop_service", "reload_service",
@@ -157,12 +168,30 @@ class AgentConfig:
         # action simply stays un-allowlisted — tasks naming it are rejected
         # with a clear reason, and it starts working after the agent updates.
         unknown = self.allowlist - _ALL_ACTIONS
+        # Separate "not a real action" from "real, but deliberately not
+        # allowlistable". Both are ignored, but only one is a typo, and
+        # telling an operator to look for a typo in `run_command` sends them
+        # hunting for something that is not there.
+        not_allowlistable = unknown & _NEVER_ALLOWLISTABLE
+        unknown -= not_allowlistable
+        # Drop both, always. Splitting the warning must not split the
+        # enforcement: leaving run_command in the allowlist would let a
+        # managed-mode agent accept arbitrary command execution, which is the
+        # single thing this exclusion exists to prevent.
+        self.allowlist = self.allowlist - not_allowlistable - unknown
+        if not_allowlistable:
+            logger.warning(
+                "Ignoring allowlist entries that cannot be allowlisted: %s. "
+                "These are real actions, deliberately excluded because they "
+                "grant too much: run_command executes arbitrary commands and "
+                "needs mode: full_control; the destructive reprovision "
+                "actions need allow_reprovision: true.",
+                sorted(not_allowlistable))
         if unknown:
             logger.warning(
                 "Ignoring unknown allowlist actions (typo, or this agent "
                 "binary is older than the config): %s", sorted(unknown),
             )
-            self.allowlist = self.allowlist - unknown
         # Normalize tags: strip whitespace, drop blanks, dedupe, lowercase.
         cleaned: list[str] = []
         seen: set[str] = set()

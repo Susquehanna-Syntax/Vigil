@@ -1593,7 +1593,11 @@ def _stage_onedir_update(archive_path: str, current_exe: Path) -> None:
         f'if not exist "{install_dir}\\{current_exe.name}" '
         f'move "{backup}" "{install_dir}" >nul 2>&1\r\n'
         "sc start vigil-agent >nul 2>&1\r\n"
-        f'rmdir /s /q "{backup}" >nul 2>&1\r\n',
+        f'rmdir /s /q "{backup}" >nul 2>&1\r\n'
+        # Delete the helper itself. "start /b cmd /c del" detaches so the
+        # script is not holding its own file open when the delete lands;
+        # without it every update leaves a .cmd in Program Files.
+        f'start /b "" cmd /c del /q "{script}"\r\n',
         encoding="ascii")
     subprocess.Popen(
         ["cmd", "/c", "start", "/b", "", str(script)],
