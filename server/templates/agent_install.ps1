@@ -118,13 +118,25 @@ if (-not (Test-Path $ConfigPath)) {
         try { $rng.GetBytes($rngBytes) } finally { $rng.Dispose() }
         $token = -join ($rngBytes | ForEach-Object { $_.ToString("x2") })
     }
+    # Single quotes around the Windows paths below, not double. A
+    # double-quoted YAML scalar processes backslash escapes like JSON, so
+    # "C:\ProgramData\Vigil\data" fails to parse on \P and \V and the agent
+    # dies at startup with a ScannerError. Single-quoted YAML takes
+    # backslashes literally.
     @"
 server_url: "$VigilServer"
 agent_token: "$token"
 mode: monitor
 checkin_interval: 30
-data_dir: "$DataDir"
-"@ | Set-Content -Path $ConfigPath -Encoding UTF8
+data_dir: '$DataDir'
+"@ | ForEach-Object {
+        # Not Set-Content -Encoding UTF8: on PowerShell 5.1 — which is what
+        # ships with Windows — that writes a UTF-8 BOM. The BOM becomes part
+        # of the first YAML key, so the agent reads no server_url and exits
+        # with "server_url is required" against a config that plainly has one.
+        [System.IO.File]::WriteAllText(
+            $ConfigPath, $_, (New-Object System.Text.UTF8Encoding($false)))
+    }
 
     # agent.yml holds the agent token. install.sh writes it 0600; the Windows
     # default ACL on C:\ProgramData lets any local user read it. Strip

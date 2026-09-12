@@ -177,6 +177,14 @@ class AgentConfig:
 
 def _warn_permissions(path: Path) -> None:
     """Warn if the config file is readable by group/others (token exposure risk)."""
+    if os.name != "posix":
+        # Windows has no POSIX mode bits. Python synthesises st_mode there, so
+        # this check fired on every start regardless of the real ACL — and told
+        # the operator to run `chmod 600 C:\ProgramData\Vigil\agent.yml`,
+        # which is not a command they have. install.ps1 restricts the file with
+        # icacls instead; a real ACL check here would need pywin32 and is not
+        # worth a hard dependency for a warning.
+        return
     try:
         st = path.stat()
         if st.st_mode & (stat.S_IRGRP | stat.S_IROTH):
@@ -218,7 +226,13 @@ def load_config(path: Path | None = None) -> AgentConfig:
 
     _warn_permissions(path)
 
-    with open(path) as f:
+    # utf-8-sig, not utf-8: it strips a UTF-8 BOM if present and behaves
+    # identically when absent. PowerShell 5.1's `Set-Content -Encoding UTF8`
+    # writes one, and so does Notepad — which is what a Windows admin edits
+    # this file with. With a BOM the first key parses as "\ufeffserver_url"
+    # and the agent dies with "server_url is required" while the operator is
+    # looking straight at a config that has it.
+    with open(path, encoding="utf-8-sig") as f:
         raw = yaml.safe_load(f) or {}
 
     server_url = raw.get("server_url", "").rstrip("/")
