@@ -162,6 +162,16 @@ jobs:
       - name: Build binary (macOS)
         if: runner.os == 'macOS'
         run: pyinstaller --onefile --target-arch universal2 --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
+      # --onedir, not --onefile, and this is not a preference. A --onefile
+      # build cannot host a Windows service: its bootloader extracts and
+      # re-executes, so the process the SCM is watching never calls
+      # StartServiceCtrlDispatcher and Start-Service fails with
+      #
+      #   [SC] StartService FAILED 1053
+      #
+      # Proved by building the same source both ways on a Windows 11 VM:
+      # --onedir reaches STATE: 4 RUNNING, --onefile times out every time.
+      #
       # The pywin32 service modules are imported inside a try/except in
       # vigil_agent/winservice.py, so PyInstaller's static analysis does not
       # find them and the frozen build silently lacks them — --service then
@@ -169,12 +179,21 @@ jobs:
       - name: Build binary (Windows)
         if: runner.os == 'Windows'
         run: >-
-          pyinstaller --onefile --name ${{ matrix.out }}
+          pyinstaller --onedir --name ${{ matrix.out }}
           --collect-all cffi --collect-all nacl
           --hidden-import win32serviceutil --hidden-import win32service
           --hidden-import win32event --hidden-import servicemanager
           --hidden-import win32timezone
           vigil_agent_main.py
+      # Ship the directory as one file so the download endpoint and the
+      # digest check stay unchanged — the installer sniffs the zip magic and
+      # expands it.
+      - name: Zip the Windows onedir build
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/${{ matrix.out }}/*" -DestinationPath "dist/${{ matrix.out }}.zip" -Force
+          Get-Item "dist/${{ matrix.out }}.zip" | ForEach-Object { Write-Host ("zip bytes: " + $_.Length) }
       # Build inside python:3.12-slim (Debian 12) rather than on the runner
       # directly — a binary linked against the runner's glibc 2.39 would not
       # start on Debian 11 / Ubuntu 20.04 era hosts. This matches the glibc
@@ -189,7 +208,19 @@ jobs:
             pip install --no-cache-dir -r requirements.txt pyinstaller
             pyinstaller --onefile --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
           "
+      # Windows ships the zip only. Uploading the unpacked onedir tree as well
+      # would roughly double the artifact and land both in server/agent_dist,
+      # where the zip is what the server serves anyway.
+      - name: Upload artifact (Windows — zip only)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.out }}
+          path: agent/dist/${{ matrix.out }}.zip
+          retention-days: 7
+
       - name: Upload artifact
+        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.out }}

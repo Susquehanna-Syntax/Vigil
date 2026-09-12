@@ -76,10 +76,41 @@ _ALL_ACTIONS = {
     "reprovision_preflight",
 }
 
-DEFAULT_CONFIG_PATHS = [
-    Path("/etc/vigil/agent.yml"),
-    Path("agent.yml"),
-]
+def _default_config_paths(is_windows: bool | None = None) -> list[Path]:
+    """Where to look for agent.yml when no -c and no VIGIL_CONFIG_PATH.
+
+    *is_windows* is a parameter rather than a read of os.name so tests can
+    exercise both branches: patching os.name globally makes pathlib try to
+    build a WindowsPath on Linux and raise NotImplementedError.
+
+    Windows needs its own entry. "/etc/vigil/agent.yml" resolves there to
+    "\\etc\\vigil\\agent.yml" on the current drive, which nothing writes,
+    so the service — whose binPath carries no -c — started, found no config
+    and exited:
+
+        FileNotFoundError: No config file found. Tried: VIGIL_CONFIG_PATH,
+        ['\\etc\\vigil\\agent.yml', 'agent.yml']
+
+    install.ps1 has always written C:\\ProgramData\\Vigil\\agent.yml. The
+    agent simply never looked there, so the Windows service could not have
+    worked regardless of how it was packaged.
+    """
+    if is_windows is None:
+        is_windows = os.name == "nt"
+    paths: list[Path] = []
+    if is_windows:
+        program_data = os.environ.get("ProgramData")
+        if program_data:
+            paths.append(Path(program_data) / "Vigil" / "agent.yml")
+    else:
+        paths.append(Path("/etc/vigil/agent.yml"))
+    paths.append(Path("agent.yml"))
+    return paths
+
+
+#: Evaluated at import for callers that read it directly; load_config() calls
+#: _default_config_paths() so a test can patch the environment.
+DEFAULT_CONFIG_PATHS = _default_config_paths()
 
 
 @dataclass
@@ -214,14 +245,14 @@ def load_config(path: Path | None = None) -> AgentConfig:
                     f"VIGIL_CONFIG_PATH points at {env_path}, which does not exist"
                 )
     if path is None:
-        for candidate in DEFAULT_CONFIG_PATHS:
+        for candidate in _default_config_paths():
             if candidate.exists():
                 path = candidate
                 break
     if path is None or not path.exists():
         raise FileNotFoundError(
             f"No config file found. Tried: VIGIL_CONFIG_PATH, "
-            f"{[str(p) for p in DEFAULT_CONFIG_PATHS]}"
+            f"{[str(p) for p in _default_config_paths()]}"
         )
 
     _warn_permissions(path)
