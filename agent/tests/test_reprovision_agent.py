@@ -200,7 +200,8 @@ class CleanupTests(unittest.TestCase):
             entry.write_text("x")
             with patch.object(reprovision, "STAGE_DIR", stage), \
                  patch.object(reprovision, "GRUB_D_ENTRY", entry):
-                reprovision.cleanup({"job_id": "j1"}, None)
+                with patch.object(reprovision, "_regenerate_grub"):
+                    reprovision.cleanup({"job_id": "j1"}, None)
             self.assertFalse(stage.exists())
             self.assertFalse(entry.exists())
 
@@ -208,7 +209,8 @@ class CleanupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.object(reprovision, "STAGE_DIR", Path(tmp) / "absent"), \
                  patch.object(reprovision, "GRUB_D_ENTRY", Path(tmp) / "absent2"):
-                reprovision.cleanup({"job_id": "j1"}, None)  # must not raise
+                with patch.object(reprovision, "_regenerate_grub"):
+                    reprovision.cleanup({"job_id": "j1"}, None)  # must not raise
 
 
 if __name__ == "__main__":
