@@ -148,3 +148,34 @@ mode: managed          # or full_control — never monitor
 
 Both are required. `reprovision_preflight` is read-only and is a normal
 allowlist entry.
+
+## Code signing on Windows
+
+The Windows agent is **not signed**. It runs, and Defender does not currently
+flag it — scanned clean on Windows 11 with real-time protection on, engine
+1.1.26080.3 — but that is a fact about today rather than a guarantee:
+
+- **SmartScreen** warns on an unsigned executable downloaded interactively.
+  The documented `irm … | iex` path is not affected, because nothing is
+  written to disk with a Mark of the Web, but anyone who downloads the agent
+  through a browser will see it.
+- **WDAC and AppLocker** policies commonly refuse unsigned executables
+  outright. In an environment that enforces one, the agent cannot be installed
+  at all.
+- **PyInstaller output is a routine false positive.** A signature is what
+  stops a future definition update turning into a fleet-wide outage.
+
+CI is ready for a certificate: set the repository secrets
+
+```
+WINDOWS_CERT_PFX_BASE64    # base64 of the .pfx
+WINDOWS_CERT_PASSWORD
+```
+
+and the build signs with SHA-256 and an RFC 3161 timestamp, then verifies the
+signature rather than trusting signtool's exit code. Without the secrets the
+step logs a notice and the build continues unsigned, so forks and pre-certificate
+builds still work.
+
+Signing runs **before** the zip is created, so the published SHA-256 — the one
+`install.ps1` verifies — covers the signed binary.

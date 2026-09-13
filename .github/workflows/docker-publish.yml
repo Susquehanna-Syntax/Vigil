@@ -185,9 +185,49 @@ jobs:
           --hidden-import win32event --hidden-import servicemanager
           --hidden-import win32timezone
           vigil_agent_main.py
+      # Authenticode signing, when a certificate is configured. Skipped
+      # cleanly when it is not, so the build works in a fork or before a
+      # certificate exists — an unsigned agent runs, it just meets SmartScreen
+      # on an interactive download and can trip WDAC/AppLocker policies that
+      # refuse unsigned executables. Defender does not currently flag the
+      # build (scanned clean with real-time protection on), but PyInstaller
+      # output is a routine false positive and a signature is what stops a
+      # definition update becoming an outage.
+      #
+      # Set WINDOWS_CERT_PFX_BASE64 and WINDOWS_CERT_PASSWORD to enable.
+      - name: Sign the Windows binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CERT_B64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          if (-not $env:CERT_B64) {
+            Write-Host "::notice::No signing certificate configured; shipping an unsigned agent."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "vigil-signing.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT_B64))
+          try {
+            $exe = "dist/${{ matrix.out }}/${{ matrix.out }}.exe"
+            $signtool = Get-ChildItem "C:/Program Files (x86)/Windows Kits/10/bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+                        Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1
+            if (-not $signtool) { Write-Host "::error::signtool.exe not found on the runner"; exit 1 }
+            & $signtool.FullName sign /f $pfx /p $env:CERT_PASSWORD `
+              /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $exe
+            if ($LASTEXITCODE -ne 0) { Write-Host "::error::signing failed"; exit 1 }
+            # Verify rather than trust the exit code.
+            $sig = Get-AuthenticodeSignature $exe
+            Write-Host ("signature status: " + $sig.Status)
+            if ($sig.Status -ne "Valid") { Write-Host "::error::signature did not verify"; exit 1 }
+          } finally {
+            Remove-Item -Force $pfx -ErrorAction SilentlyContinue
+          }
+
       # Ship the directory as one file so the download endpoint and the
       # digest check stay unchanged — the installer sniffs the zip magic and
-      # expands it.
+      # expands it. Signing happens first, so the digest covers the signed
+      # binary rather than an unsigned one.
       - name: Zip the Windows onedir build
         if: runner.os == 'Windows'
         shell: pwsh
