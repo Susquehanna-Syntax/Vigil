@@ -170,18 +170,30 @@ class UptimeHistoryTests(TestCase):
         from apps.statuspage.models import HostUptimeSample
         from apps.statuspage.views import _uptime_history
 
+        from datetime import datetime, time as dtime
+
+        from django.utils.timezone import localdate, make_aware
+
         h = make_host("web-1")
-        today = now()
         # Today: fully up. Yesterday: half down (degraded/down). 2 days ago: no data.
+        #
         # Two samples an hour apart, not two at the same instant: the beat
         # samples on a schedule, and (host, time) is unique now — the identical
         # timestamps this used to write are the duplicate the constraint
         # exists to prevent.
-        HostUptimeSample.objects.create(host=h, time=today, up=True)
+        #
+        # Anchored to midday of the target day rather than offset from now().
+        # `now() - timedelta(days=1, hours=1)` lands in the day before last
+        # whenever the clock is within an hour of midnight, which made this
+        # test fail for one hour in every twenty-four — _uptime_history buckets
+        # with localdate()/TruncDate, so the bucket is a calendar day, not a
+        # 24-hour window.
+        yesterday = localdate() - timedelta(days=1)
+        yesterday_noon = make_aware(datetime.combine(yesterday, dtime(12, 0)))
+        HostUptimeSample.objects.create(host=h, time=now(), up=True)
+        HostUptimeSample.objects.create(host=h, time=yesterday_noon, up=True)
         HostUptimeSample.objects.create(
-            host=h, time=today - timedelta(days=1), up=True)
-        HostUptimeSample.objects.create(
-            host=h, time=today - timedelta(days=1, hours=1), up=False)
+            host=h, time=yesterday_noon - timedelta(hours=1), up=False)
         hist = _uptime_history([h])[str(h.id)]
         self.assertEqual(len(hist["bars"]), 90)
         self.assertEqual(hist["bars"][-1]["state"], "up")        # today
