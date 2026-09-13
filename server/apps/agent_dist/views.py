@@ -139,6 +139,20 @@ def download_agent(request, platform):
     return response
 
 
+def uninstall_script(request):
+    """Return the bash uninstaller for Linux and macOS."""
+    base_url = f"{request.scheme}://{request.get_host()}"
+    content = render_to_string("agent_uninstall.sh", {"base_url": base_url})
+    return HttpResponse(content, content_type="text/x-shellscript")
+
+
+def uninstall_ps1(request):
+    """Return the PowerShell uninstaller for Windows."""
+    base_url = f"{request.scheme}://{request.get_host()}"
+    content = render_to_string("agent_uninstall.ps1", {"base_url": base_url})
+    return HttpResponse(content, content_type="text/plain")
+
+
 def install_script(request):
     """Return the bash installer for Linux and macOS."""
     base_url = f"{request.scheme}://{request.get_host()}"
