@@ -113,6 +113,96 @@ class ConditionEvalTests(TestCase):
             {"field": "metric_value", "op": "gt", "value": "abc"}, self.payload))
 
 
+class TextFieldTests(ConditionEvalTests):
+    """The "name or description" field, which match_field="any" folded into."""
+
+    def test_it_matches_either_candidate(self):
+        self.assertTrue(self.check("text", "contains", "/var"))          # message
+        self.assertTrue(self.check("text", "contains", "Disk almost"))   # rule name
+
+    def test_a_negative_operator_needs_both_to_miss(self):
+        """The old _apply_operator reading, and the safe one: a filter meant
+        to exclude something must not let it through because it matched the
+        field the operator was not thinking about."""
+        self.assertFalse(self.check("text", "not_contains", "/var"))
+        self.assertFalse(self.check("text", "not_contains", "Disk almost"))
+        self.assertTrue(self.check("text", "not_contains", "backup"))
+
+    def test_it_works_on_an_event_with_no_alert(self):
+        payload = {"host": self.host, "__event__": "host_approved"}
+        self.assertTrue(conditions.evaluate_one(
+            {"field": "text", "op": "contains", "value": "web1"}, payload))
+
+
+class FoldLegacyTests(TestCase):
+    """The three fixed filters, expressed as conditions. Migration 0015 runs
+    this over every existing automation, so equivalence is the whole point."""
+
+    def test_severity_becomes_a_rank_comparison(self):
+        self.assertEqual(
+            conditions.fold_legacy(min_severity="warning"),
+            [{"field": "severity", "op": "gte", "value": "warning"}])
+
+    def test_tags_become_is_one_of(self):
+        """tags_ok matched when the host carried ANY of them, not all."""
+        self.assertEqual(
+            conditions.fold_legacy(event_tags=["prod", " web "]),
+            [{"field": "host_tags", "op": "in", "value": "prod, web"}])
+
+    def test_match_field_any_becomes_the_text_field(self):
+        self.assertEqual(
+            conditions.fold_legacy(match_text="/var", match_field="any",
+                                   match_mode="contains"),
+            [{"field": "text", "op": "contains", "value": "/var"}])
+
+    def test_match_field_rule_and_message_keep_their_field(self):
+        self.assertEqual(
+            conditions.fold_legacy(match_text="x", match_field="rule",
+                                   match_mode="not_regex")[0],
+            {"field": "rule", "op": "not_regex", "value": "x"})
+        self.assertEqual(
+            conditions.fold_legacy(match_text="x", match_field="message",
+                                   match_mode="ends_with")[0],
+            {"field": "message", "op": "ends_with", "value": "x"})
+
+    def test_nothing_set_folds_to_nothing(self):
+        self.assertEqual(conditions.fold_legacy(), [])
+        self.assertEqual(conditions.fold_legacy(event_tags=[], match_text="  "), [])
+
+    def test_everything_folds_in_reading_order(self):
+        folded = conditions.fold_legacy(
+            min_severity="critical", event_tags=["prod"], match_text="/var")
+        self.assertEqual([c["field"] for c in folded],
+                         ["severity", "host_tags", "text"])
+        clean, err = conditions.validate(folded)
+        self.assertEqual(err, "", "fold_legacy produced something validate refuses")
+        self.assertEqual(clean, folded)
+
+
+class FoldEquivalenceTests(ConditionEvalTests):
+    """The folded conditions must select the same events the old filters did."""
+
+    def _auto(self):
+        folded = conditions.fold_legacy(
+            min_severity="warning", event_tags=["prod"], match_text="/var")
+        return Automation(name="a", trigger=Automation.Trigger.EVENT,
+                          event="alert_sent", condition_logic="all",
+                          conditions=folded)
+
+    def _matches(self, severity, message, tags):
+        self.alert.severity = severity
+        self.alert.message = message
+        self.host.tags = tags
+        return conditions.evaluate(self._auto(), self.payload)
+
+    def test_all_three_must_hold(self):
+        self.assertTrue(self._matches("warning", "/var full", ["prod"]))
+        self.assertTrue(self._matches("critical", "/var full", ["prod", "web"]))
+        self.assertFalse(self._matches("info", "/var full", ["prod"]))
+        self.assertFalse(self._matches("warning", "/opt full", ["prod"]))
+        self.assertFalse(self._matches("warning", "/var full", ["dev"]))
+
+
 class ConditionLogicTests(ConditionEvalTests):
     def _auto(self, logic, items):
         return Automation(
