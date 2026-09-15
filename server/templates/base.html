@@ -24,11 +24,19 @@
 <link rel="icon" type="image/png" href="{% static 'img/vigil-logo.png' %}">
 <link rel="apple-touch-icon" href="{% static 'img/vigil-logo.png' %}">
 {% block extra_head %}{% endblock %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
   // Apply the saved theme and density before first paint to avoid a flash.
   (function () {
     try {
+      // 'system' is stored as the word; resolve it here so the first paint
+      // is already right. Must match _storedTheme/setTheme in vigil-utils.js.
       var t = localStorage.getItem('vigil-theme') || 'dark';
+      if (t === 'system') {
+        t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          ? 'dark' : 'light';
+      } else if (t !== 'light') {
+        t = 'dark';
+      }
       document.documentElement.setAttribute('data-theme', t);
       var d = localStorage.getItem('vigil-density') || 'cozy';
       document.documentElement.setAttribute('data-density', d);
@@ -84,7 +92,7 @@
     </div>
 
     <div class="sidebar-spacer"></div>
-    <div class="sidebar-icon" data-tip="Toggle light / dark" id="theme-toggle" onclick="toggleTheme()">
+    <div class="sidebar-icon" data-tip="Toggle light / dark" id="theme-toggle" data-act="toggleTheme">
       <svg id="theme-icon-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
       <svg id="theme-icon-sun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </div>
@@ -107,9 +115,9 @@
 </div>
 
 {# Host detail drawer — slide-in panel. Logic: vigil-host-cards.js (openHostDetail / closeHostDetail) #}
-<div class="detail-overlay" id="detail-overlay" onclick="closeHostDetail()"></div>
+<div class="detail-overlay" id="detail-overlay" data-act="closeHostDetail"></div>
 <div class="detail-panel" id="detail-panel">
-  <button class="detail-close" onclick="closeHostDetail()">
+  <button class="detail-close" data-act="closeHostDetail">
     <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
   </button>
   <div class="detail-header">
@@ -134,7 +142,7 @@
       Agent: <span class="mono" id="detail-agent-version">—</span>
       <button class="btn btn-ghost btn-sm" id="detail-update-agent-btn"
               style="display:none; padding:2px 8px; color:var(--sky);"
-              onclick="forceUpdateAgent()">Update</button>
+              data-act="forceUpdateAgent">Update</button>
     </div>
   </div>
 
@@ -215,7 +223,7 @@
 
   <div class="detail-section" style="margin-top:auto; padding-top:24px; border-top:1px solid var(--s3);">
     <button type="button" class="btn btn-outline btn-rose-ghost" style="width:100%;" id="detail-delete-btn"
-            onclick="deleteHost(document.getElementById('detail-panel').dataset.hostId, document.getElementById('detail-panel').dataset.hostname, this)">
+            data-act="deleteHostFromDetailPanel" data-a1="$el">
       <svg viewBox="0 0 24 24" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
       Remove Agent
     </button>
@@ -224,25 +232,25 @@
 </div>
 
 {# Deploy task modal — full-width with YAML/Options/Schedule/Retry/Success tabs. Logic: vigil-deploy.js #}
-<div class="modal-overlay" id="deploy-overlay" onclick="closeDeployModal()"></div>
+<div class="modal-overlay" id="deploy-overlay" data-act="closeDeployModal"></div>
 <div class="modal modal-xwide" id="deploy-modal">
   <div class="modal-title">
     <span id="deploy-modal-title">Deploy Task</span>
-    <button class="modal-close" onclick="closeDeployModal()">
+    <button class="modal-close" data-act="closeDeployModal">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <form id="deploy-form" onsubmit="submitDeploy(event)">
+  <form id="deploy-form" data-submit="submitDeploy" data-a1="$event">
     <div class="deploy-grid">
 
       <!-- LEFT: tabbed view of definition / inputs / policy -->
       <div>
         <div class="deploy-tabs" role="tablist">
-          <button type="button" class="deploy-tab active" data-tab="yaml" onclick="setDeployTab('yaml')">YAML</button>
-          <button type="button" class="deploy-tab" data-tab="options" onclick="setDeployTab('options')" id="deploy-tab-options" style="display:none;">Options</button>
-          <button type="button" class="deploy-tab" data-tab="schedule" onclick="setDeployTab('schedule')">Schedule</button>
-          <button type="button" class="deploy-tab" data-tab="retry" onclick="setDeployTab('retry')">Retry</button>
-          <button type="button" class="deploy-tab" data-tab="criteria" onclick="setDeployTab('criteria')">Success</button>
+          <button type="button" class="deploy-tab active" data-tab="yaml" data-act="setDeployTab" data-a1="yaml">YAML</button>
+          <button type="button" class="deploy-tab" data-tab="options" data-act="setDeployTab" data-a1="options" id="deploy-tab-options" style="display:none;">Options</button>
+          <button type="button" class="deploy-tab" data-tab="schedule" data-act="setDeployTab" data-a1="schedule">Schedule</button>
+          <button type="button" class="deploy-tab" data-tab="retry" data-act="setDeployTab" data-a1="retry">Retry</button>
+          <button type="button" class="deploy-tab" data-tab="criteria" data-act="setDeployTab" data-a1="criteria">Success</button>
         </div>
 
         <div class="deploy-tab-panels">
@@ -261,7 +269,7 @@
           <!-- Schedule (execution window) -->
           <div class="deploy-panel" data-panel="schedule">
             <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;font-weight:600;">
-              <input type="checkbox" id="deploy-schedule-run-now" checked onchange="_onRunNowToggle()">
+              <input type="checkbox" id="deploy-schedule-run-now" checked data-change="_onRunNowToggle">
               Run now (no schedule window — dispatch on next check-in)
             </label>
             <div class="deploy-policy-help">When unchecked, tasks are only dispatched during this window (server timezone: <strong id="deploy-tz-label"></strong>). Outside the window, tasks stay queued until the next eligible check-in.</div>
@@ -323,16 +331,16 @@
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-shrink:0;">
           <div class="deploy-col-title" style="margin-bottom:0;">Target</div>
           <div class="deploy-tabs" style="margin-bottom:0;">
-            <button type="button" class="deploy-tab active" data-target-mode="hosts" onclick="setDeployTargetMode('hosts')">Hosts</button>
-            <button type="button" class="deploy-tab" data-target-mode="tags" onclick="setDeployTargetMode('tags')">By Tag</button>
+            <button type="button" class="deploy-tab active" data-target-mode="hosts" data-act="setDeployTargetMode" data-a1="hosts">Hosts</button>
+            <button type="button" class="deploy-tab" data-target-mode="tags" data-act="setDeployTargetMode" data-a1="tags">By Tag</button>
           </div>
         </div>
 
         <div id="deploy-target-hosts">
-          <input type="text" class="deploy-host-search" id="deploy-host-search" placeholder="Search hosts by hostname, IP, or mode…" oninput="filterDeployHosts()">
+          <input type="text" class="deploy-host-search" id="deploy-host-search" placeholder="Search hosts by hostname, IP, or mode…" data-input="filterDeployHosts">
           <div class="deploy-host-table">
             <div class="deploy-host-head">
-              <div><input type="checkbox" id="deploy-host-all" onchange="toggleAllDeployHosts(this.checked)" style="accent-color:var(--sky);width:14px;height:14px;cursor:pointer;"></div>
+              <div><input type="checkbox" id="deploy-host-all" data-change="toggleAllDeployHosts" data-a1="$checked" style="accent-color:var(--sky);width:14px;height:14px;cursor:pointer;"></div>
               <div>Hostname</div>
               <div>Mode</div>
             </div>
@@ -364,7 +372,7 @@
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px;gap:12px;">
       <span id="deploy-risk-label"></span>
       <div style="display:flex;gap:10px;">
-        <button type="button" class="btn btn-ghost" onclick="closeDeployModal()">Cancel</button>
+        <button type="button" class="btn btn-ghost" data-act="closeDeployModal">Cancel</button>
         <button type="submit" class="btn btn-sky" id="deploy-submit-btn">
           <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
           Deploy
@@ -375,11 +383,11 @@
 </div>
 
 {# Wave editor — same shape as the playbook editor: overlay + modal + save/cancel. #}
-<div class="modal-overlay" id="wave-editor-overlay" onclick="closeWaveEditor()"></div>
+<div class="modal-overlay" id="wave-editor-overlay" data-act="closeWaveEditor"></div>
 <div class="modal" id="wave-editor-modal">
   <div class="modal-title">
     <span id="wave-editor-title">New Wave</span>
-    <button class="modal-close" onclick="closeWaveEditor()">
+    <button class="modal-close" data-act="closeWaveEditor">
       <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
@@ -425,8 +433,8 @@
     </label>
   </div>
   <div class="modal-actions">
-    <button class="btn btn-ghost" onclick="closeWaveEditor()">Cancel</button>
-    <button class="btn btn-mint" id="wave-save-btn" onclick="saveWave()">Save wave</button>
+    <button class="btn btn-ghost" data-act="closeWaveEditor">Cancel</button>
+    <button class="btn btn-mint" id="wave-save-btn" data-act="saveWave">Save wave</button>
   </div>
 </div>
 
@@ -435,11 +443,11 @@ Rollout detail — opened by clicking a rollout card. Actions live here rather
 than on the card so the operator sees the wave progression and the gate
 settings before deciding anything.
 {% endcomment %}
-<div class="modal-overlay" id="rollout-detail-overlay" onclick="closeRolloutDetail()"></div>
+<div class="modal-overlay" id="rollout-detail-overlay" data-act="closeRolloutDetail"></div>
 <div class="modal modal-wide" id="rollout-detail-modal">
   <div class="modal-title">
     <span id="rollout-detail-title">Rollout</span>
-    <button class="modal-close" onclick="closeRolloutDetail()">
+    <button class="modal-close" data-act="closeRolloutDetail">
       <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
@@ -448,11 +456,11 @@ settings before deciding anything.
 </div>
 
 {# Rollout start modal — opened by openRolloutStart() in vigil-rollout.js; TOTP-gated like the deploy modal. #}
-<div class="modal-overlay" id="rollout-start-overlay" onclick="closeRolloutStart()"></div>
+<div class="modal-overlay" id="rollout-start-overlay" data-act="closeRolloutStart"></div>
 <div class="modal modal-wide" id="rollout-start-modal">
   <div class="modal-title">
     Start Rollout
-    <button class="modal-close" onclick="closeRolloutStart()">
+    <button class="modal-close" data-act="closeRolloutStart">
       <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
@@ -493,17 +501,17 @@ settings before deciding anything.
     </div>
   </div>
   <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
-    <button class="btn btn-ghost btn-sm" onclick="closeRolloutStart()">Cancel</button>
-    <button class="btn btn-sky btn-sm" id="rollout-start-submit" onclick="submitRolloutStart()">Start rollout</button>
+    <button class="btn btn-ghost btn-sm" data-act="closeRolloutStart">Cancel</button>
+    <button class="btn btn-sky btn-sm" id="rollout-start-submit" data-act="submitRolloutStart">Start rollout</button>
   </div>
 </div>
 
 {# Rollout halt/resume confirm — TOTP-gated operator actions. #}
-<div class="modal-overlay" id="rollout-action-overlay" onclick="closeRolloutAction()"></div>
+<div class="modal-overlay" id="rollout-action-overlay" data-act="closeRolloutAction"></div>
 <div class="modal" id="rollout-action-modal">
   <div class="modal-title">
     <span id="rollout-action-title">Confirm</span>
-    <button class="modal-close" onclick="closeRolloutAction()">
+    <button class="modal-close" data-act="closeRolloutAction">
       <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
@@ -514,17 +522,17 @@ settings before deciding anything.
     <div class="confirm-hint">Halting and resuming rollouts are 2FA-gated fleet-wide operations.</div>
   </div>
   <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
-    <button class="btn btn-ghost btn-sm" onclick="closeRolloutAction()">Cancel</button>
-    <button class="btn btn-sky btn-sm" id="rollout-action-confirm" onclick="confirmRolloutAction()">Confirm</button>
+    <button class="btn btn-ghost btn-sm" data-act="closeRolloutAction">Cancel</button>
+    <button class="btn btn-sky btn-sm" id="rollout-action-confirm" data-act="confirmRolloutAction">Confirm</button>
   </div>
 </div>
 
 {# Submit-to-community modal — opened from the task editor (openCommunitySubmit) #}
-<div class="modal-overlay" id="community-submit-overlay" onclick="closeCommunitySubmit()"></div>
+<div class="modal-overlay" id="community-submit-overlay" data-act="closeCommunitySubmit"></div>
 <div class="modal" id="community-submit-modal">
   <div class="modal-title">
     Submit to Community
-    <button class="modal-close" onclick="closeCommunitySubmit()">
+    <button class="modal-close" data-act="closeCommunitySubmit">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
@@ -546,19 +554,19 @@ settings before deciding anything.
     <strong>Auto-added to your YAML</strong> if you haven't set them: <code style="background:var(--s2);padding:1px 5px;border-radius:4px;font-family:'IBM Plex Mono',monospace;">author</code> (your Vigil username) and <code style="background:var(--s2);padding:1px 5px;border-radius:4px;font-family:'IBM Plex Mono',monospace;">created</code> (today's date). Required by the catalog so every entry is attributed.
   </div>
   <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;">
-    <button class="btn btn-ghost" onclick="copyCommunityYaml()">Copy YAML</button>
-    <a id="community-submit-link" class="btn btn-sky" target="_blank" rel="noopener" href="#" onclick="closeCommunitySubmit()">Open GitHub PR</a>
+    <button class="btn btn-ghost" data-act="copyCommunityYaml">Copy YAML</button>
+    <a id="community-submit-link" class="btn btn-sky" target="_blank" rel="noopener" href="#" data-act="closeCommunitySubmit">Open GitHub PR</a>
   </div>
 </div>
 
 {% comment %}SSH command modal — opened by openSshForCurrentMonitor() in
 vigil-monitor.js. Purely client-side: builds an ssh command for the operator's
 own terminal. Vigil never opens a connection to the host.{% endcomment %}
-<div class="modal-overlay" id="ssh-overlay" onclick="closeSshModal()"></div>
+<div class="modal-overlay" id="ssh-overlay" data-act="closeSshModal"></div>
 <div class="modal" id="ssh-modal">
   <div class="modal-title">
     <span id="ssh-modal-title">SSH to host</span>
-    <button class="modal-close" onclick="closeSshModal()">
+    <button class="modal-close" data-act="closeSshModal">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
@@ -569,24 +577,24 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
   </div>
   <div class="form-group">
     <label class="form-label" for="ssh-user">Username</label>
-    <input type="text" class="form-control" id="ssh-user" placeholder="root" oninput="updateSshCommand()">
+    <input type="text" class="form-control" id="ssh-user" placeholder="root" data-input="updateSshCommand">
   </div>
   <div class="ssh-cmd-row">
     <code class="ssh-cmd" id="ssh-cmd">ssh host</code>
-    <button class="btn btn-sky btn-sm" onclick="copySshCommand()">Copy</button>
+    <button class="btn btn-sky btn-sm" data-act="copySshCommand">Copy</button>
   </div>
   <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:18px;">
     <a id="ssh-uri-link" class="btn btn-ghost" href="#">Open ssh://</a>
-    <button class="btn btn-ghost" onclick="closeSshModal()">Close</button>
+    <button class="btn btn-ghost" data-act="closeSshModal">Close</button>
   </div>
 </div>
 
 {# Unmanaged device add/edit modal — opened by openDeviceModal() in vigil-devices.js #}
-<div class="modal-overlay" id="device-overlay" onclick="closeDeviceModal()"></div>
+<div class="modal-overlay" id="device-overlay" data-act="closeDeviceModal"></div>
 <div class="modal" id="device-modal">
   <div class="modal-title">
     <span id="device-modal-title">Add Device</span>
-    <button class="modal-close" onclick="closeDeviceModal()">
+    <button class="modal-close" data-act="closeDeviceModal">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
@@ -637,20 +645,20 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
     <textarea class="form-control" id="device-notes" placeholder="Anything worth remembering about this device"></textarea>
   </div>
   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-    <button class="btn btn-ghost" id="device-delete-btn" style="display:none;color:var(--rose);" onclick="deleteDeviceFromModal()">Delete</button>
+    <button class="btn btn-ghost" id="device-delete-btn" style="display:none;color:var(--rose);" data-act="deleteDeviceFromModal">Delete</button>
     <div style="display:flex;gap:10px;margin-left:auto;">
-      <button class="btn btn-ghost" onclick="closeDeviceModal()">Cancel</button>
-      <button class="btn btn-sky" onclick="saveDevice()">Save Device</button>
+      <button class="btn btn-ghost" data-act="closeDeviceModal">Cancel</button>
+      <button class="btn btn-sky" data-act="saveDevice">Save Device</button>
     </div>
   </div>
 </div>
 
 {# Task run detail modal — opened by openTaskDetail() in vigil-tasks.js #}
-<div class="modal-overlay" id="task-detail-overlay" onclick="closeTaskDetail()"></div>
+<div class="modal-overlay" id="task-detail-overlay" data-act="closeTaskDetail"></div>
 <div class="modal modal-wide" id="task-detail-modal" style="max-height:80vh;display:flex;flex-direction:column;">
   <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
     <span id="task-detail-title">Task Run</span>
-    <button class="modal-close" onclick="closeTaskDetail()">
+    <button class="modal-close" data-act="closeTaskDetail">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
@@ -659,11 +667,11 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 </div>
 
 {# Enrollment wizard — opened by openEnrollWizard() in vigil-enroll.js #}
-<div class="modal-overlay" id="enroll-overlay" onclick="closeEnrollWizard()"></div>
+<div class="modal-overlay" id="enroll-overlay" data-act="closeEnrollWizard"></div>
 <div class="modal modal-wide" id="enroll-modal" style="max-height:80vh;display:flex;flex-direction:column;">
   <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
     <span id="enroll-title">Add Host</span>
-    <button class="modal-close" onclick="closeEnrollWizard()">
+    <button class="modal-close" data-act="closeEnrollWizard">
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
@@ -681,16 +689,16 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
   <div id="enroll-s1" style="flex:1;overflow-y:auto;">
     <div class="totp-sub" style="margin-bottom:16px;">A unique enrollment token will be embedded in the install command. The agent will use it to register — then you approve it here.</div>
     <div class="tab-bar" style="margin-bottom:14px;">
-      <button class="tab t-sky active" id="enroll-os-unix" onclick="enrollSetOs('unix')">Linux &amp; macOS</button>
-      <button class="tab t-sky" id="enroll-os-windows" onclick="enrollSetOs('windows')">Windows</button>
+      <button class="tab t-sky active" id="enroll-os-unix" data-act="enrollSetOs" data-a1="unix">Linux &amp; macOS</button>
+      <button class="tab t-sky" id="enroll-os-windows" data-act="enrollSetOs" data-a1="windows">Windows</button>
     </div>
     <div style="margin-bottom:12px;">
       <label class="deploy-input-label">One-liner install command</label>
-      <div class="code-block mono" id="enroll-cmd" style="cursor:pointer;user-select:all;word-break:break-all;" onclick="copyEnrollCmd()" title="Click to copy">Generating…</div>
+      <div class="code-block mono" id="enroll-cmd" style="cursor:pointer;user-select:all;word-break:break-all;" data-act="copyEnrollCmd" title="Click to copy">Generating…</div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:20px;">
-      <button class="btn btn-ghost btn-sm" onclick="copyEnrollCmd()">Copy command</button>
-      <button class="btn btn-sky btn-sm" onclick="enrollGoStep2()">
+      <button class="btn btn-ghost btn-sm" data-act="copyEnrollCmd">Copy command</button>
+      <button class="btn btn-sky btn-sm" data-act="enrollGoStep2">
         I ran the command — Next
         <svg viewBox="0 0 24 24" style="width:13px;height:13px;"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </button>
@@ -724,8 +732,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
       <input class="form-control" type="text" id="enroll-approve-totp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
     </div>
     <div style="display:flex;gap:8px;">
-      <button class="btn btn-mint btn-sm" id="enroll-approve-btn" onclick="enrollApproveHost()">Approve &amp; Activate</button>
-      <button class="btn btn-outline btn-sm" onclick="closeEnrollWizard()">Cancel</button>
+      <button class="btn btn-mint btn-sm" id="enroll-approve-btn" data-act="enrollApproveHost">Approve &amp; Activate</button>
+      <button class="btn btn-outline btn-sm" data-act="closeEnrollWizard">Cancel</button>
     </div>
   </div>
 
@@ -734,7 +742,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
     <div style="margin-bottom:16px;"><svg viewBox="0 0 24 24" style="width:36px;height:36px;stroke:var(--mint);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
     <div style="font-weight:600;font-size:16px;margin-bottom:8px;color:var(--mint);">Host enrolled successfully</div>
     <div class="totp-sub" style="margin-bottom:24px;" id="enroll-done-msg">The agent is now online and monitoring.</div>
-    <button class="btn btn-sky btn-sm" onclick="closeEnrollWizard(); location.reload();">Done</button>
+    <button class="btn btn-sky btn-sm" data-act="closeEnrollWizardAndReload">Done</button>
   </div>
 </div>
 
@@ -744,10 +752,11 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 {# Bridge: passes server-rendered config to JS. Source: vigil/urls.py dashboard() view. #}
 {# Security: only non-secret values that Django has already rendered to the page. #}
 {#   No CSRF token here — vigil-utils.js getCsrf() reads from the cookie/DOM. #}
-{# CSP note: this is the only inline <script> block. When CSP is added, generate a #}
-{#   nonce server-side, apply it here AND to every <script src> tag below.        #}
+{# Inline, and nonced: apps/accounts/csp.py mints request.csp_nonce per   #}
+{#   request, so script-src carries no 'unsafe-inline'. The <script src>  #}
+{#   tags below need no nonce — script-src 'self' already covers them.    #}
 {% block config %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
   window.VIGIL_CONFIG = {
     timezone: '{{ vigil_timezone|escapejs }}',
     timeFormat: '{{ vigil_time_format|escapejs }}',
@@ -798,6 +807,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-inventory.js' %}"></script>
 <!-- vigil-devices.js — unmanaged device registry on the Inventory page (wraps navigateTo) -->
 <script src="{% static 'js/vigil-devices.js' %}"></script>
+<!-- vigil-instance-settings.js — Settings panes backed by /api/v1/instance-settings/ (scanners, email, retention, timezone) -->
+<script src="{% static 'js/vigil-instance-settings.js' %}"></script>
 <!-- vigil-settings.js — TOTP enroll / confirm / disable -->
 <script src="{% static 'js/vigil-settings.js' %}"></script>
 <!-- vigil-users.js — Users & Roles pane (list/create/role/delete) -->

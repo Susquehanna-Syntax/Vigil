@@ -4,8 +4,10 @@ child the agent spawns must inherit a clean environment, plus the initramfs
 poison check and the executor's sanitized env.
 """
 import os
+import stat
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -147,3 +149,96 @@ class ExecutorRunEnvTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TokenPermissionTests(unittest.TestCase):
+    """The agent token is a bearer credential for this machine.
+
+    The pinned server key and the nonce store were both chmod'd 0600 on write;
+    the config write-back was not, so a generated token inherited the umask —
+    0644 under the default — and the agent ran on as root with a
+    world-readable credential, having logged a warning nobody reads.
+    """
+
+    def _config(self, tmp, **extra):
+        import yaml
+        path = Path(tmp) / "agent.yml"
+        body = {"server_url": "https://vigil.example.com"}
+        body.update(extra)
+        with open(path, "w") as fh:
+            yaml.safe_dump(body, fh)
+        return path
+
+    def test_a_generated_token_is_written_0600(self):
+        from vigil_agent import config as cfg
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._config(tmp)
+            os.chmod(path, 0o644)
+            cfg.load_config(path)
+            mode = stat.S_IMODE(os.stat(path).st_mode)
+
+        self.assertEqual(mode, 0o600, f"token left at {oct(mode)}")
+
+    def test_an_existing_config_is_tightened_too(self):
+        """An install upgraded from a version that wrote 0644 should not stay
+        0644 for the rest of its life."""
+        from vigil_agent import config as cfg
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._config(tmp)
+            os.chmod(path, 0o666)
+            cfg.load_config(path)
+            self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+
+    def test_a_config_that_already_has_a_token_is_not_rewritten(self):
+        """No token generated means no write, so nothing to tighten and no
+        reason to touch the operator's file."""
+        from vigil_agent import config as cfg
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._config(tmp, agent_token="a" * 40)
+            before = os.stat(path).st_mtime_ns
+            cfg.load_config(path)
+            self.assertEqual(os.stat(path).st_mtime_ns, before)
+
+
+class PrivilegeMismatchTests(unittest.TestCase):
+    """The installer runs a monitor-mode agent unprivileged. If someone later
+    edits agent.yml to a mode that executes tasks, the unit still says
+    User=vigil-agent, and without this the only symptom is every task failing
+    with a permission error one at a time."""
+
+    def _config(self, mode):
+        cfg = MagicMock()
+        cfg.mode = mode
+        return cfg
+
+    def test_a_task_mode_without_root_warns(self):
+        from vigil_agent.__main__ import _warn_on_privilege_mismatch
+
+        for mode in ("managed", "full_control"):
+            with self.subTest(mode=mode):
+                with patch("vigil_agent.__main__.os.geteuid", return_value=1000), \
+                        patch("vigil_agent.__main__.logger") as log:
+                    _warn_on_privilege_mismatch(self._config(mode))
+                self.assertTrue(log.warning.called, f"{mode} did not warn")
+                said = log.warning.call_args.args[0]
+                self.assertIn("not running as root", said)
+
+    def test_monitor_mode_is_silent(self):
+        """Unprivileged monitoring is the intended state, not a problem."""
+        from vigil_agent.__main__ import _warn_on_privilege_mismatch
+
+        with patch("vigil_agent.__main__.os.geteuid", return_value=1000), \
+                patch("vigil_agent.__main__.logger") as log:
+            _warn_on_privilege_mismatch(self._config("monitor"))
+        self.assertFalse(log.warning.called)
+
+    def test_running_as_root_is_silent(self):
+        from vigil_agent.__main__ import _warn_on_privilege_mismatch
+
+        with patch("vigil_agent.__main__.os.geteuid", return_value=0), \
+                patch("vigil_agent.__main__.logger") as log:
+            _warn_on_privilege_mismatch(self._config("full_control"))
+        self.assertFalse(log.warning.called)

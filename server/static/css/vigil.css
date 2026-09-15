@@ -23,6 +23,23 @@
   --lemon: #e2d478;
   --coral: #f09080;
 
+  /* Accent channels, so a surface can be tinted in an accent rather than
+     wearing a stripe of it. Connor asked for whole pastel cards, not cards
+     with a line of colour down one edge. */
+  --rgb-rose: 242,160,184;
+  --rgb-lavender: 186,168,232;
+  --rgb-mint: 126,221,181;
+  --rgb-peach: 240,184,136;
+  --rgb-sky: 130,196,238;
+  --rgb-lemon: 226,212,120;
+  --rgb-coral: 240,144,128;
+  --rgb-grey: 110,107,118;
+
+  /* Pastel over a dark ground needs less alpha than over a light one. */
+  --tint-a: 0.15;
+  --tint-a-line: 0.34;
+  --tint-a-hover: 0.24;
+
   /* Business branding overrides this at runtime; unset branding is a no-op. */
   --brand: var(--sky);
 
@@ -54,6 +71,10 @@
   --text-1:  #1c1c21;
   --text-2:  #5c5966;
   --text-3:  #8a8793;
+  --rgb-grey: 138,135,147;
+  --tint-a: 0.20;
+  --tint-a-line: 0.44;
+  --tint-a-hover: 0.32;
   color-scheme: light;
 }
 /* Filled accent buttons keep dark text in light mode (accents stay pastel). */
@@ -65,6 +86,12 @@
 :root[data-theme="light"] .sidebar-icon.active { color: #ffffff; }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* The UA rule for [hidden] is display:none at the lowest specificity, so
+   any class that sets display beats it. `.auto-when { display: flex }`
+   did exactly that, and the cron fields showed on an event automation
+   whatever the trigger was set to. Hidden must mean hidden. */
+[hidden] { display: none !important; }
 
 body {
   font-family: 'DM Sans', sans-serif;
@@ -824,7 +851,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   padding: 12px 14px;
   background: var(--s2);
   border-radius: var(--r-md);
-  border-left: 3px solid var(--s4);
+  border: 1px solid var(--border);
 }
 .preview-step-num {
   width: 22px; height: 22px; border-radius: 50%;
@@ -1901,6 +1928,22 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   padding: 3px 10px; border-radius: 20px; background: rgba(130,196,238,0.14); color: var(--sky); }
 .chip-muted { background: var(--s3); color: var(--text-2); }
 .chip-rose { background: rgba(243,139,168,0.14); color: var(--rose); }
+
+/* A widget that could not load, as opposed to one with nothing in it. The two
+   used to render identically, so a broken metrics endpoint said "No GPU
+   reported" — a wrong diagnosis stated as a fact. */
+.dash-failed {
+  display: flex; align-items: center; justify-content: center;
+  flex-wrap: wrap; gap: 8px; text-align: center;
+  color: var(--rose);
+}
+.dash-failed .muted-note { color: var(--text-3); }
+.dash-failed-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+  background: rgba(243,139,168,0.14); color: var(--rose);
+  font-weight: 700; font-size: 12px; line-height: 1;
+}
 .pill-on  { background: rgba(126,221,181,0.15); color: var(--mint); }
 .pill-off { background: var(--s3); color: var(--text-3); }
 
@@ -2139,10 +2182,15 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 
 .te-preview { flex: 1; min-height: 0; background: var(--s2); border: 1px solid var(--border);
   border-radius: var(--r-md); padding: 14px; overflow-y: auto; }
-.te-preview-inner { border-left: 4px solid var(--s4); padding-left: 14px; }
-.te-preview-inner.task-low { border-left-color: var(--mint); }
-.te-preview-inner.task-standard { border-left-color: var(--sky); }
-.te-preview-inner.task-high { border-left-color: var(--rose); }
+.te-preview-inner {
+  --edge-rgb: var(--rgb-grey);
+  background: rgba(var(--edge-rgb), var(--tint-a));
+  border: 1px solid rgba(var(--edge-rgb), var(--tint-a-line));
+  border-radius: var(--r-md); padding: 14px 16px;
+}
+.te-preview-inner.task-low { --edge-rgb: var(--rgb-mint); }
+.te-preview-inner.task-standard { --edge-rgb: var(--rgb-sky); }
+.te-preview-inner.task-high { --edge-rgb: var(--rgb-rose); }
 .te-preview-name { font-weight: 600; font-size: 15px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
 .te-step { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .te-step:last-child { border-bottom: 0; }
@@ -2889,23 +2937,25 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── Dashboard list cards ───────────────────────────────────────────────
    The list widgets used to emit flat rows of text, which read as a wall at any
-   size. Each row is now a skinny card carrying a left edge in the colour of
-   whatever the row is about, so severity and state are legible without a word
-   spent on them. Cards that lead somewhere say so on hover. */
+   size. Each row is now a skinny card tinted in the colour of whatever the row
+   is about, so severity and state are legible without a word spent on them.
+   Cards that lead somewhere say so on hover. */
 .dash-cards { display: flex; flex-direction: column; gap: 6px; }
 .dash-card {
+  --edge-rgb: var(--rgb-grey);
   display: flex; align-items: center; gap: 10px;
-  padding: 7px 10px;
-  background: var(--s2);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--text-3);
+  padding: 8px 11px;
+  background: rgba(var(--edge-rgb), var(--tint-a));
+  border: 1px solid rgba(var(--edge-rgb), var(--tint-a-line));
   border-radius: var(--r-sm);
   font-size: 12px;
   transition: background .18s, border-color .18s, transform .18s var(--ease-out-expo);
 }
 .dash-card[data-nav], .dash-card[data-nav-host] { cursor: pointer; }
 .dash-card[data-nav]:hover, .dash-card[data-nav-host]:hover {
-  background: var(--s3); border-color: var(--s4); transform: translateX(2px);
+  background: rgba(var(--edge-rgb), var(--tint-a-hover));
+  border-color: rgba(var(--edge-rgb), 0.55);
+  transform: translateX(2px);
 }
 .dash-card[data-nav]:active, .dash-card[data-nav-host]:active { transform: translateX(1px) scale(0.995); }
 .dash-card-main { flex: 1; min-width: 0; }
@@ -2926,13 +2976,13 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* The edge colour is the row's meaning: severity for alerts and findings,
    run state for history, up/down for containers and automations. */
-.dash-card.edge-rose  { border-left-color: var(--rose); }
-.dash-card.edge-peach { border-left-color: var(--peach); }
-.dash-card.edge-lemon { border-left-color: var(--lemon); }
-.dash-card.edge-mint  { border-left-color: var(--mint); }
-.dash-card.edge-sky   { border-left-color: var(--sky); }
-.dash-card.edge-lav   { border-left-color: var(--lavender); }
-.dash-card.edge-grey  { border-left-color: var(--text-3); }
+.dash-card.edge-rose  { --edge-rgb: var(--rgb-rose); }
+.dash-card.edge-peach { --edge-rgb: var(--rgb-peach); }
+.dash-card.edge-lemon { --edge-rgb: var(--rgb-lemon); }
+.dash-card.edge-mint  { --edge-rgb: var(--rgb-mint); }
+.dash-card.edge-sky   { --edge-rgb: var(--rgb-sky); }
+.dash-card.edge-lav   { --edge-rgb: var(--rgb-lavender); }
+.dash-card.edge-grey  { --edge-rgb: var(--rgb-grey); }
 .dash-card-dot.edge-rose  { background: var(--rose); }
 .dash-card-dot.edge-peach { background: var(--peach); }
 .dash-card-dot.edge-lemon { background: var(--lemon); }
@@ -3104,3 +3154,54 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .dash-uptime-bar { flex: 1; min-width: 2px; height: 100%; border-radius: 2px; opacity: .85; }
 .dash-uptime-bar:hover { opacity: 1; }
 .dash-toolbar-spacer { flex: 1; }
+
+/* ── Instance settings panes (apps/instance) ─────────────────────────────
+   One renderer builds every field from the server's registry, so the layout
+   has to hold whatever the registry says: two columns where there is room,
+   one on a narrow screen, and a full-width row for a checkbox so its label
+   sits beside the box rather than above it. */
+.is-fields {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px 20px;
+}
+.is-field { min-width: 0; }
+.is-field-check { grid-column: 1 / -1; }
+.is-note { margin-top: 6px; font-size: 11px; color: var(--text-3); line-height: 1.5; }
+.is-note code {
+  font-family: var(--font-mono); font-size: 11px; color: var(--sky);
+  background: var(--s2); padding: 1px 5px; border-radius: 5px;
+}
+.is-locked .form-control { opacity: .6; cursor: not-allowed; }
+.is-check { display: flex; align-items: center; gap: 9px; cursor: pointer; font-size: 13px; }
+.is-check input { width: 15px; height: 15px; accent-color: var(--sky); cursor: pointer; }
+.is-clear {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; color: var(--rose); text-decoration: underline;
+}
+.is-actions {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);
+}
+.is-result { font-size: 12px; }
+.is-result.is-ok { color: var(--mint); }
+.is-result.is-bad { color: var(--rose); }
+
+/* Jackil ticket list — the link is the point of each row, so it reads as a
+   control rather than as default browser blue. */
+#jackil-tickets a { color: var(--sky); text-decoration: none; font-weight: 600; }
+#jackil-tickets a:hover { text-decoration: underline; }
+
+/* ── Automation conditions ───────────────────────────────────────────────
+   A row is field / operator / value / remove, wrapping to its own lines on a
+   narrow screen rather than squeezing the value box to nothing. */
+.auto-cond-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.auto-cond-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 10px; margin-bottom: 8px;
+  background: rgba(var(--rgb-sky), var(--tint-a));
+  border: 1px solid rgba(var(--rgb-sky), var(--tint-a-line));
+  border-radius: var(--r-sm);
+}
+.auto-cond-row .form-control { display: inline-block; width: auto; }
+.auto-cond-row .auto-cond-value { flex: 1 1 160px; min-width: 0; }
+.auto-cond-empty { font-size: 12px; color: var(--text-3); padding: 4px 0 8px; }

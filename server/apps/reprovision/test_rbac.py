@@ -48,7 +48,7 @@ class RebuildEndpointAuthTests(TestCase):
         self.client.force_login(user)
         return user
 
-    def _create(self, **over):
+    def _create(self, remote_addr="127.0.0.1", **over):
         body = {
             "host": str(self.host.id), "image": str(self.image.id),
             "profile": str(self.profile.id), "password": "pw",
@@ -56,8 +56,11 @@ class RebuildEndpointAuthTests(TestCase):
             "acknowledge_plaintext_transport": True,
         }
         body.update(over)
+        # REMOTE_ADDR matters now: the transport gate reads the socket peer,
+        # so a test that wants the gate to fire has to come from a public one.
         return self.client.post("/api/v1/reprovision/jobs/", body,
-                                content_type="application/json")
+                                content_type="application/json",
+                                REMOTE_ADDR=remote_addr)
 
     def test_anonymous_cannot_create_a_job(self):
         self.assertIn(self._create().status_code, (401, 403))
@@ -141,10 +144,22 @@ class RebuildEndpointAuthTests(TestCase):
 
     @patch("apps.accounts.totp.require_totp_confirmation", return_value=None)
     def test_plaintext_transport_must_be_acknowledged(self, _totp):
+        """From a public peer, over plain HTTP, without the acknowledgement."""
         self._login(Role.ADMIN)
-        resp = self._create(acknowledge_plaintext_transport=False)
+        resp = self._create(remote_addr="93.184.216.34",
+                            acknowledge_plaintext_transport=False)
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.json().get("code"), "plaintext_transport")
+
+    @patch("apps.accounts.totp.require_totp_confirmation", return_value=None)
+    def test_a_lan_peer_needs_no_acknowledgement(self, _totp):
+        """The case the gate exists to permit: a homelab rebuild over the LAN,
+        where there is no certificate to be had and the installer is on the
+        same wire."""
+        self._login(Role.ADMIN)
+        resp = self._create(remote_addr="192.168.1.40",
+                            acknowledge_plaintext_transport=False)
+        self.assertNotEqual(resp.status_code, 400)
 
     @patch("apps.accounts.totp.require_totp_confirmation", return_value=None)
     def test_wrong_typed_hostname_is_refused(self, _totp):
@@ -284,33 +299,132 @@ class PreflightEndpointTests(TestCase):
 class PlainHttpOnALanTests(TestCase):
     """A self-hosted Vigil is normally reached at http://10.x on the LAN, with
     no certificate to be had. Refusing the rebuild there blocked the feature
-    outright rather than protecting anything."""
+    outright rather than protecting anything.
 
-    def _refused(self, host):
+    The question is answered from the socket peer, not the Host header — see
+    test_the_host_header_cannot_forge_a_private_network below for why.
+    """
+
+    def _refused(self, peer):
         from apps.reprovision.views import _served_on_a_private_network
 
         class _Req:
+            META = {"REMOTE_ADDR": peer}
+
             def get_host(self):
-                return host
+                # Deliberately a public name: nothing may read this.
+                return "vigil.example.com"
 
         return not _served_on_a_private_network(_Req())
 
     def test_rfc1918_addresses_are_treated_as_private(self):
-        for host in ("10.0.0.109:8000", "192.168.1.50", "172.16.4.9:8080"):
-            self.assertFalse(self._refused(host), host)
+        for peer in ("10.0.0.109", "192.168.1.50", "172.16.4.9"):
+            self.assertFalse(self._refused(peer), peer)
 
     def test_loopback_is_private(self):
-        self.assertFalse(self._refused("127.0.0.1:8000"))
-        self.assertFalse(self._refused("localhost:8000"))
+        self.assertFalse(self._refused("127.0.0.1"))
+        self.assertFalse(self._refused("::1"))
 
-    def test_lan_names_are_private(self):
-        for host in ("vigil.local", "vigil.lan", "nas.internal", "box.home"):
-            self.assertFalse(self._refused(host), host)
+    def test_a_public_peer_still_requires_the_acknowledgement(self):
+        for peer in ("93.184.216.34", "8.8.8.8", "2606:2800:220:1:248:1893:25c8:1946"):
+            self.assertTrue(self._refused(peer), peer)
 
-    def test_a_public_name_still_requires_the_acknowledgement(self):
-        for host in ("vigil.example.com", "93.184.216.34"):
-            self.assertTrue(self._refused(host), host)
+    def test_the_host_header_cannot_forge_a_private_network(self):
+        """The bypass this gate had.
+
+        `_served_on_a_private_network` used to read `request.get_host()`, which
+        is the client's own Host header, checked only against ALLOWED_HOSTS —
+        and ALLOWED_HOSTS keeps its default ["localhost", "127.0.0.1"] even
+        after VIGIL_PUBLIC_URL appends to it. So on an internet-facing Vigil
+        configured exactly as documented, `Host: 127.0.0.1` read as private and
+        the answer file went out over plain HTTP with nothing recorded.
+        """
+        from apps.reprovision.views import _served_on_a_private_network
+
+        class _SpoofedReq:
+            META = {"REMOTE_ADDR": "93.184.216.34"}   # a public peer
+
+            def get_host(self):
+                return "127.0.0.1"                    # the old bypass
+
+        self.assertFalse(_served_on_a_private_network(_SpoofedReq()))
+
+    def test_an_ipv6_mapped_ipv4_peer_is_read_as_that_ipv4(self):
+        """::ffff:127.0.0.1 is loopback, and is the classic way past a check
+        that only looks at the textual form."""
+        self.assertFalse(self._refused("::ffff:127.0.0.1"))
+        self.assertTrue(self._refused("::ffff:93.184.216.34"))
 
     def test_the_override_setting_demands_it_everywhere(self):
         with override_settings(VIGIL_REQUIRE_HTTPS_FOR_REBUILD=True):
             self.assertTrue(self._refused("10.0.0.109:8000"))
+
+
+class ImageUploadPreflightTests(TestCase):
+    """An ISO upload that runs out of room fills the volume holding every
+    registered image, and surfaces as an ENOSPC from whatever happened to write
+    next. The spool sharing that volume is deliberate; the missing preflight
+    was the gap.
+
+    The size is driven by the real file and the configured ceiling rather than
+    by faking `uploaded.size` — DRF's parser builds its own UploadedFile, so
+    patching the test's SimpleUploadedFile never reaches the view.
+    """
+
+    def setUp(self):
+        import tempfile
+
+        from django.contrib.auth import get_user_model
+        from django.test import override_settings
+
+        # Never the real /var/lib/vigil: these tests are about the preflight,
+        # and the ones that get past it must not depend on a volume that only
+        # exists inside a container.
+        self._tmp = tempfile.TemporaryDirectory()
+        self._settings = override_settings(VIGIL_IMAGE_ROOT=self._tmp.name)
+        self._settings.enable()
+        self.addCleanup(self._settings.disable)
+        self.addCleanup(self._tmp.cleanup)
+
+        self.admin = get_user_model().objects.create_user(
+            username="admin", password="pw", is_staff=True, is_superuser=True)
+        self.client.force_login(self.admin)
+
+    def _upload(self, free_bytes=500 * 1024 ** 3):
+        from unittest.mock import patch
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        iso = SimpleUploadedFile("x.iso", b"x" * 4096,
+                                 content_type="application/octet-stream")
+        with patch("apps.reprovision.views._free_bytes_for_images",
+                   return_value=free_bytes):
+            return self.client.post("/api/v1/reprovision/images/upload/", {
+                "name": "Ubuntu", "os_family": "ubuntu", "version": "24.04",
+                "sha256": "a" * 64, "iso": iso,
+            })
+
+    @override_settings(VIGIL_MAX_IMAGE_BYTES=1024)
+    def test_an_upload_larger_than_the_ceiling_is_refused(self):
+        resp = self._upload()
+        self.assertEqual(resp.status_code, 413, resp.content)
+        self.assertIn("over the", resp.json()["error"])
+
+    def test_an_upload_with_nowhere_to_land_is_refused(self):
+        """Refused before a byte is streamed, not discovered halfway through."""
+        resp = self._upload(free_bytes=0)
+        self.assertEqual(resp.status_code, 507, resp.content)
+        self.assertIn("Not enough space", resp.json()["error"])
+
+    def test_an_upload_that_fits_is_not_blocked_by_the_preflight(self):
+        """The check must not become the reason a good upload fails: this one
+        gets past it and on to the real verify/import path, where it is
+        rejected for the checksum it was given — which is the next gate, not
+        this one."""
+        resp = self._upload()
+        self.assertNotIn(resp.status_code, (413, 507))
+
+    def test_an_unknowable_free_space_does_not_refuse(self):
+        """A preflight that cannot run must not refuse a legitimate upload."""
+        resp = self._upload(free_bytes=None)
+        self.assertNotIn(resp.status_code, (413, 507))

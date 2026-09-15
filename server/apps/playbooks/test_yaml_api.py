@@ -147,7 +147,7 @@ class AutomationYamlApiTests(TestCase):
 
     def test_export_then_import_recreates_the_automation(self):
         automation = Automation.objects.create(
-            name="Prune On Low Disk", trigger="event", event="alert_fired",
+            name="Prune On Low Disk", trigger="event", event="alert_sent",
             min_severity="warning", action_kind="playbook",
             playbook=self.playbook, target="event_host", created_by=self.user)
         exported = self.client.get(
@@ -158,7 +158,7 @@ class AutomationYamlApiTests(TestCase):
                              content_type="application/json")
         self.assertEqual(r.status_code, 201, r.content[:400])
         rebuilt = Automation.objects.get(name="Prune On Low Disk")
-        self.assertEqual(rebuilt.event, "alert_fired")
+        self.assertEqual(rebuilt.event, "alert_sent")
         self.assertEqual(rebuilt.playbook_id, self.playbook.id)
 
     def test_export_of_a_host_pinned_automation_is_a_400_with_a_reason(self):
@@ -167,7 +167,7 @@ class AutomationYamlApiTests(TestCase):
         host = Host.objects.create(hostname="h", ip_address="10.0.0.7",
                                    agent_token="v" * 32)
         automation = Automation.objects.create(
-            name="Pinned", trigger="event", event="alert_fired",
+            name="Pinned", trigger="event", event="alert_sent",
             action_kind="task", task_definition=self.definition,
             target="host", target_host=host, created_by=self.user)
         r = self.client.get(f"/api/v1/automations/{automation.id}/yaml/")
@@ -176,7 +176,7 @@ class AutomationYamlApiTests(TestCase):
 
     def test_import_refuses_an_unknown_playbook_slug(self):
         r = self.client.post("/api/v1/automations/yaml/", {
-            "yaml": "name: X\ntrigger: event\nevent: alert_fired\n"
+            "yaml": "name: X\ntrigger: event\nevent: alert_sent\n"
                     "action_kind: playbook\nplaybook: not-here\n",
         }, content_type="application/json")
         self.assertEqual(r.status_code, 400)
@@ -206,12 +206,12 @@ class AutomationYamlApiTests(TestCase):
         host = Host.objects.create(hostname="h2", ip_address="10.0.0.8",
                                    agent_token="w" * 32)
         automation = Automation.objects.create(
-            name="Repinned", trigger="event", event="alert_fired",
+            name="Repinned", trigger="event", event="alert_sent",
             action_kind="task", task_definition=self.definition,
             target="host", target_host=host, created_by=self.user)
         r = self.client.post("/api/v1/automations/yaml/", {
             "automation_id": str(automation.id),
-            "yaml": "name: Repinned\ntrigger: event\nevent: alert_fired\n"
+            "yaml": "name: Repinned\ntrigger: event\nevent: alert_sent\n"
                     "action_kind: task\ntask: clear-temp-files\ntarget: all\n",
         }, content_type="application/json")
         self.assertEqual(r.status_code, 200, r.content[:400])

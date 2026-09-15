@@ -19,16 +19,31 @@ def _dist_dir() -> Path:
 
 
 def _bundled_path(platform: str) -> Path:
-    """Path of the bundled binary for *platform*, tolerating a ``.exe`` suffix.
+    """Path of the bundled artifact for *platform*.
 
-    PyInstaller appends ``.exe`` on Windows and the CI artifact keeps it, so
-    the Windows bundle lands on disk as ``vigil-agent-windows-amd64.exe``.
-    Prefer the exact name, fall back to the ``.exe`` variant.
+    Three shapes, checked in this order:
+
+    ``.zip``
+        A PyInstaller ``--onedir`` build, zipped. Windows needs this: a
+        ``--onefile`` executable cannot host a Windows service, because its
+        bootloader extracts and re-executes, so the process the SCM is
+        watching never calls StartServiceCtrlDispatcher and the start times
+        out with error 1053. Preferred where present, since it is the only
+        Windows artifact that can actually run as a service.
+    exact name
+        A ``--onefile`` build for Linux and macOS.
+    ``.exe``
+        A ``--onefile`` Windows build. Still served so existing deployments
+        keep working, but it cannot be installed as a service.
     """
-    exact = _dist_dir() / f"vigil-agent-{platform}"
+    d = _dist_dir()
+    as_zip = d / f"vigil-agent-{platform}.zip"
+    if as_zip.is_file():
+        return as_zip
+    exact = d / f"vigil-agent-{platform}"
     if exact.is_file():
         return exact
-    with_exe = _dist_dir() / f"vigil-agent-{platform}.exe"
+    with_exe = d / f"vigil-agent-{platform}.exe"
     if with_exe.is_file():
         return with_exe
     return exact
@@ -95,6 +110,14 @@ def download_agent(request, platform):
         # bundled.name keeps the .exe suffix for Windows downloads
         response["Content-Disposition"] = f'attachment; filename="{bundled.name}"'
         response["X-Vigil-Version"] = getattr(settings, "VIGIL_AGENT_VERSION", "")
+        # The installer verifies this before it makes the file executable
+        # and refuses without it. Only the manually-uploaded DB record used to
+        # carry a digest, so the path every default install actually takes —
+        # the bundled build artifact — was the one that shipped unverifiable.
+        # binary_sha256 is the same function that stamps digests into
+        # update_agent tasks, so the installer and the self-updater check the
+        # same number by construction rather than by coincidence.
+        response["X-Vigil-SHA256"] = binary_sha256(platform)
         return response
 
     # Fall back to DB record (manually uploaded override)
@@ -114,6 +137,20 @@ def download_agent(request, platform):
     if record.sha256:
         response["X-Vigil-SHA256"] = record.sha256
     return response
+
+
+def uninstall_script(request):
+    """Return the bash uninstaller for Linux and macOS."""
+    base_url = f"{request.scheme}://{request.get_host()}"
+    content = render_to_string("agent_uninstall.sh", {"base_url": base_url})
+    return HttpResponse(content, content_type="text/x-shellscript")
+
+
+def uninstall_ps1(request):
+    """Return the PowerShell uninstaller for Windows."""
+    base_url = f"{request.scheme}://{request.get_host()}"
+    content = render_to_string("agent_uninstall.ps1", {"base_url": base_url})
+    return HttpResponse(content, content_type="text/plain")
 
 
 def install_script(request):

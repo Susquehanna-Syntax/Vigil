@@ -986,12 +986,48 @@ def _run_package_updates(params: dict, _config: AgentConfig) -> str:
 
 
 def _clear_temp_files(params: dict, _config: AgentConfig) -> str:
+    """Delete files in the system temp directory older than N days.
+
+    Done in Python rather than by shelling out. The previous implementation ran
+
+        find /tmp -type f -mtime +N -delete
+
+    unconditionally, which on Windows resolved "find" to
+    C:\\Windows\\System32\\FIND.exe — a string-search tool that shares only a
+    name — and failed with "FIND: Invalid switch". /tmp does not exist there
+    either. Doing the walk here means one implementation, no shell, and the
+    same semantics everywhere.
+    """
     days = int(params.get("older_than_days", 7))
     if days < 0:
         raise ValueError("older_than_days must be non-negative")
-    return _run(
-        ["find", "/tmp", "-type", "f", "-mtime", f"+{days}", "-delete"]
-    )
+
+    temp_root = Path(tempfile.gettempdir())
+    cutoff = time.time() - days * 86400
+    removed = 0
+    freed = 0
+    skipped = 0
+    for path in temp_root.rglob("*"):
+        try:
+            if not path.is_file() or path.is_symlink():
+                continue
+            st = path.stat()
+            if st.st_mtime >= cutoff:
+                continue
+            size = st.st_size
+            path.unlink()
+        except OSError:
+            # A temp directory always has files something else holds open,
+            # and on Windows that is the normal case rather than the
+            # exception. One locked file must not fail the whole task.
+            skipped += 1
+            continue
+        removed += 1
+        freed += size
+
+    return (f"Removed {removed} file(s) older than {days} day(s) from "
+            f"{temp_root}, freeing {freed // 1024} KiB"
+            + (f"; {skipped} in use or not permitted" if skipped else ""))
 
 
 def _execute_script(params: dict, config: AgentConfig) -> str:
@@ -1002,8 +1038,11 @@ def _execute_script(params: dict, config: AgentConfig) -> str:
     scripts_dir = config.scripts_dir.resolve()
     script_path = (scripts_dir / script_name).resolve()
 
-    # Path traversal protection
-    if not str(script_path).startswith(str(scripts_dir) + "/"):
+    # Path traversal protection. is_relative_to() rather than a string
+    # startswith on str(scripts_dir) + "/": that hardcoded separator never
+    # matches a Windows path, so every script was refused there — fail-safe,
+    # but it meant execute_script could not work on Windows at all.
+    if not script_path.is_relative_to(scripts_dir):
         raise ValueError(
             f"Script path escapes scripts directory: {script_name!r}"
         )
@@ -1011,12 +1050,17 @@ def _execute_script(params: dict, config: AgentConfig) -> str:
     if not script_path.is_file():
         raise ValueError(f"Script not found: {script_name}")
 
-    st = script_path.stat()
-    if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
-        raise ValueError(
-            f"Script {script_name} is writable by group/others — refusing "
-            f"to execute. Run: chmod go-w {script_path}"
-        )
+    if os.name == "posix":
+        # POSIX mode bits only. Python synthesises st_mode on Windows, so this
+        # check there is meaningless and its remedy — chmod — is not a command
+        # the operator has. Windows access is governed by the ACL on
+        # scripts_dir, which the installer restricts.
+        st = script_path.stat()
+        if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            raise ValueError(
+                f"Script {script_name} is writable by group/others — refusing "
+                f"to execute. Run: chmod go-w {script_path}"
+            )
 
     return _run([str(script_path)])
 
@@ -1532,6 +1576,80 @@ def _reprovision_cleanup(params: dict, config: AgentConfig) -> str:
     return reprovision.cleanup(params, config)
 
 
+def _looks_like_zip(path: str) -> bool:
+    """True when the downloaded artifact is a zip rather than a bare binary."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(2) == b"PK"
+    except OSError:
+        return False
+
+
+def _stage_onedir_update(archive_path: str, current_exe: Path) -> None:
+    """Unpack a onedir update beside the install and swap it in on restart.
+
+    Windows cannot replace a running executable — the file is locked for as
+    long as the process lives, and a onedir build is a whole directory of DLLs
+    besides. So the new build is extracted next to the old one and a detached
+    helper does the swap once the service has actually stopped.
+
+    Refuses rather than improvises if the layout is not what it expects. A
+    half-swapped agent directory is worse than a failed update: the update can
+    be retried, a broken install needs someone at the machine.
+    """
+    import zipfile
+
+    install_dir = current_exe.parent
+    if sys.platform != "win32":
+        raise ValueError(
+            "received a zip agent artifact on a non-Windows platform; "
+            "refusing to self-update")
+
+    staging = install_dir.parent / (install_dir.name + ".new")
+    backup = install_dir.parent / (install_dir.name + ".old")
+    for path in (staging, backup):
+        shutil.rmtree(path, ignore_errors=True)
+
+    with zipfile.ZipFile(archive_path) as zf:
+        zf.extractall(staging)
+    os.unlink(archive_path)
+
+    if not list(staging.rglob(current_exe.name)):
+        shutil.rmtree(staging, ignore_errors=True)
+        raise ValueError(
+            f"the update archive contains no {current_exe.name}; "
+            "refusing to swap it in")
+
+    # A detached cmd: this process is about to be stopped, so the swap cannot
+    # run inside it. Waits for the service to stop before touching anything.
+    script = install_dir.parent / "vigil-agent-update.cmd"
+    script.write_text(
+        "@echo off\r\n"
+        "sc stop vigil-agent >nul 2>&1\r\n"
+        "for /l %%i in (1,1,30) do (\r\n"
+        '  sc query vigil-agent | find "STOPPED" >nul && goto swap\r\n'
+        "  timeout /t 1 /nobreak >nul\r\n"
+        ")\r\n"
+        ":swap\r\n"
+        f'rmdir /s /q "{backup}" >nul 2>&1\r\n'
+        f'move "{install_dir}" "{backup}" >nul 2>&1\r\n'
+        f'move "{staging}" "{install_dir}" >nul 2>&1\r\n'
+        f'if not exist "{install_dir}\\{current_exe.name}" '
+        f'move "{backup}" "{install_dir}" >nul 2>&1\r\n'
+        "sc start vigil-agent >nul 2>&1\r\n"
+        f'rmdir /s /q "{backup}" >nul 2>&1\r\n'
+        # Delete the helper itself. "start /b cmd /c del" detaches so the
+        # script is not holding its own file open when the delete lands;
+        # without it every update leaves a .cmd in Program Files.
+        f'start /b "" cmd /c del /q "{script}"\r\n',
+        encoding="ascii")
+    subprocess.Popen(
+        ["cmd", "/c", "start", "/b", "", str(script)],
+        env=clean_env(), close_fds=True,
+        creationflags=getattr(subprocess, "DETACHED_PROCESS", 0),
+    )
+
+
 def _update_agent(params: dict, config: AgentConfig) -> str:
     """Download the latest agent binary from the server and replace this binary.
 
@@ -1589,8 +1707,16 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
                 f"Downloaded agent binary failed SHA-256 verification: "
                 f"expected {expected_sha}, got {actual_sha}"
             )
-        os.chmod(tmp_path, 0o755)
-        os.replace(tmp_path, current_exe)
+        if _looks_like_zip(tmp_path):
+            # Windows ships a PyInstaller --onedir build as a zip, because a
+            # --onefile executable cannot host a Windows service. Writing that
+            # archive over the service binary would replace the agent with a
+            # zip file and brick the host, so the whole directory is swapped
+            # instead, after the service has stopped and released its files.
+            _stage_onedir_update(tmp_path, current_exe)
+        else:
+            os.chmod(tmp_path, 0o755)
+            os.replace(tmp_path, current_exe)
     except Exception:
         try:
             os.unlink(tmp_path)

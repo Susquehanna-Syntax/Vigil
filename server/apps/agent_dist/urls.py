@@ -6,6 +6,8 @@ urlpatterns = [
     path("download/<str:platform>/", views.download_agent, name="agent-download"),
     path("install.sh", views.install_script, name="agent-install-script"),
     path("install.ps1", views.install_ps1, name="agent-install-ps1"),
+    path("uninstall.sh", views.uninstall_script, name="agent-uninstall-script"),
+    path("uninstall.ps1", views.uninstall_ps1, name="agent-uninstall-ps1"),
     path("upload/<str:platform>/", views.upload_agent, name="agent-upload"),
     path("info/", views.agent_info, name="agent-info"),
 ]

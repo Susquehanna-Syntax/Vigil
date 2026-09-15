@@ -35,14 +35,14 @@ class EventAutomationTests(TestCase):
     def test_alert_fires_task_on_event_host(self):
         d = make_def()
         Automation.objects.create(
-            name="disk cleanup", trigger="event", event="alert_fired",
+            name="disk cleanup", trigger="event", event="alert_sent",
             action_kind="task", task_definition=d, target="event_host",
             created_by=self.admin)
         host = make_host("web-01")
         rule = AlertRule.objects.create(name="disk", category="disk", metric="d",
                                         operator="gt", threshold=90, severity="critical")
         alert = Alert.objects.create(host=host, rule=rule, severity="critical", message="full")
-        hooks.emit("alert_fired", alert=alert)
+        hooks.emit("alert_sent", alert=alert)
         task = Task.objects.get(host=host)
         self.assertIn("automation: disk cleanup", task.step_label)
         self.assertEqual(task.params["steps"][0]["action"], "pkg_update")
@@ -50,14 +50,14 @@ class EventAutomationTests(TestCase):
     def test_severity_filter(self):
         d = make_def()
         Automation.objects.create(
-            name="crit only", trigger="event", event="alert_fired",
+            name="crit only", trigger="event", event="alert_sent",
             min_severity="critical", action_kind="task", task_definition=d,
             target="event_host", created_by=self.admin)
         host = make_host()
         rule = AlertRule.objects.create(name="m", category="c", metric="m",
                                         operator="gt", threshold=1, severity="warning")
         warn = Alert.objects.create(host=host, rule=rule, severity="warning", message="w")
-        hooks.emit("alert_fired", alert=warn)
+        hooks.emit("alert_sent", alert=warn)
         self.assertFalse(Task.objects.filter(host=host).exists())
 
     def test_event_tag_filter(self):
@@ -139,11 +139,11 @@ class AutomationApiTests(TestCase):
     def test_create_event_automation(self):
         d = make_def()
         resp = self.client.post("/api/v1/automations/", {
-            "name": "cleanup", "trigger": "event", "event": "alert_fired",
+            "name": "cleanup", "trigger": "event", "event": "alert_sent",
             "action_kind": "task", "task_definition": str(d.id), "target": "event_host"},
             content_type="application/json")
         self.assertEqual(resp.status_code, 201, resp.content)
-        self.assertEqual(resp.json()["event"], "alert_fired")
+        self.assertEqual(resp.json()["event"], "alert_sent")
 
     def test_create_schedule_syncs_periodic_task(self):
         d = make_def()
@@ -175,7 +175,7 @@ class AutomationApiTests(TestCase):
 
     def test_toggle_and_delete(self):
         d = make_def()
-        a = Automation.objects.create(name="a", trigger="event", event="alert_fired",
+        a = Automation.objects.create(name="a", trigger="event", event="alert_sent",
                                       action_kind="task", task_definition=d, target="event_host")
         resp = self.client.patch(f"/api/v1/automations/{a.id}/", {"enabled": False},
                                  content_type="application/json")
@@ -185,7 +185,7 @@ class AutomationApiTests(TestCase):
     def test_params_override_round_trips_and_applies(self):
         d = make_def(actions=[{"type": "restart_service",
                                "params": {"service_name": "nginx"}}])
-        a = Automation.objects.create(name="svc", trigger="event", event="alert_fired",
+        a = Automation.objects.create(name="svc", trigger="event", event="alert_sent",
                                       action_kind="task", task_definition=d,
                                       target="all", created_by=self.admin)
         resp = self.client.patch(f"/api/v1/automations/{a.id}/", {
@@ -204,7 +204,7 @@ class AutomationApiTests(TestCase):
     def test_unknown_override_param_rejected(self):
         d = make_def(actions=[{"type": "restart_service",
                                "params": {"service_name": "nginx"}}])
-        a = Automation.objects.create(name="bad-ov", trigger="event", event="alert_fired",
+        a = Automation.objects.create(name="bad-ov", trigger="event", event="alert_sent",
                                       action_kind="task", task_definition=d,
                                       target="event_host", created_by=self.admin)
         resp = self.client.patch(f"/api/v1/automations/{a.id}/", {
@@ -234,17 +234,17 @@ class SpecificEventTests(TestCase):
         disk_rule = self._rule("Disk critical")
         mem_rule = self._rule("Memory high", "warning")
         Automation.objects.create(
-            name="disk only", trigger="event", event="alert_fired",
+            name="disk only", trigger="event", event="alert_sent",
             event_rule=disk_rule, action_kind="task", task_definition=d,
             target="event_host", created_by=self.admin)
         host = make_host()
         # a memory alert must NOT trigger it
         mem_alert = Alert.objects.create(host=host, rule=mem_rule, severity="warning", message="m")
-        hooks.emit("alert_fired", alert=mem_alert)
+        hooks.emit("alert_sent", alert=mem_alert)
         self.assertFalse(Task.objects.filter(host=host).exists())
         # the disk alert does
         disk_alert = Alert.objects.create(host=host, rule=disk_rule, severity="critical", message="d")
-        hooks.emit("alert_fired", alert=disk_alert)
+        hooks.emit("alert_sent", alert=disk_alert)
         self.assertTrue(Task.objects.filter(host=host).exists())
 
     def test_rule_list_endpoint(self):
@@ -258,7 +258,7 @@ class SpecificEventTests(TestCase):
         rule = self._rule("CPU spike")
         self.client.force_login(self.admin)
         resp = self.client.post("/api/v1/automations/", {
-            "name": "cpu", "trigger": "event", "event": "alert_fired",
+            "name": "cpu", "trigger": "event", "event": "alert_sent",
             "event_rule": str(rule.id), "action_kind": "task",
             "task_definition": str(d.id), "target": "event_host"},
             content_type="application/json")
@@ -390,7 +390,7 @@ class EventTextAndHostFilterTests(TestCase):
     def _automation(self, **kw):
         kw.setdefault("target", "event_host")
         return Automation.objects.create(
-            name="a", trigger="event", event="alert_fired",
+            name="a", trigger="event", event="alert_sent",
             action_kind="task", task_definition=self.definition,
             created_by=self.admin, **kw)
 
@@ -400,7 +400,7 @@ class EventTextAndHostFilterTests(TestCase):
             threshold=90, severity="critical")
         alert = Alert.objects.create(host=host, rule=rule,
                                      severity="critical", message=message)
-        hooks.emit("alert_fired", alert=alert)
+        hooks.emit("alert_sent", alert=alert)
         return alert
 
     def _ran(self, host):
@@ -475,7 +475,7 @@ class EventTextAndHostFilterTests(TestCase):
         host = make_host("h10")
         alert = Alert.objects.create(host=host, rule=None, severity="warning",
                                      message="Agent outdated: disk")
-        hooks.emit("alert_fired", alert=alert)
+        hooks.emit("alert_sent", alert=alert)
         self.assertFalse(self._ran(host))
 
     def test_blank_text_means_no_filter(self):
@@ -529,7 +529,7 @@ class EventFilterApiTests(TestCase):
         self.definition = make_def()
 
     def _create(self, **extra):
-        body = {"name": "a", "trigger": "event", "event": "alert_fired",
+        body = {"name": "a", "trigger": "event", "event": "alert_sent",
                 "action_kind": "task",
                 "task_definition": str(self.definition.id),
                 "target": "event_host", **extra}
@@ -565,3 +565,81 @@ class EventFilterApiTests(TestCase):
     def test_an_invalid_match_field_is_refused(self):
         resp = self._create(match_field="hostname")
         self.assertEqual(resp.status_code, 400)
+
+
+class AutomationHighRiskGateTests(TestCase):
+    """Automations dispatch unattended, exactly like an auto-enrolling
+    playbook, and had no risk gate of any kind — risk was computed, stamped on
+    the Task for the record, and never consulted.
+    """
+
+    def setUp(self):
+        from apps.tasks.models import TaskDefinition
+
+        self.admin = get_user_model().objects.create_user(
+            username="admin", password="pw", is_staff=True, is_superuser=True)
+        self.client.force_login(self.admin)
+        self.host = Host.objects.create(
+            hostname="box", ip_address="10.0.0.31", agent_token="tok-auto",
+            mode="full_control", status=Host.Status.ONLINE)
+        self.high = TaskDefinition.objects.create(
+            name="Reboot", risk_level="high", yaml_source="", owner=self.admin,
+            parsed_spec={"risk": "high",
+                         "actions": [{"id": "a", "type": "reboot", "params": {}}]})
+
+    def _automation(self, **over):
+        from apps.automations.models import Automation
+
+        kwargs = dict(name="nightly", created_by=self.admin, enabled=True,
+                      trigger=Automation.Trigger.SCHEDULE, action_kind="task",
+                      task_definition=self.high, target=Automation.Target.ALL)
+        kwargs.update(over)
+        return Automation.objects.create(**kwargs)
+
+    def test_a_high_risk_automation_does_not_dispatch_without_the_flag(self):
+        from apps.automations.engine import run_automation
+        from apps.tasks.models import Task
+
+        automation = self._automation()
+        self.assertEqual(run_automation(automation), 0)
+        self.assertEqual(Task.objects.count(), 0)
+
+    def test_it_dispatches_once_the_flag_is_set(self):
+        from apps.automations.engine import run_automation
+        from apps.tasks.models import Task
+
+        automation = self._automation(allow_high_risk=True)
+        self.assertEqual(run_automation(automation), 1)
+        self.assertEqual(Task.objects.count(), 1)
+
+    def test_turning_the_flag_on_over_the_api_requires_totp(self):
+        automation = self._automation()
+        resp = self.client.patch(
+            f"/api/v1/automations/{automation.id}/",
+            {"allow_high_risk": True}, content_type="application/json")
+        self.assertEqual(resp.status_code, 401)
+        self.assertTrue(resp.json().get("needs_totp"))
+        automation.refresh_from_db()
+        self.assertFalse(automation.allow_high_risk)
+
+    def test_turning_it_off_needs_no_confirmation(self):
+        """Removing an authorization needs no authorization."""
+        automation = self._automation(allow_high_risk=True)
+        resp = self.client.patch(
+            f"/api/v1/automations/{automation.id}/",
+            {"allow_high_risk": False}, content_type="application/json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        automation.refresh_from_db()
+        self.assertFalse(automation.allow_high_risk)
+
+    def test_the_yaml_import_path_cannot_route_around_the_gate(self):
+        """_apply is shared with the community importer, so setting the flag
+        there would make importing the way around the TOTP — the exact hole
+        the playbook importer carries a comment about avoiding."""
+        from apps.automations.views import _apply
+
+        automation = self._automation()
+        _apply(automation, {"allow_high_risk": True, "name": "renamed"})
+        self.assertEqual(automation.name, "renamed")
+        self.assertFalse(automation.allow_high_risk,
+                         "_apply set the 2FA-guarded flag")

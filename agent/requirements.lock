@@ -1,0 +1,12 @@
+# Resolved dependency set for the agent — see server/requirements.lock.
+# Regenerate: cd agent && .venv/bin/pip freeze > requirements.lock
+certifi==2026.2.25
+cffi==2.0.0
+charset-normalizer==3.4.7
+idna==3.11
+psutil==6.1.1
+pycparser==3.0
+PyNaCl==1.6.2
+PyYAML==6.0.3
+requests==2.33.1
+urllib3==2.6.3

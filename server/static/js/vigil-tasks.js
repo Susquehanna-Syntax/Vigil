@@ -512,13 +512,12 @@ function defCardHtml(def, opts) {
   // Community cards live in vigil-community.js now — this renders the
   // operator's own library only.
   const buttons = def.archived_at
-    ? `<button class="btn btn-mint btn-sm" onclick="event.stopPropagation(); setDefinitionArchived('${def.id}', false)">Restore</button>`
-    : `<button class="btn btn-sky btn-sm" onclick="event.stopPropagation(); openDefinitionEditor('${def.id}')">Edit</button>
-     <button class="btn btn-peach btn-sm" onclick="event.stopPropagation(); openDeployModal('${def.id}')">Deploy</button>
-     <button class="btn btn-lemon btn-sm" onclick="event.stopPropagation(); setDefinitionArchived('${def.id}', true)">Archive</button>`;
-  const cardClick = `openDefinitionEditor('${def.id}')`;
+    ? `<button class="btn btn-mint btn-sm" data-def-restore="${escAttr(def.id)}">Restore</button>`
+    : `<button class="btn btn-sky btn-sm" data-def-edit="${escAttr(def.id)}">Edit</button>
+     <button class="btn btn-peach btn-sm" data-def-deploy="${escAttr(def.id)}">Deploy</button>
+     <button class="btn btn-lemon btn-sm" data-def-archive="${escAttr(def.id)}">Archive</button>`;
   return `
-    <div class="def-card" onclick="${cardClick}">
+    <div class="def-card" data-def-open="${escAttr(def.id)}">
       <div class="def-card-body">
         <div class="def-card-title">${escHtml(def.name || 'Untitled')}</div>
         <div class="def-card-desc">${escHtml(def.description || 'No description provided.')}</div>
@@ -648,12 +647,17 @@ function renderEditorPreview(spec) {
   // The whole task's steps share ONE pastel — the task's derived risk — so a
   // task reads as a single coloured unit rather than a mixed-colour ladder.
   const taskRisk = spec.derived_risk || spec.risk || 'standard';
+  // Every interpolation below is escaped, including the param keys and values.
+  // Those are not the operator's own words: Suggest Fix pre-fills this editor
+  // from container images, package names and CVE fields an agent reported, so
+  // a compromised host could otherwise put script into the preview of the task
+  // the operator is about to sign.
   const actionsHtml = spec.actions.map((a, i) => `
     <div class="preview-step task-${taskRisk}">
       <div class="preview-step-num">${i + 1}</div>
       <div class="preview-step-body">
         <div class="preview-step-title">${escHtml(a.id)} — ${escHtml(a.label || a.type)}</div>
-        <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => `${k}=${v}`).join(' ') : ''}</div>
+        <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => `${escHtml(String(k))}=${escHtml(String(v))}`).join(' ') : ''}</div>
       </div>
     </div>`).join('');
   const inputs = spec.inputs || [];
@@ -1079,3 +1083,30 @@ async function setDefinitionArchived(id, archived) {
   showToast(archived ? 'Task archived' : 'Task restored', 'success');
   refreshTaskLibrary();
 }
+
+
+/* Definition-card buttons. Each used to be an inline onclick carrying the
+   definition id and an event.stopPropagation() to keep the card underneath
+   from also opening. The stopPropagation is explicit here instead, and the
+   attributes are gone — which is what lets the CSP drop 'unsafe-inline'. */
+delegateClick('[data-def-restore]', (el, ev) => {
+  ev.stopPropagation();
+  setDefinitionArchived(el.dataset.defRestore, false);
+});
+delegateClick('[data-def-edit]', (el, ev) => {
+  ev.stopPropagation();
+  openDefinitionEditor(el.dataset.defEdit);
+});
+delegateClick('[data-def-deploy]', (el, ev) => {
+  ev.stopPropagation();
+  openDeployModal(el.dataset.defDeploy);
+});
+delegateClick('[data-def-archive]', (el, ev) => {
+  ev.stopPropagation();
+  setDefinitionArchived(el.dataset.defArchive, true);
+});
+delegateClick('[data-def-open]', (el, ev) => {
+  // A button inside the card handled it already.
+  if (ev.target.closest('button')) return;
+  openDefinitionEditor(el.dataset.defOpen);
+});

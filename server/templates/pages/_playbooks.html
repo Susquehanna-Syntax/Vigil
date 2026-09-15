@@ -42,7 +42,7 @@
                placeholder="Search rollouts by definition, wave, or state…">
         <span class="field-hint" tabindex="0" aria-label="How rollouts work"
               data-hint="Patch a few machines first, then the rest. Each wave is a group of hosts, matched by tag, and waves run in order.&#10;&#10;After a wave finishes, the rollout waits out that wave's validation window before starting the next — time for a bad update to show itself. If too many hosts in a wave fail, it stops there and waits for you.&#10;&#10;A host in two waves is patched once, in the earlier one. A host in no wave is never patched.">?</span>
-        <button class="btn btn-mint" onclick="openRolloutStart()">New rollout</button>
+        <button class="btn btn-mint" data-act="openRolloutStart">New rollout</button>
       </div>
       <div id="rollout-list" style="display:flex;flex-direction:column;gap:10px;">
         <div class="empty-state"><div class="empty-state-title">Loading…</div></div>
@@ -182,22 +182,31 @@
     <input type="text" class="form-control" id="auto-name" placeholder="e.g. Clean disk when critical" maxlength="120">
   </div>
   <div class="bl-field">
-    <label>Trigger</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="What starts this automation. An event fires it when something happens, like an alert. A schedule fires it on a clock.">?</span>
-    <select class="form-control" id="auto-trigger">
-      <option value="event">When an event fires</option>
-      <option value="schedule">On a schedule</option>
-    </select>
+    <label>When</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="What starts this automation. Pick the thing that happens, or a schedule to run it on a clock.">?</span>
+    {% comment %}
+      One select. It used to be a trigger kind AND an event, which meant two
+      choices to express one thing, and the kind said "When an event fires" —
+      a word that stopped being true once the alert event was renamed.
+    {% endcomment %}
+    <select class="form-control" id="auto-trigger"></select>
+    {% comment %}
+      Rule and host stay as pickers rather than folding into conditions: both
+      reference a row by id, and a condition matches a name, so folding them
+      would turn "this exact rule" into "anything called that" and break
+      silently the day someone renames it. Both scope the TRIGGER — an
+      automation can watch one host and act on another, so neither is the
+      same as "Run on" below.
+    {% endcomment %}
     <div class="auto-when" id="auto-event-fields" style="margin-top:10px;">
-      <select class="form-control" id="auto-event"></select>
-      <span id="auto-rule-wrap">rule
+      <span id="auto-rule-wrap">for
         <select class="form-control" id="auto-event-rule"><option value="">any alert</option></select>
       </span>
-      <span id="auto-sev-wrap">at least
-        <select class="form-control" id="auto-sev">
-          <option value="">any severity</option>
-          <option value="warning">warning</option>
-          <option value="critical">critical</option>
-        </select>
+      <span id="auto-event-host-wrap">on
+        <button class="btn btn-outline picker-btn" id="auto-event-host-btn" type="button">
+          <span id="auto-event-host-label">any host</span>
+        </button>
+        <button class="btn btn-ghost btn-sm" id="auto-event-host-clear" type="button">Clear</button>
+        <input type="hidden" id="auto-event-host">
       </span>
     </div>
     <div class="auto-when" id="auto-sched-fields" style="margin-top:10px;" hidden>
@@ -209,37 +218,24 @@
       <input type="text" class="form-control" id="auto-cron-dow" value="*" style="width:64px;" title="day of week">
       <span class="bl-hint">min hour dom mon dow</span>
     </div>
-    <div class="bl-hint" id="auto-event-tags-wrap" style="margin-top:8px;">Only on hosts tagged (optional): <input type="text" class="form-control" id="auto-event-tags" placeholder="os:linux" style="display:inline-block;width:auto;"></div>
     {% comment %}
-      Narrows which alerts fire this automation — not which hosts it runs on.
-      An automation can watch one host and act on another, so this is
-      deliberately separate from "Run on" below.
+      Every value-based filter lives here now — severity, tags and the text
+      match each had their own box in their own layout, saying what a
+      condition says. Rows are built by vigil-automations.js from the field
+      and operator list the server advertises, so adding a field is a server
+      change only.
     {% endcomment %}
-    <div class="bl-hint" id="auto-event-host-wrap" style="margin-top:8px;">Only for events on host (optional):
-      <button class="btn btn-outline picker-btn" id="auto-event-host-btn" type="button">
-        <span id="auto-event-host-label">any host</span>
-      </button>
-      <button class="btn btn-ghost btn-sm" id="auto-event-host-clear" type="button">Clear</button>
-      <input type="hidden" id="auto-event-host">
-    </div>
-    <div class="bl-hint" id="auto-match-wrap" style="margin-top:8px;">Only when the event's
-      <select class="form-control" id="auto-match-field" style="display:inline-block;width:auto;">
-        <option value="any">name or description</option>
-        <option value="rule">name</option>
-        <option value="message">description</option>
-      </select>
-      <select class="form-control" id="auto-match-mode" style="display:inline-block;width:auto;">
-        <option value="contains">contains</option>
-        <option value="not_contains">does not contain</option>
-        <option value="equals">is exactly</option>
-        <option value="not_equals">is not</option>
-        <option value="starts_with">starts with</option>
-        <option value="ends_with">ends with</option>
-        <option value="regex">matches regex</option>
-        <option value="not_regex">does not match regex</option>
-      </select>
-      <input type="text" class="form-control" id="auto-match-text" placeholder="e.g. /var" maxlength="200" style="display:inline-block;width:auto;">
-      <span class="bl-hint" style="display:block;margin-top:4px;">Leave the text blank for no text filter. Case-insensitive.</span>
+    <div class="bl-hint" id="auto-cond-wrap" style="margin-top:12px;">
+      <div class="auto-cond-head">
+        <span>Only when</span>
+        <select class="form-control" id="auto-cond-logic" style="display:inline-block;width:auto;">
+          <option value="all">Match all of these</option>
+          <option value="any">Match any of these</option>
+        </select>
+        <button class="btn btn-outline btn-sm" type="button" data-act="addAutoCondition">Add condition</button>
+      </div>
+      <div id="auto-cond-rows"></div>
+      <span class="bl-hint" style="display:block;margin-top:4px;">No conditions means it runs on every one of these events.</span>
     </div>
   </div>
   <div class="bl-field">

@@ -9,6 +9,15 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+#: How long a high-risk task is held before an agent may collect it. The tier
+#: rule in CLAUDE.md is "high-risk (2FA + 60s delay)": the 2FA is the
+#: confirmation at dispatch, and this is the delay — the window in which an
+#: operator who has just realised they picked the wrong host, or the wrong tag,
+#: can still stop it. Enforced by the check-in view, which withholds any task
+#: whose not_before is in the future.
+HIGH_RISK_HOLD_SECONDS = 60
+
+
 from apps.accounts.permissions import IsAdmin
 from apps.hosts.authentication import authenticate_agent
 from apps.hosts.models import Host
@@ -1093,6 +1102,19 @@ def definition_deploy(request, definition_id):
     max_retries = int(retry_cfg.get("attempts", 0))
     retry_delay = int(retry_cfg.get("delay_seconds", 0))
 
+    # The high-risk hold. CLAUDE.md's risk tiers say "high-risk (2FA + 60s
+    # delay)" and apps/playbooks/models.py repeats it, but nothing ever set
+    # not_before on a first dispatch — the only writer was the retry path — so
+    # the pause an operator was told they had did not exist and a high-risk
+    # task went to the agent at its very next check-in.
+    #
+    # The gate itself was already built and working: the check-in view holds
+    # back any task whose not_before is in the future. Only the setting was
+    # missing.
+    hold_until = None
+    if risk == "high":
+        hold_until = now() + timedelta(seconds=HIGH_RISK_HOLD_SECONDS)
+
     with transaction.atomic():
         run = TaskRun.objects.create(
             definition=definition,
@@ -1126,6 +1148,7 @@ def definition_deploy(request, definition_id):
                 schedule=schedule_snapshot,
                 max_retries=max_retries,
                 retry_delay_seconds=retry_delay,
+                not_before=hold_until,
             )
 
     return Response(TaskRunSerializer(run).data, status=201)

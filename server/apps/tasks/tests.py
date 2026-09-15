@@ -385,3 +385,68 @@ class CommunityTemplatesTests(TestCase):
         with patch("requests.get", side_effect=OSError("no network")):
             resp = self.client.get("/api/v1/tasks/community/")
         self.assertEqual(resp.status_code, 502)
+
+
+class HighRiskHoldTests(TestCase):
+    """CLAUDE.md's risk tiers promise "high-risk (2FA + 60s delay)".
+
+    The gate was always there — the check-in view withholds a task whose
+    not_before is in the future — but nothing set not_before on a first
+    dispatch, so the delay an operator was told they had did not exist.
+    """
+
+    def setUp(self):
+        from apps.tasks.models import TaskDefinition
+
+        self.admin = get_user_model().objects.create_user(
+            username="admin", password="pw", is_staff=True, is_superuser=True)
+        self.client.force_login(self.admin)
+        self.host = Host.objects.create(
+            hostname="web-01", ip_address="10.0.0.5", agent_token="tok-web01",
+            mode="full_control", status=Host.Status.ONLINE)
+        self.high = TaskDefinition.objects.create(
+            name="Reboot", risk_level="high", yaml_source="", owner=self.admin,
+            parsed_spec={"risk": "high",
+                         "actions": [{"id": "a", "type": "reboot", "params": {}}]})
+        self.standard = TaskDefinition.objects.create(
+            name="Restart ssh", risk_level="standard", yaml_source="", owner=self.admin,
+            parsed_spec={"risk": "standard",
+                         "actions": [{"id": "a", "type": "restart_service",
+                                      "params": {"service_name": "ssh"}}]})
+
+    def _deploy(self, definition):
+        from unittest.mock import patch
+
+        with patch("apps.accounts.totp.require_totp_confirmation", return_value=None):
+            return self.client.post(
+                f"/api/v1/tasks/definitions/{definition.id}/deploy/",
+                {"host_ids": [str(self.host.id)], "totp": "123456"},
+                content_type="application/json")
+
+    def test_a_high_risk_task_is_held_for_sixty_seconds(self):
+        from apps.tasks.views import HIGH_RISK_HOLD_SECONDS
+
+        resp = self._deploy(self.high)
+        self.assertEqual(resp.status_code, 201, resp.content)
+        task = Task.objects.get(host=self.host)
+        self.assertIsNotNone(task.not_before, "high-risk task dispatched with no hold")
+        held_for = (task.not_before - now()).total_seconds()
+        self.assertGreater(held_for, HIGH_RISK_HOLD_SECONDS - 10)
+        self.assertLessEqual(held_for, HIGH_RISK_HOLD_SECONDS)
+
+    def test_a_standard_task_is_not_held(self):
+        """The delay is the high tier's cost, not everyone's."""
+        resp = self._deploy(self.standard)
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertIsNone(Task.objects.get(host=self.host).not_before)
+
+    def test_the_checkin_withholds_a_held_task(self):
+        """The half that already worked, pinned so the two stay connected."""
+        self._deploy(self.high)
+        resp = self.client.post(
+            "/api/v1/checkin", {"metrics": []},
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer tok-web01")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json().get("tasks", []), [],
+                         "a held high-risk task was handed to the agent anyway")

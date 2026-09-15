@@ -53,17 +53,17 @@ function _alertItemHtml(alert, tab) {
       <div class="alert-actions">
         ${fixBtn}
         <div class="ack-menu-wrap">
-          <button class="btn btn-sm btn-outline" onclick="toggleAckMenu(event, '${alert.id}')">
+          <button class="btn btn-sm btn-outline" data-ack-menu="${escAttr(alert.id)}">
             Ack
             <svg viewBox="0 0 24 24" style="width:11px;height:11px;"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
-          <div class="ack-menu" id="ack-menu-${alert.id}">
-            <div class="ack-menu-item" onclick="acknowledgeAlert('${alert.id}', 3600)">For 1 hour</div>
-            <div class="ack-menu-item" onclick="acknowledgeAlert('${alert.id}', 28800)">For 8 hours</div>
-            <div class="ack-menu-item" onclick="acknowledgeAlert('${alert.id}', 86400)">For 24 hours</div>
-            <div class="ack-menu-item" onclick="acknowledgeAlert('${alert.id}', 604800)">For 7 days</div>
+          <div class="ack-menu" id="ack-menu-${escAttr(alert.id)}">
+            <div class="ack-menu-item" data-ack="${escAttr(alert.id)}" data-secs="3600">For 1 hour</div>
+            <div class="ack-menu-item" data-ack="${escAttr(alert.id)}" data-secs="28800">For 8 hours</div>
+            <div class="ack-menu-item" data-ack="${escAttr(alert.id)}" data-secs="86400">For 24 hours</div>
+            <div class="ack-menu-item" data-ack="${escAttr(alert.id)}" data-secs="604800">For 7 days</div>
             <div class="ack-menu-divider"></div>
-            <div class="ack-menu-item" onclick="acknowledgeAlert('${alert.id}')">Permanently</div>
+            <div class="ack-menu-item" data-ack="${escAttr(alert.id)}">Permanently</div>
           </div>
         </div>
       </div>`;
@@ -75,7 +75,7 @@ function _alertItemHtml(alert, tab) {
     time = `Fired ${_alertRelTime(alert.fired_at)}`;
     actions = `
       <div class="alert-actions">
-        <button class="btn btn-sm btn-peach" onclick="unacknowledgeAlert('${alert.id}')">Un-ack</button>
+        <button class="btn btn-sm btn-peach" data-unack="${escAttr(alert.id)}">Un-ack</button>
       </div>`;
   } else {
     sub = `${escHtml(alert.host_hostname || '—')} · Resolved ${_alertRelTime(alert.resolved_at)}`;
@@ -289,19 +289,24 @@ function suggestAgentUpdate(hostId) {
 function suggestDockerFix(hostId, containerName, image) {
   // recreate_container (not restart_container): a restart keeps the container
   // on its original image, so the pulled update would never actually apply.
+  // The image and container name come from the agent, so they are quoted as
+  // YAML scalars rather than pasted between literal quotes — a value carrying
+  // a quote would otherwise close its scalar and rewrite the task the operator
+  // is about to review. Double-quoted YAML escapes exactly like JSON.
+  const y = (v) => JSON.stringify(String(v == null ? '' : v));
   const yaml = [
-    `name: "Update Docker Image: ${image}"`,
-    `description: "Pull the latest ${image} and recreate ${containerName} on it"`,
+    `name: ${y(`Update Docker Image: ${image}`)}`,
+    `description: ${y(`Pull the latest ${image} and recreate ${containerName} on it`)}`,
     `actions:`,
     `  - id: pull_new_image`,
     `    type: pull_image`,
     `    params:`,
-    `      image: "${image}"`,
+    `      image: ${y(image)}`,
     `  - id: recreate`,
     `    type: recreate_container`,
     `    params:`,
-    `      container_name: "${containerName}"`,
-    `      image: "${image}"`,
+    `      container_name: ${y(containerName)}`,
+    `      image: ${y(image)}`,
   ].join('\n');
   openDefinitionEditor(null, yaml);
 }
@@ -317,3 +322,26 @@ if (typeof navigateTo === 'function') {
   };
 }
 document.addEventListener('DOMContentLoaded', refreshAlerts);
+
+
+/* The alert-row buttons were inline onclick attributes built from alert ids.
+   Those ids are server UUIDs, so nothing was injectable — but the attributes
+   are why the CSP had to allow 'unsafe-inline' for scripts, which is the
+   directive that would contain an injected <script> anywhere else. Bound at
+   the document so they work for rows that do not exist yet. */
+delegateClick('[data-ack-menu]', (el, ev) => toggleAckMenu(ev, el.dataset.ackMenu));
+delegateClick('[data-ack]', (el) => {
+  const secs = el.dataset.secs;
+  // No data-secs means "Permanently" — acknowledgeAlert's own default.
+  if (secs) acknowledgeAlert(el.dataset.ack, Number(secs));
+  else acknowledgeAlert(el.dataset.ack);
+});
+delegateClick('[data-unack]', (el) => unacknowledgeAlert(el.dataset.unack));
+
+
+/* bulkAlertAction's second argument is an explicit null for "permanently", and
+   the dispatcher's argument grammar has no null token — a name is clearer than
+   inventing one. */
+function bulkAlertAcknowledgePermanently() {
+  bulkAlertAction('acknowledge', null);
+}

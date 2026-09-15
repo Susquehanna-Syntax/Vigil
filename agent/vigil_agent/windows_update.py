@@ -279,6 +279,32 @@ def _severity_counts(updates: list[dict]) -> dict:
     return counts
 
 
+#: One warning per process for a condition that cannot change while running.
+_access_denied_logged = {"said": False}
+
+#: HRESULT E_ACCESSDENIED, as it appears in a pywin32 com_error's excepinfo.
+_E_ACCESSDENIED = -2147024891
+
+
+def _is_access_denied(exc: Exception) -> bool:
+    """True when a COM call failed purely because of privilege.
+
+    A com_error carries (hresult, desc, excepinfo, argerr), and the useful
+    code is buried in excepinfo[5] — the outer hresult is the generic
+    DISP_E_EXCEPTION. Observed on a service running as NT SERVICE\vigil-agent:
+
+        com_error: (-2147352567, 'Exception occurred.',
+                    (0, None, None, None, 0, -2147024891), None)
+    """
+    args = getattr(exc, "args", ()) or ()
+    for arg in args:
+        if arg == _E_ACCESSDENIED:
+            return True
+        if isinstance(arg, (tuple, list)) and _E_ACCESSDENIED in arg:
+            return True
+    return False
+
+
 def summary(force: bool = False) -> dict | None:
     """Counts of what this machine is missing, or None when not applicable.
 
@@ -298,9 +324,26 @@ def summary(force: bool = False) -> dict | None:
         return None
     try:
         updates = backend.scan()
-    except Exception:
-        logger.warning("Windows update scan failed; reporting no summary",
-                       exc_info=True)
+    except Exception as exc:
+        if _is_access_denied(exc):
+            # Structural, not transient: an unprivileged service account
+            # cannot query the Windows Update COM API. install.ps1 runs
+            # monitor mode as the virtual account NT SERVICE\vigil-agent, so
+            # this is the normal state there and will recur every cycle.
+            # Say it once, clearly, instead of a traceback a minute.
+            if not _access_denied_logged["said"]:
+                _access_denied_logged["said"] = True
+                logger.warning(
+                    "Windows update status unavailable: the account this "
+                    "agent runs as is not permitted to query Windows Update "
+                    "(E_ACCESSDENIED). Metrics are unaffected. Update "
+                    "reporting needs a privileged account — monitor mode runs "
+                    "unprivileged by design. This is logged once per start.")
+            else:
+                logger.debug("Windows update scan still access-denied")
+        else:
+            logger.warning("Windows update scan failed; reporting no summary",
+                           exc_info=True)
         return None
 
     value = _severity_counts(updates)

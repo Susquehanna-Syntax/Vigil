@@ -7,7 +7,9 @@ Usage:
 
 import argparse
 import logging
+import os
 import signal
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -27,6 +29,17 @@ _shutdown = False
 def _handle_signal(signum, _frame):
     global _shutdown
     logger.info("Received signal %s, shutting down gracefully", signum)
+    _shutdown = True
+
+
+def request_shutdown() -> None:
+    """Ask the check-in loop to stop after its current cycle.
+
+    The Windows service host has no signal to send — SvcStop calls this, which
+    is the same path SIGTERM takes on Linux.
+    """
+    global _shutdown
+    logger.info("Shutdown requested, finishing current cycle")
     _shutdown = True
 
 
@@ -303,7 +316,60 @@ def _report_skipped(config, task: dict, output: str) -> None:
         logger.exception("Failed to report task %s skip", task.get("id"))
 
 
+def _warn_on_privilege_mismatch(config) -> None:
+    """Say so when the mode needs root and this process does not have it.
+
+    The installer runs a monitor-mode agent as the unprivileged 'vigil-agent'
+    user, because reading /proc needs nothing more. If someone later edits
+    agent.yml to managed or full_control, the service unit still says
+    User=vigil-agent — and without this the only symptom is every task failing
+    with a permission error, one at a time, for as long as it takes someone to
+    connect the two facts.
+
+    This used to advise removing the User= line, which is not sufficient and
+    was found not to be by running it: the monitor-mode unit also carries
+    ProtectSystem=strict, and under that /boot is read-only *even for root* —
+
+        # systemd-run --property=ProtectSystem=strict \
+            /bin/sh -c 'id -u; mkdir -p /boot/vigil-probe-test'
+        0
+        mkdir: Read-only file system
+
+    so a reprovision stage still fails with "[Errno 30] Read-only file
+    system: '/boot/vigil-reprovision'". Re-running the installer regenerates
+    the unit from the mode in agent.yml and is the only complete fix.
+
+    A warning, not a refusal: an agent that stops monitoring because it cannot
+    execute is worse than one that monitors and says it cannot execute.
+    """
+    if config.mode == "monitor":
+        return
+    try:
+        if os.geteuid() == 0:
+            return
+    except AttributeError:      # Windows has no geteuid
+        return
+
+    logger.warning(
+        "Mode is %r but this agent is not running as root (uid=%d). Task "
+        "execution needs root — systemctl, package installs and firewall "
+        "changes will all fail. Either set mode back to 'monitor', or "
+        "re-run the installer so the unit is regenerated for this mode: "
+        "curl -fsSL <server>/agent/install.sh | sudo bash. Editing the unit "
+        "by hand is not enough — dropping 'User=' still leaves "
+        "ProtectSystem=strict, which makes /boot and /etc read-only even for "
+        "root, so reprovision and package installs keep failing.",
+        config.mode, os.geteuid())
+
+
+#: Set by main() so run_agent() can be called with no arguments from the
+#: Windows service host, which does not get the command line.
+_cli_config_path: Path | None = None
+
+
 def main() -> None:
+    global _cli_config_path
+
     parser = argparse.ArgumentParser(description="Vigil monitoring agent")
     parser.add_argument("-c", "--config", type=Path, help="Path to agent.yml")
     parser.add_argument(
@@ -311,15 +377,57 @@ def main() -> None:
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
+    parser.add_argument(
+        "--service",
+        action="store_true",
+        help="Run as a Windows service (used by install.ps1; not for interactive use)",
+    )
+    parser.add_argument(
+        "--log-file",
+        type=Path,
+        help="Write logs here instead of stdout. Implied by --service, which has no console.",
+    )
     args = parser.parse_args()
+
+    _cli_config_path = args.config
+
+    if args.service and os.name != "nt":
+        # Refuse before touching the filesystem. The ProgramData fallback below
+        # is a Windows path; on Linux it is just a filename containing a
+        # backslash, and mkdir(parents=True) duly created a directory called
+        # "C:\ProgramData" in the working directory. Found exactly that way.
+        parser.error("--service is only supported on Windows")
+
+    log_file = args.log_file
+    if args.service and log_file is None:
+        # A service has no stdout. Without this every log line goes nowhere and
+        # a misbehaving agent is undiagnosable.
+        log_file = Path(os.environ["ProgramData"]) / "Vigil" / "agent.log"
+        try:
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+        except (OSError, KeyError):
+            log_file = None
 
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="[%(asctime)s] %(levelname)s %(name)s %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
+        **({"filename": str(log_file)} if log_file else {}),
     )
 
-    config = load_config(args.config)
+    if args.service:
+        from .winservice import run_service
+
+        raise SystemExit(run_service())
+
+    run_agent()
+
+
+def run_agent() -> None:
+    """The check-in loop. Called directly by main(), or on a worker thread by
+    the Windows service host."""
+    config = load_config(_cli_config_path)
+    _warn_on_privilege_mismatch(config)
     logger.info(
         "Vigil agent starting — server=%s mode=%s interval=%ds",
         config.server_url,
@@ -338,8 +446,12 @@ def main() -> None:
     except Exception:
         logger.exception("Registration failed — will retry on first checkin")
 
-    signal.signal(signal.SIGTERM, _handle_signal)
-    signal.signal(signal.SIGINT, _handle_signal)
+    # Only the main thread may install signal handlers. Under the Windows
+    # service host this runs on a worker thread, where signal.signal() raises
+    # ValueError — which would kill the loop before its first check-in.
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, _handle_signal)
+        signal.signal(signal.SIGINT, _handle_signal)
 
     verify_key = verify.get_pinned_key(config.data_dir)
 

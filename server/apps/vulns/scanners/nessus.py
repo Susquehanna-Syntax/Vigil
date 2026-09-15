@@ -22,6 +22,7 @@ from django.utils.timezone import now
 from apps.alerts.models import Alert, AlertRule
 from apps.alerts.notifications import dispatch_alert_notification
 from apps.hosts.models import Host
+from apps.instance.config import setting
 
 from ..models import VulnFinding, VulnScan, VulnSummary
 from ..scoring import compute_score, recompute_summary
@@ -290,10 +291,10 @@ class NessusScanner(Scanner):
 
     def _session(self):
         """Return (base_url, headers, verify_ssl) or None if not configured."""
-        nessus_url = getattr(settings, "NESSUS_URL", "").rstrip("/")
-        access_key = getattr(settings, "NESSUS_ACCESS_KEY", "")
-        secret_key = getattr(settings, "NESSUS_SECRET_KEY", "")
-        verify_ssl = getattr(settings, "NESSUS_VERIFY_SSL", True)
+        nessus_url = (setting("NESSUS_URL") or "").rstrip("/")
+        access_key = setting("NESSUS_ACCESS_KEY")
+        secret_key = setting("NESSUS_SECRET_KEY")
+        verify_ssl = setting("NESSUS_VERIFY_SSL")
         if not all([nessus_url, access_key, secret_key]):
             return None
         headers = {

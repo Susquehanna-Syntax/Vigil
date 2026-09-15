@@ -384,19 +384,56 @@ function yamlToHtml(src) {
   }).join('\n');
 }
 
-/* ── Theme toggle (light / dark) ─────────────────────────────────────── */
+/* ── Theme (system / light / dark) ────────────────────────────────────
+ *
+ * Two controls drive the same preference: the sidebar icon, which flips
+ * between light and dark, and the Appearance card in Settings, which also
+ * offers "System" — follow the OS. "System" is stored as the word, not as
+ * the colour it resolved to, so the page keeps tracking the OS afterwards
+ * instead of freezing at whatever it happened to be when it was chosen.
+ *
+ * The identical resolution runs inline in base.html before first paint; a
+ * mismatch between the two shows up as a flash of the wrong theme. */
+const _MQ_DARK = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+function _systemTheme() {
+  return _MQ_DARK && _MQ_DARK.matches ? 'dark' : 'light';
+}
+function _storedTheme() {
+  try {
+    const v = localStorage.getItem('vigil-theme');
+    if (v === 'light' || v === 'dark' || v === 'system') return v;
+  } catch (e) {}
+  return 'dark';
+}
 function _applyThemeIcon(theme) {
   const sun = document.getElementById('theme-icon-sun');
   const moon = document.getElementById('theme-icon-moon');
   if (sun) sun.style.display = theme === 'light' ? 'block' : 'none';
   if (moon) moon.style.display = theme === 'light' ? 'none' : 'block';
 }
+function _applyThemeButtons(pref) {
+  ['system', 'light', 'dark'].forEach((m) => {
+    const b = document.getElementById('theme-' + m);
+    if (b) b.classList.toggle('active', m === pref);
+  });
+}
+function setTheme(mode) {
+  const pref = (mode === 'light' || mode === 'dark' || mode === 'system') ? mode : 'dark';
+  const resolved = pref === 'system' ? _systemTheme() : pref;
+  document.documentElement.setAttribute('data-theme', resolved);
+  try { localStorage.setItem('vigil-theme', pref); } catch (e) {}
+  _applyThemeIcon(resolved);
+  _applyThemeButtons(pref);
+}
 function toggleTheme() {
   const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-  const next = cur === 'light' ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', next);
-  try { localStorage.setItem('vigil-theme', next); } catch (e) {}
-  _applyThemeIcon(next);
+  setTheme(cur === 'light' ? 'dark' : 'light');
+}
+if (_MQ_DARK && _MQ_DARK.addEventListener) {
+  _MQ_DARK.addEventListener('change', () => {
+    if (_storedTheme() === 'system') setTheme('system');
+  });
 }
 
 /* ── Layout density (cozy / compact) ─────────────────────────────────── */
@@ -415,6 +452,7 @@ function setDensity(mode) {
 
 document.addEventListener('DOMContentLoaded', () => {
   _applyThemeIcon(document.documentElement.getAttribute('data-theme') || 'dark');
+  _applyThemeButtons(_storedTheme());
   _applyDensityButtons(document.documentElement.getAttribute('data-density') || 'cozy');
 });
 
@@ -586,3 +624,90 @@ function timeAgo(value) {
   if (days < 30) return `${days}d ago`;
   return then.toLocaleDateString();
 }
+
+
+/* ── Delegated click handlers ──────────────────────────────────────────────
+   Inline onclick attributes are why the Content-Security-Policy had to keep
+   'unsafe-inline' for scripts, which is the directive that would otherwise
+   contain an injected <script>. They are also the wrong tool twice over: the
+   escaping needed inside an attribute-delimited JS string is not the escaping
+   Django or escHtml applies, and a handler built by string concatenation is
+   one interpolation away from being an injection.
+
+   delegateClick binds once, at the document, for markup that does not exist
+   yet — which is what every one of these call sites actually needed. */
+function delegateClick(selector, handler) {
+  document.addEventListener('click', (ev) => {
+    const el = ev.target.closest && ev.target.closest(selector);
+    if (!el) return;
+    handler(el, ev);
+  });
+}
+
+
+/* ── Declarative handlers ──────────────────────────────────────────────────
+   Templates carried ~110 inline onclick/onchange attributes. None was
+   injectable — they are author-written strings, not built from data — but
+   `script-src` cannot allow inline handlers selectively: keeping any of them
+   means keeping 'unsafe-inline', which is the directive that would otherwise
+   stop an injected <script> from running at all.
+
+   So they became attributes a dispatcher reads:
+
+       onclick="setDeployTab('yaml')"     ->  data-act="setDeployTab" data-a1="yaml"
+       onclick="setTimeRange(60, this)"   ->  data-act="setTimeRange" data-a1="60" data-a2="$el"
+       onchange="toggleAll(this.checked)" ->  data-change="toggleAll" data-a1="$checked"
+
+   No eval and no new Function: CSP blocks both, and reaching for them here
+   would have swapped one hole for a worse one. */
+
+const _ACT_TOKENS = {
+  $el: (el) => el,
+  $event: (el, ev) => ev,
+  $checked: (el) => !!el.checked,
+  $value: (el) => el.value,
+  $true: () => true,
+  $false: () => false,
+};
+
+function _actArg(raw, el, ev) {
+  if (raw === undefined) return undefined;
+  if (Object.prototype.hasOwnProperty.call(_ACT_TOKENS, raw)) return _ACT_TOKENS[raw](el, ev);
+  if (/^-?\d+(\.\d+)?$/.test(raw)) return Number(raw);
+  return raw;
+}
+
+function _runAct(el, ev, name) {
+  const fn = window[name];
+  if (typeof fn !== 'function') {
+    // Loud, because the failure mode this replaces is a button that silently
+    // does nothing — which is exactly what a typo here would reintroduce.
+    console.error(`vigil: no handler named ${name} for`, el);
+    return;
+  }
+  const args = [];
+  for (let i = 1; i <= 4; i += 1) {
+    const raw = el.dataset['a' + i];
+    if (raw === undefined) break;
+    args.push(_actArg(raw, el, ev));
+  }
+  if (el.hasAttribute('data-stop')) ev.stopPropagation();
+  fn(...args);
+}
+
+document.addEventListener('click', (ev) => {
+  const el = ev.target.closest && ev.target.closest('[data-act]');
+  if (el) _runAct(el, ev, el.dataset.act);
+});
+document.addEventListener('change', (ev) => {
+  const el = ev.target.closest && ev.target.closest('[data-change]');
+  if (el) _runAct(el, ev, el.dataset.change);
+});
+document.addEventListener('input', (ev) => {
+  const el = ev.target.closest && ev.target.closest('[data-input]');
+  if (el) _runAct(el, ev, el.dataset.input);
+});
+document.addEventListener('submit', (ev) => {
+  const el = ev.target.closest && ev.target.closest('[data-submit]');
+  if (el) _runAct(el, ev, el.dataset.submit);
+});

@@ -171,7 +171,7 @@ class AutomationYamlTests(TestCase):
     def _automation(self, **kw):
         defaults = dict(
             name="Prune Docker On Low Disk", trigger="event",
-            event="alert_fired", min_severity="warning",
+            event="alert_sent", min_severity="warning",
             action_kind="playbook", playbook=self.playbook,
             target="event_host", created_by=self.user)
         return Automation.objects.create(**{**defaults, **kw})
@@ -179,7 +179,7 @@ class AutomationYamlTests(TestCase):
     def test_round_trip_of_an_event_automation(self):
         parsed = auto_yaml.parse(auto_yaml.to_yaml(self._automation()))
         self.assertEqual(parsed["trigger"], "event")
-        self.assertEqual(parsed["event"], "alert_fired")
+        self.assertEqual(parsed["event"], "alert_sent")
         self.assertEqual(parsed["min_severity"], "warning")
         self.assertEqual(parsed["action_kind"], "playbook")
         self.assertEqual(parsed["slug"], "container-host-maintenance")
@@ -224,7 +224,7 @@ class AutomationYamlTests(TestCase):
 
     def test_target_host_is_refused_on_import(self):
         with self.assertRaises(ContentYamlError):
-            auto_yaml.parse("name: X\ntrigger: event\nevent: alert_fired\n"
+            auto_yaml.parse("name: X\ntrigger: event\nevent: alert_sent\n"
                             "action_kind: task\ntask: t\ntarget: host\n")
 
     def test_a_cron_field_that_is_not_a_cron_field_is_refused(self):
@@ -247,12 +247,12 @@ class AutomationYamlTests(TestCase):
     def test_target_tags_must_be_present_for_a_tag_target(self):
         """Otherwise it would match no hosts and look like it works."""
         with self.assertRaises(ContentYamlError):
-            auto_yaml.parse("name: X\ntrigger: event\nevent: alert_fired\n"
+            auto_yaml.parse("name: X\ntrigger: event\nevent: alert_sent\n"
                             "action_kind: task\ntask: t\ntarget: tags\n")
 
     def test_naming_both_a_task_and_a_playbook_is_refused(self):
         with self.assertRaises(ContentYamlError):
-            auto_yaml.parse("name: X\ntrigger: event\nevent: alert_fired\n"
+            auto_yaml.parse("name: X\ntrigger: event\nevent: alert_sent\n"
                             "action_kind: task\ntask: t\nplaybook: b\n")
 
 
@@ -310,7 +310,7 @@ class SlugIsAFilenameTests(TestCase):
 
     def test_automations_resolve_the_same_way(self):
         parsed = auto_yaml.parse(
-            "name: A\ntrigger: event\nevent: alert_fired\naction_kind: task\n"
+            "name: A\ntrigger: event\nevent: alert_sent\naction_kind: task\n"
             "task: docker-prune-and-restart-unhealthy\n")
         definition, playbook = auto_yaml.resolve_action(
             parsed, definitions=TaskDefinition.objects.all(), playbooks=[],

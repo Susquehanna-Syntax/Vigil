@@ -7,6 +7,7 @@ launch/poll/ingest logic — this file only schedules the cycle.
 """
 
 import logging
+from datetime import timedelta
 
 from celery import shared_task
 from django.utils.timezone import localdate
@@ -92,3 +93,26 @@ def refresh_kev() -> str:
 
     written = kev.fetch_live()
     return f"refreshed {written} KEV entries"
+
+
+@shared_task(name="vulns.prune_old_score_history")
+def prune_old_score_history() -> str:
+    """Drop score snapshots past their retention window.
+
+    The model deferred this to "a future maintenance task". At one row per host
+    per day the deferral was sound — it is not a table that will surprise
+    anyone — but an unbounded table with no owner is how a small number becomes
+    a large one three years later, and the task costs almost nothing.
+    """
+    from django.conf import settings
+    from django.utils.timezone import now
+
+    days = int(getattr(settings, "VIGIL_SCORE_HISTORY_RETENTION_DAYS", 730))
+    if days <= 0:
+        return "Score-history retention disabled"
+    cutoff = (now() - timedelta(days=days)).date()
+    deleted, _ = VulnScoreHistory.objects.filter(date__lt=cutoff).delete()
+    if deleted:
+        logger.info("Pruned %d vulnerability score snapshot(s) older than %d days",
+                    deleted, days)
+    return f"Pruned {deleted} score snapshot(s) older than {days} days"

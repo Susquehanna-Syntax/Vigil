@@ -96,11 +96,18 @@ class RebuildHonoursTheStandingAckTests(TestCase):
 
     def _create(self):
         # No acknowledge_plaintext_transport in the body — that is the point.
+        #
+        # REMOTE_ADDR is public on purpose. The transport gate reads the socket
+        # peer now rather than the Host header (that header was client-chosen,
+        # and `Host: 127.0.0.1` used to make an internet-facing rebuild look
+        # like a LAN one). The test client's default peer is 127.0.0.1, which
+        # is correctly private, so a test that wants the gate to fire has to
+        # arrive from somewhere the gate is meant to protect against.
         return self.client.post("/api/v1/reprovision/jobs/", {
             "host": str(self.host.id), "image": str(self.image.id),
             "profile": str(self.profile.id), "password": "pw",
             "totp": "123456", "typed_hostname": "web-01",
-        }, content_type="application/json")
+        }, content_type="application/json", REMOTE_ADDR="93.184.216.34")
 
     @patch("apps.accounts.totp.require_totp_confirmation", return_value=None)
     def test_without_the_ack_a_rebuild_is_refused(self, _totp):

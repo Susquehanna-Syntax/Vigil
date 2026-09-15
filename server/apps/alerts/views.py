@@ -30,6 +30,15 @@ def _parse_ack_duration(request):
     return now() + timedelta(seconds=seconds), None
 
 
+#: How many alerts a list request returns when the caller does not say. Chosen
+#: to be more than an operator will read at once and far less than a year of a
+#: flapping host.
+DEFAULT_ALERT_PAGE = 200
+
+#: The ceiling, even when a caller asks for more.
+MAX_ALERT_PAGE = 500
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def alert_list(request):
@@ -37,14 +46,28 @@ def alert_list(request):
     alerts = scoping.filter_by_site(
         Alert.objects.filter(state=state).select_related("host", "rule"),
         request.user, path="host__")
-    # Optional cap — the resolved tab only ever shows recent history
+    # Always capped. `limit` used to default to 0, so the `if limit > 0` slice
+    # never ran and the Firing and Acknowledged tabs — which pass no limit —
+    # serialized every row in those states. Nothing prunes alerts_alert, so a
+    # month of one flapping host made that an ever-growing payload the worker
+    # built in memory on every page load. The Resolved tab was the only one the
+    # UI happened to cap, and so the only one that was safe.
+    #
+    # A page of alerts is what an operator can actually read. The header says
+    # how many there really are, so a UI can show "showing 200 of 4,318"
+    # instead of implying the list is complete.
     try:
-        limit = int(request.query_params.get("limit", 0))
+        limit = int(request.query_params.get("limit", DEFAULT_ALERT_PAGE))
     except (TypeError, ValueError):
-        limit = 0
-    if limit > 0:
-        alerts = alerts[: min(limit, 200)]
-    return Response(AlertSerializer(alerts, many=True).data)
+        limit = DEFAULT_ALERT_PAGE
+    limit = max(1, min(limit, MAX_ALERT_PAGE))
+
+    total = alerts.count()
+    payload = AlertSerializer(alerts[:limit], many=True).data
+    response = Response(payload)
+    response["X-Vigil-Total"] = str(total)
+    response["X-Vigil-Truncated"] = "1" if total > limit else "0"
+    return response
 
 
 @api_view(["POST"])

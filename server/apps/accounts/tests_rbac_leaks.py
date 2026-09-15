@@ -16,6 +16,7 @@ from apps.automations.models import Automation
 from apps.playbooks.models import Playbook
 from apps.hosts.models import Host
 from apps.tasks.models import TaskDefinition
+from apps.jackil.models import JackilTicket
 from apps_business.sites.models import (
     AutomationSiteAssignment, PlaybookSiteAssignment, HostSiteAssignment, Site,
     UserSiteRole,
@@ -27,6 +28,7 @@ SCOPED_LIST_ENDPOINTS = {
     "/api/v1/alerts/": lambda r: r["host_hostname"],
     "/api/v1/playbooks/": lambda r: r["name"],
     "/api/v1/automations/": lambda r: r["name"],
+    "/api/v1/jackil/tickets/": lambda r: r["host"],
 }
 
 
@@ -53,8 +55,11 @@ class CrossSiteLeakTests(TestCase):
             rule = AlertRule.objects.create(
                 name=f"{tag}-rule", category="cpu", metric="cpu",
                 operator="gt", threshold=90, severity="warning")
-            Alert.objects.create(host=host, rule=rule, severity="warning",
-                                 message=f"{tag} alert")
+            alert = Alert.objects.create(host=host, rule=rule, severity="warning",
+                                         message=f"{tag} alert")
+            JackilTicket.objects.create(
+                alert=alert, ticket_id=1 if tag == "west" else 2,
+                url=f"https://help.example.com/tickets/{tag}/")
 
             b = Playbook.objects.create(name=f"{tag}-playbook")
             PlaybookSiteAssignment.objects.create(playbook=b, site=site)
@@ -73,7 +78,7 @@ class CrossSiteLeakTests(TestCase):
         body = resp.json()
         if isinstance(body, dict):
             # automations wraps its list alongside the event label map
-            for key in ("results", "automations"):
+            for key in ("results", "automations", "tickets"):
                 if key in body:
                     return body[key]
         return body
@@ -113,7 +118,7 @@ class CrossSiteLeakTests(TestCase):
         registry still matches it, so the leak test above cannot quietly stop
         covering something.
         """
-        expected = {"hosts", "alerts", "playbooks", "automations"}
+        expected = {"hosts", "alerts", "playbooks", "automations", "tickets"}
         covered = {u.strip("/").split("/")[-1] for u in SCOPED_LIST_ENDPOINTS}
         self.assertEqual(covered, expected)
 

@@ -11,12 +11,14 @@ from apps.tasks.models import TaskDefinition
 from vigil import scoping
 from vigil.hooks import KNOWN_EVENTS
 
+from . import conditions
 from .models import Automation
 from .tasks import sync_periodic_task
 
 # Events an automation can trigger on, with human labels.
 EVENT_LABELS = {
-    "alert_fired": "An alert fires",
+    "alert_sent": "An alert is sent",
+    "alert_refired": "An alert re-fires (flapping, not sent)",
     "host_approved": "A host is approved",
     "host_rejected": "A host is rejected",
     "task_completed": "A task completes",
@@ -27,6 +29,7 @@ EVENT_LABELS = {
 def _row(a: Automation) -> dict:
     return {
         "id": str(a.id), "name": a.name, "enabled": a.enabled,
+        "allow_high_risk": a.allow_high_risk,
         "trigger": a.trigger,
         "event": a.event, "min_severity": a.min_severity, "event_tags": a.event_tags,
         "event_rule": str(a.event_rule_id) if a.event_rule_id else None,
@@ -36,6 +39,8 @@ def _row(a: Automation) -> dict:
         "match_text": a.match_text,
         "match_field": a.match_field,
         "match_mode": a.match_mode,
+        "condition_logic": a.condition_logic,
+        "conditions": a.conditions or [],
         "cron": {"minute": a.cron_minute, "hour": a.cron_hour, "dom": a.cron_dom,
                  "month": a.cron_month, "dow": a.cron_dow},
         "cron_display": a.cron_display,
@@ -54,8 +59,43 @@ def _row(a: Automation) -> dict:
     }
 
 
+def _high_risk_gate(request, automation: Automation, requested) -> "Response | None":
+    """Authorize a change to *automation*'s allow_high_risk flag.
+
+    The same shape as apps/playbooks/views.py:_high_risk_gate, and for the same
+    reason: turning it ON costs a fresh TOTP code, and that one confirmation
+    authorizes every future unattended dispatch of this automation's high-risk
+    steps. Turning it OFF is unguarded — removing an authorization needs no
+    authorization.
+
+    An automation and an auto-enrolling playbook are the same class of thing.
+    Playbooks asked; automations did not ask at all.
+    """
+    if requested is None or bool(requested) == automation.allow_high_risk:
+        return None
+    if not requested:
+        automation.allow_high_risk = False
+        return None
+
+    from apps.accounts.totp import require_totp_confirmation
+
+    if error := require_totp_confirmation(request.user, request.data):
+        return Response(
+            {"detail": f"Allowing high-risk steps needs confirmation: {error}",
+             "needs_totp": True},
+            status=status.HTTP_401_UNAUTHORIZED)
+    automation.allow_high_risk = True
+    return None
+
+
 def _apply(a: Automation, data) -> str | None:
-    """Set fields from *data*; returns an error string or None."""
+    """Set fields from *data*; returns an error string or None.
+
+    Deliberately does NOT set allow_high_risk: that one is 2FA-guarded and goes
+    through _high_risk_gate, which needs the request. Setting it here would
+    make the YAML import path the way around the gate — the exact hole the
+    playbook importer has a comment about avoiding.
+    """
     if "name" in data:
         a.name = (data["name"] or "").strip()
     if "enabled" in data:
@@ -90,6 +130,17 @@ def _apply(a: Automation, data) -> str | None:
         if data["match_mode"] not in Automation.MatchMode.values:
             return "invalid match_mode"
         a.match_mode = data["match_mode"]
+    if "condition_logic" in data:
+        if data["condition_logic"] not in Automation.ConditionLogic.values:
+            return "invalid condition_logic"
+        a.condition_logic = data["condition_logic"]
+    if "conditions" in data:
+        clean, err = conditions.validate(data["conditions"])
+        if err:
+            # Refused, not silently dropped: an automation running wider than
+            # the person who saved it believes is the bad outcome here.
+            return err
+        a.conditions = clean
     cron = data.get("cron") or {}
     for k, field in (("minute", "cron_minute"), ("hour", "cron_hour"),
                      ("dom", "cron_dom"), ("month", "cron_month"), ("dow", "cron_dow")):
@@ -155,12 +206,15 @@ def automation_index(request):
                 Automation.objects.select_related("task_definition", "target_host"),
                 request.user, cascade_global=True)],
             "events": EVENT_LABELS,
+            "condition_meta": conditions.meta(),
         })
     a = Automation(created_by=request.user, trigger=request.data.get("trigger", "event"),
                    action_kind=request.data.get("action_kind", "task"))
     err = _apply(a, request.data)
     if err:
         return Response({"detail": err}, status=400)
+    if denied := _high_risk_gate(request, a, request.data.get("allow_high_risk")):
+        return denied
     a.save()
     sync_periodic_task(a)
     return Response(_row(a), status=status.HTTP_201_CREATED)
@@ -178,6 +232,8 @@ def automation_detail(request, automation_id):
     err = _apply(a, request.data)
     if err:
         return Response({"detail": err}, status=400)
+    if denied := _high_risk_gate(request, a, request.data.get("allow_high_risk")):
+        return denied
     a.save()
     sync_periodic_task(a)
     return Response(_row(a))
@@ -273,11 +329,22 @@ def automation_from_yaml(request):
         "enabled": parsed["enabled"],
         "trigger": parsed["trigger"],
         "event": parsed["event"],
-        "min_severity": parsed["min_severity"],
-        "event_tags": parsed["event_tags"],
-        "match_text": parsed["match_text"],
+        "min_severity": "",
+        "event_tags": [],
+        # A shared file may still carry the old fixed filters. Fold them in
+        # rather than storing them, or the import would land a filter that
+        # applies but appears nowhere in the editor.
+        "match_text": "",
         "match_field": parsed["match_field"],
         "match_mode": parsed["match_mode"],
+        "condition_logic": parsed["condition_logic"],
+        "conditions": parsed["conditions"] + conditions.fold_legacy(
+            min_severity=parsed["min_severity"],
+            event_tags=parsed["event_tags"],
+            match_text=parsed["match_text"],
+            match_field=parsed["match_field"],
+            match_mode=parsed["match_mode"],
+        ),
         "cron": parsed["cron"],
         "action_kind": parsed["action_kind"],
         "params_override": parsed["params_override"],

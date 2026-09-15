@@ -181,6 +181,19 @@ def commit(params: dict, _config) -> str:
     return f"Committed job {params.get('job_id')}; rebooting into installer"
 
 
+def _regenerate_grub() -> None:
+    """Rebuild grub.cfg from /etc/grub.d.
+
+    Needed on the way out as well as in: removing the generator script does
+    not remove the menuentry it already produced.
+    """
+    for cmd in (["update-grub"],
+                ["grub2-mkconfig", "-o", "/boot/grub2/grub.cfg"]):
+        if shutil.which(cmd[0]):
+            _run(cmd)
+            break
+
+
 def _write_grub_entry(cmdline: str) -> None:
     entry = (
         f"menuentry '{ENTRY_TITLE}' --id {ENTRY_ID} {{\n"
@@ -191,11 +204,7 @@ def _write_grub_entry(cmdline: str) -> None:
     GRUB_D_ENTRY.write_text("#!/bin/sh\nexec cat <<'EOF'\n" + entry + "EOF\n")
     GRUB_D_ENTRY.chmod(0o755)
 
-    for cmd in (["update-grub"],
-                ["grub2-mkconfig", "-o", "/boot/grub2/grub.cfg"]):
-        if shutil.which(cmd[0]):
-            _run(cmd)
-            break
+    _regenerate_grub()
 
     for cmd in (["grub-reboot", ENTRY_ID], ["grub2-reboot", ENTRY_ID]):
         if shutil.which(cmd[0]):
@@ -219,8 +228,51 @@ def _write_systemd_boot_entry(cmdline: str) -> None:
 
 
 def cleanup(params: dict, _config) -> str:
-    """Remove staged files. Idempotent — dispatched on abort, and on failure
-    when the old OS is still reachable."""
+    """Remove staged files and any boot entry pointing at them.
+
+    Idempotent — dispatched on abort, and on failure when the old OS is still
+    reachable. That is the recovery path, so it must not leave a menu entry
+    referring to a kernel it has just deleted: selecting it (or a one-shot
+    that outlived the job) drops the machine into the GRUB rescue prompt,
+    which on a headless host is indistinguishable from a hang.
+
+    Both halves of that were missing. Removing /etc/grub.d/42_vigil_reprovision
+    does not remove the menuentry already generated into grub.cfg — verified on
+    a VM, where `grep -c 'Vigil Reprovision' /boot/grub/grub.cfg` still
+    returned 1 after a successful cleanup — and the systemd-boot entry was
+    never removed at all, since only the GRUB generator was unlinked.
+    """
     shutil.rmtree(STAGE_DIR, ignore_errors=True)
+
+    notes = []
+    had_grub_entry = GRUB_D_ENTRY.exists()
     GRUB_D_ENTRY.unlink(missing_ok=True)
-    return f"Cleaned up job {params.get('job_id')}"
+    if had_grub_entry:
+        try:
+            _regenerate_grub()
+        except Exception:
+            # Best effort. Removing the files is the part that matters for
+            # recovery; failing the whole task because update-grub errored
+            # would strand a job whose entire purpose is to unstick one. Say
+            # so in the result rather than swallowing it — a stale menuentry
+            # pointing at a deleted kernel is worth a human knowing about.
+            logger.warning("update-grub failed during cleanup", exc_info=True)
+            notes.append(
+                "grub.cfg was not regenerated; a stale 'Vigil Reprovision' "
+                "entry may remain — run update-grub")
+
+    # systemd-boot: drop the entry file, and clear a one-shot still pointing
+    # at it so the next boot does not select something that no longer exists.
+    sd_entry = BOOT_DIR / "loader" / "entries" / f"{ENTRY_ID}.conf"
+    if sd_entry.exists():
+        sd_entry.unlink(missing_ok=True)
+        if shutil.which("bootctl"):
+            try:
+                _run(["bootctl", "set-oneshot", ""], timeout=60)
+            except Exception:
+                # Best effort: the entry file is gone either way, and failing
+                # cleanup over a cleared one-shot would strand the job.
+                logger.warning("Could not clear the systemd-boot one-shot")
+
+    msg = f"Cleaned up job {params.get('job_id')}"
+    return msg + (" (" + "; ".join(notes) + ")" if notes else "")

@@ -34,8 +34,51 @@ esac
 
 echo "Installing Vigil agent for $PLATFORM..."
 
-curl -fsSL -o /usr/local/bin/vigil-agent "${VIGIL_SERVER}/agent/download/${PLATFORM}/"
-chmod +x /usr/local/bin/vigil-agent
+# Download to a temp file and verify it before anything makes it executable.
+# This binary becomes a root process under systemd, so an unverified download
+# is a root compromise for anyone who can substitute the bytes in flight. The
+# server publishes the digest in an X-Vigil-SHA256 response header; the agent's
+# own self-updater already refuses to swap its binary without checking exactly
+# this (agent/vigil_agent/executor.py), and the first install must not be the
+# one step that skips it.
+TMP_AGENT="$(mktemp)"
+trap 'rm -f "$TMP_AGENT"' EXIT
+
+HDRS="$(mktemp)"
+curl -fsSL -D "$HDRS" -o "$TMP_AGENT" "${VIGIL_SERVER}/agent/download/${PLATFORM}/"
+# Match with tolower($0) rather than awk's IGNORECASE: that is a gawk
+# extension, and Debian and Ubuntu default to mawk, which ignores it in
+# silence. Under mawk the pattern simply never matched the real, capitalised
+# header, so this script refused every install on its main target platform.
+EXPECTED_SHA="$(awk 'tolower($0) ~ /^x-vigil-sha256:/ {gsub(/\r/,"",$2); print tolower($2)}' "$HDRS")"
+rm -f "$HDRS"
+
+if [ -z "$EXPECTED_SHA" ]; then
+  echo "ERROR: the server did not publish a SHA-256 for this agent binary." >&2
+  echo "Refusing to install an unverified binary that would run as root." >&2
+  echo "Upload the agent through Settings so its digest is recorded, or set" >&2
+  echo "VIGIL_ALLOW_UNVERIFIED_AGENT=1 to override (not recommended)." >&2
+  [ "${VIGIL_ALLOW_UNVERIFIED_AGENT:-}" = "1" ] || exit 1
+else
+  if command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL_SHA="$(sha256sum "$TMP_AGENT" | awk '{print tolower($1)}')"
+  elif command -v shasum >/dev/null 2>&1; then
+    ACTUAL_SHA="$(shasum -a 256 "$TMP_AGENT" | awk '{print tolower($1)}')"
+  else
+    echo "ERROR: neither sha256sum nor shasum is available to verify the download." >&2
+    exit 1
+  fi
+  if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+    echo "ERROR: agent binary failed SHA-256 verification." >&2
+    echo "  expected: $EXPECTED_SHA" >&2
+    echo "  actual:   $ACTUAL_SHA" >&2
+    echo "The download was corrupted or tampered with. Nothing was installed." >&2
+    exit 1
+  fi
+  echo "Verified agent binary (sha256 $ACTUAL_SHA)."
+fi
+
+install -m 0755 "$TMP_AGENT" /usr/local/bin/vigil-agent
 
 mkdir -p /etc/vigil
 
@@ -71,7 +114,18 @@ EOF
       exit 1
     fi
   else
-    echo "Config written to /etc/vigil/agent.yml — set agent_token before starting."
+    # Generate the token here rather than leaving a placeholder. The server
+    # takes whatever token the agent presents and stores it verbatim, so a
+    # literal "REPLACE_WITH_TOKEN" left in place becomes a working credential
+    # that is published in this very script. Anyone who could reach the API
+    # could then authenticate as this host, read its task queue, and — because
+    # register() is idempotent on the token — enrol a second machine that
+    # inherits this host's already-approved identity without any admin action.
+    # The reprovision branch above has generated a real token all along; this
+    # branch simply never did.
+    NEW_TOKEN="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    sed -i.bak "s|REPLACE_WITH_TOKEN|${NEW_TOKEN}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+    echo "Config written to /etc/vigil/agent.yml with a generated agent token."
   fi
 fi
 
@@ -104,6 +158,59 @@ Environment=no_proxy=${_np_full}"
     echo "Detected proxy — baking egress config into the agent service."
   fi
 
+  # Only a mode that executes tasks needs root. A monitor-mode agent reads
+  # /proc and /sys and posts the numbers, which any user can do — the one
+  # thing it loses unprivileged is dmidecode's manufacturer/model, and that
+  # call already degrades to an absent field rather than failing.
+  #
+  # This matters because monitor is the mode this installer writes by default,
+  # so most agents were running as root to do a job that needs none of it.
+  AGENT_MODE="$(sed -n 's/^mode:[[:space:]]*//p' /etc/vigil/agent.yml 2>/dev/null | head -1)"
+  AGENT_MODE="${AGENT_MODE:-monitor}"
+
+  RUN_AS=""
+  HARDENING=""
+  if [ "$AGENT_MODE" = "monitor" ]; then
+    if ! id vigil-agent >/dev/null 2>&1; then
+      useradd --system --no-create-home --shell /usr/sbin/nologin vigil-agent 2>/dev/null || true
+    fi
+    if id vigil-agent >/dev/null 2>&1; then
+      mkdir -p /var/lib/vigil-agent
+      chown -R vigil-agent /var/lib/vigil-agent
+      chown vigil-agent /etc/vigil/agent.yml 2>/dev/null || true
+      chmod 600 /etc/vigil/agent.yml 2>/dev/null || true
+      RUN_AS="User=vigil-agent"
+      # Safe for a process that only reads counters. Deliberately NOT applied
+      # to managed or full_control: an agent whose job is systemctl and
+      # apt-get needs to write /etc and /usr, and ProtectSystem would leave it
+      # failing every task it was asked to run.
+      HARDENING="NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+ReadWritePaths=/var/lib/vigil-agent
+CapabilityBoundingSet="
+      echo "Monitor mode: running the agent as the unprivileged 'vigil-agent' user."
+    fi
+  else
+    # Root, because the mode's whole purpose needs it — but still deny the
+    # gaining of *new* privileges through setuid binaries, which a task that
+    # legitimately runs as root never needs to do.
+    HARDENING="NoNewPrivileges=yes
+ProtectKernelModules=yes
+RestrictRealtime=yes
+LockPersonality=yes"
+    echo "Mode '$AGENT_MODE' executes tasks, so the agent runs as root."
+    echo "  Switch to monitor mode to run it unprivileged."
+  fi
+
   cat > /etc/systemd/system/vigil-agent.service << EOF
 [Unit]
 Description=Vigil Monitoring Agent
@@ -115,6 +222,8 @@ Type=simple
 ExecStart=/usr/local/bin/vigil-agent
 Restart=always
 RestartSec=10
+${RUN_AS}
+${HARDENING}
 ${PROXY_LINES}
 
 [Install]
@@ -127,10 +236,9 @@ EOF
     echo "Vigil agent installed and started."
     echo "Approve this host in Vigil Settings > Enrollment Queue."
   else
-    echo "Vigil agent installed."
-    echo "  1. Edit /etc/vigil/agent.yml and set agent_token"
-    echo "  2. systemctl start vigil-agent"
-    echo "  3. Approve the host in Vigil Settings > Enrollment Queue"
+    echo "Vigil agent installed with a generated agent token."
+    echo "  1. systemctl start vigil-agent"
+    echo "  2. Approve the host in Vigil Settings > Enrollment Queue"
   fi
 
 elif [ "$OS" = "darwin" ]; then
@@ -163,10 +271,9 @@ EOF
     echo "Vigil agent installed and started."
     echo "Approve this host in Vigil Settings > Enrollment Queue."
   else
-    echo "Vigil agent installed."
-    echo "  1. Edit /etc/vigil/agent.yml and set agent_token"
-    echo "  2. launchctl start com.susquehannasyntax.vigil-agent"
-    echo "  3. Approve the host in Vigil Settings > Enrollment Queue"
+    echo "Vigil agent installed with a generated agent token."
+    echo "  1. launchctl start com.susquehannasyntax.vigil-agent"
+    echo "  2. Approve the host in Vigil Settings > Enrollment Queue"
   fi
 
 else

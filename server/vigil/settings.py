@@ -101,6 +101,8 @@ INSTALLED_APPS = [
     "apps.automations",
     "apps.reprovision",
     "apps.civilsso",
+    "apps.instance",
+    "apps.jackil",
     # Business features (apps_business/LICENSE) — installed always, unlocked by license
     "apps_business.sites",
     "apps_business.audits",
@@ -159,6 +161,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.accounts.middleware.SetupRedirectMiddleware",
+    "apps.accounts.csp.ContentSecurityPolicyMiddleware",
 ]
 
 ROOT_URLCONF = "vigil.urls"
@@ -243,6 +246,12 @@ MEDIA_ROOT = BASE_DIR / "media"
 # independently of the rest of the app's uploads.
 VIGIL_IMAGE_ROOT = os.environ.get("VIGIL_IMAGE_ROOT", "/var/lib/vigil/images")
 
+#: Largest ISO an operator may upload. 0 disables the ceiling. Generous by
+#: default — a Windows Server ISO is comfortably over 5 GB — because the point
+#: is to catch a mistake, not to police legitimate images.
+VIGIL_MAX_IMAGE_BYTES = int(os.environ.get(
+    "VIGIL_MAX_IMAGE_BYTES", str(16 * 1024 ** 3)))
+
 # Where Django spools a multipart upload above FILE_UPLOAD_MAX_MEMORY_SIZE
 # (ISO uploads for apps.reprovision.views.image_upload always are — the
 # default threshold is 2.5 MB). Left unset, Django spools to the system
@@ -307,6 +316,27 @@ CSRF_COOKIE_SAMESITE = "Lax"
 _secure_cookies = os.environ.get("VIGIL_SECURE_COOKIES", "false").lower() in ("true", "1", "yes")
 SESSION_COOKIE_SECURE = _secure_cookies
 CSRF_COOKIE_SECURE = _secure_cookies
+
+# `manage.py check --deploy` flagged SECURE_HSTS_SECONDS and SECURE_SSL_REDIRECT
+# and neither appeared anywhere in this file, so an operator who wanted to fix
+# the warning had nothing to set. They are knobs now, and both stay off by
+# default because Vigil's ordinary deployment is a LAN address with no
+# certificate — turning on an HTTPS redirect there makes the product
+# unreachable, and HSTS makes that state sticky in every browser that saw it.
+#
+# VIGIL_SECURE_COOKIES=true is the signal that this instance is served over
+# HTTPS, so it is the sensible thing to turn these on beside.
+SECURE_SSL_REDIRECT = os.environ.get(
+    "VIGIL_SSL_REDIRECT", "false").lower() in ("true", "1", "yes")
+
+#: Seconds. 0 disables HSTS. Start small (a day) and raise it once you are sure
+#: the certificate renews — a browser that has seen a long max-age will refuse
+#: plain HTTP to this host for that long, whatever you do to the server.
+SECURE_HSTS_SECONDS = int(os.environ.get("VIGIL_HSTS_SECONDS", "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = os.environ.get(
+    "VIGIL_HSTS_INCLUDE_SUBDOMAINS", "false").lower() in ("true", "1", "yes")
+SECURE_HSTS_PRELOAD = os.environ.get(
+    "VIGIL_HSTS_PRELOAD", "false").lower() in ("true", "1", "yes")
 
 # ---------------------------------------------------------------------------
 # Task signing — Ed25519
@@ -398,6 +428,14 @@ CELERY_BEAT_SCHEDULE = {
         "task": "statuspage.sample_uptime",
         "schedule": 300.0,  # every 5 minutes — feeds the status-page uptime bars
     },
+    "prune-old-alerts": {
+        "task": "alerts.prune_old_alerts",
+        "schedule": 86400.0,  # daily — nothing pruned alerts_alert before
+    },
+    "prune-old-score-history": {
+        "task": "vulns.prune_old_score_history",
+        "schedule": 86400.0,  # daily; the model deferred this to "a future task"
+    },
     "prune-old-uptime-samples": {
         "task": "statuspage.prune_old_uptime_samples",
         "schedule": 86400.0,  # once daily
@@ -456,6 +494,17 @@ VIGIL_TASK_EXPIRY_GRACE_SECONDS = int(
 # (~10-20x). See docs/timescaledb-storage.md.
 VIGIL_METRIC_RETENTION_DAYS = int(os.environ.get("VIGIL_METRIC_RETENTION_DAYS", "30"))
 
+#: How long a *resolved* alert is kept. Firing and acknowledged alerts are live
+#: state and are never pruned. 0 disables pruning entirely, for an operator who
+#: wants the whole history and has the disk for it.
+VIGIL_ALERT_RETENTION_DAYS = int(os.environ.get("VIGIL_ALERT_RETENTION_DAYS", "90"))
+
+#: How long per-host vulnerability score snapshots are kept. One row per host
+#: per day, so two years is ~36k rows at 50 hosts — generous on purpose, since
+#: the value of this table is the long trend. 0 disables pruning.
+VIGIL_SCORE_HISTORY_RETENTION_DAYS = int(os.environ.get(
+    "VIGIL_SCORE_HISTORY_RETENTION_DAYS", "730"))
+
 # Storage safety valve — metrics.check_db_disk_usage logs WARNING/ERROR when the
 # database trends toward the disk limit. Set to 0 to disable a threshold.
 VIGIL_DB_SIZE_WARN_GB = float(os.environ.get("VIGIL_DB_SIZE_WARN_GB", "20"))
@@ -464,7 +513,7 @@ VIGIL_DB_SIZE_CRIT_GB = float(os.environ.get("VIGIL_DB_SIZE_CRIT_GB", "40"))
 # Server build version — surfaced on the About page and the /api/v1/about/
 # endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
 # this constant should stay in lockstep.
-VIGIL_VERSION = "2026.11.3"
+VIGIL_VERSION = "2026.12.0"
 
 # Opt-in daily refresh of the CISA KEV catalogue. Off by default: a self-hosted
 # install makes no outbound call unless its operator asks for one, and the
@@ -559,6 +608,24 @@ GREENBONE_VERIFY_SSL = os.environ.get("GREENBONE_VERIFY_SSL", "true").lower() in
 # Port list UUID for scan targets. Empty falls back to the well-known
 # "All IANA assigned TCP" list; gvmd 20.8+ rejects targets with no port list.
 GREENBONE_PORT_LIST_ID = os.environ.get("GREENBONE_PORT_LIST_ID", "")
+
+# ---------------------------------------------------------------------------
+# Jackil integration (alert -> ticket)
+# ---------------------------------------------------------------------------
+# Jackil is the SQSY helpdesk. When an alert fires, Vigil can open a ticket in
+# it and post a note when the alert clears. Configured from Settings -> Jackil;
+# these are the fallbacks, and setting one here makes it authoritative.
+JACKIL_ENABLED = os.environ.get("JACKIL_ENABLED", "false").lower() in ("true", "1")
+JACKIL_URL = os.environ.get("JACKIL_URL", "")
+JACKIL_API_KEY = os.environ.get("JACKIL_API_KEY", "")
+JACKIL_VERIFY_SSL = os.environ.get("JACKIL_VERIFY_SSL", "true").lower() in ("true", "1")
+#: Lowest alert severity that opens a ticket. "critical" by default: a ticket
+#: per info-level alert turns the helpdesk queue into a metrics feed.
+JACKIL_MIN_SEVERITY = os.environ.get("JACKIL_MIN_SEVERITY", "critical")
+JACKIL_REQUESTER_EMAIL = os.environ.get("JACKIL_REQUESTER_EMAIL", "")
+JACKIL_TAGS = os.environ.get("JACKIL_TAGS", "vigil")
+JACKIL_RESOLVE_ON_CLEAR = os.environ.get(
+    "JACKIL_RESOLVE_ON_CLEAR", "true").lower() in ("true", "1")
 
 # ---------------------------------------------------------------------------
 # Notifications

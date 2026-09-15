@@ -29,7 +29,7 @@ class DispatchModeTests(TestCase):
 
     def _create(self, **extra):
         return self.client.post("/api/v1/automations/", {
-            "name": "A", "trigger": "event", "event": "alert_fired",
+            "name": "A", "trigger": "event", "event": "alert_sent",
             "action_kind": "task", "task_definition": str(self.definition.id),
             "target": "event_host", **extra,
         }, content_type="application/json")

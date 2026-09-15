@@ -11,6 +11,18 @@ let _aiProviders = [];        // cached enabled providers for the picker
 let _staticResolver = null;   // optional client-side built-in suggestion
 const RISK_RANK = { low: 0, standard: 1, high: 2 };
 
+/* Agent-reported values go into double-quoted YAML scalars below — container
+   images, stack names, package names, versions, hostnames. They were spliced
+   in raw, so a value containing a quote or a backslash could close its scalar
+   early and add or rewrite keys in the task the operator is about to review
+   and sign: the preview would show one task and the editor hold another.
+   YAML's double-quoted style escapes exactly like JSON, so JSON.stringify
+   produces the correct scalar — quotes included, which is why callers drop the
+   surrounding "" they used to write by hand. */
+function _yamlStr(value) {
+  return JSON.stringify(String(value == null ? '' : value));
+}
+
 // Deterministic image-update task for a container — no AI needed, and
 // compose-aware: a compose-managed container (has a stack) must be recreated
 // through `docker compose up`, not `recreate_container` (which fails with
@@ -18,31 +30,31 @@ const RISK_RANK = { low: 0, standard: 1, high: 2 };
 function _staticDockerFix(c) {
   const img = c.image || 'IMAGE';
   if (c.stack) {
-    const yaml = `name: "Update ${img} (compose)"
-description: "Pull the latest ${img} and recreate ${c.name} via docker compose"
+    const yaml = `name: ${_yamlStr(`Update ${img} (compose)`)}
+description: ${_yamlStr(`Pull the latest ${img} and recreate ${c.name} via docker compose`)}
 risk: standard
 actions:
   - type: pull_image
     params:
-      image: "${img}"
+      image: ${_yamlStr(img)}
   - type: docker_compose_up
     params:
-      compose_file: "/opt/${c.stack}/docker-compose.yml"  # set the real path
-      services: "${c.service || c.name}"`;
+      compose_file: ${_yamlStr(`/opt/${c.stack}/docker-compose.yml`)}  # set the real path
+      services: ${_yamlStr(c.service || c.name)}`;
     return { yaml, parsed: { name: `Update ${img} (compose)` }, risk: 'standard',
              note: `${c.name} is managed by docker compose (project "${c.stack}") — this recreates it with docker compose up.` };
   }
-  const yaml = `name: "Update ${img}"
-description: "Pull the latest ${img} and recreate ${c.name} on it"
+  const yaml = `name: ${_yamlStr(`Update ${img}`)}
+description: ${_yamlStr(`Pull the latest ${img} and recreate ${c.name} on it`)}
 risk: standard
 actions:
   - type: pull_image
     params:
-      image: "${img}"
+      image: ${_yamlStr(img)}
   - type: recreate_container
     params:
-      container_name: "${c.name}"
-      image: "${img}"`;
+      container_name: ${_yamlStr(c.name)}
+      image: ${_yamlStr(img)}`;
   return { yaml, parsed: { name: `Update ${img}` }, risk: 'standard' };
 }
 
@@ -60,13 +72,13 @@ function _staticVulnFix(f) {
   const covers = others
     ? `\n# Also clears ${others} other open finding(s) against ${pkg} on this host.`
     : '';
-  const yaml = `name: "Upgrade ${pkg} to ${f.fixed_version}"
-description: "Remediates ${f.cve_id || f.plugin_id_or_oid} on ${f.host_hostname || 'this host'} (installed ${f.installed_version || 'unknown'} -> fixed ${f.fixed_version})"${covers}
+  const yaml = `name: ${_yamlStr(`Upgrade ${pkg} to ${f.fixed_version}`)}
+description: ${_yamlStr(`Remediates ${f.cve_id || f.plugin_id_or_oid} on ${f.host_hostname || 'this host'} (installed ${f.installed_version || 'unknown'} -> fixed ${f.fixed_version})`)}${covers}
 risk: standard
 actions:
   - type: update_package
     params:
-      package_name: "${pkg}"`;
+      package_name: ${_yamlStr(pkg)}`;
   return {
     yaml,
     parsed: { name: `Upgrade ${pkg} to ${f.fixed_version}` },
@@ -130,7 +142,7 @@ async function _openAi(context, runFn, staticResult) {
   if (!_aiProviders.length && !_staticResolver) {
     document.getElementById('ai-picker-wrap').innerHTML =
       `<div class="ai-empty">No AI providers are configured.
-       <button class="btn btn-mint btn-sm" style="margin-left:8px;" onclick="_closeAi();navigateTo('settings');">Add one in Settings</button></div>`;
+       <button class="btn btn-mint btn-sm" style="margin-left:8px;" data-ai-settings>Add one in Settings</button></div>`;
     return;
   }
   picker.innerHTML = staticChip + _aiProviders.map(p => `
@@ -396,3 +408,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (add) add.addEventListener('click', () => _editProvider(null));
   loadAiProviders();
 });
+
+
+delegateClick('[data-ai-settings]', () => { _closeAi(); navigateTo('settings'); });

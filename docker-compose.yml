@@ -15,7 +15,12 @@
 #                            stripped by some YAML parsers — keep it in env vars or quote it
 #                            ("Hk3...P0c="). A malformed seed throws binascii.Error and 500s
 #                            every agent checkin.
-#   POSTGRES_PASSWORD      — database password
+#   POSTGRES_PASSWORD      — database password. If you do not set it, it is
+#                            literally 'vigil' — the same guess as the user
+#                            and the database name, on every Vigil install
+#                            in existence. Postgres is not published to the
+#                            host here, but every other container on this
+#                            Docker host can reach db:5432. Set it.
 #
 # Optional:
 #   POSTGRES_DB            — default: vigil
@@ -62,9 +67,11 @@ services:
     image: susquehannasyntax/vigil:latest
     restart: unless-stopped
     environment:
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-insecure-change-me}
+      DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is not set — see the header of this file for how to generate one}"
       VIGIL_SIGNING_KEY_SEED: ${VIGIL_SIGNING_KEY_SEED:-}
       VIGIL_TIMEZONE: ${VIGIL_TIMEZONE:-UTC}
+      VIGIL_METRIC_RETENTION_DAYS: ${VIGIL_METRIC_RETENTION_DAYS:-30}
+      VIGIL_ALERT_RETENTION_DAYS: ${VIGIL_ALERT_RETENTION_DAYS:-90}
       # Remote access (see docs/REMOTE-ACCESS.md). Set VIGIL_PUBLIC_URL to your
       # external URL and VIGIL_TRUST_PROXY=true when serving through Cloudflare
       # Tunnel / Tailscale / a reverse proxy. Both default to off (LAN-only).
@@ -85,6 +92,16 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/0
     ports:
       - "9200:8000"
+    # Without this Docker can only see whether the process exited, never
+    # whether gunicorn is up but wedged — and every `condition: service_healthy`
+    # in this file could only ever wait on db and redis, so the workers came up
+    # "healthy" and dispatched into a server that would not answer.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/', timeout=4).status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     depends_on:
       db:
         condition: service_healthy
@@ -100,12 +117,23 @@ services:
     image: susquehannasyntax/vigil:latest
     restart: unless-stopped
     command: celery -A vigil worker -l info
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A vigil inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     environment:
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-insecure-change-me}
+      DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is not set — see the header of this file for how to generate one}"
       VIGIL_SIGNING_KEY_SEED: ${VIGIL_SIGNING_KEY_SEED:-}
       POSTGRES_DB: ${POSTGRES_DB:-vigil}
       POSTGRES_USER: ${POSTGRES_USER:-vigil}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
+      # The pruning beats run here, so these must reach the worker
+      # and not only the web container — documented settings that
+      # were never passed through are settings that do nothing.
+      VIGIL_METRIC_RETENTION_DAYS: ${VIGIL_METRIC_RETENTION_DAYS:-30}
+      VIGIL_ALERT_RETENTION_DAYS: ${VIGIL_ALERT_RETENTION_DAYS:-90}
       POSTGRES_HOST: db
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -122,13 +150,26 @@ services:
   celery-beat:
     image: susquehannasyntax/vigil:latest
     restart: unless-stopped
-    command: celery -A vigil beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    command: celery -A vigil beat -l info --pidfile=/tmp/celerybeat.pid --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    # beat has no inspect interface — it schedules, it does not consume. The
+    # pid file it maintains is the honest liveness signal available.
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/celerybeat.pid && kill -0 $$(cat /tmp/celerybeat.pid)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
     environment:
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-insecure-change-me}
+      DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is not set — see the header of this file for how to generate one}"
       VIGIL_SIGNING_KEY_SEED: ${VIGIL_SIGNING_KEY_SEED:-}
       POSTGRES_DB: ${POSTGRES_DB:-vigil}
       POSTGRES_USER: ${POSTGRES_USER:-vigil}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
+      # The pruning beats run here, so these must reach the worker
+      # and not only the web container — documented settings that
+      # were never passed through are settings that do nothing.
+      VIGIL_METRIC_RETENTION_DAYS: ${VIGIL_METRIC_RETENTION_DAYS:-30}
+      VIGIL_ALERT_RETENTION_DAYS: ${VIGIL_ALERT_RETENTION_DAYS:-90}
       POSTGRES_HOST: db
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0

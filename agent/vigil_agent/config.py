@@ -27,6 +27,17 @@ REPROVISION_ACTIONS = frozenset({
     "reprovision_cleanup",
 })
 
+#: Real actions that are never allowlistable, and why they are refused.
+#: run_command is arbitrary command execution — full_control only, enforced
+#: again in the executor as defence in depth. The three destructive
+#: reprovision actions are granted by allow_reprovision instead.
+_NEVER_ALLOWLISTABLE = {
+    "run_command",
+    "reprovision_stage",
+    "reprovision_commit",
+    "reprovision_cleanup",
+}
+
 _ALL_ACTIONS = {
     # Service management
     "restart_service", "start_service", "stop_service", "reload_service",
@@ -76,10 +87,59 @@ _ALL_ACTIONS = {
     "reprovision_preflight",
 }
 
-DEFAULT_CONFIG_PATHS = [
-    Path("/etc/vigil/agent.yml"),
-    Path("agent.yml"),
-]
+def _default_scripts_dir(is_windows: bool | None = None) -> Path:
+    """Where execute_script looks for scripts, per platform.
+
+    "/etc/vigil/scripts" on Windows resolves to a path on the current drive
+    that nothing creates — the same shape of bug as the config search path.
+
+    *is_windows* is a parameter for the same reason as _default_config_paths:
+    patching os.name makes pathlib build a WindowsPath on Linux and raise.
+    """
+    if is_windows is None:
+        is_windows = os.name == "nt"
+    if is_windows:
+        program_data = os.environ.get("ProgramData")
+        if program_data:
+            return Path(program_data) / "Vigil" / "scripts"
+    return Path("/etc/vigil/scripts")
+
+
+def _default_config_paths(is_windows: bool | None = None) -> list[Path]:
+    """Where to look for agent.yml when no -c and no VIGIL_CONFIG_PATH.
+
+    *is_windows* is a parameter rather than a read of os.name so tests can
+    exercise both branches: patching os.name globally makes pathlib try to
+    build a WindowsPath on Linux and raise NotImplementedError.
+
+    Windows needs its own entry. "/etc/vigil/agent.yml" resolves there to
+    "\\etc\\vigil\\agent.yml" on the current drive, which nothing writes,
+    so the service — whose binPath carries no -c — started, found no config
+    and exited:
+
+        FileNotFoundError: No config file found. Tried: VIGIL_CONFIG_PATH,
+        ['\\etc\\vigil\\agent.yml', 'agent.yml']
+
+    install.ps1 has always written C:\\ProgramData\\Vigil\\agent.yml. The
+    agent simply never looked there, so the Windows service could not have
+    worked regardless of how it was packaged.
+    """
+    if is_windows is None:
+        is_windows = os.name == "nt"
+    paths: list[Path] = []
+    if is_windows:
+        program_data = os.environ.get("ProgramData")
+        if program_data:
+            paths.append(Path(program_data) / "Vigil" / "agent.yml")
+    else:
+        paths.append(Path("/etc/vigil/agent.yml"))
+    paths.append(Path("agent.yml"))
+    return paths
+
+
+#: Evaluated at import for callers that read it directly; load_config() calls
+#: _default_config_paths() so a test can patch the environment.
+DEFAULT_CONFIG_PATHS = _default_config_paths()
 
 
 @dataclass
@@ -97,7 +157,7 @@ class AgentConfig:
     docker_check_interval: int = 21600
     data_dir: Path = field(default_factory=lambda: Path("/var/lib/vigil-agent"))
     allowlist: set[str] = field(default_factory=set)
-    scripts_dir: Path = field(default_factory=lambda: Path("/etc/vigil/scripts"))
+    scripts_dir: Path = field(default_factory=lambda: _default_scripts_dir())
     # Free-form tags advertised to the server at every checkin. Server-side
     # tags take precedence: this list is used to seed/augment, never to
     # overwrite tags an operator has set in the console.
@@ -126,12 +186,30 @@ class AgentConfig:
         # action simply stays un-allowlisted — tasks naming it are rejected
         # with a clear reason, and it starts working after the agent updates.
         unknown = self.allowlist - _ALL_ACTIONS
+        # Separate "not a real action" from "real, but deliberately not
+        # allowlistable". Both are ignored, but only one is a typo, and
+        # telling an operator to look for a typo in `run_command` sends them
+        # hunting for something that is not there.
+        not_allowlistable = unknown & _NEVER_ALLOWLISTABLE
+        unknown -= not_allowlistable
+        # Drop both, always. Splitting the warning must not split the
+        # enforcement: leaving run_command in the allowlist would let a
+        # managed-mode agent accept arbitrary command execution, which is the
+        # single thing this exclusion exists to prevent.
+        self.allowlist = self.allowlist - not_allowlistable - unknown
+        if not_allowlistable:
+            logger.warning(
+                "Ignoring allowlist entries that cannot be allowlisted: %s. "
+                "These are real actions, deliberately excluded because they "
+                "grant too much: run_command executes arbitrary commands and "
+                "needs mode: full_control; the destructive reprovision "
+                "actions need allow_reprovision: true.",
+                sorted(not_allowlistable))
         if unknown:
             logger.warning(
                 "Ignoring unknown allowlist actions (typo, or this agent "
                 "binary is older than the config): %s", sorted(unknown),
             )
-            self.allowlist = self.allowlist - unknown
         # Normalize tags: strip whitespace, drop blanks, dedupe, lowercase.
         cleaned: list[str] = []
         seen: set[str] = set()
@@ -177,6 +255,14 @@ class AgentConfig:
 
 def _warn_permissions(path: Path) -> None:
     """Warn if the config file is readable by group/others (token exposure risk)."""
+    if os.name != "posix":
+        # Windows has no POSIX mode bits. Python synthesises st_mode there, so
+        # this check fired on every start regardless of the real ACL — and told
+        # the operator to run `chmod 600 C:\ProgramData\Vigil\agent.yml`,
+        # which is not a command they have. install.ps1 restricts the file with
+        # icacls instead; a real ACL check here would need pywin32 and is not
+        # worth a hard dependency for a warning.
+        return
     try:
         st = path.stat()
         if st.st_mode & (stat.S_IRGRP | stat.S_IROTH):
@@ -206,19 +292,25 @@ def load_config(path: Path | None = None) -> AgentConfig:
                     f"VIGIL_CONFIG_PATH points at {env_path}, which does not exist"
                 )
     if path is None:
-        for candidate in DEFAULT_CONFIG_PATHS:
+        for candidate in _default_config_paths():
             if candidate.exists():
                 path = candidate
                 break
     if path is None or not path.exists():
         raise FileNotFoundError(
             f"No config file found. Tried: VIGIL_CONFIG_PATH, "
-            f"{[str(p) for p in DEFAULT_CONFIG_PATHS]}"
+            f"{[str(p) for p in _default_config_paths()]}"
         )
 
     _warn_permissions(path)
 
-    with open(path) as f:
+    # utf-8-sig, not utf-8: it strips a UTF-8 BOM if present and behaves
+    # identically when absent. PowerShell 5.1's `Set-Content -Encoding UTF8`
+    # writes one, and so does Notepad — which is what a Windows admin edits
+    # this file with. With a BOM the first key parses as "\ufeffserver_url"
+    # and the agent dies with "server_url is required" while the operator is
+    # looking straight at a config that has it.
+    with open(path, encoding="utf-8-sig") as f:
         raw = yaml.safe_load(f) or {}
 
     server_url = raw.get("server_url", "").rstrip("/")
@@ -256,7 +348,8 @@ def load_config(path: Path | None = None) -> AgentConfig:
         docker_check_interval=int(raw.get("docker_check_interval", 21600)),
         data_dir=data_dir,
         allowlist=allowlist,
-        scripts_dir=Path(raw.get("scripts_dir", "/etc/vigil/scripts")),
+        scripts_dir=Path(raw["scripts_dir"]) if raw.get("scripts_dir")
+        else _default_scripts_dir(),
         tags=raw_tags,
         process_watch=raw_watch,
         gpu_extended=bool(raw.get("gpu_extended", False)),
@@ -266,8 +359,30 @@ def load_config(path: Path | None = None) -> AgentConfig:
     # Persist auto-generated token back to config file
     if token_generated:
         raw["agent_token"] = agent_token
-        with open(path, "w") as f:
-            yaml.safe_dump(raw, f, default_flow_style=False)
-        logger.info("Saved generated token to %s", path)
+        # 0600 before anything is written into it. This file holds the bearer
+        # credential that authenticates this machine to the server, and the
+        # write-back used to inherit the umask — 0644 under the default, so a
+        # fresh install left a world-readable token on every monitored box and
+        # only logged a warning about it. The pinned server key and the nonce
+        # store next to it were both already chmod'd; this one was missed.
+        #
+        # os.open with the mode set at creation, rather than open() then
+        # chmod(), so there is no window where the file exists with the token
+        # in it and the wrong permissions on it.
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            with os.fdopen(fd, "w") as f:
+                yaml.safe_dump(raw, f, default_flow_style=False)
+        except Exception:
+            os.close(fd) if not os.path.exists(path) else None
+            raise
+        # An existing file keeps its old mode through O_CREAT, so tighten it
+        # too — an install upgraded from a version that wrote 0644 should not
+        # stay 0644 forever.
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            logger.warning("Could not set 0600 on %s — check it by hand", path)
+        logger.info("Saved generated token to %s (mode 0600)", path)
 
     return config

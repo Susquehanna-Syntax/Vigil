@@ -123,9 +123,9 @@ function _rolloutCard(r) {
   const active = r.state === 'running' || r.state === 'validating';
   let actions = '';
   if (active) {
-    actions = `<button class="btn btn-ghost btn-sm" data-rlt="${r.id}" onclick="event.stopPropagation();promptRolloutAction(this,'halt')">Halt now</button>`;
+    actions = `<button class="btn btn-ghost btn-sm" data-rlt="${escAttr(r.id)}" data-rlt-act="halt" data-stop>Halt now</button>`;
   } else if (r.state === 'halted') {
-    actions = `<button class="btn btn-sky btn-sm" data-rlt="${r.id}" onclick="event.stopPropagation();promptRolloutAction(this,'resume')">Resume</button>`;
+    actions = `<button class="btn btn-sky btn-sm" data-rlt="${escAttr(r.id)}" data-rlt-act="resume" data-stop>Resume</button>`;
   }
   const reason = r.halted_reason
     ? `<div style="margin:8px 0 2px;padding:8px 10px;border:1px solid var(--rose);border-radius:6px;color:var(--rose);font-size:12px;">
@@ -134,7 +134,7 @@ function _rolloutCard(r) {
        </div>`
     : '';
   return `<div class="def-card" style="padding:14px 16px;cursor:pointer;"
-       onclick="openRolloutDetail('${r.id}')" role="button" tabindex="0"
+       data-rlt-open="${escAttr(r.id)}" role="button" tabindex="0"
        onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openRolloutDetail('${r.id}');}">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <strong>${escHtml(r.target_name || r.definition_name || r.playbook_name || '(deleted)')}</strong>${r.action_kind === 'playbook' ? ' <span class="chip">playbook</span>' : ''}
@@ -455,16 +455,16 @@ async function openRolloutDetail(rolloutId) {
   // rather than showing greyed buttons that cannot do anything.
   const acts = [];
   if (r.state === 'validating') {
-    acts.push(`<button class="btn btn-mint btn-sm" data-rlt="${r.id}"
-      onclick="promptRolloutAction(this,'skip-validation')">Skip validation, continue now</button>`);
+    acts.push(`<button class="btn btn-mint btn-sm" data-rlt="${escAttr(r.id)}"
+      data-rlt-act="skip-validation">Skip validation, continue now</button>`);
   }
   if (r.state === 'running' || r.state === 'validating') {
-    acts.push(`<button class="btn btn-ghost btn-sm" style="color:var(--rose);" data-rlt="${r.id}"
-      onclick="promptRolloutAction(this,'halt')">Halt now</button>`);
+    acts.push(`<button class="btn btn-ghost btn-sm" style="color:var(--rose);" data-rlt="${escAttr(r.id)}"
+      data-rlt-act="halt">Halt now</button>`);
   }
   if (r.state === 'halted') {
-    acts.push(`<button class="btn btn-sky btn-sm" data-rlt="${r.id}"
-      onclick="promptRolloutAction(this,'resume')">Resume from this wave</button>`);
+    acts.push(`<button class="btn btn-sky btn-sm" data-rlt="${escAttr(r.id)}"
+      data-rlt-act="resume">Resume from this wave</button>`);
   }
   const hint = r.state === 'validating'
     ? 'Skipping ends this wave\'s validation window now. The failure gate still applies — a wave that failed will not advance.'
@@ -520,3 +520,17 @@ async function _refreshRolloutGroupHint() {
     hint.textContent = 'Send this to one ladder only.';
   }
 }
+
+
+/* Rollout actions. promptRolloutAction takes the element itself (it reads
+   data-rlt off it), so the delegated handler passes the same thing the inline
+   attribute used to pass as `this`. data-stop marks the buttons that sit
+   inside a clickable card and must not also open it. */
+delegateClick('[data-rlt-act]', (el, ev) => {
+  if (el.hasAttribute('data-stop')) ev.stopPropagation();
+  promptRolloutAction(el, el.dataset.rltAct);
+});
+delegateClick('[data-rlt-open]', (el, ev) => {
+  if (ev.target.closest('button')) return;
+  openRolloutDetail(el.dataset.rltOpen);
+});

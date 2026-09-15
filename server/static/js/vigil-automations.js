@@ -5,6 +5,7 @@
 // Depends on: vigil-utils.js (apiJson, confirmModal, showToast, escHtml).
 
 let _autoEvents = {};      // event name -> label
+let _autoCondMeta = { fields: [], operators: [], valueless: [] };
 let _autoDefs = [];        // task definitions
 let _autoPlaybooks = [];   // playbook names
 let _autoHosts = [];       // selectable hosts
@@ -25,6 +26,7 @@ async function loadAutomations() {
       apiJson('/api/v1/alerts/rules/').catch(() => []),
     ]);
     _autoEvents = data.events || {};
+    if (data.condition_meta) _autoCondMeta = data.condition_meta;
     _autoDefs = Array.isArray(defs) ? defs : (defs.results || []);
     _autoPlaybooks = playbooks;
     _autoHosts = hosts;
@@ -64,7 +66,10 @@ function _renderAutomations(autos) {
   }
   list.innerHTML = autos.map(a => {
     const when = a.trigger === 'event'
-      ? `<span class="automation-badge event">on event</span> when <b>${escHtml(_autoEvents[a.event] || a.event)}</b>${a.event_rule_name ? ` — <b>${escHtml(a.event_rule_name)}</b>` : ''}${a.min_severity ? ` (≥ ${escHtml(a.min_severity)})` : ''}${(a.event_tags || []).length ? ` on <span class="chip">${a.event_tags.map(escHtml).join('</span> <span class="chip">')}</span>` : ''}`
+      ? `<span class="automation-badge event">on event</span> when <b>${escHtml(_autoEvents[a.event] || a.event)}</b>`
+        + `${a.event_rule_name ? ` — <b>${escHtml(a.event_rule_name)}</b>` : ''}`
+        + `${a.event_host_name ? ` on <b>${escHtml(a.event_host_name)}</b>` : ''}`
+        + `${_autoCondSummary(a)}`
       : `<span class="automation-badge schedule">scheduled</span> cron <code class="inline">${escHtml(a.cron_display)}</code>`;
     const action = a.action_kind === 'playbook'
       ? `playbook <b>${escHtml(a.playbook_name)}</b>` : `task <b>${escHtml(a.task_name || '?')}</b>`;
@@ -115,8 +120,13 @@ function _wireAutoCards(autos) {
 function _fillEditorOptions() {
   // Only the event trigger is still a native select; task/playbook/host are
   // chosen through the searchable picker modal.
-  const ev = document.getElementById('auto-event');
-  if (ev) ev.innerHTML = Object.entries(_autoEvents).map(([k, v]) => `<option value="${k}">${escHtml(v)}</option>`).join('');
+  // One select for the whole trigger. "schedule" is a value alongside the
+  // events rather than a separate kind, because picking a kind and then an
+  // event was two choices to express one thing.
+  const ev = document.getElementById('auto-trigger');
+  if (ev) ev.innerHTML =
+    Object.entries(_autoEvents).map(([k, v]) => `<option value="${escAttr(k)}">${escHtml(v)}</option>`).join('')
+    + '<option value="schedule">On a schedule</option>';
   const rule = document.getElementById('auto-event-rule');
   if (rule) rule.innerHTML = '<option value="">any alert</option>' +
     _autoRules.map(r => `<option value="${escAttr(String(r.id))}">${escHtml(r.name)} (${escHtml(r.severity)})</option>`).join('');
@@ -154,23 +164,21 @@ function _autoPickHost() {
 }
 
 function _autoSyncVisibility() {
-  const trig = document.getElementById('auto-trigger').value;
-  document.getElementById('auto-event-fields').style.display = trig === 'event' ? '' : 'none';
-  document.getElementById('auto-sched-fields').hidden = trig !== 'schedule';
-  document.getElementById('auto-event-tags-wrap').style.display = trig === 'event' ? '' : 'none';
-  const ev = document.getElementById('auto-event').value;
-  document.getElementById('auto-sev-wrap').style.display = ev === 'alert_fired' ? '' : 'none';
-  document.getElementById('auto-rule-wrap').style.display = ev === 'alert_fired' ? '' : 'none';
-  // A host scope makes sense for any event that carries one; the text filter
-  // reads the alert's name and message, so it is alert-only.
+  const ev = document.getElementById('auto-trigger').value;
+  const isSchedule = ev === 'schedule';
+  const trig = isSchedule ? 'schedule' : 'event';
+  document.getElementById('auto-event-fields').style.display = isSchedule ? 'none' : '';
+  document.getElementById('auto-sched-fields').hidden = !isSchedule;
+  // The rule picker only means anything for an alert event, and there is more
+  // than one of those now.
+  const isAlert = !isSchedule && ev.startsWith('alert_');
+  document.getElementById('auto-rule-wrap').style.display = isAlert ? '' : 'none';
+  // A host scope makes sense for any event that carries one.
   const hostWrap = document.getElementById('auto-event-host-wrap');
-  if (hostWrap) hostWrap.style.display = trig === 'event' ? '' : 'none';
-  // The text filter reads whatever the event names and describes — an alert's
-  // rule and message, an insight's title, a task's step, a rebuild's profile —
-  // so it applies to every event, not just alerts. It used to be alert-only,
-  // which meant a filter set on any other event was silently ignored.
-  const matchWrap = document.getElementById('auto-match-wrap');
-  if (matchWrap) matchWrap.style.display = trig === 'event' ? '' : 'none';
+  if (hostWrap) hostWrap.style.display = isSchedule ? 'none' : '';
+  // Conditions read an event payload, so they mean nothing on a schedule.
+  const condWrap = document.getElementById('auto-cond-wrap');
+  if (condWrap) condWrap.style.display = isSchedule ? 'none' : '';
 
   _autoRefreshActionLabel();
 
@@ -217,15 +225,14 @@ function _openAutoEditor(a) {
   document.getElementById('auto-editor-title').textContent = a ? 'Edit automation' : 'New automation';
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
   set('auto-name', a ? a.name : '');
-  set('auto-trigger', a ? a.trigger : 'event');
-  set('auto-event', a ? a.event : (Object.keys(_autoEvents)[0] || ''));
+  set('auto-trigger', a
+    ? (a.trigger === 'schedule' ? 'schedule' : a.event)
+    : (Object.keys(_autoEvents)[0] || 'schedule'));
   set('auto-event-rule', a && a.event_rule ? a.event_rule : '');
-  set('auto-sev', a ? a.min_severity : '');
-  set('auto-event-tags', a ? (a.event_tags || []).join(', ') : '');
   set('auto-event-host', a && a.event_host ? a.event_host : '');
-  set('auto-match-field', a && a.match_field ? a.match_field : 'any');
-  set('auto-match-mode', a && a.match_mode ? a.match_mode : 'contains');
-  set('auto-match-text', a ? (a.match_text || '') : '');
+  set('auto-cond-logic', (a && a.condition_logic) || 'all');
+  _autoConds = a && Array.isArray(a.conditions) ? a.conditions.map(c => ({ ...c })) : [];
+  _renderAutoConditions();
   const cron = (a && a.cron) || { minute: '0', hour: '2', dom: '*', month: '*', dow: '*' };
   set('auto-cron-min', cron.minute); set('auto-cron-hour', cron.hour); set('auto-cron-dom', cron.dom);
   set('auto-cron-mon', cron.month); set('auto-cron-dow', cron.dow);
@@ -270,17 +277,18 @@ function _viewAutoAction() {
 
 async function _saveAutomation() {
   const v = id => document.getElementById(id).value.trim();
+  // One select carries both: "schedule" is the kind, anything else is the
+  // event and implies the kind.
+  const when = v('auto-trigger');
+  const isSchedule = when === 'schedule';
   const body = {
     name: v('auto-name'),
-    trigger: v('auto-trigger'),
-    event: v('auto-event'),
+    trigger: isSchedule ? 'schedule' : 'event',
+    event: isSchedule ? '' : when,
     event_rule: v('auto-event-rule') || null,
-    min_severity: v('auto-sev'),
-    event_tags: v('auto-event-tags').split(',').map(s => s.trim()).filter(Boolean),
     event_host: v('auto-event-host') || null,
-    match_field: v('auto-match-field'),
-    match_mode: v('auto-match-mode'),
-    match_text: v('auto-match-text'),
+    condition_logic: v('auto-cond-logic'),
+    conditions: _readAutoConditions(),
     cron: { minute: v('auto-cron-min'), hour: v('auto-cron-hour'), dom: v('auto-cron-dom'),
             month: v('auto-cron-mon'), dow: v('auto-cron-dow') },
     action_kind: v('auto-action-kind'),
@@ -305,7 +313,7 @@ async function _saveAutomation() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  ['auto-trigger', 'auto-event', 'auto-action-kind', 'auto-target'].forEach(id => {
+  ['auto-trigger', 'auto-action-kind', 'auto-target'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', _autoSyncVisibility);
   });
@@ -374,3 +382,95 @@ document.addEventListener('DOMContentLoaded', () => {
     _autoRefreshEventHostLabel();
   });
 });
+
+
+/* Conditions in words, for the card. The list used to print the severity and
+   tag filters; those are conditions now, so this is what replaced them. */
+function _autoCondSummary(a) {
+  const items = a.conditions || [];
+  if (!items.length) return '';
+  const meta = _autoCondMeta.fields || [];
+  const label = (n) => (meta.find(f => f.name === n) || {}).label || n;
+  const opLabel = (n) => ((_autoCondMeta.operators || []).find(o => o.name === n) || {}).label || n;
+  const parts = items.map(c =>
+    `${label(c.field)} ${opLabel(c.op)}${c.value ? ' ' + c.value : ''}`);
+  const joiner = a.condition_logic === 'any' ? ' or ' : ' and ';
+  return ` <span class="muted">— ${escHtml(parts.join(joiner))}</span>`;
+}
+
+/* ── Condition rows ───────────────────────────────────────────────────────
+   Built from the field/operator list the server advertises, so the two can
+   never drift: a field added in apps/automations/conditions.py appears here
+   with no JS change, and an operator the server would refuse is not offered.
+   Rows live in _autoConds and are read back on save. */
+let _autoConds = [];
+
+function _autoFieldMeta(name) {
+  return _autoCondMeta.fields.find(f => f.name === name) || _autoCondMeta.fields[0];
+}
+
+function _autoOpLabel(name) {
+  const op = (_autoCondMeta.operators || []).find(o => o.name === name);
+  return op ? op.label : name;
+}
+
+function _renderAutoConditions() {
+  const host = document.getElementById('auto-cond-rows');
+  if (!host) return;
+  if (!_autoConds.length) {
+    host.innerHTML = '<div class="auto-cond-empty">No conditions.</div>';
+    return;
+  }
+  host.innerHTML = _autoConds.map((c, i) => {
+    const meta = _autoFieldMeta(c.field) || { operators: [] };
+    const fields = _autoCondMeta.fields.map(f =>
+      `<option value="${escAttr(f.name)}"${f.name === c.field ? ' selected' : ''}>${escHtml(f.label)}</option>`).join('');
+    const ops = (meta.operators || []).map(o =>
+      `<option value="${escAttr(o)}"${o === c.op ? ' selected' : ''}>${escHtml(_autoOpLabel(o))}</option>`).join('');
+    const needsValue = !(_autoCondMeta.valueless || []).includes(c.op);
+    const value = needsValue
+      ? `<input type="text" class="form-control auto-cond-value" data-i="${i}" value="${escAttr(c.value || '')}" placeholder="${escAttr(meta.help || 'value')}" maxlength="500">`
+      : '';
+    return `<div class="auto-cond-row">`
+      + `<select class="form-control auto-cond-field" data-i="${i}">${fields}</select>`
+      + `<select class="form-control auto-cond-op" data-i="${i}">${ops}</select>`
+      + value
+      + `<button type="button" class="btn btn-ghost btn-sm" data-act="removeAutoCondition" data-a1="${i}">Remove</button>`
+    + `</div>`;
+  }).join('');
+
+  host.querySelectorAll('.auto-cond-field').forEach(el => el.addEventListener('change', () => {
+    const i = Number(el.dataset.i);
+    _autoConds[i].field = el.value;
+    // The operator list changes with the field; keep the current operator
+    // only when the new field actually supports it.
+    const allowed = (_autoFieldMeta(el.value) || { operators: [] }).operators || [];
+    if (!allowed.includes(_autoConds[i].op)) _autoConds[i].op = allowed[0] || '';
+    _renderAutoConditions();
+  }));
+  host.querySelectorAll('.auto-cond-op').forEach(el => el.addEventListener('change', () => {
+    _autoConds[Number(el.dataset.i)].op = el.value;
+    _renderAutoConditions();
+  }));
+  host.querySelectorAll('.auto-cond-value').forEach(el => el.addEventListener('input', () => {
+    _autoConds[Number(el.dataset.i)].value = el.value;
+  }));
+}
+
+function addAutoCondition() {
+  const field = _autoCondMeta.fields[0];
+  if (!field) return;
+  _autoConds.push({ field: field.name, op: (field.operators || [])[0] || '', value: '' });
+  _renderAutoConditions();
+}
+
+function removeAutoCondition(index) {
+  _autoConds.splice(Number(index), 1);
+  _renderAutoConditions();
+}
+
+function _readAutoConditions() {
+  return _autoConds
+    .filter(c => c.field && c.op)
+    .map(c => ({ field: c.field, op: c.op, value: c.value || '' }));
+}

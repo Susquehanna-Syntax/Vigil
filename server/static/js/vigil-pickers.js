@@ -49,6 +49,7 @@ async function openPicker(opts) {
 
 function closePicker() { const o = document.getElementById('picker-overlay'); if (o) o.classList.remove('open'); document.getElementById('picker-modal')?.classList.remove('open'); }
 
+let _pickerPartialFailure = null;
 let _pickerItems = [];
 async function _loadPickerData(type) {
   const list = document.getElementById('picker-list');
@@ -60,6 +61,9 @@ async function _loadPickerData(type) {
     _pickerItems = _pickerState.items;
     return;
   }
+  // Cleared per load: a stale flag from a previous picker would label this
+  // one's empty list as a failure that never happened.
+  _pickerPartialFailure = null;
   try {
     if (type === 'task') {
       const defs = await apiJson('/api/v1/tasks/definitions/');
@@ -70,12 +74,19 @@ async function _loadPickerData(type) {
     } else if (type === 'rollout_target') {
       // Tasks and playbooks in one list — a rollout can carry either, and the
       // question is "what am I rolling out", not "which internal type is it".
+      // null on failure, not []: an empty array reads as "you have no
+      // playbooks", and the picker renders that as
+      // "Nothing here yet — use 'Add new'". An operator with a dead API was
+      // told they owned nothing and started writing one they already had.
+      // The task list still loads, so the picker is useful either way.
       const [defs, bls] = await Promise.all([
         apiJson('/api/v1/tasks/definitions/'),
-        apiJson('/api/v1/playbooks/').catch(() => []),
+        apiJson('/api/v1/playbooks/').catch(() => null),
       ]);
+      _pickerPartialFailure = bls === null ? 'playbooks' : null;
       const defList = Array.isArray(defs) ? defs : defs.results || [];
-      const blList = (Array.isArray(bls) ? bls : bls.playbooks || []).filter(b => b.enabled !== false);
+      const blRaw = bls === null ? [] : (Array.isArray(bls) ? bls : bls.playbooks || []);
+      const blList = blRaw.filter(b => b.enabled !== false);
       _pickerItems = [
         ...defList.map(d => ({
           key: 'task:' + d.id, name: d.name,
@@ -104,7 +115,15 @@ function _renderPickerList(q) {
   if (!list) return;
   q = (q || '').trim().toLowerCase();
   const items = q ? _pickerItems.filter(i => i.name.toLowerCase().includes(q) || (i.meta || '').toLowerCase().includes(q)) : _pickerItems;
-  if (!items.length) { list.innerHTML = `<div class="picker-empty">${_pickerItems.length ? 'No matches.' : 'Nothing here yet — use “Add new”.'}</div>`; return; }
+  if (!items.length) {
+    // Distinguish "we could not ask" from "there is nothing": they point an
+    // operator in opposite directions.
+    const nothing = _pickerPartialFailure
+      ? `Could not load ${escHtml(_pickerPartialFailure)} — that request failed. Close and reopen to retry.`
+      : 'Nothing here yet — use “Add new”.';
+    list.innerHTML = `<div class="picker-empty">${_pickerItems.length ? 'No matches.' : nothing}</div>`;
+    return;
+  }
   list.innerHTML = items.map((i, idx) => {
     // Some contexts can't accept every item (e.g. high-risk tasks while
     // building a playbook) — show them greyed with the reason, not hidden.
