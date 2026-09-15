@@ -1,5 +1,8 @@
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils.timezone import now
 from rest_framework.test import APIClient
 
 from apps.hosts.models import Host
@@ -90,3 +93,85 @@ class MetricCatalogTests(TestCase):
         rows = self.client.get("/api/v1/metrics/catalog/").json()
         self.assertEqual([(r["category"], r["metric"]) for r in rows],
                          [("custom", "my_metric")])
+
+
+class MetricHistoryCostTests(TestCase):
+    """The history endpoint must not pull a whole series into the worker.
+
+    The index on (host, category, metric, time) was always a perfect match for
+    this query; the code defeated it by calling list(qs) on the unclamped
+    queryset and striding in Python.
+    """
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="op", password="pw", is_staff=True, is_superuser=True)
+        self.client.force_login(self.user)
+        self.host = Host.objects.create(
+            hostname="box", ip_address="10.0.0.9", agent_token="tok-box",
+            mode="managed", status=Host.Status.ONLINE)
+        base = now()
+        MetricPoint.objects.bulk_create([
+            MetricPoint(host=self.host, time=base - timedelta(seconds=i),
+                        category="disk", metric="usage_percent", value=float(i))
+            for i in range(500)
+        ])
+
+    def _url(self, **params):
+        from urllib.parse import urlencode
+        q = urlencode(params)
+        return f"/api/v1/metrics/{self.host.id}/disk/usage_percent/?{q}"
+
+    def test_the_latest_reading_does_not_get_more_expensive_as_data_grows(self):
+        """limit=1 is what the Disk Pressure widget asks, per host, per poll.
+
+        Query *count* was never the problem — the problem was that one of those
+        queries returned the entire series. Pinning "the same number of queries
+        whether the host has 500 points or 2500" is the property that broke:
+        the old code's cost rose with the series, this one's does not.
+        """
+        from django.test.utils import CaptureQueriesContext
+        from django.db import connection
+
+        with CaptureQueriesContext(connection) as small:
+            resp = self.client.get(self._url(limit=1))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()), 1)
+        self.assertEqual(resp.json()[0]["value"], 0.0)
+
+        base = now()
+        MetricPoint.objects.bulk_create([
+            MetricPoint(host=self.host, time=base - timedelta(seconds=1000 + i),
+                        category="disk", metric="usage_percent", value=float(i))
+            for i in range(2000)
+        ])
+
+        with CaptureQueriesContext(connection) as large:
+            self.client.get(self._url(limit=1))
+
+        self.assertEqual(len(small), len(large),
+                         "the latest-reading path scales with series size")
+
+    def test_a_sampled_window_returns_the_requested_number_of_points(self):
+        resp = self.client.get(self._url(limit=50))
+        self.assertEqual(resp.status_code, 200)
+        points = resp.json()
+        self.assertLessEqual(len(points), 51)   # sample, plus the pinned newest
+        self.assertGreater(len(points), 1)
+        self.assertEqual(resp["X-Vigil-Sampled"], "1")
+        self.assertEqual(resp["X-Vigil-Total-Points"], "500")
+
+    def test_the_newest_point_is_always_first(self):
+        """Pinned behaviour: a chart whose right edge lags looks stale."""
+        resp = self.client.get(self._url(limit=10))
+        self.assertEqual(resp.json()[0]["value"], 0.0)
+
+    def test_points_come_back_newest_first(self):
+        values = [p["value"] for p in self.client.get(self._url(limit=20)).json()]
+        self.assertEqual(values, sorted(values),
+                         "ordering was lost — pk__in does not preserve it")
+
+    def test_an_unsampled_window_returns_everything_in_range(self):
+        resp = self.client.get(self._url(limit=1000))
+        self.assertEqual(len(resp.json()), 500)
+        self.assertEqual(resp["X-Vigil-Sampled"], "0")

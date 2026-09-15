@@ -10,6 +10,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.views import login_view, logout_view, setup_view
+from apps.instance.config import setting
 from apps.alerts.models import Alert
 from apps.hosts.models import Host
 from apps.hosts import views as hosts_views
@@ -60,7 +61,7 @@ def about(request):
         "expected_agent_version": getattr(django_settings, "VIGIL_AGENT_VERSION", ""),
         "python_version": "%d.%d.%d" % sys.version_info[:3],
         "database": db_vendor,
-        "timezone": getattr(django_settings, "VIGIL_TIMEZONE", "UTC"),
+        "timezone": setting("VIGIL_TIMEZONE"),
         "scanners": scanners,
         "edition": active_edition(),
         "features": sorted(enabled_features()),
@@ -82,8 +83,8 @@ def dashboard(request):
         "pending_count": pending_hosts.count(),
         "alert_count": Alert.objects.filter(state=Alert.State.FIRING).count(),
         "pending_hosts": pending_hosts,
-        "vigil_timezone": django_settings.VIGIL_TIMEZONE,
-        "vigil_time_format": django_settings.VIGIL_TIME_FORMAT,
+        "vigil_timezone": setting("VIGIL_TIMEZONE"),
+        "vigil_time_format": setting("VIGIL_TIME_FORMAT"),
         "vigil_username": request.user.username,
         "vigil_public_url": django_settings.VIGIL_PUBLIC_URL,
     })
@@ -111,6 +112,8 @@ urlpatterns = [
     path("api/v1/sites/", include("apps_business.sites.urls")),
     path("api/v1/branding/", include("apps_business.branding.urls")),
     path("api/v1/audits/", include("apps_business.audits.urls")),
+    path("api/v1/instance-settings/", include("apps.instance.urls")),
+    path("api/v1/jackil/", include("apps.jackil.urls")),
     path("api/v1/license/", include("apps.licensing.urls")),
     path("api/v1/playbooks/", include("apps.playbooks.urls")),
     path("api/v1/dashboards/", include("apps.dashboards.urls")),

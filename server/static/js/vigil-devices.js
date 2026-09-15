@@ -38,7 +38,7 @@ function renderDevices() {
       <td class="dev-mono">${escHtml(d.mac_address || '—')}</td>
       <td>${escHtml(d.vendor || '—')}</td>
       <td>${escHtml(d.location || '—')}</td>
-      <td class="num"><button class="btn btn-ghost btn-sm" onclick="openDeviceModal('${escHtml(d.id)}')">Edit</button></td>
+      <td class="num"><button class="btn btn-ghost btn-sm" data-device-edit="${escAttr(d.id)}">Edit</button></td>
     </tr>`;
   }
   html += `</tbody></table></div>`;
@@ -117,3 +117,8 @@ navigateTo = function(pageName) {
   _origNavForDevices(pageName);
   if (pageName === 'inventory') loadDevices();
 };
+
+
+/* This one applied escHtml inside an onclick attribute — escaping for the
+   wrong context, harmless only because the value is a server UUID. */
+delegateClick('[data-device-edit]', (el) => openDeviceModal(el.dataset.deviceEdit));

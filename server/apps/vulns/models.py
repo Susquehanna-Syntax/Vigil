@@ -276,9 +276,10 @@ class VulnScoreHistory(models.Model):
     """One row per host per day, snapshotted by the daily Celery beat.
 
     Powers the score sparkline + trend arrow on host detail and the fleet
-    Vulnerabilities tab. Pruning is left to a future maintenance task —
-    one row per host per day is small enough that we don't need an
-    aggressive retention policy.
+    Vulnerabilities tab. One row per host per day is genuinely small — about
+    18k rows a year at 50 hosts — so retention is generous rather than
+    aggressive: `vulns.prune_old_score_history` keeps two years by default,
+    which is more trend than anyone reads and still bounded.
     """
 
     host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="vuln_score_history")

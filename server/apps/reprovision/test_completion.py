@@ -190,3 +190,66 @@ class ProfileCompletionTagTests(TestCase):
     def test_a_profile_with_no_tags_leaves_the_host_alone(self):
         host = self._setup(host_tags=["site:hq"])
         self.assertEqual(host.tags, ["site:hq"])
+
+
+class RebuildTimeoutAlertTests(TestCase):
+    """A machine that never comes back from a rebuild is the disaster case,
+    and it was the quiet one: the job went TIMED_OUT, the host aged into
+    OFFLINE like any unreachable machine, and nothing said which of those two
+    things had happened."""
+
+    def setUp(self):
+        from apps.reprovision.models import RebuildJob
+
+        self.RebuildJob = RebuildJob
+        self.host = Host.objects.create(
+            hostname="web-01", ip_address="10.0.0.21", agent_token="tok-rb",
+            mode="managed", status=Host.Status.ONLINE)
+
+    def _job(self, deadline):
+        image = OSImage.objects.create(
+            name="U", os_family=OSImage.Family.UBUNTU, version="24.04",
+            architecture="x86_64", sha256="b" * 64,
+            status=OSImage.Status.READY)
+        profile = InstallProfile.objects.create(
+            name="std", image=image, disk_target="/dev/sda",
+            admin_username="v")
+        return RebuildJob.objects.create(
+            host=self.host, image=image, profile=profile, state=S.ENROLLING,
+            deadline=deadline)
+
+    def _overdue_job(self):
+        return self._job(now() - timedelta(minutes=5))
+
+    def test_a_timed_out_rebuild_raises_a_critical_alert(self):
+        from apps.alerts.models import Alert
+        from apps.reprovision.jobs import sweep_deadlines
+
+        job = self._overdue_job()
+        self.assertEqual(sweep_deadlines(), 1)
+
+        job.refresh_from_db()
+        self.assertIn("timed", job.state.lower())
+
+        alert = Alert.objects.get(host=self.host)
+        self.assertEqual(alert.severity, "critical")
+        self.assertIn("Rebuild timed out", alert.message)
+        self.assertIn(self.host.hostname, alert.message)
+
+    def test_a_second_sweep_does_not_raise_a_second_alert(self):
+        from apps.alerts.models import Alert
+        from apps.reprovision.jobs import sweep_deadlines
+
+        self._overdue_job()
+        sweep_deadlines()
+        sweep_deadlines()
+        self.assertEqual(Alert.objects.filter(host=self.host).count(), 1)
+
+    def test_a_job_inside_its_deadline_is_left_alone(self):
+        from apps.alerts.models import Alert
+        from apps.reprovision.jobs import sweep_deadlines
+
+        self._job(now() + timedelta(minutes=30))
+
+        self.assertEqual(sweep_deadlines(), 0)
+        self.assertFalse(Alert.objects.filter(host=self.host).exists())

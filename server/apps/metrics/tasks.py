@@ -18,6 +18,8 @@ from celery import shared_task
 from django.conf import settings
 from django.db import connection
 
+from apps.instance.config import setting
+
 logger = logging.getLogger(__name__)
 
 _GB = 1024 ** 3
@@ -29,8 +31,8 @@ def check_db_disk_usage():
     if connection.vendor != "postgresql":
         return "check_db_disk_usage skipped (non-PostgreSQL backend)"
 
-    warn_gb = float(getattr(settings, "VIGIL_DB_SIZE_WARN_GB", 20))
-    crit_gb = float(getattr(settings, "VIGIL_DB_SIZE_CRIT_GB", 40))
+    warn_gb = float(setting("VIGIL_DB_SIZE_WARN_GB"))
+    crit_gb = float(setting("VIGIL_DB_SIZE_CRIT_GB"))
 
     with connection.cursor() as cur:
         cur.execute("SELECT pg_database_size(current_database())")
@@ -53,6 +55,30 @@ def check_db_disk_usage():
     detail = f"database={db_gb:.1f}GB"
     if metrics_gb is not None:
         detail += f" metrics={metrics_gb:.1f}GB ({metrics_gb / db_gb * 100:.0f}% of db)"
+
+    # Say when the TimescaleDB layer is not actually there. Migration 0002
+    # converts metrics_metricpoint to a hypertable and hangs compression and
+    # drop_chunks retention off it — but on a plain Postgres without the
+    # extension, where CREATE EXTENSION is refused because the user is not a
+    # superuser, it returns quietly. `migrate` succeeds with no warning, the
+    # table stays ordinary, and the only retention left is a row-by-row DELETE
+    # that never returns disk to the OS. CLAUDE.md names TimescaleDB as the
+    # database and never mentions this path, so an operator on vanilla
+    # postgres:16 has no way to know their install is the degraded one.
+    #
+    # This task is the right place to say so: it is the thing that notices the
+    # disk filling, and without this line it reports the symptom while knowing
+    # the cause.
+    from apps.alerts.tasks import _metricpoint_is_hypertable
+
+    if not _metricpoint_is_hypertable():
+        logger.warning(
+            "TimescaleDB is NOT active on this database: metrics_metricpoint "
+            "is an ordinary table, so there is no compression, no chunk "
+            "retention, and the fallback prune is a DELETE that never returns "
+            "disk to the OS. %s. Install the timescaledb extension (the "
+            "shipped compose file uses timescale/timescaledb:latest-pg16) and "
+            "re-run migrate, or expect this to grow without bound.", detail)
 
     if crit_gb and db_gb >= crit_gb:
         logger.error(

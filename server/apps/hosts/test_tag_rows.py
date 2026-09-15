@@ -102,7 +102,7 @@ class PopulationTests(TestCase):
         PatchWave.objects.create(name="w", order=801, tags=["canary"])
         Playbook.objects.create(name="b", target_tags=["web"])
         Automation.objects.create(name="a", trigger=Automation.Trigger.EVENT,
-                                  event="alert_fired",
+                                  event="alert_sent",
                                   action_kind=Automation.ActionKind.TASK,
                                   event_tags=["prod"], target_tags=["db"])
 
@@ -303,7 +303,7 @@ class WriteSyncTests(TestCase):
 
     def test_automation_syncs_both_of_its_lists(self):
         auto = Automation.objects.create(
-            name="wsa", trigger=Automation.Trigger.EVENT, event="alert_fired",
+            name="wsa", trigger=Automation.Trigger.EVENT, event="alert_sent",
             action_kind=Automation.ActionKind.TASK,
             event_tags=["evt"], target_tags=["tgt"])
         self.assertEqual({t.key for t in auto.event_tag_rows.all()}, {"evt"})

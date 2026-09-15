@@ -1,14 +1,18 @@
 from datetime import timedelta
 
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils.timezone import now
 from rest_framework.test import APIClient
 
 from apps.hosts.models import Host
+from apps.metrics.models import MetricPoint
 
-from .models import Alert
-from .tasks import expire_acknowledgements
+from .models import Alert, AlertRule
+from .tasks import (FLAP_WINDOW_SECONDS, evaluate_alert_rules,
+                    expire_acknowledgements, prune_old_alerts)
 
 
 class AlertAckLifecycleTests(TestCase):
@@ -184,3 +188,135 @@ class ExpireAcknowledgementsTests(TestCase):
         expire_acknowledgements()
         alert.refresh_from_db()
         self.assertEqual(alert.state, Alert.State.ACKNOWLEDGED)
+
+
+class FlapSuppressionTests(TestCase):
+    """A metric oscillating across its threshold used to page on every cycle.
+
+    The existing-alert check only ever stopped two simultaneous FIRING rows;
+    the breach → resolve → breach cycle created a fresh row and a fresh
+    notification each time, which is how one bad disk produced thousands of
+    pages a day and taught an operator to ignore the channel.
+    """
+
+    def setUp(self):
+        self.host = Host.objects.create(
+            hostname="box", ip_address="10.0.0.11", agent_token="tok-flap",
+            mode="managed", status=Host.Status.ONLINE)
+        # Vigil ships 20 default rules in migrations, several of which watch
+        # disk usage — leave them enabled and this test measures theirs too.
+        AlertRule.objects.update(enabled=False)
+        self.rule = AlertRule.objects.create(
+            name="Flap probe", category="disk", metric="usage_percent",
+            operator="gt", threshold=90.0, severity="warning", enabled=True,
+            duration_seconds=0)
+
+    def _point(self, value, seconds_ago=0):
+        MetricPoint.objects.create(
+            host=self.host, time=now() - timedelta(seconds=seconds_ago),
+            category="disk", metric="usage_percent", value=value)
+
+    def _evaluate(self):
+        with patch("apps.alerts.tasks.dispatch_alert_notification") as notify:
+            evaluate_alert_rules()
+        return notify
+
+    def test_a_flap_reopens_the_same_alert_without_paging_again(self):
+        self._point(95.0)
+        first = self._evaluate()
+        self.assertEqual(first.call_count, 1)
+        self.assertEqual(Alert.objects.count(), 1)
+
+        # Recover.
+        MetricPoint.objects.all().delete()
+        self._point(50.0)
+        self._evaluate()
+        self.assertEqual(Alert.objects.get().state, Alert.State.RESOLVED)
+
+        # Breach again, inside the window.
+        MetricPoint.objects.all().delete()
+        self._point(96.0)
+        third = self._evaluate()
+
+        self.assertEqual(Alert.objects.count(), 1,
+                         "the flap created a second alert row")
+        alert = Alert.objects.get()
+        self.assertEqual(alert.state, Alert.State.FIRING)
+        self.assertEqual(alert.flap_count, 1)
+        self.assertEqual(third.call_count, 0,
+                         "the flap paged the operator a second time")
+
+    def test_a_suppressed_flap_still_emits_alert_refired(self):
+        """Nothing is sent, so nothing else can see a flap. The event is the
+        only way an automation can act on one, and it carries the flap count
+        so a rule can wait for the third bounce rather than the first."""
+        self._point(95.0)
+        self._evaluate()
+        MetricPoint.objects.all().delete()
+        self._point(50.0)
+        self._evaluate()
+        MetricPoint.objects.all().delete()
+        self._point(96.0)
+
+        with patch("apps.alerts.tasks.dispatch_alert_notification"), \
+                patch("apps.alerts.tasks.hooks.emit") as emit:
+            evaluate_alert_rules()
+
+        refired = [c for c in emit.call_args_list if c.args[0] == "alert_refired"]
+        self.assertEqual(len(refired), 1)
+        self.assertEqual(refired[0].kwargs["alert"].flap_count, 1)
+
+    def test_a_breach_after_the_window_is_a_new_alert_and_does_page(self):
+        """Suppression must not swallow a genuinely new problem later on."""
+        self._point(95.0)
+        self._evaluate()
+        MetricPoint.objects.all().delete()
+        self._point(50.0)
+        self._evaluate()
+
+        stale = Alert.objects.get()
+        stale.resolved_at = now() - timedelta(seconds=FLAP_WINDOW_SECONDS + 60)
+        stale.save(update_fields=["resolved_at"])
+
+        MetricPoint.objects.all().delete()
+        self._point(97.0)
+        again = self._evaluate()
+
+        self.assertEqual(Alert.objects.count(), 2)
+        self.assertEqual(again.call_count, 1)
+
+
+class AlertRetentionTests(TestCase):
+    """alerts_alert was the one growing table nothing ever trimmed."""
+
+    def setUp(self):
+        self.host = Host.objects.create(
+            hostname="box", ip_address="10.0.0.12", agent_token="tok-ret",
+            mode="managed", status=Host.Status.ONLINE)
+
+    def _alert(self, state, resolved_days_ago=None):
+        return Alert.objects.create(
+            host=self.host, state=state, severity="warning", message="m",
+            resolved_at=(now() - timedelta(days=resolved_days_ago)
+                         if resolved_days_ago is not None else None))
+
+    def test_old_resolved_alerts_are_pruned(self):
+        self._alert(Alert.State.RESOLVED, resolved_days_ago=200)
+        self._alert(Alert.State.RESOLVED, resolved_days_ago=10)
+        prune_old_alerts()
+        self.assertEqual(Alert.objects.count(), 1)
+
+    def test_live_alerts_are_never_pruned(self):
+        """Firing and acknowledged alerts are state, not history."""
+        self._alert(Alert.State.FIRING)
+        self._alert(Alert.State.ACKNOWLEDGED)
+        old = self._alert(Alert.State.RESOLVED, resolved_days_ago=999)
+        prune_old_alerts()
+        self.assertEqual(Alert.objects.count(), 2)
+        self.assertFalse(Alert.objects.filter(pk=old.pk).exists())
+
+    @override_settings(VIGIL_ALERT_RETENTION_DAYS=0)
+    def test_retention_can_be_switched_off(self):
+        self._alert(Alert.State.RESOLVED, resolved_days_ago=999)
+        prune_old_alerts()
+        self.assertEqual(Alert.objects.count(), 1)

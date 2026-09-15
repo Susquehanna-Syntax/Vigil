@@ -153,7 +153,7 @@ class AutomationRolloutDispatchTests(TestCase):
 
     def _automation(self, **kw):
         return Automation.objects.create(
-            name="A", trigger=Automation.Trigger.EVENT, event="alert_fired",
+            name="A", trigger=Automation.Trigger.EVENT, event="alert_sent",
             action_kind=Automation.ActionKind.TASK,
             task_definition=self.definition, created_by=self.user, **kw)
 

@@ -33,8 +33,19 @@ Core emits a small, documented set of events; editions subscribe in their
 | `host_approved` | `host`, `approved_by` | a pending host is approved |
 | `host_rejected` | `host`, `rejected_by` | a pending host is rejected |
 | `insight_created` | `insight` | *(reserved — not yet emitted)* |
-| `alert_fired` | `alert` | *(reserved — not yet emitted)* |
+| `alert_sent` | `alert` | Vigil announces an alert — a new firing, or a lapsed acknowledgement |
+| `alert_refired` | `alert` | an alert re-fires inside the flap window, which is deliberately *not* announced |
+| `alert_resolved` | `alert` | an alert clears |
 | `task_completed` | `task` | *(reserved — not yet emitted)* |
+
+`alert_sent` is named for the announcement, not the state change. `alert_refired`
+is its counterpart: nothing is sent, so nothing else can see a flap, and
+`alert.flap_count` says how many times it has bounced. Expect it to repeat
+while a threshold sits where a metric lives. An alert that
+re-fires inside the flap window is deliberately not announced, and a
+still-breaching alert is not announced again, so this is once per alert
+episode. It was called `alert_fired` and never emitted at all before
+2026.12.0; nothing could have been subscribed to it.
 
 ```python
 # vigil_pro/baselines/apps.py

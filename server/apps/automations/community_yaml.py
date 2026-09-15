@@ -33,6 +33,8 @@ from vigil.contentyaml import (
     slugify,
 )
 
+from .conditions import validate as validate_conditions
+
 _WHAT = "automation"
 
 _CRON_FIELDS = ("minute", "hour", "dom", "month", "dow")
@@ -87,6 +89,9 @@ def to_yaml(automation, *, author: str = "", created=None) -> str:
             fields["match_text"] = automation.match_text
             fields["match_field"] = automation.match_field
             fields["match_mode"] = automation.match_mode
+        if automation.conditions:
+            fields["condition_logic"] = automation.condition_logic
+            fields["conditions"] = [dict(c) for c in automation.conditions]
     else:
         fields["cron"] = {
             "minute": automation.cron_minute,
@@ -151,6 +156,7 @@ def parse(text: str) -> dict[str, Any]:
         "enabled": enabled, "trigger": trigger,
         "event": "", "min_severity": "", "event_tags": [],
         "match_text": "", "match_field": "any", "match_mode": "contains",
+        "condition_logic": "all", "conditions": [],
         "cron": {"minute": "0", "hour": "*", "dom": "*", "month": "*", "dow": "*"},
     }
 
@@ -173,6 +179,16 @@ def parse(text: str) -> dict[str, Any]:
             out["match_mode"] = require_str(raw, "match_mode", _WHAT,
                                             max_len=16, required=False,
                                             default="contains") or "contains"
+        logic = require_str(raw, "condition_logic", _WHAT, max_len=3,
+                            required=False, default="all") or "all"
+        if logic not in ("all", "any"):
+            raise ContentYamlError(
+                f"{_WHAT}: 'condition_logic' must be 'all' or 'any'.")
+        out["condition_logic"] = logic
+        clean, err = validate_conditions(raw.get("conditions"))
+        if err:
+            raise ContentYamlError(f"{_WHAT}: {err}.")
+        out["conditions"] = clean
     else:
         cron = raw.get("cron") or {}
         if not isinstance(cron, dict):

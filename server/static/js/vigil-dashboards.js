@@ -117,7 +117,13 @@ function _dashRender() {
     disableDrag: !DASH.editing || !DASH.current.is_mine,
     disableResize: !DASH.editing || !DASH.current.is_mine,
     animate: true,
-    float: false,
+    // Gravity off. With float:false Gridstack pulls every widget up to fill
+    // the space above it, so a gap cannot be made and cannot be saved: drop a
+    // card at row 6 with empty rows above and it is back at row 0 before the
+    // change event fires. The layout then "would not stick", because what was
+    // saved was never what was placed. A dashboard is a layout someone
+    // arranged, and whitespace is part of arranging it.
+    float: true,
   }, document.getElementById('dash-grid'));
 
   for (const w of DASH.current.widgets) {
@@ -265,8 +271,28 @@ function _dashCollectLayout() {
   return DASH.grid.save(false).map((node) => {
     const original = byId.get(String(node.id)) || {};
     return {
+      // The widget's own id, so a save moves widgets instead of destroying and
+      // recreating them. Without it layout_update deleted every row and minted
+      // fresh UUIDs, so anything keyed by widget id was invalidated on every
+      // save — and _dashCollectLayout recovers kind and settings by looking up
+      // exactly that id, so a miss dropped the widget from the payload
+      // entirely: a save that deleted a widget rather than moving it.
+      id: original.id,
       kind: original.kind,
-      x: node.x, y: node.y, w: node.w, h: node.h,
+      x: node.x, y: node.y,
+      // Gridstack's removeInternalForSave (gridstack-all.js, v12.4.0) ends with
+      //   1!==e.w && e.w!==e.minW || delete e.w
+      // — it deletes w when the width is 1 OR equal to the node's minW, and h
+      // on the same rule. _dashRender passes minW/minH from the catalogue into
+      // every addWidget, so any widget sitting at its minimum size came back
+      // from save() with no geometry at all. Sending undefined let
+      // JSON.stringify drop the key, and layout_update read an absent w as
+      // "use the catalogue default" — which is larger than the minimum. Every
+      // minimum-sized widget therefore grew on every save, and float:false
+      // gravity reflowed the whole grid around it. Fall back to what the
+      // widget already is, so the size we send is always the size on screen.
+      w: node.w ?? original.w,
+      h: node.h ?? original.h,
       settings: original.settings || {},
     };
   }).filter(w => w.kind);

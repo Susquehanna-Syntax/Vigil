@@ -39,6 +39,17 @@ class Automation(TagRowSyncMixin, models.Model):
         DIRECT = "direct", "All at once"
         ROLLOUT = "rollout", "Wave by wave"
 
+    #: Opt-in to high-risk steps, mirroring Playbook.allow_high_risk. Off by
+    #: default, and turning it ON requires a fresh TOTP code — that
+    #: confirmation IS the 2FA for every future unattended dispatch, exactly as
+    #: it is for a playbook.
+    #:
+    #: An automation and an auto-enrolling playbook are the same class of
+    #: thing: a task definition sent to a fleet with nobody watching. The
+    #: playbook path made that a deliberate, once-only, 2FA-guarded decision
+    #: and this one did not ask at all, which is the asymmetry this closes.
+    allow_high_risk = models.BooleanField(default=False)
+
     class Target(models.TextChoices):
         EVENT_HOST = "event_host", "The host from the event"
         TAGS = "tags", "Hosts matching tags"
@@ -96,6 +107,29 @@ class Automation(TagRowSyncMixin, models.Model):
                                    default=MatchField.ANY)
     match_mode = models.CharField(max_length=16, choices=MatchMode.choices,
                                   default=MatchMode.CONTAINS)
+
+    # -- conditions --
+    #
+    # The filters above are a fixed set, every one of them ANDed: there was no
+    # way to say "critical OR anything mentioning /var", and no way to compare
+    # a number at all. Conditions are the general form — a list of
+    # {field, op, value}, combined with AND or OR.
+    #
+    # They sit ALONGSIDE the filters above rather than replacing them: an
+    # automation someone already built keeps working exactly as it did, and
+    # the scalar filters stay ANDed on top. An empty list means "no extra
+    # conditions", so nothing changes for anyone who does not use them.
+
+    class ConditionLogic(models.TextChoices):
+        ALL = "all", "Match all of these"
+        ANY = "any", "Match any of these"
+
+    condition_logic = models.CharField(
+        max_length=3, choices=ConditionLogic.choices, default=ConditionLogic.ALL)
+
+    #: ``[{"field": "severity", "op": "gte", "value": "warning"}, ...]``.
+    #: Validated in apps.automations.conditions, evaluated in engine.py.
+    conditions = models.JSONField(default=list, blank=True)
 
     # -- schedule trigger (crontab; beat-driven) --
     cron_minute = models.CharField(max_length=64, blank=True, default="0")

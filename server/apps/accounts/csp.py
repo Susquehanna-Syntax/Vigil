@@ -1,0 +1,80 @@
+"""A Content-Security-Policy header, staged honestly.
+
+`base.html` has carried a note for a while saying CSP was intended and would
+need a server-side nonce. Phases 07a's three injection findings are all
+contained by one, so it is worth having now rather than after the inline
+handlers are gone.
+
+What this policy does NOT do, stated plainly: it keeps `'unsafe-inline'` for
+scripts. Thirty inline `onclick` attributes remain in JavaScript-generated
+markup — alerts, rollouts, tasks, tags, waves, community, devices — every one
+built from a server-generated UUID, so none is injectable today, but a strict
+`script-src 'self'` would break all of them at once. Shipping a policy that
+breaks the product is not hardening, and neither is shipping one that claims
+more than it delivers.
+
+What it does do is real: an injected `<script src>` pointing anywhere off-site
+is blocked, `object-src 'none'` kills plugin vectors, `base-uri 'self'` stops a
+`<base>` tag rewriting every relative URL on the page, `frame-ancestors 'none'`
+stops clickjacking, and `form-action 'self'` stops an injected form posting
+credentials elsewhere.
+
+Removing `'unsafe-inline'` is the follow-up: convert the remaining inline
+handlers to delegated listeners the way the pin bar and host cards now are,
+then drop it here and add a nonce to the one inline block in `base.html`.
+"""
+
+from __future__ import annotations
+
+import secrets
+
+from django.conf import settings
+
+#: Sources the app legitimately loads from. Vigil vendors its JavaScript and
+#: CSS rather than using a CDN, so 'self' covers everything except the data:
+#: URIs the OS logos and favicons use.
+#:
+#: script-src carries no 'unsafe-inline'. Every inline handler in the templates
+#: and in generated markup is gone — apps/hosts/test_inline_handlers.py fails
+#: the build if one comes back — and the two genuinely inline <script> blocks
+#: in base.html carry a per-request nonce instead. That is the difference
+#: between a policy that documents an intention and one that stops an injected
+#: <script> from running.
+#:
+#: style-src keeps 'unsafe-inline' deliberately: the dashboard positions metric
+#: bars and gauges with inline style="width:NN%", which is the correct way to
+#: express a value that changes per render, and no injection reaches it.
+_POLICY_TEMPLATE = (
+    "default-src 'self'; "
+    "script-src 'self' 'nonce-{nonce}'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; "
+    "font-src 'self' data:; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'; "
+    "frame-ancestors 'none'"
+)
+
+
+class ContentSecurityPolicyMiddleware:
+    """Adds the policy to every response that does not already carry one.
+
+    Never overwrites an existing header: an operator fronting Vigil with a
+    proxy that sets its own, stricter policy should win.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        # Minted before the view runs so a template can render it into the two
+        # inline blocks that legitimately need one.
+        request.csp_nonce = secrets.token_urlsafe(16)
+        response = self.get_response(request)
+        if "Content-Security-Policy" not in response:
+            policy = getattr(settings, "VIGIL_CSP", None)
+            response["Content-Security-Policy"] = (
+                policy or _POLICY_TEMPLATE.format(nonce=request.csp_nonce))
+        return response

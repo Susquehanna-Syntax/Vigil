@@ -34,6 +34,14 @@ class HostUptimeSample(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=["host", "time"])]
+        constraints = [
+            # One sample per host per tick. The beat had no lock, so two
+            # overlapping runs each wrote a full set — and the uptime bars
+            # count "up" rows against total rows, so duplicates skewed the
+            # number upward, on a page the operator publishes.
+            models.UniqueConstraint(fields=("host", "time"),
+                                    name="uniq_uptime_sample_per_host_time"),
+        ]
 
     def __str__(self) -> str:
         return f"{self.host_id} {'up' if self.up else 'down'} @ {self.time}"

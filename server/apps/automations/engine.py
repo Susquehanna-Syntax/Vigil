@@ -11,6 +11,8 @@ from __future__ import annotations
 import logging
 import secrets
 
+from . import conditions
+
 logger = logging.getLogger("vigil.automations")
 
 _SEVERITY_RANK = {"info": 0, "warning": 1, "critical": 2}
@@ -112,6 +114,18 @@ def run_automation(automation, *, event_host=None) -> int:
         steps, risk = built
         if not steps:
             return 0
+
+        # The gate playbooks have and automations did not. `risk` was computed,
+        # stamped onto the Task for the record, and never consulted — so an
+        # automation attached to a reboot or a run_command fired on its
+        # schedule with no confirmation ever having been given for unattended
+        # high-risk execution.
+        if risk == "high" and not automation.allow_high_risk:
+            logger.warning(
+                "automation %s wants a high-risk step but allow_high_risk is "
+                "off — refusing to dispatch. Turn it on in the automation's "
+                "settings, which asks for a TOTP code.", automation.name)
+            return 0
         hosts = _resolve_hosts(automation, event_host)
         # A monitor-mode host can't execute; skip it silently.
         hosts = [h for h in hosts if getattr(h, "mode", None) != "monitor"]
@@ -176,7 +190,7 @@ def event_text(payload: dict) -> tuple[str, str]:
     """The (name, description) an event carries, whatever kind of event it is.
 
     This used to read `alert.rule.name` and `alert.message` and nothing else,
-    which meant a text filter on any event *other* than ``alert_fired`` was
+    which meant a text filter on any event *other* than ``alert_sent`` was
     silently ignored — the automation fired regardless of what the operator had
     typed. Every event carries something nameable; this finds it.
 
@@ -303,6 +317,9 @@ def handle_event(event_name: str, payload: dict) -> None:
     alert = payload.get("alert")
     if alert is not None and host is None:
         host = getattr(alert, "host", None)
+    # Conditions can filter on the event name itself, which the payload does
+    # not otherwise carry. Copied rather than mutating the caller's dict.
+    payload = {**payload, "__event__": event_name}
 
     autos = Automation.objects.filter(
         enabled=True, trigger=Automation.Trigger.EVENT, event=event_name)
@@ -318,6 +335,8 @@ def handle_event(event_name: str, payload: dict) -> None:
         if not text_ok(auto, alert, payload):
             continue
         if not tags_ok(auto, host):
+            continue
+        if not conditions.evaluate(auto, payload):
             continue
         run_automation(auto, event_host=host)
 

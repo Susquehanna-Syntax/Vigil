@@ -13,13 +13,13 @@ first — see openCommunityItem().
           <div class="page-title">Community<span>.</span></div>
           <div class="page-sub">Tasks, playbooks and automations from the public Vigil community repo. Fork any of them into your library.</div>
         </div>
-        <button class="btn btn-outline btn-sm" id="community-refresh-btn" onclick="refreshCommunity(true)" title="Re-read the repo now instead of waiting out the ten-minute cache">
+        <button class="btn btn-outline btn-sm" id="community-refresh-btn" data-act="refreshCommunity" data-a1="$true" title="Re-read the repo now instead of waiting out the ten-minute cache">
           <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
           Refresh
         </button>
       </div>
 
-      <div style="background:var(--s1); border-left:2px solid var(--lavender); border-radius:var(--r-sm); padding:14px 18px; margin-bottom:18px; font-size:12px; color:var(--text-2); line-height:1.6;">
+      <div style="background:rgba(var(--rgb-lavender),var(--tint-a)); border:1px solid rgba(var(--rgb-lavender),var(--tint-a-line)); border-radius:var(--r-sm); padding:14px 18px; margin-bottom:18px; font-size:12px; color:var(--text-2); line-height:1.6;">
         Content is synced from
         <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky);">Susquehanna-Syntax/Vigil-Approved-Scripts</a>
         and reviewed by PR before it lands. Fork opens an item in your editor — nothing runs

@@ -1,0 +1,63 @@
+# Resolved dependency set — the exact versions a build should install.
+#
+# requirements.txt states policy (Django on the LTS line, cryptography kept
+# current because it encrypts secrets at rest) as version ranges, so `pip
+# install` resolved to "latest that fits" and two operators building the same
+# commit a month apart shipped different software, with no lockfile to diff
+# after an incident.
+#
+# This file is that diff. requirements.txt remains the place to change what
+# Vigil depends on; regenerate here afterwards:
+#
+#     cd server && .venv/bin/pip freeze > requirements.lock
+#
+# The Dockerfile installs from requirements.txt and applies this as a
+# constraints file, so the ranges still express intent and the build still
+# gets one answer.
+amqp==5.3.1
+asgiref==3.11.1
+billiard==4.2.4
+celery==5.6.3
+certifi==2026.2.25
+cffi==2.0.0
+charset-normalizer==3.4.7
+click==8.3.2
+click-didyoumean==0.3.1
+click-plugins==1.1.1.2
+click-repl==0.3.0
+cron-descriptor==1.4.5
+cryptography==50.0.0
+Django==5.2.17
+django-celery-beat==2.9.0
+djangorestframework==3.18.0
+django-timezone-field==7.2.1
+greenlet==3.5.4
+gunicorn==26.0.0
+idna==3.11
+kombu==5.6.2
+packaging==26.1
+playwright==1.61.0
+prompt_toolkit==3.0.52
+psycopg==3.3.3
+psycopg-binary==3.3.3
+pycdlib==1.16.0
+pycparser==3.0
+pyee==13.0.1
+PyJWT==2.13.0
+PyNaCl==1.6.2
+python-crontab==3.3.0
+python-dateutil==2.9.0.post0
+PyYAML==6.0.3
+qrcode==8.2
+redis==6.4.0
+requests==2.33.1
+ruff==0.16.4
+six==1.17.0
+sqlparse==0.5.5
+typing_extensions==4.15.0
+tzdata==2026.1
+tzlocal==5.3.1
+urllib3==2.6.3
+vine==5.1.0
+wcwidth==0.6.0
+whitenoise==6.12.0

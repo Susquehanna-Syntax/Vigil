@@ -120,10 +120,16 @@ class DashboardTests(TestCase):
         board.refresh_from_db()
         self.assertEqual(board.name, "Shared board")
 
-    def test_replacing_the_layout_swaps_every_widget(self):
+    def test_a_layout_of_all_new_widgets_replaces_the_old_ones(self):
+        """Widgets the client does not send are gone; ones it sends without an
+        id are new.
+
+        This used to assert the opposite of what it should: that every save
+        minted fresh ids (`old_ids.isdisjoint(...)`). That was the defect, not
+        the contract — see test_a_widget_keeps_its_id_across_a_save.
+        """
         board = starter_dashboard(self.user)
         self._login(self.user)
-        old_ids = {str(w.id) for w in board.widgets.all()}
         new_widgets = [
             {"kind": "gauge", "x": 0, "y": 0, "w": 3, "h": 3,
              "settings": {"host": "web-1", "metric": "cpu_percent"}},
@@ -136,8 +142,65 @@ class DashboardTests(TestCase):
         board.refresh_from_db()
         widgets = list(board.widgets.all())
         self.assertEqual(len(widgets), 2)
-        self.assertTrue(old_ids.isdisjoint({str(w.id) for w in widgets}))
         self.assertEqual({w.kind for w in widgets}, {"gauge", "stat_tile"})
+
+    def test_a_widget_keeps_its_id_across_a_save(self):
+        """Moving a widget must move it, not destroy and recreate it."""
+        board = starter_dashboard(self.user)
+        self._login(self.user)
+        before = list(board.widgets.all().order_by("y", "x"))
+        payload = [{"id": str(w.id), "kind": w.kind, "x": w.x, "y": w.y + 1,
+                    "w": w.w, "h": w.h, "settings": w.settings}
+                   for w in before]
+
+        resp = self.client.put(
+            f"/api/v1/dashboards/{board.id}/layout/",
+            {"widgets": payload}, format="json")
+        self.assertEqual(resp.status_code, 200)
+
+        after = {str(w.id): w for w in board.widgets.all()}
+        self.assertEqual(set(after), {str(w.id) for w in before},
+                         "a save reminted the widget ids")
+        for w in before:
+            self.assertEqual(after[str(w.id)].y, w.y + 1)
+
+    def test_a_removed_widget_is_deleted_and_the_rest_survive(self):
+        board = starter_dashboard(self.user)
+        self._login(self.user)
+        before = list(board.widgets.all())
+        dropped = before[0]
+        payload = [{"id": str(w.id), "kind": w.kind, "x": w.x, "y": w.y,
+                    "w": w.w, "h": w.h, "settings": w.settings}
+                   for w in before[1:]]
+
+        resp = self.client.put(
+            f"/api/v1/dashboards/{board.id}/layout/",
+            {"widgets": payload}, format="json")
+        self.assertEqual(resp.status_code, 200)
+
+        remaining = {str(w.id) for w in board.widgets.all()}
+        self.assertNotIn(str(dropped.id), remaining)
+        self.assertEqual(remaining, {str(w.id) for w in before[1:]})
+
+    def test_two_saves_in_a_row_are_stable(self):
+        """The round trip R-1 and R-3 were both about: save, read, save again,
+        and the board must be the same board."""
+        board = starter_dashboard(self.user)
+        self._login(self.user)
+
+        def save():
+            payload = [{"id": str(w.id), "kind": w.kind, "x": w.x, "y": w.y,
+                        "w": w.w, "h": w.h, "settings": w.settings}
+                       for w in board.widgets.all()]
+            r = self.client.put(f"/api/v1/dashboards/{board.id}/layout/",
+                                {"widgets": payload}, format="json")
+            self.assertEqual(r.status_code, 200)
+            return {(str(w.id), w.kind, w.x, w.y, w.w, w.h)
+                    for w in board.widgets.all()}
+
+        first = save()
+        second = save()
+        self.assertEqual(first, second)
 
     def test_an_unknown_widget_kind_is_refused_by_name(self):
         board = starter_dashboard(self.user)
@@ -160,6 +223,44 @@ class DashboardTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         widget = board.widgets.get(kind="host_status_grid")
         self.assertEqual(widget.w, GRID_COLUMNS)
+
+    def test_a_widget_with_no_size_is_refused_rather_than_resized(self):
+        """Absent geometry used to fall back to the registry default.
+
+        Gridstack's save() drops w when the width equals the widget's own
+        minimum, so the browser really did send widgets with no size — and the
+        server grew each one to catalogue size, which reflowed the whole grid.
+        A request that cannot say how big a widget is, is incomplete.
+        """
+        board = starter_dashboard(self.user)
+        self._login(self.user)
+        resp = self.client.put(
+            f"/api/v1/dashboards/{board.id}/layout/",
+            {"widgets": [{"kind": "host_status_grid", "x": 0, "y": 0}]},
+            format="json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("w and h", resp.json()["error"])
+        self.assertEqual(board.widgets.count(), 7)  # original layout intact
+
+    def test_a_minimum_sized_widget_survives_a_save_round_trip(self):
+        """The shape of the scramble: a widget saved at its minimum must read
+        back at its minimum, not at the catalogue default."""
+        board = starter_dashboard(self.user)
+        self._login(self.user)
+        spec = WIDGET_REGISTRY["host_status_grid"]
+        self.assertNotEqual(spec["min_w"], spec["w"],
+                            "this test is meaningless if min == default")
+        resp = self.client.put(
+            f"/api/v1/dashboards/{board.id}/layout/",
+            {"widgets": [{"kind": "host_status_grid", "x": 0, "y": 0,
+                          "w": spec["min_w"], "h": spec["min_h"]}]},
+            format="json")
+        self.assertEqual(resp.status_code, 200)
+        widget = board.widgets.get(kind="host_status_grid")
+        self.assertEqual((widget.w, widget.h), (spec["min_w"], spec["min_h"]))
+        # And again, from the values the API just handed back.
+        row = resp.json()["widgets"][0]
+        self.assertEqual((row["w"], row["h"]), (spec["min_w"], spec["min_h"]))
 
     def test_a_widget_smaller_than_its_minimum_is_clamped(self):
         board = starter_dashboard(self.user)

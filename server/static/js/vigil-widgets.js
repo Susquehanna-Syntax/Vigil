@@ -33,6 +33,37 @@ function _wEmpty(body, message) {
   body.innerHTML = `<div class="dash-empty muted-note">${escHtml(message)}</div>`;
 }
 
+/* "We could not ask" is not "there is nothing". A swallowed fetch error used
+   to render as the ordinary empty state, so a GPU server whose metric endpoint
+   was down said "No GPU reported. The agent collects this only when nvidia-smi
+   or rocm-smi is installed" — a wrong diagnosis, stated as a fact, that sends
+   an operator off to install a driver on a machine that already has one.
+
+   Failures look different from emptiness now, and say what failed. */
+function _wFailed(body, what, err) {
+  const detail = err && err.message ? String(err.message) : '';
+  body.innerHTML =
+    `<div class="dash-empty dash-failed">` +
+    `<span class="dash-failed-mark" aria-hidden="true">!</span>` +
+    `<span>Could not load ${escHtml(what)}.</span>` +
+    (detail ? `<span class="muted-note">${escHtml(detail)}</span>` : '') +
+    `</div>`;
+}
+
+/* Runs `fn`, and renders the failure rather than letting a caller mistake it
+   for no data. Returns a sentinel the caller checks, so a partial render can
+   still decide what to do. */
+const WIDGET_FAILED = Symbol('widget-failed');
+
+async function _wTry(body, what, fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    _wFailed(body, what, err);
+    return WIDGET_FAILED;
+  }
+}
+
 /* ── List cards ────────────────────────────────────────────────────────────
    Every list widget renders through _dashCard so they read alike: a coloured
    left edge for what the row is about, a title, a thin sub-line, and an
@@ -239,6 +270,41 @@ async function _renderHostStatusGrid(body, settings) {
   // never rendered. The filter is local to this widget's cards.
   const search = settings.show_search === false ? '' :
     `<input type="text" class="form-control dash-host-search" placeholder="Filter hosts…">`;
+  // The dashboard repaints every widget on a 15-second poll, and this renderer
+  // used to rebuild all of its cards each time. Every rebuilt card starts with
+  // `width: 0%` on its five metric bars (see _dashHostCard) and only reaches
+  // real values once refreshHostCards' async fetch returns — so the bars sat
+  // at zero for a whole round-trip, four times a minute, then animated up over
+  // the 0.8s transition. The filter box was destroyed and recreated with them,
+  // wiping whatever was being typed into it.
+  //
+  // Rebuild only when the cards would actually differ. Otherwise leave the DOM
+  // alone and let refreshHostCards move the existing bars from their current
+  // values, which is what that transition was for.
+  const signature = JSON.stringify([
+    settings.show_search === false,
+    shown.map(h => [h.id, h.status, h.hostname, h.os, h.ip_address, h.mode,
+                    (h.tags || []).join(','), h.agent_version,
+                    h.reboot_required ? 1 : 0, h.kernel]),
+  ]);
+  const existing = body.querySelector('.dash-host-cards');
+  if (existing && body.dataset.hostSig === signature) {
+    // last_checkin is deliberately outside the signature: it changes on every
+    // check-in, so including it would rebuild the grid on every poll — the bug
+    // this guard exists to stop. It drives one piece of text, updated in place.
+    for (const h of shown) {
+      const card = existing.querySelector(
+        `.host-card[data-id="${CSS.escape(String(h.id))}"]`);
+      if (!card) continue;
+      card.dataset.lastCheckin = h.last_checkin || '';
+      const when = card.querySelector('.host-checkin');
+      if (when) when.textContent = h.last_checkin ? timeAgo(h.last_checkin) : 'Never';
+    }
+    if (typeof refreshHostCards === 'function') refreshHostCards(body);
+    return;
+  }
+
+  body.dataset.hostSig = signature;
   body.innerHTML = search
     + `<div class="dash-host-cards">${shown.map(_dashHostCard).join('')}</div>`;
 
@@ -554,14 +620,23 @@ async function _renderGpuStatus(body, settings) {
   if (_wNeedsHost(body, settings)) return;
   const wanted = ['utilization_percent', 'memory_percent', 'memory_used_mb',
                   'memory_total_mb', 'temperature_celsius', 'power_watts'];
+  // Every one of these failing means the endpoint is unreachable, which is a
+  // different sentence from "this host has no GPU". Only the all-failed case
+  // is treated as an error: one metric missing while others answer really is
+  // an absent series.
+  let failure = null;
   const results = await Promise.all(wanted.map(m => _wCached(
     _wMetricUrl({ host: settings.host, category: 'gpu', metric: m }, 1, 200), 12000)
-    .catch(() => [])));
+    .catch((err) => { failure = err; return null; })));
+  if (results.every(r => r === null)) {
+    _wFailed(body, 'GPU metrics', failure);
+    return;
+  }
 
   // Newest reading per (card, metric).
   const cards = new Map();
   wanted.forEach((metric, i) => {
-    for (const pt of _wRows(results[i])) {
+    for (const pt of _wRows(results[i] || [])) {
       const l = pt.labels || {};
       const key = `${l.vendor || '?'}/${l.index || '0'}`;
       if (!cards.has(key)) cards.set(key, { label: l, values: {} });

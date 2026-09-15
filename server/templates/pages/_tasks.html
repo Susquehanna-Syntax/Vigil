@@ -7,7 +7,7 @@
           <div class="page-title">Tasks<span>.</span></div>
           <div class="page-sub">Author multistep tasks and deploy them across your fleet</div>
         </div>
-        <button class="btn btn-sky" onclick="openDefinitionEditor()">
+        <button class="btn btn-sky" data-act="openDefinitionEditor">
           <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           New Task
         </button>
@@ -23,7 +23,7 @@
       <div class="tab-content active" id="tasks-library">
         <div class="task-search-bar">
           <svg class="task-search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" class="task-search-input" id="task-library-search" placeholder="Search tasks by name, description, or action…" oninput="filterTaskGrid('library')">
+          <input type="text" class="task-search-input" id="task-library-search" placeholder="Search tasks by name, description, or action…" data-input="filterTaskGrid" data-a1="library">
         </div>
         <div id="task-library-grid" class="def-grid"></div>
       </div>

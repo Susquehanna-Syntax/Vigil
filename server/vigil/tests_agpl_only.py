@@ -20,6 +20,9 @@ class AgplOnlyBuildTests(SimpleTestCase):
             "USE_SQLITE": "1",
             "DJANGO_SECRET_KEY": "agpl-probe",
             "VIGIL_SIGNING_KEY_SEED": "sL/+T7Bu4Kq/6eJgvFyEIb+vnqxmDGHK5UHj0yekqC8=",
+            # Introspection only — this process never serves a request, so the
+            # production config gate (vigil/startup_checks.py) does not apply.
+            "VIGIL_SKIP_STARTUP_CHECKS": "1",
         }
         proc = subprocess.run(
             [sys.executable, "-m", "vigil._agpl_probe"],

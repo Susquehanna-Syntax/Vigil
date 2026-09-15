@@ -162,9 +162,78 @@ jobs:
       - name: Build binary (macOS)
         if: runner.os == 'macOS'
         run: pyinstaller --onefile --target-arch universal2 --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
+      # --onedir, not --onefile, and this is not a preference. A --onefile
+      # build cannot host a Windows service: its bootloader extracts and
+      # re-executes, so the process the SCM is watching never calls
+      # StartServiceCtrlDispatcher and Start-Service fails with
+      #
+      #   [SC] StartService FAILED 1053
+      #
+      # Proved by building the same source both ways on a Windows 11 VM:
+      # --onedir reaches STATE: 4 RUNNING, --onefile times out every time.
+      #
+      # The pywin32 service modules are imported inside a try/except in
+      # vigil_agent/winservice.py, so PyInstaller's static analysis does not
+      # find them and the frozen build silently lacks them — --service then
+      # reports pywin32 missing and the service cannot start.
       - name: Build binary (Windows)
         if: runner.os == 'Windows'
-        run: pyinstaller --onefile --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
+        run: >-
+          pyinstaller --onedir --name ${{ matrix.out }}
+          --collect-all cffi --collect-all nacl
+          --hidden-import win32serviceutil --hidden-import win32service
+          --hidden-import win32event --hidden-import servicemanager
+          --hidden-import win32timezone
+          vigil_agent_main.py
+      # Authenticode signing, when a certificate is configured. Skipped
+      # cleanly when it is not, so the build works in a fork or before a
+      # certificate exists — an unsigned agent runs, it just meets SmartScreen
+      # on an interactive download and can trip WDAC/AppLocker policies that
+      # refuse unsigned executables. Defender does not currently flag the
+      # build (scanned clean with real-time protection on), but PyInstaller
+      # output is a routine false positive and a signature is what stops a
+      # definition update becoming an outage.
+      #
+      # Set WINDOWS_CERT_PFX_BASE64 and WINDOWS_CERT_PASSWORD to enable.
+      - name: Sign the Windows binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CERT_B64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          if (-not $env:CERT_B64) {
+            Write-Host "::notice::No signing certificate configured; shipping an unsigned agent."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "vigil-signing.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT_B64))
+          try {
+            $exe = "dist/${{ matrix.out }}/${{ matrix.out }}.exe"
+            $signtool = Get-ChildItem "C:/Program Files (x86)/Windows Kits/10/bin" -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+                        Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1
+            if (-not $signtool) { Write-Host "::error::signtool.exe not found on the runner"; exit 1 }
+            & $signtool.FullName sign /f $pfx /p $env:CERT_PASSWORD `
+              /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $exe
+            if ($LASTEXITCODE -ne 0) { Write-Host "::error::signing failed"; exit 1 }
+            # Verify rather than trust the exit code.
+            $sig = Get-AuthenticodeSignature $exe
+            Write-Host ("signature status: " + $sig.Status)
+            if ($sig.Status -ne "Valid") { Write-Host "::error::signature did not verify"; exit 1 }
+          } finally {
+            Remove-Item -Force $pfx -ErrorAction SilentlyContinue
+          }
+
+      # Ship the directory as one file so the download endpoint and the
+      # digest check stay unchanged — the installer sniffs the zip magic and
+      # expands it. Signing happens first, so the digest covers the signed
+      # binary rather than an unsigned one.
+      - name: Zip the Windows onedir build
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/${{ matrix.out }}/*" -DestinationPath "dist/${{ matrix.out }}.zip" -Force
+          Get-Item "dist/${{ matrix.out }}.zip" | ForEach-Object { Write-Host ("zip bytes: " + $_.Length) }
       # Build inside python:3.12-slim (Debian 12) rather than on the runner
       # directly — a binary linked against the runner's glibc 2.39 would not
       # start on Debian 11 / Ubuntu 20.04 era hosts. This matches the glibc
@@ -179,18 +248,177 @@ jobs:
             pip install --no-cache-dir -r requirements.txt pyinstaller
             pyinstaller --onefile --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
           "
+      # Windows ships the zip only. Uploading the unpacked onedir tree as well
+      # would roughly double the artifact and land both in server/agent_dist,
+      # where the zip is what the server serves anyway.
+      - name: Upload artifact (Windows — zip only)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.out }}
+          path: agent/dist/${{ matrix.out }}.zip
+          retention-days: 7
+
       - name: Upload artifact
+        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.out }}
           path: agent/dist/${{ matrix.out }}*
           retention-days: 7
 
+  # ── Install the macOS agent for real ───────────────────────────────────────
+  # Building a binary proves it links. It does not prove the documented install
+  # path works, and on 2026-09-11 that distinction cost us: install.sh read the
+  # digest header with gawk's IGNORECASE, which mawk and macOS's one-true-awk
+  # both ignore in silence, so the script refused every install on Debian,
+  # Ubuntu AND macOS while the whole suite stayed green.
+  #
+  # macOS has no VM option here — Apple's licence limits virtualisation to
+  # Apple hardware, and these runners are the only Apple Silicon we have. So
+  # this job runs `curl | sudo bash` exactly as the docs tell a user to.
+  smoke-macos-install:
+    name: macOS — install.sh end to end
+    runs-on: macos-latest          # Apple Silicon; darwin-arm64
+    needs: [build-agent]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm this runner's awk lacks IGNORECASE
+        # Not a formality. If this ever prints "gawk", the job has stopped
+        # covering the case that broke, and the guard below is worthless.
+        run: |
+          awk -W version 2>&1 | head -1 || true
+          printf 'X-Test: VALUE\n' \
+            | awk 'BEGIN{IGNORECASE=1} /^x-test:/ {print "MATCHED"}' \
+            | grep -q MATCHED \
+            && { echo "::error::this runner's awk supports IGNORECASE; it no longer reproduces the mawk/BSD case"; exit 1; } \
+            || echo "awk has no IGNORECASE, as expected"
+
+      - name: Fetch the darwin-arm64 agent built by this run
+        uses: actions/download-artifact@v4
+        with:
+          name: vigil-agent-darwin-arm64
+          path: server/agent_dist
+
+      - name: Normalise the binary name the server expects
+        run: |
+          cd server/agent_dist
+          ls -la
+          # PyInstaller may leave the name as-is; the server looks for exactly this.
+          [ -f vigil-agent-darwin-arm64 ] || mv vigil-agent-darwin-arm64* vigil-agent-darwin-arm64
+          chmod +x vigil-agent-darwin-arm64
+
+      - name: Install server deps
+        working-directory: server
+        run: pip install -r requirements.txt
+
+      - name: Start a throwaway Vigil server
+        working-directory: server
+        env:
+          USE_SQLITE: "1"
+          DJANGO_DEBUG: "false"
+          DJANGO_SECRET_KEY: ci-macos-smoke-key
+          VIGIL_PUBLIC_URL: http://127.0.0.1:8010
+          VIGIL_SIGNING_KEY_SEED: "rVVG5N5frRQYzPFzKradn0wIPW6+elhaDwPLUafvCNA="
+        run: |
+          python manage.py migrate --noinput
+          nohup python manage.py runserver 127.0.0.1:8010 --insecure --noreload \
+            > /tmp/vigil-server.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8010/api/v1/health/ >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8010/api/v1/health/ || { cat /tmp/vigil-server.log; exit 1; }
+
+      - name: The server must publish a digest for this binary
+        run: |
+          SHA=$(curl -sS -D- -o /dev/null http://127.0.0.1:8010/agent/download/darwin-arm64/ \
+                | awk 'tolower($0) ~ /^x-vigil-sha256:/ {gsub(/\r/,"",$2); print tolower($2)}')
+          echo "published: ${SHA:-<none>}"
+          [ -n "$SHA" ] || { echo "::error::no X-Vigil-SHA256 header — install.sh will refuse"; exit 1; }
+          LOCAL=$(shasum -a 256 server/agent_dist/vigil-agent-darwin-arm64 | awk '{print $1}')
+          [ "$SHA" = "$LOCAL" ] || { echo "::error::published digest $SHA != actual $LOCAL"; exit 1; }
+
+      - name: Run the documented install path
+        run: |
+          curl -fsSL http://127.0.0.1:8010/agent/install.sh | sudo bash
+
+      - name: The install must have verified, not merely succeeded
+        run: |
+          test -x /usr/local/bin/vigil-agent \
+            || { echo "::error::agent binary not installed"; exit 1; }
+          PLIST=/Library/LaunchDaemons/com.susquehannasyntax.vigil-agent.plist
+          test -f "$PLIST" || { echo "::error::launchd plist not written"; exit 1; }
+          plutil -lint "$PLIST"
+          INSTALLED=$(shasum -a 256 /usr/local/bin/vigil-agent | awk '{print $1}')
+          LOCAL=$(shasum -a 256 server/agent_dist/vigil-agent-darwin-arm64 | awk '{print $1}')
+          [ "$INSTALLED" = "$LOCAL" ] || { echo "::error::installed bytes differ from what was served"; exit 1; }
+          sudo test -f /etc/vigil/agent.yml || { echo "::error::no config written"; exit 1; }
+
+      - name: It must refuse a binary whose digest does not match
+        # The half that matters. A check that never fires is not a check.
+        run: |
+          cat > /tmp/tamper.py <<'EOF'
+          import http.server, socketserver
+          BIN = "server/agent_dist/vigil-agent-darwin-arm64"
+          class H(http.server.BaseHTTPRequestHandler):
+              def do_GET(self):
+                  body = open(BIN, "rb").read()
+                  self.send_response(200)
+                  self.send_header("Content-Length", str(len(body)))
+                  self.send_header("X-Vigil-SHA256", "deadbeef" * 8)
+                  self.end_headers()
+                  self.wfile.write(body)
+              def log_message(self, *a): pass
+          socketserver.TCPServer.allow_reuse_address = True
+          socketserver.TCPServer(("127.0.0.1", 8011), H).serve_forever()
+          EOF
+          sed -i '' 's/^          //' /tmp/tamper.py
+          nohup python3 /tmp/tamper.py > /tmp/tamper.log 2>&1 &
+          sleep 3
+          curl -fsSL http://127.0.0.1:8010/agent/install.sh \
+            | sed 's|http://127.0.0.1:8010|http://127.0.0.1:8011|g' > /tmp/tampered.sh
+          if sudo bash /tmp/tampered.sh; then
+            echo "::error::installer accepted a binary with a mismatched digest"
+            exit 1
+          fi
+          echo "refused a tampered binary, as it should"
+
+      - name: The agent must actually run
+        run: |
+          /usr/local/bin/vigil-agent --help
+          sudo launchctl load /Library/LaunchDaemons/com.susquehannasyntax.vigil-agent.plist || true
+          sleep 20
+          python3 - <<'EOF'
+          import json, urllib.request, sys
+          # The agent self-registers; a host in the queue proves the whole
+          # chain, from launchd through enrolment.
+          with urllib.request.urlopen("http://127.0.0.1:8010/api/v1/health/") as r:
+              print("server healthy:", r.status)
+          EOF
+          cd server && USE_SQLITE=1 DJANGO_SECRET_KEY=ci-macos-smoke-key \
+            VIGIL_SIGNING_KEY_SEED="rVVG5N5frRQYzPFzKradn0wIPW6+elhaDwPLUafvCNA=" \
+            python manage.py shell -c "
+          from apps.hosts.models import Host
+          hosts = list(Host.objects.all())
+          print('registered hosts:', [(h.hostname, h.status, h.os) for h in hosts])
+          assert hosts, 'the macOS agent never registered'
+          "
+
+      - name: Server log on failure
+        if: failure()
+        run: cat /tmp/vigil-server.log || true
+
   # ── Build and push Docker image (main branch + tags only) ──────────────────
   publish:
     name: Publish Docker Image
     runs-on: ubuntu-latest
-    needs: [test, build-agent]
+    needs: [test, build-agent, smoke-macos-install]
     if: github.event_name == 'push'
 
     steps:

@@ -7,6 +7,11 @@ __pycache__/
 *.pyo
 db.sqlite3
 db.sqlite3.bak.*
+
+# Bundled agent binaries. The server serves whatever is in here, and CI builds
+# them per-platform — they are release artifacts, not source. Left untracked,
+# a local PyInstaller build drops ~14MB per platform straight into a commit.
+server/agent_dist/
 staticfiles/
 *.egg-info/
 .venv/
@@ -41,3 +46,12 @@ docs/dev/
 server/media/agent_binaries/*
 !server/media/agent_binaries/binary
 !server/media/agent_binaries/binary_LexSWBw
+
+# Local development settings. A real Ed25519 signing seed was committed here
+# once; the file generates its own into settings_local_secret.py now, and
+# neither belongs in git.
+server/vigil/settings_local.py
+server/vigil/settings_local_secret.py
+
+# rexymcp executor scratch
+.scratch/

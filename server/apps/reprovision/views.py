@@ -65,22 +65,30 @@ def _served_on_a_private_network(request) -> bool:
     wire. Set VIGIL_REQUIRE_HTTPS_FOR_REBUILD=1 to demand the acknowledgement
     everywhere regardless.
     """
-    import ipaddress
+    from vigil.netutils import is_private_hostname
 
     if getattr(django_settings, "VIGIL_REQUIRE_HTTPS_FOR_REBUILD", False):
         return False
 
-    hostname = (request.get_host() or "").split(":")[0].strip().rstrip(".").lower()
-    if not hostname:
+    # REMOTE_ADDR — the socket peer — and deliberately NOT request.get_host().
+    # get_host() returns the Host header, which the client chooses; it is only
+    # checked against ALLOWED_HOSTS, and ALLOWED_HOSTS keeps its default
+    # ["localhost", "127.0.0.1"] even after VIGIL_PUBLIC_URL appends to it. So
+    # on an internet-facing Vigil configured exactly as documented, a request
+    # carrying `Host: 127.0.0.1` read as private and skipped this gate, and the
+    # answer file — admin password hash, SSH keys, enrolment token — went out
+    # over plain HTTP with nothing recorded. The peer address is established by
+    # the TCP handshake and cannot be chosen by the client.
+    #
+    # Behind a TLS-terminating proxy the peer is the proxy, which is normally a
+    # private address — correct here, because the leg Vigil actually serves is
+    # the private one, and the public leg is the proxy's HTTPS. That path also
+    # reaches request.is_secure() first via SECURE_PROXY_SSL_HEADER, so this
+    # gate is not what decides it.
+    peer = (request.META.get("REMOTE_ADDR") or "").strip()
+    if not peer:
         return False
-    if hostname == "localhost" or hostname.endswith(
-            (".local", ".lan", ".internal", ".home", ".arpa")):
-        return True
-    try:
-        address = ipaddress.ip_address(hostname)
-    except ValueError:
-        return False
-    return address.is_private or address.is_loopback or address.is_link_local
+    return is_private_hostname(peer)
 
 
 @api_view(["GET"])
@@ -211,6 +219,23 @@ def image_pull(request):
     return Response(OSImageSerializer(image).data, status=202)
 
 
+def _free_bytes_for_images():
+    """Free space on the volume images are written to, or None if unknowable.
+
+    None rather than an exception: a preflight check that cannot run must not
+    become the reason a legitimate upload is refused.
+    """
+    import shutil
+
+    root = getattr(django_settings, "VIGIL_IMAGE_ROOT", None)
+    if not root:
+        return None
+    try:
+        return shutil.disk_usage(str(root)).free
+    except OSError:
+        return None
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 @parser_classes([MultiPartParser])
@@ -268,6 +293,35 @@ def image_upload(request):
     uploaded = request.FILES.get("iso")
     if not uploaded:
         return Response({"error": "No iso file in request"}, status=400)
+
+    # Refuse before streaming rather than fail partway through. The spool
+    # directory shares a volume with the image store by design — it keeps a
+    # large upload off the container's own filesystem — but it means an upload
+    # that runs out of room fills the volume holding every registered image,
+    # and the failure surfaces as an ENOSPC from whatever happened to write
+    # next rather than as a rejected upload.
+    declared = getattr(uploaded, "size", None)
+    if declared is not None:
+        max_bytes = int(getattr(django_settings, "VIGIL_MAX_IMAGE_BYTES", 0))
+        if max_bytes and declared > max_bytes:
+            return Response(
+                {"error": f"That image is {declared / 1024 ** 3:.1f} GB, over "
+                          f"the {max_bytes / 1024 ** 3:.0f} GB limit. Raise "
+                          f"VIGIL_MAX_IMAGE_BYTES if this is expected."},
+                status=413)
+
+        free = _free_bytes_for_images()
+        # Headroom, not just room: landing an image with nothing left over
+        # means the next thing to write is what fails.
+        needed = declared * 2 + (1024 ** 3)
+        if free is not None and free < needed:
+            return Response(
+                {"error": f"Not enough space to import this image: "
+                          f"{free / 1024 ** 3:.1f} GB free, about "
+                          f"{needed / 1024 ** 3:.1f} GB needed (the upload is "
+                          f"spooled and then extracted). Free some space or "
+                          f"point VIGIL_IMAGE_ROOT at a larger volume."},
+                status=507)
 
     field_data = {
         "name": name, "os_family": os_family,

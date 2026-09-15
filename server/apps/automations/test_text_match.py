@@ -31,7 +31,7 @@ class _Base(TestCase):
             parsed_spec=parse_and_validate(YAML), risk_level="low")
 
     def auto(self, **kw):
-        kw.setdefault("event", "alert_fired")
+        kw.setdefault("event", "alert_sent")
         return Automation.objects.create(
             name=f"A{Automation.objects.count()}",
             trigger=Automation.Trigger.EVENT,
@@ -173,7 +173,7 @@ class DispatchTests(_Base):
         self.host.save()
         self.auto(match_text="/var", match_mode="contains")
         before = Task.objects.count()
-        handle_event("alert_fired", {"alert": self.alert(), "host": self.host})
+        handle_event("alert_sent", {"alert": self.alert(), "host": self.host})
         self.assertEqual(Task.objects.count() - before, 1)
 
     def test_a_non_matching_filter_does_not_fire(self):
@@ -185,7 +185,7 @@ class DispatchTests(_Base):
         self.host.save()
         self.auto(match_text="nothing-like-this", match_mode="contains")
         before = Task.objects.count()
-        handle_event("alert_fired", {"alert": self.alert(), "host": self.host})
+        handle_event("alert_sent", {"alert": self.alert(), "host": self.host})
         self.assertEqual(Task.objects.count() - before, 0)
 
     def test_a_filter_on_a_host_event_is_honoured(self):
