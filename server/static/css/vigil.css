@@ -23,6 +23,23 @@
   --lemon: #e2d478;
   --coral: #f09080;
 
+  /* Accent channels, so a surface can be tinted in an accent rather than
+     wearing a stripe of it. Connor asked for whole pastel cards, not cards
+     with a line of colour down one edge. */
+  --rgb-rose: 242,160,184;
+  --rgb-lavender: 186,168,232;
+  --rgb-mint: 126,221,181;
+  --rgb-peach: 240,184,136;
+  --rgb-sky: 130,196,238;
+  --rgb-lemon: 226,212,120;
+  --rgb-coral: 240,144,128;
+  --rgb-grey: 110,107,118;
+
+  /* Pastel over a dark ground needs less alpha than over a light one. */
+  --tint-a: 0.15;
+  --tint-a-line: 0.34;
+  --tint-a-hover: 0.24;
+
   /* Business branding overrides this at runtime; unset branding is a no-op. */
   --brand: var(--sky);
 
@@ -54,6 +71,10 @@
   --text-1:  #1c1c21;
   --text-2:  #5c5966;
   --text-3:  #8a8793;
+  --rgb-grey: 138,135,147;
+  --tint-a: 0.20;
+  --tint-a-line: 0.44;
+  --tint-a-hover: 0.32;
   color-scheme: light;
 }
 /* Filled accent buttons keep dark text in light mode (accents stay pastel). */
@@ -65,6 +86,7 @@
 :root[data-theme="light"] .sidebar-icon.active { color: #ffffff; }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
 
 body {
   font-family: 'DM Sans', sans-serif;
@@ -824,7 +846,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   padding: 12px 14px;
   background: var(--s2);
   border-radius: var(--r-md);
-  border-left: 3px solid var(--s4);
+  border: 1px solid var(--border);
 }
 .preview-step-num {
   width: 22px; height: 22px; border-radius: 50%;
@@ -2155,10 +2177,15 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 
 .te-preview { flex: 1; min-height: 0; background: var(--s2); border: 1px solid var(--border);
   border-radius: var(--r-md); padding: 14px; overflow-y: auto; }
-.te-preview-inner { border-left: 4px solid var(--s4); padding-left: 14px; }
-.te-preview-inner.task-low { border-left-color: var(--mint); }
-.te-preview-inner.task-standard { border-left-color: var(--sky); }
-.te-preview-inner.task-high { border-left-color: var(--rose); }
+.te-preview-inner {
+  --edge-rgb: var(--rgb-grey);
+  background: rgba(var(--edge-rgb), var(--tint-a));
+  border: 1px solid rgba(var(--edge-rgb), var(--tint-a-line));
+  border-radius: var(--r-md); padding: 14px 16px;
+}
+.te-preview-inner.task-low { --edge-rgb: var(--rgb-mint); }
+.te-preview-inner.task-standard { --edge-rgb: var(--rgb-sky); }
+.te-preview-inner.task-high { --edge-rgb: var(--rgb-rose); }
 .te-preview-name { font-weight: 600; font-size: 15px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
 .te-step { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .te-step:last-child { border-bottom: 0; }
@@ -2905,23 +2932,25 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── Dashboard list cards ───────────────────────────────────────────────
    The list widgets used to emit flat rows of text, which read as a wall at any
-   size. Each row is now a skinny card carrying a left edge in the colour of
-   whatever the row is about, so severity and state are legible without a word
-   spent on them. Cards that lead somewhere say so on hover. */
+   size. Each row is now a skinny card tinted in the colour of whatever the row
+   is about, so severity and state are legible without a word spent on them.
+   Cards that lead somewhere say so on hover. */
 .dash-cards { display: flex; flex-direction: column; gap: 6px; }
 .dash-card {
+  --edge-rgb: var(--rgb-grey);
   display: flex; align-items: center; gap: 10px;
-  padding: 7px 10px;
-  background: var(--s2);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--text-3);
+  padding: 8px 11px;
+  background: rgba(var(--edge-rgb), var(--tint-a));
+  border: 1px solid rgba(var(--edge-rgb), var(--tint-a-line));
   border-radius: var(--r-sm);
   font-size: 12px;
   transition: background .18s, border-color .18s, transform .18s var(--ease-out-expo);
 }
 .dash-card[data-nav], .dash-card[data-nav-host] { cursor: pointer; }
 .dash-card[data-nav]:hover, .dash-card[data-nav-host]:hover {
-  background: var(--s3); border-color: var(--s4); transform: translateX(2px);
+  background: rgba(var(--edge-rgb), var(--tint-a-hover));
+  border-color: rgba(var(--edge-rgb), 0.55);
+  transform: translateX(2px);
 }
 .dash-card[data-nav]:active, .dash-card[data-nav-host]:active { transform: translateX(1px) scale(0.995); }
 .dash-card-main { flex: 1; min-width: 0; }
@@ -2942,13 +2971,13 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* The edge colour is the row's meaning: severity for alerts and findings,
    run state for history, up/down for containers and automations. */
-.dash-card.edge-rose  { border-left-color: var(--rose); }
-.dash-card.edge-peach { border-left-color: var(--peach); }
-.dash-card.edge-lemon { border-left-color: var(--lemon); }
-.dash-card.edge-mint  { border-left-color: var(--mint); }
-.dash-card.edge-sky   { border-left-color: var(--sky); }
-.dash-card.edge-lav   { border-left-color: var(--lavender); }
-.dash-card.edge-grey  { border-left-color: var(--text-3); }
+.dash-card.edge-rose  { --edge-rgb: var(--rgb-rose); }
+.dash-card.edge-peach { --edge-rgb: var(--rgb-peach); }
+.dash-card.edge-lemon { --edge-rgb: var(--rgb-lemon); }
+.dash-card.edge-mint  { --edge-rgb: var(--rgb-mint); }
+.dash-card.edge-sky   { --edge-rgb: var(--rgb-sky); }
+.dash-card.edge-lav   { --edge-rgb: var(--rgb-lavender); }
+.dash-card.edge-grey  { --edge-rgb: var(--rgb-grey); }
 .dash-card-dot.edge-rose  { background: var(--rose); }
 .dash-card-dot.edge-peach { background: var(--peach); }
 .dash-card-dot.edge-lemon { background: var(--lemon); }
