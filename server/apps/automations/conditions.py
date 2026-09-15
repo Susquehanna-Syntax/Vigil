@@ -36,6 +36,10 @@ LIST = "list"
 #: field -> (label, kind, help). ``kind`` decides which operators apply and how
 #: the value is read.
 FIELDS: dict[str, tuple[str, str, str]] = {
+    # Whatever the event names and describes — an alert's rule and message, an
+    # insight's title, a task's step. The old match_field="any" in one field,
+    # and the only one that works on every event rather than alerts alone.
+    "text": ("Name or description", TEXT, "matches either"),
     "severity": ("Alert severity", SEVERITY, "info, warning or critical"),
     "rule": ("Alert rule name", TEXT, ""),
     "message": ("Alert text", TEXT, ""),
@@ -171,10 +175,24 @@ def _split_list(value: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def _field_value(field: str, payload: dict):
-    """Pull *field* out of an event payload, or None when it is not there."""
+    """Pull *field* out of an event payload, or None when it is not there.
+
+    ``text`` comes back as a list of both candidate strings; evaluate_one
+    applies the operator across all of them, and a negative operator is true
+    only when NONE match — the same reading engine._apply_operator has always
+    used, and the safe one: a filter meant to exclude something must not let
+    it through because it matched the field the operator was not thinking of.
+    """
     alert = payload.get("alert")
     host = payload.get("host") or getattr(alert, "host", None)
 
+    if field == "text":
+        if "__one_text__" in payload:
+            return payload["__one_text__"]
+        from .engine import event_text
+        name, message = event_text(payload)
+        values = [v for v in (name, message) if v]
+        return values or None
     if field == "event":
         return payload.get("__event__")
     if field == "host":
@@ -228,6 +246,16 @@ def evaluate_one(condition: dict, payload: dict) -> bool:
         return False
 
     kind = FIELDS[field][1]
+
+    if kind == TEXT and isinstance(actual, list):
+        # Several candidate strings for one field. Positive: any may match.
+        # Negative: none may.
+        negative = op.startswith("not_")
+        base = op[4:] if negative else op
+        hit = any(evaluate_one({"field": field, "op": base, "value": wanted},
+                               {**payload, "__one_text__": one})
+                  for one in actual)
+        return not hit if negative else hit
 
     if kind == LIST:
         items = [str(i).strip().lower() for i in (actual or [])]
@@ -290,3 +318,44 @@ def describe(condition: dict) -> str:
     op = OPERATORS.get(condition.get("op", ""), (condition.get("op", ""),))[0]
     value = condition.get("value", "")
     return f"{field} {op} {value}".strip()
+
+
+# ---------------------------------------------------------------------------
+# Folding the old fixed filters in
+# ---------------------------------------------------------------------------
+#
+# min_severity, event_tags and match_text each said something conditions can
+# now say, in their own box, with their own layout. Keeping both would mean two
+# places to look for "why did this not run". These translate one into the
+# other, so the editor can drop the three boxes without anything a user built
+# becoming invisible or stopping working.
+#
+# event_rule and event_host deliberately do NOT fold. They reference a row by
+# id; a condition matches a name, so folding them would turn "this exact rule"
+# into "anything called that" and break silently the day someone renames it.
+
+#: match_field -> the condition field that means the same thing.
+_MATCH_FIELD = {"any": "text", "rule": "rule", "message": "message"}
+
+
+def fold_legacy(*, min_severity="", event_tags=None, match_text="",
+                match_field="any", match_mode="contains") -> list[dict]:
+    """The old fixed filters expressed as conditions, in reading order.
+
+    Every one of them was ANDed, so the result is only equivalent under
+    condition_logic "all" — which is the default, and what the caller must
+    keep when there is more than one.
+    """
+    out: list[dict] = []
+    if min_severity:
+        # "at least this severity" was always a rank comparison.
+        out.append({"field": "severity", "op": "gte", "value": str(min_severity)})
+    tags = [str(t).strip() for t in (event_tags or []) if str(t).strip()]
+    if tags:
+        # tags_ok matched when the host carried ANY of them, not all.
+        out.append({"field": "host_tags", "op": "in", "value": ", ".join(tags)})
+    text = (match_text or "").strip()
+    if text:
+        out.append({"field": _MATCH_FIELD.get(match_field, "text"),
+                    "op": match_mode or "contains", "value": text})
+    return out

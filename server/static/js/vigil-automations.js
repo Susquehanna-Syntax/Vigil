@@ -66,7 +66,10 @@ function _renderAutomations(autos) {
   }
   list.innerHTML = autos.map(a => {
     const when = a.trigger === 'event'
-      ? `<span class="automation-badge event">on event</span> when <b>${escHtml(_autoEvents[a.event] || a.event)}</b>${a.event_rule_name ? ` — <b>${escHtml(a.event_rule_name)}</b>` : ''}${a.min_severity ? ` (≥ ${escHtml(a.min_severity)})` : ''}${(a.event_tags || []).length ? ` on <span class="chip">${a.event_tags.map(escHtml).join('</span> <span class="chip">')}</span>` : ''}`
+      ? `<span class="automation-badge event">on event</span> when <b>${escHtml(_autoEvents[a.event] || a.event)}</b>`
+        + `${a.event_rule_name ? ` — <b>${escHtml(a.event_rule_name)}</b>` : ''}`
+        + `${a.event_host_name ? ` on <b>${escHtml(a.event_host_name)}</b>` : ''}`
+        + `${_autoCondSummary(a)}`
       : `<span class="automation-badge schedule">scheduled</span> cron <code class="inline">${escHtml(a.cron_display)}</code>`;
     const action = a.action_kind === 'playbook'
       ? `playbook <b>${escHtml(a.playbook_name)}</b>` : `task <b>${escHtml(a.task_name || '?')}</b>`;
@@ -117,8 +120,13 @@ function _wireAutoCards(autos) {
 function _fillEditorOptions() {
   // Only the event trigger is still a native select; task/playbook/host are
   // chosen through the searchable picker modal.
-  const ev = document.getElementById('auto-event');
-  if (ev) ev.innerHTML = Object.entries(_autoEvents).map(([k, v]) => `<option value="${k}">${escHtml(v)}</option>`).join('');
+  // One select for the whole trigger. "schedule" is a value alongside the
+  // events rather than a separate kind, because picking a kind and then an
+  // event was two choices to express one thing.
+  const ev = document.getElementById('auto-trigger');
+  if (ev) ev.innerHTML =
+    Object.entries(_autoEvents).map(([k, v]) => `<option value="${escAttr(k)}">${escHtml(v)}</option>`).join('')
+    + '<option value="schedule">On a schedule</option>';
   const rule = document.getElementById('auto-event-rule');
   if (rule) rule.innerHTML = '<option value="">any alert</option>' +
     _autoRules.map(r => `<option value="${escAttr(String(r.id))}">${escHtml(r.name)} (${escHtml(r.severity)})</option>`).join('');
@@ -156,29 +164,21 @@ function _autoPickHost() {
 }
 
 function _autoSyncVisibility() {
-  const trig = document.getElementById('auto-trigger').value;
-  document.getElementById('auto-event-fields').style.display = trig === 'event' ? '' : 'none';
-  document.getElementById('auto-sched-fields').hidden = trig !== 'schedule';
-  document.getElementById('auto-event-tags-wrap').style.display = trig === 'event' ? '' : 'none';
-  const ev = document.getElementById('auto-event').value;
-  // Severity and rule filters only mean anything for an alert event, and
-  // there is more than one of those now.
-  const isAlert = ev.startsWith('alert_');
-  document.getElementById('auto-sev-wrap').style.display = isAlert ? '' : 'none';
+  const ev = document.getElementById('auto-trigger').value;
+  const isSchedule = ev === 'schedule';
+  const trig = isSchedule ? 'schedule' : 'event';
+  document.getElementById('auto-event-fields').style.display = isSchedule ? 'none' : '';
+  document.getElementById('auto-sched-fields').hidden = !isSchedule;
+  // The rule picker only means anything for an alert event, and there is more
+  // than one of those now.
+  const isAlert = !isSchedule && ev.startsWith('alert_');
   document.getElementById('auto-rule-wrap').style.display = isAlert ? '' : 'none';
-  // A host scope makes sense for any event that carries one; the text filter
-  // reads the alert's name and message, so it is alert-only.
+  // A host scope makes sense for any event that carries one.
   const hostWrap = document.getElementById('auto-event-host-wrap');
-  if (hostWrap) hostWrap.style.display = trig === 'event' ? '' : 'none';
-  // The text filter reads whatever the event names and describes — an alert's
-  // rule and message, an insight's title, a task's step, a rebuild's profile —
-  // so it applies to every event, not just alerts. It used to be alert-only,
-  // which meant a filter set on any other event was silently ignored.
-  const matchWrap = document.getElementById('auto-match-wrap');
-  if (matchWrap) matchWrap.style.display = trig === 'event' ? '' : 'none';
+  if (hostWrap) hostWrap.style.display = isSchedule ? 'none' : '';
   // Conditions read an event payload, so they mean nothing on a schedule.
   const condWrap = document.getElementById('auto-cond-wrap');
-  if (condWrap) condWrap.style.display = trig === 'event' ? '' : 'none';
+  if (condWrap) condWrap.style.display = isSchedule ? 'none' : '';
 
   _autoRefreshActionLabel();
 
@@ -225,15 +225,11 @@ function _openAutoEditor(a) {
   document.getElementById('auto-editor-title').textContent = a ? 'Edit automation' : 'New automation';
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
   set('auto-name', a ? a.name : '');
-  set('auto-trigger', a ? a.trigger : 'event');
-  set('auto-event', a ? a.event : (Object.keys(_autoEvents)[0] || ''));
+  set('auto-trigger', a
+    ? (a.trigger === 'schedule' ? 'schedule' : a.event)
+    : (Object.keys(_autoEvents)[0] || 'schedule'));
   set('auto-event-rule', a && a.event_rule ? a.event_rule : '');
-  set('auto-sev', a ? a.min_severity : '');
-  set('auto-event-tags', a ? (a.event_tags || []).join(', ') : '');
   set('auto-event-host', a && a.event_host ? a.event_host : '');
-  set('auto-match-field', a && a.match_field ? a.match_field : 'any');
-  set('auto-match-mode', a && a.match_mode ? a.match_mode : 'contains');
-  set('auto-match-text', a ? (a.match_text || '') : '');
   set('auto-cond-logic', (a && a.condition_logic) || 'all');
   _autoConds = a && Array.isArray(a.conditions) ? a.conditions.map(c => ({ ...c })) : [];
   _renderAutoConditions();
@@ -281,17 +277,16 @@ function _viewAutoAction() {
 
 async function _saveAutomation() {
   const v = id => document.getElementById(id).value.trim();
+  // One select carries both: "schedule" is the kind, anything else is the
+  // event and implies the kind.
+  const when = v('auto-trigger');
+  const isSchedule = when === 'schedule';
   const body = {
     name: v('auto-name'),
-    trigger: v('auto-trigger'),
-    event: v('auto-event'),
+    trigger: isSchedule ? 'schedule' : 'event',
+    event: isSchedule ? '' : when,
     event_rule: v('auto-event-rule') || null,
-    min_severity: v('auto-sev'),
-    event_tags: v('auto-event-tags').split(',').map(s => s.trim()).filter(Boolean),
     event_host: v('auto-event-host') || null,
-    match_field: v('auto-match-field'),
-    match_mode: v('auto-match-mode'),
-    match_text: v('auto-match-text'),
     condition_logic: v('auto-cond-logic'),
     conditions: _readAutoConditions(),
     cron: { minute: v('auto-cron-min'), hour: v('auto-cron-hour'), dom: v('auto-cron-dom'),
@@ -318,7 +313,7 @@ async function _saveAutomation() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  ['auto-trigger', 'auto-event', 'auto-action-kind', 'auto-target'].forEach(id => {
+  ['auto-trigger', 'auto-action-kind', 'auto-target'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', _autoSyncVisibility);
   });
@@ -388,6 +383,20 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+
+/* Conditions in words, for the card. The list used to print the severity and
+   tag filters; those are conditions now, so this is what replaced them. */
+function _autoCondSummary(a) {
+  const items = a.conditions || [];
+  if (!items.length) return '';
+  const meta = _autoCondMeta.fields || [];
+  const label = (n) => (meta.find(f => f.name === n) || {}).label || n;
+  const opLabel = (n) => ((_autoCondMeta.operators || []).find(o => o.name === n) || {}).label || n;
+  const parts = items.map(c =>
+    `${label(c.field)} ${opLabel(c.op)}${c.value ? ' ' + c.value : ''}`);
+  const joiner = a.condition_logic === 'any' ? ' or ' : ' and ';
+  return ` <span class="muted">— ${escHtml(parts.join(joiner))}</span>`;
+}
 
 /* ── Condition rows ───────────────────────────────────────────────────────
    Built from the field/operator list the server advertises, so the two can

@@ -329,13 +329,22 @@ def automation_from_yaml(request):
         "enabled": parsed["enabled"],
         "trigger": parsed["trigger"],
         "event": parsed["event"],
-        "min_severity": parsed["min_severity"],
-        "event_tags": parsed["event_tags"],
-        "match_text": parsed["match_text"],
+        "min_severity": "",
+        "event_tags": [],
+        # A shared file may still carry the old fixed filters. Fold them in
+        # rather than storing them, or the import would land a filter that
+        # applies but appears nowhere in the editor.
+        "match_text": "",
         "match_field": parsed["match_field"],
         "match_mode": parsed["match_mode"],
         "condition_logic": parsed["condition_logic"],
-        "conditions": parsed["conditions"],
+        "conditions": parsed["conditions"] + conditions.fold_legacy(
+            min_severity=parsed["min_severity"],
+            event_tags=parsed["event_tags"],
+            match_text=parsed["match_text"],
+            match_field=parsed["match_field"],
+            match_mode=parsed["match_mode"],
+        ),
         "cron": parsed["cron"],
         "action_kind": parsed["action_kind"],
         "params_override": parsed["params_override"],
