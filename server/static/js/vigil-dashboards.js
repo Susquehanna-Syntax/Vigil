@@ -117,7 +117,13 @@ function _dashRender() {
     disableDrag: !DASH.editing || !DASH.current.is_mine,
     disableResize: !DASH.editing || !DASH.current.is_mine,
     animate: true,
-    float: false,
+    // Gravity off. With float:false Gridstack pulls every widget up to fill
+    // the space above it, so a gap cannot be made and cannot be saved: drop a
+    // card at row 6 with empty rows above and it is back at row 0 before the
+    // change event fires. The layout then "would not stick", because what was
+    // saved was never what was placed. A dashboard is a layout someone
+    // arranged, and whitespace is part of arranging it.
+    float: true,
   }, document.getElementById('dash-grid'));
 
   for (const w of DASH.current.widgets) {
