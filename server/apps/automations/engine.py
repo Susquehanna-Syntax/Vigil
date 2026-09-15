@@ -11,6 +11,8 @@ from __future__ import annotations
 import logging
 import secrets
 
+from . import conditions
+
 logger = logging.getLogger("vigil.automations")
 
 _SEVERITY_RANK = {"info": 0, "warning": 1, "critical": 2}
@@ -315,6 +317,9 @@ def handle_event(event_name: str, payload: dict) -> None:
     alert = payload.get("alert")
     if alert is not None and host is None:
         host = getattr(alert, "host", None)
+    # Conditions can filter on the event name itself, which the payload does
+    # not otherwise carry. Copied rather than mutating the caller's dict.
+    payload = {**payload, "__event__": event_name}
 
     autos = Automation.objects.filter(
         enabled=True, trigger=Automation.Trigger.EVENT, event=event_name)
@@ -330,6 +335,8 @@ def handle_event(event_name: str, payload: dict) -> None:
         if not text_ok(auto, alert, payload):
             continue
         if not tags_ok(auto, host):
+            continue
+        if not conditions.evaluate(auto, payload):
             continue
         run_automation(auto, event_host=host)
 

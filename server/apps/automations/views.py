@@ -11,6 +11,7 @@ from apps.tasks.models import TaskDefinition
 from vigil import scoping
 from vigil.hooks import KNOWN_EVENTS
 
+from . import conditions
 from .models import Automation
 from .tasks import sync_periodic_task
 
@@ -38,6 +39,8 @@ def _row(a: Automation) -> dict:
         "match_text": a.match_text,
         "match_field": a.match_field,
         "match_mode": a.match_mode,
+        "condition_logic": a.condition_logic,
+        "conditions": a.conditions or [],
         "cron": {"minute": a.cron_minute, "hour": a.cron_hour, "dom": a.cron_dom,
                  "month": a.cron_month, "dow": a.cron_dow},
         "cron_display": a.cron_display,
@@ -127,6 +130,17 @@ def _apply(a: Automation, data) -> str | None:
         if data["match_mode"] not in Automation.MatchMode.values:
             return "invalid match_mode"
         a.match_mode = data["match_mode"]
+    if "condition_logic" in data:
+        if data["condition_logic"] not in Automation.ConditionLogic.values:
+            return "invalid condition_logic"
+        a.condition_logic = data["condition_logic"]
+    if "conditions" in data:
+        clean, err = conditions.validate(data["conditions"])
+        if err:
+            # Refused, not silently dropped: an automation running wider than
+            # the person who saved it believes is the bad outcome here.
+            return err
+        a.conditions = clean
     cron = data.get("cron") or {}
     for k, field in (("minute", "cron_minute"), ("hour", "cron_hour"),
                      ("dom", "cron_dom"), ("month", "cron_month"), ("dow", "cron_dow")):
@@ -192,6 +206,7 @@ def automation_index(request):
                 Automation.objects.select_related("task_definition", "target_host"),
                 request.user, cascade_global=True)],
             "events": EVENT_LABELS,
+            "condition_meta": conditions.meta(),
         })
     a = Automation(created_by=request.user, trigger=request.data.get("trigger", "event"),
                    action_kind=request.data.get("action_kind", "task"))
@@ -319,6 +334,8 @@ def automation_from_yaml(request):
         "match_text": parsed["match_text"],
         "match_field": parsed["match_field"],
         "match_mode": parsed["match_mode"],
+        "condition_logic": parsed["condition_logic"],
+        "conditions": parsed["conditions"],
         "cron": parsed["cron"],
         "action_kind": parsed["action_kind"],
         "params_override": parsed["params_override"],

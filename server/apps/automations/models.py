@@ -108,6 +108,29 @@ class Automation(TagRowSyncMixin, models.Model):
     match_mode = models.CharField(max_length=16, choices=MatchMode.choices,
                                   default=MatchMode.CONTAINS)
 
+    # -- conditions --
+    #
+    # The filters above are a fixed set, every one of them ANDed: there was no
+    # way to say "critical OR anything mentioning /var", and no way to compare
+    # a number at all. Conditions are the general form — a list of
+    # {field, op, value}, combined with AND or OR.
+    #
+    # They sit ALONGSIDE the filters above rather than replacing them: an
+    # automation someone already built keeps working exactly as it did, and
+    # the scalar filters stay ANDed on top. An empty list means "no extra
+    # conditions", so nothing changes for anyone who does not use them.
+
+    class ConditionLogic(models.TextChoices):
+        ALL = "all", "Match all of these"
+        ANY = "any", "Match any of these"
+
+    condition_logic = models.CharField(
+        max_length=3, choices=ConditionLogic.choices, default=ConditionLogic.ALL)
+
+    #: ``[{"field": "severity", "op": "gte", "value": "warning"}, ...]``.
+    #: Validated in apps.automations.conditions, evaluated in engine.py.
+    conditions = models.JSONField(default=list, blank=True)
+
     # -- schedule trigger (crontab; beat-driven) --
     cron_minute = models.CharField(max_length=64, blank=True, default="0")
     cron_hour = models.CharField(max_length=64, blank=True, default="*")

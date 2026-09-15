@@ -241,6 +241,23 @@
       <input type="text" class="form-control" id="auto-match-text" placeholder="e.g. /var" maxlength="200" style="display:inline-block;width:auto;">
       <span class="bl-hint" style="display:block;margin-top:4px;">Leave the text blank for no text filter. Case-insensitive.</span>
     </div>
+    {% comment %}
+      Conditions. The filters above are a fixed set, all of them ANDed, with no
+      way to compare a number. This is the general form, and it is where AND/OR
+      lives. Rows are built by vigil-automations.js from the field and operator
+      list the server advertises, so adding a field is a server change only.
+    {% endcomment %}
+    <div class="bl-hint" id="auto-cond-wrap" style="margin-top:12px;">
+      <div class="auto-cond-head">
+        <select class="form-control" id="auto-cond-logic" style="display:inline-block;width:auto;">
+          <option value="all">Match all of these</option>
+          <option value="any">Match any of these</option>
+        </select>
+        <button class="btn btn-outline btn-sm" type="button" data-act="addAutoCondition">Add condition</button>
+      </div>
+      <div id="auto-cond-rows"></div>
+      <span class="bl-hint" style="display:block;margin-top:4px;">No conditions means no extra filtering. The filters above still apply on top.</span>
+    </div>
   </div>
   <div class="bl-field">
     <label>Run</label>
