@@ -68,6 +68,11 @@ GROUPS: tuple[tuple[str, str, str], ...] = (
         "Uses Nessus API keys, not a username and password. Generate them "
         "under your Nessus user's API Keys tab."
     )),
+    ("jackil", "Jackil (alert \u2192 ticket)", (
+        "Jackil is the SQSY helpdesk. When an alert fires, Vigil opens a "
+        "ticket in it and links the two, so the same alert never opens a "
+        "second one; when the alert clears, Vigil posts a note on the ticket."
+    )),
     ("email", "Email (SMTP)", (
         "Where alert notifications are sent from. Setting a host here also "
         "switches Vigil off the console backend, so mail actually leaves the "
@@ -100,6 +105,25 @@ KEYS: tuple[Key, ...] = (
     Key("NESSUS_ACCESS_KEY", "nessus", SECRET, "Access key"),
     Key("NESSUS_SECRET_KEY", "nessus", SECRET, "Secret key"),
     Key("NESSUS_VERIFY_SSL", "nessus", BOOL, "Verify TLS certificate"),
+
+    # ── Jackil ───────────────────────────────────────────────────────────
+    Key("JACKIL_ENABLED", "jackil", BOOL, "Open tickets for alerts",
+        "Off until you turn it on, even once the URL and key are set."),
+    Key("JACKIL_URL", "jackil", STR, "Jackil URL", "", "https://help.example.com"),
+    Key("JACKIL_API_KEY", "jackil", SECRET, "API key",
+        "From Jackil: Console \u2192 API keys. The key's user must be an agent "
+        "or admin."),
+    Key("JACKIL_VERIFY_SSL", "jackil", BOOL, "Verify TLS certificate"),
+    Key("JACKIL_MIN_SEVERITY", "jackil", CHOICE, "Open a ticket from",
+        "A ticket per info-level alert turns the helpdesk queue into a metrics "
+        "feed.", "", ("critical", "warning", "info")),
+    Key("JACKIL_RESOLVE_ON_CLEAR", "jackil", BOOL, "Resolve the ticket when the alert clears",
+        "Off leaves the ticket open with a note, for someone to close by hand."),
+    Key("JACKIL_REQUESTER_EMAIL", "jackil", STR, "Requester address",
+        "Set on each ticket so replies reach a monitored mailbox rather than "
+        "nobody.", "noc@example.com"),
+    Key("JACKIL_TAGS", "jackil", STR, "Tags",
+        "Comma-separated, added to every ticket Vigil opens.", "vigil"),
 
     # ── Email ────────────────────────────────────────────────────────────
     Key("EMAIL_HOST", "email", STR, "SMTP host", "", "smtp.example.com"),

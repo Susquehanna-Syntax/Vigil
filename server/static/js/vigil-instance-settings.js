@@ -33,7 +33,7 @@ function _isRenderAll() {
 }
 
 function _isRenderGroup(group) {
-  const testable = ['greenbone', 'nessus', 'email'].includes(group.id);
+  const testable = ['greenbone', 'nessus', 'jackil', 'email'].includes(group.id);
   return (
     `<div class="totp-card">` +
       (group.help ? `<div class="totp-sub" style="margin-bottom:16px;">${escHtml(group.help)}</div>` : '') +
@@ -191,3 +191,41 @@ async function testInstanceIntegration(target) {
   }
 }
 
+
+/* ── Jackil: the tickets it has actually opened ───────────────────────────
+   A saved form proves nothing. This is the evidence the integration works,
+   and the first place to look when someone says it stopped. */
+async function loadJackilTickets() {
+  const host = document.getElementById('jackil-tickets');
+  if (!host) return;
+  let data;
+  try {
+    data = await apiJson('/api/v1/jackil/tickets/');
+  } catch (e) {
+    host.innerHTML = `<p class="muted">${escHtml(e.message || 'Could not load tickets')}</p>`;
+    return;
+  }
+  if (!data.tickets.length) {
+    host.innerHTML = '<p class="muted">No tickets yet. Vigil opens one the next '
+      + 'time an alert fires at or above the severity set above.</p>';
+    return;
+  }
+  const rows = data.tickets.map((t) => {
+    const edge = t.severity === 'critical' ? 'rose' : t.severity === 'warning' ? 'lemon' : 'sky';
+    const title = `#${t.ticket_id} · ${t.host}`;
+    const link = t.url
+      ? `<a href="${escAttr(t.url)}" target="_blank" rel="noopener">Open in Jackil</a>`
+      : '';
+    return `<div class="dash-card edge-${edge}">`
+      + `<div class="dash-card-main">`
+        + `<div class="dash-card-title">${escHtml(title)}</div>`
+        + `<div class="dash-card-sub">${escHtml(t.message)}</div>`
+      + `</div>`
+      + `<div class="dash-card-right">${link}`
+        + `<div class="dash-card-sub">${t.cleared_at ? 'cleared' : 'open'}</div>`
+      + `</div>`
+    + `</div>`;
+  }).join('');
+  host.innerHTML = `<div class="dash-cards">${rows}</div>`
+    + `<p class="muted" style="margin-top:12px;">${data.count} ticket${data.count === 1 ? '' : 's'} opened in total.</p>`;
+}
