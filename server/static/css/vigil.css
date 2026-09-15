@@ -3180,3 +3180,8 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .is-result { font-size: 12px; }
 .is-result.is-ok { color: var(--mint); }
 .is-result.is-bad { color: var(--rose); }
+
+/* Jackil ticket list — the link is the point of each row, so it reads as a
+   control rather than as default browser blue. */
+#jackil-tickets a { color: var(--sky); text-decoration: none; font-weight: 600; }
+#jackil-tickets a:hover { text-decoration: underline; }

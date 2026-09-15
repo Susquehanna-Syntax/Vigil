@@ -102,6 +102,7 @@ INSTALLED_APPS = [
     "apps.reprovision",
     "apps.civilsso",
     "apps.instance",
+    "apps.jackil",
     # Business features (apps_business/LICENSE) — installed always, unlocked by license
     "apps_business.sites",
     "apps_business.audits",
@@ -607,6 +608,24 @@ GREENBONE_VERIFY_SSL = os.environ.get("GREENBONE_VERIFY_SSL", "true").lower() in
 # Port list UUID for scan targets. Empty falls back to the well-known
 # "All IANA assigned TCP" list; gvmd 20.8+ rejects targets with no port list.
 GREENBONE_PORT_LIST_ID = os.environ.get("GREENBONE_PORT_LIST_ID", "")
+
+# ---------------------------------------------------------------------------
+# Jackil integration (alert -> ticket)
+# ---------------------------------------------------------------------------
+# Jackil is the SQSY helpdesk. When an alert fires, Vigil can open a ticket in
+# it and post a note when the alert clears. Configured from Settings -> Jackil;
+# these are the fallbacks, and setting one here makes it authoritative.
+JACKIL_ENABLED = os.environ.get("JACKIL_ENABLED", "false").lower() in ("true", "1")
+JACKIL_URL = os.environ.get("JACKIL_URL", "")
+JACKIL_API_KEY = os.environ.get("JACKIL_API_KEY", "")
+JACKIL_VERIFY_SSL = os.environ.get("JACKIL_VERIFY_SSL", "true").lower() in ("true", "1")
+#: Lowest alert severity that opens a ticket. "critical" by default: a ticket
+#: per info-level alert turns the helpdesk queue into a metrics feed.
+JACKIL_MIN_SEVERITY = os.environ.get("JACKIL_MIN_SEVERITY", "critical")
+JACKIL_REQUESTER_EMAIL = os.environ.get("JACKIL_REQUESTER_EMAIL", "")
+JACKIL_TAGS = os.environ.get("JACKIL_TAGS", "vigil")
+JACKIL_RESOLVE_ON_CLEAR = os.environ.get(
+    "JACKIL_RESOLVE_ON_CLEAR", "true").lower() in ("true", "1")
 
 # ---------------------------------------------------------------------------
 # Notifications

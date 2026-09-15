@@ -126,7 +126,9 @@ def test_integration(request):
         return Response(_test_nessus())
     if target == "email":
         return Response(_test_email(request))
-    return Response({"detail": "target must be greenbone, nessus or email."},
+    if target == "jackil":
+        return Response(_test_jackil())
+    return Response({"detail": "target must be greenbone, nessus, jackil or email."},
                     status=400)
 
 
@@ -176,6 +178,21 @@ def _test_nessus() -> dict:
     if resp.status_code >= 400:
         return {"ok": False, "detail": f"Nessus answered {resp.status_code}."}
     return {"ok": True, "detail": "API keys accepted."}
+
+
+def _test_jackil() -> dict:
+    """A one-row ticket listing. Deliberately not a create — a connection test
+    must not leave a ticket behind in someone's queue."""
+    from apps.jackil import client
+
+    try:
+        client.ping()
+    except client.JackilError as exc:
+        return {"ok": False, "detail": str(exc)}
+    detail = f"Connected to {config.setting('JACKIL_URL')}."
+    if not config.setting("JACKIL_ENABLED"):
+        detail += " Tickets are still off — tick “Open tickets for alerts”."
+    return {"ok": True, "detail": detail}
 
 
 def _test_email(request) -> dict:
