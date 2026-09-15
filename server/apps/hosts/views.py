@@ -539,9 +539,9 @@ def checkin(request):
     #   2. ``schedule.window`` — agents only receive tasks during the
     #      configured maintenance window. Tasks outside the window remain
     #      PENDING and are picked up at the next eligible checkin.
-    from django.conf import settings as _settings
+    from apps.instance.config import setting as instance_setting
     current = now()
-    _tz_name = getattr(_settings, "VIGIL_TIMEZONE", "UTC")
+    _tz_name = instance_setting("VIGIL_TIMEZONE")
     try:
         _tz = zoneinfo.ZoneInfo(_tz_name)
         _local = current.astimezone(_tz)

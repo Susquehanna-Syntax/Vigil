@@ -15,9 +15,9 @@ def _timeout() -> int:
     """Call timeout. Local BYO endpoints (Ollama on a homelab box) can take
     minutes on a cold model load — 60s punished exactly the users this
     feature is free for. Overridable per install."""
-    from django.conf import settings
+    from apps.instance.config import setting
 
-    return int(getattr(settings, "VIGIL_AI_TIMEOUT_SECONDS", 300))
+    return int(setting("VIGIL_AI_TIMEOUT_SECONDS"))
 
 
 class ProviderError(Exception):

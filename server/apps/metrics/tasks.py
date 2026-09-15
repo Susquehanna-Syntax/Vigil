@@ -18,6 +18,8 @@ from celery import shared_task
 from django.conf import settings
 from django.db import connection
 
+from apps.instance.config import setting
+
 logger = logging.getLogger(__name__)
 
 _GB = 1024 ** 3
@@ -29,8 +31,8 @@ def check_db_disk_usage():
     if connection.vendor != "postgresql":
         return "check_db_disk_usage skipped (non-PostgreSQL backend)"
 
-    warn_gb = float(getattr(settings, "VIGIL_DB_SIZE_WARN_GB", 20))
-    crit_gb = float(getattr(settings, "VIGIL_DB_SIZE_CRIT_GB", 40))
+    warn_gb = float(setting("VIGIL_DB_SIZE_WARN_GB"))
+    crit_gb = float(setting("VIGIL_DB_SIZE_CRIT_GB"))
 
     with connection.cursor() as cur:
         cur.execute("SELECT pg_database_size(current_database())")

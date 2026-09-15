@@ -293,6 +293,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (item.dataset.pane === 'images' && typeof loadOSImages === 'function') {
         loadOSImages();
       }
+      // Same reasoning for the instance-settings panes: an admin-only fetch
+      // that also tells the caller which scanner credentials exist.
+      if (['scanners', 'email', 'retention', 'display'].includes(item.dataset.pane)
+          && typeof loadInstanceSettings === 'function') {
+        loadInstanceSettings();
+      }
     });
   });
 

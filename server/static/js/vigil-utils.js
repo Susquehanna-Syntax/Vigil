@@ -384,19 +384,56 @@ function yamlToHtml(src) {
   }).join('\n');
 }
 
-/* ── Theme toggle (light / dark) ─────────────────────────────────────── */
+/* ── Theme (system / light / dark) ────────────────────────────────────
+ *
+ * Two controls drive the same preference: the sidebar icon, which flips
+ * between light and dark, and the Appearance card in Settings, which also
+ * offers "System" — follow the OS. "System" is stored as the word, not as
+ * the colour it resolved to, so the page keeps tracking the OS afterwards
+ * instead of freezing at whatever it happened to be when it was chosen.
+ *
+ * The identical resolution runs inline in base.html before first paint; a
+ * mismatch between the two shows up as a flash of the wrong theme. */
+const _MQ_DARK = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+function _systemTheme() {
+  return _MQ_DARK && _MQ_DARK.matches ? 'dark' : 'light';
+}
+function _storedTheme() {
+  try {
+    const v = localStorage.getItem('vigil-theme');
+    if (v === 'light' || v === 'dark' || v === 'system') return v;
+  } catch (e) {}
+  return 'dark';
+}
 function _applyThemeIcon(theme) {
   const sun = document.getElementById('theme-icon-sun');
   const moon = document.getElementById('theme-icon-moon');
   if (sun) sun.style.display = theme === 'light' ? 'block' : 'none';
   if (moon) moon.style.display = theme === 'light' ? 'none' : 'block';
 }
+function _applyThemeButtons(pref) {
+  ['system', 'light', 'dark'].forEach((m) => {
+    const b = document.getElementById('theme-' + m);
+    if (b) b.classList.toggle('active', m === pref);
+  });
+}
+function setTheme(mode) {
+  const pref = (mode === 'light' || mode === 'dark' || mode === 'system') ? mode : 'dark';
+  const resolved = pref === 'system' ? _systemTheme() : pref;
+  document.documentElement.setAttribute('data-theme', resolved);
+  try { localStorage.setItem('vigil-theme', pref); } catch (e) {}
+  _applyThemeIcon(resolved);
+  _applyThemeButtons(pref);
+}
 function toggleTheme() {
   const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-  const next = cur === 'light' ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', next);
-  try { localStorage.setItem('vigil-theme', next); } catch (e) {}
-  _applyThemeIcon(next);
+  setTheme(cur === 'light' ? 'dark' : 'light');
+}
+if (_MQ_DARK && _MQ_DARK.addEventListener) {
+  _MQ_DARK.addEventListener('change', () => {
+    if (_storedTheme() === 'system') setTheme('system');
+  });
 }
 
 /* ── Layout density (cozy / compact) ─────────────────────────────────── */
@@ -415,6 +452,7 @@ function setDensity(mode) {
 
 document.addEventListener('DOMContentLoaded', () => {
   _applyThemeIcon(document.documentElement.getAttribute('data-theme') || 'dark');
+  _applyThemeButtons(_storedTheme());
   _applyDensityButtons(document.documentElement.getAttribute('data-density') || 'cozy');
 });
 

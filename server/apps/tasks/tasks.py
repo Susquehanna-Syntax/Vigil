@@ -19,6 +19,7 @@ from datetime import timedelta
 
 from celery import shared_task
 from django.conf import settings
+from apps.instance.config import setting
 from django.utils.timezone import now
 
 from .models import PatchRollout, Task
@@ -31,7 +32,7 @@ def expire_stale_tasks() -> str:
     """Flip overdue DISPATCHED/EXECUTING tasks to EXPIRED and finalize runs."""
     from .views import _finalize_run_if_done
 
-    grace = int(getattr(settings, "VIGIL_TASK_EXPIRY_GRACE_SECONDS", 3600))
+    grace = int(setting("VIGIL_TASK_EXPIRY_GRACE_SECONDS"))
     current = now()
 
     # Candidate set first (cheap, indexed on state); the per-task TTL

@@ -17,6 +17,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
+from apps.instance.config import setting
+
 logger = logging.getLogger(__name__)
 
 BUNDLED_CATALOG = Path(__file__).resolve().parent / "data" / "kev_catalog.json"
@@ -125,7 +127,7 @@ def fetch_live() -> int:
     """
     from django.conf import settings
 
-    if not getattr(settings, "VIGIL_KEV_LIVE_REFRESH", False):
+    if not setting("VIGIL_KEV_LIVE_REFRESH"):
         logger.debug("KEV live refresh is disabled; using the bundled catalogue")
         return 0
 

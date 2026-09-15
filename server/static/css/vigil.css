@@ -3149,3 +3149,34 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .dash-uptime-bar { flex: 1; min-width: 2px; height: 100%; border-radius: 2px; opacity: .85; }
 .dash-uptime-bar:hover { opacity: 1; }
 .dash-toolbar-spacer { flex: 1; }
+
+/* ── Instance settings panes (apps/instance) ─────────────────────────────
+   One renderer builds every field from the server's registry, so the layout
+   has to hold whatever the registry says: two columns where there is room,
+   one on a narrow screen, and a full-width row for a checkbox so its label
+   sits beside the box rather than above it. */
+.is-fields {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px 20px;
+}
+.is-field { min-width: 0; }
+.is-field-check { grid-column: 1 / -1; }
+.is-note { margin-top: 6px; font-size: 11px; color: var(--text-3); line-height: 1.5; }
+.is-note code {
+  font-family: var(--font-mono); font-size: 11px; color: var(--sky);
+  background: var(--s2); padding: 1px 5px; border-radius: 5px;
+}
+.is-locked .form-control { opacity: .6; cursor: not-allowed; }
+.is-check { display: flex; align-items: center; gap: 9px; cursor: pointer; font-size: 13px; }
+.is-check input { width: 15px; height: 15px; accent-color: var(--sky); cursor: pointer; }
+.is-clear {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; color: var(--rose); text-decoration: underline;
+}
+.is-actions {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);
+}
+.is-result { font-size: 12px; }
+.is-result.is-ok { color: var(--mint); }
+.is-result.is-bad { color: var(--rose); }

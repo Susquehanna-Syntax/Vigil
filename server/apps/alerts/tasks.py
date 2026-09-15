@@ -17,6 +17,7 @@ FLAP_WINDOW_SECONDS = 900
 
 
 from apps.hosts.models import Host
+from apps.instance.config import setting
 from apps.metrics.models import MetricPoint
 
 from .models import Alert, AlertRule
@@ -560,7 +561,7 @@ def prune_old_alerts() -> str:
     """
     from django.conf import settings
 
-    days = int(getattr(settings, "VIGIL_ALERT_RETENTION_DAYS", 90))
+    days = int(setting("VIGIL_ALERT_RETENTION_DAYS"))
     if days <= 0:
         return "Alert retention disabled (VIGIL_ALERT_RETENTION_DAYS=0)"
     cutoff = now() - timedelta(days=days)

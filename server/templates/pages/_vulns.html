@@ -64,8 +64,11 @@
             Vigil ingests findings from three scanners into this one view. Set up whichever you have &mdash; none are required, and you can run more than one.
             <div style="margin-top:14px;text-align:left;display:inline-block;">
               <div style="margin-bottom:7px;"><strong style="color:var(--text-1);">Trivy</strong> &mdash; runs on the host itself, nothing to configure here. Deploy the <em>Install Trivy</em> and <em>Run a Trivy vulnerability scan</em> task templates.</div>
-              <div style="margin-bottom:7px;"><strong style="color:var(--text-1);">Nessus / Tenable</strong> &mdash; set <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">NESSUS_URL</code>, <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">NESSUS_ACCESS_KEY</code> and <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">NESSUS_SECRET_KEY</code>.</div>
-              <div><strong style="color:var(--text-1);">Greenbone / OpenVAS</strong> &mdash; set <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">GREENBONE_URL</code>, <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">GREENBONE_USERNAME</code> and <code style="background:var(--s2);padding:2px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;">GREENBONE_PASSWORD</code>.</div>
+              <div style="margin-bottom:7px;"><strong style="color:var(--text-1);">Nessus / Tenable</strong> &mdash; server URL and a pair of API keys.</div>
+              <div><strong style="color:var(--text-1);">Greenbone / OpenVAS</strong> &mdash; the GMP host:port, a username and a password.</div>
+            </div>
+            <div style="margin-top:18px;">
+              <button type="button" class="btn btn-sky btn-sm" data-act="navigateTo" data-a1="settings">Configure scanners in Settings</button>
             </div>
           </div>
         </div>
