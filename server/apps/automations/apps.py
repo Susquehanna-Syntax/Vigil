@@ -1,6 +1,6 @@
 from django.apps import AppConfig
 
-EVENTS = ("alert_fired", "host_approved", "host_rejected",
+EVENTS = ("alert_sent", "alert_refired", "host_approved", "host_rejected",
           "task_completed", "insight_created")
 
 

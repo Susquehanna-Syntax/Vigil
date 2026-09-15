@@ -246,6 +246,26 @@ class FlapSuppressionTests(TestCase):
         self.assertEqual(third.call_count, 0,
                          "the flap paged the operator a second time")
 
+    def test_a_suppressed_flap_still_emits_alert_refired(self):
+        """Nothing is sent, so nothing else can see a flap. The event is the
+        only way an automation can act on one, and it carries the flap count
+        so a rule can wait for the third bounce rather than the first."""
+        self._point(95.0)
+        self._evaluate()
+        MetricPoint.objects.all().delete()
+        self._point(50.0)
+        self._evaluate()
+        MetricPoint.objects.all().delete()
+        self._point(96.0)
+
+        with patch("apps.alerts.tasks.dispatch_alert_notification"), \
+                patch("apps.alerts.tasks.hooks.emit") as emit:
+            evaluate_alert_rules()
+
+        refired = [c for c in emit.call_args_list if c.args[0] == "alert_refired"]
+        self.assertEqual(len(refired), 1)
+        self.assertEqual(refired[0].kwargs["alert"].flap_count, 1)
+
     def test_a_breach_after_the_window_is_a_new_alert_and_does_page(self):
         """Suppression must not swallow a genuinely new problem later on."""
         self._point(95.0)

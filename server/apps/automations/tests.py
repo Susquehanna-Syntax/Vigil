@@ -35,14 +35,14 @@ class EventAutomationTests(TestCase):
     def test_alert_fires_task_on_event_host(self):
         d = make_def()
         Automation.objects.create(
-            name="disk cleanup", trigger="event", event="alert_fired",
+            name="disk cleanup", trigger="event", event="alert_sent",
             action_kind="task", task_definition=d, target="event_host",
             created_by=self.admin)
         host = make_host("web-01")
         rule = AlertRule.objects.create(name="disk", category="disk", metric="d",
                                         operator="gt", threshold=90, severity="critical")
         alert = Alert.objects.create(host=host, rule=rule, severity="critical", message="full")
-        hooks.emit("alert_fired", alert=alert)
+        hooks.emit("alert_sent", alert=alert)
         task = Task.objects.get(host=host)
         self.assertIn("automation: disk cleanup", task.step_label)
         self.assertEqual(task.params["steps"][0]["action"], "pkg_update")
@@ -50,14 +50,14 @@ class EventAutomationTests(TestCase):
     def test_severity_filter(self):
         d = make_def()
         Automation.objects.create(
-            name="crit only", trigger="event", event="alert_fired",
+            name="crit only", trigger="event", event="alert_sent",
             min_severity="critical", action_kind="task", task_definition=d,
             target="event_host", created_by=self.admin)
         host = make_host()
         rule = AlertRule.objects.create(name="m", category="c", metric="m",
                                         operator="gt", threshold=1, severity="warning")
         warn = Alert.objects.create(host=host, rule=rule, severity="warning", message="w")
-        hooks.emit("alert_fired", alert=warn)
+        hooks.emit("alert_sent", alert=warn)
         self.assertFalse(Task.objects.filter(host=host).exists())
 
     def test_event_tag_filter(self):
@@ -139,11 +139,11 @@ class AutomationApiTests(TestCase):
     def test_create_event_automation(self):
         d = make_def()
         resp = self.client.post("/api/v1/automations/", {
-            "name": "cleanup", "trigger": "event", "event": "alert_fired",
+            "name": "cleanup", "trigger": "event", "event": "alert_sent",
             "action_kind": "task", "task_definition": str(d.id), "target": "event_host"},
             content_type="application/json")
         self.assertEqual(resp.status_code, 201, resp.content)
-        self.assertEqual(resp.json()["event"], "alert_fired")
+        self.assertEqual(resp.json()["event"], "alert_sent")
 
     def test_create_schedule_syncs_periodic_task(self):
         d = make_def()
@@ -175,7 +175,7 @@ class AutomationApiTests(TestCase):
 
     def test_toggle_and_delete(self):
         d = make_def()
-        a = Automation.objects.create(name="a", trigger="event", event="alert_fired",
+        a = Automation.objects.create(name="a", trigger="event", event="alert_sent",
                                       action_kind="task", task_definition=d, target="event_host")
         resp = self.client.patch(f"/api/v1/automations/{a.id}/", {"enabled": False},
                                  content_type="application/json")
@@ -185,7 +185,7 @@ class AutomationApiTests(TestCase):
     def test_params_override_round_trips_and_applies(self):
         d = make_def(actions=[{"type": "restart_service",
                                "params": {"service_name": "nginx"}}])
-        a = Automation.objects.create(name="svc", trigger="event", event="alert_fired",
+        a = Automation.objects.create(name="svc", trigger="event", event="alert_sent",
                                       action_kind="task", task_definition=d,
                                       target="all", created_by=self.admin)
         resp = self.client.patch(f"/api/v1/automations/{a.id}/", {
@@ -204,7 +204,7 @@ class AutomationApiTests(TestCase):
     def test_unknown_override_param_rejected(self):
         d = make_def(actions=[{"type": "restart_service",
                                "params": {"service_name": "nginx"}}])
-        a = Automation.objects.create(name="bad-ov", trigger="event", event="alert_fired",
+        a = Automation.objects.create(name="bad-ov", trigger="event", event="alert_sent",
                                       action_kind="task", task_definition=d,
                                       target="event_host", created_by=self.admin)
         resp = self.client.patch(f"/api/v1/automations/{a.id}/", {
@@ -234,17 +234,17 @@ class SpecificEventTests(TestCase):
         disk_rule = self._rule("Disk critical")
         mem_rule = self._rule("Memory high", "warning")
         Automation.objects.create(
-            name="disk only", trigger="event", event="alert_fired",
+            name="disk only", trigger="event", event="alert_sent",
             event_rule=disk_rule, action_kind="task", task_definition=d,
             target="event_host", created_by=self.admin)
         host = make_host()
         # a memory alert must NOT trigger it
         mem_alert = Alert.objects.create(host=host, rule=mem_rule, severity="warning", message="m")
-        hooks.emit("alert_fired", alert=mem_alert)
+        hooks.emit("alert_sent", alert=mem_alert)
         self.assertFalse(Task.objects.filter(host=host).exists())
         # the disk alert does
         disk_alert = Alert.objects.create(host=host, rule=disk_rule, severity="critical", message="d")
-        hooks.emit("alert_fired", alert=disk_alert)
+        hooks.emit("alert_sent", alert=disk_alert)
         self.assertTrue(Task.objects.filter(host=host).exists())
 
     def test_rule_list_endpoint(self):
@@ -258,7 +258,7 @@ class SpecificEventTests(TestCase):
         rule = self._rule("CPU spike")
         self.client.force_login(self.admin)
         resp = self.client.post("/api/v1/automations/", {
-            "name": "cpu", "trigger": "event", "event": "alert_fired",
+            "name": "cpu", "trigger": "event", "event": "alert_sent",
             "event_rule": str(rule.id), "action_kind": "task",
             "task_definition": str(d.id), "target": "event_host"},
             content_type="application/json")
@@ -390,7 +390,7 @@ class EventTextAndHostFilterTests(TestCase):
     def _automation(self, **kw):
         kw.setdefault("target", "event_host")
         return Automation.objects.create(
-            name="a", trigger="event", event="alert_fired",
+            name="a", trigger="event", event="alert_sent",
             action_kind="task", task_definition=self.definition,
             created_by=self.admin, **kw)
 
@@ -400,7 +400,7 @@ class EventTextAndHostFilterTests(TestCase):
             threshold=90, severity="critical")
         alert = Alert.objects.create(host=host, rule=rule,
                                      severity="critical", message=message)
-        hooks.emit("alert_fired", alert=alert)
+        hooks.emit("alert_sent", alert=alert)
         return alert
 
     def _ran(self, host):
@@ -475,7 +475,7 @@ class EventTextAndHostFilterTests(TestCase):
         host = make_host("h10")
         alert = Alert.objects.create(host=host, rule=None, severity="warning",
                                      message="Agent outdated: disk")
-        hooks.emit("alert_fired", alert=alert)
+        hooks.emit("alert_sent", alert=alert)
         self.assertFalse(self._ran(host))
 
     def test_blank_text_means_no_filter(self):
@@ -529,7 +529,7 @@ class EventFilterApiTests(TestCase):
         self.definition = make_def()
 
     def _create(self, **extra):
-        body = {"name": "a", "trigger": "event", "event": "alert_fired",
+        body = {"name": "a", "trigger": "event", "event": "alert_sent",
                 "action_kind": "task",
                 "task_definition": str(self.definition.id),
                 "target": "event_host", **extra}

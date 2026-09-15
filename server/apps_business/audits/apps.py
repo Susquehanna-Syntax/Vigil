@@ -23,7 +23,7 @@ def wire():
 
     hooks.subscribe("host_approved", _on_host_approved)
     hooks.subscribe("host_rejected", _on_host_rejected)
-    hooks.subscribe("alert_fired", _on_alert_fired)
+    hooks.subscribe("alert_sent", _on_alert_sent)
     hooks.subscribe("task_completed", _on_task_completed)
     hooks.subscribe("instance_settings_changed", _on_instance_settings_changed)
 
@@ -43,9 +43,9 @@ def _on_host_rejected(host=None, rejected_by=None, **_):
     record("host.rejected", user=rejected_by, target=getattr(host, "hostname", ""))
 
 
-def _on_alert_fired(alert=None, **_):
+def _on_alert_sent(alert=None, **_):
     from .models import record
-    record("alert.fired", target=str(alert))
+    record("alert.sent", target=str(alert))
 
 
 def _on_task_completed(task=None, **_):

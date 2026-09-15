@@ -159,8 +159,11 @@ function _autoSyncVisibility() {
   document.getElementById('auto-sched-fields').hidden = trig !== 'schedule';
   document.getElementById('auto-event-tags-wrap').style.display = trig === 'event' ? '' : 'none';
   const ev = document.getElementById('auto-event').value;
-  document.getElementById('auto-sev-wrap').style.display = ev === 'alert_fired' ? '' : 'none';
-  document.getElementById('auto-rule-wrap').style.display = ev === 'alert_fired' ? '' : 'none';
+  // Severity and rule filters only mean anything for an alert event, and
+  // there is more than one of those now.
+  const isAlert = ev.startsWith('alert_');
+  document.getElementById('auto-sev-wrap').style.display = isAlert ? '' : 'none';
+  document.getElementById('auto-rule-wrap').style.display = isAlert ? '' : 'none';
   // A host scope makes sense for any event that carries one; the text filter
   // reads the alert's name and message, so it is alert-only.
   const hostWrap = document.getElementById('auto-event-host-wrap');
@@ -374,3 +377,4 @@ document.addEventListener('DOMContentLoaded', () => {
     _autoRefreshEventHostLabel();
   });
 });
+
