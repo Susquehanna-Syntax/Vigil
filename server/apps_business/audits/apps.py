@@ -25,6 +25,7 @@ def wire():
     hooks.subscribe("host_rejected", _on_host_rejected)
     hooks.subscribe("alert_fired", _on_alert_fired)
     hooks.subscribe("task_completed", _on_task_completed)
+    hooks.subscribe("instance_settings_changed", _on_instance_settings_changed)
 
     user_logged_in.connect(_on_login, dispatch_uid="business_audits.login")
     user_logged_out.connect(_on_logout, dispatch_uid="business_audits.logout")
@@ -50,6 +51,15 @@ def _on_alert_fired(alert=None, **_):
 def _on_task_completed(task=None, **_):
     from .models import record
     record("task.completed", target=str(task))
+
+
+def _on_instance_settings_changed(names=None, changed_by=None, **_):
+    """Which settings changed, and who changed them — never the values. Some
+    of these keys are scanner credentials and an SMTP password; the audit
+    trail answers "who redirected the alert mail", not "to what"."""
+    from .models import record
+    record("settings.changed", user=changed_by,
+           target=", ".join(names or [])[:255], settings=list(names or []))
 
 
 def _client_ip(request):

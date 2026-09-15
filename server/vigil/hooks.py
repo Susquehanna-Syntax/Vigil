@@ -41,6 +41,10 @@ KNOWN_EVENTS = frozenset({
     "rebuild_state_changed",   # payload: job, previous, reason
     "rebuild_answer_fetched",  # payload: job, ip, user_agent
     "rebuild_completed",       # payload: job, host
+    # Instance settings changed from the UI (apps/instance). The payload
+    # carries the NAMES that changed and who changed them, never the
+    # values — some of them are credentials.
+    "instance_settings_changed",  # payload: names, changed_by
 })
 
 _subscribers: dict[str, list[Callable]] = defaultdict(list)

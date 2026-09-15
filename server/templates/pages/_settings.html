@@ -18,6 +18,9 @@
           <button class="settings-nav-item" data-pane="users"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>Users &amp; Roles</button>
           <button class="settings-nav-item" data-pane="sites"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>Sites</button>
           <button class="settings-nav-item" data-pane="branding"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>Branding</button>
+          <button class="settings-nav-item" data-pane="scanners"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>Vulnerability Scanners</button>
+          <button class="settings-nav-item" data-pane="email"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="22 6 12 13 2 6"/></svg>Email</button>
+          <button class="settings-nav-item" data-pane="retention"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></svg>Retention &amp; Limits</button>
           <button class="settings-nav-item" data-pane="display"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>Display</button>
           <button class="settings-nav-item" data-pane="distribution"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Agent Binary</button>
           <button class="settings-nav-item" data-pane="images"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>OS Images</button>
@@ -345,14 +348,22 @@
 
         </div>
         <div class="settings-pane" data-pane="display">
-      <div class="section-label" style="margin-top:32px;">Display & Timezone</div>
+      <div class="section-label" style="margin-top:32px;">Display &amp; Timezone</div>
+      {# Was a read-only box saying to edit .env and restart. Now a real control backed by apps/instance; an env var still wins when set, and the field says so. #}
+      <div class="is-group" data-group="locale"></div>
+
+      <div class="section-label" style="margin-top:32px;">Appearance</div>
       <div class="totp-card">
         <div class="totp-sub" style="margin-bottom:14px;">
-          Server timezone controls when schedule windows are evaluated. Set <code style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sky);">VIGIL_TIMEZONE</code> in your <code style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--sky);">.env</code> to an <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones" target="_blank" style="color:var(--sky);">IANA timezone name</a> and restart the server.
+          Vigil ships dark. Light mode uses the same palette on a paper ground — every
+          colour that means something (mint healthy, rose critical, lemon warning) keeps
+          its meaning. System follows your operating system and changes with it.
+          Applies instantly and is remembered on this browser.
         </div>
-        <div style="max-width:280px;">
-          <label class="deploy-input-label">Server Timezone</label>
-          <div class="form-control" style="background:var(--s3);cursor:default;color:var(--text-2);" id="settings-tz-display">{{ vigil_timezone }}</div>
+        <div class="density-toggle">
+          <button type="button" class="btn btn-outline btn-sm" id="theme-system" data-act="setTheme" data-a1="system">System</button>
+          <button type="button" class="btn btn-outline btn-sm" id="theme-light" data-act="setTheme" data-a1="light">Light</button>
+          <button type="button" class="btn btn-outline btn-sm" id="theme-dark" data-act="setTheme" data-a1="dark">Dark</button>
         </div>
       </div>
 
@@ -367,6 +378,20 @@
         </div>
       </div>
 
+        </div>
+        <div class="settings-pane" data-pane="scanners">
+      <div class="section-label" style="margin-top:32px;">Greenbone / OpenVAS</div>
+      <div class="is-group" data-group="greenbone"></div>
+      <div class="section-label" style="margin-top:32px;">Nessus / Tenable</div>
+      <div class="is-group" data-group="nessus"></div>
+        </div>
+        <div class="settings-pane" data-pane="email">
+      <div class="section-label" style="margin-top:32px;">Outgoing Mail</div>
+      <div class="is-group" data-group="email"></div>
+        </div>
+        <div class="settings-pane" data-pane="retention">
+      <div class="section-label" style="margin-top:32px;">Retention &amp; Limits</div>
+      <div class="is-group" data-group="retention"></div>
         </div>
         <div class="settings-pane" data-pane="distribution">
       <div class="section-label" style="margin-top:32px;">Agent Distribution</div>

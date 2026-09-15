@@ -28,7 +28,15 @@
   // Apply the saved theme and density before first paint to avoid a flash.
   (function () {
     try {
+      // 'system' is stored as the word; resolve it here so the first paint
+      // is already right. Must match _storedTheme/setTheme in vigil-utils.js.
       var t = localStorage.getItem('vigil-theme') || 'dark';
+      if (t === 'system') {
+        t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          ? 'dark' : 'light';
+      } else if (t !== 'light') {
+        t = 'dark';
+      }
       document.documentElement.setAttribute('data-theme', t);
       var d = localStorage.getItem('vigil-density') || 'cozy';
       document.documentElement.setAttribute('data-density', d);
@@ -799,6 +807,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-inventory.js' %}"></script>
 <!-- vigil-devices.js — unmanaged device registry on the Inventory page (wraps navigateTo) -->
 <script src="{% static 'js/vigil-devices.js' %}"></script>
+<!-- vigil-instance-settings.js — Settings panes backed by /api/v1/instance-settings/ (scanners, email, retention, timezone) -->
+<script src="{% static 'js/vigil-instance-settings.js' %}"></script>
 <!-- vigil-settings.js — TOTP enroll / confirm / disable -->
 <script src="{% static 'js/vigil-settings.js' %}"></script>
 <!-- vigil-users.js — Users & Roles pane (list/create/role/delete) -->

@@ -66,11 +66,15 @@ def _send_email(channel, payload):
         body += f"Resolved At: {payload['resolved_at']}\n"
 
     try:
+        # The connection is built explicitly rather than left to Django's
+        # settings lookup, so SMTP entered in the UI is actually used.
+        from apps.instance.config import mail_connection, setting
         send_mail(
             subject=subject,
             message=body,
-            from_email=settings.VIGIL_NOTIFICATION_FROM_EMAIL,
+            from_email=setting("VIGIL_NOTIFICATION_FROM_EMAIL"),
             recipient_list=recipients,
+            connection=mail_connection(),
         )
         logger.info("Email sent via channel %s to %d recipients", channel.name, len(recipients))
     except Exception as e:

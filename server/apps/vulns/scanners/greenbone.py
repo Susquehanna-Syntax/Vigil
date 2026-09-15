@@ -42,6 +42,7 @@ from django.conf import settings
 from django.utils.timezone import now
 
 from ..models import VulnFinding, VulnScan
+from apps.instance.config import setting
 from ..scoring import recompute_summary
 from .base import Scanner
 
@@ -187,20 +188,20 @@ class GreenboneScanner(Scanner):
 
     def configured(self) -> bool:
         return all([
-            getattr(settings, "GREENBONE_URL", ""),
-            getattr(settings, "GREENBONE_USERNAME", ""),
-            getattr(settings, "GREENBONE_PASSWORD", ""),
+            setting("GREENBONE_URL"),
+            setting("GREENBONE_USERNAME"),
+            setting("GREENBONE_PASSWORD"),
         ])
 
     def sync(self) -> str:
         if not self.configured():
             return "not configured"
         try:
-            host, port = _parse_gmp_url(settings.GREENBONE_URL)
+            host, port = _parse_gmp_url(setting("GREENBONE_URL"))
         except ValueError as exc:
             return f"bad GREENBONE_URL: {exc}"
 
-        verify = getattr(settings, "GREENBONE_VERIFY_SSL", True)
+        verify = setting("GREENBONE_VERIFY_SSL")
         try:
             client = _GmpClient(host, port, verify)
         except Exception as exc:
@@ -209,7 +210,7 @@ class GreenboneScanner(Scanner):
 
         try:
             client.authenticate(
-                settings.GREENBONE_USERNAME, settings.GREENBONE_PASSWORD,
+                setting("GREENBONE_USERNAME"), setting("GREENBONE_PASSWORD"),
             )
         except Exception as exc:
             client.close()
