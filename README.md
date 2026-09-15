@@ -25,118 +25,28 @@ Vigil is a lightweight monitoring system where agents on your hosts phone home t
 - Signed remote task execution with mode/allowlist enforcement on the agent
 - SQSY dark-theme dashboard with Chart.js visualizations
 
-## What's new in 2026.12.0
+## What's new in 2026.12.1
 
-This release is the result of an audit rather than a feature plan. Nine passes
-over the codebase asked one question — what does a stranger, on their own
-hardware, hit on day one and on day ninety — and this is the answer to it.
-Fifty-two findings, plus three defects reported from use.
+**A dashboard keeps the size you gave it.** Shrinking a widget to its smallest
+allowed size was discarded on save — the card came back at whatever size it had
+been before, and because a restored, larger widget collides with whatever is
+beside it, one ignored resize shoved its neighbours down and read as the whole
+board rearranging itself.
 
-**Vigil refuses to start misconfigured, and says everything at once.** The
-compose file called four variables required and then supplied a default for
-every one, so skipping one bought a silent downgrade instead of an error: no
-`DJANGO_SECRET_KEY` and the stack came up fully working, signing every session
-with a constant published in this repository. Missing variables now produce a
-single startup message naming all of them, rather than dying on whichever was
-checked first.
+The cause was in how the layout was collected, not in how it was stored.
+Gridstack's `save()` is a lossy serialiser: it drops a widget's width whenever
+that width equals the widget's own minimum, and its height on the same rule.
+Vigil passes the catalogue's minimums into every widget, so every widget sitting
+at its minimum came back from `save()` carrying no size at all, and the gap was
+filled from the last layout the server had sent — the size from before the
+resize. The layout is now read off the live grid nodes, which always carry a
+complete position and size, so what is saved is what is on screen.
 
-**The agent installer verifies what it installs.** It piped an unverified
-binary into `/usr/local/bin` and handed it to systemd as root. It now checks
-the SHA-256 the server publishes and refuses without one — and the server had
-to change too, because only manually-uploaded binaries carried a digest while
-the bundled build artifact, which is what every real install downloads,
-published none.
-
-**Three injection holes closed**, all by removing inline event handlers rather
-than escaping harder — a hostname in an `onclick` attribute is the one place
-where Django's autoescaping *creates* the injection, writing `&#x27;` that the
-browser hands back to the JavaScript parser as a live quote. Agent-reported
-container images and package names no longer splice raw into task YAML either,
-where a crafted value could rewrite the task an operator was reviewing.
-
-**The 60-second high-risk delay now exists.** It was documented in two places
-and implemented in none: the check-in gate that withholds a task was built and
-working, and nothing ever set the timestamp it reads.
-
-**Automations are gated like playbooks.** An automation and an auto-enrolling
-playbook are the same thing — a task sent to a fleet with nobody watching — and
-playbooks had a TOTP-guarded flag while automations had nothing at all.
-
-**The dashboard stops fighting you.** Saving a layout no longer scrambles it,
-host cards no longer reset to zero four times a minute, and a save moves
-widgets instead of destroying and recreating them.
-
-**It survives its own data.** The metric history endpoint pulled entire series
-into memory to sample them — worst of all for `?limit=1`, which one widget asks
-per host on every poll. Alert lists are capped, resolved alerts are pruned, and
-a flapping metric no longer pages on every cycle.
-
-**And it can be backed up.** There was no backup path in this repository at
-all. `scripts/vigil-backup.sh` and `vigil-restore.sh` are that path, and the
-README has Upgrading and Backups sections describing what actually happens.
-
-Also: healthchecks on every service, the web container drops root, dependency
-lockfiles, advisory locks on the periodic tasks, a Content-Security-Policy, a
-critical alert when a machine never returns from a rebuild, and bounded
-check-in payloads so one broken host cannot fill the database.
-
-## What's new in 2026.11.3
-
-- **A playbook that fails on a host stops auto-enrolling to it.** The completion tag only lands on success, so a playbook that could not run on a machine was picked up again by every reconcile pass — every five minutes, for good. Nothing converged, and the one failure worth reading was buried under a thousand identical ones. A failure now holds the playbook back on that host: the card says how many hosts it is held back on, **Review failures** lists each with the agent's own output, and **Retry** dispatches it again. That newer run is what clears the hold, so nothing is erased and only the newest attempt counts.
-- **An offline host no longer collects a run every five minutes.** The same pass ignored whether a host's previous run had finished, so a machine that was merely switched off accumulated one pending dispatch per pass and executed all of them at once when it came back. A run still in flight now holds the next one back.
-- **The monospaced numbers are monospaced.** Five rules asked for a `--font-mono` token that nothing defined, so the dashboard's stat tiles, gauges and process values quietly rendered in the UI face instead of IBM Plex Mono.
-
-## What's new in 2026.11.2
-
-- **GPU telemetry, from `nvidia-smi` and `rocm-smi`.** Utilisation, memory, temperature and power per card, collected only when one of those tools is on the PATH and silent when neither is — a host with no GPU is the ordinary case, not a failure. Fan speed, clocks, PCIe link and ECC counters sit behind `gpu_extended: true` because the wide set is roughly twice the points per GPU per check-in. The new **GPU status** widget draws a card per card.
-- **Named processes are sampled at every check-in.** The agent only ever reported the ten busiest, so a chart of one named service was full of holes exactly when the service was behaving, and an outage looked the same as a quiet period. Names listed under `process_watch` in `agent.yml` are now sampled regardless of rank; processes sharing a name are summed with the live count beside them, so a watched name that is not running reports zero rather than nothing at all. The **Process monitor** widget charts one of them, and says outright when the name is not on the watch list.
-- **The list widgets are cards.** Six widgets rendered flat rows of text into a scroll box, which read as a wall at any tile size. Each row is now a card with a left edge in the colour of what it is about — severity for alerts and findings, run state for history, up or down for containers and automations — and clicking one goes to the page that owns it and flashes the panel it landed on. **Top processes** is cards too, each with its own inline sparkline.
-- **Host cards are back.** The host widget was a dot, a name and an OS string. It renders the real host card again: OS logo, tags, mode badge, the five live metric bars, the action buttons and the detail drawer. Three widgets were also reading field names the API does not use, which is why every automation reported "never".
-- **Widget settings that pick a task, playbook or host use the searchable picker** instead of a dropdown, which cannot be searched and is unusable past a few dozen entries.
-- **Plain-text transport is acknowledged once, in Settings.** The rebuild ceremony asked on every rebuild whether you understood that Vigil was served over plain HTTP, where it read as another box to clear on the way to the button — the opposite of what an acknowledgement is for. It is now a standing decision about the instance, recorded under **Settings → Identity & Security → Transport Security** with the admin who made it and when, because this is a deliberate downgrade of the instance's posture and "who agreed to this" is the question asked afterwards. It can be withdrawn, and the pane says whether it is presently doing anything.
-- **The rebuild ceremony stopped asking the same question twice.** It offered a completion tag and a playbook to run afterwards, both of which already had a home: the install profile carries `completion_tags`, and a playbook that should run on a rebuilt machine is what auto-enrolment is for — it fires when the machine checks back in carrying the profile's tags, and it keeps working for a machine rebuilt by any other route. Two ways to say the same thing meant the answers could disagree. Existing jobs still read back, and an API caller still sending either field is ignored rather than refused.
-
-## What's new in 2026.11.1
-
-- **The "Add a widget" panel opens full height again.** It was rendered inside the dashboard's own container, which carries a finished `fade-in` animation — and an element with a transform becomes the containing block for anything `position: fixed` inside it. The panel therefore sized itself to the dashboard rather than to the window, so on a new layout with nothing on it yet the panel collapsed to the height of the empty grid and showed a sliver of the catalogue above blank space. It now hangs off the page body and scrolls through all of its widgets at any layout size.
-
-## What's new in 2026.11.0
-
-- **The dashboard is now a grid of widgets you arrange.** Add from a catalogue of 28 widgets grouped by what they are for, drag and resize them, give each card your own name, and configure it — which host, which metric, how far back. Layouts are saved per operator, and you can keep several dashboards and switch between them. Sharing one with your team is a Business feature; arranging your own is free.
-- **Widgets cover what Vigil already knows**: hosts, alerts, metric charts and gauges, containers and processes, rollouts and waves, task history, playbook coverage, vulnerability findings, disk pressure, outdated agents, uptime, and a notes card for whoever is looking at the screen.
-- **Baselines are now Playbooks, and they actually keep running.** The old name implied something that happens once at the start, which is exactly the bug it caused: a playbook only ever dispatched when a host was approved, so a host enrolled before it existed, or tagged afterwards, never ran it and nothing said why. A reconcile pass now applies them to the hosts they target as those hosts appear.
-- **Auto-enrolment is off by default and asks before it fans out.** The recommended way to cover a fleet is a staged wave rollout, which stops at the first wave that fails. Turning auto-enrolment on requires a **completion tag** — applied to each host when the playbook finishes there, and what stops it running again — and a confirmation that names the tag being targeted and counts the hosts that match right now. Remove the tag from a host to run it there again.
-- **Rollouts no longer refuse a playbook that does not auto-enrol**, which had made the recommended path impossible for the default configuration.
-- **Waves belong to groups.** One global wave order could only describe one rollout shape; servers and workstations can now patch on separate ladders, and order is unique within a group rather than globally. Existing waves move into a single Default group.
-- **Every wave opens to its machines.** A wave used to report only how many failed. Each one now lists every machine with its state and the output explaining the failure.
-- **Tasks and playbooks can be archived.** Neither could be retired — deleting a task is refused because a playbook using it would lose a step, and deleting a playbook takes its run history. Archiving removes them from lists and pickers while everything referencing them keeps working.
-- **Container alerts resolve when the container is gone.** Tearing down a stack left its outdated-image alerts firing for good, pointing at containers that no longer existed.
-- **Rebuilds work on a plain-HTTP LAN address.** The HTTPS requirement blocked the feature outright on a self-hosted install with no certificate. It now applies to public addresses, where the answer file's secrets are actually at risk; `VIGIL_REQUIRE_HTTPS_FOR_REBUILD=1` demands the acknowledgement everywhere. Copy buttons work there too.
-- **Nested modals stack correctly** — "Edit as YAML" opened *underneath* the editor that launched it — and buttons that act are filled and colour-coded by what they do, with outline reserved for Cancel and Close.
-
-## What's new in 2026.10.1
-
-- **Critical agent fix — upgrade the agent on every host.** The agent ships as a PyInstaller `--onefile` binary, whose bootloader points `LD_LIBRARY_PATH` at its own `/tmp/_MEI…` extraction directory. Every child process inherited it, so an agent-driven package upgrade let `update-initramfs` resolve the compression libraries to paths that do not exist at boot, and wrote them into the initramfs. The host kept running and panicked on its next reboot, before journald started, leaving no log entry. Kernel installs were not the only trigger: `linux-firmware`, `cryptsetup-initramfs`, `lvm2` and `busybox-initramfs` rebuild the image for the *running* kernel, overwriting a known-good one. The agent now sanitizes the loader environment at every process it spawns.
-- After a package install or upgrade the agent scans `/boot` for images containing those ephemeral paths and fails the task loudly, naming each image, so a host poisoned by an earlier agent is found before it is rebooted rather than after. Rebuild any image it names with `update-initramfs -u -k <version>` from an interactive root shell.
-- The fix lives in the agent binary — a server-only upgrade changes nothing. Hosts still running an older agent now raise an **Agent outdated** alert.
-
-## What's new in 2026.10.0
-
-- The Community tab has a sub-tab per content type — tasks, baselines and automations — each searchable, each forkable.
-- Forking a baseline or automation brings everything it needs with it, forking only what you do not already have, in one transaction. The card shows what it will pull in before you click.
-- Catalog content carries a `uid`, so references survive a rename and task names do not have to be unique.
-- Baselines and automations have an **Edit as YAML** view, in the same dialect the community repo stores, with Copy and Submit to Community beside it.
-- The vulnerability score now weighs **overdue** findings rather than finding counts: a finding is worth its base weight on the day it is due, much less before, much more after. One overdue critical costs more than twenty criticals with a month of runway.
-
-## What's new in 2026.9.0
-
-- Windows hosts now patch themselves without WSUS — the agent drives the Windows Update Agent COM API locally, with no hosted binaries and no inbound ports.
-- Application updates still ride on winget and choco; Vigil does not maintain a repackaged catalogue, so third-party coverage is whatever those ecosystems carry.
-- The `reboot` action gained maintenance windows, native notification, bounded deferrals, and a version gate that refuses deferral-bearing reboots to agents older than 2026.9.0.
-- Every open finding carries a remediate-by date from an admin-editable policy (KEV-aware), and the host score escalates as that date approaches.
-- The community catalog now validates three content types — tasks, baselines, and automations — each with a schema and CI validator.
-
-The full details, with parameters and the honest limitations, live in the [wiki](wiki/vigil-wiki.html): [Windows Patching](wiki/vigil-wiki.html#windows-patching), [Reboot Behaviour](wiki/vigil-wiki.html#reboot), [Remediation Dates](wiki/vigil-wiki.html#remediation), and [Community Catalog](wiki/vigil-wiki.html#community).
+This is the third and last part of a defect whose first two parts shipped in
+2026.12.0: saves used to grow every minimum-sized widget to its catalogue size,
+and gravity used to pull every widget up so that deliberate whitespace could not
+be expressed at all. Verified as a round trip — arrange, save, reload — with
+widgets at their minimums and gaps between them.
 
 ---
 
