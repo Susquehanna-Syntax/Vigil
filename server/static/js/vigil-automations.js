@@ -5,6 +5,7 @@
 // Depends on: vigil-utils.js (apiJson, confirmModal, showToast, escHtml).
 
 let _autoEvents = {};      // event name -> label
+let _autoCondMeta = { fields: [], operators: [], valueless: [] };
 let _autoDefs = [];        // task definitions
 let _autoPlaybooks = [];   // playbook names
 let _autoHosts = [];       // selectable hosts
@@ -25,6 +26,7 @@ async function loadAutomations() {
       apiJson('/api/v1/alerts/rules/').catch(() => []),
     ]);
     _autoEvents = data.events || {};
+    if (data.condition_meta) _autoCondMeta = data.condition_meta;
     _autoDefs = Array.isArray(defs) ? defs : (defs.results || []);
     _autoPlaybooks = playbooks;
     _autoHosts = hosts;
@@ -174,6 +176,9 @@ function _autoSyncVisibility() {
   // which meant a filter set on any other event was silently ignored.
   const matchWrap = document.getElementById('auto-match-wrap');
   if (matchWrap) matchWrap.style.display = trig === 'event' ? '' : 'none';
+  // Conditions read an event payload, so they mean nothing on a schedule.
+  const condWrap = document.getElementById('auto-cond-wrap');
+  if (condWrap) condWrap.style.display = trig === 'event' ? '' : 'none';
 
   _autoRefreshActionLabel();
 
@@ -229,6 +234,9 @@ function _openAutoEditor(a) {
   set('auto-match-field', a && a.match_field ? a.match_field : 'any');
   set('auto-match-mode', a && a.match_mode ? a.match_mode : 'contains');
   set('auto-match-text', a ? (a.match_text || '') : '');
+  set('auto-cond-logic', (a && a.condition_logic) || 'all');
+  _autoConds = a && Array.isArray(a.conditions) ? a.conditions.map(c => ({ ...c })) : [];
+  _renderAutoConditions();
   const cron = (a && a.cron) || { minute: '0', hour: '2', dom: '*', month: '*', dow: '*' };
   set('auto-cron-min', cron.minute); set('auto-cron-hour', cron.hour); set('auto-cron-dom', cron.dom);
   set('auto-cron-mon', cron.month); set('auto-cron-dow', cron.dow);
@@ -284,6 +292,8 @@ async function _saveAutomation() {
     match_field: v('auto-match-field'),
     match_mode: v('auto-match-mode'),
     match_text: v('auto-match-text'),
+    condition_logic: v('auto-cond-logic'),
+    conditions: _readAutoConditions(),
     cron: { minute: v('auto-cron-min'), hour: v('auto-cron-hour'), dom: v('auto-cron-dom'),
             month: v('auto-cron-mon'), dow: v('auto-cron-dow') },
     action_kind: v('auto-action-kind'),
@@ -378,3 +388,80 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+
+/* ── Condition rows ───────────────────────────────────────────────────────
+   Built from the field/operator list the server advertises, so the two can
+   never drift: a field added in apps/automations/conditions.py appears here
+   with no JS change, and an operator the server would refuse is not offered.
+   Rows live in _autoConds and are read back on save. */
+let _autoConds = [];
+
+function _autoFieldMeta(name) {
+  return _autoCondMeta.fields.find(f => f.name === name) || _autoCondMeta.fields[0];
+}
+
+function _autoOpLabel(name) {
+  const op = (_autoCondMeta.operators || []).find(o => o.name === name);
+  return op ? op.label : name;
+}
+
+function _renderAutoConditions() {
+  const host = document.getElementById('auto-cond-rows');
+  if (!host) return;
+  if (!_autoConds.length) {
+    host.innerHTML = '<div class="auto-cond-empty">No conditions.</div>';
+    return;
+  }
+  host.innerHTML = _autoConds.map((c, i) => {
+    const meta = _autoFieldMeta(c.field) || { operators: [] };
+    const fields = _autoCondMeta.fields.map(f =>
+      `<option value="${escAttr(f.name)}"${f.name === c.field ? ' selected' : ''}>${escHtml(f.label)}</option>`).join('');
+    const ops = (meta.operators || []).map(o =>
+      `<option value="${escAttr(o)}"${o === c.op ? ' selected' : ''}>${escHtml(_autoOpLabel(o))}</option>`).join('');
+    const needsValue = !(_autoCondMeta.valueless || []).includes(c.op);
+    const value = needsValue
+      ? `<input type="text" class="form-control auto-cond-value" data-i="${i}" value="${escAttr(c.value || '')}" placeholder="${escAttr(meta.help || 'value')}" maxlength="500">`
+      : '';
+    return `<div class="auto-cond-row">`
+      + `<select class="form-control auto-cond-field" data-i="${i}">${fields}</select>`
+      + `<select class="form-control auto-cond-op" data-i="${i}">${ops}</select>`
+      + value
+      + `<button type="button" class="btn btn-ghost btn-sm" data-act="removeAutoCondition" data-a1="${i}">Remove</button>`
+    + `</div>`;
+  }).join('');
+
+  host.querySelectorAll('.auto-cond-field').forEach(el => el.addEventListener('change', () => {
+    const i = Number(el.dataset.i);
+    _autoConds[i].field = el.value;
+    // The operator list changes with the field; keep the current operator
+    // only when the new field actually supports it.
+    const allowed = (_autoFieldMeta(el.value) || { operators: [] }).operators || [];
+    if (!allowed.includes(_autoConds[i].op)) _autoConds[i].op = allowed[0] || '';
+    _renderAutoConditions();
+  }));
+  host.querySelectorAll('.auto-cond-op').forEach(el => el.addEventListener('change', () => {
+    _autoConds[Number(el.dataset.i)].op = el.value;
+    _renderAutoConditions();
+  }));
+  host.querySelectorAll('.auto-cond-value').forEach(el => el.addEventListener('input', () => {
+    _autoConds[Number(el.dataset.i)].value = el.value;
+  }));
+}
+
+function addAutoCondition() {
+  const field = _autoCondMeta.fields[0];
+  if (!field) return;
+  _autoConds.push({ field: field.name, op: (field.operators || [])[0] || '', value: '' });
+  _renderAutoConditions();
+}
+
+function removeAutoCondition(index) {
+  _autoConds.splice(Number(index), 1);
+  _renderAutoConditions();
+}
+
+function _readAutoConditions() {
+  return _autoConds
+    .filter(c => c.field && c.op)
+    .map(c => ({ field: c.field, op: c.op, value: c.value || '' }));
+}

@@ -87,6 +87,11 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* The UA rule for [hidden] is display:none at the lowest specificity, so
+   any class that sets display beats it. `.auto-when { display: flex }`
+   did exactly that, and the cron fields showed on an event automation
+   whatever the trigger was set to. Hidden must mean hidden. */
+[hidden] { display: none !important; }
 
 body {
   font-family: 'DM Sans', sans-serif;
@@ -3185,3 +3190,18 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
    control rather than as default browser blue. */
 #jackil-tickets a { color: var(--sky); text-decoration: none; font-weight: 600; }
 #jackil-tickets a:hover { text-decoration: underline; }
+
+/* ── Automation conditions ───────────────────────────────────────────────
+   A row is field / operator / value / remove, wrapping to its own lines on a
+   narrow screen rather than squeezing the value box to nothing. */
+.auto-cond-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.auto-cond-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 10px; margin-bottom: 8px;
+  background: rgba(var(--rgb-sky), var(--tint-a));
+  border: 1px solid rgba(var(--rgb-sky), var(--tint-a-line));
+  border-radius: var(--r-sm);
+}
+.auto-cond-row .form-control { display: inline-block; width: auto; }
+.auto-cond-row .auto-cond-value { flex: 1 1 160px; min-width: 0; }
+.auto-cond-empty { font-size: 12px; color: var(--text-3); padding: 4px 0 8px; }
