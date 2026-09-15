@@ -32,7 +32,20 @@ KNOWN_EVENTS = frozenset({
     "host_approved",     # payload: host, approved_by
     "host_rejected",     # payload: host, rejected_by
     "insight_created",   # payload: insight
-    "alert_fired",       # payload: alert
+    # Emitted when Vigil *announces* an alert, not when one changes state.
+    # An alert that re-fires inside the flap window is deliberately not
+    # announced, and a still-breaching alert is not announced again, so
+    # "sent" is once per episode (plus a lapsed acknowledgement). Naming
+    # it after the firing edge asked operators to catch a moment that is
+    # mostly suppressed.
+    "alert_sent",        # payload: alert
+    # The other half: an alert re-firing inside the flap window, which is
+    # deliberately NOT announced. Nothing is sent, so nobody is paged, but
+    # something is still happening to that host and an automation may want
+    # to act on it. Expect this to repeat while a threshold sits where a
+    # metric lives; ``alert.flap_count`` says how many times.
+    "alert_refired",     # payload: alert
+    "alert_resolved",    # payload: alert
     "task_completed",    # payload: task
     # Reprovisioning (docs/reprovisioning.md §4.5). Audit subscribes to these
     # rather than reprovision importing apps_business.audits — reprovision is

@@ -16,7 +16,8 @@ from .tasks import sync_periodic_task
 
 # Events an automation can trigger on, with human labels.
 EVENT_LABELS = {
-    "alert_fired": "An alert fires",
+    "alert_sent": "An alert is sent",
+    "alert_refired": "An alert re-fires (flapping, not sent)",
     "host_approved": "A host is approved",
     "host_rejected": "A host is rejected",
     "task_completed": "A task completes",

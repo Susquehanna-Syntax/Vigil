@@ -7,6 +7,7 @@ from django.conf import settings
 from django.db.models import Avg
 from django.utils.timezone import now
 
+from vigil import hooks
 from vigil.locks import advisory_lock
 
 #: A breach that returns within this many seconds of resolving is treated as
@@ -164,6 +165,9 @@ def _evaluate_alert_rules():
                         "Alert re-firing within the flap window (%s on %s, "
                         "flap %d) — not re-notifying",
                         rule.name, host.hostname, recent.flap_count)
+                    # Nothing is sent here on purpose, so this is the one
+                    # place an automation can see a flap at all.
+                    hooks.emit("alert_refired", alert=recent)
                     continue
 
                 # Fire new alert

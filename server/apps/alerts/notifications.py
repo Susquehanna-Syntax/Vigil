@@ -104,3 +104,12 @@ def dispatch_alert_notification(alert, event="firing"):
         dispatcher = _DISPATCHERS.get(channel.kind)
         if dispatcher:
             dispatcher(channel, payload)
+
+    # Every alert source funnels through here, so this is the one place the
+    # event bus can be fed from. It had two subscribers and no emitter:
+    # alert-triggered automations never ran and "alert.fired" never reached
+    # the audit log. Handlers are isolated by hooks.emit, so a subscriber
+    # raising cannot cost a notification that already went out.
+    from vigil import hooks
+    hooks.emit("alert_sent" if event == "firing" else "alert_resolved",
+               alert=alert)

@@ -188,7 +188,7 @@ def event_text(payload: dict) -> tuple[str, str]:
     """The (name, description) an event carries, whatever kind of event it is.
 
     This used to read `alert.rule.name` and `alert.message` and nothing else,
-    which meant a text filter on any event *other* than ``alert_fired`` was
+    which meant a text filter on any event *other* than ``alert_sent`` was
     silently ignored — the automation fired regardless of what the operator had
     typed. Every event carries something nameable; this finds it.
 
