@@ -186,6 +186,14 @@ data_dir: '$DataDir'
     } else {
         Write-Host "Config written to $ConfigPath with a generated agent token."
     }
+} elseif ($env:VIGIL_TOKEN) {
+    # Re-adding a machine: keep its config but take the token the wizard is waiting for.
+    # [^\r\n]* rather than .* so a CRLF file keeps its \r. No BOM, same as the first write.
+    $existingConfig = [System.IO.File]::ReadAllText($ConfigPath)
+    $existingConfig = $existingConfig -replace '(?m)^agent_token:[^\r\n]*', "agent_token: `"$($env:VIGIL_TOKEN)`""
+    [System.IO.File]::WriteAllText(
+        $ConfigPath, $existingConfig, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host "Existing config kept; agent token replaced from VIGIL_TOKEN."
 }
 
 # Install / update Windows service
