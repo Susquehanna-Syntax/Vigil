@@ -33,7 +33,7 @@ function _enrollRenderCmd() {
   const origin = window.location.origin;
   const cmd = _enrollOs === 'windows'
     ? `$env:VIGIL_TOKEN = "${_enrollToken}"; irm ${origin}/agent/install.ps1 | iex`
-    : `VIGIL_TOKEN=${_enrollToken} curl -fsSL ${origin}/agent/install.sh | sudo bash`;
+    : `curl -fsSL ${origin}/agent/install.sh | sudo env VIGIL_TOKEN=${_enrollToken} bash`;
   document.getElementById('enroll-cmd').textContent = cmd;
   const hint = document.getElementById('enroll-cmd-hint');
   if (hint) {
