@@ -2,7 +2,7 @@
 # Vigil Agent installer — {{ base_url }}
 # Linux / macOS
 # Usage: curl -fsSL {{ base_url }}/agent/install.sh | sudo bash
-#   or:  VIGIL_TOKEN=<token> curl -fsSL {{ base_url }}/agent/install.sh | sudo bash
+#   or:  curl -fsSL {{ base_url }}/agent/install.sh | sudo env VIGIL_TOKEN=<token> bash
 set -e
 
 VIGIL_SERVER="{{ base_url }}"

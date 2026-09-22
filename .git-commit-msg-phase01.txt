@@ -1,0 +1,12 @@
+fix(enroll): deliver wizard token to install.sh via sudo env
+
+VIGIL_TOKEN=x curl ... | sudo bash put the variable in curl's environment
+only; the piped bash never saw it and sudo resets the environment anyway,
+so install.sh generated a random token and the wizard waited forever.
+Pipe through env with VIGIL_TOKEN set, run as root (sudoers policy can
+refuse VAR=value arguments, but env as the command always works), correct
+the same wrong usage in install.sh's header comment, and pin the command
+shape with a test that executes it under bash with a fake download.
+
+Mutation-verified: restoring the old line makes
+test_linux_command_delivers_token_to_the_installer fail (stdout empty).
