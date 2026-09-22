@@ -93,3 +93,11 @@ class InstallerReinstall(SimpleTestCase):
     def test_powershell_reinstall_replaces_the_token(self):
         self.assertIn("} elseif ($env:VIGIL_TOKEN) {", self.ps1)
         self.assertIn("-replace '(?m)^agent_token:[^\\r\\n]*'", self.ps1)
+
+    def test_monitor_mode_joins_performance_monitor_users(self):
+        grant = "Add-LocalGroupMember -SID S-1-5-32-558 -Member $ServiceAccount"
+        self.assertIn(grant, self.ps1)
+        self.assertLess(
+            self.ps1.index(grant),
+            self.ps1.index("Monitor mode: running the agent as the unprivileged"),
+        )

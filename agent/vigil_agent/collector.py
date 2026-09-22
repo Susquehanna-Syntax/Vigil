@@ -37,6 +37,27 @@ def _point(category: str, metric: str, value: float, labels: dict | None = None)
     }
 
 
+_warned: set[str] = set()
+
+
+def _warn_once(what: str, exc: Exception) -> None:
+    """Log a sub-metric failure once per process — the cause (no PDH access for
+    the monitor-mode service account) cannot change while the agent runs."""
+    if what in _warned:
+        return
+    _warned.add(what)
+    logger.warning("%s unavailable, skipping it: %s", what, exc)
+
+
+#: Read-only image filesystems: always 100% used by construction, so counting
+#: them as disks makes every Ubuntu (snaps) and CD-ROM-equipped Windows host read full.
+_IMAGE_FSTYPES = frozenset({"squashfs", "iso9660", "udf", "cdfs"})
+
+
+def _is_image_mount(part) -> bool:
+    return (part.fstype or "").lower() in _IMAGE_FSTYPES or "cdrom" in (part.opts or "").split(",")
+
+
 def collect_cpu() -> list[dict]:
     points = []
     per_cpu = psutil.cpu_percent(interval=1, percpu=True)
@@ -44,31 +65,44 @@ def collect_cpu() -> list[dict]:
         points.append(_point("cpu", "usage_percent", pct, {"core": str(i)}))
     points.append(_point("cpu", "usage_percent", psutil.cpu_percent(), {"core": "total"}))
 
-    load_1, load_5, load_15 = psutil.getloadavg()
-    points.append(_point("cpu", "load_1m", load_1))
-    points.append(_point("cpu", "load_5m", load_5))
-    points.append(_point("cpu", "load_15m", load_15))
+    try:
+        load_1, load_5, load_15 = psutil.getloadavg()
+    except Exception as exc:
+        _warn_once("loadavg", exc)
+    else:
+        points.append(_point("cpu", "load_1m", load_1))
+        points.append(_point("cpu", "load_5m", load_5))
+        points.append(_point("cpu", "load_15m", load_15))
     return points
 
 
 def collect_memory() -> list[dict]:
     mem = psutil.virtual_memory()
-    swap = psutil.swap_memory()
-    return [
+    points = [
         _point("memory", "total_bytes", mem.total),
         _point("memory", "used_bytes", mem.used),
         _point("memory", "available_bytes", mem.available),
         _point("memory", "usage_percent", mem.percent),
-        _point("memory", "swap_total_bytes", swap.total),
-        _point("memory", "swap_used_bytes", swap.used),
-        _point("memory", "swap_usage_percent", swap.percent),
     ]
+    try:
+        swap = psutil.swap_memory()
+    except Exception as exc:
+        _warn_once("swap", exc)
+    else:
+        points.extend([
+            _point("memory", "swap_total_bytes", swap.total),
+            _point("memory", "swap_used_bytes", swap.used),
+            _point("memory", "swap_usage_percent", swap.percent),
+        ])
+    return points
 
 
 def collect_disk() -> list[dict]:
     points = []
     seen_devices = set()
     for part in psutil.disk_partitions(all=False):
+        if _is_image_mount(part):
+            continue
         if part.device in seen_devices:
             continue
         seen_devices.add(part.device)
@@ -479,6 +513,8 @@ def _read_disks() -> list[dict]:
         return disks
     seen_devices: set[str] = set()
     for part in partitions:
+        if _is_image_mount(part):
+            continue
         device = part.device
         if device in seen_devices:
             continue
