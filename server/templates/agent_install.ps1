@@ -248,6 +248,10 @@ if ($AgentMode -eq "monitor") {
         # access to the exe alone starts a process that dies immediately
         # because it cannot load anything beside it.
         & icacls.exe $InstallDir /grant "$($ServiceAccount):(OI)(CI)(RX)" /T | Out-Null
+        # CPU load and swap come from performance counters (PDH), which a virtual
+        # account cannot open until it is in Performance Monitor Users (S-1-5-32-558).
+        # By SID, not name: the group name is localised.
+        Add-LocalGroupMember -SID S-1-5-32-558 -Member $ServiceAccount -ErrorAction SilentlyContinue
         Write-Host "Monitor mode: running the agent as the unprivileged '$ServiceAccount'."
     }
 } else {
