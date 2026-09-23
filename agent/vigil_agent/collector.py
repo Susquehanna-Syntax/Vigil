@@ -442,6 +442,60 @@ def _reboot_required_windows() -> bool:
     return False
 
 
+def machine_fingerprint() -> str:
+    r"""A stable per-machine id, or "" when the platform will not give one.
+
+    Linux/BSD: systemd's /etc/machine-id (falls back to D-Bus's copy).
+    Windows: HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid.
+    macOS: IOPlatformUUID from ioreg.
+    Never raises: a host that cannot be fingerprinted enrols the old way.
+    """
+    try:
+        if sys.platform == "win32":
+            return _machine_fingerprint_windows()
+        if sys.platform == "darwin":
+            return _machine_fingerprint_macos()
+        for path in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+            try:
+                value = Path(path).read_text().strip()
+            except OSError:
+                continue
+            if value:
+                return value[:200]
+    except Exception:
+        pass
+    return ""
+
+
+def _machine_fingerprint_windows() -> str:
+    # winreg is stdlib on Windows only — import it lazily so the module
+    # still imports on Linux.
+    import winreg
+
+    with winreg.OpenKey(
+        winreg.HKEY_LOCAL_MACHINE,
+        r"SOFTWARE\Microsoft\Cryptography",
+        0,
+        winreg.KEY_READ | winreg.KEY_WOW64_64KEY,
+    ) as key:
+        value, _ = winreg.QueryValueEx(key, "MachineGuid")
+    return str(value).strip()[:200]
+
+
+def _machine_fingerprint_macos() -> str:
+    proc = subprocess.run(
+        ["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
+        env=clean_env(),
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    match = re.search(r'IOPlatformUUID"\s*=\s*"([^"]+)"', proc.stdout)
+    if not match:
+        return ""
+    return match.group(1).strip()[:200]
+
+
 def reboot_required() -> bool:
     if sys.platform == "win32":
         try:

@@ -9,8 +9,8 @@ import socket
 
 import requests
 
-from .config import AgentConfig
 from .__version__ import __version__
+from .config import AgentConfig
 
 logger = logging.getLogger("vigil.client")
 
@@ -22,10 +22,13 @@ def _headers(config: AgentConfig) -> dict:
 
 
 def _system_info() -> dict:
+    from . import collector  # local import: collector imports client
+
     return {
         "hostname": socket.gethostname(),
         "os": f"{platform.system()} {platform.release()}",
         "kernel": platform.release(),
+        "machine_id": collector.machine_fingerprint(),
     }
 
 

@@ -211,6 +211,8 @@ def register(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    machine_id = str(request.data.get("machine_id") or "").strip()[:200]
+
     # The installers used to leave this literal string in agent.yml for the
     # operator to replace. Since the server stores whatever token an agent
     # presents, an agent started before that edit authenticated with a value
@@ -242,6 +244,12 @@ def register(request):
     # Idempotent: if the token already exists, return current status
     existing = Host.objects.filter(agent_token=token).first()
     if existing:
+        # An agent upgraded into this release backfills its own row on next
+        # start; a changed machine_id means this token now belongs to another
+        # machine and the newer fingerprint wins.
+        if machine_id and existing.machine_id != machine_id:
+            existing.machine_id = machine_id
+            existing.save(update_fields=["machine_id"])
         return Response(
             {"id": str(existing.id), "status": existing.status},
             status=status.HTTP_200_OK,
@@ -255,6 +263,7 @@ def register(request):
         kernel=request.data.get("kernel", "")[:100],
         ip_address=request.META.get("REMOTE_ADDR"),
         agent_token=token,
+        machine_id=machine_id,
         status=Host.Status.PENDING,
         tags=seed_tags,
     )
@@ -335,6 +344,8 @@ def checkin(request):
     for field in ("hostname", "os", "kernel"):
         if val := data.get(field):
             setattr(host, field, val)
+    if val := str(data.get("machine_id") or "").strip()[:200]:
+        host.machine_id = val
 
     # Sync mode from agent config so the server always reflects what the agent
     # will accept. This is the design and stays: CLAUDE.md is explicit that the
