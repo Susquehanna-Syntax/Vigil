@@ -25,7 +25,8 @@ e.g. "Fix Trivy scan timeout and add edition seams (2026.3.1)"
 - [ ] Tests pass: `cd server && USE_SQLITE=true VIGIL_SIGNING_KEY_SEED=<seed> .venv/bin/python manage.py test`
 - [ ] Migrations added if any model changed (`makemigrations`)
 - [ ] If this is a release, version bumped in lockstep: `settings.py` (`VIGIL_VERSION`) and `agent/vigil_agent/__version__.py` — those two only; the expected agent version is detected, not configured
-- [ ] No edition (Pro / Enterprise) code added to this Community repo
+- [ ] Signed off (`git commit -s`) — contributions are licensed under Apache-2.0 (see CONTRIBUTING.md)
+- [ ] Business code (`server/apps_business/`) stays behind `has_feature()` gates and never blocks monitoring
 - [ ] Extension contract intact (`docs/pro-extension-points.md`): `KNOWN_EVENTS` stable, no edition imports in core
 - [ ] No AI / Co-Authored-By attribution in commits
 - [ ] No secrets, keys, or signing seeds committed

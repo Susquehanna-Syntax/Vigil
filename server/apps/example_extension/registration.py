@@ -2,7 +2,7 @@
 
 Kept as a plain function (rather than inline in AppConfig.ready) so it is
 directly unit-testable without bringing the whole app into INSTALLED_APPS.
-A real Pro/Enterprise app would do exactly this from its ready().
+A real Business app would do exactly this from its ready().
 """
 
 from __future__ import annotations

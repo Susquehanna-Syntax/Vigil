@@ -5,17 +5,31 @@ repos. The templates in `.github/` enforce most of this — this is the why.
 
 ## Repos
 
-- **Vigil** (this repo) — Community edition, AGPLv3, public. Source of truth.
-- **Vigil-Pro** / **Vigil-Enterprise** — commercial editions, private. Same
-  standards; they plug into core and never fork it. Edition features never land in this repo.
+- **Vigil** (this repo) — AGPLv3, public. Source of truth. Holds the core **and**
+  the Business code in `server/apps_business/`, which carries its own commercial
+  licence and stays behind `has_feature()` gates. There are no separate private
+  edition repos — one repo, one image, Business features light up at runtime
+  under a signed license.
+
+## Licence of contributions
+
+Vigil is distributed under the AGPL; `server/apps_business/` carries its own
+commercial licence.
+
+- A contribution is licensed to Susquehanna Syntax under **Apache-2.0** —
+  inbound. That is what lets the same code ship inside the commercial edition.
+  The project's own outbound licence does not change.
+- Sign off every commit (`git commit -s`): the `Signed-off-by:` line is the
+  Developer Certificate of Origin, and it is how the contributor states they
+  wrote the code, have the right to submit it, and grant those terms.
+- Contributors keep their copyright.
 
 ## Issues
 
 - Use the Bug report or Feature request form (blank issues are disabled).
 - One issue = one problem or one request.
 - Security issues go through a private advisory, never a public issue.
-- Tag whether a request is Community vs. Pro/Enterprise — the latter are
-  commercial editions handled privately, not in this repo.
+- Tag whether a request is Free vs. Business (see `docs/EDITIONS.md`).
 
 ## Branches
 
