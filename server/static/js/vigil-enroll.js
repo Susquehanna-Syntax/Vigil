@@ -107,6 +107,15 @@ async function _pollForHost() {
       const ip = data.host.ip_address || 'Unknown IP';
       document.getElementById('enroll-detected-hostname').textContent = hostname;
       document.getElementById('enroll-detected-meta').textContent = `${os} · ${ip}`;
+      const rep = document.getElementById('enroll-replaces');
+      if (rep) {
+        if (data.replaces) {
+          rep.textContent = `Replaces ${data.replaces.hostname} — its history, tags and site are kept.`;
+          rep.style.display = '';
+        } else {
+          rep.style.display = 'none';
+        }
+      }
       if (data.status === 'approved') {
         document.getElementById('enroll-approve-btn').disabled = true;
         document.getElementById('enroll-approve-btn').textContent = 'Already approved';

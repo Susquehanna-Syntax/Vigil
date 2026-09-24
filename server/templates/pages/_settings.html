@@ -221,7 +221,7 @@
           <div class="status-dot pending"></div>
           <div class="enroll-info">
             <div class="enroll-hostname">{{ host.hostname }}</div>
-            <div class="enroll-meta">{{ host.os|default:"Unknown OS" }} · {{ host.ip_address|default:"Unknown IP" }} · First seen {{ host.created_at|timesince }} ago</div>
+            <div class="enroll-meta">{{ host.os|default:"Unknown OS" }} · {{ host.ip_address|default:"Unknown IP" }} · First seen {{ host.created_at|timesince }} ago{% if host.replaces %} · replaces {{ host.replaces.hostname }}{% endif %}</div>
           </div>
           <div class="enroll-actions">
             <button class="btn btn-sm btn-mint" data-act="approveHost" data-a1="{{ host.id }}" data-a2="$el">Approve</button>
