@@ -23,41 +23,6 @@ function _yamlStr(value) {
   return JSON.stringify(String(value == null ? '' : value));
 }
 
-// Deterministic image-update task for a container — no AI needed, and
-// compose-aware: a compose-managed container (has a stack) must be recreated
-// through `docker compose up`, not `recreate_container` (which fails with
-// "managed by docker compose").
-function _staticDockerFix(c) {
-  const img = c.image || 'IMAGE';
-  if (c.stack) {
-    const yaml = `name: ${_yamlStr(`Update ${img} (compose)`)}
-description: ${_yamlStr(`Pull the latest ${img} and recreate ${c.name} via docker compose`)}
-risk: standard
-actions:
-  - type: pull_image
-    params:
-      image: ${_yamlStr(img)}
-  - type: docker_compose_up
-    params:
-      compose_file: ${_yamlStr(`/opt/${c.stack}/docker-compose.yml`)}  # set the real path
-      services: ${_yamlStr(c.service || c.name)}`;
-    return { yaml, parsed: { name: `Update ${img} (compose)` }, risk: 'standard',
-             note: `${c.name} is managed by docker compose (project "${c.stack}") — this recreates it with docker compose up.` };
-  }
-  const yaml = `name: ${_yamlStr(`Update ${img}`)}
-description: ${_yamlStr(`Pull the latest ${img} and recreate ${c.name} on it`)}
-risk: standard
-actions:
-  - type: pull_image
-    params:
-      image: ${_yamlStr(img)}
-  - type: recreate_container
-    params:
-      container_name: ${_yamlStr(c.name)}
-      image: ${_yamlStr(img)}`;
-  return { yaml, parsed: { name: `Update ${img}` }, risk: 'standard' };
-}
-
 // Deterministic package-upgrade task for a vulnerability — no AI needed.
 // Trivy reports the package and the version that fixes it, which is the whole
 // instruction; asking a model to restate it adds latency and a chance of being
@@ -309,17 +274,6 @@ function _rankBest(ids) {
 function suggestFixForAlert(alertId, context) {
   _openAi(context, (pid) => apiJson(`/api/v1/ai/suggest/alert/${alertId}/`,
     { method: 'POST', body: JSON.stringify({ provider_id: pid }) }));
-}
-
-function suggestFixForContainer(hostId, container) {
-  // `container` is the full row (name, image, stack, service) so the built-in
-  // template can be compose-aware. Falls back to id-only if a bare id passed.
-  const c = typeof container === 'object' ? container : { name: container, container_id: container };
-  const cid = c.container_id;
-  _openAi(`Container: ${c.name || cid}`,
-    (pid) => apiJson(`/api/v1/ai/suggest/docker/${hostId}/${encodeURIComponent(cid)}/`,
-      { method: 'POST', body: JSON.stringify({ provider_id: pid }) }),
-    () => _staticDockerFix(c));
 }
 
 function suggestFixForVuln(finding) {
