@@ -131,6 +131,12 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": ["container_name"],
         "optional": ["image"],
     },
+    "update_container": {
+        "label": "Update container (pull + apply new image)",
+        "risk": "standard",
+        "required": ["container_name"],
+        "optional": [],
+    },
     "remove_container": {
         "label": "Remove container",
         "risk": "high",

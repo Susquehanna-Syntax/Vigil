@@ -467,6 +467,68 @@ def _recreate_container(params: dict, _config: AgentConfig) -> str:
     )
 
 
+def _update_container(params: dict, _config: AgentConfig) -> str:
+    """One action that takes only a container name and works out how the
+    container is managed from the container itself, because the server cannot
+    know either fact: a compose-managed container is pulled and re-upped
+    through its own compose file, a standalone one is pulled and recreated."""
+    name = _validate_name(params.get("container_name", ""), "container name")
+    spec = _docker_inspect(name)
+    cfg = spec.get("Config") or {}
+    labels = cfg.get("Labels") or {}
+
+    image_ref = cfg.get("Image") or ""
+    if not _SAFE_IMAGE.match(image_ref):
+        raise ValueError(f"Invalid image reference: {image_ref!r}")
+
+    if "@sha256:" in image_ref:
+        return (
+            f"{name} is pinned to {image_ref} — not updated "
+            f"(pinning means the admin chose that exact build)"
+        )
+
+    old_image_id = spec.get("Image") or ""
+
+    compose_file = ""
+    if labels.get(_COMPOSE_PROJECT_LABEL):
+        service = labels.get("com.docker.compose.service") or name
+        _validate_name(service, "service name")
+
+        config_files = labels.get("com.docker.compose.project.config_files") or ""
+        compose_file = config_files.split(",")[0].strip() if config_files else ""
+        if not compose_file:
+            raise ValueError(
+                f"Container {name!r} is managed by docker compose but its "
+                f"compose labels are missing config files — use "
+                f"docker_compose_up with an explicit compose_file"
+            )
+        compose_file = str(_validate_path(compose_file, "compose_file"))
+
+        project_dir = labels.get("com.docker.compose.project.working_dir") or ""
+        dir_args = []
+        if project_dir:
+            dir_args = ["--project-directory", str(_validate_path(project_dir, "project directory"))]
+
+        cmd = ["docker", "compose", *dir_args, "-f", compose_file]
+        _run(cmd + ["pull", service], timeout=600)
+        _run(cmd + ["up", "-d", "--no-deps", service], timeout=300)
+        via = "compose"
+    else:
+        _run(["docker", "pull", image_ref], timeout=600)
+        _recreate_container({"container_name": name, "image": image_ref}, _config)
+        via = "recreate"
+
+    collector.request_docker_recheck()
+
+    new_image_id = _run(["docker", "inspect", "--format", "{{.Image}}", name])
+    changed = "image updated" if new_image_id != old_image_id else "already current"
+    return (
+        f"Updated {name} via {via} on {image_ref} ({changed})\n"
+        f"  old image: {old_image_id[:19]}\n"
+        f"  new image: {new_image_id[:19]}"
+    )
+
+
 def _tag_names(params: dict) -> list[str]:
     """The tags named by an add_tag/remove_tag step.
 
@@ -1784,6 +1846,7 @@ _HANDLERS: dict[str, callable] = {
     "start_container": _start_container,
     "pull_image": _pull_image,
     "recreate_container": _recreate_container,
+    "update_container": _update_container,
     "check_docker_updates": _check_docker_updates,
     "add_tag": _add_tag,
     "remove_tag": _remove_tag,

@@ -42,8 +42,9 @@ GROUPS: list[tuple[str, str, list[str]]] = [
     ]),
     ("container", "Container management", [
         "restart_container", "start_container", "stop_container", "pull_image",
-        "recreate_container", "remove_container", "docker_compose_up",
-        "docker_compose_down", "clear_docker_logs", "check_docker_updates",
+        "recreate_container", "update_container", "remove_container",
+        "docker_compose_up", "docker_compose_down", "clear_docker_logs",
+        "check_docker_updates",
     ]),
     ("files", "Files and directories", [
         "write_file", "create_directory", "delete_path", "copy_file",

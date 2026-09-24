@@ -2680,6 +2680,17 @@
     <span class="hl-key">params</span>:
       <span class="hl-key">container_name</span>: <span class="hl-string">nextcloud</span></pre></div>
 </div></details>
+<details class="action" data-group="container" data-risk="standard" data-keywords="update_container container_name"><summary><code class="action-name">update_container</code><span class="risk risk-std">standard</span><span class="action-label">Update container (pull + apply new image)</span><span class="action-required">container_name</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>container_name</code></td><td><span class="param-req">required</span></td><td>Container name as Docker reports it, not the image.</td></tr></tbody></table></div>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Update container (pull + apply new image)</span>
+<span class="hl-key">description</span>: <span class="hl-string">Update container (pull + apply new image) on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">update-container</span>
+    <span class="hl-key">type</span>: <span class="hl-string">update_container</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">container_name</span>: <span class="hl-string">nextcloud</span></pre></div>
+</div></details>
 <details class="action" data-group="container" data-risk="high" data-keywords="remove_container container_name"><summary><code class="action-name">remove_container</code><span class="risk risk-high">high</span><span class="action-label">Remove container</span><span class="action-required">container_name</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>container_name</code></td><td><span class="param-req">required</span></td><td>Container name as Docker reports it, not the image.</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Remove container</span>
