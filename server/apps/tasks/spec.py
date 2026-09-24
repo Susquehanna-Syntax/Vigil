@@ -475,8 +475,13 @@ _MAX_STEP_TIMEOUT = 3600
 _VALID_RISK = set(_RISK_ORDER)
 
 _INPUT_TYPES = {"text", "choice", "boolean", "number"}
-# Variable references look like {{ inputs.foo }} — whitespace flexible.
-_VAR_PATTERN = re.compile(r"\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
+# Input references: ${{ inputs.foo }} (whitespace flexible). The ${{ }} marker is not valid
+# bash, PowerShell or YAML, so script text can never be mistaken for an input.
+_INPUT_REF = re.compile(r"\$\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
+# The pre-2026.13 form, {{ inputs.foo }} — accepted with a warning for one release.
+_LEGACY_INPUT_REF = re.compile(r"(?<!\$)\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
+# Step-output references are reserved for declared outputs, which do not exist yet.
+_STEPS_REF = re.compile(r"\$\{\{\s*steps\.")
 _INPUT_ID_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 _ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -846,19 +851,39 @@ def schedule_window_active(
     return now_m >= start or now_m <= end + 59
 
 
-def _check_variable_refs(value: Any, declared_ids: set[str], where: str) -> None:
-    """Recursively confirm every {{ inputs.x }} reference matches a declared input."""
+def _check_variable_refs(
+    value: Any, declared_ids: set[str], where: str, warnings: list[str]
+) -> None:
+    """Recursively confirm every input reference matches a declared input.
+
+    Accepts both the current ${{ inputs.x }} form and the pre-2026.13
+    {{ inputs.x }} form (the latter collects a deprecation warning).
+    """
     if isinstance(value, str):
-        for match in _VAR_PATTERN.finditer(value):
+        if _STEPS_REF.search(value):
+            raise SpecError(
+                f"{where}: step output references (${{{{ steps.… }}}}) are not supported yet"
+            )
+        for match in _INPUT_REF.finditer(value):
+            ref = match.group(1)
+            if ref not in declared_ids:
+                raise SpecError(f"{where}: unknown input reference ${{{{ inputs.{ref} }}}}")
+        for match in _LEGACY_INPUT_REF.finditer(value):
             ref = match.group(1)
             if ref not in declared_ids:
                 raise SpecError(f"{where}: unknown input reference {{{{ inputs.{ref} }}}}")
+            warning = (
+                f"{where}: {{{{ inputs.{ref} }}}} is the old input syntax — "
+                f"write ${{{{ inputs.{ref} }}}}"
+            )
+            if warning not in warnings:
+                warnings.append(warning)
     elif isinstance(value, dict):
         for k, v in value.items():
-            _check_variable_refs(v, declared_ids, where)
+            _check_variable_refs(v, declared_ids, where, warnings)
     elif isinstance(value, list):
         for i, v in enumerate(value):
-            _check_variable_refs(v, declared_ids, f"{where}[{i}]")
+            _check_variable_refs(v, declared_ids, f"{where}[{i}]", warnings)
 
 
 def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[str, Any]:
@@ -906,7 +931,7 @@ def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[
         if isinstance(value, str):
             def repl(m: re.Match) -> str:
                 return str(resolved[m.group(1)])
-            return _VAR_PATTERN.sub(repl, value)
+            return _LEGACY_INPUT_REF.sub(repl, _INPUT_REF.sub(repl, value))
         if isinstance(value, dict):
             return {k: _sub(v) for k, v in value.items()}
         if isinstance(value, list):
@@ -1073,6 +1098,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
     parsed_actions: list[dict[str, Any]] = []
     derived_risk_level = 0
     seen_ids: set[str] = set()
+    warnings: list[str] = []
 
     for index, entry in enumerate(actions_raw):
         if not isinstance(entry, dict):
@@ -1121,8 +1147,10 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                 raise SpecError(
                     f"action #{index + 1}: param {pk!r} must be a primitive value"
                 )
-            # If the value references {{ inputs.x }}, the input must exist.
-            _check_variable_refs(pv, declared_input_ids, f"action #{index + 1} param {pk!r}")
+            # If the value references ${{ inputs.x }}, the input must exist.
+            _check_variable_refs(
+                pv, declared_input_ids, f"action #{index + 1} param {pk!r}", warnings
+            )
 
         # Optional `when:` predicate. Validated for syntactic safety
         # here; the agent evaluates it at runtime against its own
@@ -1232,6 +1260,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         "success_criteria": success_criteria,
         "collect": collect,
         "target_tags": target_tags,
+        "warnings": warnings,
     }
 
 
