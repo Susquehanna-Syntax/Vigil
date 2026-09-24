@@ -349,7 +349,8 @@ class TaskRuntime:
         logger.debug("step[action] name=%r action=%r params=%r", name, action, params)
 
         try:
-            output = execute_action(action, params, self._config, timeout=timeout)
+            output = execute_action(action, params, self._config, timeout=timeout,
+                                    inputs=ctx.get("inputs"))
             result = StepResult(
                 name=name,
                 action=str(action),

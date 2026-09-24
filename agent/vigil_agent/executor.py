@@ -138,7 +138,11 @@ def _chown(path: Path, owner: str, group: str) -> None:
     shutil.chown(path, user=owner or None, group=group or None)
 
 
-def _run(cmd: list[str], timeout: int = _EXEC_TIMEOUT) -> str:
+def _run(
+    cmd: list[str],
+    timeout: int = _EXEC_TIMEOUT,
+    extra_env: dict[str, str] | None = None,
+) -> str:
     """Run a command and return combined stdout+stderr. Never uses shell."""
     logger.info("Executing: %s", cmd)
     result = subprocess.run(
@@ -147,7 +151,7 @@ def _run(cmd: list[str], timeout: int = _EXEC_TIMEOUT) -> str:
         text=True,
         timeout=timeout,
         shell=False,
-        env=clean_env(),
+        env=clean_env(extra_env),
     )
     output = (result.stdout + result.stderr).strip()
     if result.returncode != 0:
@@ -1098,7 +1102,32 @@ def _clear_temp_files(params: dict, _config: AgentConfig) -> str:
             + (f"; {skipped} in use or not permitted" if skipped else ""))
 
 
-def _execute_script(params: dict, config: AgentConfig) -> str:
+def _input_env(inputs: dict | None) -> dict[str, str]:
+    """Map task inputs to ``VIGIL_INPUT_<NAME>`` environment variables.
+
+    Inputs pasted into a command line would be code — ``nginx; rm -rf /``
+    runs as a second command.  In an environment variable the same value is
+    only data: ``printf '%s' "$VIGIL_INPUT_APP"`` prints it.
+    """
+    if not inputs:
+        return {}
+    env: dict[str, str] = {}
+    for name, value in inputs.items():
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(name)):
+            continue
+        if isinstance(value, str) and "\x00" in value:
+            raise ValueError(f"input {name!r} contains a NUL byte")
+        if isinstance(value, bool):
+            value = "true" if value else "false"
+        elif isinstance(value, float) and value.is_integer():
+            value = str(int(value))
+        else:
+            value = str(value)
+        env[f"VIGIL_INPUT_{str(name).upper()}"] = value
+    return env
+
+
+def _execute_script(params: dict, config: AgentConfig, inputs: dict | None = None) -> str:
     script_name = params.get("script_name", "")
     if not _SAFE_SCRIPT_NAME.match(script_name):
         raise ValueError(f"Invalid script name: {script_name!r}")
@@ -1130,7 +1159,7 @@ def _execute_script(params: dict, config: AgentConfig) -> str:
                 f"to execute. Run: chmod go-w {script_path}"
             )
 
-    return _run([str(script_path)])
+    return _run([str(script_path)], extra_env=_input_env(inputs))
 
 
 def _sanitize_notify_message(raw: str) -> str:
@@ -1922,6 +1951,7 @@ def execute_action(
     config: AgentConfig,
     *,
     timeout: int | None = None,
+    inputs: dict | None = None,
 ) -> str:
     """Execute a single action after allowlist validation.
 
@@ -1929,6 +1959,10 @@ def execute_action(
     and the multi-step ``TaskRuntime``.  Each action is validated individually
     against the agent's local mode/allowlist — a compromised server cannot
     escalate privileges beyond what the agent config permits.
+
+    Only ``execute_script`` receives task inputs (as ``VIGIL_INPUT_*``
+    environment variables); every other action gets its values through
+    already-resolved params.
 
     Returns output string.
     Raises ``ValueError`` for disallowed or unknown actions.
@@ -1954,6 +1988,8 @@ def execute_action(
     if timeout is not None and "timeout" not in params:
         params = {**params, "timeout": timeout}
 
+    if action == "execute_script":
+        return _execute_script(params, config, inputs=inputs)
     return handler(params, config)
 
 
