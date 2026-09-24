@@ -63,14 +63,16 @@ FREE_FEATURES = frozenset({
 
 #: Business features a license can grant. Keep in sync with
 #: ``sqsy_license.BUSINESS_FEATURES`` in the Mercantil repo.
+# Civil SSO must never consult this flag — it ships free on both tiers.
 BUSINESS_FEATURES = frozenset({
     "sites",
     "audit_log",
     "rbac_advanced",    # OPERATOR + custom roles; Free has ADMIN + VIEWER
     "branding",
     "status_branding",  # branded/public/custom-domain status pages
-    "sso",
+    "sso",              # external IdPs (SAML/OIDC) only — Civil SSO is free on both tiers
     "dashboard_sharing",  # read-only sharing of a dashboard; the flag lives in core
+    "jackil",             # bundled ticketing; the Jackil side verifies this same blob
 })
 
 #: Free-tier limits (soft — exceeded means a banner, never a block).
@@ -95,6 +97,7 @@ class Claims:
     exp: int
     iat: int
     sites: int | None = None
+    lid: str = ""  # licence id, so a key posted publicly traces back to the buyer
     features: tuple[str, ...] = field(default=tuple(sorted(BUSINESS_FEATURES)))
 
 
@@ -158,6 +161,7 @@ def _verify_blob(blob: str, public_key_b64: str) -> Claims:
             exp=int(d["exp"]),
             iat=int(d["iat"]),
             sites=None if d.get("sites") is None else int(d["sites"]),
+            lid=str(d.get("lid") or ""),
             features=tuple(sorted(BUSINESS_FEATURES)) if features is None
             else tuple(features),
         )
