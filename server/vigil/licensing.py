@@ -74,7 +74,7 @@ BUSINESS_FEATURES = frozenset({
 })
 
 #: Free-tier limits (soft — exceeded means a banner, never a block).
-FREE_SEATS = 2   # 1 admin + 1 read-only
+FREE_SEATS = 2   # 2 technicians (Admin/Operator); Viewers are free and unlimited
 FREE_SITES = 1
 
 
@@ -369,9 +369,22 @@ def licence_gate(request, name: str):
 # Seats (§6: whatever holds the users counts them; Vigil reads its own view)
 
 def seats_used() -> int:
+    """How many seats are in use. A seat is a technician — an Admin or
+    Operator. Viewers are free and unlimited on both tiers."""
     try:
         from django.contrib.auth import get_user_model
-        return get_user_model().objects.filter(is_active=True).count()
+        from django.db.models import Q
+
+        from apps.accounts.models import Role
+
+        return (
+            get_user_model().objects
+            .filter(is_active=True)
+            .filter(Q(is_superuser=True) | Q(is_staff=True)
+                    | Q(profile__role__in=[Role.ADMIN, Role.OPERATOR]))
+            .distinct()
+            .count()
+        )
     except Exception:  # noqa: BLE001
         logger.exception("seat count unavailable")
         return 0
@@ -382,6 +395,18 @@ def seats_allowed() -> int:
     if state.business_active and state.claims:
         return state.claims.seats
     return FREE_SEATS
+
+
+FREE_ADMINS = 2
+
+
+def admin_cap() -> int | None:
+    """How many Admin accounts this install may have, or None for unlimited.
+
+    Free stops at two Admins — enforced when an account is created or promoted,
+    never anywhere else. Business is unlimited and bills per technician seat.
+    """
+    return None if current_state().business_active else FREE_ADMINS
 
 
 # --------------------------------------------------------------------------
