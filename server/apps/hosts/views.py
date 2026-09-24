@@ -696,6 +696,20 @@ def inventory_detail(request, host_id):
     return Response(HostInventorySerializer(inv).data)
 
 
+def _open_outdated(host_ids=None) -> set:
+    """(host_id, container_name) for every open outdated-image alert."""
+    from apps.alerts.models import Alert
+
+    qs = Alert.objects.filter(
+        rule__name="Docker: Outdated Image",
+        state__in=[Alert.State.FIRING, Alert.State.ACKNOWLEDGED],
+    )
+    if host_ids is not None:
+        qs = qs.filter(host_id__in=host_ids)
+    return {(a.host_id, (a.fix_context or {}).get("container_name"))
+            for a in qs.only("host_id", "fix_context")}
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def host_containers(request, host_id):
@@ -704,7 +718,9 @@ def host_containers(request, host_id):
     if denied:
         return denied
     qs = host.docker_containers.all()
-    return Response(DockerContainerSerializer(qs, many=True).data)
+    return Response(DockerContainerSerializer(
+        qs, many=True, context={"outdated": _open_outdated([host.id])}
+    ).data)
 
 
 @api_view(["GET"])
@@ -716,7 +732,9 @@ def docker_overview(request):
         .all()
         .order_by("host__hostname", "stack", "name")
     )
-    return Response(DockerContainerSerializer(qs, many=True).data)
+    return Response(DockerContainerSerializer(
+        qs, many=True, context={"outdated": _open_outdated()}
+    ).data)
 
 
 @api_view(["GET", "POST"])

@@ -90,6 +90,12 @@ class HostInventorySerializer(serializers.ModelSerializer):
 
 class DockerContainerSerializer(serializers.ModelSerializer):
     host_hostname = serializers.CharField(source="host.hostname", read_only=True)
+    outdated = serializers.SerializerMethodField()
+
+    def get_outdated(self, obj) -> bool:
+        # True while the container's outdated-image alert is open. The view
+        # passes the open set in context so a whole list costs one query.
+        return (obj.host_id, obj.name) in self.context.get("outdated", set())
 
     class Meta:
         model = DockerContainer
@@ -109,12 +115,15 @@ class DockerContainerSerializer(serializers.ModelSerializer):
             "updated_at",
             "host",
             "host_hostname",
+            "outdated",
         ]
         read_only_fields = fields
 
+
 class UnmanagedDeviceSerializer(serializers.ModelSerializer):
     device_type_label = serializers.CharField(
-        source="get_device_type_display", read_only=True,
+        source="get_device_type_display",
+        read_only=True,
     )
 
     class Meta:

@@ -1,0 +1,21 @@
+name: Update container
+description: |
+  Pull the newest build of a container's image and bring the container up on
+  it. The agent reads everything else from the container itself: the image
+  reference it was created from, and — for a compose-managed container — the
+  compose file and service from its labels. A digest-pinned container is left
+  alone, and a container already on the newest build is not restarted.
+relevance: "any host running Docker containers"
+risk: standard
+author: Vigil
+created: 2026-09-24
+inputs:
+  - id: container_name
+    type: text
+    label: Container
+    required: true
+actions:
+  - id: update
+    type: update_container
+    params:
+      container_name: "{{ inputs.container_name }}"
