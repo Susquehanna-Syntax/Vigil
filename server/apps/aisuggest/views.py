@@ -14,7 +14,6 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from vigil import scoping
 from apps.accounts.permissions import IsAdmin, IsOperator
 from apps.alerts.models import Alert
 from apps.tasks.spec import SpecError, parse_and_validate
@@ -53,12 +52,14 @@ def _provider_dict(p: "AiProvider", *, with_key_state=False) -> dict:
 
 # ── Provider management ────────────────────────────────────────────────────
 
+
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def providers(request):
     if request.method == "GET":
-        return Response([_provider_dict(p, with_key_state=True)
-                         for p in AiProvider.objects.all()])
+        return Response(
+            [_provider_dict(p, with_key_state=True) for p in AiProvider.objects.all()]
+        )
     p = AiProvider(
         name=(request.data.get("name") or "New provider").strip(),
         kind=request.data.get("kind") or ProviderKind.OPENAI_COMPAT,
@@ -97,26 +98,35 @@ def provider_detail(request, provider_id):
 
 # ── Suggestion runs ────────────────────────────────────────────────────────
 
+
 def _run_provider(provider_id: int, prompt: str) -> Response:
     provider = AiProvider.objects.filter(pk=provider_id, enabled=True).first()
     if provider is None:
         return Response({"detail": "provider not found or disabled"}, status=404)
     if not provider.configured:
-        return Response({"detail": f"{provider.name} is missing a model/URL"},
-                        status=409)
+        return Response(
+            {"detail": f"{provider.name} is missing a model/URL"}, status=409
+        )
     started = time.monotonic()
     try:
         text = provider_for(provider).complete(SYSTEM_PROMPT, prompt)
     except ProviderError as exc:
         logger.warning("suggestion via %s failed: %s", provider.name, exc)
-        return Response({"provider": _provider_dict(provider), "error": str(exc),
-                         "elapsed_ms": int((time.monotonic() - started) * 1000)},
-                        status=502)
-    return Response({
-        "provider": _provider_dict(provider),
-        "suggestions": _extract_suggestions(text),
-        "elapsed_ms": int((time.monotonic() - started) * 1000),
-    })
+        return Response(
+            {
+                "provider": _provider_dict(provider),
+                "error": str(exc),
+                "elapsed_ms": int((time.monotonic() - started) * 1000),
+            },
+            status=502,
+        )
+    return Response(
+        {
+            "provider": _provider_dict(provider),
+            "suggestions": _extract_suggestions(text),
+            "elapsed_ms": int((time.monotonic() - started) * 1000),
+        }
+    )
 
 
 @api_view(["POST"])
@@ -129,25 +139,6 @@ def suggest_for_alert(request, alert_id):
     if not provider_id:
         return Response({"detail": "provider_id required"}, status=400)
     return _run_provider(int(provider_id), _alert_prompt(alert))
-
-
-@api_view(["POST"])
-@permission_classes([IsAuthenticated, IsOperator])
-def suggest_for_container(request, host_id, container_id):
-    from apps.hosts.models import DockerContainer, Host
-
-    if not AiProvider.objects.filter(enabled=True).exists():
-        return _no_providers()
-    host, denied = scoping.host_or_404(request, host_id)
-    if denied:
-        return denied
-    container = get_object_or_404(DockerContainer, host=host,
-                                  container_id=container_id)
-    provider_id = request.data.get("provider_id")
-    if not provider_id:
-        return Response({"detail": "provider_id required"}, status=400)
-    return _run_provider(int(provider_id), _container_prompt(host, container,
-                         (request.data.get("note") or "").strip()[:500]))
 
 
 @api_view(["POST"])
@@ -165,19 +156,24 @@ def suggest_for_vuln(request, finding_id):
     if not AiProvider.objects.filter(enabled=True).exists():
         return _no_providers()
     finding = get_object_or_404(
-        VulnFinding.objects.select_related("host"), pk=finding_id)
+        VulnFinding.objects.select_related("host"), pk=finding_id
+    )
     provider_id = request.data.get("provider_id")
     if not provider_id:
         return Response({"detail": "provider_id required"}, status=400)
-    return _run_provider(int(provider_id), _vuln_prompt(
-        finding, (request.data.get("note") or "").strip()[:500]))
+    return _run_provider(
+        int(provider_id),
+        _vuln_prompt(finding, (request.data.get("note") or "").strip()[:500]),
+    )
 
 
 def _no_providers():
     return Response(
-        {"detail": "No AI providers are configured. Add one in Settings — bring "
-                   "your own OpenAI-compatible or Anthropic endpoint; nothing "
-                   "is hosted by SQSY."},
+        {
+            "detail": "No AI providers are configured. Add one in Settings — bring "
+            "your own OpenAI-compatible or Anthropic endpoint; nothing "
+            "is hosted by SQSY."
+        },
         status=409,
     )
 
@@ -192,8 +188,13 @@ def _extract_suggestions(text: str) -> list[dict]:
             continue
         if any(a.get("type") == "update_agent" for a in spec.get("actions", [])):
             continue
-        out.append({"yaml": block.strip(), "parsed": spec,
-                    "risk": spec.get("derived_risk") or spec.get("risk", "standard")})
+        out.append(
+            {
+                "yaml": block.strip(),
+                "parsed": spec,
+                "risk": spec.get("derived_risk") or spec.get("risk", "standard"),
+            }
+        )
         if len(out) == 3:
             break
     return out
@@ -203,8 +204,11 @@ def _alert_prompt(alert) -> str:
     host = getattr(alert, "host", None)
     lines = [f"Alert: {alert}"]
     if host is not None:
-        lines += [f"Host: {host.hostname}", f"OS: {host.os}",
-                  f"Tags: {', '.join(map(str, host.tags or []))}"]
+        lines += [
+            f"Host: {host.hostname}",
+            f"OS: {host.os}",
+            f"Tags: {', '.join(map(str, host.tags or []))}",
+        ]
     for attr in ("message", "severity", "metric_value"):
         v = getattr(alert, attr, None)
         if v:
@@ -245,52 +249,43 @@ def _vuln_prompt(finding, note: str = "") -> str:
         lines.append(f"Package: {finding.package_name}")
         lines.append(f"Installed version: {finding.installed_version or 'unknown'}")
         lines.append(
-            f"Fixed in version: {finding.fixed_version}" if finding.fixed_version
+            f"Fixed in version: {finding.fixed_version}"
+            if finding.fixed_version
             else "Fixed version: not published by the scanner — no upgrade "
-                 "target is known, so a mitigation may be the only option.")
+            "target is known, so a mitigation may be the only option."
+        )
 
         # Everything else open against this package. One upgrade clears them
         # all, and the model should be told that rather than left to guess.
-        siblings = list(VulnFinding.objects.filter(
-            host=host, package_name=finding.package_name,
-            state=VulnFinding.State.OPEN,
-        ).exclude(pk=finding.pk).order_by("cve_id")[:_SIBLING_LIMIT + 1])
+        siblings = list(
+            VulnFinding.objects.filter(
+                host=host,
+                package_name=finding.package_name,
+                state=VulnFinding.State.OPEN,
+            )
+            .exclude(pk=finding.pk)
+            .order_by("cve_id")[: _SIBLING_LIMIT + 1]
+        )
         if siblings:
-            shown = [s.cve_id or s.plugin_id_or_oid
-                     for s in siblings[:_SIBLING_LIMIT]]
+            shown = [s.cve_id or s.plugin_id_or_oid for s in siblings[:_SIBLING_LIMIT]]
             extra = len(siblings) - len(shown)
             tail = f" (and {extra} more)" if extra > 0 else ""
             lines.append(
                 f"This host has {len(siblings)} further open finding(s) "
                 f"against the same package: {', '.join(shown)}{tail}. "
                 f"One upgrade of {finding.package_name} should clear them "
-                f"together — propose a single task, not one per CVE.")
+                f"together — propose a single task, not one per CVE."
+            )
     else:
         lines.append(
             "The scanner reported no package for this finding, so it is "
             "probably a service or configuration issue rather than something "
             "a package upgrade fixes. Prefer a diagnostic task that confirms "
-            "the exposure before proposing any change.")
+            "the exposure before proposing any change."
+        )
 
     if host.tags:
         lines.append(f"Host tags: {', '.join(map(str, host.tags))}")
-    if note:
-        lines.append(f"Operator note: {note}")
-    return "\n".join(lines)
-
-
-def _container_prompt(host, container, note: str) -> str:
-    lines = [
-        f"Docker container issue on host {host.hostname} ({host.os})",
-        f"Container: {container.name} (image {container.image})",
-        f"State: {container.state} — {container.status}",
-    ]
-    if container.stack:
-        lines.append(f"Compose stack/service: {container.stack}/{container.service}")
-    if container.cpu_percent is not None:
-        lines.append(f"CPU: {container.cpu_percent:.1f}%")
-    if container.mem_percent is not None:
-        lines.append(f"Memory: {container.mem_percent:.1f}%")
     if note:
         lines.append(f"Operator note: {note}")
     return "\n".join(lines)
