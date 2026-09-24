@@ -1,0 +1,3 @@
+# Imports of vigil/apps/apps_business are first-party whether ruff runs from
+# server/ or from the repo root (the phase executor lints from the root).
+src = ["."]
