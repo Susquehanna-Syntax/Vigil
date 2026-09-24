@@ -8,9 +8,9 @@ from vigil.editions import active_edition, enabled_features, feature_enabled
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def ping(request):
-    """Proves an edition app can mount its own authenticated route under ext/.
+    """Proves a Business app can mount its own authenticated route under ext/.
 
-    A real Pro/Enterprise app would expose its feature endpoints here.
+    A real Business app would expose its feature endpoints here.
     """
     return Response({
         "ok": True,

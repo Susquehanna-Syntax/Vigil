@@ -1,9 +1,9 @@
 """Seam tests — exercise the extension contract without installing the app.
 
-These cover the mechanics every Pro/Enterprise app relies on: the hooks event
-bus, the editions feature registry, the registration wiring, and an edition
-view reading edition state. They run as part of the core suite so the contract
-can't regress.
+These cover the mechanics every Business app relies on: the hooks event
+bus, the editions feature registry, the registration wiring, and a
+Business view reading Business state. They run as part of the core suite
+so the contract can't regress.
 """
 
 from types import SimpleNamespace

@@ -141,7 +141,7 @@ urlpatterns = [
 
 
 # ---------------------------------------------------------------------------
-# Edition extension URLs (Pro / Enterprise)
+# Edition extension URLs (Business)
 # ---------------------------------------------------------------------------
 # Each app named in VIGIL_EXTRA_APPS may expose a ``urls.py``; if present it is
 # mounted under ``ext/<app-label>/`` (the app's final dotted segment). Apps
