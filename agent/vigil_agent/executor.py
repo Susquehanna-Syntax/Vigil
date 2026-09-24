@@ -515,8 +515,14 @@ def _update_container(params: dict, _config: AgentConfig) -> str:
         via = "compose"
     else:
         _run(["docker", "pull", image_ref], timeout=600)
-        _recreate_container({"container_name": name, "image": image_ref}, _config)
-        via = "recreate"
+        pulled_id = _run(["docker", "image", "inspect", "--format", "{{.Id}}", image_ref])
+        if pulled_id and pulled_id == old_image_id:
+            # Already on the newest build: recreating would only restart a
+            # running container for nothing.
+            via = "pull"
+        else:
+            _recreate_container({"container_name": name, "image": image_ref}, _config)
+            via = "recreate"
 
     collector.request_docker_recheck()
 

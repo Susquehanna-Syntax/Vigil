@@ -113,6 +113,51 @@ class UpdateContainerTests(unittest.TestCase):
             {"container_name": "web", "image": "searxng/searxng:latest"},
             _config(tmp))
 
+    def test_a_current_standalone_container_is_not_recreated(self):
+        pulled = "sha256:same"
+        after = "sha256:same"
+
+        def fake_run(cmd, timeout=60):
+            if cmd[:3] == ["docker", "image", "inspect"]:
+                return pulled
+            if cmd[:2] == ["docker", "inspect"]:
+                return after
+            return ""
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(executor, "_run", side_effect=fake_run), \
+                patch.object(executor, "_docker_inspect",
+                             return_value=_spec("sha256:same", "alpine:latest")), \
+                patch.object(executor, "_recreate_container",
+                             return_value="recreated") as recreate:
+            out = executor._update_container({"container_name": "web"}, _config(tmp))
+
+        recreate.assert_not_called()
+        self.assertIn("already current", out)
+        self.assertIn("via pull", out)
+
+    def test_a_newer_pull_still_recreates(self):
+        pulled = "sha256:new"
+        after = "sha256:new"
+
+        def fake_run(cmd, timeout=60):
+            if cmd[:3] == ["docker", "image", "inspect"]:
+                return pulled
+            if cmd[:2] == ["docker", "inspect"]:
+                return after
+            return ""
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(executor, "_run", side_effect=fake_run), \
+                patch.object(executor, "_docker_inspect",
+                             return_value=_spec("sha256:old", "alpine:latest")), \
+                patch.object(executor, "_recreate_container",
+                             return_value="recreated") as recreate:
+            out = executor._update_container({"container_name": "web"}, _config(tmp))
+
+        recreate.assert_called_once()
+        self.assertIn("image updated", out)
+
     def test_a_digest_pinned_container_is_left_alone(self):
         out, calls = self._update(
             _spec("sha256:oldoldoldoldold", "nginx@sha256:" + "a" * 64))
