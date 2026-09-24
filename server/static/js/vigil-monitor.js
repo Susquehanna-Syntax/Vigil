@@ -473,16 +473,15 @@ async function renderDockerContainers(hostId) {
         <td><span class="ctr-state ${stateClass}">${escHtml(state || 'unknown')}</span></td>
         <td class="ctr-stat">${cpu}</td>
         <td class="ctr-stat">${mem}</td>
-        <td class="ctr-fix"><button class="btn btn-xs btn-lav" data-ctr-fix data-host="${escAttr(hostId)}" data-cid="${escAttr(c.container_id || '')}">Suggest fix</button></td>
+        <td class="ctr-fix">${c.outdated ? `<button class="btn btn-xs btn-mint" data-ctr-update data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}" title="A newer image is available">Update</button>` : ''}</td>
       </tr>`;
     }
     html += `</tbody></table></div>`;
   }
   wrap.innerHTML = html;
-  wrap.querySelectorAll('[data-ctr-fix]').forEach(btn => btn.addEventListener('click', () => {
-    if (typeof suggestFixForContainer === 'function') {
-      const c = containers.find(x => (x.container_id || '') === btn.dataset.cid) || { container_id: btn.dataset.cid };
-      suggestFixForContainer(btn.dataset.host, c);
+  wrap.querySelectorAll('[data-ctr-update]').forEach(btn => btn.addEventListener('click', () => {
+    if (typeof openUpdateContainer === 'function') {
+      openUpdateContainer(btn.dataset.host, btn.dataset.name);
     }
   }));
 }

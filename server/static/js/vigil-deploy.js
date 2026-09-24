@@ -473,7 +473,8 @@ async function _ensureFleetCache(force) {
   _deployFleetFetchedAt = _deployTagCache === null ? 0 : Date.now();
 }
 
-async function openDeployModal(definitionId) {
+async function openDeployModal(definitionId, prefill) {
+  prefill = prefill || {};
   // Show modal skeleton immediately so the UI feels instant.
   document.getElementById('deploy-modal-title').textContent = 'Loading…';
   document.getElementById('deploy-risk-label').innerHTML = '';
@@ -505,6 +506,11 @@ async function openDeployModal(definitionId) {
     });
 
     _renderDeployInputs((def.parsed_spec && def.parsed_spec.inputs) || []);
+    for (const [id, value] of Object.entries(prefill.inputs || {})) {
+      const row = document.querySelector(`#deploy-inputs .deploy-input-row[data-input-id="${CSS.escape(id)}"]`);
+      const ctrl = row && row.querySelector('.deploy-input-control');
+      if (ctrl) ctrl.value = value;
+    }
     _populateDeployPolicy(def.parsed_spec || {});
 
     deployState.availableHosts = _deployHostCache || [];
@@ -519,6 +525,9 @@ async function openDeployModal(definitionId) {
       }
       window._pendingDeployPreselectHost = null;
     }
+    if (prefill.hostId && deployState.availableHosts.some(h => h.id === prefill.hostId)) {
+      deployState.selectedHosts.add(prefill.hostId);
+    }
     _renderDeployHostRows();
     updateDeployHostSummary();
   } catch (e) {
@@ -526,6 +535,23 @@ async function openDeployModal(definitionId) {
     document.getElementById('deploy-modal').classList.remove('open');
     showToast('Failed to open deploy modal: ' + e.message, 'error');
   }
+}
+
+/* ── Update one container: the built-in task, host and name prefilled ── */
+async function openUpdateContainer(hostId, containerName) {
+  let defs;
+  try {
+    defs = await apiJson('/api/v1/tasks/definitions/?scope=community');
+  } catch (e) {
+    showToast('Could not load tasks: ' + e.message, 'error');
+    return;
+  }
+  const def = (defs || []).find(d => d.name === 'Update container' && !d.owner);
+  if (!def) {
+    showToast('The built-in "Update container" task is missing — run migrations', 'error');
+    return;
+  }
+  openDeployModal(def.id, { hostId, inputs: { container_name: containerName } });
 }
 
 function updateDeployHostSummary() {
