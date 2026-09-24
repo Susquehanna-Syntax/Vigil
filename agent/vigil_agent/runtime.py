@@ -32,18 +32,21 @@ Step schema (all fields except ``type`` and ``action`` are optional):
   # Loop step
   - name: "install packages"
     type: for_each
-    list: ["curl", "htop", "vim"]   # or "{{packages}}" to resolve from context
+    list: ["curl", "htop", "vim"]   # or "${{ packages }}" to resolve from context
     variable: "pkg"                 # name of the loop variable in ctx
     steps:
       - type: action
         action: "pkg.install"
         params:
-          package_name: "{{pkg}}"
+          package_name: "${{ pkg }}"
 
 Variable syntax:
-  ``{{var}}``         — looks up ctx["var"]
-  ``{{var.attr}}``    — looks up ctx["var"]["attr"] or ctx["var"].attr
-  ``{{prev.output}}`` — shortcut: ctx["prev"]["output"]
+  ``${{ var }}``         — looks up ctx["var"]
+  ``${{ var.attr }}``    — looks up ctx["var"]["attr"] or ctx["var"].attr
+  ``${{ inputs.x }}``    — same as ``${{ x }}`` (the inputs namespace)
+  ``${{ prev.output }}`` — shortcut: ctx["prev"]["output"]
+
+Bare ``{{ }}`` is literal text — only the ``${{ … }}`` marker is a template.
 
 Condition syntax (evaluated left-to-right, single expression):
   ``expr OP value``
@@ -92,7 +95,10 @@ class StepResult:
 
 # ── Value resolution ──────────────────────────────────────────────────────────
 
-_TEMPLATE_RE = re.compile(r"\{\{([^}]+)\}\}")
+# Only the ${{ … }} marker is a template. Bare braces are literal — they are Go templates
+# (docker --format '{{.Names}}'), find -exec {} \;, PowerShell blocks and ${VAR} in scripts,
+# and rewriting them silently corrupted the command.
+_TEMPLATE_RE = re.compile(r"\$\{\{\s*([^}]+?)\s*\}\}")
 
 
 def _lookup(path: str, ctx: dict[str, Any]) -> Any:
@@ -269,6 +275,7 @@ class TaskRuntime:
 
         # Seed the execution context with template variables
         ctx: dict[str, Any] = dict(variables)
+        ctx["inputs"] = dict(variables)
         ctx["prev"] = StepResult(
             name="__init__", action="__init__", state="ok"
         ).to_context()
