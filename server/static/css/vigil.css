@@ -825,6 +825,16 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 }
 .editor-error.show { display: block; }
 
+.editor-warnings {
+  margin-top: 12px;
+  padding: 8px 12px;
+  font-size: 12px;
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+}
+
 .preview-section {
   display: flex; flex-direction: column; gap: 10px;
 }
