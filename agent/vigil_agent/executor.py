@@ -183,34 +183,66 @@ class ActionOutput(str):
 # ── Service management ──────────────────────────────────────────────────────
 
 
+def _systemctl_query(verb: str, name: str) -> str:
+    """``systemctl is-active`` / ``is-enabled`` answer, without raising.
+
+    Both exit non-zero for a perfectly normal "inactive" / "disabled" answer,
+    so ``_run`` (which raises on non-zero) is the wrong tool here.
+    """
+    try:
+        result = subprocess.run(
+            ["systemctl", verb, name],
+            capture_output=True, text=True, timeout=30, shell=False,
+            env=clean_env(),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout.strip().lower()
+
+
+def _service_is_active(name: str) -> bool:
+    return _systemctl_query("is-active", name) == "active"
+
+
+def _service_is_enabled(name: str) -> bool:
+    return _systemctl_query("is-enabled", name) == "enabled"
+
+
+def _container_running(name: str) -> bool:
+    try:
+        return _run(["docker", "inspect", "--format", "{{.State.Running}}", name]).strip() == "true"
+    except RuntimeError:
+        return False
+
+
 def _restart_service(params: dict, _config: AgentConfig) -> str:
     name = _validate_name(params.get("service_name", ""), "service name")
-    return _run(["systemctl", "restart", name])
+    return ActionOutput(_run(["systemctl", "restart", name]), {"active": _service_is_active(name)})
 
 
 def _start_service(params: dict, _config: AgentConfig) -> str:
     name = _validate_name(params.get("service_name", ""), "service name")
-    return _run(["systemctl", "start", name])
+    return ActionOutput(_run(["systemctl", "start", name]), {"active": _service_is_active(name)})
 
 
 def _stop_service(params: dict, _config: AgentConfig) -> str:
     name = _validate_name(params.get("service_name", ""), "service name")
-    return _run(["systemctl", "stop", name])
+    return ActionOutput(_run(["systemctl", "stop", name]), {"active": _service_is_active(name)})
 
 
 def _reload_service(params: dict, _config: AgentConfig) -> str:
     name = _validate_name(params.get("service_name", ""), "service name")
-    return _run(["systemctl", "reload", name])
+    return ActionOutput(_run(["systemctl", "reload", name]), {"active": _service_is_active(name)})
 
 
 def _enable_service(params: dict, _config: AgentConfig) -> str:
     name = _validate_name(params.get("service_name", ""), "service name")
-    return _run(["systemctl", "enable", name])
+    return ActionOutput(_run(["systemctl", "enable", name]), {"enabled": _service_is_enabled(name)})
 
 
 def _disable_service(params: dict, _config: AgentConfig) -> str:
     name = _validate_name(params.get("service_name", ""), "service name")
-    return _run(["systemctl", "disable", name])
+    return ActionOutput(_run(["systemctl", "disable", name]), {"enabled": _service_is_enabled(name)})
 
 
 def _check_service(params: dict, _config: AgentConfig) -> str:
@@ -249,7 +281,7 @@ def _restart_container(params: dict, _config: AgentConfig) -> str:
     )
     output = _run(["docker", "restart", name])
     collector.request_docker_recheck()
-    return output
+    return ActionOutput(output, {"running": _container_running(name)})
 
 
 def _stop_container(params: dict, _config: AgentConfig) -> str:
@@ -259,7 +291,7 @@ def _stop_container(params: dict, _config: AgentConfig) -> str:
     )
     output = _run(["docker", "stop", name])
     collector.request_docker_recheck()
-    return output
+    return ActionOutput(output, {"running": _container_running(name)})
 
 
 def _start_container(params: dict, _config: AgentConfig) -> str:
@@ -269,7 +301,7 @@ def _start_container(params: dict, _config: AgentConfig) -> str:
     )
     output = _run(["docker", "start", name])
     collector.request_docker_recheck()
-    return output
+    return ActionOutput(output, {"running": _container_running(name)})
 
 
 def _pull_image(params: dict, _config: AgentConfig) -> str:
@@ -278,7 +310,8 @@ def _pull_image(params: dict, _config: AgentConfig) -> str:
         raise ValueError(f"Invalid image name: {image!r}")
     output = _run(["docker", "pull", image], timeout=600)
     collector.request_docker_recheck()
-    return output
+    image_id = _run(["docker", "image", "inspect", "--format", "{{.Id}}", image]).strip()
+    return ActionOutput(output, {"image_id": image_id})
 
 
 def _check_docker_updates(_params: dict, _config: AgentConfig) -> str:
@@ -488,10 +521,12 @@ def _recreate_container(params: dict, _config: AgentConfig) -> str:
 
     new_image_id = _run(["docker", "inspect", "--format", "{{.Image}}", name])
     changed = "image updated" if new_image_id != old_image_id else "image unchanged"
-    return (
+    return ActionOutput(
         f"Recreated {name} on {image_ref} ({changed})\n"
         f"  old image: {old_image_id[:19]}\n"
-        f"  new image: {new_image_id[:19]}"
+        f"  new image: {new_image_id[:19]}",
+        {"updated": new_image_id != old_image_id, "old_image_id": old_image_id,
+         "new_image_id": new_image_id},
     )
 
 
@@ -870,7 +905,7 @@ def _remove_container(params: dict, _config: AgentConfig) -> str:
     name = _validate_name(params.get("container_name", ""), "container name")
     output = _run(["docker", "rm", "-f", name])
     collector.request_docker_recheck()
-    return output
+    return ActionOutput(output, {"removed": True})
 
 
 def _docker_compose_up(params: dict, _config: AgentConfig) -> str:
@@ -891,7 +926,7 @@ def _docker_compose_up(params: dict, _config: AgentConfig) -> str:
 
     output = _run(cmd, timeout=300)
     collector.request_docker_recheck()
-    return output
+    return ActionOutput(output, {"compose_file": str(path)})
 
 
 def _docker_compose_down(params: dict, _config: AgentConfig) -> str:
@@ -901,21 +936,21 @@ def _docker_compose_down(params: dict, _config: AgentConfig) -> str:
         raise ValueError(f"Compose file not found: {compose_file}")
     output = _run(["docker", "compose", "-f", str(path), "down"], timeout=120)
     collector.request_docker_recheck()
-    return output
+    return ActionOutput(output, {"compose_file": str(path)})
 
 
 def _clear_docker_logs(params: dict, _config: AgentConfig) -> str:
     container = params.get("container_name", "")
     if not container:
-        return "No container specified"
+        return ActionOutput("No container specified", {"truncated": False})
     _validate_name(container, "container name")
     log_path = _run(
         ["docker", "inspect", "--format={{.LogPath}}", container]
     )
     if log_path and Path(log_path).exists():
         Path(log_path).write_text("")
-        return f"Truncated log for {container}"
-    return "No log file found"
+        return ActionOutput(f"Truncated log for {container}", {"truncated": True})
+    return ActionOutput("No log file found", {"truncated": False})
 
 
 # ── File / directory operations ─────────────────────────────────────────────

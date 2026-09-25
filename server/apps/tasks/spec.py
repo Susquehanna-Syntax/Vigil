@@ -61,36 +61,42 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "standard",
         "required": ["service_name"],
         "optional": [],
+        "outputs": {"active": "bool"},
     },
     "start_service": {
         "label": "Start service",
         "risk": "standard",
         "required": ["service_name"],
         "optional": [],
+        "outputs": {"active": "bool"},
     },
     "stop_service": {
         "label": "Stop service",
         "risk": "standard",
         "required": ["service_name"],
         "optional": [],
+        "outputs": {"active": "bool"},
     },
     "reload_service": {
         "label": "Reload service",
         "risk": "standard",
         "required": ["service_name"],
         "optional": [],
+        "outputs": {"active": "bool"},
     },
     "enable_service": {
         "label": "Enable service",
         "risk": "low",
         "required": ["service_name"],
         "optional": [],
+        "outputs": {"enabled": "bool"},
     },
     "disable_service": {
         "label": "Disable service",
         "risk": "standard",
         "required": ["service_name"],
         "optional": [],
+        "outputs": {"enabled": "bool"},
     },
     "check_service": {
         "label": "Check service status",
@@ -105,24 +111,28 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "standard",
         "required": ["container_name"],
         "optional": [],
+        "outputs": {"running": "bool"},
     },
     "start_container": {
         "label": "Start container",
         "risk": "low",
         "required": ["container_name"],
         "optional": [],
+        "outputs": {"running": "bool"},
     },
     "stop_container": {
         "label": "Stop container",
         "risk": "standard",
         "required": ["container_name"],
         "optional": [],
+        "outputs": {"running": "bool"},
     },
     "pull_image": {
         "label": "Pull container image",
         "risk": "low",
         "required": ["image"],
         "optional": [],
+        "outputs": {"image_id": "str"},
     },
     # Applies a freshly pulled image: docker restart alone keeps the container
     # on its original image, so image updates require recreation. The agent
@@ -133,6 +143,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "standard",
         "required": ["container_name"],
         "optional": ["image"],
+        "outputs": {"updated": "bool", "old_image_id": "str", "new_image_id": "str"},
     },
     "update_container": {
         "label": "Update container (pull + apply new image)",
@@ -146,24 +157,28 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "high",
         "required": ["container_name"],
         "optional": [],
+        "outputs": {"removed": "bool"},
     },
     "docker_compose_up": {
         "label": "Docker Compose up",
         "risk": "standard",
         "required": ["compose_file"],
         "optional": ["services"],  # comma-separated service names
+        "outputs": {"compose_file": "str"},
     },
     "docker_compose_down": {
         "label": "Docker Compose down",
         "risk": "standard",
         "required": ["compose_file"],
         "optional": [],
+        "outputs": {"compose_file": "str"},
     },
     "clear_docker_logs": {
         "label": "Truncate Docker logs",
         "risk": "low",
         "required": [],
         "optional": ["container_name"],
+        "outputs": {"truncated": "bool"},
     },
     # Forces an immediate Docker Hub digest re-check instead of waiting out
     # the agent's docker_check_interval — outdated-image alerts fire or

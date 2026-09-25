@@ -33,7 +33,7 @@ class OutputDocsTests(SimpleTestCase):
             "  - id: a\n    type: check_service\n    params:\n      service_name: nginx\n"
             "  - id: b\n    type: restart_service\n    params:\n      service_name: nginx\n")
         self.assertEqual(spec["actions"][0]["outputs"], ["active", "state"])
-        self.assertEqual(spec["actions"][1]["outputs"], [])
+        self.assertEqual(spec["actions"][1]["outputs"], ["active"])
 
     def test_editor_shows_outputs_escaped(self):
         src = (Path(settings.BASE_DIR) / "static" / "js" / "vigil-tasks.js").read_text(encoding="utf-8")
@@ -42,3 +42,30 @@ class OutputDocsTests(SimpleTestCase):
 
     def test_ai_prompt_teaches_step_refs(self):
         self.assertTrue("steps.<id>.result.<field>" in SYSTEM_PROMPT, "AI prompt must teach step refs")
+
+
+#: What the agent returns for each action (agent/vigil_agent/executor.py), by field
+#: name. The registry must declare exactly these, or the validator accepts a
+#: reference the agent never fills, or rejects one it does.
+EXPECTED = {
+    "check_service": {"active", "state"},
+    "update_container": {"updated", "old_image_id", "new_image_id"},
+    "check_docker_updates": {"checked", "outdated"},
+    "run_command": {"exit_code"},
+    "execute_script": {"exit_code"},
+    "restart_service": {"active"}, "start_service": {"active"},
+    "stop_service": {"active"}, "reload_service": {"active"},
+    "enable_service": {"enabled"}, "disable_service": {"enabled"},
+    "restart_container": {"running"}, "start_container": {"running"},
+    "stop_container": {"running"},
+    "pull_image": {"image_id"}, "remove_container": {"removed"},
+    "recreate_container": {"updated", "old_image_id", "new_image_id"},
+    "docker_compose_up": {"compose_file"}, "docker_compose_down": {"compose_file"},
+    "clear_docker_logs": {"truncated"},
+}
+
+
+class RegistryMatchesAgentTests(SimpleTestCase):
+    def test_registry_matches_agent_outputs(self):
+        for action, fields in EXPECTED.items():
+            self.assertEqual(set(action_outputs(action)), fields, action)
