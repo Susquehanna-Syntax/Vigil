@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 import secrets
 import stat
 from dataclasses import dataclass, field
@@ -158,6 +159,11 @@ class AgentConfig:
     data_dir: Path = field(default_factory=lambda: Path("/var/lib/vigil-agent"))
     allowlist: set[str] = field(default_factory=set)
     scripts_dir: Path = field(default_factory=lambda: _default_scripts_dir())
+    # Inline-script allowlist: each entry approves one exact inline body by its
+    # sha256: digest. There is deliberately no wildcard — a body that is not
+    # byte-identical to an approved one is refused, so every edit needs a
+    # fresh approval.
+    allowed_script_hashes: set[str] = field(default_factory=set)
     # Free-form tags advertised to the server at every checkin. Server-side
     # tags take precedence: this list is used to seed/augment, never to
     # overwrite tags an operator has set in the console.
@@ -339,6 +345,20 @@ def load_config(path: Path | None = None) -> AgentConfig:
     if not isinstance(raw_watch, list):
         raise ValueError("process_watch must be a list of process names")
 
+    raw_hashes = raw.get("allowed_script_hashes") or []
+    if not isinstance(raw_hashes, list):
+        raise ValueError("allowed_script_hashes must be a list of sha256:<hex> strings")
+    # Approvals are exact digests; a malformed entry is dropped, never a
+    # wildcard, and the operator is told what was ignored so the approval
+    # they typed in doesn't silently not exist.
+    allowed_script_hashes: set[str] = set()
+    for entry in raw_hashes:
+        h = str(entry).strip().lower()
+        if re.match(r"^sha256:[0-9a-f]{64}$", h):
+            allowed_script_hashes.add(h)
+        else:
+            logger.warning("Ignoring invalid allowed_script_hashes entry: %r", entry)
+
     config = AgentConfig(
         server_url=server_url,
         agent_token=agent_token,
@@ -350,6 +370,7 @@ def load_config(path: Path | None = None) -> AgentConfig:
         allowlist=allowlist,
         scripts_dir=Path(raw["scripts_dir"]) if raw.get("scripts_dir")
         else _default_scripts_dir(),
+        allowed_script_hashes=allowed_script_hashes,
         tags=raw_tags,
         process_watch=raw_watch,
         gpu_extended=bool(raw.get("gpu_extended", False)),
