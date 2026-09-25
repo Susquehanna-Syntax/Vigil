@@ -197,6 +197,10 @@ class Task(models.Model):
     signature = models.TextField(blank=True)
     ttl_seconds = models.IntegerField(default=300)
     result_output = models.TextField(blank=True)
+    # Per-step {id, status, result} reported by the agent. Never trusted for
+    # authorization — tags and inventory still come from what the server
+    # signed.
+    result_data = models.JSONField(default=dict, blank=True)
     # Snapshot of definition.parsed_spec.schedule at deploy time. Used by the
     # checkin dispatcher to gate handoff outside the configured window.
     schedule = models.JSONField(default=dict, blank=True)

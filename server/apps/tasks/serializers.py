@@ -29,6 +29,7 @@ class TaskSerializer(serializers.ModelSerializer):
             # it inside the signed check-in payload, not from this API).
             "ttl_seconds",
             "result_output",
+            "result_data",
             "created_at",
             "dispatched_at",
             "completed_at",

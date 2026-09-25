@@ -1,3 +1,4 @@
+import json
 import secrets
 from datetime import timedelta
 
@@ -23,13 +24,13 @@ from apps.hosts.authentication import authenticate_agent
 from apps.hosts.models import Host
 
 from .models import PatchRollout, Task, TaskDefinition, TaskRun
-from .rollout_serializers import PatchRolloutSerializer
 from .rollout import (
     FAILURE_STATES,
     halt_rollout,
     resume_rollout,
     start_rollout,
 )
+from .rollout_serializers import PatchRolloutSerializer
 from .serializers import (
     TaskDefinitionSerializer,
     TaskRunSerializer,
@@ -58,6 +59,54 @@ _UPDATABLE_STATES = {Task.State.DISPATCHED, Task.State.EXECUTING}
 #: now live in VulnFinding rows, so the blob is redundant. Head and tail are
 #: preserved because in a multi-step run they are other steps' output.
 _TRIVY_OUTPUT_KEEP = 2000
+
+#: Hard cap on the serialised step results stored on a Task. A runaway
+#: script can otherwise grow result_data past what the run detail should
+#: carry; over the cap the whole block is dropped with a note.
+_MAX_RESULT_BYTES = 64 * 1024
+_MAX_STEPS = 200
+_MAX_RESULT_STR = 4096
+_STEP_STATUSES = {"ok", "error", "skipped"}
+
+
+def _clean_step_results(raw):
+    """Sanitise agent-reported step results before they are stored.
+
+    The agent is untrusted here: keep at most ``_MAX_STEPS`` entries, each a
+    dict with a string ``id`` (<= 60 chars), a known ``status``, and a dict
+    ``result`` holding only str/bool/int/float values (strings cut to
+    4096). Anything that would serialise over ``_MAX_RESULT_BYTES`` is
+    dropped wholesale.
+    """
+    if not isinstance(raw, list):
+        return {}
+    out = []
+    for entry in raw[:_MAX_STEPS]:
+        if not isinstance(entry, dict):
+            continue
+        step_id = entry.get("id")
+        status = entry.get("status")
+        result = entry.get("result")
+        if (
+            not isinstance(step_id, str)
+            or len(step_id) > 60
+            or status not in _STEP_STATUSES
+            or not isinstance(result, dict)
+        ):
+            continue
+        clean_result = {}
+        for key, value in result.items():
+            if not isinstance(key, str) or len(key) > 60:
+                continue
+            if isinstance(value, str):
+                value = value[:_MAX_RESULT_STR]
+            elif not isinstance(value, (bool, int, float)):
+                continue
+            clean_result[key] = value
+        out.append({"id": step_id, "status": status, "result": clean_result})
+    if len(json.dumps(out)) > _MAX_RESULT_BYTES:
+        return {"steps": [], "dropped": "step results exceeded 64 KB"}
+    return {"steps": out}
 
 # ── Agent-facing: task result ────────────────────────────────────────────────
 
@@ -96,6 +145,7 @@ def task_result(request):
     with transaction.atomic():
         task.state = new_state
         task.result_output = output
+        task.result_data = _clean_step_results(request.data.get("steps"))
         task.completed_at = now()
         task.save()
 
