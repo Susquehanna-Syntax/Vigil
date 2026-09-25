@@ -62,6 +62,13 @@ EXPECTED = {
     "recreate_container": {"updated", "old_image_id", "new_image_id"},
     "docker_compose_up": {"compose_file"}, "docker_compose_down": {"compose_file"},
     "clear_docker_logs": {"truncated"},
+    "write_file": {"path", "bytes"}, "create_directory": {"path"},
+    "delete_path": {"path", "recursive"}, "copy_file": {"src", "dest"},
+    "move_file": {"src", "dest"}, "set_permissions": {"path"},
+    "install_package": {"package", "manager", "installed_version"},
+    "update_package": {"package", "manager", "installed_version"},
+    "remove_package": {"package", "manager"},
+    "run_package_updates": {"manager", "security_only"},
 }
 
 

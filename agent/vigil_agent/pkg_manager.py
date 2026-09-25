@@ -91,6 +91,39 @@ class PackageManager:
     def list_upgradable(self) -> str:
         return self._list_upgradable()
 
+    def installed_version(self, package_name: str) -> str:
+        """Version of *package_name* as installed, or "" when unknown.
+
+        Informational only: an empty result (package not installed, manager not
+        queried here, or the query failing) must never fail the step. apk and
+        winget are not queried in this phase (Apps/M7 owns them).
+        """
+        try:
+            if self.name in ("apt", "apt-get"):
+                return _run(["dpkg-query", "-W", "-f=${Version}", package_name],
+                            timeout=_EXEC_TIMEOUT_SHORT).strip()
+            if self.name in ("dnf", "yum", "zypper"):
+                return _run(["rpm", "-q", "--qf", "%{VERSION}-%{RELEASE}",
+                             package_name], timeout=_EXEC_TIMEOUT_SHORT).strip()
+            if self.name == "pacman":
+                fields = _run(["pacman", "-Q", package_name],
+                              timeout=_EXEC_TIMEOUT_SHORT).split()
+                return fields[1] if len(fields) > 1 else ""
+            if self.name == "brew":
+                output = _run(["brew", "list", "--versions", package_name],
+                              timeout=_EXEC_TIMEOUT_SHORT).strip()
+                return output.rsplit(" ", 1)[-1] if output else ""
+            if self.name == "snap":
+                lines = _run(["snap", "list", package_name],
+                             timeout=_EXEC_TIMEOUT_SHORT).splitlines()
+                if len(lines) > 1:
+                    return lines[1].split()[1]
+                return ""
+        except Exception as exc:
+            logger.debug("installed_version(%s) via %s inconclusive: %s",
+                         package_name, self.name, exc)
+        return ""
+
     # ── apt-get / apt ─────────────────────────────────────────────────────
 
     def _refresh(self) -> str:
