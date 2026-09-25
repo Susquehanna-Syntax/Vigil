@@ -134,6 +134,54 @@ DB now: full_control
 A host can therefore misrepresent itself to the server, but it cannot be made
 to execute anything its own config does not permit.
 
+## Inline scripts and hash approval
+
+Tasks can carry an inline script body (an `execute_script` action with a
+`shell:` and a `script:` block) instead of a path on disk. Which of those run
+depends on the host's mode, in the same way everything else does:
+
+- `full_control` runs any inline body. There is nothing to approve.
+- `managed` runs one only if its exact hash is in `allowed_script_hashes` in
+  `agent.yml`. The agent computes the hash of the body it received and looks it
+  up; a refusal names the hash it wanted.
+- `monitor` never runs scripts, same as never running anything else.
+
+**Any edit changes the hash, and the new hash must be approved on each
+managed host before the edited script runs there.** This is deliberate, not a
+friction: the approval is per-contents, so approving a script is a decision
+about *that* script, and editing it is a new decision. Approving once does not
+buy you "allow this task's script forever."
+
+To approve one:
+
+```bash
+# copy the hash shown in the task editor
+sudo vigil-agent allow-script --hash sha256:<hex>
+
+# or let it hash the file for you
+sudo vigil-agent allow-script path/to/script.sh
+```
+
+either of which writes to `agent.yml`:
+
+```yaml
+allowed_script_hashes:
+  - sha256:<64 hex>
+```
+
+To compute the hash by hand, `sha256sum script.sh` (Linux/macOS) or
+`(Get-FileHash -Algorithm SHA256 .\script.ps1).Hash.ToLower()` (Windows), then
+prefix with `sha256:`. The file must use LF line endings and end with exactly
+one newline — that is how Vigil normalises the body before hashing, and it is
+the most common cause of "the hash I computed is not the one the agent
+wanted". `vigil-agent allow-script` does this for you; that is why it is the
+recommended path.
+
+There is no setting that says "allow inline scripts". An inline script *is*
+`run_command` with the command text coming from the server instead of a file;
+allowing arbitrary bodies on a `managed` host is exactly what `full_control`
+is, and `full_control` is how you opt into that.
+
 ## Reprovision is gated separately
 
 The three destructive reprovision actions (`reprovision_stage`,
