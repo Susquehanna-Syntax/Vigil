@@ -9,7 +9,7 @@ the Task; old agents that send no steps keep working.
 import json
 from datetime import timedelta
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from apps.hosts.models import Host
@@ -126,3 +126,17 @@ class StepResultStorageTests(TestCase):
         source = js.read_text()
         self.assertIn("_stepResultsHtml", source)
         self.assertIn("escHtml(String(v))", source)
+
+
+
+class NonFiniteFloatTests(SimpleTestCase):
+    """NaN / Infinity: the API parser refuses them, and the sanitiser drops
+    them anyway — PostgreSQL's jsonb cannot store them."""
+
+    def test_sanitiser_drops_non_finite_floats(self):
+        from apps.tasks.views import _clean_step_results
+
+        out = _clean_step_results(
+            [{"id": "a", "status": "ok",
+              "result": {"x": float("nan"), "y": float("inf"), "z": 1.5}}])
+        self.assertEqual(out["steps"][0]["result"], {"z": 1.5})

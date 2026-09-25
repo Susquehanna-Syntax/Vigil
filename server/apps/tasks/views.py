@@ -1,4 +1,5 @@
 import json
+import math
 import secrets
 from datetime import timedelta
 
@@ -101,6 +102,10 @@ def _clean_step_results(raw):
             if isinstance(value, str):
                 value = value[:_MAX_RESULT_STR]
             elif not isinstance(value, (bool, int, float)):
+                continue
+            elif isinstance(value, float) and not math.isfinite(value):
+                # NaN/Infinity survive JSON parsing but PostgreSQL's jsonb
+                # refuses them, which would fail the whole result save.
                 continue
             clean_result[key] = value
         out.append({"id": step_id, "status": status, "result": clean_result})
