@@ -2385,7 +2385,9 @@ select.form-control:hover { border-color: var(--s4); }
 }
 .run-step-results { width: 100%; border-collapse: collapse; font-size: 12px; color: var(--text-2); margin-top: 8px; }
 .run-step-results th { text-align: left; font-weight: 600; color: var(--text-3); padding: 4px 8px; border-bottom: 1px solid var(--border); }
-.run-step-results td { padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.run-step-results td { padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+.run-step-results td:last-child { width: 100%; }
+.run-step-results td:not(:last-child) { white-space: nowrap; overflow-wrap: normal; }
 .run-step-kv { display: inline-block; margin-right: 12px; }
 .run-step-kv .k { color: var(--text-3); }
 .run-step-status.s-ok { color: var(--mint); }
