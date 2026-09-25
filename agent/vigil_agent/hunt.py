@@ -16,10 +16,14 @@ import json
 import logging
 import os
 import re
+import shutil
 import stat
+import subprocess
 import sys
 import threading
 import time
+
+from . import versions
 
 logger = logging.getLogger("vigil.hunt")
 
@@ -274,3 +278,104 @@ def hunt_file(result: HuntResult, params: dict) -> None:
                 if not result.add("file", path=path, size=st.st_size,
                                   modified=modified, sha256=sha):
                     return
+
+
+# ── hunt_package ──────────────────────────────────────────────────────────────
+
+#: (manager, argv, version scheme) — one listing call per manager.
+_PACKAGE_COMMANDS = {
+    "dpkg": (["dpkg-query", "-W", "-f=${Package}\t${Version}\n"], "deb"),
+    "rpm": (["rpm", "-qa", "--qf", "%{NAME}\t%{EPOCHNUM}:%{VERSION}-%{RELEASE}\n"], "rpm"),
+    "pacman": (["pacman", "-Q"], "rpm"),
+    "brew": (["brew", "list", "--versions"], "generic"),
+    "snap": (["snap", "list"], "generic"),
+}
+
+#: Discovery order when no manager override is given.
+_MANAGER_ORDER = ("dpkg", "rpm", "pacman", "brew", "snap")
+
+
+def _parse_listing(manager: str, lines: list[str]) -> list[tuple[str, str]]:
+    """Turn raw listing output into (name, version) pairs."""
+    if manager == "dpkg" or manager == "rpm":
+        return [(l.split("\t", 1)[0], l.split("\t", 1)[1]) for l in lines if "\t" in l]
+    # Whitespace-separated (snap pads its columns with runs of spaces).
+    rows = [line.split() for line in lines]
+    if manager == "pacman":
+        return [(r[0], r[1]) for r in rows if len(r) >= 2]
+    if manager == "brew":
+        # name + last token (a formula may list several installed versions).
+        return [(r[0], r[-1]) for r in rows if len(r) >= 2]
+    # snap: skip the header line.
+    return [(r[0], r[1]) for r in rows[1:] if len(r) >= 2]
+
+
+def _list_packages(manager: str) -> list[tuple[str, str]]:
+    """One listing call for a named manager; returns (name, version) pairs.
+
+    Module-level so tests can patch it (the package commands are refused in
+    tests by agent/tests/__init__.py).
+    """
+    argv, _scheme = _PACKAGE_COMMANDS[manager]
+    proc = subprocess.run(argv, capture_output=True, text=True,
+                          timeout=60, check=False)
+    if proc.returncode != 0:
+        raise RuntimeError(f"package listing failed ({argv[0]}): "
+                           f"{(proc.stderr or '').strip()[:200]}")
+    return _parse_listing(manager, proc.stdout.splitlines())
+
+
+def _pick_manager(manager: str | None) -> str:
+    if manager is not None:
+        if manager not in _PACKAGE_COMMANDS:
+            raise ValueError(f"unsupported package manager: {manager!r}")
+        return manager
+    for candidate in _MANAGER_ORDER:
+        binary = {"dpkg": "dpkg-query"}.get(candidate, candidate)
+        if shutil.which(binary) is not None:
+            return candidate
+    raise ValueError("no supported package manager on this host")
+
+
+def _version_bound_holds(version: str, key: str, bound: str, scheme: str) -> bool:
+    c = versions.compare(version, bound, scheme)
+    if key == "version_lt":
+        return c < 0
+    if key == "version_lte":
+        return c <= 0
+    if key == "version_gt":
+        return c > 0
+    if key == "version_gte":
+        return c >= 0
+    return c == 0  # version_eq
+
+
+def hunt_package(result: HuntResult, params: dict) -> None:
+    """List installed packages matching a name (exact or glob) and version bounds.
+
+    Versions compare with the package system's own rules: dpkg for Debian,
+    rpmvercmp for rpm and pacman, dotted-numeric elsewhere.
+    """
+    name = params.get("name")
+    if name is None or not str(name).strip():
+        raise ValueError("hunt_package needs name")
+
+    manager = _pick_manager(params.get("manager"))
+    packages = _list_packages(manager)
+    _argv, scheme = _PACKAGE_COMMANDS[manager]
+
+    bounds = [(key, str(params[key])) for key in
+              ("version_lt", "version_lte", "version_gt", "version_gte", "version_eq")
+              if params.get(key) not in (None, "")]
+
+    for i, (pkg_name, version) in enumerate(packages):
+        if i % 500 == 0:
+            result.check_deadline()
+        if not fnmatch.fnmatch(pkg_name, str(name)):
+            continue
+        if not all(_version_bound_holds(version, key, bound, scheme)
+                   for key, bound in bounds):
+            continue
+        if not result.add("package", name=pkg_name, version=version,
+                          manager=manager):
+            return

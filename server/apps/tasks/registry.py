@@ -514,6 +514,14 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
                      "max_results", "timeout"],
         "outputs": {"matched": "bool", "count": "int", "truncated": "bool"},
     },
+    "hunt_package": {
+        "label": "Hunt: installed packages",
+        "risk": "low",
+        "required": ["name"],
+        "optional": ["version_lt", "version_lte", "version_gt", "version_gte", "version_eq",
+                     "manager", "max_results", "timeout"],
+        "outputs": {"matched": "bool", "count": "int", "truncated": "bool"},
+    },
 }
 
 
