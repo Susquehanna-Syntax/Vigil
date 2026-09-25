@@ -97,6 +97,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "low",
         "required": ["service_name"],
         "optional": ["expect"],
+        "outputs": {"active": "bool", "state": "str"},
     },
     # ── Container management ────────────────────────────────────────────────
     "restart_container": {
@@ -138,6 +139,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "standard",
         "required": ["container_name"],
         "optional": [],
+        "outputs": {"updated": "bool", "old_image_id": "str", "new_image_id": "str"},
     },
     "remove_container": {
         "label": "Remove container",
@@ -172,6 +174,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "low",
         "required": [],
         "optional": [],
+        "outputs": {"checked": "int", "outdated": "int"},
     },
     # ── File / directory operations ─────────────────────────────────────────
     "write_file": {
@@ -260,6 +263,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "high",
         "required": [],
         "optional": ["script_name", "shell", "script"],
+        "outputs": {"exit_code": "int"},
     },
     "reboot": {
         "label": "Reboot host",
@@ -273,6 +277,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "high",
         "required": ["command"],
         "optional": ["timeout"],
+        "outputs": {"exit_code": "int"},
     },
     "set_hostname": {
         "label": "Set hostname",
@@ -468,6 +473,12 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
     },
 }
 
+
+def action_outputs(action_type: str) -> dict[str, str]:
+    """Declared outputs of an action; every step also has an implicit `status`."""
+    return dict(ACTION_REGISTRY.get(action_type, {}).get("outputs", {}))
+
+
 _RISK_ORDER = {"low": 0, "standard": 1, "high": 2}
 
 #: Ceiling for a per-step ``timeout:``, in seconds. Mirrors the agent's own
@@ -482,8 +493,11 @@ _INPUT_TYPES = {"text", "choice", "boolean", "number"}
 _INPUT_REF = re.compile(r"\$\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 # The pre-2026.13 form, {{ inputs.foo }} — accepted with a warning for one release.
 _LEGACY_INPUT_REF = re.compile(r"(?<!\$)\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
-# Step-output references are reserved for declared outputs, which do not exist yet.
-_STEPS_REF = re.compile(r"\$\{\{\s*steps\.")
+# Step references: ${{ steps.<id>.status }} or ${{ steps.<id>.result.<field> }}.
+_STEPS_MARKER = re.compile(r"\$\{\{\s*steps\.")
+_STEP_REF = re.compile(
+    r"\$\{\{\s*steps\.([A-Za-z0-9_-]+)\.(?:(status)|result\.([A-Za-z_][A-Za-z0-9_]*))\s*\}\}"
+)
 _INPUT_ID_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 _ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -898,19 +912,49 @@ def schedule_window_active(
     return now_m >= start or now_m <= end + 59
 
 
-def _check_variable_refs(
-    value: Any, declared_ids: set[str], where: str, warnings: list[str]
+def _check_step_ref(
+    step_id: str, field: str | None, earlier: dict[str, str], where: str
 ) -> None:
-    """Recursively confirm every input reference matches a declared input.
+    """A step reference must name an earlier step and, for a result, a declared output.
+
+    ``field`` is None for ``steps.<id>.status``, which every step has. The
+    value only exists on the host at run time, so this is the one place a bad
+    reference can be caught before a task is signed.
+    """
+    if step_id not in earlier:
+        raise SpecError(f"{where}: steps.{step_id} is not an earlier step")
+    if field is not None:
+        declared = action_outputs(earlier[step_id])
+        if field not in declared:
+            raise SpecError(
+                f"{where}: {earlier[step_id]} step {step_id!r} has no output "
+                f"{field!r}; declared: {sorted(declared)}"
+            )
+
+
+def _check_variable_refs(
+    value: Any,
+    declared_ids: set[str],
+    where: str,
+    warnings: list[str],
+    earlier: dict[str, str],
+) -> None:
+    """Recursively confirm every input and step reference is valid.
 
     Accepts both the current ${{ inputs.x }} form and the pre-2026.13
-    {{ inputs.x }} form (the latter collects a deprecation warning).
+    {{ inputs.x }} form (the latter collects a deprecation warning), and
+    ${{ steps.<id>.status }} / ${{ steps.<id>.result.<field> }} for steps
+    listed in ``earlier`` (step id → action type).
     """
     if isinstance(value, str):
-        if _STEPS_REF.search(value):
+        step_refs = _STEP_REF.findall(value)
+        if len(_STEPS_MARKER.findall(value)) != len(step_refs):
             raise SpecError(
-                f"{where}: step output references (${{{{ steps.… }}}}) are not supported yet"
+                f"{where}: malformed step reference — use "
+                f"${{{{ steps.<id>.status }}}} or ${{{{ steps.<id>.result.<field> }}}}"
             )
+        for step_id, _status, field in step_refs:
+            _check_step_ref(step_id, field or None, earlier, where)
         for match in _INPUT_REF.finditer(value):
             ref = match.group(1)
             if ref not in declared_ids:
@@ -927,10 +971,10 @@ def _check_variable_refs(
                 warnings.append(warning)
     elif isinstance(value, dict):
         for k, v in value.items():
-            _check_variable_refs(v, declared_ids, where, warnings)
+            _check_variable_refs(v, declared_ids, where, warnings, earlier)
     elif isinstance(value, list):
         for i, v in enumerate(value):
-            _check_variable_refs(v, declared_ids, f"{where}[{i}]", warnings)
+            _check_variable_refs(v, declared_ids, f"{where}[{i}]", warnings, earlier)
 
 
 def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[str, Any]:
@@ -1169,6 +1213,9 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                 f"must be one of {', '.join(sorted(ACTION_REGISTRY))}"
             )
 
+        # Steps before this one — the only ones a reference may name.
+        earlier = {a["id"]: a["type"] for a in parsed_actions}
+
         action_id = _as_str(entry.get("id") or f"step{index + 1}", f"actions[{index}].id", max_len=60)
         if action_id in seen_ids:
             raise SpecError(f"duplicate action id {action_id!r}")
@@ -1208,7 +1255,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
             # shell/PowerShell text, so its contents are never ref-checked.
             if not (action_type == "execute_script" and pk == "script"):
                 _check_variable_refs(
-                    pv, declared_input_ids, f"action #{index + 1} param {pk!r}", warnings
+                    pv, declared_input_ids, f"action #{index + 1} param {pk!r}",
+                    warnings, earlier,
                 )
 
         # Optional `when:` predicate. Validated for syntactic safety
@@ -1222,6 +1270,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                 from .expression import (
                     ExprError,
                     referenced_inputs as _refs,
+                    referenced_steps as _step_refs,
                     validate as _validate_when,
                 )
                 try:
@@ -1241,6 +1290,14 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                         f"undeclared input(s) {sorted(unknown)} — declare them "
                         f"under inputs:, or the step will silently never run"
                     )
+                try:
+                    step_refs = _step_refs(when_expr)
+                except ExprError as exc:
+                    raise SpecError(
+                        f"action #{index + 1}: when expression rejected: {exc}"
+                    ) from exc
+                for step_id, field in sorted(step_refs, key=str):
+                    _check_step_ref(step_id, field, earlier, f"action #{index + 1} when")
 
         # Optional per-step timeout, in seconds. The 1..3600 range mirrors
         # the agent's own validation — a limit the server accepts but the
