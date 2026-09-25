@@ -657,7 +657,7 @@ function renderEditorPreview(spec) {
       <div class="preview-step-num">${i + 1}</div>
       <div class="preview-step-body">
         <div class="preview-step-title">${escHtml(a.id)} — ${escHtml(a.label || a.type)}</div>
-        <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => k === 'script' ? `script=${String(v).split('\n').length} lines` : `${escHtml(String(k))}=${escHtml(String(v))}`).join(' ') : ''}</div>
+        <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => k === 'script' ? `script=${String(v).replace(/\n+$/, '').split('\n').length} lines` : `${escHtml(String(k))}=${escHtml(String(v))}`).join(' ') : ''}</div>
         ${a.script_sha256 ? `<div class="preview-step-hash"><span class="mono">${escHtml(a.script_sha256)}</span>
           <button type="button" class="btn btn-xs" data-copy-hash="${escAttr(a.script_sha256)}">Copy</button></div>` : ''}
       </div>
