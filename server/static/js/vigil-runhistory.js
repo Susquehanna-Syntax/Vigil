@@ -14,6 +14,21 @@ const _RUN_STATE_ACCENT = {
   failed: 'rose',
 };
 
+function _stepResultsHtml(resultData) {
+  const steps = (resultData && Array.isArray(resultData.steps)) ? resultData.steps : [];
+  const lines = steps
+    .filter((s) => s && s.result && Object.keys(s.result).length > 0)
+    .map((s) => {
+      const pairs = Object.entries(s.result)
+        .map(([k, v]) => `${escHtml(k)}=${escHtml(String(v))}`)
+        .join(' ');
+      return `<div class="run-step-result-line"><span class="mono">${escHtml(s.id || '')}</span>${pairs}</div>`;
+    })
+    .join('');
+  if (!lines) return '';
+  return `<div class="run-step-results">${lines}</div>`;
+}
+
 function _runWhen(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -67,6 +82,7 @@ async function _openRunDetail(runId) {
           <span class="run-task-host">${escHtml(t.hostname || t.host || '')}</span>
           <span class="run-state t-${_RUN_STATE_ACCENT[t.state] || 'lav'}">${escHtml(t.state)}</span>
           <pre class="run-task-out">${escHtml(t.result_output || '')}</pre>
+          ${_stepResultsHtml(t.result_data)}
         </div>`).join('')
     : '<p class="muted">No task rows for this run.</p>';
 

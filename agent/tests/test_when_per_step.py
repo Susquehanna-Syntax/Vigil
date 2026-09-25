@@ -63,7 +63,7 @@ def _run_script(steps, reports, commands):
     task = {"task_id": task_id, "action": "run_script"}
 
     def _capture(reports, name):
-        def rec(cfg, _task, output):
+        def rec(cfg, _task, output, steps=None):
             reports.append((name, output))
             raise _StopScriptTask()
 

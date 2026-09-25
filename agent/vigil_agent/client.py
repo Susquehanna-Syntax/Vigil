@@ -123,13 +123,17 @@ def _cap_output(output: str | None) -> str:
             f"dropped at the agent's {_MAX_OUTPUT:,}-character cap]")
 
 
-def report_result(config: AgentConfig, task_id: str, state: str, output: str) -> dict:
+def report_result(
+    config: AgentConfig, task_id: str, state: str, output: str, steps=None
+) -> dict:
     """Report task execution result to the server."""
     payload = {
         "task_id": task_id,
         "state": state,
         "output": _cap_output(output),
     }
+    if steps is not None:
+        payload["steps"] = steps
     url = f"{config.server_url}/api/v1/tasks/result/"
     resp = requests.post(url, json=payload, headers=_headers(config), timeout=_TIMEOUT)
     resp.raise_for_status()

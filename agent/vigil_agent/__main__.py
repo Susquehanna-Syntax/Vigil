@@ -200,6 +200,8 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
     runtime = TaskRuntime(runtime_payload, config)
     results = runtime.run()
 
+    steps = [{"id": r.name, "status": r.state, "result": dict(r.data)} for r in results]
+
     step_outputs = []
     any_error = False
     any_ran = False
@@ -217,16 +219,16 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
 
     if any_error:
         logger.warning("Script task %s failed", task_id)
-        _report_failed(config, task, output)
+        _report_failed(config, task, output, steps=steps)
     elif not any_ran:
         # Every step's when: predicate was false — the task ran
         # successfully in the sense that nothing went wrong; nothing
         # was applicable.
         logger.info("Script task %s skipped — no step matched when: predicates", task_id)
-        _report_skipped(config, task, output)
+        _report_skipped(config, task, output, steps=steps)
     else:
         logger.info("Script task %s completed (%d step(s) ran)", task_id, len(results))
-        _report_completed(config, task, output)
+        _report_completed(config, task, output, steps=steps)
 
 
 def _build_when_context(config, params: dict) -> dict:
@@ -275,9 +277,9 @@ def _build_when_context(config, params: dict) -> dict:
     }
 
 
-def _report_completed(config, task: dict, output: str) -> None:
+def _report_completed(config, task: dict, output: str, steps=None) -> None:
     try:
-        client.report_result(config, task["id"], "completed", output)
+        client.report_result(config, task["id"], "completed", output, steps=steps)
     except Exception:
         logger.exception("Failed to report task %s result", task.get("id"))
 
@@ -289,16 +291,16 @@ def _report_rejected(config, task: dict, reason: str) -> None:
         logger.exception("Failed to report task %s rejection", task.get("id"))
 
 
-def _report_failed(config, task: dict, error: str) -> None:
+def _report_failed(config, task: dict, error: str, steps=None) -> None:
     try:
-        client.report_result(config, task["id"], "failed", error)
+        client.report_result(config, task["id"], "failed", error, steps=steps)
     except Exception:
         logger.exception("Failed to report task %s failure", task.get("id"))
 
 
-def _report_skipped(config, task: dict, output: str) -> None:
+def _report_skipped(config, task: dict, output: str, steps=None) -> None:
     try:
-        client.report_result(config, task["id"], "skipped", output)
+        client.report_result(config, task["id"], "skipped", output, steps=steps)
     except Exception:
         logger.exception("Failed to report task %s skip", task.get("id"))
 
