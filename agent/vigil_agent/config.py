@@ -40,6 +40,9 @@ _NEVER_ALLOWLISTABLE = {
 }
 
 _ALL_ACTIONS = {
+    # NOTE: `allow-script` is a local admin CLI subcommand, deliberately NOT
+    # an action here — a signed task that could add hashes would let the
+    # server approve its own code (full_control again).
     # Service management
     "restart_service", "start_service", "stop_service", "reload_service",
     "enable_service", "disable_service", "check_service",
