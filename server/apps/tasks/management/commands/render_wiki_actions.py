@@ -75,6 +75,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "reprovision_cleanup",
     ]),
     ("tags", "Host tagging", ["add_tag", "remove_tag"]),
+    ("hunts", "Hunts", ["hunt_file"]),
     ("vuln", "Vulnerability scanning", [
         "request_nessus_scan", "request_network_scan", "run_trivy_scan",
         "trivy_db_update",
@@ -112,6 +113,10 @@ GROUP_NOTES: dict[str, str] = {
             "it signed.",
     "vuln": "These leave a marker rather than doing the scan inline. The "
             "server starts the scan when the result arrives.",
+    "hunts": "Read-only discovery: the walk runs in a low-priority thread "
+             "with hard result and timeout caps, and scans a targeted scope "
+             "by default — the whole disk only when you ask for it. Nothing "
+             "on the host changes.",
 }
 
 #: Example value per param name, used to build each action's sample YAML.
@@ -146,7 +151,10 @@ PARAM_EXAMPLES: dict[str, str] = {
     "job_id": '"${{ inputs.job_id }}"',
     "kernel_sha256": '"2a4c6e8d0b1f3a5c7e9d1b3f5a7c9e1d3b5f7a9c1e3d5b7f9a1c3e5d7b9f1a3c"',
     "kernel_url": "https://vigil.example.com/images/debian-13/vmlinuz",
+    "log_lines": "200",
+    "max_results": "50",
     "mode": '"0644"',
+    "modified_within_days": "7",
     "name": '"Patch Tuesday rollout"',
     "notify": "true",
     "notify_message": '"Rebooting in 60 seconds for scheduled patching."',
@@ -155,6 +163,7 @@ PARAM_EXAMPLES: dict[str, str] = {
     "owner": "root",
     "package_name": "nginx",
     "path": "/etc/nginx/conf.d/vigil.conf",
+    "paths": "/opt,/srv",
     "pattern": '"vigil-nightly-backup"',
     "platform": "linux",
     "policy": "deny",
@@ -244,6 +253,13 @@ PARAM_NOTES: dict[str, str] = {
     "timeout": "Seconds before the agent kills the command.",
     "user": "Account whose crontab is edited. Defaults to root.",
     "username": "Local account name.",
+    "hash": "Include each match's sha256 (always on when sha256 is given).",
+    "max_results": "Stop after this many matches (default 500, at most 5000).",
+    "max_size": "Only files at most this many bytes.",
+    "min_size": "Only files at least this many bytes.",
+    "modified_within_days": "Only files modified within this many days.",
+    "paths": "Comma-separated roots to walk instead of the scope.",
+    "sha256": "Only files with exactly this sha256 (64 hex characters).",
 }
 
 #: Per-action framing for the sample definition: the task name, and a sentence
@@ -292,12 +308,25 @@ EXAMPLE_TITLES: dict[str, tuple[str, str]] = {
                    "Tags are applied server-side from the definition it signed."),
     "run_trivy_scan": ("Scan the host filesystem with Trivy",
                        "Leaves a marker. The scan starts when the result arrives."),
+    "hunt_file": ("Hunt for a jar on disk",
+                  "Walks the targeted scope and lists every file whose name "
+                  "matches the glob — here, the Log4Shell-era core jar."),
 }
 
 
 #: What each declared output means (action -> field -> sentence). Every output
 #: an action declares must have a note here, or the render fails — an output a
 #: reader cannot understand is one nobody will branch on correctly.
+#: Notes for a param whose meaning differs by action (the same name means
+#: something else elsewhere: "name" is a playbook's name, "scope" a Trivy scope).
+ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
+    ("hunt_file", "name"): "Exact file name, or a glob (* ?) matched against the base name.",
+    ("hunt_file", "scope"): "targeted (default: install and home directories) or full (every filesystem root).",
+    ("hunt_file", "older_than_days"): "Only files last modified more than this many days ago.",
+    ("hunt_file", "timeout"): "Seconds before the hunt stops and returns what it found (default 120, at most 600).",
+}
+
+
 OUTPUT_NOTES: dict[str, dict[str, str]] = {
     "check_service": {
         "active": "True when systemd reports the unit active.",
@@ -358,6 +387,11 @@ OUTPUT_NOTES: dict[str, dict[str, str]] = {
     "request_network_scan": {"engine": "The scan engine requested, or auto when the server picks."},
     "run_trivy_scan": {"vulnerabilities": "Total findings across the report; -1 when the report could not be parsed."},
     "trivy_db_update": {"updated": "Always true once the database update finished."},
+    "hunt_file": {
+        "matched": "True when at least one file matched.",
+        "count": "How many matches were returned (the cap when truncated).",
+        "truncated": "True when the walk stopped early at max_results or the timeout, and more matches exist.",
+    },
     "update_package": {
         "package": "The package name as given.",
         "manager": "The package manager used.",
@@ -450,6 +484,23 @@ def example_yaml(action: str) -> str:
         # `execute_script` accepts exactly one of script_name or an inline
         # body; the example shows the allowlisted-file form.
         params = ["script_name"]
+    if action == "hunt_file":
+        # `hunt_file` takes no *required* params but refuses to run without
+        # a name or a sha256; the example shows the glob form. The param's
+        # example lives under its own key because "name" is the task's name.
+        lines = [
+            "name: Hunt for a known-bad jar",
+            "description: \"Hunt for files on disk, on the hosts you dispatch this to.\"",
+            "risk: low",
+            "actions:",
+            "  - id: hunt-file",
+            "    type: hunt_file",
+            "    params:",
+            '      name: "log4j-core-2.1*.jar"',
+            "      paths: /opt,/srv",
+            "      max_results: 50",
+        ]
+        return "\n".join(lines) + "\n"
     lines = [
         f"name: {title}",
         f"description: {entry['label']} on the hosts you dispatch this to.",
@@ -484,17 +535,20 @@ def _yaml_html(source: str) -> str:
     return "\n".join(out)
 
 
-def _params_table(entry: dict) -> str:
+def _params_table(entry: dict, action: str = "") -> str:
+    def note(param: str) -> str:
+        return ACTION_PARAM_NOTES.get((action, param), PARAM_NOTES.get(param, ""))
+
     rows = []
     for param in entry["required"]:
         rows.append(
             f'<tr><td><code>{param}</code></td><td><span class="param-req">'
-            f'required</span></td><td>{html.escape(PARAM_NOTES.get(param, ""))}'
+            f'required</span></td><td>{html.escape(note(param))}'
             f"</td></tr>")
     for param in entry["optional"]:
         rows.append(
             f'<tr><td><code>{param}</code></td><td><span class="param-opt">'
-            f'optional</span></td><td>{html.escape(PARAM_NOTES.get(param, ""))}'
+            f'optional</span></td><td>{html.escape(note(param))}'
             f"</td></tr>")
     if not rows:
         return '<p class="action-noparams">This action takes no params.</p>'
@@ -574,7 +628,7 @@ def render() -> str:
                 f'<div class="action-body">')
             if blurb:
                 parts.append(f'<p class="prose">{html.escape(blurb)}</p>')
-            parts.append(_params_table(entry))
+            parts.append(_params_table(entry, action))
             parts.append(_outputs_table(action))
             parts.append(
                 '<div class="code-block"><div class="code-label">YAML</div>'

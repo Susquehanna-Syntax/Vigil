@@ -499,6 +499,21 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "optional": [],
         "outputs": {"updated": "bool"},
     },
+    # ── Hunts (read-only) ────────────────────────────────────────────────────
+    #
+    # Hunt actions discover: they walk a scope and report what they find,
+    # changing nothing on the host. The walk runs in a low-priority thread
+    # with hard result/timeout caps, so even a full-disk hunt cannot
+    # starve the host or the task.
+    "hunt_file": {
+        "label": "Hunt: files on disk",
+        "risk": "low",
+        "required": [],
+        "optional": ["name", "paths", "scope", "sha256", "min_size", "max_size",
+                     "modified_within_days", "older_than_days", "hash",
+                     "max_results", "timeout"],
+        "outputs": {"matched": "bool", "count": "int", "truncated": "bool"},
+    },
 }
 
 

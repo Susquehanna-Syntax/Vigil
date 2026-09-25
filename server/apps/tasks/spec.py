@@ -804,6 +804,12 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
             _validate_tag_param(params.get("tags", ""), index + 1, action_type)
         elif action_type == "execute_script":
             _validate_script_params(params, index + 1)
+        elif action_type == "hunt_file" and not (
+                params.get("name") or params.get("sha256")):
+            raise SpecError(
+                f"action #{index + 1} (hunt_file): needs name or sha256 — "
+                "it cannot search without at least one of the two"
+            )
 
         allowed = set(spec["required"]) | set(spec["optional"])
         extra = set(params) - allowed
