@@ -143,7 +143,7 @@ PARAM_EXAMPLES: dict[str, str] = {
     "initrd_sha256": '"6f3c1e0d9a2b47c8e5d1f0a3b9c7e2d4a8f6b1c3e5d7a9f2b4c6e8d0a1f3b5c7"',
     "initrd_url": "https://vigil.example.com/images/debian-13/initrd.gz",
     "interface": "eth0",
-    "job_id": '"{{ inputs.job_id }}"',
+    "job_id": '"${{ inputs.job_id }}"',
     "kernel_sha256": '"2a4c6e8d0b1f3a5c7e9d1b3f5a7c9e1d3b5f7a9c1e3d5b7f9a1c3e5d7b9f1a3c"',
     "kernel_url": "https://vigil.example.com/images/debian-13/vmlinuz",
     "mode": '"0644"',
@@ -309,7 +309,7 @@ def _group_actions() -> list[tuple[str, str, list[str]]]:
     return GROUPS
 
 
-#: Params whose example value is a ``{{ inputs.x }}`` reference. The reference
+#: Params whose example value is a `${{ inputs.x }}` reference. The reference
 #: only validates if the input is also declared, so the example declares it.
 EXAMPLE_INPUTS: dict[str, list[str]] = {
     "job_id": [

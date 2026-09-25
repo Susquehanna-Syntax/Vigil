@@ -380,7 +380,7 @@ on_failure:
     attempts: 3         # 0 = no retry
     delay_seconds: 60
 
-# Optional: validate step output (supports {{ inputs.x }} variables)
+# Optional: validate step output (supports ${{ inputs.x }} variables)
 success_criteria:
   exit_code: 0
   output_contains: "active (running)"   # substring match
@@ -395,15 +395,15 @@ actions:
   - id: reload
     type: reload_service
     params:
-      service_name: "{{ inputs.service }}"
+      service_name: "${{ inputs.service }}"
     success_criteria:
       exit_code: 0
-      output_contains: "{{ inputs.service }} reloaded"
+      output_contains: "${{ inputs.service }} reloaded"
 
   - id: verify
     type: check_service
     params:
-      service_name: "{{ inputs.service }}"
+      service_name: "${{ inputs.service }}"
       expect: active
 
   # Optional per-step keys

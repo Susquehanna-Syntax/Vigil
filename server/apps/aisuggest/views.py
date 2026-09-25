@@ -28,8 +28,12 @@ infrastructure problem, propose 1-3 remediation tasks as Vigil task YAML.
 
 Rules:
 - Output ONLY fenced yaml blocks (```yaml ... ```), one per suggestion.
-- Each block: name, description, risk (low|standard|high), actions (list of
-  {type, params}).
+- Each block: name, description, risk (low|standard|high), optional inputs, and actions as a
+  list of `- id:` blocks, each with `type:` and a `params:` mapping on its own lines.
+- Refer to an input as ${{ inputs.<id> }}. Never write {{ inputs.<id> }}.
+- A script receives inputs as environment variables VIGIL_INPUT_<ID>
+  ($VIGIL_INPUT_APP in bash, $env:VIGIL_INPUT_APP in PowerShell); never paste
+  an input into a command line.
 - Prefer low-risk, reversible diagnostics before invasive fixes.
 - Never propose update_agent."""
 
