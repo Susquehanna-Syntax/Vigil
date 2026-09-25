@@ -366,7 +366,7 @@ class TaskRuntime:
                 name=name,
                 action=str(action),
                 state="ok",
-                output=str(output),
+                output=str(output or ""),
                 exit_code=0,
                 data=dict(getattr(output, "data", {}) or {}),
             )
