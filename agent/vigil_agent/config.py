@@ -79,7 +79,7 @@ _ALL_ACTIONS = {
     "request_nessus_scan", "request_network_scan",
     "run_trivy_scan", "trivy_db_update",
     # Hunts (read-only)
-    "hunt_file",
+    "hunt_file", "hunt_package",
     # Agent lifecycle — allowlisting this lets a managed-mode agent
     # accept signed self-update tasks (the binary digest rides inside
     # the Ed25519-signed payload).

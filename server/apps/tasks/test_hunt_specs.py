@@ -1,5 +1,5 @@
 """Server-side validation of hunt_file specs (M5 phase 02)."""
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from .spec import SpecError, parse_and_validate
 
@@ -40,3 +40,12 @@ class HuntFileSpecTests(TestCase):
         with self.assertRaises(SpecError) as ctx:
             parse_and_validate(_yaml('      name: "a.jar"\n      bogus: 1\n'))
         self.assertIn("bogus", str(ctx.exception))
+
+
+class HuntPackageSpecTests(SimpleTestCase):
+    def test_hunt_package_requires_name(self):
+        yaml_src = ("name: t\nrisk: low\nactions:\n  - id: p\n    type: hunt_package\n"
+                    "    params:\n      version_lt: \"3.0.13\"\n")
+        with self.assertRaises(SpecError) as ctx:
+            parse_and_validate(yaml_src)
+        self.assertTrue("name" in str(ctx.exception))

@@ -3264,6 +3264,20 @@
       <span class="hl-key">paths</span>: <span class="hl-string">/opt,/srv</span>
       <span class="hl-key">max_results</span>: <span class="hl-string">50</span></pre></div>
 </div></details>
+<details class="action" data-group="hunts" data-risk="low" data-keywords="hunt_package name version_lt version_lte version_gt version_gte version_eq manager max_results timeout"><summary><code class="action-name">hunt_package</code><span class="risk risk-low">low</span><span class="action-label">Hunt: installed packages</span><span class="action-required">name</span></summary><div class="action-body">
+<p class="prose">Lists installed packages named openssl older than 3.0.13, using the host&#x27;s own package version rules.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>name</code></td><td><span class="param-req">required</span></td><td>Package name, or a glob (* ?).</td></tr><tr><td><code>version_lt</code></td><td><span class="param-opt">optional</span></td><td>Only versions older than this, compared with the package system&#x27;s own version rules.</td></tr><tr><td><code>version_lte</code></td><td><span class="param-opt">optional</span></td><td>Only this version or older, compared with the package system&#x27;s own version rules.</td></tr><tr><td><code>version_gt</code></td><td><span class="param-opt">optional</span></td><td>Only versions newer than this, compared with the package system&#x27;s own version rules.</td></tr><tr><td><code>version_gte</code></td><td><span class="param-opt">optional</span></td><td>Only this version or newer, compared with the package system&#x27;s own version rules.</td></tr><tr><td><code>version_eq</code></td><td><span class="param-opt">optional</span></td><td>Only this exact version, compared with the package system&#x27;s own version rules.</td></tr><tr><td><code>manager</code></td><td><span class="param-opt">optional</span></td><td>Package manager to ask (dpkg, rpm, pacman, brew, snap). Detected when omitted.</td></tr><tr><td><code>max_results</code></td><td><span class="param-opt">optional</span></td><td>Stop after this many matches (default 500, at most 5000).</td></tr><tr><td><code>timeout</code></td><td><span class="param-opt">optional</span></td><td>Seconds before the hunt stops and returns what it found (default 120, at most 600).</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>matched</code></td><td>bool</td><td>True when at least one installed package matched.</td></tr><tr><td><code>count</code></td><td>int</td><td>How many packages matched (the cap when truncated).</td></tr><tr><td><code>truncated</code></td><td>bool</td><td>True when the listing stopped early at max_results or the timeout.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Find hosts with an old openssl</span>
+<span class="hl-key">description</span>: <span class="hl-string">&quot;Hunt for installed packages, on the hosts you dispatch this to.&quot;</span>
+<span class="hl-key">risk</span>: <span class="hl-string">low</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">hunt-package</span>
+    <span class="hl-key">type</span>: <span class="hl-string">hunt_package</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">name</span>: <span class="hl-string">openssl</span>
+      <span class="hl-key">version_lt</span>: <span class="hl-string">&quot;3.0.13&quot;</span></pre></div>
+</div></details>
 </div>
 <div class="action-group" data-group="vuln">
 <h4 class="action-group-title">Vulnerability scanning</h4>

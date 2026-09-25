@@ -75,7 +75,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "reprovision_cleanup",
     ]),
     ("tags", "Host tagging", ["add_tag", "remove_tag"]),
-    ("hunts", "Hunts", ["hunt_file"]),
+    ("hunts", "Hunts", ["hunt_file", "hunt_package"]),
     ("vuln", "Vulnerability scanning", [
         "request_nessus_scan", "request_network_scan", "run_trivy_scan",
         "trivy_db_update",
@@ -260,6 +260,12 @@ PARAM_NOTES: dict[str, str] = {
     "modified_within_days": "Only files modified within this many days.",
     "paths": "Comma-separated roots to walk instead of the scope.",
     "sha256": "Only files with exactly this sha256 (64 hex characters).",
+    "manager": "Package manager to ask (dpkg, rpm, pacman, brew, snap). Detected when omitted.",
+    "version_eq": "Only this exact version, compared with the package system's own version rules.",
+    "version_gt": "Only versions newer than this, compared with the package system's own version rules.",
+    "version_gte": "Only this version or newer, compared with the package system's own version rules.",
+    "version_lt": "Only versions older than this, compared with the package system's own version rules.",
+    "version_lte": "Only this version or older, compared with the package system's own version rules.",
 }
 
 #: Per-action framing for the sample definition: the task name, and a sentence
@@ -311,6 +317,9 @@ EXAMPLE_TITLES: dict[str, tuple[str, str]] = {
     "hunt_file": ("Hunt for a jar on disk",
                   "Walks the targeted scope and lists every file whose name "
                   "matches the glob — here, the Log4Shell-era core jar."),
+    "hunt_package": ("Find hosts with an old openssl",
+                     "Lists installed packages named openssl older than 3.0.13, "
+                     "using the host's own package version rules."),
 }
 
 
@@ -323,6 +332,8 @@ ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
     ("hunt_file", "name"): "Exact file name, or a glob (* ?) matched against the base name.",
     ("hunt_file", "scope"): "targeted (default: install and home directories) or full (every filesystem root).",
     ("hunt_file", "older_than_days"): "Only files last modified more than this many days ago.",
+    ("hunt_package", "name"): "Package name, or a glob (* ?).",
+    ("hunt_package", "timeout"): "Seconds before the hunt stops and returns what it found (default 120, at most 600).",
     ("hunt_file", "timeout"): "Seconds before the hunt stops and returns what it found (default 120, at most 600).",
 }
 
@@ -391,6 +402,11 @@ OUTPUT_NOTES: dict[str, dict[str, str]] = {
         "matched": "True when at least one file matched.",
         "count": "How many matches were returned (the cap when truncated).",
         "truncated": "True when the walk stopped early at max_results or the timeout, and more matches exist.",
+    },
+    "hunt_package": {
+        "matched": "True when at least one installed package matched.",
+        "count": "How many packages matched (the cap when truncated).",
+        "truncated": "True when the listing stopped early at max_results or the timeout.",
     },
     "update_package": {
         "package": "The package name as given.",
@@ -484,6 +500,19 @@ def example_yaml(action: str) -> str:
         # `execute_script` accepts exactly one of script_name or an inline
         # body; the example shows the allowlisted-file form.
         params = ["script_name"]
+    if action == "hunt_package":
+        # "name" here is the package, not the task, so the example is written out.
+        return "\n".join([
+            "name: Find hosts with an old openssl",
+            "description: \"Hunt for installed packages, on the hosts you dispatch this to.\"",
+            "risk: low",
+            "actions:",
+            "  - id: hunt-package",
+            "    type: hunt_package",
+            "    params:",
+            "      name: openssl",
+            '      version_lt: "3.0.13"',
+        ]) + "\n"
     if action == "hunt_file":
         # `hunt_file` takes no *required* params but refuses to run without
         # a name or a sha256; the example shows the glob form. The param's

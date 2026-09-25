@@ -19,3 +19,13 @@ def _hunt_file(params: dict, _config: AgentConfig) -> str:
     moves or deletes anything it finds.
     """
     return hunt.run_hunt(hunt.hunt_file, params)
+
+
+def _hunt_package(params: dict, _config: AgentConfig) -> str:
+    """Find installed packages by name/glob and version bounds.
+
+    Versions compare with the package system's own rules (see
+    ``vigil_agent.versions``). Read-only: one listing call, nothing installed
+    or removed.
+    """
+    return hunt.run_hunt(hunt.hunt_package, params)

@@ -50,6 +50,7 @@ class OutputDocsTests(SimpleTestCase):
 EXPECTED = {
     "check_service": {"active", "state"},
     "hunt_file": {"matched", "count", "truncated"},
+    "hunt_package": {"matched", "count", "truncated"},
     "update_container": {"updated", "old_image_id", "new_image_id"},
     "check_docker_updates": {"checked", "outdated"},
     "run_command": {"exit_code"},
