@@ -39,30 +39,47 @@ class HuntResult:
         self.deadline = time.monotonic() + timeout
         self.matches: list[dict] = []
         self.truncated = False
+        self.timed_out = False
         self.started = time.monotonic()
+        # Closed once run_hunt has taken the answer. A probe still running past
+        # its deadline must not keep appending while the result is serialised.
+        self._closed = False
+        self._lock = threading.Lock()
 
     def add(self, evidence_type: str, **fields) -> bool:
         """Record a match. Returns False (and truncates) once max_results is reached."""
-        if len(self.matches) >= self.max_results:
-            self.truncated = True
-            return False
         match = {"evidence_type": evidence_type}
         for key, value in fields.items():
             match[key] = value if isinstance(value, _JSON_SAFE) else str(value)
-        self.matches.append(match)
-        return True
+        with self._lock:
+            if self._closed:
+                return False
+            if len(self.matches) >= self.max_results:
+                self.truncated = True
+                return False
+            self.matches.append(match)
+            return True
 
     def check_deadline(self) -> None:
         """Raise HuntTimeout past the deadline; probes call this inside their loops."""
-        if time.monotonic() > self.deadline:
+        if self._closed or time.monotonic() > self.deadline:
             raise HuntTimeout()
 
+    def close(self) -> None:
+        """Stop accepting matches; later add() returns False, check_deadline() raises."""
+        with self._lock:
+            self._closed = True
+
     def to_dict(self) -> dict:
-        return {
-            "matches": self.matches,
-            "truncated": self.truncated,
-            "duration": round(time.monotonic() - self.started, 3),
-        }
+        with self._lock:
+            out = {
+                "matches": list(self.matches),
+                "truncated": self.truncated,
+                "duration": round(time.monotonic() - self.started, 3),
+            }
+            if self.timed_out:
+                out["timed_out"] = True
+            return out
 
 
 def limits_from(params: dict) -> tuple[int, int]:
@@ -91,6 +108,7 @@ def run_hunt(probe, params: dict):
             probe(result, params)
         except HuntTimeout:
             result.truncated = True
+            result.timed_out = True
         except BaseException as exc:  # noqa: BLE001 — surfaced as RuntimeError below
             error_box["error"] = exc
 
@@ -99,20 +117,20 @@ def run_hunt(probe, params: dict):
     thread.join(timeout + 5)
 
     if thread.is_alive():
+        # The probe ignored its deadline; keep what it found and stop it adding more.
         result.truncated = True
+        result.timed_out = True
+    result.close()
 
     probe_error = error_box.get("error")
     if probe_error is not None and probe_error.__class__ is not HuntTimeout:
         raise RuntimeError(f"hunt failed: {probe_error}") from probe_error
 
     result_dict = result.to_dict()
-    if result_dict["truncated"]:
-        result_dict["timed_out"] = True
-
-    count = len(result.matches)
+    count = len(result_dict["matches"])
     return ActionOutput(
         json.dumps(result_dict, sort_keys=True),
-        {"matched": count > 0, "count": count, "truncated": result.truncated},
+        {"matched": count > 0, "count": count, "truncated": result_dict["truncated"]},
     )
 
 
@@ -152,5 +170,5 @@ def _lower_thread_priority() -> None:
             kernel32.SetThreadPriority(current, THREAD_MODE_BACKGROUND_BEGIN)
         else:
             logger.debug("thread priority lowering not supported on %s", sys.platform)
-    except (OSError, RuntimeError, ValueError) as exc:
+    except Exception as exc:  # noqa: BLE001 — best effort by design (psutil.Error is not OSError)
         logger.debug("thread priority lowering skipped: %s", exc)
