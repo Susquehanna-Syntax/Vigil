@@ -54,6 +54,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "standard",
         "required": ["name"],
         "optional": [],
+        "outputs": {},  # expanded server-side, never executed by the agent
     },
     # ── Service management ──────────────────────────────────────────────────
     "restart_service": {
@@ -269,12 +270,14 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "low",
         "required": [],
         "optional": ["classifications", "include_kb", "exclude_kb", "severity_floor"],
+        "outputs": {"count": "int"},
     },
     "windows_update_install": {
         "label": "Install Windows updates",
         "risk": "standard",
         "required": [],
         "optional": ["classifications", "include_kb", "exclude_kb", "severity_floor"],
+        "outputs": {"installed_count": "int", "failed_count": "int", "reboot_required": "bool"},
     },
     # ── System ──────────────────────────────────────────────────────────────
     "clear_temp_files": {
@@ -409,6 +412,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "standard",
         "required": [],
         "optional": ["platform"],
+        "outputs": {"version": "str"},
     },
     # ── Reprovisioning (docs/reprovisioning.md) ────────────────────────────
     #
@@ -421,6 +425,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "low",
         "required": [],
         "optional": ["disk_target", "os_family"],
+        "outputs": {},  # a reprovision step's only useful fact is its status; the job record carries the rest
     },
     "reprovision_stage": {
         "label": "Stage OS installer",
@@ -428,12 +433,14 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": ["job_id", "kernel_url", "initrd_url",
                      "kernel_sha256", "initrd_sha256"],
         "optional": [],
+        "outputs": {},  # a reprovision step's only useful fact is its status; the job record carries the rest
     },
     "reprovision_commit": {
         "label": "Boot into OS installer (WIPES DISK)",
         "risk": "high",
         "required": ["job_id", "cmdline"],
         "optional": [],
+        "outputs": {},  # a reprovision step's only useful fact is its status; the job record carries the rest
     },
     # High in the registry even though it only deletes staged files: the
     # agent gates it on allow_reprovision, and the risk tier drives the
@@ -444,6 +451,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "high",
         "required": ["job_id"],
         "optional": [],
+        "outputs": {},  # a reprovision step's only useful fact is its status; the job record carries the rest
     },
     # ── Vulnerability scanning ─────────────────────────────────────────────
     # ── Host tagging ────────────────────────────────────────────────────────
@@ -467,12 +475,14 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "low",
         "required": ["tags"],
         "optional": [],
+        "outputs": {"tags": "str"},
     },
     "remove_tag": {
         "label": "Remove host tag",
         "risk": "low",
         "required": ["tags"],
         "optional": [],
+        "outputs": {"tags": "str"},
     },
     # The agent emits a "please scan me" marker; the server picks it up
     # on task completion and creates a VulnScan(requested). The actual
@@ -482,6 +492,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "low",
         "required": [],
         "optional": [],
+        "outputs": {"requested": "bool"},
     },
     # Engine-agnostic alias — uses whichever network scanner the server
     # picks based on operator preference (Nessus or Greenbone). When
@@ -493,6 +504,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "low",
         "required": [],
         "optional": ["engine"],  # "nessus" | "greenbone" | "" (server picks)
+        "outputs": {"engine": "str"},
     },
     # Trivy is agent-local — the agent runs `trivy fs --format json …`
     # and ships the JSON back in the task output. The server's task-
@@ -503,12 +515,14 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "low",
         "required": [],
         "optional": ["scope"],  # "fs" (default — scan root filesystem) | "rootfs" | "image:<name>"
+        "outputs": {"vulnerabilities": "int"},
     },
     "trivy_db_update": {
         "label": "Update Trivy vulnerability database",
         "risk": "low",
         "required": [],
         "optional": [],
+        "outputs": {"updated": "bool"},
     },
 }
 

@@ -83,6 +83,10 @@ EXPECTED = {
 
 
 class RegistryMatchesAgentTests(SimpleTestCase):
+    def test_every_action_declares_outputs(self):
+        missing = [name for name in ACTION_REGISTRY if "outputs" not in ACTION_REGISTRY[name]]
+        self.assertEqual(missing, [])
+
     def test_registry_matches_agent_outputs(self):
         for action, fields in EXPECTED.items():
             self.assertEqual(set(action_outputs(action)), fields, action)

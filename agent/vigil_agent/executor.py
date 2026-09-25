@@ -632,7 +632,8 @@ def _add_tag(params: dict, _config: AgentConfig) -> str:
     tags = _tag_names(params)
     if not tags:
         raise ValueError("add_tag needs at least one tag")
-    return f"Tag requested: {', '.join(tags)} — server will apply"
+    return ActionOutput(f"Tag requested: {', '.join(tags)} — server will apply",
+                        {"tags": ", ".join(tags)})
 
 
 def _remove_tag(params: dict, _config: AgentConfig) -> str:
@@ -640,7 +641,8 @@ def _remove_tag(params: dict, _config: AgentConfig) -> str:
     tags = _tag_names(params)
     if not tags:
         raise ValueError("remove_tag needs at least one tag")
-    return f"Tag removal requested: {', '.join(tags)} — server will apply"
+    return ActionOutput(f"Tag removal requested: {', '.join(tags)} — server will apply",
+                        {"tags": ", ".join(tags)})
 
 
 def _request_nessus_scan(_params: dict, _config: AgentConfig) -> str:
@@ -651,7 +653,8 @@ def _request_nessus_scan(_params: dict, _config: AgentConfig) -> str:
     this action and creates a ``VulnScan(state=REQUESTED)`` row, which
     the next ``sync_vulns`` cycle launches against Nessus.
     """
-    return "Nessus scan requested — central scanner will pick it up"
+    return ActionOutput("Nessus scan requested — central scanner will pick it up",
+                        {"requested": True})
 
 
 def _request_network_scan(params: dict, _config: AgentConfig) -> str:
@@ -663,7 +666,8 @@ def _request_network_scan(params: dict, _config: AgentConfig) -> str:
     ``params.engine`` (if set) or the host's preferred_scanners.
     """
     engine = (params.get("engine") or "auto").strip()
-    return f"Network scan requested (engine={engine}) — server will dispatch"
+    return ActionOutput(f"Network scan requested (engine={engine}) — server will dispatch",
+                        {"engine": engine})
 
 
 # Trivy actions ─────────────────────────────────────────────────────────────
@@ -887,7 +891,44 @@ def _run_trivy_scan(params: dict, _config: AgentConfig) -> str:
             raise ValueError(f"Invalid image name in trivy scope: {image_name!r}")
         cmd = ["trivy", "image", *common, image_name]
 
-    return _condense_trivy_report(_run(cmd, timeout=_TRIVY_SUBPROCESS_TIMEOUT))
+    text = _condense_trivy_report(_run(cmd, timeout=_TRIVY_SUBPROCESS_TIMEOUT))
+    return ActionOutput(text, {"vulnerabilities": _count_trivy_vulnerabilities(text)})
+
+
+def _count_trivy_vulnerabilities(text: str) -> int:
+    """Total length of every Vulnerabilities list in a Trivy report.
+
+    Uses the same raw_decode scan ``_condense_trivy_report`` uses to locate the
+    ``Results`` object, so surrounding stderr text and a compressed report both
+    behave the same way. Returns -1 when the text cannot be parsed as a report.
+    """
+    text = text or ""
+    marker = TRIVY_GZIP_MARKER
+    if marker in text:
+        body = text[text.index(marker) + len(marker):]
+        try:
+            text = gzip.decompress(base64.b64decode(body)).decode("utf-8")
+        except (ValueError, OSError, UnicodeDecodeError):
+            return -1
+    start = text.find("{")
+    if start == -1:
+        return -1
+
+    decoder = json.JSONDecoder()
+    while start != -1:
+        try:
+            data, _ = decoder.raw_decode(text, start)
+        except ValueError:
+            start = text.find("{", start + 1)
+            continue
+        if isinstance(data, dict) and "Results" in data:
+            total = 0
+            for result in data["Results"] or []:
+                if isinstance(result, dict):
+                    total += len(result.get("Vulnerabilities") or [])
+            return total
+        start = text.find("{", start + 1)
+    return -1
 
 
 def _trivy_db_update(_params: dict, _config: AgentConfig) -> str:
@@ -898,7 +939,8 @@ def _trivy_db_update(_params: dict, _config: AgentConfig) -> str:
     """
     if shutil.which("trivy") is None:
         raise RuntimeError("trivy binary not found in PATH")
-    return _run(["trivy", "--quiet", "image", "--download-db-only"], timeout=300)
+    text = _run(["trivy", "--quiet", "image", "--download-db-only"], timeout=300)
+    return ActionOutput(text, {"updated": True})
 
 
 def _remove_container(params: dict, _config: AgentConfig) -> str:
@@ -1542,11 +1584,11 @@ def _windows_update_scan(params: dict, _config: AgentConfig) -> str:
         exclude_kb=params.get("exclude_kb"),
         severity_floor=params.get("severity_floor"),
     )
-    return json.dumps({
+    return ActionOutput(json.dumps({
         "supported": True,
         "count": len(updates),
         "updates": updates,
-    })
+    }), {"count": len(updates)})
 
 
 def _windows_update_install(params: dict, _config: AgentConfig) -> str:
@@ -1571,17 +1613,21 @@ def _windows_update_install(params: dict, _config: AgentConfig) -> str:
     # Install() on an empty collection throws a COM error that reads like a
     # real failure, so an empty filter result is reported, not installed.
     if not updates:
-        return json.dumps({
+        return ActionOutput(json.dumps({
             "supported": True,
             "result_code": windows_update.RESULT_NOT_STARTED,
             "reboot_required": False,
             "installed": [],
             "failed": [],
             "detail": "no updates matched the filter; nothing installed",
-        })
+        }), {"installed_count": 0, "failed_count": 0, "reboot_required": False})
     result = backend.install([u["update_id"] for u in updates])
     result["supported"] = True
-    return json.dumps(result)
+    return ActionOutput(
+        json.dumps(result),
+        {"installed_count": len(result["installed"]),
+         "failed_count": len(result["failed"]),
+         "reboot_required": bool(result["reboot_required"])})
 
 
 # ── User management ────────────────────────────────────────────────────────
@@ -2017,7 +2063,8 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
     t = threading.Thread(target=_restart_after_delay, daemon=True)
     t.start()
 
-    return f"Agent updated to {new_version} ({platform}); restarting in 3 s"
+    return ActionOutput(f"Agent updated to {new_version} ({platform}); restarting in 3 s",
+                        {"version": new_version})
 
 
 # ═════════════════════════════════════════════════════════════════════════════
