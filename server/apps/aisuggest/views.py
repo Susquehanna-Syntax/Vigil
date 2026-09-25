@@ -31,6 +31,9 @@ Rules:
 - Each block: name, description, risk (low|standard|high), optional inputs, and actions as a
   list of `- id:` blocks, each with `type:` and a `params:` mapping on its own lines.
 - Refer to an input as ${{ inputs.<id> }}. Never write {{ inputs.<id> }}.
+- A later step may use an earlier step's declared outputs as
+  ${{ steps.<id>.result.<field> }}, or its status as ${{ steps.<id>.status }};
+  when: may test steps.<id>.result.<field>.
 - A script receives inputs as environment variables VIGIL_INPUT_<ID>
   ($VIGIL_INPUT_APP in bash, $env:VIGIL_INPUT_APP in PowerShell); never paste
   an input into a command line.

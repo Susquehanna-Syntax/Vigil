@@ -1330,6 +1330,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
             "risk": spec["risk"],
             "when": when_expr,
             "timeout": step_timeout,
+            "outputs": sorted(action_outputs(action_type)),
         })
         if action_type == "execute_script" and "script" in params:
             parsed_actions[-1]["script_sha256"] = script_hash(params["script"])
