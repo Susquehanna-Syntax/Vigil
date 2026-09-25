@@ -51,10 +51,10 @@ class InputMarkerTests(SimpleTestCase):
             parse_and_validate(_yaml("${{ inputs.nope }}"))
         self.assertIn("unknown input reference", str(ctx.exception))
 
-    def test_steps_marker_is_reserved(self):
+    def test_steps_marker_must_name_an_earlier_step(self):
         with self.assertRaises(SpecError) as ctx:
             parse_and_validate(_yaml("${{ steps.a.result.x }}"))
-        self.assertIn("not supported yet", str(ctx.exception))
+        self.assertIn("not an earlier step", str(ctx.exception))
 
     def test_bare_braces_are_not_inputs(self):
         yaml_src = (

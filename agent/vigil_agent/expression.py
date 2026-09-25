@@ -18,6 +18,8 @@ Constraints (intentional):
   * Dotted name access (``agent.os``) is allowed; bracket access
     (``agent["os"]``) is not — keeps the surface tiny and the syntax
     obvious.
+  * ``steps`` reads an earlier step: exactly ``steps.<id>.status`` or
+    ``steps.<id>.result.<field>`` (the one root allowed three levels deep).
 
 Both the server (for syntactic validation) and the agent (for runtime
 evaluation against actual context) import this module. They are kept
@@ -53,10 +55,10 @@ def _validate_node(node: ast.AST) -> None:
             f"names like agent.os / inputs.foo are permitted"
         )
     # Names must be one of the known top-level context buckets.
-    if isinstance(node, ast.Name) and node.id not in {"agent", "inputs", "host"}:
+    if isinstance(node, ast.Name) and node.id not in {"agent", "inputs", "host", "steps"}:
         raise ExprError(
             f"unknown context name {node.id!r}; "
-            f"valid roots are agent, inputs, host"
+            f"valid roots are agent, inputs, host, steps"
         )
     # Attribute access must be on an allowed root → a single attribute step.
     # `agent.os` is fine; `agent.os.upper` is not.
@@ -73,10 +75,11 @@ def _validate_node(node: ast.AST) -> None:
         while isinstance(cur, ast.Attribute):
             cur = cur.value
             depth += 1
-            if depth > 2:
-                raise ExprError("attribute chain too deep")
         if not isinstance(cur, ast.Name):
-            raise ExprError("attribute access must start at agent / inputs / host")
+            raise ExprError("attribute access must start at agent / inputs / host / steps")
+        # steps.<id>.result.<field> is the only three-level chain.
+        if depth > (3 if cur.id == "steps" else 2):
+            raise ExprError("attribute chain too deep")
     # Recurse — every subnode also needs to be allowed.
     for child in ast.iter_child_nodes(node):
         _validate_node(child)
@@ -126,6 +129,52 @@ def referenced_inputs(expr: str | ast.Expression) -> set[str]:
                 and isinstance(node.value, ast.Name)
                 and node.value.id == "inputs"):
             found.add(node.attr)
+    return found
+
+
+_STEPS_SHAPE_ERROR = (
+    "steps references must be steps.<id>.status or steps.<id>.result.<field>"
+)
+
+
+def referenced_steps(expr: str | ast.Expression) -> set[tuple[str, str | None]]:
+    """Every earlier-step reference the expression reads.
+
+    ``(id, None)`` for ``steps.<id>.status``, ``(id, field)`` for
+    ``steps.<id>.result.<field>``. Any other shape under ``steps`` raises
+    :class:`ExprError` — a bare ``steps.x`` would resolve to a dict at run
+    time and make every comparison quietly false.
+    """
+    tree = expr if isinstance(expr, ast.Expression) else parse(expr)
+    found: set[tuple[str, str | None]] = set()
+    # Only the outermost attribute of each chain is judged; inner links are
+    # skipped so ``steps.x.result.y`` is not also seen as ``steps.x.result``.
+    inner: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute):
+            inner.add(id(node.value))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Attribute) or id(node) in inner:
+            continue
+        parts: list[str] = []
+        cur: ast.AST = node
+        while isinstance(cur, ast.Attribute):
+            parts.append(cur.attr)
+            cur = cur.value
+        if not (isinstance(cur, ast.Name) and cur.id == "steps"):
+            continue
+        parts.reverse()
+        if len(parts) == 2 and parts[1] == "status":
+            found.add((parts[0], None))
+        elif len(parts) == 3 and parts[1] == "result":
+            found.add((parts[0], parts[2]))
+        else:
+            raise ExprError(_STEPS_SHAPE_ERROR)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id == "steps" and not any(
+            isinstance(p, ast.Attribute) and p.value is node for p in ast.walk(tree)
+        ):
+            raise ExprError(_STEPS_SHAPE_ERROR)
     return found
 
 
