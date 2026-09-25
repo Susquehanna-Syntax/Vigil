@@ -657,7 +657,9 @@ function renderEditorPreview(spec) {
       <div class="preview-step-num">${i + 1}</div>
       <div class="preview-step-body">
         <div class="preview-step-title">${escHtml(a.id)} — ${escHtml(a.label || a.type)}</div>
-        <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => `${escHtml(String(k))}=${escHtml(String(v))}`).join(' ') : ''}</div>
+        <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => k === 'script' ? `script=${String(v).split('\n').length} lines` : `${escHtml(String(k))}=${escHtml(String(v))}`).join(' ') : ''}</div>
+        ${a.script_sha256 ? `<div class="preview-step-hash"><span class="mono">${escHtml(a.script_sha256)}</span>
+          <button type="button" class="btn btn-xs" data-copy-hash="${escAttr(a.script_sha256)}">Copy</button></div>` : ''}
       </div>
     </div>`).join('');
   const inputs = spec.inputs || [];
@@ -684,6 +686,10 @@ function renderEditorPreview(spec) {
   const warningsHtml = warnings.length
     ? `<div class="editor-warnings">${warnings.map(w => `<div>${escHtml(w)}</div>`).join('')}</div>`
     : '';
+  const hasInlineScript = spec.actions.some(a => a.script_sha256);
+  const scriptNote = hasInlineScript
+    ? `<div class="preview-script-note">${escHtml('Managed hosts run an inline script only if its hash is approved on the host (vigil-agent allow-script). Editing the script changes the hash.')}</div>`
+    : '';
   el.innerHTML = `
     <div class="preview-heading">${escHtml(spec.name)}</div>
     <div class="preview-sub">${escHtml(spec.description || 'No description.')}</div>
@@ -697,7 +703,27 @@ function renderEditorPreview(spec) {
     </div>
     ${warningsHtml}
     ${inputsHtml}
-    <div class="preview-actions">${actionsHtml}</div>`;
+    <div class="preview-actions">${actionsHtml}</div>${scriptNote}`;
+  el.querySelectorAll('[data-copy-hash]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const hash = btn.dataset.copyHash;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(hash).then(() => {
+          showToast('Hash copied', 'success');
+        }).catch(() => {
+          showToast('Copy failed', 'error');
+        });
+      } else {
+        const span = btn.parentElement.querySelector('span');
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        const range = document.createRange();
+        range.selectNodeContents(span);
+        sel.addRange(range);
+        showToast('Press Ctrl+C to copy', 'info');
+      }
+    });
+  });
 }
 
 /* ── Community submission (GitHub PR) ────────────────────────────────── */

@@ -872,6 +872,9 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   margin-top: 1px;
 }
 .preview-step-body { flex: 1; min-width: 0; }
+.preview-step-hash { display:flex; gap:8px; align-items:center; margin-top:4px; font-size:11px; color: var(--text-3); word-break: break-all; }
+.preview-step-hash .mono { font-family: var(--font-mono); font-size: 11px; }
+.preview-script-note { margin-top:8px; font-size:11px; color: var(--text-3); }
 .preview-step-title {
   font-size: 13px;
   font-weight: 600;
