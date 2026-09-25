@@ -103,7 +103,9 @@ def parse(expr: str) -> ast.Expression:
     try:
         tree = ast.parse(expr, mode="eval")
     except SyntaxError as exc:
-        raise ExprError(f"invalid syntax: {exc.msg}") from exc
+        raise ExprError(
+            "invalid syntax" if exc.msg == "invalid syntax" else f"invalid syntax: {exc.msg}"
+        ) from exc
 
     _validate_node(tree)
     return tree

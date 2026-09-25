@@ -824,6 +824,8 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   white-space: pre-wrap;
 }
 .editor-error.show { display: block; }
+.preview-stale { opacity: 0.4; }
+.preview-stale::before { content: "Showing the last valid version — fix the error to update."; display: block; font-size: 12px; color: var(--text-3); margin-bottom: 8px; }
 
 .editor-warnings {
   margin-top: 12px;
@@ -1059,6 +1061,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .deploy-input-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
 .deploy-input-row { display: flex; flex-direction: column; gap: 5px; }
 .deploy-input-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.deploy-input-req { font-weight: 400; color: var(--text-3); }
 .deploy-input-desc  { font-size: 11px; color: var(--text-3); }
 .deploy-input-row .form-control { padding: 8px 11px; font-size: 13px; }
 .deploy-input-row.bool { flex-direction: row; align-items: center; gap: 10px; }
@@ -2380,7 +2383,14 @@ select.form-control:hover { border-color: var(--s4); }
   font-family: var(--mono, monospace); font-size: 12px;
   white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto;
 }
-.run-step-results { font-size: 12px; color: var(--text-2); margin-top: 6px; }
+.run-step-results { width: 100%; border-collapse: collapse; font-size: 12px; color: var(--text-2); margin-top: 8px; }
+.run-step-results th { text-align: left; font-weight: 600; color: var(--text-3); padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.run-step-results td { padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.run-step-kv { display: inline-block; margin-right: 12px; }
+.run-step-kv .k { color: var(--text-3); }
+.run-step-status.s-ok { color: var(--mint); }
+.run-step-status.s-skipped { color: var(--text-3); }
+.run-step-status.s-error { color: var(--rose); }
 
 /* Per-site role grants (Settings → Users & Roles → Sites) */
 .us-warning {

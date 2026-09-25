@@ -15,18 +15,20 @@ const _RUN_STATE_ACCENT = {
 };
 
 function _stepResultsHtml(resultData) {
+  // One row per step: id, status, and its reported outputs. Everything here is
+  // agent-reported, so every value goes through escHtml.
   const steps = (resultData && Array.isArray(resultData.steps)) ? resultData.steps : [];
-  const lines = steps
-    .filter((s) => s && s.result && Object.keys(s.result).length > 0)
-    .map((s) => {
-      const pairs = Object.entries(s.result)
-        .map(([k, v]) => `${escHtml(k)}=${escHtml(String(v))}`)
-        .join(' ');
-      return `<div class="run-step-result-line"><span class="mono">${escHtml(s.id || '')}</span>${pairs}</div>`;
-    })
-    .join('');
-  if (!lines) return '';
-  return `<div class="run-step-results">${lines}</div>`;
+  if (!steps.length) return '';
+  const rows = steps.map((s) => {
+    const pairs = Object.entries((s && s.result) || {})
+      .map(([k, v]) => `<span class="run-step-kv"><span class="k">${escHtml(k)}</span> ${escHtml(String(v))}</span>`)
+      .join('');
+    const status = escHtml((s && s.status) || '');
+    return `<tr><td class="mono">${escHtml((s && s.id) || '')}</td>`
+      + `<td><span class="run-step-status s-${status}">${status}</span></td>`
+      + `<td>${pairs || '<span class="muted">—</span>'}</td></tr>`;
+  }).join('');
+  return `<table class="run-step-results"><thead><tr><th>Step</th><th>Status</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function _runWhen(iso) {
@@ -79,7 +81,7 @@ async function _openRunDetail(runId) {
   const rows = tasks.length
     ? tasks.map((t) => `
         <div class="run-task">
-          <span class="run-task-host">${escHtml(t.hostname || t.host || '')}</span>
+          <span class="run-task-host">${escHtml(t.host_hostname || t.hostname || t.host || '')}</span>
           <span class="run-state t-${_RUN_STATE_ACCENT[t.state] || 'lav'}">${escHtml(t.state)}</span>
           <pre class="run-task-out">${escHtml(t.result_output || '')}</pre>
           ${_stepResultsHtml(t.result_data)}
