@@ -3278,6 +3278,51 @@
       <span class="hl-key">name</span>: <span class="hl-string">openssl</span>
       <span class="hl-key">version_lt</span>: <span class="hl-string">&quot;3.0.13&quot;</span></pre></div>
 </div></details>
+<details class="action" data-group="hunts" data-risk="low" data-keywords="hunt_process name cmdline user max_results timeout"><summary><code class="action-name">hunt_process</code><span class="risk risk-low">low</span><span class="action-label">Hunt: running processes</span><span class="action-required">none</span></summary><div class="action-body">
+<p class="prose">Lists running processes named java, with pid, command line and user.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>name</code></td><td><span class="param-opt">optional</span></td><td>Process name to match as a glob, e.g. &quot;java&quot; or &quot;sshd*&quot;.</td></tr><tr><td><code>cmdline</code></td><td><span class="param-opt">optional</span></td><td>Case-insensitive substring of the joined command line.</td></tr><tr><td><code>user</code></td><td><span class="param-opt">optional</span></td><td>Exact username the process runs as.</td></tr><tr><td><code>max_results</code></td><td><span class="param-opt">optional</span></td><td>Stop after this many matches (default 500, at most 5000).</td></tr><tr><td><code>timeout</code></td><td><span class="param-opt">optional</span></td><td>Seconds before the process walk stops early (default 120, at most 600).</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>matched</code></td><td>bool</td><td>True when at least one running process matched.</td></tr><tr><td><code>count</code></td><td>int</td><td>How many processes matched (the cap when truncated).</td></tr><tr><td><code>truncated</code></td><td>bool</td><td>True when the process walk stopped early at max_results or the timeout.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Find hosts running java</span>
+<span class="hl-key">description</span>: <span class="hl-string">&quot;Hunt for running processes, on the hosts you dispatch this to.&quot;</span>
+<span class="hl-key">risk</span>: <span class="hl-string">low</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">hunt-process</span>
+    <span class="hl-key">type</span>: <span class="hl-string">hunt_process</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">name</span>: <span class="hl-string">&quot;java&quot;</span>
+      <span class="hl-key">max_results</span>: <span class="hl-string">50</span></pre></div>
+</div></details>
+<details class="action" data-group="hunts" data-risk="low" data-keywords="hunt_port port protocol process max_results timeout"><summary><code class="action-name">hunt_port</code><span class="risk risk-low">low</span><span class="action-label">Hunt: listening ports</span><span class="action-required">none</span></summary><div class="action-body">
+<p class="prose">Lists local TCP/UDP socket bindings on port 8443, with the owning process.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>port</code></td><td><span class="param-opt">optional</span></td><td>Port number, or a low-high range.</td></tr><tr><td><code>protocol</code></td><td><span class="param-opt">optional</span></td><td>tcp or udp; omitted means both.</td></tr><tr><td><code>process</code></td><td><span class="param-opt">optional</span></td><td>Glob on the owning process name.</td></tr><tr><td><code>max_results</code></td><td><span class="param-opt">optional</span></td><td>Stop after this many matches (default 500, at most 5000).</td></tr><tr><td><code>timeout</code></td><td><span class="param-opt">optional</span></td><td>Seconds before the socket walk stops early (default 120, at most 600).</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>matched</code></td><td>bool</td><td>True when at least one local socket binding matched.</td></tr><tr><td><code>count</code></td><td>int</td><td>How many bindings matched (the cap when truncated).</td></tr><tr><td><code>truncated</code></td><td>bool</td><td>True when the socket walk stopped early at max_results or the timeout.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Find hosts listening on 8443</span>
+<span class="hl-key">description</span>: <span class="hl-string">&quot;Hunt for local socket bindings, on the hosts you dispatch this to.&quot;</span>
+<span class="hl-key">risk</span>: <span class="hl-string">low</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">hunt-port</span>
+    <span class="hl-key">type</span>: <span class="hl-string">hunt_port</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">port</span>: <span class="hl-string">8443</span>
+      <span class="hl-key">protocol</span>: <span class="hl-string">tcp</span>
+      <span class="hl-key">max_results</span>: <span class="hl-string">50</span></pre></div>
+</div></details>
+<details class="action" data-group="hunts" data-risk="low" data-keywords="hunt_service name state start_mode max_results timeout"><summary><code class="action-name">hunt_service</code><span class="risk risk-low">low</span><span class="action-label">Hunt: services</span><span class="action-required">name</span></summary><div class="action-body">
+<p class="prose">Lists services named ssh that are enabled but currently stopped.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>name</code></td><td><span class="param-req">required</span></td><td>Service name to match as a glob (the .service suffix is not required).</td></tr><tr><td><code>state</code></td><td><span class="param-opt">optional</span></td><td>running or stopped (hunt_service).</td></tr><tr><td><code>start_mode</code></td><td><span class="param-opt">optional</span></td><td>enabled or disabled (hunt_service).</td></tr><tr><td><code>max_results</code></td><td><span class="param-opt">optional</span></td><td>Stop after this many matches (default 500, at most 5000).</td></tr><tr><td><code>timeout</code></td><td><span class="param-opt">optional</span></td><td>Seconds before the service walk stops early (default 120, at most 600).</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>matched</code></td><td>bool</td><td>True when at least one service matched.</td></tr><tr><td><code>count</code></td><td>int</td><td>How many services matched (the cap when truncated).</td></tr><tr><td><code>truncated</code></td><td>bool</td><td>True when the service walk stopped early at max_results or the timeout.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Find hosts with ssh enabled but stopped</span>
+<span class="hl-key">description</span>: <span class="hl-string">&quot;Hunt for services, on the hosts you dispatch this to.&quot;</span>
+<span class="hl-key">risk</span>: <span class="hl-string">low</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">hunt-service</span>
+    <span class="hl-key">type</span>: <span class="hl-string">hunt_service</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">name</span>: <span class="hl-string">ssh</span>
+      <span class="hl-key">state</span>: <span class="hl-string">stopped</span>
+      <span class="hl-key">start_mode</span>: <span class="hl-string">enabled</span>
+      <span class="hl-key">max_results</span>: <span class="hl-string">50</span></pre></div>
+</div></details>
 </div>
 <div class="action-group" data-group="vuln">
 <h4 class="action-group-title">Vulnerability scanning</h4>

@@ -29,3 +29,27 @@ def _hunt_package(params: dict, _config: AgentConfig) -> str:
     or removed.
     """
     return hunt.run_hunt(hunt.hunt_package, params)
+
+
+def _hunt_process(params: dict, _config: AgentConfig) -> str:
+    """List running processes matching a name glob, cmdline substring or user.
+
+    Read-only: a single process table walk, nothing started or killed.
+    """
+    return hunt.run_hunt(hunt.hunt_process, params)
+
+
+def _hunt_port(params: dict, _config: AgentConfig) -> str:
+    """List local socket bindings matching a port (or range), protocol and process.
+
+    Read-only: one snapshot of the socket table.
+    """
+    return hunt.run_hunt(hunt.hunt_port, params)
+
+
+def _hunt_service(params: dict, _config: AgentConfig) -> str:
+    """List services matching a name glob and optional state / start mode.
+
+    Read-only: systemctl or the SCM listing, nothing started or stopped.
+    """
+    return hunt.run_hunt(hunt.hunt_service, params)

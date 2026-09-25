@@ -17,11 +17,14 @@ import logging
 import os
 import re
 import shutil
+import socket
 import stat
 import subprocess
 import sys
 import threading
 import time
+
+import psutil
 
 from . import versions
 
@@ -378,4 +381,177 @@ def hunt_package(result: HuntResult, params: dict) -> None:
             continue
         if not result.add("package", name=pkg_name, version=version,
                           manager=manager):
+            return
+
+
+# ── hunt_process / hunt_port / hunt_service ──────────────────────────────────
+
+_CMDLINE_CUT = 500
+
+
+def hunt_process(result: HuntResult, params: dict) -> None:
+    """List running processes matching a name glob, cmdline substring or user."""
+    name = str(params.get("name") or "")
+    cmdline = str(params.get("cmdline") or "")
+    user = str(params.get("user") or "")
+    if not (name or cmdline or user):
+        raise ValueError("hunt_process needs name, cmdline or user")
+    cmdline_lower = cmdline.lower()
+    for proc in psutil.process_iter(["pid", "name", "cmdline", "username",
+                                     "create_time"]):
+        result.check_deadline()
+        try:
+            info = proc.info
+            if name and not fnmatch.fnmatch(info.get("name") or "", name):
+                continue
+            joined = " ".join(info.get("cmdline") or [])
+            if cmdline and cmdline_lower not in joined.lower():
+                continue
+            if user and info.get("username") != user:
+                continue
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+        started = ""
+        if info.get("create_time"):
+            started = datetime.datetime.fromtimestamp(
+                info["create_time"], tz=datetime.timezone.utc
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        if not result.add("process",
+                          pid=info.get("pid"),
+                          name=info.get("name"),
+                          cmdline=joined[:_CMDLINE_CUT],
+                          user=info.get("username"),
+                          started=started):
+            return
+
+
+def hunt_port(result: HuntResult, params: dict) -> None:
+    """List local socket bindings matching a port (or range), protocol and process."""
+    process = str(params.get("process") or "")
+    if not process and params.get("port") in (None, ""):
+        raise ValueError("hunt_port needs port or process")
+
+    want_protocol = str(params.get("protocol") or "").lower()
+    if want_protocol not in ("", "tcp", "udp"):
+        raise ValueError("protocol must be tcp or udp")
+
+    port = params.get("port")
+    if port not in (None, ""):
+        text = str(port).strip()
+        if "-" in text:
+            low_s, _, high_s = text.partition("-")
+            low, high = int(low_s), int(high_s)
+        else:
+            low = high = int(text)
+        if not (0 <= low <= 65535 and 0 <= high <= 65535) or low > high:
+            raise ValueError(f"port out of range: {port!r}")
+    else:
+        low, high = 0, 65535
+
+    pids = {c.pid for c in psutil.net_connections(kind="inet") if c.pid is not None}
+    names: dict = {}
+    for pid in pids:
+        try:
+            names[pid] = psutil.Process(pid).name()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            names[pid] = None
+
+    seen: set[tuple] = set()
+    for conn in psutil.net_connections(kind="inet"):
+        result.check_deadline()
+        proto = "udp" if conn.type == socket.SOCK_DGRAM else "tcp"
+        if want_protocol and proto != want_protocol:
+            continue
+        if proto == "tcp" and conn.status != psutil.CONN_LISTEN:
+            continue
+        if conn.laddr.port < low or conn.laddr.port > high:
+            continue
+        name = names.get(conn.pid)
+        if process and (name is None or not fnmatch.fnmatch(name, process)):
+            continue
+        key = (conn.laddr.port, proto, conn.laddr.ip, conn.pid)
+        if key in seen:
+            continue
+        seen.add(key)
+        if not result.add("port", port=conn.laddr.port, protocol=proto,
+                          address=conn.laddr.ip, pid=conn.pid, process=name):
+            return
+
+
+def _systemd_services() -> list[dict]:
+    """systemctl state and unit-file state for every service on this host."""
+    units = subprocess.run(
+        ["systemctl", "list-units", "--type=service", "--all", "--no-legend",
+         "--plain"], capture_output=True, text=True, check=False)
+    files = subprocess.run(
+        ["systemctl", "list-unit-files", "--type=service", "--no-legend"],
+        capture_output=True, text=True, check=False)
+    if units.returncode != 0:
+        raise RuntimeError(f"systemctl list-units failed: "
+                           f"{(units.stderr or '').strip()[:200]}")
+    if files.returncode != 0:
+        raise RuntimeError(f"systemctl list-unit-files failed: "
+                           f"{(files.stderr or '').strip()[:200]}")
+    state: dict[str, dict] = {}
+    for line in units.stdout.splitlines():
+        cols = line.split()
+        if len(cols) >= 4:
+            state[cols[0]] = {"state": "running" if cols[3] == "running" else "stopped"}
+    for line in files.stdout.splitlines():
+        cols = line.split()
+        if len(cols) >= 2:
+            entry = state.setdefault(cols[0], {"state": "stopped"})
+            entry["unit_state"] = cols[1]
+    return [{"unit": unit, **state[unit]} for unit in state]
+
+
+def _linux_start_mode(unit_state: str | None) -> str | None:
+    if not unit_state:
+        return None
+    if unit_state.startswith("enabled"):
+        return "enabled"
+    if unit_state == "disabled":
+        return "disabled"
+    return None  # static, masked, indirect, … match only when start_mode is omitted
+
+
+def hunt_service(result: HuntResult, params: dict) -> None:
+    """List services matching a name glob and optional state / start mode."""
+    name = params.get("name")
+    if name is None or not str(name).strip():
+        raise ValueError("hunt_service needs name")
+
+    want_state = str(params.get("state") or "")
+    if want_state not in ("", "running", "stopped"):
+        raise ValueError("state must be running or stopped")
+    want_mode = str(params.get("start_mode") or "")
+    if want_mode not in ("", "enabled", "disabled"):
+        raise ValueError("start_mode must be enabled or disabled")
+
+    if sys.platform == "win32":
+        services = [
+            {"name": s.name,
+             "state": "running" if s.status == psutil.STATUS_RUNNING else "stopped",
+             "start_mode": {"automatic": "enabled", "disabled": "disabled"}.get(
+                 s.start_type)}
+            for s in psutil.win_service_iter()
+        ]
+    else:
+        services = [
+            {"name": entry["unit"].removesuffix(".service"),
+             "state": entry["state"],
+             "start_mode": _linux_start_mode(entry.get("unit_state"))}
+            for entry in _systemd_services()
+        ]
+
+    for svc in services:
+        result.check_deadline()
+        if not fnmatch.fnmatch(svc["name"], str(name)):
+            continue
+        if want_state and svc["state"] != want_state:
+            continue
+        if want_mode and svc["start_mode"] != want_mode:
+            continue
+        if not result.add("service", name=svc["name"], state=svc["state"],
+                          start_mode=svc["start_mode"]):
             return

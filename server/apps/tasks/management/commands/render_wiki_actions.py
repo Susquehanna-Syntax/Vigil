@@ -75,7 +75,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "reprovision_cleanup",
     ]),
     ("tags", "Host tagging", ["add_tag", "remove_tag"]),
-    ("hunts", "Hunts", ["hunt_file", "hunt_package"]),
+    ("hunts", "Hunts", ["hunt_file", "hunt_package", "hunt_process", "hunt_port", "hunt_service"]),
     ("vuln", "Vulnerability scanning", [
         "request_nessus_scan", "request_network_scan", "run_trivy_scan",
         "trivy_db_update",
@@ -266,6 +266,9 @@ PARAM_NOTES: dict[str, str] = {
     "version_gte": "Only this version or newer, compared with the package system's own version rules.",
     "version_lt": "Only versions older than this, compared with the package system's own version rules.",
     "version_lte": "Only this version or older, compared with the package system's own version rules.",
+    "process": "Glob on the owning process name (hunt_port).",
+    "state": "running or stopped (hunt_service).",
+    "start_mode": "enabled or disabled (hunt_service).",
 }
 
 #: Per-action framing for the sample definition: the task name, and a sentence
@@ -320,6 +323,12 @@ EXAMPLE_TITLES: dict[str, tuple[str, str]] = {
     "hunt_package": ("Find hosts with an old openssl",
                      "Lists installed packages named openssl older than 3.0.13, "
                      "using the host's own package version rules."),
+    "hunt_process": ("Find hosts running java",
+                     "Lists running processes named java, with pid, command line and user."),
+    "hunt_port": ("Find hosts listening on 8443",
+                  "Lists local TCP/UDP socket bindings on port 8443, with the owning process."),
+    "hunt_service": ("Find hosts with ssh enabled but stopped",
+                     "Lists services named ssh that are enabled but currently stopped."),
 }
 
 
@@ -335,6 +344,19 @@ ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
     ("hunt_package", "name"): "Package name, or a glob (* ?).",
     ("hunt_package", "timeout"): "Seconds before the hunt stops and returns what it found (default 120, at most 600).",
     ("hunt_file", "timeout"): "Seconds before the hunt stops and returns what it found (default 120, at most 600).",
+
+    ("hunt_process", "name"): "Process name to match as a glob, e.g. \"java\" or \"sshd*\".",
+    ("hunt_process", "cmdline"): "Case-insensitive substring of the joined command line.",
+    ("hunt_process", "user"): "Exact username the process runs as.",
+    ("hunt_process", "timeout"): "Seconds before the process walk stops early (default 120, at most 600).",
+
+    ("hunt_port", "port"): "Port number, or a low-high range.",
+    ("hunt_port", "protocol"): "tcp or udp; omitted means both.",
+    ("hunt_port", "process"): "Glob on the owning process name.",
+    ("hunt_port", "timeout"): "Seconds before the socket walk stops early (default 120, at most 600).",
+
+    ("hunt_service", "name"): "Service name to match as a glob (the .service suffix is not required).",
+    ("hunt_service", "timeout"): "Seconds before the service walk stops early (default 120, at most 600).",
 }
 
 
@@ -407,6 +429,21 @@ OUTPUT_NOTES: dict[str, dict[str, str]] = {
         "matched": "True when at least one installed package matched.",
         "count": "How many packages matched (the cap when truncated).",
         "truncated": "True when the listing stopped early at max_results or the timeout.",
+    },
+    "hunt_process": {
+        "matched": "True when at least one running process matched.",
+        "count": "How many processes matched (the cap when truncated).",
+        "truncated": "True when the process walk stopped early at max_results or the timeout.",
+    },
+    "hunt_port": {
+        "matched": "True when at least one local socket binding matched.",
+        "count": "How many bindings matched (the cap when truncated).",
+        "truncated": "True when the socket walk stopped early at max_results or the timeout.",
+    },
+    "hunt_service": {
+        "matched": "True when at least one service matched.",
+        "count": "How many services matched (the cap when truncated).",
+        "truncated": "True when the service walk stopped early at max_results or the timeout.",
     },
     "update_package": {
         "package": "The package name as given.",
@@ -530,6 +567,50 @@ def example_yaml(action: str) -> str:
             "      max_results: 50",
         ]
         return "\n".join(lines) + "\n"
+    if action == "hunt_process":
+        # `hunt_process` takes no *required* params but refuses to run without
+        # a name, a cmdline or a user; the example shows the name-glob form.
+        return "\n".join([
+            "name: Find hosts running java",
+            "description: \"Hunt for running processes, on the hosts you dispatch this to.\"",
+            "risk: low",
+            "actions:",
+            "  - id: hunt-process",
+            "    type: hunt_process",
+            "    params:",
+            '      name: "java"',
+            "      max_results: 50",
+        ]) + "\n"
+    if action == "hunt_port":
+        # `hunt_port` takes no *required* params but refuses to run without
+        # a port or a process; the example shows the port form.
+        return "\n".join([
+            "name: Find hosts listening on 8443",
+            "description: \"Hunt for local socket bindings, on the hosts you dispatch this to.\"",
+            "risk: low",
+            "actions:",
+            "  - id: hunt-port",
+            "    type: hunt_port",
+            "    params:",
+            "      port: 8443",
+            "      protocol: tcp",
+            "      max_results: 50",
+        ]) + "\n"
+    if action == "hunt_service":
+        # `name` here is the service, not the task, so the example is written out.
+        return "\n".join([
+            "name: Find hosts with ssh enabled but stopped",
+            "description: \"Hunt for services, on the hosts you dispatch this to.\"",
+            "risk: low",
+            "actions:",
+            "  - id: hunt-service",
+            "    type: hunt_service",
+            "    params:",
+            "      name: ssh",
+            "      state: stopped",
+            "      start_mode: enabled",
+            "      max_results: 50",
+        ]) + "\n"
     lines = [
         f"name: {title}",
         f"description: {entry['label']} on the hosts you dispatch this to.",

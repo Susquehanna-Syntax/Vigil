@@ -49,3 +49,45 @@ class HuntPackageSpecTests(SimpleTestCase):
         with self.assertRaises(SpecError) as ctx:
             parse_and_validate(yaml_src)
         self.assertTrue("name" in str(ctx.exception))
+
+
+class HuntProcessSpecTests(SimpleTestCase):
+    def test_hunt_process_needs_a_filter(self):
+        yaml_src = ("name: t\nrisk: low\nactions:\n  - id: h\n    type: hunt_process\n"
+                    "    params:\n      max_results: 10\n")
+        with self.assertRaises(SpecError) as ctx:
+            parse_and_validate(yaml_src)
+        self.assertIn("name, cmdline or user", str(ctx.exception))
+
+    def test_hunt_process_with_name_validates(self):
+        yaml_src = ("name: t\nrisk: low\nactions:\n  - id: h\n    type: hunt_process\n"
+                    "    params:\n      name: \"java\"\n")
+        spec = parse_and_validate(yaml_src)
+        self.assertEqual(spec["actions"][0]["outputs"],
+                         ["count", "matched", "truncated"])
+
+
+class HuntPortSpecTests(SimpleTestCase):
+    def test_hunt_port_needs_port_or_process(self):
+        yaml_src = ("name: t\nrisk: low\nactions:\n  - id: h\n    type: hunt_port\n"
+                    "    params:\n      protocol: tcp\n")
+        with self.assertRaises(SpecError) as ctx:
+            parse_and_validate(yaml_src)
+        self.assertIn("port", str(ctx.exception))
+        self.assertIn("process", str(ctx.exception))
+
+    def test_hunt_port_with_port_validates(self):
+        yaml_src = ("name: t\nrisk: low\nactions:\n  - id: h\n    type: hunt_port\n"
+                    "    params:\n      port: 8443\n")
+        spec = parse_and_validate(yaml_src)
+        self.assertEqual(spec["actions"][0]["outputs"],
+                         ["count", "matched", "truncated"])
+
+
+class HuntServiceSpecTests(SimpleTestCase):
+    def test_hunt_service_requires_name(self):
+        yaml_src = ("name: t\nrisk: low\nactions:\n  - id: h\n    type: hunt_service\n"
+                    "    params:\n      state: stopped\n")
+        with self.assertRaises(SpecError) as ctx:
+            parse_and_validate(yaml_src)
+        self.assertIn("name", str(ctx.exception))
