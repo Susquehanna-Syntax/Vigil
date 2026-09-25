@@ -9,6 +9,7 @@ import argparse
 import logging
 import os
 import signal
+import sys
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -369,6 +370,14 @@ _cli_config_path: Path | None = None
 
 def main() -> None:
     global _cli_config_path
+
+    # `allow-script` is a local admin command, not a task action — it must
+    # never reach the executor. Dispatch before the agent parser so its flags
+    # (which include its own -c) are handled by it.
+    if len(sys.argv) > 1 and sys.argv[1] == "allow-script":
+        from .allowscript import main as _allowscript_main
+
+        sys.exit(_allowscript_main(sys.argv[2:], _cli_config_path))
 
     parser = argparse.ArgumentParser(description="Vigil monitoring agent")
     parser.add_argument("-c", "--config", type=Path, help="Path to agent.yml")
