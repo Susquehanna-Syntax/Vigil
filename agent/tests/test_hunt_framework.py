@@ -122,3 +122,30 @@ class HuntResultShapeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HuntReviewFixTests(unittest.TestCase):
+    """Architect review of phase 01: separate timed_out, close after the answer, never raise on priority."""
+
+    def test_max_results_is_not_a_timeout(self):
+        def probe(result, params):
+            for i in range(10):
+                result.add("x", i=i)
+        out = json.loads(hunt.run_hunt(probe, {"max_results": 3}))
+        self.assertTrue(out["truncated"])
+        self.assertNotIn("timed_out", out)
+
+    def test_closed_result_accepts_nothing(self):
+        r = hunt.HuntResult(10, 60)
+        self.assertTrue(r.add("x"))
+        r.close()
+        self.assertFalse(r.add("x"))
+        with self.assertRaises(hunt.HuntTimeout):
+            r.check_deadline()
+        self.assertEqual(len(r.to_dict()["matches"]), 1)
+
+    def test_priority_errors_never_escape(self):
+        class Boom(Exception):
+            pass
+        with patch.object(hunt.os, "setpriority", side_effect=Boom("denied")):
+            hunt._lower_thread_priority()  # must not raise
