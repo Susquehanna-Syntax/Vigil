@@ -1175,9 +1175,11 @@ def _clear_temp_files(params: dict, _config: AgentConfig) -> str:
         removed += 1
         freed += size
 
-    return (f"Removed {removed} file(s) older than {days} day(s) from "
-            f"{temp_root}, freeing {freed // 1024} KiB"
-            + (f"; {skipped} in use or not permitted" if skipped else ""))
+    return ActionOutput(
+        (f"Removed {removed} file(s) older than {days} day(s) from "
+         f"{temp_root}, freeing {freed // 1024} KiB"
+         + (f"; {skipped} in use or not permitted" if skipped else "")),
+        {"removed": removed, "skipped": skipped})
 
 
 def _input_env(inputs: dict | None) -> dict[str, str]:
@@ -1380,7 +1382,8 @@ def _reboot(params: dict, config: AgentConfig) -> str:
         _notify_user(message)
     output = _run(argv)
     deferral.clear()
-    return output
+    return ActionOutput(
+        output, {"delay_seconds": delay, "deferral_active": bool(deferral_active)})
 
 
 def _run_command(params: dict, config: AgentConfig) -> str:
@@ -1404,7 +1407,8 @@ def _set_hostname(params: dict, _config: AgentConfig) -> str:
     hostname = params.get("hostname", "")
     if not _SAFE_HOSTNAME.match(hostname):
         raise ValueError(f"Invalid hostname: {hostname!r}")
-    return _run(["hostnamectl", "set-hostname", hostname])
+    return ActionOutput(
+        _run(["hostnamectl", "set-hostname", hostname]), {"hostname": hostname})
 
 
 # ── Networking ──────────────────────────────────────────────────────────────
@@ -1427,7 +1431,9 @@ def _add_firewall_rule(params: dict, _config: AgentConfig) -> str:
     if backend is None:
         raise RuntimeError(
             "No supported firewall tool found (ufw, firewall-cmd, or Windows)")
-    return backend.add_rule(port, protocol, action, source, interface)
+    return ActionOutput(
+        backend.add_rule(port, protocol, action, source, interface),
+        {"port": str(port), "protocol": str(protocol), "action": str(action)})
 
 
 def _remove_firewall_rule(params: dict, _config: AgentConfig) -> str:
@@ -1454,8 +1460,10 @@ def _remove_firewall_rule(params: dict, _config: AgentConfig) -> str:
     if backend is None:
         raise RuntimeError(
             "No supported firewall tool found (ufw, firewall-cmd, or Windows)")
-    return backend.remove_rule(port, protocol, action, source,
-                               name=name, rule_id=rule_id)
+    return ActionOutput(
+        backend.remove_rule(port, protocol, action, source,
+                            name=name, rule_id=rule_id),
+        {"port": str(port), "protocol": str(protocol), "action": str(action)})
 
 
 def _set_firewall_policy(params: dict, _config: AgentConfig) -> str:
@@ -1470,21 +1478,23 @@ def _set_firewall_policy(params: dict, _config: AgentConfig) -> str:
     backend = firewall.detect()
     if backend is None:
         raise RuntimeError("No supported firewall tool found")
-    return backend.set_policy(direction, policy)
+    return ActionOutput(
+        backend.set_policy(direction, policy),
+        {"direction": direction, "policy": policy})
 
 
 def _enable_firewall(_params: dict, _config: AgentConfig) -> str:
     backend = firewall.detect()
     if backend is None:
         raise RuntimeError("No supported firewall tool found")
-    return backend.set_enabled(True)
+    return ActionOutput(backend.set_enabled(True), {"enabled": True})
 
 
 def _disable_firewall(_params: dict, _config: AgentConfig) -> str:
     backend = firewall.detect()
     if backend is None:
         raise RuntimeError("No supported firewall tool found")
-    return backend.set_enabled(False)
+    return ActionOutput(backend.set_enabled(False), {"enabled": False})
 
 
 def _list_firewall_rules(_params: dict, _config: AgentConfig) -> str:
@@ -1496,14 +1506,21 @@ def _list_firewall_rules(_params: dict, _config: AgentConfig) -> str:
     """
     backend = firewall.detect()
     if backend is None:
-        return json.dumps({
+        snapshot = {
             "tool": None, "supported": False, "enabled": False,
             "defaults": {"incoming": "unknown", "outgoing": "unknown"},
             "rules": [], "unparsed": [],
-        })
+        }
+        return ActionOutput(
+            json.dumps(snapshot),
+            {"supported": False, "enabled": False, "rule_count": 0})
     snapshot = backend.snapshot()
     snapshot["supported"] = True
-    return json.dumps(snapshot)
+    return ActionOutput(
+        json.dumps(snapshot),
+        {"supported": bool(snapshot.get("supported", True)),
+         "enabled": bool(snapshot.get("enabled", False)),
+         "rule_count": len(snapshot.get("rules", []))})
 
 
 # ── Windows Update ────────────────────────────────────────────────────────
@@ -1594,7 +1611,7 @@ def _create_user(params: dict, _config: AgentConfig) -> str:
         cmd.extend(["-s", str(shell_path)])
 
     cmd.append(username)
-    return _run(cmd)
+    return ActionOutput(_run(cmd), {"username": username})
 
 
 def _delete_user(params: dict, _config: AgentConfig) -> str:
@@ -1605,7 +1622,7 @@ def _delete_user(params: dict, _config: AgentConfig) -> str:
     if params.get("remove_home", False):
         cmd.append("--remove")
     cmd.append(username)
-    return _run(cmd)
+    return ActionOutput(_run(cmd), {"username": username})
 
 
 def _add_user_to_group(params: dict, _config: AgentConfig) -> str:
@@ -1615,7 +1632,9 @@ def _add_user_to_group(params: dict, _config: AgentConfig) -> str:
         raise ValueError(f"Invalid username: {username!r}")
     if not _SAFE_GROUP.match(group):
         raise ValueError(f"Invalid group name: {group!r}")
-    return _run(["usermod", "-aG", group, username])
+    return ActionOutput(
+        _run(["usermod", "-aG", group, username]),
+        {"username": username, "group": group})
 
 
 # ── Cron management ─────────────────────────────────────────────────────────
@@ -1660,7 +1679,8 @@ def _create_cron_job(params: dict, _config: AgentConfig) -> str:
     if proc.returncode != 0:
         raise RuntimeError(f"Failed to set crontab: {proc.stderr.strip()}")
 
-    return f"Added cron job for user {user}: {cron_line}"
+    return ActionOutput(
+        f"Added cron job for user {user}: {cron_line}", {"user": user})
 
 
 def _delete_cron_job(params: dict, _config: AgentConfig) -> str:
@@ -1678,14 +1698,16 @@ def _delete_cron_job(params: dict, _config: AgentConfig) -> str:
         env=clean_env(),
     )
     if result.returncode != 0:
-        return f"No crontab for user {user}"
+        return ActionOutput(f"No crontab for user {user}",
+                            {"user": user, "removed": 0})
 
     lines = result.stdout.splitlines()
     filtered = [line for line in lines if pattern not in line]
     removed = len(lines) - len(filtered)
 
     if removed == 0:
-        return f"No cron entries matched pattern {pattern!r}"
+        return ActionOutput(f"No cron entries matched pattern {pattern!r}",
+                            {"user": user, "removed": 0})
 
     new_crontab = "\n".join(filtered) + "\n"
     proc = subprocess.run(
@@ -1699,7 +1721,9 @@ def _delete_cron_job(params: dict, _config: AgentConfig) -> str:
             f"Failed to update crontab: {proc.stderr.strip()}"
         )
 
-    return f"Removed {removed} cron entry/entries matching {pattern!r}"
+    return ActionOutput(
+        f"Removed {removed} cron entry/entries matching {pattern!r}",
+        {"user": user, "removed": removed})
 
 
 # ── Self-update ─────────────────────────────────────────────────────────────
