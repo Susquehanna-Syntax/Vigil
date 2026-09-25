@@ -9,9 +9,14 @@ read-only, bounded (max_results + timeout) and run at low CPU/I/O priority.
 
 from __future__ import annotations
 
+import datetime
+import fnmatch
+import hashlib
 import json
 import logging
 import os
+import re
+import stat
 import sys
 import threading
 import time
@@ -172,3 +177,100 @@ def _lower_thread_priority() -> None:
             logger.debug("thread priority lowering not supported on %s", sys.platform)
     except Exception as exc:  # noqa: BLE001 — best effort by design (psutil.Error is not OSError)
         logger.debug("thread priority lowering skipped: %s", exc)
+
+
+# ── hunt_file ────────────────────────────────────────────────────────────────
+
+_POSIX_SKIP = ("/proc", "/sys", "/dev", "/run")
+_HASH_CHUNK = 1024 * 1024
+_SHA256_HEX = re.compile(r"^[0-9a-fA-F]{64}$")
+
+
+def _full_scopes() -> list[str]:
+    """Every root for scope: full — "/" on POSIX, each existing drive on Windows."""
+    if sys.platform == "win32":
+        import string
+        return [f"{d}:\\" for d in string.ascii_uppercase if os.path.isdir(f"{d}:\\")]
+    return ["/"]
+
+
+def _file_sha256(path: str, result: HuntResult) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(_HASH_CHUNK), b""):
+            digest.update(chunk)
+            result.check_deadline()
+    return digest.hexdigest()
+
+
+def hunt_file(result: HuntResult, params: dict) -> None:
+    """Find files by name/glob and optional sha256, size and age. Read-only.
+
+    Scope: ``paths`` (comma-separated roots) when given; otherwise ``scope:
+    targeted`` (the default — install and home directories) or ``scope: full``
+    (every filesystem root). Symlinks are never followed or reported, and
+    /proc, /sys, /dev and /run are never entered. Hashing — the expensive part
+    — only happens for files that already passed the name/size/age filters.
+    """
+    name = str(params.get("name") or "")
+    want_sha = str(params.get("sha256") or "").lower()
+    if not name and not want_sha:
+        raise ValueError("hunt_file needs name or sha256")
+    if want_sha and not _SHA256_HEX.match(want_sha):
+        raise ValueError(f"sha256 must be 64 hex characters, got {want_sha!r}")
+    include_hash = bool(params.get("hash")) or bool(want_sha)
+    min_size = int(params["min_size"]) if params.get("min_size") not in (None, "") else None
+    max_size = int(params["max_size"]) if params.get("max_size") not in (None, "") else None
+    now = time.time()
+    newer_than = (now - float(params["modified_within_days"]) * 86400
+                  if params.get("modified_within_days") not in (None, "") else None)
+    older_than = (now - float(params["older_than_days"]) * 86400
+                  if params.get("older_than_days") not in (None, "") else None)
+    scope = str(params.get("scope") or "targeted").lower()
+    if scope not in ("targeted", "full"):
+        raise ValueError("scope must be targeted or full")
+
+    if params.get("paths"):
+        roots = [p.strip() for p in str(params["paths"]).split(",") if p.strip()]
+    else:
+        roots = _full_scopes() if scope == "full" else default_scopes()
+    windows = sys.platform == "win32"
+    pattern = name.lower() if windows else name
+
+    for root in roots:
+        for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+            result.check_deadline()
+            if not windows:
+                dirnames[:] = [d for d in dirnames
+                               if os.path.join(dirpath, d) not in _POSIX_SKIP]
+            for fname in filenames:
+                if name and not fnmatch.fnmatchcase(fname.lower() if windows else fname, pattern):
+                    continue
+                path = os.path.join(dirpath, fname)
+                try:
+                    st = os.lstat(path)
+                except OSError:
+                    continue
+                if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode):
+                    continue
+                if min_size is not None and st.st_size < min_size:
+                    continue
+                if max_size is not None and st.st_size > max_size:
+                    continue
+                if newer_than is not None and st.st_mtime < newer_than:
+                    continue
+                if older_than is not None and st.st_mtime > older_than:
+                    continue
+                sha = None
+                if include_hash:
+                    try:
+                        sha = _file_sha256(path, result)
+                    except OSError:
+                        continue
+                    if want_sha and sha != want_sha:
+                        continue
+                modified = datetime.datetime.fromtimestamp(
+                    st.st_mtime, tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                if not result.add("file", path=path, size=st.st_size,
+                                  modified=modified, sha256=sha):
+                    return

@@ -49,6 +49,7 @@ class OutputDocsTests(SimpleTestCase):
 #: reference the agent never fills, or rejects one it does.
 EXPECTED = {
     "check_service": {"active", "state"},
+    "hunt_file": {"matched", "count", "truncated"},
     "update_container": {"updated", "old_image_id", "new_image_id"},
     "check_docker_updates": {"checked", "outdated"},
     "run_command": {"exit_code"},

@@ -2512,6 +2512,7 @@
     <option value="agent">Agent lifecycle</option>
     <option value="reprovision">Reprovisioning</option>
     <option value="tags">Host tagging</option>
+    <option value="hunts">Hunts</option>
     <option value="vuln">Vulnerability scanning</option>
   </select>
   <select id="action-risk" class="action-select" aria-label="Filter by risk">
@@ -3243,6 +3244,25 @@
     <span class="hl-key">type</span>: <span class="hl-string">remove_tag</span>
     <span class="hl-key">params</span>:
       <span class="hl-key">tags</span>: <span class="hl-string">&quot;role:web, env:prod&quot;</span></pre></div>
+</div></details>
+</div>
+<div class="action-group" data-group="hunts">
+<h4 class="action-group-title">Hunts</h4>
+<p class="action-group-note">Read-only discovery: the walk runs in a low-priority thread with hard result and timeout caps, and scans a targeted scope by default — the whole disk only when you ask for it. Nothing on the host changes.</p>
+<details class="action" data-group="hunts" data-risk="low" data-keywords="hunt_file name paths scope sha256 min_size max_size modified_within_days older_than_days hash max_results timeout"><summary><code class="action-name">hunt_file</code><span class="risk risk-low">low</span><span class="action-label">Hunt: files on disk</span><span class="action-required">none</span></summary><div class="action-body">
+<p class="prose">Walks the targeted scope and lists every file whose name matches the glob — here, the Log4Shell-era core jar.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>name</code></td><td><span class="param-opt">optional</span></td><td>Exact file name, or a glob (* ?) matched against the base name.</td></tr><tr><td><code>paths</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated roots to walk instead of the scope.</td></tr><tr><td><code>scope</code></td><td><span class="param-opt">optional</span></td><td>targeted (default: install and home directories) or full (every filesystem root).</td></tr><tr><td><code>sha256</code></td><td><span class="param-opt">optional</span></td><td>Only files with exactly this sha256 (64 hex characters).</td></tr><tr><td><code>min_size</code></td><td><span class="param-opt">optional</span></td><td>Only files at least this many bytes.</td></tr><tr><td><code>max_size</code></td><td><span class="param-opt">optional</span></td><td>Only files at most this many bytes.</td></tr><tr><td><code>modified_within_days</code></td><td><span class="param-opt">optional</span></td><td>Only files modified within this many days.</td></tr><tr><td><code>older_than_days</code></td><td><span class="param-opt">optional</span></td><td>Only files last modified more than this many days ago.</td></tr><tr><td><code>hash</code></td><td><span class="param-opt">optional</span></td><td>Include each match&#x27;s sha256 (always on when sha256 is given).</td></tr><tr><td><code>max_results</code></td><td><span class="param-opt">optional</span></td><td>Stop after this many matches (default 500, at most 5000).</td></tr><tr><td><code>timeout</code></td><td><span class="param-opt">optional</span></td><td>Seconds before the hunt stops and returns what it found (default 120, at most 600).</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>matched</code></td><td>bool</td><td>True when at least one file matched.</td></tr><tr><td><code>count</code></td><td>int</td><td>How many matches were returned (the cap when truncated).</td></tr><tr><td><code>truncated</code></td><td>bool</td><td>True when the walk stopped early at max_results or the timeout, and more matches exist.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Hunt for a known-bad jar</span>
+<span class="hl-key">description</span>: <span class="hl-string">&quot;Hunt for files on disk, on the hosts you dispatch this to.&quot;</span>
+<span class="hl-key">risk</span>: <span class="hl-string">low</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">hunt-file</span>
+    <span class="hl-key">type</span>: <span class="hl-string">hunt_file</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">name</span>: <span class="hl-string">&quot;log4j-core-2.1*.jar&quot;</span>
+      <span class="hl-key">paths</span>: <span class="hl-string">/opt,/srv</span>
+      <span class="hl-key">max_results</span>: <span class="hl-string">50</span></pre></div>
 </div></details>
 </div>
 <div class="action-group" data-group="vuln">
