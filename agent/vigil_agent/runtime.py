@@ -80,6 +80,7 @@ class StepResult:
     output: str = ""
     exit_code: int = 0
     error: str = ""
+    data: dict = field(default_factory=dict)
 
     def to_context(self) -> dict[str, Any]:
         """Return a dict suitable for use as ``ctx["prev"]`` or a named store."""
@@ -276,6 +277,7 @@ class TaskRuntime:
         # Seed the execution context with template variables
         ctx: dict[str, Any] = dict(variables)
         ctx["inputs"] = dict(variables)
+        ctx["steps"] = {}
         ctx["prev"] = StepResult(
             name="__init__", action="__init__", state="ok"
         ).to_context()
@@ -311,6 +313,15 @@ class TaskRuntime:
 
             # Update ``prev`` shortcut
             ctx["prev"] = result.to_context()
+
+            # Record named steps for ``${{ steps.<id>.result.* }}`` resolution
+            if result.name:
+                steps_map = ctx.get("steps", {})
+                steps_map[result.name] = {
+                    "status": result.state,
+                    "result": dict(result.data),
+                }
+                ctx["steps"] = steps_map
 
             # Store named output if requested
             store_as = step.get("store_output")
@@ -355,8 +366,9 @@ class TaskRuntime:
                 name=name,
                 action=str(action),
                 state="ok",
-                output=output or "",
+                output=str(output),
                 exit_code=0,
+                data=dict(getattr(output, "data", {}) or {}),
             )
         except Exception as exc:
             logger.error("step[action] %r failed: %s", action, exc)
