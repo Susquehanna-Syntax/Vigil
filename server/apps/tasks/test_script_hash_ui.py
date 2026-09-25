@@ -35,7 +35,7 @@ class HashRowTests(SimpleTestCase):
             "the Copy button lost its data-copy-hash attribute",
         )
         self.assertTrue(
-            "k === 'script' ? `script=${String(v).split('\\n').length} lines`"
+            "k === 'script' ? `script=${String(v).replace(/\\n+$/, '').split('\\n').length} lines`"
             in self.src,
             "the script param is no longer rendered as 'script=<N lines>' — the body would leak into the step line",
         )
