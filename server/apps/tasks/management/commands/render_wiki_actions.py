@@ -25,7 +25,7 @@ from pathlib import Path
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.tasks.spec import ACTION_REGISTRY
+from apps.tasks.spec import ACTION_REGISTRY, action_outputs
 
 BEGIN = "<!-- BEGIN GENERATED: built-in actions (manage.py render_wiki_actions) -->"
 END = "<!-- END GENERATED: built-in actions -->"
@@ -254,7 +254,7 @@ EXAMPLE_TITLES: dict[str, tuple[str, str]] = {
     "restart_service": ("Restart nginx and confirm it came back",
                         "Restart the service, then check it is active again."),
     "check_service": ("Check that nginx is running",
-                      "Read-only. Fails the step if the service is not active."),
+                      "Read-only. Reports whether the service is active; fails the step only when expect is set and the service is not in that state."),
     "recreate_container": ("Update Nextcloud to a new image",
                            "Pull the image, then recreate the container on it."),
     "write_file": ("Deploy a config file",
@@ -295,6 +295,42 @@ EXAMPLE_TITLES: dict[str, tuple[str, str]] = {
 }
 
 
+#: What each declared output means (action -> field -> sentence). Every output
+#: an action declares must have a note here, or the render fails — an output a
+#: reader cannot understand is one nobody will branch on correctly.
+OUTPUT_NOTES: dict[str, dict[str, str]] = {
+    "check_service": {
+        "active": "True when systemd reports the unit active.",
+        "state": "The raw systemctl is-active word (active, inactive, failed, …).",
+    },
+    "update_container": {
+        "updated": "True when the container now runs a different image than before.",
+        "old_image_id": "Image id the container ran before the update.",
+        "new_image_id": "Image id the container runs now.",
+    },
+    "check_docker_updates": {
+        "checked": "How many Docker Hub-tagged containers were checked.",
+        "outdated": "How many of them have a newer image available.",
+    },
+    "run_command": {
+        "exit_code": "The command's exit code (0 — a non-zero exit fails the step).",
+    },
+    "execute_script": {
+        "exit_code": "The script's exit code (0 — a non-zero exit fails the step).",
+    },
+}
+
+
+def _check_output_notes() -> None:
+    missing = [f"{action}.{field}" for action in ACTION_REGISTRY
+               for field in action_outputs(action)
+               if field not in OUTPUT_NOTES.get(action, {})]
+    if missing:
+        raise CommandError(
+            "declared outputs with no entry in OUTPUT_NOTES: "
+            + ", ".join(sorted(missing)))
+
+
 def _group_actions() -> list[tuple[str, str, list[str]]]:
     """GROUPS, checked against the registry.
 
@@ -314,6 +350,7 @@ def _group_actions() -> list[tuple[str, str, list[str]]]:
     unknown = sorted(set(placed) - set(ACTION_REGISTRY))
     if unknown:
         raise CommandError(f"grouped but not in ACTION_REGISTRY: {unknown}")
+    _check_output_notes()
     return GROUPS
 
 
@@ -399,6 +436,26 @@ def _params_table(entry: dict) -> str:
         f"<tbody>{''.join(rows)}</tbody></table></div>")
 
 
+def _outputs_table(action: str) -> str:
+    """What a later step can read from this one: status always, plus outputs."""
+    outputs = action_outputs(action)
+    rows = [
+        '<tr><td><code>status</code></td><td>str</td>'
+        "<td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr>"]
+    for field, kind in outputs.items():
+        rows.append(
+            f"<tr><td><code>{html.escape(field)}</code></td><td>{html.escape(kind)}</td>"
+            f"<td>{html.escape(OUTPUT_NOTES[action][field])}</td></tr>")
+    table = (
+        '<div class="table-wrap"><table class="param-table">'
+        "<thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table></div>")
+    if outputs:
+        table += ('<p class="prose">Read one later as '
+                  "<code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>")
+    return table
+
+
 def render() -> str:
     parts = [BEGIN]
     parts.append(
@@ -450,6 +507,7 @@ def render() -> str:
             if blurb:
                 parts.append(f'<p class="prose">{html.escape(blurb)}</p>')
             parts.append(_params_table(entry))
+            parts.append(_outputs_table(action))
             parts.append(
                 '<div class="code-block"><div class="code-label">YAML</div>'
                 '<button class="copy-btn" type="button">Copy</button>'

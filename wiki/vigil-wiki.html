@@ -2528,6 +2528,7 @@
 <details class="action" data-group="composition" data-risk="standard" data-keywords="playbook name"><summary><code class="action-name">playbook</code><span class="risk risk-std">standard</span><span class="action-label">Run playbook</span><span class="action-required">name</span></summary><div class="action-body">
 <p class="prose">Expand a playbook by name and run every step in it.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>name</code></td><td><span class="param-req">required</span></td><td>Name of the playbook to expand.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Run the patching playbook</span>
 <span class="hl-key">description</span>: <span class="hl-string">Run playbook on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2544,6 +2545,7 @@
 <details class="action" data-group="service" data-risk="standard" data-keywords="restart_service service_name"><summary><code class="action-name">restart_service</code><span class="risk risk-std">standard</span><span class="action-label">Restart service</span><span class="action-required">service_name</span></summary><div class="action-body">
 <p class="prose">Restart the service, then check it is active again.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>service_name</code></td><td><span class="param-req">required</span></td><td>Service name as the host&#x27;s init system knows it.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Restart nginx and confirm it came back</span>
 <span class="hl-key">description</span>: <span class="hl-string">Restart service on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2555,6 +2557,7 @@
 </div></details>
 <details class="action" data-group="service" data-risk="standard" data-keywords="start_service service_name"><summary><code class="action-name">start_service</code><span class="risk risk-std">standard</span><span class="action-label">Start service</span><span class="action-required">service_name</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>service_name</code></td><td><span class="param-req">required</span></td><td>Service name as the host&#x27;s init system knows it.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Start service</span>
 <span class="hl-key">description</span>: <span class="hl-string">Start service on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2566,6 +2569,7 @@
 </div></details>
 <details class="action" data-group="service" data-risk="standard" data-keywords="stop_service service_name"><summary><code class="action-name">stop_service</code><span class="risk risk-std">standard</span><span class="action-label">Stop service</span><span class="action-required">service_name</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>service_name</code></td><td><span class="param-req">required</span></td><td>Service name as the host&#x27;s init system knows it.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Stop service</span>
 <span class="hl-key">description</span>: <span class="hl-string">Stop service on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2577,6 +2581,7 @@
 </div></details>
 <details class="action" data-group="service" data-risk="standard" data-keywords="reload_service service_name"><summary><code class="action-name">reload_service</code><span class="risk risk-std">standard</span><span class="action-label">Reload service</span><span class="action-required">service_name</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>service_name</code></td><td><span class="param-req">required</span></td><td>Service name as the host&#x27;s init system knows it.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Reload service</span>
 <span class="hl-key">description</span>: <span class="hl-string">Reload service on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2588,6 +2593,7 @@
 </div></details>
 <details class="action" data-group="service" data-risk="low" data-keywords="enable_service service_name"><summary><code class="action-name">enable_service</code><span class="risk risk-low">low</span><span class="action-label">Enable service</span><span class="action-required">service_name</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>service_name</code></td><td><span class="param-req">required</span></td><td>Service name as the host&#x27;s init system knows it.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Enable service</span>
 <span class="hl-key">description</span>: <span class="hl-string">Enable service on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
@@ -2599,6 +2605,7 @@
 </div></details>
 <details class="action" data-group="service" data-risk="standard" data-keywords="disable_service service_name"><summary><code class="action-name">disable_service</code><span class="risk risk-std">standard</span><span class="action-label">Disable service</span><span class="action-required">service_name</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>service_name</code></td><td><span class="param-req">required</span></td><td>Service name as the host&#x27;s init system knows it.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Disable service</span>
 <span class="hl-key">description</span>: <span class="hl-string">Disable service on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2609,8 +2616,9 @@
       <span class="hl-key">service_name</span>: <span class="hl-string">nginx</span></pre></div>
 </div></details>
 <details class="action" data-group="service" data-risk="low" data-keywords="check_service service_name expect"><summary><code class="action-name">check_service</code><span class="risk risk-low">low</span><span class="action-label">Check service status</span><span class="action-required">service_name</span></summary><div class="action-body">
-<p class="prose">Read-only. Fails the step if the service is not active.</p>
+<p class="prose">Read-only. Reports whether the service is active; fails the step only when expect is set and the service is not in that state.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>service_name</code></td><td><span class="param-req">required</span></td><td>Service name as the host&#x27;s init system knows it.</td></tr><tr><td><code>expect</code></td><td><span class="param-opt">optional</span></td><td>State to check for. The step fails if the service is not in it.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>active</code></td><td>bool</td><td>True when systemd reports the unit active.</td></tr><tr><td><code>state</code></td><td>str</td><td>The raw systemctl is-active word (active, inactive, failed, …).</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Check that nginx is running</span>
 <span class="hl-key">description</span>: <span class="hl-string">Check service status on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
@@ -2626,6 +2634,7 @@
 <p class="action-group-note">Docker only. The agent needs read and write access to the Docker socket; without it these steps fail with a permission error.</p>
 <details class="action" data-group="container" data-risk="standard" data-keywords="restart_container container_name"><summary><code class="action-name">restart_container</code><span class="risk risk-std">standard</span><span class="action-label">Restart container</span><span class="action-required">container_name</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>container_name</code></td><td><span class="param-req">required</span></td><td>Container name as Docker reports it, not the image.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Restart container</span>
 <span class="hl-key">description</span>: <span class="hl-string">Restart container on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2637,6 +2646,7 @@
 </div></details>
 <details class="action" data-group="container" data-risk="low" data-keywords="start_container container_name"><summary><code class="action-name">start_container</code><span class="risk risk-low">low</span><span class="action-label">Start container</span><span class="action-required">container_name</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>container_name</code></td><td><span class="param-req">required</span></td><td>Container name as Docker reports it, not the image.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Start container</span>
 <span class="hl-key">description</span>: <span class="hl-string">Start container on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
@@ -2648,6 +2658,7 @@
 </div></details>
 <details class="action" data-group="container" data-risk="standard" data-keywords="stop_container container_name"><summary><code class="action-name">stop_container</code><span class="risk risk-std">standard</span><span class="action-label">Stop container</span><span class="action-required">container_name</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>container_name</code></td><td><span class="param-req">required</span></td><td>Container name as Docker reports it, not the image.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Stop container</span>
 <span class="hl-key">description</span>: <span class="hl-string">Stop container on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2659,6 +2670,7 @@
 </div></details>
 <details class="action" data-group="container" data-risk="low" data-keywords="pull_image image"><summary><code class="action-name">pull_image</code><span class="risk risk-low">low</span><span class="action-label">Pull container image</span><span class="action-required">image</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>image</code></td><td><span class="param-req">required</span></td><td>Image reference including the tag.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Pull container image</span>
 <span class="hl-key">description</span>: <span class="hl-string">Pull container image on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
@@ -2671,6 +2683,7 @@
 <details class="action" data-group="container" data-risk="standard" data-keywords="recreate_container container_name image"><summary><code class="action-name">recreate_container</code><span class="risk risk-std">standard</span><span class="action-label">Recreate container (apply new image)</span><span class="action-required">container_name</span></summary><div class="action-body">
 <p class="prose">Pull the image, then recreate the container on it.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>container_name</code></td><td><span class="param-req">required</span></td><td>Container name as Docker reports it, not the image.</td></tr><tr><td><code>image</code></td><td><span class="param-opt">optional</span></td><td>Image reference including the tag.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Update Nextcloud to a new image</span>
 <span class="hl-key">description</span>: <span class="hl-string">Recreate container (apply new image) on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2682,6 +2695,7 @@
 </div></details>
 <details class="action" data-group="container" data-risk="standard" data-keywords="update_container container_name"><summary><code class="action-name">update_container</code><span class="risk risk-std">standard</span><span class="action-label">Update container (pull + apply new image)</span><span class="action-required">container_name</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>container_name</code></td><td><span class="param-req">required</span></td><td>Container name as Docker reports it, not the image.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>updated</code></td><td>bool</td><td>True when the container now runs a different image than before.</td></tr><tr><td><code>old_image_id</code></td><td>str</td><td>Image id the container ran before the update.</td></tr><tr><td><code>new_image_id</code></td><td>str</td><td>Image id the container runs now.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Update container (pull + apply new image)</span>
 <span class="hl-key">description</span>: <span class="hl-string">Update container (pull + apply new image) on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2693,6 +2707,7 @@
 </div></details>
 <details class="action" data-group="container" data-risk="high" data-keywords="remove_container container_name"><summary><code class="action-name">remove_container</code><span class="risk risk-high">high</span><span class="action-label">Remove container</span><span class="action-required">container_name</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>container_name</code></td><td><span class="param-req">required</span></td><td>Container name as Docker reports it, not the image.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Remove container</span>
 <span class="hl-key">description</span>: <span class="hl-string">Remove container on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">high</span>
@@ -2704,6 +2719,7 @@
 </div></details>
 <details class="action" data-group="container" data-risk="standard" data-keywords="docker_compose_up compose_file services"><summary><code class="action-name">docker_compose_up</code><span class="risk risk-std">standard</span><span class="action-label">Docker Compose up</span><span class="action-required">compose_file</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>compose_file</code></td><td><span class="param-req">required</span></td><td>Absolute path to the compose file on the host.</td></tr><tr><td><code>services</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated services. Omit for the whole stack.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Docker Compose up</span>
 <span class="hl-key">description</span>: <span class="hl-string">Docker Compose up on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2715,6 +2731,7 @@
 </div></details>
 <details class="action" data-group="container" data-risk="standard" data-keywords="docker_compose_down compose_file"><summary><code class="action-name">docker_compose_down</code><span class="risk risk-std">standard</span><span class="action-label">Docker Compose down</span><span class="action-required">compose_file</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>compose_file</code></td><td><span class="param-req">required</span></td><td>Absolute path to the compose file on the host.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Docker Compose down</span>
 <span class="hl-key">description</span>: <span class="hl-string">Docker Compose down on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2726,6 +2743,7 @@
 </div></details>
 <details class="action" data-group="container" data-risk="low" data-keywords="clear_docker_logs container_name"><summary><code class="action-name">clear_docker_logs</code><span class="risk risk-low">low</span><span class="action-label">Truncate Docker logs</span><span class="action-required">none</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>container_name</code></td><td><span class="param-opt">optional</span></td><td>Container name as Docker reports it, not the image.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Truncate Docker logs</span>
 <span class="hl-key">description</span>: <span class="hl-string">Truncate Docker logs on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
@@ -2735,6 +2753,7 @@
 </div></details>
 <details class="action" data-group="container" data-risk="low" data-keywords="check_docker_updates"><summary><code class="action-name">check_docker_updates</code><span class="risk risk-low">low</span><span class="action-label">Check Docker images for updates now</span><span class="action-required">none</span></summary><div class="action-body">
 <p class="action-noparams">This action takes no params.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>checked</code></td><td>int</td><td>How many Docker Hub-tagged containers were checked.</td></tr><tr><td><code>outdated</code></td><td>int</td><td>How many of them have a newer image available.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Check Docker images for updates now</span>
 <span class="hl-key">description</span>: <span class="hl-string">Check Docker images for updates now on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
@@ -2749,6 +2768,7 @@
 <details class="action" data-group="files" data-risk="high" data-keywords="write_file path content mode"><summary><code class="action-name">write_file</code><span class="risk risk-high">high</span><span class="action-label">Write file</span><span class="action-required">path, content</span></summary><div class="action-body">
 <p class="prose">Write the file, then reload the service that reads it.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>path</code></td><td><span class="param-req">required</span></td><td>Absolute path on the host.</td></tr><tr><td><code>content</code></td><td><span class="param-req">required</span></td><td>Full file body. Newlines as \n.</td></tr><tr><td><code>mode</code></td><td><span class="param-opt">optional</span></td><td>Octal permissions, quoted so YAML keeps the leading zero.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Deploy a config file</span>
 <span class="hl-key">description</span>: <span class="hl-string">Write file on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">high</span>
@@ -2761,6 +2781,7 @@
 </div></details>
 <details class="action" data-group="files" data-risk="low" data-keywords="create_directory path owner group mode"><summary><code class="action-name">create_directory</code><span class="risk risk-low">low</span><span class="action-label">Create directory</span><span class="action-required">path</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>path</code></td><td><span class="param-req">required</span></td><td>Absolute path on the host.</td></tr><tr><td><code>owner</code></td><td><span class="param-opt">optional</span></td><td>Owning user.</td></tr><tr><td><code>group</code></td><td><span class="param-opt">optional</span></td><td>Existing group name.</td></tr><tr><td><code>mode</code></td><td><span class="param-opt">optional</span></td><td>Octal permissions, quoted so YAML keeps the leading zero.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Create directory</span>
 <span class="hl-key">description</span>: <span class="hl-string">Create directory on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
@@ -2773,6 +2794,7 @@
 <details class="action" data-group="files" data-risk="high" data-keywords="delete_path path recursive"><summary><code class="action-name">delete_path</code><span class="risk risk-high">high</span><span class="action-label">Delete path</span><span class="action-required">path</span></summary><div class="action-body">
 <p class="prose">Deletes recursively. There is no undo.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>path</code></td><td><span class="param-req">required</span></td><td>Absolute path on the host.</td></tr><tr><td><code>recursive</code></td><td><span class="param-opt">optional</span></td><td>Recurse into directories. Required to delete a non-empty one.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Remove a stale build directory</span>
 <span class="hl-key">description</span>: <span class="hl-string">Delete path on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">high</span>
@@ -2784,6 +2806,7 @@
 </div></details>
 <details class="action" data-group="files" data-risk="standard" data-keywords="copy_file src dest"><summary><code class="action-name">copy_file</code><span class="risk risk-std">standard</span><span class="action-label">Copy file</span><span class="action-required">src, dest</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>src</code></td><td><span class="param-req">required</span></td><td>Absolute source path.</td></tr><tr><td><code>dest</code></td><td><span class="param-req">required</span></td><td>Absolute destination path.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Copy file</span>
 <span class="hl-key">description</span>: <span class="hl-string">Copy file on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2796,6 +2819,7 @@
 </div></details>
 <details class="action" data-group="files" data-risk="standard" data-keywords="move_file src dest"><summary><code class="action-name">move_file</code><span class="risk risk-std">standard</span><span class="action-label">Move file</span><span class="action-required">src, dest</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>src</code></td><td><span class="param-req">required</span></td><td>Absolute source path.</td></tr><tr><td><code>dest</code></td><td><span class="param-req">required</span></td><td>Absolute destination path.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Move file</span>
 <span class="hl-key">description</span>: <span class="hl-string">Move file on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2808,6 +2832,7 @@
 </div></details>
 <details class="action" data-group="files" data-risk="standard" data-keywords="set_permissions path owner group mode"><summary><code class="action-name">set_permissions</code><span class="risk risk-std">standard</span><span class="action-label">Set permissions</span><span class="action-required">path</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>path</code></td><td><span class="param-req">required</span></td><td>Absolute path on the host.</td></tr><tr><td><code>owner</code></td><td><span class="param-opt">optional</span></td><td>Owning user.</td></tr><tr><td><code>group</code></td><td><span class="param-opt">optional</span></td><td>Existing group name.</td></tr><tr><td><code>mode</code></td><td><span class="param-opt">optional</span></td><td>Octal permissions, quoted so YAML keeps the leading zero.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Set permissions</span>
 <span class="hl-key">description</span>: <span class="hl-string">Set permissions on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2824,6 +2849,7 @@
 <details class="action" data-group="packages" data-risk="standard" data-keywords="install_package package_name"><summary><code class="action-name">install_package</code><span class="risk risk-std">standard</span><span class="action-label">Install package</span><span class="action-required">package_name</span></summary><div class="action-body">
 <p class="prose">Install the package, then enable it at boot.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>package_name</code></td><td><span class="param-req">required</span></td><td>Package name as the host&#x27;s package manager knows it.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Install nginx</span>
 <span class="hl-key">description</span>: <span class="hl-string">Install package on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2835,6 +2861,7 @@
 </div></details>
 <details class="action" data-group="packages" data-risk="standard" data-keywords="remove_package package_name"><summary><code class="action-name">remove_package</code><span class="risk risk-std">standard</span><span class="action-label">Remove package</span><span class="action-required">package_name</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>package_name</code></td><td><span class="param-req">required</span></td><td>Package name as the host&#x27;s package manager knows it.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Remove package</span>
 <span class="hl-key">description</span>: <span class="hl-string">Remove package on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2846,6 +2873,7 @@
 </div></details>
 <details class="action" data-group="packages" data-risk="standard" data-keywords="update_package package_name"><summary><code class="action-name">update_package</code><span class="risk risk-std">standard</span><span class="action-label">Update package</span><span class="action-required">package_name</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>package_name</code></td><td><span class="param-req">required</span></td><td>Package name as the host&#x27;s package manager knows it.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Update package</span>
 <span class="hl-key">description</span>: <span class="hl-string">Update package on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2858,6 +2886,7 @@
 <details class="action" data-group="packages" data-risk="standard" data-keywords="run_package_updates security_only"><summary><code class="action-name">run_package_updates</code><span class="risk risk-std">standard</span><span class="action-label">Run system updates</span><span class="action-required">none</span></summary><div class="action-body">
 <p class="prose">Run the host&#x27;s package manager, security only.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>security_only</code></td><td><span class="param-opt">optional</span></td><td>Restrict the run to security updates.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Apply security updates</span>
 <span class="hl-key">description</span>: <span class="hl-string">Run system updates on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2872,6 +2901,7 @@
 <details class="action" data-group="winupdate" data-risk="low" data-keywords="windows_update_scan classifications include_kb exclude_kb severity_floor"><summary><code class="action-name">windows_update_scan</code><span class="risk risk-low">low</span><span class="action-label">Scan for Windows updates</span><span class="action-required">none</span></summary><div class="action-body">
 <p class="prose">Read-only. Reports what is missing without installing.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>classifications</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated update classifications to include.</td></tr><tr><td><code>include_kb</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated KB numbers to restrict the run to.</td></tr><tr><td><code>exclude_kb</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated KB numbers to skip.</td></tr><tr><td><code>severity_floor</code></td><td><span class="param-opt">optional</span></td><td>Lowest severity to include.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Scan for Windows security updates</span>
 <span class="hl-key">description</span>: <span class="hl-string">Scan for Windows updates on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
@@ -2882,6 +2912,7 @@
 <details class="action" data-group="winupdate" data-risk="standard" data-keywords="windows_update_install classifications include_kb exclude_kb severity_floor"><summary><code class="action-name">windows_update_install</code><span class="risk risk-std">standard</span><span class="action-label">Install Windows updates</span><span class="action-required">none</span></summary><div class="action-body">
 <p class="prose">Scan first, then install what the scan found.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>classifications</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated update classifications to include.</td></tr><tr><td><code>include_kb</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated KB numbers to restrict the run to.</td></tr><tr><td><code>exclude_kb</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated KB numbers to skip.</td></tr><tr><td><code>severity_floor</code></td><td><span class="param-opt">optional</span></td><td>Lowest severity to include.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Install Windows security updates</span>
 <span class="hl-key">description</span>: <span class="hl-string">Install Windows updates on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2895,6 +2926,7 @@
 <p class="action-group-note">The broadest actions, and most of the high-risk ones.</p>
 <details class="action" data-group="system" data-risk="low" data-keywords="clear_temp_files older_than_days"><summary><code class="action-name">clear_temp_files</code><span class="risk risk-low">low</span><span class="action-label">Clear /tmp</span><span class="action-required">none</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>older_than_days</code></td><td><span class="param-opt">optional</span></td><td>Only remove files last modified before this.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Clear /tmp</span>
 <span class="hl-key">description</span>: <span class="hl-string">Clear /tmp on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
@@ -2905,6 +2937,7 @@
 <details class="action" data-group="system" data-risk="high" data-keywords="execute_script script_name shell script"><summary><code class="action-name">execute_script</code><span class="risk risk-high">high</span><span class="action-label">Execute script (allowlisted file or hash-approved body)</span><span class="action-required">none</span></summary><div class="action-body">
 <p class="prose">Give a script_name to run a file from the agent&#x27;s script directory, or a shell and an inline script body to run that exact body: a managed host runs an inline body only after its owner approves its hash.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>script_name</code></td><td><span class="param-opt">optional</span></td><td>Filename of a script in the agent&#x27;s script directory. Give this or an inline body, not both.</td></tr><tr><td><code>shell</code></td><td><span class="param-opt">optional</span></td><td>Shell for an inline script body (bash, sh, powershell, pwsh), or the login shell for a new account.</td></tr><tr><td><code>script</code></td><td><span class="param-opt">optional</span></td><td>Inline script body, run as-is with the shell you name. Inputs reach it as $VIGIL_INPUT_&lt;ID&gt; environment variables. A managed host runs it only after its owner approves its hash.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>exit_code</code></td><td>int</td><td>The script&#x27;s exit code (0 — a non-zero exit fails the step).</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Run an allowlisted script</span>
 <span class="hl-key">description</span>: <span class="hl-string">Execute script (allowlisted file or hash-approved body) on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">high</span>
@@ -2917,6 +2950,7 @@
 <details class="action" data-group="system" data-risk="high" data-keywords="reboot delay_seconds notify notify_message defer_limit defer_minutes"><summary><code class="action-name">reboot</code><span class="risk risk-high">high</span><span class="action-label">Reboot host</span><span class="action-required">none</span></summary><div class="action-body">
 <p class="prose">Warns the logged-in user, then reboots after a delay.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>delay_seconds</code></td><td><span class="param-opt">optional</span></td><td>Seconds to wait before the reboot fires.</td></tr><tr><td><code>notify</code></td><td><span class="param-opt">optional</span></td><td>Warn the logged-in user before the step runs.</td></tr><tr><td><code>notify_message</code></td><td><span class="param-opt">optional</span></td><td>What that warning says.</td></tr><tr><td><code>defer_limit</code></td><td><span class="param-opt">optional</span></td><td>How many times a user may defer before the step proceeds.</td></tr><tr><td><code>defer_minutes</code></td><td><span class="param-opt">optional</span></td><td>How long each deferral postpones the step.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Reboot after patching</span>
 <span class="hl-key">description</span>: <span class="hl-string">Reboot host on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">high</span>
@@ -2927,6 +2961,7 @@
 <details class="action" data-group="system" data-risk="high" data-keywords="run_command command timeout"><summary><code class="action-name">run_command</code><span class="risk risk-high">high</span><span class="action-label">Run shell command</span><span class="action-required">command</span></summary><div class="action-body">
 <p class="prose">Highest-risk action. Managed-mode agents refuse it.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>command</code></td><td><span class="param-req">required</span></td><td>The command line to run. Quoted exactly as the shell sees it.</td></tr><tr><td><code>timeout</code></td><td><span class="param-opt">optional</span></td><td>Seconds before the agent kills the command.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>exit_code</code></td><td>int</td><td>The command&#x27;s exit code (0 — a non-zero exit fails the step).</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Run a one-off command</span>
 <span class="hl-key">description</span>: <span class="hl-string">Run shell command on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">high</span>
@@ -2938,6 +2973,7 @@
 </div></details>
 <details class="action" data-group="system" data-risk="standard" data-keywords="set_hostname hostname"><summary><code class="action-name">set_hostname</code><span class="risk risk-std">standard</span><span class="action-label">Set hostname</span><span class="action-required">hostname</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>hostname</code></td><td><span class="param-req">required</span></td><td>New hostname. Applied to the host and to its Vigil record.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Set hostname</span>
 <span class="hl-key">description</span>: <span class="hl-string">Set hostname on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -2954,6 +2990,7 @@
 <details class="action" data-group="network" data-risk="high" data-keywords="add_firewall_rule port protocol action source interface"><summary><code class="action-name">add_firewall_rule</code><span class="risk risk-high">high</span><span class="action-label">Add firewall rule</span><span class="action-required">port, protocol</span></summary><div class="action-body">
 <p class="prose">Adds an allow rule scoped to a source CIDR.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>port</code></td><td><span class="param-req">required</span></td><td>Port number, or a low-high range.</td></tr><tr><td><code>protocol</code></td><td><span class="param-req">required</span></td><td>tcp or udp.</td></tr><tr><td><code>action</code></td><td><span class="param-opt">optional</span></td><td>allow or deny. Defaults to allow.</td></tr><tr><td><code>source</code></td><td><span class="param-opt">optional</span></td><td>Source address or CIDR the rule applies to.</td></tr><tr><td><code>interface</code></td><td><span class="param-opt">optional</span></td><td>Interface name to scope the rule to.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Open a port to one subnet</span>
 <span class="hl-key">description</span>: <span class="hl-string">Add firewall rule on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">high</span>
@@ -2966,6 +3003,7 @@
 </div></details>
 <details class="action" data-group="network" data-risk="high" data-keywords="remove_firewall_rule port protocol action source name rule_id"><summary><code class="action-name">remove_firewall_rule</code><span class="risk risk-high">high</span><span class="action-label">Remove firewall rule</span><span class="action-required">port, protocol</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>port</code></td><td><span class="param-req">required</span></td><td>Port number, or a low-high range.</td></tr><tr><td><code>protocol</code></td><td><span class="param-req">required</span></td><td>tcp or udp.</td></tr><tr><td><code>action</code></td><td><span class="param-opt">optional</span></td><td>allow or deny. Defaults to allow.</td></tr><tr><td><code>source</code></td><td><span class="param-opt">optional</span></td><td>Source address or CIDR the rule applies to.</td></tr><tr><td><code>name</code></td><td><span class="param-opt">optional</span></td><td>Name of the playbook to expand.</td></tr><tr><td><code>rule_id</code></td><td><span class="param-opt">optional</span></td><td>Backend rule identifier, from list_firewall_rules.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Remove firewall rule</span>
 <span class="hl-key">description</span>: <span class="hl-string">Remove firewall rule on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">high</span>
@@ -2978,6 +3016,7 @@
 </div></details>
 <details class="action" data-group="network" data-risk="low" data-keywords="list_firewall_rules"><summary><code class="action-name">list_firewall_rules</code><span class="risk risk-low">low</span><span class="action-label">List firewall rules</span><span class="action-required">none</span></summary><div class="action-body">
 <p class="action-noparams">This action takes no params.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">List firewall rules</span>
 <span class="hl-key">description</span>: <span class="hl-string">List firewall rules on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
@@ -2987,6 +3026,7 @@
 </div></details>
 <details class="action" data-group="network" data-risk="high" data-keywords="set_firewall_policy direction policy"><summary><code class="action-name">set_firewall_policy</code><span class="risk risk-high">high</span><span class="action-label">Set firewall default policy</span><span class="action-required">direction, policy</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>direction</code></td><td><span class="param-req">required</span></td><td>incoming or outgoing.</td></tr><tr><td><code>policy</code></td><td><span class="param-req">required</span></td><td>allow or deny, applied as the default for that direction.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Set firewall default policy</span>
 <span class="hl-key">description</span>: <span class="hl-string">Set firewall default policy on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">high</span>
@@ -2999,6 +3039,7 @@
 </div></details>
 <details class="action" data-group="network" data-risk="high" data-keywords="enable_firewall"><summary><code class="action-name">enable_firewall</code><span class="risk risk-high">high</span><span class="action-label">Enable the firewall</span><span class="action-required">none</span></summary><div class="action-body">
 <p class="action-noparams">This action takes no params.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Enable the firewall</span>
 <span class="hl-key">description</span>: <span class="hl-string">Enable the firewall on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">high</span>
@@ -3008,6 +3049,7 @@
 </div></details>
 <details class="action" data-group="network" data-risk="high" data-keywords="disable_firewall"><summary><code class="action-name">disable_firewall</code><span class="risk risk-high">high</span><span class="action-label">Disable the firewall</span><span class="action-required">none</span></summary><div class="action-body">
 <p class="action-noparams">This action takes no params.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Disable the firewall</span>
 <span class="hl-key">description</span>: <span class="hl-string">Disable the firewall on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">high</span>
@@ -3022,6 +3064,7 @@
 <details class="action" data-group="users" data-risk="high" data-keywords="create_user username groups shell"><summary><code class="action-name">create_user</code><span class="risk risk-high">high</span><span class="action-label">Create user</span><span class="action-required">username</span></summary><div class="action-body">
 <p class="prose">Creates the account and adds it to the groups you name.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>username</code></td><td><span class="param-req">required</span></td><td>Local account name.</td></tr><tr><td><code>groups</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated supplementary groups.</td></tr><tr><td><code>shell</code></td><td><span class="param-opt">optional</span></td><td>Shell for an inline script body (bash, sh, powershell, pwsh), or the login shell for a new account.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Create a deploy account</span>
 <span class="hl-key">description</span>: <span class="hl-string">Create user on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">high</span>
@@ -3033,6 +3076,7 @@
 </div></details>
 <details class="action" data-group="users" data-risk="high" data-keywords="delete_user username remove_home"><summary><code class="action-name">delete_user</code><span class="risk risk-high">high</span><span class="action-label">Delete user</span><span class="action-required">username</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>username</code></td><td><span class="param-req">required</span></td><td>Local account name.</td></tr><tr><td><code>remove_home</code></td><td><span class="param-opt">optional</span></td><td>Also delete the user&#x27;s home directory.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Delete user</span>
 <span class="hl-key">description</span>: <span class="hl-string">Delete user on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">high</span>
@@ -3044,6 +3088,7 @@
 </div></details>
 <details class="action" data-group="users" data-risk="standard" data-keywords="add_user_to_group username group"><summary><code class="action-name">add_user_to_group</code><span class="risk risk-std">standard</span><span class="action-label">Add user to group</span><span class="action-required">username, group</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>username</code></td><td><span class="param-req">required</span></td><td>Local account name.</td></tr><tr><td><code>group</code></td><td><span class="param-req">required</span></td><td>Existing group name.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Add user to group</span>
 <span class="hl-key">description</span>: <span class="hl-string">Add user to group on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -3061,6 +3106,7 @@
 <details class="action" data-group="cron" data-risk="standard" data-keywords="create_cron_job schedule command user"><summary><code class="action-name">create_cron_job</code><span class="risk risk-std">standard</span><span class="action-label">Create cron job</span><span class="action-required">schedule, command</span></summary><div class="action-body">
 <p class="prose">Writes one crontab line for the user you name.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>schedule</code></td><td><span class="param-req">required</span></td><td>Five-field cron expression.</td></tr><tr><td><code>command</code></td><td><span class="param-req">required</span></td><td>The command line to run. Quoted exactly as the shell sees it.</td></tr><tr><td><code>user</code></td><td><span class="param-opt">optional</span></td><td>Account whose crontab is edited. Defaults to root.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Schedule a nightly job</span>
 <span class="hl-key">description</span>: <span class="hl-string">Create cron job on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -3073,6 +3119,7 @@
 </div></details>
 <details class="action" data-group="cron" data-risk="standard" data-keywords="delete_cron_job pattern user"><summary><code class="action-name">delete_cron_job</code><span class="risk risk-std">standard</span><span class="action-label">Delete cron job</span><span class="action-required">pattern</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>pattern</code></td><td><span class="param-req">required</span></td><td>Substring matched against existing cron lines.</td></tr><tr><td><code>user</code></td><td><span class="param-opt">optional</span></td><td>Account whose crontab is edited. Defaults to root.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Delete cron job</span>
 <span class="hl-key">description</span>: <span class="hl-string">Delete cron job on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -3089,6 +3136,7 @@
 <details class="action" data-group="agent" data-risk="standard" data-keywords="update_agent platform"><summary><code class="action-name">update_agent</code><span class="risk risk-std">standard</span><span class="action-label">Update Vigil agent</span><span class="action-required">none</span></summary><div class="action-body">
 <p class="prose">The agent replaces its binary and restarts its service.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>platform</code></td><td><span class="param-opt">optional</span></td><td>Force a platform build instead of detecting it.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Update the Vigil agent</span>
 <span class="hl-key">description</span>: <span class="hl-string">Update Vigil agent on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">standard</span>
@@ -3102,6 +3150,7 @@
 <p class="action-group-note">A staged OS rebuild. Read docs/reprovisioning.md before using any of these.</p>
 <details class="action" data-group="reprovision" data-risk="low" data-keywords="reprovision_preflight disk_target os_family"><summary><code class="action-name">reprovision_preflight</code><span class="risk risk-low">low</span><span class="action-label">Check rebuild readiness</span><span class="action-required">none</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>disk_target</code></td><td><span class="param-opt">optional</span></td><td>Device the rebuild will write to.</td></tr><tr><td><code>os_family</code></td><td><span class="param-opt">optional</span></td><td>Installer family to stage.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Check rebuild readiness</span>
 <span class="hl-key">description</span>: <span class="hl-string">Check rebuild readiness on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
@@ -3111,6 +3160,7 @@
 </div></details>
 <details class="action" data-group="reprovision" data-risk="high" data-keywords="reprovision_stage job_id kernel_url initrd_url kernel_sha256 initrd_sha256"><summary><code class="action-name">reprovision_stage</code><span class="risk risk-high">high</span><span class="action-label">Stage OS installer</span><span class="action-required">job_id, kernel_url, initrd_url, kernel_sha256, initrd_sha256</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>job_id</code></td><td><span class="param-req">required</span></td><td>The reprovision job this step belongs to.</td></tr><tr><td><code>kernel_url</code></td><td><span class="param-req">required</span></td><td>Where the agent fetches the kernel from.</td></tr><tr><td><code>initrd_url</code></td><td><span class="param-req">required</span></td><td>Where the agent fetches the initrd from.</td></tr><tr><td><code>kernel_sha256</code></td><td><span class="param-req">required</span></td><td>SHA-256 of the kernel. The agent refuses a mismatch.</td></tr><tr><td><code>initrd_sha256</code></td><td><span class="param-req">required</span></td><td>SHA-256 of the initrd. The agent refuses a mismatch.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Stage OS installer</span>
 <span class="hl-key">description</span>: <span class="hl-string">Stage OS installer on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">high</span>
@@ -3131,6 +3181,7 @@
 </div></details>
 <details class="action" data-group="reprovision" data-risk="high" data-keywords="reprovision_commit job_id cmdline"><summary><code class="action-name">reprovision_commit</code><span class="risk risk-high">high</span><span class="action-label">Boot into OS installer (WIPES DISK)</span><span class="action-required">job_id, cmdline</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>job_id</code></td><td><span class="param-req">required</span></td><td>The reprovision job this step belongs to.</td></tr><tr><td><code>cmdline</code></td><td><span class="param-req">required</span></td><td>Kernel command line handed to the installer.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Boot into OS installer (WIPES DISK)</span>
 <span class="hl-key">description</span>: <span class="hl-string">Boot into OS installer (WIPES DISK) on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">high</span>
@@ -3148,6 +3199,7 @@
 </div></details>
 <details class="action" data-group="reprovision" data-risk="high" data-keywords="reprovision_cleanup job_id"><summary><code class="action-name">reprovision_cleanup</code><span class="risk risk-high">high</span><span class="action-label">Remove staged installer files</span><span class="action-required">job_id</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>job_id</code></td><td><span class="param-req">required</span></td><td>The reprovision job this step belongs to.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Remove staged installer files</span>
 <span class="hl-key">description</span>: <span class="hl-string">Remove staged installer files on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">high</span>
@@ -3169,6 +3221,7 @@
 <details class="action" data-group="tags" data-risk="low" data-keywords="add_tag tags"><summary><code class="action-name">add_tag</code><span class="risk risk-low">low</span><span class="action-label">Add host tag</span><span class="action-required">tags</span></summary><div class="action-body">
 <p class="prose">Runs only where the when: predicate is true on the host.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>tags</code></td><td><span class="param-req">required</span></td><td>Comma-separated tags. A string, not a list.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Tag Docker hosts automatically</span>
 <span class="hl-key">description</span>: <span class="hl-string">Add host tag on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
@@ -3181,6 +3234,7 @@
 <details class="action" data-group="tags" data-risk="low" data-keywords="remove_tag tags"><summary><code class="action-name">remove_tag</code><span class="risk risk-low">low</span><span class="action-label">Remove host tag</span><span class="action-required">tags</span></summary><div class="action-body">
 <p class="prose">Tags are applied server-side from the definition it signed.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>tags</code></td><td><span class="param-req">required</span></td><td>Comma-separated tags. A string, not a list.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Drop a tag once a host is patched</span>
 <span class="hl-key">description</span>: <span class="hl-string">Remove host tag on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
@@ -3196,6 +3250,7 @@
 <p class="action-group-note">These leave a marker rather than doing the scan inline. The server starts the scan when the result arrives.</p>
 <details class="action" data-group="vuln" data-risk="low" data-keywords="request_nessus_scan"><summary><code class="action-name">request_nessus_scan</code><span class="risk risk-low">low</span><span class="action-label">Request Nessus vulnerability scan</span><span class="action-required">none</span></summary><div class="action-body">
 <p class="action-noparams">This action takes no params.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Request Nessus vulnerability scan</span>
 <span class="hl-key">description</span>: <span class="hl-string">Request Nessus vulnerability scan on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
@@ -3205,6 +3260,7 @@
 </div></details>
 <details class="action" data-group="vuln" data-risk="low" data-keywords="request_network_scan engine"><summary><code class="action-name">request_network_scan</code><span class="risk risk-low">low</span><span class="action-label">Request network vulnerability scan</span><span class="action-required">none</span></summary><div class="action-body">
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>engine</code></td><td><span class="param-opt">optional</span></td><td>Which scanner to ask. Defaults to the configured one.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Request network vulnerability scan</span>
 <span class="hl-key">description</span>: <span class="hl-string">Request network vulnerability scan on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
@@ -3215,6 +3271,7 @@
 <details class="action" data-group="vuln" data-risk="low" data-keywords="run_trivy_scan scope"><summary><code class="action-name">run_trivy_scan</code><span class="risk risk-low">low</span><span class="action-label">Run Trivy vulnerability scan</span><span class="action-required">none</span></summary><div class="action-body">
 <p class="prose">Leaves a marker. The scan starts when the result arrives.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>scope</code></td><td><span class="param-opt">optional</span></td><td>os, fs, or config.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Scan the host filesystem with Trivy</span>
 <span class="hl-key">description</span>: <span class="hl-string">Run Trivy vulnerability scan on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
@@ -3224,6 +3281,7 @@
 </div></details>
 <details class="action" data-group="vuln" data-risk="low" data-keywords="trivy_db_update"><summary><code class="action-name">trivy_db_update</code><span class="risk risk-low">low</span><span class="action-label">Update Trivy vulnerability database</span><span class="action-required">none</span></summary><div class="action-body">
 <p class="action-noparams">This action takes no params.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Update Trivy vulnerability database</span>
 <span class="hl-key">description</span>: <span class="hl-string">Update Trivy vulnerability database on the hosts you dispatch this to.</span>
 <span class="hl-key">risk</span>: <span class="hl-string">low</span>
