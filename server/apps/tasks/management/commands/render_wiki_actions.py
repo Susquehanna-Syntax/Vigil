@@ -227,12 +227,17 @@ PARAM_NOTES: dict[str, str] = {
     "rule_id": "Backend rule identifier, from list_firewall_rules.",
     "schedule": "Five-field cron expression.",
     "scope": "os, fs, or config.",
-    "script_name": "Filename of a script in the agent's script directory.",
+    "script_name": "Filename of a script in the agent's script directory. "
+                   "Give this or an inline body, not both.",
     "security_only": "Restrict the run to security updates.",
     "service_name": "Service name as the host's init system knows it.",
     "services": "Comma-separated services. Omit for the whole stack.",
     "severity_floor": "Lowest severity to include.",
-    "shell": "Login shell for the new account.",
+    "shell": "Shell for an inline script body (bash, sh, powershell, pwsh), or "
+             "the login shell for a new account.",
+    "script": "Inline script body, run as-is with the shell you name. Inputs "
+              "reach it as $VIGIL_INPUT_<ID> environment variables. A managed "
+              "host runs it only after its owner approves its hash.",
     "source": "Source address or CIDR the rule applies to.",
     "src": "Absolute source path.",
     "tags": "Comma-separated tags. A string, not a list.",
@@ -265,7 +270,10 @@ EXAMPLE_TITLES: dict[str, tuple[str, str]] = {
     "windows_update_install": ("Install Windows security updates",
                                "Scan first, then install what the scan found."),
     "execute_script": ("Run an allowlisted script",
-                       "The script must already exist in the agent's script directory."),
+                       ("Give a script_name to run a file from the agent's "
+                        "script directory, or a shell and an inline script "
+                        "body to run that exact body: a managed host runs an "
+                        "inline body only after its owner approves its hash.")),
     "reboot": ("Reboot after patching",
                "Warns the logged-in user, then reboots after a delay."),
     "run_command": ("Run a one-off command",
@@ -333,6 +341,10 @@ def example_yaml(action: str) -> str:
     entry = ACTION_REGISTRY[action]
     title, _ = EXAMPLE_TITLES.get(action, (entry["label"], ""))
     params = list(entry["required"])
+    if not params and action == "execute_script":
+        # `execute_script` accepts exactly one of script_name or an inline
+        # body; the example shows the allowlisted-file form.
+        params = ["script_name"]
     lines = [
         f"name: {title}",
         f"description: {entry['label']} on the hosts you dispatch this to.",
