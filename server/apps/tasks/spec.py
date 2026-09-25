@@ -489,14 +489,17 @@ _VALID_RISK = set(_RISK_ORDER)
 
 _INPUT_TYPES = {"text", "choice", "boolean", "number"}
 # Input references: ${{ inputs.foo }} (whitespace flexible). The ${{ }} marker is not valid
-# bash, PowerShell or YAML, so script text can never be mistaken for an input.
-_INPUT_REF = re.compile(r"\$\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
+# bash, PowerShell or YAML, so script text can never be mistaken for an input. $${{ is an
+# escaped literal ${{ — never a marker (the agent turns it back into ${{).
+_INPUT_REF = re.compile(r"(?<!\$)\$\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 # The pre-2026.13 form, {{ inputs.foo }} — accepted with a warning for one release.
 _LEGACY_INPUT_REF = re.compile(r"(?<!\$)\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 # Step references: ${{ steps.<id>.status }} or ${{ steps.<id>.result.<field> }}.
-_STEPS_MARKER = re.compile(r"\$\{\{\s*steps\.")
+# Either form, in one pattern, for single-pass substitution.
+_ANY_INPUT_REF = re.compile(r"(?<!\$)(\$)?\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
+_STEPS_MARKER = re.compile(r"(?<!\$)\$\{\{\s*steps\.")
 _STEP_REF = re.compile(
-    r"\$\{\{\s*steps\.([A-Za-z0-9_-]+)\.(?:(status)|result\.([A-Za-z_][A-Za-z0-9_]*))\s*\}\}"
+    r"(?<!\$)\$\{\{\s*steps\.([A-Za-z0-9_-]+)\.(?:(status)|result\.([A-Za-z_][A-Za-z0-9_]*))\s*\}\}"
 )
 _INPUT_ID_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 _ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -1021,8 +1024,12 @@ def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[
     def _sub(value: Any) -> Any:
         if isinstance(value, str):
             def repl(m: re.Match) -> str:
-                return str(resolved[m.group(1)])
-            return _LEGACY_INPUT_REF.sub(repl, _INPUT_REF.sub(repl, value))
+                # A value is data: any ${{ inside it is written as the escaped
+                # $${{ so the agent's templater leaves it literal.
+                return str(resolved[m.group(2)]).replace("${{", "$${{")
+            # One pass for both forms: a second pass would rescan the values
+            # the first one inserted and expand markers typed into an input.
+            return _ANY_INPUT_REF.sub(repl, value)
         if isinstance(value, dict):
             return {k: _sub(v) for k, v in value.items()}
         if isinstance(value, list):

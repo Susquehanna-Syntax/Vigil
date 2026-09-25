@@ -102,6 +102,11 @@ class StepResult:
 # (docker --format '{{.Names}}'), find -exec {} \;, PowerShell blocks and ${VAR} in scripts,
 # and rewriting them silently corrupted the command.
 _TEMPLATE_RE = re.compile(r"\$\{\{\s*([^}]+?)\s*\}\}")
+# One pass over the text: ``$${{`` is an escaped literal ``${{`` (the server
+# writes input values that contain ``${{`` this way), anything else of the
+# form ``${{ … }}`` is a marker. A single ``re.sub`` never rescans what it
+# inserted, so a value can never become a template itself.
+_TOKEN_RE = re.compile(r"\$\$\{\{|\$\{\{\s*([^}]+?)\s*\}\}")
 
 
 def _lookup(path: str, ctx: dict[str, Any]) -> Any:
@@ -137,12 +142,14 @@ def resolve_value(template: Any, ctx: dict[str, Any]) -> Any:
     if m:
         return _lookup(m.group(1), ctx)
 
-    # Partial substitution — stringify each placeholder
+    # Partial substitution — stringify each placeholder, unescape $${{
     def _sub(match: re.Match) -> str:
+        if match.group(1) is None:
+            return "${{"
         val = _lookup(match.group(1), ctx)
         return "" if val is None else str(val)
 
-    return _TEMPLATE_RE.sub(_sub, template)
+    return _TOKEN_RE.sub(_sub, template)
 
 
 def resolve_params(params: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
