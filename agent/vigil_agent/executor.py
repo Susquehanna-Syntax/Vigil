@@ -32,6 +32,7 @@ from pathlib import Path
 
 from . import collector
 from . import firewall
+from . import scripthash
 from .config import AgentConfig
 from .deferral import RebootDeferral
 from .pkg_manager import detect as detect_pkg_manager
@@ -1127,7 +1128,59 @@ def _input_env(inputs: dict | None) -> dict[str, str]:
     return env
 
 
+def _execute_inline_script(params: dict, config: AgentConfig, inputs: dict | None = None) -> str:
+    """Run an inline ``script`` body with ``shell``.
+
+    The body is arbitrary code from the server, so outside full_control it runs
+    only if its exact hash is in ``allowed_script_hashes`` — approved on this
+    host by its owner. Any edit changes the hash and needs a new approval.
+    """
+    if "script_name" in params:
+        raise ValueError("give script_name or script, not both")
+
+    shell = params.get("shell", "")
+    if shell not in ("bash", "sh", "powershell", "pwsh"):
+        raise ValueError(
+            f"shell must be one of bash, sh, powershell, pwsh; got {shell!r}")
+
+    body = params.get("script", "")
+    if not isinstance(body, str) or not body:
+        raise ValueError("script must be a non-empty string")
+    if len(body) > 65536:
+        raise ValueError("script body exceeds 65536 characters")
+
+    digest = scripthash.script_hash(body)
+    if config.mode != "full_control" and digest not in config.allowed_script_hashes:
+        raise ValueError(
+            f"script hash not allowlisted: {digest} — approve it on this host with "
+            f"`vigil-agent allow-script` or add it to allowed_script_hashes in agent.yml")
+
+    timeout = int(params.get("timeout", _EXEC_TIMEOUT))
+    if timeout < 1 or timeout > 3600:
+        raise ValueError("timeout must be between 1 and 3600 seconds")
+
+    is_powershell = shell in ("powershell", "pwsh")
+    tmp_dir = Path(tempfile.mkdtemp(prefix="vigil-script-"))
+    try:
+        script_path = tmp_dir / ("script.ps1" if is_powershell else "script.sh")
+        script_path.write_text(scripthash.normalise(body), encoding="utf-8")
+        if os.name == "posix":
+            script_path.chmod(0o700)
+        if is_powershell:
+            cmd = [shell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy",
+                   "Bypass", "-File", str(script_path)]
+        else:
+            cmd = [shell, str(script_path)]
+        output = _run(cmd, timeout=timeout, extra_env=_input_env(inputs))
+        return f"[{digest}]\n{output}"
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 def _execute_script(params: dict, config: AgentConfig, inputs: dict | None = None) -> str:
+    if "script" in params:
+        return _execute_inline_script(params, config, inputs)
+
     script_name = params.get("script_name", "")
     if not _SAFE_SCRIPT_NAME.match(script_name):
         raise ValueError(f"Invalid script name: {script_name!r}")
