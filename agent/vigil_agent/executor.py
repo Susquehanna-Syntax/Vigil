@@ -164,6 +164,22 @@ def _run(
 # ACTION HANDLERS
 # ═════════════════════════════════════════════════════════════════════════════
 
+
+class ActionOutput(str):
+    """A handler's text plus its declared outputs.
+
+    A str subclass so every existing caller that treats the result as text keeps working;
+    the runtime reads ``.data`` to expose ``steps.<id>.result.<field>``.
+    """
+
+    data: dict
+
+    def __new__(cls, text: str, data: dict | None = None):
+        obj = super().__new__(cls, text)
+        obj.data = dict(data or {})
+        return obj
+
+
 # ── Service management ──────────────────────────────────────────────────────
 
 
@@ -217,7 +233,10 @@ def _check_service(params: dict, _config: AgentConfig) -> str:
             f"Service {name} is {status_str}, expected {expect}"
         )
 
-    return f"Service {name}: {status_str} (systemctl: {actual})"
+    return ActionOutput(
+        f"Service {name}: {status_str} (systemctl: {actual})",
+        {"active": is_running, "state": actual},
+    )
 
 
 # ── Container management ────────────────────────────────────────────────────
@@ -288,12 +307,16 @@ def _check_docker_updates(_params: dict, _config: AgentConfig) -> str:
         lines.append(f"  {labels.get('container_name')}: {labels.get('image')} — {state}")
 
     if not lines:
-        return (
+        return ActionOutput(
             "No Docker Hub-tagged containers to check "
-            "(Docker unavailable, nothing running, or only local/private images)"
+            "(Docker unavailable, nothing running, or only local/private images)",
+            {"checked": 0, "outdated": 0},
         )
     header = f"Checked {len(lines)} container(s): {outdated} outdated"
-    return "\n".join([header, *lines])
+    return ActionOutput(
+        "\n".join([header, *lines]),
+        {"checked": len(lines), "outdated": outdated},
+    )
 
 
 _COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
@@ -487,9 +510,15 @@ def _update_container(params: dict, _config: AgentConfig) -> str:
         raise ValueError(f"Invalid image reference: {image_ref!r}")
 
     if "@sha256:" in image_ref:
-        return (
+        current_id = spec.get("Image") or ""
+        return ActionOutput(
             f"{name} is pinned to {image_ref} — not updated "
-            f"(pinning means the admin chose that exact build)"
+            f"(pinning means the admin chose that exact build)",
+            {
+                "updated": False,
+                "old_image_id": current_id,
+                "new_image_id": current_id,
+            },
         )
 
     old_image_id = spec.get("Image") or ""
@@ -533,10 +562,15 @@ def _update_container(params: dict, _config: AgentConfig) -> str:
 
     new_image_id = _run(["docker", "inspect", "--format", "{{.Image}}", name])
     changed = "image updated" if new_image_id != old_image_id else "already current"
-    return (
+    return ActionOutput(
         f"Updated {name} via {via} on {image_ref} ({changed})\n"
         f"  old image: {old_image_id[:19]}\n"
-        f"  new image: {new_image_id[:19]}"
+        f"  new image: {new_image_id[:19]}",
+        {
+            "updated": new_image_id != old_image_id,
+            "old_image_id": old_image_id,
+            "new_image_id": new_image_id,
+        },
     )
 
 
@@ -1172,7 +1206,7 @@ def _execute_inline_script(params: dict, config: AgentConfig, inputs: dict | Non
         else:
             cmd = [shell, str(script_path)]
         output = _run(cmd, timeout=timeout, extra_env=_input_env(inputs))
-        return f"[{digest}]\n{output}"
+        return ActionOutput(f"[{digest}]\n{output}", {"exit_code": 0})
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -1212,7 +1246,10 @@ def _execute_script(params: dict, config: AgentConfig, inputs: dict | None = Non
                 f"to execute. Run: chmod go-w {script_path}"
             )
 
-    return _run([str(script_path)], extra_env=_input_env(inputs))
+    return ActionOutput(
+        _run([str(script_path)], extra_env=_input_env(inputs)),
+        {"exit_code": 0},
+    )
 
 
 def _sanitize_notify_message(raw: str) -> str:
@@ -1316,7 +1353,8 @@ def _run_command(params: dict, config: AgentConfig) -> str:
     if timeout < 1 or timeout > 3600:
         raise ValueError("timeout must be between 1 and 3600 seconds")
 
-    return _run(shlex.split(command), timeout=timeout)
+    return ActionOutput(_run(shlex.split(command), timeout=timeout),
+                        {"exit_code": 0})
 
 
 def _set_hostname(params: dict, _config: AgentConfig) -> str:
