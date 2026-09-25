@@ -1647,10 +1647,10 @@
 <span class="hl-var">actions</span>:
   - <span class="hl-var">id</span>: <span class="hl-string">pull</span>
     <span class="hl-var">type</span>: <span class="hl-string">pull_image</span>
-    <span class="hl-var">params</span>: { <span class="hl-var">image</span>: <span class="hl-string">"{{ inputs.image }}"</span> }
+    <span class="hl-var">params</span>: { <span class="hl-var">image</span>: <span class="hl-string">"${{ inputs.image }}"</span> }
   - <span class="hl-var">id</span>: <span class="hl-string">recreate</span>
     <span class="hl-var">type</span>: <span class="hl-string">recreate_container</span>
-    <span class="hl-var">params</span>: { <span class="hl-var">container_name</span>: <span class="hl-string">"{{ inputs.container }}"</span>, <span class="hl-var">image</span>: <span class="hl-string">"{{ inputs.image }}"</span> }</pre>
+    <span class="hl-var">params</span>: { <span class="hl-var">container_name</span>: <span class="hl-string">"${{ inputs.container }}"</span>, <span class="hl-var">image</span>: <span class="hl-string">"${{ inputs.image }}"</span> }</pre>
       </div>
       <p class="prose">For Compose-managed stacks, swap the two steps for <code>docker_compose_up</code> against the stack's compose file. Compose pulls and recreates in a single action.</p>
 
@@ -3123,7 +3123,7 @@
   - <span class="hl-key">id</span>: <span class="hl-string">reprovision-stage</span>
     <span class="hl-key">type</span>: <span class="hl-string">reprovision_stage</span>
     <span class="hl-key">params</span>:
-      <span class="hl-key">job_id</span>: <span class="hl-string">&quot;{{ inputs.job_id }}&quot;</span>
+      <span class="hl-key">job_id</span>: <span class="hl-string">&quot;${{ inputs.job_id }}&quot;</span>
       <span class="hl-key">kernel_url</span>: <span class="hl-string">https://vigil.example.com/images/debian-13/vmlinuz</span>
       <span class="hl-key">initrd_url</span>: <span class="hl-string">https://vigil.example.com/images/debian-13/initrd.gz</span>
       <span class="hl-key">kernel_sha256</span>: <span class="hl-string">&quot;2a4c6e8d0b1f3a5c7e9d1b3f5a7c9e1d3b5f7a9c1e3d5b7f9a1c3e5d7b9f1a3c&quot;</span>
@@ -3143,7 +3143,7 @@
   - <span class="hl-key">id</span>: <span class="hl-string">reprovision-commit</span>
     <span class="hl-key">type</span>: <span class="hl-string">reprovision_commit</span>
     <span class="hl-key">params</span>:
-      <span class="hl-key">job_id</span>: <span class="hl-string">&quot;{{ inputs.job_id }}&quot;</span>
+      <span class="hl-key">job_id</span>: <span class="hl-string">&quot;${{ inputs.job_id }}&quot;</span>
       <span class="hl-key">cmdline</span>: <span class="hl-string">&quot;auto=true priority=critical&quot;</span></pre></div>
 </div></details>
 <details class="action" data-group="reprovision" data-risk="high" data-keywords="reprovision_cleanup job_id"><summary><code class="action-name">reprovision_cleanup</code><span class="risk risk-high">high</span><span class="action-label">Remove staged installer files</span><span class="action-required">job_id</span></summary><div class="action-body">
@@ -3160,7 +3160,7 @@
   - <span class="hl-key">id</span>: <span class="hl-string">reprovision-cleanup</span>
     <span class="hl-key">type</span>: <span class="hl-string">reprovision_cleanup</span>
     <span class="hl-key">params</span>:
-      <span class="hl-key">job_id</span>: <span class="hl-string">&quot;{{ inputs.job_id }}&quot;</span></pre></div>
+      <span class="hl-key">job_id</span>: <span class="hl-string">&quot;${{ inputs.job_id }}&quot;</span></pre></div>
 </div></details>
 </div>
 <div class="action-group" data-group="tags">
