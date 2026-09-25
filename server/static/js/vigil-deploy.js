@@ -300,6 +300,12 @@ function _renderDeployInputs(inputs) {
     const label = document.createElement('label');
     label.className = 'deploy-input-label';
     label.textContent = inp.label || inp.id;
+    if (inp.type === 'text' && inp.required) {
+      const req = document.createElement('span');
+      req.className = 'deploy-input-req';
+      req.textContent = ' (required)';
+      label.appendChild(req);
+    }
 
     let control;
     if (inp.type === 'choice') {
@@ -319,6 +325,7 @@ function _renderDeployInputs(inputs) {
     } else if (inp.type === 'number') {
       control = document.createElement('input');
       control.type = 'number';
+      control.step = 'any';   // the server accepts decimals; the browser default (1) would refuse 3.7
       control.className = 'form-control';
       control.value = inp.default ?? '';
     } else {
@@ -345,6 +352,21 @@ function _renderDeployInputs(inputs) {
     }
     list.appendChild(row);
   }
+}
+
+function _firstInvalidDeployInput() {
+  for (const row of document.querySelectorAll('#deploy-inputs .deploy-input-row')) {
+    const ctrl = row.querySelector('.deploy-input-control');
+    if (!ctrl) continue;
+    const name = (row.querySelector('.deploy-input-label')?.firstChild?.textContent || row.dataset.inputId).trim();
+    if (row.dataset.inputType === 'number' && (ctrl.value === '' || !ctrl.checkValidity())) {
+      return { control: ctrl, message: `${name}: enter a number` };
+    }
+    if (ctrl.required && !ctrl.value.trim()) {
+      return { control: ctrl, message: `${name} is required` };
+    }
+  }
+  return null;
 }
 
 function _readDeployInputs() {
@@ -506,6 +528,8 @@ async function openDeployModal(definitionId, prefill) {
     });
 
     _renderDeployInputs((def.parsed_spec && def.parsed_spec.inputs) || []);
+    // A task that asks for values opens on them, not on its YAML.
+    if (((def.parsed_spec && def.parsed_spec.inputs) || []).length) setDeployTab('options');
     for (const [id, value] of Object.entries(prefill.inputs || {})) {
       const row = document.querySelector(`#deploy-inputs .deploy-input-row[data-input-id="${CSS.escape(id)}"]`);
       const ctrl = row && row.querySelector('.deploy-input-control');
@@ -585,6 +609,16 @@ function updateDeployHostSummary() {
 
 async function submitDeploy(event) {
   event.preventDefault();
+
+  // The form is novalidate: the browser's own check silently refuses to submit
+  // when the offending field sits on a hidden tab. Say which input is wrong.
+  const bad = _firstInvalidDeployInput();
+  if (bad) {
+    setDeployTab('options');
+    bad.control.focus();
+    showToast(bad.message, 'error');
+    return;
+  }
 
   const totp = document.getElementById('deploy-totp').value.trim();
   if (!totp) { showToast('Enter your TOTP code', 'error'); return; }

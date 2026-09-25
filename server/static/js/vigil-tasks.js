@@ -633,11 +633,15 @@ async function validateEditor() {
     });
     editorState.lastParsedSpec = body.parsed_spec;
     errBox.classList.remove('show');
+    document.getElementById('editor-preview').classList.remove('preview-stale');
     renderEditorPreview(body.parsed_spec);
   } catch (e) {
     editorState.lastParsedSpec = null;
     errBox.textContent = e.message;
     errBox.classList.add('show');
+    // The preview still shows the last valid version — dim it so it is not
+    // mistaken for what the current (invalid) YAML would do.
+    document.getElementById('editor-preview').classList.add('preview-stale');
   }
 }
 

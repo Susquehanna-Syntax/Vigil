@@ -240,14 +240,14 @@
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <form id="deploy-form" data-submit="submitDeploy" data-a1="$event">
+  <form id="deploy-form" data-submit="submitDeploy" data-a1="$event" novalidate>
     <div class="deploy-grid">
 
       <!-- LEFT: tabbed view of definition / inputs / policy -->
       <div>
         <div class="deploy-tabs" role="tablist">
           <button type="button" class="deploy-tab active" data-tab="yaml" data-act="setDeployTab" data-a1="yaml">YAML</button>
-          <button type="button" class="deploy-tab" data-tab="options" data-act="setDeployTab" data-a1="options" id="deploy-tab-options" style="display:none;">Options</button>
+          <button type="button" class="deploy-tab" data-tab="options" data-act="setDeployTab" data-a1="options" id="deploy-tab-options" style="display:none;">Inputs</button>
           <button type="button" class="deploy-tab" data-tab="schedule" data-act="setDeployTab" data-a1="schedule">Schedule</button>
           <button type="button" class="deploy-tab" data-tab="retry" data-act="setDeployTab" data-a1="retry">Retry</button>
           <button type="button" class="deploy-tab" data-tab="criteria" data-act="setDeployTab" data-a1="criteria">Success</button>
