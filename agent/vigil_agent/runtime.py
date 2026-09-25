@@ -65,6 +65,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from .expression import evaluate as _evaluate_when
+
 logger = logging.getLogger("vigil.runtime")
 
 # ── StepResult ────────────────────────────────────────────────────────────────
@@ -263,6 +265,7 @@ class TaskRuntime:
         on_step_result: Callable[[StepResult], None] | None = None,
     ) -> None:
         self._payload = task_payload
+        self._when_context = task_payload.get("when_context") or {}
         self._config = config
         self._on_step_result = on_step_result
         self._results: list[StepResult] = []
@@ -297,6 +300,54 @@ class TaskRuntime:
             step_type = step.get("type", "action")
             name = step.get("name", step_type)
 
+            when_expr = (step.get("when") or "").strip()
+            if when_expr:
+                try:
+                    when_ctx = {**self._when_context, "steps": ctx.get("steps", {})}
+                    when_true = bool(_evaluate_when(when_expr, when_ctx))
+                except Exception as exc:
+                    logger.error(
+                        "Step %r: when %r could not be evaluated: %s",
+                        name, when_expr, exc,
+                    )
+                    result = StepResult(
+                        name=name,
+                        action=str(step.get("action", "")),
+                        state="error",
+                        error=f"when {when_expr!r} could not be evaluated ({exc})",
+                    )
+                else:
+                    if not when_true:
+                        logger.info(
+                            "Step %r skipped: when %r evaluated false",
+                            name, when_expr,
+                        )
+                        result = StepResult(
+                            name=name,
+                            action=str(step.get("action", "")),
+                            state="skipped",
+                            output=f"when {when_expr!r} evaluated false",
+                        )
+                        # A skip is recorded like any other result so later
+                        # steps can see steps.<id>.status == "skipped", but
+                        # it must not update ctx["prev"].
+                        steps_map = ctx.get("steps", {})
+                        steps_map[name] = {
+                            "status": "skipped",
+                            "result": {},
+                        }
+                        ctx["steps"] = steps_map
+                        if top_level:
+                            self._results.append(result)
+                            if self._on_step_result:
+                                try:
+                                    self._on_step_result(result)
+                                except Exception as cb_exc:
+                                    logger.warning(
+                                        "on_step_result callback raised: %s",
+                                        cb_exc,
+                                    )
+                        continue
             if step_type == "action" or step_type not in ("if", "for_each"):
                 result = self._execute_action(step, ctx)
             elif step_type == "if":

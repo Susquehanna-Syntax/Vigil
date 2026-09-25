@@ -159,22 +159,18 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
     # params.variables for back-compat.
     context = _build_when_context(config, params)
 
-    # Pre-evaluate every step's when:. Skipped steps don't reach
-    # TaskRuntime at all. An expression that cannot be evaluated at all
-    # (version drift between server and agent — the server validated
-    # syntax at save time) fails the WHOLE task before any step runs:
-    # executing half a script under drift is worse than executing none.
-    plan: list[tuple[int, dict, bool, str]] = []
+    # Parse-check every step's when: before anything runs. The actual
+    # evaluation happens in TaskRuntime._execute_steps (per step, with the
+    # earlier steps' results in context), but a predicate that cannot even
+    # be parsed — version drift between server and agent, the server having
+    # validated syntax at save time — fails the WHOLE task before any step
+    # runs: executing half a script under drift is worse than executing none.
     for i, s in enumerate(raw_steps):
         when_expr = (s.get("when") or "").strip()
-        skip = False
-        skip_reason = ""
         if when_expr:
             try:
-                from .expression import evaluate as _eval_when
-                if not _eval_when(when_expr, context):
-                    skip = True
-                    skip_reason = when_expr
+                from .expression import parse as _parse_when
+                _parse_when(when_expr)
             except Exception as exc:
                 name = s.get("id", s.get("name", f"step{i+1}"))
                 msg = (
@@ -184,7 +180,6 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
                 logger.warning("Script task %s: %s", task_id, msg)
                 _report_failed(config, task, msg)
                 return
-        plan.append((i, s, skip, skip_reason))
 
     runnable_steps = [
         {
@@ -192,36 +187,27 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
             "action": s.get("action", s.get("type", "")),
             "params": s.get("params", {}),
             **({"success_criteria": s["success_criteria"]} if s.get("success_criteria") else {}),
+            **({"when": (s.get("when") or "").strip()} if (s.get("when") or "").strip() else {}),
         }
-        for i, s, skip, _ in plan if not skip
+        for i, s in enumerate(raw_steps)
     ]
 
-    if runnable_steps:
-        runtime_payload = {
-            "steps": runnable_steps,
-            "variables": params.get("variables", {}),
-        }
-        runtime = TaskRuntime(runtime_payload, config)
-        results = runtime.run()
-    else:
-        results = []  # everything got skipped
+    runtime_payload = {
+        "steps": runnable_steps,
+        "variables": params.get("variables", {}),
+        "when_context": context,
+    }
+    runtime = TaskRuntime(runtime_payload, config)
+    results = runtime.run()
 
-    # Walk the original plan and stitch results back in for step_outputs.
-    results_by_name = {r.name: r for r in results}
     step_outputs = []
     any_error = False
     any_ran = False
-    for i, s, skip, reason in plan:
-        name = s.get("id", s.get("name", f"step{i+1}"))
-        if skip:
-            step_outputs.append(f"[SKIPPED] {name}: when {reason!r} evaluated false")
+    for r in results:
+        if r.state == "skipped":
+            step_outputs.append(f"[SKIPPED] {r.name}: {r.output}")
             continue
         any_ran = True
-        r = results_by_name.get(name)
-        if r is None:
-            step_outputs.append(f"[ERROR] {name}: runtime returned no result")
-            any_error = True
-            continue
         status = "OK" if r.state == "ok" else "ERROR"
         step_outputs.append(f"[{status}] {r.name}: {r.output or r.error or r.state}")
         if r.state == "error":
