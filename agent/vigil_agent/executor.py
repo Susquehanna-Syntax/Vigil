@@ -1382,7 +1382,7 @@ from .actions.tags_scans import (  # noqa: E402,F401
     _count_trivy_vulnerabilities,
     _trivy_db_update,
 )
-from .actions.hunts import _hunt_file, _hunt_package
+from .actions.hunts import _hunt_file, _hunt_package, _hunt_port, _hunt_process, _hunt_service
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1414,6 +1414,9 @@ _HANDLERS: dict[str, callable] = {
     "trivy_db_update": _trivy_db_update,
     "hunt_file": _hunt_file,
     "hunt_package": _hunt_package,
+    "hunt_process": _hunt_process,
+    "hunt_port": _hunt_port,
+    "hunt_service": _hunt_service,
     "remove_container": _remove_container,
     "docker_compose_up": _docker_compose_up,
     "docker_compose_down": _docker_compose_down,

@@ -522,6 +522,27 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
                      "manager", "max_results", "timeout"],
         "outputs": {"matched": "bool", "count": "int", "truncated": "bool"},
     },
+    "hunt_process": {
+        "label": "Hunt: running processes",
+        "risk": "low",
+        "required": [],
+        "optional": ["name", "cmdline", "user", "max_results", "timeout"],
+        "outputs": {"matched": "bool", "count": "int", "truncated": "bool"},
+    },
+    "hunt_port": {
+        "label": "Hunt: listening ports",
+        "risk": "low",
+        "required": [],
+        "optional": ["port", "protocol", "process", "max_results", "timeout"],
+        "outputs": {"matched": "bool", "count": "int", "truncated": "bool"},
+    },
+    "hunt_service": {
+        "label": "Hunt: services",
+        "risk": "low",
+        "required": ["name"],
+        "optional": ["state", "start_mode", "max_results", "timeout"],
+        "outputs": {"matched": "bool", "count": "int", "truncated": "bool"},
+    },
 }
 
 

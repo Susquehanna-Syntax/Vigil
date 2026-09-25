@@ -810,6 +810,18 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                 f"action #{index + 1} (hunt_file): needs name or sha256 — "
                 "it cannot search without at least one of the two"
             )
+        elif action_type == "hunt_process" and not (
+                params.get("name") or params.get("cmdline") or params.get("user")):
+            raise SpecError(
+                f"action #{index + 1} (hunt_process): needs name, cmdline or user — "
+                "it cannot search without at least one of the three"
+            )
+        elif action_type == "hunt_port" and not (
+                params.get("port") or params.get("process")):
+            raise SpecError(
+                f"action #{index + 1} (hunt_port): needs port or process — "
+                "it cannot search without at least one of the two"
+            )
 
         allowed = set(spec["required"]) | set(spec["optional"])
         extra = set(params) - allowed
