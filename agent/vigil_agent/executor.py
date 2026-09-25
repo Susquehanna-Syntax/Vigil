@@ -969,7 +969,8 @@ def _write_file(params: dict, config: AgentConfig) -> str:
     if mode:
         os.chmod(path, _parse_octal_mode(str(mode)))
 
-    return f"Wrote {len(content)} bytes to {path}"
+    return ActionOutput(f"Wrote {len(content)} bytes to {path}",
+                        {"path": str(path), "bytes": len(content)})
 
 
 def _create_directory(params: dict, _config: AgentConfig) -> str:
@@ -985,7 +986,7 @@ def _create_directory(params: dict, _config: AgentConfig) -> str:
     if owner or group:
         _chown(path, owner, group)
 
-    return f"Created directory {path}"
+    return ActionOutput(f"Created directory {path}", {"path": str(path)})
 
 
 def _delete_path(params: dict, _config: AgentConfig) -> str:
@@ -994,10 +995,12 @@ def _delete_path(params: dict, _config: AgentConfig) -> str:
 
     if path.is_dir():
         shutil.rmtree(path)
-        return f"Deleted directory {path} (recursive)"
+        return ActionOutput(f"Deleted directory {path} (recursive)",
+                            {"path": str(path), "recursive": recursive})
     else:
         path.unlink()
-        return f"Deleted {path}"
+        return ActionOutput(f"Deleted {path}",
+                            {"path": str(path), "recursive": recursive})
 
 
 def _copy_file(params: dict, config: AgentConfig) -> str:
@@ -1013,7 +1016,7 @@ def _copy_file(params: dict, config: AgentConfig) -> str:
     else:
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dest)
-    return f"Copied {src} -> {dest}"
+    return ActionOutput(f"Copied {src} -> {dest}", {"src": str(src), "dest": str(dest)})
 
 
 def _move_file(params: dict, config: AgentConfig) -> str:
@@ -1025,7 +1028,7 @@ def _move_file(params: dict, config: AgentConfig) -> str:
         raise ValueError(f"Source not found: {src}")
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(src), str(dest))
-    return f"Moved {src} -> {dest}"
+    return ActionOutput(f"Moved {src} -> {dest}", {"src": str(src), "dest": str(dest)})
 
 
 def _set_permissions(params: dict, _config: AgentConfig) -> str:
@@ -1049,7 +1052,7 @@ def _set_permissions(params: dict, _config: AgentConfig) -> str:
         parts.append(f"owner={owner}")
     if group:
         parts.append(f"group={group}")
-    return f"Set {', '.join(parts)} on {path}"
+    return ActionOutput(f"Set {', '.join(parts)} on {path}", {"path": str(path)})
 
 
 # ── Package management ──────────────────────────────────────────────────────
@@ -1076,7 +1079,9 @@ def _install_package(params: dict, _config: AgentConfig) -> str:
     if pm is None:
         raise RuntimeError("No supported package manager found")
     pm.refresh()
-    return _assert_initramfs_clean(pm.install(pkg_name))
+    text = _assert_initramfs_clean(pm.install(pkg_name))
+    return ActionOutput(text, {"package": pkg_name, "manager": pm.name,
+                               "installed_version": pm.installed_version(pkg_name)})
 
 
 def _remove_package(params: dict, _config: AgentConfig) -> str:
@@ -1084,7 +1089,7 @@ def _remove_package(params: dict, _config: AgentConfig) -> str:
     pm = detect_pkg_manager()
     if pm is None:
         raise RuntimeError("No supported package manager found")
-    return pm.remove(pkg_name)
+    return ActionOutput(pm.remove(pkg_name), {"package": pkg_name, "manager": pm.name})
 
 
 def _update_package(params: dict, _config: AgentConfig) -> str:
@@ -1093,7 +1098,9 @@ def _update_package(params: dict, _config: AgentConfig) -> str:
     if pm is None:
         raise RuntimeError("No supported package manager found")
     pm.refresh()
-    return _assert_initramfs_clean(pm.install(pkg_name))  # install upgrades if already present
+    text = _assert_initramfs_clean(pm.install(pkg_name))  # install upgrades if already present
+    return ActionOutput(text, {"package": pkg_name, "manager": pm.name,
+                               "installed_version": pm.installed_version(pkg_name)})
 
 
 def _run_package_updates(params: dict, _config: AgentConfig) -> str:
@@ -1103,25 +1110,26 @@ def _run_package_updates(params: dict, _config: AgentConfig) -> str:
         raise RuntimeError("No supported package manager found")
 
     pm.refresh()
+    outputs = {"manager": pm.name, "security_only": bool(security_only)}
 
     if security_only:
         # Security-only upgrades only supported for apt and dnf
         if pm.name in ("apt", "apt-get"):
-            return _assert_initramfs_clean(_run(
+            return ActionOutput(_assert_initramfs_clean(_run(
                 ["apt-get", "upgrade", "-y", "-qq",
                  "-o", "Dir::Etc::SourceList=/etc/apt/sources.list"],
                 timeout=600,
-            ))
+            )), outputs)
         if pm.name == "dnf":
-            return _assert_initramfs_clean(_run(
+            return ActionOutput(_assert_initramfs_clean(_run(
                 ["dnf", "update", "-y", "-q", "--security"], timeout=600
-            ))
+            )), outputs)
         logger.warning(
             "security_only not supported for %s, running full upgrade",
             pm.name,
         )
 
-    return _assert_initramfs_clean(pm.upgrade_all())
+    return ActionOutput(_assert_initramfs_clean(pm.upgrade_all()), outputs)
 
 
 # ── System ──────────────────────────────────────────────────────────────────

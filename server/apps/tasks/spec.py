@@ -197,36 +197,42 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "high",
         "required": ["path", "content"],
         "optional": ["mode"],
+        "outputs": {"path": "str", "bytes": "int"},
     },
     "create_directory": {
         "label": "Create directory",
         "risk": "low",
         "required": ["path"],
         "optional": ["owner", "group", "mode"],
+        "outputs": {"path": "str"},
     },
     "delete_path": {
         "label": "Delete path",
         "risk": "high",
         "required": ["path"],
         "optional": ["recursive"],
+        "outputs": {"path": "str", "recursive": "bool"},
     },
     "copy_file": {
         "label": "Copy file",
         "risk": "standard",
         "required": ["src", "dest"],
         "optional": [],
+        "outputs": {"src": "str", "dest": "str"},
     },
     "move_file": {
         "label": "Move file",
         "risk": "standard",
         "required": ["src", "dest"],
         "optional": [],
+        "outputs": {"src": "str", "dest": "str"},
     },
     "set_permissions": {
         "label": "Set permissions",
         "risk": "standard",
         "required": ["path"],
         "optional": ["owner", "group", "mode"],
+        "outputs": {"path": "str"},
     },
     # ── Package management ──────────────────────────────────────────────────
     "install_package": {
@@ -234,24 +240,28 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "standard",
         "required": ["package_name"],
         "optional": [],
+        "outputs": {"package": "str", "manager": "str", "installed_version": "str"},
     },
     "remove_package": {
         "label": "Remove package",
         "risk": "standard",
         "required": ["package_name"],
         "optional": [],
+        "outputs": {"package": "str", "manager": "str"},
     },
     "update_package": {
         "label": "Update package",
         "risk": "standard",
         "required": ["package_name"],
         "optional": [],
+        "outputs": {"package": "str", "manager": "str", "installed_version": "str"},
     },
     "run_package_updates": {
         "label": "Run system updates",
         "risk": "standard",
         "required": [],
         "optional": ["security_only"],
+        "outputs": {"manager": "str", "security_only": "bool"},
     },
     # ── Windows Update ──────────────────────────────────────────────────────
     "windows_update_scan": {
