@@ -29,7 +29,7 @@ risk: standard
 #     attempts: 3
 #     delay_seconds: 60
 
-# Optional: require specific output (supports {{ inputs.x }} variables)
+# Optional: require specific output (supports \${{ inputs.x }} variables)
 # success_criteria:
 #   exit_code: 0
 #   output_contains: "restarted"
@@ -82,7 +82,7 @@ actions:
   - id: upgrade
     type: update_package
     params:
-      package_name: "{{ inputs.pkg }}"
+      package_name: "\${{ inputs.pkg }}"
 `
   },
   {
@@ -103,13 +103,13 @@ actions:
   - id: remove
     type: remove_package
     params:
-      package_name: "{{ inputs.pkg }}"
+      package_name: "\${{ inputs.pkg }}"
   - id: refresh-index
     type: run_package_updates
   - id: install
     type: install_package
     params:
-      package_name: "{{ inputs.pkg }}"
+      package_name: "\${{ inputs.pkg }}"
 `
   },
   {
@@ -144,7 +144,7 @@ actions:
   - id: upgrade-only
     type: update_package
     params:
-      package_name: "{{ inputs.pkg }}"
+      package_name: "\${{ inputs.pkg }}"
 `
   },
   {
@@ -165,7 +165,7 @@ actions:
   - id: restart
     type: restart_service
     params:
-      service_name: "{{ inputs.service }}"
+      service_name: "\${{ inputs.service }}"
 `
   },
   {
@@ -185,7 +185,7 @@ actions:
   - id: clean
     type: clear_temp_files
     params:
-      older_than_days: "{{ inputs.days }}"
+      older_than_days: "\${{ inputs.days }}"
 `
   },
   {
@@ -213,12 +213,12 @@ actions:
   - id: wait-for-idle
     type: run_command
     params:
-      command: "sh -c 'for i in $(seq 1 {{ inputs.max_wait_minutes }}); do who | grep -q . || exit 0; sleep 60; done; exit 1'"
+      command: "sh -c 'for i in $(seq 1 \${{ inputs.max_wait_minutes }}); do who | grep -q . || exit 0; sleep 60; done; exit 1'"
       timeout: 7200
   - id: restart-service
     type: restart_service
     params:
-      service_name: "{{ inputs.service }}"
+      service_name: "\${{ inputs.service }}"
 `
   },
   {
@@ -244,7 +244,7 @@ actions:
   - id: download
     type: run_command
     params:
-      command: 'curl -sSfL -o /tmp/nessus.deb "{{ inputs.deb_url }}"'
+      command: 'curl -sSfL -o /tmp/nessus.deb "\${{ inputs.deb_url }}"'
       timeout: 600
   - id: install
     type: run_command
@@ -360,7 +360,7 @@ actions:
   - id: scan
     type: run_trivy_scan
     params:
-      scope: "{{ inputs.scope }}"
+      scope: "\${{ inputs.scope }}"
 `
   },
   {
@@ -428,7 +428,7 @@ actions:
   - id: request_scan
     type: request_network_scan
     params:
-      engine: "{{ inputs.engine }}"
+      engine: "\${{ inputs.engine }}"
 `
   },
   {
@@ -448,7 +448,7 @@ actions:
   - id: reboot
     type: reboot
     params:
-      delay_seconds: "{{ inputs.delay }}"
+      delay_seconds: "\${{ inputs.delay }}"
 `
   },
 ];
@@ -680,6 +680,10 @@ function renderEditorPreview(spec) {
         <div style="background:var(--s2);border-radius:var(--r-sm);margin-top:8px;border:1px solid var(--border);">${rows}</div>
       </div>`;
   }
+  const warnings = spec.warnings || [];
+  const warningsHtml = warnings.length
+    ? `<div class="editor-warnings">${warnings.map(w => `<div>${escHtml(w)}</div>`).join('')}</div>`
+    : '';
   el.innerHTML = `
     <div class="preview-heading">${escHtml(spec.name)}</div>
     <div class="preview-sub">${escHtml(spec.description || 'No description.')}</div>
@@ -691,6 +695,7 @@ function renderEditorPreview(spec) {
       ${spec.author ? `<span>by ${escHtml(spec.author)}</span>` : ''}
       ${spec.created ? `<span>${escHtml(spec.created)}</span>` : ''}
     </div>
+    ${warningsHtml}
     ${inputsHtml}
     <div class="preview-actions">${actionsHtml}</div>`;
 }
