@@ -282,6 +282,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "low",
         "required": [],
         "optional": ["older_than_days"],
+        "outputs": {"removed": "int", "skipped": "int"},
     },
     "execute_script": {
         "label": "Execute script (allowlisted file or hash-approved body)",
@@ -296,6 +297,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": [],
         "optional": ["delay_seconds", "notify", "notify_message",
                      "defer_limit", "defer_minutes"],
+        "outputs": {"delay_seconds": "int", "deferral_active": "bool"},
     },
     "run_command": {
         "label": "Run shell command",
@@ -309,6 +311,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "standard",
         "required": ["hostname"],
         "optional": [],
+        "outputs": {"hostname": "str"},
     },
     # ── Networking ──────────────────────────────────────────────────────────
     "add_firewall_rule": {
@@ -316,6 +319,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "high",
         "required": ["port", "protocol"],
         "optional": ["action", "source", "interface"],
+        "outputs": {"port": "str", "protocol": "str", "action": "str"},
     },
     "remove_firewall_rule": {
         "label": "Remove firewall rule",
@@ -330,6 +334,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         # `name` is carried for display/back-compat only. ufw and
         # firewall-cmd ignore both.
         "optional": ["action", "source", "name", "rule_id"],
+        "outputs": {"port": "str", "protocol": "str", "action": "str"},
     },
     # Read-only, so low risk: it changes nothing and the Firewall tab needs it
     # on every view. The write actions above stay high.
@@ -338,24 +343,28 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "low",
         "required": [],
         "optional": [],
+        "outputs": {"supported": "bool", "enabled": "bool", "rule_count": "int"},
     },
     "set_firewall_policy": {
         "label": "Set firewall default policy",
         "risk": "high",
         "required": ["direction", "policy"],
         "optional": [],
+        "outputs": {"direction": "str", "policy": "str"},
     },
     "enable_firewall": {
         "label": "Enable the firewall",
         "risk": "high",
         "required": [],
         "optional": [],
+        "outputs": {"enabled": "bool"},
     },
     "disable_firewall": {
         "label": "Disable the firewall",
         "risk": "high",
         "required": [],
         "optional": [],
+        "outputs": {"enabled": "bool"},
     },
     # ── User management ────────────────────────────────────────────────────
     "create_user": {
@@ -363,18 +372,21 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "high",
         "required": ["username"],
         "optional": ["groups", "shell"],  # groups: comma-separated
+        "outputs": {"username": "str"},
     },
     "delete_user": {
         "label": "Delete user",
         "risk": "high",
         "required": ["username"],
         "optional": ["remove_home"],
+        "outputs": {"username": "str"},
     },
     "add_user_to_group": {
         "label": "Add user to group",
         "risk": "standard",
         "required": ["username", "group"],
         "optional": [],
+        "outputs": {"username": "str", "group": "str"},
     },
     # ── Cron ────────────────────────────────────────────────────────────────
     "create_cron_job": {
@@ -382,12 +394,14 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "standard",
         "required": ["schedule", "command"],
         "optional": ["user"],
+        "outputs": {"user": "str"},
     },
     "delete_cron_job": {
         "label": "Delete cron job",
         "risk": "standard",
         "required": ["pattern"],
         "optional": ["user"],
+        "outputs": {"user": "str", "removed": "int"},
     },
     # ── Self-management ─────────────────────────────────────────────────────
     "update_agent": {

@@ -69,6 +69,16 @@ EXPECTED = {
     "update_package": {"package", "manager", "installed_version"},
     "remove_package": {"package", "manager"},
     "run_package_updates": {"manager", "security_only"},
+    "clear_temp_files": {"removed", "skipped"}, "reboot": {"delay_seconds", "deferral_active"},
+    "set_hostname": {"hostname"},
+    "add_firewall_rule": {"port", "protocol", "action"},
+    "remove_firewall_rule": {"port", "protocol", "action"},
+    "list_firewall_rules": {"supported", "enabled", "rule_count"},
+    "set_firewall_policy": {"direction", "policy"},
+    "enable_firewall": {"enabled"}, "disable_firewall": {"enabled"},
+    "create_user": {"username"}, "delete_user": {"username"},
+    "add_user_to_group": {"username", "group"},
+    "create_cron_job": {"user"}, "delete_cron_job": {"user", "removed"},
 }
 
 
