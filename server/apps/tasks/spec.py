@@ -27,6 +27,8 @@ from typing import Any
 
 import yaml
 
+from .scripthash import script_hash
+
 
 class SpecError(ValueError):
     """Raised when a YAML task definition fails validation."""
@@ -254,10 +256,10 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "optional": ["older_than_days"],
     },
     "execute_script": {
-        "label": "Execute allowlisted script",
+        "label": "Execute script (allowlisted file or hash-approved body)",
         "risk": "high",
-        "required": ["script_name"],
-        "optional": [],
+        "required": [],
+        "optional": ["script_name", "shell", "script"],
     },
     "reboot": {
         "label": "Reboot host",
@@ -630,6 +632,51 @@ def _validate_tag_param(raw: Any, position: int, action_type: str) -> None:
                 f"than 40 characters")
 
 
+_SCRIPT_SHELLS = ("bash", "sh", "powershell", "pwsh")
+_SCRIPT_MAX_LEN = 65536
+
+
+def _validate_script_params(params: dict[str, Any], position: int) -> None:
+    has_name = "script_name" in params
+    has_body = "script" in params
+    if has_name and has_body:
+        raise SpecError(
+            f"action #{position} (execute_script): give script_name or script, not both"
+        )
+    if not has_name and not has_body:
+        raise SpecError(
+            f"action #{position} (execute_script): needs script_name or script"
+        )
+    if "shell" in params and not has_body:
+        raise SpecError(
+            f"action #{position} (execute_script): shell is only used with script"
+        )
+    if has_body:
+        shell = params.get("shell")
+        if shell not in _SCRIPT_SHELLS:
+            raise SpecError(
+                f"action #{position} (execute_script): shell must be one of "
+                f"{', '.join(_SCRIPT_SHELLS)}"
+            )
+        body = params["script"]
+        if not isinstance(body, str) or not body:
+            raise SpecError(
+                f"action #{position} (execute_script): script must be a "
+                f"non-empty string"
+            )
+        if len(body) > _SCRIPT_MAX_LEN:
+            raise SpecError(
+                f"action #{position} (execute_script): script is limited to "
+                f"{_SCRIPT_MAX_LEN} characters"
+            )
+        if "${{" in body:
+            raise SpecError(
+                f"action #{position} (execute_script): a script body takes "
+                f"inputs as $VIGIL_INPUT_<ID> environment variables, not "
+                f"${{{{ … }}}} markers"
+            )
+
+
 def _validate_schedule(raw: Any) -> dict[str, Any] | None:
     """Validate the optional ``schedule`` block.
 
@@ -940,7 +987,14 @@ def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[
 
     new_actions = []
     for action in parsed_spec.get("actions", []):
-        new_actions.append({**action, "params": _sub(action.get("params") or {})})
+        params = action.get("params") or {}
+        if action.get("type") == "execute_script" and "script" in params:
+            new_params = {
+                k: (v if k == "script" else _sub(v)) for k, v in params.items()
+            }
+        else:
+            new_params = _sub(params)
+        new_actions.append({**action, "params": new_params})
 
     new_sc = parsed_spec.get("success_criteria")
     if new_sc and isinstance(new_sc, dict):
@@ -1133,6 +1187,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
 
         if action_type in ("add_tag", "remove_tag"):
             _validate_tag_param(params.get("tags", ""), index + 1, action_type)
+        elif action_type == "execute_script":
+            _validate_script_params(params, index + 1)
 
         allowed = set(spec["required"]) | set(spec["optional"])
         extra = set(params) - allowed
@@ -1148,9 +1204,12 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                     f"action #{index + 1}: param {pk!r} must be a primitive value"
                 )
             # If the value references ${{ inputs.x }}, the input must exist.
-            _check_variable_refs(
-                pv, declared_input_ids, f"action #{index + 1} param {pk!r}", warnings
-            )
+            # The inline script body is an exception: bare braces are literal
+            # shell/PowerShell text, so its contents are never ref-checked.
+            if not (action_type == "execute_script" and pk == "script"):
+                _check_variable_refs(
+                    pv, declared_input_ids, f"action #{index + 1} param {pk!r}", warnings
+                )
 
         # Optional `when:` predicate. Validated for syntactic safety
         # here; the agent evaluates it at runtime against its own
@@ -1208,6 +1267,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
             "when": when_expr,
             "timeout": step_timeout,
         })
+        if action_type == "execute_script" and "script" in params:
+            parsed_actions[-1]["script_sha256"] = script_hash(params["script"])
 
         derived_risk_level = max(derived_risk_level, _RISK_ORDER[spec["risk"]])
 
