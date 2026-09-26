@@ -240,6 +240,31 @@ class BranchExecutionTests(unittest.TestCase):
         self.assertIn("guard", output)
         self.assertNotIn("svc", by_id)
 
+    def test_condition_that_cannot_be_evaluated_never_runs_the_step(self):
+        # Guards and when: are parse-checked up front, but if evaluation still
+        # raises, the step must be recorded as an error — not executed anyway.
+        from vigil_agent import runtime
+        params = {"steps": _SPEC_STEPS[:2], "flow": [
+            {"step": "svc"},
+            {"id": "b1", "if": "steps.svc.result.count > 0",
+             "then": [{"step": "stop"}], "else": []},
+        ]}
+        ran = []
+
+        def fake(atype, params_, config, **kwargs):
+            ran.append(atype)
+            return _hunt(1)
+
+        real = runtime._evaluate_when
+        with patch.object(runtime, "_evaluate_when",
+                          side_effect=lambda e, c: (_ for _ in ()).throw(ValueError("boom"))
+                          if "count" in e else real(e, c)):
+            self._run(params, fake)
+        self.assertEqual(ran, ["hunt_service"])
+        state, _, by_id = self._statuses()
+        self.assertEqual(state, "failed")
+        self.assertEqual(by_id["stop"]["status"], "error")
+
     def test_no_flow_unchanged(self):
         params = {"steps": [
             {"id": "svc", "action": "hunt_service", "params": {"name": "nginx"}},

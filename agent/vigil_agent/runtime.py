@@ -309,6 +309,9 @@ class TaskRuntime:
 
             when_expr = (step.get("when") or "").strip()
             guard_expr = (step.get("guard") or "").strip()
+            # Set when a guard or when: could not be evaluated: the step is
+            # then recorded as an error and never executed.
+            result = None
             if guard_expr:
                 try:
                     guard_ctx = {**self._when_context, "steps": ctx.get("steps", {})}
@@ -353,7 +356,7 @@ class TaskRuntime:
                                         cb_exc,
                                     )
                         continue
-            if when_expr:
+            if when_expr and result is None:
                 try:
                     when_ctx = {**self._when_context, "steps": ctx.get("steps", {})}
                     when_true = bool(_evaluate_when(when_expr, when_ctx))
@@ -400,7 +403,9 @@ class TaskRuntime:
                                         cb_exc,
                                     )
                         continue
-            if step_type == "action" or step_type not in ("if", "for_each"):
+            if result is not None:
+                pass  # guard / when could not be evaluated — do not run the step
+            elif step_type == "action" or step_type not in ("if", "for_each"):
                 result = self._execute_action(step, ctx)
             elif step_type == "if":
                 result = self._execute_if(step, ctx)
