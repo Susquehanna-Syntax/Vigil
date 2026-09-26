@@ -185,6 +185,30 @@ def _ingest_hunt_matches(task, raw_steps):
                 and isinstance(step.get("id"), str)
                 and isinstance(step.get("action"), str)):
             signed_actions[step["id"]] = step["action"]
+    # Probes of the signed ``relevant:`` tree are signed evidence too: the
+    # agent runs them before any step and reports them as steps, so their
+    # matches are stored like any other hunt step's — with the action the
+    # server itself signed, never the report's.
+    relevant = (task.params or {}).get("relevant")
+    if isinstance(relevant, dict):
+        probe_actions = {}
+
+        def _collect(node) -> None:
+            for item in node.get("items") or []:
+                if not isinstance(item, dict):
+                    continue
+                if "probe" in item:
+                    probe = item.get("probe")
+                    if (isinstance(probe, dict)
+                            and isinstance(probe.get("id"), str)
+                            and isinstance(probe.get("type"), str)):
+                        probe_actions[probe["id"]] = probe["type"]
+                else:
+                    _collect(item)
+
+        _collect(relevant)
+        for probe_id, probe_type in probe_actions.items():
+            signed_actions.setdefault(probe_id, probe_type)
 
     rows = []
     task_remaining = _HUNT_MATCHES_PER_TASK

@@ -10,6 +10,7 @@ import socket
 import requests
 
 from .config import AgentConfig
+from .features import FEATURES
 from .__version__ import __version__
 
 logger = logging.getLogger("vigil.client")
@@ -59,6 +60,7 @@ def checkin(
         "vigil_version": __version__,
         "mode": config.mode,
         "metrics": metrics,
+        "features": list(FEATURES),
     }
     # The ingest distinguishes an absent key (agent too old to report it —
     # stored value left alone) from an explicit False, so the key is only

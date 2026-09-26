@@ -270,6 +270,24 @@ _REBOOT_GATED_PARAMS = {"notify", "defer_limit", "defer_minutes"}
 _REBOOT_MIN_AGENT_VERSION = "2026.9.0"
 
 
+def _normalize_agent_features(raw) -> list[str]:
+    """The check-in's ``features``: a list of ≤ 20 short strings.
+
+    Anything else (wrong type, non-strings, oversized entries) is treated as
+    an empty list — a corrupt payload must not grant features the agent
+    never advertised, and an honest agent's list is tiny.
+    """
+    if not isinstance(raw, list) or len(raw) > 20:
+        return []
+    out = []
+    for entry in raw:
+        if not isinstance(entry, str) or not entry or len(entry) > 40:
+            return []
+        if entry not in out:
+            out.append(entry)
+    return out
+
+
 def _refuse_outdated_reboot(host: Host) -> None:
     """Fail every pending deferral-bearing reboot for a too-old agent.
 
@@ -302,6 +320,32 @@ def _refuse_outdated_reboot(host: Host) -> None:
             f"Refused: agent version {host.agent_version or '(unknown)'} cannot "
             f"honour reboot {', '.join(sorted(gated))} — agent "
             f"{_REBOOT_MIN_AGENT_VERSION} or newer is required"
+        )
+        task.completed_at = now()
+        task.save(update_fields=["state", "result_output", "completed_at"])
+        if task.run_id:
+            from apps.tasks.views import _advance_run_sequence
+            _advance_run_sequence(task)
+
+
+def _refuse_unsupported_features(host: Host) -> None:
+    """Fail every pending ``relevant:`` task for an agent that lacks the feature.
+
+    An agent that cannot read a ``relevant:`` block would ignore it and run
+    the fix on every host it was sent to — exactly the mistake the block
+    exists to prevent — so the server refuses to hand it the task instead.
+    Same shape as ``_refuse_outdated_reboot``.
+    """
+    if "relevant" in (host.agent_features or []):
+        return
+    for task in Task.objects.filter(host=host, state=Task.State.PENDING):
+        params = task.params or {}
+        if not isinstance(params.get("relevant"), dict):
+            continue
+        task.state = Task.State.FAILED
+        task.result_output = (
+            "Refused: this agent does not understand relevant: blocks — "
+            "update the agent before deploying tasks that use them"
         )
         task.completed_at = now()
         task.save(update_fields=["state", "result_output", "completed_at"])
@@ -362,6 +406,12 @@ def checkin(request):
 
     if agent_ver := data.get("vigil_version"):
         host.agent_version = str(agent_ver)[:50]
+
+    if data.get("features") is not None:
+        # A list of short strings the agent understands (task-language
+        # features). Anything else is treated as absent: a corrupt payload
+        # must not silently grant features the agent never advertised.
+        host.agent_features = _normalize_agent_features(data.get("features"))
 
     # reboot_required: an ABSENT key means the agent is too old to report
     # it — leave the stored value alone. An explicit False does write.
@@ -554,7 +604,11 @@ def checkin(request):
         # never reach an agent too old to honour it. Refused tasks fail now;
         # everything else follows the normal not_before / window path.
         _refuse_outdated_reboot(host)
-        # Re-query: the gate saved state on its own queryset, and the
+        # The feature gate: a task whose params carry a `relevant:` block must
+        # never reach an agent that cannot understand it (it would ignore the
+        # block and run the fix on every host). Same shape as the reboot gate.
+        _refuse_unsupported_features(host)
+        # Re-query: the gates saved state on their own querysets, and the
         # in-memory candidates above are stale copies the bulk DISPATCHED
         # update below would resurrect.
         candidates = list(Task.objects.filter(host=host, state=Task.State.PENDING))
