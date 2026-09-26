@@ -663,6 +663,19 @@ def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[
             return [_sub(v) for v in value]
         return value
 
+    def _relevant_sub(node: Any) -> Any:
+        return {
+            "op": node["op"],
+            "items": [
+                {"probe": {"id": p["probe"]["id"], "type": p["probe"]["type"],
+                           "params": _sub(p["probe"]["params"])},
+                 "risk": p["risk"]}
+                if "probe" in p
+                else _relevant_sub(p)
+                for p in node["items"]
+            ],
+        }
+
     new_actions = []
     for action in parsed_spec.get("actions", []):
         params = action.get("params") or {}
@@ -682,7 +695,10 @@ def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[
         if "output_regex" in new_sc and isinstance(new_sc["output_regex"], str):
             new_sc["output_regex"] = _sub(new_sc["output_regex"])
 
-    return {**parsed_spec, "actions": new_actions, "success_criteria": new_sc, "resolved_inputs": resolved}
+    return {**parsed_spec, "actions": new_actions, "success_criteria": new_sc,
+            "relevant": _relevant_sub(parsed_spec["relevant"])
+            if parsed_spec.get("relevant") else None,
+            "resolved_inputs": resolved}
 
 
 def _validate_cves(value: Any) -> list[str]:
@@ -1010,9 +1026,23 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                 str(params.get("return") or "lines").lower() == "text"):
             derived_risk_level = max(derived_risk_level, _RISK_ORDER["high"])
 
-    # Effective risk is max(declared risk, derived from actions) — users
-    # cannot declare a lower risk than the actions actually warrant.
-    effective_risk_level = max(_RISK_ORDER[risk], derived_risk_level)
+    # Effective risk is max(declared risk, derived from actions,
+    # derived from relevant: probes) — users cannot declare a lower risk
+    # than the actions and probes actually warrant.
+    relevant = _validate_relevant(raw.get("relevant"), declared_inputs)
+    relevant_risk_level = 0
+    if relevant is not None:
+        def _probe_levels(node: dict) -> int:
+            level = 0
+            for entry in node["items"]:
+                if "probe" in entry:
+                    level = max(level, entry["risk"])
+                else:
+                    level = max(level, _probe_levels(entry))
+            return level
+        relevant_risk_level = _probe_levels(relevant)
+    effective_risk_level = max(_RISK_ORDER[risk], derived_risk_level,
+                               relevant_risk_level)
     effective_risk = next(k for k, v in _RISK_ORDER.items() if v == effective_risk_level)
 
     schedule = _validate_schedule(raw.get("schedule"))
@@ -1054,6 +1084,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         "declared_risk": risk,
         "actions": parsed_actions,
         "inputs": declared_inputs,
+        "relevant": relevant,
         "schedule": schedule,
         "on_failure": on_failure,
         "success_criteria": success_criteria,
@@ -1061,6 +1092,112 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         "target_tags": target_tags,
         "warnings": warnings,
     }
+
+
+# ── relevant: ──────────────────────────────────────────────────────────────────
+#
+# A task may declare when it applies to a host as a tree of hunt probes.
+# The server parses, validates and normalises it at save time, substitutes
+# inputs at deploy, and signs it into the task params; the agent evaluates
+# it (phase 04).
+
+_RELEVANT_OPS = ("all", "any", "not")
+_MAX_RELEVANT_DEPTH = 3
+_MAX_RELEVANT_PROBES = 10
+
+
+def _validate_relevant(raw: Any, declared_inputs: list[dict[str, Any]]) -> Any:
+    """Validate the optional top-level ``relevant:`` tree; return its
+    normalised form (None when absent).
+
+    Grammar: a *node* is a mapping of one or more of ``all`` / ``any`` /
+    ``not`` to non-empty lists of *items* (several keys mean all of them
+    must hold); an *item* is either a *probe* — a mapping with exactly one
+    key, a registry action starting with ``hunt_``, whose value is the
+    hunt's params — or a nested *node*.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise SpecError("'relevant' must be a mapping")
+
+    probe_count = 0
+    probe_risk_level = 0
+
+    def _probe(where: str, key: str, params: Any) -> int:
+        """Validate one probe through the real action path; return its risk level."""
+        nonlocal probe_count, probe_risk_level
+        if not isinstance(params, dict):
+            raise SpecError(f"{where}: probe params must be a mapping")
+        probe_spec = {
+            "name": "relevant probe",
+            "inputs": declared_inputs,
+            "actions": [{"id": "probe", "type": key, "params": params}],
+        }
+        try:
+            result = parse_and_validate(yaml.safe_dump(probe_spec))
+        except SpecError as exc:
+            raise SpecError(f"{where}: {exc}") from exc
+        probe_count += 1
+        if probe_count > _MAX_RELEVANT_PROBES:
+            raise SpecError(f"{where}: too many probes (max {_MAX_RELEVANT_PROBES})")
+        level = _RISK_ORDER[result["risk"]]
+        probe_risk_level = max(probe_risk_level, level)
+        return level
+
+    def _node(where: str, value: Any, depth: int) -> dict[str, Any]:
+        if depth > _MAX_RELEVANT_DEPTH:
+            raise SpecError(
+                f"{where}: too deep — at most {_MAX_RELEVANT_DEPTH} levels of "
+                f"all/any/not"
+            )
+        if not isinstance(value, dict):
+            raise SpecError(f"{where}: must be a mapping of all/any/not to lists")
+        if not value:
+            raise SpecError(f"{where}: must name at least one of all, any, not")
+        unknown = set(value) - set(_RELEVANT_OPS)
+        if unknown:
+            raise SpecError(f"{where}: unknown key {min(unknown)!r}")
+        nodes = []
+        for op in _RELEVANT_OPS:
+            if op not in value:
+                continue
+            raw_items = value[op]
+            if not isinstance(raw_items, list) or not raw_items:
+                raise SpecError(f"{where}.{op}: must be a non-empty list")
+            parsed_items = [
+                _item(f"{where}.{op}[{i}]", item, depth)
+                for i, item in enumerate(raw_items)
+            ]
+            nodes.append({"op": op, "items": parsed_items})
+        return nodes[0] if len(nodes) == 1 else {"op": "all", "items": nodes}
+
+    def _item(where: str, item: Any, depth: int) -> dict[str, Any]:
+        if not isinstance(item, dict):
+            raise SpecError(f"{where}: item must be a mapping")
+        if any(k in item for k in _RELEVANT_OPS):
+            return _node(where, item, depth + 1)
+        if len(item) != 1:
+            raise SpecError(f"{where}: a probe has exactly one key — a hunt_ action")
+        key = next(iter(item))
+        if not key.startswith("hunt_") or key not in ACTION_REGISTRY:
+            raise SpecError(f"{where}: unknown key {key!r}")
+        level = _probe(f"{where}.{key}", key, item[key])
+        return {"probe": {"id": f"relevant-{probe_count}", "type": key,
+                          "params": item[key]}, "risk": level}
+
+    return _node("relevant", raw, 1)
+
+
+def _deploy_params(spec: dict, steps_payload: list[dict]) -> dict:
+    """The signed task params: steps + variables, plus the resolved
+    ``relevant:`` tree when the definition declares one (phase 04 makes
+    the agent evaluate it; nothing consumes it yet)."""
+    params = {"steps": steps_payload,
+              "variables": spec.get("resolved_inputs") or {}}
+    if spec.get("relevant"):
+        params["relevant"] = spec["relevant"]
+    return params
 
 
 def _validate_target_tags(raw: Any) -> list[str]:

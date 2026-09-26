@@ -19,7 +19,7 @@ from .models import (
     TaskRun,
     rollout_wave_plan,
 )
-from .spec import SpecError, resolve_inputs
+from .spec import SpecError, _deploy_params, resolve_inputs
 
 logger = logging.getLogger(__name__)
 
@@ -255,8 +255,7 @@ def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
             step_order=0,
             step_label=rollout.target_name,
             action="_script",
-            params={"steps": steps_payload,
-                    "variables": spec.get("resolved_inputs") or {}},
+            params=_deploy_params(spec, steps_payload),
             risk_level=risk,
             state=Task.State.PENDING,
             expires_at=expires_at,

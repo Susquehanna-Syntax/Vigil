@@ -46,6 +46,7 @@ from .serializers import (
 from .spec import (
     ACTION_REGISTRY,
     SpecError,
+    _deploy_params,
     _validate_on_failure,
     _validate_schedule,
     _validate_success_criteria,
@@ -1337,8 +1338,7 @@ def definition_deploy(request, definition_id):
                 # the gated step is silently skipped on every run (#17).
                 # Always sent, even when empty, so "no inputs declared" is
                 # distinguishable from "inputs lost in the pipeline".
-                params={"steps": steps_payload,
-                        "variables": spec.get("resolved_inputs") or {}},
+                params=_deploy_params(spec, steps_payload),
                 risk_level=risk,
                 state=Task.State.PENDING,
                 not_before=hold_until,
