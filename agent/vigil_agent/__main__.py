@@ -6,6 +6,7 @@ Usage:
 """
 
 import argparse
+import json
 import logging
 import os
 import signal
@@ -141,6 +142,29 @@ def _process_tasks(tasks: list[dict], config, nonce_store: NonceStore, verify_ke
                 _report_failed(config, task, str(exc))
 
 
+def _hunt_payload(step_result) -> dict | None:
+    """The ``hunt`` block to attach to a hunt step's report, or None.
+
+    A hunt step's output is the JSON text run_hunt returns; if it parses and
+    carries a ``matches`` list, the matches plus the hunt's own bookkeeping
+    travel with the report so the server can store them.
+    """
+    if not (step_result.action or "").startswith("hunt_"):
+        return None
+    try:
+        body = json.loads(step_result.output)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(body, dict) or not isinstance(body.get("matches"), list):
+        return None
+    return {
+        "matches": body["matches"],
+        "truncated": body.get("truncated", False),
+        "duration": body.get("duration"),
+        "timed_out": body.get("timed_out", False),
+    }
+
+
 def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None:
     """Run a multi-step script through the TaskRuntime.
 
@@ -200,7 +224,13 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
     runtime = TaskRuntime(runtime_payload, config)
     results = runtime.run()
 
-    steps = [{"id": r.name, "status": r.state, "result": dict(r.data)} for r in results]
+    steps = []
+    for r in results:
+        step = {"id": r.name, "status": r.state, "result": dict(r.data)}
+        hunt_payload = _hunt_payload(r)
+        if hunt_payload is not None:
+            step["hunt"] = hunt_payload
+        steps.append(step)
 
     step_outputs = []
     any_error = False

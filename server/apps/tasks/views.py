@@ -1,9 +1,12 @@
 import json
 import math
 import secrets
+import uuid
 from datetime import timedelta
 
 from django.db import IntegrityError, transaction
+from django.db.models import Count
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
 from rest_framework import status
@@ -24,7 +27,7 @@ from apps.accounts.permissions import IsAdmin
 from apps.hosts.authentication import authenticate_agent
 from apps.hosts.models import Host
 
-from .models import PatchRollout, Task, TaskDefinition, TaskRun
+from .models import HuntMatch, PatchRollout, Task, TaskDefinition, TaskRun
 from .rollout import (
     FAILURE_STATES,
     _emit_hunt_text_requested,
@@ -115,6 +118,121 @@ def _clean_step_results(raw):
         return {"steps": [], "dropped": "step results exceeded 64 KB"}
     return {"steps": out}
 
+#: Hard caps on stored hunt matches. A runaway hunt would otherwise fill the
+#: database; per-step first, then the whole task.
+_HUNT_MATCHES_PER_STEP = 5000
+_HUNT_MATCHES_PER_TASK = 20000
+_HUNT_FIELD_MAX = 1000
+_HUNT_KEY_MAX = 60
+
+
+def _clean_hunt_match(match):
+    """(evidence_type, field dict) for one agent-reported match, or None.
+
+    The agent is untrusted: the match must be a dict whose ``evidence_type``
+    is a string (<= 40 chars); every other key must be a string (<= 60
+    chars) with a str (cut to 1000), int, finite float, bool or None value.
+    Nested structures and anything else are dropped from the stored row.
+    """
+    if not isinstance(match, dict):
+        return None
+    evidence_type = match.get("evidence_type")
+    if not isinstance(evidence_type, str) or not evidence_type or len(evidence_type) > 40:
+        return None
+    data = {}
+    for key, value in match.items():
+        if key == "evidence_type":
+            continue
+        if not isinstance(key, str) or len(key) > _HUNT_KEY_MAX:
+            continue
+        if isinstance(value, str):
+            value = value[:_HUNT_FIELD_MAX]
+        elif isinstance(value, (bool, int)) or value is None:
+            pass
+        elif isinstance(value, float):
+            if not math.isfinite(value):
+                continue
+        else:
+            continue
+        data[key] = value
+    return evidence_type, data
+
+
+def _ingest_hunt_matches(task, raw_steps):
+    """Store hunt matches reported with a task result.
+
+    Replaces (delete then bulk_create) the task's previous rows so a
+    re-report is idempotent. The action for each match is looked up from the
+    task's own signed ``params["steps"]`` — never from the agent's report —
+    and a step id the task does not contain is skipped. Per-step
+    ``truncated`` / ``timed_out`` / ``duration`` land in
+    ``result_data["hunts"][step_id]`` (simple values only).
+
+    ``task.result_data`` must already hold the steps for this report —
+    ``task_result`` assigns and saves it before calling here, so the
+    ``update_fields=["result_data"]`` save below cannot clobber the steps.
+    """
+    if not isinstance(raw_steps, list):
+        return
+
+    hunts = {}
+
+    signed_actions = {}
+    for step in (task.params or {}).get("steps") or []:
+        if (isinstance(step, dict)
+                and isinstance(step.get("id"), str)
+                and isinstance(step.get("action"), str)):
+            signed_actions[step["id"]] = step["action"]
+
+    rows = []
+    task_remaining = _HUNT_MATCHES_PER_TASK
+    for entry in raw_steps:
+        if not isinstance(entry, dict):
+            continue
+        hunt = entry.get("hunt")
+        if not isinstance(hunt, dict) or not isinstance(hunt.get("matches"), list):
+            continue
+        step_id = entry.get("id")
+        if not isinstance(step_id, str) or not step_id or len(step_id) > 60:
+            continue
+        # The action comes from the task's own signed steps, never the report;
+        # a step id the task does not contain is not ours to store.
+        action = signed_actions.get(step_id)
+        if action is None or len(action) > 64:
+            continue
+
+        kept = [c for c in (_clean_hunt_match(m) for m in hunt["matches"]) if c]
+        stored = kept[:min(_HUNT_MATCHES_PER_STEP, task_remaining)]
+        task_remaining -= len(stored)
+        rows.extend(
+            HuntMatch(task=task, run_id=task.run_id, host=task.host,
+                      step_id=step_id, action=action,
+                      evidence_type=evidence_type, data=data)
+            for evidence_type, data in stored)
+        duration = hunt.get("duration")
+        hunts[step_id] = {
+            # Cut here counts as truncated too: the view must not claim
+            # it shows everything the host found.
+            "truncated": bool(hunt.get("truncated")) or len(stored) < len(kept),
+            "timed_out": bool(hunt.get("timed_out")),
+            "duration": duration if isinstance(duration, (int, float))
+            and not isinstance(duration, bool) and math.isfinite(duration) else None,
+        }
+
+    if not hunts:
+        return
+
+    # Replace, so a re-report (including one that now finds nothing) is idempotent.
+    HuntMatch.objects.filter(task=task).delete()
+    if rows:
+        HuntMatch.objects.bulk_create(rows)
+
+    data = task.result_data if isinstance(task.result_data, dict) else {}
+    data["hunts"] = hunts
+    task.result_data = data
+    task.save(update_fields=["result_data"])
+
+
 # ── Agent-facing: task result ────────────────────────────────────────────────
 
 
@@ -155,6 +273,7 @@ def task_result(request):
         task.result_data = _clean_step_results(request.data.get("steps"))
         task.completed_at = now()
         task.save()
+        _ingest_hunt_matches(task, request.data.get("steps"))
 
         if task.run_id:
             _advance_run_sequence(task)
@@ -1297,6 +1416,105 @@ def run_detail(request, run_id):
         pk=run_id,
     )
     return Response(TaskRunSerializer(run).data)
+
+
+_HUNT_HOST_PENDING = ("pending", "dispatched", "executing")
+_HUNT_HOST_ERROR = ("failed", "rejected", "expired")
+
+
+def _hunt_host_state(task, match_count):
+    if task.state in _HUNT_HOST_PENDING:
+        return "pending"
+    if task.state in _HUNT_HOST_ERROR:
+        return "error"
+    return "matched" if match_count > 0 else "not_matched"
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def run_hunt_results(request, run_id):
+    """The spec's results view: one call returns every hunt match of a run.
+
+    ``columns`` is the union of the matches' own field names, first-seen
+    order; ``hosts`` gives every targeted host its state (matched / not
+    matched / pending / error), match count and whether any of its hunts
+    was truncated or timed out; ``matches`` is one page of the matches.
+    ``?host=`` and ``?step=`` filter the matches only — hosts and columns
+    always describe the whole run. A run without a hunt step is a 404.
+    """
+    run = get_object_or_404(
+        TaskRun.objects.prefetch_related("tasks__host"), pk=run_id)
+    tasks = list(run.tasks.all())
+    # Read the signed steps each task carried, so playbook and rollout
+    # runs (no single definition) are recognised the same way.
+    if not any(
+        str(step.get("action", "")).startswith("hunt_")
+        for task in tasks
+        for step in ((task.params or {}).get("steps") or [])
+        if isinstance(step, dict)
+    ):
+        raise Http404("run has no hunt steps")
+
+    try:
+        limit = max(0, min(5000, int(request.query_params.get("limit", 1000))))
+        offset = max(0, int(request.query_params.get("offset", 0)))
+    except (TypeError, ValueError):
+        return Response({"detail": "limit and offset must be integers"}, status=400)
+
+    run_matches = HuntMatch.objects.filter(run=run)
+    columns: dict = {}
+    for data in run_matches.values_list("data", flat=True).iterator(chunk_size=2000):
+        for key in (data or {}):
+            columns.setdefault(key, None)
+
+    matches_qs = run_matches.select_related("host").order_by(
+        "host__hostname", "step_id", "id")
+    if raw_host := (request.query_params.get("host") or "").strip():
+        try:
+            matches_qs = matches_qs.filter(host_id=uuid.UUID(raw_host))
+        except ValueError:
+            return Response({"detail": "host must be a host id"}, status=400)
+    if raw_step := (request.query_params.get("step") or "").strip():
+        matches_qs = matches_qs.filter(step_id=raw_step)
+
+    total = matches_qs.count()
+    matches = []
+    for row in matches_qs[offset:offset + limit]:
+        item = {
+            "host_id": str(row.host_id),
+            "hostname": row.host.hostname,
+            "step_id": row.step_id,
+            "action": row.action,
+            "evidence_type": row.evidence_type,
+        }
+        # Agent-reported fields never overwrite the server's own keys.
+        item.update({k: v for k, v in (row.data or {}).items() if k not in item})
+        matches.append(item)
+
+    counts = dict(run_matches.order_by().values_list("task_id").annotate(n=Count("id")))
+    hosts = []
+    for task in sorted(tasks, key=lambda t: (t.host.hostname, str(t.id))):
+        count = counts.get(task.id, 0)
+        step_hunts = (task.result_data or {}).get("hunts") or {}
+        hosts.append({
+            "host_id": str(task.host_id),
+            "hostname": task.host.hostname,
+            "state": _hunt_host_state(task, count),
+            "match_count": count,
+            "truncated": any(bool(h.get("truncated")) for h in step_hunts.values()
+                             if isinstance(h, dict)),
+            "timed_out": any(bool(h.get("timed_out")) for h in step_hunts.values()
+                             if isinstance(h, dict)),
+        })
+
+    return Response({
+        "columns": list(columns),
+        "hosts": hosts,
+        "matches": matches,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    })
 
 
 @api_view(["GET"])
