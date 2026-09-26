@@ -180,6 +180,12 @@ def _apply(a: Automation, data) -> str | None:
         return "an event trigger needs an event"
     if a.action_kind == Automation.ActionKind.TASK and not a.task_definition_id:
         return "pick a task definition"
+    if a.action_kind == Automation.ActionKind.TASK and a.task_definition_id:
+        from apps.playbooks.expansion import unsupported_in_playbooks
+        blocked = unsupported_in_playbooks(a.task_definition.parsed_spec)
+        if blocked:
+            return (f"{a.task_definition.name} uses {', '.join(blocked)}, which "
+                    f"automations cannot run yet — deploy it directly instead")
     if a.action_kind == Automation.ActionKind.PLAYBOOK:
         if a.playbook_id is None:
             return (f"no playbook named {wanted_playbook!r}" if wanted_playbook

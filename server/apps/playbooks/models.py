@@ -176,6 +176,10 @@ def eligible(definition, *, allow_high_risk: bool = False) -> tuple[bool, str]:
     actions = (definition.parsed_spec or {}).get("actions") or []
     if any(a.get("type") == "update_agent" for a in actions):
         return False, "update_agent steps cannot be playbooks"
+    from .expansion import unsupported_in_playbooks
+    blocked = unsupported_in_playbooks(definition.parsed_spec)
+    if blocked:
+        return False, f"uses {', '.join(blocked)}, which playbooks cannot run yet"
     return True, ""
 
 
@@ -187,8 +191,17 @@ def build_agent_steps(playbook: "Playbook") -> tuple[list[dict], str]:
     steps: list[dict] = []
     max_risk = "low"
     i = 0
+    from .expansion import PlaybookExpandError, unsupported_in_playbooks
+
     for step in playbook.steps.select_related("definition").order_by("order"):
         spec = step.definition.parsed_spec or {}
+        blocked = unsupported_in_playbooks(spec)
+        if blocked:
+            # A task saved before this check (or edited after it joined the
+            # playbook) must still never be flattened.
+            raise PlaybookExpandError(
+                f"task {step.definition.name!r} uses {', '.join(blocked)}, "
+                f"which playbooks cannot run yet")
         actions_src = spec.get("actions") or []
         override = step.params_override or {}
         if override:
