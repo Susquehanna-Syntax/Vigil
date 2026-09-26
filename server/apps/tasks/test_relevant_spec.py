@@ -152,6 +152,13 @@ class RelevantSpecTests(SimpleTestCase):
             parse_and_validate(source)
         self.assertIn("relevant.not[0]: unknown key 'hunt_nope'", str(ctx.exception))
 
+    def test_low_probes_keep_a_low_task_low(self):
+        spec = parse_and_validate(
+            "name: t\nrisk: low\nrelevant:\n  all:\n    - hunt_process:\n"
+            "        name: cron\nactions:\n  - id: c\n    type: check_service\n"
+            "    params:\n      service_name: cron\n")
+        self.assertEqual(spec["risk"], "low")
+
     def test_probe_risk_counts(self):
         source = yaml_with("""
   all:

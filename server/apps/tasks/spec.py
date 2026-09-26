@@ -1131,6 +1131,9 @@ def _validate_relevant(raw: Any, declared_inputs: list[dict[str, Any]]) -> Any:
             raise SpecError(f"{where}: probe params must be a mapping")
         probe_spec = {
             "name": "relevant probe",
+            # Declared low so the result's risk is the hunt's own, not the
+            # "standard" a spec without a risk line defaults to.
+            "risk": "low",
             "inputs": declared_inputs,
             "actions": [{"id": "probe", "type": key, "params": params}],
         }
