@@ -37,6 +37,10 @@ Rules:
 - A script receives inputs as environment variables VIGIL_INPUT_<ID>
   ($VIGIL_INPUT_APP in bash, $env:VIGIL_INPUT_APP in PowerShell); never paste
   an input into a command line.
+- To answer "which hosts have X" (a file, package version, process, listening port, service,
+  registry value, or text in files), use a hunt_* action rather than run_command or execute_script.
+- Never set return: text on hunt_content unless the user asks for the matched text; it makes the
+  task high risk.
 - Prefer low-risk, reversible diagnostics before invasive fixes.
 - Never propose update_agent."""
 

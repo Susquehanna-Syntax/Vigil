@@ -1,0 +1,29 @@
+name: Find hosts with a package below a version
+description: |
+  Hunts the host's package database for an installed package whose version
+  is below the version you name, compared with the package system's own
+  version rules (dpkg, RPM, and friends). The hunt is read-only and
+  bounded, so it is safe to run across a whole fleet tag at once. The
+  results view shows which hosts matched, which did not, and which never
+  reported.
+relevance: "any host with a package manager"
+risk: low
+author: Vigil
+created: 2026-09-25
+inputs:
+  - id: package
+    type: text
+    label: Package
+    description: "Package name (e.g. openssl)"
+    required: true
+  - id: version
+    type: text
+    label: Minimum version
+    description: "Flag hosts installed below this version (e.g. 3.0.13)"
+    required: true
+actions:
+  - id: hunt-package
+    type: hunt_package
+    params:
+      name: "${{ inputs.package }}"
+      version_lt: "${{ inputs.version }}"

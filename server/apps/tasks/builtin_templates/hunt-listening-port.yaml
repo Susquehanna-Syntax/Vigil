@@ -1,0 +1,22 @@
+name: Find hosts listening on a port
+description: |
+  Hunts the host for a listening TCP or UDP port, by port number, protocol,
+  or owning process name. The hunt is read-only and bounded, so it is safe
+  to run across a whole fleet tag at once. The results view shows which
+  hosts matched and which did not report, which is the answer to "which of
+  our machines are listening on this port?".
+relevance: "any host"
+risk: low
+author: Vigil
+created: 2026-09-25
+inputs:
+  - id: port
+    type: text
+    label: Port
+    description: "Port number to look for (e.g. 6379)"
+    required: true
+actions:
+  - id: hunt-port
+    type: hunt_port
+    params:
+      port: "${{ inputs.port }}"

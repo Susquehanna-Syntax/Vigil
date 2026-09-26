@@ -296,6 +296,10 @@
       <svg viewBox="0 0 24 24"><path d="M2 12h4l3 8 4-16 3 8h4"/></svg>
       Deployments
     </a>
+    <a href="#hunts" class="nav-link">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16" y2="16"/></svg>
+      Hunts
+    </a>
     <a href="#windows-patching" class="nav-link">
       <svg viewBox="0 0 24 24"><path d="M3 5.5L10.5 4.5v7H3zM3 12.5h7.5v7L3 18.5zM11.5 4.3L21 3v8.5h-9.5zM11.5 12.5H21V21l-9.5-1.3z"/></svg>
       Windows Patching
@@ -1486,6 +1490,49 @@
         </tbody>
       </table></div>
       <p class="prose">Halting, resuming, skipping validation and starting a rollout all need an admin and a TOTP code, the same as deploying a task by hand. They change what happens to the whole fleet.</p>
+    </section>
+
+    <section class="section" id="hunts">
+      <p class="section-label">Task Execution</p>
+      <h2 class="section-title" style="color:var(--mint)">Hunts: which hosts have X?</h2>
+      <p class="section-desc">A hunt is a <strong>read-only task action</strong> that answers a question about your whole fleet: which files exist, which package versions are out, which ports are listening. Nothing on the host changes. The Community tab ships three ready-made hunt tasks to start from.</p>
+
+      <h3>What a hunt is</h3>
+      <p class="prose">A hunt walks a host and reports what it finds. It can be a task on its own, one step among several in a bigger task, or a gate: a later step can read the hunt's <code>matched</code>, <code>count</code> and <code>truncated</code> outputs in a <code>when:</code> predicate, so "patch these hosts" only runs where the hunt actually found something.</p>
+
+      <h3>The seven hunts</h3>
+      <p class="prose">Each hunt is one task action. The full parameter reference lives in the <a href="#tasks" style="color:var(--sky)">Built-in Actions</a> reference under <em>Hunts</em>.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Action</th><th>What it finds</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td><code>hunt_file</code></td><td>Files on disk by name, hash, size, or version</td><td><code>name: "log4j-core-*.jar", version_lt: "2.17.1"</code></td></tr>
+          <tr><td><code>hunt_package</code></td><td>Installed packages by name and version</td><td><code>name: openssl, version_lt: 3.0.13</code></td></tr>
+          <tr><td><code>hunt_process</code></td><td>Running processes by name or command line</td><td><code>name: java</code></td></tr>
+          <tr><td><code>hunt_port</code></td><td>Listening ports by number, protocol, or owning process</td><td><code>port: 6379, protocol: tcp</code></td></tr>
+          <tr><td><code>hunt_service</code></td><td>Services by name, state, or start mode</td><td><code>name: sshd, state: running</code></td></tr>
+          <tr><td><code>hunt_registry</code></td><td>Windows registry keys and values</td><td><code>key: HKLM\Software\Policies, view: 64</code></td></tr>
+          <tr><td><code>hunt_content</code></td><td>Text inside files by pattern</td><td><code>pattern: "password=</code></td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Guardrails</h3>
+      <p class="prose">Every hunt is bounded, and the bounds are parameters. The <code>scope</code> is <code>targeted</code> by default — install and home directories — and <code>full</code> (every filesystem root) only when you ask for it. <code>max_results</code> caps how many matches are returned, <code>timeout</code> caps how long the walk runs, and the walk itself runs in a low-CPU, low-IO priority thread. A hunt, even a full-disk one, never slows the host down.</p>
+
+      <h3>Stays open</h3>
+      <p class="prose">A host that is offline when the hunt runs stays <em>pending</em> and reports the moment it next checks in. The hunt keeps waiting for it until <code>stays_open</code> (default 7 days) closes it; after that, hosts that never reported show <em>did not report</em> instead of keeping the run open forever.</p>
+
+      <h3>Reading the results</h3>
+      <p class="prose">Open a finished run and choose <strong>Open hunt results</strong>. Every host is listed as matched, not matched, pending, error, or did not report. The matches table shows whatever the hunt returned — columns depend on the hunt — with filtering, and the whole table can be exported as CSV.</p>
+      <p class="prose">Version ranges are compared with the system's own rules: dpkg's rules for dpkg packages, RPM's for RPM, dotted-numeric rules for anything else. You never have to know which rule a host uses.</p>
+
+      <div class="callout">
+        <div class="callout-icon">i</div>
+        <div><code>hunt_content</code> returns only <em>whether</em> a file matched and <em>on which lines</em> by default. Adding <code>return: text</code> sends the matched text itself back to the server, which makes the task <strong>high risk</strong> — and on Business, the matched text is written to the audit log.</div>
+      </div>
+      <div class="callout">
+        <div class="callout-icon">i</div>
+        <div>In <strong>managed mode</strong> a hunt must be in the agent's <code>allowlist:</code> in <code>/etc/vigil/agent.yml</code> (Windows: <code>C:\ProgramData\Vigil\agent.yml</code>) exactly like any other action. A hunt that is not allowlisted is refused on the host.</div>
+      </div>
     </section>
 
     <section class="section" id="windows-patching">
