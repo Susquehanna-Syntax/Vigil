@@ -1,0 +1,19 @@
+name: Find vulnerable log4j jars
+description: |
+  Hunts every targeted-scope path on the host for log4j-core jars with a
+  version older than 2.17.1, the Log4Shell line of vulnerability. The hunt
+  is read-only and bounded: it walks in a low-priority thread, stops after
+  the result cap, and changes nothing on the host. Use it to answer "which
+  of our machines still carry a vulnerable log4j jar?" before patching, or
+  as the first step of a task that gates a fix on whether the hunt matched.
+relevance: "any host that may run Java applications"
+risk: low
+author: Vigil
+created: 2026-09-25
+actions:
+  - id: hunt-log4j
+    type: hunt_file
+    params:
+      name: "log4j-core-*.jar"
+      version_lt: "2.17.1"
+      scope: targeted
