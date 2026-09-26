@@ -32,6 +32,14 @@ def _config(tmp: str) -> AgentConfig:
     )
 
 
+class _FakeOutput:
+    """An execute_action output with declared data (steps.<id>.result.*)."""
+
+    def __init__(self, text: str, data: dict):
+        self.text = text
+        self.data = data
+
+
 class _FakeCompleted:
     def __init__(self, stdout):
         self.stdout = stdout
@@ -235,6 +243,93 @@ class WhenPerStepTests(unittest.TestCase):
         self.assertEqual(kind, "_report_skipped")
         self.assertIn("[SKIPPED] a", output)
         self.assertIn("[SKIPPED] b", output)
+
+
+    def _capture(self, reports, name):
+        def rec(cfg, _task, output, steps=None):
+            reports.append((name, output))
+            raise _StopScriptTask()
+
+        return rec
+
+    def test_number_comparison_reaches_the_agent(self):
+        # The spec's branching example: step 2 runs only when step 1's
+        # declared count output is greater than zero.
+        reports, commands = [], []
+        _run_script(
+            self._steps(
+                ("one", "run_command", {"command": "echo one"}, None),
+                (
+                    "two",
+                    "run_command",
+                    {"command": "echo two"},
+                    "steps.one.result.count > 0",
+                ),
+            ),
+            reports,
+            commands,
+        )
+        # run_command declares exit_code but no count, so the comparison is
+        # over a missing (None) value: False, and step 2 is skipped.
+        self.assertEqual(commands, [["echo", "one"]])
+        self.assertEqual(len(reports), 1)
+        kind, output = reports[0]
+        self.assertEqual(kind, "_report_completed")
+        self.assertIn("[OK] one", output)
+        self.assertIn("[SKIPPED] two", output)
+
+        # With a real count in step 1's result the same predicate runs
+        # step 2. Step 1's declared data carries the count field the
+        # predicate reads.
+        reports, commands = [], []
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(
+                executor,
+                "execute_action",
+                side_effect=[
+                    _FakeOutput("step one", {"count": 2}),
+                    _FakeOutput("step two", {}),
+                ],
+            ),
+            patch.object(
+                __main__,
+                "_report_completed",
+                side_effect=self._capture(reports, "_report_completed"),
+            ),
+            patch.object(
+                __main__, "_report_failed", side_effect=self._capture(reports, "_report_failed")
+            ),
+            patch.object(
+                __main__,
+                "_report_skipped",
+                side_effect=self._capture(reports, "_report_skipped"),
+            ),
+        ):
+            task_id = "t-count"
+            steps = [
+                {"id": "one", "action": "check_service",
+                 "params": {"service_name": "nginx"}},
+                {"id": "two", "action": "run_command",
+                 "params": {"command": "echo two"},
+                 "when": "steps.one.result.count > 0"},
+            ]
+            try:
+                __main__._execute_script_task(
+                    task_id,
+                    {"action": "run_script", "steps": steps,
+                     "variables": {"variables": {}}},
+                    _config(tmp),
+                    {"task_id": task_id, "action": "run_script"},
+                )
+            except _StopScriptTask:
+                pass
+        self.assertEqual(len(reports), 1)
+        kind, output = reports[0]
+        self.assertEqual(kind, "_report_completed")
+        self.assertIn("[OK] one", output)
+        self.assertIn("[OK] two", output)
 
 
 if __name__ == "__main__":

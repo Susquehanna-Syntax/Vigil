@@ -18,6 +18,11 @@ Constraints (intentional):
   * Dotted name access (``agent.os``) is allowed; bracket access
     (``agent["os"]``) is not — keeps the surface tiny and the syntax
     obvious.
+  * Ordering comparisons (``<``, ``<=``, ``>``, ``>=``) exist for numbers
+    only: if either side is not an ``int``/``float`` (a string, a bool, or
+    a missing value), the comparison is False — a predicate never raises.
+    Version comparisons belong in hunt params (``version_lt``, …), not
+    expressions.
   * ``steps`` reads an earlier step: exactly ``steps.<id>.status`` or
     ``steps.<id>.result.<field>`` (the one root allowed three levels deep).
 
@@ -31,6 +36,7 @@ the PyInstaller-bundled agent can import it cleanly.
 from __future__ import annotations
 
 import ast
+import operator
 from typing import Any
 
 
@@ -42,17 +48,22 @@ class ExprError(ValueError):
 _ALLOWED_NODES = frozenset({
     ast.Expression, ast.BoolOp, ast.And, ast.Or, ast.UnaryOp, ast.Not,
     ast.Compare, ast.Eq, ast.NotEq, ast.In, ast.NotIn,
+    ast.Lt, ast.LtE, ast.Gt, ast.GtE,
     ast.Constant, ast.Name, ast.Attribute, ast.Tuple, ast.List,
     ast.Load,
 })
+
+#: Ordering comparison ops and the operator each one maps to.
+_ORDERING_OPS = (ast.Lt, ast.LtE, ast.Gt, ast.GtE)
+_COMPARE_FUNCS = {ast.Lt: operator.lt, ast.LtE: operator.le, ast.Gt: operator.gt, ast.GtE: operator.ge}
 
 
 def _validate_node(node: ast.AST) -> None:
     if type(node) not in _ALLOWED_NODES:
         raise ExprError(
             f"disallowed expression element {type(node).__name__!r}; "
-            f"only ==, !=, in, not in, and, or, not, literals, and dotted "
-            f"names like agent.os / inputs.foo are permitted"
+            f"only ==, !=, in, not in, <, <=, >, >=, and, or, not, "
+            f"literals, and dotted names like agent.os / inputs.foo are permitted"
         )
     # Names must be one of the known top-level context buckets.
     if isinstance(node, ast.Name) and node.id not in {"agent", "inputs", "host", "steps"}:
@@ -180,6 +191,12 @@ def referenced_steps(expr: str | ast.Expression) -> set[tuple[str, str | None]]:
     return found
 
 
+def _is_number(value: Any) -> bool:
+    # bool is a subclass of int; ordering comparisons are for numbers only,
+    # so True/False must not read as 1/0.
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def _resolve(node: ast.AST, context: dict[str, Any]) -> Any:
     if isinstance(node, ast.Expression):
         return _resolve(node.body, context)
@@ -233,6 +250,15 @@ def _resolve(node: ast.AST, context: dict[str, Any]) -> Any:
                     ok = (right is None) or (left not in right)
                 except TypeError:
                     ok = True
+            elif isinstance(op, _ORDERING_OPS):
+                # Ordering comparisons are for numbers only: a string,
+                # bool, or missing value on either side makes the
+                # comparison False rather than a TypeError.
+                ok = (
+                    _COMPARE_FUNCS[type(op)](left, right)
+                    if _is_number(left) and _is_number(right)
+                    else False
+                )
             else:
                 raise ExprError(f"unsupported comparison {type(op).__name__}")
             if not ok:
