@@ -38,7 +38,13 @@ function _huntFetch(offset) {
 
 async function openHuntResults(runId) {
   if (!runId) return;
+  // Back returns to whichever page the run was opened from (Tasks or Playbooks).
+  const from = document.querySelector('section.page.active');
+  const fromName = from ? from.id.replace(/^page-/, '') : '';
+  if (fromName && fromName !== 'hunt-results') huntResults.backTo = fromName;
   navigateTo('hunt-results');
+  const tbody = document.getElementById('hunt-matches-body');
+  if (tbody) tbody.replaceChildren();
   huntResults.runId = runId;
   huntResults.hostFilter = '';
   huntResults.offset = 0;
@@ -87,7 +93,11 @@ function _huntSetData(body, reset) {
   huntResults.total = body.total || 0;
   huntResults.columns = body.columns || [];
 
-  if (reset) huntResults.offset = 0;
+  if (reset) {
+    // A refetch from offset 0 replaces the rows rather than appending a copy.
+    const tbody = document.getElementById('hunt-matches-body');
+    if (tbody) tbody.replaceChildren();
+  }
   huntResults.offset = body.offset + (body.matches || []).length;
   _huntRenderChips(body.hosts || []);
   _huntRenderHosts(body.hosts || []);
@@ -95,6 +105,7 @@ function _huntSetData(body, reset) {
   _huntAppendMatches(body.matches || []);
   _huntRenderStepOptions();
   _huntApplyClientFilter();
+  _huntMarkActiveChip();
 }
 
 function _huntRenderChips(hosts) {
@@ -111,19 +122,27 @@ function _huntRenderChips(hosts) {
     chip.className = 'hunt-chip';
     chip.dataset.state = state;
     chip.innerHTML =
-      `<span class="run-state t-${HUNT_STATE_TONE[state] || 'lav'}">${escHtml(state)}</span>` +
+      `<span class="run-state t-${HUNT_STATE_TONE[state] || 'lav'}">${escHtml(HUNT_STATE_LABEL[state] || state)}</span>` +
       `<span class="hunt-chip-count">${escHtml(String(counts[state]))}</span>`;
     chip.addEventListener('click', () => {
       const sel = document.getElementById('hunt-state');
       if (!sel) return;
       sel.value = (sel.value === state) ? '' : state;
       _huntApplyClientFilter();
+      _huntMarkActiveChip();
     });
     el.appendChild(chip);
   }
   if (!el.childNodes.length) {
     el.appendChild(document.createTextNode('No hosts reported on this run yet.'));
   }
+}
+
+function _huntMarkActiveChip() {
+  const state = document.getElementById('hunt-state')?.value || '';
+  document.querySelectorAll('#hunt-summary .hunt-chip').forEach((c) => {
+    c.classList.toggle('active', c.dataset.state === state);
+  });
 }
 
 function _huntRenderHosts(hosts) {
@@ -133,6 +152,8 @@ function _huntRenderHosts(hosts) {
   for (const h of hosts) {
     const tr = document.createElement('tr');
     tr.dataset.host = h.host_id;
+    tr.title = 'Show only this host\'s matches (click again for all hosts)';
+    if (huntResults.hostFilter === h.host_id) tr.classList.add('selected');
     tr.dataset.state = h.state || '';
     const badges = [];
     if (h.truncated) badges.push('truncated');
@@ -191,6 +212,10 @@ function _huntAppendMatches(matches) {
   }
   const more = document.getElementById('hunt-more');
   if (more) more.hidden = huntResults.offset >= huntResults.total;
+  const count = document.getElementById('hunt-matches-count');
+  if (count) count.textContent = `· ${huntResults.total}`;
+  const empty = document.getElementById('hunt-empty');
+  if (empty) empty.hidden = huntResults.total > 0;
 }
 
 // The API's ?host= / ?step= filters matches only, so hosts and their states
@@ -232,7 +257,7 @@ function _huntExportCsv() {
   // for humans, and an agent-reported value must not run a formula on open.
   const encode = (v) => {
     let s = String(v ?? '');
-    if (/^[=+\-@]/.test(s)) s = "'" + s;
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
     return '"' + s.replace(/"/g, '""') + '"';
   };
   const csv = [headers, ...rows].map((r) => r.map(encode).join(',')).join('\r\n');
@@ -257,7 +282,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  document.getElementById('hunt-state')?.addEventListener('change', _huntApplyClientFilter);
+  document.getElementById('hunt-state')?.addEventListener('change', () => {
+    _huntApplyClientFilter();
+    _huntMarkActiveChip();
+  });
+
+  document.getElementById('hunt-back')?.addEventListener('click', () => {
+    navigateTo(huntResults.backTo || 'tasks');
+  });
 
   document.getElementById('hunt-refresh')?.addEventListener('click', () => {
     if (!huntResults.runId) return;

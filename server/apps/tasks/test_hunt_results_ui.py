@@ -77,13 +77,20 @@ class HuntResultsModuleTests(SimpleTestCase):
     def test_csv_export_guards_formulas(self):
         hunts = _src("vigil-hunts.js")
         # Cells starting with a formula char get a ' prefix before quoting.
-        self.assertIn("/^[=+\\-@]/", hunts)
+        # Tab and CR lead a formula in some spreadsheets too (OWASP CSV injection).
+        self.assertIn("/^[=+\\-@\\t\\r]/", hunts)
         self.assertIn("s = \"'\" + s", hunts)
         # RFC 4180: quote every field, double embedded quotes.
         self.assertIn('s.replace(/"/g, \'""\')', hunts)
         # Downloaded via a Blob and a temporary <a download>.
         self.assertIn("new Blob(", hunts)
         self.assertIn("a.download", hunts)
+
+    def test_refetch_replaces_rows_instead_of_appending(self):
+        hunts = _src("vigil-hunts.js")
+        body = hunts[hunts.index("function _huntSetData"):hunts.index("function _huntRenderChips")]
+        self.assertIn("if (reset) {", body)
+        self.assertIn("tbody.replaceChildren()", body)
 
     def test_run_detail_links_hunt_results(self):
         rh = _src("vigil-runhistory.js")

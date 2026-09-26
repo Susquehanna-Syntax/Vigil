@@ -7,7 +7,7 @@
           <div class="page-sub" id="hunt-page-sub">Select a hunt run to see its results.</div>
         </div>
         <div class="right">
-          <button class="btn btn-ghost" data-act="navigateTo" data-a1="playbooks">Back to history</button>
+          <button class="btn btn-ghost" id="hunt-back" type="button">Back</button>
         </div>
       </div>
 
@@ -46,12 +46,14 @@
       </div>
 
       <div class="hunt-section">
+        <div class="hunt-section-title">Matches <span id="hunt-matches-count"></span></div>
         <div class="table-wrap">
           <table class="hunt-table" id="hunt-matches">
             <thead id="hunt-matches-head"></thead>
             <tbody id="hunt-matches-body"></tbody>
           </table>
         </div>
+        <p class="muted hunt-empty" id="hunt-empty" hidden>No matches on this run yet. Hosts still pending report when they next check in.</p>
         <div class="hunt-pager">
           <button class="btn btn-outline btn-sm" id="hunt-more" type="button" hidden>Load more</button>
         </div>
