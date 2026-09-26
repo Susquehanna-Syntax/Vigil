@@ -10,8 +10,7 @@
 
 /* ── Editor: default YAML + canned templates ─────────────────────────── */
 const DEFAULT_YAML_TEMPLATE = `name: New Task
-description: What this task does and when to run it.
-relevance: "e.g. web servers, database hosts"
+description: What this task does, and when to run it.
 risk: standard
 
 # Optional: restrict when tasks are dispatched (server timezone).
@@ -54,7 +53,7 @@ description: |
   agent's scheduled check (default every 6 hours — docker_check_interval in
   agent.yml). Output lists each Hub-tagged container as up to date or
   OUTDATED, and outdated-image alerts fire or resolve on the next check-in.
-relevance: "any host running Docker containers"
+  Relevant to any host running Docker containers.
 risk: low
 
 actions:
@@ -195,7 +194,8 @@ actions:
 description: |
   Polls 'who' until no users are logged in, then restarts the named service.
   Requires the agent to be in full_control mode because run_command is used.
-relevance: "interactive workstations where you don't want to disrupt active users"
+  Relevant to interactive workstations where you don't want to disrupt
+  active users.
 risk: high
 
 inputs:
@@ -230,7 +230,7 @@ description: |
   After the task completes, finish activation in the browser at
   https://<this-host>:8834 using the activation code emailed to you
   by Tenable. Plugin compilation takes ~20-30 minutes the first time.
-relevance: "the host you want to run as your central Nessus scanner"
+  Relevant to the host you want to run as your central Nessus scanner.
 risk: high
 
 inputs:
@@ -271,8 +271,8 @@ description: |
   Asks the Vigil server to schedule a Nessus scan of this host.
   Nothing runs locally — the agent emits a marker, the server records
   the request in the Vulnerabilities tab, and the central Nessus
-  instance launches the actual scan on the next sync cycle.
-relevance: "any host you want scanned for vulnerabilities"
+  instance launches the actual scan on the next sync cycle. Relevant to
+  any host you want scanned for vulnerabilities.
 risk: low
 
 actions:
@@ -288,8 +288,8 @@ description: |
   Cross-platform Trivy install. The agent picks the right path based
   on its own platform (apt / dnf / brew / winget) via per-step when:
   predicates. Hosts without a known package manager are filtered out
-  by target_tags so the editor only offers eligible targets.
-relevance: "any host you want to scan with the agent-local Trivy scanner"
+  by target_tags so the editor only offers eligible targets. Relevant to
+  any host you want to scan with the agent-local Trivy scanner.
 risk: high
 target_tags:
   - pkg:apt
@@ -343,8 +343,7 @@ description: |
   and ships it back. The server parses each (package, CVE) pair into a
   VulnFinding row and recomputes the host score. Requires the trivy
   binary already installed (see the "Install Trivy on this host"
-  template).
-relevance: "any host with the Trivy CLI installed"
+  template). Relevant to any host with the Trivy CLI installed.
 risk: low
 
 inputs:
@@ -374,8 +373,8 @@ description: |
   After it's ready, set the admin password, create a Vigil service
   account, and wire GREENBONE_URL/USERNAME/PASSWORD into the Vigil
   server stack. Linux-only — restricted to docker-capable hosts via
-  target_tags.
-relevance: "a Linux host you want to run as your Greenbone scanner"
+  target_tags. Relevant to a Linux host you want to run as your Greenbone
+  scanner.
 risk: high
 target_tags:
   - os:linux
@@ -410,8 +409,8 @@ description: |
   Asks the server to queue a network scan against this host. The
   engine field picks which central scanner runs — set it to "nessus"
   or "greenbone", or leave blank to let the server choose based on
-  what's configured.
-relevance: "any host you want scanned by whichever network scanner is configured"
+  what's configured. Relevant to any host you want scanned by whichever
+  network scanner is configured.
 risk: low
 
 inputs:

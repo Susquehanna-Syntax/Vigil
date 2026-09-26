@@ -963,10 +963,9 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
     if not name:
         raise SpecError("'name' is required")
 
-    description = _as_str(raw.get("description"), "description", max_len=2000)
-    relevance = _as_str(raw.get("relevance"), "relevance", max_len=255)
-
-    # ``author`` and ``created`` are optional locally but auto-injected by the
+    name = _as_str(raw.get("name"), "name", max_len=255)
+    if not name:
+        raise SpecError("'name' is required")
     # "Submit to Community" flow so every YAML that lands on the community
     # repo is self-describing (who wrote it, when). When present, ``created``
     # must be an ISO-8601 calendar date (YYYY-MM-DD); ``author`` is any short
@@ -1022,6 +1021,21 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
     derived_risk_level = 0
     seen_ids: set[str] = set()
     warnings: list[str] = []
+    description = _as_str(raw.get("description"), "description", max_len=2000)
+    relevance = _as_str(raw.get("relevance"), "relevance", max_len=255)
+    if relevance:
+        # Free-text `relevance:` is deprecated — it is folded into the
+        # description so it keeps rendering, and the parsed spec reports it
+        # empty so nothing new writes the field. The no-duplicate guard keeps
+        # re-parsing a folded task from appending the line a second time.
+        warnings.append(
+            "relevance: is free text and is now part of the description — "
+            "use relevant: to decide where a task applies"
+        )
+        suffix = f"\n\nRelevant to: {relevance}"
+        if not description.endswith(suffix):
+            description = (description + suffix) if description else suffix.lstrip("\n")
+        relevance = ""
 
     # Branch conditions are validated here, once every step's type is known,
     # against the steps that come earlier in document order. A ``use:`` node
