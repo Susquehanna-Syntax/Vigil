@@ -329,22 +329,27 @@ def _refuse_outdated_reboot(host: Host) -> None:
 
 
 def _refuse_unsupported_features(host: Host) -> None:
-    """Fail every pending ``relevant:`` task for an agent that lacks the feature.
+    """Fail every pending task that uses a task-language feature the agent does not understand.
 
-    An agent that cannot read a ``relevant:`` block would ignore it and run
-    the fix on every host it was sent to — exactly the mistake the block
-    exists to prevent — so the server refuses to hand it the task instead.
-    Same shape as ``_refuse_outdated_reboot``.
+    A task needs ``relevant`` when its params carry a ``relevant:`` block and
+    ``branches`` when they carry a ``flow`` tree. An agent that cannot read a
+    block would ignore it and run the fix on every host it was sent to —
+    exactly the mistake the block exists to prevent — so the server refuses
+    to hand it the task instead. Same shape as ``_refuse_outdated_reboot``.
     """
-    if "relevant" in (host.agent_features or []):
-        return
+    features = set(host.agent_features or [])
     for task in Task.objects.filter(host=host, state=Task.State.PENDING):
         params = task.params or {}
-        if not isinstance(params.get("relevant"), dict):
+        needed: list[str] = []
+        if isinstance(params.get("relevant"), dict) and "relevant" not in features:
+            needed.append("relevant:")
+        if params.get("flow") is not None and "branches" not in features:
+            needed.append("if/then/else branches")
+        if not needed:
             continue
         task.state = Task.State.FAILED
         task.result_output = (
-            "Refused: this agent does not understand relevant: blocks — "
+            f"Refused: this agent does not understand {', '.join(needed)} — "
             "update the agent before deploying tasks that use them"
         )
         task.completed_at = now()
