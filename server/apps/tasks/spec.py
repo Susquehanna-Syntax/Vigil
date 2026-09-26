@@ -492,6 +492,12 @@ def schedule_window_active(
     return now_m >= start or now_m <= end + 59
 
 
+def _max_risk(a: str, b: str) -> str:
+    """The higher of two risk tiers — the composite risk of a task that
+    inlines another task's steps (phase 05b) is the max across both."""
+    return a if _RISK_ORDER.get(a, 1) >= _RISK_ORDER.get(b, 1) else b
+
+
 def _check_step_ref(
     step_id: str, field: str | None, earlier: dict[str, str], where: str
 ) -> None:
@@ -524,20 +530,25 @@ _MAX_BRANCH_DEPTH = 3
 _MAX_BRANCH_LEAVES = 50
 
 
-def _flatten_actions(actions_raw: list) -> tuple[list[dict], list | None]:
-    """Flatten ``actions`` (steps and ``if/then/else`` branches) into leaves.
+def _flatten_actions(actions_raw: list) -> tuple[list[dict], list | None, list[str]]:
+    """Flatten ``actions`` (steps, ``if/then/else`` branches and ``use:``
+    references) into leaves.
 
-    Returns ``(leaves, flow)``: the leaf step mappings in document order, each
-    with a ``branch`` path (None for a top-level step, otherwise a dot path
-    like ``b1.then`` / ``b1.else.b2.then``); and the ``flow`` list of nodes
-    (``{"step": <leaf>}`` / ``{"id", "if", "then", "else"}``), or None when
-    the task has no branch. Branch shape is validated here (``if`` a non-empty
-    string, ``then`` a non-empty list, optional ``else`` list, no other
-    keys); branch conditions are validated later, once every step type is
-    known.
+    Returns ``(leaves, flow, uses)``: the leaf step mappings in document
+    order, each with a ``branch`` path (None for a top-level step, otherwise a
+    dot path like ``b1.then`` / ``b1.else.b2.then``); the ``flow`` list of
+    nodes (``{"step": <leaf>}`` / ``{"id", "if", "then", "else"}`` /
+    ``{"use": <name>}``), or None when the task has no branch; and the sorted
+    list of distinct task names referenced with ``use:``. A ``use:`` item is
+    allowed only inside a ``then``/else`` list — it names a whole task whose
+    steps are spliced in at deploy (phase 05b), not a step to validate now.
+    Branch shape is validated here (``if`` a non-empty string, ``then`` a
+    non-empty list, optional ``else`` list, no other keys); branch conditions
+    are validated later, once every step type is known.
     """
     leaves: list[dict] = []
     branch_counter = 0
+    uses: set[str] = set()
 
     def _walk(entries: list, depth: int, path: str, where: str) -> list:
         nonlocal branch_counter
@@ -545,7 +556,25 @@ def _flatten_actions(actions_raw: list) -> tuple[list[dict], list | None]:
         for entry in entries:
             if not isinstance(entry, dict):
                 raise SpecError(f"{where} must be a mapping")
-            if "if" in entry:
+            if "use" in entry:
+                if depth == 0:
+                    raise SpecError(
+                        "use: belongs inside a then/else branch — to reuse a "
+                        "whole task at the top level, use a playbook"
+                    )
+                if set(entry) != {"use"}:
+                    raise SpecError(
+                        f"{where}: a use reference has exactly one key — use"
+                    )
+                name = entry["use"]
+                if not isinstance(name, str) or not name.strip():
+                    raise SpecError(f"{where}.use must be a non-empty string")
+                if len(name) > 200:
+                    raise SpecError(
+                        f"{where}.use: task name too long (max 200)")
+                uses.add(name.strip())
+                nodes.append({"use": name.strip()})
+            elif "if" in entry:
                 if depth + 1 > _MAX_BRANCH_DEPTH:
                     raise SpecError(
                         f"{where}: branch nested deeper than {_MAX_BRANCH_DEPTH} levels"
@@ -589,7 +618,7 @@ def _flatten_actions(actions_raw: list) -> tuple[list[dict], list | None]:
         raise SpecError(
             f"too many steps across all branches (max {_MAX_BRANCH_LEAVES})"
         )
-    return leaves, flow
+    return leaves, flow, sorted(uses)
 
 
 def _flow_by_id(nodes: list, leaf_ids: dict[int, str]) -> list:
@@ -598,6 +627,8 @@ def _flow_by_id(nodes: list, leaf_ids: dict[int, str]) -> list:
     for node in nodes:
         if "step" in node:
             out.append({"step": leaf_ids[id(node["step"])]})
+        elif "use" in node:
+            out.append({"use": node["use"]})
         else:
             out.append({"id": node["id"], "if": node["if"],
                         "then": _flow_by_id(node["then"], leaf_ids),
@@ -982,9 +1013,10 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
     if not isinstance(actions_raw, list) or not actions_raw:
         raise SpecError("'actions' must be a non-empty list")
 
-    # Flatten if/then/else branches into an ordered list of leaf steps; the
-    # flow tree is validated and returned with the parsed spec.
-    flat_actions, flow = _flatten_actions(actions_raw)
+    # Flatten if/then/else branches and use: references into an ordered list
+    # of leaf steps; the flow tree is validated and returned with the parsed
+    # spec.
+    flat_actions, flow, uses = _flatten_actions(actions_raw)
 
     parsed_actions: list[dict[str, Any]] = []
     derived_risk_level = 0
@@ -992,18 +1024,17 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
     warnings: list[str] = []
 
     # Branch conditions are validated here, once every step's type is known,
-    # against the steps that come earlier in document order.
+    # against the steps that come earlier in document order. A ``use:`` node
+    # contributes no condition and no leaf — its steps are spliced in at
+    # deploy, so its spliced-in branch conditions are checked in the composite.
     branch_conditions: dict[str, str] = {}
-
-    def _validate_branch(node: dict) -> None:
-        if "id" in node:
-            branch_conditions[node["id"]] = node["if"]
-            _validate_branch_nodes(node["then"])
-            _validate_branch_nodes(node["else"])
 
     def _validate_branch_nodes(nodes: list) -> None:
         for node in nodes:
-            _validate_branch(node)
+            if "id" in node:
+                branch_conditions[node["id"]] = node["if"]
+                _validate_branch_nodes(node["then"])
+                _validate_branch_nodes(node["else"])
 
     if flow is not None:
         _validate_branch_nodes(flow)
@@ -1267,6 +1298,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         "risk": effective_risk,
         "declared_risk": risk,
         "actions": parsed_actions,
+        "uses": uses,
         "flow": _flow_by_id(flow, leaf_ids) if flow is not None else None,
         "inputs": declared_inputs,
         "relevant": relevant,
@@ -1388,6 +1420,10 @@ def _deploy_params(spec: dict, steps_payload: list[dict]) -> dict:
         params["relevant"] = spec["relevant"]
     if spec.get("flow") is not None:
         params["flow"] = spec["flow"]
+    # Which tasks a branch's ``use:`` copied in, and which version of each —
+    # signed with the steps, so a run shows exactly what shipped.
+    if spec.get("uses_copied"):
+        params["uses"] = spec["uses_copied"]
     return params
 
 
