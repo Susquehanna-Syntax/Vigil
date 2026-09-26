@@ -142,6 +142,92 @@ def _process_tasks(tasks: list[dict], config, nonce_store: NonceStore, verify_ke
                 _report_failed(config, task, str(exc))
 
 
+def _relevant_holds(node, counts: dict[str, bool]) -> bool:
+    """Fold a normalised ``relevant:`` tree against probe outcomes.
+
+    ``all`` = every item holds, ``any`` = at least one holds, ``not`` = none
+    holds; a probe item holds when its hunt's count was non-zero.
+    """
+    if "probe" in node:
+        return counts.get(node["probe"]["id"], False)
+    op = node["op"]
+    if op == "all":
+        return all(_relevant_holds(item, counts) for item in node["items"])
+    if op == "any":
+        return any(_relevant_holds(item, counts) for item in node["items"])
+    return not any(_relevant_holds(item, counts) for item in node["items"])
+
+
+def _probe_id_num(probe_id: str) -> int:
+    try:
+        return int(probe_id.rsplit("-", 1)[1])
+    except (IndexError, ValueError):
+        return 0
+
+
+def _evaluate_relevant(tree: dict, config) -> tuple[bool, list[dict], list[str]]:
+    """Run every probe of a ``relevant:`` tree once and fold the decision.
+
+    Returns ``(applies, probe_steps, probe_lines)`` where ``probe_steps`` is
+    the per-probe evidence (the same shape a hunt step reports) and
+    ``probe_lines`` is the output text. A probe that raises is reported
+    inline as a task failure (``[ERROR] relevant-<n> (<type>): … — task not
+    run``) and the evaluation stops.
+    """
+    probes = []
+    seen = set()
+
+    def collect(node) -> None:
+        for item in node["items"]:
+            if "probe" in item:
+                probe = item["probe"]
+                if probe["id"] not in seen:
+                    seen.add(probe["id"])
+                    probes.append(probe)
+            else:
+                collect(item)
+
+    collect(tree)
+    probes.sort(key=lambda p: _probe_id_num(p["id"]))
+
+    counts: dict[str, bool] = {}
+    steps: list[dict] = []
+    lines: list[str] = []
+    for probe in probes:
+        try:
+            # Looked up at call time, as TaskRuntime does for steps, so one
+            # executor (and one allowlist check) serves probes and steps.
+            from .executor import execute_action as _execute
+            out = _execute(probe["type"], probe["params"], config)
+        except Exception as exc:
+            line = f"[ERROR] {probe['id']} ({probe['type']}): {exc} — task not run"
+            raise RelevantProbeError("\n".join(lines + [line]), steps) from exc
+        count = (out.data or {}).get("count")
+        counts[probe["id"]] = isinstance(count, int) and count > 0
+        step = {"id": probe["id"], "status": "ok", "result": dict(out.data or {})}
+        # The probe runs as the hunt it is, so its evidence carries the same
+        # hunt block a hunt step reports.
+        hunt = _hunt_block(probe["type"], str(out))
+        if hunt is not None:
+            step["hunt"] = hunt
+        steps.append(step)
+        lines.append(
+            f"[PROBE] {probe['id']} ({probe['type']}): "
+            f"{count if isinstance(count, int) else '?'} match(es)"
+        )
+
+    return _relevant_holds(tree, counts), steps, lines
+
+
+class RelevantProbeError(Exception):
+    """A ``relevant:`` probe failed; ``str(exc)`` is the report line and
+    ``steps`` the evidence of the probes that ran before it."""
+
+    def __init__(self, line: str, steps: list[dict]):
+        super().__init__(line)
+        self.steps = steps
+
+
 def _hunt_payload(step_result) -> dict | None:
     """The ``hunt`` block to attach to a hunt step's report, or None.
 
@@ -149,10 +235,15 @@ def _hunt_payload(step_result) -> dict | None:
     carries a ``matches`` list, the matches plus the hunt's own bookkeeping
     travel with the report so the server can store them.
     """
-    if not (step_result.action or "").startswith("hunt_"):
+    return _hunt_block(step_result.action, step_result.output)
+
+
+def _hunt_block(action: str | None, output) -> dict | None:
+    """``_hunt_payload`` for a bare (action, output) pair — used for probes."""
+    if not (action or "").startswith("hunt_"):
         return None
     try:
-        body = json.loads(step_result.output)
+        body = json.loads(output)
     except (TypeError, ValueError):
         return None
     if not isinstance(body, dict) or not isinstance(body.get("matches"), list):
@@ -176,6 +267,29 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
     report the aggregated result back to the server.
     """
     raw_steps = params.get("steps", [])
+
+    # Evaluate the relevant: tree before any step runs: every probe is the
+    # hunt it is (allowlist and hunt limits apply), the tree decides, and a
+    # non-matching host reports not_applicable with the probes' evidence.
+    # Probe evidence is prepended to the steps/output of whatever report the
+    # task ends with.
+    probe_steps: list[dict] = []
+    probe_lines: list[str] = []
+    relevant = params.get("relevant")
+    if isinstance(relevant, dict):
+        try:
+            applies, probe_steps, probe_lines = _evaluate_relevant(relevant, config)
+        except RelevantProbeError as exc:
+            logger.warning("Script task %s: %s", task_id, exc)
+            _report_failed(config, task, str(exc), steps=exc.steps)
+            return
+        if not applies:
+            output = "\n".join(
+                probe_lines + ["[NOT APPLICABLE] relevant: did not match"]
+            )
+            logger.info("Script task %s not applicable", task_id)
+            _report_not_applicable(config, task, output, steps=probe_steps)
+            return
 
     # Build the evaluation context once per task. agent.* comes from the
     # platform; inputs.* from the resolved step inputs the server already
@@ -224,7 +338,7 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
     runtime = TaskRuntime(runtime_payload, config)
     results = runtime.run()
 
-    steps = []
+    steps = list(probe_steps)
     for r in results:
         step = {"id": r.name, "status": r.state, "result": dict(r.data)}
         hunt_payload = _hunt_payload(r)
@@ -232,7 +346,7 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
             step["hunt"] = hunt_payload
         steps.append(step)
 
-    step_outputs = []
+    step_outputs = list(probe_lines)
     any_error = False
     any_ran = False
     for r in results:
@@ -326,6 +440,13 @@ def _report_failed(config, task: dict, error: str, steps=None) -> None:
         client.report_result(config, task["id"], "failed", error, steps=steps)
     except Exception:
         logger.exception("Failed to report task %s failure", task.get("id"))
+
+
+def _report_not_applicable(config, task: dict, output: str, steps=None) -> None:
+    try:
+        client.report_result(config, task["id"], "not_applicable", output, steps=steps)
+    except Exception:
+        logger.exception("Failed to report task %s as not applicable", task.get("id"))
 
 
 def _report_skipped(config, task: dict, output: str, steps=None) -> None:

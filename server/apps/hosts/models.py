@@ -39,6 +39,11 @@ class Host(models.Model):
         for string_field, relation in self.tag_sync_fields:
             sync_tag_rows(self, string_field, relation)
     agent_version = models.CharField(max_length=50, blank=True, default="")
+    #: Task-language features the agent said it understands at check-in.
+    #: The server refuses to hand a task to a host that lacks a feature the
+    #: task needs — a pre-`relevant:` agent would ignore the block and run
+    #: the fix on every host.
+    agent_features = models.JSONField(default=list, blank=True)
     last_checkin = models.DateTimeField(null=True, blank=True)
     #: What this machine is missing, as the agent last counted it:
     #: {"pending", "critical", "important", "reboot_required"}. Null means no
