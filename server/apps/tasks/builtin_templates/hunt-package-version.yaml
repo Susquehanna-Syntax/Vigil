@@ -18,7 +18,7 @@ inputs:
     required: true
   - id: version
     type: text
-    label: Minimum version
+    label: Fixed in version
     description: "Flag hosts installed below this version (e.g. 3.0.13)"
     required: true
 actions:
