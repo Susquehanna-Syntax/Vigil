@@ -13,6 +13,7 @@ const HUNT_STATE_TONE = {
   pending: 'peach',
   error: 'rose',
   did_not_report: 'lemon',
+  not_applicable: 'lav',
 };
 
 const HUNT_STATE_LABEL = {
@@ -21,6 +22,7 @@ const HUNT_STATE_LABEL = {
   pending: 'Pending',
   error: 'Error',
   did_not_report: 'Did not report',
+  not_applicable: 'Not applicable',
 };
 
 function _huntDataUrl(offset) {
@@ -113,7 +115,7 @@ function _huntRenderChips(hosts) {
   if (!el) return;
   const counts = {};
   for (const h of hosts) counts[h.state] = (counts[h.state] || 0) + 1;
-  const order = ['matched', 'not_matched', 'pending', 'error', 'did_not_report'];
+  const order = ['matched', 'not_matched', 'pending', 'error', 'did_not_report', 'not_applicable'];
   el.replaceChildren();
   for (const state of order) {
     if (!counts[state]) continue;

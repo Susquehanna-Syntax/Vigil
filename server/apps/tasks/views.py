@@ -56,6 +56,7 @@ from .spec import (
 _TERMINAL_STATES = {
     Task.State.COMPLETED, Task.State.FAILED,
     Task.State.REJECTED, Task.State.SKIPPED,
+    Task.State.NOT_APPLICABLE,
 }
 _UPDATABLE_STATES = {Task.State.DISPATCHED, Task.State.EXECUTING}
 
@@ -709,7 +710,15 @@ def _advance_run_sequence(finished_task: Task) -> None:
     # SKIPPED is treated like COMPLETED for chain-advance purposes — the
     # step elected not to run, but it's not a failure. The next step
     # unblocks normally.
-    if finished_task.state in (Task.State.COMPLETED, Task.State.SKIPPED):
+    if finished_task.state == Task.State.NOT_APPLICABLE:
+        # The task did not apply to this host: its remaining steps never
+        # run (unlike a failure, which retries), and none of it is counted
+        # as a retry.
+        sibling_qs.filter(state=Task.State.BLOCKED).update(
+            state=Task.State.NOT_APPLICABLE,
+            completed_at=now(),
+        )
+    elif finished_task.state in (Task.State.COMPLETED, Task.State.SKIPPED):
         next_step = sibling_qs.filter(state=Task.State.BLOCKED).first()
         if next_step:
             next_step.state = Task.State.PENDING
@@ -762,11 +771,18 @@ def _finalize_run_if_done(run: TaskRun) -> None:
         return
 
     states = set(Task.objects.filter(run=run).values_list("state", flat=True))
-    if states <= {Task.State.COMPLETED, Task.State.SKIPPED}:
+    # A not-applicable host is neither a pass nor a failure, so it is
+    # excluded from the outcome. If every host was not applicable the run
+    # itself is not applicable; otherwise the remaining states decide as
+    # usual.
+    remaining = states - {Task.State.NOT_APPLICABLE}
+    if not remaining:
+        run.state = TaskRun.State.NOT_APPLICABLE
+    elif remaining <= {Task.State.COMPLETED, Task.State.SKIPPED}:
         # Skipped steps are happy outcomes — only-skipped or
         # completed-and-skipped runs are COMPLETED, not PARTIAL.
         run.state = TaskRun.State.COMPLETED
-    elif Task.State.COMPLETED in states or Task.State.SKIPPED in states:
+    elif Task.State.COMPLETED in remaining or Task.State.SKIPPED in remaining:
         run.state = TaskRun.State.PARTIAL
     else:
         run.state = TaskRun.State.FAILED
@@ -1431,6 +1447,8 @@ _HUNT_HOST_ERROR = ("failed", "rejected", "expired")
 def _hunt_host_state(task, match_count):
     if task.state in _HUNT_HOST_PENDING:
         return "pending"
+    if task.state == Task.State.NOT_APPLICABLE:
+        return "not_applicable"
     # Expired without ever being dispatched: the hunt stayed open past its
     # stays_open and the host never checked in — "did not report", not an error.
     if task.state == Task.State.EXPIRED and task.dispatched_at is None:

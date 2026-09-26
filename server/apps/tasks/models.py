@@ -94,6 +94,9 @@ class TaskRun(models.Model):
         COMPLETED = "completed", "Completed"
         FAILED = "failed", "Failed"
         PARTIAL = "partial", "Partial"
+        # Every host was not applicable: the task did not apply to any
+        # host, so the run is neither a success nor a failure.
+        NOT_APPLICABLE = "not_applicable", "Not applicable"
 
     class Source(models.TextChoices):
         MANUAL = "manual", "Manual deploy"
@@ -138,7 +141,7 @@ class TaskRun(models.Model):
     )
     host_count = models.IntegerField(default=0)
     step_count = models.IntegerField(default=0)
-    state = models.CharField(max_length=12, choices=State.choices, default=State.RUNNING)
+    state = models.CharField(max_length=16, choices=State.choices, default=State.RUNNING)
     created_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 
@@ -172,6 +175,10 @@ class Task(models.Model):
         # subsequent steps in the same run — they're a terminal state
         # for the step but not a failure.
         SKIPPED = "skipped", "Skipped"
+        # The host evaluated the task's relevant: block and it did not
+        # match. Terminal, like skipped, but neither a pass nor a
+        # failure — and the rest of the host's chain does not run.
+        NOT_APPLICABLE = "not_applicable", "Not applicable"
 
     class RiskLevel(models.TextChoices):
         LOW = "low", "Low"
