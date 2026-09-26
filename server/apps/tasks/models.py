@@ -229,6 +229,40 @@ class Task(models.Model):
         return f"{self.action} → {self.host.hostname} ({self.state})"
 
 
+class HuntMatch(models.Model):
+    """A single match reported by an agent hunt, stored per host and per run.
+
+    Agent-reported evidence, never used for authorization: the ``action`` is
+    looked up from the task's own signed params at ingest time, and these rows
+    only feed the read-only hunt results view.
+    """
+
+    task = models.ForeignKey(
+        Task, on_delete=models.CASCADE, related_name="hunt_matches"
+    )
+    run = models.ForeignKey(
+        TaskRun, on_delete=models.CASCADE, null=True, blank=True,
+        related_name="hunt_matches",
+    )
+    host = models.ForeignKey(
+        Host, on_delete=models.CASCADE, related_name="hunt_matches"
+    )
+    step_id = models.CharField(max_length=60)
+    action = models.CharField(max_length=64)
+    evidence_type = models.CharField(max_length=40)
+    data = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "id"]
+        indexes = [
+            models.Index(fields=["run", "host"]),
+        ]
+
+    def __str__(self):
+        return f"{self.evidence_type} @ {self.host_id} ({self.step_id})"
+
+
 class PatchWave(TagRowSyncMixin, models.Model):
     """One stage of a staged rollout: every host carrying any of its tags.
 

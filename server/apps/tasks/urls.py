@@ -22,5 +22,6 @@ urlpatterns = [
     path("definitions/<uuid:definition_id>/deploy/", views.definition_deploy, name="definition-deploy"),
     path("runs/", views.run_history, name="run-history"),
     path("runs/<uuid:run_id>/", views.run_detail, name="run-detail"),
+    path("runs/<uuid:run_id>/hunt/", views.run_hunt_results, name="run-hunt-results"),
     path("<uuid:task_id>/", views.task_detail, name="task-detail"),
 ]
