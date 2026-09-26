@@ -21,12 +21,20 @@ actions that the agent already knows how to run.
 
 from __future__ import annotations
 
+import ast
 import re
 import urllib.parse
 from datetime import datetime, timedelta
 from typing import Any
 
 import yaml
+
+from .expression import (
+    ExprError,
+    parse as expression_parse,
+    referenced_inputs,
+    referenced_steps,
+)
 
 # The action registry lives in registry.py; re-exported for existing importers.
 from .registry import (  # noqa: F401
@@ -504,6 +512,139 @@ def _check_step_ref(
             )
 
 
+# ── if/then/else branches ──────────────────────────────────────────────────────
+#
+# A task's ``actions:`` may branch on an earlier step's result. The server
+# flattens the whole tree into one ordered list of leaf steps (``actions``
+# stays a flat list, as every consumer expects) plus a ``flow`` tree that
+# records the branches; phase 06 makes the agent follow it. Until then a
+# branching task must never reach an agent (the check-in feature gate).
+
+_MAX_BRANCH_DEPTH = 3
+_MAX_BRANCH_LEAVES = 50
+
+
+def _flatten_actions(actions_raw: list) -> tuple[list[dict], list | None]:
+    """Flatten ``actions`` (steps and ``if/then/else`` branches) into leaves.
+
+    Returns ``(leaves, flow)``: the leaf step mappings in document order, each
+    with a ``branch`` path (None for a top-level step, otherwise a dot path
+    like ``b1.then`` / ``b1.else.b2.then``); and the ``flow`` list of nodes
+    (``{"step": <leaf>}`` / ``{"id", "if", "then", "else"}``), or None when
+    the task has no branch. Branch shape is validated here (``if`` a non-empty
+    string, ``then`` a non-empty list, optional ``else`` list, no other
+    keys); branch conditions are validated later, once every step type is
+    known.
+    """
+    leaves: list[dict] = []
+    branch_counter = 0
+
+    def _walk(entries: list, depth: int, path: str, where: str) -> list:
+        nonlocal branch_counter
+        nodes: list[dict] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise SpecError(f"{where} must be a mapping")
+            if "if" in entry:
+                if depth + 1 > _MAX_BRANCH_DEPTH:
+                    raise SpecError(
+                        f"{where}: branch nested deeper than {_MAX_BRANCH_DEPTH} levels"
+                    )
+                unknown = set(entry) - {"if", "then", "else"}
+                if unknown:
+                    raise SpecError(
+                        f"{where}: branch has unknown key {min(unknown)!r} — "
+                        f"a branch is if/then/else only"
+                    )
+                cond = entry.get("if")
+                if not isinstance(cond, str) or not cond.strip():
+                    raise SpecError(f"{where}.if must be a non-empty string")
+                then_raw = entry.get("then")
+                if not isinstance(then_raw, list) or not then_raw:
+                    raise SpecError(f"{where}.then must be a non-empty list")
+                else_raw = entry.get("else")
+                if else_raw is not None and (
+                        not isinstance(else_raw, list) or not else_raw):
+                    raise SpecError(
+                        f"{where}.else must be a non-empty list when present")
+                branch_counter += 1
+                bid = f"b{branch_counter}"
+                node_where = f"branch {bid}"
+                then_nodes = _walk(then_raw, depth + 1,
+                                   f"{path}{bid}.then.", node_where + ".then")
+                else_nodes = _walk(else_raw or [], depth + 1,
+                                   f"{path}{bid}.else.", node_where + ".else")
+                node = {"id": bid, "if": cond, "then": then_nodes,
+                        "else": else_nodes}
+                nodes.append(node)
+            else:
+                entry["branch"] = path.rstrip(".") or None
+                nodes.append({"step": entry})
+                leaves.append(entry)
+        return nodes
+
+    top = _walk(actions_raw, 0, "", "actions")
+    flow = top if any("id" in node for node in top) else None
+    if len(leaves) > _MAX_BRANCH_LEAVES:
+        raise SpecError(
+            f"too many steps across all branches (max {_MAX_BRANCH_LEAVES})"
+        )
+    return leaves, flow
+
+
+def _flow_by_id(nodes: list, leaf_ids: dict[int, str]) -> list:
+    """The flow with each leaf mapping replaced by its step id."""
+    out = []
+    for node in nodes:
+        if "step" in node:
+            out.append({"step": leaf_ids[id(node["step"])]})
+        else:
+            out.append({"id": node["id"], "if": node["if"],
+                        "then": _flow_by_id(node["then"], leaf_ids),
+                        "else": _flow_by_id(node["else"], leaf_ids)})
+    return out
+
+
+def _check_ordering_types(
+    expr: str, tree: ast.Expression, earlier: dict[str, str], where: str
+) -> None:
+    """An ordering comparison may not name a str/bool step output.
+
+    The evaluator treats ``"a" < 5`` as False (never a TypeError), so
+    ``when: steps.svc.result.name > 0`` would silently be false on every
+    host — the author almost certainly meant a number.
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Compare):
+            continue
+        for op, comp in zip(node.ops, node.comparators):
+            if not isinstance(op, (ast.Lt, ast.LtE, ast.Gt, ast.GtE)):
+                continue
+            # In a chained comparison the left side of each op is the previous
+            # comparator; judge both ends of this op.
+            left_side = (node.left if op is node.ops[0]
+                         else node.comparators[node.ops.index(op) - 1])
+            for side in (left_side, comp):
+                # side is steps.<id>.result.<field>: attribute chain
+                # side.attr (field) → side.value.attr ("result") →
+                # side.value.value.attr (step id) → side.value.value.value
+                # is the "steps" Name.
+                if not (isinstance(side, ast.Attribute)
+                        and isinstance(side.value, ast.Attribute)
+                        and side.value.attr == "result"
+                        and isinstance(side.value.value, ast.Attribute)):
+                    continue
+                step_id = side.value.value.attr
+                if step_id not in earlier:
+                    continue  # unknown id — reported by the step-ref check
+                declared = action_outputs(earlier[step_id]).get(side.attr)
+                if declared in ("str", "bool"):
+                    raise SpecError(
+                        f"{where}: steps.{step_id}.result.{side.attr} is a "
+                        f"{declared} output; <, <=, >, >= compare numbers"
+                    )
+
+
 def stays_open_seconds(value: Any, where: str = "stays_open") -> int:
     """Normalize a hunt step's ``stays_open`` param to seconds.
 
@@ -840,15 +981,38 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
     actions_raw = raw.get("actions")
     if not isinstance(actions_raw, list) or not actions_raw:
         raise SpecError("'actions' must be a non-empty list")
-    if len(actions_raw) > 32:
-        raise SpecError("too many actions (max 32)")
+
+    # Flatten if/then/else branches into an ordered list of leaf steps; the
+    # flow tree is validated and returned with the parsed spec.
+    flat_actions, flow = _flatten_actions(actions_raw)
 
     parsed_actions: list[dict[str, Any]] = []
     derived_risk_level = 0
     seen_ids: set[str] = set()
     warnings: list[str] = []
 
-    for index, entry in enumerate(actions_raw):
+    # Branch conditions are validated here, once every step's type is known,
+    # against the steps that come earlier in document order.
+    branch_conditions: dict[str, str] = {}
+
+    def _validate_branch(node: dict) -> None:
+        if "id" in node:
+            branch_conditions[node["id"]] = node["if"]
+            _validate_branch_nodes(node["then"])
+            _validate_branch_nodes(node["else"])
+
+    def _validate_branch_nodes(nodes: list) -> None:
+        for node in nodes:
+            _validate_branch(node)
+
+    if flow is not None:
+        _validate_branch_nodes(flow)
+    # Raw step mapping → its parsed id, filled in by the loop below, so the
+    # flow can name steps by id (the steps themselves are signed once, in
+    # params["steps"], with their inputs resolved).
+    leaf_ids: dict[int, str] = {}
+
+    for index, entry in enumerate(flat_actions):
         if not isinstance(entry, dict):
             raise SpecError(f"action #{index + 1} must be a mapping")
 
@@ -862,14 +1026,37 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                 f"action #{index + 1}: unknown type {action_type!r} — "
                 f"must be one of {', '.join(sorted(ACTION_REGISTRY))}"
             )
-
-        # Steps before this one — the only ones a reference may name.
-        earlier = {a["id"]: a["type"] for a in parsed_actions}
+        if action_type == "playbook" and entry.get("branch") is not None:
+            raise SpecError(
+                f"action #{index + 1}: type: playbook is not supported inside "
+                f"branches (branch {entry['branch']})"
+            )
 
         action_id = _as_str(entry.get("id") or f"step{index + 1}", f"actions[{index}].id", max_len=60)
         if action_id in seen_ids:
             raise SpecError(f"duplicate action id {action_id!r}")
         seen_ids.add(action_id)
+        leaf_ids[id(entry)] = action_id
+
+        # Steps before this one — the only ones a reference may name.
+        earlier = {a["id"]: a["type"] for a in parsed_actions}
+
+        # A branch whose first leaf is this step: validate its condition
+        # against the steps earlier in document order, before this step's
+        # own id is added.
+        branch_path = entry.get("branch") or ""
+        # Outermost first: a nested branch's first leaf is also the first
+        # leaf of every branch around it that has not been checked yet.
+        for bid in [seg for seg in branch_path.split(".") if seg in branch_conditions]:
+            cond = branch_conditions.pop(bid)
+            where = f"branch {bid}"
+            try:
+                tree = expression_parse(cond)
+            except ExprError as exc:
+                raise SpecError(f"{where}: if expression rejected: {exc}") from exc
+            for step_id, field in sorted(referenced_steps(tree), key=str):
+                _check_step_ref(step_id, field, earlier, where)
+            _check_ordering_types(cond, tree, earlier, where)
 
         params = entry.get("params") or {}
         if not isinstance(params, dict):
@@ -950,14 +1137,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         if when_raw is not None:
             when_expr = _as_str(when_raw, f"actions[{index}].when", max_len=500)
             if when_expr:
-                from .expression import (
-                    ExprError,
-                    referenced_inputs as _refs,
-                    referenced_steps as _step_refs,
-                    validate as _validate_when,
-                )
                 try:
-                    _validate_when(when_expr)
+                    expression_parse(when_expr)
                 except ExprError as exc:
                     raise SpecError(
                         f"action #{index + 1}: when expression rejected: {exc}"
@@ -966,7 +1147,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                 # None at runtime, and None == "yes" is simply false — so the
                 # step would skip silently on every run, forever. Fail the
                 # save instead.
-                unknown = _refs(when_expr) - declared_input_ids
+                unknown = referenced_inputs(when_expr) - declared_input_ids
                 if unknown:
                     raise SpecError(
                         f"action #{index + 1}: when expression references "
@@ -974,13 +1155,15 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                         f"under inputs:, or the step will silently never run"
                     )
                 try:
-                    step_refs = _step_refs(when_expr)
+                    step_refs = referenced_steps(when_expr)
                 except ExprError as exc:
                     raise SpecError(
                         f"action #{index + 1}: when expression rejected: {exc}"
                     ) from exc
                 for step_id, field in sorted(step_refs, key=str):
                     _check_step_ref(step_id, field, earlier, f"action #{index + 1} when")
+                _check_ordering_types(when_expr, expression_parse(when_expr),
+                                      earlier, f"action #{index + 1} when")
 
         # Optional per-step timeout, in seconds. The 1..3600 range mirrors
         # the agent's own validation — a limit the server accepts but the
@@ -1013,6 +1196,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
             "when": when_expr,
             "timeout": step_timeout,
             "outputs": sorted(action_outputs(action_type)),
+            "branch": entry.get("branch"),
         })
         if action_type == "execute_script" and "script" in params:
             parsed_actions[-1]["script_sha256"] = script_hash(params["script"])
@@ -1083,6 +1267,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         "risk": effective_risk,
         "declared_risk": risk,
         "actions": parsed_actions,
+        "flow": _flow_by_id(flow, leaf_ids) if flow is not None else None,
         "inputs": declared_inputs,
         "relevant": relevant,
         "schedule": schedule,
@@ -1195,11 +1380,14 @@ def _validate_relevant(raw: Any, declared_inputs: list[dict[str, Any]]) -> Any:
 def _deploy_params(spec: dict, steps_payload: list[dict]) -> dict:
     """The signed task params: steps + variables, plus the resolved
     ``relevant:`` tree when the definition declares one (phase 04 makes
-    the agent evaluate it; nothing consumes it yet)."""
+    the agent evaluate it) and the branch flow tree when the definition
+    branches (phase 06 makes the agent follow it)."""
     params = {"steps": steps_payload,
               "variables": spec.get("resolved_inputs") or {}}
     if spec.get("relevant"):
         params["relevant"] = spec["relevant"]
+    if spec.get("flow") is not None:
+        params["flow"] = spec["flow"]
     return params
 
 
