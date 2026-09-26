@@ -312,6 +312,15 @@ class HuntResultsTests(TestCase):
         self._post(t1, [self._hunt_step([])])
         self.assertEqual(HuntMatch.objects.filter(task=t1).count(), 0)
 
+    def test_run_with_only_relevant_probes_is_a_hunt_run(self):
+        run = self._run_with(1)
+        params = {"steps": PLAIN_PARAMS["steps"], "relevant": {"op": "all", "items": [
+            {"probe": {"id": "relevant-1", "type": "hunt_process",
+                       "params": {"name": "cron"}}, "risk": 0}]}}
+        _task(self.host, Task.State.COMPLETED, run=run, step_order=0, params=params)
+        resp = self.client.get(f"/api/v1/tasks/runs/{run.id}/hunt/")
+        self.assertEqual(resp.status_code, 200)
+
     def test_run_without_hunts_is_404(self):
         definition = TaskDefinition.objects.create(
             owner=self.user, name="No hunt", yaml_source="yaml",

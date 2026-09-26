@@ -85,6 +85,8 @@ async function openHuntResults(runId) {
 function _runHasHuntSteps(run) {
   const tasks = (run && run.tasks) || [];
   return tasks.some((t) => {
+    // relevant: probes are hunts too; their matches are the run's evidence.
+    if ((t.params || {}).relevant) return true;
     const steps = ((t.params || {}).steps) || [];
     return steps.some((s) => s && typeof s === 'object'
       && String(s.action || '').startsWith('hunt_'));

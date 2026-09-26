@@ -1498,12 +1498,16 @@ def run_hunt_results(request, run_id):
         TaskRun.objects.prefetch_related("tasks__host"), pk=run_id)
     tasks = list(run.tasks.all())
     # Read the signed steps each task carried, so playbook and rollout
-    # runs (no single definition) are recognised the same way.
+    # runs (no single definition) are recognised the same way. A task's
+    # relevant: probes are hunts too, and their matches are its evidence.
     if not any(
-        str(step.get("action", "")).startswith("hunt_")
+        isinstance((task.params or {}).get("relevant"), dict)
+        or any(
+            str(step.get("action", "")).startswith("hunt_")
+            for step in ((task.params or {}).get("steps") or [])
+            if isinstance(step, dict)
+        )
         for task in tasks
-        for step in ((task.params or {}).get("steps") or [])
-        if isinstance(step, dict)
     ):
         raise Http404("run has no hunt steps")
 

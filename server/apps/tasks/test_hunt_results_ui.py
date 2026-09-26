@@ -101,6 +101,8 @@ class HuntResultsModuleTests(SimpleTestCase):
         # handler is assigned in JS — the modal body carries no inline
         # handler (covered by test_inline_handlers.py).
         self.assertIn("huntBtnEl.onclick", rh)
+        # A relevant: block's probes make it a hunt run too.
+        self.assertIn("(t.params || {}).relevant", _src("vigil-hunts.js"))
 
     def test_task_detail_links_hunt_results_and_shows_step_results(self):
         tasks = _src("vigil-tasks.js")
