@@ -67,7 +67,9 @@ class FileVersionTests(unittest.TestCase):
     def test_windows_pe_version(self):
         # 3.14.5.6 as packed by Windows: MS = (3<<16)|14, LS = (5<<16)|6.
         class _Fixed:
-            contents = (ctypes.c_uint32 * 4)(0x0003000E, 0x00050006, 0, 0)
+            # dwSignature, dwStrucVersion, dwFileVersionMS, dwFileVersionLS
+            contents = (ctypes.c_uint32 * 4)(0xFEEF04BD, 0x00010000,
+                                             0x0003000E, 0x00050006)
 
         def _fake_verquery(_buf, _root, value_ref, length_ref):
             length_ref.value = 16

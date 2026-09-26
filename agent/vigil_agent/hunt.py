@@ -422,9 +422,15 @@ def _windows_version(path: str) -> str | None:
             buffer, "\\", ctypes.byref(value), ctypes.byref(length))
         if not ok or not length.value:
             return None
+        # VS_FIXEDFILEINFO starts dwSignature (0xFEEF04BD), dwStrucVersion,
+        # then dwFileVersionMS, dwFileVersionLS.
+        if length.value < 16:
+            return None
         fixed = ctypes.cast(value, ctypes.POINTER(
-            ctypes.c_uint32 * 4)).contents  # VS_FIXEDFILEINFO
-        ms, ls = fixed[0], fixed[1]
+            ctypes.c_uint32 * 4)).contents
+        if fixed[0] != 0xFEEF04BD:
+            return None
+        ms, ls = fixed[2], fixed[3]
         return f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}.{ls & 0xFFFF}"
     except (OSError, ValueError, TypeError, AttributeError):
         return None
@@ -619,13 +625,20 @@ def hunt_service(result: HuntResult, params: dict) -> None:
         raise ValueError("start_mode must be enabled or disabled")
 
     if sys.platform == "win32":
-        services = [
-            {"name": s.name,
-             "state": "running" if s.status == psutil.STATUS_RUNNING else "stopped",
-             "start_mode": {"automatic": "enabled", "disabled": "disabled"}.get(
-                 s.start_type)}
-            for s in psutil.win_service_iter()
-        ]
+        services = []
+        for svc in psutil.win_service_iter():
+            # WindowsService exposes name/status/start_type as methods, and
+            # a service can vanish or refuse a query mid-listing.
+            try:
+                services.append({
+                    "name": svc.name(),
+                    "state": "running" if svc.status() == psutil.STATUS_RUNNING
+                    else "stopped",
+                    "start_mode": {"automatic": "enabled",
+                                   "disabled": "disabled"}.get(svc.start_type()),
+                })
+            except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
+                continue
     else:
         services = [
             {"name": entry["unit"].removesuffix(".service"),
