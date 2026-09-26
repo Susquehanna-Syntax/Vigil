@@ -92,6 +92,29 @@ def _playbook_spec(playbook) -> dict:
     }
 
 
+def _hunt_text_step_ids(steps_payload: list[dict]) -> list[str]:
+    """The ids of hunt_content steps whose return is text — the ones that
+    carry matched text off the host and so get audit-logged on Business."""
+    return [
+        step["id"]
+        for step in steps_payload
+        if step.get("action") == "hunt_content"
+        and str((step.get("params") or {}).get("return") or "lines").lower()
+        == "text"
+    ]
+
+
+def _emit_hunt_text_requested(run, actor, step_ids: list[str]) -> None:
+    """Notify Business (and only Business) that a text-carrying hunt went out.
+
+    Emitted right after the run is created. On Free there is no subscriber,
+    so this is a no-op.
+    """
+    from vigil import hooks
+
+    hooks.emit("hunt_text_requested", run=run, actor=actor, step_ids=step_ids)
+
+
 def rollout_spec(rollout) -> dict:
     """Re-derive the spec for a rollout, whichever target it carries.
 
@@ -237,6 +260,9 @@ def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
             max_retries=max_retries,
             retry_delay_seconds=retry_delay,
         )
+    text_steps = _hunt_text_step_ids(steps_payload)
+    if text_steps:
+        _emit_hunt_text_requested(run, rollout.created_by, text_steps)
     return len(hosts)
 
 

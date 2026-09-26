@@ -27,6 +27,8 @@ from apps.hosts.models import Host
 from .models import PatchRollout, Task, TaskDefinition, TaskRun
 from .rollout import (
     FAILURE_STATES,
+    _emit_hunt_text_requested,
+    _hunt_text_step_ids,
     halt_rollout,
     resume_rollout,
     start_rollout,
@@ -1205,6 +1207,10 @@ def definition_deploy(request, definition_id):
                 retry_delay_seconds=retry_delay,
                 not_before=hold_until,
             )
+
+    text_steps = _hunt_text_step_ids(steps_payload)
+    if text_steps:
+        _emit_hunt_text_requested(run, request.user, text_steps)
 
     return Response(TaskRunSerializer(run).data, status=201)
 

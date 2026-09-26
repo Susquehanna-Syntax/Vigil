@@ -80,6 +80,7 @@ _ALL_ACTIONS = {
     "run_trivy_scan", "trivy_db_update",
     # Hunts (read-only)
     "hunt_file", "hunt_package", "hunt_process", "hunt_port", "hunt_service",
+    "hunt_registry", "hunt_content",
     # Agent lifecycle — allowlisting this lets a managed-mode agent
     # accept signed self-update tasks (the binary digest rides inside
     # the Ed25519-signed payload).

@@ -555,3 +555,267 @@ def hunt_service(result: HuntResult, params: dict) -> None:
         if not result.add("service", name=svc["name"], state=svc["state"],
                           start_mode=svc["start_mode"]):
             return
+
+
+# ── hunt_registry ─────────────────────────────────────────────────────────────
+
+#: HK root name -> HKEY constant attribute on the winreg module.
+_HK_ROOTS = {
+    "HKLM": "HKEY_LOCAL_MACHINE",
+    "HKCU": "HKEY_CURRENT_USER",
+    "HKU": "HKEY_USERS",
+}
+
+#: REG_* constant value -> name, for the reported value type.
+_REG_TYPE_NAMES = {
+    0: "REG_NONE", 1: "REG_SZ", 2: "REG_EXPAND_SZ", 3: "REG_BINARY",
+    4: "REG_DWORD", 5: "REG_DWORD_BIG_ENDIAN", 6: "REG_LINK", 7: "REG_MULTI_SZ",
+    8: "REG_RESOURCE_LIST", 9: "REG_FULL_RESOURCE_DESCRIPTOR",
+    10: "REG_RESOURCE_REQUIREMENTS_LIST", 11: "REG_QWORD",
+}
+
+_DATA_CUT = 500
+
+
+def _reg_type_name(value_type: int) -> str:
+    return _REG_TYPE_NAMES.get(value_type, f"REG_{value_type}")
+
+
+def _reg_data_as_text(data) -> str:
+    """A registry value's data as displayable text, whatever type it is."""
+    if data is None:
+        return ""
+    if isinstance(data, bytes):  # REG_BINARY
+        return data.hex()
+    if isinstance(data, (list, tuple)):  # REG_MULTI_SZ
+        return " ".join(str(d) for d in data)
+    return str(data)
+
+
+def _hunt_registry_key(winreg, result: HuntResult, params: dict,
+                       root_attr: str, key_path: str, key_display: str,
+                       value_glob: str, want_data: str, view: int) -> None:
+    """Enumerate one key's values (and, without a value filter, the key itself)."""
+    hkey = getattr(winreg, root_attr)
+    access = winreg.KEY_READ | view
+    try:
+        handle = winreg.OpenKey(hkey, key_path, 0, access)
+    except OSError:
+        return
+    try:
+        if not value_glob and not want_data:
+            result.add("registry", key=key_display, value=None, data=None,
+                       type="REG_KEY")
+            return
+        glob = value_glob or "*"
+        index = 0
+        while True:
+            try:
+                # (name, data, type) — the data comes with the enumeration.
+                name, data, vtype = winreg.EnumValue(handle, index)
+            except OSError:
+                break  # no more values
+            index += 1
+            if not fnmatch.fnmatch(name, glob):
+                continue
+            text = _reg_data_as_text(data)
+            if want_data and want_data.lower() not in text.lower():
+                continue
+            if not result.add("registry", key=key_display, value=name,
+                              data=text[:_DATA_CUT],
+                              type=_reg_type_name(vtype)):
+                return
+    finally:
+        winreg.CloseKey(handle)
+
+
+def _hunt_registry_expand(winreg, result: HuntResult, params: dict,
+                          root_attr: str, key_path: str, key_display: str,
+                          value_glob: str, want_data: str, view: int) -> None:
+    """key with a trailing wildcard: visit each direct subkey (not the key itself)."""
+    try:
+        parent = winreg.OpenKey(getattr(winreg, root_attr), key_path, 0,
+                                winreg.KEY_READ | view)
+    except OSError:
+        return
+    try:
+        index = 0
+        while True:
+            try:
+                sub = winreg.EnumKey(parent, index)
+            except OSError:
+                break
+            index += 1
+            result.check_deadline()
+            if result.truncated:
+                break
+            sub_path = f"{key_path}\\{sub}"
+            _hunt_registry_key(winreg, result, params, root_attr, sub_path,
+                               f"{key_display}\\{sub}", value_glob, want_data,
+                               view)
+    finally:
+        winreg.CloseKey(parent)
+
+
+def hunt_registry(result: HuntResult, params: dict) -> None:
+    """Find Windows registry keys and values.
+
+    ``key`` is the path to open, e.g. ``HKLM\\SOFTWARE\\Microsoft\\Windows\\
+    CurrentVersion\\Uninstall``; a final ``\\*`` means the key itself plus
+    each direct subkey. ``value`` is a glob on value names (no filter: the
+    matching keys are reported with value=None). ``data`` is a
+    case-insensitive substring of the value's data as text. ``view`` is 64
+    (default) or 32. Missing keys and access errors are skipped, not errors.
+    """
+    if sys.platform != "win32":
+        raise ValueError("hunt_registry runs on Windows only")
+
+    key = params.get("key")
+    if key is None or not str(key).strip():
+        raise ValueError("hunt_registry needs key")
+    key = str(key).strip()
+
+    value_glob = str(params.get("value") or "")
+    want_data = str(params.get("data") or "")
+    view = str(params.get("view") or "64").strip()
+    if view not in ("64", "32"):
+        raise ValueError("view must be 64 or 32")
+
+    import winreg
+
+    root, sep, rest = key.partition("\\")
+    root_attr = _HK_ROOTS.get(root.upper())
+    if not root_attr or not sep or not rest:
+        raise ValueError(
+            f"key must start with an HKLM\\, HKCU\\ or HKU\\ root, got {key!r}")
+    view_flag = winreg.KEY_WOW64_64KEY if view == "64" else winreg.KEY_WOW64_32KEY
+
+    result.check_deadline()
+    if rest.endswith("\\*"):
+        base = rest[:-2] or "\\"
+        _hunt_registry_expand(winreg, result, params, root_attr, base,
+                              key[:-2], value_glob, want_data, view_flag)
+    else:
+        _hunt_registry_key(winreg, result, params, root_attr, rest, key,
+                           value_glob, want_data, view_flag)
+
+
+# ── hunt_content ──────────────────────────────────────────────────────────────
+
+_DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024
+_MAX_FILE_SIZE_CEILING = 100 * 1024 * 1024
+_BINARY_PEEK = 8192
+_LINE_SCAN_LIMIT = 4096
+_LINES_REPORTED = 50
+_TEXT_REPORTED = 20
+_TEXT_CUT = 200
+
+
+def _is_binary(fh) -> bool:
+    """True when the first 8 KiB contains a NUL byte."""
+    head = fh.read(_BINARY_PEEK)
+    return b"\x00" in head
+
+
+def _hunt_content_file(path: str, pattern, name_glob: str, max_file_size: int,
+                       want_return: str, result: HuntResult) -> bool:
+    """Scan one file; False once the result is full and the walk should stop."""
+    try:
+        size = os.lstat(path).st_size
+    except OSError:
+        return True
+    if size > max_file_size:
+        return True
+    try:
+        with open(path, "rb") as fh:
+            if _is_binary(fh):
+                return True
+            fh.seek(0)
+            text = fh.read().decode("utf-8", errors="replace")
+    except OSError:
+        return True
+
+    match_count = 0
+    matched_lines: list[int] = []  # each line once, however many hits it has
+    matched_texts: list[str] = []
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if lineno % 1000 == 0:
+            result.check_deadline()
+        hits = 0
+        for m in pattern.finditer(line[:_LINE_SCAN_LIMIT]):
+            hits += 1
+            if want_return == "text" and len(matched_texts) < _TEXT_REPORTED:
+                matched_texts.append(m.group(0)[:_TEXT_CUT])
+        if hits:
+            match_count += hits
+            matched_lines.append(lineno)
+    if not match_count:
+        return True
+    return result.add(
+        "content",
+        path=path,
+        match_count=match_count,
+        lines=",".join(str(n) for n in matched_lines[:_LINES_REPORTED])
+        if want_return in ("lines", "text") else None,
+        text=" | ".join(matched_texts[:_TEXT_REPORTED])
+        if want_return == "text" else None,
+    )
+
+
+def hunt_content(result: HuntResult, params: dict) -> None:
+    """Find regex matches inside files.
+
+    By default a match reports the file, the number of matches and on which
+    lines they sit; ``return: text`` also carries the matched substrings,
+    which is why the server counts that variant as high risk. Binaries (a NUL
+    byte in the first 8 KiB) are skipped, files are read as UTF-8 with
+    replacement, at most the first 4,096 characters of each line are scanned,
+    and the deadline is checked every 1,000 lines.
+    """
+    pattern_raw = params.get("pattern")
+    if pattern_raw is None or not str(pattern_raw).strip():
+        raise ValueError("hunt_content needs pattern")
+    try:
+        pattern = re.compile(str(pattern_raw))
+    except re.error as exc:
+        raise ValueError(f"invalid pattern: {exc}") from exc
+
+    name = str(params.get("name") or "*")
+    want_return = str(params.get("return") or "lines").lower()
+    if want_return not in ("match", "lines", "text"):
+        raise ValueError("return must be match, lines or text")
+
+    max_file_size = int(params.get("max_file_size")
+                        or _DEFAULT_MAX_FILE_SIZE)
+    if max_file_size < 1:
+        raise ValueError("max_file_size must be >= 1")
+    max_file_size = min(max_file_size, _MAX_FILE_SIZE_CEILING)
+
+    scope = str(params.get("scope") or "targeted").lower()
+    if scope not in ("targeted", "full"):
+        raise ValueError("scope must be targeted or full")
+
+    if params.get("paths"):
+        roots = [p.strip() for p in str(params["paths"]).split(",") if p.strip()]
+    else:
+        roots = _full_scopes() if scope == "full" else default_scopes()
+
+    for root in roots:
+        for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+            result.check_deadline()
+            if sys.platform != "win32":
+                dirnames[:] = [d for d in dirnames
+                               if os.path.join(dirpath, d) not in _POSIX_SKIP]
+            for fname in filenames:
+                if not fnmatch.fnmatchcase(fname, name):
+                    continue
+                path = os.path.join(dirpath, fname)
+                try:
+                    st = os.lstat(path)
+                except OSError:
+                    continue
+                if stat.S_ISLNK(st.st_mode) or not stat.S_ISREG(st.st_mode):
+                    continue
+                if not _hunt_content_file(path, pattern, name, max_file_size,
+                                          want_return, result):
+                    return

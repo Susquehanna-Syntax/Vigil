@@ -822,6 +822,21 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                 f"action #{index + 1} (hunt_port): needs port or process — "
                 "it cannot search without at least one of the two"
             )
+        elif action_type == "hunt_content":
+            _return_raw = params.get("return")
+            if _return_raw is not None and str(_return_raw).lower() not in (
+                    "match", "lines", "text"):
+                raise SpecError(
+                    f"action #{index + 1} (hunt_content): return must be one "
+                    f"of match, lines or text, got {str(_return_raw)!r}"
+                )
+            try:
+                re.compile(str(params["pattern"]))
+            except re.error as exc:
+                raise SpecError(
+                    f"action #{index + 1} (hunt_content): invalid pattern — "
+                    f"{exc}"
+                ) from exc
 
         allowed = set(spec["required"]) | set(spec["optional"])
         extra = set(params) - allowed
@@ -915,6 +930,13 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
             parsed_actions[-1]["script_sha256"] = script_hash(params["script"])
 
         derived_risk_level = max(derived_risk_level, _RISK_ORDER[spec["risk"]])
+
+        # hunt_content with `return: text` carries matched text out of the
+        # host, so the step itself is high risk regardless of what the rest
+        # of the task declares.
+        if action_type == "hunt_content" and (
+                str(params.get("return") or "lines").lower() == "text"):
+            derived_risk_level = max(derived_risk_level, _RISK_ORDER["high"])
 
     # Effective risk is max(declared risk, derived from actions) — users
     # cannot declare a lower risk than the actions actually warrant.

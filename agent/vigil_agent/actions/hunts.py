@@ -53,3 +53,21 @@ def _hunt_service(params: dict, _config: AgentConfig) -> str:
     Read-only: systemctl or the SCM listing, nothing started or stopped.
     """
     return hunt.run_hunt(hunt.hunt_service, params)
+
+def _hunt_registry(params: dict, _config: AgentConfig) -> str:
+    """Find Windows registry keys and values (Windows only).
+
+    Read-only: one OpenKey/EnumKey/QueryValueEx walk over the requested key
+    (and its direct subkeys when it ends in a wildcard), nothing written.
+    """
+    return hunt.run_hunt(hunt.hunt_registry, params)
+
+
+def _hunt_content(params: dict, _config: AgentConfig) -> str:
+    """Find regex matches inside files.
+
+    By default reports the matching files, their match counts and the lines
+    on which they matched; ``return: text`` also carries the matched text,
+    which is why the server counts that variant as high risk. Read-only.
+    """
+    return hunt.run_hunt(hunt.hunt_content, params)

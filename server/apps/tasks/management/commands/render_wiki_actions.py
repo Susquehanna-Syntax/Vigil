@@ -75,7 +75,8 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "reprovision_cleanup",
     ]),
     ("tags", "Host tagging", ["add_tag", "remove_tag"]),
-    ("hunts", "Hunts", ["hunt_file", "hunt_package", "hunt_process", "hunt_port", "hunt_service"]),
+    ("hunts", "Hunts", ["hunt_file", "hunt_package", "hunt_process", "hunt_port",
+                        "hunt_service", "hunt_registry", "hunt_content"]),
     ("vuln", "Vulnerability scanning", [
         "request_nessus_scan", "request_network_scan", "run_trivy_scan",
         "trivy_db_update",
@@ -329,6 +330,16 @@ EXAMPLE_TITLES: dict[str, tuple[str, str]] = {
                   "Lists local TCP/UDP socket bindings on port 8443, with the owning process."),
     "hunt_service": ("Find hosts with ssh enabled but stopped",
                      "Lists services named ssh that are enabled but currently stopped."),
+    "hunt_registry": ("Find hosts with Java in their Uninstall keys",
+                      "Windows only. Reads the registry for keys and values — "
+                      "here, the DisplayName of every installed product in "
+                      "the 64-bit Uninstall tree, filtered to Java."),
+    "hunt_content": ("Find hosts with a leaked token in a config",
+                     "Scans file contents for a regex. By default a match "
+                     "reports which files matched and on which lines; "
+                     "return: text also carries the matched substrings, "
+                     "which makes the step high risk and is audit-logged on "
+                     "Business."),
 }
 
 
@@ -357,6 +368,14 @@ ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
 
     ("hunt_service", "name"): "Service name to match as a glob (the .service suffix is not required).",
     ("hunt_service", "timeout"): "Seconds before the service walk stops early (default 120, at most 600).",
+    ("hunt_registry", "key"): "Registry key path with an HKLM, HKCU or HKU root; a final wildcard segment adds each direct subkey. Single-quote it in YAML so the backslashes stay literal.",
+    ("hunt_registry", "value"): "Glob on value names; when absent the matching keys themselves are reported.",
+    ("hunt_registry", "timeout"): "Seconds before the walk stops early (default 120, at most 600).",
+    ("hunt_content", "name"): "File-name glob matched against the base name (default *).",
+    ("hunt_content", "pattern"): "Regular expression searched inside file contents.",
+    ("hunt_content", "paths"): "Comma-separated roots to walk instead of the scope.",
+    ("hunt_content", "scope"): "targeted (default: install and home directories) or full (every filesystem root).",
+    ("hunt_content", "timeout"): "Seconds before the walk stops early (default 120, at most 600).",
 }
 
 
@@ -444,6 +463,16 @@ OUTPUT_NOTES: dict[str, dict[str, str]] = {
         "matched": "True when at least one service matched.",
         "count": "How many services matched (the cap when truncated).",
         "truncated": "True when the service walk stopped early at max_results or the timeout.",
+    },
+    "hunt_registry": {
+        "matched": "True when at least one key or value matched.",
+        "count": "How many keys and values matched (the cap when truncated).",
+        "truncated": "True when the walk stopped early at max_results or the timeout.",
+    },
+    "hunt_content": {
+        "matched": "True when at least one file matched.",
+        "count": "How many files matched (the cap when truncated).",
+        "truncated": "True when the walk stopped early at max_results or the timeout.",
     },
     "update_package": {
         "package": "The package name as given.",
@@ -609,6 +638,40 @@ def example_yaml(action: str) -> str:
             "      name: ssh",
             "      state: stopped",
             "      start_mode: enabled",
+            "      max_results: 50",
+        ]) + "\n"
+    if action == "hunt_registry":
+        # `key` carries the root and the wildcard; the example filters the
+        # DisplayName values of the 64-bit Uninstall tree to Java.
+        return "\n".join([
+            "name: Find hosts with Java in their Uninstall keys",
+            "description: \"Hunt the Windows registry, on the hosts you dispatch this to.\"",
+            "risk: low",
+            "actions:",
+            "  - id: hunt-registry",
+            "    type: hunt_registry",
+            "    params:",
+            "      key: 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'",
+            "      value: DisplayName",
+            "      data: Java",
+            "      view: 64",
+            "      max_results: 50",
+        ]) + "\n"
+    if action == "hunt_content":
+        # The example keeps the default return (lines) — return: text makes
+        # the step high risk, which a low-risk example must not claim.
+        return "\n".join([
+            "name: Find hosts with a leaked token in a config",
+            "description: \"Hunt for text inside files, on the hosts you dispatch this to.\"",
+            "risk: standard",
+            "actions:",
+            "  - id: hunt-content",
+            "    type: hunt_content",
+            "    params:",
+            '      pattern: "AKIA[0-9A-Z]{16}"',
+            "      name: \"*.conf\"",
+            "      paths: /etc,/opt",
+            "      return: lines",
             "      max_results: 50",
         ]) + "\n"
     lines = [

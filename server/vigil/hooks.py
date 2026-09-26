@@ -58,6 +58,10 @@ KNOWN_EVENTS = frozenset({
     # carries the NAMES that changed and who changed them, never the
     # values — some of them are credentials.
     "instance_settings_changed",  # payload: names, changed_by
+    # A hunt_content step with return: text went out — the step carries
+    # matched file contents back to the server. Business audit-logs it; on
+    # Free the event simply has no subscriber.
+    "hunt_text_requested",  # payload: run, actor, step_ids
 })
 
 _subscribers: dict[str, list[Callable]] = defaultdict(list)
