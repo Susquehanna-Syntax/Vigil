@@ -379,7 +379,7 @@ def _file_version(path: str) -> str | None:
                 return version
         match = _VERSION_RE.search(base)
         return match.group(1) if match else None
-    except OSError:
+    except (OSError, ValueError, TypeError, AttributeError):
         return None
 
 
@@ -416,16 +416,17 @@ def _windows_version(path: str) -> str | None:
             return None
         value = ctypes.c_void_p()
         length = ctypes.c_uint()
-        root = ctypes.create_string_buffer("\\", 2)
+        # A plain str goes to a W function as a wide string: "\\" is the
+        # root block, i.e. VS_FIXEDFILEINFO.
         ok = ctypes.windll.version.VerQueryValueW(
-            buffer, root, ctypes.byref(value), ctypes.byref(length))
+            buffer, "\\", ctypes.byref(value), ctypes.byref(length))
         if not ok or not length.value:
             return None
         fixed = ctypes.cast(value, ctypes.POINTER(
             ctypes.c_uint32 * 4)).contents  # VS_FIXEDFILEINFO
         ms, ls = fixed[0], fixed[1]
         return f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}.{ls & 0xFFFF}"
-    except OSError:
+    except (OSError, ValueError, TypeError, AttributeError):
         return None
 
 
