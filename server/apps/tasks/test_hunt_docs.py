@@ -55,6 +55,13 @@ class HuntWikiTests(SimpleTestCase):
                 f"{action} is missing from the wiki Hunts section",
             )
 
+    def test_wiki_hunt_links_reach_the_action_reference(self):
+        wiki = _wiki()
+        section = _hunts_section(wiki)
+        for action in (n for n in ACTION_REGISTRY if n.startswith("hunt_")):
+            self.assertIn(f'href="#action-{action}"', section)
+            self.assertEqual(wiki.count(f'id="action-{action}"'), 1, action)
+
 
 class HuntAiPromptTests(SimpleTestCase):
     def test_ai_prompt_prefers_hunts(self):

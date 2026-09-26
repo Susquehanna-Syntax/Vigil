@@ -803,7 +803,7 @@ def render() -> str:
             keywords = " ".join([action] + entry["required"] + entry["optional"])
             required = ", ".join(entry["required"]) or "none"
             parts.append(
-                f'<details class="action" data-group="{slug}" '
+                f'<details class="action" id="action-{action}" data-group="{slug}" '
                 f'data-risk="{risk}" data-keywords="{html.escape(keywords)}">'
                 f"<summary>"
                 f'<code class="action-name">{action}</code>'
