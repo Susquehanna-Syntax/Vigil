@@ -5,6 +5,8 @@ and the pre-execution abort path send nothing), and
 `_execute_script_task` passes the runtime's StepResults through.
 """
 
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
+
 import json
 import sys
 import tempfile

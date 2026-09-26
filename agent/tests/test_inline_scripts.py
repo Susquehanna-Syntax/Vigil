@@ -7,6 +7,8 @@ managed host the agent refuses it unless its sha256 is listed in
 allowed_script_hashes. Any edit changes the hash and needs a fresh approval;
 full_control hosts run any body, exactly as they already run run_command.
 """
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import os
 import sys
 import tempfile

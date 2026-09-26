@@ -3,6 +3,8 @@ DYLD/LD_PRELOAD family) to its /tmp/_MEI<random>/ extraction directory. Every
 child the agent spawns must inherit a clean environment, plus the initramfs
 poison check and the executor's sanitized env.
 """
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import os
 import stat
 import subprocess

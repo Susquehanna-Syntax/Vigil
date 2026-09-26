@@ -16,6 +16,8 @@ too, leaving run_command allowlisted so a managed-mode agent would have
 accepted arbitrary command execution.
 """
 
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
+
 import unittest
 
 from vigil_agent.config import AgentConfig, _NEVER_ALLOWLISTABLE

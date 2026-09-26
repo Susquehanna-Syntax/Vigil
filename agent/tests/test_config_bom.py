@@ -14,6 +14,8 @@ Notepad also writes a BOM, so this is not only an installer concern — it is
 what happens when a Windows admin edits agent.yml by hand.
 """
 
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
+
 import tempfile
 import unittest
 from pathlib import Path

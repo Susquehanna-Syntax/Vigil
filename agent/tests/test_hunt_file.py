@@ -3,6 +3,8 @@
 The probe walks a targeted scope in a temp tree (paths=<tmp>) so the suite
 stays hermetic; the full_disk root is exercised through the same code path.
 """
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import hashlib
 import json
 import os

@@ -15,6 +15,8 @@ Selecting such an entry — or a one-shot that outlived the job — drops the
 machine at the GRUB rescue prompt, which on a headless host looks like a hang.
 """
 
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
+
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory

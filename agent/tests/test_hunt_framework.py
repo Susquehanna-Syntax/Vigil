@@ -3,6 +3,8 @@
 Every hunt handler calls ``run_hunt`` with a probe; the framework owns the
 result shape, the result/timeout caps and the per-thread priority lowering.
 """
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import json
 import sys
 import threading

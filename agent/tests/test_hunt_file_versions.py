@@ -4,6 +4,8 @@ A file's version comes from, in order, a JAR manifest, a Windows version
 resource, or the first dotted-numeric token in the file name. Files whose
 version cannot be determined never match a version bound.
 """
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import ctypes
 import json
 import sys

@@ -16,6 +16,8 @@ Reporting None stays correct — the server keeps what it knew rather than being
 told zero by a machine that cannot count. Only the noise changes.
 """
 
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
+
 import unittest
 import unittest.mock
 from unittest.mock import patch

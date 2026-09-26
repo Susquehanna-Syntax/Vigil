@@ -5,6 +5,8 @@ After the ``${{ … }}`` marker, only that marker is a template; bare braces
 (Go templates, ``find -exec {} \\;``, PowerShell blocks) reach the handler
 exactly as the server signed them.
 """
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import sys
 import unittest
 from pathlib import Path

@@ -1,4 +1,6 @@
 """hunt_process, hunt_port, hunt_service: the three remaining read-only hunts."""
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import json
 import socket
 import sys

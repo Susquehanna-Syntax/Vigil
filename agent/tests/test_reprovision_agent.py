@@ -1,3 +1,4 @@
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import json
 import sys
 import tempfile

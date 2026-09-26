@@ -4,6 +4,8 @@ Neither SMI tool is installed on most hosts, and a host with no GPU is the
 ordinary case rather than a failure — so absence has to be silent and empty,
 not an exception or a log line every scrape.
 """
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import sys
 import unittest
 from pathlib import Path

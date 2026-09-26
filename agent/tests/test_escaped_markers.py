@@ -4,6 +4,8 @@ The server writes a `${{` that appears inside an input value as `$${{`. The
 runtime turns it back into `${{` in the same single pass that expands real
 markers, so neither a value nor an earlier step's result can become a template.
 """
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import sys
 import unittest
 from pathlib import Path
