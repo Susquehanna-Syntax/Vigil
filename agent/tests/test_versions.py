@@ -3,6 +3,8 @@
 Each test pins at least three real-world pairs, taken from the phase doc's
 test plan, with the expected sign asserted on both orderings.
 """
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import sys
 import unittest
 from pathlib import Path

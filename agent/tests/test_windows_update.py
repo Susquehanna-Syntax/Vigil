@@ -4,6 +4,8 @@ No test imports win32com; WuaBackend takes a session_factory seam and the
 fakes below stand in for Microsoft.Update.Session. The pure filtering
 helpers are tested directly on plain dicts.
 """
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import json
 import sys
 import unittest

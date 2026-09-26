@@ -7,6 +7,8 @@ outputs. The runtime stores every top-level step as
 with no templater change.
 """
 
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
+
 import sys
 import tempfile
 import unittest

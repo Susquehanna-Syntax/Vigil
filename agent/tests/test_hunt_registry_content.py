@@ -4,6 +4,8 @@ Registry tests inject a fake ``winreg`` module over a nested dict and patch
 ``sys.platform`` to win32; content tests build files in a temp tree and pass
 ``paths=<tmp>`` so the suite stays hermetic.
 """
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import json
 import sys
 import tempfile
