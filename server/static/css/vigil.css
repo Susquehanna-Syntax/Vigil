@@ -897,6 +897,41 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .preview-step.task-high { border-left-color: var(--rose); }
 .preview-step.task-standard { border-left-color: var(--sky); }
 .preview-step.task-low { border-left-color: var(--mint); }
+.preview-relevant {
+  padding: 12px 14px;
+  background: var(--s2);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-2);
+}
+.preview-relevant-heading { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.preview-relevant-list { list-style: none; margin: 0 0 6px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.preview-relevant-list ul { list-style: none; margin: 2px 0 0 0; padding-left: 14px; border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+.preview-relevant-op { font-weight: 600; color: var(--text-3); }
+.preview-relevant-list code { font-family: var(--font-mono); font-size: 11px; background: var(--s3); padding: 1px 5px; border-radius: 4px; }
+.preview-relevant-note { margin-top: 6px; font-size: 11px; color: var(--text-3); }
+.preview-branch {
+  padding: 10px 14px;
+  background: var(--s2);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+}
+.preview-branch-if { font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 8px; }
+.preview-branch-if code { font-family: var(--font-mono); font-size: 11px; background: var(--s3); padding: 1px 5px; border-radius: 4px; font-weight: 400; }
+.preview-branch-groups { display: flex; flex-direction: column; gap: 8px; }
+.preview-branch-group { display: flex; flex-direction: column; gap: 8px; padding-left: 12px; border-left: 2px solid var(--border); }
+.preview-branch-group-label { font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.preview-use {
+  padding: 10px 14px;
+  background: var(--s2);
+  border-radius: var(--r-md);
+  border: 1px dashed var(--border);
+  font-size: 12px;
+  color: var(--text-2);
+}
+.preview-use-label { font-weight: 600; }
+.preview-use code { font-family: var(--font-mono); font-size: 11px; background: var(--s3); padding: 1px 5px; border-radius: 4px; }
 
 .editor-toolbar {
   display: flex; align-items: center; justify-content: space-between;

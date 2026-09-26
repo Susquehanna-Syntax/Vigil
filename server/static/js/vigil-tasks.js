@@ -524,7 +524,8 @@ function defCardHtml(def, opts) {
           ${riskBadgeHtml(def.risk_level || 'standard')}
           <span class="dot-sep">·</span>
           <span>${actions} action${actions === 1 ? '' : 's'}</span>
-          ${def.relevance ? `<span class="dot-sep">·</span><span>${escHtml(def.relevance)}</span>` : ''}
+          ${(def.parsed_spec || {}).flow ? '<span class="chip">branches</span>' : ''}
+          ${(def.parsed_spec || {}).relevant ? '<span class="chip">applies when…</span>' : ''}
           ${attribution}
         </div>
       </div>
@@ -655,18 +656,16 @@ function renderEditorPreview(spec) {
   // from container images, package names and CVE fields an agent reported, so
   // a compromised host could otherwise put script into the preview of the task
   // the operator is about to sign.
-  const actionsHtml = spec.actions.map((a, i) => `
-    <div class="preview-step task-${taskRisk}">
-      <div class="preview-step-num">${i + 1}</div>
-      <div class="preview-step-body">
-        <div class="preview-step-title">${escHtml(a.id)} — ${escHtml(a.label || a.type)}</div>
-        <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => k === 'script' ? `script=${String(v).replace(/\n+$/, '').split('\n').length} lines` : `${escHtml(String(k))}=${escHtml(String(v))}`).join(' ') : ''}</div>
-        ${a.when ? `<div class="preview-step-outputs">runs only when: ${escHtml(a.when)}</div>` : ''}
-        ${(a.outputs || []).length ? `<div class="preview-step-outputs">outputs: ${a.outputs.map(o => escHtml(o)).join(', ')}</div>` : ''}
-        ${a.script_sha256 ? `<div class="preview-step-hash"><span class="mono">${escHtml(a.script_sha256)}</span>
-          <button type="button" class="btn btn-xs" data-copy-hash="${escAttr(a.script_sha256)}">Copy</button></div>` : ''}
-      </div>
-    </div>`).join('');
+  const relevantHtml = spec.relevant
+    ? `<div class="preview-relevant">
+        <div class="preview-relevant-heading">Applies when</div>
+        <ul class="preview-relevant-list">${_relevantTreeHtml(spec.relevant)}</ul>
+        <div class="preview-relevant-note">Hosts where this does not hold report Not applicable and run nothing.</div>
+      </div>`
+    : '';
+  const actionsHtml = spec.flow
+    ? _flowStepsHtml(spec, taskRisk)
+    : spec.actions.map((a, i) => _previewStepHtml(a, i, taskRisk)).join('');
   const inputs = spec.inputs || [];
   let inputsHtml = '';
   if (inputs.length) {
@@ -700,13 +699,15 @@ function renderEditorPreview(spec) {
     <div class="preview-sub">${escHtml(spec.description || 'No description.')}</div>
     <div class="preview-meta">
       ${riskBadgeHtml(spec.risk)}
-      ${spec.relevance ? `<span>${escHtml(spec.relevance)}</span>` : ''}
+      ${spec.flow ? '<span>branches</span>' : ''}
+      ${spec.relevant ? '<span>applies when…</span>' : ''}
       <span>${spec.actions.length} step${spec.actions.length === 1 ? '' : 's'}</span>
       ${inputs.length ? `<span>${inputs.length} input${inputs.length === 1 ? '' : 's'}</span>` : ''}
       ${spec.author ? `<span>by ${escHtml(spec.author)}</span>` : ''}
       ${spec.created ? `<span>${escHtml(spec.created)}</span>` : ''}
     </div>
     ${warningsHtml}
+    ${relevantHtml}
     ${inputsHtml}
     <div class="preview-actions">${actionsHtml}</div>${scriptNote}`;
   el.querySelectorAll('[data-copy-hash]').forEach(btn => {
@@ -729,6 +730,61 @@ function renderEditorPreview(spec) {
       }
     });
   });
+}
+
+function _previewStepHtml(a, i, taskRisk) {
+  return `
+    <div class="preview-step task-${taskRisk}">
+      <div class="preview-step-num">${i + 1}</div>
+      <div class="preview-step-body">
+        <div class="preview-step-title">${escHtml(a.id)} — ${escHtml(a.label || a.type)}</div>
+        <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => k === 'script' ? `script=${String(v).replace(/\n+$/, '').split('\n').length} lines` : `${escHtml(String(k))}=${escHtml(String(v))}`).join(' ') : ''}</div>
+        ${a.when ? `<div class="preview-step-outputs">runs only when: ${escHtml(a.when)}</div>` : ''}
+        ${(a.outputs || []).length ? `<div class="preview-step-outputs">outputs: ${a.outputs.map(o => escHtml(o)).join(', ')}</div>` : ''}
+        ${a.script_sha256 ? `<div class="preview-step-hash"><span class="mono">${escHtml(a.script_sha256)}</span>
+          <button type="button" class="btn btn-xs" data-copy-hash="${escAttr(a.script_sha256)}">Copy</button></div>` : ''}
+      </div>
+    </div>`;
+}
+
+function _relevantItemHtml(item) {
+  if (item && item.probe) {
+    const params = item.probe.params || {};
+    const pairs = Object.entries(params).map(([k, v]) => `${escHtml(String(k))}=${escHtml(String(v))}`).join(' ');
+    return `<li><code>${escHtml(item.probe.type)}</code>${pairs ? ` · ${pairs}` : ''}</li>`;
+  }
+  return `<li>${_relevantTreeHtml(item)}</li>`;
+}
+
+function _relevantTreeHtml(node) {
+  const head = node.op === 'any' ? 'any of:' : node.op === 'not' ? 'none of:' : 'all of:';
+  const items = (node.items || []).map(_relevantItemHtml).join('');
+  return `<span class="preview-relevant-op">${head}</span><ul class="preview-relevant-list">${items}</ul>`;
+}
+
+function _flowGroupHtml(label, nodes, spec, taskRisk) {
+  const body = nodes.map(n => _flowNodeHtml(n, spec, taskRisk)).join('');
+  return `<div class="preview-branch-group">${label ? `<div class="preview-branch-group-label">${label}</div>` : ''}${body}</div>`;
+}
+
+function _flowNodeHtml(node, spec, taskRisk) {
+  if (node.step) {
+    const idx = spec.actions.findIndex(a => a.id === node.step);
+    return idx >= 0 ? _previewStepHtml(spec.actions[idx], idx, taskRisk) : '';
+  }
+  if (node.use) {
+    return `<div class="preview-use"><span class="preview-use-label">uses task</span> <code>${escHtml(node.use)}</code> — its current steps are copied in when you deploy</div>`;
+  }
+  const then = _flowGroupHtml('then', node.then || [], spec, taskRisk);
+  const els = (node.else || []).length ? _flowGroupHtml('else', node.else, spec, taskRisk) : '';
+  return `<div class="preview-branch">
+    <div class="preview-branch-if">if <code>${escHtml(node.if)}</code></div>
+    <div class="preview-branch-groups">${then}${els}</div>
+  </div>`;
+}
+
+function _flowStepsHtml(spec, taskRisk) {
+  return (spec.flow || []).map(n => _flowNodeHtml(n, spec, taskRisk)).join('');
 }
 
 /* ── Community submission (GitHub PR) ────────────────────────────────── */
@@ -904,7 +960,7 @@ async function openTaskDetail(runId) {
       if (task.step_label && task.step_label !== task.action) {
         hdr.appendChild(_tdEl('span', "font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-3);", task.action));
       }
-      hdr.appendChild(_tdEl('span', 'margin-left:auto;font-size:11px;font-weight:600;color:' + color + ';', task.state));
+      hdr.appendChild(_tdEl('span', 'margin-left:auto;font-size:11px;font-weight:600;color:' + color + ';', TASK_STATE_LABELS[task.state] || task.state));
       card.appendChild(hdr);
 
       const hostLine = _tdEl('div', 'font-size:11px;color:var(--text-3);margin-bottom:' + (output ? '8' : '0') + 'px;');
