@@ -844,6 +844,7 @@ document.querySelectorAll('.tab-bar[data-tab-group="tasks"] .tab').forEach(tab =
 const _TASK_STATE_COLORS = {
   completed: 'var(--mint)', failed: 'var(--rose)', rejected: 'var(--rose)',
   pending: 'var(--peach)', dispatched: 'var(--peach)', executing: 'var(--sky)', blocked: 'var(--lemon)',
+  skipped: 'var(--lavender)', not_applicable: 'var(--lavender)',
 };
 
 function _tdEl(tag, style, text) {
@@ -955,6 +956,7 @@ const TASK_STATE_LABELS = {
   blocked: 'Blocked', pending: 'Pending', dispatched: 'Dispatched',
   executing: 'Executing', completed: 'Completed', failed: 'Failed',
   rejected: 'Rejected', expired: 'Expired', skipped: 'Skipped',
+  not_applicable: 'Not applicable',
 };
 
 const taskHistoryState = { page: 1, pages: 1, interval: null };

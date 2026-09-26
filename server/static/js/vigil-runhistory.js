@@ -12,6 +12,7 @@ const _RUN_STATE_ACCENT = {
   completed: 'mint',
   partial: 'lemon',
   failed: 'rose',
+  not_applicable: 'lav',
 };
 
 function _stepResultsHtml(resultData) {
