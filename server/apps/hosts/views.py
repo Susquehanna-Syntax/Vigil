@@ -562,6 +562,9 @@ def checkin(request):
         hour = _local.hour
         minute = _local.minute
         for task in candidates:
+            if task.expires_at is not None and task.expires_at <= current:
+                # The hunt's stays_open has elapsed; the sweep expires it.
+                continue
             if task.not_before and task.not_before > current:
                 continue
             if not schedule_window_active(task.schedule, weekday=weekday, hour=hour, minute=minute):

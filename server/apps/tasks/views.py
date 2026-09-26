@@ -1291,6 +1291,11 @@ def definition_deploy(request, definition_id):
     if risk == "high":
         hold_until = now() + timedelta(seconds=HIGH_RISK_HOLD_SECONDS)
 
+    # Hunts stop waiting for offline hosts after their stays_open (phase 06b);
+    # non-hunt tasks never expire while pending.
+    from .spec import hunt_expiry
+    expires_at = hunt_expiry(steps_payload, now())
+
     with transaction.atomic():
         run = TaskRun.objects.create(
             definition=definition,
@@ -1320,11 +1325,12 @@ def definition_deploy(request, definition_id):
                         "variables": spec.get("resolved_inputs") or {}},
                 risk_level=risk,
                 state=Task.State.PENDING,
+                not_before=hold_until,
+                expires_at=expires_at,
                 nonce=secrets.token_hex(32),
                 schedule=schedule_snapshot,
                 max_retries=max_retries,
                 retry_delay_seconds=retry_delay,
-                not_before=hold_until,
             )
 
     text_steps = _hunt_text_step_ids(steps_payload)
@@ -1425,6 +1431,10 @@ _HUNT_HOST_ERROR = ("failed", "rejected", "expired")
 def _hunt_host_state(task, match_count):
     if task.state in _HUNT_HOST_PENDING:
         return "pending"
+    # Expired without ever being dispatched: the hunt stayed open past its
+    # stays_open and the host never checked in — "did not report", not an error.
+    if task.state == Task.State.EXPIRED and task.dispatched_at is None:
+        return "did_not_report"
     if task.state in _HUNT_HOST_ERROR:
         return "error"
     return "matched" if match_count > 0 else "not_matched"

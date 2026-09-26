@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import re
 import urllib.parse
+from datetime import datetime, timedelta
 from typing import Any
 
 import yaml
@@ -47,6 +48,13 @@ _RISK_ORDER = {"low": 0, "standard": 1, "high": 2}
 #: accepts a value the agent then rejects.
 _MAX_STEP_TIMEOUT = 3600
 _VALID_RISK = set(_RISK_ORDER)
+
+#: How long a hunt stays open for hosts that never check in, in seconds —
+#: used when a hunt step does not set its own ``stays_open``.
+DEFAULT_STAYS_OPEN = 7 * 86400
+_STAYS_OPEN_MIN = 3600
+_STAYS_OPEN_MAX = 30 * 86400
+_STAYS_OPEN_PATTERN = re.compile(r"^(\d+)([mhd])$")
 
 _INPUT_TYPES = {"text", "choice", "boolean", "number"}
 # Input references: ${{ inputs.foo }} (whitespace flexible). The ${{ }} marker is not valid
@@ -496,6 +504,64 @@ def _check_step_ref(
             )
 
 
+def stays_open_seconds(value: Any, where: str = "stays_open") -> int:
+    """Normalize a hunt step's ``stays_open`` param to seconds.
+
+    Accepts a string of the form ``<n>m``, ``<n>h`` or ``<n>d``, or an int
+    number of seconds. Must land between one hour and 30 days.
+    """
+    if isinstance(value, bool):
+        raise SpecError(f"{where} must be a duration string ('<n>m', '<n>h', '<n>d') or seconds")
+    if isinstance(value, int):
+        seconds = value
+    elif isinstance(value, str):
+        match = _STAYS_OPEN_PATTERN.match(value.strip())
+        if not match:
+            raise SpecError(
+                f"{where} must be a duration string ('<n>m', '<n>h', '<n>d') or seconds, got {value!r}"
+            )
+        amount, unit = int(match.group(1)), match.group(2)
+        seconds = amount * {"m": 60, "h": 3600, "d": 86400}[unit]
+    else:
+        raise SpecError(f"{where} must be a duration string ('<n>m', '<n>h', '<n>d') or seconds")
+    if seconds < _STAYS_OPEN_MIN or seconds > _STAYS_OPEN_MAX:
+        raise SpecError(f"{where} must be between 1 hour and 30 days, got {seconds}s")
+    return seconds
+
+
+def hunt_expiry(parsed_or_steps: Any, now: datetime) -> datetime | None:
+    """When a hunt task may stop waiting for a host that never checks in.
+
+    Takes a parsed spec dict or a step list (as deployed into
+    ``params["steps"]``); returns ``now + max(stays_open over hunt steps)`` —
+    the default 7 days when no hunt step sets one — or ``None`` when no step
+    is a hunt, which leaves ``Task.expires_at`` untouched.
+    """
+    key = "type" if isinstance(parsed_or_steps, dict) else "action"
+    steps = (
+        parsed_or_steps.get("actions") or []
+        if isinstance(parsed_or_steps, dict)
+        else parsed_or_steps
+    )
+    values: list[int] = []
+    has_hunt = False
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        if not str(step.get(key, "")).startswith("hunt_"):
+            continue
+        has_hunt = True
+        params = step.get("params") or {}
+        where = f"step {step.get('id', '?')}.stays_open"
+        if params.get("stays_open") is None:
+            values.append(DEFAULT_STAYS_OPEN)
+        else:
+            values.append(stays_open_seconds(params["stays_open"], where))
+    if not has_hunt:
+        return None
+    return now + timedelta(seconds=max(values))
+
+
 def _check_variable_refs(
     value: Any,
     declared_ids: set[str],
@@ -915,6 +981,12 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                     f"action #{index + 1}: timeout must be between 1 and "
                     f"{_MAX_STEP_TIMEOUT} seconds")
             step_timeout = timeout_raw
+
+        # stays_open is a hunt-only param; it never reaches the agent.
+        if action_type.startswith("hunt_") and params.get("stays_open") is not None:
+            stays_open_seconds(
+                params["stays_open"], f"action #{index + 1} ({action_type}) stays_open"
+            )
 
         parsed_actions.append({
             "id": action_id,

@@ -243,6 +243,10 @@ def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
         step_count=len(actions),
         state=TaskRun.State.RUNNING,
     )
+    # Hunts stop waiting for offline hosts after their stays_open (phase 06b);
+    # non-hunt tasks never expire while pending.
+    from .spec import hunt_expiry
+    expires_at = hunt_expiry(steps_payload, now())
     for host in hosts:
         Task.objects.create(
             host=host,
@@ -255,6 +259,7 @@ def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
                     "variables": spec.get("resolved_inputs") or {}},
             risk_level=risk,
             state=Task.State.PENDING,
+            expires_at=expires_at,
             nonce=secrets.token_hex(32),
             schedule=schedule_snapshot,
             max_retries=max_retries,

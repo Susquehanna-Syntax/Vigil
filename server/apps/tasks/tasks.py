@@ -35,6 +35,34 @@ def expire_stale_tasks() -> str:
     grace = int(setting("VIGIL_TASK_EXPIRY_GRACE_SECONDS"))
     current = now()
 
+    # Pending tasks past their expires_at (hunts whose stays_open has elapsed,
+    # phase 06b): the host never checked in, so stop waiting and mark it.
+    pending_expired = 0
+    pending_runs = {}
+    for task in Task.objects.filter(
+        state=Task.State.PENDING, expires_at__isnull=False, expires_at__lte=current,
+    ).select_related("run"):
+        task.state = Task.State.EXPIRED
+        task.completed_at = current
+        task.result_output = (
+            f"[did not report: the hunt stayed open until "
+            f"{task.expires_at.isoformat()} and the host never checked in]"
+        )
+        task.save(update_fields=["state", "completed_at", "result_output"])
+        pending_expired += 1
+        logger.warning(
+            "Task %s on host %s did not report — hunt stayed open until %s",
+            task.id, task.host_id, task.expires_at,
+        )
+        if task.run_id:
+            pending_runs[task.run_id] = task.run
+
+    for run in pending_runs.values():
+        _finalize_run_if_done(run)
+
+    if pending_expired:
+        logger.info("Expired %d pending hunt task(s)", pending_expired)
+
     # Candidate set first (cheap, indexed on state); the per-task TTL
     # check happens in Python because ttl_seconds varies per row and
     # datetime arithmetic on a column isn't portable to SQLite.

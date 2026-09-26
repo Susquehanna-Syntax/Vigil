@@ -213,6 +213,10 @@ class Task(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     dispatched_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    # A still-pending task past this is not dispatched and becomes `expired`
+    # (hunts set it from `stays_open`; other tasks leave it null — no change
+    # in behaviour).
+    expires_at = models.DateTimeField(null=True, blank=True)
     # Soft-delete for the history view. The audit trail is immutable —
     # "deleting" a terminal task hides it from the feed, but the row
     # (who ran what, where, when, with what result) is never destroyed.
