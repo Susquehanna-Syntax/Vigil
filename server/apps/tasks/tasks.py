@@ -109,9 +109,12 @@ def expire_stale_tasks() -> str:
     for run in runs.values():
         _finalize_run_if_done(run)
 
-    if not expired:
+    if not expired and not pending_expired:
         return "no stale tasks"
-    return f"expired {expired} task(s) across {len(runs)} run(s)"
+    summary = f"expired {expired} task(s) across {len(runs)} run(s)"
+    if pending_expired:
+        summary += f"; {pending_expired} hunt task(s) did not report"
+    return summary
 
 
 @shared_task(name="tasks.advance_rollouts")
