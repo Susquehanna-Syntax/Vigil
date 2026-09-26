@@ -25,6 +25,7 @@ def wire():
     hooks.subscribe("host_rejected", _on_host_rejected)
     hooks.subscribe("alert_sent", _on_alert_sent)
     hooks.subscribe("task_completed", _on_task_completed)
+    hooks.subscribe("hunt_text_requested", _on_hunt_text_requested)
     hooks.subscribe("instance_settings_changed", _on_instance_settings_changed)
 
     user_logged_in.connect(_on_login, dispatch_uid="business_audits.login")
@@ -51,6 +52,17 @@ def _on_alert_sent(alert=None, **_):
 def _on_task_completed(task=None, **_):
     from .models import record
     record("task.completed", target=str(task))
+
+
+def _on_hunt_text_requested(run=None, actor=None, step_ids=(), **_):
+    """A hunt_content step with `return: text` was deployed — the step will
+    carry matched file contents back to the server. Record who asked for it
+    and which steps, so the trail shows exactly what left the host."""
+    from .models import record
+    record("hunt.text_requested", user=actor,
+           target=f"run {getattr(run, 'id', run)}",
+           run_id=str(getattr(run, "id", "")),
+           step_ids=list(step_ids))
 
 
 def _on_instance_settings_changed(names=None, changed_by=None, **_):

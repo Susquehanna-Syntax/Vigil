@@ -543,6 +543,22 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "optional": ["state", "start_mode", "max_results", "timeout"],
         "outputs": {"matched": "bool", "count": "int", "truncated": "bool"},
     },
+    "hunt_registry": {
+        "label": "Hunt: registry keys and values",
+        "risk": "low",
+        "required": ["key"],
+        "optional": ["value", "data", "view", "max_results", "timeout",
+                     "stays_open"],
+        "outputs": {"matched": "bool", "count": "int", "truncated": "bool"},
+    },
+    "hunt_content": {
+        "label": "Hunt: text inside files",
+        "risk": "standard",
+        "required": ["pattern"],
+        "optional": ["name", "paths", "scope", "max_file_size", "return",
+                     "max_results", "timeout", "stays_open"],
+        "outputs": {"matched": "bool", "count": "int", "truncated": "bool"},
+    },
 }
 
 

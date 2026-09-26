@@ -91,3 +91,83 @@ class HuntServiceSpecTests(SimpleTestCase):
         with self.assertRaises(SpecError) as ctx:
             parse_and_validate(yaml_src)
         self.assertIn("name", str(ctx.exception))
+
+
+def _content_yaml(params: str) -> str:
+    return f"""
+name: Hunt for leaked text
+risk: standard
+actions:
+  - id: hunt
+    type: hunt_content
+    params:
+{params}
+"""
+
+
+def _registry_yaml(params: str) -> str:
+    return f"""
+name: Hunt the registry
+risk: low
+actions:
+  - id: hunt
+    type: hunt_registry
+    params:
+{params}
+"""
+
+
+class HuntContentSpecTests(SimpleTestCase):
+    def test_content_text_makes_task_high_risk(self):
+        spec = parse_and_validate(_content_yaml(
+            '      pattern: "AKIA[0-9A-Z]{16}"\n      return: text\n'))
+        self.assertEqual(spec["risk"], "high")
+
+    def test_content_lines_stays_standard(self):
+        spec = parse_and_validate(_content_yaml(
+            '      pattern: "AKIA[0-9A-Z]{16}"\n      return: lines\n'))
+        self.assertEqual(spec["risk"], "standard")
+        spec = parse_and_validate(_content_yaml(
+            '      pattern: "AKIA[0-9A-Z]{16}"\n'))
+        self.assertEqual(spec["risk"], "standard")
+        spec = parse_and_validate(_content_yaml(
+            '      pattern: "AKIA[0-9A-Z]{16}"\n      return: match\n'))
+        self.assertEqual(spec["risk"], "standard")
+
+    def test_content_return_validated(self):
+        with self.assertRaises(SpecError) as ctx:
+            parse_and_validate(_content_yaml(
+                '      pattern: "x"\n      return: everything\n'))
+        self.assertIn("return", str(ctx.exception))
+
+    def test_content_pattern_validated(self):
+        with self.assertRaises(SpecError) as ctx:
+            parse_and_validate(_content_yaml('      pattern: "([unclosed"\n'))
+        self.assertIn("pattern", str(ctx.exception))
+
+    def test_content_requires_pattern(self):
+        with self.assertRaises(SpecError) as ctx:
+            parse_and_validate(_content_yaml("      name: \"*.conf\"\n"))
+        self.assertIn("pattern", str(ctx.exception))
+
+    def test_content_unknown_params_refused(self):
+        with self.assertRaises(SpecError) as ctx:
+            parse_and_validate(_content_yaml(
+                '      pattern: "x"\n      bogus: 1\n'))
+        self.assertIn("bogus", str(ctx.exception))
+
+
+class HuntRegistrySpecTests(SimpleTestCase):
+    def test_registry_requires_key(self):
+        with self.assertRaises(SpecError) as ctx:
+            parse_and_validate(_registry_yaml('      value: DisplayName\n'))
+        self.assertIn("key", str(ctx.exception))
+
+    def test_registry_with_key_validates(self):
+        spec = parse_and_validate(_registry_yaml(
+            "      key: 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion'\n"))
+        action = spec["actions"][0]
+        self.assertEqual(action["type"], "hunt_registry")
+        self.assertEqual(action["risk"], "low")
+        self.assertEqual(action["outputs"],
+                         ["count", "matched", "truncated"])

@@ -3323,6 +3323,40 @@
       <span class="hl-key">start_mode</span>: <span class="hl-string">enabled</span>
       <span class="hl-key">max_results</span>: <span class="hl-string">50</span></pre></div>
 </div></details>
+<details class="action" data-group="hunts" data-risk="low" data-keywords="hunt_registry key value data view max_results timeout stays_open"><summary><code class="action-name">hunt_registry</code><span class="risk risk-low">low</span><span class="action-label">Hunt: registry keys and values</span><span class="action-required">key</span></summary><div class="action-body">
+<p class="prose">Windows only. Reads the registry for keys and values — here, the DisplayName of every installed product in the 64-bit Uninstall tree, filtered to Java.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>key</code></td><td><span class="param-req">required</span></td><td>Registry key path with an HKLM, HKCU or HKU root; a final wildcard segment adds each direct subkey. Single-quote it in YAML so the backslashes stay literal.</td></tr><tr><td><code>value</code></td><td><span class="param-opt">optional</span></td><td>Glob on value names; when absent the matching keys themselves are reported.</td></tr><tr><td><code>data</code></td><td><span class="param-opt">optional</span></td><td></td></tr><tr><td><code>view</code></td><td><span class="param-opt">optional</span></td><td></td></tr><tr><td><code>max_results</code></td><td><span class="param-opt">optional</span></td><td>Stop after this many matches (default 500, at most 5000).</td></tr><tr><td><code>timeout</code></td><td><span class="param-opt">optional</span></td><td>Seconds before the walk stops early (default 120, at most 600).</td></tr><tr><td><code>stays_open</code></td><td><span class="param-opt">optional</span></td><td></td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>matched</code></td><td>bool</td><td>True when at least one key or value matched.</td></tr><tr><td><code>count</code></td><td>int</td><td>How many keys and values matched (the cap when truncated).</td></tr><tr><td><code>truncated</code></td><td>bool</td><td>True when the walk stopped early at max_results or the timeout.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Find hosts with Java in their Uninstall keys</span>
+<span class="hl-key">description</span>: <span class="hl-string">&quot;Hunt the Windows registry, on the hosts you dispatch this to.&quot;</span>
+<span class="hl-key">risk</span>: <span class="hl-string">low</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">hunt-registry</span>
+    <span class="hl-key">type</span>: <span class="hl-string">hunt_registry</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">key</span>: <span class="hl-string">&#x27;HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*&#x27;</span>
+      <span class="hl-key">value</span>: <span class="hl-string">DisplayName</span>
+      <span class="hl-key">data</span>: <span class="hl-string">Java</span>
+      <span class="hl-key">view</span>: <span class="hl-string">64</span>
+      <span class="hl-key">max_results</span>: <span class="hl-string">50</span></pre></div>
+</div></details>
+<details class="action" data-group="hunts" data-risk="standard" data-keywords="hunt_content pattern name paths scope max_file_size return max_results timeout stays_open"><summary><code class="action-name">hunt_content</code><span class="risk risk-std">standard</span><span class="action-label">Hunt: text inside files</span><span class="action-required">pattern</span></summary><div class="action-body">
+<p class="prose">Scans file contents for a regex. By default a match reports which files matched and on which lines; return: text also carries the matched substrings, which makes the step high risk and is audit-logged on Business.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>pattern</code></td><td><span class="param-req">required</span></td><td>Regular expression searched inside file contents.</td></tr><tr><td><code>name</code></td><td><span class="param-opt">optional</span></td><td>File-name glob matched against the base name (default *).</td></tr><tr><td><code>paths</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated roots to walk instead of the scope.</td></tr><tr><td><code>scope</code></td><td><span class="param-opt">optional</span></td><td>targeted (default: install and home directories) or full (every filesystem root).</td></tr><tr><td><code>max_file_size</code></td><td><span class="param-opt">optional</span></td><td></td></tr><tr><td><code>return</code></td><td><span class="param-opt">optional</span></td><td></td></tr><tr><td><code>max_results</code></td><td><span class="param-opt">optional</span></td><td>Stop after this many matches (default 500, at most 5000).</td></tr><tr><td><code>timeout</code></td><td><span class="param-opt">optional</span></td><td>Seconds before the walk stops early (default 120, at most 600).</td></tr><tr><td><code>stays_open</code></td><td><span class="param-opt">optional</span></td><td></td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>matched</code></td><td>bool</td><td>True when at least one file matched.</td></tr><tr><td><code>count</code></td><td>int</td><td>How many files matched (the cap when truncated).</td></tr><tr><td><code>truncated</code></td><td>bool</td><td>True when the walk stopped early at max_results or the timeout.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Find hosts with a leaked token in a config</span>
+<span class="hl-key">description</span>: <span class="hl-string">&quot;Hunt for text inside files, on the hosts you dispatch this to.&quot;</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">hunt-content</span>
+    <span class="hl-key">type</span>: <span class="hl-string">hunt_content</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">pattern</span>: <span class="hl-string">&quot;AKIA[0-9A-Z]{16}&quot;</span>
+      <span class="hl-key">name</span>: <span class="hl-string">&quot;*.conf&quot;</span>
+      <span class="hl-key">paths</span>: <span class="hl-string">/etc,/opt</span>
+      <span class="hl-key">return</span>: <span class="hl-string">lines</span>
+      <span class="hl-key">max_results</span>: <span class="hl-string">50</span></pre></div>
+</div></details>
 </div>
 <div class="action-group" data-group="vuln">
 <h4 class="action-group-title">Vulnerability scanning</h4>

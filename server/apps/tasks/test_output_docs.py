@@ -54,6 +54,8 @@ EXPECTED = {
     "hunt_process": {"matched", "count", "truncated"},
     "hunt_port": {"matched", "count", "truncated"},
     "hunt_service": {"matched", "count", "truncated"},
+    "hunt_registry": {"matched", "count", "truncated"},
+    "hunt_content": {"matched", "count", "truncated"},
     "update_container": {"updated", "old_image_id", "new_image_id"},
     "check_docker_updates": {"checked", "outdated"},
     "run_command": {"exit_code"},
