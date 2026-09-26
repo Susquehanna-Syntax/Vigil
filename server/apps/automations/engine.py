@@ -47,6 +47,14 @@ def _steps_for(automation) -> tuple[list[dict], str] | None:
     if definition is None:
         return None
     spec = definition.parsed_spec or {}
+    from apps.playbooks.expansion import unsupported_in_playbooks
+    blocked = unsupported_in_playbooks(spec)
+    if blocked:
+        # This path flattens the task's actions, which would drop its branch
+        # flow and relevant: block. Refuse rather than run it wrongly.
+        logger.warning("automation %s: task %s uses %s, which automations cannot run yet",
+                       automation.pk, definition.name, ", ".join(blocked))
+        return None
     actions_src = spec.get("actions") or []
     override = automation.params_override or {}
     if override:
@@ -63,7 +71,10 @@ def _steps_for(automation) -> tuple[list[dict], str] | None:
     steps = []
     success = spec.get("success_criteria") or None
     for i, a in enumerate(actions):
-        step = {"id": f"step{i + 1}", "action": a["type"], "params": a.get("params") or {}}
+        # Keep the task's own ids: its when:/${{ steps.<id> }} references name
+        # them. They are unique within one task.
+        step = {"id": a.get("id") or f"step{i + 1}", "action": a["type"],
+                "params": a.get("params") or {}}
         if a.get("when"):
             step["when"] = a["when"]
         if success:
