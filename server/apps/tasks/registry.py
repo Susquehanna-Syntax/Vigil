@@ -511,7 +511,8 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "required": [],
         "optional": ["name", "paths", "scope", "sha256", "min_size", "max_size",
                      "modified_within_days", "older_than_days", "hash",
-                     "max_results", "timeout"],
+                     "version_lt", "version_lte", "version_gt", "version_gte",
+                     "version_eq", "max_results", "timeout"],
         "outputs": {"matched": "bool", "count": "int", "truncated": "bool"},
     },
     "hunt_package": {

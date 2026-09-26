@@ -191,6 +191,10 @@ def _lower_thread_priority() -> None:
 _POSIX_SKIP = ("/proc", "/sys", "/dev", "/run")
 _HASH_CHUNK = 1024 * 1024
 _SHA256_HEX = re.compile(r"^[0-9a-fA-F]{64}$")
+_VERSION_RE = re.compile(r"(\d+(?:\.\d+)+)")
+_MANIFEST_MAX = 64 * 1024
+_ARCHIVE_EXTS = (".jar", ".war", ".ear")
+_WINDOWS_VERSION_EXTS = (".exe", ".dll", ".sys")
 
 
 def _full_scopes() -> list[str]:
@@ -226,6 +230,10 @@ def hunt_file(result: HuntResult, params: dict) -> None:
     if want_sha and not _SHA256_HEX.match(want_sha):
         raise ValueError(f"sha256 must be 64 hex characters, got {want_sha!r}")
     include_hash = bool(params.get("hash")) or bool(want_sha)
+    version_bounds = {key: str(params[key]) for key in
+                      ("version_lt", "version_lte", "version_gt", "version_gte",
+                       "version_eq")
+                      if params.get(key) not in (None, "")}
     min_size = int(params["min_size"]) if params.get("min_size") not in (None, "") else None
     max_size = int(params["max_size"]) if params.get("max_size") not in (None, "") else None
     now = time.time()
@@ -276,10 +284,19 @@ def hunt_file(result: HuntResult, params: dict) -> None:
                         continue
                     if want_sha and sha != want_sha:
                         continue
+                version = None
+                if version_bounds:
+                    version = _file_version(path)
+                    if version is None:
+                        continue
+                    if not all(
+                            _version_bound_holds(version, key, bound, "generic")
+                            for key, bound in version_bounds.items()):
+                        continue
                 modified = datetime.datetime.fromtimestamp(
                     st.st_mtime, tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 if not result.add("file", path=path, size=st.st_size,
-                                  modified=modified, sha256=sha):
+                                  modified=modified, sha256=sha, version=version):
                     return
 
 
@@ -338,6 +355,78 @@ def _pick_manager(manager: str | None) -> str:
         if shutil.which(binary) is not None:
             return candidate
     raise ValueError("no supported package manager on this host")
+
+
+def _file_version(path: str) -> str | None:
+    """Best-effort version of a file, or None when it cannot be determined.
+
+    Tries, in order: a JAR/WAR/EAR's MANIFEST.MF (Implementation-Version,
+    Bundle-Version, Specification-Version), a Windows PE version resource
+    (VS_FIXEDFILEINFO as a.b.c.d), then the first dotted-numeric token in the
+    file name (so log4j-core-2.14.1.jar reads as 2.14.1). Never raises: a
+    file whose version cannot be read simply returns None.
+    """
+    base = os.path.basename(path)
+    try:
+        lower = base.lower()
+        if lower.endswith(_ARCHIVE_EXTS):
+            version = _jar_manifest_version(path)
+            if version:
+                return version
+        if sys.platform == "win32" and lower.endswith(_WINDOWS_VERSION_EXTS):
+            version = _windows_version(path)
+            if version:
+                return version
+        match = _VERSION_RE.search(base)
+        return match.group(1) if match else None
+    except OSError:
+        return None
+
+
+def _jar_manifest_version(path: str) -> str | None:
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(path) as archive:
+            try:
+                data = archive.read("META-INF/MANIFEST.MF")[:_MANIFEST_MAX]
+            except KeyError:
+                return None
+    except (OSError, zipfile.BadZipFile):
+        return None
+    text = data.decode("utf-8", errors="replace")
+    for key in ("Implementation-Version", "Bundle-Version",
+                "Specification-Version"):
+        for line in text.splitlines():
+            if line.lower().startswith(key.lower() + ":"):
+                value = line.split(":", 1)[1].strip()
+                return value or None
+    return None
+
+
+def _windows_version(path: str) -> str | None:
+    import ctypes
+
+    try:
+        size = ctypes.windll.version.GetFileVersionInfoSizeW(path, None)
+        if not size:
+            return None
+        buffer = ctypes.create_string_buffer(size)
+        if not ctypes.windll.version.GetFileVersionInfoW(path, None, size, buffer):
+            return None
+        value = ctypes.c_void_p()
+        length = ctypes.c_uint()
+        root = ctypes.create_string_buffer("\\", 2)
+        ok = ctypes.windll.version.VerQueryValueW(
+            buffer, root, ctypes.byref(value), ctypes.byref(length))
+        if not ok or not length.value:
+            return None
+        fixed = ctypes.cast(value, ctypes.POINTER(
+            ctypes.c_uint32 * 4)).contents  # VS_FIXEDFILEINFO
+        ms, ls = fixed[0], fixed[1]
+        return f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}.{ls & 0xFFFF}"
+    except OSError:
+        return None
 
 
 def _version_bound_holds(version: str, key: str, bound: str, scheme: str) -> bool:

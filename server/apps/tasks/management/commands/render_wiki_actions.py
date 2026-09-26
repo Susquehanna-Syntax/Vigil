@@ -355,6 +355,11 @@ ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
     ("hunt_package", "name"): "Package name, or a glob (* ?).",
     ("hunt_package", "timeout"): "Seconds before the hunt stops and returns what it found (default 120, at most 600).",
     ("hunt_file", "timeout"): "Seconds before the hunt stops and returns what it found (default 120, at most 600).",
+    ("hunt_file", "version_lt"): "Only files whose version is older than this, compared with dotted-numeric rules. The file's version: JAR manifest, Windows version resource, or the version in the file name. Files with no readable version never match.",
+    ("hunt_file", "version_lte"): "Only files whose version is this or older, compared with dotted-numeric rules. The file's version: JAR manifest, Windows version resource, or the version in the file name. Files with no readable version never match.",
+    ("hunt_file", "version_gt"): "Only files whose version is newer than this, compared with dotted-numeric rules. The file's version: JAR manifest, Windows version resource, or the version in the file name. Files with no readable version never match.",
+    ("hunt_file", "version_gte"): "Only files whose version is this or newer, compared with dotted-numeric rules. The file's version: JAR manifest, Windows version resource, or the version in the file name. Files with no readable version never match.",
+    ("hunt_file", "version_eq"): "Only files whose version equals this, compared with dotted-numeric rules. The file's version: JAR manifest, Windows version resource, or the version in the file name. Files with no readable version never match.",
 
     ("hunt_process", "name"): "Process name to match as a glob, e.g. \"java\" or \"sshd*\".",
     ("hunt_process", "cmdline"): "Case-insensitive substring of the joined command line.",
