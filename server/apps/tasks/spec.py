@@ -963,9 +963,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
     if not name:
         raise SpecError("'name' is required")
 
-    name = _as_str(raw.get("name"), "name", max_len=255)
-    if not name:
-        raise SpecError("'name' is required")
+    # ``author`` and ``created`` are optional locally but auto-injected by the
     # "Submit to Community" flow so every YAML that lands on the community
     # repo is self-describing (who wrote it, when). When present, ``created``
     # must be an ISO-8601 calendar date (YYYY-MM-DD); ``author`` is any short
