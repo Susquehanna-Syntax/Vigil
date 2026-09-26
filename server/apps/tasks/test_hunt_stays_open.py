@@ -241,7 +241,25 @@ class SweepDidNotReportTests(TestCase):
         self._task(expires_at=now() - timedelta(hours=1), run=run, step_order=0)
         expire_stale_tasks()
         run.refresh_from_db()
+        # No host answered at all: the run failed.
         self.assertEqual(run.state, TaskRun.State.FAILED)
+
+    def test_some_hosts_answered_run_is_partial(self):
+        # User decision 2026-09-26: a hunt where some hosts finished and some
+        # never reported ends partial, not failed.
+        from apps.tasks.tasks import expire_stale_tasks
+
+        run = TaskRun.objects.create(
+            name_snapshot="r", host_count=2, step_count=1,
+            state=TaskRun.State.RUNNING,
+        )
+        answered = self._task(run=run, step_order=0)
+        Task.objects.filter(pk=answered.pk).update(state=Task.State.COMPLETED)
+        self.host = _host(2)
+        self._task(expires_at=now() - timedelta(hours=1), run=run, step_order=0)
+        expire_stale_tasks()
+        run.refresh_from_db()
+        self.assertEqual(run.state, TaskRun.State.PARTIAL)
 
 
 class ResultsApiDidNotReportTests(TestCase):
