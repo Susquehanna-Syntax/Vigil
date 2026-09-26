@@ -142,6 +142,36 @@ def _process_tasks(tasks: list[dict], config, nonce_store: NonceStore, verify_ke
                 _report_failed(config, task, str(exc))
 
 
+def _branch_guards(flow) -> dict[str, tuple[str, str]]:
+    """Turn a signed ``flow`` tree into a guard expression per step id.
+
+    A branch condition may only name steps earlier in the document than the
+    branch, and nothing inside a branch can change an earlier step's result,
+    so re-evaluating the condition at each step of the branch gives the same
+    answer as evaluating it once.  A step in a ``then`` gets the condition
+    parenthesised; in an ``else``, ``not (C)``; nested branches join with
+    `` and ``.  Steps outside any branch are absent from the map.
+    """
+    guards: dict[str, tuple[str, str]] = {}
+
+    def walk(nodes, conds: list[tuple[str, str, str]]) -> None:
+        for node in nodes:
+            if "step" in node:
+                if conds:
+                    guard = " and ".join(
+                        f"not ({c})" if side == "else" else f"({c})"
+                        for _, side, c in conds
+                    )
+                    path = ".".join(f"{b}.{side}" for b, side, _ in conds)
+                    guards[node["step"]] = (guard, path)
+                continue
+            walk(node.get("then", []), conds + [(node["id"], "then", node["if"])])
+            walk(node.get("else", []), conds + [(node["id"], "else", node["if"])])
+
+    walk(list(flow), [])
+    return guards
+
+
 def _relevant_holds(node, counts: dict[str, bool]) -> bool:
     """Fold a normalised ``relevant:`` tree against probe outcomes.
 
@@ -304,13 +334,13 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
     # validated syntax at save time — fails the WHOLE task before any step
     # runs: executing half a script under drift is worse than executing none.
     for i, s in enumerate(raw_steps):
+        name = s.get("id", s.get("name", f"step{i+1}"))
         when_expr = (s.get("when") or "").strip()
         if when_expr:
             try:
                 from .expression import parse as _parse_when
                 _parse_when(when_expr)
             except Exception as exc:
-                name = s.get("id", s.get("name", f"step{i+1}"))
                 msg = (
                     f"[ERROR] {name}: when {when_expr!r} could not be "
                     f"evaluated ({exc}) — task aborted before execution"
@@ -329,6 +359,35 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
         }
         for i, s in enumerate(raw_steps)
     ]
+
+    # A signed flow turns each branch step into a guard expression evaluated
+    # before the step's own when: (phase 06).  A step in a branch that is not
+    # taken is skipped like a when-skip, so later steps see
+    # steps.<id>.status == "skipped".
+    flow = params.get("flow")
+    if isinstance(flow, list):
+        branch_guards = _branch_guards(flow)
+        for step in runnable_steps:
+            entry = branch_guards.get(step["name"])
+            if entry is not None:
+                step["guard"], step["branch"] = entry
+
+    # Guards are signed expressions too — parse-check them like when: so a
+    # malformed guard fails the whole task before any step runs.
+    for step in runnable_steps:
+        guard_expr = (step.get("guard") or "").strip()
+        if guard_expr:
+            try:
+                from .expression import parse as _parse_guard
+                _parse_guard(guard_expr)
+            except Exception as exc:
+                msg = (
+                    f"[ERROR] {step['name']}: branch guard {guard_expr!r} could "
+                    f"not be evaluated ({exc}) — task aborted before execution"
+                )
+                logger.warning("Script task %s: %s", task_id, msg)
+                _report_failed(config, task, msg)
+                return
 
     runtime_payload = {
         "steps": runnable_steps,

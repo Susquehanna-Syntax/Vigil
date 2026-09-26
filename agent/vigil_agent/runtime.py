@@ -308,6 +308,51 @@ class TaskRuntime:
             name = step.get("name", step_type)
 
             when_expr = (step.get("when") or "").strip()
+            guard_expr = (step.get("guard") or "").strip()
+            if guard_expr:
+                try:
+                    guard_ctx = {**self._when_context, "steps": ctx.get("steps", {})}
+                    guard_true = bool(_evaluate_when(guard_expr, guard_ctx))
+                except Exception as exc:
+                    logger.error(
+                        "Step %r: guard %r could not be evaluated: %s",
+                        name, guard_expr, exc,
+                    )
+                    result = StepResult(
+                        name=name,
+                        action=str(step.get("action", "")),
+                        state="error",
+                        error=f"guard {guard_expr!r} could not be evaluated ({exc})",
+                    )
+                else:
+                    if not guard_true:
+                        logger.info(
+                            "Step %r skipped: branch %r not taken",
+                            name, step.get("branch"),
+                        )
+                        result = StepResult(
+                            name=name,
+                            action=str(step.get("action", "")),
+                            state="skipped",
+                            output=f"branch {step.get('branch')} not taken",
+                        )
+                        steps_map = ctx.get("steps", {})
+                        steps_map[name] = {
+                            "status": "skipped",
+                            "result": {},
+                        }
+                        ctx["steps"] = steps_map
+                        if top_level:
+                            self._results.append(result)
+                            if self._on_step_result:
+                                try:
+                                    self._on_step_result(result)
+                                except Exception as cb_exc:
+                                    logger.warning(
+                                        "on_step_result callback raised: %s",
+                                        cb_exc,
+                                    )
+                        continue
             if when_expr:
                 try:
                     when_ctx = {**self._when_context, "steps": ctx.get("steps", {})}
