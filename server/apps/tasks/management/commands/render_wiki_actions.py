@@ -381,6 +381,14 @@ ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
     ("hunt_content", "paths"): "Comma-separated roots to walk instead of the scope.",
     ("hunt_content", "scope"): "targeted (default: install and home directories) or full (every filesystem root).",
     ("hunt_content", "timeout"): "Seconds before the walk stops early (default 120, at most 600).",
+
+    ("hunt_file", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
+    ("hunt_package", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
+    ("hunt_process", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
+    ("hunt_port", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
+    ("hunt_service", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
+    ("hunt_registry", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
+    ("hunt_content", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
 }
 
 
