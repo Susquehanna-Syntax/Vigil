@@ -827,6 +827,16 @@ def _user_can_see(definition: TaskDefinition, user) -> bool:
 
 def _save_definition_from_yaml(definition: TaskDefinition, yaml_source: str) -> None:
     spec = parse_and_validate(yaml_source)
+    if spec.get("uses"):
+        # Refuse a composite that could never deploy. The unexpanded spec is
+        # what is stored — the copy happens at deploy — but the risk shown is
+        # the composite's, since that is what would ship today.
+        from .uses import UseError, expand_uses
+        try:
+            composite = parse_and_validate(expand_uses(yaml_source, definition.owner))
+        except UseError as exc:
+            raise SpecError(str(exc)) from exc
+        spec["risk"] = composite["risk"]
     definition.yaml_source = yaml_source
     definition.parsed_spec = spec
     definition.name = spec["name"]
@@ -1200,6 +1210,17 @@ def definition_deploy(request, definition_id):
         return Response({"error": error}, status=401)
 
     base_spec = definition.parsed_spec
+    if base_spec.get("uses"):
+        # Copy the used tasks' current steps into their branches now, and
+        # judge the composite like any task (M6 phase 05b).
+        from .uses import UseError, expand_uses
+        copied: list[dict] = []
+        try:
+            base_spec = parse_and_validate(
+                expand_uses(definition.yaml_source, request.user, audit=copied))
+        except (UseError, SpecError) as exc:
+            return Response({"error": str(exc)}, status=400)
+        base_spec["uses_copied"] = copied
     raw_inputs = request.data.get("inputs") or {}
     if not isinstance(raw_inputs, dict):
         return Response({"error": "inputs must be an object"}, status=400)

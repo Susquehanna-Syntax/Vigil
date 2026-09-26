@@ -19,7 +19,7 @@ from .models import (
     TaskRun,
     rollout_wave_plan,
 )
-from .spec import SpecError, _deploy_params, resolve_inputs
+from .spec import SpecError, _deploy_params, parse_and_validate, resolve_inputs
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +73,17 @@ def _validate_definition(definition) -> dict:
     """
     spec = definition.parsed_spec or {}
     try:
+        if spec.get("uses"):
+            # Re-derived on every wave, so a later wave carries the used
+            # tasks' steps as they are when that wave is dispatched.
+            from .uses import UseError, expand_uses
+            copied: list[dict] = []
+            try:
+                spec = parse_and_validate(
+                    expand_uses(definition.yaml_source, definition.owner, audit=copied))
+            except UseError as exc:
+                raise SpecError(str(exc)) from exc
+            spec["uses_copied"] = copied
         return resolve_inputs(spec, {})
     except SpecError as exc:
         raise ValueError(f"definition {definition.name!r} cannot roll out: {exc}") from exc
