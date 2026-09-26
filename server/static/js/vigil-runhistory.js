@@ -87,17 +87,21 @@ async function _openRunDetail(runId) {
           ${_stepResultsHtml(t.result_data)}
         </div>`).join('')
     : '<p class="muted">No task rows for this run.</p>';
-
+  const huntBtn = _runHasHuntSteps(run)
+    ? `<button class="btn btn-sky btn-sm" id="rd-hunt" type="button">Open hunt results</button>`
+    : '';
   m.setBody(`
     <div class="modal-title"><span>${escHtml(run.name_snapshot || 'Run')}</span>
       <button class="modal-close" id="rd-x"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
     <p class="muted" style="margin-bottom:12px;">${escHtml(run.state)} · ${escHtml(String(run.host_count))} host(s) · ${escHtml(String(run.step_count))} step(s)</p>
     <div class="run-task-list">${rows}</div>
-    <div class="confirm-actions"><button class="btn btn-outline btn-sm" id="rd-close">Close</button></div>`);
+    <div class="confirm-actions">${huntBtn}<button class="btn btn-outline btn-sm" id="rd-close">Close</button></div>`);
   const close = () => m.close();
   m.modal.querySelector('#rd-x').onclick = close;
   m.modal.querySelector('#rd-close').onclick = close;
+  const huntBtnEl = m.modal.querySelector('#rd-hunt');
+  if (huntBtnEl) huntBtnEl.onclick = () => { m.close(); openHuntResults(run.id); };
   requestAnimationFrame(m.open);
 }
 

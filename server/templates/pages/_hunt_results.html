@@ -1,0 +1,59 @@
+{# Hunt results page — per-run summary, host table, dynamic matches table #}
+{# Logic: static/js/vigil-hunts.js (openHuntResults / refresh / CSV export) | Data: client-side fetch /api/v1/tasks/runs/<run_id>/hunt/ #}
+    <section id="page-hunt-results" class="page">
+      <div class="page-header">
+        <div>
+          <div class="page-title" id="hunt-page-title">Hunt Results</div>
+          <div class="page-sub" id="hunt-page-sub">Select a hunt run to see its results.</div>
+        </div>
+        <div class="right">
+          <button class="btn btn-ghost" data-act="navigateTo" data-a1="playbooks">Back to history</button>
+        </div>
+      </div>
+
+      <div class="hunt-summary" id="hunt-summary"></div>
+
+      <div class="hunt-section">
+        <div class="hunt-section-title">Hosts</div>
+        <div class="table-wrap">
+          <table class="hunt-table" id="hunt-hosts">
+            <thead>
+              <tr>
+                <th>Host</th>
+                <th>State</th>
+                <th>Matches</th>
+                <th>Flags</th>
+              </tr>
+            </thead>
+            <tbody id="hunt-hosts-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="hunt-toolbar">
+        <input type="search" class="form-control" id="hunt-filter" placeholder="Filter matches…" autocomplete="off">
+        <select class="form-control" id="hunt-step"><option value="">All steps</option></select>
+        <select class="form-control" id="hunt-state">
+          <option value="">All states</option>
+          <option value="matched">Matched</option>
+          <option value="not_matched">Not matched</option>
+          <option value="pending">Pending</option>
+          <option value="error">Error</option>
+          <option value="did_not_report">Did not report</option>
+        </select>
+        <button class="btn btn-outline btn-sm" id="hunt-refresh" type="button">Refresh</button>
+        <button class="btn btn-sky btn-sm" id="hunt-export" type="button">Export CSV</button>
+      </div>
+
+      <div class="hunt-section">
+        <div class="table-wrap">
+          <table class="hunt-table" id="hunt-matches">
+            <thead id="hunt-matches-head"></thead>
+            <tbody id="hunt-matches-body"></tbody>
+          </table>
+        </div>
+        <div class="hunt-pager">
+          <button class="btn btn-outline btn-sm" id="hunt-more" type="button" hidden>Load more</button>
+        </div>
+      </div>
+    </section>

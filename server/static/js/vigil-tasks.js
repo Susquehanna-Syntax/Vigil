@@ -860,10 +860,12 @@ async function openTaskDetail(runId) {
   const titleEl = document.getElementById('task-detail-title');
   const metaEl = document.getElementById('task-detail-meta');
   const stepsEl = document.getElementById('task-detail-steps');
+  const actionsEl = document.getElementById('task-detail-actions');
 
   titleEl.textContent = 'Loading…';
   metaEl.replaceChildren();
   stepsEl.replaceChildren();
+  actionsEl.hidden = true;
   overlay.classList.add('open');
   modal.classList.add('open');
 
@@ -920,7 +922,20 @@ async function openTaskDetail(runId) {
         card.appendChild(_tdEl('div', 'font-size:11px;color:var(--text-3);font-style:italic;', 'No output captured.'));
       }
 
+      const results = document.createElement('div');
+      results.innerHTML = _stepResultsHtml(task.result_data);
+      card.appendChild(results);
+
       stepsEl.appendChild(card);
+    }
+
+    const huntBtn = document.getElementById('task-detail-hunt');
+    if (huntBtn) {
+      actionsEl.hidden = !_runHasHuntSteps(run);
+      huntBtn.onclick = () => {
+        closeTaskDetail();
+        openHuntResults(run.id);
+      };
     }
   } catch (e) {
     const errEl = _tdEl('div', 'color:var(--rose);padding:16px;');

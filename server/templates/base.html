@@ -664,6 +664,9 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
   </div>
   <div id="task-detail-meta" style="font-size:12px;color:var(--text-3);margin-bottom:16px;flex-shrink:0;display:flex;gap:12px;flex-wrap:wrap;"></div>
   <div id="task-detail-steps" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px;"></div>
+  <div class="confirm-actions" id="task-detail-actions" hidden>
+    <button class="btn btn-outline btn-sm" id="task-detail-hunt" type="button">Open hunt results</button>
+  </div>
 </div>
 
 {# Enrollment wizard — opened by openEnrollWizard() in vigil-enroll.js #}
@@ -796,6 +799,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-automations.js' %}"></script>
 <!-- vigil-runhistory.js — Playbooks → History sub-tab (playbook + automation runs) -->
 <script src="{% static 'js/vigil-runhistory.js' %}"></script>
+<!-- vigil-hunts.js — hunt results page (summary chips, host + matches tables, CSV export) -->
+<script src="{% static 'js/vigil-hunts.js' %}"></script>
 <script src="{% static 'js/vigil-statuspages.js' %}"></script>
 <!-- vigil-deploy.js — deploy modal, fleet cache, schedule/retry/success-criteria policy (wraps navigateTo) -->
 <script src="{% static 'js/vigil-deploy.js' %}"></script>

@@ -59,6 +59,10 @@
   {# Logic: static/js/vigil-tasks.js (openDefinitionEditor → validate → save) #}
   {% include "pages/_task_editor.html" %}
 
+  {# Hunt results page — per-run summary chips, host table, dynamic matches table #}
+  {# Logic: static/js/vigil-hunts.js (openHuntResults → fetch → render / CSV export) #}
+  {% include "pages/_hunt_results.html" %}
+
   {# About page — server version, agent version, configured scanners #}
   {# Logic: static/js/vigil-about.js | Data: client-side fetch /api/v1/about/ #}
   {% include "pages/_about.html" %}
