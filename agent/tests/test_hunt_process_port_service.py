@@ -161,10 +161,14 @@ class HuntServiceTests(unittest.TestCase):
         self.assertEqual(json.loads(out)["matches"][0]["name"], "sshd")
 
     def test_service_windows_start_types(self):
+        def svc(name, status, start_type):
+            # Like psutil's WindowsService: the fields are methods.
+            return SimpleNamespace(name=lambda: name, status=lambda: status,
+                                   start_type=lambda: start_type)
         services = [
-            SimpleNamespace(name="w32time", status=psutil.STATUS_RUNNING, start_type="automatic"),
-            SimpleNamespace(name="Fax", status=psutil.STATUS_STOPPED, start_type="disabled"),
-            SimpleNamespace(name="EventLog", status=psutil.STATUS_STOPPED, start_type="manual"),
+            svc("w32time", psutil.STATUS_RUNNING, "automatic"),
+            svc("Fax", psutil.STATUS_STOPPED, "disabled"),
+            svc("EventLog", psutil.STATUS_STOPPED, "manual"),
         ]
         fake_iter = type("iter", (), {"__iter__": lambda self: iter(services)})
         with patch.object(hunt.psutil, "win_service_iter", fake_iter, create=True), \
