@@ -876,7 +876,10 @@ def _card_for_task(text: str) -> dict:
         "name": spec["name"],
         "description": spec.get("description", ""),
         "author": spec.get("author", ""),
-        "relevance": spec.get("relevance", ""),
+        # `relevance:` is free text folded into the description at parse
+        # time; the task entry has nothing left to show here. Playbook and
+        # automation cards keep their own display summaries.
+        "relevance": "",
         "risk_level": spec.get("risk", "standard"),
         "parsed_spec": spec,
         "requires": [],

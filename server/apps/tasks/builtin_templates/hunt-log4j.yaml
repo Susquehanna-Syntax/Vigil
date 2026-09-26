@@ -6,7 +6,7 @@ description: |
   the result cap, and changes nothing on the host. Use it to answer "which
   of our machines still carry a vulnerable log4j jar?" before patching, or
   as the first step of a task that gates a fix on whether the hunt matched.
-relevance: "any host that may run Java applications"
+  Relevant to any host that may run Java applications.
 risk: low
 author: Vigil
 created: 2026-09-25

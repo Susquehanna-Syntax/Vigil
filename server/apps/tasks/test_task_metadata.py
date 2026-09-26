@@ -96,8 +96,16 @@ class TaskMetadataTests(TestCase):
         )
         spec = parse_and_validate(yaml_src)
         self.assertEqual(spec["name"], "Older fields")
-        self.assertEqual(spec["description"], "exercises the pre-metadata schema")
-        self.assertEqual(spec["relevance"], "web servers")
+        self.assertEqual(
+            spec["description"],
+            "exercises the pre-metadata schema\n\nRelevant to: web servers",
+        )
+        self.assertEqual(spec["relevance"], "")
+        self.assertIn(
+            "relevance: is free text and is now part of the description — "
+            "use relevant: to decide where a task applies",
+            spec["warnings"],
+        )
         self.assertEqual(spec["risk"], "high")
         self.assertEqual(spec["inputs"][0]["id"], "image")
         self.assertEqual(spec["schedule"]["window"]["start_hour"], 8)
