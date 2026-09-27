@@ -309,10 +309,14 @@ def task_result(request):
         if new_state == Task.State.COMPLETED:
             _maybe_capture_inventory_column(task, output)
             _maybe_apply_tags(task)
-            _maybe_apply_playbook_completion_tag(task)
             _maybe_request_nessus_scan(task)
             _maybe_ingest_trivy_report(task, output)
             _maybe_ingest_firewall_rules(task, output)
+        if new_state in (Task.State.COMPLETED, Task.State.NOT_APPLICABLE):
+            # A chain that stops as not applicable is finished on this host
+            # too, so the completion tag must land here as well — otherwise
+            # every reconcile pass redispatches the playbook.
+            _maybe_apply_playbook_completion_tag(task)
 
     return Response(TaskSerializer(task).data)
 
@@ -344,11 +348,18 @@ def _named_tags(step: dict) -> list[str]:
 
 
 def _maybe_apply_playbook_completion_tag(task: Task) -> None:
-    """Tag the host once the playbook that produced this task has succeeded.
+    """Tag the host once the playbook chain that produced this task has
+    finished on the host without failing.
 
-    The tag is what stops an auto-enrolling playbook dispatching to the same
-    host on every reconcile pass, so it is written from the run's own playbook
-    rather than anything the agent reported.
+    Phase 08a: a playbook runs one task per step, so the tag lands only
+    when the host's tasks in that run are all terminal and none is
+    FAILED / REJECTED / EXPIRED — NOT_APPLICABLE and SKIPPED count as
+    done (a chain that stopped as not applicable is finished, and must
+    not be redispatched by every reconcile pass).
+
+    The tag is what stops an auto-enrolling playbook dispatching to the
+    same host on every reconcile pass, so it is written from the run's
+    own playbook rather than anything the agent reported.
 
     Never raises: a task result must be recordable even if tagging fails. A
     failure here costs a repeat dispatch on the next pass, not a lost result.
@@ -362,6 +373,14 @@ def _maybe_apply_playbook_completion_tag(task: Task) -> None:
         return
     tag = (run.playbook.completion_tag or "").strip()
     if not tag or tag.startswith("agent:"):
+        return
+
+    sibling_states = set(
+        Task.objects.filter(run=run, host=task.host).values_list("state", flat=True)
+    )
+    if not sibling_states.issubset(_TERMINAL_STATES):
+        return
+    if sibling_states & {Task.State.FAILED, Task.State.REJECTED, Task.State.EXPIRED}:
         return
 
     try:
@@ -736,13 +755,21 @@ def _advance_run_sequence(finished_task: Task) -> None:
     # step elected not to run, but it's not a failure. The next step
     # unblocks normally.
     if finished_task.state == Task.State.NOT_APPLICABLE:
-        # The task did not apply to this host: its remaining steps never
-        # run (unlike a failure, which retries), and none of it is counted
-        # as a retry.
-        sibling_qs.filter(state=Task.State.BLOCKED).update(
-            state=Task.State.NOT_APPLICABLE,
-            completed_at=now(),
-        )
+        if finished_task.on_not_applicable == "skip":
+            # This playbook step said "not applicable, go on to the next":
+            # unblock the next BLOCKED sibling exactly like COMPLETED.
+            next_step = sibling_qs.filter(state=Task.State.BLOCKED).first()
+            if next_step:
+                next_step.state = Task.State.PENDING
+                next_step.save(update_fields=["state"])
+        else:
+            # The task did not apply to this host (or the step chose
+            # "stop"): its remaining steps never run (unlike a failure,
+            # which retries), and none of it is counted as a retry.
+            sibling_qs.filter(state=Task.State.BLOCKED).update(
+                state=Task.State.NOT_APPLICABLE,
+                completed_at=now(),
+            )
     elif finished_task.state in (Task.State.COMPLETED, Task.State.SKIPPED):
         next_step = sibling_qs.filter(state=Task.State.BLOCKED).first()
         if next_step:

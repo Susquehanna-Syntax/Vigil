@@ -148,6 +148,14 @@ class PlaybookStep(models.Model):
     # over the definition's action params at dispatch, so one shared task can
     # run with different inputs in different playbooks.
     params_override = models.JSONField(default=dict, blank=True)
+    # What "not applicable" means for this step on a host: "stop" ends the
+    # host's playbook there (the rest of the chain is not applicable too),
+    # "skip" goes on to the next step.
+    on_not_applicable = models.CharField(
+        max_length=8,
+        choices=[("skip", "Skip"), ("stop", "Stop")],
+        default="stop",
+    )
 
     class Meta:
         ordering = ("order",)
@@ -170,16 +178,18 @@ def eligible(definition, *, allow_high_risk: bool = False) -> tuple[bool, str]:
     by passing a TOTP challenge — see Playbook.allow_high_risk. Callers must
     pass it from the playbook being validated, never hardcode True: the
     default is what keeps an un-opted-in playbook safe.
+
+    Phase 08a: playbooks run each step as its own signed task with all of
+    that task's logic, so the M6 constructs (``flow`` / ``relevant`` /
+    ``uses``) are no longer refused here. The flatten paths that still drop
+    them — ``build_agent_steps`` and ``expand_actions`` (automations,
+    rollouts) — keep their own guards until 08a2.
     """
     if definition.risk_level == definition.RiskLevel.HIGH and not allow_high_risk:
         return False, "high-risk definitions cannot be playbooks"
     actions = (definition.parsed_spec or {}).get("actions") or []
     if any(a.get("type") == "update_agent" for a in actions):
         return False, "update_agent steps cannot be playbooks"
-    from .expansion import unsupported_in_playbooks
-    blocked = unsupported_in_playbooks(definition.parsed_spec)
-    if blocked:
-        return False, f"uses {', '.join(blocked)}, which playbooks cannot run yet"
     return True, ""
 
 
@@ -233,15 +243,20 @@ def build_agent_steps(playbook: "Playbook") -> tuple[list[dict], str]:
 def dispatch_to_host(host, *, playbooks=None) -> int:
     """Create pending tasks on *host* for every matching playbook.
 
-    With no explicit *playbooks*, only auto-enrolling ones are considered.
-    Passing them explicitly — a rebuild's post-playbook, a manual apply —
-    dispatches regardless of that flag, because someone chose them.
+    Phase 08a: a playbook runs each of its tasks as its own signed task —
+    one Task per playbook step, chained per host with step_order, each
+    carrying all of that task's logic (flow, relevant:, use:) exactly as a
+    direct deploy would. No explicit *playbooks*, only auto-enrolling ones
+    are considered. Passing them explicitly — a rebuild's post-playbook, a
+    manual apply — dispatches regardless of that flag, because someone chose
+    them.
 
     Never raises: enrollment approval must succeed even if a playbook is
     broken, and a reconcile pass must not stop at the first bad one.
     """
     import logging
 
+    from apps.tasks.dispatch import resolve_task_spec, task_params
     from apps.tasks.models import Task, TaskRun
 
     logger = logging.getLogger("vigil.playbooks")
@@ -260,30 +275,47 @@ def dispatch_to_host(host, *, playbooks=None) -> int:
                 logger.warning("skipping playbook %s: ineligible definitions %s",
                                playbook.name, bad)
                 continue
-            steps, risk = build_agent_steps(playbook)
+            steps = list(playbook.steps.order_by("order"))
             if not steps:
                 continue
+
+            # Build every step's signed task before writing anything: a
+            # playbook whose second step no longer builds must not leave a
+            # half-run on the host.
+            built = []
+            for step in steps:
+                spec = resolve_task_spec(
+                    step.definition, user=playbook.created_by,
+                    params_override=step.params_override)
+                params, risk, expires_at = task_params(spec)
+                built.append((step, params, risk, expires_at))
+
             # One run per playbook per host: enrollment dispatch is per-host by
-            # nature, and a run keeps the result visible in history.
+            # nature, and a run keeps the result visible in history. The first
+            # step starts pending; the rest sit blocked until it finishes.
             run = TaskRun.objects.create(
                 source=TaskRun.Source.PLAYBOOK,
                 playbook=playbook,
                 name_snapshot=playbook.name[:120],
                 requested_by=playbook.created_by,
                 host_count=1,
-                step_count=len(steps),
+                step_count=len(built),
             )
-            Task.objects.create(
-                host=host,
-                run=run,
-                requested_by=playbook.created_by,
-                step_label=f"playbook: {playbook.name}",
-                action="_script",
-                params={"steps": steps},
-                risk_level=risk,
-                state=Task.State.PENDING,
-                nonce=secrets.token_hex(32),
-            )
+            for i, (step, params, risk, expires_at) in enumerate(built):
+                Task.objects.create(
+                    host=host,
+                    run=run,
+                    requested_by=playbook.created_by,
+                    step_label=f"playbook: {playbook.name} → {step.definition.name}",
+                    action="_script",
+                    params=params,
+                    risk_level=risk,
+                    state=Task.State.PENDING if i == 0 else Task.State.BLOCKED,
+                    step_order=i,
+                    expires_at=expires_at,
+                    on_not_applicable=step.on_not_applicable,
+                    nonce=secrets.token_hex(32),
+                )
             created += 1
         except Exception:  # noqa: BLE001
             logger.exception("playbook %s failed for host %s", playbook.pk, host.pk)
