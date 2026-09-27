@@ -37,6 +37,7 @@ def _row(b: Playbook, *, failing: int | None = None) -> dict:
                 "risk": s.definition.risk_level,
                 "order": s.order,
                 "params_override": s.params_override or {},
+                "on_not_applicable": s.on_not_applicable,
             }
             for s in b.steps.select_related("definition").order_by("order")
         ],
@@ -71,7 +72,8 @@ def _high_risk_gate(request, playbook: Playbook, requested) -> Response | None:
 
 def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | None:
     """Replace the sequence. Entries are bare definition ids or
-    ``{"definition_id": ..., "params_override": {...}}`` dicts.
+    ``{"definition_id": ..., "params_override": {...},
+    "on_not_applicable": "skip" | "stop"}`` dicts.
     Returns an error Response or None.
 
     Eligibility is judged against the playbook's own allow_high_risk flag, so
@@ -86,10 +88,16 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
     definitions = []
     for entry in definition_ids:
         override = {}
+        on_not_applicable = "stop"
         did = entry
         if isinstance(entry, dict):
             did = entry.get("definition_id")
             override = entry.get("params_override") or {}
+            on_not_applicable = entry.get("on_not_applicable") or "stop"
+            if on_not_applicable not in ("skip", "stop"):
+                return Response(
+                    {"detail": f"{did}: on_not_applicable must be 'skip' or 'stop'"},
+                    status=400)
         d = TaskDefinition.objects.filter(pk=did).first()
         if d is None:
             return Response({"detail": f"unknown definition {did}"}, status=400)
@@ -99,12 +107,12 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
         err = validate_params_override(d.parsed_spec or {}, override)
         if err is not None:
             return Response({"detail": f"{d.name}: {err}"}, status=400)
-        definitions.append((d, override))
+        definitions.append((d, override, on_not_applicable))
     playbook.steps.all().delete()
     PlaybookStep.objects.bulk_create([
         PlaybookStep(playbook=playbook, definition=d, order=i,
-                     params_override=override)
-        for i, (d, override) in enumerate(definitions)
+                     params_override=override, on_not_applicable=ona)
+        for i, (d, override, ona) in enumerate(definitions)
     ])
     return None
 
@@ -315,7 +323,9 @@ def playbook_from_yaml(request):
         err = _validate_and_set_steps(
             playbook,
             [{"definition_id": str(s["definition"].id),
-              "params_override": s["params_override"]} for s in steps])
+              "params_override": s["params_override"],
+              "on_not_applicable": s.get("on_not_applicable") or "stop"}
+             for s in steps])
         if err is not None:
             transaction.set_rollback(True)
             return err

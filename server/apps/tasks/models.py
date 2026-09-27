@@ -224,6 +224,11 @@ class Task(models.Model):
     # (hunts set it from `stays_open`; other tasks leave it null — no change
     # in behaviour).
     expires_at = models.DateTimeField(null=True, blank=True)
+    # Set only on playbook chain tasks (phase 08a): what a not-applicable
+    # result means for the rest of the host's chain — "skip" continues,
+    # "stop" ends it. Direct-deploy tasks leave it blank; their
+    # not-applicable result already ends the task on its own.
+    on_not_applicable = models.CharField(max_length=8, blank=True, default="")
     # Soft-delete for the history view. The audit trail is immutable —
     # "deleting" a terminal task hides it from the feed, but the row
     # (who ran what, where, when, with what result) is never destroyed.

@@ -39,12 +39,11 @@ class M6ConstructsTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user("pb", password="pw")
 
-    def test_eligible_refuses_branches_and_relevant(self):
-        for src in (BRANCHING, RELEVANT):
-            ok, why = eligible(_definition(self.user, src))
-            self.assertFalse(ok)
-            self.assertIn("playbooks cannot run yet", why)
-        self.assertTrue(eligible(_definition(self.user, PLAIN))[0])
+    def test_eligible_accepts_m6_tasks(self):
+        # Phase 08a: a playbook runs each step as its own signed task, so
+        # branches and relevant: are carried whole — eligible() lets them in.
+        for src in (BRANCHING, RELEVANT, PLAIN):
+            self.assertTrue(eligible(_definition(self.user, src))[0])
 
     def test_flattening_paths_refuse(self):
         d = _definition(self.user, BRANCHING)

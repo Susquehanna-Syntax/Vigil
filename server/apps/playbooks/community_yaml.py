@@ -77,6 +77,9 @@ def to_yaml(playbook, *, author: str = "", created=None) -> str:
             entry["uid"] = str(step.definition.community_uid)
         if step.params_override:
             entry["params_override"] = step.params_override
+        # Only emitted when it is not the default, like allow_high_risk.
+        if step.on_not_applicable != "stop":
+            entry["on_not_applicable"] = step.on_not_applicable
         steps.append(entry)
     fields["steps"] = steps
     return dump(fields)
@@ -139,9 +142,18 @@ def parse(text: str) -> dict[str, Any]:
         if not isinstance(override, dict):
             raise ContentYamlError(
                 f"{_WHAT}: step {position} has a non-mapping 'params_override'.")
+        on_not_applicable = "stop"
+        if "on_not_applicable" in entry:
+            value = entry["on_not_applicable"]
+            if not isinstance(value, str) or value not in ("skip", "stop"):
+                raise ContentYamlError(
+                    f"{_WHAT}: step {position} has an invalid "
+                    "'on_not_applicable' (must be 'skip' or 'stop').")
+            on_not_applicable = value
         steps.append({"task": slug.strip(), "order": order,
                       "uid": parse_uid(entry, f"{_WHAT} step {position}"),
-                      "params_override": override})
+                      "params_override": override,
+                      "on_not_applicable": on_not_applicable})
 
     return {
         "uid": uid,
