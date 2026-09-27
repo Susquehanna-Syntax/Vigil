@@ -1239,24 +1239,16 @@ def definition_deploy(request, definition_id):
     if error:
         return Response({"error": error}, status=401)
 
-    base_spec = definition.parsed_spec
-    if base_spec.get("uses"):
-        # Copy the used tasks' current steps into their branches now, and
-        # judge the composite like any task (M6 phase 05b).
-        from .uses import UseError, expand_uses
-        copied: list[dict] = []
-        try:
-            base_spec = parse_and_validate(
-                expand_uses(definition.yaml_source, request.user, audit=copied))
-        except (UseError, SpecError) as exc:
-            return Response({"error": str(exc)}, status=400)
-        base_spec["uses_copied"] = copied
     raw_inputs = request.data.get("inputs") or {}
     if not isinstance(raw_inputs, dict):
         return Response({"error": "inputs must be an object"}, status=400)
+    # The one way a definition becomes a signed task (apps/tasks/dispatch.py):
+    # use: copied in, inputs resolved, inline playbooks expanded.
+    from apps.playbooks.expansion import PlaybookExpandError
+    from .dispatch import resolve_task_spec, task_params
     try:
-        spec = resolve_inputs(base_spec, raw_inputs)
-    except SpecError as exc:
+        spec = resolve_task_spec(definition, user=request.user, inputs=raw_inputs)
+    except (SpecError, PlaybookExpandError) as exc:
         return Response({"error": str(exc)}, status=400)
 
     # Per-deploy policy overrides — Schedule / Retry / Success Criteria. The
@@ -1276,15 +1268,7 @@ def definition_deploy(request, definition_id):
     except SpecError as exc:
         return Response({"error": str(exc)}, status=400)
 
-    actions = spec.get("actions") or []
-    # Inline any `type: playbook` calls — agents only ever receive concrete
-    # actions (a playbook reference is a server-side macro, not an agent verb).
-    from apps.playbooks.expansion import PlaybookExpandError, expand_actions
-    try:
-        actions, _expanded_risk = expand_actions(actions)
-    except PlaybookExpandError as exc:
-        return Response({"error": str(exc)}, status=400)
-    if not actions:
+    if not spec.get("actions"):
         return Response({"error": "definition has no actions"}, status=400)
 
     hosts = list(Host.objects.filter(id__in=host_ids))
@@ -1319,52 +1303,15 @@ def definition_deploy(request, definition_id):
                     status=400,
                 )
 
-    # Build the steps payload the agent will receive.  The full script is
-    # sent as a single signed task per host — the agent validates each
-    # action against its own local allowlist, so a compromised server
-    # cannot escalate beyond what each agent permits.
-    success_criteria = spec.get("success_criteria") or None
-    steps_payload = []
-    for i, action in enumerate(actions):
-        step = {
-            "id": action.get("id") or f"step{i + 1}",
-            "action": action["type"],
-            "params": action.get("params") or {},
-        }
-        # Optional when: predicate evaluated by the agent at execution
-        # time. Empty string means "always run" (back-compat).
-        when_expr = action.get("when") or ""
-        if when_expr:
-            step["when"] = when_expr
-        # Per-step timeout override. Omitted rather than sent as null when
-        # unset, so the agent simply falls back to its own default.
-        if action.get("timeout"):
-            step["timeout"] = action["timeout"]
-        # Success criteria apply to every step in the script. The agent
-        # evaluates these after each step's exit and marks the step failed
-        # if criteria are not met (even if the action itself succeeded).
-        if success_criteria:
-            step["success_criteria"] = success_criteria
-        steps_payload.append(step)
+    # The full script is sent as a single signed task per host — the agent
+    # validates each action against its own local allowlist, so a compromised
+    # server cannot escalate beyond what each agent permits.
+    try:
+        params, risk, expires_at = task_params(spec)
+    except (SpecError, PlaybookExpandError) as exc:
+        return Response({"error": str(exc)}, status=400)
+    steps_payload = params["steps"]
 
-    # update_agent replaces the whole agent executable. Stamp the verified
-    # SHA-256 of each platform binary into the step so the agent can check the
-    # download against a digest carried inside this Ed25519-signed task — a
-    # TLS-only transfer is not a strong enough proof for that swap.
-    if any(s["action"] == "update_agent" for s in steps_payload):
-        from apps.agent_dist.views import all_binary_sha256
-
-        sha_map = all_binary_sha256()
-        for s in steps_payload:
-            if s["action"] == "update_agent":
-                s["params"] = {**(s.get("params") or {}), "binary_sha256": sha_map}
-
-    # Effective risk is the highest risk across all actions.
-    from apps.playbooks.expansion import _max_risk as _mr
-    risk = _mr(spec.get("risk", "standard"), _expanded_risk)
-
-    # Schedule + retry policy are snapshotted onto each Task so a later edit
-    # of the TaskDefinition cannot retroactively change in-flight deploys.
     schedule_snapshot = spec.get("schedule") or {}
     retry_cfg = ((spec.get("on_failure") or {}).get("retry") or {})
     max_retries = int(retry_cfg.get("attempts", 0))
@@ -1385,16 +1332,13 @@ def definition_deploy(request, definition_id):
 
     # Hunts stop waiting for offline hosts after their stays_open (phase 06b);
     # non-hunt tasks never expire while pending.
-    from .spec import hunt_expiry
-    expires_at = hunt_expiry(steps_payload, now())
-
     with transaction.atomic():
         run = TaskRun.objects.create(
             definition=definition,
             name_snapshot=definition.name,
             requested_by=request.user,
             host_count=len(hosts),
-            step_count=len(actions),
+            step_count=len(steps_payload),
             state=TaskRun.State.RUNNING,
         )
 
@@ -1413,7 +1357,7 @@ def definition_deploy(request, definition_id):
                 # the gated step is silently skipped on every run (#17).
                 # Always sent, even when empty, so "no inputs declared" is
                 # distinguishable from "inputs lost in the pipeline".
-                params=_deploy_params(spec, steps_payload),
+                params=params,
                 risk_level=risk,
                 state=Task.State.PENDING,
                 not_before=hold_until,
