@@ -116,3 +116,52 @@ def task_params(
     risk = _max_risk(spec.get("risk", "standard"), expanded_risk)
     expires_at = hunt_expiry(steps_payload, _now() if now is None else now)
     return _deploy_params(spec, steps_payload), risk, expires_at
+
+
+def build_playbook_steps(playbook, *, user) -> list[tuple]:
+    """Every step of *playbook*, built as its own signed task.
+
+    Returns ``[(playbook_step, params, risk, expires_at), …]`` in order.
+    Raises (``SpecError`` / ``PlaybookExpandError``) if any step cannot be
+    built, so a caller never writes half a chain.
+    """
+    built = []
+    for step in playbook.steps.select_related("definition").order_by("order"):
+        spec = resolve_task_spec(step.definition, user=user,
+                                 params_override=step.params_override)
+        params, risk, expires_at = task_params(spec)
+        built.append((step, params, risk, expires_at))
+    return built
+
+
+def create_chain(run, host, built, *, requested_by, label: str) -> list:
+    """One task per built playbook step on *host*, chained: the first
+    pending, the rest blocked until the one before it finishes."""
+    import secrets
+
+    from .models import Task
+
+    tasks = []
+    for i, (step, params, risk, expires_at) in enumerate(built):
+        tasks.append(Task.objects.create(
+            host=host,
+            run=run,
+            requested_by=requested_by,
+            step_label=f"{label} → {step.definition.name}",
+            action="_script",
+            params=params,
+            risk_level=risk,
+            state=Task.State.PENDING if i == 0 else Task.State.BLOCKED,
+            step_order=i,
+            expires_at=expires_at,
+            on_not_applicable=step.on_not_applicable,
+            nonce=secrets.token_hex(32),
+        ))
+    return tasks
+
+
+def highest_risk(built) -> str:
+    risk = "low"
+    for _step, _params, step_risk, _expires in built:
+        risk = _max_risk(risk, step_risk)
+    return risk

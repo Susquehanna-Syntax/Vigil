@@ -18,69 +18,47 @@ logger = logging.getLogger("vigil.automations")
 _SEVERITY_RANK = {"info": 0, "warning": 1, "critical": 2}
 
 
-def _steps_for(automation) -> tuple[list[dict], str] | None:
-    """Return (agent_steps, risk) for the automation's action, or None if the
-    action is unresolvable (deleted definition, unknown playbook, ineligible)."""
-    from apps.playbooks.expansion import PlaybookExpandError, expand_actions, _max_risk
-    from apps.playbooks.models import Playbook, build_agent_steps
+def _build_for(automation):
+    """What the automation dispatches, built the one way every path builds
+    tasks (apps/tasks/dispatch.py), or None if it cannot be built (deleted
+    definition, unknown playbook, a step that no longer validates).
 
-    if automation.action_kind == automation.ActionKind.PLAYBOOK:
-        if automation.playbook_id is None:
-            logger.warning("automation %s: playbook missing or deleted", automation.pk)
-            return None
-        playbook = (Playbook.objects
-                    .filter(pk=automation.playbook_id)
-                    .prefetch_related("steps__definition")
-                    .first())
-        if playbook is None:
-            logger.warning("automation %s: playbook %s no longer exists",
-                           automation.pk, automation.playbook_id)
-            return None
-        try:
-            return build_agent_steps(playbook)
-        except PlaybookExpandError as exc:
-            logger.warning("automation %s: playbook expand failed: %s",
-                           automation.pk, exc)
-            return None
+    Returns ``(kind, built, risk)``: for a task automation ``built`` is
+    ``(params, risk, expires_at)`` — one signed task per host; for a playbook
+    automation it is the list from ``build_playbook_steps`` — one chain per
+    host. Either way each task keeps its own branches, relevant: block and
+    step ids.
+    """
+    from apps.playbooks.models import Playbook
+    from apps.tasks.dispatch import (build_playbook_steps, highest_risk,
+                                     resolve_task_spec, task_params)
 
-    definition = automation.task_definition
-    if definition is None:
-        return None
-    spec = definition.parsed_spec or {}
-    from apps.playbooks.expansion import unsupported_in_playbooks
-    blocked = unsupported_in_playbooks(spec)
-    if blocked:
-        # This path flattens the task's actions, which would drop its branch
-        # flow and relevant: block. Refuse rather than run it wrongly.
-        logger.warning("automation %s: task %s uses %s, which automations cannot run yet",
-                       automation.pk, definition.name, ", ".join(blocked))
-        return None
-    actions_src = spec.get("actions") or []
-    override = automation.params_override or {}
-    if override:
-        actions_src = [
-            {**a, "params": {**(a.get("params") or {}),
-                             **override.get(str(idx), {})}}
-            for idx, a in enumerate(actions_src)
-        ]
     try:
-        actions, risk = expand_actions(actions_src)
-    except PlaybookExpandError as exc:
-        logger.warning("automation %s: task expand failed: %s", automation.pk, exc)
+        if automation.action_kind == automation.ActionKind.PLAYBOOK:
+            if automation.playbook_id is None:
+                logger.warning("automation %s: playbook missing or deleted", automation.pk)
+                return None
+            playbook = (Playbook.objects.filter(pk=automation.playbook_id)
+                        .prefetch_related("steps__definition").first())
+            if playbook is None:
+                logger.warning("automation %s: playbook %s no longer exists",
+                               automation.pk, automation.playbook_id)
+                return None
+            built = build_playbook_steps(playbook, user=automation.created_by)
+            if not built:
+                return None
+            return "playbook", built, highest_risk(built)
+
+        definition = automation.task_definition
+        if definition is None:
+            return None
+        spec = resolve_task_spec(definition, user=automation.created_by,
+                                 params_override=automation.params_override or {})
+        params, risk, expires_at = task_params(spec)
+        return "task", (params, risk, expires_at), risk
+    except Exception as exc:  # noqa: BLE001 — a broken target must not break the trigger
+        logger.warning("automation %s: could not build its task: %s", automation.pk, exc)
         return None
-    steps = []
-    success = spec.get("success_criteria") or None
-    for i, a in enumerate(actions):
-        # Keep the task's own ids: its when:/${{ steps.<id> }} references name
-        # them. They are unique within one task.
-        step = {"id": a.get("id") or f"step{i + 1}", "action": a["type"],
-                "params": a.get("params") or {}}
-        if a.get("when"):
-            step["when"] = a["when"]
-        if success:
-            step["success_criteria"] = success
-        steps.append(step)
-    return steps, _max_risk(spec.get("risk", "standard"), risk)
 
 
 def _resolve_hosts(automation, event_host):
@@ -119,12 +97,10 @@ def run_automation(automation, *, event_host=None) -> int:
         if automation.dispatch_mode == automation.DispatchMode.ROLLOUT:
             return _start_rollout_for(automation)
 
-        built = _steps_for(automation)
-        if not built:
+        target = _build_for(automation)
+        if not target:
             return 0
-        steps, risk = built
-        if not steps:
-            return 0
+        kind, built, risk = target
 
         # The gate playbooks have and automations did not. `risk` was computed,
         # stamped onto the Task for the record, and never consulted — so an
@@ -156,20 +132,27 @@ def run_automation(automation, *, event_host=None) -> int:
             name_snapshot=f"{automation.name} → {label}"[:120],
             requested_by=automation.created_by,
             host_count=len(hosts),
-            step_count=len(steps),
+            step_count=len(built) if kind == "playbook" else len(built[0]["steps"]),
         )
         for host in hosts:
-            Task.objects.create(
-                host=host,
-                run=run,
-                requested_by=automation.created_by,
-                step_label=f"automation: {automation.name} → {label}",
-                action="_script",
-                params={"steps": steps},
-                risk_level=risk,
-                state=Task.State.PENDING,
-                nonce=secrets.token_hex(32),
-            )
+            if kind == "playbook":
+                from apps.tasks.dispatch import create_chain
+                create_chain(run, host, built, requested_by=automation.created_by,
+                             label=f"automation: {automation.name} → {label}")
+            else:
+                params, task_risk, expires_at = built
+                Task.objects.create(
+                    host=host,
+                    run=run,
+                    requested_by=automation.created_by,
+                    step_label=f"automation: {automation.name} → {label}",
+                    action="_script",
+                    params=params,
+                    risk_level=task_risk,
+                    state=Task.State.PENDING,
+                    expires_at=expires_at,
+                    nonce=secrets.token_hex(32),
+                )
             created += 1
         if created:
             automation.last_run = now()

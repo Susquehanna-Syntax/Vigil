@@ -16,7 +16,6 @@ from apps.playbooks.expansion import PlaybookExpandError, expand_actions
 from apps.playbooks.models import (
     Playbook,
     PlaybookStep,
-    build_agent_steps,
     dispatch_to_host,
     eligible,
 )
@@ -355,17 +354,17 @@ class PlaybookChainEligibilityTests(TestCase):
         d = _definition(self.user, BRANCHING)
         pb = Playbook.objects.create(name="PB", created_by=self.user)
         PlaybookStep.objects.create(playbook=pb, definition=d, order=0)
-        with self.assertRaises(PlaybookExpandError):
-            build_agent_steps(pb)
+        # Only an inline `type: playbook` inside a task body still flattens.
         with self.assertRaises(PlaybookExpandError):
             expand_actions([{"type": "playbook", "params": {"name": "PB"}}])
 
-    def test_automation_still_refuses_m6_tasks(self):
-        from apps.automations.engine import _steps_for
+    def test_automation_runs_m6_tasks_whole(self):
+        from apps.automations.engine import _build_for
         from apps.automations.models import Automation
 
-        a = Automation(
-            action_kind=Automation.ActionKind.TASK,
-            task_definition=_definition(self.user, RELEVANT),
-        )
-        self.assertIsNone(_steps_for(a))
+        a = Automation(action_kind=Automation.ActionKind.TASK,
+                       task_definition=_definition(self.user, RELEVANT),
+                       created_by=self.user)
+        kind, (params, _risk, _expires), _ = _build_for(a)
+        self.assertEqual(kind, "task")
+        self.assertIn("relevant", params)

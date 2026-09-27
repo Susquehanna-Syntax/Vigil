@@ -188,7 +188,7 @@ class PlaybookApiTests(TestCase):
                          {"0": {"service_name": "postgres"}})
 
     def test_step_params_override_applies_at_dispatch(self):
-        from .models import build_agent_steps
+        from apps.tasks.dispatch import build_playbook_steps
         d = make_definition(actions=[
             {"type": "restart_service", "params": {"service_name": "nginx"}},
             {"type": "pkg_update", "params": {}},
@@ -197,7 +197,8 @@ class PlaybookApiTests(TestCase):
         step = b.steps.get()
         step.params_override = {"0": {"service_name": "postgres"}}
         step.save()
-        steps, _ = build_agent_steps(b)
+        (_step, params, _risk, _expires), = build_playbook_steps(b, user=self.admin)
+        steps = params["steps"]
         self.assertEqual(steps[0]["params"], {"service_name": "postgres"})
         self.assertEqual(steps[1]["params"], {})
 

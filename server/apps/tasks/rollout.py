@@ -71,21 +71,14 @@ def _validate_definition(definition) -> dict:
     inputs has no value to fill them with, so it is refused at start rather
     than discovered mid-rollout. Returns the resolved spec.
     """
-    spec = definition.parsed_spec or {}
+    from apps.playbooks.expansion import PlaybookExpandError
+
+    from .dispatch import resolve_task_spec
     try:
-        if spec.get("uses"):
-            # Re-derived on every wave, so a later wave carries the used
-            # tasks' steps as they are when that wave is dispatched.
-            from .uses import UseError, expand_uses
-            copied: list[dict] = []
-            try:
-                spec = parse_and_validate(
-                    expand_uses(definition.yaml_source, definition.owner, audit=copied))
-            except UseError as exc:
-                raise SpecError(str(exc)) from exc
-            spec["uses_copied"] = copied
-        return resolve_inputs(spec, {})
-    except SpecError as exc:
+        # Re-derived on every wave, so a later wave carries any used tasks'
+        # steps as they are when that wave is dispatched.
+        return resolve_task_spec(definition, user=definition.owner)
+    except (SpecError, PlaybookExpandError) as exc:
         raise ValueError(f"definition {definition.name!r} cannot roll out: {exc}") from exc
 
 
@@ -209,7 +202,6 @@ def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
     the gate then sees 0/0, passes, validates, and advances.
     Returns the number of tasks created.
     """
-    from apps.playbooks.expansion import _max_risk, expand_actions
     from apps.hosts.models import Host
 
     enabled = list(
@@ -219,62 +211,65 @@ def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
     host_ids = plan.get(rollout.current_wave.id, [])
     hosts = list(Host.objects.filter(id__in=host_ids))
 
-    actions = spec.get("actions") or []
-    actions, expanded_risk = expand_actions(actions)
-    if not actions:
-        raise ValueError("definition has no actions")
+    from .dispatch import build_playbook_steps, create_chain, task_params
 
-    steps_payload = []
-    for i, action in enumerate(actions):
-        step = {
-            "id": action.get("id") or f"step{i + 1}",
-            "action": action["type"],
-            "params": action.get("params") or {},
-        }
-        when_expr = action.get("when") or ""
-        if when_expr:
-            step["when"] = when_expr
-        if action.get("timeout"):
-            step["timeout"] = action["timeout"]
-        steps_payload.append(step)
-
-    risk = _max_risk(spec.get("risk", "standard"), expanded_risk)
-    schedule_snapshot = spec.get("schedule") or {}
-    retry_cfg = (spec.get("on_failure") or {}).get("retry") or {}
-    max_retries = int(retry_cfg.get("attempts", 0))
-    retry_delay = int(retry_cfg.get("delay_seconds", 0))
-
-    run = TaskRun.objects.create(
-        definition=rollout.definition,   # None for a playbook rollout
-        name_snapshot=rollout.target_name,
-        requested_by=rollout.created_by,
-        rollout=rollout,
-        wave=rollout.current_wave,
-        host_count=len(hosts),
-        step_count=len(actions),
-        state=TaskRun.State.RUNNING,
-    )
-    # Hunts stop waiting for offline hosts after their stays_open (phase 06b);
-    # non-hunt tasks never expire while pending.
-    from .spec import hunt_expiry
-    expires_at = hunt_expiry(steps_payload, now())
-    for host in hosts:
-        Task.objects.create(
-            host=host,
+    if rollout.action_kind == PatchRollout.ActionKind.PLAYBOOK:
+        # A playbook rollout runs each playbook step as its own signed task,
+        # chained per host — the same as any other playbook dispatch.
+        built = build_playbook_steps(rollout.playbook, user=rollout.created_by)
+        if not built:
+            raise ValueError("playbook has no steps")
+        run = TaskRun.objects.create(
+            definition=None,
+            name_snapshot=rollout.target_name,
             requested_by=rollout.created_by,
-            run=run,
-            step_order=0,
-            step_label=rollout.target_name,
-            action="_script",
-            params=_deploy_params(spec, steps_payload),
-            risk_level=risk,
-            state=Task.State.PENDING,
-            expires_at=expires_at,
-            nonce=secrets.token_hex(32),
-            schedule=schedule_snapshot,
-            max_retries=max_retries,
-            retry_delay_seconds=retry_delay,
+            rollout=rollout,
+            wave=rollout.current_wave,
+            host_count=len(hosts),
+            step_count=len(built),
+            state=TaskRun.State.RUNNING,
         )
+        steps_payload = []
+        for host in hosts:
+            create_chain(run, host, built, requested_by=rollout.created_by,
+                         label=rollout.target_name)
+        for _step, params, _risk, _expires in built:
+            steps_payload.extend(params["steps"])
+    else:
+        params, risk, expires_at = task_params(spec)
+        steps_payload = params["steps"]
+        schedule_snapshot = spec.get("schedule") or {}
+        retry_cfg = (spec.get("on_failure") or {}).get("retry") or {}
+        max_retries = int(retry_cfg.get("attempts", 0))
+        retry_delay = int(retry_cfg.get("delay_seconds", 0))
+
+        run = TaskRun.objects.create(
+            definition=rollout.definition,
+            name_snapshot=rollout.target_name,
+            requested_by=rollout.created_by,
+            rollout=rollout,
+            wave=rollout.current_wave,
+            host_count=len(hosts),
+            step_count=len(steps_payload),
+            state=TaskRun.State.RUNNING,
+        )
+        for host in hosts:
+            Task.objects.create(
+                host=host,
+                requested_by=rollout.created_by,
+                run=run,
+                step_order=0,
+                step_label=rollout.target_name,
+                action="_script",
+                params=params,
+                risk_level=risk,
+                state=Task.State.PENDING,
+                expires_at=expires_at,
+                nonce=secrets.token_hex(32),
+                schedule=schedule_snapshot,
+                max_retries=max_retries,
+                retry_delay_seconds=retry_delay,
+            )
     text_steps = _hunt_text_step_ids(steps_payload)
     if text_steps:
         _emit_hunt_text_requested(run, rollout.created_by, text_steps)
@@ -285,12 +280,17 @@ def _wave_stats(rollout: PatchRollout) -> dict:
     """total / reported / failed over the tasks dispatched for the
     *current* wave only (all its runs — a resumed wave keeps its history).
     Earlier waves' results must not bleed into this wave's failure gate."""
-    tasks = Task.objects.filter(
-        run__rollout=rollout, run__wave=rollout.current_wave, step_order=0
-    )
-    total = tasks.count()
-    reported = tasks.filter(state__in=TERMINAL_STATES).count()
-    failed = tasks.filter(state__in=FAILURE_STATES).count()
+    # Counted per host, not per task: a playbook rollout gives each host a
+    # chain of tasks, and a host has reported only when its whole chain is
+    # done — and failed if any task in it failed.
+    per_host: dict = {}
+    for host_id, state in Task.objects.filter(
+        run__rollout=rollout, run__wave=rollout.current_wave,
+    ).values_list("host_id", "state"):
+        per_host.setdefault(host_id, set()).add(state)
+    total = len(per_host)
+    reported = sum(1 for states in per_host.values() if states <= set(TERMINAL_STATES))
+    failed = sum(1 for states in per_host.values() if states & set(FAILURE_STATES))
     return {"total": total, "reported": reported, "failed": failed}
 
 

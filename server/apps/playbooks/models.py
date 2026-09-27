@@ -179,11 +179,10 @@ def eligible(definition, *, allow_high_risk: bool = False) -> tuple[bool, str]:
     pass it from the playbook being validated, never hardcode True: the
     default is what keeps an un-opted-in playbook safe.
 
-    Phase 08a: playbooks run each step as its own signed task with all of
-    that task's logic, so the M6 constructs (``flow`` / ``relevant`` /
-    ``uses``) are no longer refused here. The flatten paths that still drop
-    them — ``build_agent_steps`` and ``expand_actions`` (automations,
-    rollouts) — keep their own guards until 08a2.
+    Playbooks, automations and rollouts run each task as its own signed task
+    with all of its logic (M6 08a/08a2), so ``flow`` / ``relevant`` /
+    ``uses`` are fine here. Only inline ``type: playbook`` inside a task body
+    still flattens, and ``expand_actions`` refuses those constructs there.
     """
     if definition.risk_level == definition.RiskLevel.HIGH and not allow_high_risk:
         return False, "high-risk definitions cannot be playbooks"
@@ -191,53 +190,6 @@ def eligible(definition, *, allow_high_risk: bool = False) -> tuple[bool, str]:
     if any(a.get("type") == "update_agent" for a in actions):
         return False, "update_agent steps cannot be playbooks"
     return True, ""
-
-
-def build_agent_steps(playbook: "Playbook") -> tuple[list[dict], str]:
-    """The concrete agent steps for a playbook's whole sequence, with any
-    nested ``type: playbook`` calls expanded. Returns ``(steps, max_risk)``."""
-    from .expansion import expand_actions
-
-    steps: list[dict] = []
-    max_risk = "low"
-    i = 0
-    from .expansion import PlaybookExpandError, unsupported_in_playbooks
-
-    for step in playbook.steps.select_related("definition").order_by("order"):
-        spec = step.definition.parsed_spec or {}
-        blocked = unsupported_in_playbooks(spec)
-        if blocked:
-            # A task saved before this check (or edited after it joined the
-            # playbook) must still never be flattened.
-            raise PlaybookExpandError(
-                f"task {step.definition.name!r} uses {', '.join(blocked)}, "
-                f"which playbooks cannot run yet")
-        actions_src = spec.get("actions") or []
-        override = step.params_override or {}
-        if override:
-            actions_src = [
-                {**a, "params": {**(a.get("params") or {}),
-                                 **override.get(str(idx), {})}}
-                for idx, a in enumerate(actions_src)
-            ]
-        actions, risk = expand_actions(actions_src)
-        success_criteria = spec.get("success_criteria") or None
-        for action in actions:
-            i += 1
-            agent_step = {
-                "id": f"step{i}",
-                "action": action["type"],
-                "params": action.get("params") or {},
-            }
-            if action.get("when"):
-                agent_step["when"] = action["when"]
-            if success_criteria:
-                agent_step["success_criteria"] = success_criteria
-            steps.append(agent_step)
-        from .expansion import _max_risk
-        max_risk = _max_risk(max_risk, spec.get("risk", "standard"))
-        max_risk = _max_risk(max_risk, risk)
-    return steps, max_risk
 
 
 def dispatch_to_host(host, *, playbooks=None) -> int:
@@ -256,7 +208,7 @@ def dispatch_to_host(host, *, playbooks=None) -> int:
     """
     import logging
 
-    from apps.tasks.dispatch import resolve_task_spec, task_params
+    from apps.tasks.dispatch import build_playbook_steps, create_chain
     from apps.tasks.models import Task, TaskRun
 
     logger = logging.getLogger("vigil.playbooks")
@@ -282,13 +234,7 @@ def dispatch_to_host(host, *, playbooks=None) -> int:
             # Build every step's signed task before writing anything: a
             # playbook whose second step no longer builds must not leave a
             # half-run on the host.
-            built = []
-            for step in steps:
-                spec = resolve_task_spec(
-                    step.definition, user=playbook.created_by,
-                    params_override=step.params_override)
-                params, risk, expires_at = task_params(spec)
-                built.append((step, params, risk, expires_at))
+            built = build_playbook_steps(playbook, user=playbook.created_by)
 
             # One run per playbook per host: enrollment dispatch is per-host by
             # nature, and a run keeps the result visible in history. The first
@@ -301,21 +247,8 @@ def dispatch_to_host(host, *, playbooks=None) -> int:
                 host_count=1,
                 step_count=len(built),
             )
-            for i, (step, params, risk, expires_at) in enumerate(built):
-                Task.objects.create(
-                    host=host,
-                    run=run,
-                    requested_by=playbook.created_by,
-                    step_label=f"playbook: {playbook.name} → {step.definition.name}",
-                    action="_script",
-                    params=params,
-                    risk_level=risk,
-                    state=Task.State.PENDING if i == 0 else Task.State.BLOCKED,
-                    step_order=i,
-                    expires_at=expires_at,
-                    on_not_applicable=step.on_not_applicable,
-                    nonce=secrets.token_hex(32),
-                )
+            create_chain(run, host, built, requested_by=playbook.created_by,
+                         label=f"playbook: {playbook.name}")
             created += 1
         except Exception:  # noqa: BLE001
             logger.exception("playbook %s failed for host %s", playbook.pk, host.pk)
