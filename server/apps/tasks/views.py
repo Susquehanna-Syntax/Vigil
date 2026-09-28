@@ -735,6 +735,71 @@ def _maybe_capture_inventory_column(task: Task, output: str) -> None:
     inv.save(update_fields=["custom_columns", "updated_at"])
 
 
+#: How a finished task's state reads to a playbook branch condition.
+_BRANCH_STATUS = {
+    Task.State.COMPLETED: "ok",
+    Task.State.SKIPPED: "skipped",
+    Task.State.NOT_APPLICABLE: "not_applicable",
+    Task.State.FAILED: "failed",
+    Task.State.REJECTED: "failed",
+    Task.State.EXPIRED: "failed",
+}
+
+
+def _merged_outputs(task: Task) -> dict:
+    """Every output the task's steps produced, in order — a later step wins
+    on a name clash. relevant: probes are evidence, not outputs."""
+    merged: dict = {}
+    for step in (task.result_data or {}).get("steps") or []:
+        if isinstance(step, dict) and not str(step.get("id", "")).startswith("relevant-"):
+            result = step.get("result")
+            if isinstance(result, dict):
+                merged.update(result)
+    return merged
+
+
+def _release_next(run: TaskRun, host) -> None:
+    """Release the host's next runnable task in *run* (M6 08b).
+
+    Walks the host's blocked tasks in order. A task with a playbook-branch
+    guard is judged against the finished steps before it: false → it is
+    skipped ("branch … not taken") and the walk goes on; true, or no guard →
+    it becomes pending and the walk stops. A guard that cannot be evaluated
+    fails that task, and the rest of the chain follows the failure path.
+    """
+    from .expression import evaluate
+
+    tasks = list(Task.objects.filter(run=run, host=host).order_by("step_order"))
+    context = {
+        t.step_ref: {"status": _BRANCH_STATUS[t.state], "result": _merged_outputs(t)}
+        for t in tasks if t.step_ref and t.state in _BRANCH_STATUS
+    }
+    for task in tasks:
+        if task.state != Task.State.BLOCKED:
+            continue
+        if task.guard:
+            try:
+                runnable = bool(evaluate(task.guard, {"steps": context}))
+            except Exception as exc:  # noqa: BLE001 — recorded on the task
+                task.state = Task.State.FAILED
+                task.completed_at = now()
+                task.result_output = f"[ERROR] branch condition could not be evaluated: {exc}"
+                task.save(update_fields=["state", "completed_at", "result_output"])
+                _advance_run_sequence(task)
+                return
+            if not runnable:
+                task.state = Task.State.SKIPPED
+                task.completed_at = now()
+                task.result_output = f"[SKIPPED] branch {task.branch} not taken"
+                task.save(update_fields=["state", "completed_at", "result_output"])
+                if task.step_ref:
+                    context[task.step_ref] = {"status": "skipped", "result": {}}
+                continue
+        task.state = Task.State.PENDING
+        task.save(update_fields=["state"])
+        return
+
+
 def _advance_run_sequence(finished_task: Task) -> None:
     """After a task in a run finishes, unblock the next step on that host.
 
@@ -757,11 +822,8 @@ def _advance_run_sequence(finished_task: Task) -> None:
     if finished_task.state == Task.State.NOT_APPLICABLE:
         if finished_task.on_not_applicable == "skip":
             # This playbook step said "not applicable, go on to the next":
-            # unblock the next BLOCKED sibling exactly like COMPLETED.
-            next_step = sibling_qs.filter(state=Task.State.BLOCKED).first()
-            if next_step:
-                next_step.state = Task.State.PENDING
-                next_step.save(update_fields=["state"])
+            # release the next runnable step exactly like COMPLETED.
+            _release_next(run, finished_task.host)
         else:
             # The task did not apply to this host (or the step chose
             # "stop"): its remaining steps never run (unlike a failure,
@@ -771,10 +833,7 @@ def _advance_run_sequence(finished_task: Task) -> None:
                 completed_at=now(),
             )
     elif finished_task.state in (Task.State.COMPLETED, Task.State.SKIPPED):
-        next_step = sibling_qs.filter(state=Task.State.BLOCKED).first()
-        if next_step:
-            next_step.state = Task.State.PENDING
-            next_step.save(update_fields=["state"])
+        _release_next(run, finished_task.host)
     else:
         # Failure path — try to retry the same step before aborting the chain.
         if (

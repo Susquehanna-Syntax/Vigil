@@ -228,6 +228,13 @@ class Task(models.Model):
     # result means for the rest of the host's chain — "skip" continues,
     # "stop" ends it. Direct-deploy tasks leave it blank; their
     # not-applicable result already ends the task on its own.
+    # Playbook-branch fields (M6 08b), empty outside a branching playbook:
+    # which playbook step this task is, where it sits in the playbook's
+    # if/then/else tree, and the condition (on earlier steps' results) that
+    # must hold for it to run — evaluated by the server before it is released.
+    step_ref = models.CharField(max_length=60, blank=True, default="")
+    branch = models.CharField(max_length=120, blank=True, default="")
+    guard = models.TextField(blank=True, default="")
     on_not_applicable = models.CharField(max_length=8, blank=True, default="")
     # Soft-delete for the history view. The audit trail is immutable —
     # "deleting" a terminal task hides it from the feed, but the row
