@@ -116,7 +116,7 @@ class HuntResultsModuleTests(SimpleTestCase):
         self.assertIn("actionsEl.hidden = true", tasks)
         self.assertIn("actionsEl.hidden = !_runHasHuntSteps(run)", tasks)
         # M4 per-step results now render in the task-detail cards too.
-        self.assertIn("_stepResultsHtml(task.result_data)", tasks)
+        self.assertIn("_stepResultsHtml(task.result_data, task.result_output)", tasks)
 
     def test_matches_cells_use_escaped_string_interpolation(self):
         hunts = _src("vigil-hunts.js")

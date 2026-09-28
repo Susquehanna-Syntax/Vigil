@@ -528,9 +528,22 @@ function defCardHtml(def, opts) {
           ${(def.parsed_spec || {}).relevant ? '<span class="chip">applies when…</span>' : ''}
           ${attribution}
         </div>
+        ${_defLastRunHtml(def.last_run)}
       </div>
       <div class="def-card-footer">${buttons}</div>
     </div>`;
+}
+
+// The task's most recent run, as a small donut and a line of counts.
+function _defLastRunHtml(last) {
+  if (!last || !last.hosts || typeof donutHtml !== 'function') return '';
+  const segs = stateSegments(last.states);
+  const words = segs.map(s => `${s.value} ${s.label}`).join(', ');
+  const when = last.created_at ? new Date(last.created_at).toLocaleDateString() : '';
+  return `<div class="def-card-run" title="${escAttr('Last run: ' + words)}">
+    ${donutHtml(segs, { size: 30, legend: false, title: 'Last run' })}
+    <span>Last run${when ? ' ' + escHtml(when) : ''}: ${escHtml(words)}</span>
+  </div>`;
 }
 
 const LIBRARY_EMPTY_HTML = `
@@ -949,11 +962,23 @@ async function openTaskDetail(runId) {
       return;
     }
 
+    if (run.summary && typeof runSummaryHtml === 'function') {
+      const summaryBox = document.createElement('div');
+      summaryBox.innerHTML = runSummaryHtml(run.summary);
+      stepsEl.appendChild(summaryBox);
+    }
+    if (run.flow_snapshot && typeof flowRunHtml === 'function') {
+      const flowBox = document.createElement('div');
+      flowBox.innerHTML = flowRunHtml(run);
+      stepsEl.appendChild(flowBox);
+    }
+
     for (const task of run.tasks) {
       const color = _TASK_STATE_COLORS[task.state] || 'var(--text-3)';
       const output = (task.result_output || '').trim();
 
       const card = _tdEl('div', 'background:var(--s1);border-radius:var(--r-md);padding:14px 16px;');
+      card.dataset.host = String(task.host);
 
       const hdr = _tdEl('div', 'display:flex;align-items:center;gap:10px;margin-bottom:6px;');
       hdr.appendChild(_tdEl('span', 'font-size:13px;font-weight:600;color:var(--text-1);', task.step_label || task.action));
@@ -968,22 +993,36 @@ async function openTaskDetail(runId) {
         (task.completed_at ? ' · ' + new Date(task.completed_at).toLocaleString() : '');
       card.appendChild(hostLine);
 
+      // Per-step rows first — what happened, in words — and the raw output
+      // folded away under them when there are rows to read instead.
+      const results = document.createElement('div');
+      results.innerHTML = _stepResultsHtml(task.result_data, task.result_output);
+      const hasRows = !!results.innerHTML;
+      if (hasRows) card.appendChild(results);
+
       if (output) {
         const pre = _tdEl('pre', "margin:0;padding:10px 12px;background:var(--s0);border-radius:var(--r-sm);" +
           "font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-2);" +
           'white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;');
         pre.textContent = output;
-        card.appendChild(pre);
+        if (hasRows) {
+          const more = document.createElement('details');
+          more.className = 'step-output-more';
+          const summary = document.createElement('summary');
+          summary.textContent = 'Full output';
+          more.append(summary, pre);
+          card.appendChild(more);
+        } else {
+          card.appendChild(pre);
+        }
       } else if (task.state === 'completed' || task.state === 'failed') {
         card.appendChild(_tdEl('div', 'font-size:11px;color:var(--text-3);font-style:italic;', 'No output captured.'));
       }
 
-      const results = document.createElement('div');
-      results.innerHTML = _stepResultsHtml(task.result_data);
-      card.appendChild(results);
-
       stepsEl.appendChild(card);
     }
+
+    if (typeof wireRunSummary === 'function') wireRunSummary(stepsEl, run.summary);
 
     const huntBtn = document.getElementById('task-detail-hunt');
     if (huntBtn) {

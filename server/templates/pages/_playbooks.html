@@ -77,7 +77,7 @@
 
 <!-- ── Playbook editor modal ─────────────────────────────────────────── -->
 <div class="modal-overlay" id="bl-editor-overlay"></div>
-<div class="modal modal-wide" id="bl-editor-modal" data-editing="">
+<div class="modal modal-wide modal-flow" id="bl-editor-modal" data-editing="">
   <div class="modal-title">
     <span id="bl-editor-title">New playbook</span>
     <button class="modal-close" id="bl-cancel-btn" aria-label="Close">
@@ -94,9 +94,9 @@
     <input type="text" class="form-control" id="bl-desc" placeholder="What this playbook does" maxlength="2000">
   </div>
   <div class="bl-field">
-    <label>Steps — run top to bottom</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Each step is a task. They run in order on the target machine, and a failed step stops the ones after it.">?</span>
+    <label>Steps</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Each step is a task, run top to bottom on the target machine. Add an If / else to choose between tasks from an earlier step's result — its status (ok, failed, not applicable, skipped) or any output its task reports.&#10;&#10;Not applicable: stop here, or go on to the next step.&#10;If it fails: stop here, or carry on so a later branch can recover.&#10;&#10;Colours are yours: use them to group steps that belong together.">?</span>
     <div class="bl-editor-steps" id="bl-editor-steps"></div>
-    <button class="btn btn-mint btn-sm" id="bl-add-step-btn" type="button" style="margin-top:8px;">+ Add step</button>
+    <div id="bl-flow-analysis"></div>
   </div>
   <div class="bl-field">
     <label>Runs on hosts tagged <span style="color:var(--text-3);font-weight:400;">(comma-separated; blank = every approved host)</span></label>

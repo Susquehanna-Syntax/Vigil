@@ -39,6 +39,8 @@ def _row(b: Playbook, *, failing: int | None = None) -> dict:
                 "params_override": s.params_override or {},
                 "on_not_applicable": s.on_not_applicable,
                 "on_failure": s.on_failure,
+                "color": s.color,
+                "outcome": s.outcome,
                 "step_id": s.step_id,
                 "branch": s.branch,
             }
@@ -76,6 +78,10 @@ def _high_risk_gate(request, playbook: Playbook, requested) -> Response | None:
     return None
 
 
+#: The colours an author can give a playbook step — Vigil's own palette.
+STEP_COLORS = {"", "rose", "lavender", "mint", "peach", "sky", "lemon"}
+
+
 def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | None:
     """Replace the steps. *definition_ids* is the authored tree: each entry
     is a bare definition id, a step dict ``{"definition_id", "id"?,
@@ -107,6 +113,8 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
                 tree.append({**entry, "then": load(then_nodes), "else": load(else_nodes)})
                 continue
             override, on_not_applicable, on_failure, step_id, did = {}, "stop", "stop", None, entry
+            color = ""
+            outcome = ""
             if isinstance(entry, dict):
                 did = entry.get("definition_id")
                 override = entry.get("params_override") or {}
@@ -114,6 +122,12 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
                 step_id = entry.get("id")
                 if on_not_applicable not in ("skip", "stop"):
                     raise FlowError(f"{did}: on_not_applicable must be 'skip' or 'stop'")
+                color = entry.get("color") or ""
+                outcome = str(entry.get("outcome") or "").strip()
+                if len(outcome) > 40:
+                    raise FlowError(f"{did}: outcome is at most 40 characters")
+                if color not in STEP_COLORS:
+                    raise FlowError(f"{did}: color must be one of {', '.join(sorted(STEP_COLORS - {''}))}")
                 on_failure = entry.get("on_failure") or "stop"
                 if on_failure not in ("stop", "continue"):
                     raise FlowError(f"{did}: on_failure must be 'stop' or 'continue'")
@@ -128,7 +142,7 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
                 raise FlowError(f"{d.name}: {err}")
             tree.append({"definition": d, "id": step_id, "params_override": override,
                          "on_not_applicable": on_not_applicable,
-                         "on_failure": on_failure})
+                         "on_failure": on_failure, "color": color, "outcome": outcome})
         return tree
 
     try:
@@ -140,7 +154,7 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
         PlaybookStep(playbook=playbook, definition=st["definition"], order=i,
                      params_override=st["params_override"],
                      on_not_applicable=st["on_not_applicable"],
-                     on_failure=st["on_failure"],
+                     on_failure=st["on_failure"], color=st["color"], outcome=st["outcome"],
                      step_id=st["step_id"], branch=st["branch"])
         for i, st in enumerate(steps)
     ])
@@ -358,7 +372,9 @@ def playbook_from_yaml(request):
             return {"definition_id": str(s["definition"].id), "id": s.get("id"),
                     "params_override": s["params_override"],
                     "on_not_applicable": s.get("on_not_applicable") or "stop",
-                    "on_failure": s.get("on_failure") or "stop"}
+                    "on_failure": s.get("on_failure") or "stop",
+                    "color": s.get("color") or "",
+                    "outcome": s.get("outcome") or ""}
 
         if parsed.get("tree"):
             by_index = {i: s for i, s in enumerate(resolved)}
