@@ -160,6 +160,15 @@ class PlaybookStep(models.Model):
         choices=[("skip", "Skip"), ("stop", "Stop")],
         default="stop",
     )
+    # What a failure means for this step on a host: "stop" ends the host's
+    # playbook there (the default); "continue" treats it as handled — once
+    # retries run out the chain goes on, and a later branch can test
+    # steps.<id>.status == "failed" to run a recovery step.
+    on_failure = models.CharField(
+        max_length=8,
+        choices=[("stop", "Stop"), ("continue", "Continue")],
+        default="stop",
+    )
     # The step's id within its playbook (unique per playbook): what a branch
     # condition names, as ``steps.<step_id>.status`` / ``.result.<field>``.
     step_id = models.CharField(max_length=60, default="")
@@ -298,12 +307,15 @@ def outcomes_for(playbooks) -> dict:
         return {}
     rows = (Task.objects.filter(run__playbook_id__in=ids)
             .order_by("run__created_at", "run_id")
-            .values_list("run__playbook_id", "host_id", "run_id", "state"))
+            .values_list("run__playbook_id", "host_id", "run_id", "state", "on_failure"))
 
     # Ordered oldest run first, so overwriting whenever the run changes leaves
     # each host holding the states of its newest one.
     newest: dict = {}
-    for playbook_id, host_id, run_id, state in rows:
+    for playbook_id, host_id, run_id, state, on_failure in rows:
+        # A failure the playbook handles (on_failure: continue) is done, not failed.
+        if on_failure == "continue" and state in FAILED_STATES:
+            state = "completed"
         entry = newest.setdefault(playbook_id, {}).get(host_id)
         if entry is None or entry["run"] != run_id:
             entry = newest[playbook_id][host_id] = {"run": run_id, "states": set()}

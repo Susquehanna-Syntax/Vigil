@@ -240,3 +240,60 @@ class BranchYamlApiTests(BranchTestBase):
              "then": [{"definition_id": str(patch.id)}]},
         ]}, format="json")
         self.assertEqual(bad.status_code, 400)
+
+
+class FailureBranchTests(BranchTestBase):
+    """on_failure: continue makes a failed task a branch option (08b2)."""
+
+    def recovering(self, on_failure="continue"):
+        check, patch, install, verify = (self.definition(s) for s in (CHECK, PATCH, INSTALL, VERIFY))
+        pb = self.playbook([
+            {"definition_id": str(patch.id), "id": "upgrade", "on_failure": on_failure},
+            {"if": 'steps.upgrade.status == "failed"',
+             "then": [{"definition_id": str(install.id), "id": "reinstall"}],
+             "else": [{"definition_id": str(check.id), "id": "confirm"}]},
+            {"definition_id": str(verify.id), "id": "verify"},
+        ])
+        pb.completion_tag = "web-ok"
+        pb.save()
+        return pb
+
+    def test_failure_routes_to_recovery(self):
+        from apps.playbooks.models import last_outcomes
+
+        pb = self.recovering()
+        run = self.dispatch(pb)
+        tasks = self.by_step(run)
+        self.report(tasks["upgrade"], state="failed")
+        self.assertEqual(self.states(run)["reinstall"], Task.State.PENDING)
+        self.report(tasks["reinstall"])
+        self.assertEqual(self.states(run)["confirm"], Task.State.SKIPPED)
+        self.report(tasks["verify"])
+        run.refresh_from_db()
+        # The failure was handled: the run completed, the host is not held
+        # back, and it earned its completion tag.
+        self.assertEqual(run.state, TaskRun.State.COMPLETED)
+        self.assertEqual(last_outcomes(pb)[self.host.id], "ok")
+        self.host.refresh_from_db()
+        self.assertIn("web-ok", self.host.tags)
+
+    def test_default_stop_still_ends_the_chain(self):
+        from apps.playbooks.models import last_outcomes
+
+        pb = self.recovering(on_failure="stop")
+        run = self.dispatch(pb)
+        self.report(self.by_step(run)["upgrade"], state="failed")
+        states = self.states(run)
+        self.assertEqual({states["reinstall"], states["confirm"], states["verify"]},
+                         {Task.State.REJECTED})
+        self.assertEqual(last_outcomes(pb)[self.host.id], "failed")
+
+    def test_on_failure_validated_and_round_trips(self):
+        patch = self.definition(PATCH)
+        pb = Playbook.objects.create(name="Bad", created_by=self.user)
+        err = _validate_and_set_steps(pb, [{"definition_id": str(patch.id), "on_failure": "retry"}])
+        self.assertEqual(err.status_code, 400)
+        pb = self.recovering()
+        again = parse(to_yaml(pb))
+        self.assertEqual(again["steps"][0]["on_failure"], "continue")
+        self.assertEqual(again["steps"][1]["on_failure"], "stop")

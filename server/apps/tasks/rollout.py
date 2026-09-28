@@ -284,9 +284,11 @@ def _wave_stats(rollout: PatchRollout) -> dict:
     # chain of tasks, and a host has reported only when its whole chain is
     # done — and failed if any task in it failed.
     per_host: dict = {}
-    for host_id, state in Task.objects.filter(
+    for host_id, state, on_failure in Task.objects.filter(
         run__rollout=rollout, run__wave=rollout.current_wave,
-    ).values_list("host_id", "state"):
+    ).values_list("host_id", "state", "on_failure"):
+        if on_failure == "continue" and state in FAILURE_STATES:
+            state = Task.State.COMPLETED  # handled by the playbook
         per_host.setdefault(host_id, set()).add(state)
     total = len(per_host)
     reported = sum(1 for states in per_host.values() if states <= set(TERMINAL_STATES))
