@@ -962,6 +962,8 @@ async function openTaskDetail(runId) {
       return;
     }
 
+    // A playbook run draws its flow: give the modal the room the lanes need.
+    modal.classList.toggle('modal-flow', !!run.flow_snapshot);
     if (run.summary && typeof runSummaryHtml === 'function') {
       const summaryBox = document.createElement('div');
       summaryBox.innerHTML = runSummaryHtml(run.summary);
