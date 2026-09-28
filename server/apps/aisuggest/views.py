@@ -41,6 +41,20 @@ Rules:
   registry value, or text in files), use a hunt_* action rather than run_command or execute_script.
 - Never set return: text on hunt_content unless the user asks for the matched text; it makes the
   task high risk.
+- To make a task apply only to some hosts, add a top-level relevant: tree of all:/any:/not: lists
+  whose items are hunt_* probes (e.g. - hunt_service: {name: nginx}); hosts where it is false report
+  not applicable and run nothing. Do not use relevance: (free text) for this.
+- To choose between steps, use an actions item with if: <expression>, then: [steps], else: [steps];
+  conditions may read earlier steps' steps.<id>.status and steps.<id>.result.<field>.
+- Write if: and when: conditions bare, never inside ${{ }}; booleans are True and False.
+- <, <=, >, >= compare numbers only.
+- Test only outputs a step really has: every hunt_* step outputs matched, count and truncated;
+  check_service outputs active and state.
+- A step may carry outcome: <short label> naming what finishing it means (e.g. Restarted); use that
+  instead of a step that only prints a message.
+- Quote any YAML value that contains ": ".
+- For services use check_service / restart_service / start_service with params: {service_name: <name>},
+  never run_command; an output is always read as steps.<id>.result.<field>.
 - Prefer low-risk, reversible diagnostics before invasive fixes.
 - Never propose update_agent."""
 
