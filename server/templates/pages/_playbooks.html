@@ -94,8 +94,11 @@
     <input type="text" class="form-control" id="bl-desc" placeholder="What this playbook does" maxlength="2000">
   </div>
   <div class="bl-field">
-    <label>Steps</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Each step is a task, run top to bottom on the target machine. Add an If / else to choose between tasks from an earlier step's result — its status (ok, failed, not applicable, skipped) or any output its task reports.&#10;&#10;Not applicable: stop here, or go on to the next step.&#10;If it fails: stop here, or carry on so a later branch can recover.&#10;&#10;Colours are yours: use them to group steps that belong together.">?</span>
-    <div class="bl-editor-steps" id="bl-editor-steps"></div>
+    <label>Steps</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Each step is a task, run left to right on the target machine. Press + on a line to add a task or an If / else there to choose between tasks from an earlier step's result — its status (ok, failed, not applicable, skipped) or any output its task reports.&#10;&#10;Not applicable: stop here, or go on to the next step.&#10;If it fails: stop here, or carry on so a later branch can recover.&#10;&#10;Colours are yours: use them to group steps that belong together.">?</span>
+    <div class="bl-flow">
+      <div class="bl-editor-steps" id="bl-editor-steps"></div>
+      <aside class="bl-inspector" id="bl-inspector" aria-label="Selected step"></aside>
+    </div>
     <div id="bl-flow-analysis"></div>
   </div>
   <div class="bl-field">
