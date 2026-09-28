@@ -56,6 +56,10 @@ class Playbook(TagRowSyncMixin, models.Model):
     #: dispatch forever. Clearing the tag off a host re-runs the playbook,
     #: which is the intended way to ask for that.
     completion_tag = models.CharField(max_length=120, blank=True, default="")
+    # The playbook's if/then/else structure over its step ids, or None for a
+    # plain ordered playbook. Nodes: {"step": "<step_id>"} or
+    # {"id": "b<n>", "if": "<expr>", "then": [...], "else": [...]}.
+    flow = models.JSONField(null=True, blank=True)
     # Opt-in to high-risk steps. Off by default, and turning it ON requires a
     # fresh TOTP code — that confirmation IS the 2FA for every future
     # unattended dispatch, exactly as playbook creation is for standard-risk
@@ -156,6 +160,12 @@ class PlaybookStep(models.Model):
         choices=[("skip", "Skip"), ("stop", "Stop")],
         default="stop",
     )
+    # The step's id within its playbook (unique per playbook): what a branch
+    # condition names, as ``steps.<step_id>.status`` / ``.result.<field>``.
+    step_id = models.CharField(max_length=60, default="")
+    # Where the step sits in the playbook's if/then/else tree: "" at the top
+    # level, else a path like "b1.then" / "b1.else.b2.then".
+    branch = models.CharField(max_length=120, blank=True, default="")
 
     class Meta:
         ordering = ("order",)

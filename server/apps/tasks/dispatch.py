@@ -135,14 +135,25 @@ def build_playbook_steps(playbook, *, user) -> list[tuple]:
 
 
 def create_chain(run, host, built, *, requested_by, label: str) -> list:
-    """One task per built playbook step on *host*, chained: the first
-    pending, the rest blocked until the one before it finishes."""
+    """One task per built playbook step on *host*, chained.
+
+    Every task starts blocked and carries its playbook step id, branch path
+    and — inside an if/then/else — its guard (M6 08b); then the chain is
+    released: the server walks the blocked tasks in order, skipping any whose
+    guard is false, and makes the first runnable one pending.
+    """
     import secrets
 
-    from .models import Task
+    from apps.playbooks.flow import branch_guards
 
+    from .models import Task
+    from .views import _release_next
+
+    flow = built[0][0].playbook.flow if built else None
+    guards = branch_guards(flow)
     tasks = []
     for i, (step, params, risk, expires_at) in enumerate(built):
+        guard, branch = guards.get(step.step_id, ("", ""))
         tasks.append(Task.objects.create(
             host=host,
             run=run,
@@ -151,12 +162,17 @@ def create_chain(run, host, built, *, requested_by, label: str) -> list:
             action="_script",
             params=params,
             risk_level=risk,
-            state=Task.State.PENDING if i == 0 else Task.State.BLOCKED,
+            state=Task.State.BLOCKED,
             step_order=i,
             expires_at=expires_at,
             on_not_applicable=step.on_not_applicable,
+            step_ref=step.step_id,
+            branch=branch,
+            guard=guard,
             nonce=secrets.token_hex(32),
         ))
+    if tasks:
+        _release_next(run, host)
     return tasks
 
 

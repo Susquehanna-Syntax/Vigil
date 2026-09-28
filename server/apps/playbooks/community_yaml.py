@@ -58,19 +58,14 @@ def to_yaml(playbook, *, author: str = "", created=None) -> str:
         # states only what is unusual about it.
         fields["allow_high_risk"] = True
 
-    steps = []
-    # Numbered 1..N by position, not by the stored ``order`` column. The server
-    # writes that column 0-based as an internal sort key, while the community
-    # schema's ``order`` is 1-based — exporting the raw value emitted
-    # ``order: 0`` for the first step of any normally-created playbook, which
-    # this module's own parser then rejected. What the file needs is the
-    # sequence, and the rows are already fetched in it.
-    ordered = playbook.steps.select_related("definition").order_by("order")
-    for position, step in enumerate(ordered, start=1):
+    def step_entry(step, position: int) -> dict[str, Any]:
         entry: dict[str, Any] = {
             "task": slugify(step.definition.name, fallback="task"),
             "order": position,
         }
+        if playbook.flow:
+            # A branching playbook names its steps: its conditions refer to them.
+            entry["id"] = step.step_id
         # The slug stays because it is what a reviewer reading the diff can
         # follow; the uid is what actually resolves on the far side.
         if step.definition.community_uid:
@@ -80,7 +75,34 @@ def to_yaml(playbook, *, author: str = "", created=None) -> str:
         # Only emitted when it is not the default, like allow_high_risk.
         if step.on_not_applicable != "stop":
             entry["on_not_applicable"] = step.on_not_applicable
-        steps.append(entry)
+        return entry
+
+    # Numbered 1..N by position, not by the stored ``order`` column. The server
+    # writes that column 0-based as an internal sort key, while the community
+    # schema's ``order`` is 1-based — exporting the raw value emitted
+    # ``order: 0`` for the first step of any normally-created playbook, which
+    # this module's own parser then rejected.
+    ordered = list(playbook.steps.select_related("definition").order_by("order"))
+    positions = {s.step_id: i for i, s in enumerate(ordered, start=1)}
+    if playbook.flow:
+        from .flow import tree_from
+
+        def emit(nodes: list) -> list:
+            out = []
+            for node in nodes:
+                if "step" in node:
+                    out.append(step_entry(node["step"], positions[node["step"].step_id]))
+                else:
+                    branch: dict[str, Any] = {"if": node["if"], "then": emit(node["then"])}
+                    if node["else"]:
+                        branch["else"] = emit(node["else"])
+                    out.append(branch)
+            return out
+
+        steps = emit(tree_from(playbook))
+    else:
+        steps = [step_entry(step, position)
+                 for position, step in enumerate(ordered, start=1)]
     fields["steps"] = steps
     return dump(fields)
 
@@ -119,10 +141,9 @@ def parse(text: str) -> dict[str, Any]:
 
     steps: list[dict[str, Any]] = []
     seen_orders: set[int] = set()
-    for position, entry in enumerate(raw_steps, start=1):
-        if not isinstance(entry, dict):
-            raise ContentYamlError(
-                f"{_WHAT}: step {position} must be a mapping with a 'task' key.")
+    has_branch = False
+
+    def parse_step(entry: dict, position: int) -> dict[str, Any]:
         slug = entry.get("task")
         if not isinstance(slug, str) or not slug.strip():
             raise ContentYamlError(
@@ -150,11 +171,45 @@ def parse(text: str) -> dict[str, Any]:
                     f"{_WHAT}: step {position} has an invalid "
                     "'on_not_applicable' (must be 'skip' or 'stop').")
             on_not_applicable = value
-        steps.append({"task": slug.strip(), "order": order,
-                      "uid": parse_uid(entry, f"{_WHAT} step {position}"),
-                      "params_override": override,
-                      "on_not_applicable": on_not_applicable})
+        step_id = entry.get("id")
+        if step_id is not None and not isinstance(step_id, str):
+            # YAML reads a bare yes / no / on / off as true / false: quote it.
+            raise ContentYamlError(
+                f"{_WHAT}: step {position} has a non-text 'id' ({step_id!r}) — "
+                "quote it, e.g. id: \"yes\".")
+        return {"task": slug.strip(), "order": order, "id": step_id,
+                "uid": parse_uid(entry, f"{_WHAT} step {position}"),
+                "params_override": override,
+                "on_not_applicable": on_not_applicable}
 
+    def walk(items: list, where: str) -> list:
+        """The steps as a tree: each node an index into ``steps`` or a branch."""
+        nonlocal has_branch
+        nodes = []
+        for entry in items:
+            if not isinstance(entry, dict):
+                raise ContentYamlError(
+                    f"{_WHAT}: {where} entries must be a mapping with a 'task' "
+                    "key, or an if/then/else.")
+            if "if" in entry:
+                has_branch = True
+                then_items = entry.get("then")
+                if not isinstance(then_items, list) or not then_items:
+                    raise ContentYamlError(
+                        f"{_WHAT}: a branch's 'then' must list at least one step.")
+                else_items = entry.get("else") or []
+                if not isinstance(else_items, list):
+                    raise ContentYamlError(f"{_WHAT}: a branch's 'else' must be a list.")
+                nodes.append({"if": entry["if"], "then": walk(then_items, "then"),
+                              "else": walk(else_items, "else")})
+                continue
+            if len(steps) >= _MAX_STEPS:
+                raise ContentYamlError(f"{_WHAT}: at most {_MAX_STEPS} steps.")
+            steps.append(parse_step(entry, len(steps) + 1))
+            nodes.append({"step": len(steps) - 1})
+        return nodes
+
+    tree = walk(raw_steps, "steps")
     return {
         "uid": uid,
         "name": name,
@@ -163,6 +218,9 @@ def parse(text: str) -> dict[str, Any]:
         "target_tags": target_tags,
         "allow_high_risk": allow_high_risk,
         "steps": steps,
+        # The authored if/then/else tree over indexes into ``steps`` (M6 08b),
+        # or None for a plain ordered playbook.
+        "tree": tree if has_branch else None,
     }
 
 
