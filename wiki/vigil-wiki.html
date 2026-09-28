@@ -300,6 +300,10 @@
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16" y2="16"/></svg>
       Hunts
     </a>
+    <a href="#relevance-and-branches" class="nav-link">
+      <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 8v8M8 6c6 0 4 6 8 6"/></svg>
+      Relevance &amp; branches
+    </a>
     <a href="#windows-patching" class="nav-link">
       <svg viewBox="0 0 24 24"><path d="M3 5.5L10.5 4.5v7H3zM3 12.5h7.5v7L3 18.5zM11.5 4.3L21 3v8.5h-9.5zM11.5 12.5H21V21l-9.5-1.3z"/></svg>
       Windows Patching
@@ -1385,6 +1389,7 @@
       <h3>Playbooks</h3>
       <p class="prose">A playbook is a named, ordered sequence of tasks. It keeps applying rather than running once: a reconcile pass dispatches it to every host it targets, including hosts enrolled before the playbook was written and hosts that gain the targeted tag later.</p>
       <p class="prose">A playbook now keeps applying. A reconcile pass every five minutes dispatches auto-enrolling playbooks to the hosts they target as those hosts appear, either on approval or on the day someone adds the tag.</p>
+      <p class="prose">A playbook can also branch between its tasks: run one task when an earlier one found something, recover when one failed, or skip hosts where a task does not apply. See <a href="#relevance-and-branches" style="color:var(--sky)">Relevance and branches</a>.</p>
 
       <h3>The completion tag</h3>
       <p class="prose">Something has to say "this machine has already run this", or a playbook that keeps applying would keep re-running. That something is the <strong>completion tag</strong>: a tag the playbook applies to a host when it finishes successfully there, and which excludes the host from targeting afterwards.</p>
@@ -1533,6 +1538,104 @@
         <div class="callout-icon">i</div>
         <div>In <strong>managed mode</strong> a hunt must be in the agent's <code>allowlist:</code> in <code>/etc/vigil/agent.yml</code> (Windows: <code>C:\ProgramData\Vigil\agent.yml</code>) exactly like any other action. A hunt that is not allowlisted is refused on the host.</div>
       </div>
+    </section>
+
+    <section class="section" id="relevance-and-branches">
+      <p class="section-label">Task Execution</p>
+      <h2 class="section-title" style="color:var(--lavender)">Relevance and branches</h2>
+      <p class="section-desc">A task can decide for itself whether it applies to a host, and choose between steps once it is running. A playbook can do the same between its tasks. This section covers <code>relevant:</code>, <code>if</code> / <code>then</code> / <code>else</code>, <code>use:</code>, <code>outcome:</code>, and playbooks that branch.</p>
+
+      <h3>Where a task applies: relevant:</h3>
+      <p class="prose"><code>relevant:</code> is a top-level block that answers "should this task run on this host at all?" before any step runs. It is a tree of <code>all:</code>, <code>any:</code> and <code>not:</code> lists. Each item in a list is either a nested <code>all:</code> / <code>any:</code> / <code>not:</code> block, or a <strong>probe</strong>: one <code>hunt_*</code> action with the same params it takes as a step. Several keys in one block must all hold. Trees nest at most 3 levels and hold at most 10 probes.</p>
+      <p class="prose">The agent runs the probes first. If the tree is false, the task ends <strong>not applicable</strong>. That is its own state, not a failure: no step runs, and the run detail counts the host under "not applicable". Whatever the probes matched is saved as evidence on the run, so you can see why a host was or wasn't picked. A task is at least as risky as its riskiest probe.</p>
+      <p class="prose">An agent too old to understand <code>relevant:</code> is refused at dispatch. The task fails with a message naming the feature the agent lacks, rather than running the steps without the check. The old free-text <code>relevance:</code> field still loads, but it is folded into the description with a warning; use <code>relevant:</code> to decide where a task applies.</p>
+
+      <h3>Choosing steps: if / then / else</h3>
+      <p class="prose">An item in <code>actions:</code> can be a branch instead of a step: <code>if:</code> an expression, <code>then:</code> the steps to run when it is true, and optionally <code>else:</code> the steps to run when it is not. The expression can read earlier steps (<code>steps.&lt;id&gt;.status</code> and <code>steps.&lt;id&gt;.result.&lt;field&gt;</code>), <code>inputs.*</code> and <code>agent.*</code>. Branches nest at most 3 levels. Step ids stay unique across every branch, and the steps after a branch run whichever way it went. The steps of the path not taken report <em>skipped</em>. <code>when:</code> still works for a single step.</p>
+      <p class="prose"><code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code> and <code>&gt;=</code> compare <strong>numbers</strong>, such as a hunt's <code>count</code>. Comparing a text or yes/no output with them is refused when you save, because it could never be true.</p>
+
+      <h3>Reusing a task: use:</h3>
+      <p class="prose">Inside <code>then:</code> or <code>else:</code>, an item can be <code>- use: &lt;task name&gt;</code> instead of steps. When you deploy, Vigil copies that task's current steps into the branch and signs the result, so a later edit to the named task never changes a run that has already gone out. If both exist, your own task with that name wins over a community one.</p>
+
+      <h3>Naming the result: outcome:</h3>
+      <p class="prose">Any step can carry <code>outcome:</code>, a short label of up to 40 characters, such as <code>outcome: Restarted</code>. It names what finishing that step means. A host's outcome is the last step with an outcome that finished ok there. The run detail shows two donut charts: hosts by result (ok, failed, waiting, not applicable, skipped) and hosts by outcome. Click a legend row to show just those hosts. Each card in the task library shows its latest run as a small donut.</p>
+
+      <p class="prose">Putting it together: this task only applies to hosts running nginx without Apache installed. It checks nginx and restarts it if it is down; otherwise it runs the steps of another task, <em>Collect nginx status</em>.</p>
+      <div class="code-block">
+        <div class="code-label">keep-nginx-running.yaml</div>
+        <pre><span class="hl-key">name</span>: <span class="hl-string">Keep nginx running</span>
+<span class="hl-key">description</span>: <span class="hl-string">Restarts nginx when it is down; hosts without nginx report not applicable.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">relevant</span>:
+  <span class="hl-key">all</span>:
+    - <span class="hl-key">hunt_service</span>:
+        <span class="hl-key">name</span>: <span class="hl-string">nginx</span>
+  <span class="hl-key">not</span>:
+    - <span class="hl-key">hunt_package</span>:
+        <span class="hl-key">name</span>: <span class="hl-string">apache2</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">check</span>
+    <span class="hl-key">type</span>: <span class="hl-string">check_service</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">service_name</span>: <span class="hl-string">nginx</span>
+  - <span class="hl-key">if</span>: <span class="hl-string">steps.check.result.active == False</span>
+    <span class="hl-key">then</span>:
+      - <span class="hl-key">id</span>: <span class="hl-string">restart</span>
+        <span class="hl-key">type</span>: <span class="hl-string">restart_service</span>
+        <span class="hl-key">params</span>:
+          <span class="hl-key">service_name</span>: <span class="hl-string">nginx</span>
+        <span class="hl-key">outcome</span>: <span class="hl-string">Restarted</span>
+    <span class="hl-key">else</span>:
+      - <span class="hl-key">use</span>: <span class="hl-string">Collect nginx status</span></pre>
+      </div>
+      <p class="prose">On a host without nginx, the probe finds nothing, so the task ends not applicable and no step runs. On a host where nginx is running, <code>check</code> reports <code>active: true</code>, the <code>else</code> path runs the copied status steps, and <code>restart</code> reports skipped. Where nginx is down, <code>restart</code> runs and the host's outcome is <em>Restarted</em>.</p>
+
+      <h3>Playbooks that branch</h3>
+      <p class="prose">A playbook's steps can branch too. The server decides each branch after the tasks before it finish on that host. A condition reads <code>steps.&lt;step-id&gt;.status</code> (<code>ok</code>, <code>failed</code>, <code>not_applicable</code> or <code>skipped</code>) or <code>steps.&lt;step-id&gt;.result.&lt;field&gt;</code>, which is every output that step's task produced, merged; when two of its steps report the same field, the later one wins. A condition may only name steps that come before the branch. A playbook holds at most 32 steps, nested at most 3 levels. Each playbook step also runs its task's own <code>relevant:</code> and branches.</p>
+      <p class="prose">Each step decides what happens next:</p>
+      <ul class="prose">
+        <li><code>on_not_applicable: stop</code> (the default) ends the playbook on that host when the task is not applicable; <code>skip</code> goes on to the next step.</li>
+        <li><code>on_failure: stop</code> (the default) ends the playbook when the task fails; <code>continue</code> makes the failure <strong>handled</strong>. The playbook carries on so a later <code>if: steps.&lt;id&gt;.status == "failed"</code> can recover, and a handled failure does not mark the host failed or hold it back from auto-enrolment.</li>
+        <li><code>outcome:</code> works as it does in a task.</li>
+        <li><code>color:</code> is one of <code>rose</code>, <code>peach</code>, <code>lemon</code>, <code>mint</code>, <code>sky</code> or <code>lavender</code>, used to group steps visually.</li>
+      </ul>
+      <div class="code-block">
+        <div class="code-label">keep-the-web-tier-healthy.yaml</div>
+        <pre><span class="hl-key">name</span>: <span class="hl-string">Keep the web tier healthy</span>
+<span class="hl-key">description</span>: <span class="hl-string">Makes sure nginx is up, recovers it when it is not, and checks the scheduler.</span>
+<span class="hl-key">steps</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">detect</span>
+    <span class="hl-key">task</span>: <span class="hl-string">find-web-server-service</span>
+    <span class="hl-key">on_not_applicable</span>: <span class="hl-string">skip</span>
+    <span class="hl-key">color</span>: <span class="hl-string">sky</span>
+  - <span class="hl-key">if</span>: <span class="hl-string">steps.detect.result.count &gt; 0</span>
+    <span class="hl-key">then</span>:
+      - <span class="hl-key">id</span>: <span class="hl-string">ensure</span>
+        <span class="hl-key">task</span>: <span class="hl-string">nginx-must-be-running</span>
+        <span class="hl-key">on_failure</span>: <span class="hl-string">continue</span>
+        <span class="hl-key">color</span>: <span class="hl-string">mint</span>
+      - <span class="hl-key">if</span>: <span class="hl-string">steps.ensure.status == "failed"</span>
+        <span class="hl-key">then</span>:
+          - <span class="hl-key">id</span>: <span class="hl-string">recover</span>
+            <span class="hl-key">task</span>: <span class="hl-string">look-for-stray-nginx-processes</span>
+            <span class="hl-key">color</span>: <span class="hl-string">rose</span>
+            <span class="hl-key">outcome</span>: <span class="hl-string">Needed recovery</span>
+    <span class="hl-key">else</span>:
+      - <span class="hl-key">id</span>: <span class="hl-string">nothing</span>
+        <span class="hl-key">task</span>: <span class="hl-string">confirm-no-web-server</span>
+        <span class="hl-key">outcome</span>: <span class="hl-string">No web server</span>
+  - <span class="hl-key">id</span>: <span class="hl-string">baseline</span>
+    <span class="hl-key">task</span>: <span class="hl-string">scheduler-is-healthy</span>
+    <span class="hl-key">color</span>: <span class="hl-string">lavender</span></pre>
+      </div>
+      <p class="prose">There are two routes through it. If <code>detect</code> finds a web server, <code>ensure</code> checks that nginx is running; if that fails, the failure is handled and <code>recover</code> goes looking for stray nginx processes, so the host ends as <em>Needed recovery</em>. If no web server is found, <code>nothing</code> confirms it and the host ends as <em>No web server</em>. Either way, <code>baseline</code> runs last.</p>
+
+      <h3>The flow editor</h3>
+      <p class="prose"><strong>Playbooks → Edit</strong> draws the flow on a canvas. Steps run left to right, and an if node's <strong>true</strong> and <strong>otherwise</strong> outputs fork into two lanes that meet again at a dot. Drag to pan, Ctrl + scroll (or pinch) to zoom, and press <strong>Fit</strong> to see all of it. The <strong>+</strong> on any line adds a task or an if / else at that point. Click a node to open its settings beside the canvas: its id, what happens when it is not applicable or fails, its outcome and colour. For an if, you get the condition and a builder that picks an earlier step and one of the outputs its task really produces.</p>
+      <p class="prose">Under the canvas, the analysis counts the paths a host can take and flags branches that can never be true. For example, testing for <code>failed</code> on a step whose failure stops the playbook. Hover over a path to light it up on the canvas. A playbook run's detail draws the same canvas, with how many hosts reached each step and went each way.</p>
+
+      <h3>Quoting step ids</h3>
+      <p class="prose">YAML reads a few bare words as yes/no. A step written <code>id: yes</code>, <code>id: no</code>, <code>id: on</code> or <code>id: off</code> becomes a boolean, and the import is refused with a hint. Quote them: <code>id: "yes"</code>.</p>
     </section>
 
     <section class="section" id="windows-patching">
@@ -3520,11 +3623,12 @@
       <h4 style="margin-top:18px;font-size:14px;font-weight:600;">Expression language</h4>
       <p class="prose">Deliberately small. The server validates syntax at definition save; the agent evaluates at runtime. Allowed:</p>
       <ul class="prose">
-        <li>Comparisons: <code>==</code>, <code>!=</code>, <code>in</code>, <code>not in</code></li>
+        <li>Comparisons: <code>==</code>, <code>!=</code>, <code>in</code>, <code>not in</code>, and <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code> for numbers (a text or yes/no value compared with them is refused at save)</li>
         <li>Logical: <code>and</code>, <code>or</code>, <code>not</code></li>
         <li>Literals: strings, numbers, booleans, tuples like <code>("apt", "dnf")</code></li>
         <li>Dotted name access against the context (<code>agent.os</code>, <code>inputs.engine</code>, <code>host.tags</code>)</li>
       </ul>
+      <p class="prose">To choose between whole groups of steps, or to skip a task on hosts where it does not apply, see <a href="#relevance-and-branches" style="color:var(--sky)">Relevance and branches</a>.</p>
       <p class="prose">Banned: function calls, attribute writes, comprehensions, subscripts, lambdas, f-strings, walrus. A broken predicate rejects the save, because you cannot deploy something the agent cannot safely evaluate.</p>
 
       <h4 style="margin-top:18px;font-size:14px;font-weight:600;">Context available to <code>when:</code></h4>
