@@ -235,6 +235,10 @@ class Task(models.Model):
     step_ref = models.CharField(max_length=60, blank=True, default="")
     branch = models.CharField(max_length=120, blank=True, default="")
     guard = models.TextField(blank=True, default="")
+    # "continue" when this playbook step's failure is handled by the playbook
+    # (a later branch recovers): the chain goes on after retries, and the
+    # failure does not mark the host failed. Empty / "stop" otherwise.
+    on_failure = models.CharField(max_length=8, blank=True, default="")
     on_not_applicable = models.CharField(max_length=8, blank=True, default="")
     # Soft-delete for the history view. The audit trail is immutable —
     # "deleting" a terminal task hides it from the feed, but the row

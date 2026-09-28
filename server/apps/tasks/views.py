@@ -375,12 +375,13 @@ def _maybe_apply_playbook_completion_tag(task: Task) -> None:
     if not tag or tag.startswith("agent:"):
         return
 
-    sibling_states = set(
-        Task.objects.filter(run=run, host=task.host).values_list("state", flat=True)
-    )
-    if not sibling_states.issubset(_TERMINAL_STATES):
+    siblings = list(Task.objects.filter(run=run, host=task.host)
+                    .values_list("state", "on_failure"))
+    if not {state for state, _ in siblings}.issubset(_TERMINAL_STATES):
         return
-    if sibling_states & {Task.State.FAILED, Task.State.REJECTED, Task.State.EXPIRED}:
+    # A failure the playbook handles (on_failure: continue) does not block it.
+    if any(state in _FAILURE_LIKE and on_failure != "continue"
+           for state, on_failure in siblings):
         return
 
     try:
@@ -861,6 +862,13 @@ def _advance_run_sequence(finished_task: Task) -> None:
             # Don't finalize the run — there's still active work pending.
             return
 
+        if finished_task.on_failure == "continue":
+            # The playbook handles this failure: go on, and let a later
+            # branch (steps.<id>.status == "failed") decide what runs.
+            _release_next(run, finished_task.host)
+            _finalize_run_if_done(run)
+            return
+
         # No retry remaining — abort the rest of the chain for this host.
         sibling_qs.filter(state=Task.State.BLOCKED).update(
             state=Task.State.REJECTED,
@@ -869,6 +877,9 @@ def _advance_run_sequence(finished_task: Task) -> None:
         )
 
     _finalize_run_if_done(run)
+
+
+_FAILURE_LIKE = {Task.State.FAILED, Task.State.REJECTED, Task.State.EXPIRED}
 
 
 def _finalize_run_if_done(run: TaskRun) -> None:
@@ -881,7 +892,12 @@ def _finalize_run_if_done(run: TaskRun) -> None:
     if Task.objects.filter(run=run, state__in=active_states).exists():
         return
 
-    states = set(Task.objects.filter(run=run).values_list("state", flat=True))
+    # A failure the playbook handles (on_failure: continue) counts as done,
+    # not failed — the recovery branch is what the run is judged on.
+    states = {
+        Task.State.COMPLETED if (on_failure == "continue" and state in _FAILURE_LIKE) else state
+        for state, on_failure in Task.objects.filter(run=run).values_list("state", "on_failure")
+    }
     # A not-applicable host is neither a pass nor a failure, so it is
     # excluded from the outcome. If every host was not applicable the run
     # itself is not applicable; otherwise the remaining states decide as

@@ -38,6 +38,7 @@ def _row(b: Playbook, *, failing: int | None = None) -> dict:
                 "order": s.order,
                 "params_override": s.params_override or {},
                 "on_not_applicable": s.on_not_applicable,
+                "on_failure": s.on_failure,
                 "step_id": s.step_id,
                 "branch": s.branch,
             }
@@ -105,7 +106,7 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
                     raise FlowError("a branch's then/else must be lists")
                 tree.append({**entry, "then": load(then_nodes), "else": load(else_nodes)})
                 continue
-            override, on_not_applicable, step_id, did = {}, "stop", None, entry
+            override, on_not_applicable, on_failure, step_id, did = {}, "stop", "stop", None, entry
             if isinstance(entry, dict):
                 did = entry.get("definition_id")
                 override = entry.get("params_override") or {}
@@ -113,6 +114,9 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
                 step_id = entry.get("id")
                 if on_not_applicable not in ("skip", "stop"):
                     raise FlowError(f"{did}: on_not_applicable must be 'skip' or 'stop'")
+                on_failure = entry.get("on_failure") or "stop"
+                if on_failure not in ("stop", "continue"):
+                    raise FlowError(f"{did}: on_failure must be 'stop' or 'continue'")
             d = TaskDefinition.objects.filter(pk=did).first()
             if d is None:
                 raise FlowError(f"unknown definition {did}")
@@ -123,7 +127,8 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
             if err is not None:
                 raise FlowError(f"{d.name}: {err}")
             tree.append({"definition": d, "id": step_id, "params_override": override,
-                         "on_not_applicable": on_not_applicable})
+                         "on_not_applicable": on_not_applicable,
+                         "on_failure": on_failure})
         return tree
 
     try:
@@ -135,6 +140,7 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
         PlaybookStep(playbook=playbook, definition=st["definition"], order=i,
                      params_override=st["params_override"],
                      on_not_applicable=st["on_not_applicable"],
+                     on_failure=st["on_failure"],
                      step_id=st["step_id"], branch=st["branch"])
         for i, st in enumerate(steps)
     ])
@@ -351,7 +357,8 @@ def playbook_from_yaml(request):
         def entry(s):
             return {"definition_id": str(s["definition"].id), "id": s.get("id"),
                     "params_override": s["params_override"],
-                    "on_not_applicable": s.get("on_not_applicable") or "stop"}
+                    "on_not_applicable": s.get("on_not_applicable") or "stop",
+                    "on_failure": s.get("on_failure") or "stop"}
 
         if parsed.get("tree"):
             by_index = {i: s for i, s in enumerate(resolved)}

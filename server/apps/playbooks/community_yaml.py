@@ -75,6 +75,8 @@ def to_yaml(playbook, *, author: str = "", created=None) -> str:
         # Only emitted when it is not the default, like allow_high_risk.
         if step.on_not_applicable != "stop":
             entry["on_not_applicable"] = step.on_not_applicable
+        if step.on_failure != "stop":
+            entry["on_failure"] = step.on_failure
         return entry
 
     # Numbered 1..N by position, not by the stored ``order`` column. The server
@@ -171,6 +173,11 @@ def parse(text: str) -> dict[str, Any]:
                     f"{_WHAT}: step {position} has an invalid "
                     "'on_not_applicable' (must be 'skip' or 'stop').")
             on_not_applicable = value
+        on_failure = entry.get("on_failure", "stop")
+        if on_failure not in ("stop", "continue"):
+            raise ContentYamlError(
+                f"{_WHAT}: step {position} has an invalid 'on_failure' "
+                "(must be 'stop' or 'continue').")
         step_id = entry.get("id")
         if step_id is not None and not isinstance(step_id, str):
             # YAML reads a bare yes / no / on / off as true / false: quote it.
@@ -180,7 +187,8 @@ def parse(text: str) -> dict[str, Any]:
         return {"task": slug.strip(), "order": order, "id": step_id,
                 "uid": parse_uid(entry, f"{_WHAT} step {position}"),
                 "params_override": override,
-                "on_not_applicable": on_not_applicable}
+                "on_not_applicable": on_not_applicable,
+                "on_failure": on_failure}
 
     def walk(items: list, where: str) -> list:
         """The steps as a tree: each node an index into ``steps`` or a branch."""

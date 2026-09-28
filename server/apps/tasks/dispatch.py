@@ -166,6 +166,7 @@ def create_chain(run, host, built, *, requested_by, label: str) -> list:
             step_order=i,
             expires_at=expires_at,
             on_not_applicable=step.on_not_applicable,
+            on_failure=step.on_failure,
             step_ref=step.step_id,
             branch=branch,
             guard=guard,
