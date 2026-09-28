@@ -33,6 +33,10 @@ class TaskSerializer(serializers.ModelSerializer):
             "created_at",
             "dispatched_at",
             "completed_at",
+            # Playbook chains: which playbook step this task is, and where it
+            # sits in the playbook's if/then/else tree (M6 08b).
+            "step_ref",
+            "branch",
         ]
         read_only_fields = fields
 
@@ -130,6 +134,7 @@ class TaskRunSerializer(serializers.ModelSerializer):
             "state",
             "created_at",
             "finished_at",
+            "flow_snapshot",
             "tasks",
         ]
         read_only_fields = fields

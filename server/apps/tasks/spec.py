@@ -1175,6 +1175,10 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         # Optional `when:` predicate. Validated for syntactic safety
         # here; the agent evaluates it at runtime against its own
         # platform context. Bad syntax fails the save, not the deploy.
+        # A named end state the author gives this step ("Patched", "Healthy"):
+        # a host whose run last succeeded on a labelled step ends there.
+        outcome = _as_str(entry.get("outcome"), f"actions[{index}].outcome", max_len=40)
+
         when_raw = entry.get("when")
         when_expr = ""
         if when_raw is not None:
@@ -1238,6 +1242,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
             "risk": spec["risk"],
             "when": when_expr,
             "timeout": step_timeout,
+            "outcome": outcome or None,
             "outputs": sorted(action_outputs(action_type)),
             "branch": entry.get("branch"),
         })

@@ -6,6 +6,18 @@
    ═══════════════════════════════════════════ */
 :root {
   --bg: #1c1c21;
+  /* Chart slots, validated for colour-vision deficiency on this surface
+     (dataviz validator, 2026-09-28). Status slots are reserved for run
+     states; outcome slots go in this fixed order and fold into "Other". */
+  --st-ok: #2aa198;
+  --st-failed: #e0633a;
+  --st-pending: #9a7be8;
+  --st-na: #8a8793;
+  --st-skipped: #77747f;
+  --oc-1: #3598db;
+  --oc-2: #c96f2c;
+  --oc-3: #8f73e0;
+  --oc-4: #a38c1c;
   --s1: #232329;
   --s2: #2a2a31;
   --s3: #32323a;
@@ -63,6 +75,15 @@
    component reads them, so the whole UI follows. ── */
 :root[data-theme="light"] {
   --bg:      #f4f3f1;
+  --st-ok: #008f80;
+  --st-failed: #c4461f;
+  --st-pending: #7a5fd0;
+  --st-na: #8a8793;
+  --st-skipped: #b4b2ba;
+  --oc-1: #2a7fc0;
+  --oc-2: #b8621f;
+  --oc-3: #7a5fd0;
+  --oc-4: #8a7512;
   --s1:      #ffffff;
   --s2:      #eeedf0;
   --s3:      #e4e3e7;
@@ -2419,16 +2440,29 @@ select.form-control:hover { border-color: var(--s4); }
   font-family: var(--mono, monospace); font-size: 12px;
   white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto;
 }
-.run-step-results { width: 100%; border-collapse: collapse; font-size: 12px; color: var(--text-2); margin-top: 8px; }
-.run-step-results th { text-align: left; font-weight: 600; color: var(--text-3); padding: 4px 8px; border-bottom: 1px solid var(--border); }
-.run-step-results td { padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
-.run-step-results td:last-child { width: 100%; }
-.run-step-results td:not(:last-child) { white-space: nowrap; overflow-wrap: normal; }
+/* Per-step result rows: status on a coloured edge, what happened in words,
+   then what the step reported. */
+.run-step-results { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; font-size: 12px; }
+.step-row {
+  display: flex; gap: 10px; align-items: flex-start; padding: 7px 10px; border-radius: 8px;
+  background: var(--s2); border-left: 3px solid var(--st, var(--text-3));
+}
+.step-row.s-ok { --st: var(--mint); }
+.step-row.s-error, .step-row.s-failed { --st: var(--rose); }
+.step-row.s-skipped { --st: var(--text-3); }
+.step-row-status { flex: 0 0 62px; font-weight: 600; color: var(--st, var(--text-2)); }
+.step-row-body { flex: 1; min-width: 0; }
+.step-row-head { color: var(--text-1); }
+.step-row-kind { margin-left: 6px; color: var(--text-3); }
+.step-row-msg { margin-top: 2px; color: var(--text-2); overflow-wrap: anywhere; }
+.step-row-kv { margin-top: 3px; }
+.step-row-note { padding: 6px 10px; border-radius: 8px; background: var(--s2); color: var(--text-2); }
 .run-step-kv { display: inline-block; margin-right: 12px; }
 .run-step-kv .k { color: var(--text-3); }
-.run-step-status.s-ok { color: var(--mint); }
-.run-step-status.s-skipped { color: var(--text-3); }
-.run-step-status.s-error { color: var(--rose); }
+.step-output-more { margin-top: 8px; }
+.step-output-more summary { cursor: pointer; font-size: 12px; color: var(--text-3); }
+.flow-run { margin-bottom: 12px; padding: 10px; border-radius: 12px; background: var(--s1); border: 1px solid var(--border); }
+.flow-run-head { font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 8px; }
 
 /* Hunt results page — summary chips, host + matches tables */
 .hunt-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 16px; }
@@ -3301,3 +3335,150 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .auto-cond-row .form-control { display: inline-block; width: auto; }
 .auto-cond-row .auto-cond-value { flex: 1 1 160px; min-width: 0; }
 .auto-cond-empty { font-size: 12px; color: var(--text-3); padding: 4px 0 8px; }
+
+/* ── Playbook flow (M6 08c) ─────────────────────────────────────────────
+   Steps carry the author's colour on a spine and a faint wash; branches
+   fork into two lanes. The lanes stay neutral so the step colours are what
+   the eye follows. */
+.modal.modal-flow { width: min(1120px, 95vw); }
+.fc-rose { --fc: var(--rose); }
+.fc-peach { --fc: var(--peach); }
+.fc-lemon { --fc: var(--lemon); }
+.fc-mint { --fc: var(--mint); }
+.fc-sky { --fc: var(--sky); }
+.fc-lavender { --fc: var(--lavender); }
+.fc-none { --fc: var(--text-3); }
+
+.flow { display: flex; flex-direction: column; gap: 8px; }
+.flow-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 12px 10px 10px; border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--fc) 35%, var(--border));
+  border-left: 5px solid var(--fc);
+  background: color-mix(in srgb, var(--fc) 9%, var(--s2));
+}
+.flow-step.fc-none { background: var(--s2); border-color: var(--border); border-left-color: var(--s3); }
+.flow-num {
+  flex: 0 0 26px; height: 26px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--fc); color: #1c1c21; font-weight: 700; font-size: 12px;
+}
+.fc-none .flow-num { background: var(--s3); color: var(--text-1); }
+.flow-step-body { flex: 1; min-width: 0; }
+.flow-step-title { font-weight: 600; color: var(--text-1); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.flow-step-sub { margin-top: 3px; font-size: 12px; color: var(--text-2); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.flow-flag { padding: 1px 7px; border-radius: 999px; background: var(--s3); color: var(--text-2); font-size: 11px; }
+.flow-step-opts { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 12px; color: var(--text-2); }
+.flow-opt { display: inline-flex; align-items: center; gap: 6px; }
+.flow-opt select, .flow-opt input, .flow-builder select, .flow-builder input {
+  background: var(--s1); color: var(--text-1); border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 6px; font-size: 12px;
+}
+.flow-sid { width: 9ch; font-family: inherit; }
+.flow-swatches { display: inline-flex; gap: 5px; }
+.flow-swatch {
+  width: 18px; height: 18px; border-radius: 50%; padding: 0; cursor: pointer;
+  background: var(--fc); border: 2px solid transparent;
+}
+.flow-swatch.fc-none { background: transparent; border: 2px dashed var(--text-3); }
+.flow-swatch.on { outline: 2px solid var(--text-1); outline-offset: 2px; }
+.flow-swatch:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
+.flow-step-btns { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; flex: 0 0 auto; max-width: 42%; }
+
+.flow-branch {
+  border: 1px solid var(--border); border-radius: 12px; padding: 10px;
+  background: color-mix(in srgb, var(--s1) 70%, transparent);
+}
+.flow-if { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.flow-if-mark {
+  font-weight: 700; font-size: 12px; padding: 3px 10px; border-radius: 999px;
+  background: var(--lavender); color: #1c1c21;
+}
+.flow-cond {
+  flex: 1; min-width: 220px; font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+  background: var(--s1); color: var(--text-1); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;
+}
+.flow-cond-ro { font-size: 12px; color: var(--text-1); }
+.flow-builder {
+  margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  padding: 8px; border-radius: 8px; background: var(--s2); border: 1px dashed var(--lavender);
+}
+.flow-lanes {
+  margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  position: relative;
+}
+.flow-lane {
+  display: flex; flex-direction: column; gap: 8px; padding: 8px 8px 8px 12px;
+  border-left: 2px solid var(--lane); border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--lane) 4%, transparent);
+}
+.lane-then { --lane: var(--mint); }
+.lane-else { --lane: var(--lavender); }
+.flow-lane-label { font-size: 12px; font-weight: 600; color: var(--lane); display: flex; gap: 8px; align-items: baseline; }
+.flow-lane-hosts { color: var(--text-2); font-weight: 400; }
+.flow-empty { font-size: 12px; color: var(--text-3); font-style: italic; }
+.flow-add { display: flex; gap: 6px; flex-wrap: wrap; }
+.flow-add .btn, .flow-step-btns .btn, .flow-if .btn { white-space: nowrap; }
+/* A lane is as wide as its share of the fork: when a step card gets narrow,
+   its buttons drop below the title instead of squeezing it. */
+.flow-lane { container-type: inline-size; }
+@container (max-width: 520px) {
+  .flow-step { flex-wrap: wrap; }
+  .flow-step-body { flex-basis: calc(100% - 40px); }
+  .flow-step-btns { max-width: none; width: 100%; justify-content: flex-start; padding-left: 38px; }
+}
+@media (max-width: 900px) {
+  .flow-lanes { grid-template-columns: 1fr; }
+  .flow-step { flex-wrap: wrap; }
+  .flow-step-btns { max-width: none; justify-content: flex-start; }
+}
+
+.flow.ro .flow-step { padding: 8px 10px; }
+.flow-unreached { opacity: .45; }
+.flow-counts { margin-top: 5px; display: flex; gap: 6px; flex-wrap: wrap; }
+.flow-count { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--s3); color: var(--text-1); }
+.fs-ok { background: color-mix(in srgb, var(--mint) 25%, var(--s2)); }
+.fs-failed { background: color-mix(in srgb, var(--rose) 30%, var(--s2)); }
+.fs-not_applicable, .fs-skipped { background: var(--s3); color: var(--text-2); }
+.fs-pending { background: color-mix(in srgb, var(--sky) 22%, var(--s2)); }
+
+.flow-analysis { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--s2); border: 1px solid var(--border); font-size: 13px; }
+.flow-analysis-head { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--text-2); align-items: center; }
+.flow-analysis-head b { color: var(--text-1); }
+.flow-findings { margin: 8px 0 0; padding-left: 18px; }
+.flow-findings li { margin: 3px 0; }
+.flow-findings li.warn { color: var(--peach); }
+.flow-findings li.info { color: var(--text-2); }
+.flow-findings-ok { margin-top: 8px; color: var(--mint); }
+.flow-paths { margin-top: 8px; }
+.flow-paths summary { cursor: pointer; color: var(--text-2); }
+.flow-paths ol { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.flow-paths li { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.flow-path-n { width: 18px; color: var(--text-3); font-size: 11px; }
+.flow-path-step { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, var(--fc) 30%, var(--s2)); color: var(--text-1); border-left: 3px solid var(--fc); }
+.flow-path-arrow { color: var(--text-3); }
+
+/* ── Run summary donuts (M6 08c) ────────────────────────────────────── */
+.run-summary { display: flex; flex-wrap: wrap; gap: 14px 28px; margin-bottom: 12px; }
+.donut-block { min-width: 240px; }
+.donut-title { font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; }
+.donut-row { display: flex; align-items: center; gap: 14px; }
+.donut-slice { transition: opacity .15s; }
+.donut-total { font-size: 20px; font-weight: 700; fill: var(--text-1); }
+.donut-center { font-size: 9px; fill: var(--text-3); }
+.donut-legend { display: flex; flex-direction: column; gap: 2px; }
+.donut-key {
+  display: grid; grid-template-columns: 12px 1fr auto 38px; gap: 8px; align-items: center;
+  padding: 3px 8px; border-radius: 6px; border: 1px solid transparent; background: none;
+  color: var(--text-1); font-size: 12px; cursor: pointer; text-align: left;
+}
+.donut-key:hover { background: var(--s2); }
+.donut-key[aria-pressed="true"] { border-color: var(--text-3); background: var(--s2); }
+.donut-key:focus-visible { outline: 2px solid var(--sky); outline-offset: 1px; }
+.donut-swatch { width: 12px; height: 12px; border-radius: 3px; }
+.donut-value { font-weight: 600; }
+.donut-pct { color: var(--text-3); text-align: right; }
+.donut-mini { display: inline-flex; vertical-align: middle; }
+.def-card-run { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
+.flow-outcome { font-size: 11px; color: var(--text-1); padding: 1px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--fc) 60%, var(--border)); }
+.flow-outcome-in { width: 14ch; }

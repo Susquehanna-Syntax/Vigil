@@ -169,6 +169,12 @@ class PlaybookStep(models.Model):
         choices=[("stop", "Stop"), ("continue", "Continue")],
         default="stop",
     )
+    # A named end state for hosts whose run last succeeded on this step
+    # ("Recovered", "No web server"). Blank for none.
+    outcome = models.CharField(max_length=40, blank=True, default="")
+    # A colour the author gave this step, so a long or branching playbook
+    # reads at a glance. One of the palette names, or "" for none.
+    color = models.CharField(max_length=12, blank=True, default="")
     # The step's id within its playbook (unique per playbook): what a branch
     # condition names, as ``steps.<step_id>.status`` / ``.result.<field>``.
     step_id = models.CharField(max_length=60, default="")

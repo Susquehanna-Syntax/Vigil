@@ -42,7 +42,7 @@ class RunDetailAndEditorQaTests(SimpleTestCase):
     def test_run_detail_shows_hostname_and_a_step_table(self):
         src = _read(JS / "vigil-runhistory.js")
         self.assertTrue("t.host_hostname" in src, "the API field is host_hostname")
-        self.assertTrue("<th>Step</th><th>Status</th><th>Result</th>" in src, "step results as a table")
+        self.assertTrue('class="step-row-status"' in src and "_stepMessage(" in src, "one row per step, with what happened in words")
 
     def test_editor_dims_a_stale_preview(self):
         self.assertTrue("classList.add('preview-stale')" in _read(JS / "vigil-tasks.js"),

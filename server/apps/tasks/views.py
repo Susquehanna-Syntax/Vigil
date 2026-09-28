@@ -1174,7 +1174,24 @@ def definition_list(request):
         else:
             qs = qs.filter(archived_at__isnull=True)
         qs = qs.select_related("owner").order_by("-updated_at")
-        return Response(TaskDefinitionSerializer(qs, many=True).data)
+        data = TaskDefinitionSerializer(qs, many=True).data
+        if scope != "community":
+            # Each task's most recent run, summarised for the library card's
+            # donut (M6 08c). One run per task, newest first.
+            from .summary import run_summary
+            newest_ids: dict = {}
+            for run_id, def_id in (TaskRun.objects.filter(definition__in=[d["id"] for d in data])
+                                   .order_by("-created_at").values_list("id", "definition_id")):
+                newest_ids.setdefault(str(def_id), run_id)
+            latest = {str(r.definition_id): r for r in TaskRun.objects.filter(
+                id__in=newest_ids.values()).select_related("definition").prefetch_related("tasks")}
+            for row in data:
+                run = latest.get(str(row["id"]))
+                row["last_run"] = ({"id": str(run.id), "created_at": run.created_at.isoformat(),
+                                    "state": run.state, **{k: v for k, v in run_summary(run).items()
+                                                           if k != "per_host"}}
+                                   if run else None)
+        return Response(data)
 
     yaml_source = request.data.get("yaml_source", "")
     # All tasks are created private. Sharing happens through the explicit
@@ -1531,7 +1548,10 @@ def run_detail(request, run_id):
         ),
         pk=run_id,
     )
-    return Response(TaskRunSerializer(run).data)
+    data = TaskRunSerializer(run).data
+    from .summary import run_summary
+    data["summary"] = run_summary(run)
+    return Response(data)
 
 
 _HUNT_HOST_PENDING = ("pending", "dispatched", "executing")

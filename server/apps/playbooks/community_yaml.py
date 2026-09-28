@@ -77,6 +77,10 @@ def to_yaml(playbook, *, author: str = "", created=None) -> str:
             entry["on_not_applicable"] = step.on_not_applicable
         if step.on_failure != "stop":
             entry["on_failure"] = step.on_failure
+        if step.color:
+            entry["color"] = step.color
+        if step.outcome:
+            entry["outcome"] = step.outcome
         return entry
 
     # Numbered 1..N by position, not by the stored ``order`` column. The server
@@ -178,6 +182,15 @@ def parse(text: str) -> dict[str, Any]:
             raise ContentYamlError(
                 f"{_WHAT}: step {position} has an invalid 'on_failure' "
                 "(must be 'stop' or 'continue').")
+        color = entry.get("color", "") or ""
+        if color not in ("", "rose", "lavender", "mint", "peach", "sky", "lemon"):
+            raise ContentYamlError(
+                f"{_WHAT}: step {position} has an unknown 'color' {color!r} "
+                "(rose, lavender, mint, peach, sky or lemon).")
+        outcome = entry.get("outcome", "") or ""
+        if not isinstance(outcome, str) or len(outcome) > 40:
+            raise ContentYamlError(
+                f"{_WHAT}: step {position} has an invalid 'outcome' (text, at most 40 characters).")
         step_id = entry.get("id")
         if step_id is not None and not isinstance(step_id, str):
             # YAML reads a bare yes / no / on / off as true / false: quote it.
@@ -188,7 +201,9 @@ def parse(text: str) -> dict[str, Any]:
                 "uid": parse_uid(entry, f"{_WHAT} step {position}"),
                 "params_override": override,
                 "on_not_applicable": on_not_applicable,
-                "on_failure": on_failure}
+                "on_failure": on_failure,
+                "color": color,
+                "outcome": outcome.strip()}
 
     def walk(items: list, where: str) -> list:
         """The steps as a tree: each node an index into ``steps`` or a branch."""

@@ -151,6 +151,17 @@ def create_chain(run, host, built, *, requested_by, label: str) -> list:
 
     flow = built[0][0].playbook.flow if built else None
     guards = branch_guards(flow)
+    if built and run.flow_snapshot is None:
+        run.flow_snapshot = {
+            "flow": flow,
+            "steps": [{"step_id": step.step_id, "definition_id": str(step.definition_id),
+                       "definition_name": step.definition.name, "risk": risk,
+                       "color": step.color, "outcome": step.outcome,
+                       "on_not_applicable": step.on_not_applicable,
+                       "on_failure": step.on_failure}
+                      for step, _params, risk, _expires in built],
+        }
+        run.save(update_fields=["flow_snapshot"])
     tasks = []
     for i, (step, params, risk, expires_at) in enumerate(built):
         guard, branch = guards.get(step.step_id, ("", ""))

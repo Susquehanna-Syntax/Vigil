@@ -105,6 +105,10 @@ class TaskRun(models.Model):
         REPROVISION = "reprovision", "Reprovision"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # A playbook run's flow as it was dispatched — the tree, and each step's
+    # name, colour and settings — so run history can draw what actually ran
+    # even after the playbook is edited (M6 08c). None for other runs.
+    flow_snapshot = models.JSONField(null=True, blank=True)
     definition = models.ForeignKey(
         TaskDefinition, on_delete=models.SET_NULL, null=True, related_name="runs"
     )
