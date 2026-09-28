@@ -264,52 +264,137 @@ function _blAt(at) {
   return { list, i: +i, node: list[+i] };
 }
 
+let _blSel = null;         // "<lane>|<index>" of the node the inspector shows
+let _blView = null;        // the editor canvas's pan / zoom, kept across re-renders
+
 function _renderEditorSteps() {
   const wrap = document.getElementById('bl-editor-steps');
   if (!wrap) return;
-  wrap.innerHTML = flowEditorHtml(_editingTree, _blFlowCtx);
-  const analysis = document.getElementById('bl-flow-analysis');
-  if (analysis) analysis.innerHTML = flowAnalysisHtml(_editingTree, _blFlowCtx);
-  _wireFlowEditor(wrap);
+  if (_blSel && !_blAt(_blSel).node) _blSel = null;
+  wrap.innerHTML = flowEditorHtml(_editingTree, _blFlowCtx, _blSel);
+  _blView = flowCanvasMount(wrap.querySelector('.fcv'), _blView);
+  _wireFlowCanvas(wrap);
+  _renderInspector();
+  _refreshAnalysis();
 }
 
-function _wireFlowEditor(wrap) {
-  const on = (sel, ev, fn) => wrap.querySelectorAll(sel).forEach(el => el.addEventListener(ev, () => fn(el)));
-  on('[data-flow-add-step]', 'click', el => {
-    const lane = el.dataset.flowAddStep;
-    openPicker({ type: 'task', title: 'Add a task to the playbook',
-      ineligible: (item) => _blIneligible(item.raw),
-      onSelect: (item) => {
-        // The task may have been created inside the picker, after the page's defs were loaded.
-        if (item.raw && !_playbookDefs.some(d => String(d.id) === String(item.key))) _playbookDefs.push(item.raw);
-        flowLane(_editingTree, lane).push({ kind: 'step', def: String(item.key), ov: {},
-          ona: 'stop', onf: 'stop', sid: flowNextSid(_editingTree), color: '' });
-        _renderEditorSteps();
-      } });
+function _refreshAnalysis() {
+  const analysis = document.getElementById('bl-flow-analysis');
+  if (!analysis) return;
+  analysis.innerHTML = flowAnalysisHtml(_editingTree, _blFlowCtx);
+  flowWirePathHighlight(analysis, document.getElementById('bl-editor-steps'));
+}
+
+function _blSelect(at) {
+  _blSel = at;
+  document.querySelectorAll('#bl-editor-steps [data-flow-sel]').forEach(n =>
+    n.classList.toggle('is-sel', n.dataset.flowSel === at));
+  _renderInspector();
+}
+
+// Put a new node at "<lane>|<index>" and select it.
+function _blInsert(at, node) {
+  const [lane, i] = at.split('|');
+  flowLane(_editingTree, lane).splice(+i, 0, node);
+  _blSel = `${lane}|${i}`;
+  _renderEditorSteps();
+}
+
+function _blAddTask(at) {
+  openPicker({ type: 'task', title: 'Add a task to the playbook',
+    ineligible: (item) => _blIneligible(item.raw),
+    onSelect: (item) => {
+      // The task may have been created inside the picker, after the page's defs were loaded.
+      if (item.raw && !_playbookDefs.some(d => String(d.id) === String(item.key))) _playbookDefs.push(item.raw);
+      _blInsert(at, { kind: 'step', def: String(item.key), ov: {},
+        ona: 'stop', onf: 'stop', sid: flowNextSid(_editingTree), color: '' });
+    } });
+}
+
+// The small menu a "+" on an edge opens: a task or an if / else goes there.
+function _blInsertMenu(btn) {
+  document.querySelectorAll('.fce-menu').forEach(m => m.remove());
+  const vp = btn.closest('.fcv');
+  const menu = document.createElement('div');
+  menu.className = 'fce-menu';
+  menu.setAttribute('role', 'menu');
+  menu.innerHTML = `<button type="button" role="menuitem" class="btn btn-mint btn-xs" data-m="task">Task</button>
+    <button type="button" role="menuitem" class="btn btn-lav btn-xs" data-m="if">If / else</button>`;
+  const vr = vp.getBoundingClientRect();
+  const br = btn.getBoundingClientRect();
+  menu.style.left = `${br.left - vr.left + br.width / 2}px`;
+  menu.style.top = `${br.bottom - vr.top + 6}px`;
+  vp.appendChild(menu);
+  const at = btn.dataset.flowInsert;
+  const close = () => { menu.remove(); document.removeEventListener('pointerdown', outside, true); };
+  const outside = (e) => { if (!menu.contains(e.target)) close(); };
+  document.addEventListener('pointerdown', outside, true);
+  menu.querySelector('[data-m="task"]').addEventListener('click', () => { close(); _blAddTask(at); });
+  menu.querySelector('[data-m="if"]').addEventListener('click', () => {
+    close();
+    _blInsert(at, { kind: 'if', cond: '', then: [], else: [] });
   });
-  on('[data-flow-add-if]', 'click', el => {
-    flowLane(_editingTree, el.dataset.flowAddIf).push({ kind: 'if', cond: '', then: [], else: [] });
-    _renderEditorSteps();
+  menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { close(); btn.focus(); } });
+  menu.querySelector('button').focus();
+}
+
+function _wireFlowCanvas(wrap) {
+  wrap.querySelectorAll('[data-flow-sel]').forEach(el => {
+    el.addEventListener('click', () => _blSelect(el.dataset.flowSel));
+    el.addEventListener('keydown', (e) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      e.preventDefault();
+      _blRemove(el.dataset.flowSel);
+    });
   });
-  on('[data-flow-rm]', 'click', el => { const { list, i } = _blAt(el.dataset.flowRm); list.splice(i, 1); _renderEditorSteps(); });
+  wrap.querySelectorAll('[data-flow-insert]').forEach(el => el.addEventListener('click', () => _blInsertMenu(el)));
+}
+
+function _blRemove(at) {
+  const { list, i, node } = _blAt(at);
+  const inside = node && node.kind === 'if' ? flowSteps(node.then).length + flowSteps(node.else).length : 0;
+  if (inside && !confirm(`Remove this if and the ${inside} step${inside === 1 ? '' : 's'} inside it?`)) return;
+  list.splice(i, 1);
+  _blSel = null;
+  _renderEditorSteps();
+}
+
+function _renderInspector() {
+  const box = document.getElementById('bl-inspector');
+  if (!box) return;
+  box.innerHTML = flowInspectorHtml(_editingTree, _blSel, _blFlowCtx);
+  const on = (sel, ev, fn) => box.querySelectorAll(sel).forEach(el => el.addEventListener(ev, () => fn(el)));
+  on('[data-flow-rm]', 'click', el => _blRemove(el.dataset.flowRm));
   on('[data-flow-mv]', 'click', el => {
     const { list, i } = _blAt(el.dataset.flowMv);
     const j = i + (+el.dataset.dir);
     if (j < 0 || j >= list.length) return;
     [list[i], list[j]] = [list[j], list[i]];
+    _blSel = `${el.dataset.flowMv.split('|')[0]}|${j}`;
     _renderEditorSteps();
   });
   on('[data-flow-color]', 'click', el => { _blAt(el.dataset.flowColor).node.color = el.dataset.c; _renderEditorSteps(); });
   on('[data-flow-ona]', 'change', el => { _blAt(el.dataset.flowOna).node.ona = el.value; _renderEditorSteps(); });
   on('[data-flow-onf]', 'change', el => { _blAt(el.dataset.flowOnf).node.onf = el.value; _renderEditorSteps(); });
-  // Typing re-renders only the analysis, so the field keeps its focus.
-  const refreshAnalysis = () => {
-    const analysis = document.getElementById('bl-flow-analysis');
-    if (analysis) analysis.innerHTML = flowAnalysisHtml(_editingTree, _blFlowCtx);
+  // Typing redraws the canvas only when the field loses focus, so it keeps the caret.
+  const redrawCanvas = () => {
+    const wrap = document.getElementById('bl-editor-steps');
+    wrap.innerHTML = flowEditorHtml(_editingTree, _blFlowCtx, _blSel);
+    _blView = flowCanvasMount(wrap.querySelector('.fcv'), _blView);
+    _wireFlowCanvas(wrap);
+    _refreshAnalysis();
   };
-  on('[data-flow-sid]', 'input', el => { _blAt(el.dataset.flowSid).node.sid = el.value.trim(); refreshAnalysis(); });
-  on('[data-flow-cond]', 'input', el => { _blAt(el.dataset.flowCond).node.cond = el.value; refreshAnalysis(); });
+  on('[data-flow-sid]', 'input', el => { _blAt(el.dataset.flowSid).node.sid = el.value.trim(); _refreshAnalysis(); });
+  on('[data-flow-sid]', 'change', redrawCanvas);
+  on('[data-flow-cond]', 'input', el => {
+    _blAt(el.dataset.flowCond).node.cond = el.value;
+    const words = box.querySelector('[data-flow-words]');
+    if (words) words.textContent = flowCondWords(el.value);
+    _refreshAnalysis();
+  });
+  on('[data-flow-cond]', 'change', redrawCanvas);
   on('[data-flow-outcome]', 'input', el => { _blAt(el.dataset.flowOutcome).node.outcome = el.value; });
+  on('[data-flow-outcome]', 'change', redrawCanvas);
   on('[data-flow-inputs]', 'click', el => {
     const { node } = _blAt(el.dataset.flowInputs);
     const def = _playbookDefs.find(d => String(d.id) === node.def);
@@ -324,12 +409,8 @@ function _wireFlowEditor(wrap) {
       _renderEditorSteps();
     } });
   });
-  on('[data-flow-build]', 'click', el => {
-    const box = wrap.querySelector(`[data-flow-builder="${CSS.escape(el.dataset.flowBuild)}"]`);
-    if (!box) return;
-    box.hidden = !box.hidden;
-    if (!box.hidden) _blSetupBuilder(box, el.dataset.flowBuild);
-  });
+  const builder = box.querySelector('[data-flow-builder]');
+  if (builder && builder.querySelector('[data-fb-step]')) _blSetupBuilder(builder, builder.dataset.flowBuilder);
 }
 
 // The guided condition builder: pick an earlier step, what to test and how.
@@ -356,6 +437,8 @@ function _blSetupBuilder(box, at) {
   };
   stepSel.onchange = fillWhat;
   whatSel.onchange = fillOp;
+  // Start from the step just before the if: usually the one being tested.
+  stepSel.selectedIndex = stepSel.options.length - 1;
   fillWhat();
   box.querySelector('[data-fb-use]').onclick = () => {
     const sid = stepSel.value;
@@ -391,9 +474,11 @@ function _openEditor(data, editingId) {
   if (totpInput) totpInput.value = '';
   _blSyncHighRiskWarning();
   _editingTree = data ? flowTreeFromRow(data) : [];
-  _renderEditorSteps();
+  _blSel = null;
+  _blView = null;
   document.getElementById('bl-editor-overlay').classList.add('open');
   modal.classList.add('open');
+  _renderEditorSteps();
 }
 
 function _closeBlEditor() {

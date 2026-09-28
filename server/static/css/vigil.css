@@ -911,13 +911,14 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   margin-top: 2px;
   word-break: break-all;
 }
-.preview-step.risk-high { border-left-color: var(--rose); }
-.preview-step.risk-standard { border-left-color: var(--sky); }
-.preview-step.risk-low { border-left-color: var(--mint); }
-/* Full-page task editor: whole task in one pastel (its derived risk). */
-.preview-step.task-high { border-left-color: var(--rose); }
-.preview-step.task-standard { border-left-color: var(--sky); }
-.preview-step.task-low { border-left-color: var(--mint); }
+/* A step is coloured all over by its risk: a tint and a full border. */
+.preview-step.risk-high, .preview-step.task-high { --pc: var(--rose); }
+.preview-step.risk-standard, .preview-step.task-standard { --pc: var(--sky); }
+.preview-step.risk-low, .preview-step.task-low { --pc: var(--mint); }
+.preview-step[class*="risk-"], .preview-step[class*="task-"] {
+  background: color-mix(in srgb, var(--pc) 12%, var(--s2));
+  border-color: color-mix(in srgb, var(--pc) 55%, var(--border));
+}
 .preview-relevant {
   padding: 12px 14px;
   background: var(--s2);
@@ -928,7 +929,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 }
 .preview-relevant-heading { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
 .preview-relevant-list { list-style: none; margin: 0 0 6px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.preview-relevant-list ul { list-style: none; margin: 2px 0 0 0; padding-left: 14px; border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
+.preview-relevant-list ul { list-style: none; margin: 2px 0 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
 .preview-relevant-op { font-weight: 600; color: var(--text-3); }
 .preview-relevant-list code { font-family: var(--font-mono); font-size: 11px; background: var(--s3); padding: 1px 5px; border-radius: 4px; }
 .preview-relevant-note { margin-top: 6px; font-size: 11px; color: var(--text-3); }
@@ -941,7 +942,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .preview-branch-if { font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 8px; }
 .preview-branch-if code { font-family: var(--font-mono); font-size: 11px; background: var(--s3); padding: 1px 5px; border-radius: 4px; font-weight: 400; }
 .preview-branch-groups { display: flex; flex-direction: column; gap: 8px; }
-.preview-branch-group { display: flex; flex-direction: column; gap: 8px; padding-left: 12px; border-left: 2px solid var(--border); }
+.preview-branch-group { display: flex; flex-direction: column; gap: 8px; padding: 8px; border-radius: var(--r-md); background: var(--s1); }
 .preview-branch-group-label { font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
 .preview-use {
   padding: 10px 14px;
@@ -2445,7 +2446,8 @@ select.form-control:hover { border-color: var(--s4); }
 .run-step-results { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; font-size: 12px; }
 .step-row {
   display: flex; gap: 10px; align-items: flex-start; padding: 7px 10px; border-radius: 8px;
-  background: var(--s2); border-left: 3px solid var(--st, var(--text-3));
+  background: color-mix(in srgb, var(--st, var(--text-3)) 12%, var(--s2));
+  border: 1px solid color-mix(in srgb, var(--st, var(--text-3)) 45%, var(--border));
 }
 .step-row.s-ok { --st: var(--mint); }
 .step-row.s-error, .step-row.s-failed { --st: var(--rose); }
@@ -2474,7 +2476,7 @@ select.form-control:hover { border-color: var(--s4); }
 }
 .hunt-chip:hover { color: var(--text-1); }
 .hunt-chip.active { border-color: var(--sky); color: var(--text-1); }
-#hunt-hosts tbody tr.selected td { background: var(--s1); box-shadow: inset 2px 0 0 var(--sky); }
+#hunt-hosts tbody tr.selected td { background: color-mix(in srgb, var(--sky) 14%, var(--s1)); }
 .hunt-chip-count { font-weight: 600; color: var(--text-1); }
 .hunt-section { margin-bottom: 18px; }
 .hunt-section-title { font-size: 12px; font-weight: 600; color: var(--text-3); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -3336,11 +3338,13 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .auto-cond-row .auto-cond-value { flex: 1 1 160px; min-width: 0; }
 .auto-cond-empty { font-size: 12px; color: var(--text-3); padding: 4px 0 8px; }
 
-/* ── Playbook flow (M6 08c) ─────────────────────────────────────────────
-   Steps carry the author's colour on a spine and a faint wash; branches
-   fork into two lanes. The lanes stay neutral so the step colours are what
-   the eye follows. */
-.modal.modal-flow { width: min(1120px, 95vw); }
+/* ── Playbook flow canvas (M6 08c/08d) ──────────────────────────────────
+   Left to right, pan and zoom. A step is coloured all over — a tint and a
+   full border in the author's colour — never with a stripe down one side.
+   The if node stays neutral so the step colours are what the eye follows;
+   its two ports and the edges leaving them carry true (mint) and
+   otherwise (lavender). */
+.modal.modal-flow { width: min(1240px, 96vw); }
 .fc-rose { --fc: var(--rose); }
 .fc-peach { --fc: var(--peach); }
 .fc-lemon { --fc: var(--lemon); }
@@ -3349,98 +3353,154 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .fc-lavender { --fc: var(--lavender); }
 .fc-none { --fc: var(--text-3); }
 
-.flow { display: flex; flex-direction: column; gap: 8px; }
-.flow-step {
-  display: flex; align-items: flex-start; gap: 12px;
-  padding: 10px 12px 10px 10px; border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--fc) 35%, var(--border));
-  border-left: 5px solid var(--fc);
-  background: color-mix(in srgb, var(--fc) 9%, var(--s2));
+.fcv {
+  position: relative; overflow: hidden; border-radius: 12px;
+  border: 1px solid var(--border); cursor: grab; touch-action: pan-y;
+  background-color: var(--bg);
+  background-image: radial-gradient(color-mix(in srgb, var(--text-3) 35%, transparent) 1px, transparent 1.4px);
+  background-size: 18px 18px;
 }
-.flow-step.fc-none { background: var(--s2); border-color: var(--border); border-left-color: var(--s3); }
+.fcv.is-panning { cursor: grabbing; }
+.fcv-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.fcv-edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.fce { fill: none; stroke-width: 2; stroke: var(--text-3); }
+.fce.t-then { stroke: var(--mint); }
+.fce.t-else { stroke: var(--lavender); }
+.fce.fce-off { stroke-dasharray: 5 5; opacity: .4; }
+
+.fcn {
+  position: absolute; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center;
+  gap: 4px; padding: 8px 10px; border-radius: 12px; text-align: left; font: inherit; color: var(--text-1);
+  overflow: hidden;
+}
+button.fcn { cursor: pointer; }
+button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
+.fcn.is-sel { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text-1); }
+.fcn-step {
+  background: color-mix(in srgb, var(--fc) 20%, var(--s1));
+  border: 1.5px solid color-mix(in srgb, var(--fc) 75%, var(--border));
+}
+.fcn-step.fc-none { background: var(--s2); border-color: var(--border); }
+/* On a light canvas the pastels need more of themselves to read as colour. */
+:root[data-theme="light"] .fcn-step { background: color-mix(in srgb, var(--fc) 34%, var(--s1)); border-color: color-mix(in srgb, var(--fc) 90%, #000 10%); }
+:root[data-theme="light"] .fcn-step.fc-none { background: var(--s1); border-color: var(--border); }
+:root[data-theme="light"] .fce.t-then { stroke: color-mix(in srgb, var(--mint) 70%, #000 30%); }
+:root[data-theme="light"] .fce.t-else { stroke: color-mix(in srgb, var(--lavender) 75%, #000 25%); }
+.fcn-step.fcn-bad { border-color: var(--rose); border-style: dashed; }
+.fcn-unreached, .fcn-dim { opacity: .38; }
+.fcn-row { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
+.fcn-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+.fcn-sub { font-size: 11px; color: var(--text-2); }
+.fcn-sub code { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-1); }
+.fcn-third { font-size: 11px; overflow: hidden; }
 .flow-num {
-  flex: 0 0 26px; height: 26px; border-radius: 50%;
+  flex: 0 0 22px; height: 22px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--fc); color: #1c1c21; font-weight: 700; font-size: 12px;
+  background: var(--fc); color: #1c1c21; font-weight: 700; font-size: 11px;
 }
 .fc-none .flow-num { background: var(--s3); color: var(--text-1); }
-.flow-step-body { flex: 1; min-width: 0; }
-.flow-step-title { font-weight: 600; color: var(--text-1); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.flow-step-sub { margin-top: 3px; font-size: 12px; color: var(--text-2); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.flow-flag { padding: 1px 7px; border-radius: 999px; background: var(--s3); color: var(--text-2); font-size: 11px; }
-.flow-step-opts { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 12px; color: var(--text-2); }
-.flow-opt { display: inline-flex; align-items: center; gap: 6px; }
-.flow-opt select, .flow-opt input, .flow-builder select, .flow-builder input {
-  background: var(--s1); color: var(--text-1); border: 1px solid var(--border);
-  border-radius: 6px; padding: 3px 6px; font-size: 12px;
+.flow-flag { padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--text-3) 22%, transparent); color: var(--text-1); font-size: 10.5px; }
+.flow-outcome { font-size: 11px; color: var(--text-1); padding: 0 8px; border-radius: 999px; background: color-mix(in srgb, var(--fc) 35%, transparent); }
+
+.fcn-if { background: var(--s1); border: 1.5px solid var(--text-3); padding-right: 74px; gap: 3px; }
+.fcn-if.fcn-bad { border-style: dashed; border-color: var(--rose); }
+.fcn-if-mark {
+  align-self: flex-start; font-weight: 700; font-size: 11px; padding: 0 8px; border-radius: 999px;
+  background: var(--s3); color: var(--text-1);
 }
-.flow-sid { width: 9ch; font-family: inherit; }
-.flow-swatches { display: inline-flex; gap: 5px; }
+.fcn-cond {
+  font-size: 12px; line-height: 1.3; color: var(--text-1);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.fcn-cond em { color: var(--rose); }
+.fcn-port {
+  position: absolute; right: 8px; font-size: 10.5px; font-weight: 600; padding: 0 7px; border-radius: 999px;
+  color: #1c1c21; white-space: nowrap;
+}
+.fcn-port.p-then { top: calc(50% - 22px); background: var(--mint); }
+.fcn-port.p-else { top: calc(50% + 6px); background: var(--lavender); }
+.fcn-join { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: var(--text-3); }
+.fcn-pill {
+  position: absolute; box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+  border-radius: 999px; background: var(--s3); color: var(--text-2); font-size: 12px; font-weight: 600;
+}
+
+.fce-add {
+  position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; padding: 0; border-radius: 50%;
+  border: 1.5px solid var(--text-3); background: var(--s1); color: var(--text-1);
+  font-size: 15px; line-height: 1; cursor: pointer; opacity: .8;
+}
+.fce-add.t-then { border-color: var(--mint); }
+.fce-add.t-else { border-color: var(--lavender); }
+.fce-add:hover, .fce-add:focus-visible { opacity: 1; background: var(--s3); outline: none; transform: scale(1.15); }
+.fce-menu {
+  position: absolute; z-index: 5; transform: translateX(-50%); display: flex; gap: 6px; padding: 6px;
+  border-radius: 10px; background: var(--s1); border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0,0,0,.25);
+}
+.fce-menu .btn { white-space: nowrap; }
+
+.fcv-tools { position: absolute; left: 10px; bottom: 10px; display: flex; gap: 4px; }
+.fcv-btn {
+  min-width: 28px; height: 28px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--s1); color: var(--text-1); font-size: 13px; cursor: pointer;
+}
+.fcv-btn:hover { background: var(--s3); }
+.fcv-btn:focus-visible { outline: 2px solid var(--sky); outline-offset: 1px; }
+.fcv-hint { position: absolute; right: 10px; bottom: 12px; font-size: 11px; color: var(--text-3); pointer-events: none; }
+.bl-card .fcv-hint { display: none; }
+
+/* Editor: canvas and the selected node's settings side by side. */
+.bl-flow { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 12px; align-items: start; }
+.bl-flow .fcv { resize: vertical; min-height: 260px; }
+.bl-inspector {
+  padding: 12px; border-radius: 12px; background: var(--s2); border: 1px solid var(--border);
+  font-size: 13px; max-height: 520px; overflow-y: auto;
+}
+.fi { display: flex; flex-direction: column; gap: 10px; }
+.fi-head { font-weight: 600; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.fi-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-2); }
+.fi-field input, .fi-field select, .fi-field textarea, .flow-builder select, .flow-builder input {
+  background: var(--s1); color: var(--text-1); border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 7px; font-size: 12px; width: 100%; box-sizing: border-box;
+}
+.flow-cond { font-family: 'IBM Plex Mono', monospace; resize: vertical; }
+.fi-words { font-size: 12px; color: var(--text-1); min-height: 1em; }
+.fi-words:empty { display: none; }
+.fi-sub { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.flow-builder {
+  display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 8px;
+  background: color-mix(in srgb, var(--lavender) 10%, var(--s1)); border: 1px solid color-mix(in srgb, var(--lavender) 45%, var(--border));
+}
+.fb-line { display: flex; gap: 6px; }
+.fb-line > * { flex: 1; }
+.fb-line [data-fb-value-wrap] > * { width: 100%; }
+.fi-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.fi-empty { color: var(--text-2); font-size: 13px; }
+.fi-empty p { margin: 0 0 8px; }
+.fi-plus { display: inline-flex; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--text-3); align-items: center; justify-content: center; font-size: 12px; }
+.fi-then, .fi-else { padding: 0 7px; border-radius: 999px; color: #1c1c21; font-weight: 600; font-size: 12px; }
+.fi-then { background: var(--mint); }
+.fi-else { background: var(--lavender); }
+.flow-sid { font-family: 'IBM Plex Mono', monospace; }
+.flow-swatches { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 .flow-swatch {
-  width: 18px; height: 18px; border-radius: 50%; padding: 0; cursor: pointer;
+  width: 22px; height: 22px; border-radius: 50%; padding: 0; cursor: pointer;
   background: var(--fc); border: 2px solid transparent;
 }
 .flow-swatch.fc-none { background: transparent; border: 2px dashed var(--text-3); }
 .flow-swatch.on { outline: 2px solid var(--text-1); outline-offset: 2px; }
 .flow-swatch:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
-.flow-step-btns { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; flex: 0 0 auto; max-width: 42%; }
-
-.flow-branch {
-  border: 1px solid var(--border); border-radius: 12px; padding: 10px;
-  background: color-mix(in srgb, var(--s1) 70%, transparent);
-}
-.flow-if { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.flow-if-mark {
-  font-weight: 700; font-size: 12px; padding: 3px 10px; border-radius: 999px;
-  background: var(--lavender); color: #1c1c21;
-}
-.flow-cond {
-  flex: 1; min-width: 220px; font-family: 'IBM Plex Mono', monospace; font-size: 12px;
-  background: var(--s1); color: var(--text-1); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;
-}
-.flow-cond-ro { font-size: 12px; color: var(--text-1); }
-.flow-builder {
-  margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
-  padding: 8px; border-radius: 8px; background: var(--s2); border: 1px dashed var(--lavender);
-}
-.flow-lanes {
-  margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
-  position: relative;
-}
-.flow-lane {
-  display: flex; flex-direction: column; gap: 8px; padding: 8px 8px 8px 12px;
-  border-left: 2px solid var(--lane); border-radius: 0 8px 8px 0;
-  background: color-mix(in srgb, var(--lane) 4%, transparent);
-}
-.lane-then { --lane: var(--mint); }
-.lane-else { --lane: var(--lavender); }
-.flow-lane-label { font-size: 12px; font-weight: 600; color: var(--lane); display: flex; gap: 8px; align-items: baseline; }
-.flow-lane-hosts { color: var(--text-2); font-weight: 400; }
-.flow-empty { font-size: 12px; color: var(--text-3); font-style: italic; }
-.flow-add { display: flex; gap: 6px; flex-wrap: wrap; }
-.flow-add .btn, .flow-step-btns .btn, .flow-if .btn { white-space: nowrap; }
-/* A lane is as wide as its share of the fork: when a step card gets narrow,
-   its buttons drop below the title instead of squeezing it. */
-.flow-lane { container-type: inline-size; }
-@container (max-width: 520px) {
-  .flow-step { flex-wrap: wrap; }
-  .flow-step-body { flex-basis: calc(100% - 40px); }
-  .flow-step-btns { max-width: none; width: 100%; justify-content: flex-start; padding-left: 38px; }
-}
 @media (max-width: 900px) {
-  .flow-lanes { grid-template-columns: 1fr; }
-  .flow-step { flex-wrap: wrap; }
-  .flow-step-btns { max-width: none; justify-content: flex-start; }
+  .bl-flow { grid-template-columns: 1fr; }
+  .bl-inspector { max-height: none; }
 }
 
-.flow.ro .flow-step { padding: 8px 10px; }
-.flow-unreached { opacity: .45; }
 .flow-counts { margin-top: 5px; display: flex; gap: 6px; flex-wrap: wrap; }
-.flow-count { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--s3); color: var(--text-1); }
-.fs-ok { background: color-mix(in srgb, var(--mint) 25%, var(--s2)); }
-.fs-failed { background: color-mix(in srgb, var(--rose) 30%, var(--s2)); }
+.flow-count { font-size: 11px; font-weight: 600; padding: 0 7px; border-radius: 999px; background: var(--s3); color: var(--text-1); }
+.fs-ok { background: color-mix(in srgb, var(--mint) 35%, var(--s2)); }
+.fs-failed { background: color-mix(in srgb, var(--rose) 40%, var(--s2)); }
 .fs-not_applicable, .fs-skipped { background: var(--s3); color: var(--text-2); }
-.fs-pending { background: color-mix(in srgb, var(--sky) 22%, var(--s2)); }
+.fs-pending { background: color-mix(in srgb, var(--sky) 30%, var(--s2)); }
 
 .flow-analysis { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--s2); border: 1px solid var(--border); font-size: 13px; }
 .flow-analysis-head { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--text-2); align-items: center; }
@@ -3452,10 +3512,14 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .flow-findings-ok { margin-top: 8px; color: var(--mint); }
 .flow-paths { margin-top: 8px; }
 .flow-paths summary { cursor: pointer; color: var(--text-2); }
-.flow-paths ol { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-.flow-paths li { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.flow-paths ol { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.flow-paths li { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 3px 6px; border-radius: 8px; cursor: default; }
+.flow-paths li:hover, .flow-paths li:focus-visible { background: var(--s3); outline: none; }
 .flow-path-n { width: 18px; color: var(--text-3); font-size: 11px; }
-.flow-path-step { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, var(--fc) 30%, var(--s2)); color: var(--text-1); border-left: 3px solid var(--fc); }
+.flow-path-step {
+  font-size: 11px; padding: 0 8px; border-radius: 999px; color: var(--text-1);
+  background: color-mix(in srgb, var(--fc) 30%, var(--s2)); border: 1px solid color-mix(in srgb, var(--fc) 70%, var(--border));
+}
 .flow-path-arrow { color: var(--text-3); }
 
 /* ── Run summary donuts (M6 08c) ────────────────────────────────────── */
@@ -3480,5 +3544,3 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .donut-pct { color: var(--text-3); text-align: right; }
 .donut-mini { display: inline-flex; vertical-align: middle; }
 .def-card-run { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
-.flow-outcome { font-size: 11px; color: var(--text-1); padding: 1px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--fc) 60%, var(--border)); }
-.flow-outcome-in { width: 14ch; }

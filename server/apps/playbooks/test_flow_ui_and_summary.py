@@ -111,8 +111,8 @@ class FlowUiSourceTests(SimpleTestCase):
     def test_flow_ui_escapes_what_it_draws(self):
         flow = self.src("vigil-playbook-flow.js")
         # Step names, ids, conditions and outcomes are author- or agent-supplied.
-        for needle in ("escHtml(s.name || s.def)", "escHtml(s.sid)", "escHtml(node.cond)",
-                       "escHtml(s.outcome)", "escAttr(b.cond || '')"):
+        for needle in ("escHtml(name)", "escHtml(s.sid)", "escHtml(flowCondWords(cond))",
+                       "escHtml(s.outcome)", "escHtml(node.cond || '')", "escAttr(cond ? `if ${cond}`"):
             self.assertIn(needle, flow)
         charts = self.src("vigil-charts.js")
         self.assertIn("escHtml(s.label)", charts)
@@ -122,6 +122,11 @@ class FlowUiSourceTests(SimpleTestCase):
         self.assertIn("flow_steps: flowSerialize(_editingTree)", playbooks)
         self.assertIn("flowAnalysisHtml(", playbooks)
         self.assertIn("[data-flow-outcome]", playbooks)
+        # The canvas: "+" on an edge inserts there, a node selects into the inspector.
+        self.assertIn("[data-flow-insert]", playbooks)
+        self.assertIn("flowInspectorHtml(_editingTree, _blSel, _blFlowCtx)", playbooks)
+        template = (JS.parents[1] / "templates" / "pages" / "_playbooks.html").read_text()
+        self.assertIn('id="bl-inspector"', template)
         base = (JS.parents[1] / "templates" / "base.html").read_text()
         self.assertLess(base.index("vigil-playbook-flow.js"), base.index("vigil-playbooks.js"))
         self.assertIn("vigil-charts.js", base)
@@ -129,3 +134,11 @@ class FlowUiSourceTests(SimpleTestCase):
     def test_findings_catch_an_unreachable_failure_branch(self):
         flow = self.src("vigil-playbook-flow.js")
         self.assertIn("can never be true: when ${ref.sid} fails the playbook stops there", flow)
+
+    def test_no_coloured_side_stripes(self):
+        """Cards are coloured all over or not at all — never a stripe down one side."""
+        import re
+        css = (JS.parent / "css" / "vigil.css").read_text()
+        stripes = re.findall(r"border-left(?:-color)?:\s*(?:\d+px\s+solid\s+)?var\(--(?!border)[\w-]+\)", css)
+        self.assertEqual(stripes, [])
+        self.assertNotRegex(css, r"inset [3-9]px 0 0")
