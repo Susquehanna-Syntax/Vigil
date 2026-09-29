@@ -116,6 +116,7 @@ urlpatterns = [
     path("api/v1/jackil/", include("apps.jackil.urls")),
     path("api/v1/license/", include("apps.licensing.urls")),
     path("api/v1/playbooks/", include("apps.playbooks.urls")),
+    path("api/v1/software/", include("apps.software.urls")),
     path("api/v1/dashboards/", include("apps.dashboards.urls")),
     # Playbooks were called baselines until 2026.11.0. Anything an operator
     # already scripted against the old path keeps working; nothing in Vigil
