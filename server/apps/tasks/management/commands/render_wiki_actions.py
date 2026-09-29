@@ -54,6 +54,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "install_package", "remove_package", "update_package",
         "run_package_updates",
     ]),
+    ("apps", "Apps", ["app_inventory"]),
     ("winupdate", "Windows Update", [
         "windows_update_scan", "windows_update_install",
     ]),
@@ -405,6 +406,12 @@ OUTPUT_NOTES: dict[str, dict[str, str]] = {
     "check_docker_updates": {
         "checked": "How many Docker Hub-tagged containers were checked.",
         "outdated": "How many of them have a newer image available.",
+    },
+    "app_inventory": {
+        "count": "How many installed items the host reported.",
+        "outdated": "How many of them their own package manager offers a newer version for.",
+        "unmanaged": "How many are entries no package manager claims (a Windows registry install with no winget/choco/scoop match).",
+        "errors": "How many sources failed to report.",
     },
     "run_command": {
         "exit_code": "The command's exit code (0 — a non-zero exit fails the step).",

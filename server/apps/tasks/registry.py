@@ -560,6 +560,15 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
                      "max_results", "timeout", "stays_open"],
         "outputs": {"matched": "bool", "count": "int", "truncated": "bool"},
     },
+    # ── Apps ────────────────────────────────────────────────────────────────
+    "app_inventory": {
+        "label": "Refresh software inventory",
+        "risk": "low",
+        "required": [],
+        "optional": [],
+        "outputs": {"count": "int", "outdated": "int", "unmanaged": "int",
+                    "errors": "int"},
+    },
 }
 
 
