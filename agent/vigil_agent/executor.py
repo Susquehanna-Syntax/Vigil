@@ -31,6 +31,7 @@ from pathlib import Path
 from . import collector  # noqa: F401 — tests patch executor.collector
 from . import firewall
 from . import scripthash
+from . import software
 from .config import AgentConfig
 from .deferral import RebootDeferral
 from .pkg_manager import detect as detect_pkg_manager
@@ -1345,6 +1346,31 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
                         {"version": new_version})
 
 
+# ── Apps ──────────────────────────────────────────────────────────────────────
+
+def _app_inventory(_params: dict, _config: AgentConfig) -> ActionOutput:
+    """Re-collect the installed-software list now.
+
+    The payload is not sent from here — it goes out with the next check-in,
+    which is where the server accepts a software list at all.
+    """
+    payload = software.collect_now()
+    items = payload.get("items", [])
+    errors = payload.get("errors", [])
+    outdated = sum(
+        1 for i in items
+        if i.get("latest") and i.get("latest") != i.get("version")
+    )
+    unmanaged = sum(1 for i in items if not i.get("managed"))
+    return ActionOutput(
+        f"{len(items)} installed item(s), {outdated} outdated, {unmanaged} unmanaged; "
+        f"sending with the next check-in"
+        + (f" (errors: {', '.join(sorted(errors))})" if errors else ""),
+        {"count": len(items), "outdated": outdated, "unmanaged": unmanaged,
+         "errors": len(errors)},
+    )
+
+
 # Handlers split into modules (re-exported so executor.<name> keeps working).
 from .actions.containers import (  # noqa: E402,F401
     _restart_container,
@@ -1451,6 +1477,8 @@ _HANDLERS: dict[str, callable] = {
     # Windows Update
     "windows_update_scan": _windows_update_scan,
     "windows_update_install": _windows_update_install,
+    # Apps
+    "app_inventory": _app_inventory,
     # User management
     "create_user": _create_user,
     "delete_user": _delete_user,

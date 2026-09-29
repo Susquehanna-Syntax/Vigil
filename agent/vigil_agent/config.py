@@ -66,6 +66,8 @@ _ALL_ACTIONS = {
     "set_firewall_policy", "enable_firewall", "disable_firewall",
     # Windows Update
     "windows_update_scan", "windows_update_install",
+    # Apps
+    "app_inventory",
     # User management
     "create_user", "delete_user", "add_user_to_group",
     # Cron
@@ -162,6 +164,10 @@ class AgentConfig:
     # unmetered HEAD requests, but the floor keeps misconfigured agents
     # from hammering the registry's auth endpoint.
     docker_check_interval: int = 21600
+    # Seconds between installed-software collections. Collection is offline
+    # (package databases as they stand), but the floor keeps a mistyped value
+    # from turning a 6 h job into per-check-in work.
+    software_interval: int = 21600
     data_dir: Path = field(default_factory=lambda: Path("/var/lib/vigil-agent"))
     allowlist: set[str] = field(default_factory=set)
     scripts_dir: Path = field(default_factory=lambda: _default_scripts_dir())
@@ -192,6 +198,8 @@ class AgentConfig:
             raise ValueError("checkin_interval must be at least 10 seconds")
         if self.docker_check_interval < 300:
             raise ValueError("docker_check_interval must be at least 300 seconds")
+        if self.software_interval < 900:
+            raise ValueError("software_interval must be at least 900 seconds")
         # Unknown allowlist entries are dropped with a warning, not fatal:
         # an agent.yml written for a newer agent (or with a typo) must never
         # crash-loop the agent and take monitoring down with it. The dropped
@@ -372,6 +380,7 @@ def load_config(path: Path | None = None) -> AgentConfig:
         allow_reprovision=allow_reprovision,
         checkin_interval=int(raw.get("checkin_interval", 60)),
         docker_check_interval=int(raw.get("docker_check_interval", 21600)),
+        software_interval=int(raw.get("software_interval", 21600)),
         data_dir=data_dir,
         allowlist=allowlist,
         scripts_dir=Path(raw["scripts_dir"]) if raw.get("scripts_dir")

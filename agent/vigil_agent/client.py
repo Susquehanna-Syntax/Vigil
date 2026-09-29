@@ -53,6 +53,7 @@ def checkin(
     docker_containers: list[dict] | None = None,
     reboot_required: bool | None = None,
     windows_updates: dict | None = None,
+    software: dict | None = None,
 ) -> dict:
     """Send metrics and receive tasks. Returns the full server response."""
     payload = {
@@ -80,6 +81,10 @@ def checkin(
     # snapshot. An empty list is meaningful ("no containers now") and is sent.
     if docker_containers is not None:
         payload["docker_containers"] = docker_containers
+    # Same contract: an absent key means "nothing new to store", so the server
+    # keeps the software list it already has. Only a fresh payload is sent.
+    if software is not None:
+        payload["software"] = software
     url = f"{config.server_url}/api/v1/checkin"
     resp = requests.post(url, json=payload, headers=_headers(config), timeout=_TIMEOUT)
     resp.raise_for_status()

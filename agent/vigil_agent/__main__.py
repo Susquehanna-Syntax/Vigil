@@ -16,7 +16,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import client, collector, verify, windows_update
+from . import client, collector, software, verify, windows_update
 from .config import load_config
 from .executor import execute_action
 from .nonce_store import NonceStore
@@ -678,6 +678,9 @@ def run_agent() -> None:
     consecutive_failures = 0
     inventory_refresh_after = 0.0  # monotonic deadline; 0 → refresh now
     docker_refresh_after = 0.0    # monotonic deadline; 0 → check now
+    software_refresh_after = 0.0  # monotonic deadline; 0 → collect now
+    server_software_digest: str | None = None  # the digest the server holds
+    last_software_sent = 0.0      # monotonic; underpins the resend-every-24h rule
     last_inventory: dict | None = None
     _cached_docker_metrics: list[dict] = []
     docker_payload_pending = False  # fresh results awaiting a successful checkin
@@ -713,14 +716,45 @@ def run_agent() -> None:
             except Exception:
                 logger.exception("Docker container collection failed")
                 docker_containers = None
-            response = client.checkin(
-                config, metrics, inventory=inventory_payload,
-                docker_containers=docker_containers,
-                reboot_required=collector.reboot_required(),
-                windows_updates=windows_update.summary(),
-            )
+            # Installed software: collect on schedule (and on demand through
+            # app_inventory, which fills the pending payload directly). Send
+            # the pending list only when the server doesn't already hold this
+            # digest — unless it's been a day, which re-proves the inventory
+            # after a server-side reset.
+            if time.monotonic() >= software_refresh_after:
+                try:
+                    software.collect_now()
+                except Exception:
+                    logger.exception("Software inventory collection failed")
+                software_refresh_after = time.monotonic() + config.software_interval
+            software_payload = software.take_pending()
+            if (
+                software_payload is not None
+                and software_payload.get("digest") == server_software_digest
+                and time.monotonic() - last_software_sent < 86400
+            ):
+                software_payload = None
+            try:
+                response = client.checkin(
+                    config, metrics, inventory=inventory_payload,
+                    docker_containers=docker_containers,
+                    reboot_required=collector.reboot_required(),
+                    windows_updates=windows_update.summary(),
+                    software=software_payload,
+                )
+            except Exception:
+                # The list never reached the server. Put it back so the next
+                # pass retries it — unless a newer collection already landed
+                # in the meantime, which supersedes it.
+                with software._pending_lock:
+                    if software_payload is not None and software._pending is None:
+                        software._pending = software_payload
+                raise
             consecutive_failures = 0
             docker_payload_pending = False
+            server_software_digest = response.get("software_digest")
+            if software_payload is not None:
+                last_software_sent = time.monotonic()
 
             # Handle public key (TOFU pinning)
             pub_key_b64 = response.get("public_key")

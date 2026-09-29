@@ -2654,6 +2654,7 @@
     <option value="container">Container management</option>
     <option value="files">Files and directories</option>
     <option value="packages">Package management</option>
+    <option value="apps">Apps</option>
     <option value="winupdate">Windows Update</option>
     <option value="system">System</option>
     <option value="network">Networking</option>
@@ -3044,6 +3045,19 @@
 <span class="hl-key">actions</span>:
   - <span class="hl-key">id</span>: <span class="hl-string">run-package-updates</span>
     <span class="hl-key">type</span>: <span class="hl-string">run_package_updates</span></pre></div>
+</div></details>
+</div>
+<div class="action-group" data-group="apps">
+<h4 class="action-group-title">Apps</h4>
+<details class="action" id="action-app_inventory" data-group="apps" data-risk="low" data-keywords="app_inventory"><summary><code class="action-name">app_inventory</code><span class="risk risk-low">low</span><span class="action-label">Refresh software inventory</span><span class="action-required">none</span></summary><div class="action-body">
+<p class="action-noparams">This action takes no params.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>count</code></td><td>int</td><td>How many installed items the host reported.</td></tr><tr><td><code>outdated</code></td><td>int</td><td>How many of them their own package manager offers a newer version for.</td></tr><tr><td><code>unmanaged</code></td><td>int</td><td>How many are entries no package manager claims (a Windows registry install with no winget/choco/scoop match).</td></tr><tr><td><code>errors</code></td><td>int</td><td>How many sources failed to report.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Refresh software inventory</span>
+<span class="hl-key">description</span>: <span class="hl-string">Refresh software inventory on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">low</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">app-inventory</span>
+    <span class="hl-key">type</span>: <span class="hl-string">app_inventory</span></pre></div>
 </div></details>
 </div>
 <div class="action-group" data-group="winupdate">

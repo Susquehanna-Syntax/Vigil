@@ -25,6 +25,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 
 logger = logging.getLogger("vigil.software")
 
@@ -899,3 +900,29 @@ def collect() -> dict:
     if sys.platform == "win32":
         return collect_windows()
     return collect_linux()
+
+
+# ── pending payload ───────────────────────────────────────────────────────────
+
+_pending: dict | None = None      # a collected payload waiting to be sent
+# app_inventory runs on a task thread while the check-in loop drains the
+# pending slot, so both writers and the reader hold this.
+_pending_lock = threading.Lock()
+
+
+def collect_now() -> dict:
+    """Collect immediately, remember it as pending, and return it."""
+    global _pending
+    payload = collect()
+    with _pending_lock:
+        _pending = payload
+    return payload
+
+
+def take_pending() -> dict | None:
+    """Return the pending payload (or None) and clear it."""
+    global _pending
+    with _pending_lock:
+        payload = _pending
+        _pending = None
+    return payload
