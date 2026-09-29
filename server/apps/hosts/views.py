@@ -495,6 +495,13 @@ def checkin(request):
         # only the colon-prefixed namespace we manage gets refreshed.
         _sync_host_auto_tags(host, inv_payload)
 
+    # Software list — replace-the-world per host, short-circuited by digest.
+    # Never raises: a bad software list must not break a check-in.
+    software_payload = data.get("software")
+    if isinstance(software_payload, dict):
+        from apps.software.ingest import ingest_software
+        ingest_software(host, software_payload)
+
     # Absent means the agent cannot count (not Windows, too old, or the scan
     # failed), so the stored value is left alone rather than being zeroed by a
     # machine that does not know.
@@ -663,11 +670,17 @@ def checkin(request):
             state=Task.State.DISPATCHED, dispatched_at=dispatch_ts
         )
 
+    from apps.software.models import SoftwareSnapshot
+
+    snapshot = SoftwareSnapshot.objects.filter(host=host).first()
     return Response(
         {
             "status": "ok",
             "public_key": get_public_key_b64(),
             "tasks": tasks_payload,
+            # The agent resends its software list when this differs from its
+            # own digest. "" when the server holds nothing for this host.
+            "software_digest": snapshot.digest if snapshot else "",
         }
     )
 
