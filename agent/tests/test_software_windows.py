@@ -105,7 +105,7 @@ class _Runner:
         self.table = table
         self.calls: list[list[str]] = []
 
-    def __call__(self, argv, timeout=60):
+    def __call__(self, argv, timeout=60, env=None):
         self.calls.append(list(argv))
         # The collector calls winget by its resolved path (C:/winget.exe):
         # match on the program's base name, not the path.
@@ -124,9 +124,9 @@ def _collect(table, winget=False, present=(), rows=None, rows_error=None):
     runner = _Runner(table)
     uninstall = software._read_uninstall_keys
     if rows_error is not None:
-        uninstall = lambda: (_ for _ in ()).throw(rows_error)  # noqa: E731
+        uninstall = lambda _denied=None: (_ for _ in ()).throw(rows_error)  # noqa: E731
     elif rows is not None:
-        uninstall = lambda: list(rows)  # noqa: E731
+        uninstall = lambda _denied=None: list(rows)  # noqa: E731
     with patch.object(software, "_run", side_effect=runner), \
             patch.object(software, "_winget_binary",
                          return_value="C:/winget.exe" if winget else None), \

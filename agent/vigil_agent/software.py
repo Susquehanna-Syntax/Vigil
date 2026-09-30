@@ -43,10 +43,11 @@ _OVERLAYS = (("snap", "snap"), ("flatpak", "flatpak"))
 _SNAP_BASE_MARKERS = ("base", "core", "snapd", "gadget")
 
 
-def _run(argv: list[str], timeout: int = 60) -> tuple[int, str, str]:
+def _run(argv: list[str], timeout: int = 60,
+         env: dict[str, str] | None = None) -> tuple[int, str, str]:
     """(returncode, stdout, stderr) — the one place a command runs. Tests patch this."""
     proc = subprocess.run(argv, capture_output=True, text=True,
-                          timeout=timeout, check=False)
+                          timeout=timeout, check=False, env=env)
     return proc.returncode, proc.stdout, proc.stderr
 
 
@@ -520,9 +521,17 @@ def _winget_latest(rows: list[dict]) -> dict[str, str]:
 
 
 def _collect_winget(binary: str, errors: dict[str, str]) -> list[dict]:
-    """winget's own packages, with the newest version winget offers."""
+    """winget's own packages, with the newest version winget offers.
+
+    Both calls carry winget_env(): the machine-wide ``winget.exe`` is a
+    packaged binary and dies with STATUS_DLL_NOT_FOUND without its VCLibs
+    directory on PATH — which is every Windows agent running as LocalSystem.
+    """
+    from . import pkg_manager
+
+    wenv = pkg_manager.winget_env(binary)
     code, out, err = _run([binary, "list", "--accept-source-agreements",
-                           "--disable-interactivity"])
+                           "--disable-interactivity"], env=wenv)
     if code != 0:
         raise RuntimeError(f"winget list exited {code}: {_head(err)}")
     listed = _parse_winget_table(out)
@@ -531,7 +540,7 @@ def _collect_winget(binary: str, errors: dict[str, str]) -> list[dict]:
     # list's own Available column can be empty before the sources agree.
     latest = _winget_latest(listed)
     code, out, err = _run([binary, "upgrade", "--accept-source-agreements",
-                           "--disable-interactivity"])
+                           "--disable-interactivity"], env=wenv)
     if code != 0:
         # An unreadable upgrade list leaves the list's own Available column in
         # place — it is the same offer whenever winget has one.
@@ -707,14 +716,16 @@ def _is_user_sid(sid: str) -> bool:
     return sid.startswith("S-1-5-21-") and not sid.endswith("_Classes")
 
 
-def _read_uninstall_keys() -> list[dict]:
+def _read_uninstall_keys(denied: list[str] | None = None) -> list[dict]:
     """Every Uninstall subkey carrying a DisplayName, as plain dicts.
 
     The keys are ``hive`` ("HKLM" | "HKU"), ``sid`` ("" for HKLM), ``key`` (the
-    subkey name) and the nine values the item rules read. User hives that cannot
-    be opened — unloaded, access denied — are skipped silently. Failing to open
-    HKLM's 64-bit Uninstall key raises: that one is the whole machine-wide list,
-    so its absence is an error rather than "nothing installed".
+    subkey name) and the nine values the item rules read. A user SID whose
+    ``Uninstall`` key is refused by its ACL is appended to ``denied`` (when a
+    list is given) and skipped; a SID with no such key simply has no per-user
+    installs and stays silent. Failing to open HKLM's 64-bit Uninstall key
+    raises: that one is the whole machine-wide list, so its absence is an error
+    rather than "nothing installed".
 
     HKCU is not read at all: the agent runs as a service account, so HKCU is
     that account's hive and not any person's.
@@ -746,6 +757,10 @@ def _read_uninstall_keys() -> list[dict]:
             try:
                 hive = _reg_open(winreg, winreg.HKEY_USERS,
                                  f"{sid}\\{_UNINSTALL_USER}")
+            except PermissionError:
+                if denied is not None:
+                    denied.append(sid)
+                continue
             except OSError:
                 continue
             with hive:
@@ -868,22 +883,36 @@ def collect_windows() -> dict:
 
     # winget first and apart from the others: it is often off PATH (the agent
     # runs as a service account) yet installed, so it needs the resolver, and
-    # on Server 2019 / LTSC it is absent — which is a skip, not an error.
+    # on Server 2019 / LTSC it is absent — which is a skip, not an error. A
+    # winget that is installed but refused by the WindowsApps ACL is neither:
+    # the operator can fix that one by running the agent as LocalSystem.
     winget = _winget_binary()
     if winget:
         _run_source("winget", lambda: _collect_winget(winget, errors), items,
                     errors)
+    else:
+        from . import pkg_manager
+
+        if pkg_manager.resolve_winget()[1] == "denied":
+            errors["winget"] = ("winget is installed but this account cannot "
+                                 "reach it (WindowsApps access denied) — run "
+                                 "the agent as LocalSystem")
     for name, collect in _WINDOWS_SOURCES:
         if _which(_SOURCE_BINARIES[name]):
             _run_source(name, lambda collect=collect: collect(errors), items,
                         errors)
 
+    denied: list[str] = []
     try:
-        rows = _read_uninstall_keys()
+        rows = _read_uninstall_keys(denied)
     except (OSError, RuntimeError) as exc:
         logger.warning("software: registry collection failed: %s", exc)
         errors["registry"] = f"registry failed: {str(exc)[:200]}"[:250]
         rows = []
+    if denied:
+        errors["registry-users"] = (
+            f"{len(denied)} user hive(s) unreadable from this account (access "
+            "denied) — run the agent as LocalSystem")
     claimed = {name_key(item["name"]) for item in items}
     try:
         items.extend(_collect_registry(rows, claimed))
