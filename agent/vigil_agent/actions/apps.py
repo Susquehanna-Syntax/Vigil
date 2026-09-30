@@ -27,10 +27,16 @@ reports it.
 
 from __future__ import annotations
 
+import hashlib
+import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
+
+import requests
 
 from .. import pkg_manager, software
 from ..config import AgentConfig
@@ -763,3 +769,118 @@ def _installed_version(pm: pkg_manager.PackageManager | None, app: str) -> str:
         logger.debug("app_pin: %s reported no version for %s: %s",
                      pm.name, app, exc)
         return ""
+
+
+# ── app_install_custom ────────────────────────────────────────────────────────
+#
+# The one app action that runs an installer no package manager vouches for, so
+# every rule the server applied is applied again here before a byte is fetched,
+# and the file runs only if its SHA-256 is exactly the one signed into the task.
+
+_CUSTOM_KINDS = ("msi", "exe", "deb", "rpm")
+_CUSTOM_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_CUSTOM_ARGS = re.compile(r'^[A-Za-z0-9 /=_.:,@+"-]{0,300}$')
+_CUSTOM_MAX_BYTES = 2 * 1024 ** 3
+_CUSTOM_TIMEOUT = 1800
+
+
+def _custom_kind(url: str, named: str) -> str:
+    """The installer kind: the one named, else the URL path's extension."""
+    tail = url.split("#", 1)[0].split("?", 1)[0].rsplit("/", 1)[-1]
+    ext = tail.rsplit(".", 1)[-1].lower() if "." in tail else ""
+    from_url = ext if ext in _CUSTOM_KINDS else ""
+    if named:
+        if named not in _CUSTOM_KINDS:
+            raise RuntimeError(f"kind must be one of {', '.join(_CUSTOM_KINDS)}, got {named!r}")
+        if from_url and from_url != named:
+            raise RuntimeError(f"kind {named} does not match the URL's .{from_url}")
+        return named
+    if not from_url:
+        raise RuntimeError("the URL has no .msi, .exe, .deb or .rpm extension — say kind")
+    return from_url
+
+
+def _custom_download(url: str, dest_dir: Path, kind: str) -> Path:
+    """Stream *url* into a new file under *dest_dir*; delete it on any failure."""
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    if sys.platform != "win32":
+        os.chmod(dest_dir, 0o700)
+    fd, name = tempfile.mkstemp(dir=dest_dir, prefix=".vigil-installer-", suffix="." + kind)
+    path = Path(name)
+    try:
+        resp = requests.get(url, timeout=(10, 300), stream=True)
+        resp.raise_for_status()
+        written = 0
+        with os.fdopen(fd, "wb") as fh:
+            for chunk in resp.iter_content(chunk_size=65536):
+                written += len(chunk)
+                if written > _CUSTOM_MAX_BYTES:
+                    raise RuntimeError("download exceeds 2 GiB")
+                fh.write(chunk)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+    return path
+
+
+def _custom_run(path: Path, kind: str, args: str) -> str:
+    """Install the verified file silently; returns a note ("" or a reboot hint)."""
+    if kind == "msi":
+        code, output = _run_windows(["msiexec.exe", "/i", str(path), "/qn", "/norestart"],
+                                    timeout=_CUSTOM_TIMEOUT)
+        _check_exit(code, output, "msiexec", frozenset({0}) | _REBOOT_CODES)
+        return " (reboot required)" if _reboot(code) else ""
+    if kind == "exe":
+        code, output = _run_windows([str(path), *args.split()], timeout=_CUSTOM_TIMEOUT)
+        _check_exit(code, output, path.name, frozenset({0, 3010}))
+        return " (reboot required)" if _code_is(code, 3010) else ""
+    if kind == "deb":
+        argv = (["apt-get", "install", "-y", str(path)] if shutil.which("apt-get")
+                else ["dpkg", "-i", str(path)])
+    else:
+        tool = next((t for t in ("dnf", "yum") if shutil.which(t)), None)
+        argv = [tool, "install", "-y", str(path)] if tool else ["rpm", "-i", str(path)]
+    pkg_manager._run(argv, timeout=_CUSTOM_TIMEOUT)
+    return ""
+
+
+def _app_install_custom(params: dict, config: AgentConfig) -> str:
+    url = str(params.get("url") or "")
+    if not url.startswith("https://") or len(url) > 2000 or any(c.isspace() for c in url):
+        raise RuntimeError("url must be an https URL of at most 2000 characters, no spaces")
+    expected = str(params.get("sha256") or "").lower()
+    if not _CUSTOM_SHA256.fullmatch(expected):
+        raise RuntimeError("sha256 must be 64 hexadecimal characters")
+    kind = _custom_kind(url, str(params.get("kind") or ""))
+    args = str(params.get("args") or "")
+    if args and (kind != "exe" or not _CUSTOM_ARGS.fullmatch(args)):
+        raise RuntimeError("args is a silent-install switch list, only for kind exe")
+    app = str(params.get("app") or "")
+    if app and not pkg_manager.validate_app_identifier(app):
+        raise RuntimeError(f"app {app!r} is not a valid app identifier")
+    windows = sys.platform == "win32"
+    if windows != (kind in ("msi", "exe")):
+        raise RuntimeError(f"a .{kind} installer does not run on this platform")
+
+    path = _custom_download(url, Path(config.data_dir) / "downloads", kind)
+    try:
+        digest = hashlib.sha256()
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(65536), b""):
+                digest.update(chunk)
+        actual = digest.hexdigest()
+        if actual != expected:
+            raise ValueError(f"installer failed SHA-256 verification: expected {expected}, got {actual}")
+        note = _custom_run(path, kind, args)
+    finally:
+        path.unlink(missing_ok=True)
+
+    installed = ""
+    if app:
+        after = _recollect()
+        installed = next((str(i.get("version") or "") for i in after.get("items", [])
+                          if i.get("id") == app), "")
+    else:
+        _recollect()
+    return ActionOutput(f"installed {kind} from {url} (sha256 verified){note}",
+                        {"sha256": actual, "installed_version": installed})
