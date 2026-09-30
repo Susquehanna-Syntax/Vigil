@@ -3094,6 +3094,19 @@
     <span class="hl-key">params</span>:
       <span class="hl-key">app</span>: <span class="hl-string">openssl</span></pre></div>
 </div></details>
+<details class="action" id="action-app_pin" data-group="apps" data-risk="standard" data-keywords="app_pin app source version unpin"><summary><code class="action-name">app_pin</code><span class="risk risk-std">standard</span><span class="action-label">Pin an app at its version</span><span class="action-required">app</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>app</code></td><td><span class="param-req">required</span></td><td>The inventory id the Apps page shows — its package id, from the source in `source`.</td></tr><tr><td><code>source</code></td><td><span class="param-opt">optional</span></td><td>Where to look for the app. Defaults to the host&#x27;s own package manager.</td></tr><tr><td><code>version</code></td><td><span class="param-opt">optional</span></td><td>Install this version first, then hold it. Sources that cannot pin a version refuse it.</td></tr><tr><td><code>unpin</code></td><td><span class="param-opt">optional</span></td><td>true releases the hold instead of adding one. Takes no `version`.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>pinned_version</code></td><td>str</td><td>The version the host reports for the app after the action, the requested version when the inventory has no row for it, or empty when neither is known.</td></tr><tr><td><code>pinned</code></td><td>bool</td><td>True when the app is now held (a pin was added), False when it was released (`unpin: true`).</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Hold openssl at its version</span>
+<span class="hl-key">description</span>: <span class="hl-string">&quot;Install a given openssl and hold it, so an upgrade leaves it alone. Put `unpin: true` in place of `version` to release the hold.&quot;</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">app-pin</span>
+    <span class="hl-key">type</span>: <span class="hl-string">app_pin</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">app</span>: <span class="hl-string">openssl</span>
+      <span class="hl-key">version</span>: <span class="hl-string">&quot;3.0.13-1&quot;</span></pre></div>
+</div></details>
 </div>
 <div class="action-group" data-group="winupdate">
 <h4 class="action-group-title">Windows Update</h4>

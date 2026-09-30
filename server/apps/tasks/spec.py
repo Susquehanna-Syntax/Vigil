@@ -333,6 +333,17 @@ def _validate_app_params(params: dict[str, Any], position: int,
         )
 
     version = params.get("version")
+    if action_type == "app_pin":
+        unpin = params.get("unpin")
+        # An unpin that carries a version is refused whatever that version
+        # looks like, including a value still waiting to be resolved.
+        if unpin is True:
+            if version is not None:
+                raise SpecError(f"{where}: unpin takes no version")
+        elif unpin is not None and not _pending(unpin):
+            raise SpecError(
+                f"{where}: 'unpin' must be a boolean. Got {unpin!r}"
+            )
     if version is None or _pending(version):
         return
     if not _APP_VERSION_RE.fullmatch(version):
@@ -1189,7 +1200,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
 
         if action_type in ("add_tag", "remove_tag"):
             _validate_tag_param(params.get("tags", ""), index + 1, action_type)
-        elif action_type in ("app_install", "app_upgrade", "app_uninstall"):
+        elif action_type in ("app_install", "app_upgrade", "app_uninstall",
+                             "app_pin"):
             _validate_app_params(params, index + 1, action_type)
         elif action_type == "execute_script":
             _validate_script_params(params, index + 1)
