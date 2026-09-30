@@ -27,9 +27,15 @@ reports it.
 
 from __future__ import annotations
 
+import re
+import shutil
+import subprocess
+import sys
+
 from .. import pkg_manager, software
 from ..config import AgentConfig
 from ..executor import ActionOutput, logger
+
 
 _PRIMARY_SOURCES = frozenset({"dpkg", "rpm", "apk", "pacman"})
 _STORE_SOURCES = frozenset({"snap", "flatpak"})
@@ -39,6 +45,31 @@ _WINDOWS_SOURCES = frozenset({"winget", "chocolatey", "scoop", "registry"})
 #: task and in the outputs uses the inventory's name, as the Apps page does.
 _MANAGER_SOURCE = {"apt": "dpkg", "apt-get": "dpkg", "dnf": "rpm", "yum": "rpm",
                    "zypper": "rpm", "apk": "apk", "pacman": "pacman"}
+#: The Windows sources whose commands are the package manager's own; the
+#: registry is the unmanaged remainder and can only ever be removed.
+_MANAGER_SOURCES_WINDOWS = frozenset({"winget", "chocolatey"})
+
+#: An install/upgrade/uninstall is a download plus an installer: 15 minutes.
+_WINDOWS_TIMEOUT = 900
+#: winget's own messages are the useful half of a failure; the rest of its
+#: output is a progress-bar history.
+_WINGET_TAIL_CHARS = 300
+#: MSI/choco: the last two mean "removed, but reboot to finish" — a success.
+_REBOOT_CODES = frozenset({1641, 3010})
+#: msiexec 1605: this product is not installed. The removal did what it could.
+_MSI_NOT_INSTALLED = 1605
+#: winget ``0x8A15002B`` — nothing to upgrade, the installed version is current.
+WINGET_NO_APPLICABLE_UPDATE = 0x8A15002B
+#: winget ``0x8A150061`` — the requested package (at that version) is installed.
+WINGET_PACKAGE_ALREADY_INSTALLED = 0x8A150061
+#: The exit codes each winget action accepts (0 included). Both spellings of an HRESULT are
+#: compared by :func:`_code_is`, so these are the unsigned forms.
+_WINGET_OK_UPGRADE = frozenset({0, WINGET_NO_APPLICABLE_UPDATE})
+_WINGET_OK_INSTALL = frozenset({0, WINGET_PACKAGE_ALREADY_INSTALLED})
+#: A Windows Installer product code, as one registry key name.
+_MSI_PRODUCT_CODE = re.compile(r"^\{[0-9A-Fa-f-]{36}\}$")
+#: Same GUID anywhere inside an ``UninstallString``.
+_MSI_GUID_IN_STRING = re.compile(r"\{[0-9A-Fa-f-]{36}\}")
 
 
 def _inventory_source(manager: pkg_manager.PackageManager) -> str:
@@ -114,6 +145,240 @@ def _store_command(store: str, action: str, app: str = "") -> list[str]:
     return argv + [app] if app else argv
 
 
+def _run_windows(command: list[str] | str, timeout: int = _WINDOWS_TIMEOUT,
+                 env: dict[str, str] | None = None) -> tuple[int, str]:
+    """Run one Windows package command, returning ``(exit code, output)``.
+
+    One seam for the whole Windows half, so the tests substitute it once.
+    *command* may also be a command **string**: on Windows ``subprocess`` hands
+    a string straight to ``CreateProcess`` with ``shell=False``, so a registry
+    ``QuietUninstallString`` is split by the same rules as any other program's
+    command line, with no shell in between to reinterpret it.
+    """
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        shell=False,
+        check=False,
+        env=env if env is not None else pkg_manager.clean_env(),
+    )
+    return result.returncode, (result.stdout + result.stderr).strip()
+
+
+def _tail(text: str) -> str:
+    """The tool's own last line.
+
+    winget prints a progress history and puts its message — "No installed
+    package found matching input criteria" — at the end, so the head of the
+    output says nothing about why it stopped.
+    """
+    tail = (text or "").strip()[-_WINGET_TAIL_CHARS:]
+    lines = [line.strip() for line in tail.splitlines() if line.strip()]
+    return lines[-1] if lines else ""
+
+
+def _code_is(code: int, wanted: int) -> bool:
+    """Whether *code* is *wanted*, in its signed or its unsigned spelling.
+
+    winget's HRESULTs reach us negative from some process reports and positive
+    (``code & 0xFFFFFFFF``) from others; the two spellings are one condition.
+    """
+    return code == wanted or (code & 0xFFFFFFFF) == wanted
+
+
+def _check_exit(code: int, output: str, program: str,
+                ok_codes: frozenset[int]) -> None:
+    """Raise with the tool's own last line unless *code* is one we accept."""
+    if not any(_code_is(code, ok) for ok in ok_codes):
+        raise RuntimeError(f"{program} exited {code}: {_tail(output)}")
+
+
+def _reboot(code: int) -> bool:
+    """Whether an exit code means "done, but reboot to finish"."""
+    return _code_is(code, 1641) or _code_is(code, 3010)
+
+
+def _winget_command(argv: list[str]) -> tuple[list[str], dict[str, str]]:
+    """winget's argv plus the environment its packaged loader needs.
+
+    ``winget.exe`` under ``%ProgramFiles%\\WindowsApps`` cannot find its VCLibs
+    C runtime when a service launches it directly; ``winget_env`` puts the
+    runtime on PATH (see ``pkg_manager.winget_env``).
+    """
+    binary, _reason = pkg_manager.resolve_winget()
+    if not binary:
+        raise RuntimeError(
+            "winget is not available on this host (App Installer absent, or "
+            "this account cannot reach it)")
+    return [binary, *argv], pkg_manager.winget_env(binary)
+
+
+def _run_winget(argv: list[str],
+                ok_codes: frozenset[int] = frozenset({0})) -> int:
+    """One winget command, accepting the exit codes this action expects."""
+    command, env = _winget_command(argv)
+    code, output = _run_windows(command, timeout=_WINDOWS_TIMEOUT, env=env)
+    _check_exit(code, output, "winget", ok_codes)
+    return code
+
+
+def _run_choco(argv: list[str]) -> int:
+    """One Chocolatey command. 1641/3010 mean "done — reboot to finish"."""
+    code, output = _run_windows(argv, timeout=_WINDOWS_TIMEOUT)
+    _check_exit(code, output, "choco", frozenset({0}) | _REBOOT_CODES)
+    return code
+
+
+def _windows_source(params: dict) -> str:
+    """Which Windows source to act on.
+
+    winget wins when it resolves — it is machine-wide and the resolver finds it
+    even off a service account's PATH — then Chocolatey. Registry rows are not
+    a source an install or upgrade can use, so they are refused here and
+    handled by the uninstall path.
+    """
+    requested = params.get("source")
+    if requested in (None, ""):
+        if pkg_manager.resolve_winget()[0]:
+            return "winget"
+        if shutil.which("choco") is not None:
+            return "chocolatey"
+        raise RuntimeError("no package manager on this host (winget / Chocolatey)")
+    if requested in _PRIMARY_SOURCES:
+        raise RuntimeError(f"source {requested} is Linux-only")
+    if requested == "scoop":
+        raise RuntimeError("Scoop installs are per-user; Vigil does not manage "
+                           "them in this release")
+    if requested in _STORE_SOURCES:
+        raise RuntimeError(f"source {requested} is Linux-only")
+    if requested not in _MANAGER_SOURCES_WINDOWS | {"registry"}:
+        raise RuntimeError(f"unknown source {requested!r}")
+    return requested
+
+
+def _windows_uninstall_target(app: str) -> dict:
+    """The machine-wide Uninstall registry row whose key is *app*.
+
+    *app* is the id the inventory reports for an unmanaged app — its registry
+    key name — so that is what the Apps page hands back to us.
+    """
+    rows = software._read_uninstall_keys()
+    wanted = app.lower()
+    matches = [row for row in rows if (row.get("key") or "").lower() == wanted]
+    for row in matches:
+        if row.get("hive") == "HKLM":
+            return row
+    if any(row.get("hive") == "HKU" for row in matches):
+        raise RuntimeError(
+            f"{app} is a per-user install; Vigil does not uninstall per-user "
+            "apps in this release")
+    raise RuntimeError(f"no machine-wide Uninstall entry {app}")
+
+
+def _is_msi_row(row: dict) -> bool:
+    """Whether Windows Installer owns this install.
+
+    ``WindowsInstaller`` is the documented flag; an ``MsiExec`` uninstall string
+    is what the registry actually carries when the flag is missing, so either
+    one routes the removal through ``msiexec``.
+    """
+    if str(row.get("WindowsInstaller")).strip() == "1":
+        return True
+    return (row.get("UninstallString") or "").strip().lower().startswith("msiexec")
+
+
+def _msi_product_code(row: dict) -> str:
+    """The product code for ``msiexec /x``: the key name when it is one, else
+    the GUID inside ``UninstallString``."""
+    key = (row.get("key") or "").strip()
+    if _MSI_PRODUCT_CODE.fullmatch(key):
+        return key
+    found = _MSI_GUID_IN_STRING.search(row.get("UninstallString") or "")
+    if found:
+        return found.group(0)
+    raise RuntimeError(
+        f"{(row.get('DisplayName') or '').strip()} is a Windows Installer "
+        f"product with no product code to uninstall ({key})")
+
+
+def _quiet_program(quiet: str) -> str:
+    """The program of a ``QuietUninstallString``, for its error string."""
+    head = quiet.split('"')[1] if quiet.startswith('"') else quiet.split()[0]
+    return head.replace("\\", "/").rsplit("/", 1)[-1]
+
+
+def _upgrade_windows(params: dict, app: str) -> str:
+    """``app_upgrade`` on Windows, for one app or for every outdated one."""
+    source = _windows_source(params)
+    if source == "registry":
+        raise RuntimeError(
+            "source registry is the inventory's unmanaged remainder: no "
+            "package manager can upgrade it — uninstall it and install the "
+            "newer version with winget or Chocolatey")
+    if not app:
+        before = _outdated(_recollect())
+        if source == "winget":
+            code = _run_winget(
+                ["upgrade", "--all", "--silent", "--accept-package-agreements",
+                 "--accept-source-agreements", "--disable-interactivity"],
+                _WINGET_OK_UPGRADE)
+        else:
+            code = _run_choco(["choco", "upgrade", "all", "-y", "--no-progress"])
+        after = _outdated(_recollect())
+        upgraded = sum(1 for key, latest in before.items()
+                       if after.get(key) != latest)
+        reboot = " (a reboot is needed to finish)" if _reboot(code) else ""
+        return ActionOutput(f"upgraded {upgraded} apps{reboot}",
+                            {"upgraded": upgraded, "failed": 0})
+    if source == "winget":
+        code = _run_winget(
+            ["upgrade", "--id", app, "--exact", "--silent",
+             "--accept-package-agreements", "--accept-source-agreements",
+             "--disable-interactivity"], _WINGET_OK_UPGRADE)
+    else:
+        code = _run_choco(["choco", "upgrade", app, "-y", "--no-progress"])
+    # winget's "no applicable upgrade" is the same outcome the re-collection
+    # would report: nothing moved, which is upgraded 0 rather than a failure.
+    if _code_is(code, WINGET_NO_APPLICABLE_UPDATE):
+        return ActionOutput(f"{app} is already at its latest version",
+                            {"upgraded": 0, "failed": 0})
+    reboot = " (a reboot is needed to finish)" if _reboot(code) else ""
+    return ActionOutput(f"upgraded {app} from {source}{reboot}",
+                        {"upgraded": 1, "failed": 0})
+
+
+def _registry_uninstall(app: str) -> bool:
+    """Silently remove one registry (unmanaged) install.
+
+    Returns whether the uninstaller asked for a reboot. Never runs a plain
+    ``UninstallString``: that is an interactive wizard, and launched from a
+    service it would sit on the console until the task timed out, having
+    removed nothing.
+    """
+    row = _windows_uninstall_target(app)
+    display = (row.get("DisplayName") or "").strip() or app
+    if _is_msi_row(row):
+        code, output = _run_windows(
+            ["msiexec.exe", "/x", _msi_product_code(row), "/qn", "/norestart"],
+            timeout=_WINDOWS_TIMEOUT)
+        if _code_is(code, _MSI_NOT_INSTALLED):
+            # Nothing to remove: the re-collection decides what "removed" means.
+            return False
+        _check_exit(code, output, "msiexec", frozenset({0}) | _REBOOT_CODES)
+        return _code_is(code, 1641) or _code_is(code, 3010)
+    quiet = (row.get("QuietUninstallString") or "").strip()
+    if quiet:
+        code, output = _run_windows(quiet, timeout=_WINDOWS_TIMEOUT)
+        _check_exit(code, output, _quiet_program(quiet), frozenset({0}))
+        return False
+    raise RuntimeError(
+        f"{display} has no silent uninstaller (only an interactive "
+        "UninstallString) — remove it by hand or bring it under a package "
+        "manager")
+
+
 def _outdated(payload: dict) -> dict[str, str]:
     """``{"source|id": latest}`` for each item the collection says is outdated."""
     return {f"{item['source']}|{item['id']}": str(item["latest"])
@@ -147,6 +412,14 @@ def _recollect() -> dict:
 def _app_install(params: dict, _config: AgentConfig) -> str:
     app = _app_param(params, "app")
     version = _app_param(params, "version") if params.get("version") else ""
+    if sys.platform == "win32":
+        source, code = _install_windows(params, app, version)
+        after = _recollect()
+        installed = _field_in_collection(after, source, app, "version")
+        reboot = " (a reboot is needed to finish)" if _reboot(code) else ""
+        return ActionOutput(
+            f"installed {app} from {source}{reboot}",
+            {"installed_version": installed, "source": source})
     pm = pkg_manager.detect()
     source = _resolve_source(params, pm)
     if source in _STORE_SOURCES:
@@ -164,8 +437,32 @@ def _app_install(params: dict, _config: AgentConfig) -> str:
          "source": source})
 
 
+def _install_windows(params: dict, app: str, version: str) -> tuple[str, int]:
+    """Install with the source the task named, else the host's own manager."""
+    source = _windows_source(params)
+    if source == "registry":
+        raise RuntimeError(
+            "source registry is the inventory's unmanaged remainder: nothing "
+            "installs from it — install the app with winget or Chocolatey")
+    if source == "winget":
+        argv = ["install", "--id", app, "--exact", "--silent", "--scope",
+                "machine", "--accept-package-agreements",
+                "--accept-source-agreements", "--disable-interactivity"]
+        if version:
+            argv += ["--version", version]
+        code = _run_winget(argv, _WINGET_OK_INSTALL)
+    else:
+        argv = ["choco", "install", app, "-y", "--no-progress"]
+        if version:
+            argv += ["--version", version]
+        code = _run_choco(argv)
+    return source, code
+
+
 def _app_upgrade(params: dict, _config: AgentConfig) -> str:
     app = _app_param(params, "app") if params.get("app") else ""
+    if sys.platform == "win32":
+        return _upgrade_windows(params, app)
     pm = pkg_manager.detect()
     source = _resolve_source(params, pm)
     if not app:
@@ -195,8 +492,22 @@ def _app_upgrade(params: dict, _config: AgentConfig) -> str:
                         {"upgraded": 1, "failed": 0})
 
 
+#: A registry Uninstall key name: anything but a backslash or a control
+#: character (the VM's own "Oracle VirtualBox Guest Additions" has spaces).
+#: Safe to be this loose because the key is only compared with registry rows —
+#: the command that runs comes from the matched row, never from this text.
+_REGISTRY_KEY = re.compile(r"^[^\\\x00-\x1f]{1,255}$")
+
+
 def _app_uninstall(params: dict, _config: AgentConfig) -> str:
-    app = _app_param(params, "app")
+    if params.get("source") == "registry":
+        app = str(params.get("app") or "")
+        if not _REGISTRY_KEY.fullmatch(app):
+            raise RuntimeError(f"app {app!r} is not a valid registry key name")
+    else:
+        app = _app_param(params, "app")
+    if sys.platform == "win32":
+        return _uninstall_windows(params, app)
     pm = pkg_manager.detect()
     source = _resolve_source(params, pm)
     if source in _STORE_SOURCES:
@@ -210,4 +521,26 @@ def _app_uninstall(params: dict, _config: AgentConfig) -> str:
     return ActionOutput(
         f"uninstalled {app} from {source}" if removed
         else f"{app} is still listed after uninstalling",
+        {"removed": removed})
+
+
+def _uninstall_windows(params: dict, app: str) -> str:
+    """``app_uninstall`` on Windows: a manager's own uninstall, or the registry's."""
+    source = _windows_source(params)
+    reboot = False
+    if source == "registry":
+        reboot = _registry_uninstall(app)
+    elif source == "winget":
+        code = _run_winget(["uninstall", "--id", app, "--exact", "--silent",
+                            "--disable-interactivity"])
+        reboot = _reboot(code)
+    else:
+        code = _run_choco(["choco", "uninstall", app, "-y"])
+        reboot = _reboot(code)
+    after = _recollect()
+    removed = _field_in_collection(after, source, app, "version") == ""
+    reboot_text = " (a reboot is needed to finish)" if reboot else ""
+    return ActionOutput(
+        (f"uninstalled {app} from {source}" if removed
+         else f"{app} is still listed after uninstalling") + reboot_text,
         {"removed": removed})

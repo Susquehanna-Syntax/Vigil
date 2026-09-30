@@ -289,6 +289,9 @@ _APP_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+:~-]{0,79}$")
 _APP_SOURCES_WITHOUT_VERSION = frozenset({"snap", "flatpak", "registry"})
 
 
+_REGISTRY_KEY_RE = re.compile(r"^[^\\\x00-\x1f]{1,255}$")
+
+
 def _validate_app_params(params: dict[str, Any], position: int,
                          action_type: str) -> None:
     """Check the ``app`` / ``source`` / ``version`` params of an ``app_*`` action.
@@ -308,7 +311,14 @@ def _validate_app_params(params: dict[str, Any], position: int,
         return not isinstance(value, str) or "${{" in value
 
     app = params.get("app")
-    if app is not None and not _pending(app) and not _APP_ID_RE.fullmatch(app):
+    if (action_type == "app_uninstall" and params.get("source") == "registry"
+            and isinstance(app, str) and not _pending(app)):
+        # A registry Uninstall key name — only ever compared with registry rows
+        # on the agent, never put on a command line — may contain spaces.
+        if not _REGISTRY_KEY_RE.fullmatch(app):
+            raise SpecError(f"{where}: 'app' must be a registry key name "
+                            f"(no backslash or control characters). Got {app!r}")
+    elif app is not None and not _pending(app) and not _APP_ID_RE.fullmatch(app):
         raise SpecError(
             f"{where}: 'app' must be an inventory id — letters, digits and "
             f". _ + : @ / - ~ , no spaces and not starting with -. Got {app!r}"

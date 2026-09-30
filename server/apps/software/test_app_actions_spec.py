@@ -166,3 +166,21 @@ actions:
         self.assertIn("app", str(ctx.exception))
         with self.assertRaises(SpecError):
             parse_and_validate(_definition("app_uninstall", "{source: dpkg}"))
+
+
+class RegistryKeyNameTests(SimpleTestCase):
+    """A registry Uninstall key may contain spaces (the Windows VM's
+    "Oracle VirtualBox Guest Additions"); only app_uninstall with source registry
+    accepts one, and a backslash or control character is still refused."""
+
+    def _task(self, app, action="app_uninstall", source="registry"):
+        return ("name: t\nrisk: standard\nactions:\n  - id: a\n    type: %s\n"
+                "    params:\n      app: \"%s\"\n      source: %s\n" % (action, app, source))
+
+    def test_registry_key_with_spaces(self):
+        from apps.tasks.spec import SpecError, parse_and_validate
+        parse_and_validate(self._task("Oracle VirtualBox Guest Additions"))
+        with self.assertRaises(SpecError):
+            parse_and_validate(self._task("a\\\\b"))
+        with self.assertRaises(SpecError):   # spaces stay refused for other sources
+            parse_and_validate(self._task("Oracle VirtualBox", source="winget"))
