@@ -1409,6 +1409,7 @@ from .actions.tags_scans import (  # noqa: E402,F401
     _trivy_db_update,
 )
 from .actions.hunts import _hunt_content, _hunt_file, _hunt_package, _hunt_port, _hunt_process, _hunt_registry, _hunt_service
+from .actions.apps import _app_install, _app_uninstall, _app_upgrade
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1479,6 +1480,9 @@ _HANDLERS: dict[str, callable] = {
     "windows_update_install": _windows_update_install,
     # Apps
     "app_inventory": _app_inventory,
+    "app_install": _app_install,
+    "app_upgrade": _app_upgrade,
+    "app_uninstall": _app_uninstall,
     # User management
     "create_user": _create_user,
     "delete_user": _delete_user,
