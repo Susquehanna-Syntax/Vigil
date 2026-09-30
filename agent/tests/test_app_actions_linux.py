@@ -120,7 +120,7 @@ class AppActionsLinuxTests(unittest.TestCase):
         out = apps._app_install({"app": "openssl"}, _CONFIG)
         self.assertEqual(self.pm.calls, [("install", "openssl")])
         self.assertEqual(self.pm.refreshes, 1, "install refreshes first")
-        self.assertEqual(out.data["source"], "apt")
+        self.assertEqual(out.data["source"], "dpkg")
 
         apps._app_install({"app": "openssl", "version": "3.0.13-1"}, _CONFIG)
         self.assertEqual(self.pm.calls[-1], ("install", "openssl=3.0.13-1"))
@@ -147,15 +147,15 @@ class AppActionsLinuxTests(unittest.TestCase):
 
     def test_upgrade_all_counts_what_stopped_being_outdated(self):
         self.payloads = [
-            _payload({"source": "apt", "id": "openssl", "version": "3.0.13",
+            _payload({"source": "dpkg", "id": "openssl", "version": "3.0.13",
                       "latest": "3.0.13-1"},
-                     {"source": "apt", "id": "curl", "version": "8.5",
+                     {"source": "dpkg", "id": "curl", "version": "8.5",
                       "latest": "8.7"},
-                     {"source": "apt", "id": "stable", "version": "1.0"}),
-            _payload({"source": "apt", "id": "openssl", "version": "3.0.13-1"},
-                     {"source": "apt", "id": "curl", "version": "8.5",
+                     {"source": "dpkg", "id": "stable", "version": "1.0"}),
+            _payload({"source": "dpkg", "id": "openssl", "version": "3.0.13-1"},
+                     {"source": "dpkg", "id": "curl", "version": "8.5",
                       "latest": "8.7"},
-                     {"source": "apt", "id": "stable", "version": "1.0"}),
+                     {"source": "dpkg", "id": "stable", "version": "1.0"}),
         ]
         out = apps._app_upgrade({}, _CONFIG)
         self.assertEqual(self.pm.calls, [("upgrade_all",)])
@@ -213,7 +213,7 @@ class AppActionsLinuxTests(unittest.TestCase):
         with self.assertRaises(RuntimeError) as ctx:
             apps._app_install({"app": "openssl", "source": "dpkg"}, _CONFIG)
         self.assertEqual(
-            "source dpkg is not this host's package manager (dnf)",
+            "source dpkg is not this host's package manager (dnf, source rpm)",
             str(ctx.exception))
 
         for source in ("winget", "chocolatey", "scoop", "registry"):
@@ -231,6 +231,16 @@ class AppActionsLinuxTests(unittest.TestCase):
             apps._app_uninstall({"app": "openssl", "source": "apt"}, _CONFIG)
         self.assertIn("unknown source 'apt'", str(ctx.exception))
 
+    def test_inventory_source_names_work_on_an_apt_host(self):
+        # Found on the Ubuntu VM: the Apps page says "dpkg", the agent compared it
+        # with the manager's name "apt-get" and refused.
+        self.payloads = [_payload({"source": "dpkg", "id": "cowsay", "version": "3.03"})]
+        out = apps._app_install({"app": "cowsay", "source": "dpkg"}, _CONFIG)
+        self.assertEqual(out.data, {"installed_version": "3.03", "source": "dpkg"})
+        self.payloads = [_payload({"source": "dpkg", "id": "cowsay", "version": "3.03"})]
+        out = apps._app_uninstall({"app": "cowsay", "source": "dpkg"}, _CONFIG)
+        self.assertEqual(out.data, {"removed": False}, "still listed under dpkg")
+
     def test_no_source_uses_the_primary_manager(self):
         apps._app_install({"app": "openssl"}, _CONFIG)
         self.assertEqual(self.pm.calls, [("install", "openssl")])
@@ -244,11 +254,11 @@ class AppActionsLinuxTests(unittest.TestCase):
     # ── outputs and re-collection ─────────────────────────────────────────
 
     def test_install_reports_installed_version_from_the_collection(self):
-        self.payloads = [_payload({"source": "apt", "id": "openssl",
+        self.payloads = [_payload({"source": "dpkg", "id": "openssl",
                                    "version": "3.0.13-1"})]
         out = apps._app_install({"app": "openssl"}, _CONFIG)
         self.assertEqual(out.data, {"installed_version": "3.0.13-1",
-                                      "source": "apt"})
+                                      "source": "dpkg"})
 
     def test_snap_install_version_comes_from_the_collection(self):
         self.payloads = [_payload({"source": "snap", "id": "firefox",
@@ -258,13 +268,13 @@ class AppActionsLinuxTests(unittest.TestCase):
                                       "source": "snap"})
 
     def test_uninstall_removed_true_when_the_id_is_gone(self):
-        self.payloads = [_payload({"source": "apt", "id": "curl",
+        self.payloads = [_payload({"source": "dpkg", "id": "curl",
                                    "version": "8.5"})]
         out = apps._app_uninstall({"app": "openssl"}, _CONFIG)
         self.assertEqual(out.data, {"removed": True})
 
     def test_uninstall_removed_false_when_still_listed(self):
-        self.payloads = [_payload({"source": "apt", "id": "openssl",
+        self.payloads = [_payload({"source": "dpkg", "id": "openssl",
                                    "version": "3.0.13-1"})]
         out = apps._app_uninstall({"app": "openssl"}, _CONFIG)
         self.assertEqual(out.data, {"removed": False})
@@ -282,7 +292,7 @@ class AppActionsLinuxTests(unittest.TestCase):
     def test_raising_recollect_does_not_fail_a_successful_action(self):
         self.collect.side_effect = RuntimeError("collection failed")
         out = apps._app_install({"app": "openssl"}, _CONFIG)
-        self.assertEqual(out.data["source"], "apt")
+        self.assertEqual(out.data["source"], "dpkg")
         self.assertEqual(out.data["installed_version"], "")
         out = apps._app_uninstall({"app": "openssl"}, _CONFIG)
         self.assertIs(out.data["removed"], True)

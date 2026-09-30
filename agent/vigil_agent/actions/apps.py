@@ -34,6 +34,15 @@ from ..executor import ActionOutput, logger
 _PRIMARY_SOURCES = frozenset({"dpkg", "rpm", "apk", "pacman"})
 _STORE_SOURCES = frozenset({"snap", "flatpak"})
 _WINDOWS_SOURCES = frozenset({"winget", "chocolatey", "scoop", "registry"})
+#: The inventory names each manager's packages by its database, not its CLI:
+#: apt installs show up as ``dpkg``, dnf/yum/zypper as ``rpm``. ``source`` in a
+#: task and in the outputs uses the inventory's name, as the Apps page does.
+_MANAGER_SOURCE = {"apt": "dpkg", "apt-get": "dpkg", "dnf": "rpm", "yum": "rpm",
+                   "zypper": "rpm", "apk": "apk", "pacman": "pacman"}
+
+
+def _inventory_source(manager: pkg_manager.PackageManager) -> str:
+    return _MANAGER_SOURCE.get(manager.name, manager.name)
 
 
 def _app_param(params: dict, name: str) -> str:
@@ -56,16 +65,16 @@ def _resolve_source(params: dict, pm: pkg_manager.PackageManager | None) -> str:
     """Which source to act on, refusing what this host cannot serve."""
     requested = params.get("source")
     if requested in (None, ""):
-        return _primary(pm).name
+        return _inventory_source(_primary(pm))
     if requested in _WINDOWS_SOURCES:
         raise RuntimeError(f"source {requested} is Windows-only")
     if requested not in _PRIMARY_SOURCES | _STORE_SOURCES:
         raise RuntimeError(f"unknown source {requested!r}")
     manager = _primary(pm)
-    if requested in _PRIMARY_SOURCES and requested != manager.name:
+    if requested in _PRIMARY_SOURCES and requested != _inventory_source(manager):
         raise RuntimeError(
             f"source {requested} is not this host's package manager "
-            f"({manager.name})")
+            f"({manager.name}, source {_inventory_source(manager)})")
     return requested
 
 
