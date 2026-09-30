@@ -1285,6 +1285,30 @@ def _verify_confirmation(user, payload) -> str | None:
     return require_totp_confirmation(user, payload)
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def definition_refusals(request, definition_id):
+    """Which of ``?host_ids=a,b`` would refuse this task, per their agents'
+    reported allowlists — for the deploy dialog's warning (M7)."""
+    import uuid as _uuid
+
+    from vigil import scoping
+
+    from .refusals import refusals_for
+
+    definition = get_object_or_404(TaskDefinition, pk=definition_id)
+    if not _user_can_see(definition, request.user):
+        return Response({"error": "Not found"}, status=404)
+    ids = []
+    for raw in (request.query_params.get("host_ids") or "").split(","):
+        try:
+            ids.append(_uuid.UUID(raw.strip()))
+        except ValueError:
+            continue   # a malformed id matches no host
+    hosts = scoping.filter_by_site(Host.objects.filter(id__in=ids[:500]), request.user)
+    return Response({"refusals": refusals_for(hosts, definition.parsed_spec or {})})
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def definition_deploy(request, definition_id):
@@ -1395,6 +1419,20 @@ def definition_deploy(request, definition_id):
                     status=400,
                 )
 
+    # Hosts whose agent would refuse an action in this task (its reported
+    # allowlist lacks it) are left out and reported, unless the operator says
+    # to send anyway — the agent stays the authority either way (M7).
+    from .refusals import refusals_for
+    skipped = refusals_for(hosts, spec)
+    if skipped and request.data.get("send_to_refusing") is not True:
+        refusing = {row["host_id"] for row in skipped}
+        hosts = [h for h in hosts if str(h.id) not in refusing]
+        if not hosts:
+            return Response({"error": "every selected host would refuse this task",
+                             "skipped": skipped}, status=400)
+    elif skipped:
+        skipped = []   # sent to them anyway: nothing was skipped
+
     # The full script is sent as a single signed task per host — the agent
     # validates each action against its own local allowlist, so a compromised
     # server cannot escalate beyond what each agent permits.
@@ -1464,7 +1502,7 @@ def definition_deploy(request, definition_id):
     if text_steps:
         _emit_hunt_text_requested(run, request.user, text_steps)
 
-    return Response(TaskRunSerializer(run).data, status=201)
+    return Response({**TaskRunSerializer(run).data, "skipped": skipped}, status=201)
 
 
 @api_view(["GET"])

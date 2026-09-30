@@ -167,6 +167,18 @@ agent_token: "$token"
 mode: monitor
 checkin_interval: 30
 data_dir: '$DataDir'
+# Actions a managed-mode agent may run. Monitor mode ignores this list; these
+# defaults are read-only, so switching to managed can hunt and inventory at once.
+allowlist:
+  - app_inventory
+  - check_service
+  - hunt_content
+  - hunt_file
+  - hunt_package
+  - hunt_port
+  - hunt_process
+  - hunt_registry
+  - hunt_service
 "@ | ForEach-Object {
         # Not Set-Content -Encoding UTF8: on PowerShell 5.1 — which is what
         # ships with Windows — that writes a UTF-8 BOM. The BOM becomes part

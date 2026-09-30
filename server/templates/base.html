@@ -372,6 +372,12 @@
       </div>
     </div>
 
+    <!-- Hosts whose agent allowlist would refuse this task (M7): skipped unless ticked. -->
+    <div class="deploy-refusals" id="deploy-refusals" hidden>
+      <span id="deploy-refusals-text"></span>
+      <label class="setting-check"><input type="checkbox" id="deploy-send-refusing"> Send to them anyway</label>
+    </div>
+
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px;gap:12px;">
       <span id="deploy-risk-label"></span>
       <div style="display:flex;gap:10px;">

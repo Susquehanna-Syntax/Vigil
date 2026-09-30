@@ -62,6 +62,10 @@ def checkin(
         "mode": config.mode,
         "metrics": metrics,
         "features": list(FEATURES),
+        # What this agent will run, so the server can warn before a deploy to
+        # a host whose allowlist refuses the task (M7). Empty is meaningful.
+        "allowlist": sorted(config.allowlist),
+        "allow_reprovision": bool(config.allow_reprovision),
     }
     # The ingest distinguishes an absent key (agent too old to report it —
     # stored value left alone) from an explicit False, so the key is only
