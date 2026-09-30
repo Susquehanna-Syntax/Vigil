@@ -291,6 +291,141 @@ _APP_SOURCES_WITHOUT_VERSION = frozenset({"snap", "flatpak", "registry"})
 
 _REGISTRY_KEY_RE = re.compile(r"^[^\\\x00-\x1f]{1,255}$")
 
+#: `app_install_custom` fetches over https only — the hash is checked, but a
+#: plain-http installer on a network an attacker shares is not worth that.
+_CUSTOM_URL_SCHEME = "https://"
+_CUSTOM_URL_MAX_LEN = 2000
+_CUSTOM_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+#: Each installer kind is run by the one command that installs it silently, so
+#: the kind is a real safety decision and not a label: `msi` never runs the file
+#: directly, `deb`/`rpm` never run `dpkg`/`dnf` for a file with another
+#: extension. The file extension is used only when the task does not name one.
+_CUSTOM_KINDS = ("msi", "exe", "deb", "rpm")
+#: A silent-install switch list — `/S`, `/quiet /norestart`,
+#: `/qn /norestart /l*v C:\log.txt`. `"` is allowed so a quoted switch *value*
+#: can be passed; the agent splits on spaces with no shell, so no shell
+#: metacharacter can be interpreted, and that is why `$`, backtick, `;`, `|`,
+#: `&`, `<`, `>` and `\` stay out.
+_CUSTOM_ARGS_RE = re.compile(r'^[A-Za-z0-9 /=_.:,@+"-]{0,300}$')
+
+
+def _validate_custom_install_params(params: dict[str, Any],
+                                    position: int) -> None:
+    """Check `app_install_custom`'s params.
+
+    Every rule here is applied again by the agent before it downloads anything:
+    a value carrying a ``${{ … }}`` marker is resolved per deploy, and an
+    installer from a URL the server never saw is the highest-risk thing an
+    ``app_*`` action can do.
+    """
+    where = f"action #{position} (app_install_custom)"
+
+    def _pending(value: Any) -> bool:
+        # A non-string is judged only by the per-param type check: it resolves
+        # to something the agent re-validates, so it is "pending" for the
+        # string rules but must not stand in for an absent param.
+        return isinstance(value, str) and "${{" in value
+
+    def _text(name: str) -> Any:
+        raw = params.get(name)
+        if raw is not None and not isinstance(raw, str):
+            raise SpecError(f"{where}: '{name}' must be a string")
+        return raw
+
+    url = _text("url")
+    if url is None:
+        return
+    if _pending(url):
+        # The URL is the only source of a kind the task did not name, and the
+        # agent re-checks it before downloading, so an unresolved one is the
+        # one case the rules below have nothing to go on.
+        return
+    if not url.startswith(_CUSTOM_URL_SCHEME):
+        raise SpecError(
+            f"{where}: 'url' must start with https:// — the agent will not "
+            f"download an installer over a plain connection. Got {url!r}"
+        )
+    if len(url) > _CUSTOM_URL_MAX_LEN:
+        raise SpecError(
+            f"{where}: 'url' is limited to {_CUSTOM_URL_MAX_LEN} characters"
+        )
+    if any(ch.isspace() for ch in url):
+        raise SpecError(
+            f"{where}: 'url' must not contain whitespace. Got {url!r}"
+        )
+
+    sha = _text("sha256")
+    if sha is not None and not _pending(sha) \
+            and not _CUSTOM_SHA256_RE.fullmatch(sha.lower()):
+        raise SpecError(
+            f"{where}: 'sha256' must be 64 hexadecimal characters — the digest "
+            f"the downloaded installer has to match. Got {sha!r}"
+        )
+
+    kind = _text("kind") if "kind" in params else None
+    if kind is not None and not _pending(kind) and kind not in _CUSTOM_KINDS:
+        raise SpecError(
+            f"{where}: 'kind' must be one of {', '.join(_CUSTOM_KINDS)}, "
+            f"got {kind!r}"
+        )
+    # The kind decides which command runs the file. A task may name it (it has
+    # to for an extensionless download URL); otherwise the URL's extension does.
+    # A named kind that contradicts the extension is refused rather than trusted.
+    kind_from_url = _custom_kind_from_url(url)
+    if kind is not None and not _pending(kind):
+        if kind_from_url is not None and kind_from_url != kind:
+            raise SpecError(
+                f"{where}: 'kind' is {kind!r} but the URL ends in .{kind_from_url} "
+                f"— the file is run by the command for its kind, so they must agree")
+        known_kind = kind
+    elif kind is None:
+        if kind_from_url is None:
+            raise SpecError(
+                f"{where}: the URL has no .msi, .exe, .deb or .rpm extension — "
+                f"say kind: msi, exe, deb or rpm")
+        known_kind = kind_from_url
+    else:
+        known_kind = None   # resolved per deploy; the agent re-checks
+
+    app = params.get("app")
+    if app is not None and not _pending(app) \
+            and (not isinstance(app, str) or not _APP_ID_RE.fullmatch(app)):
+        raise SpecError(
+            f"{where}: 'app' must be an inventory id — letters, digits and "
+            f". _ + : @ / - ~ , no spaces and not starting with -. Got {app!r}"
+        )
+
+    args = _text("args")
+    if not args or _pending(args):
+        return
+    # A switch list means something only to the one kind that is run directly.
+    if known_kind == "exe":
+        if not _CUSTOM_ARGS_RE.fullmatch(args):
+            raise SpecError(
+                f"{where}: 'args' must be a silent-install switch list — "
+                f"letters, digits and space / = _ . : , @ + \" - with no shell "
+                f"metacharacters. Got {args!r}"
+            )
+    elif known_kind is not None:
+        raise SpecError(
+            f"{where}: 'args' is only used with kind: exe — msiexec, apt and "
+            "dnf take no extra arguments here"
+        )
+
+
+def _custom_kind_from_url(url: str) -> str | None:
+    """The kind a URL's path extension implies, or None for nothing it implies.
+
+    The query and fragment are cut first: a signed artifact URL routinely ends
+    ``…/agent.deb?Signature=…``, and the extension is the file's, not the
+    query string's.
+    """
+    tail = url.split("#", 1)[0].split("?", 1)[0].rsplit("/", 1)[-1]
+    if "." not in tail:
+        return None
+    ext = tail.rsplit(".", 1)[-1].lower()
+    return ext if ext in _CUSTOM_KINDS else None
+
 
 def _validate_app_params(params: dict[str, Any], position: int,
                          action_type: str) -> None:
@@ -1203,6 +1338,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         elif action_type in ("app_install", "app_upgrade", "app_uninstall",
                              "app_pin"):
             _validate_app_params(params, index + 1, action_type)
+        elif action_type == "app_install_custom":
+            _validate_custom_install_params(params, index + 1)
         elif action_type == "execute_script":
             _validate_script_params(params, index + 1)
         elif action_type == "hunt_file" and not (

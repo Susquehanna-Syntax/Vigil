@@ -56,7 +56,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
     ]),
     ("apps", "Apps", [
         "app_inventory", "app_install", "app_upgrade", "app_uninstall",
-        "app_pin",
+        "app_pin", "app_install_custom",
     ]),
     ("winupdate", "Windows Update", [
         "windows_update_scan", "windows_update_install",
@@ -397,6 +397,11 @@ ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
     ("hunt_service", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
     ("hunt_registry", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
     ("hunt_content", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
+    ("app_install_custom", "url"): "An https URL of the installer. Its extension (.msi, .exe, .deb, .rpm) sets `kind` unless you give one.",
+    ("app_install_custom", "sha256"): "The installer's SHA-256 (64 hex). The agent refuses to run a download that does not match.",
+    ("app_install_custom", "kind"): "msi, exe, deb or rpm — needed when the URL has no extension; must agree with it when it has one.",
+    ("app_install_custom", "args"): "Silent-install switches for an exe (e.g. `/S` or `/quiet /norestart`). Only with kind exe.",
+    ("app_install_custom", "app"): "The inventory id the app will have, used to report `installed_version`.",
     ("app_pin", "app"): "The inventory id the Apps page shows — its package id, from the source in `source`.",
     ("app_pin", "unpin"): "true releases the hold instead of adding one. Takes no `version`.",
     ("app_pin", "source"): "Where to look for the app. Defaults to the host's own package manager.",
@@ -438,6 +443,10 @@ OUTPUT_NOTES: dict[str, dict[str, str]] = {
     "app_pin": {
         "pinned": "True when the app is now held (a pin was added), False when it was released (`unpin: true`).",
         "pinned_version": "The version the host reports for the app after the action, the requested version when the inventory has no row for it, or empty when neither is known.",
+    },
+    "app_install_custom": {
+        "installed_version": "The version the host reports afterwards for the `app` you named, or empty when you named none or the inventory has no row for it.",
+        "sha256": "The SHA-256 of the installer that was run — always the one the task pinned, because a mismatch stops the step before anything runs.",
     },
     "run_command": {
         "exit_code": "The command's exit code (0 — a non-zero exit fails the step).",
@@ -641,6 +650,21 @@ def example_yaml(action: str) -> str:
             "    params:",
             "      app: openssl",
             '      version: "3.0.13-1"',
+        ]) + "\n"
+    if action == "app_install_custom":
+        # A URL and the digest the download must match — the one action that
+        # runs an installer no package manager vouches for.
+        return "\n".join([
+            "name: Install the Acme agent from its vendor URL",
+            "description: \"Download the vendor's MSI, check it against the SHA-256 "
+            "you pinned, and install it silently. Nothing runs if the hash differs.\"",
+            "risk: high",
+            "actions:",
+            "  - id: app-install-custom",
+            "    type: app_install_custom",
+            "    params:",
+            "      url: https://downloads.example.com/acme-agent-4.2.0.msi",
+            "      sha256: 3a7f1b0c5d8e2f4a6b9c0d1e2f3a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c",
         ]) + "\n"
     if action == "hunt_package":
         # "name" here is the package, not the task, so the example is written out.
