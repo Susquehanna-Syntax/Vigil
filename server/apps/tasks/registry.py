@@ -590,6 +590,13 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "optional": ["source"],
         "outputs": {"removed": "bool"},
     },
+    "app_pin": {
+        "label": "Pin an app at its version",
+        "risk": "standard",
+        "required": ["app"],
+        "optional": ["source", "version", "unpin"],
+        "outputs": {"pinned_version": "str", "pinned": "bool"},
+    },
 }
 
 

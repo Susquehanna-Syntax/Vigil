@@ -56,6 +56,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
     ]),
     ("apps", "Apps", [
         "app_inventory", "app_install", "app_upgrade", "app_uninstall",
+        "app_pin",
     ]),
     ("winupdate", "Windows Update", [
         "windows_update_scan", "windows_update_install",
@@ -396,6 +397,10 @@ ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
     ("hunt_service", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
     ("hunt_registry", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
     ("hunt_content", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
+    ("app_pin", "app"): "The inventory id the Apps page shows — its package id, from the source in `source`.",
+    ("app_pin", "unpin"): "true releases the hold instead of adding one. Takes no `version`.",
+    ("app_pin", "source"): "Where to look for the app. Defaults to the host's own package manager.",
+    ("app_pin", "version"): "Install this version first, then hold it. Sources that cannot pin a version refuse it.",
 }
 
 
@@ -429,6 +434,10 @@ OUTPUT_NOTES: dict[str, dict[str, str]] = {
     },
     "app_uninstall": {
         "removed": "True when the app is no longer in the inventory the host reported after the removal.",
+    },
+    "app_pin": {
+        "pinned": "True when the app is now held (a pin was added), False when it was released (`unpin: true`).",
+        "pinned_version": "The version the host reports for the app after the action, the requested version when the inventory has no row for it, or empty when neither is known.",
     },
     "run_command": {
         "exit_code": "The command's exit code (0 — a non-zero exit fails the step).",
@@ -616,6 +625,22 @@ def example_yaml(action: str) -> str:
             f"    type: {action}",
             "    params:",
             "      app: openssl",
+        ]) + "\n"
+    if action == "app_pin":
+        # The hold is the interesting half; releasing it is the same step with
+        # `unpin: true` and no version.
+        return "\n".join([
+            "name: Hold openssl at its version",
+            "description: \"Install a given openssl and hold it, so an upgrade "
+            "leaves it alone. Put `unpin: true` in place of `version` to "
+            "release the hold.\"",
+            "risk: standard",
+            "actions:",
+            "  - id: app-pin",
+            "    type: app_pin",
+            "    params:",
+            "      app: openssl",
+            '      version: "3.0.13-1"',
         ]) + "\n"
     if action == "hunt_package":
         # "name" here is the package, not the task, so the example is written out.

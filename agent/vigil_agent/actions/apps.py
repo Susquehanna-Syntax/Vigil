@@ -66,6 +66,12 @@ WINGET_PACKAGE_ALREADY_INSTALLED = 0x8A150061
 #: compared by :func:`_code_is`, so these are the unsigned forms.
 _WINGET_OK_UPGRADE = frozenset({0, WINGET_NO_APPLICABLE_UPDATE})
 _WINGET_OK_INSTALL = frozenset({0, WINGET_PACKAGE_ALREADY_INSTALLED})
+#: winget ``0x8A150063`` from ``pin remove``: the id has no pin. The app is
+#: free to upgrade either way, which is what an unpin asked for.
+WINGET_NO_PIN = 0x8A150063
+_WINGET_OK_UNPIN = frozenset({0, WINGET_NO_PIN})
+#: dnf's words when the versionlock plugin is not installed.
+_VERSIONLOCK_MISSING = re.compile(r"no such command:? ?'?versionlock", re.IGNORECASE)
 #: A Windows Installer product code, as one registry key name.
 _MSI_PRODUCT_CODE = re.compile(r"^\{[0-9A-Fa-f-]{36}\}$")
 #: Same GUID anywhere inside an ``UninstallString``.
@@ -544,3 +550,216 @@ def _uninstall_windows(params: dict, app: str) -> str:
         (f"uninstalled {app} from {source}" if removed
          else f"{app} is still listed after uninstalling") + reboot_text,
         {"removed": removed})
+
+
+# ── app_pin ───────────────────────────────────────────────────────────────────
+
+#: Where a hold lives that no command of ours can reach, per source.
+_PIN_REFUSALS = {
+    "pacman": "pacman holds live in pacman.conf IgnorePkg — edit it by hand",
+    "scoop": "scoop cannot be pinned",
+    "registry": "registry cannot be pinned",
+}
+
+
+def _windows_pin_source(params: dict) -> str:
+    """The requested Windows source, checked for a pin.
+
+    A source the pin cannot hold is refused in the pin's own words rather than
+    by whichever rule the install path happens to reach first — the difference
+    matters to whoever reads the failure: it is the pin that is unsupported
+    here, not the app or the source.
+    """
+    requested = params.get("source")
+    if requested in _PIN_REFUSALS:
+        raise RuntimeError(_PIN_REFUSALS[requested])
+    return _windows_source(params)
+
+
+def _pin_commands(source: str, version: str, unpin: bool) -> list[list[str]]:
+    """What holding or releasing an app on this source costs, in commands.
+
+    A pin at a version is two commands wherever the hold is a thing of its own
+    — install it, then hold it, in that order — and one everywhere else. An
+    unpin is always one. Sources with no hold of their own are refused here,
+    before any command runs, and so is asking snap or flatpak for a version
+    they cannot pin.
+    """
+    if source in _PIN_REFUSALS:
+        raise RuntimeError(_PIN_REFUSALS[source])
+    if unpin:
+        return [["unhold"]]
+    if source in ("snap", "flatpak") and version:
+        raise RuntimeError(f"{source} cannot pin a version")
+    # Where the hold is a thing of its own, the version has to arrive before it
+    # does; a store's pin is the version itself, and apk's hold *is* a
+    # constraint.
+    if source in ("dpkg", "rpm") and version:
+        return [["install"], ["hold"]]
+    return [["hold"]]
+
+
+def _pin_argv(step: list[str], source: str, app: str, version: str,
+              manager: str) -> list[str]:
+    """The real argv for one placeholder step of a pin.
+
+    ``manager`` is the command the host's package manager answers to — the rpm
+    source of a RHEL host is yum there, and of a SUSE one zypper.
+    """
+    if step == ["install"]:
+        return _pin_install_argv(manager, app, version)
+    if step == ["unhold"]:
+        return _unpin_argv(source, app, manager)
+    return _pin_hold_argv(source, app, version, manager)
+
+
+def _pin_hold_argv(source: str, app: str, version: str,
+                   manager: str) -> list[str]:
+    """The command that holds *app* on this source, at *version* if given.
+
+    Only winget and Chocolatey name a version when they hold; apk's hold *is* a
+    version constraint. Everywhere else the hold is its own thing, and where a
+    version came with it the install step put it there first. The rpm hold is
+    asked of the host's own manager — versionlock under dnf and yum, zypper's
+    own lock on SUSE.
+    """
+    if source == "snap":
+        return ["snap", "refresh", "--hold=forever", app]
+    if source == "flatpak":
+        return ["flatpak", "mask", app]
+    if source == "winget":
+        argv = ["pin", "add", "--id", app, "--exact", "--blocking",
+                "--accept-source-agreements", "--disable-interactivity"]
+        return argv + (["--version", version] if version else [])
+    if source == "chocolatey":
+        argv = ["choco", "pin", "add", f"-n={app}"]
+        return argv + ([f"--version={version}"] if version else [])
+    if source == "apk":
+        # apk has no hold of its own: the pin is the version constraint, and
+        # the version to freeze at is the caller's or the host's own.
+        if not version:
+            raise RuntimeError(
+                "apk pins by version and this host reports no version for "
+                f"{app} — give one, or install the app first")
+        return ["apk", "add", f"{app}={version}"]
+    if manager == "zypper":
+        return ["zypper", "--non-interactive", "addlock", app]
+    if source == "rpm":
+        return [manager, "versionlock", "add", app]
+    return ["apt-mark", "hold", app]
+
+
+def _unpin_argv(source: str, app: str, manager: str) -> list[str]:
+    """The command that releases *app* on this source."""
+    if source == "snap":
+        return ["snap", "refresh", "--unhold", app]
+    if source == "flatpak":
+        return ["flatpak", "mask", "--remove", app]
+    if source == "winget":
+        return ["pin", "remove", "--id", app, "--exact",
+                "--disable-interactivity"]
+    if source == "chocolatey":
+        return ["choco", "pin", "remove", f"-n={app}"]
+    if source == "apk":
+        # A plain install drops the version constraint the pin put there.
+        return ["apk", "add", app]
+    if manager == "zypper":
+        return ["zypper", "--non-interactive", "removelock", app]
+    if source == "rpm":
+        return [manager, "versionlock", "delete", app]
+    return ["apt-mark", "unhold", app]
+
+
+def _pin_install_argv(manager: str, app: str, version: str) -> list[str]:
+    """The install that comes before a hold.
+
+    Only the primary sources have a hold apart from the install, and each spells
+    a version its own way: apt with ``=``, the rpm managers with a dash.
+    """
+    if manager in ("apt", "apt-get", "zypper"):
+        spec = f"{app}={version}"
+    else:
+        spec = f"{app}-{version}"
+    if manager == "zypper":
+        # zypper takes --non-interactive before the subcommand, like its locks.
+        return ["zypper", "--non-interactive", "install", "-y", spec]
+    # The same quiet flag each manager's own install uses in pkg_manager.
+    quiet = "-qq" if manager in ("apt", "apt-get") else "--quiet"
+    return [manager, "install", "-y", quiet, spec]
+
+
+def _require_versionlock(pm: pkg_manager.PackageManager) -> None:
+    """Fail unless this host's dnf-family manager can versionlock.
+
+    versionlock is a plugin, not part of dnf: on a RHEL-family host without it
+    the subcommand does not exist, and dnf's own "No such command" is not
+    something an operator can act on. Asking before running anything also keeps
+    such a host from installing a version it then cannot hold.
+    """
+    try:
+        help_text = pkg_manager._run([pm.name, "versionlock", "--help"])
+    except RuntimeError as exc:
+        raise _no_versionlock() from exc
+    if _VERSIONLOCK_MISSING.search(help_text):
+        raise _no_versionlock()
+
+
+def _no_versionlock() -> RuntimeError:
+    return RuntimeError("dnf versionlock plugin missing — install "
+                        "python3-dnf-plugin-versionlock")
+
+
+def _app_pin(params: dict, _config: AgentConfig) -> str:
+    app = _app_param(params, "app")
+    version = _app_param(params, "version") if params.get("version") else ""
+    unpin = params.get("unpin")
+    if unpin is not None and not isinstance(unpin, bool):
+        raise RuntimeError(f"unpin must be a boolean, got {unpin!r}")
+    unpin = bool(unpin)
+    if unpin and version:
+        raise RuntimeError("unpin takes no version")
+    windows = sys.platform == "win32"
+    if windows:
+        source = _windows_pin_source(params)
+    else:
+        pm = pkg_manager.detect()
+        source = _resolve_source(params, pm)
+        manager = _primary(pm).name
+        # apk has no hold of its own: the pin is a version constraint, and an
+        # unpinned app's own version is what freezing it means.
+        if source == "apk" and not version and not unpin:
+            version = _installed_version(pm, app)
+    # Everything a source cannot do — hold at all, or hold a version — is
+    # refused here, before the first command is run.
+    commands = _pin_commands(source, version, unpin)
+    if windows:
+        for step in commands:
+            argv = _pin_argv(step, source, app, version, "")
+            if source == "winget":
+                _run_winget(argv, _WINGET_OK_UNPIN if unpin else frozenset({0}))
+            else:
+                _run_choco(argv)
+    else:
+        if source == "rpm":
+            _require_versionlock(_primary(pm))
+        for step in commands:
+            pkg_manager._run(_pin_argv(step, source, app, version, manager))
+    after = _recollect()
+    pinned_version = (_field_in_collection(after, source, app, "version")
+                      or version)
+    return ActionOutput(
+        f"{'released' if unpin else 'pinned'} {app} on {source}"
+        + (f" at {pinned_version}" if pinned_version and not unpin else ""),
+        {"pinned": not unpin, "pinned_version": pinned_version})
+
+
+def _installed_version(pm: pkg_manager.PackageManager | None, app: str) -> str:
+    """The version this host's manager reports for *app*, or ""."""
+    if pm is None:
+        return ""
+    try:
+        return pm.installed_version(app)
+    except (OSError, ValueError, RuntimeError) as exc:
+        logger.debug("app_pin: %s reported no version for %s: %s",
+                     pm.name, app, exc)
+        return ""
