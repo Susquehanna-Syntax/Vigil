@@ -3107,6 +3107,19 @@
       <span class="hl-key">app</span>: <span class="hl-string">openssl</span>
       <span class="hl-key">version</span>: <span class="hl-string">&quot;3.0.13-1&quot;</span></pre></div>
 </div></details>
+<details class="action" id="action-app_install_custom" data-group="apps" data-risk="high" data-keywords="app_install_custom url sha256 args app kind"><summary><code class="action-name">app_install_custom</code><span class="risk risk-high">high</span><span class="action-label">Install from a URL (hash-checked)</span><span class="action-required">url, sha256</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>url</code></td><td><span class="param-req">required</span></td><td>An https URL of the installer. Its extension (.msi, .exe, .deb, .rpm) sets `kind` unless you give one.</td></tr><tr><td><code>sha256</code></td><td><span class="param-req">required</span></td><td>The installer&#x27;s SHA-256 (64 hex). The agent refuses to run a download that does not match.</td></tr><tr><td><code>args</code></td><td><span class="param-opt">optional</span></td><td>Silent-install switches for an exe (e.g. `/S` or `/quiet /norestart`). Only with kind exe.</td></tr><tr><td><code>app</code></td><td><span class="param-opt">optional</span></td><td>The inventory id the app will have, used to report `installed_version`.</td></tr><tr><td><code>kind</code></td><td><span class="param-opt">optional</span></td><td>msi, exe, deb or rpm — needed when the URL has no extension; must agree with it when it has one.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>installed_version</code></td><td>str</td><td>The version the host reports afterwards for the `app` you named, or empty when you named none or the inventory has no row for it.</td></tr><tr><td><code>sha256</code></td><td>str</td><td>The SHA-256 of the installer that was run — always the one the task pinned, because a mismatch stops the step before anything runs.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Install the Acme agent from its vendor URL</span>
+<span class="hl-key">description</span>: <span class="hl-string">&quot;Download the vendor&#x27;s MSI, check it against the SHA-256 you pinned, and install it silently. Nothing runs if the hash differs.&quot;</span>
+<span class="hl-key">risk</span>: <span class="hl-string">high</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">app-install-custom</span>
+    <span class="hl-key">type</span>: <span class="hl-string">app_install_custom</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">url</span>: <span class="hl-string">https://downloads.example.com/acme-agent-4.2.0.msi</span>
+      <span class="hl-key">sha256</span>: <span class="hl-string">3a7f1b0c5d8e2f4a6b9c0d1e2f3a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c</span></pre></div>
+</div></details>
 </div>
 <div class="action-group" data-group="winupdate">
 <h4 class="action-group-title">Windows Update</h4>

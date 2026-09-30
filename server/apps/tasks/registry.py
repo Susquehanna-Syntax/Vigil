@@ -597,6 +597,13 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "optional": ["source", "version", "unpin"],
         "outputs": {"pinned_version": "str", "pinned": "bool"},
     },
+    "app_install_custom": {
+        "label": "Install from a URL (hash-checked)",
+        "risk": "high",
+        "required": ["url", "sha256"],
+        "optional": ["args", "app", "kind"],
+        "outputs": {"installed_version": "str", "sha256": "str"},
+    },
 }
 
 
