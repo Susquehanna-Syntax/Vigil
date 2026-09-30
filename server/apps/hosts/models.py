@@ -44,6 +44,10 @@ class Host(models.Model):
     #: task needs — a pre-`relevant:` agent would ignore the block and run
     #: the fix on every host.
     agent_features = models.JSONField(default=list, blank=True)
+    # The agent's mode allowlist as it last reported it (M7): None until an
+    # agent new enough to report it checks in — unknown, which is not "refuses".
+    agent_allowlist = models.JSONField(null=True, blank=True)
+    agent_allow_reprovision = models.BooleanField(default=False)
     last_checkin = models.DateTimeField(null=True, blank=True)
     #: What this machine is missing, as the agent last counted it:
     #: {"pending", "critical", "important", "reboot_required"}. Null means no

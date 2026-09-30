@@ -20,6 +20,7 @@ let deployState = {
   targetMode: 'hosts',          // 'hosts' or 'tags'
   availableTags: [],
   selectedTags: new Set(),
+  refusals: {},                 // host id → actions its agent would refuse
 };
 
 /* ── Entry point invoked from a host card: jump to Tasks, preselect host */
@@ -441,6 +442,14 @@ function _renderDeployHostRows() {
     const mode = document.createElement('div');
     mode.className = 'dh-meta';
     mode.textContent = h.mode;
+    const refused = (deployState.refusals || {})[h.id];
+    if (refused) {
+      const chip = document.createElement('span');
+      chip.className = 'chip chip-rose dh-refuse';
+      chip.textContent = `will refuse: ${refused.join(', ')}`;
+      chip.title = "This host's agent allowlist does not include these actions.";
+      nameWrap.appendChild(chip);
+    }
 
     row.appendChild(cb);
     row.appendChild(nameWrap);
@@ -505,6 +514,11 @@ async function openDeployModal(definitionId, prefill) {
   document.getElementById('deploy-host-search').value = '';
   deployState.definitionId = definitionId;
   deployState.selectedHosts = new Set();
+  deployState.refusals = {};
+  const sendRefusing = document.getElementById('deploy-send-refusing');
+  if (sendRefusing) sendRefusing.checked = false;
+  const refusalBox = document.getElementById('deploy-refusals');
+  if (refusalBox) refusalBox.hidden = true;
   deployState.selectedTags = new Set();
   document.getElementById('deploy-overlay').classList.add('open');
   document.getElementById('deploy-modal').classList.add('open');
@@ -578,7 +592,50 @@ async function openUpdateContainer(hostId, containerName) {
   openDeployModal(def.id, { hostId, inputs: { container_name: containerName } });
 }
 
+/* ── Refusals: hosts whose agent would refuse this task (M7) ─────────────── */
+let _deployRefusalTimer = null;
+
+function _deployTargetIds() {
+  if (deployState.targetMode === 'tags') {
+    return (deployState.availableHosts || [])
+      .filter(h => (h.tags || []).some(t => deployState.selectedTags.has(t)))
+      .map(h => h.id);
+  }
+  return [...(deployState.selectedHosts || [])];
+}
+
+function _scheduleDeployRefusals() {
+  clearTimeout(_deployRefusalTimer);
+  _deployRefusalTimer = setTimeout(_refreshDeployRefusals, 250);
+}
+
+async function _refreshDeployRefusals() {
+  const ids = _deployTargetIds();
+  const box = document.getElementById('deploy-refusals');
+  if (!deployState.definitionId || !ids.length) {
+    deployState.refusals = {};
+    if (box) box.hidden = true;
+    return;
+  }
+  let rows = [];
+  try {
+    const qs = encodeURIComponent(ids.join(','));
+    rows = (await apiJson(`/api/v1/tasks/definitions/${deployState.definitionId}/refusals/?host_ids=${qs}`)).refusals || [];
+  } catch { rows = []; }
+  const before = JSON.stringify(deployState.refusals || {});
+  deployState.refusals = Object.fromEntries(rows.map(r => [r.host_id, r.actions]));
+  if (box) {
+    box.hidden = !rows.length;
+    const text = document.getElementById('deploy-refusals-text');
+    if (text) text.textContent = rows.length
+      ? `${rows.length} host${rows.length === 1 ? '' : 's'} will refuse this task (not in the agent's allowlist) and will be skipped.`
+      : '';
+  }
+  if (JSON.stringify(deployState.refusals) !== before && deployState.targetMode !== 'tags') _renderDeployHostRows();
+}
+
 function updateDeployHostSummary() {
+  _scheduleDeployRefusals();
   const stepCount = (deployState.spec && deployState.spec.actions && deployState.spec.actions.length) || 0;
 
   if (deployState.targetMode === 'tags') {
@@ -642,6 +699,8 @@ async function submitDeploy(event) {
     body.host_ids = host_ids;
   }
 
+  body.send_to_refusing = !!document.getElementById('deploy-send-refusing')?.checked;
+
   const btn = document.getElementById('deploy-submit-btn');
   btn.disabled = true; btn.style.opacity = '0.6';
   try {
@@ -649,7 +708,9 @@ async function submitDeploy(event) {
       method: 'POST',
       body: JSON.stringify(body),
     });
-    showToast(`Deployed to ${run.host_count} host${run.host_count === 1 ? '' : 's'}`, 'success');
+    const skipped = (run.skipped || []).length;
+    showToast(`Deployed to ${run.host_count} host${run.host_count === 1 ? '' : 's'}`
+      + (skipped ? ` · skipped ${skipped} that would refuse` : ''), 'success');
     closeDeployModal();
   } catch (e) {
     showToast('Deploy failed: ' + e.message, 'error');

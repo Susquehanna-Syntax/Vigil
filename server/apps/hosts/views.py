@@ -412,6 +412,15 @@ def checkin(request):
     if agent_ver := data.get("vigil_version"):
         host.agent_version = str(agent_ver)[:50]
 
+    # The allowlist the agent will enforce. Anything malformed leaves the stored
+    # value alone rather than wiping what a good check-in said.
+    raw_allow = data.get("allowlist")
+    if (isinstance(raw_allow, list) and len(raw_allow) <= 200
+            and all(isinstance(a, str) and 0 < len(a) <= 60 for a in raw_allow)):
+        host.agent_allowlist = sorted(set(raw_allow))
+    if isinstance(data.get("allow_reprovision"), bool):
+        host.agent_allow_reprovision = data["allow_reprovision"]
+
     if data.get("features") is not None:
         # A list of short strings the agent understands (task-language
         # features). Anything else is treated as absent: a corrupt payload

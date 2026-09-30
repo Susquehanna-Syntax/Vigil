@@ -88,6 +88,18 @@ server_url: "REPLACE_WITH_SERVER_URL"
 agent_token: "REPLACE_WITH_TOKEN"
 mode: monitor
 checkin_interval: 30
+# Actions a managed-mode agent may run. Monitor mode ignores this list; these
+# defaults are read-only, so switching to managed can hunt and inventory at once.
+allowlist:
+  - app_inventory
+  - check_service
+  - hunt_content
+  - hunt_file
+  - hunt_package
+  - hunt_port
+  - hunt_process
+  - hunt_registry
+  - hunt_service
 EOF
   sed -i.bak "s|REPLACE_WITH_SERVER_URL|${VIGIL_SERVER}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
 
