@@ -43,7 +43,8 @@ def _which(name: str) -> bool:
         return False
 
 
-def _run(cmd: list[str], timeout: int = _EXEC_TIMEOUT_LONG) -> str:
+def _run(cmd: list[str], timeout: int = _EXEC_TIMEOUT_LONG,
+         env: dict[str, str] | None = None) -> str:
     logger.info("pkg_manager: %s", cmd)
     result = subprocess.run(
         cmd,
@@ -51,7 +52,7 @@ def _run(cmd: list[str], timeout: int = _EXEC_TIMEOUT_LONG) -> str:
         text=True,
         timeout=timeout,
         shell=False,
-        env=clean_env(),
+        env=env or clean_env(),
     )
     output = (result.stdout + result.stderr).strip()
     if result.returncode not in (0, 100):  # apt returns 100 when upgrades available
@@ -71,6 +72,16 @@ class PackageManager:
 
     def _bin(self) -> str:
         return self.path or self.name
+
+    def _env(self) -> dict[str, str] | None:
+        """Environment for this manager's commands.
+
+        winget launched outside its package context cannot find its VCLibs C
+        runtime (STATUS_DLL_NOT_FOUND as LocalSystem) — see winget_env().
+        """
+        if self.name == "winget":
+            return winget_env(self._bin())
+        return None
 
     # ── Public interface ──────────────────────────────────────────────────
 
@@ -142,7 +153,8 @@ class PackageManager:
         if self.name == "brew":
             return _run(["brew", "update", "--quiet"])
         if self.name == "winget":
-            return _run([self._bin(), "source", "update", "--disable-interactivity"])
+            return _run([self._bin(), "source", "update", "--disable-interactivity"],
+                        env=self._env())
         if self.name == "snap":
             return _run(["snap", "refresh", "--list"])
         raise RuntimeError(f"refresh not implemented for {self.name}")
@@ -163,7 +175,8 @@ class PackageManager:
         if self.name == "brew":
             return _run(["brew", "upgrade", "--quiet"])
         if self.name == "winget":
-            return _run([self._bin(), "upgrade", "--all", "--disable-interactivity", "--accept-package-agreements", "--accept-source-agreements"])
+            return _run([self._bin(), "upgrade", "--all", "--disable-interactivity", "--accept-package-agreements", "--accept-source-agreements"],
+                        env=self._env())
         if self.name == "snap":
             return _run(["snap", "refresh"])
         raise RuntimeError(f"upgrade_all not implemented for {self.name}")
@@ -184,7 +197,7 @@ class PackageManager:
         if self.name == "brew":
             return _run(["brew", "install", "--quiet", pkg])
         if self.name == "winget":
-            return _run([self._bin(), "install", pkg, "--disable-interactivity", "--accept-package-agreements", "--accept-source-agreements"])
+            return _run([self._bin(), "install", pkg, "--disable-interactivity", "--accept-package-agreements", "--accept-source-agreements"], env=self._env())
         if self.name == "snap":
             return _run(["snap", "install", pkg])
         raise RuntimeError(f"install not implemented for {self.name}")
@@ -205,7 +218,7 @@ class PackageManager:
         if self.name == "brew":
             return _run(["brew", "uninstall", "--quiet", pkg])
         if self.name == "winget":
-            return _run([self._bin(), "uninstall", pkg, "--disable-interactivity"])
+            return _run([self._bin(), "uninstall", pkg, "--disable-interactivity"], env=self._env())
         if self.name == "snap":
             return _run(["snap", "remove", pkg])
         raise RuntimeError(f"remove not implemented for {self.name}")
@@ -226,7 +239,7 @@ class PackageManager:
         if self.name == "brew":
             return _run(["brew", "outdated", "--quiet"], timeout=_EXEC_TIMEOUT_SHORT)
         if self.name == "winget":
-            return _run([self._bin(), "upgrade", "--disable-interactivity"], timeout=_EXEC_TIMEOUT_SHORT)
+            return _run([self._bin(), "upgrade", "--disable-interactivity"], timeout=_EXEC_TIMEOUT_SHORT, env=self._env())
         if self.name == "snap":
             return _run(["snap", "refresh", "--list"], timeout=_EXEC_TIMEOUT_SHORT)
         raise RuntimeError(f"list_upgradable not implemented for {self.name}")
@@ -262,8 +275,47 @@ def detect() -> Optional[PackageManager]:
     return None
 
 
+def _windows_apps_root() -> Path:
+    """``%ProgramFiles%\\WindowsApps`` — the machine-wide package directory."""
+    return Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "WindowsApps"
+
+
+def resolve_winget() -> tuple[str, str]:
+    """Locate winget inside the machine-wide App Installer package.
+
+    Returns ``(path, "")`` when found, ``("", "absent")`` when the package is
+    not there, and ``("", "denied")`` when the package directory cannot be
+    listed. The two failures used to look identical and both were silent; a
+    monitor-mode service account is refused ``WindowsApps`` by its ACL, and the
+    server then showed a short software list with no hint why.
+
+    Any ``OSError`` other than a denial is treated as "absent": an unusable
+    directory yields no package manager, which is what absent means here.
+    """
+    if sys.platform != "win32":
+        return "", "absent"
+    root = _windows_apps_root()
+    try:
+        candidates = sorted(
+            root.glob("Microsoft.DesktopAppInstaller_*_x64__*/winget.exe"),
+            reverse=True,
+        )
+    except PermissionError:
+        return "", "denied"
+    except OSError:
+        return "", "absent"
+    for candidate in candidates:
+        try:
+            is_file = candidate.is_file()
+        except OSError:
+            continue
+        if is_file:
+            return str(candidate), ""
+    return "", "absent"
+
+
 def _resolve_winget() -> str:
-    """Absolute path to winget.exe when it is not on PATH.
+    """Absolute path to winget.exe when it is not on PATH, or "".
 
     winget ships as the Microsoft.DesktopAppInstaller package and is exposed
     to interactive users through an App Execution Alias in
@@ -271,26 +323,56 @@ def _resolve_winget() -> str:
     has no such profile, so `where winget` fails and every package action was
     unavailable in the only supported way to run the agent. The package itself
     is machine-wide, so resolve it there instead.
-
-    Returns "" when it genuinely is not installed, which leaves detect()
-    reporting no package manager exactly as before.
     """
-    if sys.platform != "win32":
-        return ""
-    root = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "WindowsApps"
+    return resolve_winget()[0]
+
+
+_VCLIBS_GLOB = "Microsoft.VCLibs.140.00.UWPDesktop_*_x64__8wekyb3d8bbwe"
+
+
+def winget_env(winget_path: str) -> dict[str, str]:
+    """Environment winget needs to start, or the plain sanitized one.
+
+    The ``winget.exe`` under ``%ProgramFiles%\\WindowsApps`` is a packaged
+    binary. Launched outside its package context it cannot find its VCLibs C
+    runtime and exits -1073741515 (0xC0000135, STATUS_DLL_NOT_FOUND) — which
+    is what every Windows agent running as LocalSystem did until this. Putting
+    the VCLibs package directory ahead of PATH puts the runtime where the
+    loader looks (verified as ``nt authority\\system`` on the VM 2026-09-29:
+    plain exit -1073741515, with-VCLibs exit 0).
+
+    Only the machine-wide package directory counts: a per-user App Execution
+    Alias under ``%LOCALAPPDATA%\\Microsoft\\WindowsApps`` is a reparse point
+    into the same package and needs no help. Never raises — a VCLibs directory
+    that cannot be listed leaves the environment unchanged.
+    """
+    plain = clean_env()
+    if not winget_path:
+        return plain
+    root = _windows_apps_root()
+    # resolve() would follow the per-user App Execution Alias back into the
+    # machine-wide package, so containment is decided on the literal path.
     try:
-        candidates = sorted(
-            root.glob("Microsoft.DesktopAppInstaller_*_x64__*/winget.exe"),
-            reverse=True,
-        )
+        resolved = Path(winget_path)
+        resolved.relative_to(root)
+    except ValueError:
+        return plain
+    try:
+        vclibs = sorted(root.glob(_VCLIBS_GLOB), reverse=True)
     except OSError:
-        # WindowsApps is heavily ACL'd; a denial here is not an error worth
-        # failing on, it just means we cannot offer package management.
-        return ""
-    for candidate in candidates:
-        if candidate.is_file():
-            return str(candidate)
-    return ""
+        return plain
+    for candidate in vclibs:
+        try:
+            is_dir = candidate.is_dir()
+        except OSError:
+            continue
+        if is_dir:
+            return clean_env(extra={
+                "PATH": os.pathsep.join(
+                    [str(candidate), str(resolved.parent),
+                     os.environ.get("PATH", "")]),
+            })
+    return plain
 
 
 _SAFE_PKG_NAME_CHARS = frozenset(
