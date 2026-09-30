@@ -403,6 +403,9 @@ async function refreshMonitor() {
   // ── Docker containers (fire-and-forget; independent of the metric range) ──
   renderDockerContainers(monitorHostId);
 
+  // ── Installed software (fire-and-forget, same reasoning) ──
+  if (typeof renderHostSoftware === 'function') renderHostSoftware(monitorHostId);
+
   btn.disabled = false;
   btn.style.opacity = '1';
 }

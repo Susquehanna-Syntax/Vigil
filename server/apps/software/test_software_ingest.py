@@ -315,7 +315,7 @@ class ReadApiTests(TestCase):
         row = body["items"][0]
         self.assertEqual(sorted(row.keys()), sorted([
             "name", "source", "package_id", "version", "latest_version",
-            "outdated", "scope", "user", "managed", "first_seen"]))
+            "outdated", "scope", "user", "managed", "first_seen", "publisher"]))
         self.assertTrue(row["outdated"])
         self.assertEqual(row["name"], "Mozilla Firefox (x64 en-US)")
 

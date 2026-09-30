@@ -55,6 +55,10 @@
   {# Logic: static/js/vigil-inventory.js | Data: client-side fetch /api/v1/hosts/inventory/ #}
   {% include "pages/_inventory.html" %}
 
+  {# Apps page — installed software by app / by host, with row expansion #}
+  {# Logic: static/js/vigil-apps.js | Data: client-side fetch /api/v1/software/{apps,hosts}/ #}
+  {% include "pages/_apps.html" %}
+
   {# Task editor page — YAML textarea + structured preview #}
   {# Logic: static/js/vigil-tasks.js (openDefinitionEditor → validate → save) #}
   {% include "pages/_task_editor.html" %}
