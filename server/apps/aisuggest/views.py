@@ -56,6 +56,11 @@ Rules:
 - For services use check_service / restart_service / start_service with params: {service_name: <name>},
   never run_command; an output is always read as steps.<id>.result.<field>.
 - Prefer low-risk, reversible diagnostics before invasive fixes.
+- To install, upgrade, pin or remove software use app_install / app_upgrade / app_pin / app_uninstall
+  with params: {app: <package id>, source: <dpkg|rpm|apk|pacman|snap|flatpak|winget|chocolatey|registry>};
+  omit source to use the host's own manager. app_upgrade without app upgrades everything outdated.
+- Refresh the inventory with app_inventory (outputs count, outdated, unmanaged) and branch on it.
+- Use app_install_custom (high risk, needs url + sha256) only when no package manager has the software.
 - Never propose update_agent."""
 
 

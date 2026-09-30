@@ -310,6 +310,10 @@
       <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 8v8M8 6c6 0 4 6 8 6"/></svg>
       Relevance &amp; branches
     </a>
+    <a href="#apps" class="nav-link">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>
+      Apps
+    </a>
     <a href="#windows-patching" class="nav-link">
       <svg viewBox="0 0 24 24"><path d="M3 5.5L10.5 4.5v7H3zM3 12.5h7.5v7L3 18.5zM11.5 4.3L21 3v8.5h-9.5zM11.5 12.5H21V21l-9.5-1.3z"/></svg>
       Windows Patching
@@ -992,6 +996,7 @@
 <span class="hl-var">agent_token</span>: <span class="hl-string">550e8400-e29b-41d4-a716-446655440000</span>
 <span class="hl-var">mode</span>: <span class="hl-string">managed</span>         <span class="hl-comment"># monitor | managed | full_control</span>
 <span class="hl-var">checkin_interval</span>: <span class="hl-num">60</span>  <span class="hl-comment"># seconds</span>
+<span class="hl-var">software_interval</span>: <span class="hl-num">21600</span>  <span class="hl-comment"># seconds between software inventories (default 6 h, minimum 900)</span>
 <span class="hl-var">allowlist</span>:           <span class="hl-comment"># only for "managed" mode</span>
   - <span class="hl-string">restart_service</span>
   - <span class="hl-string">run_script</span>
@@ -1643,6 +1648,69 @@
       <h3>Quoting step ids</h3>
       <p class="prose">YAML reads a few bare words as yes/no. A step written <code>id: yes</code>, <code>id: no</code>, <code>id: on</code> or <code>id: off</code> becomes a boolean, and the import is refused with a hint. Quote them: <code>id: "yes"</code>.</p>
     </section>
+
+    <section class="section" id="apps">
+      <p class="section-label">Software</p>
+      <h2 class="section-title" style="color:var(--mint)">Apps</h2>
+      <p class="section-desc">Every agent reports the software installed on its host. The <strong>Apps</strong> page shows it across the fleet, and six <code>app_*</code> actions install, upgrade, pin and remove it through the host's own package manager. Vigil keeps no list of releases of its own.</p>
+
+      <h3>What Vigil sees</h3>
+      <p class="prose">On Linux the agent reads the package database (dpkg, rpm, apk or pacman) plus Snap and Flatpak apps. On Windows it reads winget, Chocolatey, Scoop and the registry's Uninstall keys, both machine-wide and for each logged-in user. Each item carries a name, version, source, scope (<em>machine</em> or <em>user</em>), publisher, and the newest version the host's own manager offers.</p>
+      <p class="prose">The agent collects the list every <code>software_interval</code> seconds (in <code>agent.yml</code>; default 21600, which is 6 hours, minimum 900). It sends the list only when something changed, and at least once a day. The low-risk <code>app_inventory</code> action refreshes it immediately.</p>
+
+      <h3>Outdated and unmanaged</h3>
+      <p class="prose">An app is <strong>outdated</strong> when the host's own package manager offers a newer version. Vigil doesn't compare against a release feed, so an app that no manager tracks is never marked outdated. A registry entry that no package manager claims is <strong>unmanaged</strong>: you can see it and remove it, but not upgrade it.</p>
+
+      <h3>The Apps page</h3>
+      <p class="prose">Open <strong>Apps</strong> in the sidebar. <em>By app</em> lists each app with its host count, the versions in use, and how many hosts have it outdated or unmanaged. Filter by text or source, or show only outdated or only unmanaged apps. Click a row to see its hosts. <em>By host</em> shows each host's totals, when it last reported, and any source that failed to read. Each host's Monitor page also has a <strong>Software</strong> section, with outdated and unmanaged items listed first.</p>
+
+      <h3>The app actions</h3>
+      <p class="prose">All six are signed like every other action, can be put in an agent's allowlist, and their outputs can be used by later steps. <code>app</code> is the item's <strong>package id</strong> as the Apps page shows it, for example <code>openssl</code>, <code>Mozilla.Firefox</code>, <code>org.mozilla.firefox</code> or an MSI product code like <code>{0158093D-…}</code>. <code>source</code> is one of <code>dpkg</code>, <code>rpm</code>, <code>apk</code>, <code>pacman</code>, <code>snap</code>, <code>flatpak</code>, <code>winget</code>, <code>chocolatey</code>, <code>scoop</code> or <code>registry</code>. Leave it out to use the host's own manager.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Action</th><th>Risk</th><th>Params</th><th>Outputs</th></tr></thead>
+          <tbody>
+            <tr><td><code>app_inventory</code></td><td>low</td><td>none</td><td><code>count</code>, <code>outdated</code>, <code>unmanaged</code>, <code>errors</code></td></tr>
+            <tr><td><code>app_install</code></td><td>standard</td><td><code>app</code>; optional <code>source</code>, <code>version</code></td><td><code>installed_version</code>, <code>source</code></td></tr>
+            <tr><td><code>app_upgrade</code></td><td>standard</td><td>optional <code>app</code> (leave it out to upgrade every outdated app)</td><td><code>upgraded</code>, <code>failed</code></td></tr>
+            <tr><td><code>app_uninstall</code></td><td>standard</td><td><code>app</code>; optional <code>source</code></td><td><code>removed</code></td></tr>
+            <tr><td><code>app_pin</code></td><td>standard</td><td><code>app</code>; optional <code>source</code>, <code>version</code>, <code>unpin</code></td><td><code>pinned</code>, <code>pinned_version</code></td></tr>
+            <tr><td><code>app_install_custom</code></td><td><strong>high</strong></td><td><code>url</code> (https), <code>sha256</code>; optional <code>kind</code> (msi, exe, deb, rpm), <code>args</code> (exe switches), <code>app</code></td><td><code>sha256</code>, <code>installed_version</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose"><code>app_uninstall</code> with <code>source: registry</code> runs the entry's silent uninstaller, either the MSI or its <code>QuietUninstallString</code>. It never runs an interactive uninstaller. <code>app_install_custom</code> is for software no package manager carries. It downloads the installer, refuses to run it unless its SHA-256 matches the one in the task, runs it silently, then deletes it.</p>
+      <p class="prose">This task upgrades Firefox from Flathub, but only when the inventory it just took says something is outdated:</p>
+      <div class="code-block">
+        <div class="code-label">keep-firefox-current.yaml</div>
+        <pre><span class="hl-key">name</span>: <span class="hl-string">Keep Firefox current</span>
+<span class="hl-key">description</span>: <span class="hl-string">Upgrades Firefox where the host&#x27;s package manager offers a newer version.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">inv</span>
+    <span class="hl-key">type</span>: <span class="hl-string">app_inventory</span>
+  - <span class="hl-key">id</span>: <span class="hl-string">up</span>
+    <span class="hl-key">type</span>: <span class="hl-string">app_upgrade</span>
+    <span class="hl-key">when</span>: <span class="hl-string">steps.inv.result.outdated &gt; 0</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">app</span>: <span class="hl-string">org.mozilla.firefox</span>
+      <span class="hl-key">source</span>: <span class="hl-string">flatpak</span>
+    <span class="hl-key">outcome</span>: <span class="hl-string">Upgraded</span></pre>
+      </div>
+
+      <h3>Refusals and the allowlist</h3>
+      <p class="prose">A <em>managed</em> agent runs only the actions in its <code>allowlist:</code>. Agents report that list when they check in. The deploy dialog marks each host that would refuse the task with a <strong>will refuse</strong> chip, and a banner says those hosts will be skipped. Tick <strong>Send to them anyway</strong> to deploy to them regardless. If every selected host would refuse, the deploy is refused. New installs start with the read-only actions allowlisted: <code>app_inventory</code>, <code>check_service</code> and the seven hunts. Add the <code>app_*</code> actions you want a managed host to run.</p>
+
+      <h3>Limits</h3>
+      <ul class="prose">
+        <li>The agent must run as LocalSystem on Windows or root on Linux to see every user's installs and to use winget. A managed install does this.</li>
+        <li>winget running as SYSTEM uses the community repository only, not the Microsoft Store. winget is missing on Windows Server 2019 and some LTSC builds; Chocolatey works there.</li>
+        <li>Per-user installs are listed but not managed.</li>
+        <li>Unmanaged registry entries can be removed, never upgraded.</li>
+        <li>Pinning isn't available for pacman (use <code>IgnorePkg</code>), Scoop or registry entries. Snap and Flatpak can hold an app but not pin it to a version.</li>
+      </ul>
+    </section>
+    <div class="divider"></div>
 
     <section class="section" id="windows-patching">
       <p class="section-label">OS Management</p>
