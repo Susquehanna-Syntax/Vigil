@@ -2,12 +2,15 @@
 import logging
 from collections import Counter, defaultdict
 
+from django.db.models import Count, F, Q
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from vigil import scoping
 
-from .models import SoftwareItem
+from apps.hosts.models import Host
+
+from .models import SoftwareItem, SoftwareSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +22,11 @@ _ROW_FIELDS = (
     "scope", "user", "managed", "first_seen",
 )
 
+# An item is outdated only when the source reported a newer version; an empty
+# latest_version means "we don't know", not "current".
+_OUTDATED = Q(latest_version__gt="") & ~Q(latest_version=F("version"))
+_UNMANAGED = Q(managed=False)
+
 
 def _scoped_items(user):
     """Software rows the user may see, on hosts that weren't rejected."""
@@ -29,7 +37,8 @@ def _scoped_items(user):
     )
 
 
-def _row(base: dict, *, host_id=None, hostname=None, name_field="name") -> dict:
+def _row(base: dict, *, host_id=None, hostname=None, name_field="name",
+         with_publisher=False) -> dict:
     out = {}
     if host_id is not None:
         out["host_id"] = str(host_id)
@@ -44,6 +53,8 @@ def _row(base: dict, *, host_id=None, hostname=None, name_field="name") -> dict:
     out["scope"] = base["scope"]
     out["user"] = base["user"]
     out["managed"] = base["managed"]
+    if with_publisher:
+        out["publisher"] = base["publisher"]
     out["first_seen"] = base["first_seen"]
     return out
 
@@ -147,8 +158,7 @@ def host_software(request, host_id):
     rows = list(
         SoftwareItem.objects.filter(host=host)
         .order_by("name_key", "source")
-        .values("source", "package_id", "name", "version",
-                "latest_version", "scope", "user", "managed", "first_seen")
+        .values(*_ROW_FIELDS, "publisher")
     )
     return Response({
         "snapshot": None if snapshot is None else {
@@ -158,5 +168,48 @@ def host_software(request, host_id):
             "item_count": snapshot.item_count,
             "errors": snapshot.errors,
         },
-        "items": [_row(r) for r in rows],
+        "items": [_row(r, with_publisher=True) for r in rows],
     })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def host_summaries(request):
+    """Per-host totals for the Apps page's *By host* tab.
+
+    Every visible host is listed, including ones that never reported: zeros
+    and a null `received_at` are the row an operator is looking for, so a
+    missing snapshot must not hide the host. The counts come from one
+    aggregate query, not one per host.
+    """
+    hosts = list(scoping.filter_by_site(
+        Host.objects.exclude(status=Host.Status.REJECTED), request.user,
+    ).order_by("hostname"))
+
+    stats = {
+        agg["host_id"]: agg
+        for agg in SoftwareItem.objects.filter(host__in=hosts).values("host_id").annotate(
+            item_count=Count("id"),
+            outdated=Count("id", filter=_OUTDATED),
+            unmanaged=Count("id", filter=_UNMANAGED),
+        )
+    }
+    snapshots = {
+        snap.host_id: snap
+        for snap in SoftwareSnapshot.objects.filter(host__in=hosts)
+    }
+
+    rows = []
+    for host in hosts:
+        agg = stats.get(host.id, {})
+        snapshot = snapshots.get(host.id)
+        rows.append({
+            "host_id": str(host.id),
+            "hostname": host.hostname,
+            "item_count": agg.get("item_count", 0),
+            "outdated": agg.get("outdated", 0),
+            "unmanaged": agg.get("unmanaged", 0),
+            "received_at": snapshot.received_at if snapshot else None,
+            "errors": snapshot.errors if snapshot else {},
+        })
+    return Response({"count": len(rows), "results": rows})

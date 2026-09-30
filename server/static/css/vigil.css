@@ -3544,3 +3544,35 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .donut-pct { color: var(--text-3); text-align: right; }
 .donut-mini { display: inline-flex; vertical-align: middle; }
 .def-card-run { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
+
+/* ── Apps (M7 05) ────────────────────────────────────────────────────── */
+/* Chips carry all the colour here; no row or card gets a stripe. */
+.apps-table td.num { text-align: right; font-family: var(--font-mono); }
+.apps-table tbody tr.apps-row { cursor: pointer; }
+.apps-table tbody tr.apps-row:hover td { background: var(--s1); }
+.apps-filter {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-2); white-space: nowrap;
+}
+.apps-name { color: var(--text-1); font-weight: 600; }
+.apps-key { font-size: 11px; color: var(--text-3); }
+.apps-ver { font-family: var(--font-mono); margin-right: 4px; }
+.apps-more-ver { font-size: 11px; color: var(--text-3); }
+.apps-src { font-size: 10px; padding: 2px 8px; margin-right: 4px; }
+.apps-zero { color: var(--text-3); font-size: 11px; }
+.apps-host-link { color: var(--sky); cursor: pointer; text-decoration: none; }
+.apps-host-link:hover { text-decoration: underline; }
+.apps-detail-row > td { background: var(--s1); padding: 10px 12px 12px; }
+.apps-detail { display: flex; flex-direction: column; gap: 6px; }
+.apps-detail-item { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
+.apps-detail-ver, .apps-mono { font-family: var(--font-mono); color: var(--text-1); }
+.apps-detail-scope { color: var(--text-3); font-size: 11px; }
+.apps-detail-pkg { color: var(--text-3); font-size: 11px; font-family: var(--font-mono); }
+.apps-detail-loading { font-size: 12px; color: var(--text-3); }
+.apps-err { margin-right: 4px; }
+.apps-chip-warn { background: rgba(var(--rgb-peach), 0.14); color: var(--peach); }
+.apps-empty-state { font-size: 12px; color: var(--text-3); padding: 12px 8px; }
+.apps-snapshot-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.apps-host-toolbar { margin-bottom: 10px; }
+.apps-host-toolbar .form-control { max-width: 320px; font-size: 12px; }
+.apps-show-all { margin-top: 10px; }
