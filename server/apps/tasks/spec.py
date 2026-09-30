@@ -271,6 +271,71 @@ def _validate_script_params(params: dict[str, Any], position: int) -> None:
             )
 
 
+_APP_SOURCE_CHOICES = frozenset({
+    "dpkg", "rpm", "apk", "pacman", "flatpak", "snap",
+    "winget", "chocolatey", "scoop", "registry",
+})
+
+#: An app's inventory id — what the Apps page shows as `package_id`. The
+#: leading character is restricted to a letter, digit or `{` so an option
+#: (`-oProxy=x`) and a marker cannot start it; `-`, `:`, `@` and `/` are
+#: allowed inside (`libc6:amd64`, `org.mozilla.firefox`, an MSIX guid).
+_APP_ID_RE = re.compile(r"^[A-Za-z0-9{][A-Za-z0-9._+:@/{}~-]{0,199}$")
+
+#: A version pin (`2.43-2ubuntu2.4`, `1:3.0.13-1`). Same leading-character rule.
+_APP_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+:~-]{0,79}$")
+
+#: Sources whose install command has no version argument at all.
+_APP_SOURCES_WITHOUT_VERSION = frozenset({"snap", "flatpak", "registry"})
+
+
+def _validate_app_params(params: dict[str, Any], position: int,
+                         action_type: str) -> None:
+    """Check the ``app`` / ``source`` / ``version`` params of an ``app_*`` action.
+
+    A value containing ``${{ … }}`` cannot be judged here — it is resolved per
+    deploy. The agent re-checks every one of these rules before it runs a
+    command, which is what covers that case.
+
+    ``app_upgrade`` with no ``app`` is not a missing param: it means *every
+    outdated app*, which is the whole point of the no-``app`` form.
+    """
+    where = f"action #{position} ({action_type})"
+
+    def _pending(value: Any) -> bool:
+        # A value carrying a ${{ … }} marker is resolved per deploy, so there
+        # is nothing to check here.
+        return not isinstance(value, str) or "${{" in value
+
+    app = params.get("app")
+    if app is not None and not _pending(app) and not _APP_ID_RE.fullmatch(app):
+        raise SpecError(
+            f"{where}: 'app' must be an inventory id — letters, digits and "
+            f". _ + : @ / - ~ , no spaces and not starting with -. Got {app!r}"
+        )
+
+    source = params.get("source")
+    if source is not None and not _pending(source) \
+            and source not in _APP_SOURCE_CHOICES:
+        raise SpecError(
+            f"{where}: 'source' must be one of "
+            f"{', '.join(sorted(_APP_SOURCE_CHOICES))}, got {source!r}"
+        )
+
+    version = params.get("version")
+    if version is None or _pending(version):
+        return
+    if not _APP_VERSION_RE.fullmatch(version):
+        raise SpecError(
+            f"{where}: 'version' must be letters, digits and "
+            f". _ + : ~ - with no spaces. Got {version!r}"
+        )
+    if source in _APP_SOURCES_WITHOUT_VERSION:
+        raise SpecError(
+            f"{where}: version pinning is not supported for {source}"
+        )
+
+
 def _validate_schedule(raw: Any) -> dict[str, Any] | None:
     """Validate the optional ``schedule`` block.
 
@@ -1114,6 +1179,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
 
         if action_type in ("add_tag", "remove_tag"):
             _validate_tag_param(params.get("tags", ""), index + 1, action_type)
+        elif action_type in ("app_install", "app_upgrade", "app_uninstall"):
+            _validate_app_params(params, index + 1, action_type)
         elif action_type == "execute_script":
             _validate_script_params(params, index + 1)
         elif action_type == "hunt_file" and not (

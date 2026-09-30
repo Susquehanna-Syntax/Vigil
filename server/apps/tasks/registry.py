@@ -569,6 +569,27 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "outputs": {"count": "int", "outdated": "int", "unmanaged": "int",
                     "errors": "int"},
     },
+    "app_install": {
+        "label": "Install an app",
+        "risk": "standard",
+        "required": ["app"],
+        "optional": ["source", "version"],
+        "outputs": {"installed_version": "str", "source": "str"},
+    },
+    "app_upgrade": {
+        "label": "Upgrade an app (or every outdated app)",
+        "risk": "standard",
+        "required": [],
+        "optional": ["app", "source"],
+        "outputs": {"upgraded": "int", "failed": "int"},
+    },
+    "app_uninstall": {
+        "label": "Uninstall an app",
+        "risk": "standard",
+        "required": ["app"],
+        "optional": ["source"],
+        "outputs": {"removed": "bool"},
+    },
 }
 
 

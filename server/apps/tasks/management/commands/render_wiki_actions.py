@@ -54,7 +54,9 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "install_package", "remove_package", "update_package",
         "run_package_updates",
     ]),
-    ("apps", "Apps", ["app_inventory"]),
+    ("apps", "Apps", [
+        "app_inventory", "app_install", "app_upgrade", "app_uninstall",
+    ]),
     ("winupdate", "Windows Update", [
         "windows_update_scan", "windows_update_install",
     ]),
@@ -99,6 +101,10 @@ GROUP_NOTES: dict[str, str] = {
     "packages": "apt, dnf, yum, zypper, pacman, winget, choco, or brew, "
                 "whichever the host has. Use the package name that host's "
                 "manager knows.",
+    "apps": "Act on one app by the identity the Apps page shows — "
+            "its source and package id. After a successful step the "
+            "agent re-collects its software list, so the next "
+            "check-in reports the change.",
     "winupdate": "Windows only. These drive the Windows Update COM API "
                  "directly rather than shelling out to a module.",
     "system": "The broadest actions, and most of the high-risk ones.",
@@ -413,6 +419,17 @@ OUTPUT_NOTES: dict[str, dict[str, str]] = {
         "unmanaged": "How many are entries no package manager claims (a Windows registry install with no winget/choco/scoop match).",
         "errors": "How many sources failed to report.",
     },
+    "app_install": {
+        "installed_version": "The version the host now reports for the app, or empty when the source does not report one.",
+        "source": "Which source the agent acted on — the requested one, or the host's own package manager when no source was given.",
+    },
+    "app_upgrade": {
+        "upgraded": "How many apps the upgrade moved: one when an app was named, otherwise how many stopped being outdated.",
+        "failed": "How many apps the upgrade reported as failing (0 — a failed upgrade fails the step).",
+    },
+    "app_uninstall": {
+        "removed": "True when the app is no longer in the inventory the host reported after the removal.",
+    },
     "run_command": {
         "exit_code": "The command's exit code (0 — a non-zero exit fails the step).",
     },
@@ -586,6 +603,20 @@ def example_yaml(action: str) -> str:
         # `execute_script` accepts exactly one of script_name or an inline
         # body; the example shows the allowlisted-file form.
         params = ["script_name"]
+    if action in ("app_install", "app_uninstall"):
+        # `app` is the inventory id the Apps page shows, not the task's name,
+        # so the example is written out rather than filled from PARAM_EXAMPLES.
+        install = action == "app_install"
+        return "\n".join([
+            f"name: {'Install openssl' if install else 'Uninstall openssl'}",
+            "description: \"Act on one app by the id the Apps page shows, on the hosts you dispatch this to.\"",
+            "risk: standard",
+            "actions:",
+            f"  - id: {action.replace('_', '-')}",
+            f"    type: {action}",
+            "    params:",
+            "      app: openssl",
+        ]) + "\n"
     if action == "hunt_package":
         # "name" here is the package, not the task, so the example is written out.
         return "\n".join([

@@ -3049,6 +3049,7 @@
 </div>
 <div class="action-group" data-group="apps">
 <h4 class="action-group-title">Apps</h4>
+<p class="action-group-note">Act on one app by the identity the Apps page shows — its source and package id. After a successful step the agent re-collects its software list, so the next check-in reports the change.</p>
 <details class="action" id="action-app_inventory" data-group="apps" data-risk="low" data-keywords="app_inventory"><summary><code class="action-name">app_inventory</code><span class="risk risk-low">low</span><span class="action-label">Refresh software inventory</span><span class="action-required">none</span></summary><div class="action-body">
 <p class="action-noparams">This action takes no params.</p>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>count</code></td><td>int</td><td>How many installed items the host reported.</td></tr><tr><td><code>outdated</code></td><td>int</td><td>How many of them their own package manager offers a newer version for.</td></tr><tr><td><code>unmanaged</code></td><td>int</td><td>How many are entries no package manager claims (a Windows registry install with no winget/choco/scoop match).</td></tr><tr><td><code>errors</code></td><td>int</td><td>How many sources failed to report.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
@@ -3058,6 +3059,40 @@
 <span class="hl-key">actions</span>:
   - <span class="hl-key">id</span>: <span class="hl-string">app-inventory</span>
     <span class="hl-key">type</span>: <span class="hl-string">app_inventory</span></pre></div>
+</div></details>
+<details class="action" id="action-app_install" data-group="apps" data-risk="standard" data-keywords="app_install app source version"><summary><code class="action-name">app_install</code><span class="risk risk-std">standard</span><span class="action-label">Install an app</span><span class="action-required">app</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>app</code></td><td><span class="param-req">required</span></td><td></td></tr><tr><td><code>source</code></td><td><span class="param-opt">optional</span></td><td>Source address or CIDR the rule applies to.</td></tr><tr><td><code>version</code></td><td><span class="param-opt">optional</span></td><td></td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>installed_version</code></td><td>str</td><td>The version the host now reports for the app, or empty when the source does not report one.</td></tr><tr><td><code>source</code></td><td>str</td><td>Which source the agent acted on — the requested one, or the host&#x27;s own package manager when no source was given.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Install openssl</span>
+<span class="hl-key">description</span>: <span class="hl-string">&quot;Act on one app by the id the Apps page shows, on the hosts you dispatch this to.&quot;</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">app-install</span>
+    <span class="hl-key">type</span>: <span class="hl-string">app_install</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">app</span>: <span class="hl-string">openssl</span></pre></div>
+</div></details>
+<details class="action" id="action-app_upgrade" data-group="apps" data-risk="standard" data-keywords="app_upgrade app source"><summary><code class="action-name">app_upgrade</code><span class="risk risk-std">standard</span><span class="action-label">Upgrade an app (or every outdated app)</span><span class="action-required">none</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>app</code></td><td><span class="param-opt">optional</span></td><td></td></tr><tr><td><code>source</code></td><td><span class="param-opt">optional</span></td><td>Source address or CIDR the rule applies to.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>upgraded</code></td><td>int</td><td>How many apps the upgrade moved: one when an app was named, otherwise how many stopped being outdated.</td></tr><tr><td><code>failed</code></td><td>int</td><td>How many apps the upgrade reported as failing (0 — a failed upgrade fails the step).</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Upgrade an app (or every outdated app)</span>
+<span class="hl-key">description</span>: <span class="hl-string">Upgrade an app (or every outdated app) on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">app-upgrade</span>
+    <span class="hl-key">type</span>: <span class="hl-string">app_upgrade</span></pre></div>
+</div></details>
+<details class="action" id="action-app_uninstall" data-group="apps" data-risk="standard" data-keywords="app_uninstall app source"><summary><code class="action-name">app_uninstall</code><span class="risk risk-std">standard</span><span class="action-label">Uninstall an app</span><span class="action-required">app</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>app</code></td><td><span class="param-req">required</span></td><td></td></tr><tr><td><code>source</code></td><td><span class="param-opt">optional</span></td><td>Source address or CIDR the rule applies to.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>removed</code></td><td>bool</td><td>True when the app is no longer in the inventory the host reported after the removal.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Uninstall openssl</span>
+<span class="hl-key">description</span>: <span class="hl-string">&quot;Act on one app by the id the Apps page shows, on the hosts you dispatch this to.&quot;</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">app-uninstall</span>
+    <span class="hl-key">type</span>: <span class="hl-string">app_uninstall</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">app</span>: <span class="hl-string">openssl</span></pre></div>
 </div></details>
 </div>
 <div class="action-group" data-group="winupdate">

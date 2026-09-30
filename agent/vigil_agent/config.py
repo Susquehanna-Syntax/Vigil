@@ -67,7 +67,7 @@ _ALL_ACTIONS = {
     # Windows Update
     "windows_update_scan", "windows_update_install",
     # Apps
-    "app_inventory",
+    "app_inventory", "app_install", "app_upgrade", "app_uninstall",
     # User management
     "create_user", "delete_user", "add_user_to_group",
     # Cron

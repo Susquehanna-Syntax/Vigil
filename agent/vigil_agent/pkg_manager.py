@@ -14,6 +14,7 @@ All commands use subprocess with explicit argument lists (never shell=True).
 import logging
 import os
 import platform
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -380,7 +381,33 @@ _SAFE_PKG_NAME_CHARS = frozenset(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     "0123456789"
     "-_.+:@/"
+    # "=" and "~" appear in version pins and Debian versions (openssl=3.0.13-1,
+    # 1.2~rc1); they are safe because every command is an argv list, no shell.
+    "=~"
 )
+
+
+def validate_app_identifier(value: str, *, version: bool = False) -> bool:
+    """True when *value* is safe to pass as an app id (or a version pin).
+
+    Deliberately a different rule from :func:`_validate_package_name`, which
+    refuses ``-`` anywhere: an app is addressed by the id the Apps page shows,
+    and those ids are full of hyphens (``libgl1``, ``python3-pip``, a Windows
+    GUID). What has to be refused is a leading ``-`` (it would read as an
+    option), whitespace and shell metacharacters.
+
+    Same two patterns as ``apps.tasks.spec``; kept here as a separate copy
+    because the agent never imports server code, and re-checks the wire rather
+    than trusting that it was checked.
+    """
+    pattern = _APP_VERSION_PATTERN if version else _APP_ID_PATTERN
+    return pattern.fullmatch(value) is not None
+
+
+#: ``^[A-Za-z0-9{]…`` — the leading ``{`` is for a Windows registry product code
+#: (``{0158093D-…}``); a leading ``-`` is refused so an id can never read as an option.
+_APP_ID_PATTERN = re.compile(r"^[A-Za-z0-9{][A-Za-z0-9._+:@/{}~-]{0,199}$")
+_APP_VERSION_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+:~-]{0,79}$")
 
 
 def _validate_package_name(name: str) -> None:
