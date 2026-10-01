@@ -838,9 +838,16 @@ def host_containers(request, host_id):
     host, denied = scoping.host_or_404(request, host_id)
     if denied:
         return denied
+    from .models import ContainerImageHistory, ContainerRollback
+
     qs = host.docker_containers.all()
+    previous: dict = {}
+    for h in ContainerImageHistory.objects.filter(host=host):   # newest first
+        previous.setdefault((h.host_id, h.container_name), h.image_digest or h.image_id)
+    rolled = {(r.host_id, r.container_name): r.image for r in ContainerRollback.objects.filter(host=host)}
     return Response(DockerContainerSerializer(
-        qs, many=True, context={"outdated": _open_outdated([host.id])}
+        qs, many=True, context={"outdated": _open_outdated([host.id]), "previous": previous,
+                                "rolled_back": rolled}
     ).data)
 
 

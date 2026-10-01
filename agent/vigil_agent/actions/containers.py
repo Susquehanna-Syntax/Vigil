@@ -342,6 +342,7 @@ def _update_container(params: dict, _config: AgentConfig) -> str:
         dir_args = []
         if project_dir:
             dir_args = ["--project-directory", str(ex._validate_path(project_dir, "project directory"))]
+            _clear_rollback(project_dir)   # an update ends a rollback
 
         cmd = [*ex._compose_cmd(), *dir_args, "-f", compose_file]
         ex._run(cmd + ["pull", service], timeout=600, extra_env=ex._compose_env())
@@ -442,7 +443,8 @@ def _stack_compose_args(project: str) -> list[str]:
     for c in containers:
         labels = c.get("Labels") or {}
         files = [f.strip() for f in str(labels.get("com.docker.compose.project.config_files")
-                                         or "").split(",") if f.strip()]
+                                         or "").split(",")
+                 if f.strip() and not f.strip().endswith(ROLLBACK_OVERRIDE)]
         if not files:
             continue
         args = ["-p", project]
@@ -469,9 +471,69 @@ def _stack_update(params: dict, _config: AgentConfig) -> str:
     """Pull every image of the stack, then bring up whatever changed."""
     project = str(params.get("project") or "")
     args = _stack_compose_args(project)
+    if "--project-directory" in args:
+        _clear_rollback(args[args.index("--project-directory") + 1])   # an update ends a rollback
     cmd = [*ex._compose_cmd(), *args]
     pulled = ex._run(cmd + ["pull"], timeout=900, extra_env=ex._compose_env())
     output = ex._run(cmd + ["up", "-d"], timeout=600, extra_env=ex._compose_env())
     collector.request_docker_recheck()
     return ActionOutput("\n".join(filter(None, [pulled, output])) or f"updated stack {project}",
                         {"project": project})
+
+
+# ── Rollback (M11) ────────────────────────────────────────────────────────────
+
+#: A temporary pin: compose merges it over the stack's own file, which is
+#: never touched. The next update deletes it.
+ROLLBACK_OVERRIDE = "vigil-rollback.override.yaml"
+
+
+def _clear_rollback(workdir: str) -> bool:
+    """Remove a stack's rollback pin, if it has one; True when one was removed."""
+    if not workdir:
+        return False
+    path = Path(str(ex._validate_path(workdir, "project directory"))) / ROLLBACK_OVERRIDE
+    if path.exists():
+        path.unlink()
+        return True
+    return False
+
+
+def _container_rollback(params: dict, _config: AgentConfig) -> str:
+    """Put a container back on an earlier image — by digest or image id.
+
+    A compose container gets a pin in an override file next to its compose
+    file and is brought up from both; a standalone one is recreated on the
+    image. Either way the next update_container (or stack_update) clears it.
+    """
+    name = _validate_name(params.get("container_name", ""), "container name")
+    image = str(params.get("image") or "")
+    if not _SAFE_IMAGE.match(image):
+        raise ValueError(f"Invalid image reference: {image!r}")
+    spec = ex._docker_inspect(name)
+    labels = (spec.get("Config") or {}).get("Labels") or {}
+    project = labels.get(_COMPOSE_PROJECT_LABEL)
+    if project:
+        service = labels.get("com.docker.compose.service") or name
+        _validate_name(service, "service name")
+        workdir = labels.get("com.docker.compose.project.working_dir") or ""
+        files = [f.strip() for f in str(labels.get("com.docker.compose.project.config_files") or "")
+                 .split(",") if f.strip() and not f.strip().endswith(ROLLBACK_OVERRIDE)]
+        if not files or not workdir:
+            raise ValueError(f"Container {name!r} lacks the compose labels a rollback needs")
+        wd = Path(str(ex._validate_path(workdir, "project directory")))
+        override = wd / ROLLBACK_OVERRIDE
+        override.write_text(f"# Written by Vigil: {service} rolled back. The next update removes it.\n"
+                            f"services:\n  {service}:\n    image: {json.dumps(image)}\n")
+        cmd = [*ex._compose_cmd(), "-p", project, "--project-directory", str(wd)]
+        for f in files:
+            cmd += ["-f", str(ex._validate_path(f, "compose file"))]
+        cmd += ["-f", str(override), "up", "-d", "--no-deps", service]
+        ex._run(cmd, timeout=300, extra_env=ex._compose_env())
+        via = "compose override"
+    else:
+        ex._recreate_container({"container_name": name, "image": image}, _config)
+        via = "recreate"
+    collector.request_docker_recheck()
+    return ActionOutput(f"Rolled {name} back to {image} via {via}",
+                        {"rolled_back": True, "image": image})

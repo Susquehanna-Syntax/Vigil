@@ -191,6 +191,13 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "optional": [],
         "outputs": {"project": "str", "would_recreate": "int"},
     },
+    "container_rollback": {
+        "label": "Roll a container back to an earlier image",
+        "risk": "standard",
+        "required": ["container_name", "image"],
+        "optional": [],
+        "outputs": {"rolled_back": "bool", "image": "str"},
+    },
     "clear_docker_logs": {
         "label": "Truncate Docker logs",
         "risk": "low",

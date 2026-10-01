@@ -483,3 +483,34 @@ class LogTailSession(models.Model):
         return (not self.closed
                 and (at - self.viewer_seen_at).total_seconds() < self.VIEWER_TIMEOUT_SECONDS
                 and (at - self.created_at).total_seconds() < self.MAX_SECONDS)
+
+
+class ContainerImageHistory(models.Model):
+    """The image a container ran before an update (M11) — what one-click
+    rollback goes back to. Recorded from each completed update_container."""
+
+    host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="container_image_history")
+    container_name = models.CharField(max_length=200)
+    image_ref = models.CharField(max_length=255, blank=True)
+    image_id = models.CharField(max_length=80)
+    #: repo@sha256:… when the snapshot knew it — a digest survives a prune
+    #: of the local image; an id does not.
+    image_digest = models.CharField(max_length=300, blank=True)
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-recorded_at", "-id")
+        indexes = [models.Index(fields=("host", "container_name"))]
+
+
+class ContainerRollback(models.Model):
+    """A container currently rolled back (M11); cleared by its next update."""
+
+    host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="container_rollbacks")
+    container_name = models.CharField(max_length=200)
+    image = models.CharField(max_length=300)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("host", "container_name"),
+                                               name="uniq_container_rollback")]

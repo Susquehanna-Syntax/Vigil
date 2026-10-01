@@ -3241,6 +3241,19 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
       <span class="hl-key">project</span>: <span class="hl-string">shop</span>
       <span class="hl-key">adopt_ticket</span>: <span class="hl-string">6f1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d</span></pre></div>
 </div></details>
+<details class="action" id="action-container_rollback" data-group="container" data-risk="standard" data-keywords="container_rollback container_name image"><summary><code class="action-name">container_rollback</code><span class="risk risk-std">standard</span><span class="action-label">Roll a container back to an earlier image</span><span class="action-required">container_name, image</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>container_name</code></td><td><span class="param-req">required</span></td><td>The container to roll back.</td></tr><tr><td><code>image</code></td><td><span class="param-req">required</span></td><td>The image to go back to — a repo digest (repo@sha256:…) or an image id. A container&#x27;s page offers the one it ran before its last update.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>rolled_back</code></td><td>bool</td><td>True once the container runs the earlier image.</td></tr><tr><td><code>image</code></td><td>str</td><td>The image it was put back on.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Roll a container back to an earlier image</span>
+<span class="hl-key">description</span>: <span class="hl-string">Roll a container back to an earlier image on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">container-rollback</span>
+    <span class="hl-key">type</span>: <span class="hl-string">container_rollback</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">container_name</span>: <span class="hl-string">nextcloud</span>
+      <span class="hl-key">image</span>: <span class="hl-string">nginx:1.27-alpine</span></pre></div>
+</div></details>
 </div>
 <div class="action-group" data-group="files">
 <h4 class="action-group-title">Files and directories</h4>

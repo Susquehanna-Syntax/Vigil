@@ -315,6 +315,8 @@ def task_result(request):
         # If the parent definition is flagged ``collect:``, capture this
         # successful run's output into the host's inventory custom columns.
         if new_state == Task.State.COMPLETED:
+            from apps.hosts.container_history import record_container_task
+            record_container_task(task)
             _maybe_capture_inventory_column(task, output)
             _maybe_apply_tags(task)
             _maybe_request_nessus_scan(task)

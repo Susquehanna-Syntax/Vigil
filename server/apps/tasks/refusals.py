@@ -30,6 +30,7 @@ AGENT_ACTIONS = frozenset({
     "clear_docker_logs",
     "clear_temp_files",
     "container_logs",
+    "container_rollback",
     "copy_file",
     "create_cron_job",
     "create_directory",
