@@ -59,6 +59,10 @@
   {# Logic: static/js/vigil-apps.js | Data: client-side fetch /api/v1/software/{apps,hosts}/ #}
   {% include "pages/_apps.html" %}
 
+  {# Policies page — app and patch policies, their drift, and changes waiting for approval #}
+  {# Logic: static/js/vigil-policies.js | Data: /api/v1/policies/ #}
+  {% include "pages/_policies.html" %}
+
   {# Task editor page — YAML textarea + structured preview #}
   {# Logic: static/js/vigil-tasks.js (openDefinitionEditor → validate → save) #}
   {% include "pages/_task_editor.html" %}

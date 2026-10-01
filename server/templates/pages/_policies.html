@@ -1,0 +1,147 @@
+{# Policies page — app and patch policies: the desired state of a group of hosts #}
+{# Logic: static/js/vigil-policies.js | Styles: vigil.css .pol-* | Data: /api/v1/policies/ #}
+    <section id="page-policies" class="page">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Policies<span>.</span></div>
+          <div class="page-sub">Which apps and updates your hosts should have — kept that way in a maintenance window</div>
+        </div>
+        <div class="right">
+          <button class="btn btn-mint btn-sm" type="button" data-act="openPolicyEditor">New policy</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="hunt-table pol-table" id="pol-table">
+          <thead>
+            <tr>
+              <th>Policy</th>
+              <th>Hosts</th>
+              <th>Window</th>
+              <th class="num">Apps</th>
+              <th>Patching</th>
+              <th>Changes</th>
+            </tr>
+          </thead>
+          <tbody id="pol-table-body"></tbody>
+        </table>
+      </div>
+
+      <div class="pol-changes">
+        <div class="pol-changes-head">
+          <div class="section-label">Waiting for approval</div>
+          <div class="pol-changes-actions" id="pol-changes-actions" hidden>
+            <input type="text" class="form-control pol-totp" id="pol-changes-totp" placeholder="TOTP code" inputmode="numeric" autocomplete="one-time-code" maxlength="8">
+            <button class="btn btn-mint btn-xs" type="button" data-pol-decide="approve">Approve and send</button>
+            <button class="btn btn-outline btn-xs" type="button" data-pol-decide="reject">Reject</button>
+          </div>
+        </div>
+        <div id="pol-changes-list"></div>
+      </div>
+    </section>
+
+<!-- ── Policy editor modal ───────────────────────────────────────────── -->
+<div class="modal-overlay" id="pol-overlay"></div>
+<div class="modal modal-wide" id="pol-modal" data-editing="" role="dialog" aria-modal="true" aria-labelledby="pol-title">
+  <div class="modal-title">
+    <span id="pol-title">New policy</span>
+    <button class="modal-close" type="button" data-act="closePolicyEditor" aria-label="Close">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="modal-body">
+    <div class="pol-grid">
+      <div class="bl-field">
+        <label for="pol-name">Name</label>
+        <input type="text" class="form-control" id="pol-name" maxlength="120" placeholder="e.g. Office desktops">
+      </div>
+      <div class="bl-field">
+        <label for="pol-tags">Hosts tagged <span class="pol-opt">(comma-separated; blank = every managed host)</span></label>
+        <input type="text" class="form-control" id="pol-tags" placeholder="office, os:windows">
+      </div>
+    </div>
+    <div class="pol-grid pol-grid-4">
+      <div class="bl-field">
+        <label for="pol-hour">Window opens at</label>
+        <div class="pol-time"><input type="text" class="form-control" id="pol-hour" value="2" aria-label="Hour (cron)"> : <input type="text" class="form-control" id="pol-minute" value="0" aria-label="Minute (cron)"></div>
+      </div>
+      <div class="bl-field">
+        <label for="pol-dow">On days <span class="pol-opt">(cron, 0 = Sun)</span></label>
+        <input type="text" class="form-control" id="pol-dow" value="*">
+      </div>
+      <div class="bl-field">
+        <label for="pol-hours">For hours</label>
+        <input type="number" class="form-control" id="pol-hours" min="1" max="24" value="4">
+      </div>
+      <div class="bl-field">
+        <label for="pol-waves">Wave ladder <span class="pol-opt">(group tag; blank = all at once)</span></label>
+        <input type="text" class="form-control" id="pol-waves" placeholder="desktops">
+      </div>
+    </div>
+    <div class="pol-inline">
+      <label class="setting-check"><input type="checkbox" id="pol-enabled" checked> Enabled</label>
+      <label class="setting-check"><input type="checkbox" id="pol-approve"> Approve each change before it is made</label>
+    </div>
+
+    <div class="sub-tabs pol-tabs" role="tablist">
+      <button class="sub-tab t-mint active" type="button" data-pol-tab="apps">Apps</button>
+      <button class="sub-tab t-lav" type="button" data-pol-tab="patching">Patching</button>
+      <button class="sub-tab t-sky" type="button" data-pol-tab="preview">Preview</button>
+    </div>
+
+    <div class="pol-panel active" id="pol-panel-apps">
+      <div class="pol-rules" id="pol-rules"></div>
+      <datalist id="pol-app-list"></datalist>
+      <button class="btn btn-outline btn-xs" type="button" data-act="addPolicyRule">Add app</button>
+      <p class="muted-note pol-help">Present installs an app where it is missing. Latest also upgrades it. Pinned installs, upgrades or downgrades to one version and holds it there. Absent uninstalls it. Hosts already in line are left alone.</p>
+    </div>
+
+    <div class="pol-panel" id="pol-panel-patching">
+      <label class="setting-check"><input type="checkbox" id="pol-patch"> Install OS updates in this window</label>
+      <div class="bl-field pol-gap">
+        <label>Windows: classifications to install</label>
+        <div class="pol-checks" id="pol-classes"></div>
+      </div>
+      <div class="pol-grid pol-grid-3">
+        <div class="bl-field">
+          <label for="pol-defer">Wait this many days after an update first appears</label>
+          <input type="number" class="form-control" id="pol-defer" min="0" max="365" value="7">
+        </div>
+        <div class="bl-field">
+          <label for="pol-reboot">Restart when an update needs it</label>
+          <select class="form-control" id="pol-reboot">
+            <option value="in_window">In the window</option>
+            <option value="ask">Ask the user (they can postpone)</option>
+            <option value="never">Never</option>
+          </select>
+        </div>
+        <div class="bl-field">
+          <label for="pol-linux">Linux</label>
+          <select class="form-control" id="pol-linux">
+            <option value="security">Security updates only</option>
+            <option value="all">All updates</option>
+          </select>
+        </div>
+      </div>
+      <label class="setting-check"><input type="checkbox" id="pol-high-risk"> Allow the restart to run unattended (asks for your TOTP code)</label>
+      <p class="muted-note pol-help">Updates you approve on Apps → By update skip the wait; ones you decline never install.</p>
+    </div>
+
+    <div class="pol-panel" id="pol-panel-preview">
+      <div id="pol-preview"><div class="apps-empty-state">Save the policy to see what it would change.</div></div>
+      <div class="pol-run" id="pol-run" hidden>
+        <a href="#" class="apps-host-link" id="pol-view-task">View the generated task</a>
+        <span class="pol-run-now">
+          <input type="text" class="form-control pol-totp" id="pol-run-totp" placeholder="TOTP code" inputmode="numeric" autocomplete="one-time-code" maxlength="8">
+          <button class="btn btn-lav btn-xs" type="button" data-act="runPolicyNow">Run now</button>
+        </span>
+      </div>
+    </div>
+    <div class="editor-error" id="pol-error"></div>
+  </div>
+  <div class="modal-actions">
+    <button class="btn btn-ghost" type="button" id="pol-delete" data-act="deletePolicy" hidden>Delete</button>
+    <button class="btn btn-ghost" type="button" data-act="closePolicyEditor">Cancel</button>
+    <button class="btn btn-mint" type="button" data-act="savePolicy">Save</button>
+  </div>
+</div>
