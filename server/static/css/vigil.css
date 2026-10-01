@@ -3577,6 +3577,15 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .apps-host-toolbar .form-control { max-width: 320px; font-size: 12px; }
 .apps-show-all { margin-top: 10px; }
 
+/* ── Apps: by update (M8) ────────────────────────────────────────────── */
+.apps-table th.upd-check, .apps-table td.upd-check { width: 1%; padding-right: 4px; }
+.upd-title { font-size: 11px; color: var(--text-3); }
+.upd-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px;
+  font-size: 12px; color: var(--text-2); }
+.upd-note { margin-top: 10px; font-size: 12px; }
+.chip-mint { background: rgba(var(--rgb-mint), 0.14); color: var(--mint); }
+.chip-lemon { background: rgba(var(--rgb-lemon), 0.16); color: var(--lemon); }
+
 /* ── Deploy: hosts that would refuse the task (M7) ─────────────────── */
 .deploy-refusals {
   margin-top: 16px; padding: 10px 12px; border-radius: var(--r-md);
