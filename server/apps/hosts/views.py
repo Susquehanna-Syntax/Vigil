@@ -565,6 +565,10 @@ def checkin(request):
                 mem_limit_bytes=_safe_int(c.get("mem_limit_bytes")),
                 mem_percent=_safe_float(c.get("mem_percent")),
                 ports=c.get("ports") if isinstance(c.get("ports"), list) else [],
+                image_id=str(c.get("image_id") or "")[:80],
+                image_digest=str(c.get("image_digest") or "")[:300],
+                restart_policy=str(c.get("restart_policy") or "")[:40],
+                config_hash=str(c.get("config_hash") or "")[:80],
             ))
         if len(rows) > MAX_CONTAINERS_PER_CHECKIN:
             logger.warning(
@@ -577,6 +581,7 @@ def checkin(request):
                 DockerContainer.objects.bulk_create(rows)
             host.docker_snapshot_at = now()
             host.save(update_fields=["docker_snapshot_at"])
+            _sync_container_stacks(host, containers_payload)
 
     # Pending hosts must wait for admin approval before receiving tasks
     if host.status == Host.Status.PENDING:
@@ -808,6 +813,22 @@ def _open_outdated(host_ids=None) -> set:
         qs = qs.filter(host_id__in=host_ids)
     return {(a.host_id, (a.fix_context or {}).get("container_name"))
             for a in qs.only("host_id", "fix_context")}
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def host_stacks(request, host_id):
+    """Compose stacks on one host (M11): who owns each, where its compose
+    file lives, and how many of its containers run."""
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
+    return Response([{
+        "id": s.id, "project": s.project, "ownership": s.ownership,
+        "config_files": s.config_files, "working_dir": s.working_dir, "engine": s.engine,
+        "container_count": s.container_count, "running_count": s.running_count,
+        "seen_at": s.seen_at.isoformat() if s.seen_at else None,
+    } for s in host.container_stacks.all()])
 
 
 @api_view(["GET"])
@@ -1504,3 +1525,45 @@ def _rename_in_string_mirrors(old_key: str, new_name: str) -> None:
     rewrite(Automation.objects.all(), "event_tags")
     rewrite(Automation.objects.all(), "target_tags")
     rewrite(InstallProfile.objects.all(), "completion_tags")
+
+
+def _sync_container_stacks(host, containers: list) -> None:
+    """Upsert the host's compose stacks from its containers' labels (M11).
+
+    A stack no container belongs to any more is dropped — unless Vigil manages
+    or adopted it, in which case it stays (stopped is not gone).
+    """
+    from .models import ContainerStack
+
+    engines = host.container_engines or []
+    engine = engines[0]["kind"] if engines else ""
+    found: dict = {}
+    for c in containers:
+        if not isinstance(c, dict) or not c.get("stack"):
+            continue
+        project = str(c["stack"])[:200]
+        entry = found.setdefault(project, {"config_files": [], "working_dir": "",
+                                           "count": 0, "running": 0})
+        entry["count"] += 1
+        entry["running"] += 1 if str(c.get("state") or "") == "running" else 0
+        files = [f.strip() for f in str(c.get("config_files") or "").split(",") if f.strip()]
+        if files and not entry["config_files"]:
+            entry["config_files"] = files[:10]
+        if c.get("working_dir") and not entry["working_dir"]:
+            entry["working_dir"] = str(c["working_dir"])[:500]
+    stamp = now()
+    for project, entry in found.items():
+        stack, created = ContainerStack.objects.get_or_create(
+            host=host, project=project,
+            defaults={"config_files": entry["config_files"], "working_dir": entry["working_dir"],
+                      "engine": engine})
+        stack.container_count, stack.running_count = entry["count"], entry["running"]
+        stack.seen_at = stamp
+        if entry["config_files"] and stack.ownership == ContainerStack.Ownership.EXTERNAL:
+            stack.config_files, stack.working_dir = entry["config_files"], entry["working_dir"]
+        stack.engine = engine or stack.engine
+        stack.save()
+    (ContainerStack.objects.filter(host=host, ownership=ContainerStack.Ownership.EXTERNAL)
+     .exclude(project__in=list(found)).delete())
+    (ContainerStack.objects.filter(host=host).exclude(project__in=list(found))
+     .update(container_count=0, running_count=0))

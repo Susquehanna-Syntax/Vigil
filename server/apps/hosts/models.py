@@ -200,6 +200,13 @@ class DockerContainer(models.Model):
     mem_limit_bytes = models.BigIntegerField(null=True, blank=True)
     mem_percent = models.FloatField(null=True, blank=True)
     ports = models.JSONField(default=list, blank=True)
+    # Stack inventory (M11).
+    image_id = models.CharField(max_length=80, blank=True)
+    #: The image's repo digest (``repo@sha256:…``) — what a rollback pins to.
+    image_digest = models.CharField(max_length=300, blank=True)
+    restart_policy = models.CharField(max_length=40, blank=True)
+    #: compose's own hash of the service config; a change means drift.
+    config_hash = models.CharField(max_length=80, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -410,3 +417,39 @@ class TagRowSyncMixin:
         super().save(*args, **kwargs)
         for string_field, relation in self.tag_sync_fields:
             sync_tag_rows(self, string_field, relation)
+
+
+class ContainerStack(models.Model):
+    """A compose stack on one host (M11) — found from its containers' labels
+    at check-in, or deployed by Vigil.
+
+    ``ownership`` says who is in charge of it: ``managed`` — Vigil holds its
+    compose file and deploys it; ``adopted`` — an existing stack Vigil has
+    taken over where it stands; ``external`` — merely seen running.
+    """
+
+    class Ownership(models.TextChoices):
+        MANAGED = "managed", "Managed by Vigil"
+        ADOPTED = "adopted", "Adopted"
+        EXTERNAL = "external", "External"
+
+    host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="container_stacks")
+    project = models.CharField(max_length=200)
+    config_files = models.JSONField(default=list, blank=True)
+    working_dir = models.CharField(max_length=500, blank=True)
+    ownership = models.CharField(max_length=10, choices=Ownership.choices,
+                                 default=Ownership.EXTERNAL)
+    engine = models.CharField(max_length=10, blank=True)
+    container_count = models.PositiveIntegerField(default=0)
+    running_count = models.PositiveIntegerField(default=0)
+    #: Last seen at a check-in; a managed stack keeps its row when stopped.
+    seen_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("host", "project"),
+                                               name="uniq_container_stack")]
+        ordering = ("project",)
+
+    def __str__(self):
+        return f"{self.project} on {self.host_id}"
