@@ -103,6 +103,7 @@ class TaskRun(models.Model):
         AUTOMATION = "automation", "Automation"
         PLAYBOOK = "playbook", "Playbook"
         REPROVISION = "reprovision", "Reprovision"
+        POLICY = "policy", "Policy"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     # A playbook run's flow as it was dispatched — the tree, and each step's
@@ -375,6 +376,10 @@ class PatchRollout(models.Model):
     #: Snapshotted as a string rather than a relation so re-tagging a wave
     #: later cannot reshape a rollout already in flight.
     wave_group_tag = models.CharField(max_length=120, blank=True, default="")
+    #: Host ids this rollout may reach, as strings — a policy run rolls out to
+    #: the hosts that drifted, not every host its waves carry. Null = no
+    #: restriction, which is what every other rollout is.
+    host_ids = models.JSONField(null=True, blank=True)
     playbook = models.ForeignKey(
         "baselines.Playbook", on_delete=models.CASCADE, related_name="rollouts",
         null=True, blank=True,

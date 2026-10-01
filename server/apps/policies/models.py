@@ -64,6 +64,11 @@ class UpdatePolicy(models.Model):
     linux_updates = models.CharField(max_length=10, choices=LinuxUpdates.choices,
                                      default=LinuxUpdates.SECURITY)
 
+    #: The task this policy compiles to (compile.py), rewritten on every save.
+    task_definition = models.ForeignKey(
+        "tasks.TaskDefinition", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+")
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
         related_name="update_policies")
