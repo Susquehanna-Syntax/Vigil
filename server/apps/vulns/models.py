@@ -72,6 +72,9 @@ class VulnScan(models.Model):
         NESSUS = "nessus", "Nessus"
         GREENBONE = "greenbone", "Greenbone / OpenVAS"
         TRIVY = "trivy", "Trivy"
+        # Vigil's own findings (M9): the inventory matched against OSV, a
+        # missing Windows security update, an app winget says is outdated.
+        VIGIL = "vigil", "Vigil"
 
     class State(models.TextChoices):
         REQUESTED = "requested", "Requested"
@@ -433,3 +436,40 @@ class VulnException(models.Model):
         from django.utils.timezone import localdate
 
         return self.expires_on >= localdate()
+
+
+class FindingEvidence(models.Model):
+    """What a finding rests on — one row per piece of evidence (M9).
+
+    A finding cites everything that matched: the package record or registry
+    entry from the Apps inventory, a file on disk, a running process, a
+    listening port, a missing security update. Evidence is what turns
+    "a scanner said so" into something an operator can check, and what
+    ranks it: a vulnerable package that is also running is urgent; a file
+    alone is only file evidence.
+    """
+
+    class Kind(models.TextChoices):
+        PACKAGE = "package", "Installed package"
+        REGISTRY = "registry", "Registry entry"
+        FILE = "file", "File on disk"
+        PROCESS = "process", "Running process"
+        PORT = "port", "Listening port"
+        MISSING_UPDATE = "missing_update", "Missing security update"
+        OUTDATED_APP = "outdated_app", "Outdated app"
+        SCANNER = "scanner", "Scanner report"
+
+    finding = models.ForeignKey(VulnFinding, on_delete=models.CASCADE, related_name="evidence")
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    #: Identity within the finding — a package id, a path, a pid+name.
+    key = models.CharField(max_length=300)
+    summary = models.CharField(max_length=300, blank=True, default="")
+    detail = models.JSONField(default=dict, blank=True)
+    observed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("finding", "kind", "key"),
+                                               name="uniq_finding_evidence")]
+
+    def __str__(self):
+        return f"{self.kind}: {self.key}"

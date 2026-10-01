@@ -79,7 +79,7 @@ def finding_list(request):
     """
     from django.utils.timezone import localdate
 
-    qs = VulnFinding.objects.select_related("host", "exception")
+    qs = VulnFinding.objects.select_related("host", "exception").prefetch_related("evidence")
     if host_id := request.query_params.get("host"):
         qs = qs.filter(host_id=host_id)
     if scanner := request.query_params.get("scanner"):
