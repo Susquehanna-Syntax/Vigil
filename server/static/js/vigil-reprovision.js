@@ -501,7 +501,7 @@ function _reproImageStatusCell(img) {
 
   if (img.status === 'failed') {
     const err = document.createElement('div');
-    err.style.cssText = 'margin-top:8px;font-size:12px;color:var(--rose);max-width:320px;white-space:pre-wrap;word-break:break-word;';
+    err.style.cssText = 'margin-top:8px;font-size:12px;color:var(--rose-ink);max-width:320px;white-space:pre-wrap;word-break:break-word;';
     // import_error is free text produced by a failed import — the whole
     // diagnostic for a multi-gigabyte fetch, and operator-supplied on the
     // custom-URL path. textContent only; see SECURITY note atop this file.
@@ -1079,7 +1079,7 @@ function _reproJobRow(job) {
 
   if (job.state === 'failed' && job.failure_reason) {
     const err = document.createElement('span');
-    err.style.cssText = 'font-size:12px;color:var(--rose);';
+    err.style.cssText = 'font-size:12px;color:var(--rose-ink);';
     err.textContent = job.failure_reason; // job-produced text — textContent
     main.appendChild(err);
   }

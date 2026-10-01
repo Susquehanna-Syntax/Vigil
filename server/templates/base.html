@@ -34,12 +34,15 @@
       if (t === 'system') {
         t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
           ? 'dark' : 'light';
-      } else if (t !== 'light') {
+      } else if (t !== 'light' && t !== 'river' && t !== 'ink') {
         t = 'dark';
       }
       document.documentElement.setAttribute('data-theme', t);
       var d = localStorage.getItem('vigil-density') || 'cozy';
       document.documentElement.setAttribute('data-density', d);
+      if (localStorage.getItem('vigil-reduce-motion') === '1') {
+        document.documentElement.classList.add('rm-sim');
+      }
     } catch (e) {}
   })();
 </script>
@@ -98,7 +101,7 @@
     </div>
 
     <div class="sidebar-spacer"></div>
-    <div class="sidebar-icon" data-tip="Toggle light / dark" id="theme-toggle" data-act="toggleTheme">
+    <div class="sidebar-icon" data-tip="Theme: Dark" id="theme-toggle" data-act="toggleTheme">
       <svg id="theme-icon-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
       <svg id="theme-icon-sun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </div>
@@ -147,7 +150,7 @@
     <div style="font-size: 12px; color: var(--text-3); display:flex; align-items:center; gap:8px;">
       Agent: <span class="mono" id="detail-agent-version">—</span>
       <button class="btn btn-ghost btn-sm" id="detail-update-agent-btn"
-              style="display:none; padding:2px 8px; color:var(--sky);"
+              style="display:none; padding:2px 8px; color:var(--sky-ink);"
               data-act="forceUpdateAgent">Update</button>
     </div>
   </div>
@@ -168,22 +171,22 @@
     <div class="metric-grid">
       <div class="metric-card">
         <div class="metric-card-label">CPU Usage</div>
-        <div class="metric-card-value" style="color: var(--sky);">—</div>
+        <div class="metric-card-value" style="color: var(--sky-ink);">—</div>
         <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--sky);"></div></div>
       </div>
       <div class="metric-card">
         <div class="metric-card-label">Memory</div>
-        <div class="metric-card-value" style="color: var(--lavender);">—</div>
+        <div class="metric-card-value" style="color: var(--lavender-ink);">—</div>
         <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--lavender);"></div></div>
       </div>
       <div class="metric-card">
         <div class="metric-card-label">Disk</div>
-        <div class="metric-card-value" style="color: var(--mint);">—</div>
+        <div class="metric-card-value" style="color: var(--mint-ink);">—</div>
         <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--mint);"></div></div>
       </div>
       <div class="metric-card">
         <div class="metric-card-label">Swap</div>
-        <div class="metric-card-value" style="color: var(--peach);">—</div>
+        <div class="metric-card-value" style="color: var(--peach-ink);">—</div>
         <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--peach);"></div></div>
       </div>
     </div>
@@ -437,7 +440,7 @@
         Comma-separated. Any host carrying <em>any</em> of these tags is in the wave.
         Tags are edited on the host itself &mdash; this only chooses which ones the wave matches.
       </div>
-      <div class="confirm-hint" id="wave-match-preview" style="margin-top:6px;color:var(--sky);"></div>
+      <div class="confirm-hint" id="wave-match-preview" style="margin-top:6px;color:var(--sky-ink);"></div>
     </div>
     <label class="form-check" style="margin-bottom:4px;">
       <input type="checkbox" id="wave-enabled" checked>
@@ -550,7 +553,7 @@ settings before deciding anything.
   </div>
   <div class="totp-sub" style="margin-bottom:14px;">
     The Vigil community catalog lives on GitHub at
-    <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky);">Susquehanna-Syntax/Vigil-Approved-Scripts</a>.
+    <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky-ink);">Susquehanna-Syntax/Vigil-Approved-Scripts</a>.
     Submitting opens GitHub's new-file editor with your YAML pre-filled — GitHub will offer to fork the repo and open a PR.
   </div>
   <div class="totp-sub" style="margin-bottom:18px;">
@@ -657,7 +660,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
     <textarea class="form-control" id="device-notes" placeholder="Anything worth remembering about this device"></textarea>
   </div>
   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-    <button class="btn btn-ghost" id="device-delete-btn" style="display:none;color:var(--rose);" data-act="deleteDeviceFromModal">Delete</button>
+    <button class="btn btn-ghost" id="device-delete-btn" style="display:none;color:var(--rose-ink);" data-act="deleteDeviceFromModal">Delete</button>
     <div style="display:flex;gap:10px;margin-left:auto;">
       <button class="btn btn-ghost" data-act="closeDeviceModal">Cancel</button>
       <button class="btn btn-sky" data-act="saveDevice">Save Device</button>
@@ -723,7 +726,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 
   {# Step 2: polling #}
   <div id="enroll-s2" style="flex:1;overflow-y:auto;display:none;text-align:center;padding:32px 0;">
-    <div style="margin-bottom:16px;"><svg viewBox="0 0 24 24" style="width:32px;height:32px;stroke:var(--sky);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+    <div style="margin-bottom:16px;"><svg viewBox="0 0 24 24" style="width:32px;height:32px;stroke:var(--sky-ink);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
     <div style="font-weight:600;font-size:15px;margin-bottom:8px;">Waiting for agent to connect…</div>
     <div class="totp-sub">The agent will appear here within a few seconds of running the command.</div>
     <div style="margin-top:20px;">
@@ -733,7 +736,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 
   {# Step 3: approve #}
   <div id="enroll-s3" style="flex:1;overflow-y:auto;display:none;">
-    <div style="font-weight:600;font-size:15px;margin-bottom:16px;color:var(--mint);">Agent detected!</div>
+    <div style="font-weight:600;font-size:15px;margin-bottom:16px;color:var(--mint-ink);">Agent detected!</div>
     <div class="enroll-card" style="margin-bottom:20px;">
       <div class="status-dot pending"></div>
       <div class="enroll-info">
@@ -754,8 +757,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 
   {# Step 4: done #}
   <div id="enroll-s4" style="flex:1;overflow-y:auto;display:none;text-align:center;padding:32px 0;">
-    <div style="margin-bottom:16px;"><svg viewBox="0 0 24 24" style="width:36px;height:36px;stroke:var(--mint);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
-    <div style="font-weight:600;font-size:16px;margin-bottom:8px;color:var(--mint);">Host enrolled successfully</div>
+    <div style="margin-bottom:16px;"><svg viewBox="0 0 24 24" style="width:36px;height:36px;stroke:var(--mint-ink);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+    <div style="font-weight:600;font-size:16px;margin-bottom:8px;color:var(--mint-ink);">Host enrolled successfully</div>
     <div class="totp-sub" style="margin-bottom:24px;" id="enroll-done-msg">The agent is now online and monitoring.</div>
     <button class="btn btn-sky btn-sm" data-act="closeEnrollWizardAndReload">Done</button>
   </div>

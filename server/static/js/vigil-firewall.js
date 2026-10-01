@@ -179,9 +179,9 @@ function _fwRenderState(hostId, data) {
   enabledVal.className = 'mono';
   enabledVal.style.fontWeight = '600';
   let enabledText, enabledColor;
-  if (data.enabled === true) { enabledText = 'enabled'; enabledColor = 'var(--mint)'; }
-  else if (data.enabled === false) { enabledText = 'disabled'; enabledColor = 'var(--rose)'; }
-  else { enabledText = 'unknown'; enabledColor = 'var(--peach)'; }
+  if (data.enabled === true) { enabledText = 'enabled'; enabledColor = 'var(--mint-ink)'; }
+  else if (data.enabled === false) { enabledText = 'disabled'; enabledColor = 'var(--rose-ink)'; }
+  else { enabledText = 'unknown'; enabledColor = 'var(--peach-ink)'; }
   enabledVal.style.color = enabledColor;
   enabledVal.textContent = enabledText;
   enabledRow.append(enabledLabel, enabledVal);
@@ -254,7 +254,7 @@ function _fwRenderState(hostId, data) {
       name.textContent = String(p.name ?? ''); // host-reported — textContent
       const state = document.createElement('span');
       state.className = 'mono';
-      state.style.color = p.enabled ? 'var(--mint)' : 'var(--rose)';
+      state.style.color = p.enabled ? 'var(--mint-ink)' : 'var(--rose-ink)';
       state.textContent = p.enabled ? 'on' : 'off';
       row.append(name, state);
       profWrap.appendChild(row);
@@ -331,7 +331,7 @@ function _fwRenderRules(hostId, data) {
 
       const actionTd = document.createElement('td');
       const actionSpan = document.createElement('span');
-      actionSpan.style.color = r.action === 'deny' ? 'var(--rose)' : 'var(--mint)';
+      actionSpan.style.color = r.action === 'deny' ? 'var(--rose-ink)' : 'var(--mint-ink)';
       actionSpan.textContent = r.action || '—'; // host-reported — textContent
       actionTd.appendChild(actionSpan);
       tr.appendChild(actionTd);
@@ -411,7 +411,7 @@ function _fwRenderRules(hostId, data) {
     uWrap.style.cssText = 'background:var(--s1);border-radius:var(--r-lg);padding:20px;margin-bottom:20px;border:1px solid var(--lemon);';
 
     const uTitle = document.createElement('div');
-    uTitle.style.cssText = 'font-weight:600;font-size:13px;color:var(--lemon);margin-bottom:6px;';
+    uTitle.style.cssText = 'font-weight:600;font-size:13px;color:var(--lemon-ink);margin-bottom:6px;';
     uTitle.textContent = 'Unparsed rules';
     uWrap.appendChild(uTitle);
 

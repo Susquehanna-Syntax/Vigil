@@ -10,7 +10,7 @@
 // API: GET /api/v1/metrics/{host}/{category}/{metric}/
 
 /* ── Chart.js global config ──────────────────────────────────────────── */
-Chart.defaults.color = '#6e6b76';
+Chart.defaults.color = cssVar('--text-3') || '#6e6b76';
 Chart.defaults.font.family = "'DM Sans', sans-serif";
 Chart.defaults.font.size = 11;
 Chart.defaults.plugins.legend.display = false;
@@ -26,6 +26,12 @@ Chart.defaults.elements.line.tension = 0.2;
 Chart.defaults.animation.duration = 0;
 // Hover redraws the chart; without this it also re-tests every point.
 Chart.defaults.elements.point.hitRadius = 8;
+// Grids and tooltips read tokens through tok(); a theme change redraws every
+// chart so they pick the new ones up, and the default text colour with them.
+document.addEventListener('vigil:theme', () => {
+  Chart.defaults.color = cssVar('--text-3');
+  Object.values(Chart.instances).forEach(c => c.update('none'));
+});
 
 // `chart.update('none')` skips animation outright — which is what a routine
 // poll wants, and is also why the range-change zoom silently never played
@@ -208,22 +214,22 @@ function makeTimeChart(canvasId, color, label) {
       scales: {
         x: {
           type: 'time',
-          grid: { color: '#32323a', drawTicks: false },
-          border: { color: '#32323a' },
+          grid: { color: tok('--s3'), drawTicks: false },
+          border: { color: tok('--s3') },
           ticks: { maxTicksLimit: 8, font: { family: "'IBM Plex Mono', monospace", size: 10 } },
         },
         y: {
           min: 0, max: 100,
-          grid: { color: '#32323a', drawTicks: false },
-          border: { color: '#32323a' },
+          grid: { color: tok('--s3'), drawTicks: false },
+          border: { color: tok('--s3') },
           ticks: { callback: v => v + '%', maxTicksLimit: 5, font: { family: "'IBM Plex Mono', monospace", size: 10 } },
         }
       },
       plugins: {
         decimation: { enabled: true, algorithm: 'lttb', samples: 250 },
         tooltip: {
-          backgroundColor: '#232329',
-          borderColor: '#3a3a43',
+          backgroundColor: tok('--s1'),
+          borderColor: tok('--border'),
           borderWidth: 1,
           titleFont: { family: "'DM Sans', sans-serif", weight: 600 },
           bodyFont: { family: "'IBM Plex Mono', monospace" },
@@ -260,13 +266,13 @@ function makeNetChart(canvasId) {
       scales: {
         x: {
           type: 'time',
-          grid: { color: '#32323a', drawTicks: false },
-          border: { color: '#32323a' },
+          grid: { color: tok('--s3'), drawTicks: false },
+          border: { color: tok('--s3') },
           ticks: { maxTicksLimit: 8, font: { family: "'IBM Plex Mono', monospace", size: 10 } },
         },
         y: {
-          grid: { color: '#32323a', drawTicks: false },
-          border: { color: '#32323a' },
+          grid: { color: tok('--s3'), drawTicks: false },
+          border: { color: tok('--s3') },
           ticks: {
             maxTicksLimit: 5,
             font: { family: "'IBM Plex Mono', monospace", size: 10 },
@@ -278,8 +284,8 @@ function makeNetChart(canvasId) {
         decimation: { enabled: true, algorithm: 'lttb', samples: 250 },
         legend: { display: false },
         tooltip: {
-          backgroundColor: '#232329',
-          borderColor: '#3a3a43',
+          backgroundColor: tok('--s1'),
+          borderColor: tok('--border'),
           borderWidth: 1,
           callbacks: { label: ctx => ctx.dataset.label + ': ' + formatBytes(ctx.parsed.y) },
         }

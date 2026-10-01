@@ -692,7 +692,7 @@ function renderEditorPreview(spec) {
         ? (i.choices || []).map(c => c.value).join(' | ')
         : (i.default !== undefined && i.default !== '' ? String(i.default) : '');
       return `<div style="display:flex;gap:10px;font-size:12px;padding:6px 10px;border-bottom:1px solid var(--border);">
-        <span class="mono" style="color:var(--sky);min-width:120px;">${escHtml(i.id)}</span>
+        <span class="mono" style="color:var(--sky-ink);min-width:120px;">${escHtml(i.id)}</span>
         <span style="color:var(--text-3);min-width:60px;">${escHtml(i.type)}</span>
         <span style="color:var(--text-2);flex:1;">${escHtml(i.label || '')}</span>
         <span class="mono" style="color:var(--text-3);">${escHtml(sample)}</span>
@@ -1040,7 +1040,7 @@ async function openTaskDetail(runId) {
       };
     }
   } catch (e) {
-    const errEl = _tdEl('div', 'color:var(--rose);padding:16px;');
+    const errEl = _tdEl('div', 'color:var(--rose-ink);padding:16px;');
     errEl.textContent = 'Failed to load run details: ' + e.message;
     stepsEl.appendChild(errEl);
   }
