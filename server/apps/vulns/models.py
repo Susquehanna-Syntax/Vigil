@@ -473,3 +473,58 @@ class FindingEvidence(models.Model):
 
     def __str__(self):
         return f"{self.kind}: {self.key}"
+
+
+class OsvAdvisory(models.Model):
+    """One OSV.dev record, held locally so Vigil can match without asking
+    anyone (M9). Loaded by ``import_vuln_data`` from an offline bundle or
+    fetched per ecosystem by ``sync_vuln_data``."""
+
+    id = models.CharField(max_length=128, primary_key=True)
+    modified = models.DateTimeField(null=True, blank=True)
+    summary = models.CharField(max_length=500, blank=True, default="")
+    details = models.TextField(blank=True, default="")
+    aliases = models.JSONField(default=list, blank=True)
+    #: Our scale (critical/high/medium/low/info), from the record's CVSS
+    #: vector or its database's own rating; blank when neither says.
+    severity = models.CharField(max_length=16, blank=True, default="")
+    cvss_score = models.FloatField(null=True, blank=True)
+    cvss_vector = models.CharField(max_length=200, blank=True, default="")
+    references = models.JSONField(default=list, blank=True)
+    withdrawn = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.id
+
+    @property
+    def cve_ids(self) -> list[str]:
+        ids = [self.id] + list(self.aliases or [])
+        return sorted({i.upper() for i in ids if str(i).upper().startswith("CVE-")})
+
+
+class OsvAffected(models.Model):
+    """One (ecosystem, package) an advisory affects, with its version ranges."""
+
+    advisory = models.ForeignKey(OsvAdvisory, on_delete=models.CASCADE, related_name="affected")
+    #: OSV's ecosystem string as published: "Debian:12", "Ubuntu:24.04:LTS",
+    #: "Alpine:v3.20", "Rocky Linux:9", "PyPI", …
+    ecosystem = models.CharField(max_length=80)
+    package = models.CharField(max_length=200)
+    #: OSV ``ranges`` — [{"type": "ECOSYSTEM", "events": [{"introduced": …}, {"fixed": …}]}].
+    ranges = models.JSONField(default=list, blank=True)
+    #: OSV ``versions`` — explicitly affected versions, when listed.
+    versions = models.JSONField(default=list, blank=True)
+    #: The lowest ``fixed`` event across the ranges, for display; blank = none.
+    fixed = models.CharField(max_length=120, blank=True, default="")
+
+    class Meta:
+        indexes = [models.Index(fields=("ecosystem", "package"))]
+
+
+class EpssScore(models.Model):
+    """FIRST EPSS: the probability a CVE is exploited in the next 30 days."""
+
+    cve_id = models.CharField(max_length=32, primary_key=True)
+    epss = models.FloatField()
+    percentile = models.FloatField()
+    score_date = models.DateField(null=True, blank=True)
