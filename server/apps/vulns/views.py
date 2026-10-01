@@ -320,3 +320,31 @@ def fix_group_deploy(request):
     if definition is None:
         return Response({"detail": "this group has no fix Vigil can apply"}, status=400)
     return Response({"definition_id": str(definition.id), "host_ids": host_ids})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def anvil_import(request):
+    """Import an Anvil record (SARIF 2.1.0 + anvil/*): a JSON body, or a
+    multipart ``record`` file. ``host_id`` pins every finding to one host."""
+    import json as _json
+
+    from .scanners.anvil import ingest_record
+    from .scanners.trivy import ScanIngestError
+
+    host = None
+    host_id = request.data.get("host_id") or request.query_params.get("host_id")
+    if host_id:
+        host, denied = scoping.host_or_404(request, host_id)
+        if denied:
+            return denied
+    upload = request.FILES.get("record")
+    try:
+        record = _json.loads(upload.read()) if upload is not None else request.data.get("record")
+    except ValueError:
+        return Response({"detail": "the record is not JSON"}, status=400)
+    try:
+        counts = ingest_record(record, host=host)
+    except ScanIngestError as exc:
+        return Response({"detail": str(exc)}, status=400)
+    return Response(counts)
