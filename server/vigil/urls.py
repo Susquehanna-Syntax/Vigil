@@ -112,6 +112,7 @@ urlpatterns = [
     path("api/v1/sites/", include("apps_business.sites.urls")),
     path("api/v1/branding/", include("apps_business.branding.urls")),
     path("api/v1/audits/", include("apps_business.audits.urls")),
+    path("api/v1/compliance/", include("apps_business.compliance.urls")),
     path("api/v1/instance-settings/", include("apps.instance.urls")),
     path("api/v1/jackil/", include("apps.jackil.urls")),
     path("api/v1/license/", include("apps.licensing.urls")),

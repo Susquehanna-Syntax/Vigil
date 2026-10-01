@@ -22,7 +22,7 @@ class PolicyPageWiringTests(SimpleTestCase):
             self.assertIn(f'id="{element_id}"', html)
             self.assertIn(f"'{element_id}'", js)
         for act in ("openPolicyEditor", "closePolicyEditor", "savePolicy", "deletePolicy",
-                    "addPolicyRule", "runPolicyNow"):
+                    "addPolicyRule", "runPolicyNow", "openComplianceReport"):
             self.assertIn(f'data-act="{act}"', html)
             self.assertIn(f"function {act}(", js)
         for call in ("/api/v1/policies/", "/drift/", "/run/", "/api/v1/policies/changes/",

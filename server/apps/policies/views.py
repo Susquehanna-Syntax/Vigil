@@ -197,3 +197,13 @@ def change_reject(request):
     except (ValueError, ValidationError):
         return Response({"detail": "ids must be change ids"},
                         status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def compliance_summary(request):
+    """Fleet patch compliance in numbers — Free, scoped to the user's sites.
+    The per-site report, its export and branding are Business."""
+    from .compliance import summary
+
+    return Response(summary(request.user))
