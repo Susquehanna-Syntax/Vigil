@@ -417,6 +417,7 @@ async function renderDockerContainers(hostId) {
   const wrap = document.getElementById('docker-stacks');
   const countEl = document.getElementById('docker-count');
   if (!wrap) return;
+  if (typeof renderManagedStacks === 'function') renderManagedStacks(hostId);
 
   let containers = [];
   let stacks = [];
