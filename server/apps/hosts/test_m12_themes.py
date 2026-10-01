@@ -96,6 +96,18 @@ class ThemeWiringTests(SimpleTestCase):
         self.assertIn('id="motion-reduce"', html)
         self.assertNotIn("{# The previews", html)
 
+    def test_the_wiki_follows_the_apps_theme(self):
+        wiki = (SERVER.parent / "wiki" / "vigil-wiki.html").read_text()
+        for theme in ("light", "river", "ink"):
+            self.assertIn(f':root[data-theme="{theme}"]', wiki)
+        self.assertIn("localStorage.getItem('vigil-theme')", wiki)
+        self.assertNotRegex(wiki, r"(?:^|[^-])color: ?var\(--(?:%s)\)" % "|".join(PASTELS))
+
+    def test_contributors_have_the_standards(self):
+        doc = (SERVER.parent / "docs" / "UI-STANDARDS.md").read_text()
+        for must in ("-ink", "tok('--s3')", "vigil-modal.js", ".m-pop", "data-theme"):
+            self.assertIn(must, doc)
+
     def test_the_public_status_page_keeps_its_own_palette(self):
         # It does not load vigil.css, so an -ink token there would be undefined.
         self.assertNotIn("-ink)", (TEMPLATES / "status_public.html").read_text())
