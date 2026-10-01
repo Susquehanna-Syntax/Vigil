@@ -496,7 +496,9 @@ async function renderDockerContainers(hostId) {
             ? `<button class="btn btn-xs btn-outline" data-ctr-act="Restart container" data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">Restart</button>
                <button class="btn btn-xs btn-outline" data-ctr-act="Stop container" data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">Stop</button>`
             : `<button class="btn btn-xs btn-outline" data-ctr-act="Start container" data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">Start</button>`}
-          <button class="btn btn-xs btn-outline" data-ctr-logs data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">Logs</button></td>
+          <button class="btn btn-xs btn-outline" data-ctr-logs data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">Logs</button>
+          ${c.previous_image && !c.rolled_back ? `<button class="btn btn-xs btn-outline" data-ctr-rollback data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}" data-image="${escAttr(c.previous_image)}" title="Go back to ${escAttr(c.previous_image)}">Roll back</button>` : ''}
+          ${c.rolled_back ? `<span class="chip apps-chip-warn" title="Pinned to ${escAttr(c.rolled_back)} — the next update clears it">rolled back</span>` : ''}</td>
       </tr>`;
     }
     html += `</tbody></table></div>`;
@@ -509,6 +511,10 @@ async function renderDockerContainers(hostId) {
   }));
   wrap.querySelectorAll('[data-ctr-act]').forEach(btn => btn.addEventListener('click', () => {
     openBuiltinTask(btn.dataset.ctrAct, btn.dataset.host, { container_name: btn.dataset.name });
+  }));
+  wrap.querySelectorAll('[data-ctr-rollback]').forEach(btn => btn.addEventListener('click', () => {
+    openBuiltinTask('Roll back container', btn.dataset.host,
+      { container_name: btn.dataset.name, image: btn.dataset.image });
   }));
   wrap.querySelectorAll('[data-ctr-logs]').forEach(btn => btn.addEventListener('click', () => {
     openContainerLogs(btn.dataset.host, btn.dataset.name);

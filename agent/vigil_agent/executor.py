@@ -1418,6 +1418,8 @@ from .actions.containers import (  # noqa: E402,F401
     _stack_compose_args,
     _stack_restart,
     _stack_update,
+    _container_rollback,
+    ROLLBACK_OVERRIDE,
 )
 from .actions.logs import _container_logs  # noqa: E402,F401
 from .actions.stacks import _stack_deploy, _stack_read, _stack_remove  # noqa: E402,F401
@@ -1489,6 +1491,7 @@ _HANDLERS: dict[str, callable] = {
     "stack_deploy": _stack_deploy,
     "stack_remove": _stack_remove,
     "stack_read": _stack_read,
+    "container_rollback": _container_rollback,
     "clear_docker_logs": _clear_docker_logs,
     # File / directory operations
     "write_file": _write_file,

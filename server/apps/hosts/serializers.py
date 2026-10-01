@@ -95,6 +95,17 @@ class DockerContainerSerializer(serializers.ModelSerializer):
     host_hostname = serializers.CharField(source="host.hostname", read_only=True)
     outdated = serializers.SerializerMethodField()
 
+    rolled_back = serializers.SerializerMethodField()
+    previous_image = serializers.SerializerMethodField()
+
+    def get_rolled_back(self, obj) -> str:
+        return self.context.get("rolled_back", {}).get((obj.host_id, obj.name), "")
+
+    def get_previous_image(self, obj) -> str:
+        """The image this container ran before its last update — a digest when
+        known, else the image id — or "" when there is nothing to go back to."""
+        return self.context.get("previous", {}).get((obj.host_id, obj.name), "")
+
     def get_outdated(self, obj) -> bool:
         # True while the container's outdated-image alert is open. The view
         # passes the open set in context so a whole list costs one query.
@@ -119,6 +130,8 @@ class DockerContainerSerializer(serializers.ModelSerializer):
             "image_digest",
             "restart_policy",
             "config_hash",
+            "rolled_back",
+            "previous_image",
             "updated_at",
             "host",
             "host_hostname",
