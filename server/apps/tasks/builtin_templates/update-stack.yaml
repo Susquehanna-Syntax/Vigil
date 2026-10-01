@@ -1,0 +1,17 @@
+name: Update stack
+description: |
+  Pull the newest images of a compose stack, then bring up what changed. The compose files come from the stack's own
+  container labels, never a guessed path.
+risk: standard
+author: Vigil
+created: 2026-10-01
+inputs:
+  - id: project
+    type: text
+    label: Stack
+    required: true
+actions:
+  - id: update
+    type: stack_update
+    params:
+      project: "${{ inputs.project }}"

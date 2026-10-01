@@ -50,6 +50,7 @@ _ALL_ACTIONS = {
     "restart_container", "stop_container", "start_container",
     "pull_image", "recreate_container", "remove_container",
     "update_container", "docker_compose_up", "docker_compose_down",
+    "stack_restart", "stack_update",
     "clear_docker_logs", "check_docker_updates",
     # File / directory operations
     "write_file", "create_directory", "delete_path",

@@ -426,3 +426,52 @@ def _clear_docker_logs(params: dict, _config: AgentConfig) -> str:
         Path(log_path).write_text("")
         return ActionOutput(f"Truncated log for {container}", {"truncated": True})
     return ActionOutput("No log file found", {"truncated": False})
+
+
+# ── Stacks (M11) ──────────────────────────────────────────────────────────────
+
+
+def _stack_compose_args(project: str) -> list[str]:
+    """``-p <project> --project-directory <dir> -f <file>…`` for a stack, read
+    from the labels compose put on its containers — never a guessed path."""
+    _validate_name(project, "stack (compose project)")
+    containers = _engine().get(
+        "/containers/json",
+        query={"all": "1", "filters": json.dumps(
+            {"label": [f"{_COMPOSE_PROJECT_LABEL}={project}"]})}) or []
+    for c in containers:
+        labels = c.get("Labels") or {}
+        files = [f.strip() for f in str(labels.get("com.docker.compose.project.config_files")
+                                         or "").split(",") if f.strip()]
+        if not files:
+            continue
+        args = ["-p", project]
+        workdir = labels.get("com.docker.compose.project.working_dir") or ""
+        if workdir:
+            args += ["--project-directory", str(ex._validate_path(workdir, "project directory"))]
+        for f in files:
+            args += ["-f", str(ex._validate_path(f, "compose file"))]
+        return args
+    raise ValueError(f"No containers of stack {project!r} carry compose file labels — "
+                     f"deploy it with docker_compose_up and an explicit compose_file")
+
+
+def _stack_restart(params: dict, _config: AgentConfig) -> str:
+    project = str(params.get("project") or "")
+    args = _stack_compose_args(project)
+    output = ex._run([*ex._compose_cmd(), *args, "restart"], timeout=300,
+                     extra_env=ex._compose_env())
+    collector.request_docker_recheck()
+    return ActionOutput(output or f"restarted stack {project}", {"project": project})
+
+
+def _stack_update(params: dict, _config: AgentConfig) -> str:
+    """Pull every image of the stack, then bring up whatever changed."""
+    project = str(params.get("project") or "")
+    args = _stack_compose_args(project)
+    cmd = [*ex._compose_cmd(), *args]
+    pulled = ex._run(cmd + ["pull"], timeout=900, extra_env=ex._compose_env())
+    output = ex._run(cmd + ["up", "-d"], timeout=600, extra_env=ex._compose_env())
+    collector.request_docker_recheck()
+    return ActionOutput("\n".join(filter(None, [pulled, output])) or f"updated stack {project}",
+                        {"project": project})
