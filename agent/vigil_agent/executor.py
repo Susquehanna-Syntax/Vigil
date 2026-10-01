@@ -207,11 +207,36 @@ def _service_is_enabled(name: str) -> bool:
     return _systemctl_query("is-enabled", name) == "enabled"
 
 
+def _engine():
+    """The container engine every container action talks to (M11) — the first
+    answering socket, rootful before rootless. Tests patch this."""
+    from . import engine
+
+    client = engine.default_client()
+    if client is None:
+        raise RuntimeError("No container engine found (Docker or Podman socket)")
+    return client
+
+
+def _compose_cmd() -> list[str]:
+    """``docker compose``, or ``podman compose`` on a host with no docker CLI."""
+    import shutil
+
+    return ["docker", "compose"] if shutil.which("docker") or not shutil.which("podman") \
+        else ["podman", "compose"]
+
+
+def _compose_env() -> dict[str, str]:
+    """Point compose at the engine the client uses, whichever socket that is."""
+    return {"DOCKER_HOST": f"unix://{_engine().socket_path}"}
+
+
 def _container_running(name: str) -> bool:
     try:
-        return _run(["docker", "inspect", "--format", "{{.State.Running}}", name]).strip() == "true"
-    except RuntimeError:
+        state = (_engine().get(f"/containers/{name}/json") or {}).get("State") or {}
+    except Exception:  # noqa: BLE001 — unknown is "not running"
         return False
+    return bool(state.get("Running"))
 
 
 def _restart_service(params: dict, _config: AgentConfig) -> str:
@@ -1380,8 +1405,11 @@ from .actions.containers import (  # noqa: E402,F401
     _check_docker_updates,
     _COMPOSE_PROJECT_LABEL,
     _docker_inspect,
-    _recreate_run_args,
+    _recreate_body,
     _recreate_container,
+    _pull,
+    _image_id,
+    _container_image_id,
     _update_container,
     _remove_container,
     _docker_compose_up,

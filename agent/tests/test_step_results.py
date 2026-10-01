@@ -75,20 +75,12 @@ class CheckServiceOutputTests(unittest.TestCase):
 
 class UpdateContainerOutputTests(unittest.TestCase):
     def test_update_container_reports_ids(self):
-        def fake_run(cmd, timeout=60):
-            if cmd[:2] == ["docker", "inspect"]:
-                return "sha256:newimageidnew"
-            return "ok"
+        from tests.test_update_container import seams
 
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(executor, "_run", fake_run),
-            patch.object(
-                executor,
-                "_docker_inspect",
-                return_value=_spec("sha256:oldoldoldoldold", "searxng/searxng:latest"),
-            ),
-            patch.object(executor, "_recreate_container", return_value="recreated"),
+            seams([], _spec("sha256:oldoldoldoldold", "searxng/searxng:latest"),
+                  pulled="sha256:pulled", after="sha256:newimageidnew", recreate=True),
         ):
             out = executor._update_container({"container_name": "web"}, _config(tmp))
 
