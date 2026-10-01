@@ -154,4 +154,19 @@ def _ingest(host, payload):
     snapshot.item_count = len(items)
     snapshot.errors = _clean_errors(payload.get("errors"))
     snapshot.save()
+    _match_vulns(host)
     return snapshot
+
+
+def _match_vulns(host) -> None:
+    """A new inventory is a new answer to "what is vulnerable here?" (M9).
+    Skipped until OSV data has been loaded; never fails the ingest."""
+    from apps.vulns.models import OsvAdvisory
+
+    if not OsvAdvisory.objects.exists():
+        return
+    try:
+        from apps.vulns.matcher import match_host
+        match_host(host)
+    except Exception:  # noqa: BLE001 — the inventory is stored either way
+        logger.exception("vulnerability match after inventory failed for %s", host)

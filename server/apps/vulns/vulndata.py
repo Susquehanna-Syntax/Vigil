@@ -174,6 +174,9 @@ def import_bundle(path) -> dict:
         elif base.startswith("epss") and base.endswith((".csv", ".csv.gz")):
             text = gzip.decompress(data).decode() if base.endswith(".gz") else data.decode()
             counts["epss"] += import_epss_csv(text)
+    if counts["osv"]:
+        from .matcher import match_all
+        match_all()
     return counts
 
 
