@@ -1415,6 +1415,9 @@ from .actions.containers import (  # noqa: E402,F401
     _docker_compose_up,
     _docker_compose_down,
     _clear_docker_logs,
+    _stack_compose_args,
+    _stack_restart,
+    _stack_update,
 )
 from .actions.tags_scans import (  # noqa: E402,F401
     _tag_names,
@@ -1478,6 +1481,8 @@ _HANDLERS: dict[str, callable] = {
     "remove_container": _remove_container,
     "docker_compose_up": _docker_compose_up,
     "docker_compose_down": _docker_compose_down,
+    "stack_restart": _stack_restart,
+    "stack_update": _stack_update,
     "clear_docker_logs": _clear_docker_logs,
     # File / directory operations
     "write_file": _write_file,

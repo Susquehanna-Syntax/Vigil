@@ -48,7 +48,10 @@ class OpenUpdateContainerTests(SimpleTestCase):
         self.assertTrue("function openUpdateContainer" in deploy, "openUpdateContainer is missing")
         self.assertTrue("'Update container'" in deploy, "the built-in task name is not looked up")
         self.assertTrue("scope=community" in deploy, "the definitions are not fetched from the community scope")
-        self.assertTrue("inputs: { container_name: containerName }" in deploy, "the container name is not prefilled")
+        self.assertTrue("openBuiltinTask('Update container', hostId, { container_name: containerName })" in deploy,
+                        "the container name is not prefilled")
+        self.assertTrue("openDeployModal(def.id, { hostId, inputs })" in deploy,
+                        "the built-in task is not opened with its inputs")
 
 
 class DeployModalPrefillTests(SimpleTestCase):

@@ -149,6 +149,20 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "optional": [],
         "outputs": {"compose_file": "str"},
     },
+    "stack_restart": {
+        "label": "Restart a compose stack",
+        "risk": "standard",
+        "required": ["project"],
+        "optional": [],
+        "outputs": {"project": "str"},
+    },
+    "stack_update": {
+        "label": "Update a compose stack (pull, then up)",
+        "risk": "standard",
+        "required": ["project"],
+        "optional": [],
+        "outputs": {"project": "str"},
+    },
     "clear_docker_logs": {
         "label": "Truncate Docker logs",
         "risk": "low",

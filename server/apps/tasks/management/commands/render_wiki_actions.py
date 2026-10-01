@@ -44,7 +44,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "restart_container", "start_container", "stop_container", "pull_image",
         "recreate_container", "update_container", "remove_container",
         "docker_compose_up", "docker_compose_down", "clear_docker_logs",
-        "check_docker_updates",
+        "check_docker_updates", "stack_restart", "stack_update",
     ]),
     ("files", "Files and directories", [
         "write_file", "create_directory", "delete_path", "copy_file",
@@ -134,10 +134,11 @@ GROUP_NOTES: dict[str, str] = {
 #: surprising success.
 PARAM_EXAMPLES: dict[str, str] = {
     "action": "allow",
-    "classifications": '"SecurityUpdates, CriticalUpdates"',
+    "classifications": '"Critical Updates, Security Updates"',
     "cmdline": '"auto=true priority=critical"',
     "command": '"systemctl is-active nginx"',
     "compose_file": "/opt/stacks/media/docker-compose.yml",
+    "project": "media",
     "container_name": "nextcloud",
     "content": '"# managed by Vigil\\nmax_connections = 200\\n"',
     "defer_limit": "3",
@@ -408,6 +409,8 @@ ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
     ("windows_update_install", "classifications"): "Comma-separated Windows Update classifications, e.g. `Critical Updates, Security Updates`. Blank = all.",
     ("windows_update_install", "include_kb"): "Comma-separated KBs; when given, only these install. `KB5034441` and `5034441` both work.",
     ("windows_update_install", "exclude_kb"): "Comma-separated KBs that never install. Wins over include_kb.",
+    ("stack_restart", "project"): "The compose project name (the stack name Vigil shows). Its compose files come from its containers' labels.",
+    ("stack_update", "project"): "The compose project name. Pulls every image of the stack, then brings up whatever changed.",
     ("app_ensure", "app"): "The inventory id the Apps page shows.",
     ("app_ensure", "state"): "present (install if missing), latest (install or upgrade), pinned (install, upgrade or downgrade to `version` and hold it) or absent (uninstall).",
     ("app_ensure", "source"): "Only match and act on this source. Defaults to whatever source the host lists the app under, or its own package manager to install.",
@@ -458,6 +461,8 @@ OUTPUT_NOTES: dict[str, dict[str, str]] = {
         "installed_version": "The version the host reports afterwards for the `app` you named, or empty when you named none or the inventory has no row for it.",
         "sha256": "The SHA-256 of the installer that was run — always the one the task pinned, because a mismatch stops the step before anything runs.",
     },
+    "stack_restart": {"project": "The stack that was restarted."},
+    "stack_update": {"project": "The stack that was updated."},
     "app_ensure": {
         "changed": "True when the step did something; false when the host already matched, which is what a second run reports.",
         "action": "What it did: none, install, upgrade, pin or uninstall.",

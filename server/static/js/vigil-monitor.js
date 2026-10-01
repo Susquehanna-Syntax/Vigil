@@ -419,10 +419,16 @@ async function renderDockerContainers(hostId) {
   if (!wrap) return;
 
   let containers = [];
+  let stacks = [];
   try {
-    const resp = await fetch(`/api/v1/hosts/${hostId}/containers/`, { credentials: 'same-origin' });
+    const [resp, stackResp] = await Promise.all([
+      fetch(`/api/v1/hosts/${hostId}/containers/`, { credentials: 'same-origin' }),
+      fetch(`/api/v1/hosts/${hostId}/stacks/`, { credentials: 'same-origin' }),
+    ]);
     if (resp.ok) containers = await resp.json();
+    if (stackResp.ok) stacks = await stackResp.json();
   } catch { containers = []; }
+  const stackInfo = Object.fromEntries((stacks || []).map(s => [s.project, s]));
 
   if (!containers.length) {
     countEl.textContent = '';
@@ -448,10 +454,17 @@ async function renderDockerContainers(hostId) {
     const rows = groups[stack];
     const label = stack || 'Ungrouped';
     const noun = rows.length === 1 ? 'container' : 'containers';
+    const info = stackInfo[stack];
+    const stackMeta = info ? `<span class="chip chip-muted apps-src" title="${escAttr((info.config_files || []).join(', '))}">${escHtml(info.ownership)}</span>${info.engine ? `<span class="chip chip-muted apps-src">${escHtml(info.engine)}</span>` : ''}` : '';
+    const stackActs = stack ? `<span class="docker-stack-acts">
+        <button class="btn btn-xs btn-outline" data-stack-act="Restart stack" data-host="${escAttr(hostId)}" data-project="${escAttr(stack)}">Restart</button>
+        <button class="btn btn-xs btn-outline" data-stack-act="Update stack" data-host="${escAttr(hostId)}" data-project="${escAttr(stack)}">Update</button>
+      </span>` : '';
     html += `<div class="docker-stack">
       <div class="docker-stack-header">
         <span class="docker-stack-name">${escHtml(label)}</span>
         <span class="docker-stack-count">${rows.length} ${noun}</span>
+        ${stackMeta}${stackActs}
       </div>
       <table class="ctr-table">
         <thead><tr>
@@ -476,7 +489,11 @@ async function renderDockerContainers(hostId) {
         <td><span class="ctr-state ${stateClass}">${escHtml(state || 'unknown')}</span></td>
         <td class="ctr-stat">${cpu}</td>
         <td class="ctr-stat">${mem}</td>
-        <td class="ctr-fix">${c.outdated ? `<button class="btn btn-xs btn-mint" data-ctr-update data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}" title="A newer image is available">Update</button>` : ''}</td>
+        <td class="ctr-fix">${c.outdated ? `<button class="btn btn-xs btn-mint" data-ctr-update data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}" title="A newer image is available">Update</button>` : ''}
+          ${state === 'running'
+            ? `<button class="btn btn-xs btn-outline" data-ctr-act="Restart container" data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">Restart</button>
+               <button class="btn btn-xs btn-outline" data-ctr-act="Stop container" data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">Stop</button>`
+            : `<button class="btn btn-xs btn-outline" data-ctr-act="Start container" data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">Start</button>`}</td>
       </tr>`;
     }
     html += `</tbody></table></div>`;
@@ -486,6 +503,12 @@ async function renderDockerContainers(hostId) {
     if (typeof openUpdateContainer === 'function') {
       openUpdateContainer(btn.dataset.host, btn.dataset.name);
     }
+  }));
+  wrap.querySelectorAll('[data-ctr-act]').forEach(btn => btn.addEventListener('click', () => {
+    openBuiltinTask(btn.dataset.ctrAct, btn.dataset.host, { container_name: btn.dataset.name });
+  }));
+  wrap.querySelectorAll('[data-stack-act]').forEach(btn => btn.addEventListener('click', () => {
+    openBuiltinTask(btn.dataset.stackAct, btn.dataset.host, { project: btn.dataset.project });
   }));
 }
 

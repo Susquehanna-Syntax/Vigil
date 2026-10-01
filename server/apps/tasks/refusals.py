@@ -72,6 +72,8 @@ AGENT_ACTIONS = frozenset({
     "set_hostname",
     "set_permissions",
     "start_container",
+    "stack_restart",
+    "stack_update",
     "start_service",
     "stop_container",
     "stop_service",

@@ -580,7 +580,9 @@ async function openDeployModal(definitionId, prefill) {
 }
 
 /* ── Update one container: the built-in task, host and name prefilled ── */
-async function openUpdateContainer(hostId, containerName) {
+async function openBuiltinTask(name, hostId, inputs) {
+  // Every container and stack button (M11) opens one of the seeded built-in
+  // tasks in the normal deploy dialog: signed, TOTP-confirmed, audited.
   let defs;
   try {
     defs = await apiJson('/api/v1/tasks/definitions/?scope=community');
@@ -588,12 +590,16 @@ async function openUpdateContainer(hostId, containerName) {
     showToast('Could not load tasks: ' + e.message, 'error');
     return;
   }
-  const def = (defs || []).find(d => d.name === 'Update container' && !d.owner);
+  const def = (defs || []).find(d => d.name === name && !d.owner);
   if (!def) {
-    showToast('The built-in "Update container" task is missing — run migrations', 'error');
+    showToast(`The built-in "${name}" task is missing — run migrations`, 'error');
     return;
   }
-  openDeployModal(def.id, { hostId, inputs: { container_name: containerName } });
+  openDeployModal(def.id, { hostId, inputs });
+}
+
+function openUpdateContainer(hostId, containerName) {
+  return openBuiltinTask('Update container', hostId, { container_name: containerName });
 }
 
 /* ── Refusals: hosts whose agent would refuse this task (M7) ─────────────── */

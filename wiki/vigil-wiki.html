@@ -3160,6 +3160,30 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
   - <span class="hl-key">id</span>: <span class="hl-string">check-docker-updates</span>
     <span class="hl-key">type</span>: <span class="hl-string">check_docker_updates</span></pre></div>
 </div></details>
+<details class="action" id="action-stack_restart" data-group="container" data-risk="standard" data-keywords="stack_restart project"><summary><code class="action-name">stack_restart</code><span class="risk risk-std">standard</span><span class="action-label">Restart a compose stack</span><span class="action-required">project</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>project</code></td><td><span class="param-req">required</span></td><td>The compose project name (the stack name Vigil shows). Its compose files come from its containers&#x27; labels.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>project</code></td><td>str</td><td>The stack that was restarted.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Restart a compose stack</span>
+<span class="hl-key">description</span>: <span class="hl-string">Restart a compose stack on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">stack-restart</span>
+    <span class="hl-key">type</span>: <span class="hl-string">stack_restart</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">project</span>: <span class="hl-string">media</span></pre></div>
+</div></details>
+<details class="action" id="action-stack_update" data-group="container" data-risk="standard" data-keywords="stack_update project"><summary><code class="action-name">stack_update</code><span class="risk risk-std">standard</span><span class="action-label">Update a compose stack (pull, then up)</span><span class="action-required">project</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>project</code></td><td><span class="param-req">required</span></td><td>The compose project name. Pulls every image of the stack, then brings up whatever changed.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>project</code></td><td>str</td><td>The stack that was updated.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Update a compose stack (pull, then up)</span>
+<span class="hl-key">description</span>: <span class="hl-string">Update a compose stack (pull, then up) on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">stack-update</span>
+    <span class="hl-key">type</span>: <span class="hl-string">stack_update</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">project</span>: <span class="hl-string">media</span></pre></div>
+</div></details>
 </div>
 <div class="action-group" data-group="files">
 <h4 class="action-group-title">Files and directories</h4>
