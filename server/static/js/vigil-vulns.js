@@ -635,7 +635,9 @@ function renderFixGroups(q) {
       g.epss != null ? `<span class="chip chip-muted" title="FIRST EPSS: chance of exploitation in 30 days">EPSS ${(g.epss * 100).toFixed(1)}%</span>` : '',
       g.cvss != null ? `<span class="chip chip-muted">CVSS ${g.cvss}</span>` : '',
     ].join('');
-    const deploy = g.fix.kind === 'none'
+    const deploy = g.fix.kind === 'detection'
+      ? `<button class="btn btn-mint btn-xs" type="button" data-vfix-deploy="${escAttr(g.fix_key)}">Deploy detection task</button>`
+      : g.fix.kind === 'none'
       ? `<button class="btn btn-lav btn-xs" type="button" data-vfix-mitigate="${escAttr(g.fix_key)}">Suggest mitigations</button>`
       : `<button class="btn btn-mint btn-xs" type="button" data-vfix-deploy="${escAttr(g.fix_key)}">Deploy fix</button>`;
     let detail = '';

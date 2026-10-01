@@ -63,10 +63,12 @@ class TaskDefinitionSerializer(serializers.ModelSerializer):
             "parsed_spec",
             "action_count",
             "forked_from",
+            "content_source",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
+            "content_source",
             "id",
             "owner",
             "owner_username",

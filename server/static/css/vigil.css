@@ -3627,6 +3627,7 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 
 /* ── Vulnerabilities: remediation by fix (M9) ──────────────────────── */
 .vfix-section { margin-bottom: 28px; }
+.task-detections-filter { margin: 0 0 14px; }
 .vfix-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .vfix-search { max-width: 280px; font-size: 12px; }
 .vfix-row { padding: 12px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
