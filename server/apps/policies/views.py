@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -9,7 +10,7 @@ from apps.accounts.permissions import IsAdmin
 
 from .compile import compile_policy
 from .drift import policy_drift
-from .models import AppRule, UpdatePolicy
+from .models import AppRule, PolicyChange, UpdatePolicy
 from .tasks import delete_periodic_task, sync_periodic_task
 from .validation import PolicyError, apply_fields, clean_rules
 
@@ -106,3 +107,67 @@ def policy_run_now(request, policy_id):
         return Response({"detail": f"Running a policy needs confirmation: {error}",
                          "needs_totp": True}, status=status.HTTP_401_UNAUTHORIZED)
     return Response(run_policy(policy, user=request.user))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def change_list(request):
+    qs = PolicyChange.objects.select_related("policy", "host", "decided_by")
+    state = request.query_params.get("state")
+    if state:
+        qs = qs.filter(state=state)
+    if policy_id := request.query_params.get("policy"):
+        qs = qs.filter(policy_id=policy_id)
+    return Response({"results": [{
+        "id": str(c.id), "policy_id": str(c.policy_id), "policy": c.policy.name,
+        "host_id": str(c.host_id), "hostname": c.host.hostname,
+        "changes": c.changes, "state": c.state,
+        "created_at": c.created_at.isoformat(),
+        "decided_by": c.decided_by.username if c.decided_by else None,
+        "decided_at": c.decided_at.isoformat() if c.decided_at else None,
+    } for c in qs[:500]]})
+
+
+def _ids(request):
+    ids = request.data.get("ids")
+    if not isinstance(ids, list) or not ids:
+        return None
+    return [str(i) for i in ids]
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def change_approve(request):
+    """Approve pending changes and dispatch them — TOTP, like a deploy."""
+    from apps.accounts.totp import require_totp_confirmation
+
+    from .approval import decide
+
+    ids = _ids(request)
+    if ids is None:
+        return Response({"detail": "ids must be a non-empty list"},
+                        status=status.HTTP_400_BAD_REQUEST)
+    if error := require_totp_confirmation(request.user, request.data):
+        return Response({"detail": f"Approving changes needs confirmation: {error}",
+                         "needs_totp": True}, status=status.HTTP_401_UNAUTHORIZED)
+    try:
+        return Response(decide(ids, approve=True, user=request.user))
+    except (ValueError, ValidationError):
+        return Response({"detail": "ids must be change ids"},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def change_reject(request):
+    from .approval import decide
+
+    ids = _ids(request)
+    if ids is None:
+        return Response({"detail": "ids must be a non-empty list"},
+                        status=status.HTTP_400_BAD_REQUEST)
+    try:
+        return Response(decide(ids, approve=False, user=request.user))
+    except (ValueError, ValidationError):
+        return Response({"detail": "ids must be change ids"},
+                        status=status.HTTP_400_BAD_REQUEST)
