@@ -192,3 +192,18 @@ def post_stack_read(config: AgentConfig, ticket: str, payload: dict) -> None:
     if resp.status_code != 200:
         raise RuntimeError(f"the server refused the adoption ({resp.status_code}) — "
                            f"the ticket is used or expired; adopt again")
+
+
+def fetch_registry_auth(config: AgentConfig, registry: str) -> dict | None:
+    """The private registry login the server holds for this host (M11), or
+    None — a public pull needs none, and any failure means pull anonymously."""
+    url = f"{config.server_url}/api/v1/agent/registry-auth/"
+    try:
+        resp = requests.get(url, params={"registry": registry}, headers=_headers(config),
+                            timeout=_TIMEOUT)
+    except requests.RequestException:
+        return None
+    if resp.status_code != 200:
+        return None
+    body = resp.json()
+    return body if isinstance(body, dict) and body.get("username") else None

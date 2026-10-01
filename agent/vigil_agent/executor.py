@@ -1420,6 +1420,8 @@ from .actions.containers import (  # noqa: E402,F401
     _stack_update,
     _container_rollback,
     ROLLBACK_OVERRIDE,
+    _registry_auth,
+    registry_of,
 )
 from .actions.logs import _container_logs  # noqa: E402,F401
 from .actions.stacks import _stack_deploy, _stack_read, _stack_remove  # noqa: E402,F401

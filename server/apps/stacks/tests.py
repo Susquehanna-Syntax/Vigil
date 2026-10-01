@@ -296,3 +296,44 @@ class StackAdoptTests(TestCase):
         with mock.patch(_TOTP, return_value=None):
             self.assertEqual(self.api.post("/api/v1/stacks/adopt/", {"host_id": str(self.host.id),
                                                                      "project": "Shop!"}, format="json").status_code, 400)
+
+
+class RegistryCredentialTests(TestCase):
+    def setUp(self):
+        self.office = Host.objects.create(hostname="office", agent_token="offtok", status=Host.Status.ONLINE,
+                                          mode="managed", tags=["builders"])
+        self.other = Host.objects.create(hostname="other", agent_token="othtok", status=Host.Status.ONLINE,
+                                         mode="managed")
+        user = get_user_model().objects.create_user("a", password="x")
+        UserProfile.objects.create(user=user, role=Role.ADMIN)
+        self.api = APIClient()
+        self.api.force_authenticate(user)
+
+    def _auth(self, token, registry="ghcr.io"):
+        return self.client.get(f"/api/v1/agent/registry-auth/?registry={registry}",
+                               HTTP_AUTHORIZATION=f"Bearer {token}")
+
+    def test_password_is_write_only_and_scoped_to_tagged_hosts(self):
+        from .models import RegistryCredential
+        resp = self.api.post("/api/v1/stacks/registries/", {"registry": "GHCR.io", "username": "bot",
+                                                            "password": "s3cret", "host_tags": ["Builders"]},
+                             format="json")
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertNotIn("s3cret", resp.content.decode())
+        self.assertNotIn(b"s3cret", bytes(RegistryCredential.objects.get().password_encrypted))
+        self.assertNotIn("s3cret", self.api.get("/api/v1/stacks/registries/").content.decode())
+        self.assertEqual(self._auth("offtok").json(),
+                         {"username": "bot", "password": "s3cret", "serveraddress": "ghcr.io"})
+        self.assertEqual(self._auth("othtok").status_code, 404, "not a builders host")
+        self.assertEqual(self._auth("offtok", "docker.io").status_code, 404)
+
+    def test_untagged_credential_covers_every_host_and_refusals(self):
+        self.api.post("/api/v1/stacks/registries/", {"registry": "registry.local:5000", "username": "u",
+                                                     "password": "p"}, format="json")
+        self.assertEqual(self._auth("othtok", "registry.local:5000").status_code, 200)
+        for body in ({"registry": "https://ghcr.io", "username": "u", "password": "p"},
+                     {"registry": "ghcr.io", "username": "", "password": "p"},
+                     {"registry": "ghcr.io", "username": "u", "password": ""}):
+            with self.subTest(body=body):
+                self.assertEqual(self.api.post("/api/v1/stacks/registries/", body, format="json").status_code, 400)
+        self.assertEqual(self.client.get("/api/v1/agent/registry-auth/?registry=ghcr.io").status_code, 401)

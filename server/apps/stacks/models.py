@@ -97,3 +97,27 @@ class AdoptTicket(models.Model):
     #: Why the files were refused, when they were (a compose file Vigil will
     #: not run, more than one compose file, …). Blank on success.
     error = models.CharField(max_length=500, blank=True)
+
+
+class RegistryCredential(models.Model):
+    """A private registry login (M11), encrypted at rest.
+
+    Pulls through the engine API send it as X-Registry-Auth. An agent can
+    fetch only the credentials for hosts this row covers — by tag, or every
+    managed host when it names none — so one compromised host cannot read
+    every registry password in the fleet.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    #: The registry host as an image names it: ghcr.io, registry.example.com:5000.
+    #: docker.io for Docker Hub.
+    registry = models.CharField(max_length=255)
+    username = models.CharField(max_length=255)
+    password_encrypted = models.BinaryField()
+    host_tags = models.JSONField(default=list, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
+                                   related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("registry",)
