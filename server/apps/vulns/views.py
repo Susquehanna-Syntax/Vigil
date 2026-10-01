@@ -296,3 +296,27 @@ def vuln_data(request):
     ecosystems = sorted(set(OsvAdvisory.objects.values_list("affected__ecosystem", flat=True)) - {None})
     return Response({"osv_advisories": OsvAdvisory.objects.count(), "osv_ecosystems": ecosystems,
                      "kev_entries": KevEntry.objects.count(), "epss_scores": EpssScore.objects.count()})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def fix_group_list(request):
+    """Open findings grouped by the fix that resolves them, worst first."""
+    from .fixview import fix_groups
+
+    groups = fix_groups(request.user, q=request.query_params.get("q", "").strip())
+    return Response({"count": len(groups), "results": groups[:500]})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def fix_group_deploy(request):
+    """The task that applies one group's fix, and the hosts that need it —
+    the UI hands both to the normal deploy dialog (TOTP and all)."""
+    from .fixview import fix_definition
+
+    fix_key = str(request.data.get("fix_key") or "")
+    definition, host_ids = fix_definition(request.user, fix_key)
+    if definition is None:
+        return Response({"detail": "this group has no fix Vigil can apply"}, status=400)
+    return Response({"definition_id": str(definition.id), "host_ids": host_ids})

@@ -208,7 +208,8 @@ def _match_packages(host) -> dict:
                         "cvss_vector": adv.cvss_vector,
                         "references": adv.references,
                         "vendor_status": "fixed" if row.fixed else "affected",
-                        "advisory": {"osv_id": adv.id, "ecosystem": row.ecosystem},
+                        "advisory": {"osv_id": adv.id, "ecosystem": row.ecosystem,
+                                     "source": item.source},
                         "state": VulnFinding.State.OPEN,
                         "resolved_at": None,
                     })

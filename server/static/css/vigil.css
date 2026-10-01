@@ -3625,6 +3625,22 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
   .pol-rule [data-field="app"] { grid-column: 1 / -1; }
 }
 
+/* ── Vulnerabilities: remediation by fix (M9) ──────────────────────── */
+.vfix-section { margin-bottom: 28px; }
+.vfix-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.vfix-search { max-width: 280px; font-size: 12px; }
+.vfix-row { padding: 12px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.vfix-row:hover { background: var(--s1); }
+.vfix-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.vfix-title { flex: 1 1 280px; min-width: 0; font-size: 13px; color: var(--text-1); font-weight: 600; overflow-wrap: anywhere; }
+.vfix-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.vfix-detail { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 20px; margin-top: 12px;
+  padding: 12px; border-radius: var(--r-md); background: var(--s1); font-size: 12px; color: var(--text-2); cursor: default; }
+.vfix-where { grid-column: 1 / -1; }
+.vfix-k { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3); margin-bottom: 4px; }
+.vfix-cves { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+@media (max-width: 760px) { .vfix-detail { grid-template-columns: minmax(0, 1fr); } }
+
 /* ── Deploy: hosts that would refuse the task (M7) ─────────────────── */
 .deploy-refusals {
   margin-top: 16px; padding: 10px 12px; border-radius: var(--r-md);

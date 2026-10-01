@@ -41,6 +41,15 @@
         </div>
       </div>
 
+      {# Remediation by fix (M9) — findings grouped by the action that resolves them. #}
+      <div id="vuln-fixes-section" class="vfix-section" hidden>
+        <div class="vfix-head">
+          <div class="section-label">Remediation by fix</div>
+          <input type="search" class="form-control vfix-search" id="vuln-fix-q" placeholder="Search package or CVE…" autocomplete="off">
+        </div>
+        <div id="vuln-fixes"></div>
+      </div>
+
       <div id="vulns-content">
         <div style="background:var(--s1);border-radius:var(--r-md);padding:40px;text-align:center;color:var(--text-3);font-size:13px;" id="vulns-loading">
           Loading vulnerability data…

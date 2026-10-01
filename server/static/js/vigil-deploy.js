@@ -566,6 +566,10 @@ async function openDeployModal(definitionId, prefill) {
     if (prefill.hostId && deployState.availableHosts.some(h => h.id === prefill.hostId)) {
       deployState.selectedHosts.add(prefill.hostId);
     }
+    // Several hosts at once — e.g. every host a vulnerability fix applies to.
+    for (const id of prefill.hostIds || []) {
+      if (deployState.availableHosts.some(h => h.id === id)) deployState.selectedHosts.add(id);
+    }
     _renderDeployHostRows();
     updateDeployHostSummary();
   } catch (e) {
