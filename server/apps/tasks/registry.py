@@ -170,6 +170,20 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "optional": ["tail", "session"],
         "outputs": {"lines": "int"},
     },
+    "stack_deploy": {
+        "label": "Deploy a Vigil-managed compose stack",
+        "risk": "high",
+        "required": ["project", "compose", "working_dir"],
+        "optional": ["env_ticket", "revision"],
+        "outputs": {"project": "str", "revision": "int"},
+    },
+    "stack_remove": {
+        "label": "Take down a Vigil-managed compose stack",
+        "risk": "standard",
+        "required": ["project", "working_dir"],
+        "optional": ["delete_files"],
+        "outputs": {"project": "str", "files_deleted": "bool"},
+    },
     "clear_docker_logs": {
         "label": "Truncate Docker logs",
         "risk": "low",

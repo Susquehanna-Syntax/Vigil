@@ -50,6 +50,7 @@ KNOWN_EVENTS = frozenset({
     # Managed stacks (M11). Business audit subscribes; Free has no listener.
     "stack_saved",          # payload: stack, user, revision
     "stack_env_revealed",   # payload: stack, user
+    "stack_deployed",       # payload: stack, user, task
     # Reprovisioning (docs/reprovisioning.md §4.5). Audit subscribes to these
     # rather than reprovision importing apps_business.audits — reprovision is
     # Free, audits is Business, and the bus is the seam for exactly that.

@@ -172,3 +172,13 @@ def post_log_lines(config: AgentConfig, session: str, lines: list[str]) -> bool:
         return bool(resp.json().get("continue"))
     except Exception:  # noqa: BLE001 — see above
         return False
+
+
+def fetch_stack_env(config: AgentConfig, ticket: str) -> str:
+    """Redeem a deploy's one-time env ticket (M11) for the .env text."""
+    url = f"{config.server_url}/api/v1/agent/stack-env/{ticket}/"
+    resp = requests.get(url, headers=_headers(config), timeout=_TIMEOUT)
+    if resp.status_code != 200:
+        raise RuntimeError(f"the server would not hand over this deploy's .env "
+                           f"({resp.status_code}) — the ticket is used or expired; deploy again")
+    return str(resp.json().get("env") or "")

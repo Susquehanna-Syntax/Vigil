@@ -45,6 +45,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "recreate_container", "update_container", "remove_container",
         "docker_compose_up", "docker_compose_down", "clear_docker_logs",
         "check_docker_updates", "stack_restart", "stack_update", "container_logs",
+        "stack_deploy", "stack_remove",
     ]),
     ("files", "Files and directories", [
         "write_file", "create_directory", "delete_path", "copy_file",
@@ -410,6 +411,14 @@ ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
     ("windows_update_install", "classifications"): "Comma-separated Windows Update classifications, e.g. `Critical Updates, Security Updates`. Blank = all.",
     ("windows_update_install", "include_kb"): "Comma-separated KBs; when given, only these install. `KB5034441` and `5034441` both work.",
     ("windows_update_install", "exclude_kb"): "Comma-separated KBs that never install. Wins over include_kb.",
+    ("stack_deploy", "project"): "The compose project name.",
+    ("stack_deploy", "compose"): "The compose file itself, as Vigil stores it. Checked like the stack editor checks it.",
+    ("stack_deploy", "working_dir"): "Where the stack lives on the host — /opt/vigil/stacks/<name> for a new one.",
+    ("stack_deploy", "env_ticket"): "Set by Vigil, not by hand: a one-time id the agent redeems for the .env just before deploying. The secrets never ride in the task.",
+    ("stack_deploy", "revision"): "The stack revision being deployed, for the record.",
+    ("stack_remove", "project"): "The compose project name.",
+    ("stack_remove", "working_dir"): "The stack's folder on the host.",
+    ("stack_remove", "delete_files"): "true also deletes the folder — only ever under /opt/vigil/stacks.",
     ("container_logs", "container_name"): "The container's name or id.",
     ("container_logs", "tail"): "How many of the last lines to return (1–2000, default 200).",
     ("container_logs", "session"): "Set by the log view, not by hand: the live-tail session the agent then streams new lines to.",
@@ -467,6 +476,8 @@ OUTPUT_NOTES: dict[str, dict[str, str]] = {
     },
     "stack_restart": {"project": "The stack that was restarted."},
     "container_logs": {"lines": "How many lines were returned."},
+    "stack_deploy": {"project": "The stack deployed.", "revision": "The revision deployed (0 when not given)."},
+    "stack_remove": {"project": "The stack taken down.", "files_deleted": "True when its folder was deleted too."},
     "stack_update": {"project": "The stack that was updated."},
     "app_ensure": {
         "changed": "True when the step did something; false when the host already matched, which is what a second run reports.",
@@ -676,6 +687,38 @@ def example_yaml(action: str) -> str:
             "    params:",
             "      app: openssl",
             '      version: "3.0.13-1"',
+        ]) + "\n"
+    if action == "stack_deploy":
+        # Written by Vigil when you press Deploy on a stack; shown so the
+        # shape is known. The .env never appears here — only a ticket id.
+        return "\n".join([
+            "name: Deploy media",
+            "description: \"What Vigil sends when you deploy the media stack.\"",
+            "risk: high",
+            "actions:",
+            "  - id: deploy",
+            "    type: stack_deploy",
+            "    params:",
+            "      project: media",
+            "      working_dir: /opt/vigil/stacks/media",
+            "      env_ticket: 6f1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+            "      compose: |",
+            "        services:",
+            "          jellyfin:",
+            "            image: jellyfin/jellyfin:10.9",
+            "            env_file: .env",
+        ]) + "\n"
+    if action == "stack_remove":
+        return "\n".join([
+            "name: Take down media",
+            "description: \"Stop and remove the media stack's containers, keep its files.\"",
+            "risk: standard",
+            "actions:",
+            "  - id: remove",
+            "    type: stack_remove",
+            "    params:",
+            "      project: media",
+            "      working_dir: /opt/vigil/stacks/media",
         ]) + "\n"
     if action == "app_ensure":
         # One rule of a policy: the state, not the command.
