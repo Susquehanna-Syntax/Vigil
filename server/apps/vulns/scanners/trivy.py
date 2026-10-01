@@ -198,6 +198,52 @@ _TRIVY_SEVERITY_MAP = {
 }
 
 
+#: Trivy's per-source CVSS, most authoritative first. NVD is the common
+#: denominator; a distro's own score wins because it knows how the package
+#: was built.
+_CVSS_SOURCES = ("redhat", "ubuntu", "debian", "ghsa", "nvd")
+
+#: Vendor statuses Trivy reports (``Status``), kept as Trivy spells them.
+_STATUSES = {"fixed", "affected", "will_not_fix", "fix_deferred", "end_of_life",
+             "not_affected", "under_investigation", "unknown"}
+
+
+def _cvss(vuln: dict) -> tuple[float | None, str]:
+    """The best (score, vector) Trivy carries, v3 before v2."""
+    cvss = vuln.get("CVSS") or {}
+    if not isinstance(cvss, dict):
+        return None, ""
+    ordered = [s for s in _CVSS_SOURCES if s in cvss] + sorted(set(cvss) - set(_CVSS_SOURCES))
+    for version in ("V3", "V2"):
+        for source in ordered:
+            entry = cvss.get(source) or {}
+            score = entry.get(f"{version}Score")
+            if isinstance(score, (int, float)) and not isinstance(score, bool):
+                return float(score), str(entry.get(f"{version}Vector") or "")[:200]
+    return None, ""
+
+
+def advisory_fields(vuln: dict, result: dict) -> dict:
+    """The finding columns M9 keeps from one Trivy vulnerability."""
+    score, vector = _cvss(vuln)
+    status = str(vuln.get("Status") or "").strip().lower()
+    refs = [str(r)[:500] for r in (vuln.get("References") or []) if isinstance(r, str)][:50]
+    url = str(vuln.get("PrimaryURL") or "")
+    path = str(vuln.get("PkgPath") or "")
+    if not path and result.get("Class") == "lang-pkgs":
+        path = str(result.get("Target") or "")
+    return {
+        "description": str(vuln.get("Description") or "")[:20000],
+        "cvss_score": score,
+        "cvss_vector": vector,
+        "references": refs,
+        "primary_url": url[:500] if url.startswith(("http://", "https://")) else "",
+        "vendor_status": status if status in _STATUSES else "",
+        "affected_path": path[:500],
+        "advisory": {k: v for k, v in vuln.items() if k != "Layer"},
+    }
+
+
 class TrivyScanner(Scanner):
     name: ClassVar[str] = "trivy"
 
@@ -288,6 +334,7 @@ class TrivyScanner(Scanner):
                         "package_name": pkg[:255],
                         "installed_version": (vuln.get("InstalledVersion") or "")[:80],
                         "fixed_version": (vuln.get("FixedVersion") or "")[:80],
+                        **advisory_fields(vuln, result),
                         "state": VulnFinding.State.OPEN,
                         "resolved_at": None,
                     },

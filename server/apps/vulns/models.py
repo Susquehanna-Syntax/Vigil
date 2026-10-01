@@ -176,6 +176,26 @@ class VulnFinding(models.Model):
     installed_version = models.CharField(max_length=80, blank=True, default="")
     fixed_version = models.CharField(max_length=80, blank=True, default="")
 
+    # The advisory itself, as the source reported it (M9). Kept so a person —
+    # or the assistant, when there is no fix — can read what the finding is
+    # without going back to the scanner: what it says, how bad, where it
+    # lives on disk, and what the vendor intends to do about it.
+    description = models.TextField(blank=True, default="")
+    cvss_score = models.FloatField(null=True, blank=True)
+    cvss_vector = models.CharField(max_length=200, blank=True, default="")
+    references = models.JSONField(default=list, blank=True)
+    primary_url = models.URLField(max_length=500, blank=True, default="")
+    #: The vendor's fix status — fixed, affected, will_not_fix, fix_deferred,
+    #: end_of_life, … — as the source spells it. Blank when unknown.
+    vendor_status = models.CharField(max_length=32, blank=True, default="")
+    #: Where the vulnerable thing lives: a language package's file, a jar, a
+    #: lockfile. Blank for OS packages.
+    affected_path = models.CharField(max_length=500, blank=True, default="")
+    #: The source's own record for this finding, untrimmed (one Trivy
+    #: vulnerability object, say). Nothing reads it by key; it is the
+    #: evidence of record.
+    advisory = models.JSONField(default=dict, blank=True)
+
     first_seen = models.DateTimeField(auto_now_add=True)
     last_seen = models.DateTimeField(auto_now=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
