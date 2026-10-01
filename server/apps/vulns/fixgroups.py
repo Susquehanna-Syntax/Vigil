@@ -21,6 +21,10 @@ from __future__ import annotations
 
 def fix_key_for(package_name: str, fixed_version: str, scanner: str,
                 plugin_id_or_oid: str, affected_path: str = "") -> str:
+    if plugin_id_or_oid.startswith("det:"):
+        # A detection task is its own fix: every CVE it names is cleared by
+        # deploying it (M10).
+        return ":".join(plugin_id_or_oid.split(":")[:2])[:300]
     pkg = (package_name or "").strip().lower()
     if pkg:
         key = f"{pkg}@{(fixed_version or '').strip() or 'nofix'}"

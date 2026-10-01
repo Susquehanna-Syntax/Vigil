@@ -209,6 +209,11 @@ def _ingest_hunt_matches(task, raw_steps):
         _collect(relevant)
         for probe_id, probe_type in probe_actions.items():
             signed_actions.setdefault(probe_id, probe_type)
+    # A detection task's boost: probes (M10) are signed the same way.
+    for probe in (task.params or {}).get("boost") or []:
+        if (isinstance(probe, dict) and isinstance(probe.get("id"), str)
+                and isinstance(probe.get("type"), str)):
+            signed_actions.setdefault(probe["id"], probe["type"])
 
     rows = []
     task_remaining = _HUNT_MATCHES_PER_TASK
@@ -300,6 +305,9 @@ def task_result(request):
         task.completed_at = now()
         task.save()
         _ingest_hunt_matches(task, request.data.get("steps"))
+        if new_state in (Task.State.COMPLETED, Task.State.FAILED, Task.State.NOT_APPLICABLE):
+            from apps.vulns.detection import record_detection
+            record_detection(task)
 
         if task.run_id:
             _advance_run_sequence(task)
