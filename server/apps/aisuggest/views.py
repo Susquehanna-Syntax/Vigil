@@ -61,6 +61,10 @@ Rules:
   omit source to use the host's own manager. app_upgrade without app upgrades everything outdated.
 - Refresh the inventory with app_inventory (outputs count, outdated, unmanaged) and branch on it.
 - Use app_install_custom (high risk, needs url + sha256) only when no package manager has the software.
+- To keep one app in a state use app_ensure with app + state (present, latest, pinned, absent); version only with pinned.
+  It reads the host's inventory and changes nothing when the host already matches, so it is safe to run on a schedule.
+- App and patch policies are set on the Policies page, not in YAML. Never write or edit a task named "Policy: ..." —
+  it is generated from its policy and rewritten on every save.
 - Never propose update_agent."""
 
 
