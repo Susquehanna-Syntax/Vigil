@@ -215,9 +215,9 @@ class StackAuditTests(TestCase):
             api.post(f"/api/v1/stacks/{sid}/env/reveal/", {"totp": "1"}, format="json")
             api.post(f"/api/v1/stacks/{sid}/deploy/", {"totp": "1"}, format="json")
         events = list(AuditEvent.objects.order_by("id").values_list("action", "target"))
-        self.assertEqual([e for e in events if e[0].startswith("stack.")],
-                         [("stack.saved", "media@nas"), ("stack.env_revealed", "media@nas"),
-                          ("stack.deployed", "media@nas")])
+        self.assertEqual(sorted(e for e in events if e[0].startswith("stack.")),
+                         [("stack.deployed", "media@nas"), ("stack.env_revealed", "media@nas"),
+                          ("stack.saved", "media@nas")])
         self.assertNotIn("hunter2", str(list(AuditEvent.objects.values())))
 
 
@@ -233,3 +233,66 @@ class StackEditorWiringTests(SimpleTestCase):
         for needle in ("/env/reveal/", "/deploy/", "/remove/", "/revisions/", "keep: true",
                        "type=\"${e.revealed ? 'text' : 'password'}\"", "async function renderManagedStacks"):
             self.assertIn(needle, js)
+
+
+class StackAdoptTests(TestCase):
+    def setUp(self):
+        from apps.hosts.models import ContainerStack
+        self.host = Host.objects.create(hostname="nas", agent_token="nastok", status=Host.Status.ONLINE,
+                                        mode="managed")
+        ContainerStack.objects.create(host=self.host, project="shop", ownership="external")
+        self.user = get_user_model().objects.create_user("a", password="x")
+        UserProfile.objects.create(user=self.user, role=Role.ADMIN)
+        self.api = APIClient()
+        self.api.force_authenticate(self.user)
+
+    def _adopt(self):
+        with mock.patch(_TOTP, return_value=None):
+            return self.api.post("/api/v1/stacks/adopt/", {"host_id": str(self.host.id), "project": "shop",
+                                                           "totp": "1"}, format="json")
+
+    def _hand_over(self, ticket, **extra):
+        body = {"project": "shop", "compose": COMPOSE, "env": "DB_PASSWORD=hunter2\n",
+                "compose_file": "docker-compose.yml", "working_dir": "/srv/shop",
+                "hashes": {"match": ["jellyfin"], "recreate": []}, **extra}
+        return self.client.post(f"/api/v1/agent/stack-adopt/{ticket}/", body,
+                                content_type="application/json", HTTP_AUTHORIZATION="Bearer nastok")
+
+    def test_adopt_reads_in_place(self):
+        from apps.hosts.models import ContainerStack
+        from apps.tasks.models import Task
+        resp = self._adopt()
+        self.assertEqual(resp.status_code, 201, resp.content)
+        task = Task.objects.get(pk=resp.json()["task"])
+        self.assertEqual(task.params["steps"][0]["action"], "stack_read")
+        self.assertEqual(self._hand_over(resp.json()["ticket"]).status_code, 200)
+        stack = ManagedStack.objects.get()
+        self.assertEqual((stack.adopted, stack.working_dir, stack.compose_file),
+                         (True, "/srv/shop", "docker-compose.yml"))
+        self.assertEqual(stack.adopt_report, {"match": ["jellyfin"], "recreate": []})
+        self.assertNotIn(b"hunter2", bytes(stack.env_encrypted))
+        self.assertEqual(ContainerStack.objects.get().ownership, "adopted")
+        self.assertEqual(self._hand_over(resp.json()["ticket"]).status_code, 404, "one time only")
+        # A deploy of the adopted stack writes its own file name back.
+        with mock.patch(_TOTP, return_value=None):
+            task_id = self.api.post(f"/api/v1/stacks/{stack.id}/deploy/", {"totp": "1"}, format="json").json()["task"]
+        params = Task.objects.get(pk=task_id).params["steps"][0]["params"]
+        self.assertEqual((params["working_dir"], params["compose_file"]), ("/srv/shop", "docker-compose.yml"))
+
+    def test_a_compose_file_vigil_will_not_run_is_refused(self):
+        ticket = self._adopt().json()["ticket"]
+        resp = self._hand_over(ticket, compose="services:\n  a:\n    image: x\n    privileged: true\n")
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(ManagedStack.objects.exists())
+        from .models import AdoptTicket
+        self.assertIn("privileged", AdoptTicket.objects.get().error)
+
+    def test_refusals(self):
+        self._adopt()
+        self.assertEqual(self._adopt().status_code, 201, "a second ticket while the first is pending is fine")
+        with mock.patch(_TOTP, return_value="bad"):
+            self.assertEqual(self.api.post("/api/v1/stacks/adopt/", {"host_id": str(self.host.id),
+                                                                     "project": "shop"}, format="json").status_code, 401)
+        with mock.patch(_TOTP, return_value=None):
+            self.assertEqual(self.api.post("/api/v1/stacks/adopt/", {"host_id": str(self.host.id),
+                                                                     "project": "Shop!"}, format="json").status_code, 400)

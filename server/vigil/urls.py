@@ -15,7 +15,7 @@ from apps.alerts.models import Alert
 from apps.hosts.models import Host
 from apps.hosts import views as hosts_views
 from apps.hosts.logtail import agent_log_lines
-from apps.stacks.views import agent_stack_env
+from apps.stacks.views import agent_stack_adopt, agent_stack_env
 from apps.hosts.views import checkin, register
 from apps.playbooks.urls import legacy_urlpatterns as _legacy_playbook_urls
 from apps.reprovision.installer_views import enroll as reprovision_enroll
@@ -104,6 +104,7 @@ urlpatterns = [
     path("api/v1/checkin", checkin, name="checkin"),
     path("api/v1/agent/log-tail/<uuid:session_id>/", agent_log_lines, name="agent-log-tail"),
     path("api/v1/agent/stack-env/<uuid:ticket_id>/", agent_stack_env, name="agent-stack-env"),
+    path("api/v1/agent/stack-adopt/<uuid:ticket_id>/", agent_stack_adopt, name="agent-stack-adopt"),
     path("api/v1/hosts/", include("apps.hosts.urls")),
     path("api/v1/metrics/", include("apps.metrics.urls")),
     path("api/v1/alerts/", include("apps.alerts.urls")),

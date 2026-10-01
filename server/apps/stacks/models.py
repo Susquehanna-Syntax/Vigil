@@ -25,6 +25,13 @@ class ManagedStack(models.Model):
     #: Vigil created; the stack's own folder for an adopted one.
     working_dir = models.CharField(max_length=500, blank=True)
     adopted = models.BooleanField(default=False)
+    #: The compose file's name in working_dir — compose.yaml for a stack Vigil
+    #: created, the stack's own file name for an adopted one.
+    compose_file = models.CharField(max_length=100, default="compose.yaml")
+    #: What adoption found: {"match": [services], "recreate": [services]} — the
+    #: services a deploy of this file would leave alone, and those it would
+    #: recreate (their running config differs from the file's).
+    adopt_report = models.JSONField(default=dict, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
                                    related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -71,3 +78,22 @@ class EnvTicket(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     used_at = models.DateTimeField(null=True, blank=True)
+
+
+class AdoptTicket(models.Model):
+    """A one-time slot for an agent to hand over an existing stack's files
+    (M11) — over its own connection, because the .env holds secrets."""
+
+    TTL_HOURS = 24
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    host = models.ForeignKey("hosts.Host", on_delete=models.CASCADE, related_name="+")
+    project = models.CharField(max_length=63)
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
+                                     related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    #: Why the files were refused, when they were (a compose file Vigil will
+    #: not run, more than one compose file, …). Blank on success.
+    error = models.CharField(max_length=500, blank=True)

@@ -493,6 +493,7 @@ def _validate_app_params(params: dict[str, Any], position: int,
 
 
 _STACK_DIR_RE = re.compile(r"^/[A-Za-z0-9._/-]{1,400}$")
+_COMPOSE_FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.ya?ml$")
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
@@ -507,6 +508,15 @@ def _validate_stack_params(params: dict[str, Any], position: int, action_type: s
     project = params.get("project")
     if not isinstance(project, str) or not NAME_RE.match(project):
         raise SpecError(f"{where}: 'project' must be a compose project name")
+    if action_type == "stack_read":
+        ticket = params.get("adopt_ticket")
+        if not (isinstance(ticket, str) and _UUID_RE.match(ticket)):
+            raise SpecError(f"{where}: 'adopt_ticket' must be a ticket id")
+        return
+    compose_file = params.get("compose_file")
+    if compose_file is not None and not (isinstance(compose_file, str)
+                                         and _COMPOSE_FILE_RE.match(compose_file)):
+        raise SpecError(f"{where}: 'compose_file' must be a plain .yaml / .yml file name")
     workdir = params.get("working_dir")
     if (not isinstance(workdir, str) or not _STACK_DIR_RE.match(workdir)
             or ".." in workdir.split("/")):
@@ -1396,7 +1406,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         elif action_type in ("app_install", "app_upgrade", "app_uninstall",
                              "app_pin"):
             _validate_app_params(params, index + 1, action_type)
-        elif action_type in ("stack_deploy", "stack_remove"):
+        elif action_type in ("stack_deploy", "stack_remove", "stack_read"):
             _validate_stack_params(params, index + 1, action_type)
         elif action_type == "app_ensure":
             _validate_app_ensure_params(params, index + 1)

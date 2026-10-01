@@ -31,7 +31,8 @@ def _env_pairs(stack_or_rev) -> list[tuple[str, str]]:
 def _row(s: ManagedStack) -> dict:
     return {"id": str(s.id), "host_id": str(s.host_id), "hostname": s.host.hostname,
             "name": s.name, "compose_yaml": s.compose_yaml, "revision": s.revision,
-            "working_dir": s.working_dir, "adopted": s.adopted,
+            "working_dir": s.working_dir, "adopted": s.adopted, "compose_file": s.compose_file,
+            "adopt_report": s.adopt_report or {},
             "env": [{"key": k, "set": bool(v)} for k, v in _env_pairs(s)],
             "updated_at": s.updated_at.isoformat() if s.updated_at else None}
 
@@ -215,6 +216,8 @@ def stack_deploy(request, stack_id):
         return denied
     params = {"project": stack.name, "compose": stack.compose_yaml,
               "working_dir": stack.working_dir, "revision": stack.revision}
+    if stack.compose_file != "compose.yaml":
+        params["compose_file"] = stack.compose_file
     if bytes(stack.env_encrypted or b""):
         ticket = EnvTicket.objects.create(stack=stack, revision=stack.revision, host=stack.host,
                                           expires_at=now() + timedelta(hours=EnvTicket.TTL_HOURS))
@@ -264,3 +267,86 @@ def agent_stack_env(request, ticket_id):
         ticket.save(update_fields=["used_at"])
         rev = ticket.stack.revisions.filter(number=ticket.revision).first() or ticket.stack
     return Response({"env": render_env(_env_pairs(rev))})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def stack_adopt(request):
+    """Take over a stack already running on a host, where it stands (TOTP).
+
+    Queues a stack_read task; the agent hands the compose file and .env to
+    the ticket, and the stack becomes managed — recreating nothing."""
+    from datetime import timedelta
+
+    from django.utils.timezone import now
+
+    from .models import AdoptTicket
+
+    host, denied = scoping.host_or_404(request, request.data.get("host_id"))
+    if denied:
+        return denied
+    project = str(request.data.get("project") or "")
+    if not NAME_RE.match(project):
+        return Response({"detail": "not a compose project name"}, status=status.HTTP_400_BAD_REQUEST)
+    if ManagedStack.objects.filter(host=host, name=project).exists():
+        return Response({"detail": f"{project} is already managed"}, status=status.HTTP_400_BAD_REQUEST)
+    if denied := _confirmed(request):
+        return denied
+    ticket = AdoptTicket.objects.create(host=host, project=project, requested_by=request.user,
+                                        expires_at=now() + timedelta(hours=AdoptTicket.TTL_HOURS))
+    placeholder = ManagedStack(host=host, name=project)
+    task = _dispatch(request, placeholder, [{"id": "read", "type": "stack_read", "params": {
+        "project": project, "adopt_ticket": str(ticket.id)}}], f"Adopt stack {project}")
+    return Response({"ticket": str(ticket.id), "task": str(task.id)}, status=status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def agent_stack_adopt(request, ticket_id):
+    """The agent hands over an adopted stack's files — once, for its host."""
+    from django.db import transaction as _tx
+    from django.utils.timezone import now
+
+    from apps.hosts.authentication import authenticate_agent
+    from apps.hosts.models import ContainerStack
+
+    from .models import AdoptTicket
+
+    host, err = authenticate_agent(request)
+    if err:
+        return err
+    data = request.data
+    with _tx.atomic():
+        ticket = (AdoptTicket.objects.select_for_update()
+                  .filter(pk=ticket_id, host=host).first())
+        if ticket is None or ticket.used_at is not None or ticket.expires_at <= now():
+            return Response({"detail": "ticket unknown, used or expired"}, status=status.HTTP_404_NOT_FOUND)
+        ticket.used_at = now()
+        try:
+            if str(data.get("project") or "") != ticket.project:
+                raise StackError("the files are for a different stack")
+            compose = str(data.get("compose") or "")
+            validate_compose(compose)
+            env_pairs = parse_env(str(data.get("env") or ""))
+            compose_file = str(data.get("compose_file") or "compose.yaml")[:100]
+            working_dir = str(data.get("working_dir") or "")[:500]
+            if not working_dir.startswith("/") or ".." in working_dir.split("/"):
+                raise StackError("the stack's folder is not an absolute path")
+        except StackError as exc:
+            ticket.error = str(exc)[:500]
+            ticket.save(update_fields=["used_at", "error"])
+            return Response({"detail": ticket.error}, status=status.HTTP_400_BAD_REQUEST)
+        ticket.save(update_fields=["used_at"])
+        stack = ManagedStack(host=host, name=ticket.project, compose_yaml=compose,
+                             env_encrypted=encrypt_secret(render_env(env_pairs)) if env_pairs else b"",
+                             working_dir=working_dir, compose_file=compose_file, adopted=True,
+                             adopt_report=data.get("hashes") if isinstance(data.get("hashes"), dict) else {},
+                             created_by=ticket.requested_by)
+        stack.save()
+        StackRevision.objects.create(stack=stack, number=1, compose_yaml=compose,
+                                     env_encrypted=stack.env_encrypted, note="adopted",
+                                     created_by=ticket.requested_by)
+        ContainerStack.objects.filter(host=host, project=ticket.project).update(
+            ownership=ContainerStack.Ownership.ADOPTED)
+    hooks.emit("stack_saved", stack=stack, user=ticket.requested_by, revision=1)
+    return Response({"ok": True})

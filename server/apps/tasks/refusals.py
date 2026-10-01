@@ -74,6 +74,7 @@ AGENT_ACTIONS = frozenset({
     "set_permissions",
     "start_container",
     "stack_deploy",
+    "stack_read",
     "stack_remove",
     "stack_restart",
     "stack_update",
