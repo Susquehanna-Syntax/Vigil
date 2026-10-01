@@ -453,3 +453,33 @@ class ContainerStack(models.Model):
 
     def __str__(self):
         return f"{self.project} on {self.host_id}"
+
+
+class LogTailSession(models.Model):
+    """One open log view (M11): the lines an agent streamed while someone
+    watched. The agent stops when ``viewer_seen_at`` goes stale or the
+    session is closed; nothing here is kept once the view is gone."""
+
+    #: The viewer is gone when it has not polled for this long.
+    VIEWER_TIMEOUT_SECONDS = 15
+    #: A tail never outlives this, watched or not.
+    MAX_SECONDS = 600
+    MAX_LINES = 2000
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="log_tails")
+    container_name = models.CharField(max_length=200)
+    task = models.ForeignKey("tasks.Task", null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name="+")
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
+                                     related_name="+")
+    lines = models.JSONField(default=list, blank=True)   # [[seq, line], …]
+    next_seq = models.PositiveIntegerField(default=1)
+    closed = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    viewer_seen_at = models.DateTimeField(auto_now_add=True)
+
+    def alive(self, at) -> bool:
+        return (not self.closed
+                and (at - self.viewer_seen_at).total_seconds() < self.VIEWER_TIMEOUT_SECONDS
+                and (at - self.created_at).total_seconds() < self.MAX_SECONDS)

@@ -159,3 +159,16 @@ def report_result(
     resp = requests.post(url, json=payload, headers=_headers(config), timeout=_TIMEOUT)
     resp.raise_for_status()
     return resp.json()
+
+
+def post_log_lines(config: AgentConfig, session: str, lines: list[str]) -> bool:
+    """Ship new log lines for a live tail (M11); True while the viewer is
+    still watching. Any failure stops the tail — it is a convenience, and an
+    agent must never hammer a server that is not answering."""
+    url = f"{config.server_url}/api/v1/agent/log-tail/{session}/"
+    try:
+        resp = requests.post(url, json={"lines": lines}, headers=_headers(config), timeout=10)
+        resp.raise_for_status()
+        return bool(resp.json().get("continue"))
+    except Exception:  # noqa: BLE001 — see above
+        return False

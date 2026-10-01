@@ -493,7 +493,8 @@ async function renderDockerContainers(hostId) {
           ${state === 'running'
             ? `<button class="btn btn-xs btn-outline" data-ctr-act="Restart container" data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">Restart</button>
                <button class="btn btn-xs btn-outline" data-ctr-act="Stop container" data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">Stop</button>`
-            : `<button class="btn btn-xs btn-outline" data-ctr-act="Start container" data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">Start</button>`}</td>
+            : `<button class="btn btn-xs btn-outline" data-ctr-act="Start container" data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">Start</button>`}
+          <button class="btn btn-xs btn-outline" data-ctr-logs data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}">Logs</button></td>
       </tr>`;
     }
     html += `</tbody></table></div>`;
@@ -506,6 +507,9 @@ async function renderDockerContainers(hostId) {
   }));
   wrap.querySelectorAll('[data-ctr-act]').forEach(btn => btn.addEventListener('click', () => {
     openBuiltinTask(btn.dataset.ctrAct, btn.dataset.host, { container_name: btn.dataset.name });
+  }));
+  wrap.querySelectorAll('[data-ctr-logs]').forEach(btn => btn.addEventListener('click', () => {
+    openContainerLogs(btn.dataset.host, btn.dataset.name);
   }));
   wrap.querySelectorAll('[data-stack-act]').forEach(btn => btn.addEventListener('click', () => {
     openBuiltinTask(btn.dataset.stackAct, btn.dataset.host, { project: btn.dataset.project });
@@ -618,3 +622,93 @@ navigateTo = function(pageName) {
   if (pageName === 'vulns') refreshVulns();
   if (pageName === 'settings') refreshTotpStatus();
 };
+
+
+/* ── Live container logs (M11) ───────────────────────────────────────── */
+// Opening logs is a signed task (TOTP). The agent sends the last lines, then
+// streams new ones while this view polls; closing it (or 15 s without a poll)
+// stops the agent.
+const logView = { session: null, after: 0, timer: null, initialShown: false };
+
+function _logEls() {
+  let overlay = document.getElementById('ctr-logs-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'ctr-logs-overlay';
+    const modal = document.createElement('div');
+    modal.className = 'modal modal-wide';
+    modal.id = 'ctr-logs-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.innerHTML = `<div class="modal-title"><span id="ctr-logs-title">Logs</span>
+        <button class="modal-close" type="button" id="ctr-logs-close" aria-label="Close">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button></div>
+      <div class="ctr-logs-state" id="ctr-logs-state">Waiting for the agent…</div>
+      <pre class="ctr-logs" id="ctr-logs-body" tabindex="0"></pre>`;
+    document.body.append(overlay, modal);
+    overlay.addEventListener('click', closeContainerLogs);
+    modal.querySelector('#ctr-logs-close').addEventListener('click', closeContainerLogs);
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape' && modal.classList.contains('open')) closeContainerLogs();
+    });
+  }
+  return { overlay, modal: document.getElementById('ctr-logs-modal'),
+           body: document.getElementById('ctr-logs-body'), state: document.getElementById('ctr-logs-state') };
+}
+
+async function openContainerLogs(hostId, name) {
+  const totp = window.prompt(`Reading the logs of ${name} needs your TOTP code:`);
+  if (!totp) return;
+  let opened;
+  try {
+    opened = await apiJson(`/api/v1/hosts/${hostId}/containers/${encodeURIComponent(name)}/logs/`,
+      { method: 'POST', body: JSON.stringify({ totp: totp.trim(), tail: 200 }) });
+  } catch (e) { showToast(e.message, 'error'); return; }
+  const els = _logEls();
+  Object.assign(logView, { session: opened.session, after: 0, initialShown: false });
+  document.getElementById('ctr-logs-title').textContent = `Logs — ${name}`;
+  els.body.textContent = '';
+  els.state.textContent = 'Waiting for the agent (up to one check-in)…';
+  els.overlay.classList.add('open');
+  els.modal.classList.add('open');
+  els.body.focus();
+  clearPollingInterval(logView.timer);
+  logView.timer = pollingInterval(_pollContainerLogs, 1500);
+  _pollContainerLogs();
+}
+
+async function _pollContainerLogs() {
+  if (!logView.session) return;
+  const els = _logEls();
+  let body;
+  try {
+    body = await apiJson(`/api/v1/hosts/log-tails/${logView.session}/?after=${logView.after}`);
+  } catch { return; }
+  const atBottom = els.body.scrollTop + els.body.clientHeight >= els.body.scrollHeight - 8;
+  if (!logView.initialShown && body.initial) {
+    els.body.textContent = body.initial + '\n';
+    logView.initialShown = true;
+  }
+  for (const [seq, line] of body.lines) {
+    els.body.textContent += line + '\n';
+    logView.after = seq;
+  }
+  els.state.textContent = body.task_state === 'failed' ? 'The agent could not read the logs.'
+    : body.task_state === 'completed' ? (body.live ? 'Live — new lines appear as they are written.' : 'Stopped.')
+      : 'Waiting for the agent (up to one check-in)…';
+  if (atBottom) els.body.scrollTop = els.body.scrollHeight;
+}
+
+function closeContainerLogs() {
+  const els = _logEls();
+  els.overlay.classList.remove('open');
+  els.modal.classList.remove('open');
+  clearPollingInterval(logView.timer);
+  if (logView.session) {
+    fetch(`/api/v1/hosts/log-tails/${logView.session}/`, {
+      method: 'DELETE', credentials: 'same-origin', headers: { 'X-CSRFToken': getCsrf() } });
+  }
+  logView.session = null;
+}
