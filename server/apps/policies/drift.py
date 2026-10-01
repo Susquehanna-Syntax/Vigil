@@ -107,6 +107,8 @@ def policy_drift(policy) -> dict:
                 host_id__in=[h.pk for h in hosts], package_id__in=apps):
             by_host.setdefault(item.host_id, []).append(item)
 
+    from .patch import patch_changes
+    patches = patch_changes(policy, [h.pk for h in hosts])
     drifted, unknown, compliant = [], [], 0
     for host in hosts:
         if not _has_snapshot(host):
@@ -114,7 +116,7 @@ def policy_drift(policy) -> dict:
             continue
         items = by_host.get(host.pk, [])
         changes = [c for c in (rule_change(r, items) for r in rules) if c]
-        changes.extend(_extra_changes(policy, host))
+        changes.extend(patches.get(str(host.pk), []))
         if changes:
             drifted.append({"host_id": str(host.pk), "hostname": host.hostname,
                             "changes": changes})
@@ -128,9 +130,3 @@ def _has_snapshot(host) -> bool:
         return host.software_snapshot is not None
     except Exception:  # noqa: BLE001 — RelatedObjectDoesNotExist
         return False
-
-
-def _extra_changes(policy, host) -> list[dict]:
-    """Changes beyond the app rules — pending OS updates once the Patching tab
-    is on (phase 07). Empty until then."""
-    return []

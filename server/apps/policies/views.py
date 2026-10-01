@@ -27,6 +27,8 @@ def _row(p: UpdatePolicy) -> dict:
         "windows_classifications": p.windows_classifications or [],
         "deferral_days": p.deferral_days, "reboot": p.reboot,
         "linux_updates": p.linux_updates,
+        "allow_high_risk": p.allow_high_risk,
+        "high_risk": bool(p.task_definition_id and p.task_definition.risk_level == "high"),
         "task_definition": str(p.task_definition_id) if p.task_definition_id else None,
         "app_rules": [{"app": r.app, "source": r.source, "state": r.state,
                        "version": r.version} for r in p.app_rules.all()],
@@ -35,8 +37,32 @@ def _row(p: UpdatePolicy) -> dict:
     }
 
 
+def _high_risk_gate(request, policy: UpdatePolicy, requested) -> Response | None:
+    """Authorize a change to allow_high_risk — the same gate automations use.
+
+    Turning it on costs a fresh TOTP code, and that confirmation authorizes
+    every unattended reboot this policy's window will run. Turning it off
+    needs nothing.
+    """
+    if requested is None or bool(requested) == policy.allow_high_risk:
+        return None
+    if not requested:
+        policy.allow_high_risk = False
+        return None
+    from apps.accounts.totp import require_totp_confirmation
+
+    if error := require_totp_confirmation(request.user, request.data):
+        return Response(
+            {"detail": f"Allowing high-risk steps needs confirmation: {error}",
+             "needs_totp": True}, status=status.HTTP_401_UNAUTHORIZED)
+    policy.allow_high_risk = True
+    return None
+
+
 def _save(request, policy: UpdatePolicy, data: dict) -> Response | None:
     """Validate and write *data* onto *policy*; rules are replaced as a whole."""
+    if error := _high_risk_gate(request, policy, data.get("allow_high_risk")):
+        return error
     try:
         apply_fields(policy, data)
         rules = clean_rules(data.get("app_rules")) if "app_rules" in data else None

@@ -1,6 +1,7 @@
 import re
 from collections.abc import Sequence
 
+from django.conf import settings
 from django.db import models
 from django.db.models.constraints import BaseConstraint
 from django.db.models.indexes import Index
@@ -138,3 +139,27 @@ class PendingUpdate(models.Model):
 
     def __str__(self):
         return f"{self.key} on {self.host_id}"
+
+
+class UpdateDecision(models.Model):
+    """A fleet-wide call on one update: approved (install it now, deferral or
+    not) or declined (never install it — it joins every policy's exclude
+    list). Every policy reads these; there is no per-policy override."""
+
+    class Decision(models.TextChoices):
+        APPROVED = "approved", "Approved"
+        DECLINED = "declined", "Declined"
+
+    kind = models.CharField(max_length=10, choices=PendingUpdate.Kind.choices)
+    key = models.CharField(max_length=300)
+    decision = models.CharField(max_length=10, choices=Decision.choices)
+    decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+    decided_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("kind", "key"),
+                                               name="uniq_update_decision")]
+
+    def __str__(self):
+        return f"{self.key}: {self.decision}"

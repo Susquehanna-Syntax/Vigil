@@ -63,6 +63,11 @@ class UpdatePolicy(models.Model):
                               default=Reboot.IN_WINDOW)
     linux_updates = models.CharField(max_length=10, choices=LinuxUpdates.choices,
                                      default=LinuxUpdates.SECURITY)
+    #: Opt-in to the reboot step, as automations opt in to high-risk steps:
+    #: turning it on costs a TOTP code, and that one confirmation authorizes
+    #: every unattended run of this policy. Off, a policy whose compiled task
+    #: is high risk refuses to run.
+    allow_high_risk = models.BooleanField(default=False)
 
     #: The task this policy compiles to (compile.py), rewritten on every save.
     task_definition = models.ForeignKey(

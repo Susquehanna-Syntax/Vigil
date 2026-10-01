@@ -17,6 +17,7 @@ from apps.tasks.models import TaskDefinition
 from apps.tasks.spec import parse_and_validate
 
 from .models import UpdatePolicy
+from .patch import patch_steps
 
 _PLAIN_INT = re.compile(r"^\d{1,2}$")
 
@@ -35,11 +36,6 @@ def app_steps(policy: UpdatePolicy) -> list[dict]:
             params["version"] = rule.version
         steps.append({"id": f"app-{n}", "type": "app_ensure", "params": params})
     return steps
-
-
-def patch_steps(policy: UpdatePolicy) -> list[dict]:
-    """The Patching tab's steps (phase 07). None until then."""
-    return []
 
 
 def window_schedule(policy: UpdatePolicy) -> dict | None:
