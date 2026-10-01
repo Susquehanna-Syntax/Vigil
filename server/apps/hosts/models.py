@@ -54,6 +54,10 @@ class Host(models.Model):
     #: agent has ever counted — not Windows, too old to report, or the scan
     #: failed — which is a different thing from zero and displayed differently.
     windows_updates = models.JSONField(null=True, blank=True)
+    #: Container engines the agent found (M11):
+    #: [{"kind": "docker"|"podman", "version", "api_version", "rootless", "uid"?}].
+    #: Null until an agent reports; [] is never stored (no engine = absent key).
+    container_engines = models.JSONField(null=True, blank=True)
     windows_updates_at = models.DateTimeField(null=True, blank=True)
 
     #: When the agent last sent a docker_containers payload — including an

@@ -15,6 +15,7 @@ class HostSerializer(serializers.ModelSerializer):
         fields = [
             "windows_updates",
             "windows_updates_at",
+            "container_engines",
             "id",
             "hostname",
             "os",

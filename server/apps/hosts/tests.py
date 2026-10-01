@@ -356,3 +356,26 @@ class CheckinPayloadLimitTests(TestCase):
         labels = MetricPoint.objects.get(host=self.host).labels
         self.assertEqual(len(labels), MAX_LABELS_PER_POINT)
         self.assertTrue(all(len(v) <= MAX_LABEL_LENGTH for v in labels.values()))
+
+
+class ContainerEngineIngestTests(TestCase):
+    """M11: the engines an agent found are kept; junk and absence change nothing."""
+
+    def setUp(self):
+        self.host = Host.objects.create(hostname="ce", agent_token="cetok",
+                                        status=Host.Status.ONLINE, mode="managed")
+
+    def _checkin(self, payload):
+        return self.client.post("/api/v1/checkin", {"hostname": "ce", **payload},
+                                content_type="application/json", HTTP_AUTHORIZATION="Bearer cetok")
+
+    def test_engines_stored_cleaned_and_kept_when_absent(self):
+        self._checkin({"container_engines": [
+            {"kind": "podman", "version": "5.2.2", "api_version": "1.41", "rootless": True, "uid": 1000},
+            {"kind": "lxc", "version": "x"}, "junk"]})
+        self.host.refresh_from_db()
+        self.assertEqual(self.host.container_engines, [
+            {"kind": "podman", "version": "5.2.2", "api_version": "1.41", "rootless": True, "uid": 1000}])
+        self._checkin({})
+        self.host.refresh_from_db()
+        self.assertEqual(len(self.host.container_engines), 1)
