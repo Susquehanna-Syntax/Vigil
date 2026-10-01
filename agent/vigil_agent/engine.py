@@ -32,6 +32,8 @@ MAX_API = "1.43"
 DEFAULT_TIMEOUT = 30
 
 _ROOTFUL = ("/var/run/docker.sock", "/run/podman/podman.sock")
+#: The monitor-mode proxy's socket (engine_proxy.PROXY_SOCKET): read-only.
+_READ_ONLY = "/run/vigil/engine-ro.sock"
 _ROOTLESS_GLOB = "/run/user/*/podman/podman.sock"
 
 
@@ -76,6 +78,10 @@ def discover_sockets(env=None, root: str = "/") -> list[dict]:
         seen.add(str(full))
         found.append({"path": str(full), "rootless": rootless, "uid": uid})
 
+    # An unprivileged agent cannot open the engine's own socket, so the
+    # read-only proxy comes first when it is there; root skips nothing by it.
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        add(_READ_ONLY)
     docker_host = str(env.get("DOCKER_HOST") or "")
     if docker_host.startswith("unix://"):
         add(docker_host[len("unix://"):])

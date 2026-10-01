@@ -210,6 +210,37 @@ MemoryDenyWriteExecute=no
 ReadWritePaths=/var/lib/vigil-agent
 CapabilityBoundingSet="
       echo "Monitor mode: running the agent as the unprivileged 'vigil-agent' user."
+      # Containers (M11): the engine socket is root's, and the docker group is
+      # root by another name, so a monitor-mode agent reads containers through
+      # a small root service that answers GETs of the list, inspect, stats and
+      # logs only — never a start, stop or exec.
+      if [ -S /var/run/docker.sock ] || [ -S /run/podman/podman.sock ]; then
+        cat > /etc/systemd/system/vigil-engine-proxy.service << 'PROXYEOF'
+[Unit]
+Description=Vigil read-only container engine socket (monitor mode)
+After=docker.service podman.socket
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/vigil-agent --engine-proxy
+Restart=always
+RestartSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RuntimeDirectory=vigil
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=/run/vigil -/var/run/docker.sock -/run/podman
+
+[Install]
+WantedBy=multi-user.target
+PROXYEOF
+        systemctl daemon-reload
+        systemctl enable --now vigil-engine-proxy >/dev/null 2>&1 || true
+        echo "Containers: monitor mode reads them through a read-only engine socket."
+      fi
     fi
   else
     # Root, because the mode's whole purpose needs it — but still deny the
