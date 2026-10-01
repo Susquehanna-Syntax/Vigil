@@ -71,6 +71,7 @@ BUSINESS_FEATURES = frozenset({
     "status_branding",  # branded/public/custom-domain status pages
     "sso",
     "dashboard_sharing",  # read-only sharing of a dashboard; the flag lives in core
+    "compliance_reports",  # per-site patch compliance, CSV export, branded report
 })
 
 #: Free-tier limits (soft — exceeded means a banner, never a block).

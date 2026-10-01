@@ -3610,6 +3610,7 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .pol-run { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }
 .pol-run-now { display: inline-flex; align-items: center; gap: 8px; }
 .pol-totp { width: 120px; font-size: 12px; }
+.pol-compliance { margin-bottom: 16px; }
 .pol-changes { margin-top: 28px; }
 .pol-changes-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .pol-changes-actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }

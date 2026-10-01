@@ -6,7 +6,8 @@
 //   delegateClick), vigil-nav.js (navigateTo — wrapped below),
 //   vigil-tasks.js (openDefinitionEditor, for "View the generated task").
 // API: /api/v1/policies/ (CRUD), /<id>/drift/, /<id>/run/,
-//      /changes/?state=pending, /changes/approve/, /changes/reject/;
+//      /changes/?state=pending, /changes/approve/, /changes/reject/,
+//      /compliance/; /api/v1/compliance/report{/,.html} (Business);
 //      GET /api/v1/software/apps/ (the app picker)
 
 const POL_CLASSIFICATIONS = [
@@ -61,6 +62,27 @@ function renderPolicies() {
     </tr>`;
   }).join('');
   tbody.innerHTML = html || `<tr><td colspan="${POL_COLUMNS}" class="apps-empty-state">No policies yet. A policy keeps a set of apps present, current, pinned or absent — and can install OS updates — on the hosts it names, in a maintenance window.</td></tr>`;
+}
+
+/* ── Compliance (numbers Free; the report is Business) ───────────────── */
+async function fetchCompliance() {
+  const wrap = document.getElementById('pol-compliance');
+  if (!wrap) return;
+  let c;
+  try { c = await apiJson('/api/v1/policies/compliance/'); } catch { wrap.innerHTML = ''; return; }
+  const late = (c.missing_by_age.critical['31-90'] || 0) + (c.missing_by_age.critical['90+'] || 0);
+  wrap.innerHTML = `<span class="chip ${c.patched_pct >= 95 ? 'chip-mint' : 'apps-chip-warn'}">${c.patched_pct}% of hosts patched within SLA</span>
+    <span class="chip chip-muted">${c.hosts_patched} of ${c.hosts_total} hosts with nothing overdue</span>
+    ${late ? `<span class="chip chip-rose">${late} critical update${late === 1 ? '' : 's'} missing over 30 days</span>` : ''}`;
+}
+
+async function openComplianceReport() {
+  const resp = await fetch('/api/v1/compliance/report/', { credentials: 'same-origin' });
+  if (resp.status === 402) {
+    showToast('The per-site compliance report, its export and branding need Vigil Business.', 'error');
+    return;
+  }
+  window.open('/api/v1/compliance/report.html', '_blank', 'noopener');
 }
 
 /* ── Waiting for approval ────────────────────────────────────────────── */
@@ -357,5 +379,6 @@ navigateTo = function(pageName) {
   if (pageName === 'policies') {
     fetchPolicies();
     fetchPolicyChanges();
+    fetchCompliance();
   }
 };
