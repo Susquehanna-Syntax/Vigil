@@ -67,12 +67,13 @@ def patch_steps(policy, at=None) -> list[dict]:
     if include is None or include:
         params: dict = {}
         if policy.windows_classifications:
-            params["classifications"] = list(policy.windows_classifications)
+            # Comma-separated: signed task params are primitives only.
+            params["classifications"] = ",".join(policy.windows_classifications)
         if include:
-            params["include_kb"] = include
+            params["include_kb"] = ",".join(include)
         exclude = sorted(declined())
         if exclude:
-            params["exclude_kb"] = exclude
+            params["exclude_kb"] = ",".join(exclude)
         steps.append({"id": "windows_updates", "type": "windows_update_install",
                       "when": 'agent.os == "windows"', "params": params})
         reboot = _reboot_params(policy)

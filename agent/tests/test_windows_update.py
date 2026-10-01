@@ -211,6 +211,16 @@ class FilterTests(unittest.TestCase):
              "severity": "", "categories": []},
         ]
 
+    def test_comma_separated_strings_are_lists(self):
+        """Signed task params are primitives, so a task carries these filters
+        as "a, b" strings — never iterated character by character."""
+        kept = filter_updates(self._dicts(), classifications="Update Rollups, Definition Updates",
+                              exclude_kb="KB5034125")
+        self.assertEqual([u["update_id"] for u in kept], ["2"])
+        kept = filter_updates(self._dicts(), include_kb="KB5034123,5034125")
+        self.assertEqual([u["update_id"] for u in kept], ["1", "3"])
+        self.assertEqual(len(filter_updates(self._dicts(), classifications="")), 4)
+
     def test_filter_by_classification_is_case_insensitive(self):
         kept = filter_updates(self._dicts(), classifications=["security updates"])
         self.assertEqual([u["update_id"] for u in kept], ["1", "3"])
