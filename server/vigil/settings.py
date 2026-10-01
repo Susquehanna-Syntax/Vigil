@@ -105,6 +105,7 @@ INSTALLED_APPS = [
     "apps.jackil",
     "apps.software",
     "apps.policies",
+    "apps.stacks",
     # Business features (apps_business/LICENSE) — installed always, unlocked by license
     "apps_business.sites",
     "apps_business.audits",
