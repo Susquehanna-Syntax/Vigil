@@ -95,7 +95,7 @@
                 <circle class="gauge-bg" cx="40" cy="40" r="34"/>
                 <circle class="gauge-fill" id="gauge-cpu-fill" cx="40" cy="40" r="34" stroke="var(--sky)" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
               </svg>
-              <div class="gauge-text" id="gauge-cpu-text" style="color: var(--sky);">—</div>
+              <div class="gauge-text" id="gauge-cpu-text" style="color: var(--sky-ink);">—</div>
             </div>
             <div class="gauge-card-label">CPU</div>
           </div>
@@ -105,7 +105,7 @@
                 <circle class="gauge-bg" cx="40" cy="40" r="34"/>
                 <circle class="gauge-fill" id="gauge-mem-fill" cx="40" cy="40" r="34" stroke="var(--lavender)" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
               </svg>
-              <div class="gauge-text" id="gauge-mem-text" style="color: var(--lavender);">—</div>
+              <div class="gauge-text" id="gauge-mem-text" style="color: var(--lavender-ink);">—</div>
             </div>
             <div class="gauge-card-label">Memory</div>
           </div>
@@ -115,13 +115,13 @@
                 <circle class="gauge-bg" cx="40" cy="40" r="34"/>
                 <circle class="gauge-fill" id="gauge-disk-fill" cx="40" cy="40" r="34" stroke="var(--mint)" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
               </svg>
-              <div class="gauge-text" id="gauge-disk-text" style="color: var(--mint);">—</div>
+              <div class="gauge-text" id="gauge-disk-text" style="color: var(--mint-ink);">—</div>
             </div>
             <div class="gauge-card-label">Disk</div>
           </div>
           <div class="gauge-card">
             <div class="gauge-card-label" style="margin-bottom:0;">Load Average</div>
-            <div class="gauge-card-value" id="gauge-load-text" style="color: var(--peach); margin-top: 18px;">—</div>
+            <div class="gauge-card-value" id="gauge-load-text" style="color: var(--peach-ink); margin-top: 18px;">—</div>
             <div style="font-size: 11px; color: var(--text-3); margin-top: 10px;" id="gauge-load-sub">1m / 5m / 15m</div>
           </div>
         </div>
@@ -162,8 +162,8 @@
             <div class="chart-card-header">
               <div class="chart-card-title">Network I/O</div>
               <div style="display:flex;gap:12px;font-size:11px;">
-                <span style="color:var(--sky);">● recv</span>
-                <span style="color:var(--peach);">● sent</span>
+                <span style="color:var(--sky-ink);">● recv</span>
+                <span style="color:var(--peach-ink);">● sent</span>
               </div>
             </div>
             <div class="chart-wrap"><canvas id="chart-net"></canvas></div>

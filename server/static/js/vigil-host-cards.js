@@ -158,9 +158,9 @@ async function _renderDetailAgentVersion(reported) {
   const expected = await _getExpectedAgentVersion();
   if (expected && isOlderVersion(reported, expected)) {
     el.textContent = `v${reported} (outdated → v${expected})`;
-    el.style.color = 'var(--peach)';
+    el.style.color = 'var(--peach-ink)';
   } else if (expected) {
-    el.style.color = 'var(--mint)';
+    el.style.color = 'var(--mint-ink)';
   } else {
     el.style.color = 'var(--text-1)';
   }
@@ -192,11 +192,11 @@ async function _loadDetailScore(hostId) {
 
 // Shared with vigil-vulns.js — same color tiers as the SVG face.
 function _scoreColor(score) {
-  if (score <= -40) return 'var(--coral)';
-  if (score <= 29) return 'var(--rose)';
-  if (score <= 49) return 'var(--peach)';
-  if (score <= 69) return 'var(--lemon)';
-  return 'var(--mint)';
+  if (score <= -40) return 'var(--coral-ink)';
+  if (score <= 29) return 'var(--rose-ink)';
+  if (score <= 49) return 'var(--peach-ink)';
+  if (score <= 69) return 'var(--lemon-ink)';
+  return 'var(--mint-ink)';
 }
 
 const _detailTagState = { hostId: null, tags: [] };
@@ -353,10 +353,10 @@ async function loadDetailMetrics(hostId) {
       responsive: true, maintainAspectRatio: false,
       interaction: { intersect: false, mode: 'index' },
       scales: {
-        x: { type: 'time', grid: { color: '#32323a', drawTicks: false }, border: { color: '#32323a' }, ticks: { maxTicksLimit: 6, font: { family: "'IBM Plex Mono', monospace", size: 10 } } },
-        y: { min: 0, max: 100, grid: { color: '#32323a', drawTicks: false }, border: { color: '#32323a' }, ticks: { callback: v => v + '%', maxTicksLimit: 4, font: { family: "'IBM Plex Mono', monospace", size: 10 } } },
+        x: { type: 'time', grid: { color: tok('--s3'), drawTicks: false }, border: { color: tok('--s3') }, ticks: { maxTicksLimit: 6, font: { family: "'IBM Plex Mono', monospace", size: 10 } } },
+        y: { min: 0, max: 100, grid: { color: tok('--s3'), drawTicks: false }, border: { color: tok('--s3') }, ticks: { callback: v => v + '%', maxTicksLimit: 4, font: { family: "'IBM Plex Mono', monospace", size: 10 } } },
       },
-      plugins: { tooltip: { backgroundColor: '#232329', borderColor: '#3a3a43', borderWidth: 1, callbacks: { label: ctx => ctx.parsed.y.toFixed(1) + '%' } } },
+      plugins: { tooltip: { backgroundColor: tok('--s1'), borderColor: tok('--border'), borderWidth: 1, callbacks: { label: ctx => ctx.parsed.y.toFixed(1) + '%' } } },
     }
   });
 
@@ -382,10 +382,10 @@ async function loadDetailMetrics(hostId) {
       responsive: true, maintainAspectRatio: false,
       interaction: { intersect: false, mode: 'index' },
       scales: {
-        x: { type: 'time', grid: { color: '#32323a', drawTicks: false }, border: { color: '#32323a' }, ticks: { maxTicksLimit: 6, font: { family: "'IBM Plex Mono', monospace", size: 10 } } },
-        y: { grid: { color: '#32323a', drawTicks: false }, border: { color: '#32323a' }, ticks: { maxTicksLimit: 4, font: { family: "'IBM Plex Mono', monospace", size: 10 }, callback: v => formatBytes(v) } },
+        x: { type: 'time', grid: { color: tok('--s3'), drawTicks: false }, border: { color: tok('--s3') }, ticks: { maxTicksLimit: 6, font: { family: "'IBM Plex Mono', monospace", size: 10 } } },
+        y: { grid: { color: tok('--s3'), drawTicks: false }, border: { color: tok('--s3') }, ticks: { maxTicksLimit: 4, font: { family: "'IBM Plex Mono', monospace", size: 10 }, callback: v => formatBytes(v) } },
       },
-      plugins: { legend: { display: false }, tooltip: { backgroundColor: '#232329', borderColor: '#3a3a43', borderWidth: 1, callbacks: { label: ctx => ctx.dataset.label + ': ' + formatBytes(ctx.parsed.y) } } },
+      plugins: { legend: { display: false }, tooltip: { backgroundColor: tok('--s1'), borderColor: tok('--border'), borderWidth: 1, callbacks: { label: ctx => ctx.dataset.label + ': ' + formatBytes(ctx.parsed.y) } } },
     }
   });
 }

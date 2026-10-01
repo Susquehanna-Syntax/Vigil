@@ -29,7 +29,7 @@ function _faceFor(score) {
   let mouthY, color, extras = '', eyes;
   const eyeDot = (cx, cy) => `<circle cx="${cx}" cy="${cy}" r="3" fill="${color}"/>`;
   if (score <= -100) {
-    color = 'var(--coral)';
+    color = 'var(--coral-ink)';
     eyes = `
       <line x1="25" y1="29" x2="33" y2="37" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
       <line x1="33" y1="29" x2="25" y2="37" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
@@ -39,7 +39,7 @@ function _faceFor(score) {
     return _faceSvg(color, eyes, '', extras);
   }
   if (score <= -40) {
-    color = 'var(--coral)';
+    color = 'var(--coral-ink)';
     mouthY = 26;
     extras = `
       <path d="M30,40 L34,46 L27,46 Z" fill="${color}" opacity="0.7"/>
@@ -47,35 +47,35 @@ function _faceFor(score) {
       <line x1="58" y1="22" x2="50" y2="26" stroke="${color}" stroke-width="2" stroke-linecap="round"/>`;
     eyes = eyeDot(29, 33) + eyeDot(51, 33);
   } else if (score <= -1) {
-    color = 'var(--rose)';
+    color = 'var(--rose-ink)';
     mouthY = 28;
     extras = `<path d="M30,40 L34,46 L27,46 Z" fill="${color}" opacity="0.7"/>`;
     eyes = eyeDot(29, 33) + eyeDot(51, 33);
   } else if (score <= 9) {
-    color = 'var(--rose)';
+    color = 'var(--rose-ink)';
     mouthY = 32;
     extras = `
       <line x1="24" y1="27" x2="32" y2="29" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
       <line x1="56" y1="27" x2="48" y2="29" stroke="${color}" stroke-width="2" stroke-linecap="round"/>`;
     eyes = eyeDot(29, 34) + eyeDot(51, 34);
   } else if (score <= 29) {
-    color = 'var(--rose)';
+    color = 'var(--rose-ink)';
     mouthY = 38;
     eyes = eyeDot(29, 33) + eyeDot(51, 33);
   } else if (score <= 49) {
-    color = 'var(--peach)';
+    color = 'var(--peach-ink)';
     mouthY = 44;
     eyes = eyeDot(29, 33) + eyeDot(51, 33);
   } else if (score <= 69) {
-    color = 'var(--lemon)';
+    color = 'var(--lemon-ink)';
     mouthY = 50;
     eyes = eyeDot(29, 33) + eyeDot(51, 33);
   } else if (score <= 89) {
-    color = 'var(--mint)';
+    color = 'var(--mint-ink)';
     mouthY = 56;
     eyes = eyeDot(29, 33) + eyeDot(51, 33);
   } else {
-    color = 'var(--mint)';
+    color = 'var(--mint-ink)';
     mouthY = 62;
     eyes = eyeDot(29, 33) + eyeDot(51, 33);
   }
@@ -103,11 +103,11 @@ function _renderFaceInto(el, score) {
 
 // Mirrors _scoreColor in vigil-host-cards.js — keep in sync.
 function _scoreColorLocal(score) {
-  if (score <= -40) return 'var(--coral)';
-  if (score <= 29) return 'var(--rose)';
-  if (score <= 49) return 'var(--peach)';
-  if (score <= 69) return 'var(--lemon)';
-  return 'var(--mint)';
+  if (score <= -40) return 'var(--coral-ink)';
+  if (score <= 29) return 'var(--rose-ink)';
+  if (score <= 49) return 'var(--peach-ink)';
+  if (score <= 69) return 'var(--lemon-ink)';
+  return 'var(--mint-ink)';
 }
 
 async function _renderFleetHeadline() {
@@ -291,10 +291,10 @@ function renderVulns(summaries) {
     ['', null],                            // expander chevron column
     ['Host', null], ['IP', null],
     ['Score', null],
-    ['Critical', 'var(--rose)'], ['High', 'var(--coral)'],
-    ['Medium', 'var(--lemon)'], ['Low', 'var(--sky)'],
+    ['Critical', 'var(--rose-ink)'], ['High', 'var(--coral-ink)'],
+    ['Medium', 'var(--lemon-ink)'], ['Low', 'var(--sky-ink)'],
     ['Info', 'var(--text-3)'],
-    ['Overdue', 'var(--rose)'], ['Due soon', 'var(--lemon)'],
+    ['Overdue', 'var(--rose-ink)'], ['Due soon', 'var(--lemon-ink)'],
     ['Last Scan', null], ['', null],
   ];
   for (const [label, color] of headers) {
@@ -386,8 +386,8 @@ const SEVERITY_LABEL = {
   critical: 'CRIT', high: 'HIGH', medium: 'MED', low: 'LOW', info: 'INFO',
 };
 const SEVERITY_COLOR = {
-  critical: 'var(--rose)', high: 'var(--coral)', medium: 'var(--lemon)',
-  low: 'var(--sky)', info: 'var(--text-3)',
+  critical: 'var(--rose-ink)', high: 'var(--coral-ink)', medium: 'var(--lemon-ink)',
+  low: 'var(--sky-ink)', info: 'var(--text-3)',
 };
 
 function _toggleFindingsRow(tr, summary) {
@@ -506,7 +506,7 @@ async function _loadFindingsInto(container, summary) {
       const chip = document.createElement('span');
       chip.className = 'mono';
       chip.style.fontSize = '10px';
-      chip.style.color = 'var(--sky)';
+      chip.style.color = 'var(--sky-ink)';
       chip.style.flexShrink = '0';
       chip.title = `${f.exception.kind}: ${f.exception.reason} (until ${f.exception.expires_on})`;
       chip.innerHTML =
@@ -523,11 +523,11 @@ async function _loadFindingsInto(container, summary) {
       due.style.color = 'var(--text-3)';
       due.textContent = '—';
     } else if (f.overdue) {
-      due.style.color = 'var(--rose)';
+      due.style.color = 'var(--rose-ink)';
       due.style.fontWeight = '600';
       due.textContent = `${Math.abs(f.days_remaining)}d overdue`;
     } else {
-      due.style.color = f.days_remaining <= 14 ? 'var(--lemon)' : 'var(--text-3)';
+      due.style.color = f.days_remaining <= 14 ? 'var(--lemon-ink)' : 'var(--text-3)';
       due.textContent = f.days_remaining === 0 ? 'due today' : `due in ${f.days_remaining}d`;
     }
     row.appendChild(due);

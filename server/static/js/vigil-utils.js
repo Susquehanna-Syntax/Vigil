@@ -385,16 +385,19 @@ function yamlToHtml(src) {
   }).join('\n');
 }
 
-/* ── Theme (system / light / dark) ────────────────────────────────────
+/* ── Theme (Dark / Paper / River / Ink, or System) ──────────────────────
  *
- * Two controls drive the same preference: the sidebar icon, which flips
- * between light and dark, and the Appearance card in Settings, which also
- * offers "System" — follow the OS. "System" is stored as the word, not as
- * the colour it resolved to, so the page keeps tracking the OS afterwards
- * instead of freezing at whatever it happened to be when it was chosen.
+ * The four themes of the SQSY design language. Paper is stored as "light",
+ * so a browser that chose light before M12 lands on Paper. Two controls drive
+ * the same preference: the sidebar icon, which steps through the four, and
+ * the Appearance card in Settings, which also offers "System" — Dark or Paper
+ * with the OS. "System" is stored as the word, not as the colour it resolved
+ * to, so the page keeps tracking the OS afterwards.
  *
  * The identical resolution runs inline in base.html before first paint; a
  * mismatch between the two shows up as a flash of the wrong theme. */
+const THEMES = ['dark', 'light', 'river', 'ink'];
+const THEME_LABELS = { dark: 'Dark', light: 'Paper', river: 'River', ink: 'Ink' };
 const _MQ_DARK = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
 function _systemTheme() {
@@ -403,7 +406,7 @@ function _systemTheme() {
 function _storedTheme() {
   try {
     const v = localStorage.getItem('vigil-theme');
-    if (v === 'light' || v === 'dark' || v === 'system') return v;
+    if (THEMES.includes(v) || v === 'system') return v;
   } catch (e) {}
   return 'dark';
 }
@@ -412,24 +415,52 @@ function _applyThemeIcon(theme) {
   const moon = document.getElementById('theme-icon-moon');
   if (sun) sun.style.display = theme === 'light' ? 'block' : 'none';
   if (moon) moon.style.display = theme === 'light' ? 'none' : 'block';
+  const toggle = document.getElementById('theme-toggle');
+  if (toggle) toggle.dataset.tip = 'Theme: ' + (THEME_LABELS[theme] || 'Dark');
 }
 function _applyThemeButtons(pref) {
-  ['system', 'light', 'dark'].forEach((m) => {
+  ['system', ...THEMES].forEach((m) => {
     const b = document.getElementById('theme-' + m);
-    if (b) b.classList.toggle('active', m === pref);
+    if (!b) return;
+    b.classList.toggle('active', m === pref);
+    b.setAttribute('aria-pressed', String(m === pref));
   });
 }
 function setTheme(mode) {
-  const pref = (mode === 'light' || mode === 'dark' || mode === 'system') ? mode : 'dark';
+  const pref = (THEMES.includes(mode) || mode === 'system') ? mode : 'dark';
   const resolved = pref === 'system' ? _systemTheme() : pref;
   document.documentElement.setAttribute('data-theme', resolved);
   try { localStorage.setItem('vigil-theme', pref); } catch (e) {}
   _applyThemeIcon(resolved);
   _applyThemeButtons(pref);
+  // Charts draw their grid and tooltips from the tokens once; they re-read them.
+  document.dispatchEvent(new CustomEvent('vigil:theme', { detail: { theme: resolved } }));
 }
 function toggleTheme() {
-  const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-  setTheme(cur === 'light' ? 'dark' : 'light');
+  const cur = document.documentElement.getAttribute('data-theme');
+  setTheme(THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length]);
+}
+
+//: A token's current value, for the few things (Chart.js) that cannot take var().
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+//: A Chart.js scriptable option that reads a token every draw, so a chart
+//: follows a theme change on its next update instead of keeping Dark's greys.
+function tok(name) {
+  return () => cssVar(name);
+}
+
+/* ── Reduce motion (Settings) — the same collapse as the OS setting ────── */
+function _applyMotionButton(on) {
+  const b = document.getElementById('motion-reduce');
+  if (b) b.setAttribute('aria-checked', String(on));
+}
+function toggleReduceMotion() {
+  const on = !document.documentElement.classList.contains('rm-sim');
+  document.documentElement.classList.toggle('rm-sim', on);
+  try { localStorage.setItem('vigil-reduce-motion', on ? '1' : '0'); } catch (e) {}
+  _applyMotionButton(on);
 }
 if (_MQ_DARK && _MQ_DARK.addEventListener) {
   _MQ_DARK.addEventListener('change', () => {
@@ -454,6 +485,7 @@ function setDensity(mode) {
 document.addEventListener('DOMContentLoaded', () => {
   _applyThemeIcon(document.documentElement.getAttribute('data-theme') || 'dark');
   _applyThemeButtons(_storedTheme());
+  _applyMotionButton(document.documentElement.classList.contains('rm-sim'));
   _applyDensityButtons(document.documentElement.getAttribute('data-density') || 'cozy');
 });
 
