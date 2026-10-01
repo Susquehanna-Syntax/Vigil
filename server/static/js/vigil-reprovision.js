@@ -149,6 +149,11 @@ async function openRebuildModal(hostId, hostname) {
   imageSel.onchange = () => { refreshProfiles(); refreshGate(); };
   profileSel.onchange = () => { refreshSummary(); refreshGate(); };
   hostnameInput.oninput = refreshGate;
+  // Enter on a hostname that does not match shakes the field (the design
+  // language's Destructive variant) instead of silently doing nothing.
+  hostnameInput.onkeydown = (e) => {
+    if (e.key === 'Enter' && hostnameInput.value !== hostname) shakeEl(hostnameInput);
+  };
   if (ackBox) ackBox.onchange = refreshGate;
   document.getElementById('rb-cancel').onclick = m.close;
   refreshProfiles();

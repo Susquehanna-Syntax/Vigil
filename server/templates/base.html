@@ -782,6 +782,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 
 <!-- vigil-utils.js — getCsrf, apiPost/apiJson, showToast, escHtml, formatBytes, groupByLabel, computeRates. Load first: every other script depends on this. -->
 <script src="{% static 'js/vigil-utils.js' %}"></script>
+<!-- vigil-modal.js — focus, Esc, focus trap, inert page and stacking for every dialog -->
+<script src="{% static 'js/vigil-modal.js' %}"></script>
 <!-- vigil-nav.js — navigateTo(), tab-bar switching -->
 <script src="{% static 'js/vigil-nav.js' %}"></script>
 <!-- vigil-widgets.js — one renderer per widget kind. Load before vigil-dashboards.js, which calls into WIDGET_RENDERERS. -->
