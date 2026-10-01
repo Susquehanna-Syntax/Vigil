@@ -115,3 +115,45 @@ class MatchHostTests(TestCase):
         ingest_software(self.host, payload(digest_of("a"), [item("dpkg", "openssl", "openssl",
                                                                  "3.0.13-0ubuntu3")]))
         self.assertTrue(VulnFinding.objects.filter(host=self.host, scanner="vigil").exists())
+
+
+class WindowsFindingTests(TestCase):
+    def setUp(self):
+        self.host = _host("win", "Windows 11 Pro", "10.0.22631")
+
+    def _kb(self, key, classification="Security Updates", severity="important"):
+        from apps.software.models import PendingUpdate
+        return PendingUpdate.objects.create(host=self.host, kind="windows", key=key, title=f"t {key}",
+                                            classification=classification, severity=severity,
+                                            first_seen=now(), last_seen=now())
+
+    def test_missing_security_update_is_the_finding(self):
+        self._kb("KB5034441")
+        self._kb("KB2267602", classification="Definition Updates", severity="")
+        result = match_host(self.host)
+        self.assertEqual(result["open"], 1)
+        f = VulnFinding.objects.get(host=self.host)
+        self.assertEqual((f.plugin_id_or_oid, f.severity, f.fixed_version),
+                         ("kb:KB5034441", "high", "KB5034441"))
+        self.assertEqual([e.kind for e in f.evidence.all()], ["missing_update"])
+        from apps.software.models import PendingUpdate
+        PendingUpdate.objects.all().delete()
+        self.assertEqual(match_host(self.host)["fixed"], 1)
+
+    def test_check_in_list_raises_findings(self):
+        from apps.software.updates import ingest_windows_updates
+        ingest_windows_updates(self.host, [{"kb": "KB1", "title": "x", "severity": "critical",
+                                            "categories": ["Security Updates"]}])
+        self.assertEqual(VulnFinding.objects.get(host=self.host).severity, "critical")
+        self.assertEqual(VulnSummary.objects.get(host=self.host).critical, 1)
+
+    def test_outdated_winget_app_is_a_labelled_proxy(self):
+        item = _pkg(self.host, "Mozilla.Firefox", "127.0", source="winget")
+        item.latest_version = "128.0"
+        item.save()
+        _pkg(self.host, "Git.Git", "2.45.0", source="winget")  # current: no finding
+        self.assertEqual(match_host(self.host)["open"], 1)
+        f = VulnFinding.objects.get(host=self.host)
+        self.assertEqual((f.plugin_id_or_oid, f.fixed_version), ("app:winget:Mozilla.Firefox", "128.0"))
+        self.assertIn("no advisory feed", f.description)
+        self.assertEqual([e.kind for e in f.evidence.all()], ["outdated_app"])

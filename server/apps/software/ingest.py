@@ -160,11 +160,7 @@ def _ingest(host, payload):
 
 def _match_vulns(host) -> None:
     """A new inventory is a new answer to "what is vulnerable here?" (M9).
-    Skipped until OSV data has been loaded; never fails the ingest."""
-    from apps.vulns.models import OsvAdvisory
-
-    if not OsvAdvisory.objects.exists():
-        return
+    Never fails the ingest."""
     try:
         from apps.vulns.matcher import match_host
         match_host(host)
