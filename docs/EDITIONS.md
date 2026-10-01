@@ -25,6 +25,7 @@ with `seats: 9999`). SSO/SAML is "available — talk to us," not a tier.
 | Vuln scanning (Trivy / Nessus / Greenbone) | ✅ | ✅ |
 | Vigil's own vulnerability matcher (OSV / KEV / EPSS, offline bundle), evidence and fix groups | ✅ | ✅ |
 | Remediation by fix (deploy a fix to every affected host), AI mitigations when there is no fix | ✅ | ✅ |
+| Detection tasks (severity / cves / boost), Organization · Community · Vendor tags, Anvil SARIF import | ✅ | ✅ |
 | **Baselines** (auto-dispatch on host approval) | ✅ | ✅ |
 | **AI suggestions** — BYO endpoint, any OpenAI-compatible or Anthropic | ✅ | ✅ |
 | **Status page** (public token URL, Powered-by-Vigil badge) | ✅ | ✅ |

@@ -310,6 +310,10 @@
       <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 8v8M8 6c6 0 4 6 8 6"/></svg>
       Relevance &amp; branches
     </a>
+    <a href="#detection-tasks" class="nav-link">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16" y2="16"/><line x1="11" y1="8" x2="11" y2="12"/><circle cx="11" cy="14.5" r=".6"/></svg>
+      Detection tasks
+    </a>
     <a href="#apps" class="nav-link">
       <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>
       Apps
@@ -1653,6 +1657,48 @@
       <p class="prose">YAML reads a few bare words as yes/no. A step written <code>id: yes</code>, <code>id: no</code>, <code>id: on</code> or <code>id: off</code> becomes a boolean, and the import is refused with a hint. Quote them: <code>id: "yes"</code>.</p>
     </section>
 
+    <section class="section" id="detection-tasks">
+      <p class="section-label">Automation</p>
+      <h2 class="section-title" style="color:var(--rose)">Detection tasks</h2>
+      <p class="section-desc">A detection task is an ordinary task — same YAML, validator, catalogue and signing — whose <code>relevant:</code> block is the detection and whose steps are the fix. Three keys describe it: <code>severity</code>, <code>cves</code> and <code>boost</code>.</p>
+
+      <h3>The keys</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Key</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>severity</code></td><td>critical, high, medium or low — what a match is worth as a finding. A task with a severity and a <code>relevant:</code> block is a detection task.</td></tr>
+            <tr><td><code>cves</code></td><td>The CVEs a match means. The finding carries them, and the task becomes the fix for any group with those CVEs and no package fix.</td></tr>
+            <tr><td><code>boost</code></td><td>Up to five hunt probes that never decide whether the task applies — only how sure a match is. When one matches too, the finding's confidence is <em>high</em>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="code-block">
+        <div class="code-label">log4shell-leftover-jar.yaml</div>
+        <pre>name: log4shell-leftover-jar
+severity: critical
+cves: [CVE-2021-44228]
+relevant:
+  any:
+    - hunt_file: {name: &quot;log4j-core-*.jar&quot;, version_lt: &quot;2.17.1&quot;, scope: targeted}
+boost:
+  - hunt_process: {cmdline: java}
+actions:
+  - id: remove
+    type: execute_script
+    params:
+      shell: bash
+      script: |
+        find /opt -name &quot;log4j-core-2.1[0-6]*.jar&quot; -delete</pre>
+      </div>
+
+      <h3>What happens on each host</h3>
+      <p class="prose">The agent runs the <code>relevant:</code> probes. If nothing matches, the host reports <em>not applicable</em> and any finding this task raised there before is closed. If something matches, the agent runs the <code>boost:</code> probes (a failing boost is reported and skipped, never fatal), then the steps. A run that matched and failed leaves an open finding; one that matched and completed records it as found and fixed. The probes' matches — the jar on disk, the java process — are the finding's evidence, and it appears under <a href="#vuln-remediation-by-fix">Remediation by fix</a> as one group with a <em>Deploy detection task</em> button.</p>
+
+      <h3>Where tasks come from</h3>
+      <p class="prose">Every task carries a source tag: <strong>Organization</strong> (your own team), <strong>Community</strong> (taken from the catalogue, same review and signing) or <strong>Vendor</strong> (made from a vendor's findings, such as Anvil's). The library shows it, and <em>Detection tasks only</em> lists just the detection tasks.</p>
+    </section>
+
     <section class="section" id="apps">
       <p class="section-label">Software</p>
       <h2 class="section-title" style="color:var(--mint)">Apps</h2>
@@ -2168,6 +2214,9 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
       <p class="prose">The Vulnerabilities page opens with <strong>Remediation by fix</strong>: one row per fix across the fleet, worst first — "Upgrade openssl to 3.0.13-0ubuntu3.1 or later on 14 hosts: fixes 37 CVEs". Each row shows severity, KEV, EPSS, CVSS and whether it is running anywhere, and opens to <em>what</em> (package, version, path), <em>why</em> (the advisory and its CVEs), <em>fix</em> and <em>where</em> (every host, with its evidence and confidence). <em>Deploy fix</em> writes a normal task — <code>app_upgrade</code> for a package or an outdated app, <code>windows_update_install</code> for a KB — and opens the deploy dialog with every affected host selected.</p>
       <p class="prose">A group with no fix (no fixed version, a jar on disk, a vendor that will not fix) offers <em>Suggest mitigations</em> instead. The assistant is given the stored advisory text, the path, the vendor status and where it runs, and may propose only mitigations — never an upgrade.</p>
       <p class="prose">Limits: OSV lists Debian and Ubuntu packages by <em>source</em> name, and the inventory reports binary packages, so a library shipped under another name (<code>libssl3</code> from <code>openssl</code>) is not matched yet. Arch, SUSE and RHEL itself have no OSV ecosystem here. Mismatch findings (files on disk that the Apps inventory does not know about) are not built yet.</p>
+
+      <h3 id="vuln-anvil">Importing Anvil</h3>
+      <p class="prose">Anvil finds; Vigil acts. Post an Anvil record (SARIF 2.1.0 with the <code>anvil/*</code> extension) to <code>POST /api/v1/vulns/anvil/</code> — as JSON (<code>{"record": …}</code>) or a <code>record</code> file — and its findings join the same evidence and fix-group model as every other scanner. The record is validated against Anvil's own JSON Schema first; nothing is written if it fails. Findings Anvil judged false positives are skipped. Each finding goes to the host you pin with <code>?host_id=</code>, or the host a logical location names; repository-only findings are counted and skipped. Severity follows the SARIF level, critical when Anvil marks it KEV; the package comes from its purl. The next record for a host closes what it no longer carries.</p>
 
       <h3 id="remediation" style="margin-top:36px;">Remediation Dates</h3>
       <p class="prose">Every open finding that is not <code>info</code> carries a <code>due_date</code>, derived once at first detection from the active remediation policy and from whether the CVE is on the CISA KEV list. The date is stable across re-scans: it is anchored to the finding's <code>first_seen</code> rather than to the latest scan, so a scanner re-running daily does not keep pushing the deadline out.</p>

@@ -68,6 +68,8 @@ Rules:
 - A vulnerability is fixed per fix group: one upgrade of the package to its fixed version (app_upgrade) or one
   KB (windows_update_install include_kb) clears every CVE in the group. When the prompt says NO FIX IS AVAILABLE,
   propose mitigations only and never an upgrade or a version.
+- A detection task is a normal task with severity (critical/high/medium/low), cves and a relevant: block that detects;
+  its actions are the fix. boost: lists up to five hunt probes that only raise confidence, never decide.
 - Never propose update_agent."""
 
 
