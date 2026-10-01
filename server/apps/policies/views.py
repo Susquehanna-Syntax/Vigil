@@ -7,8 +7,10 @@ from rest_framework.response import Response
 
 from apps.accounts.permissions import IsAdmin
 
+from .compile import compile_policy
 from .drift import policy_drift
 from .models import AppRule, UpdatePolicy
+from .tasks import delete_periodic_task, sync_periodic_task
 from .validation import PolicyError, apply_fields, clean_rules
 
 
@@ -24,6 +26,7 @@ def _row(p: UpdatePolicy) -> dict:
         "windows_classifications": p.windows_classifications or [],
         "deferral_days": p.deferral_days, "reboot": p.reboot,
         "linux_updates": p.linux_updates,
+        "task_definition": str(p.task_definition_id) if p.task_definition_id else None,
         "app_rules": [{"app": r.app, "source": r.source, "state": r.state,
                        "version": r.version} for r in p.app_rules.all()],
         "created_at": p.created_at.isoformat() if p.created_at else None,
@@ -45,6 +48,8 @@ def _save(request, policy: UpdatePolicy, data: dict) -> Response | None:
         if rules is not None:
             policy.app_rules.all().delete()
             AppRule.objects.bulk_create([AppRule(policy=policy, **r) for r in rules])
+        compile_policy(policy)
+        sync_periodic_task(policy)
     return None
 
 
@@ -67,6 +72,12 @@ def policy_detail(request, policy_id):
     if request.method == "GET":
         return Response(_row(policy))
     if request.method == "DELETE":
+        delete_periodic_task(policy)
+        if policy.task_definition_id:
+            # Archived, not deleted: run history still points at it.
+            from django.utils.timezone import now
+            policy.task_definition.archived_at = now()
+            policy.task_definition.save(update_fields=["archived_at"])
         policy.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
     if error := _save(request, policy, request.data):
@@ -80,3 +91,18 @@ def policy_drift_view(request, policy_id):
     """What a run would change right now, host by host."""
     policy = get_object_or_404(UpdatePolicy, pk=policy_id)
     return Response(policy_drift(policy))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def policy_run_now(request, policy_id):
+    """Run the policy now rather than at its window — TOTP, like a deploy."""
+    from apps.accounts.totp import require_totp_confirmation
+
+    from .run import run_policy
+
+    policy = get_object_or_404(UpdatePolicy, pk=policy_id)
+    if error := require_totp_confirmation(request.user, request.data):
+        return Response({"detail": f"Running a policy needs confirmation: {error}",
+                         "needs_totp": True}, status=status.HTTP_401_UNAUTHORIZED)
+    return Response(run_policy(policy, user=request.user))

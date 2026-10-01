@@ -142,6 +142,7 @@ def start_rollout(
     min_results_before_halt: int = 3,
     playbook=None,
     wave_group_tag="",
+    host_ids=None,
 ) -> PatchRollout:
     """Create a rollout and dispatch its first wave.
 
@@ -178,6 +179,7 @@ def start_rollout(
                      else PatchRollout.ActionKind.TASK),
         state=PatchRollout.State.RUNNING,
         wave_group_tag=wave_group_tag,
+        host_ids=[str(h) for h in host_ids] if host_ids is not None else None,
         current_wave=_first_enabled_wave(wave_group_tag),
         failure_threshold_pct=failure_threshold_pct,
         min_results_before_halt=min_results_before_halt,
@@ -209,6 +211,9 @@ def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
     )
     plan = rollout_wave_plan(enabled)
     host_ids = plan.get(rollout.current_wave.id, [])
+    if rollout.host_ids is not None:
+        allowed = set(rollout.host_ids)
+        host_ids = [h for h in host_ids if str(h) in allowed]
     hosts = list(Host.objects.filter(id__in=host_ids))
 
     from .dispatch import build_playbook_steps, create_chain, task_params
