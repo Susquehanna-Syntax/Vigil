@@ -259,7 +259,8 @@ function mountModal(id, opts) {
     overlay.className = 'modal-overlay';
     modal = document.createElement('div');
     modal.id = id + '-modal';
-    modal.className = 'modal' + (opts.wide ? ' modal-wide' : '') + (opts.xwide ? ' modal-xwide' : '');
+    modal.className = 'modal' + (opts.wide ? ' modal-wide' : '') + (opts.xwide ? ' modal-xwide' : '')
+      + (opts.variant ? ' ' + opts.variant : '');
     document.body.appendChild(overlay);
     document.body.appendChild(modal);
   }
@@ -290,7 +291,7 @@ function mountModal(id, opts) {
 function confirmModal(message, opts) {
   opts = opts || {};
   return new Promise((resolve) => {
-    const m = mountModal('confirm');
+    const m = mountModal('confirm', { variant: 'm-pop' });
     m.setBody(`
       <div class="modal-title">
         <span id="confirm-title"></span>
@@ -326,7 +327,7 @@ function confirmModal(message, opts) {
 function promptModal(message, opts) {
   opts = opts || {};
   return new Promise((resolve) => {
-    const m = mountModal('prompt');
+    const m = mountModal('prompt', { variant: 'm-pop' });
     m.setBody(`
       <div class="modal-title">
         <span id="prompt-title"></span>
@@ -457,18 +458,18 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
-/* ── Escape closes whatever modal is open ─────────────────────────────────
+/* ── Escape closes the top modal ──────────────────────────────────────────
  *
  * A safety net so no dialog can trap the page behind an overlay that silently
  * swallows clicks — which reads to a user as the whole UI having frozen, with
- * nothing on screen to explain it.
+ * nothing on screen to explain it. The handler lives in vigil-modal.js, which
+ * knows which dialog is on top.
  *
- * This file loads first, so this handler runs BEFORE any module's own Escape
- * handler. It therefore cannot simply strip the `open` class: doing so would
- * make the module's `classList.contains('open')` guard fail and skip its
- * cleanup. Instead it looks for the module's real close function by naming
- * convention and calls that, falling back to the class removal only when no
- * such function exists. Ordering then does not matter.
+ * It runs BEFORE any module's own Escape handler, so it cannot simply strip
+ * the `open` class: doing so would make the module's
+ * `classList.contains('open')` guard fail and skip its cleanup. Instead it
+ * looks for the module's real close function by naming convention and calls
+ * that, falling back to the class removal only when no such function exists.
  */
 function _closeFnFor(modalId) {
   // "wave-editor-modal" → closeWaveEditor / closeWaveEditorModal
@@ -482,19 +483,6 @@ function _closeFnFor(modalId) {
   return null;
 }
 
-document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
-  const open = document.querySelector('.modal.open');
-  if (!open) return;
-  const fn = open.id ? _closeFnFor(open.id) : null;
-  if (fn) { fn(); return; }
-  open.classList.remove('open');
-  const overlay = open.id
-    ? document.getElementById(open.id.replace(/-modal$/, '-overlay'))
-    : null;
-  if (overlay) overlay.classList.remove('open');
-  else document.querySelectorAll('.modal-overlay.open').forEach(o => o.classList.remove('open'));
-});
 
 
 /* ── Polling that stops when nobody is looking ────────────────────────────
