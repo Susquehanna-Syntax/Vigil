@@ -75,6 +75,11 @@ class VulnScan(models.Model):
         # Vigil's own findings (M9): the inventory matched against OSV, a
         # missing Windows security update, an app winget says is outdated.
         VIGIL = "vigil", "Vigil"
+        # A detection task (M10): a task with relevant: probes and a severity,
+        # whose match is the finding and whose steps are the fix.
+        DETECTION = "detection", "Detection task"
+        # Imported scanner output — Anvil's SARIF (M10).
+        ANVIL = "anvil", "Anvil"
 
     class State(models.TextChoices):
         REQUESTED = "requested", "Requested"
