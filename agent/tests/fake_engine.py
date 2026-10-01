@@ -27,6 +27,7 @@ class FakeEngine:
         self.version = DOCKER_VERSION if version is None else version
         self.routes = dict(routes or {})
         self.requests = []
+        self.headers = []
         self._dir = tempfile.TemporaryDirectory()
         self.path = path or os.path.join(self._dir.name, "engine.sock")
         engine = self
@@ -43,6 +44,7 @@ class FakeEngine:
                 raw = self.rfile.read(length) if length else b""
                 body = json.loads(raw) if raw else None
                 engine.requests.append((method, self.path, body))
+                engine.headers.append(dict(self.headers))
                 bare = self.path.split("?", 1)[0]
                 if bare == "/_ping":
                     status, out = 200, "OK"

@@ -63,10 +63,42 @@ def _split_ref(image: str) -> tuple[str, str]:
     return image, "latest"
 
 
+def registry_of(image: str) -> str:
+    """The registry an image reference names — docker.io when it names none
+    (the first path part is a registry only if it has a dot, a port or is
+    localhost, which is how the engine itself reads it)."""
+    first, sep, _rest = image.partition("/")
+    if sep and ("." in first or ":" in first or first == "localhost"):
+        return first.lower()
+    return "docker.io"
+
+
+def _registry_auth(image: str) -> str | None:
+    """X-Registry-Auth for *image*, when the server holds a login for its
+    registry on this host; None to pull anonymously."""
+    import base64
+
+    from .. import client
+    from ..config import load_config
+
+    try:
+        config = load_config()
+    except Exception:  # noqa: BLE001 — no config, no credentials
+        return None
+    login = client.fetch_registry_auth(config, registry_of(image))
+    if not login:
+        return None
+    blob = json.dumps({"username": login["username"], "password": login["password"],
+                       "serveraddress": login.get("serveraddress") or registry_of(image)})
+    return base64.urlsafe_b64encode(blob.encode()).decode()
+
+
 def _pull(image: str, auth: str | None = None) -> str:
     """Pull *image* through the engine; returns its progress text. The engine
     answers 200 and puts a failure in the stream, so the stream is read."""
     repo, tag = _split_ref(image)
+    if auth is None:
+        auth = ex._registry_auth(image)
     headers = {"X-Registry-Auth": auth} if auth else None
     status, body, _ = _engine().raw("POST", "/images/create",
                                     query={"fromImage": repo, "tag": tag or None},
