@@ -467,7 +467,7 @@ async function _loadFindingsInto(container, summary) {
     // Overdue findings are visually distinct — rose row tint + rose due
     // cell. Same --rose value as .vuln-critical's existing rgba in the
     // stylesheet, at a lighter alpha — no new colour literal.
-    if (f.overdue) row.style.background = 'rgba(242,160,184,0.07)';
+    if (f.overdue) row.style.background = 'rgba(var(--rgb-rose), var(--tint-a))';
 
     const sev = document.createElement('span');
     sev.className = 'mono';

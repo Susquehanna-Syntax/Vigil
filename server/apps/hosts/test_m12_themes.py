@@ -48,6 +48,28 @@ class ThemeTokenTests(SimpleTestCase):
         self.assertIn("html.rm-sim *", CSS)
 
 
+class ComponentStandardTests(SimpleTestCase):
+    def test_filled_accent_buttons_use_on_accent_text(self):
+        # var(--bg) was cream-on-pastel on Paper.
+        for accent in ("mint", "rose", "sky", "lav", "peach", "lemon"):
+            rule = CSS[CSS.index(f".btn-{accent} {{"):]
+            rule = rule[:rule.index("}")]
+            self.assertIn("color: var(--on-accent)", rule, accent)
+
+    def test_pastel_tints_go_through_the_channel_tokens(self):
+        literal = r"rgba\((?:242,160,184|186,168,232|126,221,181|240,184,136|130,196,238|226,212,120|240,144,128),"
+        self.assertNotRegex(CSS.replace(" ", ""), literal)
+
+    def test_tabs_scroll_instead_of_wrapping_on_phones(self):
+        self.assertIn("overflow-x: auto", _block(".tab-bar"))
+        self.assertIn("white-space: nowrap", _block(".tab"))
+
+    def test_chart_js_is_never_handed_a_css_variable(self):
+        # A canvas cannot resolve var(); the line silently drew in the default.
+        src = (JS / "vigil-widgets.js").read_text()
+        self.assertNotRegex(src, r"borderColor: 'var\(--")
+
+
 class ThemeWiringTests(SimpleTestCase):
     def test_first_paint_knows_every_theme(self):
         base = (TEMPLATES / "base.html").read_text()

@@ -147,15 +147,15 @@ async function _renderStatTile(body, settings) {
   const h = _wRows(hosts);
   const a = _wRows(alerts);
   const stats = {
-    hosts: { value: h.length, label: 'Total hosts', color: 'var(--lavender)' },
+    hosts: { value: h.length, label: 'Total hosts', color: 'var(--lavender-ink)' },
     online: { value: h.filter(x => x.status === 'online').length,
-              label: 'Online', color: 'var(--mint)' },
+              label: 'Online', color: 'var(--mint-ink)' },
     offline: { value: h.filter(x => x.status === 'offline').length,
                label: 'Offline', color: 'var(--text-3)' },
     alerts_firing: { value: a.filter(x => x.state === 'firing').length,
-                     label: 'Alerts firing', color: 'var(--rose)' },
+                     label: 'Alerts firing', color: 'var(--rose-ink)' },
     pending: { value: h.filter(x => x.status === 'pending').length,
-               label: 'Pending approval', color: 'var(--peach)' },
+               label: 'Pending approval', color: 'var(--peach-ink)' },
   };
   const stat = stats[settings.stat] || stats.hosts;
   body.innerHTML =
@@ -425,7 +425,7 @@ async function _renderMetricChart(body, settings, widget) {
       type: 'line',
       data: { datasets: [{
         label: `${settings.category}/${settings.metric}`,
-        data: [], borderColor: 'var(--sky)', backgroundColor: 'rgba(130,196,238,.14)',
+        data: [], borderColor: tok('--sky'), backgroundColor: 'rgba(130,196,238,.14)',
         borderWidth: 2, pointRadius: 0, fill: true, tension: 0.25,
       }] },
       options: {
@@ -595,7 +595,7 @@ async function _renderProcessMonitor(body, settings, widget) {
     chart = new Chart(body.querySelector('canvas').getContext('2d'), {
       type: 'line',
       data: { datasets: [{
-        label: wanted, data: [], borderColor: 'var(--mint)',
+        label: wanted, data: [], borderColor: tok('--mint'),
         backgroundColor: 'rgba(126,221,181,.14)',
         borderWidth: 2, pointRadius: 0, fill: true, tension: 0.25,
       }] },
