@@ -18,6 +18,7 @@ AGENT_ACTIONS = frozenset({
     "add_firewall_rule",
     "add_tag",
     "add_user_to_group",
+    "app_ensure",
     "app_install",
     "app_install_custom",
     "app_inventory",

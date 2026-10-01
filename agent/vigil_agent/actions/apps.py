@@ -884,3 +884,92 @@ def _app_install_custom(params: dict, config: AgentConfig) -> str:
         _recollect()
     return ActionOutput(f"installed {kind} from {url} (sha256 verified){note}",
                         {"sha256": actual, "installed_version": installed})
+
+
+# ── app_ensure ────────────────────────────────────────────────────────────────
+#
+# The one-rule form a policy compiles to: "this app should be present / at its
+# latest / pinned at X / absent here". It reads the host's own inventory first
+# and does only what that gap needs, through the same handlers above, so
+# running it twice changes nothing the second time.
+
+_ENSURE_STATES = frozenset({"present", "latest", "pinned", "absent"})
+
+
+def _ensure_row(payload: dict, app: str, source: str) -> dict | None:
+    """The inventory item the rule names — same id, and the same source when
+    the rule gives one. A row whose version is not the wanted one wins over
+    one that is, so a host with two copies is never called compliant early."""
+    rows = [item for item in payload.get("items", [])
+            if item.get("id") == app and (not source or item.get("source") == source)]
+    rows.sort(key=lambda i: (str(i.get("source") or ""), str(i.get("version") or "")))
+    return rows[0] if rows else None
+
+
+def _ensure_decision(state: str, row: dict | None, version: str) -> str:
+    """none | install | upgrade | pin | uninstall — the policy decision table."""
+    if row is None:
+        if state == "absent":
+            return "none"
+        return "pin" if state == "pinned" else "install"
+    have = str(row.get("version") or "")
+    latest = str(row.get("latest") or "")
+    if state == "absent":
+        return "uninstall"
+    if state == "latest" and latest and latest != have:
+        return "upgrade"
+    if state == "pinned" and have != version:
+        return "pin"
+    return "none"
+
+
+def _app_ensure(params: dict, config: AgentConfig) -> str:
+    state = str(params.get("state") or "")
+    if state not in _ENSURE_STATES:
+        raise RuntimeError(f"state must be one of {', '.join(sorted(_ENSURE_STATES))}, "
+                           f"got {state!r}")
+    app = _app_param(params, "app")
+    if state == "pinned":
+        version = _app_param(params, "version")
+    elif params.get("version") not in (None, ""):
+        raise RuntimeError("only a pinned app takes a version")
+    else:
+        version = ""
+    source = str(params.get("source") or "")
+    if source and source not in _PRIMARY_SOURCES | _STORE_SOURCES | _WINDOWS_SOURCES:
+        raise RuntimeError(f"unknown source {source!r}")
+
+    before = _recollect()
+    row = _ensure_row(before, app, source)
+    version_before = str(row.get("version") or "") if row else ""
+    action = _ensure_decision(state, row, version)
+    if action == "none":
+        return ActionOutput(
+            f"{app} is already {state}" + (f" at {version_before}" if version_before else ""),
+            {"changed": False, "action": "none", "version_before": version_before,
+             "version_after": version_before})
+
+    # The row's own source when there is one: a registry entry is uninstalled
+    # through the registry, not through whatever manager the host runs.
+    target = {"app": app}
+    act_source = str(row.get("source") or "") if row else source
+    if act_source:
+        target["source"] = act_source
+    if action == "install":
+        _app_install(target, config)
+    elif action == "upgrade":
+        _app_upgrade(target, config)
+    elif action == "uninstall":
+        _app_uninstall(target, config)
+    else:
+        if sys.platform == "win32" and act_source in _MANAGER_SOURCES_WINDOWS | {""}:
+            # winget and Chocolatey only hold a version; they do not fetch it.
+            _app_install({**target, "version": version}, config)
+        _app_pin({**target, "version": version}, config)
+
+    after = _ensure_row(_recollect(), app, act_source)
+    version_after = str(after.get("version") or "") if after else ""
+    return ActionOutput(
+        f"{action} {app}: {version_before or 'absent'} → {version_after or 'absent'}",
+        {"changed": True, "action": action, "version_before": version_before,
+         "version_after": version_after})

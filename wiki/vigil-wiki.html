@@ -3194,6 +3194,20 @@
       <span class="hl-key">url</span>: <span class="hl-string">https://downloads.example.com/acme-agent-4.2.0.msi</span>
       <span class="hl-key">sha256</span>: <span class="hl-string">3a7f1b0c5d8e2f4a6b9c0d1e2f3a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c</span></pre></div>
 </div></details>
+<details class="action" id="action-app_ensure" data-group="apps" data-risk="standard" data-keywords="app_ensure app state source version"><summary><code class="action-name">app_ensure</code><span class="risk risk-std">standard</span><span class="action-label">Ensure an app&#x27;s state (present, latest, pinned, absent)</span><span class="action-required">app, state</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>app</code></td><td><span class="param-req">required</span></td><td>The inventory id the Apps page shows.</td></tr><tr><td><code>state</code></td><td><span class="param-req">required</span></td><td>present (install if missing), latest (install or upgrade), pinned (install, upgrade or downgrade to `version` and hold it) or absent (uninstall).</td></tr><tr><td><code>source</code></td><td><span class="param-opt">optional</span></td><td>Only match and act on this source. Defaults to whatever source the host lists the app under, or its own package manager to install.</td></tr><tr><td><code>version</code></td><td><span class="param-opt">optional</span></td><td>The version to hold. Only with `state: pinned`; sources that cannot install a version (snap, flatpak, registry) refuse it.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>changed</code></td><td>bool</td><td>True when the step did something; false when the host already matched, which is what a second run reports.</td></tr><tr><td><code>action</code></td><td>str</td><td>What it did: none, install, upgrade, pin or uninstall.</td></tr><tr><td><code>version_before</code></td><td>str</td><td>The version the host listed before, or empty when the app was not installed.</td></tr><tr><td><code>version_after</code></td><td>str</td><td>The version the host lists afterwards, or empty when the app is gone.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Keep Firefox current</span>
+<span class="hl-key">description</span>: <span class="hl-string">&quot;Install Firefox where it is missing and upgrade it where it is behind. A second run on the same host changes nothing.&quot;</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">app-1</span>
+    <span class="hl-key">type</span>: <span class="hl-string">app_ensure</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">app</span>: <span class="hl-string">Mozilla.Firefox</span>
+      <span class="hl-key">source</span>: <span class="hl-string">winget</span>
+      <span class="hl-key">state</span>: <span class="hl-string">latest</span></pre></div>
+</div></details>
 </div>
 <div class="action-group" data-group="winupdate">
 <h4 class="action-group-title">Windows Update</h4>
