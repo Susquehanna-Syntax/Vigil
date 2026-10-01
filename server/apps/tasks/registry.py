@@ -604,6 +604,14 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "optional": ["args", "app", "kind"],
         "outputs": {"installed_version": "str", "sha256": "str"},
     },
+    "app_ensure": {
+        "label": "Ensure an app's state (present, latest, pinned, absent)",
+        "risk": "standard",
+        "required": ["app", "state"],
+        "optional": ["source", "version"],
+        "outputs": {"changed": "bool", "action": "str", "version_before": "str",
+                    "version_after": "str"},
+    },
 }
 
 

@@ -492,6 +492,31 @@ def _validate_app_params(params: dict[str, Any], position: int,
         )
 
 
+_APP_ENSURE_STATES = frozenset({"present", "latest", "pinned", "absent"})
+
+
+def _validate_app_ensure_params(params: dict[str, Any], position: int) -> None:
+    """Check ``app_ensure``: a state, and a version exactly when it is pinned.
+
+    The app / source / version characters are the other ``app_*`` actions'
+    rules. A pinned state on a source that cannot install a version is refused
+    by those same rules; a version on any other state is refused here.
+    """
+    where = f"action #{position} (app_ensure)"
+    state = params.get("state")
+    pending = isinstance(state, str) and "${{" in state
+    if not pending and state not in _APP_ENSURE_STATES:
+        raise SpecError(f"{where}: 'state' must be one of "
+                        f"{', '.join(sorted(_APP_ENSURE_STATES))}, got {state!r}")
+    version = params.get("version")
+    if not pending:
+        if state == "pinned" and version in (None, ""):
+            raise SpecError(f"{where}: a pinned app needs a 'version'")
+        if state != "pinned" and version not in (None, ""):
+            raise SpecError(f"{where}: only state: pinned takes a 'version'")
+    _validate_app_params(params, position, "app_ensure")
+
+
 def _validate_schedule(raw: Any) -> dict[str, Any] | None:
     """Validate the optional ``schedule`` block.
 
@@ -1338,6 +1363,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         elif action_type in ("app_install", "app_upgrade", "app_uninstall",
                              "app_pin"):
             _validate_app_params(params, index + 1, action_type)
+        elif action_type == "app_ensure":
+            _validate_app_ensure_params(params, index + 1)
         elif action_type == "app_install_custom":
             _validate_custom_install_params(params, index + 1)
         elif action_type == "execute_script":

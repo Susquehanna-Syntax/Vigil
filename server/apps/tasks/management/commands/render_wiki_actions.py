@@ -56,7 +56,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
     ]),
     ("apps", "Apps", [
         "app_inventory", "app_install", "app_upgrade", "app_uninstall",
-        "app_pin", "app_install_custom",
+        "app_pin", "app_install_custom", "app_ensure",
     ]),
     ("winupdate", "Windows Update", [
         "windows_update_scan", "windows_update_install",
@@ -402,6 +402,10 @@ ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
     ("app_install_custom", "kind"): "msi, exe, deb or rpm — needed when the URL has no extension; must agree with it when it has one.",
     ("app_install_custom", "args"): "Silent-install switches for an exe (e.g. `/S` or `/quiet /norestart`). Only with kind exe.",
     ("app_install_custom", "app"): "The inventory id the app will have, used to report `installed_version`.",
+    ("app_ensure", "app"): "The inventory id the Apps page shows.",
+    ("app_ensure", "state"): "present (install if missing), latest (install or upgrade), pinned (install, upgrade or downgrade to `version` and hold it) or absent (uninstall).",
+    ("app_ensure", "source"): "Only match and act on this source. Defaults to whatever source the host lists the app under, or its own package manager to install.",
+    ("app_ensure", "version"): "The version to hold. Only with `state: pinned`; sources that cannot install a version (snap, flatpak, registry) refuse it.",
     ("app_pin", "app"): "The inventory id the Apps page shows — its package id, from the source in `source`.",
     ("app_pin", "unpin"): "true releases the hold instead of adding one. Takes no `version`.",
     ("app_pin", "source"): "Where to look for the app. Defaults to the host's own package manager.",
@@ -447,6 +451,12 @@ OUTPUT_NOTES: dict[str, dict[str, str]] = {
     "app_install_custom": {
         "installed_version": "The version the host reports afterwards for the `app` you named, or empty when you named none or the inventory has no row for it.",
         "sha256": "The SHA-256 of the installer that was run — always the one the task pinned, because a mismatch stops the step before anything runs.",
+    },
+    "app_ensure": {
+        "changed": "True when the step did something; false when the host already matched, which is what a second run reports.",
+        "action": "What it did: none, install, upgrade, pin or uninstall.",
+        "version_before": "The version the host listed before, or empty when the app was not installed.",
+        "version_after": "The version the host lists afterwards, or empty when the app is gone.",
     },
     "run_command": {
         "exit_code": "The command's exit code (0 — a non-zero exit fails the step).",
@@ -650,6 +660,21 @@ def example_yaml(action: str) -> str:
             "    params:",
             "      app: openssl",
             '      version: "3.0.13-1"',
+        ]) + "\n"
+    if action == "app_ensure":
+        # One rule of a policy: the state, not the command.
+        return "\n".join([
+            "name: Keep Firefox current",
+            "description: \"Install Firefox where it is missing and upgrade it where "
+            "it is behind. A second run on the same host changes nothing.\"",
+            "risk: standard",
+            "actions:",
+            "  - id: app-1",
+            "    type: app_ensure",
+            "    params:",
+            "      app: Mozilla.Firefox",
+            "      source: winget",
+            "      state: latest",
         ]) + "\n"
     if action == "app_install_custom":
         # A URL and the digest the download must match — the one action that
