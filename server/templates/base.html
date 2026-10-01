@@ -61,6 +61,9 @@
     <div class="sidebar-icon" data-page="apps" data-tip="Apps">
       <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><circle cx="6" cy="6.5" r=".6"/><circle cx="8.5" cy="6.5" r=".6"/><rect x="7" y="12" width="4" height="4" rx="1"/><line x1="13" y1="13" x2="17" y2="13"/><line x1="13" y1="15.5" x2="16" y2="15.5"/></svg>
     </div>
+    <div class="sidebar-icon" data-page="policies" data-tip="Policies">
+      <svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><polyline points="8.5 12 11 14.5 15.5 9.5"/></svg>
+    </div>
     <div class="sidebar-icon" data-page="tasks" data-tip="Tasks">
       <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     </div>
@@ -823,6 +826,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-inventory.js' %}"></script>
 <!-- vigil-apps.js — Apps page (software by app / by host) + the Monitor page's Software section (wraps navigateTo) -->
 <script src="{% static 'js/vigil-apps.js' %}"></script>
+<!-- vigil-policies.js — Policies page (app + patch policies, drift preview, approvals) (wraps navigateTo) -->
+<script src="{% static 'js/vigil-policies.js' %}"></script>
 <!-- vigil-devices.js — unmanaged device registry on the Inventory page (wraps navigateTo) -->
 <script src="{% static 'js/vigil-devices.js' %}"></script>
 <!-- vigil-instance-settings.js — Settings panes backed by /api/v1/instance-settings/ (scanners, email, retention, timezone) -->

@@ -65,7 +65,7 @@ def app_list(request):
     """One row per app (name_key) across the hosts the user may see."""
     qs = _scoped_items(request.user).values(
         "name_key", "name", "source", "host_id",
-        "version", "latest_version", "managed",
+        "version", "latest_version", "managed", "package_id",
     )
 
     query = request.query_params.get("q", "").strip().lower()
@@ -84,6 +84,7 @@ def app_list(request):
     unmanaged = defaultdict(set)
     names = defaultdict(Counter)
     sources = defaultdict(set)
+    packages = defaultdict(set)
 
     for row in qs:
         key = row["name_key"]
@@ -95,6 +96,7 @@ def app_list(request):
             unmanaged[key].add(row["host_id"])
         names[key][row["name"]] += 1
         sources[key].add(row["source"])
+        packages[key].add((row["source"], row["package_id"]))
 
     rows = []
     for key in hosts:
@@ -102,6 +104,8 @@ def app_list(request):
             "name_key": key,
             "name": names[key].most_common(1)[0][0],
             "sources": sorted(sources[key]),
+            # The inventory ids an app policy can name it by, per source.
+            "packages": [{"source": s, "id": i} for s, i in sorted(packages[key])[:10]],
             "hosts": len(hosts[key]),
             "versions": {v: len(h) for v, h in versions[key].items()},
             "outdated": len(outdated[key]),
