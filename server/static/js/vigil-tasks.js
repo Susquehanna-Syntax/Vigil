@@ -628,7 +628,7 @@ async function openDefinitionEditor(definitionId, initialYaml = null) {
       return;
     }
   } else {
-    // initialYaml can be passed by suggestDockerFix() or other callers to pre-fill the editor
+    // initialYaml can be passed by suggestAgentUpdate() or other callers to pre-fill the editor
     document.getElementById('editor-yaml').value = initialYaml || DEFAULT_YAML_TEMPLATE;
   }
 

@@ -483,12 +483,16 @@ async function _renderDockerContainers(body, settings) {
   const rows = _wRows(await _wCached(
     `/api/v1/hosts/${encodeURIComponent(settings.host)}/containers/`));
   if (!rows.length) { _wEmpty(body, 'No containers reported'); return; }
+  // Stack members sit together, under their compose project (M11); an
+  // outdated image tints the card peach and says so.
+  rows.sort((a, b) => (a.stack || '\uffff').localeCompare(b.stack || '\uffff')
+    || (a.name || '').localeCompare(b.name || ''));
   body.innerHTML = _dashCards(rows.map(c => _dashCard({
-    edge: c.state === 'running' ? 'mint' : 'grey',
+    edge: c.outdated ? 'peach' : c.state === 'running' ? 'mint' : 'grey',
     dot: true,
     title: c.name || '(unnamed)',
-    sub: c.image || '',
-    right: c.state || '',
+    sub: [c.stack, c.image].filter(Boolean).join(' · '),
+    right: c.outdated ? 'outdated' : c.state || '',
     rightSub: c.status || '',
     tip: c.image || c.name || '',
     nav: { page: 'inventory', host: settings.host },

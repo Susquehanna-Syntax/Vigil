@@ -48,8 +48,8 @@ from vigil.signing import get_public_key_b64, sign_task
 from .auto_tags import merge_auto_tags
 from .authentication import authenticate_agent
 from .crypto import encrypt_secret
-from .models import (ADConfig, DockerContainer, Host, HostInventory, TransportAck,
-                     UnmanagedDevice)
+from .models import (ADConfig, ContainerStack, DockerContainer, Host, HostInventory,
+                     TransportAck, UnmanagedDevice)
 from .serializers import (
     DockerContainerSerializer,
     HostInventorySerializer,
@@ -781,14 +781,41 @@ def inventory_list(request):
     )
     rows = []
     seen_columns: set[str] = set()
+    containers = _container_counts()
     for host in hosts:
         inv = getattr(host, "inventory", None)
         if inv is None:
             inv = HostInventory(host=host)  # in-memory placeholder, not saved
-        rows.append(HostInventorySerializer(inv).data)
+        row = HostInventorySerializer(inv).data
+        row.update(containers.get(host.id, _NO_CONTAINERS))
+        rows.append(row)
         custom = inv.custom_columns or {}
         seen_columns.update(custom.keys())
     return Response({"rows": rows, "custom_columns": sorted(seen_columns)})
+
+
+_NO_CONTAINERS = {"containers": 0, "containers_running": 0, "containers_outdated": 0,
+                  "stacks": []}
+
+
+def _container_counts() -> dict:
+    """Per host: how many containers, how many running, how many on an
+    outdated image, and its compose stacks (M11) — the Inventory columns.
+    Three queries for the whole fleet rather than three per host."""
+    from django.db.models import Count, Q
+
+    out: dict = {}
+    for row in (DockerContainer.objects.values("host_id")
+                .annotate(total=Count("id"), running=Count("id", filter=Q(state="running")))):
+        out[row["host_id"]] = {"containers": row["total"], "containers_running": row["running"],
+                               "containers_outdated": 0, "stacks": []}
+    for host_id, _name in _open_outdated():
+        if host_id in out:
+            out[host_id]["containers_outdated"] += 1
+    for stack in ContainerStack.objects.only("host_id", "project", "ownership").order_by("project"):
+        entry = out.setdefault(stack.host_id, {**_NO_CONTAINERS, "stacks": []})
+        entry["stacks"].append({"project": stack.project, "ownership": stack.ownership})
+    return out
 
 
 @api_view(["GET"])
@@ -1540,8 +1567,6 @@ def _sync_container_stacks(host, containers: list) -> None:
     A stack no container belongs to any more is dropped — unless Vigil manages
     or adopted it, in which case it stays (stopped is not gone).
     """
-    from .models import ContainerStack
-
     engines = host.container_engines or []
     engine = engines[0]["kind"] if engines else ""
     found: dict = {}
