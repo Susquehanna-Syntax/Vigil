@@ -45,9 +45,9 @@ class PatchStepTests(TestCase):
                              windows_classifications=["Security Updates"])
         self.assertEqual(eligible_kbs(policy), ["KB1", "KB2"])
         wu = steps_by_id(policy)["windows_updates"]
-        self.assertEqual(wu["params"], {"classifications": ["Security Updates"],
-                                        "include_kb": ["KB1", "KB2"],
-                                        "exclude_kb": ["KB3"]})
+        self.assertEqual(wu["params"], {"classifications": "Security Updates",
+                                        "include_kb": "KB1,KB2",
+                                        "exclude_kb": "KB3"})
         self.assertEqual(wu["when"], 'agent.os == "windows"')
 
     def test_nothing_eligible_installs_nothing_on_windows(self):
@@ -83,11 +83,17 @@ class PatchStepTests(TestCase):
         self.assertEqual(every["linux_updates"]["params"], {"security_only": False})
 
     def test_compiled_task_validates_and_is_high_risk_with_a_reboot(self):
-        policy = make_policy(patch_enabled=True, deferral_days=0, reboot="in_window")
+        pending(self.host, "KB1", days_ago=10)
+        UpdateDecision.objects.create(kind="windows", key="KB7", decision="declined")
+        policy = make_policy(patch_enabled=True, deferral_days=7, reboot="in_window",
+                             windows_classifications=["Security Updates", "Drivers"])
         definition = compile_policy(policy)
         self.assertEqual(definition.risk_level, "high")
         self.assertEqual([a["id"] for a in definition.parsed_spec["actions"]],
                          ["app-1", "windows_updates", "reboot", "linux_updates"])
+        self.assertEqual(definition.parsed_spec["actions"][1]["params"],
+                         {"classifications": "Security Updates,Drivers",
+                          "include_kb": "KB1", "exclude_kb": "KB7"})
         quiet = compile_policy(make_policy(name="q", patch_enabled=True, reboot="never"))
         self.assertEqual(quiet.risk_level, "standard")
 

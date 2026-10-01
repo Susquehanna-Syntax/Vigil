@@ -63,6 +63,17 @@ def normalize_kb(value: str) -> str:
     return value
 
 
+def _as_list(value) -> list:
+    """A filter list as a task carries it: a comma-separated string (signed
+    task params are primitives only), or a list from a direct caller. A bare
+    string must never be iterated — "Drivers" is not seven classifications."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [part.strip() for part in value.split(",") if part.strip()]
+    return list(value)
+
+
 def filter_updates(updates, classifications=None, include_kb=None,
                    exclude_kb=None, severity_floor=None) -> list[dict]:
     """Filter plain update dicts (the shape scan() returns) without any COM.
@@ -85,9 +96,9 @@ def filter_updates(updates, classifications=None, include_kb=None,
             raise ValueError(
                 f"Unknown severity floor {severity_floor!r}; expected one of "
                 "low, moderate, important, critical")
-    classifications = [str(c).lower() for c in (classifications or [])]
-    include = {normalize_kb(k) for k in (include_kb or [])}
-    exclude = {normalize_kb(k) for k in (exclude_kb or [])}
+    classifications = [str(c).lower() for c in _as_list(classifications)]
+    include = {normalize_kb(k) for k in _as_list(include_kb)}
+    exclude = {normalize_kb(k) for k in _as_list(exclude_kb)}
 
     out = []
     for u in updates:
