@@ -54,6 +54,7 @@ def checkin(
     reboot_required: bool | None = None,
     windows_updates: dict | None = None,
     software: dict | None = None,
+    windows_update_list: list[dict] | None = None,
 ) -> dict:
     """Send metrics and receive tasks. Returns the full server response."""
     payload = {
@@ -77,6 +78,10 @@ def checkin(
     # rather than being told zero by a machine that cannot count.
     if windows_updates is not None:
         payload["windows_updates"] = windows_updates
+    # The per-update list rides along only after a fresh scan; absent means
+    # "nothing new", and the server keeps the rows it has.
+    if windows_update_list is not None:
+        payload["windows_update_list"] = windows_update_list
     if config.tags:
         payload["tags"] = list(config.tags)
     if inventory:

@@ -57,3 +57,14 @@ class CheckinAllowlistTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CheckinUpdateListTests(unittest.TestCase):
+    setUp = CheckinAllowlistTests.setUp
+
+    def test_update_list_only_when_given(self):
+        config = AgentConfig(server_url="http://127.0.0.1:1", agent_token="t" * 40)
+        client.checkin(config, [])
+        self.assertNotIn("windows_update_list", self.sent)
+        client.checkin(config, [], windows_update_list=[])
+        self.assertEqual(self.sent["windows_update_list"], [])

@@ -734,15 +734,19 @@ def run_agent() -> None:
                 and time.monotonic() - last_software_sent < 86400
             ):
                 software_payload = None
+            windows_updates = windows_update.summary()
+            update_list = windows_update.take_update_list()
             try:
                 response = client.checkin(
                     config, metrics, inventory=inventory_payload,
                     docker_containers=docker_containers,
                     reboot_required=collector.reboot_required(),
-                    windows_updates=windows_update.summary(),
+                    windows_updates=windows_updates,
                     software=software_payload,
+                    windows_update_list=update_list,
                 )
             except Exception:
+                windows_update.restore_update_list(update_list)
                 # The list never reached the server. Put it back so the next
                 # pass retries it — unless a newer collection already landed
                 # in the meantime, which supersedes it.

@@ -74,6 +74,9 @@ class SoftwareItem(models.Model):
     publisher = models.CharField(max_length=200, blank=True)
     managed = models.BooleanField(default=True)
     first_seen = models.DateTimeField()
+    #: When the item last became outdated; null while it is current. How long
+    #: a host has been missing an update is measured from here.
+    outdated_since = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -100,3 +103,38 @@ class SoftwareSnapshot(models.Model):
 
     def __str__(self):
         return f"software snapshot for {self.host_id} ({self.item_count})"
+
+
+class PendingUpdate(models.Model):
+    """One update a host is missing — the rows behind the fleet view by update.
+
+    Windows rows come from the agent's per-update list at check-in (key = the
+    KB, or the update id when it has none). Linux rows mirror the host's
+    outdated primary-manager packages (key = the package id). Replaced per
+    report; ``first_seen`` survives, so the age of a missing update is real.
+    """
+
+    class Kind(models.TextChoices):
+        WINDOWS = "windows", "Windows Update"
+        LINUX = "linux", "Linux package"
+
+    host = models.ForeignKey("hosts.Host", on_delete=models.CASCADE,
+                             related_name="pending_updates")
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    key = models.CharField(max_length=300)
+    title = models.CharField(max_length=300, blank=True)
+    severity = models.CharField(max_length=20, blank=True)
+    classification = models.CharField(max_length=60, blank=True)
+    reboot_required = models.BooleanField(default=False)
+    #: Linux: the version that would install.
+    version = models.CharField(max_length=120, blank=True)
+    first_seen = models.DateTimeField()
+    last_seen = models.DateTimeField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("host", "kind", "key"),
+                                               name="uniq_pending_update")]
+        indexes = [models.Index(fields=("kind", "key"))]
+
+    def __str__(self):
+        return f"{self.key} on {self.host_id}"
