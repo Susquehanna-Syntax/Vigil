@@ -3196,6 +3196,38 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
     <span class="hl-key">params</span>:
       <span class="hl-key">container_name</span>: <span class="hl-string">nextcloud</span></pre></div>
 </div></details>
+<details class="action" id="action-stack_deploy" data-group="container" data-risk="high" data-keywords="stack_deploy project compose working_dir env_ticket revision"><summary><code class="action-name">stack_deploy</code><span class="risk risk-high">high</span><span class="action-label">Deploy a Vigil-managed compose stack</span><span class="action-required">project, compose, working_dir</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>project</code></td><td><span class="param-req">required</span></td><td>The compose project name.</td></tr><tr><td><code>compose</code></td><td><span class="param-req">required</span></td><td>The compose file itself, as Vigil stores it. Checked like the stack editor checks it.</td></tr><tr><td><code>working_dir</code></td><td><span class="param-req">required</span></td><td>Where the stack lives on the host — /opt/vigil/stacks/&lt;name&gt; for a new one.</td></tr><tr><td><code>env_ticket</code></td><td><span class="param-opt">optional</span></td><td>Set by Vigil, not by hand: a one-time id the agent redeems for the .env just before deploying. The secrets never ride in the task.</td></tr><tr><td><code>revision</code></td><td><span class="param-opt">optional</span></td><td>The stack revision being deployed, for the record.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>project</code></td><td>str</td><td>The stack deployed.</td></tr><tr><td><code>revision</code></td><td>int</td><td>The revision deployed (0 when not given).</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Deploy media</span>
+<span class="hl-key">description</span>: <span class="hl-string">&quot;What Vigil sends when you deploy the media stack.&quot;</span>
+<span class="hl-key">risk</span>: <span class="hl-string">high</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">deploy</span>
+    <span class="hl-key">type</span>: <span class="hl-string">stack_deploy</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">project</span>: <span class="hl-string">media</span>
+      <span class="hl-key">working_dir</span>: <span class="hl-string">/opt/vigil/stacks/media</span>
+      <span class="hl-key">env_ticket</span>: <span class="hl-string">6f1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d</span>
+      <span class="hl-key">compose</span>: <span class="hl-string">|</span>
+        <span class="hl-key">services</span>:
+          <span class="hl-key">jellyfin</span>:
+            <span class="hl-key">image</span>: <span class="hl-string">jellyfin/jellyfin:10.9</span>
+            <span class="hl-key">env_file</span>: <span class="hl-string">.env</span></pre></div>
+</div></details>
+<details class="action" id="action-stack_remove" data-group="container" data-risk="standard" data-keywords="stack_remove project working_dir delete_files"><summary><code class="action-name">stack_remove</code><span class="risk risk-std">standard</span><span class="action-label">Take down a Vigil-managed compose stack</span><span class="action-required">project, working_dir</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>project</code></td><td><span class="param-req">required</span></td><td>The compose project name.</td></tr><tr><td><code>working_dir</code></td><td><span class="param-req">required</span></td><td>The stack&#x27;s folder on the host.</td></tr><tr><td><code>delete_files</code></td><td><span class="param-opt">optional</span></td><td>true also deletes the folder — only ever under /opt/vigil/stacks.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>project</code></td><td>str</td><td>The stack taken down.</td></tr><tr><td><code>files_deleted</code></td><td>bool</td><td>True when its folder was deleted too.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Take down media</span>
+<span class="hl-key">description</span>: <span class="hl-string">&quot;Stop and remove the media stack&#x27;s containers, keep its files.&quot;</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">remove</span>
+    <span class="hl-key">type</span>: <span class="hl-string">stack_remove</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">project</span>: <span class="hl-string">media</span>
+      <span class="hl-key">working_dir</span>: <span class="hl-string">/opt/vigil/stacks/media</span></pre></div>
+</div></details>
 </div>
 <div class="action-group" data-group="files">
 <h4 class="action-group-title">Files and directories</h4>

@@ -51,3 +51,23 @@ class StackRevision(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=("stack", "number"), name="uniq_stack_revision")]
         ordering = ("-number",)
+
+
+class EnvTicket(models.Model):
+    """A one-time reference to one revision's .env (M11).
+
+    A deploy task carries only this id. The agent redeems it once, over its
+    own authenticated connection, just before it writes the .env; after that,
+    or after it expires, it is worthless. Task params are plaintext JSON —
+    signing is not encryption — so the secrets themselves never ride in one.
+    """
+
+    TTL_HOURS = 24
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    stack = models.ForeignKey(ManagedStack, on_delete=models.CASCADE, related_name="env_tickets")
+    revision = models.PositiveIntegerField()
+    host = models.ForeignKey("hosts.Host", on_delete=models.CASCADE, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)

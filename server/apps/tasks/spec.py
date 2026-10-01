@@ -492,6 +492,39 @@ def _validate_app_params(params: dict[str, Any], position: int,
         )
 
 
+_STACK_DIR_RE = re.compile(r"^/[A-Za-z0-9._/-]{1,400}$")
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+def _validate_stack_params(params: dict[str, Any], position: int, action_type: str) -> None:
+    """``stack_deploy`` / ``stack_remove`` (M11): a compose project name, an
+    absolute working directory with no '..', a compose file that passes the
+    same checks the stack store applies, and an env ticket that is an id —
+    never the secrets themselves."""
+    from apps.stacks.validation import NAME_RE, StackError, validate_compose
+
+    where = f"action #{position} ({action_type})"
+    project = params.get("project")
+    if not isinstance(project, str) or not NAME_RE.match(project):
+        raise SpecError(f"{where}: 'project' must be a compose project name")
+    workdir = params.get("working_dir")
+    if (not isinstance(workdir, str) or not _STACK_DIR_RE.match(workdir)
+            or ".." in workdir.split("/")):
+        raise SpecError(f"{where}: 'working_dir' must be an absolute path without '..'")
+    if action_type == "stack_deploy":
+        try:
+            validate_compose(str(params.get("compose") or ""))
+        except StackError as exc:
+            raise SpecError(f"{where}: {exc}") from exc
+        ticket = params.get("env_ticket")
+        if ticket not in (None, "") and not (isinstance(ticket, str) and _UUID_RE.match(ticket)):
+            raise SpecError(f"{where}: 'env_ticket' must be a ticket id")
+    else:
+        delete = params.get("delete_files")
+        if delete is not None and not isinstance(delete, bool):
+            raise SpecError(f"{where}: 'delete_files' must be true or false")
+
+
 _APP_ENSURE_STATES = frozenset({"present", "latest", "pinned", "absent"})
 
 
@@ -1363,6 +1396,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         elif action_type in ("app_install", "app_upgrade", "app_uninstall",
                              "app_pin"):
             _validate_app_params(params, index + 1, action_type)
+        elif action_type in ("stack_deploy", "stack_remove"):
+            _validate_stack_params(params, index + 1, action_type)
         elif action_type == "app_ensure":
             _validate_app_ensure_params(params, index + 1)
         elif action_type == "app_install_custom":

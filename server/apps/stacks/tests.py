@@ -110,3 +110,89 @@ class StackApiTests(TestCase):
         c = APIClient()
         c.force_authenticate(viewer)
         self.assertEqual(c.get("/api/v1/stacks/").status_code, 403)
+
+
+class StackDeployTests(TestCase):
+    def setUp(self):
+        self.host = Host.objects.create(hostname="nas", agent_token="nastok", status=Host.Status.ONLINE,
+                                        mode="managed")
+        self.user = get_user_model().objects.create_user("a", password="x")
+        UserProfile.objects.create(user=self.user, role=Role.ADMIN)
+        self.api = APIClient()
+        self.api.force_authenticate(self.user)
+        self.sid = self.api.post("/api/v1/stacks/", {
+            "host_id": str(self.host.id), "name": "media", "compose_yaml": COMPOSE,
+            "env_text": "API_KEY=hunter2\n"}, format="json").json()["id"]
+
+    def _deploy(self):
+        with mock.patch(_TOTP, return_value=None):
+            return self.api.post(f"/api/v1/stacks/{self.sid}/deploy/", {"totp": "1"}, format="json")
+
+    def _redeem(self, ticket, token="nastok"):
+        return self.client.get(f"/api/v1/agent/stack-env/{ticket}/", HTTP_AUTHORIZATION=f"Bearer {token}")
+
+    def test_deploy_sends_a_ticket_not_the_secret(self):
+        from apps.tasks.models import Task
+        resp = self._deploy()
+        self.assertEqual(resp.status_code, 201, resp.content)
+        task = Task.objects.get(pk=resp.json()["task"])
+        self.assertEqual(task.risk_level, "high")
+        params = task.params["steps"][0]["params"]
+        self.assertEqual((params["project"], params["working_dir"], params["revision"]),
+                         ("media", "/opt/vigil/stacks/media", 1))
+        self.assertNotIn("hunter2", str(task.params))
+        ticket = params["env_ticket"]
+        self.assertEqual(self._redeem(ticket).json(), {"env": "API_KEY=hunter2\n"})
+        self.assertEqual(self._redeem(ticket).status_code, 404, "one time only")
+
+    def test_ticket_is_for_its_host_and_expires(self):
+        from datetime import timedelta
+
+        from django.utils.timezone import now
+
+        from .models import EnvTicket
+        Host.objects.create(hostname="other", agent_token="othertok", status=Host.Status.ONLINE)
+        self._deploy()
+        ticket = EnvTicket.objects.get()
+        self.assertEqual(self._redeem(ticket.id, "othertok").status_code, 404)
+        EnvTicket.objects.filter(pk=ticket.pk).update(expires_at=now() - timedelta(seconds=1))
+        self.assertEqual(self._redeem(ticket.id).status_code, 404)
+
+    def test_deploy_ships_the_revision_it_was_issued_for(self):
+        self._deploy()
+        from .models import EnvTicket
+        ticket = EnvTicket.objects.get()
+        self.api.put(f"/api/v1/stacks/{self.sid}/", {"env": [{"key": "API_KEY", "value": "new"}]},
+                     format="json")
+        self.assertEqual(self._redeem(ticket.id).json()["env"], "API_KEY=hunter2\n")
+
+    def test_remove_and_totp(self):
+        from apps.tasks.models import Task
+        with mock.patch(_TOTP, return_value="bad"):
+            self.assertEqual(self.api.post(f"/api/v1/stacks/{self.sid}/deploy/", {}, format="json").status_code, 401)
+        self.assertFalse(Task.objects.exists())
+        with mock.patch(_TOTP, return_value=None):
+            resp = self.api.post(f"/api/v1/stacks/{self.sid}/remove/", {"totp": "1", "delete_files": True},
+                                 format="json")
+        params = Task.objects.get(pk=resp.json()["task"]).params["steps"][0]["params"]
+        self.assertEqual(params, {"project": "media", "working_dir": "/opt/vigil/stacks/media",
+                                  "delete_files": True})
+
+
+class StackSpecTests(SimpleTestCase):
+    def _spec(self, **params):
+        import yaml
+
+        from apps.tasks.spec import parse_and_validate
+        base = {"project": "media", "working_dir": "/opt/vigil/stacks/media", "compose": COMPOSE}
+        return parse_and_validate(yaml.safe_dump({"name": "t", "actions": [
+            {"type": "stack_deploy", "params": {**base, **params}}]}))
+
+    def test_task_spec_applies_the_same_checks(self):
+        from apps.tasks.spec import SpecError
+        self.assertEqual(self._spec()["risk"], "high")
+        for bad in ({"compose": "services: {a: {image: x, privileged: true}}"},
+                    {"working_dir": "/opt/../etc"}, {"working_dir": "relative"},
+                    {"project": "Media"}, {"env_ticket": "API_KEY=hunter2"}):
+            with self.subTest(bad=bad), self.assertRaises(SpecError):
+                self._spec(**bad)

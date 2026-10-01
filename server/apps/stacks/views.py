@@ -10,7 +10,7 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.permissions import IsAdmin
@@ -166,3 +166,101 @@ def stack_env_reveal(request, stack_id):
                         status=status.HTTP_401_UNAUTHORIZED)
     hooks.emit("stack_env_revealed", stack=stack, user=request.user)
     return Response({"env": [{"key": k, "value": v} for k, v in _env_pairs(stack)]})
+
+
+def _dispatch(request, stack: ManagedStack, actions: list[dict], name: str):
+    """Build, validate and queue one signed task for the stack's host."""
+    import secrets
+
+    import yaml
+
+    from apps.tasks.dispatch import task_params
+    from apps.tasks.models import Task, TaskRun
+    from apps.tasks.spec import parse_and_validate
+
+    spec = parse_and_validate(yaml.safe_dump({"name": name[:120], "actions": actions}))
+    params, risk, expires_at = task_params(spec)
+    run = TaskRun.objects.create(name_snapshot=name[:120], requested_by=request.user,
+                                 host_count=1, step_count=len(actions))
+    return Task.objects.create(host=stack.host, run=run, requested_by=request.user,
+                               step_label=name[:120], action="_script", params=params,
+                               risk_level=risk, state=Task.State.PENDING, expires_at=expires_at,
+                               nonce=secrets.token_hex(32))
+
+
+def _confirmed(request) -> Response | None:
+    from apps.accounts.totp import require_totp_confirmation
+
+    if error := require_totp_confirmation(request.user, request.data):
+        return Response({"detail": f"This needs confirmation: {error}", "needs_totp": True},
+                        status=status.HTTP_401_UNAUTHORIZED)
+    return None
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def stack_deploy(request, stack_id):
+    """Deploy the stack's current revision to its host — a high-risk signed
+    task, TOTP. The .env goes as a one-time ticket, never in the task."""
+    from datetime import timedelta
+
+    from django.utils.timezone import now
+
+    from .models import EnvTicket
+
+    stack = _stack_or_404(request, stack_id)
+    if stack is None:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    if denied := _confirmed(request):
+        return denied
+    params = {"project": stack.name, "compose": stack.compose_yaml,
+              "working_dir": stack.working_dir, "revision": stack.revision}
+    if bytes(stack.env_encrypted or b""):
+        ticket = EnvTicket.objects.create(stack=stack, revision=stack.revision, host=stack.host,
+                                          expires_at=now() + timedelta(hours=EnvTicket.TTL_HOURS))
+        params["env_ticket"] = str(ticket.id)
+    task = _dispatch(request, stack, [{"id": "deploy", "type": "stack_deploy", "params": params}],
+                     f"Deploy stack {stack.name} (r{stack.revision})")
+    hooks.emit("stack_deployed", stack=stack, user=request.user, task=task)
+    return Response({"task": str(task.id), "run": str(task.run_id)}, status=status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def stack_remove(request, stack_id):
+    stack = _stack_or_404(request, stack_id)
+    if stack is None:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    if denied := _confirmed(request):
+        return denied
+    delete_files = bool(request.data.get("delete_files")) and not stack.adopted
+    task = _dispatch(request, stack, [{"id": "remove", "type": "stack_remove", "params": {
+        "project": stack.name, "working_dir": stack.working_dir, "delete_files": delete_files}}],
+        f"Take down stack {stack.name}")
+    return Response({"task": str(task.id), "run": str(task.run_id)}, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def agent_stack_env(request, ticket_id):
+    """The agent redeems a deploy's env ticket — once, before it expires,
+    and only for its own host."""
+    from django.db import transaction as _tx
+    from django.utils.timezone import now
+
+    from apps.hosts.authentication import authenticate_agent
+
+    from .models import EnvTicket
+
+    host, err = authenticate_agent(request)
+    if err:
+        return err
+    with _tx.atomic():
+        ticket = (EnvTicket.objects.select_for_update().select_related("stack")
+                  .filter(pk=ticket_id, host=host).first())
+        if ticket is None or ticket.used_at is not None or ticket.expires_at <= now():
+            return Response({"detail": "ticket unknown, used or expired"}, status=status.HTTP_404_NOT_FOUND)
+        ticket.used_at = now()
+        ticket.save(update_fields=["used_at"])
+        rev = ticket.stack.revisions.filter(number=ticket.revision).first() or ticket.stack
+    return Response({"env": render_env(_env_pairs(rev))})
