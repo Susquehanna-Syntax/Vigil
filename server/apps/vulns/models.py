@@ -198,6 +198,9 @@ class VulnFinding(models.Model):
     #: vulnerability object, say). Nothing reads it by key; it is the
     #: evidence of record.
     advisory = models.JSONField(default=dict, blank=True)
+    #: The fix this finding belongs to (apps/vulns/fixgroups.py) — set on every
+    #: save. Scores and severity counts count fix groups, not CVEs.
+    fix_key = models.CharField(max_length=300, blank=True, default="", db_index=True)
 
     first_seen = models.DateTimeField(auto_now_add=True)
     last_seen = models.DateTimeField(auto_now=True)
@@ -243,6 +246,13 @@ class VulnFinding(models.Model):
         which calls save() on every sync, and a deadline that slid forward each
         time a scanner re-reported the finding would never be overdue.
         """
+        from .fixgroups import fix_key_for
+
+        self.fix_key = fix_key_for(self.package_name, self.fixed_version, self.scanner,
+                                   self.plugin_id_or_oid, self.affected_path)
+        if "update_fields" in kwargs and kwargs["update_fields"] is not None \
+                and "fix_key" not in kwargs["update_fields"]:
+            kwargs["update_fields"] = list(kwargs["update_fields"]) + ["fix_key"]
         if self.due_date is None and self.severity != self.Severity.INFO:
             from .remediation import compute_due_date
 
