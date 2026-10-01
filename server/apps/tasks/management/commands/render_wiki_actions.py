@@ -45,7 +45,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "recreate_container", "update_container", "remove_container",
         "docker_compose_up", "docker_compose_down", "clear_docker_logs",
         "check_docker_updates", "stack_restart", "stack_update", "container_logs",
-        "stack_deploy", "stack_remove",
+        "stack_deploy", "stack_remove", "stack_read",
     ]),
     ("files", "Files and directories", [
         "write_file", "create_directory", "delete_path", "copy_file",
@@ -416,6 +416,9 @@ ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
     ("stack_deploy", "working_dir"): "Where the stack lives on the host — /opt/vigil/stacks/<name> for a new one.",
     ("stack_deploy", "env_ticket"): "Set by Vigil, not by hand: a one-time id the agent redeems for the .env just before deploying. The secrets never ride in the task.",
     ("stack_deploy", "revision"): "The stack revision being deployed, for the record.",
+    ("stack_deploy", "compose_file"): "The compose file's name in working_dir — compose.yaml unless the stack was adopted with its own.",
+    ("stack_read", "project"): "The compose project to adopt; its files come from its containers' labels.",
+    ("stack_read", "adopt_ticket"): "Set by Vigil, not by hand: where the agent hands the files over — never in the task result, because .env holds secrets.",
     ("stack_remove", "project"): "The compose project name.",
     ("stack_remove", "working_dir"): "The stack's folder on the host.",
     ("stack_remove", "delete_files"): "true also deletes the folder — only ever under /opt/vigil/stacks.",
@@ -477,6 +480,7 @@ OUTPUT_NOTES: dict[str, dict[str, str]] = {
     "stack_restart": {"project": "The stack that was restarted."},
     "container_logs": {"lines": "How many lines were returned."},
     "stack_deploy": {"project": "The stack deployed.", "revision": "The revision deployed (0 when not given)."},
+    "stack_read": {"project": "The stack read.", "would_recreate": "How many of its services a deploy of this file would recreate (0 = adopting changes nothing)."},
     "stack_remove": {"project": "The stack taken down.", "files_deleted": "True when its folder was deleted too."},
     "stack_update": {"project": "The stack that was updated."},
     "app_ensure": {
@@ -707,6 +711,18 @@ def example_yaml(action: str) -> str:
             "          jellyfin:",
             "            image: jellyfin/jellyfin:10.9",
             "            env_file: .env",
+        ]) + "\n"
+    if action == "stack_read":
+        return "\n".join([
+            "name: Adopt shop",
+            "description: \"What Vigil sends when you adopt the shop stack.\"",
+            "risk: standard",
+            "actions:",
+            "  - id: read",
+            "    type: stack_read",
+            "    params:",
+            "      project: shop",
+            "      adopt_ticket: 6f1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
         ]) + "\n"
     if action == "stack_remove":
         return "\n".join([

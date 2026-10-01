@@ -98,6 +98,15 @@ async function openStackEditor(stackId) {
   modal.querySelector('[data-stack-deploy]').hidden = !stack;
   modal.querySelector('[data-stack-remove]').hidden = !stack;
   document.getElementById('stack-revisions-field').hidden = !stack;
+  const report = (stack && stack.adopt_report) || {};
+  const recreate = report.recreate || [];
+  if (stack && stack.adopted) {
+    const err = document.getElementById('stack-error');
+    err.textContent = recreate.length
+      ? `Adopted from ${stack.working_dir}/${stack.compose_file}. Deploying this file would recreate: ${recreate.join(', ')} — their running config differs from the file.`
+      : `Adopted from ${stack.working_dir}/${stack.compose_file}. Deploying it unchanged recreates nothing.`;
+    err.classList.add('show');
+  }
   _renderStackEnv();
   document.getElementById('stack-overlay').classList.add('open');
   modal.classList.add('open');

@@ -460,6 +460,7 @@ async function renderDockerContainers(hostId) {
     const stackActs = stack ? `<span class="docker-stack-acts">
         <button class="btn btn-xs btn-outline" data-stack-act="Restart stack" data-host="${escAttr(hostId)}" data-project="${escAttr(stack)}">Restart</button>
         <button class="btn btn-xs btn-outline" data-stack-act="Update stack" data-host="${escAttr(hostId)}" data-project="${escAttr(stack)}">Update</button>
+        ${info && info.ownership === 'external' ? `<button class="btn btn-xs btn-lav" data-stack-adopt data-host="${escAttr(hostId)}" data-project="${escAttr(stack)}" title="Let Vigil manage this stack where it stands — nothing is recreated">Adopt</button>` : ''}
       </span>` : '';
     html += `<div class="docker-stack">
       <div class="docker-stack-header">
@@ -511,6 +512,15 @@ async function renderDockerContainers(hostId) {
   }));
   wrap.querySelectorAll('[data-ctr-logs]').forEach(btn => btn.addEventListener('click', () => {
     openContainerLogs(btn.dataset.host, btn.dataset.name);
+  }));
+  wrap.querySelectorAll('[data-stack-adopt]').forEach(btn => btn.addEventListener('click', async () => {
+    const totp = window.prompt(`Adopting ${btn.dataset.project} reads its compose file and .env into Vigil. Your TOTP code:`);
+    if (!totp) return;
+    try {
+      await apiJson('/api/v1/stacks/adopt/', { method: 'POST', body: JSON.stringify(
+        { host_id: btn.dataset.host, project: btn.dataset.project, totp: totp.trim() }) });
+      showToast(`Adopting ${btn.dataset.project} — it appears under Managed by Vigil after the agent's next check-in`, 'success');
+    } catch (e) { showToast(e.message, 'error'); }
   }));
   wrap.querySelectorAll('[data-stack-act]').forEach(btn => btn.addEventListener('click', () => {
     openBuiltinTask(btn.dataset.stackAct, btn.dataset.host, { project: btn.dataset.project });

@@ -182,3 +182,13 @@ def fetch_stack_env(config: AgentConfig, ticket: str) -> str:
         raise RuntimeError(f"the server would not hand over this deploy's .env "
                            f"({resp.status_code}) — the ticket is used or expired; deploy again")
     return str(resp.json().get("env") or "")
+
+
+def post_stack_read(config: AgentConfig, ticket: str, payload: dict) -> None:
+    """Hand an adopted stack's files to the server (M11) — over the agent's
+    own connection, never in the task result, because .env holds secrets."""
+    url = f"{config.server_url}/api/v1/agent/stack-adopt/{ticket}/"
+    resp = requests.post(url, json=payload, headers=_headers(config), timeout=_TIMEOUT)
+    if resp.status_code != 200:
+        raise RuntimeError(f"the server refused the adoption ({resp.status_code}) — "
+                           f"the ticket is used or expired; adopt again")
