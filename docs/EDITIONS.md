@@ -27,6 +27,10 @@ with `seats: 9999`). SSO/SAML is "available — talk to us," not a tier.
 | **AI suggestions** — BYO endpoint, any OpenAI-compatible or Anthropic | ✅ | ✅ |
 | **Status page** (public token URL, Powered-by-Vigil badge) | ✅ | ✅ |
 | Jackil integration (alert → ticket) | ✅ | ✅ |
+| **App & patch policies** (present / latest / pinned / absent, patching windows, deferral, approve each change) | ✅ | ✅ |
+| Fleet view by update, fleet-wide approve / decline | ✅ | ✅ |
+| Patch compliance numbers (% of hosts patched within SLA) | ✅ | ✅ |
+| **Compliance report** — pass/fail per site, CSV export, branded printable report with "Licensed to" | — | ✅ |
 | Seats | 1 admin + 1 viewer | **per-seat pricing** |
 | Roles | Admin, Viewer | + **Operator**, custom roles |
 | **Sites** (administrative boundaries; per-site scoping) | 1 (default) | **unlimited** |

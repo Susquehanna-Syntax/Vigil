@@ -314,6 +314,10 @@
       <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>
       Apps
     </a>
+    <a href="#policies" class="nav-link">
+      <svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><polyline points="8.5 12 11 14.5 15.5 9.5"/></svg>
+      Policies
+    </a>
     <a href="#windows-patching" class="nav-link">
       <svg viewBox="0 0 24 24"><path d="M3 5.5L10.5 4.5v7H3zM3 12.5h7.5v7L3 18.5zM11.5 4.3L21 3v8.5h-9.5zM11.5 12.5H21V21l-9.5-1.3z"/></svg>
       Windows Patching
@@ -1711,6 +1715,101 @@
       </ul>
     </section>
     <div class="divider"></div>
+
+    <section class="section" id="policies">
+      <p class="section-label">Software</p>
+      <h2 class="section-title" style="color:var(--lavender)">Policies</h2>
+      <p class="section-desc">A policy says what a group of hosts should look like — which apps are present, current, pinned or absent, and which OS updates install — and Vigil keeps them that way in a maintenance window. It never acts on its own: every policy compiles to an ordinary task, so signing, the allowlist, approval, audit, waves and windows apply unchanged.</p>
+
+      <h3>What a policy holds</h3>
+      <p class="prose">Open <strong>Policies</strong> in the sidebar and press <em>New policy</em>. A policy names its hosts by tag (blank means every managed host; with Business sites, by site too), opens a window on a cron schedule for a number of hours, and optionally rolls out wave by wave on a <a href="#deployments">patch-wave ladder</a>. Its <strong>Apps</strong> tab holds one rule per app:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>State</th><th>Not installed</th><th>Installed</th></tr></thead>
+          <tbody>
+            <tr><td><code>present</code></td><td>install it</td><td>leave it</td></tr>
+            <tr><td><code>latest</code></td><td>install it</td><td>upgrade it when its manager offers a newer version</td></tr>
+            <tr><td><code>pinned</code></td><td>install that version</td><td>upgrade or downgrade to that version, and hold it there</td></tr>
+            <tr><td><code>absent</code></td><td>leave it</td><td>uninstall it</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose">An app is named by the id the Apps page shows, from a given source or (blank) whichever source the host lists it under. snap, flatpak and the registry cannot install a given version, so they cannot be pinned.</p>
+
+      <h3>Drift: only hosts that need it</h3>
+      <p class="prose">Before a run, Vigil compares each host's reported inventory and pending updates with the policy. Hosts already in line get nothing — not a task that reports "no change", no task at all. A host that has never reported its software is listed as <em>not reported yet</em> rather than treated as missing everything. The editor's <strong>Preview</strong> tab shows the drift host by host, and <em>Run now</em> (with your TOTP code) runs the policy outside its window.</p>
+      <p class="prose">Without a wave ladder, every drifted host gets the task at once and it expires when the window closes, so nothing starts late. With one, the run is a normal staged rollout restricted to the drifted hosts, and the task carries the window as its <code>schedule</code>, so later waves still land inside a window.</p>
+
+      <h3>The Patching tab</h3>
+      <p class="prose">Turn on <em>Install OS updates in this window</em> to add patching. On Windows, choose the classifications that install and how many days to wait after an update first appears anywhere in the fleet (the deferral). On Linux, choose security updates only or everything. The KB lists are built when the policy runs, so an update that came out of deferral overnight is in tonight's window.</p>
+      <p class="prose">A restart follows the policy: <em>in the window</em> when an update asks for one, <em>ask the user</em> (they can postpone a few times), or <em>never</em>. A restart is high risk, so the policy must be allowed to restart unattended — a checkbox that asks for your TOTP code, as automations do. Until then, a run refuses and says why.</p>
+
+      <h3>Approve each change</h3>
+      <p class="prose">Tick <em>Approve each change before it is made</em> and a run lists what it would do under <strong>Waiting for approval</strong> instead of doing it. Approve (with a TOTP code) and the policy's task goes to exactly those hosts; reject and nothing happens until the next run proposes it again.</p>
+
+      <h3>The generated task</h3>
+      <p class="prose">Saving a policy writes a task called <code>Policy: &lt;name&gt;</code> — <em>View the generated task</em> opens it. Edit the policy, not the task: it is rewritten on every save. Each app rule is one <code>app_ensure</code> step, which reads the host's inventory and makes only the change it needs; running it twice changes nothing the second time. This policy body (<code>POST /api/v1/policies/</code>, admin only):</p>
+      <div class="code-block">
+        <div class="code-label">office-desktops.json</div>
+        <pre>{
+  "name": "Office desktops",
+  "target_tags": ["office"],
+  "cron_hour": "2", "cron_minute": "0", "window_hours": 4,
+  "app_rules": [
+    {"app": "Mozilla.Firefox", "source": "winget", "state": "latest"},
+    {"app": "telnet", "state": "absent"}
+  ],
+  "patch_enabled": true,
+  "windows_classifications": ["Critical Updates", "Security Updates"],
+  "deferral_days": 0,
+  "reboot": "never"
+}</pre>
+      </div>
+      <p class="prose">compiles to this task:</p>
+      <div class="code-block">
+        <div class="code-label">Policy: Office desktops</div>
+        <pre>name: 'Policy: Office desktops'
+description: Generated from the policy 'Office desktops'. Edit the policy, not this task — it is rewritten on every save.
+risk: standard
+actions:
+- id: app-1
+  type: app_ensure
+  params:
+    app: Mozilla.Firefox
+    state: latest
+    source: winget
+- id: app-2
+  type: app_ensure
+  params:
+    app: telnet
+    state: absent
+- id: windows_updates
+  type: windows_update_install
+  when: agent.os == "windows"
+  params:
+    classifications: Critical Updates,Security Updates
+- id: linux_updates
+  type: run_package_updates
+  when: agent.os == "linux"
+  params:
+    security_only: true</pre>
+      </div>
+      <p class="prose"><code>app_ensure</code> takes <code>app</code> and <code>state</code>, plus optional <code>source</code> and (pinned only) <code>version</code>, and reports <code>changed</code>, <code>action</code> (none, install, upgrade, pin or uninstall), <code>version_before</code> and <code>version_after</code>. It is a normal action: use it in your own tasks too.</p>
+
+      <h3 id="by-update">By update</h3>
+      <p class="prose"><strong>Apps → By update</strong> turns pending updates inside out: one row per Windows KB or Linux package, with its severity, how many hosts miss it and how long the oldest has. Windows agents send their pending list after each update scan; Linux hosts count every outdated package from their own manager. Select updates and <em>Approve</em> (skip every policy's deferral) or <em>Decline</em> (keep it off every host — it joins every policy's exclude list). Decisions are fleet-wide and can be cleared.</p>
+
+      <h3 id="compliance">Compliance</h3>
+      <p class="prose">The Policies page opens with the share of hosts that have no update pending past its SLA. The SLA is the <a href="#vulns">remediation policy</a>'s day tiers by severity; Linux packages, which carry none, are held to the medium tier; a declined update is not counted. These numbers are Free (<code>GET /api/v1/policies/compliance/</code>).</p>
+      <p class="prose">With <strong>Business</strong>, <em>Compliance report</em> adds what a third party asks for: pass or fail per site, every host's overdue count, missing critical and important updates by age (0–7, 8–30, 31–90, 90+ days), a CSV export (<code>/api/v1/compliance/report.csv</code>) and a printable page in your branding with "Licensed to" in the footer — print it to PDF.</p>
+
+      <h3>Limits</h3>
+      <ul class="prose">
+        <li>Updates with no KB (some Defender definition updates) cannot be named in a KB list, so with a deferral they wait until it is turned off.</li>
+        <li>Linux update severity is not known, so Linux drift counts any outdated package even when the policy installs security updates only.</li>
+        <li>Approved changes in approve mode go out all at once with the window's expiry, not wave by wave.</li>
+      </ul>
+    </section>
 
     <section class="section" id="windows-patching">
       <p class="section-label">OS Management</p>
@@ -3214,7 +3313,7 @@
 <p class="action-group-note">Windows only. These drive the Windows Update COM API directly rather than shelling out to a module.</p>
 <details class="action" id="action-windows_update_scan" data-group="winupdate" data-risk="low" data-keywords="windows_update_scan classifications include_kb exclude_kb severity_floor"><summary><code class="action-name">windows_update_scan</code><span class="risk risk-low">low</span><span class="action-label">Scan for Windows updates</span><span class="action-required">none</span></summary><div class="action-body">
 <p class="prose">Read-only. Reports what is missing without installing.</p>
-<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>classifications</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated update classifications to include.</td></tr><tr><td><code>include_kb</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated KB numbers to restrict the run to.</td></tr><tr><td><code>exclude_kb</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated KB numbers to skip.</td></tr><tr><td><code>severity_floor</code></td><td><span class="param-opt">optional</span></td><td>Lowest severity to include.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>classifications</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated Windows Update classifications, e.g. `Critical Updates, Security Updates`. Blank = all.</td></tr><tr><td><code>include_kb</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated KBs; when given, only these install. `KB5034441` and `5034441` both work.</td></tr><tr><td><code>exclude_kb</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated KBs that never install. Wins over include_kb.</td></tr><tr><td><code>severity_floor</code></td><td><span class="param-opt">optional</span></td><td>Lowest severity to include.</td></tr></tbody></table></div>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>count</code></td><td>int</td><td>How many updates matched the filters.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Scan for Windows security updates</span>
 <span class="hl-key">description</span>: <span class="hl-string">Scan for Windows updates on the hosts you dispatch this to.</span>
@@ -3225,7 +3324,7 @@
 </div></details>
 <details class="action" id="action-windows_update_install" data-group="winupdate" data-risk="standard" data-keywords="windows_update_install classifications include_kb exclude_kb severity_floor"><summary><code class="action-name">windows_update_install</code><span class="risk risk-std">standard</span><span class="action-label">Install Windows updates</span><span class="action-required">none</span></summary><div class="action-body">
 <p class="prose">Scan first, then install what the scan found.</p>
-<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>classifications</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated update classifications to include.</td></tr><tr><td><code>include_kb</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated KB numbers to restrict the run to.</td></tr><tr><td><code>exclude_kb</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated KB numbers to skip.</td></tr><tr><td><code>severity_floor</code></td><td><span class="param-opt">optional</span></td><td>Lowest severity to include.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>classifications</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated Windows Update classifications, e.g. `Critical Updates, Security Updates`. Blank = all.</td></tr><tr><td><code>include_kb</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated KBs; when given, only these install. `KB5034441` and `5034441` both work.</td></tr><tr><td><code>exclude_kb</code></td><td><span class="param-opt">optional</span></td><td>Comma-separated KBs that never install. Wins over include_kb.</td></tr><tr><td><code>severity_floor</code></td><td><span class="param-opt">optional</span></td><td>Lowest severity to include.</td></tr></tbody></table></div>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>installed_count</code></td><td>int</td><td>How many updates the installer reported as installed.</td></tr><tr><td><code>failed_count</code></td><td>int</td><td>How many selected updates failed to install.</td></tr><tr><td><code>reboot_required</code></td><td>bool</td><td>True when a reboot is needed to finish applying the updates (the agent never reboots on its own).</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Install Windows security updates</span>
 <span class="hl-key">description</span>: <span class="hl-string">Install Windows updates on the hosts you dispatch this to.</span>
