@@ -249,6 +249,24 @@ def _evaluate_relevant(tree: dict, config) -> tuple[bool, list[dict], list[str]]
     return _relevant_holds(tree, counts), steps, lines
 
 
+_ENGINE_CACHE = {"at": -1e9, "value": None}
+ENGINE_REPORT_SECONDS = 600
+
+
+def _container_engines() -> list[dict] | None:
+    """Docker / Podman engines on this host, re-probed every ten minutes."""
+    now_ = time.monotonic()
+    if now_ - _ENGINE_CACHE["at"] >= ENGINE_REPORT_SECONDS:
+        from . import engine
+        try:
+            _ENGINE_CACHE["value"] = engine.engine_report()
+        except Exception:  # noqa: BLE001 — a probe must never break the check-in
+            logger.debug("container engine probe failed", exc_info=True)
+            _ENGINE_CACHE["value"] = None
+        _ENGINE_CACHE["at"] = now_
+    return _ENGINE_CACHE["value"]
+
+
 def _evaluate_boost(probes: list, config) -> tuple[list[dict], list[str]]:
     """Run a detection task's ``boost:`` probes (M10) once relevance holds.
 
@@ -781,6 +799,7 @@ def run_agent() -> None:
                 software_payload = None
             windows_updates = windows_update.summary()
             update_list = windows_update.take_update_list()
+            engines = _container_engines()
             try:
                 response = client.checkin(
                     config, metrics, inventory=inventory_payload,
@@ -789,6 +808,7 @@ def run_agent() -> None:
                     windows_updates=windows_updates,
                     software=software_payload,
                     windows_update_list=update_list,
+                    container_engines=engines,
                 )
             except Exception:
                 windows_update.restore_update_list(update_list)

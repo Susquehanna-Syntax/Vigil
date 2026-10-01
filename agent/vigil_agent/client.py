@@ -55,6 +55,7 @@ def checkin(
     windows_updates: dict | None = None,
     software: dict | None = None,
     windows_update_list: list[dict] | None = None,
+    container_engines: list[dict] | None = None,
 ) -> dict:
     """Send metrics and receive tasks. Returns the full server response."""
     payload = {
@@ -82,6 +83,10 @@ def checkin(
     # "nothing new", and the server keeps the rows it has.
     if windows_update_list is not None:
         payload["windows_update_list"] = windows_update_list
+    # Docker / Podman engines this host runs (M11); absent = none found, and
+    # the server keeps what it had.
+    if container_engines is not None:
+        payload["container_engines"] = container_engines
     if config.tags:
         payload["tags"] = list(config.tags)
     if inventory:

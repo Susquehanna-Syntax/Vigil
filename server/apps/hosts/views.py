@@ -522,6 +522,17 @@ def checkin(request):
         }
         host.windows_updates_at = now()
         host.save(update_fields=["windows_updates", "windows_updates_at"])
+    engines = data.get("container_engines")
+    if isinstance(engines, list):
+        clean = []
+        for e in engines[:8]:
+            if isinstance(e, dict) and e.get("kind") in ("docker", "podman"):
+                clean.append({"kind": e["kind"], "version": str(e.get("version") or "")[:40],
+                              "api_version": str(e.get("api_version") or "")[:10],
+                              "rootless": bool(e.get("rootless")),
+                              **({"uid": e["uid"]} if isinstance(e.get("uid"), int) else {})})
+        host.container_engines = clean
+        host.save(update_fields=["container_engines"])
     # The per-update list comes only after a fresh scan; absent leaves the
     # stored rows alone (an old agent, or the cached summary).
     if "windows_update_list" in data:

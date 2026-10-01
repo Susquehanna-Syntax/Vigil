@@ -68,3 +68,14 @@ class CheckinUpdateListTests(unittest.TestCase):
         self.assertNotIn("windows_update_list", self.sent)
         client.checkin(config, [], windows_update_list=[])
         self.assertEqual(self.sent["windows_update_list"], [])
+
+
+class CheckinEnginesTests(unittest.TestCase):
+    setUp = CheckinAllowlistTests.setUp
+
+    def test_engines_only_when_found(self):
+        config = AgentConfig(server_url="http://127.0.0.1:1", agent_token="t" * 40)
+        client.checkin(config, [])
+        self.assertNotIn("container_engines", self.sent)
+        client.checkin(config, [], container_engines=[{"kind": "docker"}])
+        self.assertEqual(self.sent["container_engines"], [{"kind": "docker"}])
