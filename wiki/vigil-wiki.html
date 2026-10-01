@@ -2130,7 +2130,8 @@ actions:
           <tbody>
             <tr><td><strong>Nessus</strong></td><td>Central network scanner</td><td><code>NESSUS_*</code> env vars</td><td>Existing Tenable seats; credentialed scans</td></tr>
             <tr><td><strong>Greenbone CE</strong></td><td>Central network scanner (BYO Docker)</td><td><code>GREENBONE_*</code> env vars</td><td>Open-source LAN scans without a Nessus license</td></tr>
-            <tr><td><strong>Trivy</strong></td><td>Agent-local (runs on each host)</td><td>Binary on the agent host</td><td>Catching OS / package CVEs the host knows about</td></tr>
+            <tr><td><strong>Vigil</strong></td><td>Server-side, from the Apps inventory</td><td>OSV / KEV / EPSS data (<a href="#vuln-matcher">below</a>)</td><td>Linux packages, missing Windows updates, outdated apps — no scanner needed</td></tr>
+            <tr><td><strong>Trivy</strong></td><td>Agent-local (runs on each host)</td><td>Binary on the agent host</td><td>Containers, jars and other files on disk</td></tr>
           </tbody>
         </table>
       </div>
@@ -2143,6 +2144,30 @@ actions:
       </div>
       <p class="prose">Those weights are what a finding costs <strong>on the day it is due</strong>. The score answers "am I keeping my remediation promises?", not "how many findings does this host have?". The counts on the same card already answer the second question. A finding you are still inside the window for is work scheduled, not work overdue, so it is discounted steeply; a finding past its date is amplified. In practice <strong>one overdue critical costs more than twenty criticals you still have a month to fix</strong>. See <a href="#remediation" style="color:var(--sky)">Remediation Dates</a> below for the curve.</p>
       <p class="prose">There's no floor. A host with 15 badly overdue criticals lands at <code>-500</code> and the sad-face badge on the Vulnerabilities tab keeps escalating: smile → flat → frown → distraught → crying → X-eyes. The same CVE flagged by two scanners only counts once, and dedup keeps the <em>soonest</em> due date so a second scanner cannot launder an overdue finding onto a later one. The fleet headline averages every host's score; the worst-offender link drops you straight onto the broken host.</p>
+
+      <h3 id="vuln-fix-groups" style="margin-top:36px;">Fix groups: the score counts fixes, not CVEs</h3>
+      <p class="prose">Findings group by the one action that resolves them: the package and the version that fixes it (<code>openssl@3.0.13-0ubuntu3.1</code>), the file as well for a jar or language package, a missing KB, or — for a network plugin with no package — the scanner's own finding. A host's score and its severity counts take <strong>one row per group</strong>, at the group's worst severity and its earliest due date. "App Y has vulnerability X with CVEs 1–100" is one critical, not a hundred; groups that share a CVE merge, so one CVE reported by two scanners still counts once. This applies to every source: Vigil's own matcher, Trivy, Nessus and Greenbone.</p>
+
+      <h3 id="vuln-matcher">Vigil's own matcher</h3>
+      <p class="prose">Vigil does not need a scanner to find vulnerable packages. It keeps a local copy of <strong>OSV.dev</strong> advisories, the <strong>CISA KEV</strong> catalogue and <strong>FIRST EPSS</strong> scores, and compares each Linux host's Apps inventory with the advisories for its release (Ubuntu, Debian, Alpine, Rocky, AlmaLinux), using dpkg's and rpm's own version rules. It re-matches after every inventory and after each data load, and closes a finding when the package moves past the fix. On Windows a missing security or critical update <em>is</em> the finding, rated by Windows Update. For third-party Windows apps, v1 treats an app winget or Chocolatey reports as outdated as a medium finding — a proxy, and the finding says so.</p>
+      <div class="code-block">
+        <div class="code-label">Loading the data</div>
+        <pre># connected: fetch OSV for the ecosystems you run, and refresh KEV
+docker compose exec web python manage.py sync_vuln_data --ecosystem Ubuntu --ecosystem Debian --kev
+
+# air-gapped: carry a bundle across and load it (or upload it as an admin
+# to POST /api/v1/vulns/data/ as "bundle")
+docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip</pre>
+      </div>
+      <p class="prose">A bundle is a zip, tarball or folder holding any of: OSV records under <code>osv/</code> (single <code>.json</code> files or OSV.dev's per-ecosystem <code>all.zip</code>), <code>kev.json</code> as CISA publishes it, and FIRST's <code>epss.csv</code> or <code>epss.csv.gz</code>. <code>manage.py match_vulns</code> re-matches every host on demand.</p>
+
+      <h3 id="vuln-evidence">Evidence and confidence</h3>
+      <p class="prose">Every finding cites what matched: the package record or registry entry from the Apps inventory, a file on disk, a running process, a listening port, a missing update. Running and listening evidence comes from recent <code>hunt_process</code> and <code>hunt_port</code> results that name the package or the affected file. From that each finding reads as <strong>urgent</strong> (installed and running or listening), <strong>confirmed</strong> (installed, by the host's own inventory or Windows Update), <strong>file evidence</strong> (only a file matched — it may be a leftover nobody runs) or <strong>reported</strong> (a scanner said so). Trivy findings now keep the whole advisory: description, CVSS score and vector, references, the vendor's fix status and the affected file path.</p>
+
+      <h3 id="vuln-remediation-by-fix">Remediation by fix</h3>
+      <p class="prose">The Vulnerabilities page opens with <strong>Remediation by fix</strong>: one row per fix across the fleet, worst first — "Upgrade openssl to 3.0.13-0ubuntu3.1 or later on 14 hosts: fixes 37 CVEs". Each row shows severity, KEV, EPSS, CVSS and whether it is running anywhere, and opens to <em>what</em> (package, version, path), <em>why</em> (the advisory and its CVEs), <em>fix</em> and <em>where</em> (every host, with its evidence and confidence). <em>Deploy fix</em> writes a normal task — <code>app_upgrade</code> for a package or an outdated app, <code>windows_update_install</code> for a KB — and opens the deploy dialog with every affected host selected.</p>
+      <p class="prose">A group with no fix (no fixed version, a jar on disk, a vendor that will not fix) offers <em>Suggest mitigations</em> instead. The assistant is given the stored advisory text, the path, the vendor status and where it runs, and may propose only mitigations — never an upgrade.</p>
+      <p class="prose">Limits: OSV lists Debian and Ubuntu packages by <em>source</em> name, and the inventory reports binary packages, so a library shipped under another name (<code>libssl3</code> from <code>openssl</code>) is not matched yet. Arch, SUSE and RHEL itself have no OSV ecosystem here. Mismatch findings (files on disk that the Apps inventory does not know about) are not built yet.</p>
 
       <h3 id="remediation" style="margin-top:36px;">Remediation Dates</h3>
       <p class="prose">Every open finding that is not <code>info</code> carries a <code>due_date</code>, derived once at first detection from the active remediation policy and from whether the CVE is on the CISA KEV list. The date is stable across re-scans: it is anchored to the finding's <code>first_seen</code> rather than to the latest scan, so a scanner re-running daily does not keep pushing the deadline out.</p>

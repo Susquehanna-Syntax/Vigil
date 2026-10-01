@@ -65,6 +65,9 @@ Rules:
   It reads the host's inventory and changes nothing when the host already matches, so it is safe to run on a schedule.
 - App and patch policies are set on the Policies page, not in YAML. Never write or edit a task named "Policy: ..." —
   it is generated from its policy and rewritten on every save.
+- A vulnerability is fixed per fix group: one upgrade of the package to its fixed version (app_upgrade) or one
+  KB (windows_update_install include_kb) clears every CVE in the group. When the prompt says NO FIX IS AVAILABLE,
+  propose mitigations only and never an upgrade or a version.
 - Never propose update_agent."""
 
 
