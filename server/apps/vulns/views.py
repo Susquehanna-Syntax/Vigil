@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from vigil import scoping
+from apps.accounts.permissions import IsAdmin
 from apps.hosts.models import Host
 
 from .models import VulnFinding, VulnScan, VulnScoreHistory, VulnSummary
@@ -266,3 +267,32 @@ def scan_create(request, host_id):
         pass  # If broker is down, the next periodic run still picks it up.
 
     return Response(VulnScanSerializer(scan).data, status=201)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def vuln_data(request):
+    """GET: what the local OSV / KEV / EPSS store holds. POST (multipart
+    ``bundle``): load an offline bundle — how an air-gapped install updates."""
+    import tempfile
+
+    from .models import EpssScore, KevEntry, OsvAdvisory
+    from .vulndata import import_bundle
+
+    if request.method == "POST":
+        upload = request.FILES.get("bundle")
+        if upload is None:
+            return Response({"detail": "upload the bundle as 'bundle'"}, status=400)
+        suffix = ".tar.gz" if upload.name.endswith((".tar.gz", ".tgz")) else ".zip"
+        with tempfile.NamedTemporaryFile(suffix=suffix) as tmp:
+            for chunk in upload.chunks():
+                tmp.write(chunk)
+            tmp.flush()
+            try:
+                counts = import_bundle(tmp.name)
+            except (OSError, ValueError) as exc:
+                return Response({"detail": f"could not read the bundle: {exc}"}, status=400)
+        return Response({"loaded": counts})
+    ecosystems = sorted(set(OsvAdvisory.objects.values_list("affected__ecosystem", flat=True)) - {None})
+    return Response({"osv_advisories": OsvAdvisory.objects.count(), "osv_ecosystems": ecosystems,
+                     "kev_entries": KevEntry.objects.count(), "epss_scores": EpssScore.objects.count()})
