@@ -682,19 +682,23 @@ class _UnixHTTPConnection(_http_client.HTTPConnection):
 
 
 def _docker_api_get(path: str):
-    """GET from the Docker Engine API via the Unix socket. Returns parsed JSON or None."""
-    try:
-        conn = _UnixHTTPConnection(_DOCKER_SOCKET)
-        conn.request("GET", path, headers={"Host": "localhost"})
-        resp = conn.getresponse()
-        if resp.status == 200:
-            return _json.loads(resp.read())
+    """GET from the container engine (Docker or Podman, M11). Returns parsed
+    JSON, or None when there is no engine or it does not answer 200."""
+    from . import engine
+
+    client = engine.default_client()
+    if client is None:
         return None
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+    status, body, _headers = client.raw("GET", path, versioned=False)
+    if status == 200:
+        return _json.loads(body)
+    return None
+
+
+def _engine_available() -> bool:
+    from . import engine
+
+    return engine.default_client() is not None
 
 
 def _parse_docker_hub_ref(image_str: str) -> tuple[str, str] | None:
@@ -849,7 +853,7 @@ def collect_docker_updates() -> list[dict]:
     is unavailable (no socket, permission denied, daemon not running).
     Only Docker Hub public images are checked; private registries are skipped.
     """
-    if not Path(_DOCKER_SOCKET).exists():
+    if not _engine_available():
         return []
 
     try:
@@ -983,6 +987,26 @@ def _docker_container_stats(container_id: str) -> dict:
     return out
 
 
+def _container_detail(cid: str, image_id: str, digests: dict) -> dict:
+    """Restart policy and the image's repo digest — best-effort, one inspect
+    per container and one per image (cached across the snapshot)."""
+    out: dict = {}
+    try:
+        spec = _docker_api_get(f"/containers/{cid}/json") if cid else None
+        if isinstance(spec, dict):
+            out["restart_policy"] = str(((spec.get("HostConfig") or {}).get("RestartPolicy")
+                                         or {}).get("Name") or "")[:40]
+        if image_id and image_id not in digests:
+            image = _docker_api_get(f"/images/{image_id}/json")
+            repo_digests = (image or {}).get("RepoDigests") or []
+            digests[image_id] = str(repo_digests[0]) if repo_digests else ""
+        if image_id:
+            out["image_digest"] = digests[image_id][:300]
+    except Exception as exc:  # noqa: BLE001 — detail is optional
+        logger.debug("container detail for %s failed: %s", cid[:12], exc)
+    return out
+
+
 def collect_docker_containers() -> list[dict] | None:
     """Snapshot of Docker containers on this host for the checkin payload.
 
@@ -993,7 +1017,7 @@ def collect_docker_containers() -> list[dict] | None:
     identity, compose stack/service (from labels), state, and best-effort
     CPU/mem stats for running containers.
     """
-    if not Path(_DOCKER_SOCKET).exists():
+    if not _engine_available():
         return None
     try:
         containers = _docker_api_get("/containers/json?all=1")
@@ -1007,6 +1031,7 @@ def collect_docker_containers() -> list[dict] | None:
         return None
 
     out: list[dict] = []
+    digests: dict[str, str] = {}
     for c in containers:
         cid = c.get("Id", "")
         names = c.get("Names") or []
@@ -1022,7 +1047,14 @@ def collect_docker_containers() -> list[dict] | None:
             "stack": labels.get("com.docker.compose.project", ""),
             "service": labels.get("com.docker.compose.service", ""),
             "ports": _docker_ports(c.get("Ports") or []),
+            # Stack inventory (M11): where compose keeps the stack, and the
+            # hash compose uses to tell whether a container drifted.
+            "image_id": c.get("ImageID", "")[:80],
+            "config_files": labels.get("com.docker.compose.project.config_files", "")[:1000],
+            "working_dir": labels.get("com.docker.compose.project.working_dir", "")[:500],
+            "config_hash": labels.get("com.docker.compose.config-hash", "")[:80],
         }
+        entry.update(_container_detail(cid, c.get("ImageID", ""), digests))
         if state == "running" and cid:
             try:
                 entry.update(_docker_container_stats(cid))
