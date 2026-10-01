@@ -153,6 +153,7 @@ async function refreshVulns() {
     if (!resp.ok) throw new Error('Request failed');
     const data = await resp.json();
     renderVulns(data);
+    refreshFixGroups();           // remediation by fix (M9)
     refreshVulnScans();           // also refresh scan history
     _renderFleetHeadline();       // fleet face + score + worst offender
     vulnsLoaded = true;
@@ -595,3 +596,84 @@ function updateHostCardVulnBadges(summaries) {
     if (resp.ok) updateHostCardVulnBadges(await resp.json());
   } catch {}
 })();
+
+
+/* ── Remediation by fix (M9) ─────────────────────────────────────────── */
+const fixState = { rows: [], open: {}, seq: 0 };
+const _VFIX_CONF = { urgent: 'chip-rose', confirmed: 'apps-chip-warn', file: 'chip-muted', reported: 'chip-muted' };
+
+async function refreshFixGroups() {
+  const seq = ++fixState.seq;
+  const q = (document.getElementById('vuln-fix-q')?.value || '').trim();
+  let body = { results: [] };
+  try {
+    body = await apiJson(`/api/v1/vulns/fix-groups/${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+  } catch { body = { results: [] }; }
+  if (seq !== fixState.seq) return;
+  fixState.rows = body.results || [];
+  renderFixGroups(q);
+}
+
+function _vfixHeadline(g) {
+  const cves = g.cves.length ? `fixes ${g.cves.length} CVE${g.cves.length === 1 ? '' : 's'}`
+    : `fixes ${g.finding_count} finding${g.finding_count === 1 ? '' : 's'}`;
+  const where = `${g.host_count} host${g.host_count === 1 ? '' : 's'}`;
+  if (g.fix.kind === 'none') return `${escHtml(g.package)} on ${where} — ${escHtml(g.fix.label.toLowerCase())}`;
+  return `${escHtml(g.fix.label)} on ${where}: ${cves}`;
+}
+
+function renderFixGroups(q) {
+  const section = document.getElementById('vuln-fixes-section');
+  const wrap = document.getElementById('vuln-fixes');
+  if (!section || !wrap) return;
+  section.hidden = !fixState.rows.length && !q;
+  wrap.innerHTML = fixState.rows.map(g => {
+    const chips = [
+      `<span class="chip ${g.severity === 'critical' ? 'chip-rose' : g.severity === 'high' ? 'apps-chip-warn' : 'chip-muted'}">${escHtml(g.severity)}</span>`,
+      g.kev ? '<span class="chip chip-rose" title="On CISA\'s Known Exploited Vulnerabilities list">KEV</span>' : '',
+      g.running ? '<span class="chip chip-rose" title="Installed and running or listening on at least one host">running</span>' : '',
+      g.epss != null ? `<span class="chip chip-muted" title="FIRST EPSS: chance of exploitation in 30 days">EPSS ${(g.epss * 100).toFixed(1)}%</span>` : '',
+      g.cvss != null ? `<span class="chip chip-muted">CVSS ${g.cvss}</span>` : '',
+    ].join('');
+    const deploy = g.fix.kind === 'none' ? ''
+      : `<button class="btn btn-mint btn-xs" type="button" data-vfix-deploy="${escAttr(g.fix_key)}">Deploy fix</button>`;
+    let detail = '';
+    if (fixState.open[g.fix_key]) {
+      const hosts = g.hosts.map(h => `<div class="apps-detail-item">
+          <span class="apps-name">${escHtml(h.hostname)}</span>
+          <span class="chip ${_VFIX_CONF[h.confidence] || 'chip-muted'}">${escHtml(h.confidence === 'file' ? 'file evidence' : h.confidence)}</span>
+          <span class="apps-detail-scope">${escHtml(h.evidence_text.join(' · '))}</span>
+        </div>`).join('');
+      detail = `<div class="vfix-detail">
+        <div><div class="vfix-k">What</div><div>${escHtml(g.package)}${g.installed_version ? ` <span class="apps-mono">${escHtml(g.installed_version)}</span>` : ''}${g.affected_path ? `<div class="apps-detail-pkg">${escHtml(g.affected_path)}</div>` : ''}</div></div>
+        <div><div class="vfix-k">Why</div><div>${escHtml(g.title || '')}<div class="vfix-cves">${g.cves.map(c => `<span class="chip chip-muted apps-src">${escHtml(c)}</span>`).join('')}</div></div></div>
+        <div><div class="vfix-k">Fix</div><div>${escHtml(g.fix.label)}${g.vendor_status ? ` <span class="apps-zero">(vendor: ${escHtml(g.vendor_status.replace(/_/g, ' '))})</span>` : ''}${g.due_date ? `<div class="apps-zero">due ${escHtml(g.due_date)}</div>` : ''}</div></div>
+        <div class="vfix-where"><div class="vfix-k">Where</div>${hosts}</div>
+      </div>`;
+    }
+    return `<div class="vfix-row" data-vfix-row="${escAttr(g.fix_key)}">
+        <div class="vfix-line"><span class="vfix-title">${_vfixHeadline(g)}</span><span class="vfix-chips">${chips}</span>${deploy}</div>
+        ${detail}
+      </div>`;
+  }).join('') || '<div class="apps-empty-state">No open findings match.</div>';
+}
+
+async function deployFixGroup(fixKey) {
+  try {
+    const body = await apiJson('/api/v1/vulns/fix-groups/deploy/', { method: 'POST', body: JSON.stringify({ fix_key: fixKey }) });
+    openDeployModal(body.definition_id, { hostIds: body.host_ids });
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+delegateClick('[data-vfix-deploy]', (el, ev) => { ev.stopPropagation(); deployFixGroup(el.dataset.vfixDeploy); });
+delegateClick('[data-vfix-row]', (el, ev) => {
+  if (ev.target.closest('button, a, .vfix-detail')) return;
+  const key = el.dataset.vfixRow;
+  fixState.open[key] = !fixState.open[key];
+  renderFixGroups((document.getElementById('vuln-fix-q')?.value || '').trim());
+});
+document.addEventListener('DOMContentLoaded', () => {
+  const q = document.getElementById('vuln-fix-q');
+  let timer = null;
+  if (q) q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(refreshFixGroups, 250); });
+});
