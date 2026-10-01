@@ -31,6 +31,12 @@ logger = logging.getLogger(__name__)
 #: plugin_id_or_oid prefix for package findings. Other Vigil sources (missing
 #: updates, outdated apps) use their own, so each reconciles only its own rows.
 PKG_PREFIX = "pkg:"
+KB_PREFIX = "kb:"
+APP_PREFIX = "app:"
+
+#: Windows Update classifications whose missing updates are vulnerabilities.
+SECURITY_CLASSIFICATIONS = {"Security Updates", "Critical Updates"}
+_WU_SEVERITY = {"critical": "critical", "important": "high", "moderate": "medium", "low": "low"}
 
 _RELEASE = re.compile(r"(\d+(?:\.\d+)?)")
 
@@ -84,8 +90,91 @@ def _affected(version: str, row: OsvAffected, scheme: str) -> bool:
     return False
 
 
+def _reconcile(host, prefix: str, seen: set[str]) -> int:
+    stale = (VulnFinding.objects.filter(host=host, scanner="vigil", state=VulnFinding.State.OPEN,
+                                        plugin_id_or_oid__startswith=prefix)
+             .exclude(plugin_id_or_oid__in=seen))
+    return stale.update(state=VulnFinding.State.FIXED, resolved_at=now())
+
+
+def match_windows_updates(host) -> dict:
+    """A missing Windows security update *is* the vulnerability: one finding
+    per missing security or critical KB, rated by Windows Update's own
+    severity, fixed by installing that KB."""
+    from apps.software.models import PendingUpdate
+
+    seen: set[str] = set()
+    with transaction.atomic():
+        for row in PendingUpdate.objects.filter(host=host, kind=PendingUpdate.Kind.WINDOWS):
+            if row.classification not in SECURITY_CLASSIFICATIONS and not row.severity:
+                continue
+            key = f"{KB_PREFIX}{row.key}"[:128]
+            seen.add(key)
+            finding, _ = VulnFinding.objects.update_or_create(
+                host=host, scanner="vigil", plugin_id_or_oid=key,
+                defaults={
+                    "title": (row.title or row.key)[:255],
+                    "severity": _WU_SEVERITY.get(row.severity, VulnFinding.Severity.MEDIUM),
+                    "package_name": row.key[:255], "fixed_version": row.key[:80],
+                    "vendor_status": "fixed",
+                    "advisory": {"kb": row.key, "classification": row.classification},
+                    "state": VulnFinding.State.OPEN, "resolved_at": None,
+                })
+            add_evidence(finding, FindingEvidence.Kind.MISSING_UPDATE, row.key,
+                         f"{row.key} not installed ({row.classification or 'Windows Update'})",
+                         {"classification": row.classification, "severity": row.severity})
+        fixed = _reconcile(host, KB_PREFIX, seen)
+    return {"open": len(seen), "fixed": fixed}
+
+
+def match_outdated_apps(host) -> dict:
+    """Third-party Windows apps, v1: an app winget or Chocolatey says is
+    outdated is treated as vulnerable, medium, fixed by upgrading it. A proxy
+    — there is no advisory feed behind it — and labelled so."""
+    seen: set[str] = set()
+    with transaction.atomic():
+        for item in SoftwareItem.objects.filter(host=host, source__in=("winget", "chocolatey")):
+            if not item.outdated:
+                continue
+            key = f"{APP_PREFIX}{item.source}:{item.package_id}"[:128]
+            seen.add(key)
+            finding, _ = VulnFinding.objects.update_or_create(
+                host=host, scanner="vigil", plugin_id_or_oid=key,
+                defaults={
+                    "title": f"{item.name} is out of date"[:255],
+                    "severity": VulnFinding.Severity.MEDIUM,
+                    "package_name": item.package_id[:255],
+                    "installed_version": item.version[:80],
+                    "fixed_version": item.latest_version[:80],
+                    "vendor_status": "fixed",
+                    "description": (f"{item.source} offers {item.name} {item.latest_version}; this "
+                                    f"host has {item.version}. Vigil treats an outdated app as "
+                                    f"vulnerable until it is current — there is no advisory feed "
+                                    f"behind this finding."),
+                    "advisory": {"proxy": "outdated", "source": item.source},
+                    "state": VulnFinding.State.OPEN, "resolved_at": None,
+                })
+            add_evidence(finding, FindingEvidence.Kind.OUTDATED_APP, f"{item.source}:{item.package_id}",
+                         f"{item.version} installed, {item.latest_version} available ({item.source})",
+                         {"source": item.source, "version": item.version,
+                          "latest": item.latest_version})
+        fixed = _reconcile(host, APP_PREFIX, seen)
+    return {"open": len(seen), "fixed": fixed}
+
+
 def match_host(host) -> dict:
-    """Match one host; returns {"open": n, "fixed": n}. Safe to re-run."""
+    """Every Vigil source for one host; returns {"open": n, "fixed": n}."""
+    total = {"open": 0, "fixed": 0}
+    for part in (_match_packages(host), match_windows_updates(host), match_outdated_apps(host)):
+        total["open"] += part["open"]
+        total["fixed"] += part["fixed"]
+    from .scoring import recompute_summary
+    recompute_summary(host)
+    return total
+
+
+def _match_packages(host) -> dict:
+    """The inventory against OSV; returns {"open": n, "fixed": n}."""
     ecosystems, scheme = host_ecosystems(host)
     if not ecosystems:
         return {"open": 0, "fixed": 0}
@@ -127,15 +216,10 @@ def match_host(host) -> dict:
                              f"{item.source}:{item.package_id}",
                              f"{item.package_id} {item.version} installed ({item.source})",
                              {"source": item.source, "version": item.version})
-        stale = (VulnFinding.objects.filter(host=host, scanner="vigil", state=VulnFinding.State.OPEN,
-                                            plugin_id_or_oid__startswith=PKG_PREFIX)
-                 .exclude(plugin_id_or_oid__in=seen))
-        fixed = stale.update(state=VulnFinding.State.FIXED, resolved_at=now())
+        fixed = _reconcile(host, PKG_PREFIX, seen)
     from .evidence import attach_runtime_evidence
-    from .scoring import recompute_summary
     attach_runtime_evidence(host, VulnFinding.objects.filter(
         host=host, scanner="vigil", state=VulnFinding.State.OPEN, plugin_id_or_oid__in=seen))
-    recompute_summary(host)
     return {"open": len(seen), "fixed": fixed}
 
 

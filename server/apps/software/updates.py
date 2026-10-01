@@ -75,6 +75,14 @@ def ingest_windows_updates(host, raw) -> bool:
         }
     with transaction.atomic():
         _replace(host, PendingUpdate.Kind.WINDOWS, rows, timezone.now())
+    try:
+        from apps.vulns.matcher import match_windows_updates
+        from apps.vulns.scoring import recompute_summary
+        match_windows_updates(host)
+        recompute_summary(host)
+    except Exception:  # noqa: BLE001 — the list is stored either way
+        import logging
+        logging.getLogger(__name__).exception("missing-update findings failed for %s", host)
     return True
 
 
