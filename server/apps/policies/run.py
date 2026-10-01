@@ -58,6 +58,21 @@ def dispatch_to_hosts(policy, definition, hosts, *, user, started=None) -> TaskR
     return run
 
 
+def high_risk_refusal(policy, definition) -> str | None:
+    """Why a high-risk policy task may not go out, or None when it may.
+
+    A reboot step makes the compiled task high risk; like an automation, the
+    policy must have been opted in (with a TOTP code) before it runs one
+    unattended.
+    """
+    if definition.risk_level == "high" and not policy.allow_high_risk:
+        logger.warning("policy %s wants to reboot hosts but allow_high_risk is "
+                       "off — refusing to dispatch", policy.name)
+        return ("this policy reboots hosts, which is high risk — allow high-risk "
+                "steps in its settings (asks for a TOTP code) or set reboot to never")
+    return None
+
+
 def run_policy(policy, *, user=None) -> dict:
     """Compile, find the drifted hosts, and dispatch (or queue for approval).
 
@@ -71,6 +86,9 @@ def run_policy(policy, *, user=None) -> dict:
     result = {"dispatched": 0, "mode": "none", "compliant": drift["compliant"],
               "unknown": len(drift["unknown"])}
     if definition is None or not host_ids:
+        return result
+    if refused := high_risk_refusal(policy, definition):
+        result.update(error=refused)
         return result
 
     if policy.approval_mode == policy.ApprovalMode.APPROVE:

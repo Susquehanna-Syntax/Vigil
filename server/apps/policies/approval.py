@@ -33,7 +33,7 @@ def decide(ids, *, approve: bool, user) -> dict:
     from apps.hosts.models import Host
 
     from .compile import compile_policy
-    from .run import dispatch_to_hosts
+    from .run import dispatch_to_hosts, high_risk_refusal
 
     pending = list(PolicyChange.objects.filter(pk__in=ids, state=PolicyChange.State.PENDING)
                    .select_related("policy"))
@@ -46,10 +46,13 @@ def decide(ids, *, approve: bool, user) -> dict:
     by_policy: dict = {}
     for change in pending:
         by_policy.setdefault(change.policy, []).append(change)
-    dispatched = 0
+    dispatched = refused = 0
     for policy, changes in by_policy.items():
         definition = compile_policy(policy)
         state = PolicyChange.State.APPROVED
+        if definition is not None and high_risk_refusal(policy, definition):
+            refused += len(changes)   # stays pending until the policy is opted in
+            continue
         if definition is not None:
             hosts = list(Host.objects.filter(pk__in=[c.host_id for c in changes]))
             dispatch_to_hosts(policy, definition, hosts, user=user)
@@ -57,4 +60,7 @@ def decide(ids, *, approve: bool, user) -> dict:
             state = PolicyChange.State.DISPATCHED
         PolicyChange.objects.filter(pk__in=[c.pk for c in changes]).update(
             state=state, decided_by=user, decided_at=stamp)
-    return {"approved": len(pending), "dispatched": dispatched}
+    result = {"approved": len(pending) - refused, "dispatched": dispatched}
+    if refused:
+        result["refused"] = refused
+    return result
