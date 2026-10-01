@@ -291,6 +291,14 @@ function suggestFixForVuln(finding) {
     () => _staticVulnFix(finding));
 }
 
+// A vulnerability with no fix (M9): mitigations only, grounded in the stored
+// advisory. A group that has a fix gets "Deploy fix" instead and never this.
+function suggestMitigationsForFixGroup(group) {
+  _openAi(`${group.package} — no fix available`,
+    (pid) => apiJson('/api/v1/ai/suggest/fix-group/',
+      { method: 'POST', body: JSON.stringify({ provider_id: pid, fix_key: group.fix_key }) }));
+}
+
 /* ── Providers manager (Settings) ────────────────────────────────────── */
 async function loadAiProviders() {
   const list = document.getElementById('ai-providers-list');

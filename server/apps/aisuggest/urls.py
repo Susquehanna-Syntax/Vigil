@@ -13,6 +13,11 @@ urlpatterns = [
         name="ai-suggest-alert",
     ),
     path(
+        "suggest/fix-group/",
+        views.suggest_for_fix_group,
+        name="ai-suggest-fix-group",
+    ),
+    path(
         "suggest/vuln/<uuid:finding_id>/",
         views.suggest_for_vuln,
         name="ai-suggest-vuln",
