@@ -1,9 +1,15 @@
 """Container actions: lifecycle, image pull, recreate, update, compose, logs.
 
 Moved out of executor.py (which was 2,150 lines). Helpers that tests patch by
-name on ``executor`` (``_run``, ``_docker_inspect``, ``_recreate_container``,
+name on ``executor`` (``_run``, ``_engine``, ``_docker_inspect``, ``_pull``,
+``_image_id``, ``_container_image_id``, ``_recreate_container``,
 ``_validate_path``) are called through ``ex.`` so those patches keep applying;
 executor re-exports every name defined here.
+
+Single containers go through the Engine API (vigil_agent/engine.py, M11) —
+the same protocol for Docker and Podman. Stacks go through the compose CLI
+(``docker compose``, or ``podman compose`` where there is no docker CLI)
+pointed at the same socket with ``DOCKER_HOST``.
 """
 
 from __future__ import annotations
@@ -17,44 +23,84 @@ from ..config import AgentConfig
 from ..executor import ActionOutput, _SAFE_IMAGE, _container_running, _validate_name
 
 
-def _restart_container(params: dict, _config: AgentConfig) -> str:
+def _engine():
+    """The engine client every container action uses (tests patch ex._engine)."""
+    return ex._engine()
+
+
+def _lifecycle(params: dict, verb: str) -> ActionOutput:
     name = _validate_name(
         params.get("container_name") or params.get("container_id", ""),
         "container name/id",
     )
-    output = ex._run(["docker", "restart", name])
+    # 304 = already in that state: the action's outcome holds either way.
+    _engine().post(f"/containers/{name}/{verb}", ok=(204, 304),
+                   query={"t": 10} if verb in ("stop", "restart") else None)
     collector.request_docker_recheck()
-    return ActionOutput(output, {"running": _container_running(name)})
+    return ActionOutput(f"{verb} {name}: done", {"running": _container_running(name)})
+
+
+def _restart_container(params: dict, _config: AgentConfig) -> str:
+    return _lifecycle(params, "restart")
 
 
 def _stop_container(params: dict, _config: AgentConfig) -> str:
-    name = _validate_name(
-        params.get("container_name") or params.get("container_id", ""),
-        "container name/id",
-    )
-    output = ex._run(["docker", "stop", name])
-    collector.request_docker_recheck()
-    return ActionOutput(output, {"running": _container_running(name)})
+    return _lifecycle(params, "stop")
 
 
 def _start_container(params: dict, _config: AgentConfig) -> str:
-    name = _validate_name(
-        params.get("container_name") or params.get("container_id", ""),
-        "container name/id",
-    )
-    output = ex._run(["docker", "start", name])
-    collector.request_docker_recheck()
-    return ActionOutput(output, {"running": _container_running(name)})
+    return _lifecycle(params, "start")
+
+
+def _split_ref(image: str) -> tuple[str, str]:
+    """(fromImage, tag) for the Engine API's image create — a digest stays in
+    the name, a tag is split off after the last colon past the last slash."""
+    if "@" in image:
+        return image, ""
+    head, _, tail = image.rpartition(":")
+    if head and "/" not in tail:
+        return head, tail
+    return image, "latest"
+
+
+def _pull(image: str, auth: str | None = None) -> str:
+    """Pull *image* through the engine; returns its progress text. The engine
+    answers 200 and puts a failure in the stream, so the stream is read."""
+    repo, tag = _split_ref(image)
+    headers = {"X-Registry-Auth": auth} if auth else None
+    status, body, _ = _engine().raw("POST", "/images/create",
+                                    query={"fromImage": repo, "tag": tag or None},
+                                    headers=headers, timeout=600)
+    lines = []
+    for raw in body.decode("utf-8", "replace").splitlines():
+        try:
+            event = json.loads(raw)
+        except ValueError:
+            continue
+        if event.get("error"):
+            raise RuntimeError(f"pull {image}: {event['error']}")
+        if event.get("status") and not event.get("progressDetail"):
+            lines.append(f"{event.get('id', '')} {event['status']}".strip())
+    if status != 200:
+        raise RuntimeError(f"pull {image}: engine answered {status}")
+    return "\n".join(lines[-20:])
+
+
+def _image_id(ref: str) -> str:
+    return str((_engine().get(f"/images/{ref}/json") or {}).get("Id") or "")
+
+
+def _container_image_id(name: str) -> str:
+    return str((_engine().get(f"/containers/{name}/json") or {}).get("Image") or "")
 
 
 def _pull_image(params: dict, _config: AgentConfig) -> str:
     image = params.get("image", "")
     if not _SAFE_IMAGE.match(image):
         raise ValueError(f"Invalid image name: {image!r}")
-    output = ex._run(["docker", "pull", image], timeout=600)
+    output = ex._pull(image)
     collector.request_docker_recheck()
-    image_id = ex._run(["docker", "image", "inspect", "--format", "{{.Id}}", image]).strip()
-    return ActionOutput(output, {"image_id": image_id})
+    return ActionOutput(output, {"image_id": ex._image_id(image)})
 
 
 def _check_docker_updates(_params: dict, _config: AgentConfig) -> str:
@@ -99,108 +145,82 @@ _COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
 
 
 def _docker_inspect(ref: str, *, kind: str = "container") -> dict:
-    """Return the parsed ``docker inspect`` object for a container or image."""
-    out = ex._run(["docker", "inspect", "--type", kind, ref])
-    data = json.loads(out)
+    """The engine's inspect object for a container or an image."""
+    path = f"/images/{ref}/json" if kind == "image" else f"/containers/{ref}/json"
+    data = _engine().get(path)
     if not data:
-        raise RuntimeError(f"docker inspect returned nothing for {ref!r}")
-    return data[0]
+        raise RuntimeError(f"inspect returned nothing for {ref!r}")
+    return data
 
 
-def _recreate_run_args(spec: dict, old_image: dict, new_image_ref: str) -> list[str]:
-    """Build the ``docker run`` argv that reproduces *spec* on a new image.
+def _recreate_body(spec: dict, old_image: dict, new_image_ref: str) -> dict:
+    """The Engine API create body that reproduces *spec* on a new image.
 
-    Only configuration the *user* supplied at ``docker run`` time is carried
-    over — env vars, command, and entrypoint are diffed against the original
-    image's defaults so the new image's own defaults still apply (the same
-    approach watchtower uses). Exotic host configs (tmpfs, GPUs, log drivers,
+    Only configuration the *user* supplied is carried over — env vars,
+    labels, command and entrypoint are diffed against the original image's
+    defaults so the new image's own defaults still apply (the approach
+    watchtower takes). Exotic host configs (tmpfs, GPUs, log drivers,
     resource limits) are not reproduced; those setups belong in compose.
     """
     cfg = spec.get("Config") or {}
     host = spec.get("HostConfig") or {}
     img_cfg = old_image.get("Config") or {}
-
-    args = ["docker", "run", "-d", "--name", (spec.get("Name") or "").lstrip("/")]
-
-    restart = host.get("RestartPolicy") or {}
-    policy = restart.get("Name") or ""
-    if policy and policy != "no":
-        retries = restart.get("MaximumRetryCount") or 0
-        if policy == "on-failure" and retries:
-            policy = f"{policy}:{retries}"
-        args += ["--restart", policy]
+    body: dict = {"Image": new_image_ref}
 
     image_env = set(img_cfg.get("Env") or [])
-    for env in cfg.get("Env") or []:
-        if env not in image_env:
-            args += ["-e", env]
-
+    env = [e for e in cfg.get("Env") or [] if e not in image_env]
+    if env:
+        body["Env"] = env
     image_labels = img_cfg.get("Labels") or {}
-    for label, value in (cfg.get("Labels") or {}).items():
-        if image_labels.get(label) != value:
-            args += ["--label", f"{label}={value}"]
+    labels = {k: v for k, v in (cfg.get("Labels") or {}).items() if image_labels.get(k) != v}
+    if labels:
+        body["Labels"] = labels
+    if cfg.get("User"):
+        body["User"] = cfg["User"]
+    if cfg.get("ExposedPorts"):
+        body["ExposedPorts"] = cfg["ExposedPorts"]
 
+    entrypoint = cfg.get("Entrypoint")
+    if isinstance(entrypoint, str):
+        entrypoint = [entrypoint]
+    command = cfg.get("Cmd")
+    if isinstance(command, str):
+        command = [command]
+    if entrypoint and entrypoint != (img_cfg.get("Entrypoint") or None):
+        body["Entrypoint"] = entrypoint
+        body["Cmd"] = command or []
+    elif command and command != (img_cfg.get("Cmd") or None):
+        body["Cmd"] = command
+
+    hc: dict = {}
+    restart = host.get("RestartPolicy") or {}
+    if (restart.get("Name") or "no") != "no":
+        hc["RestartPolicy"] = {"Name": restart["Name"],
+                               "MaximumRetryCount": restart.get("MaximumRetryCount") or 0}
     network = host.get("NetworkMode") or "default"
     if network not in ("default", "bridge"):
-        args += ["--network", network]
-
+        hc["NetworkMode"] = network
     if host.get("PublishAllPorts"):
-        args.append("-P")
-    for port, bindings in (host.get("PortBindings") or {}).items():
-        for binding in bindings or [{}]:
-            host_ip = binding.get("HostIp") or ""
-            host_port = binding.get("HostPort") or ""
-            if host_ip:
-                args += ["-p", f"{host_ip}:{host_port}:{port}"]
-            elif host_port:
-                args += ["-p", f"{host_port}:{port}"]
-            else:
-                args += ["-p", port]
-
+        hc["PublishAllPorts"] = True
+    if host.get("PortBindings"):
+        hc["PortBindings"] = host["PortBindings"]
+    binds = []
     for mount in spec.get("Mounts") or []:
         source = mount.get("Source") if mount.get("Type") == "bind" else mount.get("Name")
         if not source:
             continue
-        volume = f"{source}:{mount.get('Destination')}"
+        bind = f"{source}:{mount.get('Destination')}"
         if not mount.get("RW", True):
-            volume += ":ro"
-        args += ["-v", volume]
-
-    if host.get("Privileged"):
-        args.append("--privileged")
-    for cap in host.get("CapAdd") or []:
-        args += ["--cap-add", cap]
-    for cap in host.get("CapDrop") or []:
-        args += ["--cap-drop", cap]
-    for device in host.get("Devices") or []:
-        on_host = device.get("PathOnHost")
-        if on_host:
-            args += ["--device", f"{on_host}:{device.get('PathInContainer') or on_host}"]
-    for extra_host in host.get("ExtraHosts") or []:
-        args += ["--add-host", extra_host]
-    if cfg.get("User"):
-        args += ["--user", cfg["User"]]
-
-    trailing: list[str] = []
-    entrypoint = cfg.get("Entrypoint")
-    if isinstance(entrypoint, str):
-        entrypoint = [entrypoint]
-    if entrypoint and entrypoint != (img_cfg.get("Entrypoint") or None):
-        # --entrypoint takes a single executable; the rest of the override,
-        # plus the command, must be restated as trailing args.
-        args += ["--entrypoint", entrypoint[0]]
-        trailing += entrypoint[1:]
-        trailing += cfg.get("Cmd") or []
-    else:
-        command = cfg.get("Cmd")
-        if isinstance(command, str):
-            command = [command]
-        if command and command != (img_cfg.get("Cmd") or None):
-            trailing += command
-
-    args.append(new_image_ref)
-    args += [str(part) for part in trailing]
-    return args
+            bind += ":ro"
+        binds.append(bind)
+    if binds:
+        hc["Binds"] = binds
+    for key in ("Privileged", "CapAdd", "CapDrop", "Devices", "ExtraHosts"):
+        if host.get(key):
+            hc[key] = host[key]
+    if hc:
+        body["HostConfig"] = hc
+    return body
 
 
 def _recreate_container(params: dict, _config: AgentConfig) -> str:
@@ -235,34 +255,36 @@ def _recreate_container(params: dict, _config: AgentConfig) -> str:
     # The old image is always inspectable while its container exists — docker
     # refuses to remove an image that a container still references.
     old_image = ex._docker_inspect(old_image_id or image_ref, kind="image")
-    run_args = _recreate_run_args(spec, old_image, image_ref)
+    body = _recreate_body(spec, old_image, image_ref)
+    eng = _engine()
 
     backup = f"{name}.vigil-old"
     try:
-        ex._run(["docker", "rm", "-f", backup])  # clear stale backup from a failed run
-    except RuntimeError:
+        eng.delete(f"/containers/{backup}", query={"force": "true"}, ok=(204, 404))
+    except Exception:  # noqa: BLE001 — a stale backup from a failed run, if any
         pass
 
-    ex._run(["docker", "stop", name])
-    ex._run(["docker", "rename", name, backup])
+    eng.post(f"/containers/{name}/stop", ok=(204, 304))
+    eng.post(f"/containers/{name}/rename", query={"name": backup})
     try:
-        ex._run(run_args, timeout=300)
+        created = eng.post("/containers/create", query={"name": name}, body=body)
+        eng.post(f"/containers/{created['Id']}/start", ok=(204, 304))
     except Exception as exc:
         try:
-            ex._run(["docker", "rm", "-f", name])  # half-created replacement, if any
-        except RuntimeError:
+            eng.delete(f"/containers/{name}", query={"force": "true"}, ok=(204, 404))
+        except Exception:  # noqa: BLE001 — half-created replacement, if any
             pass
         try:
-            ex._run(["docker", "rename", backup, name])
-            ex._run(["docker", "start", name])
+            eng.post(f"/containers/{backup}/rename", query={"name": name})
+            eng.post(f"/containers/{name}/start", ok=(204, 304))
             rollback = "original container restored"
-        except RuntimeError as rb_exc:
+        except Exception as rb_exc:  # noqa: BLE001
             rollback = f"ROLLBACK FAILED, backup container is {backup!r}: {rb_exc}"
         raise RuntimeError(f"Recreate failed ({rollback}): {exc}") from exc
-    ex._run(["docker", "rm", backup])
+    eng.delete(f"/containers/{backup}", ok=(204, 404))
     collector.request_docker_recheck()
 
-    new_image_id = ex._run(["docker", "inspect", "--format", "{{.Image}}", name])
+    new_image_id = ex._container_image_id(name)
     changed = "image updated" if new_image_id != old_image_id else "image unchanged"
     return ActionOutput(
         f"Recreated {name} on {image_ref} ({changed})\n"
@@ -321,13 +343,14 @@ def _update_container(params: dict, _config: AgentConfig) -> str:
         if project_dir:
             dir_args = ["--project-directory", str(ex._validate_path(project_dir, "project directory"))]
 
-        cmd = ["docker", "compose", *dir_args, "-f", compose_file]
-        ex._run(cmd + ["pull", service], timeout=600)
-        ex._run(cmd + ["up", "-d", "--no-deps", service], timeout=300)
+        cmd = [*ex._compose_cmd(), *dir_args, "-f", compose_file]
+        ex._run(cmd + ["pull", service], timeout=600, extra_env=ex._compose_env())
+        ex._run(cmd + ["up", "-d", "--no-deps", service], timeout=300,
+                extra_env=ex._compose_env())
         via = "compose"
     else:
-        ex._run(["docker", "pull", image_ref], timeout=600)
-        pulled_id = ex._run(["docker", "image", "inspect", "--format", "{{.Id}}", image_ref])
+        ex._pull(image_ref)
+        pulled_id = ex._image_id(image_ref)
         if pulled_id and pulled_id == old_image_id:
             # Already on the newest build: recreating would only restart a
             # running container for nothing.
@@ -338,7 +361,7 @@ def _update_container(params: dict, _config: AgentConfig) -> str:
 
     collector.request_docker_recheck()
 
-    new_image_id = ex._run(["docker", "inspect", "--format", "{{.Image}}", name])
+    new_image_id = ex._container_image_id(name)
     changed = "image updated" if new_image_id != old_image_id else "already current"
     return ActionOutput(
         f"Updated {name} via {via} on {image_ref} ({changed})\n"
@@ -356,9 +379,9 @@ def _update_container(params: dict, _config: AgentConfig) -> str:
 
 def _remove_container(params: dict, _config: AgentConfig) -> str:
     name = _validate_name(params.get("container_name", ""), "container name")
-    output = ex._run(["docker", "rm", "-f", name])
+    _engine().delete(f"/containers/{name}", query={"force": "true"})
     collector.request_docker_recheck()
-    return ActionOutput(output, {"removed": True})
+    return ActionOutput(f"removed {name}", {"removed": True})
 
 
 def _docker_compose_up(params: dict, _config: AgentConfig) -> str:
@@ -367,7 +390,7 @@ def _docker_compose_up(params: dict, _config: AgentConfig) -> str:
     if not path.is_file():
         raise ValueError(f"Compose file not found: {compose_file}")
 
-    cmd = ["docker", "compose", "-f", str(path), "up", "-d"]
+    cmd = [*ex._compose_cmd(), "-f", str(path), "up", "-d"]
 
     services = params.get("services", "")
     if services:
@@ -377,7 +400,7 @@ def _docker_compose_up(params: dict, _config: AgentConfig) -> str:
             _validate_name(svc, "service name")
             cmd.append(svc)
 
-    output = ex._run(cmd, timeout=300)
+    output = ex._run(cmd, timeout=300, extra_env=ex._compose_env())
     collector.request_docker_recheck()
     return ActionOutput(output, {"compose_file": str(path)})
 
@@ -387,7 +410,8 @@ def _docker_compose_down(params: dict, _config: AgentConfig) -> str:
     path = ex._validate_path(compose_file, "compose_file")
     if not path.is_file():
         raise ValueError(f"Compose file not found: {compose_file}")
-    output = ex._run(["docker", "compose", "-f", str(path), "down"], timeout=120)
+    output = ex._run([*ex._compose_cmd(), "-f", str(path), "down"], timeout=120,
+                     extra_env=ex._compose_env())
     collector.request_docker_recheck()
     return ActionOutput(output, {"compose_file": str(path)})
 
@@ -397,9 +421,7 @@ def _clear_docker_logs(params: dict, _config: AgentConfig) -> str:
     if not container:
         return ActionOutput("No container specified", {"truncated": False})
     _validate_name(container, "container name")
-    log_path = ex._run(
-        ["docker", "inspect", "--format={{.LogPath}}", container]
-    )
+    log_path = str((_engine().get(f"/containers/{container}/json") or {}).get("LogPath") or "")
     if log_path and Path(log_path).exists():
         Path(log_path).write_text("")
         return ActionOutput(f"Truncated log for {container}", {"truncated": True})

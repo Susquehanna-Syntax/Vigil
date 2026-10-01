@@ -6,8 +6,12 @@ guessed the compose path as ``/opt/<stack>/docker-compose.yml``, and it
 offered the update as an AI suggestion when no model is needed at all.
 This action reads all three facts from the container itself instead.
 
-``_run`` and ``_docker_inspect`` are mocked — no docker ever runs here.
+``_run`` (compose), ``_docker_inspect`` and the Engine API seams (``_pull``,
+``_image_id``, ``_container_image_id``) are mocked — no engine ever runs here.
+Pulls are recorded as ``["docker", "pull", ref]`` so the assertions read the
+same whichever way the agent reaches the engine.
 """
+import contextlib
 
 import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import sys
@@ -47,22 +51,36 @@ def _spec(image_id, image_ref, labels=None):
     }
 
 
+@contextlib.contextmanager
+def seams(calls, spec, *, pulled="sha256:newimageidnew", after="sha256:newimageidnew",
+          recreate=None):
+    """Patch every way _update_container reaches the engine or compose."""
+    def fake_run(cmd, timeout=60, extra_env=None):
+        calls.append(cmd)
+        return "ok"
+
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(patch.object(executor, "_run", side_effect=fake_run))
+        stack.enter_context(patch.object(executor, "_docker_inspect", return_value=spec))
+        stack.enter_context(patch.object(
+            executor, "_pull", side_effect=lambda image, auth=None: calls.append(["docker", "pull", image]) or ""))
+        stack.enter_context(patch.object(executor, "_image_id", return_value=pulled))
+        stack.enter_context(patch.object(executor, "_container_image_id", return_value=after))
+        stack.enter_context(patch.object(executor, "_compose_cmd", return_value=["docker", "compose"]))
+        stack.enter_context(patch.object(executor, "_compose_env", return_value={}))
+        mock = stack.enter_context(patch.object(executor, "_recreate_container",
+                                                return_value="recreated")) if recreate else None
+        yield mock
+
+
 class UpdateContainerTests(unittest.TestCase):
     """Both container shapes, driven entirely by the container's own labels
     and Config.Image — the server supplies nothing but the name."""
 
     def _update(self, spec, inspect_after="sha256:newimageidnew"):
         calls = []
-
-        def fake_run(cmd, timeout=60):
-            calls.append(cmd)
-            if cmd[:2] == ["docker", "inspect"]:
-                return inspect_after
-            return "ok"
-
         with tempfile.TemporaryDirectory() as tmp, \
-                patch.object(executor, "_run", fake_run), \
-                patch.object(executor, "_docker_inspect", return_value=spec):
+                seams(calls, spec, pulled="sha256:pulledpulled", after=inspect_after, recreate=True):
             out = executor._update_container({"container_name": "web"}, _config(tmp))
         return out, calls
 
@@ -98,40 +116,22 @@ class UpdateContainerTests(unittest.TestCase):
         self.assertFalse(any("override.yaml" in arg for c in calls for arg in c))
 
     def test_a_standalone_container_pulls_then_recreates(self):
+        calls = []
         with tempfile.TemporaryDirectory() as tmp, \
-                patch.object(executor, "_run") as run, \
-                patch.object(executor, "_docker_inspect",
-                             return_value=_spec("sha256:oldoldoldoldold",
-                                                "searxng/searxng:latest")), \
-                patch.object(executor, "_recreate_container",
-                             return_value="recreated") as recreate:
-            run.side_effect = lambda cmd, timeout=60: "sha256:newimageidnew"
+                seams(calls, _spec("sha256:oldoldoldoldold", "searxng/searxng:latest"),
+                      recreate=True) as recreate:
             executor._update_container({"container_name": "web"}, _config(tmp))
 
-        pulls = [c.args[0] for c in run.call_args_list
-                 if c.args[0][:2] == ["docker", "pull"]]
+        pulls = [c for c in calls if c[:2] == ["docker", "pull"]]
         self.assertEqual(pulls, [["docker", "pull", "searxng/searxng:latest"]])
         recreate.assert_called_once_with(
             {"container_name": "web", "image": "searxng/searxng:latest"},
             _config(tmp))
 
     def test_a_current_standalone_container_is_not_recreated(self):
-        pulled = "sha256:same"
-        after = "sha256:same"
-
-        def fake_run(cmd, timeout=60):
-            if cmd[:3] == ["docker", "image", "inspect"]:
-                return pulled
-            if cmd[:2] == ["docker", "inspect"]:
-                return after
-            return ""
-
         with tempfile.TemporaryDirectory() as tmp, \
-                patch.object(executor, "_run", side_effect=fake_run), \
-                patch.object(executor, "_docker_inspect",
-                             return_value=_spec("sha256:same", "alpine:latest")), \
-                patch.object(executor, "_recreate_container",
-                             return_value="recreated") as recreate:
+                seams([], _spec("sha256:same", "alpine:latest"), pulled="sha256:same",
+                      after="sha256:same", recreate=True) as recreate:
             out = executor._update_container({"container_name": "web"}, _config(tmp))
 
         recreate.assert_not_called()
@@ -139,22 +139,9 @@ class UpdateContainerTests(unittest.TestCase):
         self.assertIn("via pull", out)
 
     def test_a_newer_pull_still_recreates(self):
-        pulled = "sha256:new"
-        after = "sha256:new"
-
-        def fake_run(cmd, timeout=60):
-            if cmd[:3] == ["docker", "image", "inspect"]:
-                return pulled
-            if cmd[:2] == ["docker", "inspect"]:
-                return after
-            return ""
-
         with tempfile.TemporaryDirectory() as tmp, \
-                patch.object(executor, "_run", side_effect=fake_run), \
-                patch.object(executor, "_docker_inspect",
-                             return_value=_spec("sha256:old", "alpine:latest")), \
-                patch.object(executor, "_recreate_container",
-                             return_value="recreated") as recreate:
+                seams([], _spec("sha256:old", "alpine:latest"), pulled="sha256:new",
+                      after="sha256:new", recreate=True) as recreate:
             out = executor._update_container({"container_name": "web"}, _config(tmp))
 
         recreate.assert_called_once()
@@ -185,9 +172,7 @@ class UpdateContainerTests(unittest.TestCase):
         del labels["com.docker.compose.project.config_files"]
         spec = _spec("sha256:oldoldoldoldold", "nginx:stable", labels)
 
-        with tempfile.TemporaryDirectory() as tmp, \
-                patch.object(executor, "_run"), \
-                patch.object(executor, "_docker_inspect", return_value=spec), \
+        with tempfile.TemporaryDirectory() as tmp, seams([], spec), \
                 self.assertRaises(ValueError) as ctx:
             executor._update_container({"container_name": "web"}, _config(tmp))
 
