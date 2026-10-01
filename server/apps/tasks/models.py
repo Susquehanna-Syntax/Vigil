@@ -48,6 +48,17 @@ class TaskDefinition(models.Model):
     )
     yaml_source = models.TextField()
     parsed_spec = models.JSONField(default=dict, blank=True)
+
+    class ContentSource(models.TextChoices):
+        ORGANIZATION = "organization", "Organization"
+        COMMUNITY = "community", "Community"
+        VENDOR = "vendor", "Vendor"
+
+    #: Where the task came from (M10), shown as a tag: written here by your own
+    #: team, taken from the community catalogue (same review and signing), or
+    #: vendor content — made from a vendor's findings, such as Anvil's.
+    content_source = models.CharField(max_length=12, choices=ContentSource.choices,
+                                      default=ContentSource.ORGANIZATION)
     forked_from = models.ForeignKey(
         "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="forks"
     )

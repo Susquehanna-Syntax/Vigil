@@ -20,9 +20,13 @@ from .scoring import SEVERITY_RANK
 _LINUX_SOURCES = {"dpkg", "rpm", "apk", "pacman"}
 
 
-def _fix_for(finding: VulnFinding) -> dict:
-    """How this group is fixed: a deterministic task, or nothing."""
+def _fix_for(finding: VulnFinding, detections: dict | None = None) -> dict:
+    """How this group is fixed: a deterministic task, a matching detection
+    task (M10), or nothing."""
     key = finding.plugin_id_or_oid
+    if key.startswith("det:"):
+        return {"kind": "detection", "label": f"Run the detection task {finding.title}",
+                "action": "", "params": {}, "definition_id": key.split(":")[1]}
     if key.startswith("kb:"):
         return {"kind": "kb", "label": f"Install {finding.fixed_version}",
                 "action": "windows_update_install", "params": {"include_kb": finding.fixed_version}}
@@ -38,6 +42,10 @@ def _fix_for(finding: VulnFinding) -> dict:
         return {"kind": "upgrade",
                 "label": f"Upgrade {finding.package_name} to {finding.fixed_version} or later",
                 "action": "app_upgrade", "params": params}
+    match = (detections or {}).get((finding.cve_id or "").upper())
+    if match is not None:
+        return {"kind": "detection", "label": f"Run the detection task {match.name}",
+                "action": "", "params": {}, "definition_id": str(match.id)}
     return {"kind": "none", "label": "No fix available" if not finding.fixed_version
             else f"Fixed in {finding.fixed_version} — update the file by hand or with a task",
             "action": "", "params": {}}
@@ -59,6 +67,7 @@ def fix_groups(user, *, q: str = "") -> list[dict]:
     kev = set(KevEntry.objects.filter(cve_id__in=cves).values_list("cve_id", flat=True))
     epss = dict(EpssScore.objects.filter(cve_id__in=cves).values_list("cve_id", "epss"))
 
+    detections = detection_tasks_by_cve(user)
     out = []
     for key, members in groups.items():
         lead = max(members, key=lambda f: SEVERITY_RANK.get(f.severity, -1))
@@ -77,7 +86,12 @@ def fix_groups(user, *, q: str = "") -> list[dict]:
         group_cves = sorted({f.cve_id.upper() for f in members if f.cve_id})
         dues = [f.due_date for f in members if f.due_date]
         scores = [f.cvss_score for f in members if f.cvss_score is not None]
-        fix = _fix_for(lead)
+        fix = _fix_for(lead, detections)
+        if fix["kind"] == "none":
+            for cve in group_cves:
+                if cve in detections:
+                    fix = _fix_for(next(f for f in members if f.cve_id.upper() == cve), detections)
+                    break
         out.append({
             "fix_key": key,
             "title": lead.title,
@@ -97,10 +111,28 @@ def fix_groups(user, *, q: str = "") -> list[dict]:
             "kev": any(c in kev for c in group_cves),
             "running": any(h["confidence"] == "urgent" for h in hosts.values()),
             "scanners": sorted({f.scanner for f in members}),
-            "fix": {k: v for k, v in fix.items() if k != "params"},
+            "fix": {k: v for k, v in fix.items() if k not in ("params", "action")},
         })
     out.sort(key=lambda g: (-SEVERITY_RANK.get(g["severity"], 0), not g["kev"], not g["running"],
                             -g["host_count"], g["package"]))
+    return out
+
+
+def detection_tasks_by_cve(user) -> dict:
+    """CVE → a detection task (relevant: + severity) that names it, from the
+    tasks this user can see. A matching detection task is the fix for a group
+    with no package fix (M10)."""
+    from apps.tasks.models import TaskDefinition
+
+    out: dict = {}
+    qs = TaskDefinition.objects.filter(archived_at__isnull=True).filter(
+        Q(owner=user) | Q(owner__isnull=True) | Q(visibility=TaskDefinition.Visibility.COMMUNITY))
+    for definition in qs.order_by("-updated_at"):
+        spec = definition.parsed_spec or {}
+        if not spec.get("severity") or not spec.get("relevant"):
+            continue
+        for cve in spec.get("cves") or []:
+            out.setdefault(str(cve).upper(), definition)
     return out
 
 
@@ -114,11 +146,18 @@ def fix_definition(user, fix_key: str):
             .order_by("-cvss_score").first())
     if lead is None:
         return None, []
-    fix = _fix_for(lead)
+    members = list(VulnFinding.objects.filter(fix_key=fix_key, state=VulnFinding.State.OPEN))
+    detections = detection_tasks_by_cve(user)
+    fix = _fix_for(lead, detections)
+    if fix["kind"] == "none":
+        fix = next((_fix_for(f, detections) for f in members
+                    if (f.cve_id or "").upper() in detections), fix)
     if fix["kind"] == "none":
         return None, []
-    host_ids = sorted({str(h) for h in VulnFinding.objects.filter(
-        fix_key=fix_key, state=VulnFinding.State.OPEN).values_list("host_id", flat=True)})
+    host_ids = sorted({str(f.host_id) for f in members})
+    if fix["kind"] == "detection":
+        from apps.tasks.models import TaskDefinition
+        return TaskDefinition.objects.filter(pk=fix["definition_id"]).first(), host_ids
     name = f"Fix: {fix['label']}"[:120]
     doc = {"name": name,
            "description": f"Generated from the Vulnerabilities page to fix {lead.package_name}.",
@@ -128,6 +167,9 @@ def fix_definition(user, fix_key: str):
     spec = parse_and_validate(source)
     definition = (TaskDefinition.objects.filter(name=name, owner=user, archived_at__isnull=True).first()
                   or TaskDefinition(owner=user, visibility=TaskDefinition.Visibility.PRIVATE))
+    if lead.scanner == "anvil":
+        # Made from a vendor's findings: tagged so the library says so.
+        definition.content_source = TaskDefinition.ContentSource.VENDOR
     definition.yaml_source, definition.parsed_spec = source, spec
     definition.name, definition.description = spec["name"], spec["description"]
     definition.relevance, definition.risk_level = spec["relevance"], spec["risk"]

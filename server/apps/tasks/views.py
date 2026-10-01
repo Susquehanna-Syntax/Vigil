@@ -2124,7 +2124,8 @@ def _find_in_catalog(by_slug, by_uid, ref):
 def _fork_task_from_catalog(item, user) -> TaskDefinition:
     """Create a library task from one catalog file."""
     definition = TaskDefinition(owner=user,
-                                visibility=TaskDefinition.Visibility.PRIVATE)
+                                visibility=TaskDefinition.Visibility.PRIVATE,
+                                content_source=TaskDefinition.ContentSource.COMMUNITY)
     _save_definition_from_yaml(definition, item["yaml_source"])
     definition.save()
     return definition

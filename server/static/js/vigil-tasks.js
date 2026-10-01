@@ -526,6 +526,8 @@ function defCardHtml(def, opts) {
           <span>${actions} action${actions === 1 ? '' : 's'}</span>
           ${(def.parsed_spec || {}).flow ? '<span class="chip">branches</span>' : ''}
           ${(def.parsed_spec || {}).relevant ? '<span class="chip">applies when…</span>' : ''}
+          ${(def.parsed_spec || {}).severity ? `<span class="chip chip-rose" title="A detection task: a match is a ${escAttr(def.parsed_spec.severity)} finding">detection · ${escHtml(def.parsed_spec.severity)}</span>` : ''}
+          ${def.content_source && def.content_source !== 'organization' ? `<span class="chip chip-muted">${escHtml(def.content_source)}</span>` : ''}
           ${attribution}
         </div>
         ${_defLastRunHtml(def.last_run)}
@@ -566,8 +568,11 @@ function _renderTaskGrid(scope) {
   const all = taskGridCache[scope] || [];
   const q = (document.getElementById(cfg.searchId)?.value || '').trim().toLowerCase();
   let visible = all;
+  if (document.getElementById('task-library-detections')?.checked) {
+    visible = visible.filter(d => d.parsed_spec && d.parsed_spec.severity);
+  }
   if (q) {
-    visible = all.filter(d => {
+    visible = visible.filter(d => {
       const haystack = [
         d.name, d.description, d.relevance,
         ...(d.parsed_spec?.actions || []).map(a => `${a.type} ${a.label || ''}`)
