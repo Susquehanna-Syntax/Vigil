@@ -196,3 +196,40 @@ class StackSpecTests(SimpleTestCase):
                     {"project": "Media"}, {"env_ticket": "API_KEY=hunter2"}):
             with self.subTest(bad=bad), self.assertRaises(SpecError):
                 self._spec(**bad)
+
+
+class StackAuditTests(TestCase):
+    def test_saving_revealing_and_deploying_are_audited_without_values(self):
+        from apps_business.audits.apps import wire
+        from apps_business.audits.models import AuditEvent
+        wire()
+        host = Host.objects.create(hostname="nas", agent_token="nastok", status=Host.Status.ONLINE,
+                                   mode="managed")
+        user = get_user_model().objects.create_user("a", password="x")
+        UserProfile.objects.create(user=user, role=Role.ADMIN)
+        api = APIClient()
+        api.force_authenticate(user)
+        sid = api.post("/api/v1/stacks/", {"host_id": str(host.id), "name": "media", "compose_yaml": COMPOSE,
+                                           "env_text": "API_KEY=hunter2\n"}, format="json").json()["id"]
+        with mock.patch(_TOTP, return_value=None):
+            api.post(f"/api/v1/stacks/{sid}/env/reveal/", {"totp": "1"}, format="json")
+            api.post(f"/api/v1/stacks/{sid}/deploy/", {"totp": "1"}, format="json")
+        events = list(AuditEvent.objects.order_by("id").values_list("action", "target"))
+        self.assertEqual([e for e in events if e[0].startswith("stack.")],
+                         [("stack.saved", "media@nas"), ("stack.env_revealed", "media@nas"),
+                          ("stack.deployed", "media@nas")])
+        self.assertNotIn("hunter2", str(list(AuditEvent.objects.values())))
+
+
+class StackEditorWiringTests(SimpleTestCase):
+    def test_editor_is_wired(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[2]
+        js = (root / "static/js/vigil-stacks.js").read_text(encoding="utf-8")
+        mon = (root / "templates/pages/_monitor.html").read_text(encoding="utf-8")
+        base = (root / "templates/base.html").read_text(encoding="utf-8")
+        self.assertIn('id="managed-stacks"', mon)
+        self.assertIn("js/vigil-stacks.js", base)
+        for needle in ("/env/reveal/", "/deploy/", "/remove/", "/revisions/", "keep: true",
+                       "type=\"${e.revealed ? 'text' : 'password'}\"", "async function renderManagedStacks"):
+            self.assertIn(needle, js)
