@@ -74,6 +74,28 @@ an allowlist entry — see below.
 **Task execution generally.** Monitor mode executes nothing at all, by design.
 That is the whole point of it.
 
+## Containers (Docker and Podman)
+
+Vigil talks to the container engine's own API over its Unix socket — never
+through the `docker` group, which is root by another name.
+
+- **managed / full_control** run as root and open the engine socket directly:
+  `/var/run/docker.sock`, rootful Podman's `/run/podman/podman.sock`, or each
+  user's rootless Podman socket under `/run/user/<uid>/podman/`. A rootless
+  socket's containers are acted on through that user's engine, never root's.
+- **monitor** runs unprivileged and cannot open the engine socket. When the
+  installer finds an engine it adds `vigil-engine-proxy.service`: the same
+  binary run as root with `--engine-proxy`, listening on
+  `/run/vigil/engine-ro.sock` (mode `0600`, owned by `vigil-agent`). It
+  forwards a GET of the container list, one container's inspect, a single
+  (non-streaming) stats sample, logs without `follow`, the image list, and
+  the engine's ping and version — nothing else. Every POST and DELETE, exec,
+  archive, volume and network call is answered `403` and never reaches the
+  engine.
+
+Every container action is a signed task like any other; no UI path hands
+anyone the socket.
+
 ## Switching modes
 
 Edit `mode:` in `agent.yml`, then **re-run the installer**:

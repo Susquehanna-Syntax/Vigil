@@ -653,6 +653,12 @@ def main() -> None:
         help="Run as a Windows service (used by install.ps1; not for interactive use)",
     )
     parser.add_argument(
+        "--engine-proxy",
+        action="store_true",
+        help="Serve the read-only container engine socket for a monitor-mode agent "
+             "(run as root by the vigil-engine-proxy service; not for interactive use)",
+    )
+    parser.add_argument(
         "--log-file",
         type=Path,
         help="Write logs here instead of stdout. Implied by --service, which has no console.",
@@ -684,6 +690,10 @@ def main() -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
         **({"filename": str(log_file)} if log_file else {}),
     )
+
+    if args.engine_proxy:
+        from .engine_proxy import run as _run_engine_proxy
+        sys.exit(_run_engine_proxy())
 
     if args.service:
         from .winservice import run_service
