@@ -7,6 +7,7 @@ from rest_framework.response import Response
 
 from apps.accounts.permissions import IsAdmin
 
+from .drift import policy_drift
 from .models import AppRule, UpdatePolicy
 from .validation import PolicyError, apply_fields, clean_rules
 
@@ -71,3 +72,11 @@ def policy_detail(request, policy_id):
     if error := _save(request, policy, request.data):
         return error
     return Response(_row(policy))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def policy_drift_view(request, policy_id):
+    """What a run would change right now, host by host."""
+    policy = get_object_or_404(UpdatePolicy, pk=policy_id)
+    return Response(policy_drift(policy))
