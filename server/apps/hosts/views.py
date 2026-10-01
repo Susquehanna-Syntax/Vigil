@@ -522,6 +522,11 @@ def checkin(request):
         }
         host.windows_updates_at = now()
         host.save(update_fields=["windows_updates", "windows_updates_at"])
+    # The per-update list comes only after a fresh scan; absent leaves the
+    # stored rows alone (an old agent, or the cached summary).
+    if "windows_update_list" in data:
+        from apps.software.updates import ingest_windows_updates
+        ingest_windows_updates(host, data.get("windows_update_list"))
 
     # Docker container snapshot — replace the host's set wholesale. Absent key
     # means the agent didn't report (old agent / no docker) and we leave the

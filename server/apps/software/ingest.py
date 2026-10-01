@@ -126,10 +126,16 @@ def _ingest(host, payload):
         for key, fields in items:
             row = existing.get(key)
             if row is None:
-                creates.append(SoftwareItem(host=host, first_seen=stamp, **fields))
+                row = SoftwareItem(host=host, first_seen=stamp, **fields)
+                row.outdated_since = stamp if row.outdated else None
+                creates.append(row)
                 continue
             for field, value in fields.items():
                 setattr(row, field, value)
+            if not row.outdated:
+                row.outdated_since = None
+            elif row.outdated_since is None:
+                row.outdated_since = stamp
             # bulk_update skips auto_now, so the stamp is set here.
             row.updated_at = stamp
             updates.append(row)
@@ -137,8 +143,11 @@ def _ingest(host, payload):
             SoftwareItem.objects.bulk_update(updates, [
                 "name", "name_key", "version", "latest_version",
                 "scope", "user", "publisher", "managed", "updated_at",
+                "outdated_since",
             ])
         SoftwareItem.objects.bulk_create(creates)
+        from .updates import sync_linux_pending
+        sync_linux_pending(host, stamp)
 
     snapshot.digest = digest
     snapshot.collected_at = collected_at
