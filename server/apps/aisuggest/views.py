@@ -201,6 +201,65 @@ def suggest_for_vuln(request, finding_id):
     )
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsOperator])
+def suggest_for_fix_group(request):
+    """Mitigations for a vulnerability with no fix (M9).
+
+    Only offered when nothing can be upgraded: a group with a fixed version
+    has a deterministic task, and an assistant guessing at an upgrade is the
+    one thing this must never do. The prompt is grounded in what Vigil
+    stored — the advisory's own text, the affected path, the vendor's status
+    and where the thing is running — and says so.
+    """
+    from apps.vulns.fixview import _fix_for
+    from apps.vulns.models import VulnFinding
+
+    if not AiProvider.objects.filter(enabled=True).exists():
+        return _no_providers()
+    fix_key = str(request.data.get("fix_key") or "")
+    findings = list(VulnFinding.objects.filter(fix_key=fix_key, state=VulnFinding.State.OPEN)
+                    .select_related("host").prefetch_related("evidence")[:200])
+    if not findings:
+        return Response({"detail": "no open findings in that group"}, status=404)
+    if _fix_for(findings[0])["kind"] != "none":
+        return Response({"detail": "this group has a fix — deploy it rather than mitigate"},
+                        status=400)
+    provider_id = request.data.get("provider_id")
+    if not provider_id:
+        return Response({"detail": "provider_id required"}, status=400)
+    return _run_provider(int(provider_id), mitigation_prompt(findings))
+
+
+def mitigation_prompt(findings) -> str:
+    """The no-fix prompt: everything Vigil knows, and the rule that binds it."""
+    lead = max(findings, key=lambda f: (f.cvss_score or 0))
+    cves = sorted({f.cve_id for f in findings if f.cve_id})
+    lines = [
+        "NO FIX IS AVAILABLE for this vulnerability. Propose mitigations only — disable the",
+        "affected module or feature, block or bind a port, stop a service, remove an unused",
+        "file — as Vigil task steps. Never propose upgrading, installing or pinning a version:",
+        "none exists. Ground every step in the advisory text below; if it gives no way to",
+        "mitigate, say that plainly instead of guessing.",
+        "",
+        f"Package: {lead.package_name or '(none)'} {lead.installed_version or ''}".rstrip(),
+        f"Affected path: {lead.affected_path or '(not reported)'}",
+        f"Vendor status: {lead.vendor_status or 'unknown'}",
+        f"Severity: {lead.severity}" + (f", CVSS {lead.cvss_score}" if lead.cvss_score else ""),
+        f"CVEs: {', '.join(cves) if cves else '(none)'}",
+        f"Title: {lead.title}",
+        "Advisory text:",
+        (lead.description or "(the source gave no description)")[:4000],
+    ]
+    if lead.references:
+        lines.append("References: " + ", ".join(lead.references[:5]))
+    lines.append("Hosts and evidence:")
+    for f in findings[:20]:
+        evidence = "; ".join(e.summary for e in f.evidence.all()) or "scanner report only"
+        lines.append(f"- {f.host.hostname} ({f.host.os or 'unknown OS'}): {evidence}")
+    return "\n".join(lines)
+
+
 def _no_providers():
     return Response(
         {

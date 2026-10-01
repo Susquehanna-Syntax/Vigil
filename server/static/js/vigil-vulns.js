@@ -635,7 +635,8 @@ function renderFixGroups(q) {
       g.epss != null ? `<span class="chip chip-muted" title="FIRST EPSS: chance of exploitation in 30 days">EPSS ${(g.epss * 100).toFixed(1)}%</span>` : '',
       g.cvss != null ? `<span class="chip chip-muted">CVSS ${g.cvss}</span>` : '',
     ].join('');
-    const deploy = g.fix.kind === 'none' ? ''
+    const deploy = g.fix.kind === 'none'
+      ? `<button class="btn btn-lav btn-xs" type="button" data-vfix-mitigate="${escAttr(g.fix_key)}">Suggest mitigations</button>`
       : `<button class="btn btn-mint btn-xs" type="button" data-vfix-deploy="${escAttr(g.fix_key)}">Deploy fix</button>`;
     let detail = '';
     if (fixState.open[g.fix_key]) {
@@ -665,6 +666,11 @@ async function deployFixGroup(fixKey) {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
+delegateClick('[data-vfix-mitigate]', (el, ev) => {
+  ev.stopPropagation();
+  const group = fixState.rows.find(g => g.fix_key === el.dataset.vfixMitigate);
+  if (group && typeof suggestMitigationsForFixGroup === 'function') suggestMitigationsForFixGroup(group);
+});
 delegateClick('[data-vfix-deploy]', (el, ev) => { ev.stopPropagation(); deployFixGroup(el.dataset.vfixDeploy); });
 delegateClick('[data-vfix-row]', (el, ev) => {
   if (ev.target.closest('button, a, .vfix-detail')) return;
