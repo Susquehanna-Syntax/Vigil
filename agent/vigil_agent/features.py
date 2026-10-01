@@ -6,4 +6,4 @@ pre-phase-04 agent would ignore ``relevant:`` and run the fix on every host
 it is told to).
 """
 
-FEATURES = ("relevant", "branches")
+FEATURES = ("relevant", "branches", "boost")

@@ -249,6 +249,45 @@ def _evaluate_relevant(tree: dict, config) -> tuple[bool, list[dict], list[str]]
     return _relevant_holds(tree, counts), steps, lines
 
 
+def _evaluate_boost(probes: list, config) -> tuple[list[dict], list[str]]:
+    """Run a detection task's ``boost:`` probes (M10) once relevance holds.
+
+    A boost never decides whether the task applies — only how sure the match
+    is — so a probe that fails is reported and skipped, never fatal. Returns
+    the probe evidence plus a ``detection`` step whose result carries
+    ``confidence`` (``high`` when any boost matched, ``normal`` otherwise)
+    and ``boost_matches``, for the server to read.
+    """
+    from .executor import execute_action as _execute
+
+    steps: list[dict] = []
+    lines: list[str] = []
+    matched = 0
+    for probe in probes:
+        if not isinstance(probe, dict) or not str(probe.get("type", "")).startswith("hunt_"):
+            continue
+        try:
+            out = _execute(probe["type"], probe.get("params") or {}, config)
+        except Exception as exc:
+            lines.append(f"[BOOST] {probe.get('id')} ({probe['type']}): failed — {exc}")
+            continue
+        count = (out.data or {}).get("count")
+        hit = isinstance(count, int) and count > 0
+        matched += int(hit)
+        step = {"id": probe.get("id"), "status": "ok", "result": dict(out.data or {})}
+        hunt = _hunt_block(probe["type"], str(out))
+        if hunt is not None:
+            step["hunt"] = hunt
+        steps.append(step)
+        lines.append(f"[BOOST] {probe.get('id')} ({probe['type']}): "
+                     f"{count if isinstance(count, int) else '?'} match(es)")
+    confidence = "high" if matched else "normal"
+    steps.append({"id": "detection", "status": "ok",
+                  "result": {"confidence": confidence, "boost_matches": matched}})
+    lines.append(f"[DETECTION] confidence {confidence} ({matched} boost match(es))")
+    return steps, lines
+
+
 class RelevantProbeError(Exception):
     """A ``relevant:`` probe failed; ``str(exc)`` is the report line and
     ``steps`` the evidence of the probes that ran before it."""
@@ -320,6 +359,12 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
             logger.info("Script task %s not applicable", task_id)
             _report_not_applicable(config, task, output, steps=probe_steps)
             return
+
+    boost = params.get("boost")
+    if isinstance(boost, list) and boost:
+        boost_steps, boost_lines = _evaluate_boost(boost, config)
+        probe_steps = probe_steps + boost_steps
+        probe_lines = probe_lines + boost_lines
 
     # Build the evaluation context once per task. agent.* comes from the
     # platform; inputs.* from the resolved step inputs the server already
