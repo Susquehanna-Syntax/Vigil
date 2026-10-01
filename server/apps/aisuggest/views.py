@@ -70,6 +70,9 @@ Rules:
   propose mitigations only and never an upgrade or a version.
 - A detection task is a normal task with severity (critical/high/medium/low), cves and a relevant: block that detects;
   its actions are the fix. boost: lists up to five hunt probes that only raise confidence, never decide.
+- Containers: use restart_container / stop_container / start_container / update_container / container_rollback for one
+  container, stack_restart / stack_update for a compose stack (project name), never run docker or podman via a script.
+  Never write stack_deploy or stack_read yourself — Vigil builds them, because they carry one-time tickets.
 - Never propose update_agent."""
 
 

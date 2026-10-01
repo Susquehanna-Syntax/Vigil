@@ -2023,20 +2023,36 @@ actions:
       </div>
       <p class="prose">For Compose-managed stacks, swap the two steps for <code>docker_compose_up</code> against the stack's compose file. Compose pulls and recreates in a single action.</p>
 
-      <h3>Granting the agent Docker socket access</h3>
-      <p class="prose">The agent talks to the local Docker Engine API over <code>/var/run/docker.sock</code>. On a default Linux install the service runs as <code>root</code> and already has access, so no extra step is needed. If you've hardened the install to run under a dedicated user:</p>
-      <div class="code-block">
-        <div class="code-label">Linux</div>
-        <pre><span class="hl-comment"># Add the user that runs vigil-agent to the docker group</span>
-<span class="hl-cmd">sudo usermod</span> <span class="hl-flag">-aG</span> docker vigil-agent
-<span class="hl-cmd">sudo systemctl</span> restart vigil-agent</pre>
-      </div>
-      <p class="prose">On macOS, Docker Desktop publishes the socket under the user that launched it; the launchd plist inherits that context automatically. On Windows, Docker Desktop's named pipe is not currently polled, so <strong>image-update alerts are Linux- and macOS-only</strong>.</p>
+      <h3 id="containers-engines">Docker and Podman, and who may touch the socket</h3>
+      <p class="prose">The agent talks to the engine's own API over its Unix socket — the same protocol for Docker and Podman. It finds <code>$DOCKER_HOST</code> (unix only), <code>/var/run/docker.sock</code>, rootful Podman's <code>/run/podman/podman.sock</code>, and each user's rootless Podman socket under <code>/run/user/&lt;uid&gt;/podman/</code>; a rootless socket's containers are acted on through that user's engine. Each host reports the engines it found (kind, version, API version, rootless) every ten minutes.</p>
+      <p class="prose"><strong>Do not add <code>vigil-agent</code> to the <code>docker</code> group</strong> — that group is root by another name. A managed agent runs as root and opens the socket itself. A monitor-mode agent runs unprivileged, so the installer adds <code>vigil-engine-proxy</code>: a small root service that answers only reads — the container list, inspect, a stats sample, logs, the image list — on <code>/run/vigil/engine-ro.sock</code>. Every start, stop, exec or delete through it is refused. See <code>docs/AGENT-PRIVILEGES.md</code>.</p>
 
-      <div class="callout callout-warn">
-        <div class="callout-icon">!</div>
-        <div>If the agent is running but no Docker alerts ever appear, the most common cause is socket permission denied. Check the agent log for <em>"Cannot access Docker socket"</em>. That warning fires once per failure and tells you whether it's permissions vs. daemon-not-running. Also remember: only Docker Hub images are tracked, so a private-registry-only fleet won't surface alerts even when the plumbing is fine.</div>
+      <h3 id="containers-lifecycle">Containers and stacks on a host's page</h3>
+      <p class="prose">A host's Containers section groups containers by compose stack and says who owns each stack: <em>external</em> (merely seen), <em>adopted</em> or <em>managed</em> by Vigil. Each container has Restart and Stop (or Start), Update when its image is behind, Logs, and Roll back after an update; each stack has Restart and Update. Every button opens a built-in task in the normal deploy dialog — signed, TOTP-confirmed and in history — never a socket.</p>
+      <p class="prose"><strong>Logs</strong> asks for a TOTP code and returns the last 200 lines, then streams new ones about every second and a half while the view is open. The agent stops when you close it, after 15 seconds without a poll, or after ten minutes. It posts outbound; nothing connects to it.</p>
+      <p class="prose"><strong>Roll back</strong> puts a container on the image it ran before its last update (by digest when known). A compose container is pinned with <code>vigil-rollback.override.yaml</code> next to its compose file, which stays untouched; a standalone one is recreated on the image. It shows <em>rolled back</em> until its next update clears the pin.</p>
+
+      <h3 id="containers-managed-stacks">Stacks Vigil manages</h3>
+      <p class="prose"><em>New stack</em> under <strong>Managed by Vigil</strong> stores a compose file and its <code>.env</code> in Vigil. Every save is a revision. The file is checked first: it must have <code>services</code>, and may not climb out with <code>..</code>, bind the engine socket or system directories, run privileged, share the host's PID namespace or add every capability. The <code>.env</code> is encrypted at rest and never shown unmasked without a TOTP code.</p>
+      <p class="prose"><em>Deploy</em> (high risk, TOTP) writes the stack to <code>/opt/vigil/stacks/&lt;name&gt;</code> and runs <code>compose up -d</code>. The task carries the compose file but never the secrets: it carries a one-time ticket the agent redeems over its own connection for the <code>.env</code>, written mode 0600. A ticket works once, for its host, within 24 hours. <em>Take down</em> runs <code>compose down</code> and can delete the folder (only ever one under <code>/opt/vigil/stacks</code>).</p>
+      <p class="prose"><em>Adopt</em> takes over an external stack where it stands. The agent reads its compose file and <code>.env</code> into Vigil (again by ticket, never in the task result) and compares <code>compose config --hash</code> with what each container runs. The editor then says whether deploying the file unchanged would recreate anything. A stack with more than one compose file is refused until the override is merged in.</p>
+
+      <h3 id="containers-registries">Private registries</h3>
+      <p class="prose">Store a registry login at <code>POST /api/v1/stacks/registries/</code> (<code>registry</code>, <code>username</code>, <code>password</code>, optional <code>host_tags</code>). The password is encrypted and write-only. Pulls through the engine send it as <code>X-Registry-Auth</code>, but only from hosts the login covers. Compose pulls still use the host's own <code>docker login</code>.</p>
+
+      <h3 id="containers-podman">Podman</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Feature</th><th>Docker</th><th>Podman, rootful</th><th>Podman, rootless</th></tr></thead>
+          <tbody>
+            <tr><td>Inventory, stats, logs</td><td>✅</td><td>✅ (compat API)</td><td>✅ per user</td></tr>
+            <tr><td>Restart / stop / start / remove / recreate / pull</td><td>✅</td><td>✅</td><td>✅ as that user's engine</td></tr>
+            <tr><td>Stacks (restart, update, deploy, adopt)</td><td>✅ <code>docker compose</code></td><td>✅ <code>podman compose</code> or <code>docker compose</code> on the socket</td><td>⚠ needs the compose CLI to reach that user's socket</td></tr>
+            <tr><td>Monitor-mode read-only proxy</td><td>✅</td><td>✅</td><td>— (rootful engines only)</td></tr>
+          </tbody>
+        </table>
       </div>
+      <p class="prose">Podman support is verified against the Engine API's compatibility layer in tests; check the rows marked ⚠ on your own hosts before relying on them.</p>
     </section>
     <div class="divider"></div>
 

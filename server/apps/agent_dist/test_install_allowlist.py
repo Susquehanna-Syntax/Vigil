@@ -4,7 +4,7 @@ that changes the host is allowed by default."""
 from django.template.loader import render_to_string
 from django.test import SimpleTestCase
 
-READ_ONLY = ["app_inventory", "check_service", "hunt_content", "hunt_file", "hunt_package",
+READ_ONLY = ["app_inventory", "check_service", "container_logs", "hunt_content", "hunt_file", "hunt_package",
              "hunt_port", "hunt_process", "hunt_registry", "hunt_service"]
 STATE_CHANGING = ["restart_service", "install_package", "app_install", "app_uninstall",
                   "execute_script", "run_command", "delete_path", "reboot"]
