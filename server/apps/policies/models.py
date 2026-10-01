@@ -109,3 +109,36 @@ class AppRule(models.Model):
 
     def __str__(self) -> str:
         return f"{self.app} {self.state}"
+
+
+class PolicyChange(models.Model):
+    """What a policy wants to change on one host, waiting for a person.
+
+    In approve mode a run writes these instead of dispatching. Approving
+    sends the policy's compiled task to that host; one pending row per
+    (policy, host) — a later run refreshes it rather than adding another.
+    """
+
+    class State(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+        DISPATCHED = "dispatched", "Dispatched"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    policy = models.ForeignKey(UpdatePolicy, on_delete=models.CASCADE,
+                               related_name="changes")
+    host = models.ForeignKey("hosts.Host", on_delete=models.CASCADE,
+                             related_name="policy_changes")
+    changes = models.JSONField(default=list)
+    state = models.CharField(max_length=10, choices=State.choices,
+                             default=State.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+")
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+        indexes = [models.Index(fields=("state", "policy"))]
