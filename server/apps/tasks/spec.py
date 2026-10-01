@@ -1526,8 +1526,15 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                     level = max(level, _probe_levels(entry))
             return level
         relevant_risk_level = _probe_levels(relevant)
+    # Detection tasks (M10): a severity for the finding a match raises, and
+    # boost: probes that never decide applicability but raise confidence when
+    # they match too. Boost probes run on the host like relevant: probes, so
+    # their risk counts the same way.
+    severity = _validate_severity(raw.get("severity"))
+    boost = _validate_boost(raw.get("boost"), declared_inputs)
+    boost_risk_level = max((b["risk"] for b in boost), default=0)
     effective_risk_level = max(_RISK_ORDER[risk], derived_risk_level,
-                               relevant_risk_level)
+                               relevant_risk_level, boost_risk_level)
     effective_risk = next(k for k, v in _RISK_ORDER.items() if v == effective_risk_level)
 
     schedule = _validate_schedule(raw.get("schedule"))
@@ -1572,6 +1579,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         "flow": _flow_by_id(flow, leaf_ids) if flow is not None else None,
         "inputs": declared_inputs,
         "relevant": relevant,
+        "severity": severity,
+        "boost": boost,
         "schedule": schedule,
         "on_failure": on_failure,
         "success_criteria": success_criteria,
@@ -1679,6 +1688,44 @@ def _validate_relevant(raw: Any, declared_inputs: list[dict[str, Any]]) -> Any:
     return _node("relevant", raw, 1)
 
 
+_DETECTION_SEVERITIES = ("critical", "high", "medium", "low")
+_MAX_BOOST_PROBES = 5
+
+
+def _validate_severity(raw: Any) -> str:
+    """The optional ``severity:`` of a detection task — what a match is worth."""
+    if raw is None:
+        return ""
+    value = _as_str(raw, "severity", max_len=16).lower()
+    if value not in _DETECTION_SEVERITIES:
+        raise SpecError(f"'severity' must be one of: {', '.join(_DETECTION_SEVERITIES)}")
+    return value
+
+
+def _validate_boost(raw: Any, declared_inputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The optional ``boost:`` list: hunt probes that do not decide whether a
+    task applies, only how sure a match is. Same probe grammar as
+    ``relevant:`` items (one hunt_ key each, no nesting); returns
+    ``[{"probe": {"id": "boost-<n>", "type", "params"}, "risk": level}]``."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or not raw:
+        raise SpecError("'boost' must be a non-empty list of hunt probes")
+    if len(raw) > _MAX_BOOST_PROBES:
+        raise SpecError(f"'boost' has too many probes (max {_MAX_BOOST_PROBES})")
+    for n, item in enumerate(raw):
+        if isinstance(item, dict) and any(k in item for k in _RELEVANT_OPS):
+            raise SpecError(f"boost[{n}]: boost probes cannot be grouped with all/any/not")
+    try:
+        tree = _validate_relevant({"any": raw}, declared_inputs)
+    except SpecError as exc:
+        raise SpecError(str(exc).replace("relevant.any", "boost", 1)) from exc
+    items = tree["items"]
+    for n, item in enumerate(items, start=1):
+        item["probe"]["id"] = f"boost-{n}"
+    return items
+
+
 def _deploy_params(spec: dict, steps_payload: list[dict]) -> dict:
     """The signed task params: steps + variables, plus the resolved
     ``relevant:`` tree when the definition declares one (phase 04 makes
@@ -1688,6 +1735,8 @@ def _deploy_params(spec: dict, steps_payload: list[dict]) -> dict:
               "variables": spec.get("resolved_inputs") or {}}
     if spec.get("relevant"):
         params["relevant"] = spec["relevant"]
+    if spec.get("boost"):
+        params["boost"] = [item["probe"] for item in spec["boost"]]
     if spec.get("flow") is not None:
         params["flow"] = spec["flow"]
     # Which tasks a branch's ``use:`` copied in, and which version of each —

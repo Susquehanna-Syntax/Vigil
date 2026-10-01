@@ -313,7 +313,7 @@ class BranchFeaturesTests(unittest.TestCase):
 
     def test_features_include_branches(self):
         self.assertIn("branches", features.FEATURES)
-        self.assertEqual(features.FEATURES, ("relevant", "branches"))
+        self.assertEqual(features.FEATURES, ("relevant", "branches", "boost"))
 
     def test_checkin_sends_branches(self):
         resp = MagicMock()
@@ -321,7 +321,7 @@ class BranchFeaturesTests(unittest.TestCase):
         with patch.object(client.requests, "post", return_value=resp) as post:
             client.checkin(self.config, {})
         payload = post.call_args.kwargs["json"]
-        self.assertEqual(payload["features"], ["relevant", "branches"])
+        self.assertEqual(payload["features"], ["relevant", "branches", "boost"])
 
 
 if __name__ == "__main__":
