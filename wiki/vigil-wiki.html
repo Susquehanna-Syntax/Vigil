@@ -3184,6 +3184,18 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
     <span class="hl-key">params</span>:
       <span class="hl-key">project</span>: <span class="hl-string">media</span></pre></div>
 </div></details>
+<details class="action" id="action-container_logs" data-group="container" data-risk="low" data-keywords="container_logs container_name tail session"><summary><code class="action-name">container_logs</code><span class="risk risk-low">low</span><span class="action-label">Read a container&#x27;s logs (and live-tail them)</span><span class="action-required">container_name</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>container_name</code></td><td><span class="param-req">required</span></td><td>The container&#x27;s name or id.</td></tr><tr><td><code>tail</code></td><td><span class="param-opt">optional</span></td><td>How many of the last lines to return (1–2000, default 200).</td></tr><tr><td><code>session</code></td><td><span class="param-opt">optional</span></td><td>Set by the log view, not by hand: the live-tail session the agent then streams new lines to.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>lines</code></td><td>int</td><td>How many lines were returned.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Read a container&#x27;s logs (and live-tail them)</span>
+<span class="hl-key">description</span>: <span class="hl-string">Read a container&#x27;s logs (and live-tail them) on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">low</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">container-logs</span>
+    <span class="hl-key">type</span>: <span class="hl-string">container_logs</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">container_name</span>: <span class="hl-string">nextcloud</span></pre></div>
+</div></details>
 </div>
 <div class="action-group" data-group="files">
 <h4 class="action-group-title">Files and directories</h4>

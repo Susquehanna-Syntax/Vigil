@@ -163,6 +163,13 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "optional": [],
         "outputs": {"project": "str"},
     },
+    "container_logs": {
+        "label": "Read a container's logs (and live-tail them)",
+        "risk": "low",
+        "required": ["container_name"],
+        "optional": ["tail", "session"],
+        "outputs": {"lines": "int"},
+    },
     "clear_docker_logs": {
         "label": "Truncate Docker logs",
         "risk": "low",

@@ -93,6 +93,7 @@ checkin_interval: 30
 allowlist:
   - app_inventory
   - check_service
+  - container_logs
   - hunt_content
   - hunt_file
   - hunt_package
