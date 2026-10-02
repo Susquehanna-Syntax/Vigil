@@ -37,6 +37,18 @@ def _point(category: str, metric: str, value: float, labels: dict | None = None)
     }
 
 
+# Read-only image filesystems: always 100 % "used", never a disk anyone can fill or free.
+# Snap mounts every snap as squashfs under /snap; erofs is the same idea (Android, some distros).
+_IMAGE_FSTYPES = frozenset({"squashfs", "erofs"})
+
+
+def _is_real_disk(part) -> bool:
+    if (part.fstype or "").lower() in _IMAGE_FSTYPES:
+        return False
+    mount = part.mountpoint or ""
+    return not (mount == "/snap" or mount.startswith("/snap/"))
+
+
 def collect_cpu() -> list[dict]:
     points = []
     per_cpu = psutil.cpu_percent(interval=1, percpu=True)
@@ -69,6 +81,8 @@ def collect_disk() -> list[dict]:
     points = []
     seen_devices = set()
     for part in psutil.disk_partitions(all=False):
+        if not _is_real_disk(part):
+            continue
         if part.device in seen_devices:
             continue
         seen_devices.add(part.device)
@@ -479,6 +493,8 @@ def _read_disks() -> list[dict]:
         return disks
     seen_devices: set[str] = set()
     for part in partitions:
+        if not _is_real_disk(part):
+            continue
         device = part.device
         if device in seen_devices:
             continue
