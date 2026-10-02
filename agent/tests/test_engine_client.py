@@ -9,8 +9,7 @@ import tests._safety_net  # noqa: F401 — the guard, even when this file is run
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-# isort: split
-from tests.fake_engine import PODMAN_VERSION, FakeEngine
+from tests.fake_engine import DOCKER_VERSION, PODMAN_VERSION, FakeEngine
 from vigil_agent import engine
 
 
@@ -49,6 +48,30 @@ class EngineClientTests(unittest.TestCase):
         self.assertFalse(dead.ping())
         with self.assertRaises(engine.EngineError):
             dead.get("/containers/json", versioned=False)
+
+
+class ApiFloorTests(unittest.TestCase):
+    def test_respects_the_engines_minimum(self):
+        fake = FakeEngine(version={**DOCKER_VERSION, "ApiVersion": "1.52",
+                                   "MinAPIVersion": "1.48"})
+        self.addCleanup(fake.close)
+        fake.routes[("GET", "/containers/json")] = (200, [{"Id": "abc"}])
+        client = engine.EngineClient(fake.path)
+        self.assertEqual(client.api_version(), "1.48")
+        self.assertEqual(client.get("/containers/json"), [{"Id": "abc"}])
+        self.assertIn(("GET", "/v1.48/containers/json", None), fake.requests)
+
+    def test_docker_29_speaks_max_api(self):
+        fake = FakeEngine(version={**DOCKER_VERSION, "ApiVersion": "1.52",
+                                   "MinAPIVersion": "1.44"})
+        self.addCleanup(fake.close)
+        self.assertEqual(engine.MAX_API, "1.47")
+        self.assertEqual(engine.EngineClient(fake.path).api_version(), engine.MAX_API)
+
+    def test_old_engine_without_minimum(self):
+        fake = FakeEngine(version={**PODMAN_VERSION, "ApiVersion": "1.40"})
+        self.addCleanup(fake.close)
+        self.assertEqual(engine.EngineClient(fake.path).api_version(), "1.40")
 
 
 class DiscoveryTests(unittest.TestCase):

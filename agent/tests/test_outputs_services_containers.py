@@ -91,7 +91,7 @@ class ContainerOutputTests(unittest.TestCase):
         out = executor._pull_image({"image": "nginx:alpine"}, _config())
         self.assertEqual(out.data, {"image_id": "sha256:abc"})
         self.assertIn("up to date", out)
-        self.assertIn(("POST", f"/v1.43/images/create?fromImage=nginx&tag=alpine", None),
+        self.assertIn(("POST", "/v1.47/images/create?fromImage=nginx&tag=alpine", None),
                       self.fake.requests)
 
     def test_a_pull_error_in_the_stream_fails(self):
@@ -104,7 +104,8 @@ class ContainerOutputTests(unittest.TestCase):
     def test_remove_reports_removed(self):
         self.assertEqual(executor._remove_container({"container_name": "web"}, _config()).data,
                          {"removed": True})
-        self.assertIn(("DELETE", "/v1.43/containers/web?force=true", None), self.fake.requests)
+        self.assertIn(("DELETE", "/v1.47/containers/web?force=true", None),
+                      self.fake.requests)
 
     def test_compose_reports_file(self):
         import tempfile

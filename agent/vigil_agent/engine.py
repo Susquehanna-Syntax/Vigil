@@ -13,6 +13,8 @@ user's engine, never as root's.
 API version: ``/_ping`` proves the engine answers; ``/version`` names it and
 gives its ``ApiVersion``, and requests are pinned to the lower of that and
 ``MAX_API`` so a newer engine is spoken to in a dialect this agent knows.
+Never below the engine's reported ``MinAPIVersion`` though: Docker 29 dropped
+the old dialects and refuses anything under its floor with a 400.
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ from urllib.parse import urlencode
 logger = logging.getLogger(__name__)
 
 #: The newest Engine API this agent is written against.
-MAX_API = "1.43"
+MAX_API = "1.47"
 DEFAULT_TIMEOUT = 30
 
 _ROOTFUL = ("/var/run/docker.sock", "/run/podman/podman.sock")
@@ -172,8 +174,15 @@ class EngineClient:
 
     def api_version(self) -> str:
         if self._api is None:
-            server = str(self.version().get("ApiVersion") or "1.41")
-            self._api = min(server, MAX_API, key=_api_tuple)
+            info = self.version()
+            server = str(info.get("ApiVersion") or "1.41")
+            chosen = min(server, MAX_API, key=_api_tuple)
+            # An engine that dropped old dialects (Docker 29: minimum 1.44) refuses a
+            # request pinned below its floor, so never go under what it accepts.
+            floor = str(info.get("MinAPIVersion") or "")
+            if floor and _api_tuple(floor) > _api_tuple(chosen):
+                chosen = floor
+            self._api = chosen
         return self._api
 
     def kind(self) -> str:
