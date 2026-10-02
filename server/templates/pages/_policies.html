@@ -12,6 +12,17 @@
         </div>
       </div>
 
+      <details class="pol-explain" id="pol-explain">
+        <summary>How policies work</summary>
+        <ol class="pol-explain-steps">
+          <li><strong>Pick hosts.</strong> A policy covers every managed host with one of its tags (or every managed host if you leave tags blank).</li>
+          <li><strong>Say what they should have.</strong> On <em>Apps</em>, each rule keeps one app Present, Latest, Pinned to a version, or Absent. On <em>Patching</em>, choose which OS updates install, how long to wait after one appears, and when hosts may restart.</li>
+          <li><strong>Vigil compares.</strong> Each host's software inventory is checked against the rules. <em>Preview</em> shows which hosts would change and how — compliant hosts are never touched.</li>
+          <li><strong>It fixes drift in the window.</strong> When the maintenance window opens, Vigil runs one generated task on the drifted hosts only (in waves if you set a wave ladder). With <em>Approve each change</em> on, the changes wait below for you to approve instead.</li>
+        </ol>
+        <p class="muted-note">The generated task is an ordinary task — open it from <em>Preview</em> to see exactly what runs. Approving or declining an update on Apps → By update applies to every policy.</p>
+      </details>
+
       <div class="pol-summary pol-compliance" id="pol-compliance"></div>
 
       <div class="table-wrap">
@@ -45,7 +56,7 @@
 
 <!-- ── Policy editor modal ───────────────────────────────────────────── -->
 <div class="modal-overlay" id="pol-overlay"></div>
-<div class="modal modal-wide" id="pol-modal" data-editing="" role="dialog" aria-modal="true" aria-labelledby="pol-title">
+<div class="modal modal-wide pol-modal" id="pol-modal" data-editing="" role="dialog" aria-modal="true" aria-labelledby="pol-title">
   <div class="modal-title">
     <span id="pol-title">New policy</span>
     <button class="modal-close" type="button" data-act="closePolicyEditor" aria-label="Close">
@@ -59,26 +70,31 @@
         <input type="text" class="form-control" id="pol-name" maxlength="120" placeholder="e.g. Office desktops">
       </div>
       <div class="bl-field">
-        <label for="pol-tags">Hosts tagged <span class="pol-opt">(comma-separated; blank = every managed host)</span></label>
+        <label for="pol-tags">Hosts tagged</label>
         <input type="text" class="form-control" id="pol-tags" placeholder="office, os:windows">
+        <div class="pol-hint">Comma-separated. Blank = every managed host.</div>
       </div>
     </div>
     <div class="pol-grid pol-grid-4">
       <div class="bl-field">
         <label for="pol-hour">Window opens at</label>
         <div class="pol-time"><input type="text" class="form-control" id="pol-hour" value="2" aria-label="Hour (cron)"> : <input type="text" class="form-control" id="pol-minute" value="0" aria-label="Minute (cron)"></div>
+        <div class="pol-hint">Hour : minute, server time.</div>
       </div>
       <div class="bl-field">
-        <label for="pol-dow">On days <span class="pol-opt">(cron, 0 = Sun)</span></label>
+        <label for="pol-dow">On days</label>
         <input type="text" class="form-control" id="pol-dow" value="*">
+        <div class="pol-hint">Cron day-of-week; * = every day, 0 = Sunday.</div>
       </div>
       <div class="bl-field">
         <label for="pol-hours">For hours</label>
         <input type="number" class="form-control" id="pol-hours" min="1" max="24" value="4">
+        <div class="pol-hint">How long the window stays open.</div>
       </div>
       <div class="bl-field">
-        <label for="pol-waves">Wave ladder <span class="pol-opt">(group tag; blank = all at once)</span></label>
+        <label for="pol-waves">Wave ladder</label>
         <input type="text" class="form-control" id="pol-waves" placeholder="desktops">
+        <div class="pol-hint">A tag that splits hosts into waves. Blank = all at once.</div>
       </div>
     </div>
     <div class="pol-inline">
@@ -107,19 +123,21 @@
       </div>
       <div class="pol-grid pol-grid-3">
         <div class="bl-field">
-          <label for="pol-defer">Wait this many days after an update first appears</label>
+          <label for="pol-defer">Defer updates (days)</label>
           <input type="number" class="form-control" id="pol-defer" min="0" max="365" value="7">
+          <div class="pol-hint">Wait this long after an update first appears.</div>
         </div>
         <div class="bl-field">
-          <label for="pol-reboot">Restart when an update needs it</label>
+          <label for="pol-reboot">Restart</label>
           <select class="form-control" id="pol-reboot">
             <option value="in_window">In the window</option>
             <option value="ask">Ask the user (they can postpone)</option>
             <option value="never">Never</option>
           </select>
+          <div class="pol-hint">When an update needs a reboot.</div>
         </div>
         <div class="bl-field">
-          <label for="pol-linux">Linux</label>
+          <label for="pol-linux">Linux updates</label>
           <select class="form-control" id="pol-linux">
             <option value="security">Security updates only</option>
             <option value="all">All updates</option>
