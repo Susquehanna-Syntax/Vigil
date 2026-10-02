@@ -397,6 +397,10 @@ function flowCanvasMount(vp, view) {
   let drag = null;
   vp.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || e.target.closest('button, input, select, textarea, a')) return;
+    e.preventDefault();
+    const sel = window.getSelection && window.getSelection();
+    if (sel) sel.removeAllRanges();
+    document.body.classList.add('fcv-dragging');
     drag = { x: e.clientX, y: e.clientY, tx: v.tx, ty: v.ty };
     vp.setPointerCapture(e.pointerId);
     vp.classList.add('is-panning');
@@ -408,7 +412,11 @@ function flowCanvasMount(vp, view) {
     v.moved = true;
     apply();
   });
-  const stop = () => { drag = null; vp.classList.remove('is-panning'); };
+  const stop = () => {
+    drag = null;
+    vp.classList.remove('is-panning');
+    document.body.classList.remove('fcv-dragging');
+  };
   vp.addEventListener('pointerup', stop);
   vp.addEventListener('pointercancel', stop);
   return v;
