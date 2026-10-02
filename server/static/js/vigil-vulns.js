@@ -165,6 +165,36 @@ async function refreshVulns() {
   }
 }
 
+function pickAnvilRecord() {
+  document.getElementById('vulns-anvil-file').click();
+}
+
+async function uploadAnvilRecord(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append('record', file);
+  try {
+    const resp = await fetch('/api/v1/vulns/anvil/', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrf() },
+      body: formData,
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Import failed');
+    let msg = `Imported ${data.imported} finding(s)`;
+    if (data.false_positive > 0) msg += `, ${data.false_positive} false positive(s) skipped`;
+    if (data.no_host > 0) msg += `, ${data.no_host} with no matching host`;
+    showToast(msg, 'success');
+    refreshVulns();
+  } catch (e) {
+    showToast('Anvil import failed: ' + e.message, 'error');
+  } finally {
+    input.value = '';
+  }
+}
+
 const _VULN_SCAN_DOT = {
   requested: 'pending', launched: 'pending', running: 'pending',
   completed: 'online', failed: 'offline', aborted: 'offline',
