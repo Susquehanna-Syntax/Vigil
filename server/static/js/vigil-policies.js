@@ -20,7 +20,7 @@ const POL_SOURCES = ['', 'dpkg', 'rpm', 'apk', 'pacman', 'flatpak', 'snap',
 const POL_STATES = [['present', 'Present'], ['latest', 'Latest'], ['pinned', 'Pinned'], ['absent', 'Absent']];
 const POL_COLUMNS = 6;
 
-const polState = { rows: [], changes: [], selected: new Set(), editing: null, rules: [], apps: null };
+const polState = { rows: [], changes: [], selected: new Set(), editing: null, rules: [], apps: null, explainSet: false };
 
 /* ── List ────────────────────────────────────────────────────────────── */
 function _polWindow(p) {
@@ -36,6 +36,8 @@ async function fetchPolicies() {
     polState.rows = (await apiJson('/api/v1/policies/')).results || [];
   } catch { polState.rows = []; }
   renderPolicies();
+  const ex = document.getElementById('pol-explain');
+  if (ex && !polState.explainSet) { ex.open = polState.rows.length === 0; polState.explainSet = true; }
 }
 
 function renderPolicies() {
@@ -264,12 +266,7 @@ async function savePolicy() {
     const saved = await apiJson(url, { method: polState.editing ? 'PUT' : 'POST', body: JSON.stringify(body) });
     showToast(`Saved ${saved.name}`, 'success');
     await fetchPolicies();
-    polState.editing = saved.id;
-    _polEl('pol-title').textContent = saved.name;
-    _polEl('pol-delete').hidden = false;
-    _polEl('pol-run').hidden = false;
-    _polEl('pol-error').classList.remove('show');
-    setPolicyTab('preview');
+    closePolicyEditor();
   } catch (e) {
     const err = _polEl('pol-error');
     err.textContent = e.message;

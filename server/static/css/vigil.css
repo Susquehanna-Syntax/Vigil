@@ -3777,19 +3777,21 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 
 /* ── Policies (M8) ───────────────────────────────────────────────────── */
 .pol-table td.num { text-align: right; font-family: var(--font-mono); }
-.pol-opt { color: var(--text-3); font-weight: 400; }
-.pol-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
+.modal.pol-modal { width: min(760px, calc(100vw - 32px)); }
+.pol-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; align-items: start; }
+.pol-grid label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pol-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .pol-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.pol-hint { font-size: 11px; color: var(--text-3); margin-top: 4px; line-height: 1.35; }
 .pol-time { display: flex; align-items: center; gap: 6px; color: var(--text-3); }
-.pol-time .form-control { min-width: 0; }
+.pol-time .form-control { min-width: 0; flex: 1 1 0; text-align: center; }
 .pol-inline { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-bottom: 18px; }
 .pol-tabs { margin-bottom: 16px; }
 .pol-tabs .sub-tab { background: none; border-top: 0; border-left: 0; border-right: 0; font-family: inherit; cursor: pointer; }
 .pol-panel { display: none; }
 .pol-panel.active { display: block; }
 .pol-rules { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
-.pol-rule { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.pol-rule { display: grid; grid-template-columns: minmax(0, 1fr) 150px 130px 130px auto; gap: 8px; align-items: center; }
 .pol-rule [hidden] { display: block; visibility: hidden; }
 .pol-help { margin-top: 12px; font-size: 12px; }
 .pol-gap { margin-top: 14px; }
@@ -3800,6 +3802,9 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .pol-run-now { display: inline-flex; align-items: center; gap: 8px; }
 .pol-totp { width: 120px; font-size: 12px; }
 .pol-compliance { margin-bottom: 16px; }
+.pol-explain { background: var(--s1); border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px 16px; margin-bottom: 16px; font-size: 13px; color: var(--text-2); }
+.pol-explain summary { cursor: pointer; font-weight: 600; color: var(--text-1); }
+.pol-explain-steps { margin: 10px 0 8px 18px; display: grid; gap: 6px; }
 .pol-changes { margin-top: 28px; }
 .pol-changes-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .pol-changes-actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
