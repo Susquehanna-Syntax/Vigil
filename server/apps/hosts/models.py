@@ -22,6 +22,11 @@ class Host(models.Model):
     kernel = models.CharField(max_length=100, blank=True)
     ip_address = models.GenericIPAddressField(blank=True, null=True)
     agent_token = models.CharField(max_length=255, unique=True, db_index=True)
+    # A stable per-machine id (systemd machine-id / Windows MachineGuid / macOS
+    # IOPlatformUUID) reported by the agent. Not unique and not a credential: it
+    # identifies the machine well enough to spot a re-enrolment of a host we
+    # already have, which an admin then confirms. Empty when the platform gives none.
+    machine_id = models.CharField(max_length=200, blank=True, default="", db_index=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     mode = models.CharField(max_length=20, choices=Mode.choices, default=Mode.MONITOR)
     tags = models.JSONField(default=list, blank=True)

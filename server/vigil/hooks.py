@@ -1,15 +1,15 @@
-"""In-process event bus — the extension seam for commercial editions.
+"""In-process event bus — the extension seam for Business code.
 
-Vigil core (Community) is self-contained. The Pro and Enterprise editions ship
-as separate repos whose Django apps are loaded via ``VIGIL_EXTRA_APPS`` (see
-``docs/pro-extension-points.md``). Those apps subscribe to lifecycle events
-here, in their ``AppConfig.ready()``, instead of patching core code.
+Vigil core (Free) is self-contained. Business code ships in this repo under
+``server/apps_business/`` (commercial licence, runtime ``has_feature()`` gates)
+and subscribes to lifecycle events here, in its ``AppConfig.ready()``, instead
+of patching core code.
 
-Core emits; editions listen. Core never imports edition code, so a missing
-edition simply means nobody is subscribed and the event is a no-op.
+Core emits; ``apps_business`` listens. Core never imports it, so an event
+nobody has subscribed to is simply a no-op.
 
 This is deliberately not Django's signal framework: a small, explicitly
-documented set of event names is the contract Pro/Enterprise builds against,
+documented set of event names is the contract Business code builds against,
 and keeping it separate means the contract can't drift as core's internal
 signals change.
 

@@ -199,6 +199,14 @@ allowlist:
     } else {
         Write-Host "Config written to $ConfigPath with a generated agent token."
     }
+} elseif ($env:VIGIL_TOKEN) {
+    # Re-adding a machine: keep its config but take the token the wizard is waiting for.
+    # [^\r\n]* rather than .* so a CRLF file keeps its \r. No BOM, same as the first write.
+    $existingConfig = [System.IO.File]::ReadAllText($ConfigPath)
+    $existingConfig = $existingConfig -replace '(?m)^agent_token:[^\r\n]*', "agent_token: `"$($env:VIGIL_TOKEN)`""
+    [System.IO.File]::WriteAllText(
+        $ConfigPath, $existingConfig, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host "Existing config kept; agent token replaced from VIGIL_TOKEN."
 }
 
 # Install / update Windows service
@@ -253,6 +261,10 @@ if ($AgentMode -eq "monitor") {
         # access to the exe alone starts a process that dies immediately
         # because it cannot load anything beside it.
         & icacls.exe $InstallDir /grant "$($ServiceAccount):(OI)(CI)(RX)" /T | Out-Null
+        # CPU load and swap come from performance counters (PDH), which a virtual
+        # account cannot open until it is in Performance Monitor Users (S-1-5-32-558).
+        # By SID, not name: the group name is localised.
+        Add-LocalGroupMember -SID S-1-5-32-558 -Member $ServiceAccount -ErrorAction SilentlyContinue
         Write-Host "Monitor mode: running the agent as the unprivileged '$ServiceAccount'."
     }
 } else {
