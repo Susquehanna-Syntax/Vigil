@@ -14,6 +14,7 @@ from apps.instance.config import setting
 from apps.alerts.models import Alert
 from apps.hosts.models import Host
 from apps.hosts import views as hosts_views
+from apps.hosts.enrollment import replacement_candidate
 from apps.hosts.logtail import agent_log_lines
 from apps.stacks.registries import agent_registry_auth
 from apps.stacks.views import agent_stack_adopt, agent_stack_env
@@ -77,13 +78,15 @@ def dashboard(request):
     # still render host lists server-side (the Monitor host dropdown and the
     # Settings "All Agents" table) plus the header sub-line counts.
     hosts = Host.objects.exclude(status=Host.Status.REJECTED).select_related("inventory").order_by("hostname")
-    pending_hosts = hosts.filter(status=Host.Status.PENDING)
+    pending_hosts = list(hosts.filter(status=Host.Status.PENDING))
+    for _h in pending_hosts:
+        _h.replaces = replacement_candidate(_h)
 
     return render(request, "dashboard.html", {
         "hosts": list(hosts),
         "host_count": hosts.count(),
         "online_count": hosts.filter(status=Host.Status.ONLINE).count(),
-        "pending_count": pending_hosts.count(),
+        "pending_count": len(pending_hosts),
         "alert_count": Alert.objects.filter(state=Alert.State.FIRING).count(),
         "pending_hosts": pending_hosts,
         "vigil_timezone": setting("VIGIL_TIMEZONE"),
@@ -149,7 +152,7 @@ urlpatterns = [
 
 
 # ---------------------------------------------------------------------------
-# Edition extension URLs (Pro / Enterprise)
+# Edition extension URLs (Business)
 # ---------------------------------------------------------------------------
 # Each app named in VIGIL_EXTRA_APPS may expose a ``urls.py``; if present it is
 # mounted under ``ext/<app-label>/`` (the app's final dotted segment). Apps

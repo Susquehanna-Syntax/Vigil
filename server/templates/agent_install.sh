@@ -2,7 +2,7 @@
 # Vigil Agent installer — {{ base_url }}
 # Linux / macOS
 # Usage: curl -fsSL {{ base_url }}/agent/install.sh | sudo bash
-#   or:  VIGIL_TOKEN=<token> curl -fsSL {{ base_url }}/agent/install.sh | sudo bash
+#   or:  curl -fsSL {{ base_url }}/agent/install.sh | sudo env VIGIL_TOKEN=<token> bash
 set -e
 
 VIGIL_SERVER="{{ base_url }}"
@@ -81,6 +81,8 @@ fi
 install -m 0755 "$TMP_AGENT" /usr/local/bin/vigil-agent
 
 mkdir -p /etc/vigil
+# 0755 regardless of umask: monitor mode runs as vigil-agent, which must traverse this dir (agent.yml itself stays 0600).
+chmod 0755 /etc/vigil
 
 if [ ! -f /etc/vigil/agent.yml ]; then
   cat > /etc/vigil/agent.yml << 'EOF'
@@ -140,6 +142,10 @@ EOF
     sed -i.bak "s|REPLACE_WITH_TOKEN|${NEW_TOKEN}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
     echo "Config written to /etc/vigil/agent.yml with a generated agent token."
   fi
+elif [ -n "${VIGIL_TOKEN:-}" ]; then
+  # Re-adding a machine: keep its config but take the token the wizard is waiting for.
+  sed -i.bak "s|^agent_token:.*|agent_token: \"${VIGIL_TOKEN}\"|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+  echo "Existing config kept; agent token replaced from VIGIL_TOKEN."
 fi
 
 # ── Service installation ────────────────────────────────────────────────────
@@ -276,7 +282,7 @@ EOF
   systemctl daemon-reload
   systemctl enable vigil-agent
   if [ -n "${VIGIL_TOKEN:-}" ]; then
-    systemctl start vigil-agent
+    systemctl restart vigil-agent
     echo "Vigil agent installed and started."
     echo "Approve this host in Vigil Settings > Enrollment Queue."
   else

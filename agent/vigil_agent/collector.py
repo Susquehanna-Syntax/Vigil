@@ -37,13 +37,28 @@ def _point(category: str, metric: str, value: float, labels: dict | None = None)
     }
 
 
-# Read-only image filesystems: always 100 % "used", never a disk anyone can fill or free.
-# Snap mounts every snap as squashfs under /snap; erofs is the same idea (Android, some distros).
-_IMAGE_FSTYPES = frozenset({"squashfs", "erofs"})
+_warned: set[str] = set()
+
+
+def _warn_once(what: str, exc: Exception) -> None:
+    """Log a sub-metric failure once per process — the cause (no PDH access for
+    the monitor-mode service account) cannot change while the agent runs."""
+    if what in _warned:
+        return
+    _warned.add(what)
+    logger.warning("%s unavailable, skipping it: %s", what, exc)
+
+
+#: Read-only image filesystems: always 100% used by construction, so counting them as
+#: disks makes every Ubuntu (snaps) and CD-ROM-equipped Windows host read full. Snap mounts
+#: every snap as squashfs under /snap; erofs is the same idea (Android, some distros).
+_IMAGE_FSTYPES = frozenset({"squashfs", "erofs", "iso9660", "udf", "cdfs"})
 
 
 def _is_real_disk(part) -> bool:
     if (part.fstype or "").lower() in _IMAGE_FSTYPES:
+        return False
+    if "cdrom" in (part.opts or "").split(","):
         return False
     mount = part.mountpoint or ""
     return not (mount == "/snap" or mount.startswith("/snap/"))
@@ -56,25 +71,36 @@ def collect_cpu() -> list[dict]:
         points.append(_point("cpu", "usage_percent", pct, {"core": str(i)}))
     points.append(_point("cpu", "usage_percent", psutil.cpu_percent(), {"core": "total"}))
 
-    load_1, load_5, load_15 = psutil.getloadavg()
-    points.append(_point("cpu", "load_1m", load_1))
-    points.append(_point("cpu", "load_5m", load_5))
-    points.append(_point("cpu", "load_15m", load_15))
+    try:
+        load_1, load_5, load_15 = psutil.getloadavg()
+    except Exception as exc:
+        _warn_once("loadavg", exc)
+    else:
+        points.append(_point("cpu", "load_1m", load_1))
+        points.append(_point("cpu", "load_5m", load_5))
+        points.append(_point("cpu", "load_15m", load_15))
     return points
 
 
 def collect_memory() -> list[dict]:
     mem = psutil.virtual_memory()
-    swap = psutil.swap_memory()
-    return [
+    points = [
         _point("memory", "total_bytes", mem.total),
         _point("memory", "used_bytes", mem.used),
         _point("memory", "available_bytes", mem.available),
         _point("memory", "usage_percent", mem.percent),
-        _point("memory", "swap_total_bytes", swap.total),
-        _point("memory", "swap_used_bytes", swap.used),
-        _point("memory", "swap_usage_percent", swap.percent),
     ]
+    try:
+        swap = psutil.swap_memory()
+    except Exception as exc:
+        _warn_once("swap", exc)
+    else:
+        points.extend([
+            _point("memory", "swap_total_bytes", swap.total),
+            _point("memory", "swap_used_bytes", swap.used),
+            _point("memory", "swap_usage_percent", swap.percent),
+        ])
+    return points
 
 
 def collect_disk() -> list[dict]:
@@ -420,6 +446,60 @@ def _reboot_required_windows() -> bool:
         except OSError:
             continue
     return False
+
+
+def machine_fingerprint() -> str:
+    r"""A stable per-machine id, or "" when the platform will not give one.
+
+    Linux/BSD: systemd's /etc/machine-id (falls back to D-Bus's copy).
+    Windows: HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid.
+    macOS: IOPlatformUUID from ioreg.
+    Never raises: a host that cannot be fingerprinted enrols the old way.
+    """
+    try:
+        if sys.platform == "win32":
+            return _machine_fingerprint_windows()
+        if sys.platform == "darwin":
+            return _machine_fingerprint_macos()
+        for path in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+            try:
+                value = Path(path).read_text().strip()
+            except OSError:
+                continue
+            if value:
+                return value[:200]
+    except Exception:
+        pass
+    return ""
+
+
+def _machine_fingerprint_windows() -> str:
+    # winreg is stdlib on Windows only — import it lazily so the module
+    # still imports on Linux.
+    import winreg
+
+    with winreg.OpenKey(
+        winreg.HKEY_LOCAL_MACHINE,
+        r"SOFTWARE\Microsoft\Cryptography",
+        0,
+        winreg.KEY_READ | winreg.KEY_WOW64_64KEY,
+    ) as key:
+        value, _ = winreg.QueryValueEx(key, "MachineGuid")
+    return str(value).strip()[:200]
+
+
+def _machine_fingerprint_macos() -> str:
+    proc = subprocess.run(
+        ["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
+        env=clean_env(),
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    match = re.search(r'IOPlatformUUID"\s*=\s*"([^"]+)"', proc.stdout)
+    if not match:
+        return ""
+    return match.group(1).strip()[:200]
 
 
 def reboot_required() -> bool:

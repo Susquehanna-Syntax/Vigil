@@ -48,6 +48,7 @@ from vigil.signing import get_public_key_b64, sign_task
 from .auto_tags import merge_auto_tags
 from .authentication import authenticate_agent
 from .crypto import encrypt_secret
+from .enrollment import adopt_enrolment, replacement_candidate
 from .models import (ADConfig, ContainerStack, DockerContainer, Host, HostInventory,
                      TransportAck, UnmanagedDevice)
 from .serializers import (
@@ -211,6 +212,8 @@ def register(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    machine_id = str(request.data.get("machine_id") or "").strip()[:200]
+
     # The installers used to leave this literal string in agent.yml for the
     # operator to replace. Since the server stores whatever token an agent
     # presents, an agent started before that edit authenticated with a value
@@ -242,6 +245,12 @@ def register(request):
     # Idempotent: if the token already exists, return current status
     existing = Host.objects.filter(agent_token=token).first()
     if existing:
+        # An agent upgraded into this release backfills its own row on next
+        # start; a changed machine_id means this token now belongs to another
+        # machine and the newer fingerprint wins.
+        if machine_id and existing.machine_id != machine_id:
+            existing.machine_id = machine_id
+            existing.save(update_fields=["machine_id"])
         return Response(
             {"id": str(existing.id), "status": existing.status},
             status=status.HTTP_200_OK,
@@ -255,6 +264,7 @@ def register(request):
         kernel=request.data.get("kernel", "")[:100],
         ip_address=request.META.get("REMOTE_ADDR"),
         agent_token=token,
+        machine_id=machine_id,
         status=Host.Status.PENDING,
         tags=seed_tags,
     )
@@ -384,6 +394,8 @@ def checkin(request):
     for field in ("hostname", "os", "kernel"):
         if val := data.get(field):
             setattr(host, field, val)
+    if val := str(data.get("machine_id") or "").strip()[:200]:
+        host.machine_id = val
 
     # Sync mode from agent config so the server always reflects what the agent
     # will accept. This is the design and stays: CLAUDE.md is explicit that the
@@ -1137,8 +1149,17 @@ def host_approve(request, host_id):
     if error:
         return Response({"error": error}, status=status.HTTP_401_UNAUTHORIZED)
 
-    host.status = Host.Status.ONLINE
-    host.save()
+    candidate = replacement_candidate(host)
+    if candidate is not None:
+        host = adopt_enrolment(host, candidate)
+    else:
+        host.status = Host.Status.ONLINE
+        host.save()
+
+    if host.machine_id:
+        Host.objects.filter(
+            machine_id=host.machine_id, status=Host.Status.PENDING
+        ).exclude(pk=host.pk).delete()
 
     # Extension seam: Pro playbooks auto-dispatch on this event; Enterprise
     # audit logs record the approval. No-op in Community. See vigil/hooks.py.
@@ -1160,6 +1181,7 @@ def host_reject(request, host_id):
             {"error": "Host not found or not pending"},
             status=status.HTTP_404_NOT_FOUND,
         )
+
     host.status = Host.Status.REJECTED
     host.save()
 
@@ -1202,10 +1224,24 @@ def check_pending(request):
     if host is None:
         return Response({"status": "waiting"})
 
+    # The wizard's "replaces" hint must be honest in every branch: for a pending
+    # host that is the host being approved, for one already approved it is the
+    # record it would have moved onto.
+    candidate = replacement_candidate(host)
+
     host_data = HostSerializer(host).data
+    replaces = (
+        None
+        if candidate is None
+        else {
+            "id": str(candidate.id),
+            "hostname": candidate.hostname,
+            "last_checkin": candidate.last_checkin,
+        }
+    )
     if host.status == Host.Status.PENDING:
-        return Response({"status": "pending", "host": host_data})
-    return Response({"status": "approved", "host": host_data})
+        return Response({"status": "pending", "host": host_data, "replaces": replaces})
+    return Response({"status": "approved", "host": host_data, "replaces": replaces})
 
 
 @api_view(["GET"])

@@ -33,7 +33,7 @@ function _enrollRenderCmd() {
   const origin = window.location.origin;
   const cmd = _enrollOs === 'windows'
     ? `$env:VIGIL_TOKEN = "${_enrollToken}"; irm ${origin}/agent/install.ps1 | iex`
-    : `VIGIL_TOKEN=${_enrollToken} curl -fsSL ${origin}/agent/install.sh | sudo bash`;
+    : `curl -fsSL ${origin}/agent/install.sh | sudo env VIGIL_TOKEN=${_enrollToken} bash`;
   document.getElementById('enroll-cmd').textContent = cmd;
   const hint = document.getElementById('enroll-cmd-hint');
   if (hint) {
@@ -107,6 +107,15 @@ async function _pollForHost() {
       const ip = data.host.ip_address || 'Unknown IP';
       document.getElementById('enroll-detected-hostname').textContent = hostname;
       document.getElementById('enroll-detected-meta').textContent = `${os} · ${ip}`;
+      const rep = document.getElementById('enroll-replaces');
+      if (rep) {
+        if (data.replaces) {
+          rep.textContent = `Replaces ${data.replaces.hostname} — its history, tags and site are kept.`;
+          rep.style.display = '';
+        } else {
+          rep.style.display = 'none';
+        }
+      }
       if (data.status === 'approved') {
         document.getElementById('enroll-approve-btn').disabled = true;
         document.getElementById('enroll-approve-btn').textContent = 'Already approved';

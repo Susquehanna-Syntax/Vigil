@@ -201,7 +201,8 @@ from nacl.signing import SigningKey as _SigningKey
 
 from vigil import licensing as _licensing
 
-from .models import Role, UserProfile as _UP
+from .models import Role
+from .models import UserProfile as _UP
 from .permissions import IsOperator, role_of
 
 _SK = _SigningKey.generate()
@@ -283,11 +284,21 @@ class RbacSeatTests(TestCase):
 
     def test_seat_overage_never_blocks_creation(self):
         _licensing.set_license(_blob())  # 2 seats
-        for i in range(4):               # ends at 5 users total
+        for i in range(4):               # 4 viewers — free, never seats
             resp = self.client.post("/api/v1/accounts/users/",
                                     {"username": f"u{i}", "password": "pw12345!"})
             self.assertEqual(resp.status_code, 201)
-        self.assertEqual(_licensing.seats_used(), 5)
+        self.assertEqual(_licensing.seats_used(), 1)  # just the logged-in admin
+        overage = [b for b in _licensing.banners() if "seats in use" in b["message"]]
+        self.assertEqual(len(overage), 0)
+        # Promoting two viewers to Admin consumes two real seats → overage.
+        for i in range(2):
+            u = get_user_model().objects.get(username=f"u{i}")
+            resp = self.client.patch(
+                f"/api/v1/accounts/users/{u.pk}/role/",
+                {"role": "admin"}, content_type="application/json")
+            self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(_licensing.seats_used(), 3)
         overage = [b for b in _licensing.banners() if "seats in use" in b["message"]]
         self.assertEqual(len(overage), 1)
 

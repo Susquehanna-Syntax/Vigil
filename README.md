@@ -25,6 +25,14 @@ Vigil is a lightweight monitoring system where agents on your hosts phone home t
 - Signed remote task execution with mode/allowlist enforcement on the agent
 - SQSY dark-theme dashboard with Chart.js visualizations
 
+## Editions
+
+Free Vigil answers "is my stuff up"; Business Vigil answers "can I prove to a
+third party that their stuff is up." Monitoring, alerting, and unlimited
+agents, hosts, and retention are free forever — the Business tier adds
+accountability features (sites, audit log, roles, branding). See
+[docs/EDITIONS.md](docs/EDITIONS.md) for the full feature matrix.
+
 ## What's new in 2026.12.1
 
 **A dashboard keeps the size you gave it.** Shrinking a widget to its smallest
