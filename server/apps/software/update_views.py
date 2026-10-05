@@ -43,7 +43,7 @@ def update_list(request):
                .annotate(hosts=Count("host", distinct=True), oldest=Min("first_seen"),
                          title=Max("title"), severity=Max("severity"),
                          classification=Max("classification"),
-                         reboot=Max("reboot_required"))
+                         reboot=Count("pk", filter=Q(reboot_required=True)))
                .order_by("oldest", "key"))
     decisions = _decisions()
     wanted = request.query_params.get("decision", "").strip()
