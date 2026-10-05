@@ -84,9 +84,9 @@ class LogTailTests(TestCase):
 
 
 class LogViewWiringTests(TestCase):
-    def test_monitor_page_wires_the_log_view(self):
+    def test_containers_page_wires_the_log_view(self):
         from pathlib import Path
-        js = (Path(__file__).resolve().parents[2] / "static/js/vigil-monitor.js").read_text(encoding="utf-8")
+        js = (Path(__file__).resolve().parents[2] / "static/js/vigil-containers.js").read_text(encoding="utf-8")
         for needle in ("data-ctr-logs", "async function openContainerLogs", "/logs/`",
                        "/api/v1/hosts/log-tails/", "method: 'DELETE'", "pollingInterval(_pollContainerLogs, 1500)"):
             self.assertIn(needle, js)

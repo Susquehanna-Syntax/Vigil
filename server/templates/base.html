@@ -85,6 +85,9 @@
     <div class="sidebar-icon" data-page="monitor" data-tip="Monitor">
       <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
     </div>
+    <div class="sidebar-icon" data-page="containers" data-tip="Containers">
+      <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="13" rx="2"/><line x1="7" y1="7" x2="7" y2="20"/><line x1="12" y1="7" x2="12" y2="20"/><line x1="17" y1="7" x2="17" y2="20"/><path d="M6 7V4h12v3"/></svg>
+    </div>
     <div class="sidebar-icon" data-page="alerts" data-tip="Alerts">
       <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
       {% if alert_count %}<div class="badge-dot" style="background: var(--rose);"></div>{% endif %}
@@ -836,6 +839,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-policies.js' %}"></script>
 <!-- vigil-stacks.js — Vigil-managed compose stacks on a host: editor, masked .env, revisions, deploy (M11) -->
 <script src="{% static 'js/vigil-stacks.js' %}"></script>
+<!-- vigil-containers.js — Containers page: containers by stack, lifecycle buttons, live logs, host picker (wraps navigateTo) -->
+<script src="{% static 'js/vigil-containers.js' %}"></script>
 <!-- vigil-devices.js — unmanaged device registry on the Inventory page (wraps navigateTo) -->
 <script src="{% static 'js/vigil-devices.js' %}"></script>
 <!-- vigil-instance-settings.js — Settings panes backed by /api/v1/instance-settings/ (scanners, email, retention, timezone) -->
