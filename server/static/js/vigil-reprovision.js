@@ -149,6 +149,11 @@ async function openRebuildModal(hostId, hostname) {
   imageSel.onchange = () => { refreshProfiles(); refreshGate(); };
   profileSel.onchange = () => { refreshSummary(); refreshGate(); };
   hostnameInput.oninput = refreshGate;
+  // Enter on a hostname that does not match shakes the field (the design
+  // language's Destructive variant) instead of silently doing nothing.
+  hostnameInput.onkeydown = (e) => {
+    if (e.key === 'Enter' && hostnameInput.value !== hostname) shakeEl(hostnameInput);
+  };
   if (ackBox) ackBox.onchange = refreshGate;
   document.getElementById('rb-cancel').onclick = m.close;
   refreshProfiles();
@@ -496,7 +501,7 @@ function _reproImageStatusCell(img) {
 
   if (img.status === 'failed') {
     const err = document.createElement('div');
-    err.style.cssText = 'margin-top:8px;font-size:12px;color:var(--rose);max-width:320px;white-space:pre-wrap;word-break:break-word;';
+    err.style.cssText = 'margin-top:8px;font-size:12px;color:var(--rose-ink);max-width:320px;white-space:pre-wrap;word-break:break-word;';
     // import_error is free text produced by a failed import — the whole
     // diagnostic for a multi-gigabyte fetch, and operator-supplied on the
     // custom-URL path. textContent only; see SECURITY note atop this file.
@@ -1074,7 +1079,7 @@ function _reproJobRow(job) {
 
   if (job.state === 'failed' && job.failure_reason) {
     const err = document.createElement('span');
-    err.style.cssText = 'font-size:12px;color:var(--rose);';
+    err.style.cssText = 'font-size:12px;color:var(--rose-ink);';
     err.textContent = job.failure_reason; // job-produced text — textContent
     main.appendChild(err);
   }

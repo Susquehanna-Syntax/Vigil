@@ -10,8 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
     chip.title = 'Agent reports a reboot is required';
     chip.style.cssText =
       'font-size:10px;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;' +
-      'padding:2px 10px;border-radius:20px;background:rgba(240,184,136,0.12);' +
-      'color:var(--peach);animation:pulse 3s ease-in-out infinite;white-space:nowrap;';
+      'padding:2px 10px;border-radius:20px;background:rgba(var(--rgb-peach), var(--tint-a));' +
+      'color:var(--peach-ink);animation:pulse 3s ease-in-out infinite;white-space:nowrap;';
     const row = card.querySelector('.host-card-id-row');
     if (row) row.appendChild(chip);
   }

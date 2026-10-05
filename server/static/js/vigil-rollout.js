@@ -128,7 +128,7 @@ function _rolloutCard(r) {
     actions = `<button class="btn btn-sky btn-sm" data-rlt="${escAttr(r.id)}" data-rlt-act="resume" data-stop>Resume</button>`;
   }
   const reason = r.halted_reason
-    ? `<div style="margin:8px 0 2px;padding:8px 10px;border:1px solid var(--rose);border-radius:6px;color:var(--rose);font-size:12px;">
+    ? `<div style="margin:8px 0 2px;padding:8px 10px;border:1px solid var(--rose);border-radius:6px;color:var(--rose-ink);font-size:12px;">
         <strong>Halted:</strong> ${escHtml(r.halted_reason)}
         ${r.halted_by_name ? `<span style="color:var(--text-3);">by ${escHtml(r.halted_by_name)}</span>` : ''}
        </div>`
@@ -437,7 +437,7 @@ async function openRolloutDetail(rolloutId) {
                `${r.min_results_before_halt} host${r.min_results_before_halt === 1 ? '' : 's'} have reported`;
 
   document.getElementById('rollout-detail-body').innerHTML = `
-    ${r.halted_reason ? `<div style="margin-bottom:10px;padding:9px 11px;border:1px solid var(--rose);border-radius:6px;color:var(--rose);font-size:12px;">
+    ${r.halted_reason ? `<div style="margin-bottom:10px;padding:9px 11px;border:1px solid var(--rose);border-radius:6px;color:var(--rose-ink);font-size:12px;">
         <strong>Halted:</strong> ${escHtml(r.halted_reason)}</div>` : ''}
     <div style="margin-bottom:12px;">${_waveProgress(r)}</div>
     ${_detailRow('What is rolling out', (r.target_name || '') + (r.action_kind === 'playbook' ? ' (playbook)' : ' (task)'))}
@@ -459,7 +459,7 @@ async function openRolloutDetail(rolloutId) {
       data-rlt-act="skip-validation">Skip validation, continue now</button>`);
   }
   if (r.state === 'running' || r.state === 'validating') {
-    acts.push(`<button class="btn btn-ghost btn-sm" style="color:var(--rose);" data-rlt="${escAttr(r.id)}"
+    acts.push(`<button class="btn btn-ghost btn-sm" style="color:var(--rose-ink);" data-rlt="${escAttr(r.id)}"
       data-rlt-act="halt">Halt now</button>`);
   }
   if (r.state === 'halted') {

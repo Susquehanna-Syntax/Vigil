@@ -1,10 +1,11 @@
 // vigil-alerts.js
 // Owns: Alerts page — client-side rendered firing/acknowledged/resolved lists,
 //       ack / un-ack (single + bulk multi-select), ack duration menu,
-//       Docker fix suggestions. Actions update in place; no page reload.
+//       Docker update links. Actions update in place; no page reload.
 // HTML: templates/pages/_alerts.html
 // Depends on: vigil-utils.js (apiJson, showToast, escHtml),
-//             vigil-tasks.js (openDefinitionEditor), vigil-nav.js (navigateTo)
+//             vigil-tasks.js (openDefinitionEditor), vigil-nav.js (navigateTo),
+//             vigil-deploy.js (openUpdateContainer)
 // API: GET  /api/v1/alerts/?state=...
 //      POST /api/v1/alerts/{id}/acknowledge/  /unacknowledge/
 //      POST /api/v1/alerts/bulk/
@@ -49,9 +50,14 @@ function _alertItemHtml(alert, tab) {
           (alert.metric_value != null ? ` · Value: ${alert.metric_value}` : '');
     time = `${_alertRelTime(alert.fired_at)}`;
     const fixBtn = `<button class="btn btn-sm btn-lav" data-alert-action="suggest-fix" data-alert-id="${alert.id}">Suggest Fix</button>`;
+    // An outdated image has a known fix: the built-in Update container task (M11).
+    const ctr = (alert.fix_context || {}).container_name;
+    const updateBtn = ctr
+      ? `<button class="btn btn-sm btn-outline" data-alert-action="update-container" data-alert-id="${escAttr(alert.id)}">Update container</button>`
+      : '';
     actions = `
       <div class="alert-actions">
-        ${fixBtn}
+        ${updateBtn}${fixBtn}
         <div class="ack-menu-wrap">
           <button class="btn btn-sm btn-outline" data-ack-menu="${escAttr(alert.id)}">
             Ack
@@ -100,7 +106,7 @@ function _alertItemHtml(alert, tab) {
 const _ALERT_EMPTY = {
   firing: `
     <div class="empty-state">
-      <div class="empty-state-icon" style="background: rgba(126,221,181,0.1);">
+      <div class="empty-state-icon" style="background: rgba(var(--rgb-mint), var(--tint-a));">
         <svg viewBox="0 0 24 24" style="stroke: var(--mint);"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
       <div class="empty-state-title">All clear</div>
@@ -108,7 +114,7 @@ const _ALERT_EMPTY = {
     </div>`,
   ack: `
     <div class="empty-state">
-      <div class="empty-state-icon" style="background: rgba(226,212,120,0.1);">
+      <div class="empty-state-icon" style="background: rgba(var(--rgb-lemon), var(--tint-a));">
         <svg viewBox="0 0 24 24" style="stroke: var(--lemon);"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       </div>
       <div class="empty-state-title">No acknowledged alerts</div>
@@ -116,7 +122,7 @@ const _ALERT_EMPTY = {
     </div>`,
   resolved: `
     <div class="empty-state">
-      <div class="empty-state-icon" style="background: rgba(126,221,181,0.1);">
+      <div class="empty-state-icon" style="background: rgba(var(--rgb-mint), var(--tint-a));">
         <svg viewBox="0 0 24 24" style="stroke: var(--mint);"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
       </div>
       <div class="empty-state-title">No resolved alerts yet</div>
@@ -269,8 +275,16 @@ document.addEventListener('click', (e) => {
     const sub = `${alert.host_hostname || ''} · ${alert.message || ''}`.trim();
     suggestFixForAlert(alert.id, sub);
   } else if (alert.fix_context && alert.fix_context.container_name) {
-    suggestDockerFix(alert.host, alert.fix_context.container_name, alert.fix_context.image);
+    openUpdateContainer(alert.host, alert.fix_context.container_name);
   }
+});
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-alert-action="update-container"]');
+  if (!btn) return;
+  e.stopPropagation();
+  const alert = alertsCache.firing.find(a => a.id === btn.dataset.alertId);
+  if (alert) openUpdateContainer(alert.host, alert.fix_context.container_name);
 });
 
 /* ── Fix suggestions ─────────────────────────────────────────────────── */
@@ -282,31 +296,6 @@ function suggestAgentUpdate(hostId) {
     `  - id: update`,
     `    type: update_agent`,
     `    params: {}`,
-  ].join('\n');
-  openDefinitionEditor(null, yaml);
-}
-
-function suggestDockerFix(hostId, containerName, image) {
-  // recreate_container (not restart_container): a restart keeps the container
-  // on its original image, so the pulled update would never actually apply.
-  // The image and container name come from the agent, so they are quoted as
-  // YAML scalars rather than pasted between literal quotes — a value carrying
-  // a quote would otherwise close its scalar and rewrite the task the operator
-  // is about to review. Double-quoted YAML escapes exactly like JSON.
-  const y = (v) => JSON.stringify(String(v == null ? '' : v));
-  const yaml = [
-    `name: ${y(`Update Docker Image: ${image}`)}`,
-    `description: ${y(`Pull the latest ${image} and recreate ${containerName} on it`)}`,
-    `actions:`,
-    `  - id: pull_new_image`,
-    `    type: pull_image`,
-    `    params:`,
-    `      image: ${y(image)}`,
-    `  - id: recreate`,
-    `    type: recreate_container`,
-    `    params:`,
-    `      container_name: ${y(containerName)}`,
-    `      image: ${y(image)}`,
   ].join('\n');
   openDefinitionEditor(null, yaml);
 }

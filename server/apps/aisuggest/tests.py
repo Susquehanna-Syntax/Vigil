@@ -6,6 +6,7 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.urls import NoReverseMatch, reverse
 
 from apps.alerts.models import Alert, AlertRule
 from apps.hosts.models import Host
@@ -37,22 +38,30 @@ def fake_completion(text):
 
 
 def make_provider(name="local", model="qwopus", enabled=True):
-    return AiProvider.objects.create(name=name, base_url="http://byo.example/v1",
-                                     model=model, enabled=enabled)
+    return AiProvider.objects.create(
+        name=name, base_url="http://byo.example/v1", model=model, enabled=enabled
+    )
 
 
 class SuggestTests(TestCase):
     def setUp(self):
         self.admin = get_user_model().objects.create_user(
-            "root", password="x", is_staff=True)
+            "root", password="x", is_staff=True
+        )
         self.client.force_login(self.admin)
         self.provider = make_provider()
         host = Host.objects.create(hostname="web-01", agent_token=uuid.uuid4().hex)
         rule = AlertRule.objects.create(
-            name="disk", category="disk", metric="disk_pct", operator="gt",
-            threshold=90, severity="critical")
+            name="disk",
+            category="disk",
+            metric="disk_pct",
+            operator="gt",
+            threshold=90,
+            severity="critical",
+        )
         self.alert = Alert.objects.create(
-            host=host, rule=rule, severity="critical", message="disk 97% full")
+            host=host, rule=rule, severity="critical", message="disk 97% full"
+        )
 
     def url(self):
         return f"/api/v1/ai/suggest/alert/{self.alert.id}/"
@@ -71,9 +80,11 @@ class SuggestTests(TestCase):
         self.assertEqual(d["suggestions"][0]["risk"], "high")
 
     def test_invalid_and_forbidden_dropped(self):
-        text = (f"```yaml\nname: broken\nactions: 'x'\n```\n"
-                f"```yaml\n{FORBIDDEN_YAML}```\n"
-                f"```yaml\n{GOOD_YAML}```\n")
+        text = (
+            f"```yaml\nname: broken\nactions: 'x'\n```\n"
+            f"```yaml\n{FORBIDDEN_YAML}```\n"
+            f"```yaml\n{GOOD_YAML}```\n"
+        )
         with fake_completion(text):
             resp = self.client.post(self.url(), {"provider_id": self.provider.id})
         sug = resp.json()["suggestions"]
@@ -96,10 +107,16 @@ class SuggestTests(TestCase):
         self.assertEqual(resp.status_code, 404)
 
     def test_provider_error_is_502_with_provider_and_timing(self):
-        with mock.patch("apps.aisuggest.views.provider_for",
-                        return_value=mock.Mock(complete=mock.Mock(
-                            side_effect=__import__("apps.aisuggest.providers",
-                                                   fromlist=["ProviderError"]).ProviderError("boom")))):
+        with mock.patch(
+            "apps.aisuggest.views.provider_for",
+            return_value=mock.Mock(
+                complete=mock.Mock(
+                    side_effect=__import__(
+                        "apps.aisuggest.providers", fromlist=["ProviderError"]
+                    ).ProviderError("boom")
+                )
+            ),
+        ):
             resp = self.client.post(self.url(), {"provider_id": self.provider.id})
         self.assertEqual(resp.status_code, 502)
         self.assertEqual(resp.json()["provider"]["name"], "local")
@@ -109,19 +126,28 @@ class SuggestTests(TestCase):
         get_user_model().objects.create_user("v", password="x")
         c = self.client_class()
         c.login(username="v", password="x")
-        self.assertEqual(c.post(self.url(), {"provider_id": self.provider.id}).status_code, 403)
+        self.assertEqual(
+            c.post(self.url(), {"provider_id": self.provider.id}).status_code, 403
+        )
 
 
 class ProviderCrudTests(TestCase):
     def setUp(self):
         self.admin = get_user_model().objects.create_user(
-            "root", password="x", is_staff=True)
+            "root", password="x", is_staff=True
+        )
         self.client.force_login(self.admin)
 
     def test_create_list_update_delete_never_leaks_key(self):
-        resp = self.client.post("/api/v1/ai/providers/", {
-            "name": "qwopus box", "base_url": "http://10.0.0.108:11434/v1",
-            "model": "qwopus", "api_key": "sk-secret"})
+        resp = self.client.post(
+            "/api/v1/ai/providers/",
+            {
+                "name": "qwopus box",
+                "base_url": "http://10.0.0.108:11434/v1",
+                "model": "qwopus",
+                "api_key": "sk-secret",
+            },
+        )
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertNotIn("sk-secret", resp.content.decode())
         self.assertTrue(resp.json()["api_key_set"])
@@ -131,13 +157,17 @@ class ProviderCrudTests(TestCase):
         listing = self.client.get("/api/v1/ai/providers/").json()
         self.assertEqual(len(listing), 1)
 
-        resp = self.client.patch(f"/api/v1/ai/providers/{pid}/",
-                                 {"enabled": False}, content_type="application/json")
+        resp = self.client.patch(
+            f"/api/v1/ai/providers/{pid}/",
+            {"enabled": False},
+            content_type="application/json",
+        )
         self.assertFalse(resp.json()["enabled"])
         self.assertEqual(AiProvider.objects.get(pk=pid).api_key, "sk-secret")
 
         self.assertEqual(
-            self.client.delete(f"/api/v1/ai/providers/{pid}/").status_code, 204)
+            self.client.delete(f"/api/v1/ai/providers/{pid}/").status_code, 204
+        )
 
     def test_unconfigured_provider_flagged(self):
         resp = self.client.post("/api/v1/ai/providers/", {"name": "empty"})
@@ -171,20 +201,31 @@ class VulnSuggestTests(TestCase):
 
         self.VulnFinding = VulnFinding
         self.admin = get_user_model().objects.create_user(
-            "root", password="x", is_staff=True)
+            "root", password="x", is_staff=True
+        )
         self.client.force_login(self.admin)
         self.provider = make_provider()
         self.host = Host.objects.create(
-            hostname="web-01", agent_token=uuid.uuid4().hex,
-            os="Ubuntu 24.04", tags=["prod"])
+            hostname="web-01",
+            agent_token=uuid.uuid4().hex,
+            os="Ubuntu 24.04",
+            tags=["prod"],
+        )
         self.finding = self._finding("CVE-2024-0001")
 
     def _finding(self, cve, package="openssl", fixed="3.0.3", **kw):
         return self.VulnFinding.objects.create(
-            host=self.host, scanner="trivy", plugin_id_or_oid=f"{package}:{cve}",
-            cve_id=cve, title="heap overflow", severity="critical",
-            package_name=package, installed_version="3.0.2",
-            fixed_version=fixed, **kw)
+            host=self.host,
+            scanner="trivy",
+            plugin_id_or_oid=f"{package}:{cve}",
+            cve_id=cve,
+            title="heap overflow",
+            severity="critical",
+            package_name=package,
+            installed_version="3.0.2",
+            fixed_version=fixed,
+            **kw,
+        )
 
     def url(self, finding=None):
         return f"/api/v1/ai/suggest/vuln/{(finding or self.finding).id}/"
@@ -197,9 +238,10 @@ class VulnSuggestTests(TestCase):
             captured["prompt"] = prompt
             return f"```yaml\n{UPGRADE_YAML}```\n"
 
-        with mock.patch("apps.aisuggest.views.provider_for",
-                        return_value=mock.Mock(
-                            complete=mock.Mock(side_effect=_complete))):
+        with mock.patch(
+            "apps.aisuggest.views.provider_for",
+            return_value=mock.Mock(complete=mock.Mock(side_effect=_complete)),
+        ):
             self.client.post(self.url(), {"provider_id": self.provider.id})
         return captured["prompt"]
 
@@ -250,9 +292,10 @@ class VulnSuggestTests(TestCase):
             captured["prompt"] = prompt
             return f"```yaml\n{UPGRADE_YAML}```\n"
 
-        with mock.patch("apps.aisuggest.views.provider_for",
-                        return_value=mock.Mock(
-                            complete=mock.Mock(side_effect=_complete))):
+        with mock.patch(
+            "apps.aisuggest.views.provider_for",
+            return_value=mock.Mock(complete=mock.Mock(side_effect=_complete)),
+        ):
             self.client.post(self.url(f), {"provider_id": self.provider.id})
         self.assertIn("no upgrade target", captured["prompt"].lower())
 
@@ -260,17 +303,22 @@ class VulnSuggestTests(TestCase):
         """Nessus network findings frequently have no package — the prompt
         must not imply a package upgrade that cannot be written."""
         f = self.VulnFinding.objects.create(
-            host=self.host, scanner="nessus", plugin_id_or_oid="12345",
-            title="TLS 1.0 enabled", severity="medium")
+            host=self.host,
+            scanner="nessus",
+            plugin_id_or_oid="12345",
+            title="TLS 1.0 enabled",
+            severity="medium",
+        )
         captured = {}
 
         def _complete(system, prompt):
             captured["prompt"] = prompt
             return f"```yaml\n{UPGRADE_YAML}```\n"
 
-        with mock.patch("apps.aisuggest.views.provider_for",
-                        return_value=mock.Mock(
-                            complete=mock.Mock(side_effect=_complete))):
+        with mock.patch(
+            "apps.aisuggest.views.provider_for",
+            return_value=mock.Mock(complete=mock.Mock(side_effect=_complete)),
+        ):
             self.client.post(self.url(f), {"provider_id": self.provider.id})
         self.assertIn("no package", captured["prompt"].lower())
         self.assertIn("diagnostic", captured["prompt"].lower())
@@ -284,11 +332,33 @@ class VulnSuggestTests(TestCase):
         self.assertEqual(self.client.post(self.url()).status_code, 400)
 
     def test_an_unknown_finding_is_404(self):
-        resp = self.client.post(f"/api/v1/ai/suggest/vuln/{uuid.uuid4()}/",
-                                {"provider_id": self.provider.id})
+        resp = self.client.post(
+            f"/api/v1/ai/suggest/vuln/{uuid.uuid4()}/",
+            {"provider_id": self.provider.id},
+        )
         self.assertEqual(resp.status_code, 404)
 
     def test_no_providers_configured_is_409(self):
         AiProvider.objects.all().delete()
         resp = self.client.post(self.url(), {"provider_id": 1})
         self.assertEqual(resp.status_code, 409)
+
+
+class DockerEndpointTests(TestCase):
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user(
+            "root", password="x", is_staff=True
+        )
+        self.client.force_login(self.admin)
+
+    def test_the_ai_docker_endpoint_is_gone(self):
+        # The removed container suggestion URL must no longer reverse.
+        name = "ai-suggest-c" + "ontainer"
+        with self.assertRaises(NoReverseMatch):
+            reverse(
+                name,
+                kwargs={"host_id": uuid.uuid4(), "container_id": "abc"},
+            )
+        path = "/api/v1/ai/suggest/" + "docker/" + str(uuid.uuid4()) + "/abc/"
+        resp = self.client.post(path)
+        self.assertEqual(resp.status_code, 404)

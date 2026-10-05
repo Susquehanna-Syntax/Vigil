@@ -25,6 +25,14 @@ Vigil is a lightweight monitoring system where agents on your hosts phone home t
 - Signed remote task execution with mode/allowlist enforcement on the agent
 - SQSY dark-theme dashboard with Chart.js visualizations
 
+## Editions
+
+Free Vigil answers "is my stuff up"; Business Vigil answers "can I prove to a
+third party that their stuff is up." Monitoring, alerting, and unlimited
+agents, hosts, and retention are free forever — the Business tier adds
+accountability features (sites, audit log, roles, branding). See
+[docs/EDITIONS.md](docs/EDITIONS.md) for the full feature matrix.
+
 ## What's new in 2026.12.1
 
 **A dashboard keeps the size you gave it.** Shrinking a widget to its smallest
@@ -380,7 +388,7 @@ on_failure:
     attempts: 3         # 0 = no retry
     delay_seconds: 60
 
-# Optional: validate step output (supports {{ inputs.x }} variables)
+# Optional: validate step output (supports ${{ inputs.x }} variables)
 success_criteria:
   exit_code: 0
   output_contains: "active (running)"   # substring match
@@ -395,15 +403,15 @@ actions:
   - id: reload
     type: reload_service
     params:
-      service_name: "{{ inputs.service }}"
+      service_name: "${{ inputs.service }}"
     success_criteria:
       exit_code: 0
-      output_contains: "{{ inputs.service }} reloaded"
+      output_contains: "${{ inputs.service }} reloaded"
 
   - id: verify
     type: check_service
     params:
-      service_name: "{{ inputs.service }}"
+      service_name: "${{ inputs.service }}"
       expect: active
 
   # Optional per-step keys

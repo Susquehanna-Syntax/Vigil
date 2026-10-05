@@ -229,6 +229,28 @@ class ExpressionCopySyncTests(TestCase):
         )
 
 
+class ScriptHashCopySyncTests(TestCase):
+    """The server and agent ship byte-identical copies of scripthash.py.
+
+    The host owner approves an inline script body by its hash; if the two
+    sides drift, an approved script is refused, so assert the copies match.
+    """
+
+    def test_server_and_agent_copies_identical(self):
+        server_copy = Path(__file__).resolve().parent / "scripthash.py"
+        agent_copy = (
+            Path(__file__).resolve().parents[3]
+            / "agent" / "vigil_agent" / "scripthash.py"
+        )
+        if not agent_copy.exists():
+            self.skipTest("agent copy not present in this checkout")
+        self.assertEqual(
+            server_copy.read_bytes(),
+            agent_copy.read_bytes(),
+            "server and agent scripthash.py have drifted — re-sync them",
+        )
+
+
 class ExpireStaleTasksTests(TestCase):
     def setUp(self):
         self.host = Host.objects.create(

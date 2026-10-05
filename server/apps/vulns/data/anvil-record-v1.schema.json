@@ -1,0 +1,683 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anvil.invalid/schemas/anvil-record-v1.schema.json",
+  "title": "Anvil unified audit record v1 (SARIF 2.1.0 + anvil/* extension)",
+  "description": "Constrains the anvil/* property-bag extension that Anvil layers on top of stock SARIF 2.1.0, and pins the SARIF-native slots Anvil depends on. Ground truth: plan/40-record-and-storage.md 'Record Field Contract'; enum literals frozen by plan/IMPLEMENTATION-PLAN.md section 6; required fields by plan/00-SPINE.md S6. Producer/consumer for every field: internal/record/CONTRACT.md. Go source of truth: internal/record/contract.go.",
+
+  "x-anvil-baseSchema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "x-anvil-validationProcedure": "TWO GATES, both required. Gate 1: validate the record against https://json.schemastore.org/sarif-2.1.0.json (stock SARIF conformance; needed for GitHub and DefectDojo to accept it). Gate 2: validate against THIS schema (the anvil/* extension and the S6-required fields). This schema does not $ref the SARIF base schema because that reference is not resolvable in Anvil's offline CI; keeping the two gates separate makes the offline gate work and makes a SARIF-conformance failure distinguishable from an anvil/* failure.",
+  "x-anvil-contractVersion": "1.0.0",
+
+  "type": "object",
+  "required": ["$schema", "version", "runs", "properties"],
+  "properties": {
+    "$schema": {
+      "description": "Pinned to SARIF 2.1.0. Do not track the unratified 2.2 draft (research/18 Risk #9).",
+      "const": "https://json.schemastore.org/sarif-2.1.0.json"
+    },
+    "version": { "const": "2.1.0" },
+    "properties": { "$ref": "#/$defs/auditProperties" },
+    "runs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "description": "One audit identity, two independently-sealed halves (00-SPINE.md S1). At most one run per half.",
+      "items": { "$ref": "#/$defs/run" }
+    }
+  },
+
+  "$defs": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "nullableTimestamp": { "type": ["string", "null"], "format": "date-time" },
+    "sha256Hex": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "unitInterval": { "type": "number", "minimum": 0, "maximum": 1 },
+
+    "state": {
+      "description": "FROZEN ENUM 1/6 (anvil/state). dast_sealed and both_sealed exist because 00-SPINE.md S1 requires two INDEPENDENTLY-sealed halves: a machine that can only seal SAST-then-DAST cannot express a DAST-first seal, and collapsing them makes `sealed` terminal, which makes `consumed` unreachable.",
+      "type": "string",
+      "enum": ["collecting", "sast_sealed", "dast_sealed", "both_sealed", "consumed", "expired"]
+    },
+    "halfStatus": {
+      "description": "FROZEN ENUM 2/6 (per-half anvil/status). `sealed` is the hard consumer read gate (R.6); an area keying on any other token means the gate never opens.",
+      "type": "string",
+      "enum": ["running", "sealed", "failed", "timed_out", "skipped"]
+    },
+    "dastStatus": {
+      "description": "FROZEN ENUM 3/6 (anvil/dastStatus). Never null. `skipped_no_manifest` is deliberately distinct from `not_run`: no target manifest was declared, versus the DAST tier not being installed at all. S6 requires a target that failed to be distinguishable from one scanned clean; only `completed_clean` may be read as 'dynamically scanned, nothing found'.",
+      "type": "string",
+      "enum": [
+        "not_run",
+        "skipped_no_manifest",
+        "running",
+        "completed_clean",
+        "completed_findings",
+        "completed_partial",
+        "completed_failed",
+        "target_boot_failed",
+        "target_unreachable",
+        "timed_out"
+      ]
+    },
+    "targetProvenance": {
+      "description": "FROZEN ENUM 4/6 (anvil/target.provenance). The target's BOOT/REACHABILITY OUTCOME. dastStatus is derived from this field, not from target.provisioning.",
+      "type": "string",
+      "enum": ["booted_clean", "boot_failed", "build_failed", "no_target_declared", "unreachable_at_scan_time"]
+    },
+    "targetProvisioning": {
+      "description": "FROZEN ENUM 5/6 (anvil/target.provisioning). NEW required field. WHICH PROVISIONING PATH produced the target. A different measurement from target.provenance; merging them loses information S6 requires, and the two carry different authorization consequences (S7).",
+      "type": "string",
+      "enum": ["ephemeral_manifest", "live_url_authorized"]
+    },
+    "verdict": {
+      "description": "FROZEN ENUM 6/6 (anvil/verdict). `insufficient_context` is a real verdict, not a low confidence score (00-SPINE.md S6 is explicit). A low score means 'probably not real'; insufficient_context means 'may well be real and the detector could not see enough to tell'. Those demand opposite handling and a float cannot express the difference.",
+      "type": "string",
+      "enum": ["true_positive", "false_positive", "insufficient_context"]
+    },
+    "trust": {
+      "description": "anvil/trust (00-SPINE.md S6, required on EVERY string originating outside Anvil). A repo source snippet is `untrusted` even though Anvil put it in the struct: the question is who wrote the bytes, never who assigned the field.",
+      "type": "string",
+      "enum": ["untrusted", "anvil_generated", "verified"]
+    },
+    "externalTrust": {
+      "description": "The subset of anvil/trust legal for a string that originated outside Anvil. `anvil_generated` is excluded by construction.",
+      "type": "string",
+      "enum": ["untrusted", "verified"]
+    },
+    "half": { "type": "string", "enum": ["sast", "dast"] },
+    "evidenceClass": {
+      "type": "string",
+      "enum": ["dast_confirmed", "sast_reachable", "sast_static_only", "sca", "host"]
+    },
+    "detectorKind": { "type": "string", "enum": ["sast", "dast", "sca", "host"] },
+    "injectionPoint": { "type": "string", "enum": ["query", "body", "header", "cookie", "path"] },
+    "evidenceSignal": {
+      "type": "string",
+      "enum": ["responseStackTrace", "statusCodeFlip", "dbErrorString", "timingSideChannel", "reflectedPayload", "other"]
+    },
+    "correlationSignalName": {
+      "type": "string",
+      "enum": ["responseStackTrace", "routeTable", "callGraphReach", "parameterName", "cweMatch", "rerunFlip"]
+    },
+    "inventoryProvenance": {
+      "type": "string",
+      "enum": ["runtime_spec", "repo_spec", "static_extraction", "crawl"]
+    },
+    "handoffState": {
+      "description": "Frozen alongside the six (IMPLEMENTATION-PLAN.md section 6, rulings G9+G10). Not carried on the wire record; declared here so the store DDL (R.4) and area X agree on one vocabulary and area X's deleted anvil_ledger cannot reappear.",
+      "type": "string",
+      "enum": [
+        "ready", "leased", "validated", "failed_validation", "failed_format",
+        "skipped_budget", "false_positive", "regression_introduced",
+        "fixed_incidentally", "split_required", "withdrawn", "superseded", "expired"
+      ]
+    },
+    "consumptionClass": {
+      "type": "string",
+      "enum": ["static_only", "requires_dynamic_confirmation"]
+    },
+    "trustedString": {
+      "description": "An anvil/* extension string that originated outside Anvil, carrying its trust inline. SARIF-native strings cannot change shape, so those are classified by JSON Pointer in anvil/trust.fields instead.",
+      "type": "object",
+      "required": ["text", "trust"],
+      "properties": {
+        "text": { "type": "string" },
+        "trust": { "$ref": "#/$defs/externalTrust" }
+      }
+    },
+
+    "auditProperties": {
+      "description": "sarifLog.properties — the audit envelope.",
+      "type": "object",
+      "required": [
+        "anvil/schemaVersion",
+        "anvil/auditId",
+        "anvil/state",
+        "anvil/version",
+        "anvil/createdAt",
+        "anvil/target",
+        "anvil/trigger",
+        "anvil/deadline",
+        "anvil/index",
+        "anvil/dastStatus"
+      ],
+      "properties": {
+        "anvil/schemaVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "anvil/auditId": { "type": "string", "minLength": 1 },
+        "anvil/state": { "$ref": "#/$defs/state" },
+        "anvil/version": {
+          "description": "Monotonic; a bump re-cuts the work queue (S6, R.11).",
+          "type": "integer",
+          "minimum": 1
+        },
+        "anvil/createdAt": { "$ref": "#/$defs/timestamp" },
+        "anvil/target": { "$ref": "#/$defs/target" },
+        "anvil/trigger": { "$ref": "#/$defs/trigger" },
+        "anvil/deadline": { "$ref": "#/$defs/deadline" },
+        "anvil/db": { "$ref": "#/$defs/dbRef" },
+        "anvil/index": { "$ref": "#/$defs/index" },
+        "anvil/dastStatus": { "$ref": "#/$defs/dastStatus" }
+      }
+    },
+
+    "target": {
+      "type": "object",
+      "required": ["repoUrl", "ref", "commit", "subpath", "provenance", "provisioning"],
+      "properties": {
+        "repoUrl": { "type": "string" },
+        "ref": { "type": "string" },
+        "commit": { "type": "string" },
+        "subpath": { "type": "string" },
+        "runtimeBaseUrl": { "type": "string" },
+        "provenance": { "$ref": "#/$defs/targetProvenance" },
+        "provisioning": { "$ref": "#/$defs/targetProvisioning" }
+      }
+    },
+
+    "trigger": {
+      "description": "The record states WHICH configured policy fired. No trigger condition is ever encoded in the schema itself (research/18).",
+      "type": "object",
+      "required": ["kind", "policyId", "policyRef", "configSource", "actor", "resolvedAt"],
+      "properties": {
+        "kind": { "type": "string" },
+        "policyId": { "type": "string" },
+        "policyRef": { "type": "string" },
+        "configSource": { "type": "string" },
+        "actor": { "type": "string" },
+        "resolvedAt": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+
+    "deadline": {
+      "description": "Replaces branch 18's anvil/buffer per the 00-SPINE.md S1 correction: the 8 hours is a CLAIM TIMEOUT, not a deletion policy and not a confidentiality control. deadlineAt = scan start + claimTimeoutSeconds, computed once and never recomputed from any write timestamp.",
+      "type": "object",
+      "required": ["deadlineAt", "claimTimeoutSeconds", "dastDeadlineSeconds"],
+      "properties": {
+        "deadlineAt": { "$ref": "#/$defs/timestamp" },
+        "claimTimeoutSeconds": { "type": "integer", "minimum": 1 },
+        "dastDeadlineSeconds": {
+          "description": "An INDEPENDENT clock from claimTimeoutSeconds. Null when DAST is disabled.",
+          "type": ["integer", "null"],
+          "minimum": 1
+        }
+      }
+    },
+
+    "dbRef": {
+      "type": "object",
+      "required": ["recordId", "writtenAt"],
+      "properties": {
+        "recordId": { "type": "string" },
+        "writtenAt": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+
+    "index": {
+      "description": "Tier-0 manifest, target <= 8 KB. readOrder is deterministic, not model-chosen.",
+      "type": "object",
+      "required": ["counts", "readOrder", "byCluster", "byCwe", "byPath", "taskCards", "blobs"],
+      "properties": {
+        "counts": {
+          "type": "object",
+          "required": ["total", "sast", "dast", "clusters", "unclustered"],
+          "properties": {
+            "total": { "type": "integer", "minimum": 0 },
+            "sast": { "type": "integer", "minimum": 0 },
+            "dast": { "type": "integer", "minimum": 0 },
+            "clusters": { "type": "integer", "minimum": 0 },
+            "unclustered": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "readOrder": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["clusters", "sastByRank", "dastByRank"] }
+        },
+        "byCluster": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } },
+        "byCwe": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } },
+        "byPath": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } },
+        "taskCards": { "type": "string" },
+        "blobs": { "type": "string" }
+      }
+    },
+
+    "run": {
+      "description": "One independently-sealed half. Both runs carry the SAME automationDetails.correlationGuid, equal to anvil/auditId: the SARIF-native statement that they are one audit.",
+      "type": "object",
+      "required": ["tool", "automationDetails", "results", "properties"],
+      "properties": {
+        "tool": { "type": "object" },
+        "automationDetails": {
+          "type": "object",
+          "required": ["correlationGuid"],
+          "properties": {
+            "id": { "type": "string" },
+            "guid": { "type": "string" },
+            "correlationGuid": { "type": "string", "minLength": 1 },
+            "description": { "type": "object" }
+          }
+        },
+        "originalUriBaseIds": { "type": "object" },
+        "taxonomies": { "type": "array" },
+        "externalPropertyFileReferences": { "type": "object" },
+        "results": { "type": "array", "items": { "$ref": "#/$defs/result" } },
+        "properties": { "$ref": "#/$defs/runProperties" }
+      },
+      "allOf": [
+        {
+          "$comment": "The DAST run must carry coverage, a route-table digest and its runtime target. Without dastCoverage, dastStatus:'completed_clean' is unfalsifiable.",
+          "if": {
+            "properties": { "properties": { "properties": { "anvil/half": { "const": "dast" } }, "required": ["anvil/half"] } },
+            "required": ["properties"]
+          },
+          "then": {
+            "properties": {
+              "properties": { "required": ["anvil/dastCoverage", "anvil/routeTableDigest", "anvil/runtimeTarget"] }
+            }
+          }
+        },
+        {
+          "$comment": "The SAST run must carry the advisory snapshot digest it read, or staleness is unknowable.",
+          "if": {
+            "properties": { "properties": { "properties": { "anvil/half": { "const": "sast" } }, "required": ["anvil/half"] } },
+            "required": ["properties"]
+          },
+          "then": {
+            "properties": { "properties": { "required": ["anvil/advisorySnapshot"] } }
+          }
+        },
+        {
+          "$comment": "R.6's read gate: sealedAt is required exactly when status is sealed, and must be null otherwise. A missing key and an unsealed half must not be the same observation.",
+          "if": {
+            "properties": { "properties": { "properties": { "anvil/status": { "const": "sealed" } }, "required": ["anvil/status"] } },
+            "required": ["properties"]
+          },
+          "then": {
+            "properties": { "properties": { "properties": { "anvil/sealedAt": { "type": "string", "format": "date-time" } } } }
+          },
+          "else": {
+            "properties": { "properties": { "properties": { "anvil/sealedAt": { "type": "null" } } } }
+          }
+        }
+      ]
+    },
+
+    "runProperties": {
+      "type": "object",
+      "required": ["anvil/half", "anvil/status", "anvil/sealedAt"],
+      "properties": {
+        "anvil/half": { "$ref": "#/$defs/half" },
+        "anvil/status": { "$ref": "#/$defs/halfStatus" },
+        "anvil/sealedAt": { "$ref": "#/$defs/nullableTimestamp" },
+        "anvil/dastCoverage": { "$ref": "#/$defs/dastCoverage" },
+        "anvil/routeTableDigest": { "type": "string" },
+        "anvil/advisorySnapshot": {
+          "type": "object",
+          "required": ["feedIds", "snapshotDigest", "scrapedAt"],
+          "properties": {
+            "feedIds": { "type": "array", "items": { "type": "string" } },
+            "snapshotDigest": { "type": "string" },
+            "scrapedAt": { "$ref": "#/$defs/timestamp" }
+          }
+        },
+        "anvil/runtimeTarget": {
+          "type": "object",
+          "required": ["baseUrl", "authProfileRef", "scope"],
+          "properties": {
+            "baseUrl": { "type": "string" },
+            "authProfileRef": {
+              "description": "A config file path and revision. The record NEVER carries credentials.",
+              "type": "string"
+            },
+            "scope": { "type": "array", "items": { "type": "string" } },
+            "excluded": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+
+    "dastCoverage": {
+      "description": "Consolidates S6's dast_coverage, endpoint_coverage and inventory_provenance. A numerator, a denominator and a provenance mix — never a bare ratio (research/14 critique m6). endpoint_coverage is confirmed-probed endpoints over the union of the Tier 0-2 inventory, NEVER a request count.",
+      "type": "object",
+      "required": [
+        "probedCount",
+        "inventoryUnionCount",
+        "endpointCoverage",
+        "serverLineCoverage",
+        "inventoryProvenanceMix",
+        "confirmedCount",
+        "candidateCount"
+      ],
+      "properties": {
+        "probedCount": { "type": "integer", "minimum": 0 },
+        "inventoryUnionCount": { "type": "integer", "minimum": 0 },
+        "endpointCoverage": { "$ref": "#/$defs/unitInterval" },
+        "serverLineCoverage": {
+          "description": "Null, NOT zero, when not measured. Zero would read as 'we ran and covered nothing'.",
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "inventoryProvenanceMix": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/inventoryProvenance" },
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "confirmedCount": { "type": "integer", "minimum": 0 },
+        "candidateCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "result": {
+      "type": "object",
+      "required": ["ruleId", "message", "partialFingerprints", "properties"],
+      "properties": {
+        "ruleId": { "type": "string", "minLength": 1 },
+        "ruleIndex": { "type": "integer", "minimum": 0 },
+        "kind": { "type": "string", "enum": ["notApplicable", "pass", "fail", "review", "open", "informational"] },
+        "level": { "type": "string", "enum": ["none", "note", "warning", "error"] },
+        "rank": {
+          "description": "SARIF PRIORITY 0-100. NEVER confidence: detector certainty lives in anvil/confidence, and ingested third-party `rank` must be treated as untrusted and re-derived (research/18 Risk #8).",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "guid": { "type": "string" },
+        "correlationGuid": {
+          "description": "Assigned per CLUSTER, not per finding. Present only on clustered findings.",
+          "type": "string"
+        },
+        "message": { "type": "object", "required": ["text"], "properties": { "text": { "type": "string" } } },
+        "locations": { "type": "array" },
+        "relatedLocations": { "type": "array" },
+        "codeFlows": { "type": "array" },
+        "taxa": { "type": "array" },
+        "webRequest": { "type": "object" },
+        "webResponse": { "type": "object" },
+        "provenance": { "type": "object" },
+        "fixes": {
+          "description": "Written only after a coding-agent proposal. 00-SPINE.md S7: never auto-merge, propose only.",
+          "type": "array"
+        },
+        "partialFingerprints": {
+          "type": "object",
+          "required": ["anvilFindingId/v1"],
+          "properties": {
+            "anvilFindingId/v1": {
+              "description": "Full 64-hex anvil-fp/v1 digest. NEVER truncated.",
+              "$ref": "#/$defs/sha256Hex"
+            },
+            "primaryLocationLineHash": {
+              "description": "Required when a physical code location exists. The ONLY partial fingerprint GitHub reads.",
+              "type": "string"
+            },
+            "regionSha256": {
+              "description": "research/24's fingerprint.region_sha256. Reserved, optional; R.2 decides whether to populate it. Logged deviation 2 in CONTRACT.md.",
+              "type": "string"
+            }
+          }
+        },
+        "properties": { "$ref": "#/$defs/resultProperties" }
+      },
+      "allOf": [
+        {
+          "$comment": "A host finding is never remediable by an agent. 00-SPINE.md S7: the host agent is read-only, not behind a flag. The store enforces the same rule with a CHECK constraint.",
+          "if": {
+            "properties": {
+              "properties": {
+                "properties": { "anvil/evidenceClass": { "const": "host" } },
+                "required": ["anvil/evidenceClass"]
+              }
+            },
+            "required": ["properties"]
+          },
+          "then": {
+            "properties": {
+              "properties": { "properties": { "anvil/remediableByAgent": { "const": false } } }
+            }
+          }
+        },
+        {
+          "$comment": "A DAST response body is up to 32 KB of attacker-controlled bytes headed for a repo-credentialed agent (S7). Any result carrying one defaults to untrusted.",
+          "if": { "required": ["webResponse"] },
+          "then": {
+            "properties": {
+              "properties": {
+                "properties": { "anvil/trust": { "properties": { "default": { "const": "untrusted" } } } }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "resultProperties": {
+      "type": "object",
+      "required": [
+        "anvil/findingId",
+        "anvil/half",
+        "anvil/confidence",
+        "anvil/verdict",
+        "anvil/remediableByAgent",
+        "anvil/reasoning",
+        "anvil/detector",
+        "anvil/evidenceClass",
+        "anvil/trust"
+      ],
+      "properties": {
+        "anvil/findingId": { "type": "string", "minLength": 1 },
+        "anvil/half": { "$ref": "#/$defs/half" },
+        "anvil/confidence": {
+          "description": "DETECTOR CERTAINTY in [0,1]. Distinct from SARIF rank (priority) and level (severity).",
+          "$ref": "#/$defs/unitInterval"
+        },
+        "anvil/verdict": { "$ref": "#/$defs/verdict" },
+        "anvil/remediableByAgent": { "type": "boolean" },
+        "anvil/reasoning": { "type": "string" },
+        "anvil/detector": {
+          "type": "object",
+          "required": ["kind", "model", "revision"],
+          "properties": {
+            "kind": { "$ref": "#/$defs/detectorKind" },
+            "model": { "type": "string" },
+            "revision": { "type": "string" },
+            "promptDigest": { "type": "string" },
+            "advisoryItemId": { "type": "string" }
+          }
+        },
+        "anvil/evidenceClass": { "$ref": "#/$defs/evidenceClass" },
+        "anvil/trust": { "$ref": "#/$defs/trustAssertion" },
+        "anvil/advisory": { "$ref": "#/$defs/advisoryContext" },
+        "anvil/risk": { "$ref": "#/$defs/risk" },
+        "anvil/patchContext": { "$ref": "#/$defs/patchContext" },
+        "anvil/correlation": { "$ref": "#/$defs/correlation" },
+        "anvil/repro": { "$ref": "#/$defs/repro" },
+        "anvil/locus": {
+          "type": "object",
+          "required": ["proximityClass"],
+          "properties": { "proximityClass": { "type": "string" } }
+        },
+        "anvil/chunkRef": { "type": "string" },
+        "anvil/groupId": {
+          "description": "Key RESERVED here; ASSIGNED by the coding-agent consumption pipeline, not by this area.",
+          "type": "string"
+        }
+      }
+    },
+
+    "trustAssertion": {
+      "description": "S6 requires trust on EVERY string originating outside Anvil, and one result carries several strings of different provenance at once. `default` covers anything not named; `fields` maps an RFC 6901 JSON Pointer relative to the result object to that string's trust. Logged deviation 3 in CONTRACT.md.",
+      "type": "object",
+      "required": ["default"],
+      "properties": {
+        "default": { "$ref": "#/$defs/trust" },
+        "fields": { "type": "object", "additionalProperties": { "$ref": "#/$defs/trust" } }
+      }
+    },
+
+    "advisoryContext": {
+      "type": "object",
+      "required": ["ids", "cveIds", "sourceFeed", "snapshotDigest", "asOf", "stalenessSeconds", "parseDegraded"],
+      "properties": {
+        "ids": { "type": "array", "items": { "type": "string" } },
+        "cveIds": { "type": "array", "items": { "type": "string" } },
+        "sourceFeed": { "type": "string" },
+        "snapshotDigest": { "type": "string" },
+        "licenseSpdx": {
+          "description": "Carried per finding: the feed licence attaches to the text, not to Anvil (S8).",
+          "type": "string"
+        },
+        "asOf": { "$ref": "#/$defs/timestamp" },
+        "stalenessSeconds": { "type": "integer", "minimum": 0 },
+        "parseDegraded": { "type": "boolean" },
+        "excerpt": {
+          "description": "<= 800 tokens, pre-trimmed by ingestion, never a whole advisory. External text, so it carries its own trust inline.",
+          "$ref": "#/$defs/trustedString"
+        }
+      }
+    },
+
+    "risk": {
+      "description": "research/24's non-negotiable ranking inputs. LOGGED DEVIATION 1: no row for anvil/risk exists in plan/40-record-and-storage.md's Record Field Contract table.",
+      "type": "object",
+      "required": ["kevMember", "kevRansomwareUse"],
+      "properties": {
+        "cvssV4Base": { "type": "number", "minimum": 0, "maximum": 10 },
+        "epssScore": { "$ref": "#/$defs/unitInterval" },
+        "epssPercentile": { "$ref": "#/$defs/unitInterval" },
+        "epssModelDate": { "$ref": "#/$defs/timestamp" },
+        "kevMember": { "type": "boolean" },
+        "kevRansomwareUse": { "type": "boolean" }
+      }
+    },
+
+    "patchContext": {
+      "type": "object",
+      "required": ["language", "editableFiles"],
+      "properties": {
+        "language": { "type": "string" },
+        "languageVersion": { "type": "string" },
+        "framework": { "type": "string" },
+        "dbDriver": { "type": "string" },
+        "imports": { "type": "array", "items": { "type": "string" } },
+        "testCommand": { "type": ["string", "null"] },
+        "buildCommand": {
+          "description": "Null or omitted when the language has no build step. Both spellings are accepted; Go's decoder treats null as absent.",
+          "type": ["string", "null"]
+        },
+        "editableFiles": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "correlation": {
+      "description": "LINK, NEVER MERGE. Both findings always survive independently: the SAST finding owns the file and line, the DAST finding owns the proof. >= 2 independent signals are required, and a CWE-only match is banned as a sole signal.",
+      "type": "object",
+      "required": ["clusterId", "role", "peers", "signals", "confidence", "verified", "merged"],
+      "properties": {
+        "clusterId": { "type": "string" },
+        "role": { "$ref": "#/$defs/half" },
+        "peers": { "type": "array", "items": { "type": "string" } },
+        "method": { "type": "string" },
+        "signals": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "required": ["name", "weight"],
+            "properties": {
+              "name": { "$ref": "#/$defs/correlationSignalName" },
+              "weight": { "$ref": "#/$defs/unitInterval" },
+              "detail": { "type": "string" }
+            }
+          },
+          "not": {
+            "$comment": "A CWE-only signal list is banned: CWE match is necessary, never sufficient.",
+            "items": { "properties": { "name": { "const": "cweMatch" } }, "required": ["name"] }
+          }
+        },
+        "confidence": { "$ref": "#/$defs/unitInterval" },
+        "verified": { "type": "boolean" },
+        "verificationMethod": { "type": "string" },
+        "merged": { "const": false },
+        "caveat": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "$comment": "00-SPINE.md S7: only a response stack trace naming the SAST file, or a post-patch re-run that flips, earns verified:true. Confidence alone never qualifies.",
+          "if": { "properties": { "verified": { "const": true } }, "required": ["verified"] },
+          "then": {
+            "properties": {
+              "signals": {
+                "contains": {
+                  "properties": { "name": { "enum": ["responseStackTrace", "rerunFlip"] } },
+                  "required": ["name"]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "repro": {
+      "type": "object",
+      "required": ["injectionPoint", "observedSignal", "env"],
+      "properties": {
+        "curl": { "type": "string" },
+        "injectionPoint": {
+          "type": "object",
+          "required": ["kind", "name"],
+          "properties": {
+            "kind": { "$ref": "#/$defs/injectionPoint" },
+            "name": { "type": "string" }
+          }
+        },
+        "payload": { "type": "string" },
+        "payloadEncoding": { "type": "string" },
+        "steps": { "type": "array", "items": { "type": "string" } },
+        "baseline": {
+          "type": "object",
+          "properties": {
+            "statusCode": { "type": "integer" },
+            "latencyMs": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "observedSignal": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": { "$ref": "#/$defs/evidenceSignal" },
+            "match": {
+              "description": "A regex-extracted evidence SPAN, never the raw body (S7: hash-and-reference by default). Attacker-controlled, so it carries its own trust inline.",
+              "$ref": "#/$defs/trustedString"
+            },
+            "bodySha256": { "type": "string" },
+            "bodyOffset": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "expectedAfterFix": {
+          "type": "object",
+          "properties": {
+            "statusCode": { "type": "integer" },
+            "mustNotContain": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "sideEffects": { "type": "string" },
+        "targetStateRef": { "type": "string" },
+        "env": {
+          "description": "S6 requires sanitizer + ASLR state on any reproducer. A crash that reproduces only under ASan is a different claim from one that reproduces on a stock build, and a verification re-run under different settings is not the same experiment.",
+          "type": "object",
+          "required": ["sanitizers", "aslrEnabled"],
+          "properties": {
+            "sanitizers": {
+              "description": "Empty array for a stock build. NEVER null: null cannot be distinguished from 'nobody recorded it'.",
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "aslrEnabled": { "type": "boolean" },
+            "arch": { "type": "string" },
+            "os": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

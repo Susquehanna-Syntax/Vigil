@@ -37,6 +37,7 @@ def _payload():
         "source": state.source,
         "instance": licensing.instance_id(),
         "org": claims.org if claims else None,
+        "license_id": claims.lid if claims else None,
         "expires": claims.exp if claims else None,
         "seats": {"used": licensing.seats_used(),
                   "allowed": licensing.seats_allowed()},

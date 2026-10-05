@@ -1,0 +1,121 @@
+{# Apps page section — installed software across the fleet, by app and by host #}
+{# Logic: static/js/vigil-apps.js | Styles: vigil.css .apps-* | Data: client-side fetch /api/v1/software/{apps,hosts}/ #}
+    <section id="page-apps" class="page">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Apps<span>.</span></div>
+          <div class="page-sub">Installed software across your hosts</div>
+        </div>
+        <div class="right">
+          <button class="btn btn-outline btn-sm" data-act="refreshApps">
+            <svg viewBox="0 0 24 24" width="14" height="14"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div class="tab-bar" data-tab-group="apps">
+        <div class="tab t-mint active" data-tab="apps-by-app">By app</div>
+        <div class="tab t-sky" data-tab="apps-by-host">By host</div>
+        <div class="tab t-lav" data-tab="apps-by-update">By update</div>
+      </div>
+
+      <div class="tab-content active" id="apps-by-app">
+        <div class="hunt-toolbar">
+          <input type="search" class="form-control" id="apps-q" placeholder="Search apps…" autocomplete="off">
+          <label class="apps-filter"><input type="checkbox" id="apps-outdated"> Outdated only</label>
+          <label class="apps-filter"><input type="checkbox" id="apps-unmanaged"> Unmanaged only</label>
+          <select class="form-control" id="apps-source">
+            <option value="">All sources</option>
+            <option value="dpkg">dpkg</option>
+            <option value="rpm">rpm</option>
+            <option value="apk">apk</option>
+            <option value="pacman">pacman</option>
+            <option value="flatpak">flatpak</option>
+            <option value="snap">snap</option>
+            <option value="winget">winget</option>
+            <option value="chocolatey">chocolatey</option>
+            <option value="scoop">scoop</option>
+            <option value="registry">registry</option>
+            <option value="windows_update">Windows Update</option>
+            <option value="brew">brew</option>
+          </select>
+        </div>
+
+        <div class="table-wrap">
+          <table class="hunt-table apps-table" id="apps-table">
+            <thead>
+              <tr>
+                <th>App</th>
+                <th class="num">Hosts</th>
+                <th>Versions</th>
+                <th class="num">Outdated</th>
+                <th class="num">Unmanaged</th>
+                <th>Sources</th>
+              </tr>
+            </thead>
+            <tbody id="apps-table-body"></tbody>
+          </table>
+        </div>
+        <div class="hunt-pager">
+          <button class="btn btn-outline btn-sm" id="apps-more" type="button" data-act="loadMoreApps" hidden>Load more</button>
+        </div>
+      </div>
+
+      <div class="tab-content" id="apps-by-host">
+        <div class="table-wrap">
+          <table class="hunt-table apps-table" id="apps-hosts-table">
+            <thead>
+              <tr>
+                <th>Host</th>
+                <th class="num">Items</th>
+                <th class="num">Outdated</th>
+                <th class="num">Unmanaged</th>
+                <th>Last report</th>
+                <th>Errors</th>
+              </tr>
+            </thead>
+            <tbody id="apps-hosts-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tab-content" id="apps-by-update">
+        <div class="hunt-toolbar">
+          <input type="search" class="form-control" id="upd-q" placeholder="Search KB, package or title…" autocomplete="off">
+          <select class="form-control" id="upd-kind">
+            <option value="">Windows and Linux</option>
+            <option value="windows">Windows (by KB)</option>
+            <option value="linux">Linux (by package)</option>
+          </select>
+          <select class="form-control" id="upd-decision">
+            <option value="">Any decision</option>
+            <option value="undecided">Undecided</option>
+            <option value="approved">Approved</option>
+            <option value="declined">Declined</option>
+          </select>
+        </div>
+        <div class="upd-bulk" id="upd-bulk" hidden>
+          <span id="upd-bulk-count"></span>
+          <button class="btn btn-outline btn-xs" type="button" data-upd-decide="approved">Approve</button>
+          <button class="btn btn-outline btn-xs" type="button" data-upd-decide="declined">Decline</button>
+          <button class="btn btn-outline btn-xs" type="button" data-upd-decide="clear">Clear decision</button>
+        </div>
+        <div class="table-wrap">
+          <table class="hunt-table apps-table" id="apps-updates-table">
+            <thead>
+              <tr>
+                <th class="upd-check"><input type="checkbox" id="upd-all" aria-label="Select all"></th>
+                <th>Update</th>
+                <th>Severity</th>
+                <th class="num">Hosts</th>
+                <th class="num">Missing for</th>
+                <th>Decision</th>
+              </tr>
+            </thead>
+            <tbody id="apps-updates-body"></tbody>
+          </table>
+        </div>
+        <p class="muted-note upd-note">Approving installs an update at the next window of every policy that patches, without waiting out its deferral. Declining keeps it off every host — it joins each policy's exclude list.</p>
+      </div>
+    </section>

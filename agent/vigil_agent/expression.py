@@ -18,6 +18,13 @@ Constraints (intentional):
   * Dotted name access (``agent.os``) is allowed; bracket access
     (``agent["os"]``) is not — keeps the surface tiny and the syntax
     obvious.
+  * Ordering comparisons (``<``, ``<=``, ``>``, ``>=``) exist for numbers
+    only: if either side is not an ``int``/``float`` (a string, a bool, or
+    a missing value), the comparison is False — a predicate never raises.
+    Version comparisons belong in hunt params (``version_lt``, …), not
+    expressions.
+  * ``steps`` reads an earlier step: exactly ``steps.<id>.status`` or
+    ``steps.<id>.result.<field>`` (the one root allowed three levels deep).
 
 Both the server (for syntactic validation) and the agent (for runtime
 evaluation against actual context) import this module. They are kept
@@ -29,6 +36,7 @@ the PyInstaller-bundled agent can import it cleanly.
 from __future__ import annotations
 
 import ast
+import operator
 from typing import Any
 
 
@@ -40,23 +48,28 @@ class ExprError(ValueError):
 _ALLOWED_NODES = frozenset({
     ast.Expression, ast.BoolOp, ast.And, ast.Or, ast.UnaryOp, ast.Not,
     ast.Compare, ast.Eq, ast.NotEq, ast.In, ast.NotIn,
+    ast.Lt, ast.LtE, ast.Gt, ast.GtE,
     ast.Constant, ast.Name, ast.Attribute, ast.Tuple, ast.List,
     ast.Load,
 })
+
+#: Ordering comparison ops and the operator each one maps to.
+_ORDERING_OPS = (ast.Lt, ast.LtE, ast.Gt, ast.GtE)
+_COMPARE_FUNCS = {ast.Lt: operator.lt, ast.LtE: operator.le, ast.Gt: operator.gt, ast.GtE: operator.ge}
 
 
 def _validate_node(node: ast.AST) -> None:
     if type(node) not in _ALLOWED_NODES:
         raise ExprError(
             f"disallowed expression element {type(node).__name__!r}; "
-            f"only ==, !=, in, not in, and, or, not, literals, and dotted "
-            f"names like agent.os / inputs.foo are permitted"
+            f"only ==, !=, in, not in, <, <=, >, >=, and, or, not, "
+            f"literals, and dotted names like agent.os / inputs.foo are permitted"
         )
     # Names must be one of the known top-level context buckets.
-    if isinstance(node, ast.Name) and node.id not in {"agent", "inputs", "host"}:
+    if isinstance(node, ast.Name) and node.id not in {"agent", "inputs", "host", "steps"}:
         raise ExprError(
             f"unknown context name {node.id!r}; "
-            f"valid roots are agent, inputs, host"
+            f"valid roots are agent, inputs, host, steps"
         )
     # Attribute access must be on an allowed root → a single attribute step.
     # `agent.os` is fine; `agent.os.upper` is not.
@@ -73,10 +86,11 @@ def _validate_node(node: ast.AST) -> None:
         while isinstance(cur, ast.Attribute):
             cur = cur.value
             depth += 1
-            if depth > 2:
-                raise ExprError("attribute chain too deep")
         if not isinstance(cur, ast.Name):
-            raise ExprError("attribute access must start at agent / inputs / host")
+            raise ExprError("attribute access must start at agent / inputs / host / steps")
+        # steps.<id>.result.<field> is the only three-level chain.
+        if depth > (3 if cur.id == "steps" else 2):
+            raise ExprError("attribute chain too deep")
     # Recurse — every subnode also needs to be allowed.
     for child in ast.iter_child_nodes(node):
         _validate_node(child)
@@ -100,7 +114,9 @@ def parse(expr: str) -> ast.Expression:
     try:
         tree = ast.parse(expr, mode="eval")
     except SyntaxError as exc:
-        raise ExprError(f"invalid syntax: {exc.msg}") from exc
+        raise ExprError(
+            "invalid syntax" if exc.msg == "invalid syntax" else f"invalid syntax: {exc.msg}"
+        ) from exc
 
     _validate_node(tree)
     return tree
@@ -127,6 +143,58 @@ def referenced_inputs(expr: str | ast.Expression) -> set[str]:
                 and node.value.id == "inputs"):
             found.add(node.attr)
     return found
+
+
+_STEPS_SHAPE_ERROR = (
+    "steps references must be steps.<id>.status or steps.<id>.result.<field>"
+)
+
+
+def referenced_steps(expr: str | ast.Expression) -> set[tuple[str, str | None]]:
+    """Every earlier-step reference the expression reads.
+
+    ``(id, None)`` for ``steps.<id>.status``, ``(id, field)`` for
+    ``steps.<id>.result.<field>``. Any other shape under ``steps`` raises
+    :class:`ExprError` — a bare ``steps.x`` would resolve to a dict at run
+    time and make every comparison quietly false.
+    """
+    tree = expr if isinstance(expr, ast.Expression) else parse(expr)
+    found: set[tuple[str, str | None]] = set()
+    # Only the outermost attribute of each chain is judged; inner links are
+    # skipped so ``steps.x.result.y`` is not also seen as ``steps.x.result``.
+    inner: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute):
+            inner.add(id(node.value))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Attribute) or id(node) in inner:
+            continue
+        parts: list[str] = []
+        cur: ast.AST = node
+        while isinstance(cur, ast.Attribute):
+            parts.append(cur.attr)
+            cur = cur.value
+        if not (isinstance(cur, ast.Name) and cur.id == "steps"):
+            continue
+        parts.reverse()
+        if len(parts) == 2 and parts[1] == "status":
+            found.add((parts[0], None))
+        elif len(parts) == 3 and parts[1] == "result":
+            found.add((parts[0], parts[2]))
+        else:
+            raise ExprError(_STEPS_SHAPE_ERROR)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id == "steps" and not any(
+            isinstance(p, ast.Attribute) and p.value is node for p in ast.walk(tree)
+        ):
+            raise ExprError(_STEPS_SHAPE_ERROR)
+    return found
+
+
+def _is_number(value: Any) -> bool:
+    # bool is a subclass of int; ordering comparisons are for numbers only,
+    # so True/False must not read as 1/0.
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def _resolve(node: ast.AST, context: dict[str, Any]) -> Any:
@@ -182,6 +250,15 @@ def _resolve(node: ast.AST, context: dict[str, Any]) -> Any:
                     ok = (right is None) or (left not in right)
                 except TypeError:
                     ok = True
+            elif isinstance(op, _ORDERING_OPS):
+                # Ordering comparisons are for numbers only: a string,
+                # bool, or missing value on either side makes the
+                # comparison False rather than a TypeError.
+                ok = (
+                    _COMPARE_FUNCS[type(op)](left, right)
+                    if _is_number(left) and _is_number(right)
+                    else False
+                )
             else:
                 raise ExprError(f"unsupported comparison {type(op).__name__}")
             if not ok:

@@ -4,6 +4,8 @@ No test imports win32com; WuaBackend takes a session_factory seam and the
 fakes below stand in for Microsoft.Update.Session. The pure filtering
 helpers are tested directly on plain dicts.
 """
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import json
 import sys
 import unittest
@@ -208,6 +210,16 @@ class FilterTests(unittest.TestCase):
             {"update_id": "4", "kb": "",
              "severity": "", "categories": []},
         ]
+
+    def test_comma_separated_strings_are_lists(self):
+        """Signed task params are primitives, so a task carries these filters
+        as "a, b" strings — never iterated character by character."""
+        kept = filter_updates(self._dicts(), classifications="Update Rollups, Definition Updates",
+                              exclude_kb="KB5034125")
+        self.assertEqual([u["update_id"] for u in kept], ["2"])
+        kept = filter_updates(self._dicts(), include_kb="KB5034123,5034125")
+        self.assertEqual([u["update_id"] for u in kept], ["1", "3"])
+        self.assertEqual(len(filter_updates(self._dicts(), classifications="")), 4)
 
     def test_filter_by_classification_is_case_insensitive(self):
         kept = filter_updates(self._dicts(), classifications=["security updates"])
@@ -494,3 +506,52 @@ class SummaryTests(unittest.TestCase):
             windows_update._summary_cache["at"] -= windows_update.SUMMARY_TTL_SECONDS + 1
             windows_update.summary()
         self.assertEqual(backend.scan.call_count, 2)
+
+
+class UpdateListTests(unittest.TestCase):
+    """The per-update list: sent once per scan, trimmed, and put back on failure."""
+
+    def setUp(self):
+        windows_update._summary_cache.update({"at": 0.0, "value": None})
+        windows_update._pending_list["value"] = None
+
+    def _scan(self, updates):
+        backend = MagicMock()
+        backend.scan.return_value = updates
+        with patch.object(windows_update, "detect", return_value=backend):
+            return windows_update.summary(force=True)
+
+    def test_a_scan_queues_the_list_once(self):
+        self._scan([{"update_id": "u1", "kb": "KB5034441", "title": "Security update",
+                     "severity": "critical", "categories": ["Security Updates"],
+                     "reboot_required": True, "is_downloaded": False}])
+        first = windows_update.take_update_list()
+        self.assertEqual(first, [{"update_id": "u1", "kb": "KB5034441",
+                                  "title": "Security update", "severity": "critical",
+                                  "categories": ["Security Updates"],
+                                  "reboot_required": True}])
+        self.assertIsNone(windows_update.take_update_list(),
+                          "the cached summary must not resend the list every minute")
+
+    def test_an_empty_scan_sends_an_empty_list(self):
+        self._scan([])
+        self.assertEqual(windows_update.take_update_list(), [])
+
+    def test_a_failed_scan_queues_nothing(self):
+        backend = MagicMock()
+        backend.scan.side_effect = OSError("no")
+        with patch.object(windows_update, "detect", return_value=backend):
+            windows_update.summary(force=True)
+        self.assertIsNone(windows_update.take_update_list())
+
+    def test_the_list_is_capped(self):
+        self._scan([{"update_id": str(i)} for i in range(windows_update.UPDATE_LIST_LIMIT + 7)])
+        self.assertEqual(len(windows_update.take_update_list()),
+                         windows_update.UPDATE_LIST_LIMIT)
+
+    def test_restore_puts_an_unsent_list_back_unless_superseded(self):
+        windows_update.restore_update_list([{"update_id": "old"}])
+        self.assertEqual(windows_update.take_update_list(), [{"update_id": "old"}])
+        self._scan([{"update_id": "new"}])
+        windows_update.restore_update_list([{"update_id": "old"}])
+        self.assertEqual(windows_update.take_update_list()[0]["update_id"], "new")

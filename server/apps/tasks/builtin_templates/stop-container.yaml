@@ -1,0 +1,17 @@
+name: Stop container
+description: |
+  Stop one container through the engine API. Works on Docker and Podman alike; the
+  Containers page opens this with the container filled in.
+risk: standard
+author: Vigil
+created: 2026-10-01
+inputs:
+  - id: container_name
+    type: text
+    label: Container
+    required: true
+actions:
+  - id: stop
+    type: stop_container
+    params:
+      container_name: "${{ inputs.container_name }}"

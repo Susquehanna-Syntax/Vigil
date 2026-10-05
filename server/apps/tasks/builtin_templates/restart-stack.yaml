@@ -1,0 +1,17 @@
+name: Restart stack
+description: |
+  Restart every container of a compose stack, in place. The compose files come from the stack's own
+  container labels, never a guessed path.
+risk: standard
+author: Vigil
+created: 2026-10-01
+inputs:
+  - id: project
+    type: text
+    label: Stack
+    required: true
+actions:
+  - id: restart
+    type: stack_restart
+    params:
+      project: "${{ inputs.project }}"

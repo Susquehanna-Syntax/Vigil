@@ -488,3 +488,55 @@ class CompressedReportTests(TestCase):
         with self.assertRaises(ScanIngestError) as ctx:
             self.scanner.ingest_report(self.host, packed(sbom_report()))
         self.assertIn("Packages", str(ctx.exception))
+
+
+FULL = {
+    "VulnerabilityID": "CVE-2021-44228", "PkgName": "org.apache.logging.log4j:log4j-core",
+    "PkgPath": "opt/app/lib/log4j-core-2.14.1.jar",
+    "InstalledVersion": "2.14.1", "FixedVersion": "2.15.0", "Status": "fixed",
+    "Severity": "CRITICAL", "Title": "Log4Shell",
+    "Description": "JNDI features do not protect against attacker controlled LDAP.",
+    "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2021-44228",
+    "References": ["https://logging.apache.org/log4j/2.x/security.html", 7],
+    "CVSS": {"nvd": {"V2Score": 9.3, "V3Score": 10.0,
+                     "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"},
+             "ghsa": {"V3Score": 10.0, "V3Vector": "CVSS:3.1/AV:N/ghsa"}},
+    "Layer": {"Digest": "sha256:abc"},
+}
+
+
+class TrivyAdvisoryFieldsTests(TestCase):
+    """M9: the advisory is kept, not just the CVE and the package."""
+
+    def setUp(self):
+        self.host = Host.objects.create(
+            hostname="h2", agent_token="u" * 32, status=Host.Status.ONLINE)
+
+    def test_full_fields_are_stored(self):
+        report = json.dumps({"SchemaVersion": 2, "Results": [
+            {"Class": "lang-pkgs", "Target": "opt/app/lib", "Vulnerabilities": [FULL]}]})
+        TrivyScanner().ingest_report(self.host, report)
+        f = VulnFinding.objects.get(host=self.host)
+        self.assertEqual(f.cvss_score, 10.0)
+        self.assertEqual(f.cvss_vector, "CVSS:3.1/AV:N/ghsa",
+                         "a source-specific score wins over NVD")
+        self.assertEqual(f.vendor_status, "fixed")
+        self.assertEqual(f.affected_path, "opt/app/lib/log4j-core-2.14.1.jar")
+        self.assertIn("JNDI", f.description)
+        self.assertEqual(f.references, ["https://logging.apache.org/log4j/2.x/security.html"])
+        self.assertEqual(f.primary_url, "https://avd.aquasec.com/nvd/cve-2021-44228")
+        self.assertEqual(f.advisory["VulnerabilityID"], "CVE-2021-44228")
+        self.assertNotIn("Layer", f.advisory)
+
+    def test_missing_or_odd_fields_degrade_to_blank(self):
+        odd = {**CVE, "Status": "pwned", "CVSS": "nope", "PrimaryURL": "javascript:alert(1)"}
+        TrivyScanner().ingest_report(self.host, vuln_report(odd))
+        f = VulnFinding.objects.get(host=self.host)
+        self.assertEqual((f.vendor_status, f.cvss_score, f.primary_url, f.affected_path),
+                         ("", None, "", ""))
+
+    def test_v2_only_score_is_used_when_no_v3(self):
+        v2 = {**CVE, "CVSS": {"nvd": {"V2Score": 5.0, "V2Vector": "AV:N/AC:L"}}}
+        TrivyScanner().ingest_report(self.host, vuln_report(v2))
+        f = VulnFinding.objects.get(host=self.host)
+        self.assertEqual((f.cvss_score, f.cvss_vector), (5.0, "AV:N/AC:L"))

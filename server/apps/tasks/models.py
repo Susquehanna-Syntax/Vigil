@@ -48,6 +48,17 @@ class TaskDefinition(models.Model):
     )
     yaml_source = models.TextField()
     parsed_spec = models.JSONField(default=dict, blank=True)
+
+    class ContentSource(models.TextChoices):
+        ORGANIZATION = "organization", "Organization"
+        COMMUNITY = "community", "Community"
+        VENDOR = "vendor", "Vendor"
+
+    #: Where the task came from (M10), shown as a tag: written here by your own
+    #: team, taken from the community catalogue (same review and signing), or
+    #: vendor content — made from a vendor's findings, such as Anvil's.
+    content_source = models.CharField(max_length=12, choices=ContentSource.choices,
+                                      default=ContentSource.ORGANIZATION)
     forked_from = models.ForeignKey(
         "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="forks"
     )
@@ -94,14 +105,22 @@ class TaskRun(models.Model):
         COMPLETED = "completed", "Completed"
         FAILED = "failed", "Failed"
         PARTIAL = "partial", "Partial"
+        # Every host was not applicable: the task did not apply to any
+        # host, so the run is neither a success nor a failure.
+        NOT_APPLICABLE = "not_applicable", "Not applicable"
 
     class Source(models.TextChoices):
         MANUAL = "manual", "Manual deploy"
         AUTOMATION = "automation", "Automation"
         PLAYBOOK = "playbook", "Playbook"
         REPROVISION = "reprovision", "Reprovision"
+        POLICY = "policy", "Policy"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # A playbook run's flow as it was dispatched — the tree, and each step's
+    # name, colour and settings — so run history can draw what actually ran
+    # even after the playbook is edited (M6 08c). None for other runs.
+    flow_snapshot = models.JSONField(null=True, blank=True)
     definition = models.ForeignKey(
         TaskDefinition, on_delete=models.SET_NULL, null=True, related_name="runs"
     )
@@ -138,7 +157,7 @@ class TaskRun(models.Model):
     )
     host_count = models.IntegerField(default=0)
     step_count = models.IntegerField(default=0)
-    state = models.CharField(max_length=12, choices=State.choices, default=State.RUNNING)
+    state = models.CharField(max_length=16, choices=State.choices, default=State.RUNNING)
     created_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 
@@ -172,6 +191,10 @@ class Task(models.Model):
         # subsequent steps in the same run — they're a terminal state
         # for the step but not a failure.
         SKIPPED = "skipped", "Skipped"
+        # The host evaluated the task's relevant: block and it did not
+        # match. Terminal, like skipped, but neither a pass nor a
+        # failure — and the rest of the host's chain does not run.
+        NOT_APPLICABLE = "not_applicable", "Not applicable"
 
     class RiskLevel(models.TextChoices):
         LOW = "low", "Low"
@@ -197,6 +220,10 @@ class Task(models.Model):
     signature = models.TextField(blank=True)
     ttl_seconds = models.IntegerField(default=300)
     result_output = models.TextField(blank=True)
+    # Per-step {id, status, result} reported by the agent. Never trusted for
+    # authorization — tags and inventory still come from what the server
+    # signed.
+    result_data = models.JSONField(default=dict, blank=True)
     # Snapshot of definition.parsed_spec.schedule at deploy time. Used by the
     # checkin dispatcher to gate handoff outside the configured window.
     schedule = models.JSONField(default=dict, blank=True)
@@ -209,6 +236,26 @@ class Task(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     dispatched_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    # A still-pending task past this is not dispatched and becomes `expired`
+    # (hunts set it from `stays_open`; other tasks leave it null — no change
+    # in behaviour).
+    expires_at = models.DateTimeField(null=True, blank=True)
+    # Set only on playbook chain tasks (phase 08a): what a not-applicable
+    # result means for the rest of the host's chain — "skip" continues,
+    # "stop" ends it. Direct-deploy tasks leave it blank; their
+    # not-applicable result already ends the task on its own.
+    # Playbook-branch fields (M6 08b), empty outside a branching playbook:
+    # which playbook step this task is, where it sits in the playbook's
+    # if/then/else tree, and the condition (on earlier steps' results) that
+    # must hold for it to run — evaluated by the server before it is released.
+    step_ref = models.CharField(max_length=60, blank=True, default="")
+    branch = models.CharField(max_length=120, blank=True, default="")
+    guard = models.TextField(blank=True, default="")
+    # "continue" when this playbook step's failure is handled by the playbook
+    # (a later branch recovers): the chain goes on after retries, and the
+    # failure does not mark the host failed. Empty / "stop" otherwise.
+    on_failure = models.CharField(max_length=8, blank=True, default="")
+    on_not_applicable = models.CharField(max_length=8, blank=True, default="")
     # Soft-delete for the history view. The audit trail is immutable —
     # "deleting" a terminal task hides it from the feed, but the row
     # (who ran what, where, when, with what result) is never destroyed.
@@ -223,6 +270,40 @@ class Task(models.Model):
 
     def __str__(self):
         return f"{self.action} → {self.host.hostname} ({self.state})"
+
+
+class HuntMatch(models.Model):
+    """A single match reported by an agent hunt, stored per host and per run.
+
+    Agent-reported evidence, never used for authorization: the ``action`` is
+    looked up from the task's own signed params at ingest time, and these rows
+    only feed the read-only hunt results view.
+    """
+
+    task = models.ForeignKey(
+        Task, on_delete=models.CASCADE, related_name="hunt_matches"
+    )
+    run = models.ForeignKey(
+        TaskRun, on_delete=models.CASCADE, null=True, blank=True,
+        related_name="hunt_matches",
+    )
+    host = models.ForeignKey(
+        Host, on_delete=models.CASCADE, related_name="hunt_matches"
+    )
+    step_id = models.CharField(max_length=60)
+    action = models.CharField(max_length=64)
+    evidence_type = models.CharField(max_length=40)
+    data = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "id"]
+        indexes = [
+            models.Index(fields=["run", "host"]),
+        ]
+
+    def __str__(self):
+        return f"{self.evidence_type} @ {self.host_id} ({self.step_id})"
 
 
 class PatchWave(TagRowSyncMixin, models.Model):
@@ -306,6 +387,10 @@ class PatchRollout(models.Model):
     #: Snapshotted as a string rather than a relation so re-tagging a wave
     #: later cannot reshape a rollout already in flight.
     wave_group_tag = models.CharField(max_length=120, blank=True, default="")
+    #: Host ids this rollout may reach, as strings — a policy run rolls out to
+    #: the hosts that drifted, not every host its waves carry. Null = no
+    #: restriction, which is what every other rollout is.
+    host_ids = models.JSONField(null=True, blank=True)
     playbook = models.ForeignKey(
         "baselines.Playbook", on_delete=models.CASCADE, related_name="rollouts",
         null=True, blank=True,

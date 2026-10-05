@@ -14,6 +14,10 @@ from apps.instance.config import setting
 from apps.alerts.models import Alert
 from apps.hosts.models import Host
 from apps.hosts import views as hosts_views
+from apps.hosts.enrollment import replacement_candidate
+from apps.hosts.logtail import agent_log_lines
+from apps.stacks.registries import agent_registry_auth
+from apps.stacks.views import agent_stack_adopt, agent_stack_env
 from apps.hosts.views import checkin, register
 from apps.playbooks.urls import legacy_urlpatterns as _legacy_playbook_urls
 from apps.reprovision.installer_views import enroll as reprovision_enroll
@@ -74,13 +78,15 @@ def dashboard(request):
     # still render host lists server-side (the Monitor host dropdown and the
     # Settings "All Agents" table) plus the header sub-line counts.
     hosts = Host.objects.exclude(status=Host.Status.REJECTED).select_related("inventory").order_by("hostname")
-    pending_hosts = hosts.filter(status=Host.Status.PENDING)
+    pending_hosts = list(hosts.filter(status=Host.Status.PENDING))
+    for _h in pending_hosts:
+        _h.replaces = replacement_candidate(_h)
 
     return render(request, "dashboard.html", {
         "hosts": list(hosts),
         "host_count": hosts.count(),
         "online_count": hosts.filter(status=Host.Status.ONLINE).count(),
-        "pending_count": pending_hosts.count(),
+        "pending_count": len(pending_hosts),
         "alert_count": Alert.objects.filter(state=Alert.State.FIRING).count(),
         "pending_hosts": pending_hosts,
         "vigil_timezone": setting("VIGIL_TIMEZONE"),
@@ -100,6 +106,10 @@ urlpatterns = [
     path("api/v1/about/", about, name="about-api"),
     path("api/v1/register", register, name="register"),
     path("api/v1/checkin", checkin, name="checkin"),
+    path("api/v1/agent/log-tail/<uuid:session_id>/", agent_log_lines, name="agent-log-tail"),
+    path("api/v1/agent/stack-env/<uuid:ticket_id>/", agent_stack_env, name="agent-stack-env"),
+    path("api/v1/agent/stack-adopt/<uuid:ticket_id>/", agent_stack_adopt, name="agent-stack-adopt"),
+    path("api/v1/agent/registry-auth/", agent_registry_auth, name="agent-registry-auth"),
     path("api/v1/hosts/", include("apps.hosts.urls")),
     path("api/v1/metrics/", include("apps.metrics.urls")),
     path("api/v1/alerts/", include("apps.alerts.urls")),
@@ -112,10 +122,14 @@ urlpatterns = [
     path("api/v1/sites/", include("apps_business.sites.urls")),
     path("api/v1/branding/", include("apps_business.branding.urls")),
     path("api/v1/audits/", include("apps_business.audits.urls")),
+    path("api/v1/compliance/", include("apps_business.compliance.urls")),
     path("api/v1/instance-settings/", include("apps.instance.urls")),
     path("api/v1/jackil/", include("apps.jackil.urls")),
     path("api/v1/license/", include("apps.licensing.urls")),
     path("api/v1/playbooks/", include("apps.playbooks.urls")),
+    path("api/v1/software/", include("apps.software.urls")),
+    path("api/v1/policies/", include("apps.policies.urls")),
+    path("api/v1/stacks/", include("apps.stacks.urls")),
     path("api/v1/dashboards/", include("apps.dashboards.urls")),
     # Playbooks were called baselines until 2026.11.0. Anything an operator
     # already scripted against the old path keeps working; nothing in Vigil
@@ -138,7 +152,7 @@ urlpatterns = [
 
 
 # ---------------------------------------------------------------------------
-# Edition extension URLs (Pro / Enterprise)
+# Edition extension URLs (Business)
 # ---------------------------------------------------------------------------
 # Each app named in VIGIL_EXTRA_APPS may expose a ``urls.py``; if present it is
 # mounted under ``ext/<app-label>/`` (the app's final dotted segment). Apps

@@ -58,6 +58,10 @@ const INV_COLUMNS = [
     fn: r => _cellText(r.bios_date || ''),                              val: r => r.bios_date || '' },
   { id: 'system_timezone', label: 'Timezone',     dv: false,
     fn: r => _cellText(r.system_timezone || ''),                        val: r => r.system_timezone || '' },
+  { id: 'containers',      label: 'Containers',   dv: true,
+    fn: r => _containersCell(r),                                        val: r => String(r.containers || 0) },
+  { id: 'stacks',          label: 'Stacks',       dv: true,
+    fn: r => _cellText((r.stacks || []).map(_stackLabel).join(', ')),  val: r => (r.stacks || []).map(s => s.project).join(', ') },
   { id: 'tags',            label: 'Tags',         dv: false,
     fn: r => _cellText((r.tags || []).join(', ')),                      val: r => (r.tags || []).join(', ') },
   { id: 'last_seen',       label: 'Last Seen',    dv: true,
@@ -367,6 +371,19 @@ function _osNameCell(name) {
     td.appendChild(span);
   }
   return td;
+}
+
+//: "3/4 running", plus how many are on an outdated image (M11).
+function _containersCell(r) {
+  if (!r.containers) return _cellText('');
+  let text = `${r.containers_running}/${r.containers} running`;
+  if (r.containers_outdated) text += ` · ${r.containers_outdated} outdated`;
+  return _cellText(text);
+}
+
+//: A stack Vigil manages or adopted says so; an external one is just its name.
+function _stackLabel(s) {
+  return s.ownership === 'external' ? s.project : `${s.project} (${s.ownership})`;
 }
 
 function _cellText(text, extraClass) {

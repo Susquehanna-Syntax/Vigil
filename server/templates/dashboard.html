@@ -26,6 +26,10 @@
   {# Logic: static/js/vigil-monitor.js + vigil-host-cards.js | Data: client-side fetch /api/v1/metrics/{host}/{cat}/{metric}/ #}
   {% include "pages/_monitor.html" %}
 
+  {# Containers page — one host's containers by compose stack, managed stacks, live logs #}
+  {# Logic: static/js/vigil-containers.js + vigil-stacks.js | Data: client-side fetch /api/v1/hosts/{id}/containers/, /api/v1/stacks/ #}
+  {% include "pages/_containers.html" %}
+
   {# Playbooks page — sequence editor for auto-enroll task chains #}
   {# Logic: static/js/vigil-playbooks.js | Data: /api/v1/playbooks/ + /api/v1/tasks/definitions/ #}
   {% include "pages/_playbooks.html" %}
@@ -55,9 +59,21 @@
   {# Logic: static/js/vigil-inventory.js | Data: client-side fetch /api/v1/hosts/inventory/ #}
   {% include "pages/_inventory.html" %}
 
+  {# Apps page — installed software by app / by host, with row expansion #}
+  {# Logic: static/js/vigil-apps.js | Data: client-side fetch /api/v1/software/{apps,hosts}/ #}
+  {% include "pages/_apps.html" %}
+
+  {# Policies page — app and patch policies, their drift, and changes waiting for approval #}
+  {# Logic: static/js/vigil-policies.js | Data: /api/v1/policies/ #}
+  {% include "pages/_policies.html" %}
+
   {# Task editor page — YAML textarea + structured preview #}
   {# Logic: static/js/vigil-tasks.js (openDefinitionEditor → validate → save) #}
   {% include "pages/_task_editor.html" %}
+
+  {# Hunt results page — per-run summary chips, host table, dynamic matches table #}
+  {# Logic: static/js/vigil-hunts.js (openHuntResults → fetch → render / CSV export) #}
+  {% include "pages/_hunt_results.html" %}
 
   {# About page — server version, agent version, configured scanners #}
   {# Logic: static/js/vigil-about.js | Data: client-side fetch /api/v1/about/ #}

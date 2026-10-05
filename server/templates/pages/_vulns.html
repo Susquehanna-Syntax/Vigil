@@ -7,10 +7,16 @@
           <div class="page-title">Vulnerabilities<span>.</span></div>
           <div class="page-sub">Scan findings per host, across every configured scanner</div>
         </div>
-        <button class="btn btn-outline btn-sm" data-act="refreshVulns" id="vulns-refresh-btn">
-          <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-          Refresh
-        </button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-outline btn-sm" data-act="pickAnvilRecord" id="vulns-anvil-btn"
+                  title="Import an Anvil record (SARIF 2.1.0 + anvil/*)">Import Anvil record</button>
+          <input type="file" id="vulns-anvil-file" accept=".json,.sarif,application/json" hidden
+                 data-change="uploadAnvilRecord" data-a1="$el">
+          <button class="btn btn-outline btn-sm" data-act="refreshVulns" id="vulns-refresh-btn">
+            <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Refresh
+          </button>
+        </div>
       </div>
 
       {# Fleet headline — sad-face badge + worst-offender callout, computed from VulnSummary scores. #}
@@ -29,16 +35,25 @@
       <div class="stats-row" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 28px;">
         <div class="stat-card">
           <div class="stat-label">Hosts with Criticals</div>
-          <div class="stat-value" style="color: var(--rose)" id="vuln-stat-critical-hosts">—</div>
+          <div class="stat-value" style="color: var(--rose-ink)" id="vuln-stat-critical-hosts">—</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Total Critical Findings</div>
-          <div class="stat-value" style="color: var(--coral)" id="vuln-stat-total-critical">—</div>
+          <div class="stat-value" style="color: var(--coral-ink)" id="vuln-stat-total-critical">—</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Total High Findings</div>
-          <div class="stat-value" style="color: var(--lemon)" id="vuln-stat-total-high">—</div>
+          <div class="stat-value" style="color: var(--lemon-ink)" id="vuln-stat-total-high">—</div>
         </div>
+      </div>
+
+      {# Remediation by fix (M9) — findings grouped by the action that resolves them. #}
+      <div id="vuln-fixes-section" class="vfix-section" hidden>
+        <div class="vfix-head">
+          <div class="section-label">Remediation by fix</div>
+          <input type="search" class="form-control vfix-search" id="vuln-fix-q" placeholder="Search package or CVE…" autocomplete="off">
+        </div>
+        <div id="vuln-fixes"></div>
       </div>
 
       <div id="vulns-content">

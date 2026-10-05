@@ -63,6 +63,17 @@ def normalize_kb(value: str) -> str:
     return value
 
 
+def _as_list(value) -> list:
+    """A filter list as a task carries it: a comma-separated string (signed
+    task params are primitives only), or a list from a direct caller. A bare
+    string must never be iterated — "Drivers" is not seven classifications."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [part.strip() for part in value.split(",") if part.strip()]
+    return list(value)
+
+
 def filter_updates(updates, classifications=None, include_kb=None,
                    exclude_kb=None, severity_floor=None) -> list[dict]:
     """Filter plain update dicts (the shape scan() returns) without any COM.
@@ -85,9 +96,9 @@ def filter_updates(updates, classifications=None, include_kb=None,
             raise ValueError(
                 f"Unknown severity floor {severity_floor!r}; expected one of "
                 "low, moderate, important, critical")
-    classifications = [str(c).lower() for c in (classifications or [])]
-    include = {normalize_kb(k) for k in (include_kb or [])}
-    exclude = {normalize_kb(k) for k in (exclude_kb or [])}
+    classifications = [str(c).lower() for c in _as_list(classifications)]
+    include = {normalize_kb(k) for k in _as_list(include_kb)}
+    exclude = {normalize_kb(k) for k in _as_list(exclude_kb)}
 
     out = []
     for u in updates:
@@ -266,6 +277,38 @@ SUMMARY_TTL_SECONDS = 6 * 3600
 
 _summary_cache: dict = {"at": 0.0, "value": None}
 
+#: The per-update list from the last successful scan, waiting to go out on
+#: the next check-in — once per scan, not every minute (it can be 500 rows).
+#: None = nothing new to send, and the server keeps what it has.
+_pending_list: dict = {"value": None}
+
+#: The most updates one check-in reports; the counts above stay exact.
+UPDATE_LIST_LIMIT = 500
+
+
+def _update_list(updates: list[dict]) -> list[dict]:
+    """The fields the server keeps per pending update (fleet view by update)."""
+    return [{"update_id": str(u.get("update_id") or ""),
+             "kb": str(u.get("kb") or ""),
+             "title": str(u.get("title") or "")[:300],
+             "severity": str(u.get("severity") or ""),
+             "categories": [str(c) for c in (u.get("categories") or [])][:10],
+             "reboot_required": bool(u.get("reboot_required"))}
+            for u in updates[:UPDATE_LIST_LIMIT]]
+
+
+def take_update_list() -> list[dict] | None:
+    """The list from the last scan if it has not been sent yet, else None."""
+    value, _pending_list["value"] = _pending_list["value"], None
+    return value
+
+
+def restore_update_list(value: list[dict] | None) -> None:
+    """Put an unsent list back after a failed check-in — unless a newer scan
+    has already replaced it."""
+    if value is not None and _pending_list["value"] is None:
+        _pending_list["value"] = value
+
 
 def _severity_counts(updates: list[dict]) -> dict:
     counts = {"pending": len(updates), "critical": 0, "important": 0,
@@ -348,4 +391,5 @@ def summary(force: bool = False) -> dict | None:
 
     value = _severity_counts(updates)
     _summary_cache.update({"at": now, "value": value})
+    _pending_list["value"] = _update_list(updates)
     return value

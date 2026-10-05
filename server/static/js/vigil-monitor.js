@@ -10,7 +10,7 @@
 // API: GET /api/v1/metrics/{host}/{category}/{metric}/
 
 /* ── Chart.js global config ──────────────────────────────────────────── */
-Chart.defaults.color = '#6e6b76';
+Chart.defaults.color = cssVar('--text-3') || '#6e6b76';
 Chart.defaults.font.family = "'DM Sans', sans-serif";
 Chart.defaults.font.size = 11;
 Chart.defaults.plugins.legend.display = false;
@@ -26,6 +26,12 @@ Chart.defaults.elements.line.tension = 0.2;
 Chart.defaults.animation.duration = 0;
 // Hover redraws the chart; without this it also re-tests every point.
 Chart.defaults.elements.point.hitRadius = 8;
+// Grids and tooltips read tokens through tok(); a theme change redraws every
+// chart so they pick the new ones up, and the default text colour with them.
+document.addEventListener('vigil:theme', () => {
+  Chart.defaults.color = cssVar('--text-3');
+  Object.values(Chart.instances).forEach(c => c.update('none'));
+});
 
 // `chart.update('none')` skips animation outright — which is what a routine
 // poll wants, and is also why the range-change zoom silently never played
@@ -208,22 +214,22 @@ function makeTimeChart(canvasId, color, label) {
       scales: {
         x: {
           type: 'time',
-          grid: { color: '#32323a', drawTicks: false },
-          border: { color: '#32323a' },
+          grid: { color: tok('--s3'), drawTicks: false },
+          border: { color: tok('--s3') },
           ticks: { maxTicksLimit: 8, font: { family: "'IBM Plex Mono', monospace", size: 10 } },
         },
         y: {
           min: 0, max: 100,
-          grid: { color: '#32323a', drawTicks: false },
-          border: { color: '#32323a' },
+          grid: { color: tok('--s3'), drawTicks: false },
+          border: { color: tok('--s3') },
           ticks: { callback: v => v + '%', maxTicksLimit: 5, font: { family: "'IBM Plex Mono', monospace", size: 10 } },
         }
       },
       plugins: {
         decimation: { enabled: true, algorithm: 'lttb', samples: 250 },
         tooltip: {
-          backgroundColor: '#232329',
-          borderColor: '#3a3a43',
+          backgroundColor: tok('--s1'),
+          borderColor: tok('--border'),
           borderWidth: 1,
           titleFont: { family: "'DM Sans', sans-serif", weight: 600 },
           bodyFont: { family: "'IBM Plex Mono', monospace" },
@@ -260,13 +266,13 @@ function makeNetChart(canvasId) {
       scales: {
         x: {
           type: 'time',
-          grid: { color: '#32323a', drawTicks: false },
-          border: { color: '#32323a' },
+          grid: { color: tok('--s3'), drawTicks: false },
+          border: { color: tok('--s3') },
           ticks: { maxTicksLimit: 8, font: { family: "'IBM Plex Mono', monospace", size: 10 } },
         },
         y: {
-          grid: { color: '#32323a', drawTicks: false },
-          border: { color: '#32323a' },
+          grid: { color: tok('--s3'), drawTicks: false },
+          border: { color: tok('--s3') },
           ticks: {
             maxTicksLimit: 5,
             font: { family: "'IBM Plex Mono', monospace", size: 10 },
@@ -278,8 +284,8 @@ function makeNetChart(canvasId) {
         decimation: { enabled: true, algorithm: 'lttb', samples: 250 },
         legend: { display: false },
         tooltip: {
-          backgroundColor: '#232329',
-          borderColor: '#3a3a43',
+          backgroundColor: tok('--s1'),
+          borderColor: tok('--border'),
           borderWidth: 1,
           callbacks: { label: ctx => ctx.dataset.label + ': ' + formatBytes(ctx.parsed.y) },
         }
@@ -400,91 +406,11 @@ async function refreshMonitor() {
   renderProcTable('proc-table-cpu', procCpu, 'cpu_percent');
   renderProcTable('proc-table-mem', procMem, 'memory_percent');
 
-  // ── Docker containers (fire-and-forget; independent of the metric range) ──
-  renderDockerContainers(monitorHostId);
+  // ── Installed software (fire-and-forget, same reasoning) ──
+  if (typeof renderHostSoftware === 'function') renderHostSoftware(monitorHostId);
 
   btn.disabled = false;
   btn.style.opacity = '1';
-}
-
-/* ── Docker containers ───────────────────────────────────────────────── */
-const CTR_STATES = ['running', 'exited', 'dead', 'paused', 'restarting', 'created'];
-
-async function renderDockerContainers(hostId) {
-  const wrap = document.getElementById('docker-stacks');
-  const countEl = document.getElementById('docker-count');
-  if (!wrap) return;
-
-  let containers = [];
-  try {
-    const resp = await fetch(`/api/v1/hosts/${hostId}/containers/`, { credentials: 'same-origin' });
-    if (resp.ok) containers = await resp.json();
-  } catch { containers = []; }
-
-  if (!containers.length) {
-    countEl.textContent = '';
-    wrap.innerHTML = '<div class="docker-empty">No containers reported for this host.</div>';
-    return;
-  }
-  countEl.textContent = containers.length === 1 ? '1 container' : `${containers.length} containers`;
-
-  // Group by compose stack; ungrouped containers sort last.
-  const groups = {};
-  for (const c of containers) {
-    const key = c.stack || '';
-    (groups[key] = groups[key] || []).push(c);
-  }
-  const stackNames = Object.keys(groups).sort((a, b) => {
-    if (a === '') return 1;
-    if (b === '') return -1;
-    return a.localeCompare(b);
-  });
-
-  let html = '';
-  for (const stack of stackNames) {
-    const rows = groups[stack];
-    const label = stack || 'Ungrouped';
-    const noun = rows.length === 1 ? 'container' : 'containers';
-    html += `<div class="docker-stack">
-      <div class="docker-stack-header">
-        <span class="docker-stack-name">${escHtml(label)}</span>
-        <span class="docker-stack-count">${rows.length} ${noun}</span>
-      </div>
-      <table class="ctr-table">
-        <thead><tr>
-          <th>Container</th><th>Image</th><th>State</th>
-          <th class="num">CPU</th><th class="num">Memory</th><th></th>
-        </tr></thead>
-        <tbody>`;
-    for (const c of rows) {
-      const state = (c.state || '').toLowerCase();
-      const stateClass = CTR_STATES.includes(state) ? state : '';
-      const cpu = (c.cpu_percent === null || c.cpu_percent === undefined)
-        ? '—' : c.cpu_percent.toFixed(1) + '%';
-      let mem = '—';
-      if (c.mem_usage_bytes !== null && c.mem_usage_bytes !== undefined) {
-        mem = formatBytes(c.mem_usage_bytes);
-        if (c.mem_limit_bytes) mem += ' / ' + formatBytes(c.mem_limit_bytes);
-      }
-      const svc = c.service ? `<div class="ctr-svc">${escHtml(c.service)}</div>` : '';
-      html += `<tr>
-        <td><div class="ctr-name">${escHtml(c.name || '')}</div>${svc}</td>
-        <td class="ctr-image">${escHtml(c.image || '')}</td>
-        <td><span class="ctr-state ${stateClass}">${escHtml(state || 'unknown')}</span></td>
-        <td class="ctr-stat">${cpu}</td>
-        <td class="ctr-stat">${mem}</td>
-        <td class="ctr-fix"><button class="btn btn-xs btn-lav" data-ctr-fix data-host="${escAttr(hostId)}" data-cid="${escAttr(c.container_id || '')}">Suggest fix</button></td>
-      </tr>`;
-    }
-    html += `</tbody></table></div>`;
-  }
-  wrap.innerHTML = html;
-  wrap.querySelectorAll('[data-ctr-fix]').forEach(btn => btn.addEventListener('click', () => {
-    if (typeof suggestFixForContainer === 'function') {
-      const c = containers.find(x => (x.container_id || '') === btn.dataset.cid) || { container_id: btn.dataset.cid };
-      suggestFixForContainer(btn.dataset.host, c);
-    }
-  }));
 }
 
 /* ── Top processes table ─────────────────────────────────────────────── */

@@ -2,7 +2,7 @@
 # Vigil Agent installer — {{ base_url }}
 # Linux / macOS
 # Usage: curl -fsSL {{ base_url }}/agent/install.sh | sudo bash
-#   or:  VIGIL_TOKEN=<token> curl -fsSL {{ base_url }}/agent/install.sh | sudo bash
+#   or:  curl -fsSL {{ base_url }}/agent/install.sh | sudo env VIGIL_TOKEN=<token> bash
 set -e
 
 VIGIL_SERVER="{{ base_url }}"
@@ -81,6 +81,8 @@ fi
 install -m 0755 "$TMP_AGENT" /usr/local/bin/vigil-agent
 
 mkdir -p /etc/vigil
+# 0755 regardless of umask: monitor mode runs as vigil-agent, which must traverse this dir (agent.yml itself stays 0600).
+chmod 0755 /etc/vigil
 
 if [ ! -f /etc/vigil/agent.yml ]; then
   cat > /etc/vigil/agent.yml << 'EOF'
@@ -88,6 +90,19 @@ server_url: "REPLACE_WITH_SERVER_URL"
 agent_token: "REPLACE_WITH_TOKEN"
 mode: monitor
 checkin_interval: 30
+# Actions a managed-mode agent may run. Monitor mode ignores this list; these
+# defaults are read-only, so switching to managed can hunt and inventory at once.
+allowlist:
+  - app_inventory
+  - check_service
+  - container_logs
+  - hunt_content
+  - hunt_file
+  - hunt_package
+  - hunt_port
+  - hunt_process
+  - hunt_registry
+  - hunt_service
 EOF
   sed -i.bak "s|REPLACE_WITH_SERVER_URL|${VIGIL_SERVER}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
 
@@ -127,6 +142,10 @@ EOF
     sed -i.bak "s|REPLACE_WITH_TOKEN|${NEW_TOKEN}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
     echo "Config written to /etc/vigil/agent.yml with a generated agent token."
   fi
+elif [ -n "${VIGIL_TOKEN:-}" ]; then
+  # Re-adding a machine: keep its config but take the token the wizard is waiting for.
+  sed -i.bak "s|^agent_token:.*|agent_token: \"${VIGIL_TOKEN}\"|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+  echo "Existing config kept; agent token replaced from VIGIL_TOKEN."
 fi
 
 # ── Service installation ────────────────────────────────────────────────────
@@ -198,6 +217,37 @@ MemoryDenyWriteExecute=no
 ReadWritePaths=/var/lib/vigil-agent
 CapabilityBoundingSet="
       echo "Monitor mode: running the agent as the unprivileged 'vigil-agent' user."
+      # Containers (M11): the engine socket is root's, and the docker group is
+      # root by another name, so a monitor-mode agent reads containers through
+      # a small root service that answers GETs of the list, inspect, stats and
+      # logs only — never a start, stop or exec.
+      if [ -S /var/run/docker.sock ] || [ -S /run/podman/podman.sock ]; then
+        cat > /etc/systemd/system/vigil-engine-proxy.service << 'PROXYEOF'
+[Unit]
+Description=Vigil read-only container engine socket (monitor mode)
+After=docker.service podman.socket
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/vigil-agent --engine-proxy
+Restart=always
+RestartSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RuntimeDirectory=vigil
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=/run/vigil -/var/run/docker.sock -/run/podman
+
+[Install]
+WantedBy=multi-user.target
+PROXYEOF
+        systemctl daemon-reload
+        systemctl enable --now vigil-engine-proxy >/dev/null 2>&1 || true
+        echo "Containers: monitor mode reads them through a read-only engine socket."
+      fi
     fi
   else
     # Root, because the mode's whole purpose needs it — but still deny the
@@ -232,7 +282,7 @@ EOF
   systemctl daemon-reload
   systemctl enable vigil-agent
   if [ -n "${VIGIL_TOKEN:-}" ]; then
-    systemctl start vigil-agent
+    systemctl restart vigil-agent
     echo "Vigil agent installed and started."
     echo "Approve this host in Vigil Settings > Enrollment Queue."
   else

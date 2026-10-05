@@ -8,8 +8,8 @@ description: |
   Commands that use shell features (&&, |, >, $(...)) are wrapped in
   `sh -c '...'` because the agent's run_command executes without a shell
   (shell=False is a security invariant) — a bare pipeline would otherwise
-  be tokenized into plain arguments and fail.
-relevance: "any host you want to scan with the agent-local Trivy scanner"
+  be tokenized into plain arguments and fail. Relevant to any host you want
+  to scan with the agent-local Trivy scanner.
 risk: high
 target_tags:
   - pkg:apt-get

@@ -21,8 +21,10 @@ There's deliberately **no floor**. A host with 15 criticals lands at
 badge escalates with the score, so `-150` reads visually worse than
 `-50` and both read worse than `0`.
 
-When a host has the same CVE reported by multiple scanners we count it
-once — see :func:`recompute_summary`.
+Findings are counted per fix group, not per CVE (M9): a package with a
+hundred CVEs and one fixed version is one finding at its worst severity, and
+a CVE reported by two scanners still counts once — see
+:func:`_dedup_open_findings`.
 
 The score that is stored on ``VulnSummary`` is the *escalated* one: each
 finding's base weight is multiplied by its distance from its due date
@@ -150,48 +152,51 @@ def _finding_deduction(
                          is_excepted=finding.is_excepted)
 
 
-def _dedup_open_findings(host: "Host") -> list["VulnFinding"]:
-    """Deduped open findings for scoring: worst severity, soonest due date.
+def reduce_group(members: list) -> object:
+    """One row standing for a fix group: the worst severity, the soonest due
+    date. Two separate reductions — they can come from different rows, and
+    keeping only the worst row would let a later date launder an overdue
+    finding out of the score. Works on frozen models too (the migrations)."""
+    worst = max(members, key=lambda f: SEVERITY_RANK.get(f.severity, -1))
+    dated = [m for m in members if m.due_date is not None]
+    soonest = min(dated, key=lambda f: f.due_date) if dated else None
+    if soonest is not None and soonest is not worst:
+        worst.due_date = soonest.due_date
+    return worst
 
-    Two separate reductions per group — the worst severity and the soonest
-    due date come from *independent* rows. Keeping only the worst row would
-    let a second scanner reporting the same CVE with a later date launder an
-    overdue finding out of the score.
+
+def _dedup_open_findings(host: "Host") -> list["VulnFinding"]:
+    """One row per fix group (M9): worst severity, soonest due date.
+
+    Findings group by what resolves them — the package and its fixed version,
+    or the scanner's own finding when there is no package — and groups that
+    share a CVE merge, so one CVE from two scanners still counts once. A
+    package with a hundred CVEs is one finding at its worst severity, due at
+    its earliest date; the CVEs stay visible inside the group.
     """
+    from .fixgroups import group
     from .models import VulnFinding
 
-    groups: dict[tuple[str, str] | str, list[VulnFinding]] = {}
-    for finding in (
+    groups = group(
         VulnFinding.objects.filter(host=host, state=VulnFinding.State.OPEN)
         .select_related("exception")
         .iterator()
-    ):
-        key: tuple[str, str] | str = (
-            (finding.scanner, finding.plugin_id_or_oid)
-            if not finding.cve_id
-            else finding.cve_id.strip().upper()
-        )
-        groups.setdefault(key, []).append(finding)
+    )
 
     deduped: list[VulnFinding] = []
-    for members in groups.values():
-        worst = max(members, key=lambda f: SEVERITY_RANK.get(f.severity, -1))
-        dated = [m for m in members if m.due_date is not None]
-        soonest = min(dated, key=lambda f: f.due_date) if dated else None
-        if soonest is not None and soonest is not worst:
-            # The two attributes come from different rows; splice the
-            # soonest date onto the worst row in memory. The exception is
-            # finding-specific and stays with the row it belongs to.
-            worst.due_date = soonest.due_date
-        deduped.append(worst)
+    for members in groups:
+        # The two attributes come from different rows; the soonest date is
+        # spliced onto the worst row in memory. The exception is
+        # finding-specific and stays with the row it belongs to.
+        deduped.append(reduce_group(members))
     return deduped
 
 
 def recompute_summary(host: "Host") -> "VulnSummary":
     """Recount findings + recompute score for one host.
 
-    Walks every ``OPEN`` :class:`VulnFinding` for ``host``, dedupes by
-    CVE (or by scanner+plugin when no CVE is set), buckets by severity,
+    Walks every ``OPEN`` :class:`VulnFinding` for ``host``, reduces them to
+    one row per fix group (:func:`_dedup_open_findings`), buckets by severity,
     writes the counts to :class:`VulnSummary`, and stores the resulting
     score. ``info``-level findings don't affect the score but still get
     counted into the summary so the dashboard total matches the findings

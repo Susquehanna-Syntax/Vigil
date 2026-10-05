@@ -20,7 +20,9 @@ urlpatterns = [
     path("definitions/<uuid:definition_id>/archive/", views.definition_archive, name="definition-archive"),
     path("definitions/<uuid:definition_id>/fork/", views.definition_fork, name="definition-fork"),
     path("definitions/<uuid:definition_id>/deploy/", views.definition_deploy, name="definition-deploy"),
+    path("definitions/<uuid:definition_id>/refusals/", views.definition_refusals, name="definition-refusals"),
     path("runs/", views.run_history, name="run-history"),
     path("runs/<uuid:run_id>/", views.run_detail, name="run-detail"),
+    path("runs/<uuid:run_id>/hunt/", views.run_hunt_results, name="run-hunt-results"),
     path("<uuid:task_id>/", views.task_detail, name="task-detail"),
 ]

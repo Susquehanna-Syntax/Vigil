@@ -25,7 +25,7 @@ from pathlib import Path
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.tasks.spec import ACTION_REGISTRY
+from apps.tasks.spec import ACTION_REGISTRY, action_outputs
 
 BEGIN = "<!-- BEGIN GENERATED: built-in actions (manage.py render_wiki_actions) -->"
 END = "<!-- END GENERATED: built-in actions -->"
@@ -42,8 +42,10 @@ GROUPS: list[tuple[str, str, list[str]]] = [
     ]),
     ("container", "Container management", [
         "restart_container", "start_container", "stop_container", "pull_image",
-        "recreate_container", "remove_container", "docker_compose_up",
-        "docker_compose_down", "clear_docker_logs", "check_docker_updates",
+        "recreate_container", "update_container", "remove_container",
+        "docker_compose_up", "docker_compose_down", "clear_docker_logs",
+        "check_docker_updates", "stack_restart", "stack_update", "container_logs",
+        "stack_deploy", "stack_remove", "stack_read", "container_rollback",
     ]),
     ("files", "Files and directories", [
         "write_file", "create_directory", "delete_path", "copy_file",
@@ -52,6 +54,10 @@ GROUPS: list[tuple[str, str, list[str]]] = [
     ("packages", "Package management", [
         "install_package", "remove_package", "update_package",
         "run_package_updates",
+    ]),
+    ("apps", "Apps", [
+        "app_inventory", "app_install", "app_upgrade", "app_uninstall",
+        "app_pin", "app_install_custom", "app_ensure",
     ]),
     ("winupdate", "Windows Update", [
         "windows_update_scan", "windows_update_install",
@@ -74,6 +80,8 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "reprovision_cleanup",
     ]),
     ("tags", "Host tagging", ["add_tag", "remove_tag"]),
+    ("hunts", "Hunts", ["hunt_file", "hunt_package", "hunt_process", "hunt_port",
+                        "hunt_service", "hunt_registry", "hunt_content"]),
     ("vuln", "Vulnerability scanning", [
         "request_nessus_scan", "request_network_scan", "run_trivy_scan",
         "trivy_db_update",
@@ -95,6 +103,10 @@ GROUP_NOTES: dict[str, str] = {
     "packages": "apt, dnf, yum, zypper, pacman, winget, choco, or brew, "
                 "whichever the host has. Use the package name that host's "
                 "manager knows.",
+    "apps": "Act on one app by the identity the Apps page shows — "
+            "its source and package id. After a successful step the "
+            "agent re-collects its software list, so the next "
+            "check-in reports the change.",
     "winupdate": "Windows only. These drive the Windows Update COM API "
                  "directly rather than shelling out to a module.",
     "system": "The broadest actions, and most of the high-risk ones.",
@@ -111,6 +123,10 @@ GROUP_NOTES: dict[str, str] = {
             "it signed.",
     "vuln": "These leave a marker rather than doing the scan inline. The "
             "server starts the scan when the result arrives.",
+    "hunts": "Read-only discovery: the walk runs in a low-priority thread "
+             "with hard result and timeout caps, and scans a targeted scope "
+             "by default — the whole disk only when you ask for it. Nothing "
+             "on the host changes.",
 }
 
 #: Example value per param name, used to build each action's sample YAML.
@@ -119,10 +135,12 @@ GROUP_NOTES: dict[str, str] = {
 #: surprising success.
 PARAM_EXAMPLES: dict[str, str] = {
     "action": "allow",
-    "classifications": '"SecurityUpdates, CriticalUpdates"',
+    "classifications": '"Critical Updates, Security Updates"',
     "cmdline": '"auto=true priority=critical"',
     "command": '"systemctl is-active nginx"',
     "compose_file": "/opt/stacks/media/docker-compose.yml",
+    "project": "media",
+    "tail": "200",
     "container_name": "nextcloud",
     "content": '"# managed by Vigil\\nmax_connections = 200\\n"',
     "defer_limit": "3",
@@ -142,10 +160,13 @@ PARAM_EXAMPLES: dict[str, str] = {
     "initrd_sha256": '"6f3c1e0d9a2b47c8e5d1f0a3b9c7e2d4a8f6b1c3e5d7a9f2b4c6e8d0a1f3b5c7"',
     "initrd_url": "https://vigil.example.com/images/debian-13/initrd.gz",
     "interface": "eth0",
-    "job_id": '"{{ inputs.job_id }}"',
+    "job_id": '"${{ inputs.job_id }}"',
     "kernel_sha256": '"2a4c6e8d0b1f3a5c7e9d1b3f5a7c9e1d3b5f7a9c1e3d5b7f9a1c3e5d7b9f1a3c"',
     "kernel_url": "https://vigil.example.com/images/debian-13/vmlinuz",
+    "log_lines": "200",
+    "max_results": "50",
     "mode": '"0644"',
+    "modified_within_days": "7",
     "name": '"Patch Tuesday rollout"',
     "notify": "true",
     "notify_message": '"Rebooting in 60 seconds for scheduled patching."',
@@ -154,6 +175,7 @@ PARAM_EXAMPLES: dict[str, str] = {
     "owner": "root",
     "package_name": "nginx",
     "path": "/etc/nginx/conf.d/vigil.conf",
+    "paths": "/opt,/srv",
     "pattern": '"vigil-nightly-backup"',
     "platform": "linux",
     "policy": "deny",
@@ -226,18 +248,39 @@ PARAM_NOTES: dict[str, str] = {
     "rule_id": "Backend rule identifier, from list_firewall_rules.",
     "schedule": "Five-field cron expression.",
     "scope": "os, fs, or config.",
-    "script_name": "Filename of a script in the agent's script directory.",
+    "script_name": "Filename of a script in the agent's script directory. "
+                   "Give this or an inline body, not both.",
     "security_only": "Restrict the run to security updates.",
     "service_name": "Service name as the host's init system knows it.",
     "services": "Comma-separated services. Omit for the whole stack.",
     "severity_floor": "Lowest severity to include.",
-    "shell": "Login shell for the new account.",
+    "shell": "Shell for an inline script body (bash, sh, powershell, pwsh), or "
+             "the login shell for a new account.",
+    "script": "Inline script body, run as-is with the shell you name. Inputs "
+              "reach it as $VIGIL_INPUT_<ID> environment variables. A managed "
+              "host runs it only after its owner approves its hash.",
     "source": "Source address or CIDR the rule applies to.",
     "src": "Absolute source path.",
     "tags": "Comma-separated tags. A string, not a list.",
     "timeout": "Seconds before the agent kills the command.",
     "user": "Account whose crontab is edited. Defaults to root.",
     "username": "Local account name.",
+    "hash": "Include each match's sha256 (always on when sha256 is given).",
+    "max_results": "Stop after this many matches (default 500, at most 5000).",
+    "max_size": "Only files at most this many bytes.",
+    "min_size": "Only files at least this many bytes.",
+    "modified_within_days": "Only files modified within this many days.",
+    "paths": "Comma-separated roots to walk instead of the scope.",
+    "sha256": "Only files with exactly this sha256 (64 hex characters).",
+    "manager": "Package manager to ask (dpkg, rpm, pacman, brew, snap). Detected when omitted.",
+    "version_eq": "Only this exact version, compared with the package system's own version rules.",
+    "version_gt": "Only versions newer than this, compared with the package system's own version rules.",
+    "version_gte": "Only this version or newer, compared with the package system's own version rules.",
+    "version_lt": "Only versions older than this, compared with the package system's own version rules.",
+    "version_lte": "Only this version or older, compared with the package system's own version rules.",
+    "process": "Glob on the owning process name (hunt_port).",
+    "state": "running or stopped (hunt_service).",
+    "start_mode": "enabled or disabled (hunt_service).",
 }
 
 #: Per-action framing for the sample definition: the task name, and a sentence
@@ -248,7 +291,7 @@ EXAMPLE_TITLES: dict[str, tuple[str, str]] = {
     "restart_service": ("Restart nginx and confirm it came back",
                         "Restart the service, then check it is active again."),
     "check_service": ("Check that nginx is running",
-                      "Read-only. Fails the step if the service is not active."),
+                      "Read-only. Reports whether the service is active; fails the step only when expect is set and the service is not in that state."),
     "recreate_container": ("Update Nextcloud to a new image",
                            "Pull the image, then recreate the container on it."),
     "write_file": ("Deploy a config file",
@@ -264,7 +307,10 @@ EXAMPLE_TITLES: dict[str, tuple[str, str]] = {
     "windows_update_install": ("Install Windows security updates",
                                "Scan first, then install what the scan found."),
     "execute_script": ("Run an allowlisted script",
-                       "The script must already exist in the agent's script directory."),
+                       ("Give a script_name to run a file from the agent's "
+                        "script directory, or a shell and an inline script "
+                        "body to run that exact body: a managed host runs an "
+                        "inline body only after its owner approves its hash.")),
     "reboot": ("Reboot after patching",
                "Warns the logged-in user, then reboots after a delay."),
     "run_command": ("Run a one-off command",
@@ -283,7 +329,289 @@ EXAMPLE_TITLES: dict[str, tuple[str, str]] = {
                    "Tags are applied server-side from the definition it signed."),
     "run_trivy_scan": ("Scan the host filesystem with Trivy",
                        "Leaves a marker. The scan starts when the result arrives."),
+    "hunt_file": ("Hunt for a jar on disk",
+                  "Walks the targeted scope and lists every file whose name "
+                  "matches the glob — here, the Log4Shell-era core jar."),
+    "hunt_package": ("Find hosts with an old openssl",
+                     "Lists installed packages named openssl older than 3.0.13, "
+                     "using the host's own package version rules."),
+    "hunt_process": ("Find hosts running java",
+                     "Lists running processes named java, with pid, command line and user."),
+    "hunt_port": ("Find hosts listening on 8443",
+                  "Lists local TCP/UDP socket bindings on port 8443, with the owning process."),
+    "hunt_service": ("Find hosts with ssh enabled but stopped",
+                     "Lists services named ssh that are enabled but currently stopped."),
+    "hunt_registry": ("Find hosts with Java in their Uninstall keys",
+                      "Windows only. Reads the registry for keys and values — "
+                      "here, the DisplayName of every installed product in "
+                      "the 64-bit Uninstall tree, filtered to Java."),
+    "hunt_content": ("Find hosts with a leaked token in a config",
+                     "Scans file contents for a regex. By default a match "
+                     "reports which files matched and on which lines; "
+                     "return: text also carries the matched substrings, "
+                     "which makes the step high risk and is audit-logged on "
+                     "Business."),
 }
+
+
+#: What each declared output means (action -> field -> sentence). Every output
+#: an action declares must have a note here, or the render fails — an output a
+#: reader cannot understand is one nobody will branch on correctly.
+#: Notes for a param whose meaning differs by action (the same name means
+#: something else elsewhere: "name" is a playbook's name, "scope" a Trivy scope).
+ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
+    ("hunt_file", "name"): "Exact file name, or a glob (* ?) matched against the base name.",
+    ("hunt_file", "scope"): "targeted (default: install and home directories) or full (every filesystem root).",
+    ("hunt_file", "older_than_days"): "Only files last modified more than this many days ago.",
+    ("hunt_package", "name"): "Package name, or a glob (* ?).",
+    ("hunt_package", "timeout"): "Seconds before the hunt stops and returns what it found (default 120, at most 600).",
+    ("hunt_file", "timeout"): "Seconds before the hunt stops and returns what it found (default 120, at most 600).",
+    ("hunt_file", "version_lt"): "Only files whose version is older than this, compared with dotted-numeric rules. The file's version: JAR manifest, Windows version resource, or the version in the file name. Files with no readable version never match.",
+    ("hunt_file", "version_lte"): "Only files whose version is this or older, compared with dotted-numeric rules. The file's version: JAR manifest, Windows version resource, or the version in the file name. Files with no readable version never match.",
+    ("hunt_file", "version_gt"): "Only files whose version is newer than this, compared with dotted-numeric rules. The file's version: JAR manifest, Windows version resource, or the version in the file name. Files with no readable version never match.",
+    ("hunt_file", "version_gte"): "Only files whose version is this or newer, compared with dotted-numeric rules. The file's version: JAR manifest, Windows version resource, or the version in the file name. Files with no readable version never match.",
+    ("hunt_file", "version_eq"): "Only files whose version equals this, compared with dotted-numeric rules. The file's version: JAR manifest, Windows version resource, or the version in the file name. Files with no readable version never match.",
+
+    ("hunt_process", "name"): "Process name to match as a glob, e.g. \"java\" or \"sshd*\".",
+    ("hunt_process", "cmdline"): "Case-insensitive substring of the joined command line.",
+    ("hunt_process", "user"): "Exact username the process runs as.",
+    ("hunt_process", "timeout"): "Seconds before the process walk stops early (default 120, at most 600).",
+
+    ("hunt_port", "port"): "Port number, or a low-high range.",
+    ("hunt_port", "protocol"): "tcp or udp; omitted means both.",
+    ("hunt_port", "process"): "Glob on the owning process name.",
+    ("hunt_port", "timeout"): "Seconds before the socket walk stops early (default 120, at most 600).",
+
+    ("hunt_service", "name"): "Service name to match as a glob (the .service suffix is not required).",
+    ("hunt_service", "timeout"): "Seconds before the service walk stops early (default 120, at most 600).",
+    ("hunt_registry", "key"): "Registry key path with an HKLM, HKCU or HKU root; a final wildcard segment adds each direct subkey. Single-quote it in YAML so the backslashes stay literal.",
+    ("hunt_registry", "value"): "Glob on value names; when absent the matching keys themselves are reported.",
+    ("hunt_registry", "timeout"): "Seconds before the walk stops early (default 120, at most 600).",
+    ("hunt_content", "name"): "File-name glob matched against the base name (default *).",
+    ("hunt_content", "pattern"): "Regular expression searched inside file contents.",
+    ("hunt_content", "paths"): "Comma-separated roots to walk instead of the scope.",
+    ("hunt_content", "scope"): "targeted (default: install and home directories) or full (every filesystem root).",
+    ("hunt_content", "timeout"): "Seconds before the walk stops early (default 120, at most 600).",
+
+    ("hunt_file", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
+    ("hunt_package", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
+    ("hunt_process", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
+    ("hunt_port", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
+    ("hunt_service", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
+    ("hunt_registry", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
+    ("hunt_content", "stays_open"): "How long the hunt waits for hosts that never check in, before they show as did not report (default 7 days; '<n>m', '<n>h', '<n>d' or seconds; 1 hour to 30 days).",
+    ("app_install_custom", "url"): "An https URL of the installer. Its extension (.msi, .exe, .deb, .rpm) sets `kind` unless you give one.",
+    ("app_install_custom", "sha256"): "The installer's SHA-256 (64 hex). The agent refuses to run a download that does not match.",
+    ("app_install_custom", "kind"): "msi, exe, deb or rpm — needed when the URL has no extension; must agree with it when it has one.",
+    ("app_install_custom", "args"): "Silent-install switches for an exe (e.g. `/S` or `/quiet /norestart`). Only with kind exe.",
+    ("app_install_custom", "app"): "The inventory id the app will have, used to report `installed_version`.",
+    ("windows_update_scan", "classifications"): "Comma-separated Windows Update classifications, e.g. `Critical Updates, Security Updates`. Blank = all.",
+    ("windows_update_scan", "include_kb"): "Comma-separated KBs; when given, only these install. `KB5034441` and `5034441` both work.",
+    ("windows_update_scan", "exclude_kb"): "Comma-separated KBs that never install. Wins over include_kb.",
+    ("windows_update_install", "classifications"): "Comma-separated Windows Update classifications, e.g. `Critical Updates, Security Updates`. Blank = all.",
+    ("windows_update_install", "include_kb"): "Comma-separated KBs; when given, only these install. `KB5034441` and `5034441` both work.",
+    ("windows_update_install", "exclude_kb"): "Comma-separated KBs that never install. Wins over include_kb.",
+    ("stack_deploy", "project"): "The compose project name.",
+    ("stack_deploy", "compose"): "The compose file itself, as Vigil stores it. Checked like the stack editor checks it.",
+    ("stack_deploy", "working_dir"): "Where the stack lives on the host — /opt/vigil/stacks/<name> for a new one.",
+    ("stack_deploy", "env_ticket"): "Set by Vigil, not by hand: a one-time id the agent redeems for the .env just before deploying. The secrets never ride in the task.",
+    ("stack_deploy", "revision"): "The stack revision being deployed, for the record.",
+    ("stack_deploy", "compose_file"): "The compose file's name in working_dir — compose.yaml unless the stack was adopted with its own.",
+    ("container_rollback", "container_name"): "The container to roll back.",
+    ("container_rollback", "image"): "The image to go back to — a repo digest (repo@sha256:…) or an image id. A container's page offers the one it ran before its last update.",
+    ("stack_read", "project"): "The compose project to adopt; its files come from its containers' labels.",
+    ("stack_read", "adopt_ticket"): "Set by Vigil, not by hand: where the agent hands the files over — never in the task result, because .env holds secrets.",
+    ("stack_remove", "project"): "The compose project name.",
+    ("stack_remove", "working_dir"): "The stack's folder on the host.",
+    ("stack_remove", "delete_files"): "true also deletes the folder — only ever under /opt/vigil/stacks.",
+    ("container_logs", "container_name"): "The container's name or id.",
+    ("container_logs", "tail"): "How many of the last lines to return (1–2000, default 200).",
+    ("container_logs", "session"): "Set by the log view, not by hand: the live-tail session the agent then streams new lines to.",
+    ("stack_restart", "project"): "The compose project name (the stack name Vigil shows). Its compose files come from its containers' labels.",
+    ("stack_update", "project"): "The compose project name. Pulls every image of the stack, then brings up whatever changed.",
+    ("app_ensure", "app"): "The inventory id the Apps page shows.",
+    ("app_ensure", "state"): "present (install if missing), latest (install or upgrade), pinned (install, upgrade or downgrade to `version` and hold it) or absent (uninstall).",
+    ("app_ensure", "source"): "Only match and act on this source. Defaults to whatever source the host lists the app under, or its own package manager to install.",
+    ("app_ensure", "version"): "The version to hold. Only with `state: pinned`; sources that cannot install a version (snap, flatpak, registry) refuse it.",
+    ("app_pin", "app"): "The inventory id the Apps page shows — its package id, from the source in `source`.",
+    ("app_pin", "unpin"): "true releases the hold instead of adding one. Takes no `version`.",
+    ("app_pin", "source"): "Where to look for the app. Defaults to the host's own package manager.",
+    ("app_pin", "version"): "Install this version first, then hold it. Sources that cannot pin a version refuse it.",
+}
+
+
+OUTPUT_NOTES: dict[str, dict[str, str]] = {
+    "check_service": {
+        "active": "True when systemd reports the unit active.",
+        "state": "The raw systemctl is-active word (active, inactive, failed, …).",
+    },
+    "update_container": {
+        "updated": "True when the container now runs a different image than before.",
+        "old_image_id": "Image id the container ran before the update.",
+        "new_image_id": "Image id the container runs now.",
+    },
+    "check_docker_updates": {
+        "checked": "How many Docker Hub-tagged containers were checked.",
+        "outdated": "How many of them have a newer image available.",
+    },
+    "app_inventory": {
+        "count": "How many installed items the host reported.",
+        "outdated": "How many of them their own package manager offers a newer version for.",
+        "unmanaged": "How many are entries no package manager claims (a Windows registry install with no winget/choco/scoop match).",
+        "errors": "How many sources failed to report.",
+    },
+    "app_install": {
+        "installed_version": "The version the host now reports for the app, or empty when the source does not report one.",
+        "source": "Which source the agent acted on — the requested one, or the host's own package manager when no source was given.",
+    },
+    "app_upgrade": {
+        "upgraded": "How many apps the upgrade moved: one when an app was named, otherwise how many stopped being outdated.",
+        "failed": "How many apps the upgrade reported as failing (0 — a failed upgrade fails the step).",
+    },
+    "app_uninstall": {
+        "removed": "True when the app is no longer in the inventory the host reported after the removal.",
+    },
+    "app_pin": {
+        "pinned": "True when the app is now held (a pin was added), False when it was released (`unpin: true`).",
+        "pinned_version": "The version the host reports for the app after the action, the requested version when the inventory has no row for it, or empty when neither is known.",
+    },
+    "app_install_custom": {
+        "installed_version": "The version the host reports afterwards for the `app` you named, or empty when you named none or the inventory has no row for it.",
+        "sha256": "The SHA-256 of the installer that was run — always the one the task pinned, because a mismatch stops the step before anything runs.",
+    },
+    "stack_restart": {"project": "The stack that was restarted."},
+    "container_logs": {"lines": "How many lines were returned."},
+    "stack_deploy": {"project": "The stack deployed.", "revision": "The revision deployed (0 when not given)."},
+    "container_rollback": {"rolled_back": "True once the container runs the earlier image.", "image": "The image it was put back on."},
+    "stack_read": {"project": "The stack read.", "would_recreate": "How many of its services a deploy of this file would recreate (0 = adopting changes nothing)."},
+    "stack_remove": {"project": "The stack taken down.", "files_deleted": "True when its folder was deleted too."},
+    "stack_update": {"project": "The stack that was updated."},
+    "app_ensure": {
+        "changed": "True when the step did something; false when the host already matched, which is what a second run reports.",
+        "action": "What it did: none, install, upgrade, pin or uninstall.",
+        "version_before": "The version the host listed before, or empty when the app was not installed.",
+        "version_after": "The version the host lists afterwards, or empty when the app is gone.",
+    },
+    "run_command": {
+        "exit_code": "The command's exit code (0 — a non-zero exit fails the step).",
+    },
+    "restart_service": {"active": "True when systemd reports the unit active after the restart."},
+    "start_service": {"active": "True when systemd reports the unit active after the start."},
+    "stop_service": {"active": "True when the unit is still active after the stop (normally false)."},
+    "reload_service": {"active": "True when systemd reports the unit active after the reload."},
+    "enable_service": {"enabled": "True when systemd now reports the unit enabled."},
+    "disable_service": {"enabled": "True when the unit is still enabled (normally false)."},
+    "restart_container": {"running": "True when the container is running after the restart."},
+    "start_container": {"running": "True when the container is running after the start."},
+    "stop_container": {"running": "True when the container is still running (normally false)."},
+    "pull_image": {"image_id": "Id of the image the reference now points to, after the pull."},
+    "remove_container": {"removed": "True once the container has been removed."},
+    "recreate_container": {
+        "updated": "True when the recreated container runs a different image.",
+        "old_image_id": "Image id before the recreate.",
+        "new_image_id": "Image id after the recreate.",
+    },
+    "docker_compose_up": {"compose_file": "The compose file that was brought up."},
+    "docker_compose_down": {"compose_file": "The compose file that was taken down."},
+    "clear_docker_logs": {"truncated": "True when a log file was found and emptied."},
+    "write_file": {"path": "The file written.", "bytes": "How many characters were written."},
+    "create_directory": {"path": "The directory created."},
+    "delete_path": {"path": "The path deleted.", "recursive": "True when a directory tree was removed."},
+    "copy_file": {"src": "The source path.", "dest": "The destination path."},
+    "move_file": {"src": "The source path.", "dest": "The destination path."},
+    "set_permissions": {"path": "The path whose mode or owner was set."},
+    "install_package": {
+        "package": "The package name as given.",
+        "manager": "The package manager used (apt-get, dnf, winget, …).",
+        "installed_version": "Version now installed; empty when this manager is not queried (apk, winget) or the query failed.",
+    },
+    "windows_update_scan": {"count": "How many updates matched the filters."},
+    "windows_update_install": {
+        "installed_count": "How many updates the installer reported as installed.",
+        "failed_count": "How many selected updates failed to install.",
+        "reboot_required": "True when a reboot is needed to finish applying the updates (the agent never reboots on its own).",
+    },
+    "update_agent": {"version": "The agent version now installed."},
+    "add_tag": {"tags": "The tags requested (comma-separated)."},
+    "remove_tag": {"tags": "The tags requested for removal (comma-separated)."},
+    "request_nessus_scan": {"requested": "Always true once the request is recorded."},
+    "request_network_scan": {"engine": "The scan engine requested, or auto when the server picks."},
+    "run_trivy_scan": {"vulnerabilities": "Total findings across the report; -1 when the report could not be parsed."},
+    "trivy_db_update": {"updated": "Always true once the database update finished."},
+    "hunt_file": {
+        "matched": "True when at least one file matched.",
+        "count": "How many matches were returned (the cap when truncated).",
+        "truncated": "True when the walk stopped early at max_results or the timeout, and more matches exist.",
+    },
+    "hunt_package": {
+        "matched": "True when at least one installed package matched.",
+        "count": "How many packages matched (the cap when truncated).",
+        "truncated": "True when the listing stopped early at max_results or the timeout.",
+    },
+    "hunt_process": {
+        "matched": "True when at least one running process matched.",
+        "count": "How many processes matched (the cap when truncated).",
+        "truncated": "True when the process walk stopped early at max_results or the timeout.",
+    },
+    "hunt_port": {
+        "matched": "True when at least one local socket binding matched.",
+        "count": "How many bindings matched (the cap when truncated).",
+        "truncated": "True when the socket walk stopped early at max_results or the timeout.",
+    },
+    "hunt_service": {
+        "matched": "True when at least one service matched.",
+        "count": "How many services matched (the cap when truncated).",
+        "truncated": "True when the service walk stopped early at max_results or the timeout.",
+    },
+    "hunt_registry": {
+        "matched": "True when at least one key or value matched.",
+        "count": "How many keys and values matched (the cap when truncated).",
+        "truncated": "True when the walk stopped early at max_results or the timeout.",
+    },
+    "hunt_content": {
+        "matched": "True when at least one file matched.",
+        "count": "How many files matched (the cap when truncated).",
+        "truncated": "True when the walk stopped early at max_results or the timeout.",
+    },
+    "update_package": {
+        "package": "The package name as given.",
+        "manager": "The package manager used.",
+        "installed_version": "Version now installed; empty when unknown.",
+    },
+    "remove_package": {"package": "The package name as given.", "manager": "The package manager used."},
+    "run_package_updates": {"manager": "The package manager used.", "security_only": "True when only security updates were requested."},
+    "clear_temp_files": {"removed": "Files deleted.", "skipped": "Files left because they were in use or not permitted."},
+    "reboot": {"delay_seconds": "Seconds until the reboot.", "deferral_active": "True when a logged-in user may still defer it."},
+    "set_hostname": {"hostname": "The hostname now set."},
+    "add_firewall_rule": {"port": "The rule's port.", "protocol": "The rule's protocol.", "action": "allow or deny."},
+    "remove_firewall_rule": {"port": "The rule's port.", "protocol": "The rule's protocol.", "action": "allow or deny."},
+    "list_firewall_rules": {
+        "supported": "False when the host has no supported firewall tool.",
+        "enabled": "True when the firewall is on.",
+        "rule_count": "How many rules were read.",
+    },
+    "set_firewall_policy": {"direction": "incoming or outgoing.", "policy": "The default policy now set."},
+    "enable_firewall": {"enabled": "Always true after this step."},
+    "disable_firewall": {"enabled": "Always false after this step."},
+    "create_user": {"username": "The account created."},
+    "delete_user": {"username": "The account deleted."},
+    "add_user_to_group": {"username": "The account.", "group": "The group it joined."},
+    "create_cron_job": {"user": "Whose crontab gained the line."},
+    "delete_cron_job": {"user": "Whose crontab was edited.", "removed": "How many lines matched and were removed (0 when none)."},
+    "execute_script": {
+        "exit_code": "The script's exit code (0 — a non-zero exit fails the step).",
+    },
+}
+
+
+def _check_output_notes() -> None:
+    missing = [f"{action}.{field}" for action in ACTION_REGISTRY
+               for field in action_outputs(action)
+               if field not in OUTPUT_NOTES.get(action, {})]
+    if missing:
+        raise CommandError(
+            "declared outputs with no entry in OUTPUT_NOTES: "
+            + ", ".join(sorted(missing)))
 
 
 def _group_actions() -> list[tuple[str, str, list[str]]]:
@@ -305,10 +633,11 @@ def _group_actions() -> list[tuple[str, str, list[str]]]:
     unknown = sorted(set(placed) - set(ACTION_REGISTRY))
     if unknown:
         raise CommandError(f"grouped but not in ACTION_REGISTRY: {unknown}")
+    _check_output_notes()
     return GROUPS
 
 
-#: Params whose example value is a ``{{ inputs.x }}`` reference. The reference
+#: Params whose example value is a `${{ inputs.x }}` reference. The reference
 #: only validates if the input is also declared, so the example declares it.
 EXAMPLE_INPUTS: dict[str, list[str]] = {
     "job_id": [
@@ -332,6 +661,222 @@ def example_yaml(action: str) -> str:
     entry = ACTION_REGISTRY[action]
     title, _ = EXAMPLE_TITLES.get(action, (entry["label"], ""))
     params = list(entry["required"])
+    if not params and action == "execute_script":
+        # `execute_script` accepts exactly one of script_name or an inline
+        # body; the example shows the allowlisted-file form.
+        params = ["script_name"]
+    if action in ("app_install", "app_uninstall"):
+        # `app` is the inventory id the Apps page shows, not the task's name,
+        # so the example is written out rather than filled from PARAM_EXAMPLES.
+        install = action == "app_install"
+        return "\n".join([
+            f"name: {'Install openssl' if install else 'Uninstall openssl'}",
+            "description: \"Act on one app by the id the Apps page shows, on the hosts you dispatch this to.\"",
+            "risk: standard",
+            "actions:",
+            f"  - id: {action.replace('_', '-')}",
+            f"    type: {action}",
+            "    params:",
+            "      app: openssl",
+        ]) + "\n"
+    if action == "app_pin":
+        # The hold is the interesting half; releasing it is the same step with
+        # `unpin: true` and no version.
+        return "\n".join([
+            "name: Hold openssl at its version",
+            "description: \"Install a given openssl and hold it, so an upgrade "
+            "leaves it alone. Put `unpin: true` in place of `version` to "
+            "release the hold.\"",
+            "risk: standard",
+            "actions:",
+            "  - id: app-pin",
+            "    type: app_pin",
+            "    params:",
+            "      app: openssl",
+            '      version: "3.0.13-1"',
+        ]) + "\n"
+    if action == "stack_deploy":
+        # Written by Vigil when you press Deploy on a stack; shown so the
+        # shape is known. The .env never appears here — only a ticket id.
+        return "\n".join([
+            "name: Deploy media",
+            "description: \"What Vigil sends when you deploy the media stack.\"",
+            "risk: high",
+            "actions:",
+            "  - id: deploy",
+            "    type: stack_deploy",
+            "    params:",
+            "      project: media",
+            "      working_dir: /opt/vigil/stacks/media",
+            "      env_ticket: 6f1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+            "      compose: |",
+            "        services:",
+            "          jellyfin:",
+            "            image: jellyfin/jellyfin:10.9",
+            "            env_file: .env",
+        ]) + "\n"
+    if action == "stack_read":
+        return "\n".join([
+            "name: Adopt shop",
+            "description: \"What Vigil sends when you adopt the shop stack.\"",
+            "risk: standard",
+            "actions:",
+            "  - id: read",
+            "    type: stack_read",
+            "    params:",
+            "      project: shop",
+            "      adopt_ticket: 6f1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+        ]) + "\n"
+    if action == "stack_remove":
+        return "\n".join([
+            "name: Take down media",
+            "description: \"Stop and remove the media stack's containers, keep its files.\"",
+            "risk: standard",
+            "actions:",
+            "  - id: remove",
+            "    type: stack_remove",
+            "    params:",
+            "      project: media",
+            "      working_dir: /opt/vigil/stacks/media",
+        ]) + "\n"
+    if action == "app_ensure":
+        # One rule of a policy: the state, not the command.
+        return "\n".join([
+            "name: Keep Firefox current",
+            "description: \"Install Firefox where it is missing and upgrade it where "
+            "it is behind. A second run on the same host changes nothing.\"",
+            "risk: standard",
+            "actions:",
+            "  - id: app-1",
+            "    type: app_ensure",
+            "    params:",
+            "      app: Mozilla.Firefox",
+            "      source: winget",
+            "      state: latest",
+        ]) + "\n"
+    if action == "app_install_custom":
+        # A URL and the digest the download must match — the one action that
+        # runs an installer no package manager vouches for.
+        return "\n".join([
+            "name: Install the Acme agent from its vendor URL",
+            "description: \"Download the vendor's MSI, check it against the SHA-256 "
+            "you pinned, and install it silently. Nothing runs if the hash differs.\"",
+            "risk: high",
+            "actions:",
+            "  - id: app-install-custom",
+            "    type: app_install_custom",
+            "    params:",
+            "      url: https://downloads.example.com/acme-agent-4.2.0.msi",
+            "      sha256: 3a7f1b0c5d8e2f4a6b9c0d1e2f3a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c",
+        ]) + "\n"
+    if action == "hunt_package":
+        # "name" here is the package, not the task, so the example is written out.
+        return "\n".join([
+            "name: Find hosts with an old openssl",
+            "description: \"Hunt for installed packages, on the hosts you dispatch this to.\"",
+            "risk: low",
+            "actions:",
+            "  - id: hunt-package",
+            "    type: hunt_package",
+            "    params:",
+            "      name: openssl",
+            '      version_lt: "3.0.13"',
+        ]) + "\n"
+    if action == "hunt_file":
+        # `hunt_file` takes no *required* params but refuses to run without
+        # a name or a sha256; the example shows the glob form. The param's
+        # example lives under its own key because "name" is the task's name.
+        lines = [
+            "name: Hunt for a known-bad jar",
+            "description: \"Hunt for files on disk, on the hosts you dispatch this to.\"",
+            "risk: low",
+            "actions:",
+            "  - id: hunt-file",
+            "    type: hunt_file",
+            "    params:",
+            '      name: "log4j-core-2.1*.jar"',
+            "      paths: /opt,/srv",
+            "      max_results: 50",
+        ]
+        return "\n".join(lines) + "\n"
+    if action == "hunt_process":
+        # `hunt_process` takes no *required* params but refuses to run without
+        # a name, a cmdline or a user; the example shows the name-glob form.
+        return "\n".join([
+            "name: Find hosts running java",
+            "description: \"Hunt for running processes, on the hosts you dispatch this to.\"",
+            "risk: low",
+            "actions:",
+            "  - id: hunt-process",
+            "    type: hunt_process",
+            "    params:",
+            '      name: "java"',
+            "      max_results: 50",
+        ]) + "\n"
+    if action == "hunt_port":
+        # `hunt_port` takes no *required* params but refuses to run without
+        # a port or a process; the example shows the port form.
+        return "\n".join([
+            "name: Find hosts listening on 8443",
+            "description: \"Hunt for local socket bindings, on the hosts you dispatch this to.\"",
+            "risk: low",
+            "actions:",
+            "  - id: hunt-port",
+            "    type: hunt_port",
+            "    params:",
+            "      port: 8443",
+            "      protocol: tcp",
+            "      max_results: 50",
+        ]) + "\n"
+    if action == "hunt_service":
+        # `name` here is the service, not the task, so the example is written out.
+        return "\n".join([
+            "name: Find hosts with ssh enabled but stopped",
+            "description: \"Hunt for services, on the hosts you dispatch this to.\"",
+            "risk: low",
+            "actions:",
+            "  - id: hunt-service",
+            "    type: hunt_service",
+            "    params:",
+            "      name: ssh",
+            "      state: stopped",
+            "      start_mode: enabled",
+            "      max_results: 50",
+        ]) + "\n"
+    if action == "hunt_registry":
+        # `key` carries the root and the wildcard; the example filters the
+        # DisplayName values of the 64-bit Uninstall tree to Java.
+        return "\n".join([
+            "name: Find hosts with Java in their Uninstall keys",
+            "description: \"Hunt the Windows registry, on the hosts you dispatch this to.\"",
+            "risk: low",
+            "actions:",
+            "  - id: hunt-registry",
+            "    type: hunt_registry",
+            "    params:",
+            "      key: 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'",
+            "      value: DisplayName",
+            "      data: Java",
+            "      view: 64",
+            "      max_results: 50",
+        ]) + "\n"
+    if action == "hunt_content":
+        # The example keeps the default return (lines) — return: text makes
+        # the step high risk, which a low-risk example must not claim.
+        return "\n".join([
+            "name: Find hosts with a leaked token in a config",
+            "description: \"Hunt for text inside files, on the hosts you dispatch this to.\"",
+            "risk: standard",
+            "actions:",
+            "  - id: hunt-content",
+            "    type: hunt_content",
+            "    params:",
+            '      pattern: "AKIA[0-9A-Z]{16}"',
+            "      name: \"*.conf\"",
+            "      paths: /etc,/opt",
+            "      return: lines",
+            "      max_results: 50",
+        ]) + "\n"
     lines = [
         f"name: {title}",
         f"description: {entry['label']} on the hosts you dispatch this to.",
@@ -366,17 +911,20 @@ def _yaml_html(source: str) -> str:
     return "\n".join(out)
 
 
-def _params_table(entry: dict) -> str:
+def _params_table(entry: dict, action: str = "") -> str:
+    def note(param: str) -> str:
+        return ACTION_PARAM_NOTES.get((action, param), PARAM_NOTES.get(param, ""))
+
     rows = []
     for param in entry["required"]:
         rows.append(
             f'<tr><td><code>{param}</code></td><td><span class="param-req">'
-            f'required</span></td><td>{html.escape(PARAM_NOTES.get(param, ""))}'
+            f'required</span></td><td>{html.escape(note(param))}'
             f"</td></tr>")
     for param in entry["optional"]:
         rows.append(
             f'<tr><td><code>{param}</code></td><td><span class="param-opt">'
-            f'optional</span></td><td>{html.escape(PARAM_NOTES.get(param, ""))}'
+            f'optional</span></td><td>{html.escape(note(param))}'
             f"</td></tr>")
     if not rows:
         return '<p class="action-noparams">This action takes no params.</p>'
@@ -384,6 +932,26 @@ def _params_table(entry: dict) -> str:
         '<div class="table-wrap"><table class="param-table">'
         "<thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table></div>")
+
+
+def _outputs_table(action: str) -> str:
+    """What a later step can read from this one: status always, plus outputs."""
+    outputs = action_outputs(action)
+    rows = [
+        '<tr><td><code>status</code></td><td>str</td>'
+        "<td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr>"]
+    for field, kind in outputs.items():
+        rows.append(
+            f"<tr><td><code>{html.escape(field)}</code></td><td>{html.escape(kind)}</td>"
+            f"<td>{html.escape(OUTPUT_NOTES[action][field])}</td></tr>")
+    table = (
+        '<div class="table-wrap"><table class="param-table">'
+        "<thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table></div>")
+    if outputs:
+        table += ('<p class="prose">Read one later as '
+                  "<code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>")
+    return table
 
 
 def render() -> str:
@@ -425,7 +993,7 @@ def render() -> str:
             keywords = " ".join([action] + entry["required"] + entry["optional"])
             required = ", ".join(entry["required"]) or "none"
             parts.append(
-                f'<details class="action" data-group="{slug}" '
+                f'<details class="action" id="action-{action}" data-group="{slug}" '
                 f'data-risk="{risk}" data-keywords="{html.escape(keywords)}">'
                 f"<summary>"
                 f'<code class="action-name">{action}</code>'
@@ -436,7 +1004,8 @@ def render() -> str:
                 f'<div class="action-body">')
             if blurb:
                 parts.append(f'<p class="prose">{html.escape(blurb)}</p>')
-            parts.append(_params_table(entry))
+            parts.append(_params_table(entry, action))
+            parts.append(_outputs_table(action))
             parts.append(
                 '<div class="code-block"><div class="code-label">YAML</div>'
                 '<button class="copy-btn" type="button">Copy</button>'

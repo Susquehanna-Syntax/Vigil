@@ -45,6 +45,8 @@ class Command(BaseCommand):
         if state.claims:
             c = state.claims
             self.stdout.write(f"org:       {c.org}")
+            if c.lid:
+                self.stdout.write(f"license id: {c.lid}")
             self.stdout.write(f"seats:     {licensing.seats_used()}/{c.seats} used")
             self.stdout.write(f"features:  {', '.join(c.features)}")
         else:

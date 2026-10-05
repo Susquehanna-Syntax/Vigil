@@ -85,10 +85,12 @@ class EventAutomationTests(TestCase):
             created_by=self.admin)
         host = make_host()
         hooks.emit("host_approved", host=host, approved_by=self.admin)
-        task = Task.objects.get(host=host)
-        self.assertIn("automation: bootstrap new", task.step_label)
-        self.assertEqual([s["action"] for s in task.params["steps"]],
-                         ["pkg_update", "restart_service"])
+        # One signed task per playbook step, chained (M6 phase 08a2).
+        tasks = list(Task.objects.filter(host=host).order_by("step_order"))
+        self.assertTrue(all("automation: bootstrap new" in t.step_label for t in tasks))
+        self.assertEqual([[s["action"] for s in t.params["steps"]] for t in tasks],
+                         [["pkg_update"], ["restart_service"]])
+        self.assertEqual([t.state for t in tasks], [Task.State.PENDING, Task.State.BLOCKED])
 
     def test_disabled_automation_does_nothing(self):
         d = make_def()

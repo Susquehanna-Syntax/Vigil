@@ -5,6 +5,8 @@ execute_action accepted a `timeout` keyword and then called
 the server shipped it, so a long build still died at the 120s default with
 nothing anywhere to explain why.
 """
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import sys
 import unittest
 from pathlib import Path

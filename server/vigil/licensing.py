@@ -63,18 +63,21 @@ FREE_FEATURES = frozenset({
 
 #: Business features a license can grant. Keep in sync with
 #: ``sqsy_license.BUSINESS_FEATURES`` in the Mercantil repo.
+# Civil SSO must never consult this flag — it ships free on both tiers.
 BUSINESS_FEATURES = frozenset({
     "sites",
     "audit_log",
     "rbac_advanced",    # OPERATOR + custom roles; Free has ADMIN + VIEWER
     "branding",
     "status_branding",  # branded/public/custom-domain status pages
-    "sso",
+    "sso",              # external IdPs (SAML/OIDC) only — Civil SSO is free on both tiers
     "dashboard_sharing",  # read-only sharing of a dashboard; the flag lives in core
+    "compliance_reports",  # per-site patch compliance, CSV export, branded report
+    "jackil",             # bundled ticketing; the Jackil side verifies this same blob
 })
 
 #: Free-tier limits (soft — exceeded means a banner, never a block).
-FREE_SEATS = 2   # 1 admin + 1 read-only
+FREE_SEATS = 2   # 2 technicians (Admin/Operator); Viewers are free and unlimited
 FREE_SITES = 1
 
 
@@ -95,6 +98,7 @@ class Claims:
     exp: int
     iat: int
     sites: int | None = None
+    lid: str = ""  # licence id, so a key posted publicly traces back to the buyer
     features: tuple[str, ...] = field(default=tuple(sorted(BUSINESS_FEATURES)))
 
 
@@ -158,6 +162,7 @@ def _verify_blob(blob: str, public_key_b64: str) -> Claims:
             exp=int(d["exp"]),
             iat=int(d["iat"]),
             sites=None if d.get("sites") is None else int(d["sites"]),
+            lid=str(d.get("lid") or ""),
             features=tuple(sorted(BUSINESS_FEATURES)) if features is None
             else tuple(features),
         )
@@ -369,9 +374,22 @@ def licence_gate(request, name: str):
 # Seats (§6: whatever holds the users counts them; Vigil reads its own view)
 
 def seats_used() -> int:
+    """How many seats are in use. A seat is a technician — an Admin or
+    Operator. Viewers are free and unlimited on both tiers."""
     try:
         from django.contrib.auth import get_user_model
-        return get_user_model().objects.filter(is_active=True).count()
+        from django.db.models import Q
+
+        from apps.accounts.models import Role
+
+        return (
+            get_user_model().objects
+            .filter(is_active=True)
+            .filter(Q(is_superuser=True) | Q(is_staff=True)
+                    | Q(profile__role__in=[Role.ADMIN, Role.OPERATOR]))
+            .distinct()
+            .count()
+        )
     except Exception:  # noqa: BLE001
         logger.exception("seat count unavailable")
         return 0
@@ -382,6 +400,18 @@ def seats_allowed() -> int:
     if state.business_active and state.claims:
         return state.claims.seats
     return FREE_SEATS
+
+
+FREE_ADMINS = 2
+
+
+def admin_cap() -> int | None:
+    """How many Admin accounts this install may have, or None for unlimited.
+
+    Free stops at two Admins — enforced when an account is created or promoted,
+    never anywhere else. Business is unlimited and bills per technician seat.
+    """
+    return None if current_state().business_active else FREE_ADMINS
 
 
 # --------------------------------------------------------------------------

@@ -17,6 +17,8 @@ Two things keep it fixed:
   * the transport cap is large enough for the result and says so when it
     does bite, instead of silently handing over a fragment.
 """
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import json
 import sys
 import unittest

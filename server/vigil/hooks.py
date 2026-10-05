@@ -1,15 +1,15 @@
-"""In-process event bus — the extension seam for commercial editions.
+"""In-process event bus — the extension seam for Business code.
 
-Vigil core (Community) is self-contained. The Pro and Enterprise editions ship
-as separate repos whose Django apps are loaded via ``VIGIL_EXTRA_APPS`` (see
-``docs/pro-extension-points.md``). Those apps subscribe to lifecycle events
-here, in their ``AppConfig.ready()``, instead of patching core code.
+Vigil core (Free) is self-contained. Business code ships in this repo under
+``server/apps_business/`` (commercial licence, runtime ``has_feature()`` gates)
+and subscribes to lifecycle events here, in its ``AppConfig.ready()``, instead
+of patching core code.
 
-Core emits; editions listen. Core never imports edition code, so a missing
-edition simply means nobody is subscribed and the event is a no-op.
+Core emits; ``apps_business`` listens. Core never imports it, so an event
+nobody has subscribed to is simply a no-op.
 
 This is deliberately not Django's signal framework: a small, explicitly
-documented set of event names is the contract Pro/Enterprise builds against,
+documented set of event names is the contract Business code builds against,
 and keeping it separate means the contract can't drift as core's internal
 signals change.
 
@@ -47,6 +47,10 @@ KNOWN_EVENTS = frozenset({
     "alert_refired",     # payload: alert
     "alert_resolved",    # payload: alert
     "task_completed",    # payload: task
+    # Managed stacks (M11). Business audit subscribes; Free has no listener.
+    "stack_saved",          # payload: stack, user, revision
+    "stack_env_revealed",   # payload: stack, user
+    "stack_deployed",       # payload: stack, user, task
     # Reprovisioning (docs/reprovisioning.md §4.5). Audit subscribes to these
     # rather than reprovision importing apps_business.audits — reprovision is
     # Free, audits is Business, and the bus is the seam for exactly that.
@@ -58,6 +62,10 @@ KNOWN_EVENTS = frozenset({
     # carries the NAMES that changed and who changed them, never the
     # values — some of them are credentials.
     "instance_settings_changed",  # payload: names, changed_by
+    # A hunt_content step with return: text went out — the step carries
+    # matched file contents back to the server. Business audit-logs it; on
+    # Free the event simply has no subscriber.
+    "hunt_text_requested",  # payload: run, actor, step_ids
 })
 
 _subscribers: dict[str, list[Callable]] = defaultdict(list)

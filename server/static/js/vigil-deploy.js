@@ -20,6 +20,7 @@ let deployState = {
   targetMode: 'hosts',          // 'hosts' or 'tags'
   availableTags: [],
   selectedTags: new Set(),
+  refusals: {},                 // host id → actions its agent would refuse
 };
 
 /* ── Entry point invoked from a host card: jump to Tasks, preselect host */
@@ -300,6 +301,12 @@ function _renderDeployInputs(inputs) {
     const label = document.createElement('label');
     label.className = 'deploy-input-label';
     label.textContent = inp.label || inp.id;
+    if (inp.type === 'text' && inp.required) {
+      const req = document.createElement('span');
+      req.className = 'deploy-input-req';
+      req.textContent = ' (required)';
+      label.appendChild(req);
+    }
 
     let control;
     if (inp.type === 'choice') {
@@ -319,6 +326,7 @@ function _renderDeployInputs(inputs) {
     } else if (inp.type === 'number') {
       control = document.createElement('input');
       control.type = 'number';
+      control.step = 'any';   // the server accepts decimals; the browser default (1) would refuse 3.7
       control.className = 'form-control';
       control.value = inp.default ?? '';
     } else {
@@ -345,6 +353,21 @@ function _renderDeployInputs(inputs) {
     }
     list.appendChild(row);
   }
+}
+
+function _firstInvalidDeployInput() {
+  for (const row of document.querySelectorAll('#deploy-inputs .deploy-input-row')) {
+    const ctrl = row.querySelector('.deploy-input-control');
+    if (!ctrl) continue;
+    const name = (row.querySelector('.deploy-input-label')?.firstChild?.textContent || row.dataset.inputId).trim();
+    if (row.dataset.inputType === 'number' && (ctrl.value === '' || !ctrl.checkValidity())) {
+      return { control: ctrl, message: `${name}: enter a number` };
+    }
+    if (ctrl.required && !ctrl.value.trim()) {
+      return { control: ctrl, message: `${name} is required` };
+    }
+  }
+  return null;
 }
 
 function _readDeployInputs() {
@@ -419,6 +442,14 @@ function _renderDeployHostRows() {
     const mode = document.createElement('div');
     mode.className = 'dh-meta';
     mode.textContent = h.mode;
+    const refused = (deployState.refusals || {})[h.id];
+    if (refused) {
+      const chip = document.createElement('span');
+      chip.className = 'chip chip-rose dh-refuse';
+      chip.textContent = `will refuse: ${refused.join(', ')}`;
+      chip.title = "This host's agent allowlist does not include these actions.";
+      nameWrap.appendChild(chip);
+    }
 
     row.appendChild(cb);
     row.appendChild(nameWrap);
@@ -473,7 +504,8 @@ async function _ensureFleetCache(force) {
   _deployFleetFetchedAt = _deployTagCache === null ? 0 : Date.now();
 }
 
-async function openDeployModal(definitionId) {
+async function openDeployModal(definitionId, prefill) {
+  prefill = prefill || {};
   // Show modal skeleton immediately so the UI feels instant.
   document.getElementById('deploy-modal-title').textContent = 'Loading…';
   document.getElementById('deploy-risk-label').innerHTML = '';
@@ -482,6 +514,11 @@ async function openDeployModal(definitionId) {
   document.getElementById('deploy-host-search').value = '';
   deployState.definitionId = definitionId;
   deployState.selectedHosts = new Set();
+  deployState.refusals = {};
+  const sendRefusing = document.getElementById('deploy-send-refusing');
+  if (sendRefusing) sendRefusing.checked = false;
+  const refusalBox = document.getElementById('deploy-refusals');
+  if (refusalBox) refusalBox.hidden = true;
   deployState.selectedTags = new Set();
   document.getElementById('deploy-overlay').classList.add('open');
   document.getElementById('deploy-modal').classList.add('open');
@@ -505,6 +542,13 @@ async function openDeployModal(definitionId) {
     });
 
     _renderDeployInputs((def.parsed_spec && def.parsed_spec.inputs) || []);
+    // A task that asks for values opens on them, not on its YAML.
+    if (((def.parsed_spec && def.parsed_spec.inputs) || []).length) setDeployTab('options');
+    for (const [id, value] of Object.entries(prefill.inputs || {})) {
+      const row = document.querySelector(`#deploy-inputs .deploy-input-row[data-input-id="${CSS.escape(id)}"]`);
+      const ctrl = row && row.querySelector('.deploy-input-control');
+      if (ctrl) ctrl.value = value;
+    }
     _populateDeployPolicy(def.parsed_spec || {});
 
     deployState.availableHosts = _deployHostCache || [];
@@ -519,6 +563,13 @@ async function openDeployModal(definitionId) {
       }
       window._pendingDeployPreselectHost = null;
     }
+    if (prefill.hostId && deployState.availableHosts.some(h => h.id === prefill.hostId)) {
+      deployState.selectedHosts.add(prefill.hostId);
+    }
+    // Several hosts at once — e.g. every host a vulnerability fix applies to.
+    for (const id of prefill.hostIds || []) {
+      if (deployState.availableHosts.some(h => h.id === id)) deployState.selectedHosts.add(id);
+    }
     _renderDeployHostRows();
     updateDeployHostSummary();
   } catch (e) {
@@ -528,7 +579,73 @@ async function openDeployModal(definitionId) {
   }
 }
 
+/* ── Update one container: the built-in task, host and name prefilled ── */
+async function openBuiltinTask(name, hostId, inputs) {
+  // Every container and stack button (M11) opens one of the seeded built-in
+  // tasks in the normal deploy dialog: signed, TOTP-confirmed, audited.
+  let defs;
+  try {
+    defs = await apiJson('/api/v1/tasks/definitions/?scope=community');
+  } catch (e) {
+    showToast('Could not load tasks: ' + e.message, 'error');
+    return;
+  }
+  const def = (defs || []).find(d => d.name === name && !d.owner);
+  if (!def) {
+    showToast(`The built-in "${name}" task is missing — run migrations`, 'error');
+    return;
+  }
+  openDeployModal(def.id, { hostId, inputs });
+}
+
+function openUpdateContainer(hostId, containerName) {
+  return openBuiltinTask('Update container', hostId, { container_name: containerName });
+}
+
+/* ── Refusals: hosts whose agent would refuse this task (M7) ─────────────── */
+let _deployRefusalTimer = null;
+
+function _deployTargetIds() {
+  if (deployState.targetMode === 'tags') {
+    return (deployState.availableHosts || [])
+      .filter(h => (h.tags || []).some(t => deployState.selectedTags.has(t)))
+      .map(h => h.id);
+  }
+  return [...(deployState.selectedHosts || [])];
+}
+
+function _scheduleDeployRefusals() {
+  clearTimeout(_deployRefusalTimer);
+  _deployRefusalTimer = setTimeout(_refreshDeployRefusals, 250);
+}
+
+async function _refreshDeployRefusals() {
+  const ids = _deployTargetIds();
+  const box = document.getElementById('deploy-refusals');
+  if (!deployState.definitionId || !ids.length) {
+    deployState.refusals = {};
+    if (box) box.hidden = true;
+    return;
+  }
+  let rows = [];
+  try {
+    const qs = encodeURIComponent(ids.join(','));
+    rows = (await apiJson(`/api/v1/tasks/definitions/${deployState.definitionId}/refusals/?host_ids=${qs}`)).refusals || [];
+  } catch { rows = []; }
+  const before = JSON.stringify(deployState.refusals || {});
+  deployState.refusals = Object.fromEntries(rows.map(r => [r.host_id, r.actions]));
+  if (box) {
+    box.hidden = !rows.length;
+    const text = document.getElementById('deploy-refusals-text');
+    if (text) text.textContent = rows.length
+      ? `${rows.length} host${rows.length === 1 ? '' : 's'} will refuse this task (not in the agent's allowlist) and will be skipped.`
+      : '';
+  }
+  if (JSON.stringify(deployState.refusals) !== before && deployState.targetMode !== 'tags') _renderDeployHostRows();
+}
+
 function updateDeployHostSummary() {
+  _scheduleDeployRefusals();
   const stepCount = (deployState.spec && deployState.spec.actions && deployState.spec.actions.length) || 0;
 
   if (deployState.targetMode === 'tags') {
@@ -560,6 +677,16 @@ function updateDeployHostSummary() {
 async function submitDeploy(event) {
   event.preventDefault();
 
+  // The form is novalidate: the browser's own check silently refuses to submit
+  // when the offending field sits on a hidden tab. Say which input is wrong.
+  const bad = _firstInvalidDeployInput();
+  if (bad) {
+    setDeployTab('options');
+    bad.control.focus();
+    showToast(bad.message, 'error');
+    return;
+  }
+
   const totp = document.getElementById('deploy-totp').value.trim();
   if (!totp) { showToast('Enter your TOTP code', 'error'); return; }
 
@@ -582,6 +709,8 @@ async function submitDeploy(event) {
     body.host_ids = host_ids;
   }
 
+  body.send_to_refusing = !!document.getElementById('deploy-send-refusing')?.checked;
+
   const btn = document.getElementById('deploy-submit-btn');
   btn.disabled = true; btn.style.opacity = '0.6';
   try {
@@ -589,7 +718,9 @@ async function submitDeploy(event) {
       method: 'POST',
       body: JSON.stringify(body),
     });
-    showToast(`Deployed to ${run.host_count} host${run.host_count === 1 ? '' : 's'}`, 'success');
+    const skipped = (run.skipped || []).length;
+    showToast(`Deployed to ${run.host_count} host${run.host_count === 1 ? '' : 's'}`
+      + (skipped ? ` · skipped ${skipped} that would refuse` : ''), 'success');
     closeDeployModal();
   } catch (e) {
     showToast('Deploy failed: ' + e.message, 'error');

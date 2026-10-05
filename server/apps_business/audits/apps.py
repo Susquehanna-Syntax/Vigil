@@ -25,7 +25,11 @@ def wire():
     hooks.subscribe("host_rejected", _on_host_rejected)
     hooks.subscribe("alert_sent", _on_alert_sent)
     hooks.subscribe("task_completed", _on_task_completed)
+    hooks.subscribe("hunt_text_requested", _on_hunt_text_requested)
     hooks.subscribe("instance_settings_changed", _on_instance_settings_changed)
+    hooks.subscribe("stack_saved", _on_stack_saved)
+    hooks.subscribe("stack_env_revealed", _on_stack_env_revealed)
+    hooks.subscribe("stack_deployed", _on_stack_deployed)
 
     user_logged_in.connect(_on_login, dispatch_uid="business_audits.login")
     user_logged_out.connect(_on_logout, dispatch_uid="business_audits.logout")
@@ -51,6 +55,41 @@ def _on_alert_sent(alert=None, **_):
 def _on_task_completed(task=None, **_):
     from .models import record
     record("task.completed", target=str(task))
+
+
+def _on_hunt_text_requested(run=None, actor=None, step_ids=(), **_):
+    """A hunt_content step with `return: text` was deployed — the step will
+    carry matched file contents back to the server. Record who asked for it
+    and which steps, so the trail shows exactly what left the host."""
+    from .models import record
+    record("hunt.text_requested", user=actor,
+           target=f"run {getattr(run, 'id', run)}",
+           run_id=str(getattr(run, "id", "")),
+           step_ids=list(step_ids))
+
+
+def _stack_target(stack) -> str:
+    host = getattr(getattr(stack, "host", None), "hostname", "")
+    return f"{getattr(stack, 'name', '')}@{host}"[:255]
+
+
+def _on_stack_saved(stack=None, user=None, revision=None, **_):
+    """A managed stack's compose file or .env changed (M11) — which revision,
+    never the contents."""
+    from .models import record
+    record("stack.saved", user=user, target=_stack_target(stack), revision=revision)
+
+
+def _on_stack_env_revealed(stack=None, user=None, **_):
+    """Someone looked at a stack's secrets in the clear."""
+    from .models import record
+    record("stack.env_revealed", user=user, target=_stack_target(stack))
+
+
+def _on_stack_deployed(stack=None, user=None, task=None, **_):
+    from .models import record
+    record("stack.deployed", user=user, target=_stack_target(stack),
+           revision=getattr(stack, "revision", None), task_id=str(getattr(task, "id", "")))
 
 
 def _on_instance_settings_changed(names=None, changed_by=None, **_):

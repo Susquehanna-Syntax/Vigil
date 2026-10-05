@@ -14,6 +14,8 @@ started regardless of how the agent was packaged. Found by watching a onedir
 service reach START_PENDING and then stop.
 """
 
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
+
 import unittest
 from pathlib import Path
 from unittest.mock import patch

@@ -441,6 +441,21 @@ def _apply_role(user, role: str):
         return Response({"detail": f"unknown role {role!r}"}, status=400)
     if role == Role.OPERATOR and not licensing.has_feature("rbac_advanced"):
         return Response(licensing.upgrade_body("rbac_advanced"), status=402)
+    if role == Role.ADMIN:
+        cap = licensing.admin_cap()
+        if cap is not None:
+            from .permissions import OWNER, role_of
+
+            admin_roles = (OWNER, Role.ADMIN)
+            User = type(user)
+            already = sum(
+                1 for u in User.objects.filter(is_active=True).exclude(pk=user.pk)
+                if role_of(u) in admin_roles
+            )
+            # Existing Admins keep working — only a NEW one past the cap is
+            # refused, and only on Free. Nothing here touches monitoring.
+            if already >= cap and role_of(user) not in admin_roles:
+                return Response(licensing.upgrade_body("admin_seats"), status=402)
     profile, _ = UserProfile.objects.get_or_create(user=user)
     profile.role = role
     profile.save(update_fields=["role"])

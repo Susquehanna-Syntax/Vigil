@@ -70,8 +70,8 @@ function _renderScanners(scanners) {
     pill.style.letterSpacing = '0.4px';
     pill.style.textTransform = 'uppercase';
     if (s.configured) {
-      pill.style.color = 'var(--mint)';
-      pill.style.background = 'rgba(126,221,181,0.10)';
+      pill.style.color = 'var(--mint-ink)';
+      pill.style.background = 'rgba(var(--rgb-mint), var(--tint-a))';
       pill.textContent = 'Configured';
     } else {
       pill.style.color = 'var(--text-3)';

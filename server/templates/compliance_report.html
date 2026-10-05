@@ -1,0 +1,90 @@
+{# Printable patch compliance report (Business: compliance_reports). Self-contained: print → PDF. #}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patch compliance — {{ product }}</title>
+<style>
+  :root { --accent: {{ accent }}; --ink: #1d1b22; --muted: #6e6b76; --rule: #dcd9e0;
+          --pass: rgba(126, 221, 181, 0.22); --fail: rgba(243, 139, 168, 0.22); }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 16px; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+         color: var(--ink); background: #fff; }
+  main { max-width: 900px; margin: 0 auto; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+           padding-bottom: 16px; border-bottom: 3px solid var(--accent); }
+  header img { max-height: 40px; max-width: 200px; }
+  h1 { margin: 0; font-size: 22px; }
+  h2 { font-size: 16px; margin: 28px 0 10px; }
+  .meta { color: var(--muted); font-size: 12px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+  .stat { flex: 1 1 160px; padding: 14px; border: 1px solid var(--rule); border-radius: 10px; }
+  .stat b { display: block; font-size: 26px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--rule); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 20px; font-weight: 600; font-size: 12px; }
+  .pass { background: var(--pass); }
+  .fail { background: var(--fail); }
+  footer { margin-top: 36px; padding-top: 12px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 12px;
+           display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+  @media print { body { padding: 0; } .noprint { display: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Patch compliance</h1>
+      <div class="meta">Generated {{ data.generated_at|slice:":16" }} UTC · {{ product }}</div>
+    </div>
+    {% if brand.logo_url %}<img src="{{ brand.logo_url }}" alt="{{ product }}">{% endif %}
+  </header>
+
+  <div class="stats">
+    <div class="stat"><b>{{ data.patched_pct }}%</b>of hosts patched within SLA</div>
+    <div class="stat"><b>{{ data.hosts_patched }} / {{ data.hosts_total }}</b>hosts with nothing overdue</div>
+    <div class="stat"><b>{{ data.sla_days.critical }} / {{ data.sla_days.important }} days</b>SLA for critical / important</div>
+  </div>
+
+  <h2>By site</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Site</th><th class="num">Hosts</th><th class="num">Hosts overdue</th><th>Result</th></tr></thead>
+    <tbody>
+    {% for s in data.sites %}
+      <tr><td>{{ s.site }}</td><td class="num">{{ s.hosts }}</td><td class="num">{{ s.overdue_hosts }}</td>
+        <td><span class="pill {% if s.pass %}pass{% else %}fail{% endif %}">{% if s.pass %}Pass{% else %}Fail{% endif %}</span></td></tr>
+    {% empty %}<tr><td colspan="4">No hosts.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+
+  <h2>Missing updates by age</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Severity</th><th class="num">0–7 days</th><th class="num">8–30</th><th class="num">31–90</th><th class="num">90+</th></tr></thead>
+    <tbody>
+    {% for severity, buckets in data.missing_by_age.items %}
+      <tr><td>{{ severity|capfirst }}</td>{% for name, count in buckets.items %}<td class="num">{{ count }}</td>{% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+
+  <h2>Hosts</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Host</th><th class="num">Pending</th><th class="num">Overdue</th><th class="num">Oldest overdue</th></tr></thead>
+    <tbody>
+    {% for h in data.hosts %}
+      <tr><td>{{ h.hostname }}</td><td class="num">{{ h.pending }}</td><td class="num">{{ h.overdue }}</td>
+        <td class="num">{% if h.overdue %}{{ h.oldest_overdue_days }} days{% else %}—{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+
+  <footer>
+    <span>{% if brand.footer_text %}{{ brand.footer_text }}{% else %}{{ product }}{% endif %}</span>
+    <span>{% if licensed_to %}Licensed to {{ licensed_to }}{% endif %}</span>
+  </footer>
+</main>
+</body>
+</html>

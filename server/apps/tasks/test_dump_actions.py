@@ -66,3 +66,34 @@ class DumpActionsTests(TestCase):
 
     def test_dump_actions_is_deterministic(self):
         self.assertEqual(_run_to_stdout(), _run_to_stdout())
+
+
+class UpdateContainerRegistryTests(TestCase):
+    """update_container takes only a container name: the action is standard
+    risk, requires exactly container_name, and the agent knows it."""
+
+    def test_update_container_is_declared(self):
+        entry = ACTION_REGISTRY["update_container"]
+        self.assertEqual(entry["required"], ["container_name"])
+        self.assertEqual(entry["optional"], [])
+        self.assertEqual(entry["risk"], "standard")
+
+    def test_update_container_is_executable_by_the_agent(self):
+        """Three places have to agree or the task fails on the host with
+        'unknown action' after passing every server-side check."""
+        import ast
+        from pathlib import Path
+
+        from django.conf import settings
+
+        agent = Path(settings.BASE_DIR).parent / "agent" / "vigil_agent"
+        if not agent.is_dir():
+            self.skipTest("agent source not present in this build")
+
+        allowlist = (agent / "config.py").read_text()
+        executor_src = (agent / "executor.py").read_text()
+        self.assertIn('"update_container"', allowlist,
+                      "update_container missing from the agent allowlist")
+        self.assertIn('"update_container": _', executor_src,
+                      "update_container missing from the agent's handler table")
+        ast.parse(executor_src)  # the handler table must still be valid Python

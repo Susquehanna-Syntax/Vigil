@@ -30,6 +30,7 @@ document.querySelectorAll('.tab-bar').forEach(bar => {
       bar.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       const group = bar.closest('.page');
+      if (!group) return;
       group.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       const target = document.getElementById(tab.dataset.tab);
       if (target) target.classList.add('active');

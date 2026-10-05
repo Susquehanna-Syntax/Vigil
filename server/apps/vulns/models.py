@@ -72,6 +72,14 @@ class VulnScan(models.Model):
         NESSUS = "nessus", "Nessus"
         GREENBONE = "greenbone", "Greenbone / OpenVAS"
         TRIVY = "trivy", "Trivy"
+        # Vigil's own findings (M9): the inventory matched against OSV, a
+        # missing Windows security update, an app winget says is outdated.
+        VIGIL = "vigil", "Vigil"
+        # A detection task (M10): a task with relevant: probes and a severity,
+        # whose match is the finding and whose steps are the fix.
+        DETECTION = "detection", "Detection task"
+        # Imported scanner output — Anvil's SARIF (M10).
+        ANVIL = "anvil", "Anvil"
 
     class State(models.TextChoices):
         REQUESTED = "requested", "Requested"
@@ -176,6 +184,29 @@ class VulnFinding(models.Model):
     installed_version = models.CharField(max_length=80, blank=True, default="")
     fixed_version = models.CharField(max_length=80, blank=True, default="")
 
+    # The advisory itself, as the source reported it (M9). Kept so a person —
+    # or the assistant, when there is no fix — can read what the finding is
+    # without going back to the scanner: what it says, how bad, where it
+    # lives on disk, and what the vendor intends to do about it.
+    description = models.TextField(blank=True, default="")
+    cvss_score = models.FloatField(null=True, blank=True)
+    cvss_vector = models.CharField(max_length=200, blank=True, default="")
+    references = models.JSONField(default=list, blank=True)
+    primary_url = models.URLField(max_length=500, blank=True, default="")
+    #: The vendor's fix status — fixed, affected, will_not_fix, fix_deferred,
+    #: end_of_life, … — as the source spells it. Blank when unknown.
+    vendor_status = models.CharField(max_length=32, blank=True, default="")
+    #: Where the vulnerable thing lives: a language package's file, a jar, a
+    #: lockfile. Blank for OS packages.
+    affected_path = models.CharField(max_length=500, blank=True, default="")
+    #: The source's own record for this finding, untrimmed (one Trivy
+    #: vulnerability object, say). Nothing reads it by key; it is the
+    #: evidence of record.
+    advisory = models.JSONField(default=dict, blank=True)
+    #: The fix this finding belongs to (apps/vulns/fixgroups.py) — set on every
+    #: save. Scores and severity counts count fix groups, not CVEs.
+    fix_key = models.CharField(max_length=300, blank=True, default="", db_index=True)
+
     first_seen = models.DateTimeField(auto_now_add=True)
     last_seen = models.DateTimeField(auto_now=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
@@ -220,6 +251,13 @@ class VulnFinding(models.Model):
         which calls save() on every sync, and a deadline that slid forward each
         time a scanner re-reported the finding would never be overdue.
         """
+        from .fixgroups import fix_key_for
+
+        self.fix_key = fix_key_for(self.package_name, self.fixed_version, self.scanner,
+                                   self.plugin_id_or_oid, self.affected_path)
+        if "update_fields" in kwargs and kwargs["update_fields"] is not None \
+                and "fix_key" not in kwargs["update_fields"]:
+            kwargs["update_fields"] = list(kwargs["update_fields"]) + ["fix_key"]
         if self.due_date is None and self.severity != self.Severity.INFO:
             from .remediation import compute_due_date
 
@@ -413,3 +451,95 @@ class VulnException(models.Model):
         from django.utils.timezone import localdate
 
         return self.expires_on >= localdate()
+
+
+class FindingEvidence(models.Model):
+    """What a finding rests on — one row per piece of evidence (M9).
+
+    A finding cites everything that matched: the package record or registry
+    entry from the Apps inventory, a file on disk, a running process, a
+    listening port, a missing security update. Evidence is what turns
+    "a scanner said so" into something an operator can check, and what
+    ranks it: a vulnerable package that is also running is urgent; a file
+    alone is only file evidence.
+    """
+
+    class Kind(models.TextChoices):
+        PACKAGE = "package", "Installed package"
+        REGISTRY = "registry", "Registry entry"
+        FILE = "file", "File on disk"
+        PROCESS = "process", "Running process"
+        PORT = "port", "Listening port"
+        MISSING_UPDATE = "missing_update", "Missing security update"
+        OUTDATED_APP = "outdated_app", "Outdated app"
+        SCANNER = "scanner", "Scanner report"
+
+    finding = models.ForeignKey(VulnFinding, on_delete=models.CASCADE, related_name="evidence")
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    #: Identity within the finding — a package id, a path, a pid+name.
+    key = models.CharField(max_length=300)
+    summary = models.CharField(max_length=300, blank=True, default="")
+    detail = models.JSONField(default=dict, blank=True)
+    observed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("finding", "kind", "key"),
+                                               name="uniq_finding_evidence")]
+
+    def __str__(self):
+        return f"{self.kind}: {self.key}"
+
+
+class OsvAdvisory(models.Model):
+    """One OSV.dev record, held locally so Vigil can match without asking
+    anyone (M9). Loaded by ``import_vuln_data`` from an offline bundle or
+    fetched per ecosystem by ``sync_vuln_data``."""
+
+    id = models.CharField(max_length=128, primary_key=True)
+    modified = models.DateTimeField(null=True, blank=True)
+    summary = models.CharField(max_length=500, blank=True, default="")
+    details = models.TextField(blank=True, default="")
+    aliases = models.JSONField(default=list, blank=True)
+    #: Our scale (critical/high/medium/low/info), from the record's CVSS
+    #: vector or its database's own rating; blank when neither says.
+    severity = models.CharField(max_length=16, blank=True, default="")
+    cvss_score = models.FloatField(null=True, blank=True)
+    cvss_vector = models.CharField(max_length=200, blank=True, default="")
+    references = models.JSONField(default=list, blank=True)
+    withdrawn = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.id
+
+    @property
+    def cve_ids(self) -> list[str]:
+        ids = [self.id] + list(self.aliases or [])
+        return sorted({i.upper() for i in ids if str(i).upper().startswith("CVE-")})
+
+
+class OsvAffected(models.Model):
+    """One (ecosystem, package) an advisory affects, with its version ranges."""
+
+    advisory = models.ForeignKey(OsvAdvisory, on_delete=models.CASCADE, related_name="affected")
+    #: OSV's ecosystem string as published: "Debian:12", "Ubuntu:24.04:LTS",
+    #: "Alpine:v3.20", "Rocky Linux:9", "PyPI", …
+    ecosystem = models.CharField(max_length=80)
+    package = models.CharField(max_length=200)
+    #: OSV ``ranges`` — [{"type": "ECOSYSTEM", "events": [{"introduced": …}, {"fixed": …}]}].
+    ranges = models.JSONField(default=list, blank=True)
+    #: OSV ``versions`` — explicitly affected versions, when listed.
+    versions = models.JSONField(default=list, blank=True)
+    #: The lowest ``fixed`` event across the ranges, for display; blank = none.
+    fixed = models.CharField(max_length=120, blank=True, default="")
+
+    class Meta:
+        indexes = [models.Index(fields=("ecosystem", "package"))]
+
+
+class EpssScore(models.Model):
+    """FIRST EPSS: the probability a CVE is exploited in the next 30 days."""
+
+    cve_id = models.CharField(max_length=32, primary_key=True)
+    epss = models.FloatField()
+    percentile = models.FloatField()
+    score_date = models.DateField(null=True, blank=True)

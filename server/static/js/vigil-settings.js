@@ -103,7 +103,7 @@ async function loadAgentInfo() {
       el.appendChild(document.createTextNode(' '));
       const ver = document.createElement('span');
       ver.className = 'mono';
-      ver.style.cssText = 'color:var(--sky);font-size:11px;';
+      ver.style.cssText = 'color:var(--sky-ink);font-size:11px;';
       ver.textContent = `v${b.version || '?'}`;
       el.appendChild(ver);
       el.appendChild(document.createTextNode(' '));

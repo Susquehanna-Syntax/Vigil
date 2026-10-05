@@ -6,15 +6,17 @@ Usage:
 """
 
 import argparse
+import json
 import logging
 import os
 import signal
+import sys
 import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import client, collector, verify, windows_update
+from . import client, collector, software, verify, windows_update
 from .config import load_config
 from .executor import execute_action
 from .nonce_store import NonceStore
@@ -140,6 +142,207 @@ def _process_tasks(tasks: list[dict], config, nonce_store: NonceStore, verify_ke
                 _report_failed(config, task, str(exc))
 
 
+def _branch_guards(flow) -> dict[str, tuple[str, str]]:
+    """Turn a signed ``flow`` tree into a guard expression per step id.
+
+    A branch condition may only name steps earlier in the document than the
+    branch, and nothing inside a branch can change an earlier step's result,
+    so re-evaluating the condition at each step of the branch gives the same
+    answer as evaluating it once.  A step in a ``then`` gets the condition
+    parenthesised; in an ``else``, ``not (C)``; nested branches join with
+    `` and ``.  Steps outside any branch are absent from the map.
+    """
+    guards: dict[str, tuple[str, str]] = {}
+
+    def walk(nodes, conds: list[tuple[str, str, str]]) -> None:
+        for node in nodes:
+            if "step" in node:
+                if conds:
+                    guard = " and ".join(
+                        f"not ({c})" if side == "else" else f"({c})"
+                        for _, side, c in conds
+                    )
+                    path = ".".join(f"{b}.{side}" for b, side, _ in conds)
+                    guards[node["step"]] = (guard, path)
+                continue
+            walk(node.get("then", []), conds + [(node["id"], "then", node["if"])])
+            walk(node.get("else", []), conds + [(node["id"], "else", node["if"])])
+
+    walk(list(flow), [])
+    return guards
+
+
+def _relevant_holds(node, counts: dict[str, bool]) -> bool:
+    """Fold a normalised ``relevant:`` tree against probe outcomes.
+
+    ``all`` = every item holds, ``any`` = at least one holds, ``not`` = none
+    holds; a probe item holds when its hunt's count was non-zero.
+    """
+    if "probe" in node:
+        return counts.get(node["probe"]["id"], False)
+    op = node["op"]
+    if op == "all":
+        return all(_relevant_holds(item, counts) for item in node["items"])
+    if op == "any":
+        return any(_relevant_holds(item, counts) for item in node["items"])
+    return not any(_relevant_holds(item, counts) for item in node["items"])
+
+
+def _probe_id_num(probe_id: str) -> int:
+    try:
+        return int(probe_id.rsplit("-", 1)[1])
+    except (IndexError, ValueError):
+        return 0
+
+
+def _evaluate_relevant(tree: dict, config) -> tuple[bool, list[dict], list[str]]:
+    """Run every probe of a ``relevant:`` tree once and fold the decision.
+
+    Returns ``(applies, probe_steps, probe_lines)`` where ``probe_steps`` is
+    the per-probe evidence (the same shape a hunt step reports) and
+    ``probe_lines`` is the output text. A probe that raises is reported
+    inline as a task failure (``[ERROR] relevant-<n> (<type>): … — task not
+    run``) and the evaluation stops.
+    """
+    probes = []
+    seen = set()
+
+    def collect(node) -> None:
+        for item in node["items"]:
+            if "probe" in item:
+                probe = item["probe"]
+                if probe["id"] not in seen:
+                    seen.add(probe["id"])
+                    probes.append(probe)
+            else:
+                collect(item)
+
+    collect(tree)
+    probes.sort(key=lambda p: _probe_id_num(p["id"]))
+
+    counts: dict[str, bool] = {}
+    steps: list[dict] = []
+    lines: list[str] = []
+    for probe in probes:
+        try:
+            # Looked up at call time, as TaskRuntime does for steps, so one
+            # executor (and one allowlist check) serves probes and steps.
+            from .executor import execute_action as _execute
+            out = _execute(probe["type"], probe["params"], config)
+        except Exception as exc:
+            line = f"[ERROR] {probe['id']} ({probe['type']}): {exc} — task not run"
+            raise RelevantProbeError("\n".join(lines + [line]), steps) from exc
+        count = (out.data or {}).get("count")
+        counts[probe["id"]] = isinstance(count, int) and count > 0
+        step = {"id": probe["id"], "status": "ok", "result": dict(out.data or {})}
+        # The probe runs as the hunt it is, so its evidence carries the same
+        # hunt block a hunt step reports.
+        hunt = _hunt_block(probe["type"], str(out))
+        if hunt is not None:
+            step["hunt"] = hunt
+        steps.append(step)
+        lines.append(
+            f"[PROBE] {probe['id']} ({probe['type']}): "
+            f"{count if isinstance(count, int) else '?'} match(es)"
+        )
+
+    return _relevant_holds(tree, counts), steps, lines
+
+
+_ENGINE_CACHE = {"at": -1e9, "value": None}
+ENGINE_REPORT_SECONDS = 600
+
+
+def _container_engines() -> list[dict] | None:
+    """Docker / Podman engines on this host, re-probed every ten minutes."""
+    now_ = time.monotonic()
+    if now_ - _ENGINE_CACHE["at"] >= ENGINE_REPORT_SECONDS:
+        from . import engine
+        try:
+            _ENGINE_CACHE["value"] = engine.engine_report()
+        except Exception:  # noqa: BLE001 — a probe must never break the check-in
+            logger.debug("container engine probe failed", exc_info=True)
+            _ENGINE_CACHE["value"] = None
+        _ENGINE_CACHE["at"] = now_
+    return _ENGINE_CACHE["value"]
+
+
+def _evaluate_boost(probes: list, config) -> tuple[list[dict], list[str]]:
+    """Run a detection task's ``boost:`` probes (M10) once relevance holds.
+
+    A boost never decides whether the task applies — only how sure the match
+    is — so a probe that fails is reported and skipped, never fatal. Returns
+    the probe evidence plus a ``detection`` step whose result carries
+    ``confidence`` (``high`` when any boost matched, ``normal`` otherwise)
+    and ``boost_matches``, for the server to read.
+    """
+    from .executor import execute_action as _execute
+
+    steps: list[dict] = []
+    lines: list[str] = []
+    matched = 0
+    for probe in probes:
+        if not isinstance(probe, dict) or not str(probe.get("type", "")).startswith("hunt_"):
+            continue
+        try:
+            out = _execute(probe["type"], probe.get("params") or {}, config)
+        except Exception as exc:
+            lines.append(f"[BOOST] {probe.get('id')} ({probe['type']}): failed — {exc}")
+            continue
+        count = (out.data or {}).get("count")
+        hit = isinstance(count, int) and count > 0
+        matched += int(hit)
+        step = {"id": probe.get("id"), "status": "ok", "result": dict(out.data or {})}
+        hunt = _hunt_block(probe["type"], str(out))
+        if hunt is not None:
+            step["hunt"] = hunt
+        steps.append(step)
+        lines.append(f"[BOOST] {probe.get('id')} ({probe['type']}): "
+                     f"{count if isinstance(count, int) else '?'} match(es)")
+    confidence = "high" if matched else "normal"
+    steps.append({"id": "detection", "status": "ok",
+                  "result": {"confidence": confidence, "boost_matches": matched}})
+    lines.append(f"[DETECTION] confidence {confidence} ({matched} boost match(es))")
+    return steps, lines
+
+
+class RelevantProbeError(Exception):
+    """A ``relevant:`` probe failed; ``str(exc)`` is the report line and
+    ``steps`` the evidence of the probes that ran before it."""
+
+    def __init__(self, line: str, steps: list[dict]):
+        super().__init__(line)
+        self.steps = steps
+
+
+def _hunt_payload(step_result) -> dict | None:
+    """The ``hunt`` block to attach to a hunt step's report, or None.
+
+    A hunt step's output is the JSON text run_hunt returns; if it parses and
+    carries a ``matches`` list, the matches plus the hunt's own bookkeeping
+    travel with the report so the server can store them.
+    """
+    return _hunt_block(step_result.action, step_result.output)
+
+
+def _hunt_block(action: str | None, output) -> dict | None:
+    """``_hunt_payload`` for a bare (action, output) pair — used for probes."""
+    if not (action or "").startswith("hunt_"):
+        return None
+    try:
+        body = json.loads(output)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(body, dict) or not isinstance(body.get("matches"), list):
+        return None
+    return {
+        "matches": body["matches"],
+        "truncated": body.get("truncated", False),
+        "duration": body.get("duration"),
+        "timed_out": body.get("timed_out", False),
+    }
+
+
 def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None:
     """Run a multi-step script through the TaskRuntime.
 
@@ -152,30 +355,55 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
     """
     raw_steps = params.get("steps", [])
 
+    # Evaluate the relevant: tree before any step runs: every probe is the
+    # hunt it is (allowlist and hunt limits apply), the tree decides, and a
+    # non-matching host reports not_applicable with the probes' evidence.
+    # Probe evidence is prepended to the steps/output of whatever report the
+    # task ends with.
+    probe_steps: list[dict] = []
+    probe_lines: list[str] = []
+    relevant = params.get("relevant")
+    if isinstance(relevant, dict):
+        try:
+            applies, probe_steps, probe_lines = _evaluate_relevant(relevant, config)
+        except RelevantProbeError as exc:
+            logger.warning("Script task %s: %s", task_id, exc)
+            _report_failed(config, task, str(exc), steps=exc.steps)
+            return
+        if not applies:
+            output = "\n".join(
+                probe_lines + ["[NOT APPLICABLE] relevant: did not match"]
+            )
+            logger.info("Script task %s not applicable", task_id)
+            _report_not_applicable(config, task, output, steps=probe_steps)
+            return
+
+    boost = params.get("boost")
+    if isinstance(boost, list) and boost:
+        boost_steps, boost_lines = _evaluate_boost(boost, config)
+        probe_steps = probe_steps + boost_steps
+        probe_lines = probe_lines + boost_lines
+
     # Build the evaluation context once per task. agent.* comes from the
     # platform; inputs.* from the resolved step inputs the server already
     # substituted server-side, but we also pass anything in
     # params.variables for back-compat.
     context = _build_when_context(config, params)
 
-    # Pre-evaluate every step's when:. Skipped steps don't reach
-    # TaskRuntime at all. An expression that cannot be evaluated at all
-    # (version drift between server and agent — the server validated
-    # syntax at save time) fails the WHOLE task before any step runs:
-    # executing half a script under drift is worse than executing none.
-    plan: list[tuple[int, dict, bool, str]] = []
+    # Parse-check every step's when: before anything runs. The actual
+    # evaluation happens in TaskRuntime._execute_steps (per step, with the
+    # earlier steps' results in context), but a predicate that cannot even
+    # be parsed — version drift between server and agent, the server having
+    # validated syntax at save time — fails the WHOLE task before any step
+    # runs: executing half a script under drift is worse than executing none.
     for i, s in enumerate(raw_steps):
+        name = s.get("id", s.get("name", f"step{i+1}"))
         when_expr = (s.get("when") or "").strip()
-        skip = False
-        skip_reason = ""
         if when_expr:
             try:
-                from .expression import evaluate as _eval_when
-                if not _eval_when(when_expr, context):
-                    skip = True
-                    skip_reason = when_expr
+                from .expression import parse as _parse_when
+                _parse_when(when_expr)
             except Exception as exc:
-                name = s.get("id", s.get("name", f"step{i+1}"))
                 msg = (
                     f"[ERROR] {name}: when {when_expr!r} could not be "
                     f"evaluated ({exc}) — task aborted before execution"
@@ -183,7 +411,6 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
                 logger.warning("Script task %s: %s", task_id, msg)
                 _report_failed(config, task, msg)
                 return
-        plan.append((i, s, skip, skip_reason))
 
     runnable_steps = [
         {
@@ -191,36 +418,64 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
             "action": s.get("action", s.get("type", "")),
             "params": s.get("params", {}),
             **({"success_criteria": s["success_criteria"]} if s.get("success_criteria") else {}),
+            **({"when": (s.get("when") or "").strip()} if (s.get("when") or "").strip() else {}),
         }
-        for i, s, skip, _ in plan if not skip
+        for i, s in enumerate(raw_steps)
     ]
 
-    if runnable_steps:
-        runtime_payload = {
-            "steps": runnable_steps,
-            "variables": params.get("variables", {}),
-        }
-        runtime = TaskRuntime(runtime_payload, config)
-        results = runtime.run()
-    else:
-        results = []  # everything got skipped
+    # A signed flow turns each branch step into a guard expression evaluated
+    # before the step's own when: (phase 06).  A step in a branch that is not
+    # taken is skipped like a when-skip, so later steps see
+    # steps.<id>.status == "skipped".
+    flow = params.get("flow")
+    if isinstance(flow, list):
+        branch_guards = _branch_guards(flow)
+        for step in runnable_steps:
+            entry = branch_guards.get(step["name"])
+            if entry is not None:
+                step["guard"], step["branch"] = entry
 
-    # Walk the original plan and stitch results back in for step_outputs.
-    results_by_name = {r.name: r for r in results}
-    step_outputs = []
+    # Guards are signed expressions too — parse-check them like when: so a
+    # malformed guard fails the whole task before any step runs.
+    for step in runnable_steps:
+        guard_expr = (step.get("guard") or "").strip()
+        if guard_expr:
+            try:
+                from .expression import parse as _parse_guard
+                _parse_guard(guard_expr)
+            except Exception as exc:
+                msg = (
+                    f"[ERROR] {step['name']}: branch guard {guard_expr!r} could "
+                    f"not be evaluated ({exc}) — task aborted before execution"
+                )
+                logger.warning("Script task %s: %s", task_id, msg)
+                _report_failed(config, task, msg)
+                return
+
+    runtime_payload = {
+        "steps": runnable_steps,
+        "variables": params.get("variables", {}),
+        "when_context": context,
+    }
+    runtime = TaskRuntime(runtime_payload, config)
+    results = runtime.run()
+
+    steps = list(probe_steps)
+    for r in results:
+        step = {"id": r.name, "status": r.state, "result": dict(r.data)}
+        hunt_payload = _hunt_payload(r)
+        if hunt_payload is not None:
+            step["hunt"] = hunt_payload
+        steps.append(step)
+
+    step_outputs = list(probe_lines)
     any_error = False
     any_ran = False
-    for i, s, skip, reason in plan:
-        name = s.get("id", s.get("name", f"step{i+1}"))
-        if skip:
-            step_outputs.append(f"[SKIPPED] {name}: when {reason!r} evaluated false")
+    for r in results:
+        if r.state == "skipped":
+            step_outputs.append(f"[SKIPPED] {r.name}: {r.output}")
             continue
         any_ran = True
-        r = results_by_name.get(name)
-        if r is None:
-            step_outputs.append(f"[ERROR] {name}: runtime returned no result")
-            any_error = True
-            continue
         status = "OK" if r.state == "ok" else "ERROR"
         step_outputs.append(f"[{status}] {r.name}: {r.output or r.error or r.state}")
         if r.state == "error":
@@ -230,16 +485,16 @@ def _execute_script_task(task_id: str, params: dict, config, task: dict) -> None
 
     if any_error:
         logger.warning("Script task %s failed", task_id)
-        _report_failed(config, task, output)
+        _report_failed(config, task, output, steps=steps)
     elif not any_ran:
         # Every step's when: predicate was false — the task ran
         # successfully in the sense that nothing went wrong; nothing
         # was applicable.
         logger.info("Script task %s skipped — no step matched when: predicates", task_id)
-        _report_skipped(config, task, output)
+        _report_skipped(config, task, output, steps=steps)
     else:
         logger.info("Script task %s completed (%d step(s) ran)", task_id, len(results))
-        _report_completed(config, task, output)
+        _report_completed(config, task, output, steps=steps)
 
 
 def _build_when_context(config, params: dict) -> dict:
@@ -288,9 +543,9 @@ def _build_when_context(config, params: dict) -> dict:
     }
 
 
-def _report_completed(config, task: dict, output: str) -> None:
+def _report_completed(config, task: dict, output: str, steps=None) -> None:
     try:
-        client.report_result(config, task["id"], "completed", output)
+        client.report_result(config, task["id"], "completed", output, steps=steps)
     except Exception:
         logger.exception("Failed to report task %s result", task.get("id"))
 
@@ -302,16 +557,23 @@ def _report_rejected(config, task: dict, reason: str) -> None:
         logger.exception("Failed to report task %s rejection", task.get("id"))
 
 
-def _report_failed(config, task: dict, error: str) -> None:
+def _report_failed(config, task: dict, error: str, steps=None) -> None:
     try:
-        client.report_result(config, task["id"], "failed", error)
+        client.report_result(config, task["id"], "failed", error, steps=steps)
     except Exception:
         logger.exception("Failed to report task %s failure", task.get("id"))
 
 
-def _report_skipped(config, task: dict, output: str) -> None:
+def _report_not_applicable(config, task: dict, output: str, steps=None) -> None:
     try:
-        client.report_result(config, task["id"], "skipped", output)
+        client.report_result(config, task["id"], "not_applicable", output, steps=steps)
+    except Exception:
+        logger.exception("Failed to report task %s as not applicable", task.get("id"))
+
+
+def _report_skipped(config, task: dict, output: str, steps=None) -> None:
+    try:
+        client.report_result(config, task["id"], "skipped", output, steps=steps)
     except Exception:
         logger.exception("Failed to report task %s skip", task.get("id"))
 
@@ -370,6 +632,14 @@ _cli_config_path: Path | None = None
 def main() -> None:
     global _cli_config_path
 
+    # `allow-script` is a local admin command, not a task action — it must
+    # never reach the executor. Dispatch before the agent parser so its flags
+    # (which include its own -c) are handled by it.
+    if len(sys.argv) > 1 and sys.argv[1] == "allow-script":
+        from .allowscript import main as _allowscript_main
+
+        sys.exit(_allowscript_main(sys.argv[2:], _cli_config_path))
+
     parser = argparse.ArgumentParser(description="Vigil monitoring agent")
     parser.add_argument("-c", "--config", type=Path, help="Path to agent.yml")
     parser.add_argument(
@@ -381,6 +651,12 @@ def main() -> None:
         "--service",
         action="store_true",
         help="Run as a Windows service (used by install.ps1; not for interactive use)",
+    )
+    parser.add_argument(
+        "--engine-proxy",
+        action="store_true",
+        help="Serve the read-only container engine socket for a monitor-mode agent "
+             "(run as root by the vigil-engine-proxy service; not for interactive use)",
     )
     parser.add_argument(
         "--log-file",
@@ -414,6 +690,10 @@ def main() -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
         **({"filename": str(log_file)} if log_file else {}),
     )
+
+    if args.engine_proxy:
+        from .engine_proxy import run as _run_engine_proxy
+        sys.exit(_run_engine_proxy())
 
     if args.service:
         from .winservice import run_service
@@ -471,6 +751,9 @@ def run_agent() -> None:
     consecutive_failures = 0
     inventory_refresh_after = 0.0  # monotonic deadline; 0 → refresh now
     docker_refresh_after = 0.0    # monotonic deadline; 0 → check now
+    software_refresh_after = 0.0  # monotonic deadline; 0 → collect now
+    server_software_digest: str | None = None  # the digest the server holds
+    last_software_sent = 0.0      # monotonic; underpins the resend-every-24h rule
     last_inventory: dict | None = None
     _cached_docker_metrics: list[dict] = []
     docker_payload_pending = False  # fresh results awaiting a successful checkin
@@ -506,14 +789,51 @@ def run_agent() -> None:
             except Exception:
                 logger.exception("Docker container collection failed")
                 docker_containers = None
-            response = client.checkin(
-                config, metrics, inventory=inventory_payload,
-                docker_containers=docker_containers,
-                reboot_required=collector.reboot_required(),
-                windows_updates=windows_update.summary(),
-            )
+            # Installed software: collect on schedule (and on demand through
+            # app_inventory, which fills the pending payload directly). Send
+            # the pending list only when the server doesn't already hold this
+            # digest — unless it's been a day, which re-proves the inventory
+            # after a server-side reset.
+            if time.monotonic() >= software_refresh_after:
+                try:
+                    software.collect_now()
+                except Exception:
+                    logger.exception("Software inventory collection failed")
+                software_refresh_after = time.monotonic() + config.software_interval
+            software_payload = software.take_pending()
+            if (
+                software_payload is not None
+                and software_payload.get("digest") == server_software_digest
+                and time.monotonic() - last_software_sent < 86400
+            ):
+                software_payload = None
+            windows_updates = windows_update.summary()
+            update_list = windows_update.take_update_list()
+            engines = _container_engines()
+            try:
+                response = client.checkin(
+                    config, metrics, inventory=inventory_payload,
+                    docker_containers=docker_containers,
+                    reboot_required=collector.reboot_required(),
+                    windows_updates=windows_updates,
+                    software=software_payload,
+                    windows_update_list=update_list,
+                    container_engines=engines,
+                )
+            except Exception:
+                windows_update.restore_update_list(update_list)
+                # The list never reached the server. Put it back so the next
+                # pass retries it — unless a newer collection already landed
+                # in the meantime, which supersedes it.
+                with software._pending_lock:
+                    if software_payload is not None and software._pending is None:
+                        software._pending = software_payload
+                raise
             consecutive_failures = 0
             docker_payload_pending = False
+            server_software_digest = response.get("software_digest")
+            if software_payload is not None:
+                last_software_sent = time.monotonic()
 
             # Handle public key (TOFU pinning)
             pub_key_b64 = response.get("public_key")

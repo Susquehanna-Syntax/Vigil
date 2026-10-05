@@ -147,15 +147,15 @@ async function _renderStatTile(body, settings) {
   const h = _wRows(hosts);
   const a = _wRows(alerts);
   const stats = {
-    hosts: { value: h.length, label: 'Total hosts', color: 'var(--lavender)' },
+    hosts: { value: h.length, label: 'Total hosts', color: 'var(--lavender-ink)' },
     online: { value: h.filter(x => x.status === 'online').length,
-              label: 'Online', color: 'var(--mint)' },
+              label: 'Online', color: 'var(--mint-ink)' },
     offline: { value: h.filter(x => x.status === 'offline').length,
                label: 'Offline', color: 'var(--text-3)' },
     alerts_firing: { value: a.filter(x => x.state === 'firing').length,
-                     label: 'Alerts firing', color: 'var(--rose)' },
+                     label: 'Alerts firing', color: 'var(--rose-ink)' },
     pending: { value: h.filter(x => x.status === 'pending').length,
-               label: 'Pending approval', color: 'var(--peach)' },
+               label: 'Pending approval', color: 'var(--peach-ink)' },
   };
   const stat = stats[settings.stat] || stats.hosts;
   body.innerHTML =
@@ -425,17 +425,17 @@ async function _renderMetricChart(body, settings, widget) {
       type: 'line',
       data: { datasets: [{
         label: `${settings.category}/${settings.metric}`,
-        data: [], borderColor: 'var(--sky)', backgroundColor: 'rgba(130,196,238,.14)',
+        data: [], borderColor: tok('--sky'), backgroundColor: 'rgba(130,196,238,.14)',
         borderWidth: 2, pointRadius: 0, fill: true, tension: 0.25,
       }] },
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
         interaction: { mode: 'index', intersect: false },
         scales: {
-          x: { type: 'time', ticks: { maxTicksLimit: 5, color: '#8b8ba3' },
-               grid: { color: 'rgba(255,255,255,.05)' } },
-          y: { beginAtZero: true, ticks: { maxTicksLimit: 4, color: '#8b8ba3' },
-               grid: { color: 'rgba(255,255,255,.05)' } },
+          x: { type: 'time', ticks: { maxTicksLimit: 5, color: tok('--text-3') },
+               grid: { color: tok('--grid-line') } },
+          y: { beginAtZero: true, ticks: { maxTicksLimit: 4, color: tok('--text-3') },
+               grid: { color: tok('--grid-line') } },
         },
         plugins: { legend: { display: false } },
       },
@@ -483,12 +483,16 @@ async function _renderDockerContainers(body, settings) {
   const rows = _wRows(await _wCached(
     `/api/v1/hosts/${encodeURIComponent(settings.host)}/containers/`));
   if (!rows.length) { _wEmpty(body, 'No containers reported'); return; }
+  // Stack members sit together, under their compose project (M11); an
+  // outdated image tints the card peach and says so.
+  rows.sort((a, b) => (a.stack || '\uffff').localeCompare(b.stack || '\uffff')
+    || (a.name || '').localeCompare(b.name || ''));
   body.innerHTML = _dashCards(rows.map(c => _dashCard({
-    edge: c.state === 'running' ? 'mint' : 'grey',
+    edge: c.outdated ? 'peach' : c.state === 'running' ? 'mint' : 'grey',
     dot: true,
     title: c.name || '(unnamed)',
-    sub: c.image || '',
-    right: c.state || '',
+    sub: [c.stack, c.image].filter(Boolean).join(' · '),
+    right: c.outdated ? 'outdated' : c.state || '',
     rightSub: c.status || '',
     tip: c.image || c.name || '',
     nav: { page: 'inventory', host: settings.host },
@@ -591,7 +595,7 @@ async function _renderProcessMonitor(body, settings, widget) {
     chart = new Chart(body.querySelector('canvas').getContext('2d'), {
       type: 'line',
       data: { datasets: [{
-        label: wanted, data: [], borderColor: 'var(--mint)',
+        label: wanted, data: [], borderColor: tok('--mint'),
         backgroundColor: 'rgba(126,221,181,.14)',
         borderWidth: 2, pointRadius: 0, fill: true, tension: 0.25,
       }] },
@@ -599,10 +603,10 @@ async function _renderProcessMonitor(body, settings, widget) {
         responsive: true, maintainAspectRatio: false, animation: false,
         interaction: { mode: 'index', intersect: false },
         scales: {
-          x: { type: 'time', ticks: { maxTicksLimit: 5, color: '#8b8ba3' },
-               grid: { color: 'rgba(255,255,255,.05)' } },
-          y: { beginAtZero: true, ticks: { maxTicksLimit: 4, color: '#8b8ba3' },
-               grid: { color: 'rgba(255,255,255,.05)' } },
+          x: { type: 'time', ticks: { maxTicksLimit: 5, color: tok('--text-3') },
+               grid: { color: tok('--grid-line') } },
+          y: { beginAtZero: true, ticks: { maxTicksLimit: 4, color: tok('--text-3') },
+               grid: { color: tok('--grid-line') } },
         },
         plugins: { legend: { display: false } },
       },
@@ -814,12 +818,12 @@ async function _renderNetworkThroughput(body, settings, widget) {
         responsive: true, maintainAspectRatio: false, animation: false,
         interaction: { mode: 'index', intersect: false },
         scales: {
-          x: { type: 'time', ticks: { maxTicksLimit: 5, color: '#8b8ba3' },
-               grid: { color: 'rgba(255,255,255,.05)' } },
-          y: { beginAtZero: true, ticks: { maxTicksLimit: 4, color: '#8b8ba3' },
-               grid: { color: 'rgba(255,255,255,.05)' } },
+          x: { type: 'time', ticks: { maxTicksLimit: 5, color: tok('--text-3') },
+               grid: { color: tok('--grid-line') } },
+          y: { beginAtZero: true, ticks: { maxTicksLimit: 4, color: tok('--text-3') },
+               grid: { color: tok('--grid-line') } },
         },
-        plugins: { legend: { display: true, labels: { color: '#8b8ba3', boxWidth: 10 } } },
+        plugins: { legend: { display: true, labels: { color: tok('--text-3'), boxWidth: 10 } } },
       },
     });
     _WCHARTS.set(widget.id, chart);

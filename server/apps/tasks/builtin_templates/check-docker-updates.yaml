@@ -6,8 +6,8 @@ description: |
   lists each Hub-tagged container as up to date or OUTDATED, and the fresh
   results ride back on the next check-in so outdated-image alerts fire or
   resolve within about a minute. Deploy it ad hoc after updating containers,
-  or add a schedule window to run it during maintenance hours.
-relevance: "any host running Docker containers"
+  or add a schedule window to run it during maintenance hours. Relevant to
+  any host running Docker containers.
 risk: low
 author: Vigil
 created: 2026-07-06

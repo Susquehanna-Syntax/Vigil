@@ -32,18 +32,21 @@ Step schema (all fields except ``type`` and ``action`` are optional):
   # Loop step
   - name: "install packages"
     type: for_each
-    list: ["curl", "htop", "vim"]   # or "{{packages}}" to resolve from context
+    list: ["curl", "htop", "vim"]   # or "${{ packages }}" to resolve from context
     variable: "pkg"                 # name of the loop variable in ctx
     steps:
       - type: action
         action: "pkg.install"
         params:
-          package_name: "{{pkg}}"
+          package_name: "${{ pkg }}"
 
 Variable syntax:
-  ``{{var}}``         — looks up ctx["var"]
-  ``{{var.attr}}``    — looks up ctx["var"]["attr"] or ctx["var"].attr
-  ``{{prev.output}}`` — shortcut: ctx["prev"]["output"]
+  ``${{ var }}``         — looks up ctx["var"]
+  ``${{ var.attr }}``    — looks up ctx["var"]["attr"] or ctx["var"].attr
+  ``${{ inputs.x }}``    — same as ``${{ x }}`` (the inputs namespace)
+  ``${{ prev.output }}`` — shortcut: ctx["prev"]["output"]
+
+Bare ``{{ }}`` is literal text — only the ``${{ … }}`` marker is a template.
 
 Condition syntax (evaluated left-to-right, single expression):
   ``expr OP value``
@@ -62,6 +65,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from .expression import evaluate as _evaluate_when
+
 logger = logging.getLogger("vigil.runtime")
 
 # ── StepResult ────────────────────────────────────────────────────────────────
@@ -77,6 +82,7 @@ class StepResult:
     output: str = ""
     exit_code: int = 0
     error: str = ""
+    data: dict = field(default_factory=dict)
 
     def to_context(self) -> dict[str, Any]:
         """Return a dict suitable for use as ``ctx["prev"]`` or a named store."""
@@ -92,7 +98,15 @@ class StepResult:
 
 # ── Value resolution ──────────────────────────────────────────────────────────
 
-_TEMPLATE_RE = re.compile(r"\{\{([^}]+)\}\}")
+# Only the ${{ … }} marker is a template. Bare braces are literal — they are Go templates
+# (docker --format '{{.Names}}'), find -exec {} \;, PowerShell blocks and ${VAR} in scripts,
+# and rewriting them silently corrupted the command.
+_TEMPLATE_RE = re.compile(r"\$\{\{\s*([^}]+?)\s*\}\}")
+# One pass over the text: ``$${{`` is an escaped literal ``${{`` (the server
+# writes input values that contain ``${{`` this way), anything else of the
+# form ``${{ … }}`` is a marker. A single ``re.sub`` never rescans what it
+# inserted, so a value can never become a template itself.
+_TOKEN_RE = re.compile(r"\$\$\{\{|\$\{\{\s*([^}]+?)\s*\}\}")
 
 
 def _lookup(path: str, ctx: dict[str, Any]) -> Any:
@@ -128,12 +142,14 @@ def resolve_value(template: Any, ctx: dict[str, Any]) -> Any:
     if m:
         return _lookup(m.group(1), ctx)
 
-    # Partial substitution — stringify each placeholder
+    # Partial substitution — stringify each placeholder, unescape $${{
     def _sub(match: re.Match) -> str:
+        if match.group(1) is None:
+            return "${{"
         val = _lookup(match.group(1), ctx)
         return "" if val is None else str(val)
 
-    return _TEMPLATE_RE.sub(_sub, template)
+    return _TOKEN_RE.sub(_sub, template)
 
 
 def resolve_params(params: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
@@ -256,6 +272,7 @@ class TaskRuntime:
         on_step_result: Callable[[StepResult], None] | None = None,
     ) -> None:
         self._payload = task_payload
+        self._when_context = task_payload.get("when_context") or {}
         self._config = config
         self._on_step_result = on_step_result
         self._results: list[StepResult] = []
@@ -269,6 +286,8 @@ class TaskRuntime:
 
         # Seed the execution context with template variables
         ctx: dict[str, Any] = dict(variables)
+        ctx["inputs"] = dict(variables)
+        ctx["steps"] = {}
         ctx["prev"] = StepResult(
             name="__init__", action="__init__", state="ok"
         ).to_context()
@@ -288,7 +307,105 @@ class TaskRuntime:
             step_type = step.get("type", "action")
             name = step.get("name", step_type)
 
-            if step_type == "action" or step_type not in ("if", "for_each"):
+            when_expr = (step.get("when") or "").strip()
+            guard_expr = (step.get("guard") or "").strip()
+            # Set when a guard or when: could not be evaluated: the step is
+            # then recorded as an error and never executed.
+            result = None
+            if guard_expr:
+                try:
+                    guard_ctx = {**self._when_context, "steps": ctx.get("steps", {})}
+                    guard_true = bool(_evaluate_when(guard_expr, guard_ctx))
+                except Exception as exc:
+                    logger.error(
+                        "Step %r: guard %r could not be evaluated: %s",
+                        name, guard_expr, exc,
+                    )
+                    result = StepResult(
+                        name=name,
+                        action=str(step.get("action", "")),
+                        state="error",
+                        error=f"guard {guard_expr!r} could not be evaluated ({exc})",
+                    )
+                else:
+                    if not guard_true:
+                        logger.info(
+                            "Step %r skipped: branch %r not taken",
+                            name, step.get("branch"),
+                        )
+                        result = StepResult(
+                            name=name,
+                            action=str(step.get("action", "")),
+                            state="skipped",
+                            output=f"branch {step.get('branch')} not taken",
+                        )
+                        steps_map = ctx.get("steps", {})
+                        steps_map[name] = {
+                            "status": "skipped",
+                            "result": {},
+                        }
+                        ctx["steps"] = steps_map
+                        if top_level:
+                            self._results.append(result)
+                            if self._on_step_result:
+                                try:
+                                    self._on_step_result(result)
+                                except Exception as cb_exc:
+                                    logger.warning(
+                                        "on_step_result callback raised: %s",
+                                        cb_exc,
+                                    )
+                        continue
+            if when_expr and result is None:
+                try:
+                    when_ctx = {**self._when_context, "steps": ctx.get("steps", {})}
+                    when_true = bool(_evaluate_when(when_expr, when_ctx))
+                except Exception as exc:
+                    logger.error(
+                        "Step %r: when %r could not be evaluated: %s",
+                        name, when_expr, exc,
+                    )
+                    result = StepResult(
+                        name=name,
+                        action=str(step.get("action", "")),
+                        state="error",
+                        error=f"when {when_expr!r} could not be evaluated ({exc})",
+                    )
+                else:
+                    if not when_true:
+                        logger.info(
+                            "Step %r skipped: when %r evaluated false",
+                            name, when_expr,
+                        )
+                        result = StepResult(
+                            name=name,
+                            action=str(step.get("action", "")),
+                            state="skipped",
+                            output=f"when {when_expr!r} evaluated false",
+                        )
+                        # A skip is recorded like any other result so later
+                        # steps can see steps.<id>.status == "skipped", but
+                        # it must not update ctx["prev"].
+                        steps_map = ctx.get("steps", {})
+                        steps_map[name] = {
+                            "status": "skipped",
+                            "result": {},
+                        }
+                        ctx["steps"] = steps_map
+                        if top_level:
+                            self._results.append(result)
+                            if self._on_step_result:
+                                try:
+                                    self._on_step_result(result)
+                                except Exception as cb_exc:
+                                    logger.warning(
+                                        "on_step_result callback raised: %s",
+                                        cb_exc,
+                                    )
+                        continue
+            if result is not None:
+                pass  # guard / when could not be evaluated — do not run the step
+            elif step_type == "action" or step_type not in ("if", "for_each"):
                 result = self._execute_action(step, ctx)
             elif step_type == "if":
                 result = self._execute_if(step, ctx)
@@ -304,6 +421,15 @@ class TaskRuntime:
 
             # Update ``prev`` shortcut
             ctx["prev"] = result.to_context()
+
+            # Record named steps for ``${{ steps.<id>.result.* }}`` resolution
+            if result.name:
+                steps_map = ctx.get("steps", {})
+                steps_map[result.name] = {
+                    "status": result.state,
+                    "result": dict(result.data),
+                }
+                ctx["steps"] = steps_map
 
             # Store named output if requested
             store_as = step.get("store_output")
@@ -342,13 +468,15 @@ class TaskRuntime:
         logger.debug("step[action] name=%r action=%r params=%r", name, action, params)
 
         try:
-            output = execute_action(action, params, self._config, timeout=timeout)
+            output = execute_action(action, params, self._config, timeout=timeout,
+                                    inputs=ctx.get("inputs"))
             result = StepResult(
                 name=name,
                 action=str(action),
                 state="ok",
-                output=output or "",
+                output=str(output or ""),
                 exit_code=0,
+                data=dict(getattr(output, "data", {}) or {}),
             )
         except Exception as exc:
             logger.error("step[action] %r failed: %s", action, exc)
