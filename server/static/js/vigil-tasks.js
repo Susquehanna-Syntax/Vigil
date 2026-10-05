@@ -10,8 +10,7 @@
 
 /* ── Editor: default YAML + canned templates ─────────────────────────── */
 const DEFAULT_YAML_TEMPLATE = `name: New Task
-description: What this task does and when to run it.
-relevance: "e.g. web servers, database hosts"
+description: What this task does, and when to run it.
 risk: standard
 
 # Optional: restrict when tasks are dispatched (server timezone).
@@ -29,7 +28,7 @@ risk: standard
 #     attempts: 3
 #     delay_seconds: 60
 
-# Optional: require specific output (supports {{ inputs.x }} variables)
+# Optional: require specific output (supports \${{ inputs.x }} variables)
 # success_criteria:
 #   exit_code: 0
 #   output_contains: "restarted"
@@ -54,7 +53,7 @@ description: |
   agent's scheduled check (default every 6 hours — docker_check_interval in
   agent.yml). Output lists each Hub-tagged container as up to date or
   OUTDATED, and outdated-image alerts fire or resolve on the next check-in.
-relevance: "any host running Docker containers"
+  Relevant to any host running Docker containers.
 risk: low
 
 actions:
@@ -82,7 +81,7 @@ actions:
   - id: upgrade
     type: update_package
     params:
-      package_name: "{{ inputs.pkg }}"
+      package_name: "\${{ inputs.pkg }}"
 `
   },
   {
@@ -103,13 +102,13 @@ actions:
   - id: remove
     type: remove_package
     params:
-      package_name: "{{ inputs.pkg }}"
+      package_name: "\${{ inputs.pkg }}"
   - id: refresh-index
     type: run_package_updates
   - id: install
     type: install_package
     params:
-      package_name: "{{ inputs.pkg }}"
+      package_name: "\${{ inputs.pkg }}"
 `
   },
   {
@@ -144,7 +143,7 @@ actions:
   - id: upgrade-only
     type: update_package
     params:
-      package_name: "{{ inputs.pkg }}"
+      package_name: "\${{ inputs.pkg }}"
 `
   },
   {
@@ -165,7 +164,7 @@ actions:
   - id: restart
     type: restart_service
     params:
-      service_name: "{{ inputs.service }}"
+      service_name: "\${{ inputs.service }}"
 `
   },
   {
@@ -185,7 +184,7 @@ actions:
   - id: clean
     type: clear_temp_files
     params:
-      older_than_days: "{{ inputs.days }}"
+      older_than_days: "\${{ inputs.days }}"
 `
   },
   {
@@ -195,7 +194,8 @@ actions:
 description: |
   Polls 'who' until no users are logged in, then restarts the named service.
   Requires the agent to be in full_control mode because run_command is used.
-relevance: "interactive workstations where you don't want to disrupt active users"
+  Relevant to interactive workstations where you don't want to disrupt
+  active users.
 risk: high
 
 inputs:
@@ -213,12 +213,12 @@ actions:
   - id: wait-for-idle
     type: run_command
     params:
-      command: "sh -c 'for i in $(seq 1 {{ inputs.max_wait_minutes }}); do who | grep -q . || exit 0; sleep 60; done; exit 1'"
+      command: "sh -c 'for i in $(seq 1 \${{ inputs.max_wait_minutes }}); do who | grep -q . || exit 0; sleep 60; done; exit 1'"
       timeout: 7200
   - id: restart-service
     type: restart_service
     params:
-      service_name: "{{ inputs.service }}"
+      service_name: "\${{ inputs.service }}"
 `
   },
   {
@@ -230,7 +230,7 @@ description: |
   After the task completes, finish activation in the browser at
   https://<this-host>:8834 using the activation code emailed to you
   by Tenable. Plugin compilation takes ~20-30 minutes the first time.
-relevance: "the host you want to run as your central Nessus scanner"
+  Relevant to the host you want to run as your central Nessus scanner.
 risk: high
 
 inputs:
@@ -244,7 +244,7 @@ actions:
   - id: download
     type: run_command
     params:
-      command: 'curl -sSfL -o /tmp/nessus.deb "{{ inputs.deb_url }}"'
+      command: 'curl -sSfL -o /tmp/nessus.deb "\${{ inputs.deb_url }}"'
       timeout: 600
   - id: install
     type: run_command
@@ -271,8 +271,8 @@ description: |
   Asks the Vigil server to schedule a Nessus scan of this host.
   Nothing runs locally — the agent emits a marker, the server records
   the request in the Vulnerabilities tab, and the central Nessus
-  instance launches the actual scan on the next sync cycle.
-relevance: "any host you want scanned for vulnerabilities"
+  instance launches the actual scan on the next sync cycle. Relevant to
+  any host you want scanned for vulnerabilities.
 risk: low
 
 actions:
@@ -288,8 +288,8 @@ description: |
   Cross-platform Trivy install. The agent picks the right path based
   on its own platform (apt / dnf / brew / winget) via per-step when:
   predicates. Hosts without a known package manager are filtered out
-  by target_tags so the editor only offers eligible targets.
-relevance: "any host you want to scan with the agent-local Trivy scanner"
+  by target_tags so the editor only offers eligible targets. Relevant to
+  any host you want to scan with the agent-local Trivy scanner.
 risk: high
 target_tags:
   - pkg:apt
@@ -343,8 +343,7 @@ description: |
   and ships it back. The server parses each (package, CVE) pair into a
   VulnFinding row and recomputes the host score. Requires the trivy
   binary already installed (see the "Install Trivy on this host"
-  template).
-relevance: "any host with the Trivy CLI installed"
+  template). Relevant to any host with the Trivy CLI installed.
 risk: low
 
 inputs:
@@ -360,7 +359,7 @@ actions:
   - id: scan
     type: run_trivy_scan
     params:
-      scope: "{{ inputs.scope }}"
+      scope: "\${{ inputs.scope }}"
 `
   },
   {
@@ -374,8 +373,8 @@ description: |
   After it's ready, set the admin password, create a Vigil service
   account, and wire GREENBONE_URL/USERNAME/PASSWORD into the Vigil
   server stack. Linux-only — restricted to docker-capable hosts via
-  target_tags.
-relevance: "a Linux host you want to run as your Greenbone scanner"
+  target_tags. Relevant to a Linux host you want to run as your Greenbone
+  scanner.
 risk: high
 target_tags:
   - os:linux
@@ -410,8 +409,8 @@ description: |
   Asks the server to queue a network scan against this host. The
   engine field picks which central scanner runs — set it to "nessus"
   or "greenbone", or leave blank to let the server choose based on
-  what's configured.
-relevance: "any host you want scanned by whichever network scanner is configured"
+  what's configured. Relevant to any host you want scanned by whichever
+  network scanner is configured.
 risk: low
 
 inputs:
@@ -428,7 +427,7 @@ actions:
   - id: request_scan
     type: request_network_scan
     params:
-      engine: "{{ inputs.engine }}"
+      engine: "\${{ inputs.engine }}"
 `
   },
   {
@@ -448,7 +447,7 @@ actions:
   - id: reboot
     type: reboot
     params:
-      delay_seconds: "{{ inputs.delay }}"
+      delay_seconds: "\${{ inputs.delay }}"
 `
   },
 ];
@@ -525,12 +524,28 @@ function defCardHtml(def, opts) {
           ${riskBadgeHtml(def.risk_level || 'standard')}
           <span class="dot-sep">·</span>
           <span>${actions} action${actions === 1 ? '' : 's'}</span>
-          ${def.relevance ? `<span class="dot-sep">·</span><span>${escHtml(def.relevance)}</span>` : ''}
+          ${(def.parsed_spec || {}).flow ? '<span class="chip">branches</span>' : ''}
+          ${(def.parsed_spec || {}).relevant ? '<span class="chip">applies when…</span>' : ''}
+          ${(def.parsed_spec || {}).severity ? `<span class="chip chip-rose" title="A detection task: a match is a ${escAttr(def.parsed_spec.severity)} finding">detection · ${escHtml(def.parsed_spec.severity)}</span>` : ''}
+          ${def.content_source && def.content_source !== 'organization' ? `<span class="chip chip-muted">${escHtml(def.content_source)}</span>` : ''}
           ${attribution}
         </div>
+        ${_defLastRunHtml(def.last_run)}
       </div>
       <div class="def-card-footer">${buttons}</div>
     </div>`;
+}
+
+// The task's most recent run, as a small donut and a line of counts.
+function _defLastRunHtml(last) {
+  if (!last || !last.hosts || typeof donutHtml !== 'function') return '';
+  const segs = stateSegments(last.states);
+  const words = segs.map(s => `${s.value} ${s.label}`).join(', ');
+  const when = last.created_at ? new Date(last.created_at).toLocaleDateString() : '';
+  return `<div class="def-card-run" title="${escAttr('Last run: ' + words)}">
+    ${donutHtml(segs, { size: 30, legend: false, title: 'Last run' })}
+    <span>Last run${when ? ' ' + escHtml(when) : ''}: ${escHtml(words)}</span>
+  </div>`;
 }
 
 const LIBRARY_EMPTY_HTML = `
@@ -553,8 +568,11 @@ function _renderTaskGrid(scope) {
   const all = taskGridCache[scope] || [];
   const q = (document.getElementById(cfg.searchId)?.value || '').trim().toLowerCase();
   let visible = all;
+  if (document.getElementById('task-library-detections')?.checked) {
+    visible = visible.filter(d => d.parsed_spec && d.parsed_spec.severity);
+  }
   if (q) {
-    visible = all.filter(d => {
+    visible = visible.filter(d => {
       const haystack = [
         d.name, d.description, d.relevance,
         ...(d.parsed_spec?.actions || []).map(a => `${a.type} ${a.label || ''}`)
@@ -610,7 +628,7 @@ async function openDefinitionEditor(definitionId, initialYaml = null) {
       return;
     }
   } else {
-    // initialYaml can be passed by suggestDockerFix() or other callers to pre-fill the editor
+    // initialYaml can be passed by suggestAgentUpdate() or other callers to pre-fill the editor
     document.getElementById('editor-yaml').value = initialYaml || DEFAULT_YAML_TEMPLATE;
   }
 
@@ -633,11 +651,15 @@ async function validateEditor() {
     });
     editorState.lastParsedSpec = body.parsed_spec;
     errBox.classList.remove('show');
+    document.getElementById('editor-preview').classList.remove('preview-stale');
     renderEditorPreview(body.parsed_spec);
   } catch (e) {
     editorState.lastParsedSpec = null;
     errBox.textContent = e.message;
     errBox.classList.add('show');
+    // The preview still shows the last valid version — dim it so it is not
+    // mistaken for what the current (invalid) YAML would do.
+    document.getElementById('editor-preview').classList.add('preview-stale');
   }
 }
 
@@ -652,14 +674,16 @@ function renderEditorPreview(spec) {
   // from container images, package names and CVE fields an agent reported, so
   // a compromised host could otherwise put script into the preview of the task
   // the operator is about to sign.
-  const actionsHtml = spec.actions.map((a, i) => `
-    <div class="preview-step task-${taskRisk}">
-      <div class="preview-step-num">${i + 1}</div>
-      <div class="preview-step-body">
-        <div class="preview-step-title">${escHtml(a.id)} — ${escHtml(a.label || a.type)}</div>
-        <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => `${escHtml(String(k))}=${escHtml(String(v))}`).join(' ') : ''}</div>
-      </div>
-    </div>`).join('');
+  const relevantHtml = spec.relevant
+    ? `<div class="preview-relevant">
+        <div class="preview-relevant-heading">Applies when</div>
+        <ul class="preview-relevant-list">${_relevantTreeHtml(spec.relevant)}</ul>
+        <div class="preview-relevant-note">Hosts where this does not hold report Not applicable and run nothing.</div>
+      </div>`
+    : '';
+  const actionsHtml = spec.flow
+    ? _flowStepsHtml(spec, taskRisk)
+    : spec.actions.map((a, i) => _previewStepHtml(a, i, taskRisk)).join('');
   const inputs = spec.inputs || [];
   let inputsHtml = '';
   if (inputs.length) {
@@ -668,7 +692,7 @@ function renderEditorPreview(spec) {
         ? (i.choices || []).map(c => c.value).join(' | ')
         : (i.default !== undefined && i.default !== '' ? String(i.default) : '');
       return `<div style="display:flex;gap:10px;font-size:12px;padding:6px 10px;border-bottom:1px solid var(--border);">
-        <span class="mono" style="color:var(--sky);min-width:120px;">${escHtml(i.id)}</span>
+        <span class="mono" style="color:var(--sky-ink);min-width:120px;">${escHtml(i.id)}</span>
         <span style="color:var(--text-3);min-width:60px;">${escHtml(i.type)}</span>
         <span style="color:var(--text-2);flex:1;">${escHtml(i.label || '')}</span>
         <span class="mono" style="color:var(--text-3);">${escHtml(sample)}</span>
@@ -680,19 +704,105 @@ function renderEditorPreview(spec) {
         <div style="background:var(--s2);border-radius:var(--r-sm);margin-top:8px;border:1px solid var(--border);">${rows}</div>
       </div>`;
   }
+  const warnings = spec.warnings || [];
+  const warningsHtml = warnings.length
+    ? `<div class="editor-warnings">${warnings.map(w => `<div>${escHtml(w)}</div>`).join('')}</div>`
+    : '';
+  const hasInlineScript = spec.actions.some(a => a.script_sha256);
+  const scriptNote = hasInlineScript
+    ? `<div class="preview-script-note">${escHtml('Managed hosts run an inline script only if its hash is approved on the host (vigil-agent allow-script). Editing the script changes the hash.')}</div>`
+    : '';
   el.innerHTML = `
     <div class="preview-heading">${escHtml(spec.name)}</div>
     <div class="preview-sub">${escHtml(spec.description || 'No description.')}</div>
     <div class="preview-meta">
       ${riskBadgeHtml(spec.risk)}
-      ${spec.relevance ? `<span>${escHtml(spec.relevance)}</span>` : ''}
+      ${spec.flow ? '<span>branches</span>' : ''}
+      ${spec.relevant ? '<span>applies when…</span>' : ''}
       <span>${spec.actions.length} step${spec.actions.length === 1 ? '' : 's'}</span>
       ${inputs.length ? `<span>${inputs.length} input${inputs.length === 1 ? '' : 's'}</span>` : ''}
       ${spec.author ? `<span>by ${escHtml(spec.author)}</span>` : ''}
       ${spec.created ? `<span>${escHtml(spec.created)}</span>` : ''}
     </div>
+    ${warningsHtml}
+    ${relevantHtml}
     ${inputsHtml}
-    <div class="preview-actions">${actionsHtml}</div>`;
+    <div class="preview-actions">${actionsHtml}</div>${scriptNote}`;
+  el.querySelectorAll('[data-copy-hash]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const hash = btn.dataset.copyHash;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(hash).then(() => {
+          showToast('Hash copied', 'success');
+        }).catch(() => {
+          showToast('Copy failed', 'error');
+        });
+      } else {
+        const span = btn.parentElement.querySelector('span');
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        const range = document.createRange();
+        range.selectNodeContents(span);
+        sel.addRange(range);
+        showToast('Press Ctrl+C to copy', 'info');
+      }
+    });
+  });
+}
+
+function _previewStepHtml(a, i, taskRisk) {
+  return `
+    <div class="preview-step task-${taskRisk}">
+      <div class="preview-step-num">${i + 1}</div>
+      <div class="preview-step-body">
+        <div class="preview-step-title">${escHtml(a.id)} — ${escHtml(a.label || a.type)}</div>
+        <div class="preview-step-action">${escHtml(a.type)}${Object.keys(a.params || {}).length ? ' · ' + Object.entries(a.params).map(([k, v]) => k === 'script' ? `script=${String(v).replace(/\n+$/, '').split('\n').length} lines` : `${escHtml(String(k))}=${escHtml(String(v))}`).join(' ') : ''}</div>
+        ${a.when ? `<div class="preview-step-outputs">runs only when: ${escHtml(a.when)}</div>` : ''}
+        ${(a.outputs || []).length ? `<div class="preview-step-outputs">outputs: ${a.outputs.map(o => escHtml(o)).join(', ')}</div>` : ''}
+        ${a.script_sha256 ? `<div class="preview-step-hash"><span class="mono">${escHtml(a.script_sha256)}</span>
+          <button type="button" class="btn btn-xs" data-copy-hash="${escAttr(a.script_sha256)}">Copy</button></div>` : ''}
+      </div>
+    </div>`;
+}
+
+function _relevantItemHtml(item) {
+  if (item && item.probe) {
+    const params = item.probe.params || {};
+    const pairs = Object.entries(params).map(([k, v]) => `${escHtml(String(k))}=${escHtml(String(v))}`).join(' ');
+    return `<li><code>${escHtml(item.probe.type)}</code>${pairs ? ` · ${pairs}` : ''}</li>`;
+  }
+  return `<li>${_relevantTreeHtml(item)}</li>`;
+}
+
+function _relevantTreeHtml(node) {
+  const head = node.op === 'any' ? 'any of:' : node.op === 'not' ? 'none of:' : 'all of:';
+  const items = (node.items || []).map(_relevantItemHtml).join('');
+  return `<span class="preview-relevant-op">${head}</span><ul class="preview-relevant-list">${items}</ul>`;
+}
+
+function _flowGroupHtml(label, nodes, spec, taskRisk) {
+  const body = nodes.map(n => _flowNodeHtml(n, spec, taskRisk)).join('');
+  return `<div class="preview-branch-group">${label ? `<div class="preview-branch-group-label">${label}</div>` : ''}${body}</div>`;
+}
+
+function _flowNodeHtml(node, spec, taskRisk) {
+  if (node.step) {
+    const idx = spec.actions.findIndex(a => a.id === node.step);
+    return idx >= 0 ? _previewStepHtml(spec.actions[idx], idx, taskRisk) : '';
+  }
+  if (node.use) {
+    return `<div class="preview-use"><span class="preview-use-label">uses task</span> <code>${escHtml(node.use)}</code> — its current steps are copied in when you deploy</div>`;
+  }
+  const then = _flowGroupHtml('then', node.then || [], spec, taskRisk);
+  const els = (node.else || []).length ? _flowGroupHtml('else', node.else, spec, taskRisk) : '';
+  return `<div class="preview-branch">
+    <div class="preview-branch-if">if <code>${escHtml(node.if)}</code></div>
+    <div class="preview-branch-groups">${then}${els}</div>
+  </div>`;
+}
+
+function _flowStepsHtml(spec, taskRisk) {
+  return (spec.flow || []).map(n => _flowNodeHtml(n, spec, taskRisk)).join('');
 }
 
 /* ── Community submission (GitHub PR) ────────────────────────────────── */
@@ -807,6 +917,7 @@ document.querySelectorAll('.tab-bar[data-tab-group="tasks"] .tab').forEach(tab =
 const _TASK_STATE_COLORS = {
   completed: 'var(--mint)', failed: 'var(--rose)', rejected: 'var(--rose)',
   pending: 'var(--peach)', dispatched: 'var(--peach)', executing: 'var(--sky)', blocked: 'var(--lemon)',
+  skipped: 'var(--lavender)', not_applicable: 'var(--lavender)',
 };
 
 function _tdEl(tag, style, text) {
@@ -823,10 +934,12 @@ async function openTaskDetail(runId) {
   const titleEl = document.getElementById('task-detail-title');
   const metaEl = document.getElementById('task-detail-meta');
   const stepsEl = document.getElementById('task-detail-steps');
+  const actionsEl = document.getElementById('task-detail-actions');
 
   titleEl.textContent = 'Loading…';
   metaEl.replaceChildren();
   stepsEl.replaceChildren();
+  actionsEl.hidden = true;
   overlay.classList.add('open');
   modal.classList.add('open');
 
@@ -854,18 +967,32 @@ async function openTaskDetail(runId) {
       return;
     }
 
+    // A playbook run draws its flow: give the modal the room the lanes need.
+    modal.classList.toggle('modal-flow', !!run.flow_snapshot);
+    if (run.summary && typeof runSummaryHtml === 'function') {
+      const summaryBox = document.createElement('div');
+      summaryBox.innerHTML = runSummaryHtml(run.summary);
+      stepsEl.appendChild(summaryBox);
+    }
+    if (run.flow_snapshot && typeof flowRunHtml === 'function') {
+      const flowBox = document.createElement('div');
+      flowBox.innerHTML = flowRunHtml(run);
+      stepsEl.appendChild(flowBox);
+    }
+
     for (const task of run.tasks) {
       const color = _TASK_STATE_COLORS[task.state] || 'var(--text-3)';
       const output = (task.result_output || '').trim();
 
       const card = _tdEl('div', 'background:var(--s1);border-radius:var(--r-md);padding:14px 16px;');
+      card.dataset.host = String(task.host);
 
       const hdr = _tdEl('div', 'display:flex;align-items:center;gap:10px;margin-bottom:6px;');
       hdr.appendChild(_tdEl('span', 'font-size:13px;font-weight:600;color:var(--text-1);', task.step_label || task.action));
       if (task.step_label && task.step_label !== task.action) {
         hdr.appendChild(_tdEl('span', "font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-3);", task.action));
       }
-      hdr.appendChild(_tdEl('span', 'margin-left:auto;font-size:11px;font-weight:600;color:' + color + ';', task.state));
+      hdr.appendChild(_tdEl('span', 'margin-left:auto;font-size:11px;font-weight:600;color:' + color + ';', TASK_STATE_LABELS[task.state] || task.state));
       card.appendChild(hdr);
 
       const hostLine = _tdEl('div', 'font-size:11px;color:var(--text-3);margin-bottom:' + (output ? '8' : '0') + 'px;');
@@ -873,20 +1000,47 @@ async function openTaskDetail(runId) {
         (task.completed_at ? ' · ' + new Date(task.completed_at).toLocaleString() : '');
       card.appendChild(hostLine);
 
+      // Per-step rows first — what happened, in words — and the raw output
+      // folded away under them when there are rows to read instead.
+      const results = document.createElement('div');
+      results.innerHTML = _stepResultsHtml(task.result_data, task.result_output);
+      const hasRows = !!results.innerHTML;
+      if (hasRows) card.appendChild(results);
+
       if (output) {
         const pre = _tdEl('pre', "margin:0;padding:10px 12px;background:var(--s0);border-radius:var(--r-sm);" +
           "font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-2);" +
           'white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;');
         pre.textContent = output;
-        card.appendChild(pre);
+        if (hasRows) {
+          const more = document.createElement('details');
+          more.className = 'step-output-more';
+          const summary = document.createElement('summary');
+          summary.textContent = 'Full output';
+          more.append(summary, pre);
+          card.appendChild(more);
+        } else {
+          card.appendChild(pre);
+        }
       } else if (task.state === 'completed' || task.state === 'failed') {
         card.appendChild(_tdEl('div', 'font-size:11px;color:var(--text-3);font-style:italic;', 'No output captured.'));
       }
 
       stepsEl.appendChild(card);
     }
+
+    if (typeof wireRunSummary === 'function') wireRunSummary(stepsEl, run.summary);
+
+    const huntBtn = document.getElementById('task-detail-hunt');
+    if (huntBtn) {
+      actionsEl.hidden = !_runHasHuntSteps(run);
+      huntBtn.onclick = () => {
+        closeTaskDetail();
+        openHuntResults(run.id);
+      };
+    }
   } catch (e) {
-    const errEl = _tdEl('div', 'color:var(--rose);padding:16px;');
+    const errEl = _tdEl('div', 'color:var(--rose-ink);padding:16px;');
     errEl.textContent = 'Failed to load run details: ' + e.message;
     stepsEl.appendChild(errEl);
   }
@@ -903,6 +1057,7 @@ const TASK_STATE_LABELS = {
   blocked: 'Blocked', pending: 'Pending', dispatched: 'Dispatched',
   executing: 'Executing', completed: 'Completed', failed: 'Failed',
   rejected: 'Rejected', expired: 'Expired', skipped: 'Skipped',
+  not_applicable: 'Not applicable',
 };
 
 const taskHistoryState = { page: 1, pages: 1, interval: null };

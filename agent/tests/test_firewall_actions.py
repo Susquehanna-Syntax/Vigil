@@ -1,6 +1,8 @@
 """The firewall actions. Reads must never raise on a host that simply has no
 firewall tool: "this host has no supported firewall" is an answer, and turning
 it into a task failure buries it in an error nobody reads."""
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import json
 import sys
 import unittest

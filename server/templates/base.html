@@ -34,12 +34,15 @@
       if (t === 'system') {
         t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
           ? 'dark' : 'light';
-      } else if (t !== 'light') {
+      } else if (t !== 'light' && t !== 'river' && t !== 'ink') {
         t = 'dark';
       }
       document.documentElement.setAttribute('data-theme', t);
       var d = localStorage.getItem('vigil-density') || 'cozy';
       document.documentElement.setAttribute('data-density', d);
+      if (localStorage.getItem('vigil-reduce-motion') === '1') {
+        document.documentElement.classList.add('rm-sim');
+      }
     } catch (e) {}
   })();
 </script>
@@ -57,6 +60,12 @@
     </div>
     <div class="sidebar-icon" data-page="inventory" data-tip="Inventory">
       <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+    </div>
+    <div class="sidebar-icon" data-page="apps" data-tip="Apps">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><circle cx="6" cy="6.5" r=".6"/><circle cx="8.5" cy="6.5" r=".6"/><rect x="7" y="12" width="4" height="4" rx="1"/><line x1="13" y1="13" x2="17" y2="13"/><line x1="13" y1="15.5" x2="16" y2="15.5"/></svg>
+    </div>
+    <div class="sidebar-icon" data-page="policies" data-tip="Policies">
+      <svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><polyline points="8.5 12 11 14.5 15.5 9.5"/></svg>
     </div>
     <div class="sidebar-icon" data-page="tasks" data-tip="Tasks">
       <svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
@@ -76,6 +85,9 @@
     <div class="sidebar-icon" data-page="monitor" data-tip="Monitor">
       <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
     </div>
+    <div class="sidebar-icon" data-page="containers" data-tip="Containers">
+      <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="13" rx="2"/><line x1="7" y1="7" x2="7" y2="20"/><line x1="12" y1="7" x2="12" y2="20"/><line x1="17" y1="7" x2="17" y2="20"/><path d="M6 7V4h12v3"/></svg>
+    </div>
     <div class="sidebar-icon" data-page="alerts" data-tip="Alerts">
       <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
       {% if alert_count %}<div class="badge-dot" style="background: var(--rose);"></div>{% endif %}
@@ -92,7 +104,7 @@
     </div>
 
     <div class="sidebar-spacer"></div>
-    <div class="sidebar-icon" data-tip="Toggle light / dark" id="theme-toggle" data-act="toggleTheme">
+    <div class="sidebar-icon" data-tip="Theme: Dark" id="theme-toggle" data-act="toggleTheme">
       <svg id="theme-icon-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
       <svg id="theme-icon-sun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </div>
@@ -141,7 +153,7 @@
     <div style="font-size: 12px; color: var(--text-3); display:flex; align-items:center; gap:8px;">
       Agent: <span class="mono" id="detail-agent-version">—</span>
       <button class="btn btn-ghost btn-sm" id="detail-update-agent-btn"
-              style="display:none; padding:2px 8px; color:var(--sky);"
+              style="display:none; padding:2px 8px; color:var(--sky-ink);"
               data-act="forceUpdateAgent">Update</button>
     </div>
   </div>
@@ -162,22 +174,22 @@
     <div class="metric-grid">
       <div class="metric-card">
         <div class="metric-card-label">CPU Usage</div>
-        <div class="metric-card-value" style="color: var(--sky);">—</div>
+        <div class="metric-card-value" style="color: var(--sky-ink);">—</div>
         <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--sky);"></div></div>
       </div>
       <div class="metric-card">
         <div class="metric-card-label">Memory</div>
-        <div class="metric-card-value" style="color: var(--lavender);">—</div>
+        <div class="metric-card-value" style="color: var(--lavender-ink);">—</div>
         <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--lavender);"></div></div>
       </div>
       <div class="metric-card">
         <div class="metric-card-label">Disk</div>
-        <div class="metric-card-value" style="color: var(--mint);">—</div>
+        <div class="metric-card-value" style="color: var(--mint-ink);">—</div>
         <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--mint);"></div></div>
       </div>
       <div class="metric-card">
         <div class="metric-card-label">Swap</div>
-        <div class="metric-card-value" style="color: var(--peach);">—</div>
+        <div class="metric-card-value" style="color: var(--peach-ink);">—</div>
         <div class="metric-card-bar"><div class="metric-card-fill" style="width: 0%; background: var(--peach);"></div></div>
       </div>
     </div>
@@ -240,14 +252,14 @@
       <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <form id="deploy-form" data-submit="submitDeploy" data-a1="$event">
+  <form id="deploy-form" data-submit="submitDeploy" data-a1="$event" novalidate>
     <div class="deploy-grid">
 
       <!-- LEFT: tabbed view of definition / inputs / policy -->
       <div>
         <div class="deploy-tabs" role="tablist">
           <button type="button" class="deploy-tab active" data-tab="yaml" data-act="setDeployTab" data-a1="yaml">YAML</button>
-          <button type="button" class="deploy-tab" data-tab="options" data-act="setDeployTab" data-a1="options" id="deploy-tab-options" style="display:none;">Options</button>
+          <button type="button" class="deploy-tab" data-tab="options" data-act="setDeployTab" data-a1="options" id="deploy-tab-options" style="display:none;">Inputs</button>
           <button type="button" class="deploy-tab" data-tab="schedule" data-act="setDeployTab" data-a1="schedule">Schedule</button>
           <button type="button" class="deploy-tab" data-tab="retry" data-act="setDeployTab" data-a1="retry">Retry</button>
           <button type="button" class="deploy-tab" data-tab="criteria" data-act="setDeployTab" data-a1="criteria">Success</button>
@@ -369,6 +381,12 @@
       </div>
     </div>
 
+    <!-- Hosts whose agent allowlist would refuse this task (M7): skipped unless ticked. -->
+    <div class="deploy-refusals" id="deploy-refusals" hidden>
+      <span id="deploy-refusals-text"></span>
+      <label class="setting-check"><input type="checkbox" id="deploy-send-refusing"> Send to them anyway</label>
+    </div>
+
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:20px;gap:12px;">
       <span id="deploy-risk-label"></span>
       <div style="display:flex;gap:10px;">
@@ -425,7 +443,7 @@
         Comma-separated. Any host carrying <em>any</em> of these tags is in the wave.
         Tags are edited on the host itself &mdash; this only chooses which ones the wave matches.
       </div>
-      <div class="confirm-hint" id="wave-match-preview" style="margin-top:6px;color:var(--sky);"></div>
+      <div class="confirm-hint" id="wave-match-preview" style="margin-top:6px;color:var(--sky-ink);"></div>
     </div>
     <label class="form-check" style="margin-bottom:4px;">
       <input type="checkbox" id="wave-enabled" checked>
@@ -538,7 +556,7 @@ settings before deciding anything.
   </div>
   <div class="totp-sub" style="margin-bottom:14px;">
     The Vigil community catalog lives on GitHub at
-    <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky);">Susquehanna-Syntax/Vigil-Approved-Scripts</a>.
+    <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky-ink);">Susquehanna-Syntax/Vigil-Approved-Scripts</a>.
     Submitting opens GitHub's new-file editor with your YAML pre-filled — GitHub will offer to fork the repo and open a PR.
   </div>
   <div class="totp-sub" style="margin-bottom:18px;">
@@ -645,7 +663,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
     <textarea class="form-control" id="device-notes" placeholder="Anything worth remembering about this device"></textarea>
   </div>
   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-    <button class="btn btn-ghost" id="device-delete-btn" style="display:none;color:var(--rose);" data-act="deleteDeviceFromModal">Delete</button>
+    <button class="btn btn-ghost" id="device-delete-btn" style="display:none;color:var(--rose-ink);" data-act="deleteDeviceFromModal">Delete</button>
     <div style="display:flex;gap:10px;margin-left:auto;">
       <button class="btn btn-ghost" data-act="closeDeviceModal">Cancel</button>
       <button class="btn btn-sky" data-act="saveDevice">Save Device</button>
@@ -664,6 +682,9 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
   </div>
   <div id="task-detail-meta" style="font-size:12px;color:var(--text-3);margin-bottom:16px;flex-shrink:0;display:flex;gap:12px;flex-wrap:wrap;"></div>
   <div id="task-detail-steps" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px;"></div>
+  <div class="confirm-actions" id="task-detail-actions" hidden>
+    <button class="btn btn-outline btn-sm" id="task-detail-hunt" type="button">Open hunt results</button>
+  </div>
 </div>
 
 {# Enrollment wizard — opened by openEnrollWizard() in vigil-enroll.js #}
@@ -708,7 +729,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 
   {# Step 2: polling #}
   <div id="enroll-s2" style="flex:1;overflow-y:auto;display:none;text-align:center;padding:32px 0;">
-    <div style="margin-bottom:16px;"><svg viewBox="0 0 24 24" style="width:32px;height:32px;stroke:var(--sky);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+    <div style="margin-bottom:16px;"><svg viewBox="0 0 24 24" style="width:32px;height:32px;stroke:var(--sky-ink);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
     <div style="font-weight:600;font-size:15px;margin-bottom:8px;">Waiting for agent to connect…</div>
     <div class="totp-sub">The agent will appear here within a few seconds of running the command.</div>
     <div style="margin-top:20px;">
@@ -718,12 +739,13 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 
   {# Step 3: approve #}
   <div id="enroll-s3" style="flex:1;overflow-y:auto;display:none;">
-    <div style="font-weight:600;font-size:15px;margin-bottom:16px;color:var(--mint);">Agent detected!</div>
+    <div style="font-weight:600;font-size:15px;margin-bottom:16px;color:var(--mint-ink);">Agent detected!</div>
     <div class="enroll-card" style="margin-bottom:20px;">
       <div class="status-dot pending"></div>
       <div class="enroll-info">
         <div class="enroll-hostname" id="enroll-detected-hostname">—</div>
         <div class="enroll-meta" id="enroll-detected-meta">—</div>
+        <div class="enroll-meta" id="enroll-replaces" style="display:none;margin-top:6px;"></div>
       </div>
     </div>
     <div class="totp-sub" style="margin-bottom:12px;">Review the details above and approve the host to bring it online. Confirm with your TOTP code — approval is 2FA-gated because an approved host immediately becomes eligible to receive signed tasks.</div>
@@ -739,8 +761,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 
   {# Step 4: done #}
   <div id="enroll-s4" style="flex:1;overflow-y:auto;display:none;text-align:center;padding:32px 0;">
-    <div style="margin-bottom:16px;"><svg viewBox="0 0 24 24" style="width:36px;height:36px;stroke:var(--mint);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
-    <div style="font-weight:600;font-size:16px;margin-bottom:8px;color:var(--mint);">Host enrolled successfully</div>
+    <div style="margin-bottom:16px;"><svg viewBox="0 0 24 24" style="width:36px;height:36px;stroke:var(--mint-ink);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+    <div style="font-weight:600;font-size:16px;margin-bottom:8px;color:var(--mint-ink);">Host enrolled successfully</div>
     <div class="totp-sub" style="margin-bottom:24px;" id="enroll-done-msg">The agent is now online and monitoring.</div>
     <button class="btn btn-sky btn-sm" data-act="closeEnrollWizardAndReload">Done</button>
   </div>
@@ -767,6 +789,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 
 <!-- vigil-utils.js — getCsrf, apiPost/apiJson, showToast, escHtml, formatBytes, groupByLabel, computeRates. Load first: every other script depends on this. -->
 <script src="{% static 'js/vigil-utils.js' %}"></script>
+<!-- vigil-modal.js — focus, Esc, focus trap, inert page and stacking for every dialog -->
+<script src="{% static 'js/vigil-modal.js' %}"></script>
 <!-- vigil-nav.js — navigateTo(), tab-bar switching -->
 <script src="{% static 'js/vigil-nav.js' %}"></script>
 <!-- vigil-widgets.js — one renderer per widget kind. Load before vigil-dashboards.js, which calls into WIDGET_RENDERERS. -->
@@ -790,12 +814,16 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-tags.js' %}"></script>
 <script src="{% static 'js/vigil-pickers.js' %}"></script>
 <script src="{% static 'js/vigil-ai.js' %}"></script>
+<script src="{% static 'js/vigil-playbook-flow.js' %}"></script>
 <script src="{% static 'js/vigil-playbooks.js' %}"></script>
 <!-- vigil-contentyaml.js — "Edit as YAML" / "Submit to Community" for playbooks and automations -->
 <script src="{% static 'js/vigil-contentyaml.js' %}"></script>
 <script src="{% static 'js/vigil-automations.js' %}"></script>
 <!-- vigil-runhistory.js — Playbooks → History sub-tab (playbook + automation runs) -->
+<script src="{% static 'js/vigil-charts.js' %}"></script>
 <script src="{% static 'js/vigil-runhistory.js' %}"></script>
+<!-- vigil-hunts.js — hunt results page (summary chips, host + matches tables, CSV export) -->
+<script src="{% static 'js/vigil-hunts.js' %}"></script>
 <script src="{% static 'js/vigil-statuspages.js' %}"></script>
 <!-- vigil-deploy.js — deploy modal, fleet cache, schedule/retry/success-criteria policy (wraps navigateTo) -->
 <script src="{% static 'js/vigil-deploy.js' %}"></script>
@@ -805,6 +833,14 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-firewall.js' %}"></script>
 <!-- vigil-inventory.js — inventory table, column editor, AD sync, CSV export (wraps navigateTo) -->
 <script src="{% static 'js/vigil-inventory.js' %}"></script>
+<!-- vigil-apps.js — Apps page (software by app / by host) + the Monitor page's Software section (wraps navigateTo) -->
+<script src="{% static 'js/vigil-apps.js' %}"></script>
+<!-- vigil-policies.js — Policies page (app + patch policies, drift preview, approvals) (wraps navigateTo) -->
+<script src="{% static 'js/vigil-policies.js' %}"></script>
+<!-- vigil-stacks.js — Vigil-managed compose stacks on a host: editor, masked .env, revisions, deploy (M11) -->
+<script src="{% static 'js/vigil-stacks.js' %}"></script>
+<!-- vigil-containers.js — Containers page: containers by stack, lifecycle buttons, live logs, host picker (wraps navigateTo) -->
+<script src="{% static 'js/vigil-containers.js' %}"></script>
 <!-- vigil-devices.js — unmanaged device registry on the Inventory page (wraps navigateTo) -->
 <script src="{% static 'js/vigil-devices.js' %}"></script>
 <!-- vigil-instance-settings.js — Settings panes backed by /api/v1/instance-settings/ (scanners, email, retention, timezone) -->

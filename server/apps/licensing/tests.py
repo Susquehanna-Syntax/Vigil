@@ -153,7 +153,12 @@ class LicensingTests(TestCase):
         User = get_user_model()
         for i in range(3):  # 3 users on a 1-seat license — all must succeed
             User.objects.create_user(f"u{i}", password="x")
-        self.assertEqual(licensing.seats_used(), 3)
+        self.assertEqual(licensing.seats_used(), 0)  # viewers are free
+        over = [b for b in licensing.banners() if "seats in use" in b["message"]]
+        self.assertEqual(len(over), 0)
+        User.objects.filter(username__startswith="u").filter(
+            username__in=["u0", "u1"]).update(is_staff=True)  # 2 admins
+        self.assertEqual(licensing.seats_used(), 2)
         over = [b for b in licensing.banners() if "seats in use" in b["message"]]
         self.assertEqual(len(over), 1)
         self.assertEqual(over[0]["severity"], "info")  # a nudge, not an alarm

@@ -48,8 +48,9 @@ from vigil.signing import get_public_key_b64, sign_task
 from .auto_tags import merge_auto_tags
 from .authentication import authenticate_agent
 from .crypto import encrypt_secret
-from .models import (ADConfig, DockerContainer, Host, HostInventory, TransportAck,
-                     UnmanagedDevice)
+from .enrollment import adopt_enrolment, replacement_candidate
+from .models import (ADConfig, ContainerStack, DockerContainer, Host, HostInventory,
+                     TransportAck, UnmanagedDevice)
 from .serializers import (
     DockerContainerSerializer,
     HostInventorySerializer,
@@ -211,6 +212,8 @@ def register(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    machine_id = str(request.data.get("machine_id") or "").strip()[:200]
+
     # The installers used to leave this literal string in agent.yml for the
     # operator to replace. Since the server stores whatever token an agent
     # presents, an agent started before that edit authenticated with a value
@@ -242,6 +245,12 @@ def register(request):
     # Idempotent: if the token already exists, return current status
     existing = Host.objects.filter(agent_token=token).first()
     if existing:
+        # An agent upgraded into this release backfills its own row on next
+        # start; a changed machine_id means this token now belongs to another
+        # machine and the newer fingerprint wins.
+        if machine_id and existing.machine_id != machine_id:
+            existing.machine_id = machine_id
+            existing.save(update_fields=["machine_id"])
         return Response(
             {"id": str(existing.id), "status": existing.status},
             status=status.HTTP_200_OK,
@@ -255,6 +264,7 @@ def register(request):
         kernel=request.data.get("kernel", "")[:100],
         ip_address=request.META.get("REMOTE_ADDR"),
         agent_token=token,
+        machine_id=machine_id,
         status=Host.Status.PENDING,
         tags=seed_tags,
     )
@@ -268,6 +278,24 @@ def register(request):
 #: drops these params and runs ``shutdown -r now`` instead.
 _REBOOT_GATED_PARAMS = {"notify", "defer_limit", "defer_minutes"}
 _REBOOT_MIN_AGENT_VERSION = "2026.9.0"
+
+
+def _normalize_agent_features(raw) -> list[str]:
+    """The check-in's ``features``: a list of ≤ 20 short strings.
+
+    Anything else (wrong type, non-strings, oversized entries) is treated as
+    an empty list — a corrupt payload must not grant features the agent
+    never advertised, and an honest agent's list is tiny.
+    """
+    if not isinstance(raw, list) or len(raw) > 20:
+        return []
+    out = []
+    for entry in raw:
+        if not isinstance(entry, str) or not entry or len(entry) > 40:
+            return []
+        if entry not in out:
+            out.append(entry)
+    return out
 
 
 def _refuse_outdated_reboot(host: Host) -> None:
@@ -310,6 +338,37 @@ def _refuse_outdated_reboot(host: Host) -> None:
             _advance_run_sequence(task)
 
 
+def _refuse_unsupported_features(host: Host) -> None:
+    """Fail every pending task that uses a task-language feature the agent does not understand.
+
+    A task needs ``relevant`` when its params carry a ``relevant:`` block and
+    ``branches`` when they carry a ``flow`` tree. An agent that cannot read a
+    block would ignore it and run the fix on every host it was sent to —
+    exactly the mistake the block exists to prevent — so the server refuses
+    to hand it the task instead. Same shape as ``_refuse_outdated_reboot``.
+    """
+    features = set(host.agent_features or [])
+    for task in Task.objects.filter(host=host, state=Task.State.PENDING):
+        params = task.params or {}
+        needed: list[str] = []
+        if isinstance(params.get("relevant"), dict) and "relevant" not in features:
+            needed.append("relevant:")
+        if params.get("flow") is not None and "branches" not in features:
+            needed.append("if/then/else branches")
+        if not needed:
+            continue
+        task.state = Task.State.FAILED
+        task.result_output = (
+            f"Refused: this agent does not understand {', '.join(needed)} — "
+            "update the agent before deploying tasks that use them"
+        )
+        task.completed_at = now()
+        task.save(update_fields=["state", "result_output", "completed_at"])
+        if task.run_id:
+            from apps.tasks.views import _advance_run_sequence
+            _advance_run_sequence(task)
+
+
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def checkin(request):
@@ -335,6 +394,8 @@ def checkin(request):
     for field in ("hostname", "os", "kernel"):
         if val := data.get(field):
             setattr(host, field, val)
+    if val := str(data.get("machine_id") or "").strip()[:200]:
+        host.machine_id = val
 
     # Sync mode from agent config so the server always reflects what the agent
     # will accept. This is the design and stays: CLAUDE.md is explicit that the
@@ -362,6 +423,21 @@ def checkin(request):
 
     if agent_ver := data.get("vigil_version"):
         host.agent_version = str(agent_ver)[:50]
+
+    # The allowlist the agent will enforce. Anything malformed leaves the stored
+    # value alone rather than wiping what a good check-in said.
+    raw_allow = data.get("allowlist")
+    if (isinstance(raw_allow, list) and len(raw_allow) <= 200
+            and all(isinstance(a, str) and 0 < len(a) <= 60 for a in raw_allow)):
+        host.agent_allowlist = sorted(set(raw_allow))
+    if isinstance(data.get("allow_reprovision"), bool):
+        host.agent_allow_reprovision = data["allow_reprovision"]
+
+    if data.get("features") is not None:
+        # A list of short strings the agent understands (task-language
+        # features). Anything else is treated as absent: a corrupt payload
+        # must not silently grant features the agent never advertised.
+        host.agent_features = _normalize_agent_features(data.get("features"))
 
     # reboot_required: an ABSENT key means the agent is too old to report
     # it — leave the stored value alone. An explicit False does write.
@@ -440,6 +516,13 @@ def checkin(request):
         # only the colon-prefixed namespace we manage gets refreshed.
         _sync_host_auto_tags(host, inv_payload)
 
+    # Software list — replace-the-world per host, short-circuited by digest.
+    # Never raises: a bad software list must not break a check-in.
+    software_payload = data.get("software")
+    if isinstance(software_payload, dict):
+        from apps.software.ingest import ingest_software
+        ingest_software(host, software_payload)
+
     # Absent means the agent cannot count (not Windows, too old, or the scan
     # failed), so the stored value is left alone rather than being zeroed by a
     # machine that does not know.
@@ -451,6 +534,22 @@ def checkin(request):
         }
         host.windows_updates_at = now()
         host.save(update_fields=["windows_updates", "windows_updates_at"])
+    engines = data.get("container_engines")
+    if isinstance(engines, list):
+        clean = []
+        for e in engines[:8]:
+            if isinstance(e, dict) and e.get("kind") in ("docker", "podman"):
+                clean.append({"kind": e["kind"], "version": str(e.get("version") or "")[:40],
+                              "api_version": str(e.get("api_version") or "")[:10],
+                              "rootless": bool(e.get("rootless")),
+                              **({"uid": e["uid"]} if isinstance(e.get("uid"), int) else {})})
+        host.container_engines = clean
+        host.save(update_fields=["container_engines"])
+    # The per-update list comes only after a fresh scan; absent leaves the
+    # stored rows alone (an old agent, or the cached summary).
+    if "windows_update_list" in data:
+        from apps.software.updates import ingest_windows_updates
+        ingest_windows_updates(host, data.get("windows_update_list"))
 
     # Docker container snapshot — replace the host's set wholesale. Absent key
     # means the agent didn't report (old agent / no docker) and we leave the
@@ -478,6 +577,10 @@ def checkin(request):
                 mem_limit_bytes=_safe_int(c.get("mem_limit_bytes")),
                 mem_percent=_safe_float(c.get("mem_percent")),
                 ports=c.get("ports") if isinstance(c.get("ports"), list) else [],
+                image_id=str(c.get("image_id") or "")[:80],
+                image_digest=str(c.get("image_digest") or "")[:300],
+                restart_policy=str(c.get("restart_policy") or "")[:40],
+                config_hash=str(c.get("config_hash") or "")[:80],
             ))
         if len(rows) > MAX_CONTAINERS_PER_CHECKIN:
             logger.warning(
@@ -490,6 +593,7 @@ def checkin(request):
                 DockerContainer.objects.bulk_create(rows)
             host.docker_snapshot_at = now()
             host.save(update_fields=["docker_snapshot_at"])
+            _sync_container_stacks(host, containers_payload)
 
     # Pending hosts must wait for admin approval before receiving tasks
     if host.status == Host.Status.PENDING:
@@ -554,7 +658,11 @@ def checkin(request):
         # never reach an agent too old to honour it. Refused tasks fail now;
         # everything else follows the normal not_before / window path.
         _refuse_outdated_reboot(host)
-        # Re-query: the gate saved state on its own queryset, and the
+        # The feature gate: a task whose params carry a `relevant:` block must
+        # never reach an agent that cannot understand it (it would ignore the
+        # block and run the fix on every host). Same shape as the reboot gate.
+        _refuse_unsupported_features(host)
+        # Re-query: the gates saved state on their own querysets, and the
         # in-memory candidates above are stale copies the bulk DISPATCHED
         # update below would resurrect.
         candidates = list(Task.objects.filter(host=host, state=Task.State.PENDING))
@@ -562,6 +670,9 @@ def checkin(request):
         hour = _local.hour
         minute = _local.minute
         for task in candidates:
+            if task.expires_at is not None and task.expires_at <= current:
+                # The hunt's stays_open has elapsed; the sweep expires it.
+                continue
             if task.not_before and task.not_before > current:
                 continue
             if not schedule_window_active(task.schedule, weekday=weekday, hour=hour, minute=minute):
@@ -601,11 +712,17 @@ def checkin(request):
             state=Task.State.DISPATCHED, dispatched_at=dispatch_ts
         )
 
+    from apps.software.models import SoftwareSnapshot
+
+    snapshot = SoftwareSnapshot.objects.filter(host=host).first()
     return Response(
         {
             "status": "ok",
             "public_key": get_public_key_b64(),
             "tasks": tasks_payload,
+            # The agent resends its software list when this differs from its
+            # own digest. "" when the server holds nothing for this host.
+            "software_digest": snapshot.digest if snapshot else "",
         }
     )
 
@@ -676,14 +793,41 @@ def inventory_list(request):
     )
     rows = []
     seen_columns: set[str] = set()
+    containers = _container_counts()
     for host in hosts:
         inv = getattr(host, "inventory", None)
         if inv is None:
             inv = HostInventory(host=host)  # in-memory placeholder, not saved
-        rows.append(HostInventorySerializer(inv).data)
+        row = HostInventorySerializer(inv).data
+        row.update(containers.get(host.id, _NO_CONTAINERS))
+        rows.append(row)
         custom = inv.custom_columns or {}
         seen_columns.update(custom.keys())
     return Response({"rows": rows, "custom_columns": sorted(seen_columns)})
+
+
+_NO_CONTAINERS = {"containers": 0, "containers_running": 0, "containers_outdated": 0,
+                  "stacks": []}
+
+
+def _container_counts() -> dict:
+    """Per host: how many containers, how many running, how many on an
+    outdated image, and its compose stacks (M11) — the Inventory columns.
+    Three queries for the whole fleet rather than three per host."""
+    from django.db.models import Count, Q
+
+    out: dict = {}
+    for row in (DockerContainer.objects.values("host_id")
+                .annotate(total=Count("id"), running=Count("id", filter=Q(state="running")))):
+        out[row["host_id"]] = {"containers": row["total"], "containers_running": row["running"],
+                               "containers_outdated": 0, "stacks": []}
+    for host_id, _name in _open_outdated():
+        if host_id in out:
+            out[host_id]["containers_outdated"] += 1
+    for stack in ContainerStack.objects.only("host_id", "project", "ownership").order_by("project"):
+        entry = out.setdefault(stack.host_id, {**_NO_CONTAINERS, "stacks": []})
+        entry["stacks"].append({"project": stack.project, "ownership": stack.ownership})
+    return out
 
 
 @api_view(["GET"])
@@ -696,6 +840,36 @@ def inventory_detail(request, host_id):
     return Response(HostInventorySerializer(inv).data)
 
 
+def _open_outdated(host_ids=None) -> set:
+    """(host_id, container_name) for every open outdated-image alert."""
+    from apps.alerts.models import Alert
+
+    qs = Alert.objects.filter(
+        rule__name="Docker: Outdated Image",
+        state__in=[Alert.State.FIRING, Alert.State.ACKNOWLEDGED],
+    )
+    if host_ids is not None:
+        qs = qs.filter(host_id__in=host_ids)
+    return {(a.host_id, (a.fix_context or {}).get("container_name"))
+            for a in qs.only("host_id", "fix_context")}
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def host_stacks(request, host_id):
+    """Compose stacks on one host (M11): who owns each, where its compose
+    file lives, and how many of its containers run."""
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied:
+        return denied
+    return Response([{
+        "id": s.id, "project": s.project, "ownership": s.ownership,
+        "config_files": s.config_files, "working_dir": s.working_dir, "engine": s.engine,
+        "container_count": s.container_count, "running_count": s.running_count,
+        "seen_at": s.seen_at.isoformat() if s.seen_at else None,
+    } for s in host.container_stacks.all()])
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def host_containers(request, host_id):
@@ -703,8 +877,17 @@ def host_containers(request, host_id):
     host, denied = scoping.host_or_404(request, host_id)
     if denied:
         return denied
+    from .models import ContainerImageHistory, ContainerRollback
+
     qs = host.docker_containers.all()
-    return Response(DockerContainerSerializer(qs, many=True).data)
+    previous: dict = {}
+    for h in ContainerImageHistory.objects.filter(host=host):   # newest first
+        previous.setdefault((h.host_id, h.container_name), h.image_digest or h.image_id)
+    rolled = {(r.host_id, r.container_name): r.image for r in ContainerRollback.objects.filter(host=host)}
+    return Response(DockerContainerSerializer(
+        qs, many=True, context={"outdated": _open_outdated([host.id]), "previous": previous,
+                                "rolled_back": rolled}
+    ).data)
 
 
 @api_view(["GET"])
@@ -716,7 +899,9 @@ def docker_overview(request):
         .all()
         .order_by("host__hostname", "stack", "name")
     )
-    return Response(DockerContainerSerializer(qs, many=True).data)
+    return Response(DockerContainerSerializer(
+        qs, many=True, context={"outdated": _open_outdated()}
+    ).data)
 
 
 @api_view(["GET", "POST"])
@@ -964,8 +1149,17 @@ def host_approve(request, host_id):
     if error:
         return Response({"error": error}, status=status.HTTP_401_UNAUTHORIZED)
 
-    host.status = Host.Status.ONLINE
-    host.save()
+    candidate = replacement_candidate(host)
+    if candidate is not None:
+        host = adopt_enrolment(host, candidate)
+    else:
+        host.status = Host.Status.ONLINE
+        host.save()
+
+    if host.machine_id:
+        Host.objects.filter(
+            machine_id=host.machine_id, status=Host.Status.PENDING
+        ).exclude(pk=host.pk).delete()
 
     # Extension seam: Pro playbooks auto-dispatch on this event; Enterprise
     # audit logs record the approval. No-op in Community. See vigil/hooks.py.
@@ -987,6 +1181,7 @@ def host_reject(request, host_id):
             {"error": "Host not found or not pending"},
             status=status.HTTP_404_NOT_FOUND,
         )
+
     host.status = Host.Status.REJECTED
     host.save()
 
@@ -1029,10 +1224,24 @@ def check_pending(request):
     if host is None:
         return Response({"status": "waiting"})
 
+    # The wizard's "replaces" hint must be honest in every branch: for a pending
+    # host that is the host being approved, for one already approved it is the
+    # record it would have moved onto.
+    candidate = replacement_candidate(host)
+
     host_data = HostSerializer(host).data
+    replaces = (
+        None
+        if candidate is None
+        else {
+            "id": str(candidate.id),
+            "hostname": candidate.hostname,
+            "last_checkin": candidate.last_checkin,
+        }
+    )
     if host.status == Host.Status.PENDING:
-        return Response({"status": "pending", "host": host_data})
-    return Response({"status": "approved", "host": host_data})
+        return Response({"status": "pending", "host": host_data, "replaces": replaces})
+    return Response({"status": "approved", "host": host_data, "replaces": replaces})
 
 
 @api_view(["GET"])
@@ -1386,3 +1595,43 @@ def _rename_in_string_mirrors(old_key: str, new_name: str) -> None:
     rewrite(Automation.objects.all(), "event_tags")
     rewrite(Automation.objects.all(), "target_tags")
     rewrite(InstallProfile.objects.all(), "completion_tags")
+
+
+def _sync_container_stacks(host, containers: list) -> None:
+    """Upsert the host's compose stacks from its containers' labels (M11).
+
+    A stack no container belongs to any more is dropped — unless Vigil manages
+    or adopted it, in which case it stays (stopped is not gone).
+    """
+    engines = host.container_engines or []
+    engine = engines[0]["kind"] if engines else ""
+    found: dict = {}
+    for c in containers:
+        if not isinstance(c, dict) or not c.get("stack"):
+            continue
+        project = str(c["stack"])[:200]
+        entry = found.setdefault(project, {"config_files": [], "working_dir": "",
+                                           "count": 0, "running": 0})
+        entry["count"] += 1
+        entry["running"] += 1 if str(c.get("state") or "") == "running" else 0
+        files = [f.strip() for f in str(c.get("config_files") or "").split(",") if f.strip()]
+        if files and not entry["config_files"]:
+            entry["config_files"] = files[:10]
+        if c.get("working_dir") and not entry["working_dir"]:
+            entry["working_dir"] = str(c["working_dir"])[:500]
+    stamp = now()
+    for project, entry in found.items():
+        stack, created = ContainerStack.objects.get_or_create(
+            host=host, project=project,
+            defaults={"config_files": entry["config_files"], "working_dir": entry["working_dir"],
+                      "engine": engine})
+        stack.container_count, stack.running_count = entry["count"], entry["running"]
+        stack.seen_at = stamp
+        if entry["config_files"] and stack.ownership == ContainerStack.Ownership.EXTERNAL:
+            stack.config_files, stack.working_dir = entry["config_files"], entry["working_dir"]
+        stack.engine = engine or stack.engine
+        stack.save()
+    (ContainerStack.objects.filter(host=host, ownership=ContainerStack.Ownership.EXTERNAL)
+     .exclude(project__in=list(found)).delete())
+    (ContainerStack.objects.filter(host=host).exclude(project__in=list(found))
+     .update(container_count=0, running_count=0))

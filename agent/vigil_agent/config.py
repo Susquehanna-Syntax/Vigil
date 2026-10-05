@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 import secrets
 import stat
 from dataclasses import dataclass, field
@@ -39,13 +40,18 @@ _NEVER_ALLOWLISTABLE = {
 }
 
 _ALL_ACTIONS = {
+    # NOTE: `allow-script` is a local admin CLI subcommand, deliberately NOT
+    # an action here — a signed task that could add hashes would let the
+    # server approve its own code (full_control again).
     # Service management
     "restart_service", "start_service", "stop_service", "reload_service",
     "enable_service", "disable_service", "check_service",
     # Container management
     "restart_container", "stop_container", "start_container",
     "pull_image", "recreate_container", "remove_container",
-    "docker_compose_up", "docker_compose_down",
+    "update_container", "docker_compose_up", "docker_compose_down",
+    "stack_restart", "stack_update", "container_logs", "stack_deploy", "stack_remove",
+    "stack_read", "container_rollback",
     "clear_docker_logs", "check_docker_updates",
     # File / directory operations
     "write_file", "create_directory", "delete_path",
@@ -62,6 +68,9 @@ _ALL_ACTIONS = {
     "set_firewall_policy", "enable_firewall", "disable_firewall",
     # Windows Update
     "windows_update_scan", "windows_update_install",
+    # Apps
+    "app_inventory", "app_install", "app_upgrade", "app_uninstall", "app_pin",
+    "app_install_custom", "app_ensure",
     # User management
     "create_user", "delete_user", "add_user_to_group",
     # Cron
@@ -74,6 +83,9 @@ _ALL_ACTIONS = {
     # Vulnerability scanning
     "request_nessus_scan", "request_network_scan",
     "run_trivy_scan", "trivy_db_update",
+    # Hunts (read-only)
+    "hunt_file", "hunt_package", "hunt_process", "hunt_port", "hunt_service",
+    "hunt_registry", "hunt_content",
     # Agent lifecycle — allowlisting this lets a managed-mode agent
     # accept signed self-update tasks (the binary digest rides inside
     # the Ed25519-signed payload).
@@ -155,9 +167,18 @@ class AgentConfig:
     # unmetered HEAD requests, but the floor keeps misconfigured agents
     # from hammering the registry's auth endpoint.
     docker_check_interval: int = 21600
+    # Seconds between installed-software collections. Collection is offline
+    # (package databases as they stand), but the floor keeps a mistyped value
+    # from turning a 6 h job into per-check-in work.
+    software_interval: int = 21600
     data_dir: Path = field(default_factory=lambda: Path("/var/lib/vigil-agent"))
     allowlist: set[str] = field(default_factory=set)
     scripts_dir: Path = field(default_factory=lambda: _default_scripts_dir())
+    # Inline-script allowlist: each entry approves one exact inline body by its
+    # sha256: digest. There is deliberately no wildcard — a body that is not
+    # byte-identical to an approved one is refused, so every edit needs a
+    # fresh approval.
+    allowed_script_hashes: set[str] = field(default_factory=set)
     # Free-form tags advertised to the server at every checkin. Server-side
     # tags take precedence: this list is used to seed/augment, never to
     # overwrite tags an operator has set in the console.
@@ -180,6 +201,8 @@ class AgentConfig:
             raise ValueError("checkin_interval must be at least 10 seconds")
         if self.docker_check_interval < 300:
             raise ValueError("docker_check_interval must be at least 300 seconds")
+        if self.software_interval < 900:
+            raise ValueError("software_interval must be at least 900 seconds")
         # Unknown allowlist entries are dropped with a warning, not fatal:
         # an agent.yml written for a newer agent (or with a typo) must never
         # crash-loop the agent and take monitoring down with it. The dropped
@@ -339,6 +362,20 @@ def load_config(path: Path | None = None) -> AgentConfig:
     if not isinstance(raw_watch, list):
         raise ValueError("process_watch must be a list of process names")
 
+    raw_hashes = raw.get("allowed_script_hashes") or []
+    if not isinstance(raw_hashes, list):
+        raise ValueError("allowed_script_hashes must be a list of sha256:<hex> strings")
+    # Approvals are exact digests; a malformed entry is dropped, never a
+    # wildcard, and the operator is told what was ignored so the approval
+    # they typed in doesn't silently not exist.
+    allowed_script_hashes: set[str] = set()
+    for entry in raw_hashes:
+        h = str(entry).strip().lower()
+        if re.match(r"^sha256:[0-9a-f]{64}$", h):
+            allowed_script_hashes.add(h)
+        else:
+            logger.warning("Ignoring invalid allowed_script_hashes entry: %r", entry)
+
     config = AgentConfig(
         server_url=server_url,
         agent_token=agent_token,
@@ -346,10 +383,12 @@ def load_config(path: Path | None = None) -> AgentConfig:
         allow_reprovision=allow_reprovision,
         checkin_interval=int(raw.get("checkin_interval", 60)),
         docker_check_interval=int(raw.get("docker_check_interval", 21600)),
+        software_interval=int(raw.get("software_interval", 21600)),
         data_dir=data_dir,
         allowlist=allowlist,
         scripts_dir=Path(raw["scripts_dir"]) if raw.get("scripts_dir")
         else _default_scripts_dir(),
+        allowed_script_hashes=allowed_script_hashes,
         tags=raw_tags,
         process_watch=raw_watch,
         gpu_extended=bool(raw.get("gpu_extended", False)),

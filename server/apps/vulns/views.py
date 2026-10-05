@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from vigil import scoping
+from apps.accounts.permissions import IsAdmin
 from apps.hosts.models import Host
 
 from .models import VulnFinding, VulnScan, VulnScoreHistory, VulnSummary
@@ -79,7 +80,7 @@ def finding_list(request):
     """
     from django.utils.timezone import localdate
 
-    qs = VulnFinding.objects.select_related("host", "exception")
+    qs = VulnFinding.objects.select_related("host", "exception").prefetch_related("evidence")
     if host_id := request.query_params.get("host"):
         qs = qs.filter(host_id=host_id)
     if scanner := request.query_params.get("scanner"):
@@ -266,3 +267,84 @@ def scan_create(request, host_id):
         pass  # If broker is down, the next periodic run still picks it up.
 
     return Response(VulnScanSerializer(scan).data, status=201)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def vuln_data(request):
+    """GET: what the local OSV / KEV / EPSS store holds. POST (multipart
+    ``bundle``): load an offline bundle — how an air-gapped install updates."""
+    import tempfile
+
+    from .models import EpssScore, KevEntry, OsvAdvisory
+    from .vulndata import import_bundle
+
+    if request.method == "POST":
+        upload = request.FILES.get("bundle")
+        if upload is None:
+            return Response({"detail": "upload the bundle as 'bundle'"}, status=400)
+        suffix = ".tar.gz" if upload.name.endswith((".tar.gz", ".tgz")) else ".zip"
+        with tempfile.NamedTemporaryFile(suffix=suffix) as tmp:
+            for chunk in upload.chunks():
+                tmp.write(chunk)
+            tmp.flush()
+            try:
+                counts = import_bundle(tmp.name)
+            except (OSError, ValueError) as exc:
+                return Response({"detail": f"could not read the bundle: {exc}"}, status=400)
+        return Response({"loaded": counts})
+    ecosystems = sorted(set(OsvAdvisory.objects.values_list("affected__ecosystem", flat=True)) - {None})
+    return Response({"osv_advisories": OsvAdvisory.objects.count(), "osv_ecosystems": ecosystems,
+                     "kev_entries": KevEntry.objects.count(), "epss_scores": EpssScore.objects.count()})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def fix_group_list(request):
+    """Open findings grouped by the fix that resolves them, worst first."""
+    from .fixview import fix_groups
+
+    groups = fix_groups(request.user, q=request.query_params.get("q", "").strip())
+    return Response({"count": len(groups), "results": groups[:500]})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def fix_group_deploy(request):
+    """The task that applies one group's fix, and the hosts that need it —
+    the UI hands both to the normal deploy dialog (TOTP and all)."""
+    from .fixview import fix_definition
+
+    fix_key = str(request.data.get("fix_key") or "")
+    definition, host_ids = fix_definition(request.user, fix_key)
+    if definition is None:
+        return Response({"detail": "this group has no fix Vigil can apply"}, status=400)
+    return Response({"definition_id": str(definition.id), "host_ids": host_ids})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def anvil_import(request):
+    """Import an Anvil record (SARIF 2.1.0 + anvil/*): a JSON body, or a
+    multipart ``record`` file. ``host_id`` pins every finding to one host."""
+    import json as _json
+
+    from .scanners.anvil import ingest_record
+    from .scanners.trivy import ScanIngestError
+
+    host = None
+    host_id = request.data.get("host_id") or request.query_params.get("host_id")
+    if host_id:
+        host, denied = scoping.host_or_404(request, host_id)
+        if denied:
+            return denied
+    upload = request.FILES.get("record")
+    try:
+        record = _json.loads(upload.read()) if upload is not None else request.data.get("record")
+    except ValueError:
+        return Response({"detail": "the record is not JSON"}, status=400)
+    try:
+        counts = ingest_record(record, host=host)
+    except ScanIngestError as exc:
+        return Response({"detail": str(exc)}, status=400)
+    return Response(counts)

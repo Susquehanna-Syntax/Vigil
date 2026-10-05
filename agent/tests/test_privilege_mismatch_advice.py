@@ -18,6 +18,8 @@ prevent. Re-running the installer regenerates the unit from the mode in
 agent.yml and is the complete fix.
 """
 
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
+
 import logging
 import unittest
 from unittest.mock import patch

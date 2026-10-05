@@ -21,444 +21,33 @@ actions that the agent already knows how to run.
 
 from __future__ import annotations
 
+import ast
 import re
 import urllib.parse
+from datetime import datetime, timedelta
 from typing import Any
 
 import yaml
+
+from .expression import (
+    ExprError,
+    parse as expression_parse,
+    referenced_inputs,
+    referenced_steps,
+)
+
+# The action registry lives in registry.py; re-exported for existing importers.
+from .registry import (  # noqa: F401
+    ACTION_REGISTRY,
+    LEGACY_ACTION_ALIASES,
+    action_outputs,
+)
+from .scripthash import script_hash
 
 
 class SpecError(ValueError):
     """Raised when a YAML task definition fails validation."""
 
-
-# ── Action registry ──────────────────────────────────────────────────────────
-#
-# Keep this list in lockstep with ``agent/vigil_agent/executor.py``. Each entry
-# records required params, a risk tier, and a human label for the UI.
-
-#: Action types that were renamed. A community file published before the rename,
-#: and any YAML an operator saved locally, keeps working: the old name resolves
-#: to the new one on the way in and is rewritten in place, so everything
-#: downstream — validation, expansion, export — only ever sees the new name.
-LEGACY_ACTION_ALIASES: dict[str, str] = {
-    "baseline": "playbook",
-}
-
-ACTION_REGISTRY: dict[str, dict[str, Any]] = {
-    # ── Composition (server-side; expanded before signing, never sent to agents) ──
-    "playbook": {
-        "label": "Run playbook",
-        "risk": "standard",
-        "required": ["name"],
-        "optional": [],
-    },
-    # ── Service management ──────────────────────────────────────────────────
-    "restart_service": {
-        "label": "Restart service",
-        "risk": "standard",
-        "required": ["service_name"],
-        "optional": [],
-    },
-    "start_service": {
-        "label": "Start service",
-        "risk": "standard",
-        "required": ["service_name"],
-        "optional": [],
-    },
-    "stop_service": {
-        "label": "Stop service",
-        "risk": "standard",
-        "required": ["service_name"],
-        "optional": [],
-    },
-    "reload_service": {
-        "label": "Reload service",
-        "risk": "standard",
-        "required": ["service_name"],
-        "optional": [],
-    },
-    "enable_service": {
-        "label": "Enable service",
-        "risk": "low",
-        "required": ["service_name"],
-        "optional": [],
-    },
-    "disable_service": {
-        "label": "Disable service",
-        "risk": "standard",
-        "required": ["service_name"],
-        "optional": [],
-    },
-    "check_service": {
-        "label": "Check service status",
-        "risk": "low",
-        "required": ["service_name"],
-        "optional": ["expect"],
-    },
-    # ── Container management ────────────────────────────────────────────────
-    "restart_container": {
-        "label": "Restart container",
-        "risk": "standard",
-        "required": ["container_name"],
-        "optional": [],
-    },
-    "start_container": {
-        "label": "Start container",
-        "risk": "low",
-        "required": ["container_name"],
-        "optional": [],
-    },
-    "stop_container": {
-        "label": "Stop container",
-        "risk": "standard",
-        "required": ["container_name"],
-        "optional": [],
-    },
-    "pull_image": {
-        "label": "Pull container image",
-        "risk": "low",
-        "required": ["image"],
-        "optional": [],
-    },
-    # Applies a freshly pulled image: docker restart alone keeps the container
-    # on its original image, so image updates require recreation. The agent
-    # carries the container's user-supplied config over and rolls back to the
-    # original container if the replacement fails to start.
-    "recreate_container": {
-        "label": "Recreate container (apply new image)",
-        "risk": "standard",
-        "required": ["container_name"],
-        "optional": ["image"],
-    },
-    "remove_container": {
-        "label": "Remove container",
-        "risk": "high",
-        "required": ["container_name"],
-        "optional": [],
-    },
-    "docker_compose_up": {
-        "label": "Docker Compose up",
-        "risk": "standard",
-        "required": ["compose_file"],
-        "optional": ["services"],  # comma-separated service names
-    },
-    "docker_compose_down": {
-        "label": "Docker Compose down",
-        "risk": "standard",
-        "required": ["compose_file"],
-        "optional": [],
-    },
-    "clear_docker_logs": {
-        "label": "Truncate Docker logs",
-        "risk": "low",
-        "required": [],
-        "optional": ["container_name"],
-    },
-    # Forces an immediate Docker Hub digest re-check instead of waiting out
-    # the agent's docker_check_interval — outdated-image alerts fire or
-    # resolve on the next check-in (~1 min). Read-only: HEAD requests only,
-    # never a pull.
-    "check_docker_updates": {
-        "label": "Check Docker images for updates now",
-        "risk": "low",
-        "required": [],
-        "optional": [],
-    },
-    # ── File / directory operations ─────────────────────────────────────────
-    "write_file": {
-        "label": "Write file",
-        "risk": "high",
-        "required": ["path", "content"],
-        "optional": ["mode"],
-    },
-    "create_directory": {
-        "label": "Create directory",
-        "risk": "low",
-        "required": ["path"],
-        "optional": ["owner", "group", "mode"],
-    },
-    "delete_path": {
-        "label": "Delete path",
-        "risk": "high",
-        "required": ["path"],
-        "optional": ["recursive"],
-    },
-    "copy_file": {
-        "label": "Copy file",
-        "risk": "standard",
-        "required": ["src", "dest"],
-        "optional": [],
-    },
-    "move_file": {
-        "label": "Move file",
-        "risk": "standard",
-        "required": ["src", "dest"],
-        "optional": [],
-    },
-    "set_permissions": {
-        "label": "Set permissions",
-        "risk": "standard",
-        "required": ["path"],
-        "optional": ["owner", "group", "mode"],
-    },
-    # ── Package management ──────────────────────────────────────────────────
-    "install_package": {
-        "label": "Install package",
-        "risk": "standard",
-        "required": ["package_name"],
-        "optional": [],
-    },
-    "remove_package": {
-        "label": "Remove package",
-        "risk": "standard",
-        "required": ["package_name"],
-        "optional": [],
-    },
-    "update_package": {
-        "label": "Update package",
-        "risk": "standard",
-        "required": ["package_name"],
-        "optional": [],
-    },
-    "run_package_updates": {
-        "label": "Run system updates",
-        "risk": "standard",
-        "required": [],
-        "optional": ["security_only"],
-    },
-    # ── Windows Update ──────────────────────────────────────────────────────
-    "windows_update_scan": {
-        "label": "Scan for Windows updates",
-        "risk": "low",
-        "required": [],
-        "optional": ["classifications", "include_kb", "exclude_kb", "severity_floor"],
-    },
-    "windows_update_install": {
-        "label": "Install Windows updates",
-        "risk": "standard",
-        "required": [],
-        "optional": ["classifications", "include_kb", "exclude_kb", "severity_floor"],
-    },
-    # ── System ──────────────────────────────────────────────────────────────
-    "clear_temp_files": {
-        "label": "Clear /tmp",
-        "risk": "low",
-        "required": [],
-        "optional": ["older_than_days"],
-    },
-    "execute_script": {
-        "label": "Execute allowlisted script",
-        "risk": "high",
-        "required": ["script_name"],
-        "optional": [],
-    },
-    "reboot": {
-        "label": "Reboot host",
-        "risk": "high",
-        "required": [],
-        "optional": ["delay_seconds", "notify", "notify_message",
-                     "defer_limit", "defer_minutes"],
-    },
-    "run_command": {
-        "label": "Run shell command",
-        "risk": "high",
-        "required": ["command"],
-        "optional": ["timeout"],
-    },
-    "set_hostname": {
-        "label": "Set hostname",
-        "risk": "standard",
-        "required": ["hostname"],
-        "optional": [],
-    },
-    # ── Networking ──────────────────────────────────────────────────────────
-    "add_firewall_rule": {
-        "label": "Add firewall rule",
-        "risk": "high",
-        "required": ["port", "protocol"],
-        "optional": ["action", "source", "interface"],
-    },
-    "remove_firewall_rule": {
-        "label": "Remove firewall rule",
-        "risk": "high",
-        "required": ["port", "protocol"],
-        # `rule_id`: the rule's unique identifier (Windows Name/InstanceID),
-        # required in practice on Windows -- netsh has no action filter, so
-        # WindowsBackend.remove_rule refuses to remove by port/protocol
-        # alone (it would delete every inbound rule sharing that port), and
-        # deliberately does not accept `name` (DisplayName) as a substitute
-        # identifier either, since DisplayName is not guaranteed unique.
-        # `name` is carried for display/back-compat only. ufw and
-        # firewall-cmd ignore both.
-        "optional": ["action", "source", "name", "rule_id"],
-    },
-    # Read-only, so low risk: it changes nothing and the Firewall tab needs it
-    # on every view. The write actions above stay high.
-    "list_firewall_rules": {
-        "label": "List firewall rules",
-        "risk": "low",
-        "required": [],
-        "optional": [],
-    },
-    "set_firewall_policy": {
-        "label": "Set firewall default policy",
-        "risk": "high",
-        "required": ["direction", "policy"],
-        "optional": [],
-    },
-    "enable_firewall": {
-        "label": "Enable the firewall",
-        "risk": "high",
-        "required": [],
-        "optional": [],
-    },
-    "disable_firewall": {
-        "label": "Disable the firewall",
-        "risk": "high",
-        "required": [],
-        "optional": [],
-    },
-    # ── User management ────────────────────────────────────────────────────
-    "create_user": {
-        "label": "Create user",
-        "risk": "high",
-        "required": ["username"],
-        "optional": ["groups", "shell"],  # groups: comma-separated
-    },
-    "delete_user": {
-        "label": "Delete user",
-        "risk": "high",
-        "required": ["username"],
-        "optional": ["remove_home"],
-    },
-    "add_user_to_group": {
-        "label": "Add user to group",
-        "risk": "standard",
-        "required": ["username", "group"],
-        "optional": [],
-    },
-    # ── Cron ────────────────────────────────────────────────────────────────
-    "create_cron_job": {
-        "label": "Create cron job",
-        "risk": "standard",
-        "required": ["schedule", "command"],
-        "optional": ["user"],
-    },
-    "delete_cron_job": {
-        "label": "Delete cron job",
-        "risk": "standard",
-        "required": ["pattern"],
-        "optional": ["user"],
-    },
-    # ── Self-management ─────────────────────────────────────────────────────
-    "update_agent": {
-        "label": "Update Vigil agent",
-        "risk": "standard",
-        "required": [],
-        "optional": ["platform"],
-    },
-    # ── Reprovisioning (docs/reprovisioning.md) ────────────────────────────
-    #
-    # The three destructive actions are NOT reachable via full_control or the
-    # allowlist: the agent gates them on allow_reprovision alone (§4.1). Keep
-    # this block in lockstep with vigil_agent.config.REPROVISION_ACTIONS —
-    # apps/reprovision/test_registry.py asserts the two agree.
-    "reprovision_preflight": {
-        "label": "Check rebuild readiness",
-        "risk": "low",
-        "required": [],
-        "optional": ["disk_target", "os_family"],
-    },
-    "reprovision_stage": {
-        "label": "Stage OS installer",
-        "risk": "high",
-        "required": ["job_id", "kernel_url", "initrd_url",
-                     "kernel_sha256", "initrd_sha256"],
-        "optional": [],
-    },
-    "reprovision_commit": {
-        "label": "Boot into OS installer (WIPES DISK)",
-        "risk": "high",
-        "required": ["job_id", "cmdline"],
-        "optional": [],
-    },
-    # High in the registry even though it only deletes staged files: the
-    # agent gates it on allow_reprovision, and the risk tier drives the
-    # server-side confirmation UI. Keeping the tier aligned with the gate
-    # avoids a task the server thinks is casual but the agent treats as armed.
-    "reprovision_cleanup": {
-        "label": "Remove staged installer files",
-        "risk": "high",
-        "required": ["job_id"],
-        "optional": [],
-    },
-    # ── Vulnerability scanning ─────────────────────────────────────────────
-    # ── Host tagging ────────────────────────────────────────────────────────
-    #
-    # Tags live on the server, not the host, so these are marker actions in
-    # the same shape as request_nessus_scan: the agent reports the step, and
-    # the server applies the change on completion.
-    #
-    # The tags come from the task the SERVER stored and signed, never from
-    # what the agent sends back. A compromised agent can therefore only claim
-    # success on a tag an operator already authorized in the definition — it
-    # cannot choose the tag. That is why this can be low risk while the
-    # ``agent:`` namespace stays reserved for tags an agent asserts about
-    # itself at check-in.
-    #
-    # Sending them through the agent rather than applying them at dispatch is
-    # what makes them conditional: a ``when`` predicate is evaluated on the
-    # host, so "tag it role:docker if Docker is actually installed" works.
-    "add_tag": {
-        "label": "Add host tag",
-        "risk": "low",
-        "required": ["tags"],
-        "optional": [],
-    },
-    "remove_tag": {
-        "label": "Remove host tag",
-        "risk": "low",
-        "required": ["tags"],
-        "optional": [],
-    },
-    # The agent emits a "please scan me" marker; the server picks it up
-    # on task completion and creates a VulnScan(requested). The actual
-    # scan is launched by the central Nessus instance, not the agent.
-    "request_nessus_scan": {
-        "label": "Request Nessus vulnerability scan",
-        "risk": "low",
-        "required": [],
-        "optional": [],
-    },
-    # Engine-agnostic alias — uses whichever network scanner the server
-    # picks based on operator preference (Nessus or Greenbone). When
-    # both are configured the server consults Host.preferred_scanners
-    # (and falls back to Nessus). v1 server-side wiring still creates a
-    # NESSUS VulnScan; the dispatcher routing lands with PR #5.
-    "request_network_scan": {
-        "label": "Request network vulnerability scan",
-        "risk": "low",
-        "required": [],
-        "optional": ["engine"],  # "nessus" | "greenbone" | "" (server picks)
-    },
-    # Trivy is agent-local — the agent runs `trivy fs --format json …`
-    # and ships the JSON back in the task output. The server's task-
-    # completion handler hands that JSON to TrivyScanner.ingest_report,
-    # which writes VulnFinding rows and triggers a score recompute.
-    "run_trivy_scan": {
-        "label": "Run Trivy vulnerability scan",
-        "risk": "low",
-        "required": [],
-        "optional": ["scope"],  # "fs" (default — scan root filesystem) | "rootfs" | "image:<name>"
-    },
-    "trivy_db_update": {
-        "label": "Update Trivy vulnerability database",
-        "risk": "low",
-        "required": [],
-        "optional": [],
-    },
-}
 
 _RISK_ORDER = {"low": 0, "standard": 1, "high": 2}
 
@@ -468,9 +57,27 @@ _RISK_ORDER = {"low": 0, "standard": 1, "high": 2}
 _MAX_STEP_TIMEOUT = 3600
 _VALID_RISK = set(_RISK_ORDER)
 
+#: How long a hunt stays open for hosts that never check in, in seconds —
+#: used when a hunt step does not set its own ``stays_open``.
+DEFAULT_STAYS_OPEN = 7 * 86400
+_STAYS_OPEN_MIN = 3600
+_STAYS_OPEN_MAX = 30 * 86400
+_STAYS_OPEN_PATTERN = re.compile(r"^(\d+)([mhd])$")
+
 _INPUT_TYPES = {"text", "choice", "boolean", "number"}
-# Variable references look like {{ inputs.foo }} — whitespace flexible.
-_VAR_PATTERN = re.compile(r"\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
+# Input references: ${{ inputs.foo }} (whitespace flexible). The ${{ }} marker is not valid
+# bash, PowerShell or YAML, so script text can never be mistaken for an input. $${{ is an
+# escaped literal ${{ — never a marker (the agent turns it back into ${{).
+_INPUT_REF = re.compile(r"(?<!\$)\$\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
+# The pre-2026.13 form, {{ inputs.foo }} — accepted with a warning for one release.
+_LEGACY_INPUT_REF = re.compile(r"(?<!\$)\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
+# Step references: ${{ steps.<id>.status }} or ${{ steps.<id>.result.<field> }}.
+# Either form, in one pattern, for single-pass substitution.
+_ANY_INPUT_REF = re.compile(r"(?<!\$)(\$)?\{\{\s*inputs\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
+_STEPS_MARKER = re.compile(r"(?<!\$)\$\{\{\s*steps\.")
+_STEP_REF = re.compile(
+    r"(?<!\$)\$\{\{\s*steps\.([A-Za-z0-9_-]+)\.(?:(status)|result\.([A-Za-z_][A-Za-z0-9_]*))\s*\}\}"
+)
 _INPUT_ID_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 _ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -617,6 +224,340 @@ def _validate_tag_param(raw: Any, position: int, action_type: str) -> None:
             raise SpecError(
                 f"action #{position} ({action_type}): tag {name!r} is longer "
                 f"than 40 characters")
+
+
+_SCRIPT_SHELLS = ("bash", "sh", "powershell", "pwsh")
+_SCRIPT_MAX_LEN = 65536
+
+
+def _validate_script_params(params: dict[str, Any], position: int) -> None:
+    has_name = "script_name" in params
+    has_body = "script" in params
+    if has_name and has_body:
+        raise SpecError(
+            f"action #{position} (execute_script): give script_name or script, not both"
+        )
+    if not has_name and not has_body:
+        raise SpecError(
+            f"action #{position} (execute_script): needs script_name or script"
+        )
+    if "shell" in params and not has_body:
+        raise SpecError(
+            f"action #{position} (execute_script): shell is only used with script"
+        )
+    if has_body:
+        shell = params.get("shell")
+        if shell not in _SCRIPT_SHELLS:
+            raise SpecError(
+                f"action #{position} (execute_script): shell must be one of "
+                f"{', '.join(_SCRIPT_SHELLS)}"
+            )
+        body = params["script"]
+        if not isinstance(body, str) or not body:
+            raise SpecError(
+                f"action #{position} (execute_script): script must be a "
+                f"non-empty string"
+            )
+        if len(body) > _SCRIPT_MAX_LEN:
+            raise SpecError(
+                f"action #{position} (execute_script): script is limited to "
+                f"{_SCRIPT_MAX_LEN} characters"
+            )
+        if "${{" in body:
+            raise SpecError(
+                f"action #{position} (execute_script): a script body takes "
+                f"inputs as $VIGIL_INPUT_<ID> environment variables, not "
+                f"${{{{ … }}}} markers"
+            )
+
+
+_APP_SOURCE_CHOICES = frozenset({
+    "dpkg", "rpm", "apk", "pacman", "flatpak", "snap",
+    "winget", "chocolatey", "scoop", "registry",
+})
+
+#: An app's inventory id — what the Apps page shows as `package_id`. The
+#: leading character is restricted to a letter, digit or `{` so an option
+#: (`-oProxy=x`) and a marker cannot start it; `-`, `:`, `@` and `/` are
+#: allowed inside (`libc6:amd64`, `org.mozilla.firefox`, an MSIX guid).
+_APP_ID_RE = re.compile(r"^[A-Za-z0-9{][A-Za-z0-9._+:@/{}~-]{0,199}$")
+
+#: A version pin (`2.43-2ubuntu2.4`, `1:3.0.13-1`). Same leading-character rule.
+_APP_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+:~-]{0,79}$")
+
+#: Sources whose install command has no version argument at all.
+_APP_SOURCES_WITHOUT_VERSION = frozenset({"snap", "flatpak", "registry"})
+
+
+_REGISTRY_KEY_RE = re.compile(r"^[^\\\x00-\x1f]{1,255}$")
+
+#: `app_install_custom` fetches over https only — the hash is checked, but a
+#: plain-http installer on a network an attacker shares is not worth that.
+_CUSTOM_URL_SCHEME = "https://"
+_CUSTOM_URL_MAX_LEN = 2000
+_CUSTOM_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+#: Each installer kind is run by the one command that installs it silently, so
+#: the kind is a real safety decision and not a label: `msi` never runs the file
+#: directly, `deb`/`rpm` never run `dpkg`/`dnf` for a file with another
+#: extension. The file extension is used only when the task does not name one.
+_CUSTOM_KINDS = ("msi", "exe", "deb", "rpm")
+#: A silent-install switch list — `/S`, `/quiet /norestart`,
+#: `/qn /norestart /l*v C:\log.txt`. `"` is allowed so a quoted switch *value*
+#: can be passed; the agent splits on spaces with no shell, so no shell
+#: metacharacter can be interpreted, and that is why `$`, backtick, `;`, `|`,
+#: `&`, `<`, `>` and `\` stay out.
+_CUSTOM_ARGS_RE = re.compile(r'^[A-Za-z0-9 /=_.:,@+"-]{0,300}$')
+
+
+def _validate_custom_install_params(params: dict[str, Any],
+                                    position: int) -> None:
+    """Check `app_install_custom`'s params.
+
+    Every rule here is applied again by the agent before it downloads anything:
+    a value carrying a ``${{ … }}`` marker is resolved per deploy, and an
+    installer from a URL the server never saw is the highest-risk thing an
+    ``app_*`` action can do.
+    """
+    where = f"action #{position} (app_install_custom)"
+
+    def _pending(value: Any) -> bool:
+        # A non-string is judged only by the per-param type check: it resolves
+        # to something the agent re-validates, so it is "pending" for the
+        # string rules but must not stand in for an absent param.
+        return isinstance(value, str) and "${{" in value
+
+    def _text(name: str) -> Any:
+        raw = params.get(name)
+        if raw is not None and not isinstance(raw, str):
+            raise SpecError(f"{where}: '{name}' must be a string")
+        return raw
+
+    url = _text("url")
+    if url is None:
+        return
+    if _pending(url):
+        # The URL is the only source of a kind the task did not name, and the
+        # agent re-checks it before downloading, so an unresolved one is the
+        # one case the rules below have nothing to go on.
+        return
+    if not url.startswith(_CUSTOM_URL_SCHEME):
+        raise SpecError(
+            f"{where}: 'url' must start with https:// — the agent will not "
+            f"download an installer over a plain connection. Got {url!r}"
+        )
+    if len(url) > _CUSTOM_URL_MAX_LEN:
+        raise SpecError(
+            f"{where}: 'url' is limited to {_CUSTOM_URL_MAX_LEN} characters"
+        )
+    if any(ch.isspace() for ch in url):
+        raise SpecError(
+            f"{where}: 'url' must not contain whitespace. Got {url!r}"
+        )
+
+    sha = _text("sha256")
+    if sha is not None and not _pending(sha) \
+            and not _CUSTOM_SHA256_RE.fullmatch(sha.lower()):
+        raise SpecError(
+            f"{where}: 'sha256' must be 64 hexadecimal characters — the digest "
+            f"the downloaded installer has to match. Got {sha!r}"
+        )
+
+    kind = _text("kind") if "kind" in params else None
+    if kind is not None and not _pending(kind) and kind not in _CUSTOM_KINDS:
+        raise SpecError(
+            f"{where}: 'kind' must be one of {', '.join(_CUSTOM_KINDS)}, "
+            f"got {kind!r}"
+        )
+    # The kind decides which command runs the file. A task may name it (it has
+    # to for an extensionless download URL); otherwise the URL's extension does.
+    # A named kind that contradicts the extension is refused rather than trusted.
+    kind_from_url = _custom_kind_from_url(url)
+    if kind is not None and not _pending(kind):
+        if kind_from_url is not None and kind_from_url != kind:
+            raise SpecError(
+                f"{where}: 'kind' is {kind!r} but the URL ends in .{kind_from_url} "
+                f"— the file is run by the command for its kind, so they must agree")
+        known_kind = kind
+    elif kind is None:
+        if kind_from_url is None:
+            raise SpecError(
+                f"{where}: the URL has no .msi, .exe, .deb or .rpm extension — "
+                f"say kind: msi, exe, deb or rpm")
+        known_kind = kind_from_url
+    else:
+        known_kind = None   # resolved per deploy; the agent re-checks
+
+    app = params.get("app")
+    if app is not None and not _pending(app) \
+            and (not isinstance(app, str) or not _APP_ID_RE.fullmatch(app)):
+        raise SpecError(
+            f"{where}: 'app' must be an inventory id — letters, digits and "
+            f". _ + : @ / - ~ , no spaces and not starting with -. Got {app!r}"
+        )
+
+    args = _text("args")
+    if not args or _pending(args):
+        return
+    # A switch list means something only to the one kind that is run directly.
+    if known_kind == "exe":
+        if not _CUSTOM_ARGS_RE.fullmatch(args):
+            raise SpecError(
+                f"{where}: 'args' must be a silent-install switch list — "
+                f"letters, digits and space / = _ . : , @ + \" - with no shell "
+                f"metacharacters. Got {args!r}"
+            )
+    elif known_kind is not None:
+        raise SpecError(
+            f"{where}: 'args' is only used with kind: exe — msiexec, apt and "
+            "dnf take no extra arguments here"
+        )
+
+
+def _custom_kind_from_url(url: str) -> str | None:
+    """The kind a URL's path extension implies, or None for nothing it implies.
+
+    The query and fragment are cut first: a signed artifact URL routinely ends
+    ``…/agent.deb?Signature=…``, and the extension is the file's, not the
+    query string's.
+    """
+    tail = url.split("#", 1)[0].split("?", 1)[0].rsplit("/", 1)[-1]
+    if "." not in tail:
+        return None
+    ext = tail.rsplit(".", 1)[-1].lower()
+    return ext if ext in _CUSTOM_KINDS else None
+
+
+def _validate_app_params(params: dict[str, Any], position: int,
+                         action_type: str) -> None:
+    """Check the ``app`` / ``source`` / ``version`` params of an ``app_*`` action.
+
+    A value containing ``${{ … }}`` cannot be judged here — it is resolved per
+    deploy. The agent re-checks every one of these rules before it runs a
+    command, which is what covers that case.
+
+    ``app_upgrade`` with no ``app`` is not a missing param: it means *every
+    outdated app*, which is the whole point of the no-``app`` form.
+    """
+    where = f"action #{position} ({action_type})"
+
+    def _pending(value: Any) -> bool:
+        # A value carrying a ${{ … }} marker is resolved per deploy, so there
+        # is nothing to check here.
+        return not isinstance(value, str) or "${{" in value
+
+    app = params.get("app")
+    if (action_type == "app_uninstall" and params.get("source") == "registry"
+            and isinstance(app, str) and not _pending(app)):
+        # A registry Uninstall key name — only ever compared with registry rows
+        # on the agent, never put on a command line — may contain spaces.
+        if not _REGISTRY_KEY_RE.fullmatch(app):
+            raise SpecError(f"{where}: 'app' must be a registry key name "
+                            f"(no backslash or control characters). Got {app!r}")
+    elif app is not None and not _pending(app) and not _APP_ID_RE.fullmatch(app):
+        raise SpecError(
+            f"{where}: 'app' must be an inventory id — letters, digits and "
+            f". _ + : @ / - ~ , no spaces and not starting with -. Got {app!r}"
+        )
+
+    source = params.get("source")
+    if source is not None and not _pending(source) \
+            and source not in _APP_SOURCE_CHOICES:
+        raise SpecError(
+            f"{where}: 'source' must be one of "
+            f"{', '.join(sorted(_APP_SOURCE_CHOICES))}, got {source!r}"
+        )
+
+    version = params.get("version")
+    if action_type == "app_pin":
+        unpin = params.get("unpin")
+        # An unpin that carries a version is refused whatever that version
+        # looks like, including a value still waiting to be resolved.
+        if unpin is True:
+            if version is not None:
+                raise SpecError(f"{where}: unpin takes no version")
+        elif unpin is not None and not _pending(unpin):
+            raise SpecError(
+                f"{where}: 'unpin' must be a boolean. Got {unpin!r}"
+            )
+    if version is None or _pending(version):
+        return
+    if not _APP_VERSION_RE.fullmatch(version):
+        raise SpecError(
+            f"{where}: 'version' must be letters, digits and "
+            f". _ + : ~ - with no spaces. Got {version!r}"
+        )
+    if source in _APP_SOURCES_WITHOUT_VERSION:
+        raise SpecError(
+            f"{where}: version pinning is not supported for {source}"
+        )
+
+
+_STACK_DIR_RE = re.compile(r"^/[A-Za-z0-9._/-]{1,400}$")
+_COMPOSE_FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.ya?ml$")
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+def _validate_stack_params(params: dict[str, Any], position: int, action_type: str) -> None:
+    """``stack_deploy`` / ``stack_remove`` (M11): a compose project name, an
+    absolute working directory with no '..', a compose file that passes the
+    same checks the stack store applies, and an env ticket that is an id —
+    never the secrets themselves."""
+    from apps.stacks.validation import NAME_RE, StackError, validate_compose
+
+    where = f"action #{position} ({action_type})"
+    project = params.get("project")
+    if not isinstance(project, str) or not NAME_RE.match(project):
+        raise SpecError(f"{where}: 'project' must be a compose project name")
+    if action_type == "stack_read":
+        ticket = params.get("adopt_ticket")
+        if not (isinstance(ticket, str) and _UUID_RE.match(ticket)):
+            raise SpecError(f"{where}: 'adopt_ticket' must be a ticket id")
+        return
+    compose_file = params.get("compose_file")
+    if compose_file is not None and not (isinstance(compose_file, str)
+                                         and _COMPOSE_FILE_RE.match(compose_file)):
+        raise SpecError(f"{where}: 'compose_file' must be a plain .yaml / .yml file name")
+    workdir = params.get("working_dir")
+    if (not isinstance(workdir, str) or not _STACK_DIR_RE.match(workdir)
+            or ".." in workdir.split("/")):
+        raise SpecError(f"{where}: 'working_dir' must be an absolute path without '..'")
+    if action_type == "stack_deploy":
+        try:
+            validate_compose(str(params.get("compose") or ""))
+        except StackError as exc:
+            raise SpecError(f"{where}: {exc}") from exc
+        ticket = params.get("env_ticket")
+        if ticket not in (None, "") and not (isinstance(ticket, str) and _UUID_RE.match(ticket)):
+            raise SpecError(f"{where}: 'env_ticket' must be a ticket id")
+    else:
+        delete = params.get("delete_files")
+        if delete is not None and not isinstance(delete, bool):
+            raise SpecError(f"{where}: 'delete_files' must be true or false")
+
+
+_APP_ENSURE_STATES = frozenset({"present", "latest", "pinned", "absent"})
+
+
+def _validate_app_ensure_params(params: dict[str, Any], position: int) -> None:
+    """Check ``app_ensure``: a state, and a version exactly when it is pinned.
+
+    The app / source / version characters are the other ``app_*`` actions'
+    rules. A pinned state on a source that cannot install a version is refused
+    by those same rules; a version on any other state is refused here.
+    """
+    where = f"action #{position} (app_ensure)"
+    state = params.get("state")
+    pending = isinstance(state, str) and "${{" in state
+    if not pending and state not in _APP_ENSURE_STATES:
+        raise SpecError(f"{where}: 'state' must be one of "
+                        f"{', '.join(sorted(_APP_ENSURE_STATES))}, got {state!r}")
+    version = params.get("version")
+    if not pending:
+        if state == "pinned" and version in (None, ""):
+            raise SpecError(f"{where}: a pinned app needs a 'version'")
+        if state != "pinned" and version not in (None, ""):
+            raise SpecError(f"{where}: only state: pinned takes a 'version'")
+    _validate_app_params(params, position, "app_ensure")
 
 
 def _validate_schedule(raw: Any) -> dict[str, Any] | None:
@@ -840,19 +781,291 @@ def schedule_window_active(
     return now_m >= start or now_m <= end + 59
 
 
-def _check_variable_refs(value: Any, declared_ids: set[str], where: str) -> None:
-    """Recursively confirm every {{ inputs.x }} reference matches a declared input."""
+def _max_risk(a: str, b: str) -> str:
+    """The higher of two risk tiers — the composite risk of a task that
+    inlines another task's steps (phase 05b) is the max across both."""
+    return a if _RISK_ORDER.get(a, 1) >= _RISK_ORDER.get(b, 1) else b
+
+
+def _check_step_ref(
+    step_id: str, field: str | None, earlier: dict[str, str], where: str
+) -> None:
+    """A step reference must name an earlier step and, for a result, a declared output.
+
+    ``field`` is None for ``steps.<id>.status``, which every step has. The
+    value only exists on the host at run time, so this is the one place a bad
+    reference can be caught before a task is signed.
+    """
+    if step_id not in earlier:
+        raise SpecError(f"{where}: steps.{step_id} is not an earlier step")
+    if field is not None:
+        declared = action_outputs(earlier[step_id])
+        if field not in declared:
+            raise SpecError(
+                f"{where}: {earlier[step_id]} step {step_id!r} has no output "
+                f"{field!r}; declared: {sorted(declared)}"
+            )
+
+
+# ── if/then/else branches ──────────────────────────────────────────────────────
+#
+# A task's ``actions:`` may branch on an earlier step's result. The server
+# flattens the whole tree into one ordered list of leaf steps (``actions``
+# stays a flat list, as every consumer expects) plus a ``flow`` tree that
+# records the branches; phase 06 makes the agent follow it. Until then a
+# branching task must never reach an agent (the check-in feature gate).
+
+_MAX_BRANCH_DEPTH = 3
+_MAX_BRANCH_LEAVES = 50
+
+
+def _flatten_actions(actions_raw: list) -> tuple[list[dict], list | None, list[str]]:
+    """Flatten ``actions`` (steps, ``if/then/else`` branches and ``use:``
+    references) into leaves.
+
+    Returns ``(leaves, flow, uses)``: the leaf step mappings in document
+    order, each with a ``branch`` path (None for a top-level step, otherwise a
+    dot path like ``b1.then`` / ``b1.else.b2.then``); the ``flow`` list of
+    nodes (``{"step": <leaf>}`` / ``{"id", "if", "then", "else"}`` /
+    ``{"use": <name>}``), or None when the task has no branch; and the sorted
+    list of distinct task names referenced with ``use:``. A ``use:`` item is
+    allowed only inside a ``then``/else`` list — it names a whole task whose
+    steps are spliced in at deploy (phase 05b), not a step to validate now.
+    Branch shape is validated here (``if`` a non-empty string, ``then`` a
+    non-empty list, optional ``else`` list, no other keys); branch conditions
+    are validated later, once every step type is known.
+    """
+    leaves: list[dict] = []
+    branch_counter = 0
+    uses: set[str] = set()
+
+    def _walk(entries: list, depth: int, path: str, where: str) -> list:
+        nonlocal branch_counter
+        nodes: list[dict] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise SpecError(f"{where} must be a mapping")
+            if "use" in entry:
+                if depth == 0:
+                    raise SpecError(
+                        "use: belongs inside a then/else branch — to reuse a "
+                        "whole task at the top level, use a playbook"
+                    )
+                if set(entry) != {"use"}:
+                    raise SpecError(
+                        f"{where}: a use reference has exactly one key — use"
+                    )
+                name = entry["use"]
+                if not isinstance(name, str) or not name.strip():
+                    raise SpecError(f"{where}.use must be a non-empty string")
+                if len(name) > 200:
+                    raise SpecError(
+                        f"{where}.use: task name too long (max 200)")
+                uses.add(name.strip())
+                nodes.append({"use": name.strip()})
+            elif "if" in entry:
+                if depth + 1 > _MAX_BRANCH_DEPTH:
+                    raise SpecError(
+                        f"{where}: branch nested deeper than {_MAX_BRANCH_DEPTH} levels"
+                    )
+                unknown = set(entry) - {"if", "then", "else"}
+                if unknown:
+                    raise SpecError(
+                        f"{where}: branch has unknown key {min(unknown)!r} — "
+                        f"a branch is if/then/else only"
+                    )
+                cond = entry.get("if")
+                if not isinstance(cond, str) or not cond.strip():
+                    raise SpecError(f"{where}.if must be a non-empty string")
+                then_raw = entry.get("then")
+                if not isinstance(then_raw, list) or not then_raw:
+                    raise SpecError(f"{where}.then must be a non-empty list")
+                else_raw = entry.get("else")
+                if else_raw is not None and (
+                        not isinstance(else_raw, list) or not else_raw):
+                    raise SpecError(
+                        f"{where}.else must be a non-empty list when present")
+                branch_counter += 1
+                bid = f"b{branch_counter}"
+                node_where = f"branch {bid}"
+                then_nodes = _walk(then_raw, depth + 1,
+                                   f"{path}{bid}.then.", node_where + ".then")
+                else_nodes = _walk(else_raw or [], depth + 1,
+                                   f"{path}{bid}.else.", node_where + ".else")
+                node = {"id": bid, "if": cond, "then": then_nodes,
+                        "else": else_nodes}
+                nodes.append(node)
+            else:
+                entry["branch"] = path.rstrip(".") or None
+                nodes.append({"step": entry})
+                leaves.append(entry)
+        return nodes
+
+    top = _walk(actions_raw, 0, "", "actions")
+    flow = top if any("id" in node for node in top) else None
+    if len(leaves) > _MAX_BRANCH_LEAVES:
+        raise SpecError(
+            f"too many steps across all branches (max {_MAX_BRANCH_LEAVES})"
+        )
+    return leaves, flow, sorted(uses)
+
+
+def _flow_by_id(nodes: list, leaf_ids: dict[int, str]) -> list:
+    """The flow with each leaf mapping replaced by its step id."""
+    out = []
+    for node in nodes:
+        if "step" in node:
+            out.append({"step": leaf_ids[id(node["step"])]})
+        elif "use" in node:
+            out.append({"use": node["use"]})
+        else:
+            out.append({"id": node["id"], "if": node["if"],
+                        "then": _flow_by_id(node["then"], leaf_ids),
+                        "else": _flow_by_id(node["else"], leaf_ids)})
+    return out
+
+
+def _check_ordering_types(
+    expr: str, tree: ast.Expression, earlier: dict[str, str], where: str
+) -> None:
+    """An ordering comparison may not name a str/bool step output.
+
+    The evaluator treats ``"a" < 5`` as False (never a TypeError), so
+    ``when: steps.svc.result.name > 0`` would silently be false on every
+    host — the author almost certainly meant a number.
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Compare):
+            continue
+        for op, comp in zip(node.ops, node.comparators):
+            if not isinstance(op, (ast.Lt, ast.LtE, ast.Gt, ast.GtE)):
+                continue
+            # In a chained comparison the left side of each op is the previous
+            # comparator; judge both ends of this op.
+            left_side = (node.left if op is node.ops[0]
+                         else node.comparators[node.ops.index(op) - 1])
+            for side in (left_side, comp):
+                # side is steps.<id>.result.<field>: attribute chain
+                # side.attr (field) → side.value.attr ("result") →
+                # side.value.value.attr (step id) → side.value.value.value
+                # is the "steps" Name.
+                if not (isinstance(side, ast.Attribute)
+                        and isinstance(side.value, ast.Attribute)
+                        and side.value.attr == "result"
+                        and isinstance(side.value.value, ast.Attribute)):
+                    continue
+                step_id = side.value.value.attr
+                if step_id not in earlier:
+                    continue  # unknown id — reported by the step-ref check
+                declared = action_outputs(earlier[step_id]).get(side.attr)
+                if declared in ("str", "bool"):
+                    raise SpecError(
+                        f"{where}: steps.{step_id}.result.{side.attr} is a "
+                        f"{declared} output; <, <=, >, >= compare numbers"
+                    )
+
+
+def stays_open_seconds(value: Any, where: str = "stays_open") -> int:
+    """Normalize a hunt step's ``stays_open`` param to seconds.
+
+    Accepts a string of the form ``<n>m``, ``<n>h`` or ``<n>d``, or an int
+    number of seconds. Must land between one hour and 30 days.
+    """
+    if isinstance(value, bool):
+        raise SpecError(f"{where} must be a duration string ('<n>m', '<n>h', '<n>d') or seconds")
+    if isinstance(value, int):
+        seconds = value
+    elif isinstance(value, str):
+        match = _STAYS_OPEN_PATTERN.match(value.strip())
+        if not match:
+            raise SpecError(
+                f"{where} must be a duration string ('<n>m', '<n>h', '<n>d') or seconds, got {value!r}"
+            )
+        amount, unit = int(match.group(1)), match.group(2)
+        seconds = amount * {"m": 60, "h": 3600, "d": 86400}[unit]
+    else:
+        raise SpecError(f"{where} must be a duration string ('<n>m', '<n>h', '<n>d') or seconds")
+    if seconds < _STAYS_OPEN_MIN or seconds > _STAYS_OPEN_MAX:
+        raise SpecError(f"{where} must be between 1 hour and 30 days, got {seconds}s")
+    return seconds
+
+
+def hunt_expiry(parsed_or_steps: Any, now: datetime) -> datetime | None:
+    """When a hunt task may stop waiting for a host that never checks in.
+
+    Takes a parsed spec dict or a step list (as deployed into
+    ``params["steps"]``); returns ``now + max(stays_open over hunt steps)`` —
+    the default 7 days when no hunt step sets one — or ``None`` when no step
+    is a hunt, which leaves ``Task.expires_at`` untouched.
+    """
+    key = "type" if isinstance(parsed_or_steps, dict) else "action"
+    steps = (
+        parsed_or_steps.get("actions") or []
+        if isinstance(parsed_or_steps, dict)
+        else parsed_or_steps
+    )
+    values: list[int] = []
+    has_hunt = False
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        if not str(step.get(key, "")).startswith("hunt_"):
+            continue
+        has_hunt = True
+        params = step.get("params") or {}
+        where = f"step {step.get('id', '?')}.stays_open"
+        if params.get("stays_open") is None:
+            values.append(DEFAULT_STAYS_OPEN)
+        else:
+            values.append(stays_open_seconds(params["stays_open"], where))
+    if not has_hunt:
+        return None
+    return now + timedelta(seconds=max(values))
+
+
+def _check_variable_refs(
+    value: Any,
+    declared_ids: set[str],
+    where: str,
+    warnings: list[str],
+    earlier: dict[str, str],
+) -> None:
+    """Recursively confirm every input and step reference is valid.
+
+    Accepts both the current ${{ inputs.x }} form and the pre-2026.13
+    {{ inputs.x }} form (the latter collects a deprecation warning), and
+    ${{ steps.<id>.status }} / ${{ steps.<id>.result.<field> }} for steps
+    listed in ``earlier`` (step id → action type).
+    """
     if isinstance(value, str):
-        for match in _VAR_PATTERN.finditer(value):
+        step_refs = _STEP_REF.findall(value)
+        if len(_STEPS_MARKER.findall(value)) != len(step_refs):
+            raise SpecError(
+                f"{where}: malformed step reference — use "
+                f"${{{{ steps.<id>.status }}}} or ${{{{ steps.<id>.result.<field> }}}}"
+            )
+        for step_id, _status, field in step_refs:
+            _check_step_ref(step_id, field or None, earlier, where)
+        for match in _INPUT_REF.finditer(value):
+            ref = match.group(1)
+            if ref not in declared_ids:
+                raise SpecError(f"{where}: unknown input reference ${{{{ inputs.{ref} }}}}")
+        for match in _LEGACY_INPUT_REF.finditer(value):
             ref = match.group(1)
             if ref not in declared_ids:
                 raise SpecError(f"{where}: unknown input reference {{{{ inputs.{ref} }}}}")
+            warning = (
+                f"{where}: {{{{ inputs.{ref} }}}} is the old input syntax — "
+                f"write ${{{{ inputs.{ref} }}}}"
+            )
+            if warning not in warnings:
+                warnings.append(warning)
     elif isinstance(value, dict):
         for k, v in value.items():
-            _check_variable_refs(v, declared_ids, where)
+            _check_variable_refs(v, declared_ids, where, warnings, earlier)
     elif isinstance(value, list):
         for i, v in enumerate(value):
-            _check_variable_refs(v, declared_ids, f"{where}[{i}]")
+            _check_variable_refs(v, declared_ids, f"{where}[{i}]", warnings, earlier)
 
 
 def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[str, Any]:
@@ -899,17 +1112,41 @@ def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[
     def _sub(value: Any) -> Any:
         if isinstance(value, str):
             def repl(m: re.Match) -> str:
-                return str(resolved[m.group(1)])
-            return _VAR_PATTERN.sub(repl, value)
+                # A value is data: any ${{ inside it is written as the escaped
+                # $${{ so the agent's templater leaves it literal.
+                return str(resolved[m.group(2)]).replace("${{", "$${{")
+            # One pass for both forms: a second pass would rescan the values
+            # the first one inserted and expand markers typed into an input.
+            return _ANY_INPUT_REF.sub(repl, value)
         if isinstance(value, dict):
             return {k: _sub(v) for k, v in value.items()}
         if isinstance(value, list):
             return [_sub(v) for v in value]
         return value
 
+    def _relevant_sub(node: Any) -> Any:
+        return {
+            "op": node["op"],
+            "items": [
+                {"probe": {"id": p["probe"]["id"], "type": p["probe"]["type"],
+                           "params": _sub(p["probe"]["params"])},
+                 "risk": p["risk"]}
+                if "probe" in p
+                else _relevant_sub(p)
+                for p in node["items"]
+            ],
+        }
+
     new_actions = []
     for action in parsed_spec.get("actions", []):
-        new_actions.append({**action, "params": _sub(action.get("params") or {})})
+        params = action.get("params") or {}
+        if action.get("type") == "execute_script" and "script" in params:
+            new_params = {
+                k: (v if k == "script" else _sub(v)) for k, v in params.items()
+            }
+        else:
+            new_params = _sub(params)
+        new_actions.append({**action, "params": new_params})
 
     new_sc = parsed_spec.get("success_criteria")
     if new_sc and isinstance(new_sc, dict):
@@ -919,7 +1156,10 @@ def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[
         if "output_regex" in new_sc and isinstance(new_sc["output_regex"], str):
             new_sc["output_regex"] = _sub(new_sc["output_regex"])
 
-    return {**parsed_spec, "actions": new_actions, "success_criteria": new_sc, "resolved_inputs": resolved}
+    return {**parsed_spec, "actions": new_actions, "success_criteria": new_sc,
+            "relevant": _relevant_sub(parsed_spec["relevant"])
+            if parsed_spec.get("relevant") else None,
+            "resolved_inputs": resolved}
 
 
 def _validate_cves(value: Any) -> list[str]:
@@ -1012,9 +1252,6 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
     if not name:
         raise SpecError("'name' is required")
 
-    description = _as_str(raw.get("description"), "description", max_len=2000)
-    relevance = _as_str(raw.get("relevance"), "relevance", max_len=255)
-
     # ``author`` and ``created`` are optional locally but auto-injected by the
     # "Submit to Community" flow so every YAML that lands on the community
     # repo is self-describing (who wrote it, when). When present, ``created``
@@ -1061,14 +1298,53 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
     actions_raw = raw.get("actions")
     if not isinstance(actions_raw, list) or not actions_raw:
         raise SpecError("'actions' must be a non-empty list")
-    if len(actions_raw) > 32:
-        raise SpecError("too many actions (max 32)")
+
+    # Flatten if/then/else branches and use: references into an ordered list
+    # of leaf steps; the flow tree is validated and returned with the parsed
+    # spec.
+    flat_actions, flow, uses = _flatten_actions(actions_raw)
 
     parsed_actions: list[dict[str, Any]] = []
     derived_risk_level = 0
     seen_ids: set[str] = set()
+    warnings: list[str] = []
+    description = _as_str(raw.get("description"), "description", max_len=2000)
+    relevance = _as_str(raw.get("relevance"), "relevance", max_len=255)
+    if relevance:
+        # Free-text `relevance:` is deprecated — it is folded into the
+        # description so it keeps rendering, and the parsed spec reports it
+        # empty so nothing new writes the field. The no-duplicate guard keeps
+        # re-parsing a folded task from appending the line a second time.
+        warnings.append(
+            "relevance: is free text and is now part of the description — "
+            "use relevant: to decide where a task applies"
+        )
+        suffix = f"\n\nRelevant to: {relevance}"
+        if not description.endswith(suffix):
+            description = (description + suffix) if description else suffix.lstrip("\n")
+        relevance = ""
 
-    for index, entry in enumerate(actions_raw):
+    # Branch conditions are validated here, once every step's type is known,
+    # against the steps that come earlier in document order. A ``use:`` node
+    # contributes no condition and no leaf — its steps are spliced in at
+    # deploy, so its spliced-in branch conditions are checked in the composite.
+    branch_conditions: dict[str, str] = {}
+
+    def _validate_branch_nodes(nodes: list) -> None:
+        for node in nodes:
+            if "id" in node:
+                branch_conditions[node["id"]] = node["if"]
+                _validate_branch_nodes(node["then"])
+                _validate_branch_nodes(node["else"])
+
+    if flow is not None:
+        _validate_branch_nodes(flow)
+    # Raw step mapping → its parsed id, filled in by the loop below, so the
+    # flow can name steps by id (the steps themselves are signed once, in
+    # params["steps"], with their inputs resolved).
+    leaf_ids: dict[int, str] = {}
+
+    for index, entry in enumerate(flat_actions):
         if not isinstance(entry, dict):
             raise SpecError(f"action #{index + 1} must be a mapping")
 
@@ -1082,11 +1358,37 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                 f"action #{index + 1}: unknown type {action_type!r} — "
                 f"must be one of {', '.join(sorted(ACTION_REGISTRY))}"
             )
+        if action_type == "playbook" and entry.get("branch") is not None:
+            raise SpecError(
+                f"action #{index + 1}: type: playbook is not supported inside "
+                f"branches (branch {entry['branch']})"
+            )
 
         action_id = _as_str(entry.get("id") or f"step{index + 1}", f"actions[{index}].id", max_len=60)
         if action_id in seen_ids:
             raise SpecError(f"duplicate action id {action_id!r}")
         seen_ids.add(action_id)
+        leaf_ids[id(entry)] = action_id
+
+        # Steps before this one — the only ones a reference may name.
+        earlier = {a["id"]: a["type"] for a in parsed_actions}
+
+        # A branch whose first leaf is this step: validate its condition
+        # against the steps earlier in document order, before this step's
+        # own id is added.
+        branch_path = entry.get("branch") or ""
+        # Outermost first: a nested branch's first leaf is also the first
+        # leaf of every branch around it that has not been checked yet.
+        for bid in [seg for seg in branch_path.split(".") if seg in branch_conditions]:
+            cond = branch_conditions.pop(bid)
+            where = f"branch {bid}"
+            try:
+                tree = expression_parse(cond)
+            except ExprError as exc:
+                raise SpecError(f"{where}: if expression rejected: {exc}") from exc
+            for step_id, field in sorted(referenced_steps(tree), key=str):
+                _check_step_ref(step_id, field, earlier, where)
+            _check_ordering_types(cond, tree, earlier, where)
 
         params = entry.get("params") or {}
         if not isinstance(params, dict):
@@ -1101,6 +1403,50 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
 
         if action_type in ("add_tag", "remove_tag"):
             _validate_tag_param(params.get("tags", ""), index + 1, action_type)
+        elif action_type in ("app_install", "app_upgrade", "app_uninstall",
+                             "app_pin"):
+            _validate_app_params(params, index + 1, action_type)
+        elif action_type in ("stack_deploy", "stack_remove", "stack_read"):
+            _validate_stack_params(params, index + 1, action_type)
+        elif action_type == "app_ensure":
+            _validate_app_ensure_params(params, index + 1)
+        elif action_type == "app_install_custom":
+            _validate_custom_install_params(params, index + 1)
+        elif action_type == "execute_script":
+            _validate_script_params(params, index + 1)
+        elif action_type == "hunt_file" and not (
+                params.get("name") or params.get("sha256")):
+            raise SpecError(
+                f"action #{index + 1} (hunt_file): needs name or sha256 — "
+                "it cannot search without at least one of the two"
+            )
+        elif action_type == "hunt_process" and not (
+                params.get("name") or params.get("cmdline") or params.get("user")):
+            raise SpecError(
+                f"action #{index + 1} (hunt_process): needs name, cmdline or user — "
+                "it cannot search without at least one of the three"
+            )
+        elif action_type == "hunt_port" and not (
+                params.get("port") or params.get("process")):
+            raise SpecError(
+                f"action #{index + 1} (hunt_port): needs port or process — "
+                "it cannot search without at least one of the two"
+            )
+        elif action_type == "hunt_content":
+            _return_raw = params.get("return")
+            if _return_raw is not None and str(_return_raw).lower() not in (
+                    "match", "lines", "text"):
+                raise SpecError(
+                    f"action #{index + 1} (hunt_content): return must be one "
+                    f"of match, lines or text, got {str(_return_raw)!r}"
+                )
+            try:
+                re.compile(str(params["pattern"]))
+            except re.error as exc:
+                raise SpecError(
+                    f"action #{index + 1} (hunt_content): invalid pattern — "
+                    f"{exc}"
+                ) from exc
 
         allowed = set(spec["required"]) | set(spec["optional"])
         extra = set(params) - allowed
@@ -1115,24 +1461,29 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                 raise SpecError(
                     f"action #{index + 1}: param {pk!r} must be a primitive value"
                 )
-            # If the value references {{ inputs.x }}, the input must exist.
-            _check_variable_refs(pv, declared_input_ids, f"action #{index + 1} param {pk!r}")
+            # If the value references ${{ inputs.x }}, the input must exist.
+            # The inline script body is an exception: bare braces are literal
+            # shell/PowerShell text, so its contents are never ref-checked.
+            if not (action_type == "execute_script" and pk == "script"):
+                _check_variable_refs(
+                    pv, declared_input_ids, f"action #{index + 1} param {pk!r}",
+                    warnings, earlier,
+                )
 
         # Optional `when:` predicate. Validated for syntactic safety
         # here; the agent evaluates it at runtime against its own
         # platform context. Bad syntax fails the save, not the deploy.
+        # A named end state the author gives this step ("Patched", "Healthy"):
+        # a host whose run last succeeded on a labelled step ends there.
+        outcome = _as_str(entry.get("outcome"), f"actions[{index}].outcome", max_len=40)
+
         when_raw = entry.get("when")
         when_expr = ""
         if when_raw is not None:
             when_expr = _as_str(when_raw, f"actions[{index}].when", max_len=500)
             if when_expr:
-                from .expression import (
-                    ExprError,
-                    referenced_inputs as _refs,
-                    validate as _validate_when,
-                )
                 try:
-                    _validate_when(when_expr)
+                    expression_parse(when_expr)
                 except ExprError as exc:
                     raise SpecError(
                         f"action #{index + 1}: when expression rejected: {exc}"
@@ -1141,13 +1492,23 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                 # None at runtime, and None == "yes" is simply false — so the
                 # step would skip silently on every run, forever. Fail the
                 # save instead.
-                unknown = _refs(when_expr) - declared_input_ids
+                unknown = referenced_inputs(when_expr) - declared_input_ids
                 if unknown:
                     raise SpecError(
                         f"action #{index + 1}: when expression references "
                         f"undeclared input(s) {sorted(unknown)} — declare them "
                         f"under inputs:, or the step will silently never run"
                     )
+                try:
+                    step_refs = referenced_steps(when_expr)
+                except ExprError as exc:
+                    raise SpecError(
+                        f"action #{index + 1}: when expression rejected: {exc}"
+                    ) from exc
+                for step_id, field in sorted(step_refs, key=str):
+                    _check_step_ref(step_id, field, earlier, f"action #{index + 1} when")
+                _check_ordering_types(when_expr, expression_parse(when_expr),
+                                      earlier, f"action #{index + 1} when")
 
         # Optional per-step timeout, in seconds. The 1..3600 range mirrors
         # the agent's own validation — a limit the server accepts but the
@@ -1165,6 +1526,12 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                     f"{_MAX_STEP_TIMEOUT} seconds")
             step_timeout = timeout_raw
 
+        # stays_open is a hunt-only param; it never reaches the agent.
+        if action_type.startswith("hunt_") and params.get("stays_open") is not None:
+            stays_open_seconds(
+                params["stays_open"], f"action #{index + 1} ({action_type}) stays_open"
+            )
+
         parsed_actions.append({
             "id": action_id,
             "type": action_type,
@@ -1173,13 +1540,46 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
             "risk": spec["risk"],
             "when": when_expr,
             "timeout": step_timeout,
+            "outcome": outcome or None,
+            "outputs": sorted(action_outputs(action_type)),
+            "branch": entry.get("branch"),
         })
+        if action_type == "execute_script" and "script" in params:
+            parsed_actions[-1]["script_sha256"] = script_hash(params["script"])
 
         derived_risk_level = max(derived_risk_level, _RISK_ORDER[spec["risk"]])
 
-    # Effective risk is max(declared risk, derived from actions) — users
-    # cannot declare a lower risk than the actions actually warrant.
-    effective_risk_level = max(_RISK_ORDER[risk], derived_risk_level)
+        # hunt_content with `return: text` carries matched text out of the
+        # host, so the step itself is high risk regardless of what the rest
+        # of the task declares.
+        if action_type == "hunt_content" and (
+                str(params.get("return") or "lines").lower() == "text"):
+            derived_risk_level = max(derived_risk_level, _RISK_ORDER["high"])
+
+    # Effective risk is max(declared risk, derived from actions,
+    # derived from relevant: probes) — users cannot declare a lower risk
+    # than the actions and probes actually warrant.
+    relevant = _validate_relevant(raw.get("relevant"), declared_inputs)
+    relevant_risk_level = 0
+    if relevant is not None:
+        def _probe_levels(node: dict) -> int:
+            level = 0
+            for entry in node["items"]:
+                if "probe" in entry:
+                    level = max(level, entry["risk"])
+                else:
+                    level = max(level, _probe_levels(entry))
+            return level
+        relevant_risk_level = _probe_levels(relevant)
+    # Detection tasks (M10): a severity for the finding a match raises, and
+    # boost: probes that never decide applicability but raise confidence when
+    # they match too. Boost probes run on the host like relevant: probes, so
+    # their risk counts the same way.
+    severity = _validate_severity(raw.get("severity"))
+    boost = _validate_boost(raw.get("boost"), declared_inputs)
+    boost_risk_level = max((b["risk"] for b in boost), default=0)
+    effective_risk_level = max(_RISK_ORDER[risk], derived_risk_level,
+                               relevant_risk_level, boost_risk_level)
     effective_risk = next(k for k, v in _RISK_ORDER.items() if v == effective_risk_level)
 
     schedule = _validate_schedule(raw.get("schedule"))
@@ -1220,13 +1620,175 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
         "risk": effective_risk,
         "declared_risk": risk,
         "actions": parsed_actions,
+        "uses": uses,
+        "flow": _flow_by_id(flow, leaf_ids) if flow is not None else None,
         "inputs": declared_inputs,
+        "relevant": relevant,
+        "severity": severity,
+        "boost": boost,
         "schedule": schedule,
         "on_failure": on_failure,
         "success_criteria": success_criteria,
         "collect": collect,
         "target_tags": target_tags,
+        "warnings": warnings,
     }
+
+
+# ── relevant: ──────────────────────────────────────────────────────────────────
+#
+# A task may declare when it applies to a host as a tree of hunt probes.
+# The server parses, validates and normalises it at save time, substitutes
+# inputs at deploy, and signs it into the task params; the agent evaluates
+# it (phase 04).
+
+_RELEVANT_OPS = ("all", "any", "not")
+_MAX_RELEVANT_DEPTH = 3
+_MAX_RELEVANT_PROBES = 10
+
+
+def _validate_relevant(raw: Any, declared_inputs: list[dict[str, Any]]) -> Any:
+    """Validate the optional top-level ``relevant:`` tree; return its
+    normalised form (None when absent).
+
+    Grammar: a *node* is a mapping of one or more of ``all`` / ``any`` /
+    ``not`` to non-empty lists of *items* (several keys mean all of them
+    must hold); an *item* is either a *probe* — a mapping with exactly one
+    key, a registry action starting with ``hunt_``, whose value is the
+    hunt's params — or a nested *node*.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise SpecError("'relevant' must be a mapping")
+
+    probe_count = 0
+    probe_risk_level = 0
+
+    def _probe(where: str, key: str, params: Any) -> int:
+        """Validate one probe through the real action path; return its risk level."""
+        nonlocal probe_count, probe_risk_level
+        if not isinstance(params, dict):
+            raise SpecError(f"{where}: probe params must be a mapping")
+        probe_spec = {
+            "name": "relevant probe",
+            # Declared low so the result's risk is the hunt's own, not the
+            # "standard" a spec without a risk line defaults to.
+            "risk": "low",
+            "inputs": declared_inputs,
+            "actions": [{"id": "probe", "type": key, "params": params}],
+        }
+        try:
+            result = parse_and_validate(yaml.safe_dump(probe_spec))
+        except SpecError as exc:
+            raise SpecError(f"{where}: {exc}") from exc
+        probe_count += 1
+        if probe_count > _MAX_RELEVANT_PROBES:
+            raise SpecError(f"{where}: too many probes (max {_MAX_RELEVANT_PROBES})")
+        level = _RISK_ORDER[result["risk"]]
+        probe_risk_level = max(probe_risk_level, level)
+        return level
+
+    def _node(where: str, value: Any, depth: int) -> dict[str, Any]:
+        if depth > _MAX_RELEVANT_DEPTH:
+            raise SpecError(
+                f"{where}: too deep — at most {_MAX_RELEVANT_DEPTH} levels of "
+                f"all/any/not"
+            )
+        if not isinstance(value, dict):
+            raise SpecError(f"{where}: must be a mapping of all/any/not to lists")
+        if not value:
+            raise SpecError(f"{where}: must name at least one of all, any, not")
+        unknown = set(value) - set(_RELEVANT_OPS)
+        if unknown:
+            raise SpecError(f"{where}: unknown key {min(unknown)!r}")
+        nodes = []
+        for op in _RELEVANT_OPS:
+            if op not in value:
+                continue
+            raw_items = value[op]
+            if not isinstance(raw_items, list) or not raw_items:
+                raise SpecError(f"{where}.{op}: must be a non-empty list")
+            parsed_items = [
+                _item(f"{where}.{op}[{i}]", item, depth)
+                for i, item in enumerate(raw_items)
+            ]
+            nodes.append({"op": op, "items": parsed_items})
+        return nodes[0] if len(nodes) == 1 else {"op": "all", "items": nodes}
+
+    def _item(where: str, item: Any, depth: int) -> dict[str, Any]:
+        if not isinstance(item, dict):
+            raise SpecError(f"{where}: item must be a mapping")
+        if any(k in item for k in _RELEVANT_OPS):
+            return _node(where, item, depth + 1)
+        if len(item) != 1:
+            raise SpecError(f"{where}: a probe has exactly one key — a hunt_ action")
+        key = next(iter(item))
+        if not key.startswith("hunt_") or key not in ACTION_REGISTRY:
+            raise SpecError(f"{where}: unknown key {key!r}")
+        level = _probe(f"{where}.{key}", key, item[key])
+        return {"probe": {"id": f"relevant-{probe_count}", "type": key,
+                          "params": item[key]}, "risk": level}
+
+    return _node("relevant", raw, 1)
+
+
+_DETECTION_SEVERITIES = ("critical", "high", "medium", "low")
+_MAX_BOOST_PROBES = 5
+
+
+def _validate_severity(raw: Any) -> str:
+    """The optional ``severity:`` of a detection task — what a match is worth."""
+    if raw is None:
+        return ""
+    value = _as_str(raw, "severity", max_len=16).lower()
+    if value not in _DETECTION_SEVERITIES:
+        raise SpecError(f"'severity' must be one of: {', '.join(_DETECTION_SEVERITIES)}")
+    return value
+
+
+def _validate_boost(raw: Any, declared_inputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The optional ``boost:`` list: hunt probes that do not decide whether a
+    task applies, only how sure a match is. Same probe grammar as
+    ``relevant:`` items (one hunt_ key each, no nesting); returns
+    ``[{"probe": {"id": "boost-<n>", "type", "params"}, "risk": level}]``."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or not raw:
+        raise SpecError("'boost' must be a non-empty list of hunt probes")
+    if len(raw) > _MAX_BOOST_PROBES:
+        raise SpecError(f"'boost' has too many probes (max {_MAX_BOOST_PROBES})")
+    for n, item in enumerate(raw):
+        if isinstance(item, dict) and any(k in item for k in _RELEVANT_OPS):
+            raise SpecError(f"boost[{n}]: boost probes cannot be grouped with all/any/not")
+    try:
+        tree = _validate_relevant({"any": raw}, declared_inputs)
+    except SpecError as exc:
+        raise SpecError(str(exc).replace("relevant.any", "boost", 1)) from exc
+    items = tree["items"]
+    for n, item in enumerate(items, start=1):
+        item["probe"]["id"] = f"boost-{n}"
+    return items
+
+
+def _deploy_params(spec: dict, steps_payload: list[dict]) -> dict:
+    """The signed task params: steps + variables, plus the resolved
+    ``relevant:`` tree when the definition declares one (phase 04 makes
+    the agent evaluate it) and the branch flow tree when the definition
+    branches (phase 06 makes the agent follow it)."""
+    params = {"steps": steps_payload,
+              "variables": spec.get("resolved_inputs") or {}}
+    if spec.get("relevant"):
+        params["relevant"] = spec["relevant"]
+    if spec.get("boost"):
+        params["boost"] = [item["probe"] for item in spec["boost"]]
+    if spec.get("flow") is not None:
+        params["flow"] = spec["flow"]
+    # Which tasks a branch's ``use:`` copied in, and which version of each —
+    # signed with the steps, so a run shows exactly what shipped.
+    if spec.get("uses_copied"):
+        params["uses"] = spec["uses_copied"]
+    return params
 
 
 def _validate_target_tags(raw: Any) -> list[str]:

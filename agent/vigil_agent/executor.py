@@ -13,8 +13,6 @@ Security invariants:
 
 from __future__ import annotations
 
-import base64
-import gzip
 import hashlib
 import json
 import logging
@@ -30,8 +28,10 @@ import threading
 import time
 from pathlib import Path
 
-from . import collector
+from . import collector  # noqa: F401 — tests patch executor.collector
 from . import firewall
+from . import scripthash
+from . import software
 from .config import AgentConfig
 from .deferral import RebootDeferral
 from .pkg_manager import detect as detect_pkg_manager
@@ -138,7 +138,11 @@ def _chown(path: Path, owner: str, group: str) -> None:
     shutil.chown(path, user=owner or None, group=group or None)
 
 
-def _run(cmd: list[str], timeout: int = _EXEC_TIMEOUT) -> str:
+def _run(
+    cmd: list[str],
+    timeout: int = _EXEC_TIMEOUT,
+    extra_env: dict[str, str] | None = None,
+) -> str:
     """Run a command and return combined stdout+stderr. Never uses shell."""
     logger.info("Executing: %s", cmd)
     result = subprocess.run(
@@ -147,7 +151,7 @@ def _run(cmd: list[str], timeout: int = _EXEC_TIMEOUT) -> str:
         text=True,
         timeout=timeout,
         shell=False,
-        env=clean_env(),
+        env=clean_env(extra_env),
     )
     output = (result.stdout + result.stderr).strip()
     if result.returncode != 0:
@@ -159,37 +163,110 @@ def _run(cmd: list[str], timeout: int = _EXEC_TIMEOUT) -> str:
 # ACTION HANDLERS
 # ═════════════════════════════════════════════════════════════════════════════
 
+
+class ActionOutput(str):
+    """A handler's text plus its declared outputs.
+
+    A str subclass so every existing caller that treats the result as text keeps working;
+    the runtime reads ``.data`` to expose ``steps.<id>.result.<field>``.
+    """
+
+    data: dict
+
+    def __new__(cls, text: str, data: dict | None = None):
+        obj = super().__new__(cls, text)
+        obj.data = dict(data or {})
+        return obj
+
+
 # ── Service management ──────────────────────────────────────────────────────
+
+
+def _systemctl_query(verb: str, name: str) -> str:
+    """``systemctl is-active`` / ``is-enabled`` answer, without raising.
+
+    Both exit non-zero for a perfectly normal "inactive" / "disabled" answer,
+    so ``_run`` (which raises on non-zero) is the wrong tool here.
+    """
+    try:
+        result = subprocess.run(
+            ["systemctl", verb, name],
+            capture_output=True, text=True, timeout=30, shell=False,
+            env=clean_env(),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout.strip().lower()
+
+
+def _service_is_active(name: str) -> bool:
+    return _systemctl_query("is-active", name) == "active"
+
+
+def _service_is_enabled(name: str) -> bool:
+    return _systemctl_query("is-enabled", name) == "enabled"
+
+
+def _engine():
+    """The container engine every container action talks to (M11) — the first
+    answering socket, rootful before rootless. Tests patch this."""
+    from . import engine
+
+    client = engine.default_client()
+    if client is None:
+        raise RuntimeError("No container engine found (Docker or Podman socket)")
+    return client
+
+
+def _compose_cmd() -> list[str]:
+    """``docker compose``, or ``podman compose`` on a host with no docker CLI."""
+    import shutil
+
+    return ["docker", "compose"] if shutil.which("docker") or not shutil.which("podman") \
+        else ["podman", "compose"]
+
+
+def _compose_env() -> dict[str, str]:
+    """Point compose at the engine the client uses, whichever socket that is."""
+    return {"DOCKER_HOST": f"unix://{_engine().socket_path}"}
+
+
+def _container_running(name: str) -> bool:
+    try:
+        state = (_engine().get(f"/containers/{name}/json") or {}).get("State") or {}
+    except Exception:  # noqa: BLE001 — unknown is "not running"
+        return False
+    return bool(state.get("Running"))
 
 
 def _restart_service(params: dict, _config: AgentConfig) -> str:
     name = _validate_name(params.get("service_name", ""), "service name")
-    return _run(["systemctl", "restart", name])
+    return ActionOutput(_run(["systemctl", "restart", name]), {"active": _service_is_active(name)})
 
 
 def _start_service(params: dict, _config: AgentConfig) -> str:
     name = _validate_name(params.get("service_name", ""), "service name")
-    return _run(["systemctl", "start", name])
+    return ActionOutput(_run(["systemctl", "start", name]), {"active": _service_is_active(name)})
 
 
 def _stop_service(params: dict, _config: AgentConfig) -> str:
     name = _validate_name(params.get("service_name", ""), "service name")
-    return _run(["systemctl", "stop", name])
+    return ActionOutput(_run(["systemctl", "stop", name]), {"active": _service_is_active(name)})
 
 
 def _reload_service(params: dict, _config: AgentConfig) -> str:
     name = _validate_name(params.get("service_name", ""), "service name")
-    return _run(["systemctl", "reload", name])
+    return ActionOutput(_run(["systemctl", "reload", name]), {"active": _service_is_active(name)})
 
 
 def _enable_service(params: dict, _config: AgentConfig) -> str:
     name = _validate_name(params.get("service_name", ""), "service name")
-    return _run(["systemctl", "enable", name])
+    return ActionOutput(_run(["systemctl", "enable", name]), {"enabled": _service_is_enabled(name)})
 
 
 def _disable_service(params: dict, _config: AgentConfig) -> str:
     name = _validate_name(params.get("service_name", ""), "service name")
-    return _run(["systemctl", "disable", name])
+    return ActionOutput(_run(["systemctl", "disable", name]), {"enabled": _service_is_enabled(name)})
 
 
 def _check_service(params: dict, _config: AgentConfig) -> str:
@@ -212,603 +289,14 @@ def _check_service(params: dict, _config: AgentConfig) -> str:
             f"Service {name} is {status_str}, expected {expect}"
         )
 
-    return f"Service {name}: {status_str} (systemctl: {actual})"
-
-
-# ── Container management ────────────────────────────────────────────────────
-
-
-def _restart_container(params: dict, _config: AgentConfig) -> str:
-    name = _validate_name(
-        params.get("container_name") or params.get("container_id", ""),
-        "container name/id",
-    )
-    output = _run(["docker", "restart", name])
-    collector.request_docker_recheck()
-    return output
-
-
-def _stop_container(params: dict, _config: AgentConfig) -> str:
-    name = _validate_name(
-        params.get("container_name") or params.get("container_id", ""),
-        "container name/id",
-    )
-    output = _run(["docker", "stop", name])
-    collector.request_docker_recheck()
-    return output
-
-
-def _start_container(params: dict, _config: AgentConfig) -> str:
-    name = _validate_name(
-        params.get("container_name") or params.get("container_id", ""),
-        "container name/id",
-    )
-    output = _run(["docker", "start", name])
-    collector.request_docker_recheck()
-    return output
-
-
-def _pull_image(params: dict, _config: AgentConfig) -> str:
-    image = params.get("image", "")
-    if not _SAFE_IMAGE.match(image):
-        raise ValueError(f"Invalid image name: {image!r}")
-    output = _run(["docker", "pull", image], timeout=600)
-    collector.request_docker_recheck()
-    return output
-
-
-def _check_docker_updates(_params: dict, _config: AgentConfig) -> str:
-    """Force an immediate Docker Hub digest re-check.
-
-    Runs the same check the agent performs on its ``docker_check_interval``
-    schedule and returns a per-container summary. The recheck flag is also
-    set so the main loop refreshes its cached metrics and ships them on the
-    next check-in — firing or resolving outdated-image alerts within about
-    a minute instead of waiting out the interval.
-    """
-    metrics = collector.collect_docker_updates()
-    collector.request_docker_recheck()
-
-    lines = []
-    outdated = 0
-    for metric in metrics:
-        if metric.get("metric") != "image_outdated":
-            continue
-        labels = metric.get("labels") or {}
-        if metric.get("value"):
-            outdated += 1
-            state = "OUTDATED"
-        else:
-            state = "up to date"
-        lines.append(f"  {labels.get('container_name')}: {labels.get('image')} — {state}")
-
-    if not lines:
-        return (
-            "No Docker Hub-tagged containers to check "
-            "(Docker unavailable, nothing running, or only local/private images)"
-        )
-    header = f"Checked {len(lines)} container(s): {outdated} outdated"
-    return "\n".join([header, *lines])
-
-
-_COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
-
-
-def _docker_inspect(ref: str, *, kind: str = "container") -> dict:
-    """Return the parsed ``docker inspect`` object for a container or image."""
-    out = _run(["docker", "inspect", "--type", kind, ref])
-    data = json.loads(out)
-    if not data:
-        raise RuntimeError(f"docker inspect returned nothing for {ref!r}")
-    return data[0]
-
-
-def _recreate_run_args(spec: dict, old_image: dict, new_image_ref: str) -> list[str]:
-    """Build the ``docker run`` argv that reproduces *spec* on a new image.
-
-    Only configuration the *user* supplied at ``docker run`` time is carried
-    over — env vars, command, and entrypoint are diffed against the original
-    image's defaults so the new image's own defaults still apply (the same
-    approach watchtower uses). Exotic host configs (tmpfs, GPUs, log drivers,
-    resource limits) are not reproduced; those setups belong in compose.
-    """
-    cfg = spec.get("Config") or {}
-    host = spec.get("HostConfig") or {}
-    img_cfg = old_image.get("Config") or {}
-
-    args = ["docker", "run", "-d", "--name", (spec.get("Name") or "").lstrip("/")]
-
-    restart = host.get("RestartPolicy") or {}
-    policy = restart.get("Name") or ""
-    if policy and policy != "no":
-        retries = restart.get("MaximumRetryCount") or 0
-        if policy == "on-failure" and retries:
-            policy = f"{policy}:{retries}"
-        args += ["--restart", policy]
-
-    image_env = set(img_cfg.get("Env") or [])
-    for env in cfg.get("Env") or []:
-        if env not in image_env:
-            args += ["-e", env]
-
-    image_labels = img_cfg.get("Labels") or {}
-    for label, value in (cfg.get("Labels") or {}).items():
-        if image_labels.get(label) != value:
-            args += ["--label", f"{label}={value}"]
-
-    network = host.get("NetworkMode") or "default"
-    if network not in ("default", "bridge"):
-        args += ["--network", network]
-
-    if host.get("PublishAllPorts"):
-        args.append("-P")
-    for port, bindings in (host.get("PortBindings") or {}).items():
-        for binding in bindings or [{}]:
-            host_ip = binding.get("HostIp") or ""
-            host_port = binding.get("HostPort") or ""
-            if host_ip:
-                args += ["-p", f"{host_ip}:{host_port}:{port}"]
-            elif host_port:
-                args += ["-p", f"{host_port}:{port}"]
-            else:
-                args += ["-p", port]
-
-    for mount in spec.get("Mounts") or []:
-        source = mount.get("Source") if mount.get("Type") == "bind" else mount.get("Name")
-        if not source:
-            continue
-        volume = f"{source}:{mount.get('Destination')}"
-        if not mount.get("RW", True):
-            volume += ":ro"
-        args += ["-v", volume]
-
-    if host.get("Privileged"):
-        args.append("--privileged")
-    for cap in host.get("CapAdd") or []:
-        args += ["--cap-add", cap]
-    for cap in host.get("CapDrop") or []:
-        args += ["--cap-drop", cap]
-    for device in host.get("Devices") or []:
-        on_host = device.get("PathOnHost")
-        if on_host:
-            args += ["--device", f"{on_host}:{device.get('PathInContainer') or on_host}"]
-    for extra_host in host.get("ExtraHosts") or []:
-        args += ["--add-host", extra_host]
-    if cfg.get("User"):
-        args += ["--user", cfg["User"]]
-
-    trailing: list[str] = []
-    entrypoint = cfg.get("Entrypoint")
-    if isinstance(entrypoint, str):
-        entrypoint = [entrypoint]
-    if entrypoint and entrypoint != (img_cfg.get("Entrypoint") or None):
-        # --entrypoint takes a single executable; the rest of the override,
-        # plus the command, must be restated as trailing args.
-        args += ["--entrypoint", entrypoint[0]]
-        trailing += entrypoint[1:]
-        trailing += cfg.get("Cmd") or []
-    else:
-        command = cfg.get("Cmd")
-        if isinstance(command, str):
-            command = [command]
-        if command and command != (img_cfg.get("Cmd") or None):
-            trailing += command
-
-    args.append(new_image_ref)
-    args += [str(part) for part in trailing]
-    return args
-
-
-def _recreate_container(params: dict, _config: AgentConfig) -> str:
-    """Stop, remove, and re-run a container so it adopts a freshly pulled image.
-
-    ``docker restart`` keeps a container on the image it was created from, so
-    a pull + restart never applies an update. Applying one requires
-    recreating the container: inspect the existing one, carry its
-    user-supplied config (env overrides, ports, volumes, network, restart
-    policy, capabilities) onto a new container on the target image, and roll
-    the original back into place if the replacement fails to start.
-
-    Compose-managed containers are refused — recreate those with
-    ``docker_compose_up`` so compose stays authoritative over their config.
-    """
-    name = _validate_name(params.get("container_name", ""), "container name")
-    spec = _docker_inspect(name)
-
-    labels = (spec.get("Config") or {}).get("Labels") or {}
-    if labels.get(_COMPOSE_PROJECT_LABEL):
-        raise ValueError(
-            f"Container {name!r} is managed by docker compose "
-            f"(project {labels[_COMPOSE_PROJECT_LABEL]!r}) — "
-            f"use docker_compose_up to recreate it"
-        )
-
-    image_ref = params.get("image") or (spec.get("Config") or {}).get("Image") or ""
-    if not _SAFE_IMAGE.match(image_ref):
-        raise ValueError(f"Invalid image name: {image_ref!r}")
-
-    old_image_id = spec.get("Image") or ""
-    # The old image is always inspectable while its container exists — docker
-    # refuses to remove an image that a container still references.
-    old_image = _docker_inspect(old_image_id or image_ref, kind="image")
-    run_args = _recreate_run_args(spec, old_image, image_ref)
-
-    backup = f"{name}.vigil-old"
-    try:
-        _run(["docker", "rm", "-f", backup])  # clear stale backup from a failed run
-    except RuntimeError:
-        pass
-
-    _run(["docker", "stop", name])
-    _run(["docker", "rename", name, backup])
-    try:
-        _run(run_args, timeout=300)
-    except Exception as exc:
-        try:
-            _run(["docker", "rm", "-f", name])  # half-created replacement, if any
-        except RuntimeError:
-            pass
-        try:
-            _run(["docker", "rename", backup, name])
-            _run(["docker", "start", name])
-            rollback = "original container restored"
-        except RuntimeError as rb_exc:
-            rollback = f"ROLLBACK FAILED, backup container is {backup!r}: {rb_exc}"
-        raise RuntimeError(f"Recreate failed ({rollback}): {exc}") from exc
-    _run(["docker", "rm", backup])
-    collector.request_docker_recheck()
-
-    new_image_id = _run(["docker", "inspect", "--format", "{{.Image}}", name])
-    changed = "image updated" if new_image_id != old_image_id else "image unchanged"
-    return (
-        f"Recreated {name} on {image_ref} ({changed})\n"
-        f"  old image: {old_image_id[:19]}\n"
-        f"  new image: {new_image_id[:19]}"
+    return ActionOutput(
+        f"Service {name}: {status_str} (systemctl: {actual})",
+        {"active": is_running, "state": actual},
     )
 
 
-def _tag_names(params: dict) -> list[str]:
-    """The tags named by an add_tag/remove_tag step.
-
-    Accepts a list or a comma-separated string so a hand-written YAML
-    definition can say either.
-    """
-    raw = params.get("tags", "")
-    if isinstance(raw, str):
-        raw = raw.split(",")
-    return [str(t).strip() for t in (raw or []) if str(t).strip()]
-
-
-def _add_tag(params: dict, _config: AgentConfig) -> str:
-    """Emit a marker so the server tags this host.
-
-    No work happens here: tags are server-side metadata about the host, not
-    state on it. The server applies the tags recorded in the signed task, so
-    what lands is what an operator authorized — this output is a report, not
-    an instruction.
-    """
-    tags = _tag_names(params)
-    if not tags:
-        raise ValueError("add_tag needs at least one tag")
-    return f"Tag requested: {', '.join(tags)} — server will apply"
-
-
-def _remove_tag(params: dict, _config: AgentConfig) -> str:
-    """Emit a marker so the server untags this host. See _add_tag."""
-    tags = _tag_names(params)
-    if not tags:
-        raise ValueError("remove_tag needs at least one tag")
-    return f"Tag removal requested: {', '.join(tags)} — server will apply"
-
-
-def _request_nessus_scan(_params: dict, _config: AgentConfig) -> str:
-    """Emit a marker so the server records a Nessus scan request.
-
-    No real work happens on the agent — Nessus scans the host's IP from
-    the central scanner. The server inspects completed task params for
-    this action and creates a ``VulnScan(state=REQUESTED)`` row, which
-    the next ``sync_vulns`` cycle launches against Nessus.
-    """
-    return "Nessus scan requested — central scanner will pick it up"
-
-
-def _request_network_scan(params: dict, _config: AgentConfig) -> str:
-    """Engine-agnostic version of ``_request_nessus_scan``.
-
-    The agent has no opinion about which network scanner runs — that's
-    the server's call. We just emit a marker; the task-completion
-    handler decides Nessus vs. Greenbone based on
-    ``params.engine`` (if set) or the host's preferred_scanners.
-    """
-    engine = (params.get("engine") or "auto").strip()
-    return f"Network scan requested (engine={engine}) — server will dispatch"
-
-
-# Trivy actions ─────────────────────────────────────────────────────────────
-# Trivy is agent-local: the scan runs here and we ship the JSON back as
-# task output. The server's task-completion handler routes the JSON into
-# apps/vulns/scanners/trivy.py:TrivyScanner.ingest_report.
-
-_TRIVY_SCOPE_PATTERN = re.compile(r"^(fs|rootfs|image:[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,254})$")
-
-
-# Subprocess wall-clock budget for a scan, and Trivy's own internal scan
-# deadline kept just under it. Trivy's *default* --timeout is 5m, which
-# routinely expires while walking a real root filesystem and surfaces as
-# "semaphore acquire: context deadline exceeded" — so we set it explicitly.
-_TRIVY_SUBPROCESS_TIMEOUT = 1200
-_TRIVY_SCAN_TIMEOUT = _TRIVY_SUBPROCESS_TIMEOUT - 60
-
-# Directories full of large content-addressed blobs (flatpak/docker/containers/
-# snap) that aren't OS or language package sources. Walking them adds minutes
-# and yields no findings — and analysing those blobs is what stalls the scan.
-_TRIVY_SKIP_DIRS = (
-    "/var/lib/flatpak",
-    "/var/lib/docker",
-    "/var/lib/containers",
-    "/var/lib/snapd",
-    "/var/snap",
-)
-
-# The only per-vulnerability fields the server reads — see
-# apps/vulns/scanners/trivy.py:TrivyScanner.ingest_report. Everything else
-# Trivy attaches to a finding (Description, References, CVSS, DataSource,
-# Layer, PkgIdentifier) is prose that no part of Vigil ever looks at.
-_TRIVY_VULN_FIELDS = (
-    "VulnerabilityID",
-    "PkgName",
-    "Severity",
-    "Title",
-    "InstalledVersion",
-    "FixedVersion",
-)
-
-# Per-result keys carrying bulk we never ingest. Packages is the big one: on a
-# stock Ubuntu workstation it was 21 MB of a 23.5 MB report — the full SBOM
-# inventory, listed alongside the 2.4 MB of findings we actually want.
-_TRIVY_RESULT_BULK = ("Packages", "Secrets", "Misconfigurations", "Licenses")
-
-def _condense_trivy_report(raw: str) -> str:
-    """Strip a Trivy report down to what the server ingests.
-
-    A real ``trivy fs /`` report is enormous — 30,159,056 characters measured
-    on a stock Ubuntu workstation, 379 results and 803 vulnerabilities. The
-    transport caps task output, so what reached the server was an unterminated
-    fragment of JSON and no scan was ever ingested. Condensing here takes that
-    same report to roughly 243,000 characters, which fits with room to spare.
-
-    Two properties the server depends on are preserved exactly:
-
-      * **every** result survives, even ones with no findings — the SBOM
-        refusal (#18) reasons over the whole ``Results`` list, and dropping
-        the empty ones would turn "this scan never looked for
-        vulnerabilities" into "nothing was scanned";
-      * the *presence or absence* of each result's ``Vulnerabilities`` key is
-        untouched. An empty list means a clean host; a missing key means the
-        vulnerability scanner never ran. Conflating those marks every real
-        finding fixed and reports the host clean (#19).
-
-    Anything we cannot parse is returned exactly as it came. The server's
-    diagnostics for a broken report are better than a guess made here, and
-    ``_run`` hands back stdout and stderr concatenated, so a Trivy WARN line
-    can sit on either side of the JSON — that text is kept as-is.
-    """
-    text = raw or ""
-    start = text.find("{")
-    if start == -1:
-        return text
-
-    decoder = json.JSONDecoder()
-    while start != -1:
-        try:
-            data, end = decoder.raw_decode(text, start)
-        except ValueError:
-            start = text.find("{", start + 1)
-            continue
-        if isinstance(data, dict) and "Results" in data:
-            break
-        start = text.find("{", start + 1)
-    else:
-        return text
-
-    condensed = json.dumps(_slim_report(data), separators=(",", ":"))
-
-    # Splice back in place so any surrounding stderr text is left intact.
-    return text[:start] + _pack_report(condensed) + text[end:]
-
-
-#: Prefix marking a gzipped, base64-encoded report. The server keys off this to
-#: decide whether to decompress; anything without it is read as plain JSON, so
-#: an agent from before compression still ingests fine.
-TRIVY_GZIP_MARKER = "[TRIVY-GZ]"
-
-
-def _pack_report(report_json: str) -> str:
-    """Compress a condensed report for the wire.
-
-    A Trivy report is JSON with the same handful of keys repeated once per
-    finding, which is close to the ideal case for gzip: 6.6x on a real report,
-    5.0x after base64. That is what keeps a large host inside a single
-    request — the alternative was raising the request-body ceiling and
-    shedding fields, both of which cost more than they bought.
-
-    Compression is best-effort. If anything here fails, the plain report is
-    still correct and still ingestible; only the size advantage is lost.
-    """
-    try:
-        packed = TRIVY_GZIP_MARKER + base64.b64encode(
-            gzip.compress(report_json.encode("utf-8"), 6)).decode("ascii")
-    except Exception:  # noqa: BLE001
-        logger.warning("Could not compress the Trivy report; sending it plain")
-        return report_json
-    # Refuse to make things worse. A tiny report can come out larger once
-    # base64 has added its third, and a plain report is easier to diagnose.
-    return packed if len(packed) < len(report_json) else report_json
-
-
-def _slim_report(data: dict) -> dict:
-    """Rebuild a Trivy report carrying only what the server ingests.
-
-    Deduplicates on ``(PkgName, VulnerabilityID)`` — the exact key the server
-    reconciles on. The same package/CVE is reported once per binary that links
-    it, 3.0x duplication on a real report, and every copy after the first is
-    transferred only to be collapsed by ``update_or_create`` at the far end.
-    The last occurrence wins, because that is the one whose values a host ends
-    up with today.
-
-    Every result survives even when dedup empties it, and each result's
-    ``Vulnerabilities`` key keeps its presence or absence: an empty list means
-    a clean target, a missing key means the vulnerability scanner never ran,
-    and the server refuses the second rather than marking everything fixed.
-    """
-    # (pkg, cve) -> (index of the result it last appeared in, slimmed entry)
-    latest: dict[tuple, tuple[int, dict]] = {}
-    for i, result in enumerate(data.get("Results") or []):
-        if not isinstance(result, dict):
-            continue
-        for vuln in (result.get("Vulnerabilities") or []):
-            if not isinstance(vuln, dict):
-                continue
-            key = (vuln.get("PkgName"), vuln.get("VulnerabilityID"))
-            latest[key] = (
-                i, {f: vuln[f] for f in _TRIVY_VULN_FIELDS if vuln.get(f) is not None})
-
-    kept: dict[int, list] = {}
-    for index, entry in latest.values():
-        kept.setdefault(index, []).append(entry)
-
-    condensed = {k: v for k, v in data.items() if k != "Results"}
-    results = []
-    for i, result in enumerate(data.get("Results") or []):
-        if not isinstance(result, dict):
-            results.append(result)
-            continue
-        slim = {k: v for k, v in result.items()
-                if k not in _TRIVY_RESULT_BULK and k != "Vulnerabilities"}
-        if "Vulnerabilities" in result:
-            slim["Vulnerabilities"] = kept.get(i, [])
-        results.append(slim)
-    condensed["Results"] = results
-    return condensed
-
-
-def _run_trivy_scan(params: dict, _config: AgentConfig) -> str:
-    """Run ``trivy`` against the local filesystem or a named image.
-
-    ``scope`` selects what to scan:
-      * ``fs`` (default) — ``trivy fs /``
-      * ``rootfs`` — alias for ``fs``
-      * ``image:<name>`` — ``trivy image <name>``
-
-    Returns the JSON report, condensed to the fields the server ingests (see
-    :func:`_condense_trivy_report`). No local interpretation happens — no
-    finding is judged or dropped here — but the SBOM package inventory and
-    the per-CVE prose are stripped, because a full report is ~30 MB and does
-    not survive the trip.
-
-    The scan is restricted to the ``vuln`` scanner: a default ``fs`` scan also
-    runs the *secret* scanner, which reads and analyses every file on disk.
-    That's both wasted work (the server only ingests vulnerabilities) and the
-    usual cause of stalls on hosts with large blob stores. Combined with an
-    explicit ``--timeout`` and a skip-list, scans complete reliably.
-    """
-    if shutil.which("trivy") is None:
-        raise RuntimeError(
-            "trivy binary not found in PATH — install it with "
-            "'curl -sSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh' "
-            "or run the 'Install Trivy' task template"
-        )
-
-    scope = (params.get("scope") or "fs").strip()
-    if not _TRIVY_SCOPE_PATTERN.match(scope):
-        raise ValueError(f"Invalid trivy scope: {scope!r}")
-
-    common = [
-        "--quiet",
-        "--format", "json",
-        "--severity", "CRITICAL,HIGH,MEDIUM,LOW",
-        "--scanners", "vuln",
-        "--timeout", f"{_TRIVY_SCAN_TIMEOUT}s",
-    ]
-    if scope in ("fs", "rootfs"):
-        skip = []
-        for d in _TRIVY_SKIP_DIRS:
-            # Under `trivy fs /` the walker matches paths *relative* to the
-            # scan root (e.g. "var/lib/flatpak/…", no leading slash), so an
-            # absolute --skip-dirs may not match. Pass both forms to be safe.
-            skip += ["--skip-dirs", d, "--skip-dirs", d.lstrip("/")]
-        cmd = ["trivy", "fs", *common, *skip, "/"]
-    else:
-        # scope = "image:<name>"
-        image_name = scope[len("image:"):]
-        if not _SAFE_IMAGE.match(image_name):
-            raise ValueError(f"Invalid image name in trivy scope: {image_name!r}")
-        cmd = ["trivy", "image", *common, image_name]
-
-    return _condense_trivy_report(_run(cmd, timeout=_TRIVY_SUBPROCESS_TIMEOUT))
-
-
-def _trivy_db_update(_params: dict, _config: AgentConfig) -> str:
-    """Force a refresh of Trivy's local vulnerability database.
-
-    Trivy auto-updates on first scan but caches between runs; this
-    action is for explicit refreshes (e.g. after a security advisory).
-    """
-    if shutil.which("trivy") is None:
-        raise RuntimeError("trivy binary not found in PATH")
-    return _run(["trivy", "--quiet", "image", "--download-db-only"], timeout=300)
-
-
-def _remove_container(params: dict, _config: AgentConfig) -> str:
-    name = _validate_name(params.get("container_name", ""), "container name")
-    output = _run(["docker", "rm", "-f", name])
-    collector.request_docker_recheck()
-    return output
-
-
-def _docker_compose_up(params: dict, _config: AgentConfig) -> str:
-    compose_file = params.get("compose_file", "")
-    path = _validate_path(compose_file, "compose_file")
-    if not path.is_file():
-        raise ValueError(f"Compose file not found: {compose_file}")
-
-    cmd = ["docker", "compose", "-f", str(path), "up", "-d"]
-
-    services = params.get("services", "")
-    if services:
-        if isinstance(services, str):
-            services = [s.strip() for s in services.split(",") if s.strip()]
-        for svc in services:
-            _validate_name(svc, "service name")
-            cmd.append(svc)
-
-    output = _run(cmd, timeout=300)
-    collector.request_docker_recheck()
-    return output
-
-
-def _docker_compose_down(params: dict, _config: AgentConfig) -> str:
-    compose_file = params.get("compose_file", "")
-    path = _validate_path(compose_file, "compose_file")
-    if not path.is_file():
-        raise ValueError(f"Compose file not found: {compose_file}")
-    output = _run(["docker", "compose", "-f", str(path), "down"], timeout=120)
-    collector.request_docker_recheck()
-    return output
-
-
-def _clear_docker_logs(params: dict, _config: AgentConfig) -> str:
-    container = params.get("container_name", "")
-    if not container:
-        return "No container specified"
-    _validate_name(container, "container name")
-    log_path = _run(
-        ["docker", "inspect", "--format={{.LogPath}}", container]
-    )
-    if log_path and Path(log_path).exists():
-        Path(log_path).write_text("")
-        return f"Truncated log for {container}"
-    return "No log file found"
+# ── Container, tag and scan handlers ──────────────────────────────────────
+# Live in actions/containers.py and actions/tags_scans.py; re-exported below.
 
 
 # ── File / directory operations ─────────────────────────────────────────────
@@ -827,7 +315,8 @@ def _write_file(params: dict, config: AgentConfig) -> str:
     if mode:
         os.chmod(path, _parse_octal_mode(str(mode)))
 
-    return f"Wrote {len(content)} bytes to {path}"
+    return ActionOutput(f"Wrote {len(content)} bytes to {path}",
+                        {"path": str(path), "bytes": len(content)})
 
 
 def _create_directory(params: dict, _config: AgentConfig) -> str:
@@ -843,7 +332,7 @@ def _create_directory(params: dict, _config: AgentConfig) -> str:
     if owner or group:
         _chown(path, owner, group)
 
-    return f"Created directory {path}"
+    return ActionOutput(f"Created directory {path}", {"path": str(path)})
 
 
 def _delete_path(params: dict, _config: AgentConfig) -> str:
@@ -852,10 +341,12 @@ def _delete_path(params: dict, _config: AgentConfig) -> str:
 
     if path.is_dir():
         shutil.rmtree(path)
-        return f"Deleted directory {path} (recursive)"
+        return ActionOutput(f"Deleted directory {path} (recursive)",
+                            {"path": str(path), "recursive": recursive})
     else:
         path.unlink()
-        return f"Deleted {path}"
+        return ActionOutput(f"Deleted {path}",
+                            {"path": str(path), "recursive": recursive})
 
 
 def _copy_file(params: dict, config: AgentConfig) -> str:
@@ -871,7 +362,7 @@ def _copy_file(params: dict, config: AgentConfig) -> str:
     else:
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dest)
-    return f"Copied {src} -> {dest}"
+    return ActionOutput(f"Copied {src} -> {dest}", {"src": str(src), "dest": str(dest)})
 
 
 def _move_file(params: dict, config: AgentConfig) -> str:
@@ -883,7 +374,7 @@ def _move_file(params: dict, config: AgentConfig) -> str:
         raise ValueError(f"Source not found: {src}")
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(src), str(dest))
-    return f"Moved {src} -> {dest}"
+    return ActionOutput(f"Moved {src} -> {dest}", {"src": str(src), "dest": str(dest)})
 
 
 def _set_permissions(params: dict, _config: AgentConfig) -> str:
@@ -907,7 +398,7 @@ def _set_permissions(params: dict, _config: AgentConfig) -> str:
         parts.append(f"owner={owner}")
     if group:
         parts.append(f"group={group}")
-    return f"Set {', '.join(parts)} on {path}"
+    return ActionOutput(f"Set {', '.join(parts)} on {path}", {"path": str(path)})
 
 
 # ── Package management ──────────────────────────────────────────────────────
@@ -934,7 +425,9 @@ def _install_package(params: dict, _config: AgentConfig) -> str:
     if pm is None:
         raise RuntimeError("No supported package manager found")
     pm.refresh()
-    return _assert_initramfs_clean(pm.install(pkg_name))
+    text = _assert_initramfs_clean(pm.install(pkg_name))
+    return ActionOutput(text, {"package": pkg_name, "manager": pm.name,
+                               "installed_version": pm.installed_version(pkg_name)})
 
 
 def _remove_package(params: dict, _config: AgentConfig) -> str:
@@ -942,7 +435,7 @@ def _remove_package(params: dict, _config: AgentConfig) -> str:
     pm = detect_pkg_manager()
     if pm is None:
         raise RuntimeError("No supported package manager found")
-    return pm.remove(pkg_name)
+    return ActionOutput(pm.remove(pkg_name), {"package": pkg_name, "manager": pm.name})
 
 
 def _update_package(params: dict, _config: AgentConfig) -> str:
@@ -951,7 +444,9 @@ def _update_package(params: dict, _config: AgentConfig) -> str:
     if pm is None:
         raise RuntimeError("No supported package manager found")
     pm.refresh()
-    return _assert_initramfs_clean(pm.install(pkg_name))  # install upgrades if already present
+    text = _assert_initramfs_clean(pm.install(pkg_name))  # install upgrades if already present
+    return ActionOutput(text, {"package": pkg_name, "manager": pm.name,
+                               "installed_version": pm.installed_version(pkg_name)})
 
 
 def _run_package_updates(params: dict, _config: AgentConfig) -> str:
@@ -961,25 +456,26 @@ def _run_package_updates(params: dict, _config: AgentConfig) -> str:
         raise RuntimeError("No supported package manager found")
 
     pm.refresh()
+    outputs = {"manager": pm.name, "security_only": bool(security_only)}
 
     if security_only:
         # Security-only upgrades only supported for apt and dnf
         if pm.name in ("apt", "apt-get"):
-            return _assert_initramfs_clean(_run(
+            return ActionOutput(_assert_initramfs_clean(_run(
                 ["apt-get", "upgrade", "-y", "-qq",
                  "-o", "Dir::Etc::SourceList=/etc/apt/sources.list"],
                 timeout=600,
-            ))
+            )), outputs)
         if pm.name == "dnf":
-            return _assert_initramfs_clean(_run(
+            return ActionOutput(_assert_initramfs_clean(_run(
                 ["dnf", "update", "-y", "-q", "--security"], timeout=600
-            ))
+            )), outputs)
         logger.warning(
             "security_only not supported for %s, running full upgrade",
             pm.name,
         )
 
-    return _assert_initramfs_clean(pm.upgrade_all())
+    return ActionOutput(_assert_initramfs_clean(pm.upgrade_all()), outputs)
 
 
 # ── System ──────────────────────────────────────────────────────────────────
@@ -1025,12 +521,91 @@ def _clear_temp_files(params: dict, _config: AgentConfig) -> str:
         removed += 1
         freed += size
 
-    return (f"Removed {removed} file(s) older than {days} day(s) from "
-            f"{temp_root}, freeing {freed // 1024} KiB"
-            + (f"; {skipped} in use or not permitted" if skipped else ""))
+    return ActionOutput(
+        (f"Removed {removed} file(s) older than {days} day(s) from "
+         f"{temp_root}, freeing {freed // 1024} KiB"
+         + (f"; {skipped} in use or not permitted" if skipped else "")),
+        {"removed": removed, "skipped": skipped})
 
 
-def _execute_script(params: dict, config: AgentConfig) -> str:
+def _input_env(inputs: dict | None) -> dict[str, str]:
+    """Map task inputs to ``VIGIL_INPUT_<NAME>`` environment variables.
+
+    Inputs pasted into a command line would be code — ``nginx; rm -rf /``
+    runs as a second command.  In an environment variable the same value is
+    only data: ``printf '%s' "$VIGIL_INPUT_APP"`` prints it.
+    """
+    if not inputs:
+        return {}
+    env: dict[str, str] = {}
+    for name, value in inputs.items():
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(name)):
+            continue
+        if isinstance(value, str) and "\x00" in value:
+            raise ValueError(f"input {name!r} contains a NUL byte")
+        if isinstance(value, bool):
+            value = "true" if value else "false"
+        elif isinstance(value, float) and value.is_integer():
+            value = str(int(value))
+        else:
+            value = str(value)
+        env[f"VIGIL_INPUT_{str(name).upper()}"] = value
+    return env
+
+
+def _execute_inline_script(params: dict, config: AgentConfig, inputs: dict | None = None) -> str:
+    """Run an inline ``script`` body with ``shell``.
+
+    The body is arbitrary code from the server, so outside full_control it runs
+    only if its exact hash is in ``allowed_script_hashes`` — approved on this
+    host by its owner. Any edit changes the hash and needs a new approval.
+    """
+    if "script_name" in params:
+        raise ValueError("give script_name or script, not both")
+
+    shell = params.get("shell", "")
+    if shell not in ("bash", "sh", "powershell", "pwsh"):
+        raise ValueError(
+            f"shell must be one of bash, sh, powershell, pwsh; got {shell!r}")
+
+    body = params.get("script", "")
+    if not isinstance(body, str) or not body:
+        raise ValueError("script must be a non-empty string")
+    if len(body) > 65536:
+        raise ValueError("script body exceeds 65536 characters")
+
+    digest = scripthash.script_hash(body)
+    if config.mode != "full_control" and digest not in config.allowed_script_hashes:
+        raise ValueError(
+            f"script hash not allowlisted: {digest} — approve it on this host with "
+            f"`vigil-agent allow-script` or add it to allowed_script_hashes in agent.yml")
+
+    timeout = int(params.get("timeout", _EXEC_TIMEOUT))
+    if timeout < 1 or timeout > 3600:
+        raise ValueError("timeout must be between 1 and 3600 seconds")
+
+    is_powershell = shell in ("powershell", "pwsh")
+    tmp_dir = Path(tempfile.mkdtemp(prefix="vigil-script-"))
+    try:
+        script_path = tmp_dir / ("script.ps1" if is_powershell else "script.sh")
+        script_path.write_text(scripthash.normalise(body), encoding="utf-8")
+        if os.name == "posix":
+            script_path.chmod(0o700)
+        if is_powershell:
+            cmd = [shell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy",
+                   "Bypass", "-File", str(script_path)]
+        else:
+            cmd = [shell, str(script_path)]
+        output = _run(cmd, timeout=timeout, extra_env=_input_env(inputs))
+        return ActionOutput(f"[{digest}]\n{output}", {"exit_code": 0})
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _execute_script(params: dict, config: AgentConfig, inputs: dict | None = None) -> str:
+    if "script" in params:
+        return _execute_inline_script(params, config, inputs)
+
     script_name = params.get("script_name", "")
     if not _SAFE_SCRIPT_NAME.match(script_name):
         raise ValueError(f"Invalid script name: {script_name!r}")
@@ -1062,7 +637,10 @@ def _execute_script(params: dict, config: AgentConfig) -> str:
                 f"to execute. Run: chmod go-w {script_path}"
             )
 
-    return _run([str(script_path)])
+    return ActionOutput(
+        _run([str(script_path)], extra_env=_input_env(inputs)),
+        {"exit_code": 0},
+    )
 
 
 def _sanitize_notify_message(raw: str) -> str:
@@ -1150,7 +728,8 @@ def _reboot(params: dict, config: AgentConfig) -> str:
         _notify_user(message)
     output = _run(argv)
     deferral.clear()
-    return output
+    return ActionOutput(
+        output, {"delay_seconds": delay, "deferral_active": bool(deferral_active)})
 
 
 def _run_command(params: dict, config: AgentConfig) -> str:
@@ -1166,14 +745,16 @@ def _run_command(params: dict, config: AgentConfig) -> str:
     if timeout < 1 or timeout > 3600:
         raise ValueError("timeout must be between 1 and 3600 seconds")
 
-    return _run(shlex.split(command), timeout=timeout)
+    return ActionOutput(_run(shlex.split(command), timeout=timeout),
+                        {"exit_code": 0})
 
 
 def _set_hostname(params: dict, _config: AgentConfig) -> str:
     hostname = params.get("hostname", "")
     if not _SAFE_HOSTNAME.match(hostname):
         raise ValueError(f"Invalid hostname: {hostname!r}")
-    return _run(["hostnamectl", "set-hostname", hostname])
+    return ActionOutput(
+        _run(["hostnamectl", "set-hostname", hostname]), {"hostname": hostname})
 
 
 # ── Networking ──────────────────────────────────────────────────────────────
@@ -1196,7 +777,9 @@ def _add_firewall_rule(params: dict, _config: AgentConfig) -> str:
     if backend is None:
         raise RuntimeError(
             "No supported firewall tool found (ufw, firewall-cmd, or Windows)")
-    return backend.add_rule(port, protocol, action, source, interface)
+    return ActionOutput(
+        backend.add_rule(port, protocol, action, source, interface),
+        {"port": str(port), "protocol": str(protocol), "action": str(action)})
 
 
 def _remove_firewall_rule(params: dict, _config: AgentConfig) -> str:
@@ -1223,8 +806,10 @@ def _remove_firewall_rule(params: dict, _config: AgentConfig) -> str:
     if backend is None:
         raise RuntimeError(
             "No supported firewall tool found (ufw, firewall-cmd, or Windows)")
-    return backend.remove_rule(port, protocol, action, source,
-                               name=name, rule_id=rule_id)
+    return ActionOutput(
+        backend.remove_rule(port, protocol, action, source,
+                            name=name, rule_id=rule_id),
+        {"port": str(port), "protocol": str(protocol), "action": str(action)})
 
 
 def _set_firewall_policy(params: dict, _config: AgentConfig) -> str:
@@ -1239,21 +824,23 @@ def _set_firewall_policy(params: dict, _config: AgentConfig) -> str:
     backend = firewall.detect()
     if backend is None:
         raise RuntimeError("No supported firewall tool found")
-    return backend.set_policy(direction, policy)
+    return ActionOutput(
+        backend.set_policy(direction, policy),
+        {"direction": direction, "policy": policy})
 
 
 def _enable_firewall(_params: dict, _config: AgentConfig) -> str:
     backend = firewall.detect()
     if backend is None:
         raise RuntimeError("No supported firewall tool found")
-    return backend.set_enabled(True)
+    return ActionOutput(backend.set_enabled(True), {"enabled": True})
 
 
 def _disable_firewall(_params: dict, _config: AgentConfig) -> str:
     backend = firewall.detect()
     if backend is None:
         raise RuntimeError("No supported firewall tool found")
-    return backend.set_enabled(False)
+    return ActionOutput(backend.set_enabled(False), {"enabled": False})
 
 
 def _list_firewall_rules(_params: dict, _config: AgentConfig) -> str:
@@ -1265,14 +852,21 @@ def _list_firewall_rules(_params: dict, _config: AgentConfig) -> str:
     """
     backend = firewall.detect()
     if backend is None:
-        return json.dumps({
+        snapshot = {
             "tool": None, "supported": False, "enabled": False,
             "defaults": {"incoming": "unknown", "outgoing": "unknown"},
             "rules": [], "unparsed": [],
-        })
+        }
+        return ActionOutput(
+            json.dumps(snapshot),
+            {"supported": False, "enabled": False, "rule_count": 0})
     snapshot = backend.snapshot()
     snapshot["supported"] = True
-    return json.dumps(snapshot)
+    return ActionOutput(
+        json.dumps(snapshot),
+        {"supported": bool(snapshot.get("supported", True)),
+         "enabled": bool(snapshot.get("enabled", False)),
+         "rule_count": len(snapshot.get("rules", []))})
 
 
 # ── Windows Update ────────────────────────────────────────────────────────
@@ -1294,11 +888,11 @@ def _windows_update_scan(params: dict, _config: AgentConfig) -> str:
         exclude_kb=params.get("exclude_kb"),
         severity_floor=params.get("severity_floor"),
     )
-    return json.dumps({
+    return ActionOutput(json.dumps({
         "supported": True,
         "count": len(updates),
         "updates": updates,
-    })
+    }), {"count": len(updates)})
 
 
 def _windows_update_install(params: dict, _config: AgentConfig) -> str:
@@ -1323,17 +917,21 @@ def _windows_update_install(params: dict, _config: AgentConfig) -> str:
     # Install() on an empty collection throws a COM error that reads like a
     # real failure, so an empty filter result is reported, not installed.
     if not updates:
-        return json.dumps({
+        return ActionOutput(json.dumps({
             "supported": True,
             "result_code": windows_update.RESULT_NOT_STARTED,
             "reboot_required": False,
             "installed": [],
             "failed": [],
             "detail": "no updates matched the filter; nothing installed",
-        })
+        }), {"installed_count": 0, "failed_count": 0, "reboot_required": False})
     result = backend.install([u["update_id"] for u in updates])
     result["supported"] = True
-    return json.dumps(result)
+    return ActionOutput(
+        json.dumps(result),
+        {"installed_count": len(result["installed"]),
+         "failed_count": len(result["failed"]),
+         "reboot_required": bool(result["reboot_required"])})
 
 
 # ── User management ────────────────────────────────────────────────────────
@@ -1363,7 +961,7 @@ def _create_user(params: dict, _config: AgentConfig) -> str:
         cmd.extend(["-s", str(shell_path)])
 
     cmd.append(username)
-    return _run(cmd)
+    return ActionOutput(_run(cmd), {"username": username})
 
 
 def _delete_user(params: dict, _config: AgentConfig) -> str:
@@ -1374,7 +972,7 @@ def _delete_user(params: dict, _config: AgentConfig) -> str:
     if params.get("remove_home", False):
         cmd.append("--remove")
     cmd.append(username)
-    return _run(cmd)
+    return ActionOutput(_run(cmd), {"username": username})
 
 
 def _add_user_to_group(params: dict, _config: AgentConfig) -> str:
@@ -1384,7 +982,9 @@ def _add_user_to_group(params: dict, _config: AgentConfig) -> str:
         raise ValueError(f"Invalid username: {username!r}")
     if not _SAFE_GROUP.match(group):
         raise ValueError(f"Invalid group name: {group!r}")
-    return _run(["usermod", "-aG", group, username])
+    return ActionOutput(
+        _run(["usermod", "-aG", group, username]),
+        {"username": username, "group": group})
 
 
 # ── Cron management ─────────────────────────────────────────────────────────
@@ -1429,7 +1029,8 @@ def _create_cron_job(params: dict, _config: AgentConfig) -> str:
     if proc.returncode != 0:
         raise RuntimeError(f"Failed to set crontab: {proc.stderr.strip()}")
 
-    return f"Added cron job for user {user}: {cron_line}"
+    return ActionOutput(
+        f"Added cron job for user {user}: {cron_line}", {"user": user})
 
 
 def _delete_cron_job(params: dict, _config: AgentConfig) -> str:
@@ -1447,14 +1048,16 @@ def _delete_cron_job(params: dict, _config: AgentConfig) -> str:
         env=clean_env(),
     )
     if result.returncode != 0:
-        return f"No crontab for user {user}"
+        return ActionOutput(f"No crontab for user {user}",
+                            {"user": user, "removed": 0})
 
     lines = result.stdout.splitlines()
     filtered = [line for line in lines if pattern not in line]
     removed = len(lines) - len(filtered)
 
     if removed == 0:
-        return f"No cron entries matched pattern {pattern!r}"
+        return ActionOutput(f"No cron entries matched pattern {pattern!r}",
+                            {"user": user, "removed": 0})
 
     new_crontab = "\n".join(filtered) + "\n"
     proc = subprocess.run(
@@ -1468,7 +1071,9 @@ def _delete_cron_job(params: dict, _config: AgentConfig) -> str:
             f"Failed to update crontab: {proc.stderr.strip()}"
         )
 
-    return f"Removed {removed} cron entry/entries matching {pattern!r}"
+    return ActionOutput(
+        f"Removed {removed} cron entry/entries matching {pattern!r}",
+        {"user": user, "removed": removed})
 
 
 # ── Self-update ─────────────────────────────────────────────────────────────
@@ -1762,7 +1367,87 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
     t = threading.Thread(target=_restart_after_delay, daemon=True)
     t.start()
 
-    return f"Agent updated to {new_version} ({platform}); restarting in 3 s"
+    return ActionOutput(f"Agent updated to {new_version} ({platform}); restarting in 3 s",
+                        {"version": new_version})
+
+
+# ── Apps ──────────────────────────────────────────────────────────────────────
+
+def _app_inventory(_params: dict, _config: AgentConfig) -> ActionOutput:
+    """Re-collect the installed-software list now.
+
+    The payload is not sent from here — it goes out with the next check-in,
+    which is where the server accepts a software list at all.
+    """
+    payload = software.collect_now()
+    items = payload.get("items", [])
+    errors = payload.get("errors", [])
+    outdated = sum(
+        1 for i in items
+        if i.get("latest") and i.get("latest") != i.get("version")
+    )
+    unmanaged = sum(1 for i in items if not i.get("managed"))
+    return ActionOutput(
+        f"{len(items)} installed item(s), {outdated} outdated, {unmanaged} unmanaged; "
+        f"sending with the next check-in"
+        + (f" (errors: {', '.join(sorted(errors))})" if errors else ""),
+        {"count": len(items), "outdated": outdated, "unmanaged": unmanaged,
+         "errors": len(errors)},
+    )
+
+
+# Handlers split into modules (re-exported so executor.<name> keeps working).
+from .actions.containers import (  # noqa: E402,F401
+    _restart_container,
+    _stop_container,
+    _start_container,
+    _pull_image,
+    _check_docker_updates,
+    _COMPOSE_PROJECT_LABEL,
+    _docker_inspect,
+    _recreate_body,
+    _recreate_container,
+    _pull,
+    _image_id,
+    _container_image_id,
+    _update_container,
+    _remove_container,
+    _docker_compose_up,
+    _docker_compose_down,
+    _clear_docker_logs,
+    _stack_compose_args,
+    _stack_restart,
+    _stack_update,
+    _container_rollback,
+    ROLLBACK_OVERRIDE,
+    _registry_auth,
+    registry_of,
+)
+from .actions.logs import _container_logs  # noqa: E402,F401
+from .actions.stacks import _stack_deploy, _stack_read, _stack_remove  # noqa: E402,F401
+from .actions.tags_scans import (  # noqa: E402,F401
+    _tag_names,
+    _add_tag,
+    _remove_tag,
+    _request_nessus_scan,
+    _request_network_scan,
+    _TRIVY_SCOPE_PATTERN,
+    _TRIVY_SUBPROCESS_TIMEOUT,
+    _TRIVY_SCAN_TIMEOUT,
+    _TRIVY_SKIP_DIRS,
+    _TRIVY_VULN_FIELDS,
+    _TRIVY_RESULT_BULK,
+    _condense_trivy_report,
+    TRIVY_GZIP_MARKER,
+    _pack_report,
+    _slim_report,
+    _run_trivy_scan,
+    _count_trivy_vulnerabilities,
+    _trivy_db_update,
+)
+from .actions.hunts import _hunt_content, _hunt_file, _hunt_package, _hunt_port, _hunt_process, _hunt_registry, _hunt_service
+from .actions.apps import (_app_ensure, _app_install, _app_install_custom, _app_pin,
+                           _app_uninstall, _app_upgrade)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1784,6 +1469,7 @@ _HANDLERS: dict[str, callable] = {
     "start_container": _start_container,
     "pull_image": _pull_image,
     "recreate_container": _recreate_container,
+    "update_container": _update_container,
     "check_docker_updates": _check_docker_updates,
     "add_tag": _add_tag,
     "remove_tag": _remove_tag,
@@ -1791,9 +1477,23 @@ _HANDLERS: dict[str, callable] = {
     "request_network_scan": _request_network_scan,
     "run_trivy_scan": _run_trivy_scan,
     "trivy_db_update": _trivy_db_update,
+    "hunt_file": _hunt_file,
+    "hunt_package": _hunt_package,
+    "hunt_process": _hunt_process,
+    "hunt_port": _hunt_port,
+    "hunt_service": _hunt_service,
+    "hunt_registry": _hunt_registry,
+    "hunt_content": _hunt_content,
     "remove_container": _remove_container,
     "docker_compose_up": _docker_compose_up,
     "docker_compose_down": _docker_compose_down,
+    "stack_restart": _stack_restart,
+    "stack_update": _stack_update,
+    "container_logs": _container_logs,
+    "stack_deploy": _stack_deploy,
+    "stack_remove": _stack_remove,
+    "stack_read": _stack_read,
+    "container_rollback": _container_rollback,
     "clear_docker_logs": _clear_docker_logs,
     # File / directory operations
     "write_file": _write_file,
@@ -1823,6 +1523,14 @@ _HANDLERS: dict[str, callable] = {
     # Windows Update
     "windows_update_scan": _windows_update_scan,
     "windows_update_install": _windows_update_install,
+    # Apps
+    "app_inventory": _app_inventory,
+    "app_install": _app_install,
+    "app_upgrade": _app_upgrade,
+    "app_uninstall": _app_uninstall,
+    "app_pin": _app_pin,
+    "app_install_custom": _app_install_custom,
+    "app_ensure": _app_ensure,
     # User management
     "create_user": _create_user,
     "delete_user": _delete_user,
@@ -1853,6 +1561,7 @@ def execute_action(
     config: AgentConfig,
     *,
     timeout: int | None = None,
+    inputs: dict | None = None,
 ) -> str:
     """Execute a single action after allowlist validation.
 
@@ -1860,6 +1569,10 @@ def execute_action(
     and the multi-step ``TaskRuntime``.  Each action is validated individually
     against the agent's local mode/allowlist — a compromised server cannot
     escalate privileges beyond what the agent config permits.
+
+    Only ``execute_script`` receives task inputs (as ``VIGIL_INPUT_*``
+    environment variables); every other action gets its values through
+    already-resolved params.
 
     Returns output string.
     Raises ``ValueError`` for disallowed or unknown actions.
@@ -1885,6 +1598,8 @@ def execute_action(
     if timeout is not None and "timeout" not in params:
         params = {**params, "timeout": timeout}
 
+    if action == "execute_script":
+        return _execute_script(params, config, inputs=inputs)
     return handler(params, config)
 
 

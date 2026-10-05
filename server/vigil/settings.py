@@ -103,6 +103,9 @@ INSTALLED_APPS = [
     "apps.civilsso",
     "apps.instance",
     "apps.jackil",
+    "apps.software",
+    "apps.policies",
+    "apps.stacks",
     # Business features (apps_business/LICENSE) — installed always, unlocked by license
     "apps_business.sites",
     "apps_business.audits",
@@ -513,7 +516,7 @@ VIGIL_DB_SIZE_CRIT_GB = float(os.environ.get("VIGIL_DB_SIZE_CRIT_GB", "40"))
 # Server build version — surfaced on the About page and the /api/v1/about/
 # endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
 # this constant should stay in lockstep.
-VIGIL_VERSION = "2026.12.1"
+VIGIL_VERSION = "2026.14.0"
 
 # Opt-in daily refresh of the CISA KEV catalogue. Off by default: a self-hosted
 # install makes no outbound call unless its operator asks for one, and the

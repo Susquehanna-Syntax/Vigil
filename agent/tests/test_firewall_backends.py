@@ -3,6 +3,8 @@
 The server never screen-scrapes `ufw status`; the agent hands over a parsed
 snapshot, so all three backends have to converge on the same contract.
 """
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import sys
 import unittest
 from pathlib import Path

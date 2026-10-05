@@ -56,6 +56,10 @@ class Playbook(TagRowSyncMixin, models.Model):
     #: dispatch forever. Clearing the tag off a host re-runs the playbook,
     #: which is the intended way to ask for that.
     completion_tag = models.CharField(max_length=120, blank=True, default="")
+    # The playbook's if/then/else structure over its step ids, or None for a
+    # plain ordered playbook. Nodes: {"step": "<step_id>"} or
+    # {"id": "b<n>", "if": "<expr>", "then": [...], "else": [...]}.
+    flow = models.JSONField(null=True, blank=True)
     # Opt-in to high-risk steps. Off by default, and turning it ON requires a
     # fresh TOTP code — that confirmation IS the 2FA for every future
     # unattended dispatch, exactly as playbook creation is for standard-risk
@@ -148,6 +152,35 @@ class PlaybookStep(models.Model):
     # over the definition's action params at dispatch, so one shared task can
     # run with different inputs in different playbooks.
     params_override = models.JSONField(default=dict, blank=True)
+    # What "not applicable" means for this step on a host: "stop" ends the
+    # host's playbook there (the rest of the chain is not applicable too),
+    # "skip" goes on to the next step.
+    on_not_applicable = models.CharField(
+        max_length=8,
+        choices=[("skip", "Skip"), ("stop", "Stop")],
+        default="stop",
+    )
+    # What a failure means for this step on a host: "stop" ends the host's
+    # playbook there (the default); "continue" treats it as handled — once
+    # retries run out the chain goes on, and a later branch can test
+    # steps.<id>.status == "failed" to run a recovery step.
+    on_failure = models.CharField(
+        max_length=8,
+        choices=[("stop", "Stop"), ("continue", "Continue")],
+        default="stop",
+    )
+    # A named end state for hosts whose run last succeeded on this step
+    # ("Recovered", "No web server"). Blank for none.
+    outcome = models.CharField(max_length=40, blank=True, default="")
+    # A colour the author gave this step, so a long or branching playbook
+    # reads at a glance. One of the palette names, or "" for none.
+    color = models.CharField(max_length=12, blank=True, default="")
+    # The step's id within its playbook (unique per playbook): what a branch
+    # condition names, as ``steps.<step_id>.status`` / ``.result.<field>``.
+    step_id = models.CharField(max_length=60, default="")
+    # Where the step sits in the playbook's if/then/else tree: "" at the top
+    # level, else a path like "b1.then" / "b1.else.b2.then".
+    branch = models.CharField(max_length=120, blank=True, default="")
 
     class Meta:
         ordering = ("order",)
@@ -170,6 +203,11 @@ def eligible(definition, *, allow_high_risk: bool = False) -> tuple[bool, str]:
     by passing a TOTP challenge — see Playbook.allow_high_risk. Callers must
     pass it from the playbook being validated, never hardcode True: the
     default is what keeps an un-opted-in playbook safe.
+
+    Playbooks, automations and rollouts run each task as its own signed task
+    with all of its logic (M6 08a/08a2), so ``flow`` / ``relevant`` /
+    ``uses`` are fine here. Only inline ``type: playbook`` inside a task body
+    still flattens, and ``expand_actions`` refuses those constructs there.
     """
     if definition.risk_level == definition.RiskLevel.HIGH and not allow_high_risk:
         return False, "high-risk definitions cannot be playbooks"
@@ -179,56 +217,23 @@ def eligible(definition, *, allow_high_risk: bool = False) -> tuple[bool, str]:
     return True, ""
 
 
-def build_agent_steps(playbook: "Playbook") -> tuple[list[dict], str]:
-    """The concrete agent steps for a playbook's whole sequence, with any
-    nested ``type: playbook`` calls expanded. Returns ``(steps, max_risk)``."""
-    from .expansion import expand_actions
-
-    steps: list[dict] = []
-    max_risk = "low"
-    i = 0
-    for step in playbook.steps.select_related("definition").order_by("order"):
-        spec = step.definition.parsed_spec or {}
-        actions_src = spec.get("actions") or []
-        override = step.params_override or {}
-        if override:
-            actions_src = [
-                {**a, "params": {**(a.get("params") or {}),
-                                 **override.get(str(idx), {})}}
-                for idx, a in enumerate(actions_src)
-            ]
-        actions, risk = expand_actions(actions_src)
-        success_criteria = spec.get("success_criteria") or None
-        for action in actions:
-            i += 1
-            agent_step = {
-                "id": f"step{i}",
-                "action": action["type"],
-                "params": action.get("params") or {},
-            }
-            if action.get("when"):
-                agent_step["when"] = action["when"]
-            if success_criteria:
-                agent_step["success_criteria"] = success_criteria
-            steps.append(agent_step)
-        from .expansion import _max_risk
-        max_risk = _max_risk(max_risk, spec.get("risk", "standard"))
-        max_risk = _max_risk(max_risk, risk)
-    return steps, max_risk
-
-
 def dispatch_to_host(host, *, playbooks=None) -> int:
     """Create pending tasks on *host* for every matching playbook.
 
-    With no explicit *playbooks*, only auto-enrolling ones are considered.
-    Passing them explicitly — a rebuild's post-playbook, a manual apply —
-    dispatches regardless of that flag, because someone chose them.
+    Phase 08a: a playbook runs each of its tasks as its own signed task —
+    one Task per playbook step, chained per host with step_order, each
+    carrying all of that task's logic (flow, relevant:, use:) exactly as a
+    direct deploy would. No explicit *playbooks*, only auto-enrolling ones
+    are considered. Passing them explicitly — a rebuild's post-playbook, a
+    manual apply — dispatches regardless of that flag, because someone chose
+    them.
 
     Never raises: enrollment approval must succeed even if a playbook is
     broken, and a reconcile pass must not stop at the first bad one.
     """
     import logging
 
+    from apps.tasks.dispatch import build_playbook_steps, create_chain
     from apps.tasks.models import Task, TaskRun
 
     logger = logging.getLogger("vigil.playbooks")
@@ -247,30 +252,28 @@ def dispatch_to_host(host, *, playbooks=None) -> int:
                 logger.warning("skipping playbook %s: ineligible definitions %s",
                                playbook.name, bad)
                 continue
-            steps, risk = build_agent_steps(playbook)
+            steps = list(playbook.steps.order_by("order"))
             if not steps:
                 continue
+
+            # Build every step's signed task before writing anything: a
+            # playbook whose second step no longer builds must not leave a
+            # half-run on the host.
+            built = build_playbook_steps(playbook, user=playbook.created_by)
+
             # One run per playbook per host: enrollment dispatch is per-host by
-            # nature, and a run keeps the result visible in history.
+            # nature, and a run keeps the result visible in history. The first
+            # step starts pending; the rest sit blocked until it finishes.
             run = TaskRun.objects.create(
                 source=TaskRun.Source.PLAYBOOK,
                 playbook=playbook,
                 name_snapshot=playbook.name[:120],
                 requested_by=playbook.created_by,
                 host_count=1,
-                step_count=len(steps),
+                step_count=len(built),
             )
-            Task.objects.create(
-                host=host,
-                run=run,
-                requested_by=playbook.created_by,
-                step_label=f"playbook: {playbook.name}",
-                action="_script",
-                params={"steps": steps},
-                risk_level=risk,
-                state=Task.State.PENDING,
-                nonce=secrets.token_hex(32),
-            )
+            create_chain(run, host, built, requested_by=playbook.created_by,
+                         label=f"playbook: {playbook.name}")
             created += 1
         except Exception:  # noqa: BLE001
             logger.exception("playbook %s failed for host %s", playbook.pk, host.pk)
@@ -310,12 +313,15 @@ def outcomes_for(playbooks) -> dict:
         return {}
     rows = (Task.objects.filter(run__playbook_id__in=ids)
             .order_by("run__created_at", "run_id")
-            .values_list("run__playbook_id", "host_id", "run_id", "state"))
+            .values_list("run__playbook_id", "host_id", "run_id", "state", "on_failure"))
 
     # Ordered oldest run first, so overwriting whenever the run changes leaves
     # each host holding the states of its newest one.
     newest: dict = {}
-    for playbook_id, host_id, run_id, state in rows:
+    for playbook_id, host_id, run_id, state, on_failure in rows:
+        # A failure the playbook handles (on_failure: continue) is done, not failed.
+        if on_failure == "continue" and state in FAILED_STATES:
+            state = "completed"
         entry = newest.setdefault(playbook_id, {}).get(host_id)
         if entry is None or entry["run"] != run_id:
             entry = newest[playbook_id][host_id] = {"run": run_id, "states": set()}

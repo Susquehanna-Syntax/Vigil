@@ -23,7 +23,7 @@ function _filterWaves() {
 function _waveCard(w) {
   const tags = (w.tags || []).length
     ? (w.tags || []).map(t => `<span class="chip">${escHtml(t)}</span>`).join(' ')
-    : '<span style="color:var(--rose);">no tags — matches nothing</span>';
+    : '<span style="color:var(--rose-ink);">no tags — matches nothing</span>';
 
   // Matching vs actually-patched. They differ when an earlier wave already
   // claimed a host, and that difference is the thing operators trip over.
@@ -44,7 +44,7 @@ function _waveCard(w) {
       </div>
       <div style="display:flex;gap:6px;">
         <button class="btn btn-sky btn-sm" data-wave-edit="${escAttr(w.id)}">Edit</button>
-        <button class="btn btn-ghost btn-sm" style="color:var(--rose);" data-wave-del="${escAttr(w.id)}">Delete</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--rose-ink);" data-wave-del="${escAttr(w.id)}">Delete</button>
       </div>
     </div>
     <div class="bl-card-body" style="color:var(--text-2);font-size:12px;line-height:1.7;">

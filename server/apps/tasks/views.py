@@ -1,7 +1,12 @@
+import json
+import math
 import secrets
+import uuid
 from datetime import timedelta
 
 from django.db import IntegrityError, transaction
+from django.db.models import Count
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
 from rest_framework import status
@@ -22,14 +27,16 @@ from apps.accounts.permissions import IsAdmin
 from apps.hosts.authentication import authenticate_agent
 from apps.hosts.models import Host
 
-from .models import PatchRollout, Task, TaskDefinition, TaskRun
-from .rollout_serializers import PatchRolloutSerializer
+from .models import HuntMatch, PatchRollout, Task, TaskDefinition, TaskRun
 from .rollout import (
     FAILURE_STATES,
+    _emit_hunt_text_requested,
+    _hunt_text_step_ids,
     halt_rollout,
     resume_rollout,
     start_rollout,
 )
+from .rollout_serializers import PatchRolloutSerializer
 from .serializers import (
     TaskDefinitionSerializer,
     TaskRunSerializer,
@@ -39,6 +46,7 @@ from .serializers import (
 from .spec import (
     ACTION_REGISTRY,
     SpecError,
+    _deploy_params,
     _validate_on_failure,
     _validate_schedule,
     _validate_success_criteria,
@@ -49,6 +57,7 @@ from .spec import (
 _TERMINAL_STATES = {
     Task.State.COMPLETED, Task.State.FAILED,
     Task.State.REJECTED, Task.State.SKIPPED,
+    Task.State.NOT_APPLICABLE,
 }
 _UPDATABLE_STATES = {Task.State.DISPATCHED, Task.State.EXECUTING}
 
@@ -58,6 +67,202 @@ _UPDATABLE_STATES = {Task.State.DISPATCHED, Task.State.EXECUTING}
 #: now live in VulnFinding rows, so the blob is redundant. Head and tail are
 #: preserved because in a multi-step run they are other steps' output.
 _TRIVY_OUTPUT_KEEP = 2000
+
+#: Hard cap on the serialised step results stored on a Task. A runaway
+#: script can otherwise grow result_data past what the run detail should
+#: carry; over the cap the whole block is dropped with a note.
+_MAX_RESULT_BYTES = 64 * 1024
+_MAX_STEPS = 200
+_MAX_RESULT_STR = 4096
+_STEP_STATUSES = {"ok", "error", "skipped"}
+
+
+def _clean_step_results(raw):
+    """Sanitise agent-reported step results before they are stored.
+
+    The agent is untrusted here: keep at most ``_MAX_STEPS`` entries, each a
+    dict with a string ``id`` (<= 60 chars), a known ``status``, and a dict
+    ``result`` holding only str/bool/int/float values (strings cut to
+    4096). Anything that would serialise over ``_MAX_RESULT_BYTES`` is
+    dropped wholesale.
+    """
+    if not isinstance(raw, list):
+        return {}
+    out = []
+    for entry in raw[:_MAX_STEPS]:
+        if not isinstance(entry, dict):
+            continue
+        step_id = entry.get("id")
+        status = entry.get("status")
+        result = entry.get("result")
+        if (
+            not isinstance(step_id, str)
+            or len(step_id) > 60
+            or status not in _STEP_STATUSES
+            or not isinstance(result, dict)
+        ):
+            continue
+        clean_result = {}
+        for key, value in result.items():
+            if not isinstance(key, str) or len(key) > 60:
+                continue
+            if isinstance(value, str):
+                value = value[:_MAX_RESULT_STR]
+            elif not isinstance(value, (bool, int, float)):
+                continue
+            elif isinstance(value, float) and not math.isfinite(value):
+                # NaN/Infinity survive JSON parsing but PostgreSQL's jsonb
+                # refuses them, which would fail the whole result save.
+                continue
+            clean_result[key] = value
+        out.append({"id": step_id, "status": status, "result": clean_result})
+    if len(json.dumps(out)) > _MAX_RESULT_BYTES:
+        return {"steps": [], "dropped": "step results exceeded 64 KB"}
+    return {"steps": out}
+
+#: Hard caps on stored hunt matches. A runaway hunt would otherwise fill the
+#: database; per-step first, then the whole task.
+_HUNT_MATCHES_PER_STEP = 5000
+_HUNT_MATCHES_PER_TASK = 20000
+_HUNT_FIELD_MAX = 1000
+_HUNT_KEY_MAX = 60
+
+
+def _clean_hunt_match(match):
+    """(evidence_type, field dict) for one agent-reported match, or None.
+
+    The agent is untrusted: the match must be a dict whose ``evidence_type``
+    is a string (<= 40 chars); every other key must be a string (<= 60
+    chars) with a str (cut to 1000), int, finite float, bool or None value.
+    Nested structures and anything else are dropped from the stored row.
+    """
+    if not isinstance(match, dict):
+        return None
+    evidence_type = match.get("evidence_type")
+    if not isinstance(evidence_type, str) or not evidence_type or len(evidence_type) > 40:
+        return None
+    data = {}
+    for key, value in match.items():
+        if key == "evidence_type":
+            continue
+        if not isinstance(key, str) or len(key) > _HUNT_KEY_MAX:
+            continue
+        if isinstance(value, str):
+            value = value[:_HUNT_FIELD_MAX]
+        elif isinstance(value, (bool, int)) or value is None:
+            pass
+        elif isinstance(value, float):
+            if not math.isfinite(value):
+                continue
+        else:
+            continue
+        data[key] = value
+    return evidence_type, data
+
+
+def _ingest_hunt_matches(task, raw_steps):
+    """Store hunt matches reported with a task result.
+
+    Replaces (delete then bulk_create) the task's previous rows so a
+    re-report is idempotent. The action for each match is looked up from the
+    task's own signed ``params["steps"]`` — never from the agent's report —
+    and a step id the task does not contain is skipped. Per-step
+    ``truncated`` / ``timed_out`` / ``duration`` land in
+    ``result_data["hunts"][step_id]`` (simple values only).
+
+    ``task.result_data`` must already hold the steps for this report —
+    ``task_result`` assigns and saves it before calling here, so the
+    ``update_fields=["result_data"]`` save below cannot clobber the steps.
+    """
+    if not isinstance(raw_steps, list):
+        return
+
+    hunts = {}
+
+    signed_actions = {}
+    for step in (task.params or {}).get("steps") or []:
+        if (isinstance(step, dict)
+                and isinstance(step.get("id"), str)
+                and isinstance(step.get("action"), str)):
+            signed_actions[step["id"]] = step["action"]
+    # Probes of the signed ``relevant:`` tree are signed evidence too: the
+    # agent runs them before any step and reports them as steps, so their
+    # matches are stored like any other hunt step's — with the action the
+    # server itself signed, never the report's.
+    relevant = (task.params or {}).get("relevant")
+    if isinstance(relevant, dict):
+        probe_actions = {}
+
+        def _collect(node) -> None:
+            for item in node.get("items") or []:
+                if not isinstance(item, dict):
+                    continue
+                if "probe" in item:
+                    probe = item.get("probe")
+                    if (isinstance(probe, dict)
+                            and isinstance(probe.get("id"), str)
+                            and isinstance(probe.get("type"), str)):
+                        probe_actions[probe["id"]] = probe["type"]
+                else:
+                    _collect(item)
+
+        _collect(relevant)
+        for probe_id, probe_type in probe_actions.items():
+            signed_actions.setdefault(probe_id, probe_type)
+    # A detection task's boost: probes (M10) are signed the same way.
+    for probe in (task.params or {}).get("boost") or []:
+        if (isinstance(probe, dict) and isinstance(probe.get("id"), str)
+                and isinstance(probe.get("type"), str)):
+            signed_actions.setdefault(probe["id"], probe["type"])
+
+    rows = []
+    task_remaining = _HUNT_MATCHES_PER_TASK
+    for entry in raw_steps:
+        if not isinstance(entry, dict):
+            continue
+        hunt = entry.get("hunt")
+        if not isinstance(hunt, dict) or not isinstance(hunt.get("matches"), list):
+            continue
+        step_id = entry.get("id")
+        if not isinstance(step_id, str) or not step_id or len(step_id) > 60:
+            continue
+        # The action comes from the task's own signed steps, never the report;
+        # a step id the task does not contain is not ours to store.
+        action = signed_actions.get(step_id)
+        if action is None or len(action) > 64:
+            continue
+
+        kept = [c for c in (_clean_hunt_match(m) for m in hunt["matches"]) if c]
+        stored = kept[:min(_HUNT_MATCHES_PER_STEP, task_remaining)]
+        task_remaining -= len(stored)
+        rows.extend(
+            HuntMatch(task=task, run_id=task.run_id, host=task.host,
+                      step_id=step_id, action=action,
+                      evidence_type=evidence_type, data=data)
+            for evidence_type, data in stored)
+        duration = hunt.get("duration")
+        hunts[step_id] = {
+            # Cut here counts as truncated too: the view must not claim
+            # it shows everything the host found.
+            "truncated": bool(hunt.get("truncated")) or len(stored) < len(kept),
+            "timed_out": bool(hunt.get("timed_out")),
+            "duration": duration if isinstance(duration, (int, float))
+            and not isinstance(duration, bool) and math.isfinite(duration) else None,
+        }
+
+    if not hunts:
+        return
+
+    # Replace, so a re-report (including one that now finds nothing) is idempotent.
+    HuntMatch.objects.filter(task=task).delete()
+    if rows:
+        HuntMatch.objects.bulk_create(rows)
+
+    data = task.result_data if isinstance(task.result_data, dict) else {}
+    data["hunts"] = hunts
+    task.result_data = data
+    task.save(update_fields=["result_data"])
+
 
 # ── Agent-facing: task result ────────────────────────────────────────────────
 
@@ -96,8 +301,13 @@ def task_result(request):
     with transaction.atomic():
         task.state = new_state
         task.result_output = output
+        task.result_data = _clean_step_results(request.data.get("steps"))
         task.completed_at = now()
         task.save()
+        _ingest_hunt_matches(task, request.data.get("steps"))
+        if new_state in (Task.State.COMPLETED, Task.State.FAILED, Task.State.NOT_APPLICABLE):
+            from apps.vulns.detection import record_detection
+            record_detection(task)
 
         if task.run_id:
             _advance_run_sequence(task)
@@ -105,12 +315,18 @@ def task_result(request):
         # If the parent definition is flagged ``collect:``, capture this
         # successful run's output into the host's inventory custom columns.
         if new_state == Task.State.COMPLETED:
+            from apps.hosts.container_history import record_container_task
+            record_container_task(task)
             _maybe_capture_inventory_column(task, output)
             _maybe_apply_tags(task)
-            _maybe_apply_playbook_completion_tag(task)
             _maybe_request_nessus_scan(task)
             _maybe_ingest_trivy_report(task, output)
             _maybe_ingest_firewall_rules(task, output)
+        if new_state in (Task.State.COMPLETED, Task.State.NOT_APPLICABLE):
+            # A chain that stops as not applicable is finished on this host
+            # too, so the completion tag must land here as well — otherwise
+            # every reconcile pass redispatches the playbook.
+            _maybe_apply_playbook_completion_tag(task)
 
     return Response(TaskSerializer(task).data)
 
@@ -142,11 +358,18 @@ def _named_tags(step: dict) -> list[str]:
 
 
 def _maybe_apply_playbook_completion_tag(task: Task) -> None:
-    """Tag the host once the playbook that produced this task has succeeded.
+    """Tag the host once the playbook chain that produced this task has
+    finished on the host without failing.
 
-    The tag is what stops an auto-enrolling playbook dispatching to the same
-    host on every reconcile pass, so it is written from the run's own playbook
-    rather than anything the agent reported.
+    Phase 08a: a playbook runs one task per step, so the tag lands only
+    when the host's tasks in that run are all terminal and none is
+    FAILED / REJECTED / EXPIRED — NOT_APPLICABLE and SKIPPED count as
+    done (a chain that stopped as not applicable is finished, and must
+    not be redispatched by every reconcile pass).
+
+    The tag is what stops an auto-enrolling playbook dispatching to the
+    same host on every reconcile pass, so it is written from the run's
+    own playbook rather than anything the agent reported.
 
     Never raises: a task result must be recordable even if tagging fails. A
     failure here costs a repeat dispatch on the next pass, not a lost result.
@@ -160,6 +383,15 @@ def _maybe_apply_playbook_completion_tag(task: Task) -> None:
         return
     tag = (run.playbook.completion_tag or "").strip()
     if not tag or tag.startswith("agent:"):
+        return
+
+    siblings = list(Task.objects.filter(run=run, host=task.host)
+                    .values_list("state", "on_failure"))
+    if not {state for state, _ in siblings}.issubset(_TERMINAL_STATES):
+        return
+    # A failure the playbook handles (on_failure: continue) does not block it.
+    if any(state in _FAILURE_LIKE and on_failure != "continue"
+           for state, on_failure in siblings):
         return
 
     try:
@@ -514,6 +746,71 @@ def _maybe_capture_inventory_column(task: Task, output: str) -> None:
     inv.save(update_fields=["custom_columns", "updated_at"])
 
 
+#: How a finished task's state reads to a playbook branch condition.
+_BRANCH_STATUS = {
+    Task.State.COMPLETED: "ok",
+    Task.State.SKIPPED: "skipped",
+    Task.State.NOT_APPLICABLE: "not_applicable",
+    Task.State.FAILED: "failed",
+    Task.State.REJECTED: "failed",
+    Task.State.EXPIRED: "failed",
+}
+
+
+def _merged_outputs(task: Task) -> dict:
+    """Every output the task's steps produced, in order — a later step wins
+    on a name clash. relevant: probes are evidence, not outputs."""
+    merged: dict = {}
+    for step in (task.result_data or {}).get("steps") or []:
+        if isinstance(step, dict) and not str(step.get("id", "")).startswith("relevant-"):
+            result = step.get("result")
+            if isinstance(result, dict):
+                merged.update(result)
+    return merged
+
+
+def _release_next(run: TaskRun, host) -> None:
+    """Release the host's next runnable task in *run* (M6 08b).
+
+    Walks the host's blocked tasks in order. A task with a playbook-branch
+    guard is judged against the finished steps before it: false → it is
+    skipped ("branch … not taken") and the walk goes on; true, or no guard →
+    it becomes pending and the walk stops. A guard that cannot be evaluated
+    fails that task, and the rest of the chain follows the failure path.
+    """
+    from .expression import evaluate
+
+    tasks = list(Task.objects.filter(run=run, host=host).order_by("step_order"))
+    context = {
+        t.step_ref: {"status": _BRANCH_STATUS[t.state], "result": _merged_outputs(t)}
+        for t in tasks if t.step_ref and t.state in _BRANCH_STATUS
+    }
+    for task in tasks:
+        if task.state != Task.State.BLOCKED:
+            continue
+        if task.guard:
+            try:
+                runnable = bool(evaluate(task.guard, {"steps": context}))
+            except Exception as exc:  # noqa: BLE001 — recorded on the task
+                task.state = Task.State.FAILED
+                task.completed_at = now()
+                task.result_output = f"[ERROR] branch condition could not be evaluated: {exc}"
+                task.save(update_fields=["state", "completed_at", "result_output"])
+                _advance_run_sequence(task)
+                return
+            if not runnable:
+                task.state = Task.State.SKIPPED
+                task.completed_at = now()
+                task.result_output = f"[SKIPPED] branch {task.branch} not taken"
+                task.save(update_fields=["state", "completed_at", "result_output"])
+                if task.step_ref:
+                    context[task.step_ref] = {"status": "skipped", "result": {}}
+                continue
+        task.state = Task.State.PENDING
+        task.save(update_fields=["state"])
+        return
+
+
 def _advance_run_sequence(finished_task: Task) -> None:
     """After a task in a run finishes, unblock the next step on that host.
 
@@ -533,11 +830,21 @@ def _advance_run_sequence(finished_task: Task) -> None:
     # SKIPPED is treated like COMPLETED for chain-advance purposes — the
     # step elected not to run, but it's not a failure. The next step
     # unblocks normally.
-    if finished_task.state in (Task.State.COMPLETED, Task.State.SKIPPED):
-        next_step = sibling_qs.filter(state=Task.State.BLOCKED).first()
-        if next_step:
-            next_step.state = Task.State.PENDING
-            next_step.save(update_fields=["state"])
+    if finished_task.state == Task.State.NOT_APPLICABLE:
+        if finished_task.on_not_applicable == "skip":
+            # This playbook step said "not applicable, go on to the next":
+            # release the next runnable step exactly like COMPLETED.
+            _release_next(run, finished_task.host)
+        else:
+            # The task did not apply to this host (or the step chose
+            # "stop"): its remaining steps never run (unlike a failure,
+            # which retries), and none of it is counted as a retry.
+            sibling_qs.filter(state=Task.State.BLOCKED).update(
+                state=Task.State.NOT_APPLICABLE,
+                completed_at=now(),
+            )
+    elif finished_task.state in (Task.State.COMPLETED, Task.State.SKIPPED):
+        _release_next(run, finished_task.host)
     else:
         # Failure path — try to retry the same step before aborting the chain.
         if (
@@ -565,6 +872,13 @@ def _advance_run_sequence(finished_task: Task) -> None:
             # Don't finalize the run — there's still active work pending.
             return
 
+        if finished_task.on_failure == "continue":
+            # The playbook handles this failure: go on, and let a later
+            # branch (steps.<id>.status == "failed") decide what runs.
+            _release_next(run, finished_task.host)
+            _finalize_run_if_done(run)
+            return
+
         # No retry remaining — abort the rest of the chain for this host.
         sibling_qs.filter(state=Task.State.BLOCKED).update(
             state=Task.State.REJECTED,
@@ -573,6 +887,9 @@ def _advance_run_sequence(finished_task: Task) -> None:
         )
 
     _finalize_run_if_done(run)
+
+
+_FAILURE_LIKE = {Task.State.FAILED, Task.State.REJECTED, Task.State.EXPIRED}
 
 
 def _finalize_run_if_done(run: TaskRun) -> None:
@@ -585,12 +902,24 @@ def _finalize_run_if_done(run: TaskRun) -> None:
     if Task.objects.filter(run=run, state__in=active_states).exists():
         return
 
-    states = set(Task.objects.filter(run=run).values_list("state", flat=True))
-    if states <= {Task.State.COMPLETED, Task.State.SKIPPED}:
+    # A failure the playbook handles (on_failure: continue) counts as done,
+    # not failed — the recovery branch is what the run is judged on.
+    states = {
+        Task.State.COMPLETED if (on_failure == "continue" and state in _FAILURE_LIKE) else state
+        for state, on_failure in Task.objects.filter(run=run).values_list("state", "on_failure")
+    }
+    # A not-applicable host is neither a pass nor a failure, so it is
+    # excluded from the outcome. If every host was not applicable the run
+    # itself is not applicable; otherwise the remaining states decide as
+    # usual.
+    remaining = states - {Task.State.NOT_APPLICABLE}
+    if not remaining:
+        run.state = TaskRun.State.NOT_APPLICABLE
+    elif remaining <= {Task.State.COMPLETED, Task.State.SKIPPED}:
         # Skipped steps are happy outcomes — only-skipped or
         # completed-and-skipped runs are COMPLETED, not PARTIAL.
         run.state = TaskRun.State.COMPLETED
-    elif Task.State.COMPLETED in states or Task.State.SKIPPED in states:
+    elif Task.State.COMPLETED in remaining or Task.State.SKIPPED in remaining:
         run.state = TaskRun.State.PARTIAL
     else:
         run.state = TaskRun.State.FAILED
@@ -610,6 +939,16 @@ def _user_can_see(definition: TaskDefinition, user) -> bool:
 
 def _save_definition_from_yaml(definition: TaskDefinition, yaml_source: str) -> None:
     spec = parse_and_validate(yaml_source)
+    if spec.get("uses"):
+        # Refuse a composite that could never deploy. The unexpanded spec is
+        # what is stored — the copy happens at deploy — but the risk shown is
+        # the composite's, since that is what would ship today.
+        from .uses import UseError, expand_uses
+        try:
+            composite = parse_and_validate(expand_uses(yaml_source, definition.owner))
+        except UseError as exc:
+            raise SpecError(str(exc)) from exc
+        spec["risk"] = composite["risk"]
     definition.yaml_source = yaml_source
     definition.parsed_spec = spec
     definition.name = spec["name"]
@@ -649,7 +988,10 @@ def _card_for_task(text: str) -> dict:
         "name": spec["name"],
         "description": spec.get("description", ""),
         "author": spec.get("author", ""),
-        "relevance": spec.get("relevance", ""),
+        # `relevance:` is free text folded into the description at parse
+        # time; the task entry has nothing left to show here. Playbook and
+        # automation cards keep their own display summaries.
+        "relevance": "",
         "risk_level": spec.get("risk", "standard"),
         "parsed_spec": spec,
         "requires": [],
@@ -842,7 +1184,24 @@ def definition_list(request):
         else:
             qs = qs.filter(archived_at__isnull=True)
         qs = qs.select_related("owner").order_by("-updated_at")
-        return Response(TaskDefinitionSerializer(qs, many=True).data)
+        data = TaskDefinitionSerializer(qs, many=True).data
+        if scope != "community":
+            # Each task's most recent run, summarised for the library card's
+            # donut (M6 08c). One run per task, newest first.
+            from .summary import run_summary
+            newest_ids: dict = {}
+            for run_id, def_id in (TaskRun.objects.filter(definition__in=[d["id"] for d in data])
+                                   .order_by("-created_at").values_list("id", "definition_id")):
+                newest_ids.setdefault(str(def_id), run_id)
+            latest = {str(r.definition_id): r for r in TaskRun.objects.filter(
+                id__in=newest_ids.values()).select_related("definition").prefetch_related("tasks")}
+            for row in data:
+                run = latest.get(str(row["id"]))
+                row["last_run"] = ({"id": str(run.id), "created_at": run.created_at.isoformat(),
+                                    "state": run.state, **{k: v for k, v in run_summary(run).items()
+                                                           if k != "per_host"}}
+                                   if run else None)
+        return Response(data)
 
     yaml_source = request.data.get("yaml_source", "")
     # All tasks are created private. Sharing happens through the explicit
@@ -936,6 +1295,30 @@ def _verify_confirmation(user, payload) -> str | None:
     return require_totp_confirmation(user, payload)
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def definition_refusals(request, definition_id):
+    """Which of ``?host_ids=a,b`` would refuse this task, per their agents'
+    reported allowlists — for the deploy dialog's warning (M7)."""
+    import uuid as _uuid
+
+    from vigil import scoping
+
+    from .refusals import refusals_for
+
+    definition = get_object_or_404(TaskDefinition, pk=definition_id)
+    if not _user_can_see(definition, request.user):
+        return Response({"error": "Not found"}, status=404)
+    ids = []
+    for raw in (request.query_params.get("host_ids") or "").split(","):
+        try:
+            ids.append(_uuid.UUID(raw.strip()))
+        except ValueError:
+            continue   # a malformed id matches no host
+    hosts = scoping.filter_by_site(Host.objects.filter(id__in=ids[:500]), request.user)
+    return Response({"refusals": refusals_for(hosts, definition.parsed_spec or {})})
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def definition_deploy(request, definition_id):
@@ -982,13 +1365,16 @@ def definition_deploy(request, definition_id):
     if error:
         return Response({"error": error}, status=401)
 
-    base_spec = definition.parsed_spec
     raw_inputs = request.data.get("inputs") or {}
     if not isinstance(raw_inputs, dict):
         return Response({"error": "inputs must be an object"}, status=400)
+    # The one way a definition becomes a signed task (apps/tasks/dispatch.py):
+    # use: copied in, inputs resolved, inline playbooks expanded.
+    from apps.playbooks.expansion import PlaybookExpandError
+    from .dispatch import resolve_task_spec, task_params
     try:
-        spec = resolve_inputs(base_spec, raw_inputs)
-    except SpecError as exc:
+        spec = resolve_task_spec(definition, user=request.user, inputs=raw_inputs)
+    except (SpecError, PlaybookExpandError) as exc:
         return Response({"error": str(exc)}, status=400)
 
     # Per-deploy policy overrides — Schedule / Retry / Success Criteria. The
@@ -1008,15 +1394,7 @@ def definition_deploy(request, definition_id):
     except SpecError as exc:
         return Response({"error": str(exc)}, status=400)
 
-    actions = spec.get("actions") or []
-    # Inline any `type: playbook` calls — agents only ever receive concrete
-    # actions (a playbook reference is a server-side macro, not an agent verb).
-    from apps.playbooks.expansion import PlaybookExpandError, expand_actions
-    try:
-        actions, _expanded_risk = expand_actions(actions)
-    except PlaybookExpandError as exc:
-        return Response({"error": str(exc)}, status=400)
-    if not actions:
+    if not spec.get("actions"):
         return Response({"error": "definition has no actions"}, status=400)
 
     hosts = list(Host.objects.filter(id__in=host_ids))
@@ -1051,52 +1429,29 @@ def definition_deploy(request, definition_id):
                     status=400,
                 )
 
-    # Build the steps payload the agent will receive.  The full script is
-    # sent as a single signed task per host — the agent validates each
-    # action against its own local allowlist, so a compromised server
-    # cannot escalate beyond what each agent permits.
-    success_criteria = spec.get("success_criteria") or None
-    steps_payload = []
-    for i, action in enumerate(actions):
-        step = {
-            "id": action.get("id") or f"step{i + 1}",
-            "action": action["type"],
-            "params": action.get("params") or {},
-        }
-        # Optional when: predicate evaluated by the agent at execution
-        # time. Empty string means "always run" (back-compat).
-        when_expr = action.get("when") or ""
-        if when_expr:
-            step["when"] = when_expr
-        # Per-step timeout override. Omitted rather than sent as null when
-        # unset, so the agent simply falls back to its own default.
-        if action.get("timeout"):
-            step["timeout"] = action["timeout"]
-        # Success criteria apply to every step in the script. The agent
-        # evaluates these after each step's exit and marks the step failed
-        # if criteria are not met (even if the action itself succeeded).
-        if success_criteria:
-            step["success_criteria"] = success_criteria
-        steps_payload.append(step)
+    # Hosts whose agent would refuse an action in this task (its reported
+    # allowlist lacks it) are left out and reported, unless the operator says
+    # to send anyway — the agent stays the authority either way (M7).
+    from .refusals import refusals_for
+    skipped = refusals_for(hosts, spec)
+    if skipped and request.data.get("send_to_refusing") is not True:
+        refusing = {row["host_id"] for row in skipped}
+        hosts = [h for h in hosts if str(h.id) not in refusing]
+        if not hosts:
+            return Response({"error": "every selected host would refuse this task",
+                             "skipped": skipped}, status=400)
+    elif skipped:
+        skipped = []   # sent to them anyway: nothing was skipped
 
-    # update_agent replaces the whole agent executable. Stamp the verified
-    # SHA-256 of each platform binary into the step so the agent can check the
-    # download against a digest carried inside this Ed25519-signed task — a
-    # TLS-only transfer is not a strong enough proof for that swap.
-    if any(s["action"] == "update_agent" for s in steps_payload):
-        from apps.agent_dist.views import all_binary_sha256
+    # The full script is sent as a single signed task per host — the agent
+    # validates each action against its own local allowlist, so a compromised
+    # server cannot escalate beyond what each agent permits.
+    try:
+        params, risk, expires_at = task_params(spec)
+    except (SpecError, PlaybookExpandError) as exc:
+        return Response({"error": str(exc)}, status=400)
+    steps_payload = params["steps"]
 
-        sha_map = all_binary_sha256()
-        for s in steps_payload:
-            if s["action"] == "update_agent":
-                s["params"] = {**(s.get("params") or {}), "binary_sha256": sha_map}
-
-    # Effective risk is the highest risk across all actions.
-    from apps.playbooks.expansion import _max_risk as _mr
-    risk = _mr(spec.get("risk", "standard"), _expanded_risk)
-
-    # Schedule + retry policy are snapshotted onto each Task so a later edit
-    # of the TaskDefinition cannot retroactively change in-flight deploys.
     schedule_snapshot = spec.get("schedule") or {}
     retry_cfg = ((spec.get("on_failure") or {}).get("retry") or {})
     max_retries = int(retry_cfg.get("attempts", 0))
@@ -1115,13 +1470,15 @@ def definition_deploy(request, definition_id):
     if risk == "high":
         hold_until = now() + timedelta(seconds=HIGH_RISK_HOLD_SECONDS)
 
+    # Hunts stop waiting for offline hosts after their stays_open (phase 06b);
+    # non-hunt tasks never expire while pending.
     with transaction.atomic():
         run = TaskRun.objects.create(
             definition=definition,
             name_snapshot=definition.name,
             requested_by=request.user,
             host_count=len(hosts),
-            step_count=len(actions),
+            step_count=len(steps_payload),
             state=TaskRun.State.RUNNING,
         )
 
@@ -1140,18 +1497,22 @@ def definition_deploy(request, definition_id):
                 # the gated step is silently skipped on every run (#17).
                 # Always sent, even when empty, so "no inputs declared" is
                 # distinguishable from "inputs lost in the pipeline".
-                params={"steps": steps_payload,
-                        "variables": spec.get("resolved_inputs") or {}},
+                params=params,
                 risk_level=risk,
                 state=Task.State.PENDING,
+                not_before=hold_until,
+                expires_at=expires_at,
                 nonce=secrets.token_hex(32),
                 schedule=schedule_snapshot,
                 max_retries=max_retries,
                 retry_delay_seconds=retry_delay,
-                not_before=hold_until,
             )
 
-    return Response(TaskRunSerializer(run).data, status=201)
+    text_steps = _hunt_text_step_ids(steps_payload)
+    if text_steps:
+        _emit_hunt_text_requested(run, request.user, text_steps)
+
+    return Response({**TaskRunSerializer(run).data, "skipped": skipped}, status=201)
 
 
 @api_view(["GET"])
@@ -1235,7 +1596,119 @@ def run_detail(request, run_id):
         ),
         pk=run_id,
     )
-    return Response(TaskRunSerializer(run).data)
+    data = TaskRunSerializer(run).data
+    from .summary import run_summary
+    data["summary"] = run_summary(run)
+    return Response(data)
+
+
+_HUNT_HOST_PENDING = ("pending", "dispatched", "executing")
+_HUNT_HOST_ERROR = ("failed", "rejected", "expired")
+
+
+def _hunt_host_state(task, match_count):
+    if task.state in _HUNT_HOST_PENDING:
+        return "pending"
+    if task.state == Task.State.NOT_APPLICABLE:
+        return "not_applicable"
+    # Expired without ever being dispatched: the hunt stayed open past its
+    # stays_open and the host never checked in — "did not report", not an error.
+    if task.state == Task.State.EXPIRED and task.dispatched_at is None:
+        return "did_not_report"
+    if task.state in _HUNT_HOST_ERROR:
+        return "error"
+    return "matched" if match_count > 0 else "not_matched"
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def run_hunt_results(request, run_id):
+    """The spec's results view: one call returns every hunt match of a run.
+
+    ``columns`` is the union of the matches' own field names, first-seen
+    order; ``hosts`` gives every targeted host its state (matched / not
+    matched / pending / error), match count and whether any of its hunts
+    was truncated or timed out; ``matches`` is one page of the matches.
+    ``?host=`` and ``?step=`` filter the matches only — hosts and columns
+    always describe the whole run. A run without a hunt step is a 404.
+    """
+    run = get_object_or_404(
+        TaskRun.objects.prefetch_related("tasks__host"), pk=run_id)
+    tasks = list(run.tasks.all())
+    # Read the signed steps each task carried, so playbook and rollout
+    # runs (no single definition) are recognised the same way. A task's
+    # relevant: probes are hunts too, and their matches are its evidence.
+    if not any(
+        isinstance((task.params or {}).get("relevant"), dict)
+        or any(
+            str(step.get("action", "")).startswith("hunt_")
+            for step in ((task.params or {}).get("steps") or [])
+            if isinstance(step, dict)
+        )
+        for task in tasks
+    ):
+        raise Http404("run has no hunt steps")
+
+    try:
+        limit = max(0, min(5000, int(request.query_params.get("limit", 1000))))
+        offset = max(0, int(request.query_params.get("offset", 0)))
+    except (TypeError, ValueError):
+        return Response({"detail": "limit and offset must be integers"}, status=400)
+
+    run_matches = HuntMatch.objects.filter(run=run)
+    columns: dict = {}
+    for data in run_matches.values_list("data", flat=True).iterator(chunk_size=2000):
+        for key in (data or {}):
+            columns.setdefault(key, None)
+
+    matches_qs = run_matches.select_related("host").order_by(
+        "host__hostname", "step_id", "id")
+    if raw_host := (request.query_params.get("host") or "").strip():
+        try:
+            matches_qs = matches_qs.filter(host_id=uuid.UUID(raw_host))
+        except ValueError:
+            return Response({"detail": "host must be a host id"}, status=400)
+    if raw_step := (request.query_params.get("step") or "").strip():
+        matches_qs = matches_qs.filter(step_id=raw_step)
+
+    total = matches_qs.count()
+    matches = []
+    for row in matches_qs[offset:offset + limit]:
+        item = {
+            "host_id": str(row.host_id),
+            "hostname": row.host.hostname,
+            "step_id": row.step_id,
+            "action": row.action,
+            "evidence_type": row.evidence_type,
+        }
+        # Agent-reported fields never overwrite the server's own keys.
+        item.update({k: v for k, v in (row.data or {}).items() if k not in item})
+        matches.append(item)
+
+    counts = dict(run_matches.order_by().values_list("task_id").annotate(n=Count("id")))
+    hosts = []
+    for task in sorted(tasks, key=lambda t: (t.host.hostname, str(t.id))):
+        count = counts.get(task.id, 0)
+        step_hunts = (task.result_data or {}).get("hunts") or {}
+        hosts.append({
+            "host_id": str(task.host_id),
+            "hostname": task.host.hostname,
+            "state": _hunt_host_state(task, count),
+            "match_count": count,
+            "truncated": any(bool(h.get("truncated")) for h in step_hunts.values()
+                             if isinstance(h, dict)),
+            "timed_out": any(bool(h.get("timed_out")) for h in step_hunts.values()
+                             if isinstance(h, dict)),
+        })
+
+    return Response({
+        "columns": list(columns),
+        "hosts": hosts,
+        "matches": matches,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    })
 
 
 @api_view(["GET"])
@@ -1653,7 +2126,8 @@ def _find_in_catalog(by_slug, by_uid, ref):
 def _fork_task_from_catalog(item, user) -> TaskDefinition:
     """Create a library task from one catalog file."""
     definition = TaskDefinition(owner=user,
-                                visibility=TaskDefinition.Visibility.PRIVATE)
+                                visibility=TaskDefinition.Visibility.PRIVATE,
+                                content_source=TaskDefinition.ContentSource.COMMUNITY)
     _save_definition_from_yaml(definition, item["yaml_source"])
     definition.save()
     return definition

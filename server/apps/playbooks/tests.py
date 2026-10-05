@@ -59,12 +59,14 @@ class PlaybookDispatchTests(TestCase):
         host = make_host()
         wire()
         hooks.emit("host_approved", host=host, approved_by=self.admin)
-        task = Task.objects.get(host=host)
-        self.assertEqual(task.step_label, "playbook: Linux bootstrap")
-        self.assertEqual([s["action"] for s in task.params["steps"]],
-                         ["pkg_update", "restart_service"])
-        self.assertEqual(task.params["steps"][0]["id"], "step1")
-        self.assertEqual(task.params["steps"][1]["id"], "step2")
+        # One signed task per playbook step, chained: the first pending, the
+        # rest blocked until the one before finishes (M6 phase 08a).
+        tasks = list(Task.objects.filter(host=host).order_by("step_order"))
+        self.assertEqual([t.step_order for t in tasks], [0, 1])
+        self.assertEqual([t.state for t in tasks], [Task.State.PENDING, Task.State.BLOCKED])
+        self.assertTrue(tasks[0].step_label.startswith("playbook: Linux bootstrap"))
+        self.assertEqual([[s["action"] for s in t.params["steps"]] for t in tasks],
+                         [["pkg_update"], ["restart_service"]])
 
     def test_monitor_mode_hosts_are_skipped(self):
         make_playbook(self.admin)
@@ -186,7 +188,7 @@ class PlaybookApiTests(TestCase):
                          {"0": {"service_name": "postgres"}})
 
     def test_step_params_override_applies_at_dispatch(self):
-        from .models import build_agent_steps
+        from apps.tasks.dispatch import build_playbook_steps
         d = make_definition(actions=[
             {"type": "restart_service", "params": {"service_name": "nginx"}},
             {"type": "pkg_update", "params": {}},
@@ -195,7 +197,8 @@ class PlaybookApiTests(TestCase):
         step = b.steps.get()
         step.params_override = {"0": {"service_name": "postgres"}}
         step.save()
-        steps, _ = build_agent_steps(b)
+        (_step, params, _risk, _expires), = build_playbook_steps(b, user=self.admin)
+        steps = params["steps"]
         self.assertEqual(steps[0]["params"], {"service_name": "postgres"})
         self.assertEqual(steps[1]["params"], {})
 

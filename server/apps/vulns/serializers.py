@@ -37,8 +37,17 @@ class VulnFindingExceptionSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class FindingEvidenceSerializer(serializers.Serializer):
+    kind = serializers.CharField()
+    key = serializers.CharField()
+    summary = serializers.CharField()
+    observed_at = serializers.DateTimeField()
+
+
 class VulnFindingSerializer(serializers.ModelSerializer):
     host_hostname = serializers.CharField(source="host.hostname", read_only=True)
+    evidence = FindingEvidenceSerializer(many=True, read_only=True)
+    confidence = serializers.SerializerMethodField()
     days_remaining = serializers.IntegerField(read_only=True)
     overdue = serializers.BooleanField(read_only=True)
     exception = VulnFindingExceptionSerializer(read_only=True)
@@ -65,8 +74,22 @@ class VulnFindingSerializer(serializers.ModelSerializer):
             "days_remaining",
             "overdue",
             "exception",
+            "description",
+            "cvss_score",
+            "cvss_vector",
+            "references",
+            "primary_url",
+            "vendor_status",
+            "affected_path",
+            "evidence",
+            "confidence",
         ]
         read_only_fields = fields
+
+    def get_confidence(self, obj) -> str:
+        from .evidence import confidence_for
+
+        return confidence_for(e.kind for e in obj.evidence.all())
 
 
 class VulnScoreHistorySerializer(serializers.ModelSerializer):

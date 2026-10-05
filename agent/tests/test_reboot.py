@@ -3,6 +3,8 @@ collector's reboot_required probe, and the check-in wiring (phases 08a/08c).
 
 The Windows argv is asserted here by test only; it has not run on Windows.
 """
+
+import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 import json
 import os
 import re

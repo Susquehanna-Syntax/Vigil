@@ -1,0 +1,24 @@
+name: Roll back container
+description: |
+  Put a container back on the image it ran before its last update. A compose
+  container is pinned with an override file next to its compose file, which
+  is left untouched; a standalone one is recreated on the image. The next
+  update removes the pin.
+risk: standard
+author: Vigil
+created: 2026-10-01
+inputs:
+  - id: container_name
+    type: text
+    label: Container
+    required: true
+  - id: image
+    type: text
+    label: Image (digest or id)
+    required: true
+actions:
+  - id: rollback
+    type: container_rollback
+    params:
+      container_name: "${{ inputs.container_name }}"
+      image: "${{ inputs.image }}"

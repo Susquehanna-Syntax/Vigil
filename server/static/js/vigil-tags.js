@@ -34,7 +34,7 @@ function _tagCard(t) {
     : `on ${t.host_count} machine${t.host_count === 1 ? '' : 's'}`;
   const actions = t.editable
     ? `<button class="btn btn-sky btn-sm" data-tag-rename="${escAttr(t.id)}">Rename</button>
-       <button class="btn btn-ghost btn-sm" style="color:var(--rose);" data-tag-del="${escAttr(t.id)}">Delete</button>`
+       <button class="btn btn-ghost btn-sm" style="color:var(--rose-ink);" data-tag-del="${escAttr(t.id)}">Delete</button>`
     : '<span class="confirm-hint" style="margin:0;">maintained by Vigil</span>';
   return `<div class="bl-card">
     <div class="bl-card-head">

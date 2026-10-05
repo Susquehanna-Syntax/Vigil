@@ -9,8 +9,9 @@ import socket
 
 import requests
 
-from .config import AgentConfig
 from .__version__ import __version__
+from .config import AgentConfig
+from .features import FEATURES
 
 logger = logging.getLogger("vigil.client")
 
@@ -22,10 +23,13 @@ def _headers(config: AgentConfig) -> dict:
 
 
 def _system_info() -> dict:
+    from . import collector  # local import: collector imports client
+
     return {
         "hostname": socket.gethostname(),
         "os": f"{platform.system()} {platform.release()}",
         "kernel": platform.release(),
+        "machine_id": collector.machine_fingerprint(),
     }
 
 
@@ -52,6 +56,9 @@ def checkin(
     docker_containers: list[dict] | None = None,
     reboot_required: bool | None = None,
     windows_updates: dict | None = None,
+    software: dict | None = None,
+    windows_update_list: list[dict] | None = None,
+    container_engines: list[dict] | None = None,
 ) -> dict:
     """Send metrics and receive tasks. Returns the full server response."""
     payload = {
@@ -59,6 +66,11 @@ def checkin(
         "vigil_version": __version__,
         "mode": config.mode,
         "metrics": metrics,
+        "features": list(FEATURES),
+        # What this agent will run, so the server can warn before a deploy to
+        # a host whose allowlist refuses the task (M7). Empty is meaningful.
+        "allowlist": sorted(config.allowlist),
+        "allow_reprovision": bool(config.allow_reprovision),
     }
     # The ingest distinguishes an absent key (agent too old to report it —
     # stored value left alone) from an explicit False, so the key is only
@@ -70,6 +82,14 @@ def checkin(
     # rather than being told zero by a machine that cannot count.
     if windows_updates is not None:
         payload["windows_updates"] = windows_updates
+    # The per-update list rides along only after a fresh scan; absent means
+    # "nothing new", and the server keeps the rows it has.
+    if windows_update_list is not None:
+        payload["windows_update_list"] = windows_update_list
+    # Docker / Podman engines this host runs (M11); absent = none found, and
+    # the server keeps what it had.
+    if container_engines is not None:
+        payload["container_engines"] = container_engines
     if config.tags:
         payload["tags"] = list(config.tags)
     if inventory:
@@ -78,6 +98,10 @@ def checkin(
     # snapshot. An empty list is meaningful ("no containers now") and is sent.
     if docker_containers is not None:
         payload["docker_containers"] = docker_containers
+    # Same contract: an absent key means "nothing new to store", so the server
+    # keeps the software list it already has. Only a fresh payload is sent.
+    if software is not None:
+        payload["software"] = software
     url = f"{config.server_url}/api/v1/checkin"
     resp = requests.post(url, json=payload, headers=_headers(config), timeout=_TIMEOUT)
     resp.raise_for_status()
@@ -123,14 +147,66 @@ def _cap_output(output: str | None) -> str:
             f"dropped at the agent's {_MAX_OUTPUT:,}-character cap]")
 
 
-def report_result(config: AgentConfig, task_id: str, state: str, output: str) -> dict:
+def report_result(
+    config: AgentConfig, task_id: str, state: str, output: str, steps=None
+) -> dict:
     """Report task execution result to the server."""
     payload = {
         "task_id": task_id,
         "state": state,
         "output": _cap_output(output),
     }
+    if steps is not None:
+        payload["steps"] = steps
     url = f"{config.server_url}/api/v1/tasks/result/"
     resp = requests.post(url, json=payload, headers=_headers(config), timeout=_TIMEOUT)
     resp.raise_for_status()
     return resp.json()
+
+
+def post_log_lines(config: AgentConfig, session: str, lines: list[str]) -> bool:
+    """Ship new log lines for a live tail (M11); True while the viewer is
+    still watching. Any failure stops the tail — it is a convenience, and an
+    agent must never hammer a server that is not answering."""
+    url = f"{config.server_url}/api/v1/agent/log-tail/{session}/"
+    try:
+        resp = requests.post(url, json={"lines": lines}, headers=_headers(config), timeout=10)
+        resp.raise_for_status()
+        return bool(resp.json().get("continue"))
+    except Exception:  # noqa: BLE001 — see above
+        return False
+
+
+def fetch_stack_env(config: AgentConfig, ticket: str) -> str:
+    """Redeem a deploy's one-time env ticket (M11) for the .env text."""
+    url = f"{config.server_url}/api/v1/agent/stack-env/{ticket}/"
+    resp = requests.get(url, headers=_headers(config), timeout=_TIMEOUT)
+    if resp.status_code != 200:
+        raise RuntimeError(f"the server would not hand over this deploy's .env "
+                           f"({resp.status_code}) — the ticket is used or expired; deploy again")
+    return str(resp.json().get("env") or "")
+
+
+def post_stack_read(config: AgentConfig, ticket: str, payload: dict) -> None:
+    """Hand an adopted stack's files to the server (M11) — over the agent's
+    own connection, never in the task result, because .env holds secrets."""
+    url = f"{config.server_url}/api/v1/agent/stack-adopt/{ticket}/"
+    resp = requests.post(url, json=payload, headers=_headers(config), timeout=_TIMEOUT)
+    if resp.status_code != 200:
+        raise RuntimeError(f"the server refused the adoption ({resp.status_code}) — "
+                           f"the ticket is used or expired; adopt again")
+
+
+def fetch_registry_auth(config: AgentConfig, registry: str) -> dict | None:
+    """The private registry login the server holds for this host (M11), or
+    None — a public pull needs none, and any failure means pull anonymously."""
+    url = f"{config.server_url}/api/v1/agent/registry-auth/"
+    try:
+        resp = requests.get(url, params={"registry": registry}, headers=_headers(config),
+                            timeout=_TIMEOUT)
+    except requests.RequestException:
+        return None
+    if resp.status_code != 200:
+        return None
+    body = resp.json()
+    return body if isinstance(body, dict) and body.get("username") else None

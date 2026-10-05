@@ -21,6 +21,25 @@ MAX_DEPTH = 5
 _RISK_ORDER = {"low": 0, "standard": 1, "high": 2}
 
 
+def unsupported_in_playbooks(spec: dict) -> list[str]:
+    """M6 task-language constructs a playbook cannot carry yet.
+
+    A playbook flattens its tasks' actions into one step list, which would
+    drop a task's branch flow (running every branch) and its relevant: block
+    (running the fix on hosts it does not apply to). Until playbooks learn
+    them, a task that uses any of these cannot be part of one.
+    """
+    spec = spec or {}
+    found = []
+    if spec.get("flow"):
+        found.append("if/then/else branches")
+    if spec.get("relevant"):
+        found.append("relevant:")
+    if spec.get("uses"):
+        found.append("use:")
+    return found
+
+
 class PlaybookExpandError(ValueError):
     """A playbook reference that cannot be satisfied (unknown name, cycle,
     too deep). Deploy paths surface this as a 400; auto-enroll dispatch logs
@@ -55,6 +74,11 @@ def expand_actions(actions: list[dict], *, _seen: frozenset = frozenset(),
 
         for step in playbook.steps.select_related("definition").order_by("order"):
             spec = step.definition.parsed_spec or {}
+            blocked = unsupported_in_playbooks(spec)
+            if blocked:
+                raise PlaybookExpandError(
+                    f"task {step.definition.name!r} in playbook {name!r} uses "
+                    f"{', '.join(blocked)}, which playbooks cannot run yet")
             inner, inner_risk = expand_actions(
                 spec.get("actions") or [],
                 _seen=_seen | {key}, _depth=_depth + 1,

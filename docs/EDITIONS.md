@@ -23,10 +23,19 @@ with `seats: 9999`). SSO/SAML is "available — talk to us," not a tier.
 | Monitoring, alerting (smart defaults), unlimited agents/hosts/retention | ✅ | ✅ |
 | Remote task execution + agent (agent is 100% OSS, no tier awareness) | ✅ | ✅ |
 | Vuln scanning (Trivy / Nessus / Greenbone) | ✅ | ✅ |
+| Vigil's own vulnerability matcher (OSV / KEV / EPSS, offline bundle), evidence and fix groups | ✅ | ✅ |
+| Remediation by fix (deploy a fix to every affected host), AI mitigations when there is no fix | ✅ | ✅ |
+| Detection tasks (severity / cves / boost), Organization · Community · Vendor tags, Anvil SARIF import | ✅ | ✅ |
+| Containers & stacks (Docker / Podman): lifecycle, logs, rollback, single-host stack editor and .env, adopt | ✅ | ✅ |
+| Audit trail of stack and .env events (viewer) | — | ✅ |
 | **Baselines** (auto-dispatch on host approval) | ✅ | ✅ |
 | **AI suggestions** — BYO endpoint, any OpenAI-compatible or Anthropic | ✅ | ✅ |
 | **Status page** (public token URL, Powered-by-Vigil badge) | ✅ | ✅ |
 | Jackil integration (alert → ticket) | ✅ | ✅ |
+| **App & patch policies** (present / latest / pinned / absent, patching windows, deferral, approve each change) | ✅ | ✅ |
+| Fleet view by update, fleet-wide approve / decline | ✅ | ✅ |
+| Patch compliance numbers (% of hosts patched within SLA) | ✅ | ✅ |
+| **Compliance report** — pass/fail per site, CSV export, branded printable report with "Licensed to" | — | ✅ |
 | Seats | 1 admin + 1 viewer | **per-seat pricing** |
 | Roles | Admin, Viewer | + **Operator**, custom roles |
 | **Sites** (administrative boundaries; per-site scoping) | 1 (default) | **unlimited** |

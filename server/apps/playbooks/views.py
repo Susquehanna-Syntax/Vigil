@@ -37,9 +37,18 @@ def _row(b: Playbook, *, failing: int | None = None) -> dict:
                 "risk": s.definition.risk_level,
                 "order": s.order,
                 "params_override": s.params_override or {},
+                "on_not_applicable": s.on_not_applicable,
+                "on_failure": s.on_failure,
+                "color": s.color,
+                "outcome": s.outcome,
+                "step_id": s.step_id,
+                "branch": s.branch,
             }
             for s in b.steps.select_related("definition").order_by("order")
         ],
+        # The if/then/else structure over step ids, or None for a plain
+        # ordered playbook (M6 08b).
+        "flow": b.flow,
     }
 
 
@@ -69,9 +78,16 @@ def _high_risk_gate(request, playbook: Playbook, requested) -> Response | None:
     return None
 
 
+#: The colours an author can give a playbook step — Vigil's own palette.
+STEP_COLORS = {"", "rose", "lavender", "mint", "peach", "sky", "lemon"}
+
+
 def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | None:
-    """Replace the sequence. Entries are bare definition ids or
-    ``{"definition_id": ..., "params_override": {...}}`` dicts.
+    """Replace the steps. *definition_ids* is the authored tree: each entry
+    is a bare definition id, a step dict ``{"definition_id", "id"?,
+    "params_override"?, "on_not_applicable"?}``, or a branch
+    ``{"if": <condition>, "then": [...], "else": [...]}`` (M6 08b). A flat
+    list of steps is simply a tree without branches.
     Returns an error Response or None.
 
     Eligibility is judged against the playbook's own allow_high_risk flag, so
@@ -80,34 +96,71 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
     """
     from apps.tasks.spec import validate_params_override
 
+    from .flow import FlowError, build_flow
+
     if not isinstance(definition_ids, list) or not definition_ids:
         return Response({"detail": "definition_ids must be a non-empty list"},
                         status=400)
-    definitions = []
-    for entry in definition_ids:
-        override = {}
-        did = entry
-        if isinstance(entry, dict):
-            did = entry.get("definition_id")
-            override = entry.get("params_override") or {}
-        d = TaskDefinition.objects.filter(pk=did).first()
-        if d is None:
-            return Response({"detail": f"unknown definition {did}"}, status=400)
-        ok, why = eligible(d, allow_high_risk=playbook.allow_high_risk)
-        if not ok:
-            return Response({"detail": f"{d.name}: {why}"}, status=400)
-        err = validate_params_override(d.parsed_spec or {}, override)
-        if err is not None:
-            return Response({"detail": f"{d.name}: {err}"}, status=400)
-        definitions.append((d, override))
+
+    def load(entries) -> list:
+        tree = []
+        for entry in entries:
+            if isinstance(entry, dict) and "if" in entry:
+                then_nodes = entry.get("then")
+                else_nodes = entry.get("else") or []
+                if not isinstance(then_nodes, list) or not isinstance(else_nodes, list):
+                    raise FlowError("a branch's then/else must be lists")
+                tree.append({**entry, "then": load(then_nodes), "else": load(else_nodes)})
+                continue
+            override, on_not_applicable, on_failure, step_id, did = {}, "stop", "stop", None, entry
+            color = ""
+            outcome = ""
+            if isinstance(entry, dict):
+                did = entry.get("definition_id")
+                override = entry.get("params_override") or {}
+                on_not_applicable = entry.get("on_not_applicable") or "stop"
+                step_id = entry.get("id")
+                if on_not_applicable not in ("skip", "stop"):
+                    raise FlowError(f"{did}: on_not_applicable must be 'skip' or 'stop'")
+                color = entry.get("color") or ""
+                outcome = str(entry.get("outcome") or "").strip()
+                if len(outcome) > 40:
+                    raise FlowError(f"{did}: outcome is at most 40 characters")
+                if color not in STEP_COLORS:
+                    raise FlowError(f"{did}: color must be one of {', '.join(sorted(STEP_COLORS - {''}))}")
+                on_failure = entry.get("on_failure") or "stop"
+                if on_failure not in ("stop", "continue"):
+                    raise FlowError(f"{did}: on_failure must be 'stop' or 'continue'")
+            d = TaskDefinition.objects.filter(pk=did).first()
+            if d is None:
+                raise FlowError(f"unknown definition {did}")
+            ok, why = eligible(d, allow_high_risk=playbook.allow_high_risk)
+            if not ok:
+                raise FlowError(f"{d.name}: {why}")
+            err = validate_params_override(d.parsed_spec or {}, override)
+            if err is not None:
+                raise FlowError(f"{d.name}: {err}")
+            tree.append({"definition": d, "id": step_id, "params_override": override,
+                         "on_not_applicable": on_not_applicable,
+                         "on_failure": on_failure, "color": color, "outcome": outcome})
+        return tree
+
+    try:
+        steps, flow = build_flow(load(definition_ids))
+    except FlowError as exc:
+        return Response({"detail": str(exc)}, status=400)
     playbook.steps.all().delete()
     PlaybookStep.objects.bulk_create([
-        PlaybookStep(playbook=playbook, definition=d, order=i,
-                     params_override=override)
-        for i, (d, override) in enumerate(definitions)
+        PlaybookStep(playbook=playbook, definition=st["definition"], order=i,
+                     params_override=st["params_override"],
+                     on_not_applicable=st["on_not_applicable"],
+                     on_failure=st["on_failure"], color=st["color"], outcome=st["outcome"],
+                     step_id=st["step_id"], branch=st["branch"])
+        for i, st in enumerate(steps)
     ])
+    playbook.flow = flow
+    playbook.save(update_fields=["flow"])
     return None
-
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
@@ -152,7 +205,8 @@ def playbook_index(request):
             transaction.set_rollback(True)
             return err
         playbook.save(update_fields=["allow_high_risk"])
-        err = _validate_and_set_steps(playbook, request.data.get("definition_ids"))
+        err = _validate_and_set_steps(
+            playbook, request.data.get("flow_steps") or request.data.get("definition_ids"))
         if err is not None:
             transaction.set_rollback(True)
             return err
@@ -205,8 +259,9 @@ def playbook_detail(request, playbook_id):
         return err
     with transaction.atomic():
         playbook.save()
-        if "definition_ids" in data:
-            err = _validate_and_set_steps(playbook, data["definition_ids"])
+        if "flow_steps" in data or "definition_ids" in data:
+            err = _validate_and_set_steps(
+                playbook, data.get("flow_steps") or data.get("definition_ids"))
             if err is not None:
                 transaction.set_rollback(True)
                 return err
@@ -270,11 +325,12 @@ def playbook_from_yaml(request):
     visible_defs = scoping.filter_by_site(
         TaskDefinition.objects.all(), request.user, cascade_global=True)
     try:
-        steps = resolve_steps(parsed["steps"], visible_defs,
-                              community_names_by_slug("tasks"))
+        resolved = resolve_steps(parsed["steps"], visible_defs,
+                                 community_names_by_slug("tasks"))
     except ContentYamlError as exc:
         return Response({"detail": str(exc)}, status=400)
-    steps.sort(key=lambda s: s["order"])
+    # A plain playbook runs in its `order`; a branching one in document order.
+    steps = sorted(resolved, key=lambda s: s["order"])
 
     playbook_id = request.data.get("playbook_id")
     existing = None
@@ -312,10 +368,26 @@ def playbook_from_yaml(request):
             transaction.set_rollback(True)
             return err
         playbook.save()
-        err = _validate_and_set_steps(
-            playbook,
-            [{"definition_id": str(s["definition"].id),
-              "params_override": s["params_override"]} for s in steps])
+        def entry(s):
+            return {"definition_id": str(s["definition"].id), "id": s.get("id"),
+                    "params_override": s["params_override"],
+                    "on_not_applicable": s.get("on_not_applicable") or "stop",
+                    "on_failure": s.get("on_failure") or "stop",
+                    "color": s.get("color") or "",
+                    "outcome": s.get("outcome") or ""}
+
+        if parsed.get("tree"):
+            by_index = {i: s for i, s in enumerate(resolved)}
+
+            def rebuild(nodes):
+                return [entry(by_index[n["step"]]) if "step" in n
+                        else {"if": n["if"], "then": rebuild(n["then"]),
+                              "else": rebuild(n["else"])}
+                        for n in nodes]
+            items = rebuild(parsed["tree"])
+        else:
+            items = [entry(s) for s in steps]
+        err = _validate_and_set_steps(playbook, items)
         if err is not None:
             transaction.set_rollback(True)
             return err

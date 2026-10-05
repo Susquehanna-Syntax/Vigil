@@ -22,6 +22,11 @@ class Host(models.Model):
     kernel = models.CharField(max_length=100, blank=True)
     ip_address = models.GenericIPAddressField(blank=True, null=True)
     agent_token = models.CharField(max_length=255, unique=True, db_index=True)
+    # A stable per-machine id (systemd machine-id / Windows MachineGuid / macOS
+    # IOPlatformUUID) reported by the agent. Not unique and not a credential: it
+    # identifies the machine well enough to spot a re-enrolment of a host we
+    # already have, which an admin then confirms. Empty when the platform gives none.
+    machine_id = models.CharField(max_length=200, blank=True, default="", db_index=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     mode = models.CharField(max_length=20, choices=Mode.choices, default=Mode.MONITOR)
     tags = models.JSONField(default=list, blank=True)
@@ -39,12 +44,25 @@ class Host(models.Model):
         for string_field, relation in self.tag_sync_fields:
             sync_tag_rows(self, string_field, relation)
     agent_version = models.CharField(max_length=50, blank=True, default="")
+    #: Task-language features the agent said it understands at check-in.
+    #: The server refuses to hand a task to a host that lacks a feature the
+    #: task needs — a pre-`relevant:` agent would ignore the block and run
+    #: the fix on every host.
+    agent_features = models.JSONField(default=list, blank=True)
+    # The agent's mode allowlist as it last reported it (M7): None until an
+    # agent new enough to report it checks in — unknown, which is not "refuses".
+    agent_allowlist = models.JSONField(null=True, blank=True)
+    agent_allow_reprovision = models.BooleanField(default=False)
     last_checkin = models.DateTimeField(null=True, blank=True)
     #: What this machine is missing, as the agent last counted it:
     #: {"pending", "critical", "important", "reboot_required"}. Null means no
     #: agent has ever counted — not Windows, too old to report, or the scan
     #: failed — which is a different thing from zero and displayed differently.
     windows_updates = models.JSONField(null=True, blank=True)
+    #: Container engines the agent found (M11):
+    #: [{"kind": "docker"|"podman", "version", "api_version", "rootless", "uid"?}].
+    #: Null until an agent reports; [] is never stored (no engine = absent key).
+    container_engines = models.JSONField(null=True, blank=True)
     windows_updates_at = models.DateTimeField(null=True, blank=True)
 
     #: When the agent last sent a docker_containers payload — including an
@@ -187,6 +205,13 @@ class DockerContainer(models.Model):
     mem_limit_bytes = models.BigIntegerField(null=True, blank=True)
     mem_percent = models.FloatField(null=True, blank=True)
     ports = models.JSONField(default=list, blank=True)
+    # Stack inventory (M11).
+    image_id = models.CharField(max_length=80, blank=True)
+    #: The image's repo digest (``repo@sha256:…``) — what a rollback pins to.
+    image_digest = models.CharField(max_length=300, blank=True)
+    restart_policy = models.CharField(max_length=40, blank=True)
+    #: compose's own hash of the service config; a change means drift.
+    config_hash = models.CharField(max_length=80, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -397,3 +422,100 @@ class TagRowSyncMixin:
         super().save(*args, **kwargs)
         for string_field, relation in self.tag_sync_fields:
             sync_tag_rows(self, string_field, relation)
+
+
+class ContainerStack(models.Model):
+    """A compose stack on one host (M11) — found from its containers' labels
+    at check-in, or deployed by Vigil.
+
+    ``ownership`` says who is in charge of it: ``managed`` — Vigil holds its
+    compose file and deploys it; ``adopted`` — an existing stack Vigil has
+    taken over where it stands; ``external`` — merely seen running.
+    """
+
+    class Ownership(models.TextChoices):
+        MANAGED = "managed", "Managed by Vigil"
+        ADOPTED = "adopted", "Adopted"
+        EXTERNAL = "external", "External"
+
+    host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="container_stacks")
+    project = models.CharField(max_length=200)
+    config_files = models.JSONField(default=list, blank=True)
+    working_dir = models.CharField(max_length=500, blank=True)
+    ownership = models.CharField(max_length=10, choices=Ownership.choices,
+                                 default=Ownership.EXTERNAL)
+    engine = models.CharField(max_length=10, blank=True)
+    container_count = models.PositiveIntegerField(default=0)
+    running_count = models.PositiveIntegerField(default=0)
+    #: Last seen at a check-in; a managed stack keeps its row when stopped.
+    seen_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("host", "project"),
+                                               name="uniq_container_stack")]
+        ordering = ("project",)
+
+    def __str__(self):
+        return f"{self.project} on {self.host_id}"
+
+
+class LogTailSession(models.Model):
+    """One open log view (M11): the lines an agent streamed while someone
+    watched. The agent stops when ``viewer_seen_at`` goes stale or the
+    session is closed; nothing here is kept once the view is gone."""
+
+    #: The viewer is gone when it has not polled for this long.
+    VIEWER_TIMEOUT_SECONDS = 15
+    #: A tail never outlives this, watched or not.
+    MAX_SECONDS = 600
+    MAX_LINES = 2000
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="log_tails")
+    container_name = models.CharField(max_length=200)
+    task = models.ForeignKey("tasks.Task", null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name="+")
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
+                                     related_name="+")
+    lines = models.JSONField(default=list, blank=True)   # [[seq, line], …]
+    next_seq = models.PositiveIntegerField(default=1)
+    closed = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    viewer_seen_at = models.DateTimeField(auto_now_add=True)
+
+    def alive(self, at) -> bool:
+        return (not self.closed
+                and (at - self.viewer_seen_at).total_seconds() < self.VIEWER_TIMEOUT_SECONDS
+                and (at - self.created_at).total_seconds() < self.MAX_SECONDS)
+
+
+class ContainerImageHistory(models.Model):
+    """The image a container ran before an update (M11) — what one-click
+    rollback goes back to. Recorded from each completed update_container."""
+
+    host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="container_image_history")
+    container_name = models.CharField(max_length=200)
+    image_ref = models.CharField(max_length=255, blank=True)
+    image_id = models.CharField(max_length=80)
+    #: repo@sha256:… when the snapshot knew it — a digest survives a prune
+    #: of the local image; an id does not.
+    image_digest = models.CharField(max_length=300, blank=True)
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-recorded_at", "-id")
+        indexes = [models.Index(fields=("host", "container_name"))]
+
+
+class ContainerRollback(models.Model):
+    """A container currently rolled back (M11); cleared by its next update."""
+
+    host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="container_rollbacks")
+    container_name = models.CharField(max_length=200)
+    image = models.CharField(max_length=300)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("host", "container_name"),
+                                               name="uniq_container_rollback")]

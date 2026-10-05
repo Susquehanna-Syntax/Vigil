@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import logtail, views
 
 urlpatterns = [
     path("", views.host_list, name="host-list"),
@@ -26,5 +26,8 @@ urlpatterns = [
     path("<uuid:host_id>/tags/", views.host_tags, name="host-tags"),
     path("<uuid:host_id>/inventory/", views.inventory_detail, name="inventory-detail"),
     path("<uuid:host_id>/containers/", views.host_containers, name="host-containers"),
+    path("<uuid:host_id>/stacks/", views.host_stacks, name="host-stacks"),
+    path("<uuid:host_id>/containers/<str:name>/logs/", logtail.open_logs, name="host-container-logs"),
+    path("log-tails/<uuid:session_id>/", logtail.poll_logs, name="log-tail"),
     path("check-pending/", views.check_pending, name="host-check-pending"),
 ]

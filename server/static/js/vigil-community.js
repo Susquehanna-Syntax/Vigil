@@ -27,7 +27,7 @@ function _communityEmptyHtml(kind) {
   return `<div class="empty-state">
     <div class="empty-state-title">No community ${escHtml(kind)} yet</div>
     <div class="empty-state-desc">They come from the public
-      <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky);">Vigil-Approved-Scripts</a>
+      <a href="https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts" target="_blank" rel="noopener" style="color:var(--sky-ink);">Vigil-Approved-Scripts</a>
       repo. Be the first to contribute — open one in its editor and use Submit to Community.</div>
   </div>`;
 }
@@ -62,15 +62,15 @@ function _isReferenced(item, keys) {
 function _requiresHtml(item) {
   const needs = item.requires || [];
   const held = item.have
-    ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--mint);">Already in your library.</div>`
+    ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--mint-ink);">Already in your library.</div>`
     : '';
   if (!needs.length) return held;
   if (item.have) return held;
   const rows = needs.map(ref => {
     const held = ref.have === true;
     const mark = held
-      ? '<span style="color:var(--mint);">already yours</span>'
-      : '<span style="color:var(--sky);">will fork</span>';
+      ? '<span style="color:var(--mint-ink);">already yours</span>'
+      : '<span style="color:var(--sky-ink);">will fork</span>';
     return `<div style="display:flex;justify-content:space-between;gap:10px;">
       <span style="color:var(--text-2);">${escHtml(ref.name || ref.slug)}</span>${mark}</div>`;
   }).join('');

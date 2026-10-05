@@ -17,7 +17,7 @@ let _pickerState = null;
 async function openPicker(opts) {
   // opts: { type: 'task'|'playbook'|'machine', title, onSelect(item), allowAdd }
   _pickerState = opts;
-  const m = mountModal('picker', { wide: true });
+  const m = mountModal('picker', { wide: true, variant: 'm-pop m-sheet-sm' });
   m.modal.querySelector('#picker-close') || m.setBody(`
     <div class="modal-title">
       <span id="picker-title"></span>
@@ -177,7 +177,7 @@ async function openInputsModal(opts) {
   if (!_actionRegistry) _actionRegistry = await apiJson('/api/v1/tasks/actions/');
   const def = opts.def;
   const override = opts.override || {};
-  const m = mountModal('inputs', { wide: true });
+  const m = mountModal('inputs', { wide: true, variant: 'm-pop m-sheet-sm' });
   const actions = (def.parsed_spec && def.parsed_spec.actions) || [];
   const sections = actions.map((a, i) => {
     const entry = _actionRegistry[a.type];

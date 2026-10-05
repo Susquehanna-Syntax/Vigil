@@ -259,7 +259,8 @@ function mountModal(id, opts) {
     overlay.className = 'modal-overlay';
     modal = document.createElement('div');
     modal.id = id + '-modal';
-    modal.className = 'modal' + (opts.wide ? ' modal-wide' : '') + (opts.xwide ? ' modal-xwide' : '');
+    modal.className = 'modal' + (opts.wide ? ' modal-wide' : '') + (opts.xwide ? ' modal-xwide' : '')
+      + (opts.variant ? ' ' + opts.variant : '');
     document.body.appendChild(overlay);
     document.body.appendChild(modal);
   }
@@ -290,7 +291,7 @@ function mountModal(id, opts) {
 function confirmModal(message, opts) {
   opts = opts || {};
   return new Promise((resolve) => {
-    const m = mountModal('confirm');
+    const m = mountModal('confirm', { variant: 'm-pop' });
     m.setBody(`
       <div class="modal-title">
         <span id="confirm-title"></span>
@@ -326,7 +327,7 @@ function confirmModal(message, opts) {
 function promptModal(message, opts) {
   opts = opts || {};
   return new Promise((resolve) => {
-    const m = mountModal('prompt');
+    const m = mountModal('prompt', { variant: 'm-pop' });
     m.setBody(`
       <div class="modal-title">
         <span id="prompt-title"></span>
@@ -384,16 +385,19 @@ function yamlToHtml(src) {
   }).join('\n');
 }
 
-/* ── Theme (system / light / dark) ────────────────────────────────────
+/* ── Theme (Dark / Paper / River / Ink, or System) ──────────────────────
  *
- * Two controls drive the same preference: the sidebar icon, which flips
- * between light and dark, and the Appearance card in Settings, which also
- * offers "System" — follow the OS. "System" is stored as the word, not as
- * the colour it resolved to, so the page keeps tracking the OS afterwards
- * instead of freezing at whatever it happened to be when it was chosen.
+ * The four themes of the SQSY design language. Paper is stored as "light",
+ * so a browser that chose light before M12 lands on Paper. Two controls drive
+ * the same preference: the sidebar icon, which steps through the four, and
+ * the Appearance card in Settings, which also offers "System" — Dark or Paper
+ * with the OS. "System" is stored as the word, not as the colour it resolved
+ * to, so the page keeps tracking the OS afterwards.
  *
  * The identical resolution runs inline in base.html before first paint; a
  * mismatch between the two shows up as a flash of the wrong theme. */
+const THEMES = ['dark', 'light', 'river', 'ink'];
+const THEME_LABELS = { dark: 'Dark', light: 'Paper', river: 'River', ink: 'Ink' };
 const _MQ_DARK = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
 function _systemTheme() {
@@ -402,7 +406,7 @@ function _systemTheme() {
 function _storedTheme() {
   try {
     const v = localStorage.getItem('vigil-theme');
-    if (v === 'light' || v === 'dark' || v === 'system') return v;
+    if (THEMES.includes(v) || v === 'system') return v;
   } catch (e) {}
   return 'dark';
 }
@@ -411,24 +415,52 @@ function _applyThemeIcon(theme) {
   const moon = document.getElementById('theme-icon-moon');
   if (sun) sun.style.display = theme === 'light' ? 'block' : 'none';
   if (moon) moon.style.display = theme === 'light' ? 'none' : 'block';
+  const toggle = document.getElementById('theme-toggle');
+  if (toggle) toggle.dataset.tip = 'Theme: ' + (THEME_LABELS[theme] || 'Dark');
 }
 function _applyThemeButtons(pref) {
-  ['system', 'light', 'dark'].forEach((m) => {
+  ['system', ...THEMES].forEach((m) => {
     const b = document.getElementById('theme-' + m);
-    if (b) b.classList.toggle('active', m === pref);
+    if (!b) return;
+    b.classList.toggle('active', m === pref);
+    b.setAttribute('aria-pressed', String(m === pref));
   });
 }
 function setTheme(mode) {
-  const pref = (mode === 'light' || mode === 'dark' || mode === 'system') ? mode : 'dark';
+  const pref = (THEMES.includes(mode) || mode === 'system') ? mode : 'dark';
   const resolved = pref === 'system' ? _systemTheme() : pref;
   document.documentElement.setAttribute('data-theme', resolved);
   try { localStorage.setItem('vigil-theme', pref); } catch (e) {}
   _applyThemeIcon(resolved);
   _applyThemeButtons(pref);
+  // Charts draw their grid and tooltips from the tokens once; they re-read them.
+  document.dispatchEvent(new CustomEvent('vigil:theme', { detail: { theme: resolved } }));
 }
 function toggleTheme() {
-  const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-  setTheme(cur === 'light' ? 'dark' : 'light');
+  const cur = document.documentElement.getAttribute('data-theme');
+  setTheme(THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length]);
+}
+
+//: A token's current value, for the few things (Chart.js) that cannot take var().
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+//: A Chart.js scriptable option that reads a token every draw, so a chart
+//: follows a theme change on its next update instead of keeping Dark's greys.
+function tok(name) {
+  return () => cssVar(name);
+}
+
+/* ── Reduce motion (Settings) — the same collapse as the OS setting ────── */
+function _applyMotionButton(on) {
+  const b = document.getElementById('motion-reduce');
+  if (b) b.setAttribute('aria-checked', String(on));
+}
+function toggleReduceMotion() {
+  const on = !document.documentElement.classList.contains('rm-sim');
+  document.documentElement.classList.toggle('rm-sim', on);
+  try { localStorage.setItem('vigil-reduce-motion', on ? '1' : '0'); } catch (e) {}
+  _applyMotionButton(on);
 }
 if (_MQ_DARK && _MQ_DARK.addEventListener) {
   _MQ_DARK.addEventListener('change', () => {
@@ -453,22 +485,23 @@ function setDensity(mode) {
 document.addEventListener('DOMContentLoaded', () => {
   _applyThemeIcon(document.documentElement.getAttribute('data-theme') || 'dark');
   _applyThemeButtons(_storedTheme());
+  _applyMotionButton(document.documentElement.classList.contains('rm-sim'));
   _applyDensityButtons(document.documentElement.getAttribute('data-density') || 'cozy');
 });
 
 
-/* ── Escape closes whatever modal is open ─────────────────────────────────
+/* ── Escape closes the top modal ──────────────────────────────────────────
  *
  * A safety net so no dialog can trap the page behind an overlay that silently
  * swallows clicks — which reads to a user as the whole UI having frozen, with
- * nothing on screen to explain it.
+ * nothing on screen to explain it. The handler lives in vigil-modal.js, which
+ * knows which dialog is on top.
  *
- * This file loads first, so this handler runs BEFORE any module's own Escape
- * handler. It therefore cannot simply strip the `open` class: doing so would
- * make the module's `classList.contains('open')` guard fail and skip its
- * cleanup. Instead it looks for the module's real close function by naming
- * convention and calls that, falling back to the class removal only when no
- * such function exists. Ordering then does not matter.
+ * It runs BEFORE any module's own Escape handler, so it cannot simply strip
+ * the `open` class: doing so would make the module's
+ * `classList.contains('open')` guard fail and skip its cleanup. Instead it
+ * looks for the module's real close function by naming convention and calls
+ * that, falling back to the class removal only when no such function exists.
  */
 function _closeFnFor(modalId) {
   // "wave-editor-modal" → closeWaveEditor / closeWaveEditorModal
@@ -482,19 +515,6 @@ function _closeFnFor(modalId) {
   return null;
 }
 
-document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
-  const open = document.querySelector('.modal.open');
-  if (!open) return;
-  const fn = open.id ? _closeFnFor(open.id) : null;
-  if (fn) { fn(); return; }
-  open.classList.remove('open');
-  const overlay = open.id
-    ? document.getElementById(open.id.replace(/-modal$/, '-overlay'))
-    : null;
-  if (overlay) overlay.classList.remove('open');
-  else document.querySelectorAll('.modal-overlay.open').forEach(o => o.classList.remove('open'));
-});
 
 
 /* ── Polling that stops when nobody is looking ────────────────────────────
