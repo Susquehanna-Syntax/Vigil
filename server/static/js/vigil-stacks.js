@@ -1,8 +1,8 @@
 // vigil-stacks.js
-// Owns: Vigil-managed compose stacks on the Monitor page's Containers section
+// Owns: Vigil-managed compose stacks on the Containers page
 //   (M11) — the list, the editor (compose file + masked .env), revisions,
 //   deploy and take-down. Free, one host at a time.
-// HTML: #managed-stacks in templates/pages/_monitor.html; the editor modal is
+// HTML: #managed-stacks in templates/pages/_containers.html; the editor modal is
 //   built here on first use.
 // Depends on: vigil-utils.js (escHtml, escAttr, apiJson, showToast, getCsrf).
 // API: /api/v1/stacks/ (CRUD), /<id>/revisions/, /<id>/env/reveal/ (TOTP),

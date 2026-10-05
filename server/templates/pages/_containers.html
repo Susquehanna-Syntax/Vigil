@@ -1,0 +1,41 @@
+{# Containers page section — one host's containers by compose stack, Vigil-managed stacks, live logs #}
+{# Logic: static/js/vigil-containers.js (containers, logs, host picker) + vigil-stacks.js (managed stacks) | Styles: vigil.css .docker-*, .managed-stack*, .ctr-logs | Data: client-side fetch /api/v1/hosts/{id}/containers/, /api/v1/hosts/{id}/stacks/, /api/v1/stacks/ #}
+    <section id="page-containers" class="page">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Containers<span>.</span></div>
+          <div class="page-sub">Containers and compose stacks on your hosts</div>
+        </div>
+        <div class="right">
+          <button class="btn btn-outline btn-sm" data-act="refreshContainers">
+            <svg viewBox="0 0 24 24" width="14" height="14"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div class="hunt-toolbar">
+        <select class="form-control" id="containers-host" aria-label="Host" data-change="selectContainersHost" data-a1="$value">
+          <option value="">Select a host…</option>
+          {% for host in hosts %}
+          <option value="{{ host.id }}">{{ host.hostname }}</option>
+          {% endfor %}
+        </select>
+        <span class="section-count" id="docker-count"></span>
+      </div>
+
+      <div id="containers-empty" class="monitor-empty">
+        <div class="monitor-empty-title">Select a host</div>
+        <div class="monitor-empty-desc">
+          Pick a host to see its containers and compose stacks, and to restart, update or read the logs of any of them.
+        </div>
+      </div>
+
+      <div id="containers-content" hidden>
+        <div class="managed-stacks" id="managed-stacks"></div>
+        <div id="docker-stacks" class="docker-stacks">
+          <div class="docker-empty" id="docker-empty">No containers reported for this host.</div>
+        </div>
+      </div>
+    </section>

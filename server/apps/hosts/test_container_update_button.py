@@ -34,11 +34,11 @@ class AiDockerFixGoneTests(SimpleTestCase):
 class UpdateButtonTests(SimpleTestCase):
 
     def test_an_outdated_container_offers_update(self):
-        monitor = _src("vigil-monitor.js")
+        monitor = _src("vigil-containers.js")
         self.assertTrue("c.outdated ?" in monitor, "the Update button is not gated on c.outdated")
         self.assertTrue("data-ctr-update" in monitor, "the data-ctr-update hook is missing")
         self.assertTrue("openUpdateContainer(" in monitor, "the button does not call openUpdateContainer")
-        self.assertFalse("Suggest fix" in monitor, "the old Suggest fix button is still in vigil-monitor.js")
+        self.assertFalse("Suggest fix" in monitor, "the old Suggest fix button is still in vigil-containers.js")
 
 
 class OpenUpdateContainerTests(SimpleTestCase):
