@@ -28,10 +28,10 @@ class LifecycleTemplateTests(TestCase):
 
 
 class LifecycleButtonsWiringTests(TestCase):
-    def test_monitor_buttons_open_the_seeded_tasks(self):
+    def test_containers_page_buttons_open_the_seeded_tasks(self):
         from pathlib import Path
         root = Path(__file__).resolve().parents[2]
-        mon = (root / "static/js/vigil-monitor.js").read_text(encoding="utf-8")
+        mon = (root / "static/js/vigil-containers.js").read_text(encoding="utf-8")
         dep = (root / "static/js/vigil-deploy.js").read_text(encoding="utf-8")
         for name in ("Restart container", "Stop container", "Start container",
                      "Restart stack", "Update stack"):

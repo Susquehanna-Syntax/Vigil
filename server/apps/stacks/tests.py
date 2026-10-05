@@ -226,9 +226,9 @@ class StackEditorWiringTests(SimpleTestCase):
         from pathlib import Path
         root = Path(__file__).resolve().parents[2]
         js = (root / "static/js/vigil-stacks.js").read_text(encoding="utf-8")
-        mon = (root / "templates/pages/_monitor.html").read_text(encoding="utf-8")
+        page = (root / "templates/pages/_containers.html").read_text(encoding="utf-8")
         base = (root / "templates/base.html").read_text(encoding="utf-8")
-        self.assertIn('id="managed-stacks"', mon)
+        self.assertIn('id="managed-stacks"', page)
         self.assertIn("js/vigil-stacks.js", base)
         for needle in ("/env/reveal/", "/deploy/", "/remove/", "/revisions/", "keep: true",
                        "type=\"${e.revealed ? 'text' : 'password'}\"", "async function renderManagedStacks"):

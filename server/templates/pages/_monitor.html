@@ -77,6 +77,10 @@
             <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="18" x2="12" y2="20"/></svg>
             RDP
           </button>
+          <button class="btn btn-outline btn-sm" id="mon-containers-btn" data-act="openContainersForCurrentMonitor" title="Containers and compose stacks on this host">
+            <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="13" rx="2"/><line x1="7" y1="7" x2="7" y2="20"/><line x1="12" y1="7" x2="12" y2="20"/><line x1="17" y1="7" x2="17" y2="20"/><path d="M6 7V4h12v3"/></svg>
+            Containers
+          </button>
           <span class="field-hint" tabindex="0" aria-label="About the time range"
                 data-hint="How far back the charts on this page look.&#10;&#10;Longer ranges hold more measurements than the chart has pixels, so Vigil shows every n-th real reading rather than averaging them together — a spike you can see is a spike that really happened.&#10;&#10;The newest reading is always included, so the right-hand edge is current.">?</span>
           <div class="time-range-bar">
@@ -210,15 +214,6 @@
               </tbody>
             </table>
           </div>
-        </div>
-
-        <!-- Docker Containers -->
-        <div class="section-label" style="margin-top:36px;">
-          Docker Containers<span class="section-count" id="docker-count"></span>
-        </div>
-        <div class="managed-stacks" id="managed-stacks"></div>
-        <div id="docker-stacks" class="docker-stacks">
-          <div class="docker-empty" id="docker-empty">No containers reported for this host.</div>
         </div>
 
         <!-- Software -->

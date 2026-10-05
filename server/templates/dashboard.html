@@ -26,6 +26,10 @@
   {# Logic: static/js/vigil-monitor.js + vigil-host-cards.js | Data: client-side fetch /api/v1/metrics/{host}/{cat}/{metric}/ #}
   {% include "pages/_monitor.html" %}
 
+  {# Containers page — one host's containers by compose stack, managed stacks, live logs #}
+  {# Logic: static/js/vigil-containers.js + vigil-stacks.js | Data: client-side fetch /api/v1/hosts/{id}/containers/, /api/v1/stacks/ #}
+  {% include "pages/_containers.html" %}
+
   {# Playbooks page — sequence editor for auto-enroll task chains #}
   {# Logic: static/js/vigil-playbooks.js | Data: /api/v1/playbooks/ + /api/v1/tasks/definitions/ #}
   {% include "pages/_playbooks.html" %}
