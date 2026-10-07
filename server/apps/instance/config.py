@@ -124,6 +124,12 @@ def source(name: str) -> str:
 # Validation
 # ---------------------------------------------------------------------------
 
+#: Per-key bounds that mean something beyond "not negative". A session idle
+#: window below five minutes is a usability trap, and an absolute cap above a
+#: week isn't a cap.
+_RANGES = {"VIGIL_SESSION_IDLE_MINUTES": (5, 720), "VIGIL_SESSION_MAX_HOURS": (1, 168)}
+
+
 def validate(name: str, raw) -> tuple[bool, str]:
     """Check a submitted value. Returns ``(ok, message)``.
 
@@ -142,6 +148,9 @@ def validate(name: str, raw) -> tuple[bool, str]:
                 return False, "must not be negative"
         except ValueError:
             return False, "must be a whole number"
+        lo_hi = _RANGES.get(name)
+        if lo_hi and text and not (lo_hi[0] <= int(text) <= lo_hi[1]):
+            return False, f"must be between {lo_hi[0]} and {lo_hi[1]}"
     elif key.kind == FLOAT:
         try:
             if float(text) < 0:

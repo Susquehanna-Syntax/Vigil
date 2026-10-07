@@ -294,6 +294,27 @@ def logout_view(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+def session_activity(request):
+    """The browser's heartbeat (QA-14). Sent only on real interaction.
+
+    The middleware already refreshed ``last_active`` — this path is on the
+    activity list — so the view just reports what that bought.
+    """
+    from .session_timeout import remaining
+    return Response(remaining(request.session))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def session_status(request):
+    """Time left on the session, for the countdown. A background GET: checked,
+    never refreshing, or an open tab would sit out the idle clock forever."""
+    from .session_timeout import remaining
+    return Response(remaining(request.session))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def totp_debug_code(request):
     """Return the current TOTP code for the authenticated user.
 
