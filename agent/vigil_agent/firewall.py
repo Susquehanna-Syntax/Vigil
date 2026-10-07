@@ -324,7 +324,7 @@ class FirewallCmdBackend(FirewallBackend):
         # backend. `name`/`rule_id` are accepted for contract uniformity but
         # unused -- firewalld rules are removed by their field-based match,
         # same as ufw.
-        if action == "deny":
+        if action in ("deny", "reject"):
             rule = self._reject_rich_rule(port, protocol, source)
             out = _run(["firewall-cmd", "--permanent",
                        f"--remove-rich-rule={rule}"])

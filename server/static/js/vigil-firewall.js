@@ -25,9 +25,11 @@ function _fwRemember(id) { try { localStorage.setItem(FW_HOST_KEY, id); } catch 
 function _fwRecall() { try { return localStorage.getItem(FW_HOST_KEY) || ''; } catch { return ''; } }
 
 // Port 22 is always protected; 3389 joins it only on a Windows snapshot.
-// Mirrors apps/hosts/firewall_guard.py::_protected_ports exactly — the UI
-// must not offer a remove/deny action the server is guaranteed to refuse.
-function _fwIsProtected(port, tool) {
+// Mirrors apps/hosts/firewall_guard.py::check_change exactly: only removing
+// an *allow* on a protected port can cut off access, so deny/reject rules on
+// those ports are the way back in and must offer Remove.
+function _fwIsProtected(port, tool, action) {
+  if (action !== 'allow') return false;
   if (port === 22) return true;
   if (port === 3389 && tool === 'windows') return true;
   return false;
@@ -345,23 +347,13 @@ function _fwRenderRules(hostId, data) {
       const actTd = document.createElement('td');
       actTd.style.textAlign = 'right';
       const portNum = typeof r.port === 'number' ? r.port : parseInt(r.port, 10);
-      if (_fwIsProtected(portNum, tool)) {
+      if (_fwIsProtected(portNum, tool, r.action)) {
         // The server would refuse this change (firewall_guard.check_change)
         // — do not offer an action known to fail.
         const label = document.createElement('span');
         label.style.cssText = 'font-size:11px;color:var(--text-3);';
-        label.textContent = '[protected]';
-        actTd.appendChild(label);
-      } else if (r.action === 'reject') {
-        // ufw's parser also matches REJECT (see UfwBackend._RULE), but
-        // executor._remove_firewall_rule only accepts action in
-        // ("allow", "deny") and raises for anything else — Vigil cannot
-        // remove a reject rule. Offering a live Remove button here would
-        // always fail after "Change queued" — do not offer an action known
-        // to fail.
-        const label = document.createElement('span');
-        label.style.cssText = 'font-size:11px;color:var(--text-3);';
-        label.textContent = '[cannot remove]';
+        label.textContent = portNum === 3389 ? '[protected — keeps RDP open]'
+                                             : '[protected — keeps SSH open]';
         actTd.appendChild(label);
       } else {
         const rmBtn = document.createElement('button');
