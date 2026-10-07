@@ -4,7 +4,7 @@
 // HTML: templates/pages/_apps.html, Software section in templates/pages/_monitor.html
 // Depends on: vigil-utils.js (escHtml, escAttr, timeAgo, delegateClick),
 //   vigil-nav.js (navigateTo — wrapped below), vigil-monitor.js
-//   (selectMonitorHost, reached from a hostname link).
+//   (selectMonitorHost, reached from the "Open this host's monitor" link).
 // API: GET /api/v1/software/apps/, /api/v1/software/apps/<name_key>/,
 //      /api/v1/software/hosts/, /api/v1/software/hosts/<id>/,
 //      /api/v1/software/updates/, /api/v1/software/updates/hosts/;
@@ -26,6 +26,9 @@ const appsState = {
   hostSeq: 0,
   details: {},        // name_key → host rows, fetched once per app; null = in flight
   expanded: {},       // name_key → true while its detail row is open
+  hostDetails: {},    // host_id → software items, fetched once per host; null = in flight
+  hostExpanded: {},   // host_id → true while its detail row is open
+  hostShowAll: {},    // host_id → true once "Show all" was clicked
   monitorItems: [],
   monitorSnapshot: null,
   monitorSeq: 0,
@@ -209,19 +212,95 @@ async function fetchAppHosts() {
 function renderAppsHostsTable() {
   const tbody = document.getElementById('apps-hosts-body');
   if (!tbody) return;
-  const html = appsState.hosts.map(row => `<tr>
-    <td><a class="apps-host-link" href="#" data-app-host="${escAttr(row.host_id)}">${escHtml(row.hostname)}</a></td>
-    <td class="num">${row.item_count}</td>
-    <td class="num">${_countChip(row.outdated, 'chip-rose')}</td>
-    <td class="num">${_countChip(row.unmanaged, 'apps-chip-warn')}</td>
-    <td>${escHtml(timeAgo(row.received_at) || 'never')}</td>
-    <td>${_errorChips(row.errors) || '<span class="apps-zero">—</span>'}</td>
-  </tr>`).join('');
+  const html = appsState.hosts.map(row => {
+    const open = appsState.hostExpanded[row.host_id] ? ' open' : '';
+    let out = `<tr class="apps-row${open}" data-app-host-row="${escAttr(row.host_id)}">
+      <td><span class="apps-chev">▸</span> <span class="apps-name">${escHtml(row.hostname)}</span></td>
+      <td class="num">${row.item_count}</td>
+      <td class="num">${_countChip(row.outdated, 'chip-rose')}</td>
+      <td class="num">${_countChip(row.unmanaged, 'apps-chip-warn')}</td>
+      <td>${escHtml(timeAgo(row.received_at) || 'never')}</td>
+      <td>${_errorChips(row.errors) || '<span class="apps-zero">—</span>'}</td>
+    </tr>`;
+    if (appsState.hostExpanded[row.host_id]) out += _hostDetailHtml(row.host_id);
+    return out;
+  }).join('');
   tbody.innerHTML = html || _emptyRow('No hosts in your scope.');
   renderAppsTable();
 }
 
+function _hostSoftwareSorted(items) {
+  // The Monitor page's Software list orders this way; By host's expanded rows match it.
+  return [...items].sort((a, b) => {
+    if (!!b.outdated !== !!a.outdated) return b.outdated ? 1 : -1;
+    if (!!b.managed !== !!a.managed) return b.managed ? 1 : -1;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  });
+}
+
+function _hostDetailHtml(id) {
+  const items = appsState.hostDetails[id];
+  if (items === null || items === undefined) {
+    return `<tr class="apps-detail-row"><td colspan="${APPS_COLUMNS}">
+      <div class="apps-detail-loading">Loading software…</div></td></tr>`;
+  }
+  if (!items.length) {
+    return `<tr class="apps-detail-row"><td colspan="${APPS_COLUMNS}">
+      <div class="apps-detail-loading">No software reported for this host yet.</div></td></tr>`;
+  }
+  const sorted = _hostSoftwareSorted(items);
+  const showAll = !!appsState.hostShowAll[id];
+  const shown = showAll ? sorted : sorted.slice(0, APPS_HOST_DETAIL_LIMIT);
+  const rows = shown.map(it => {
+    const latest = it.outdated
+      ? ` <span class="chip chip-rose" title="Latest version">${escHtml(it.latest_version)}</span>` : '';
+    const unmanaged = it.managed ? '' : ' <span class="chip apps-chip-warn">unmanaged</span>';
+    return `<tr${it.outdated ? ' class="upd-outdated"' : ''}>
+      <td>${escHtml(it.name)}${latest}${unmanaged}</td>
+      <td class="apps-mono">${escHtml(it.version)}</td>
+      <td class="apps-mono">${escHtml(it.latest_version)}</td>
+      <td><span class="chip chip-muted apps-src">${escHtml(it.source)}</span></td>
+      <td>${escHtml(_scopeCell(it))}</td>
+    </tr>`;
+  }).join('');
+  const more = (!showAll && sorted.length > APPS_HOST_DETAIL_LIMIT)
+    ? `<div class="apps-show-all">
+         <button class="btn btn-outline btn-xs" type="button" data-host-show-all="${escAttr(id)}">Show all ${sorted.length}</button>
+       </div>` : '';
+  return `<tr class="apps-detail-row"><td colspan="${APPS_COLUMNS}">
+    <table class="hunt-table apps-table apps-host-detail">
+      <thead><tr><th>Name</th><th>Version</th><th>Latest</th><th>Source</th><th>Scope</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${more}
+    <a href="#" class="apps-host-open" data-app-host="${escAttr(id)}">Open this host's monitor →</a>
+  </td></tr>`;
+}
+
+async function toggleHostDetail(id) {
+  if (appsState.hostExpanded[id]) {
+    delete appsState.hostExpanded[id];
+    renderAppsHostsTable();
+    return;
+  }
+  appsState.hostExpanded[id] = true;
+  renderAppsHostsTable();
+  if (appsState.hostDetails[id] !== undefined) return;
+  appsState.hostDetails[id] = null;
+  let items = [];
+  try {
+    const resp = await fetch(`/api/v1/software/hosts/${id}/`, { credentials: 'same-origin' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    items = (await resp.json()).items || [];
+  } catch { items = []; }
+  appsState.hostDetails[id] = items;
+  if (appsState.hostExpanded[id]) renderAppsHostsTable();
+}
+
 function refreshApps() {
+  appsState.hostDetails = {};
+  appsState.hostExpanded = {};
+  appsState.hostShowAll = {};
   fetchApps(true);
   fetchAppHosts();
   fetchUpdates();
@@ -430,6 +509,9 @@ function renderHostSoftwareList() {
 const SOFTWARE_ROWS = 100;
 let _softwareShowAll = false;
 
+// An expanded "By host" row shows this many packages; a Linux host reports ~1500.
+const APPS_HOST_DETAIL_LIMIT = 50;
+
 /* ── Wiring ──────────────────────────────────────────────────────────── */
 let _appsSearchTimer = null;
 
@@ -484,6 +566,16 @@ delegateClick('[data-upd-row]', (el, ev) => {
 });
 
 delegateClick('[data-upd-decide]', (el) => decideUpdates(el.dataset.updDecide));
+
+delegateClick('[data-app-host-row]', (el, ev) => {
+  if (ev.target.closest('a, button')) return;
+  toggleHostDetail(el.dataset.appHostRow);
+});
+
+delegateClick('[data-host-show-all]', (el) => {
+  appsState.hostShowAll[el.dataset.hostShowAll] = true;
+  renderAppsHostsTable();
+});
 
 delegateClick('[data-app-host]', (el, ev) => {
   ev.preventDefault();

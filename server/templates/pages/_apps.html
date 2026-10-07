@@ -4,7 +4,7 @@
       <div class="page-header">
         <div>
           <div class="page-title">Apps<span>.</span></div>
-          <div class="page-sub">Installed software across your hosts</div>
+          <div class="page-sub">Every piece of software your hosts report — by app, by host, or by the update it is missing</div>
         </div>
         <div class="right">
           <button class="btn btn-outline btn-sm" data-act="refreshApps">
@@ -21,10 +21,11 @@
       </div>
 
       <div class="tab-content active" id="apps-by-app">
+        <p class="apps-intro">Each app once, with how many hosts have it and at which versions. Click a row to see the hosts.</p>
         <div class="hunt-toolbar">
           <input type="search" class="form-control" id="apps-q" placeholder="Search apps…" autocomplete="off">
           <label class="apps-filter"><input type="checkbox" id="apps-outdated"> Outdated only</label>
-          <label class="apps-filter"><input type="checkbox" id="apps-unmanaged"> Unmanaged only</label>
+          <label class="apps-filter"><input type="checkbox" id="apps-unmanaged"> Unmanaged only<span class="field-hint" tabindex="0" aria-label="About the unmanaged filter" data-hint="Installed outside any package manager — Vigil found it in Windows' Apps &amp; features, but no package manager (winget, Chocolatey, Scoop…) reports it.&#10;&#10;Vigil lists it and checks it for vulnerabilities, but cannot upgrade or uninstall it, and cannot tell when it is out of date.">?</span></label>
           <select class="form-control" id="apps-source">
             <option value="">All sources</option>
             <option value="dpkg">dpkg</option>
@@ -49,8 +50,8 @@
                 <th>App</th>
                 <th class="num">Hosts</th>
                 <th>Versions</th>
-                <th class="num">Outdated</th>
-                <th class="num">Unmanaged</th>
+                <th class="num">Outdated<span class="field-hint" tabindex="0" aria-label="About the outdated count" data-hint="Hosts where the package manager reports a newer version than the one installed.">?</span></th>
+                <th class="num">Unmanaged<span class="field-hint" tabindex="0" aria-label="About the unmanaged count" data-hint="Installed outside any package manager — Vigil found it in Windows' Apps &amp; features, but no package manager (winget, Chocolatey, Scoop…) reports it.&#10;&#10;Vigil lists it and checks it for vulnerabilities, but cannot upgrade or uninstall it, and cannot tell when it is out of date.">?</span></th>
                 <th>Sources</th>
               </tr>
             </thead>
@@ -63,6 +64,7 @@
       </div>
 
       <div class="tab-content" id="apps-by-host">
+        <p class="apps-intro">Each host's software list. Click a host to see what it has installed.</p>
         <div class="table-wrap">
           <table class="hunt-table apps-table" id="apps-hosts-table">
             <thead>
@@ -70,7 +72,7 @@
                 <th>Host</th>
                 <th class="num">Items</th>
                 <th class="num">Outdated</th>
-                <th class="num">Unmanaged</th>
+                <th class="num">Unmanaged<span class="field-hint" tabindex="0" aria-label="About the unmanaged count" data-hint="Installed outside any package manager — Vigil found it in Windows' Apps &amp; features, but no package manager (winget, Chocolatey, Scoop…) reports it.&#10;&#10;Vigil lists it and checks it for vulnerabilities, but cannot upgrade or uninstall it, and cannot tell when it is out of date.">?</span></th>
                 <th>Last report</th>
                 <th>Errors</th>
               </tr>
@@ -81,6 +83,7 @@
       </div>
 
       <div class="tab-content" id="apps-by-update">
+        <p class="apps-intro">Updates your hosts are missing, grouped by KB or package. Approve or decline one to override every patch policy at once.</p>
         <div class="hunt-toolbar">
           <input type="search" class="form-control" id="upd-q" placeholder="Search KB, package or title…" autocomplete="off">
           <select class="form-control" id="upd-kind">
@@ -97,9 +100,9 @@
         </div>
         <div class="upd-bulk" id="upd-bulk" hidden>
           <span id="upd-bulk-count"></span>
-          <button class="btn btn-outline btn-xs" type="button" data-upd-decide="approved">Approve</button>
-          <button class="btn btn-outline btn-xs" type="button" data-upd-decide="declined">Decline</button>
-          <button class="btn btn-outline btn-xs" type="button" data-upd-decide="clear">Clear decision</button>
+          <button class="btn btn-outline btn-xs" type="button" data-upd-decide="approved">Approve</button><span class="field-hint" tabindex="0" aria-label="What Approve does" data-hint="Install this update at the next maintenance window of every policy that patches — without waiting out the policy's deferral.">?</span>
+          <button class="btn btn-outline btn-xs" type="button" data-upd-decide="declined">Decline</button><span class="field-hint" tabindex="0" aria-label="What Decline does" data-hint="Keep this update off every host. It joins every patch policy's exclude list until you clear the decision.">?</span>
+          <button class="btn btn-outline btn-xs" type="button" data-upd-decide="clear">Clear decision</button><span class="field-hint" tabindex="0" aria-label="What Clear decision does" data-hint="Forget the approval or decline. Each patch policy goes back to its own rules for this update.">?</span>
         </div>
         <div class="table-wrap">
           <table class="hunt-table apps-table" id="apps-updates-table">
@@ -110,12 +113,11 @@
                 <th>Severity</th>
                 <th class="num">Hosts</th>
                 <th class="num">Missing for</th>
-                <th>Decision</th>
+                <th>Decision<span class="field-hint" tabindex="0" aria-label="What the decisions mean" data-hint="Approved — install this update at the next maintenance window of every policy that patches, without waiting out the policy's deferral.&#10;&#10;Declined — keep this update off every host. It joins every patch policy's exclude list until you clear the decision.&#10;&#10;Undecided — each patch policy's own rules apply.">?</span></th>
               </tr>
             </thead>
             <tbody id="apps-updates-body"></tbody>
           </table>
         </div>
-        <p class="muted-note upd-note">Approving installs an update at the next window of every policy that patches, without waiting out its deferral. Declining keeps it off every host — it joins each policy's exclude list.</p>
       </div>
     </section>
