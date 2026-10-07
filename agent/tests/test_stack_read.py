@@ -31,6 +31,7 @@ class StackReadTests(unittest.TestCase):
                                  "com.docker.compose.config-hash": h,
                                  "com.docker.compose.project.config_files": str(self.dir / "docker-compose.yml"),
                                  "com.docker.compose.project.working_dir": str(self.dir)}
+        self.labels = labels("web", "h-web")
         self.fake = FakeEngine(routes={("GET", "/containers/json"): (200, [
             {"Id": "a", "Labels": labels("web", "h-web")}, {"Id": "b", "Labels": labels("db", "h-old")}])})
         self.addCleanup(self.fake.close)
@@ -58,6 +59,18 @@ class StackReadTests(unittest.TestCase):
         self.assertNotIn("hunter2", str(out))
         self.assertEqual(out.data, {"project": "shop", "would_recreate": 1})
         self.assertEqual(self.run_mock.call_args.args[0][-3:], ["config", "--hash", "*"])
+
+    def test_reads_env_from_the_recorded_env_file(self):
+        """Portainer passes --env-file stack.env; adopt reads that, not .env."""
+        (self.dir / "stack.env").write_text("A=1\n")
+        self.fake.routes[("GET", "/containers/json")] = (200, [
+            {"Id": "a", "Labels": {**self.labels,
+                                   "com.docker.compose.project.environment_file":
+                                       str(self.dir / "stack.env")}}])
+        (self.dir / ".env").unlink()
+        with patch.object(client, "post_stack_read") as post:
+            stacks._stack_read({"project": "shop", "adopt_ticket": TICKET}, _CFG)
+        self.assertEqual(post.call_args.args[2]["env"], "A=1\n")
 
     def test_refusals(self):
         with patch.object(client, "post_stack_read") as post:

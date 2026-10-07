@@ -159,7 +159,8 @@ def _stack_read(params: dict, config: AgentConfig) -> str:
     compose_path = Path(files[0])
     workdir = Path(args[args.index("--project-directory") + 1]) if "--project-directory" in args \
         else compose_path.parent
-    env_path = workdir / ".env"
+    env_path = Path(args[args.index("--env-file") + 1]) if "--env-file" in args \
+        else workdir / ".env"
     payload = {
         "project": project,
         "compose_file": compose_path.name,
