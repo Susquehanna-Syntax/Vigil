@@ -632,9 +632,18 @@ function updateHostCardVulnBadges(summaries) {
 const fixState = { rows: [], open: {}, seq: 0 };
 const _VFIX_CONF = { urgent: 'chip-rose', confirmed: 'apps-chip-warn', file: 'chip-muted', reported: 'chip-muted' };
 
+function _fixSkeleton() {
+  const row = w => `<div class="vfix-row vfix-skeleton" aria-hidden="true"><div class="sk-line sk-w${w}"></div><div class="sk-line sk-w40"></div></div>`;
+  return `<div role="status" aria-label="Loading fixes">${[80, 60, 80, 60, 80].map(row).join('')}</div>`;
+}
+
 async function refreshFixGroups() {
   const seq = ++fixState.seq;
   const q = (document.getElementById('vuln-fix-q')?.value || '').trim();
+  if (!fixState.rows.length) {
+    const wrap = document.getElementById('vuln-fixes');
+    if (wrap) wrap.innerHTML = _fixSkeleton();
+  }
   let body = { results: [] };
   try {
     body = await apiJson(`/api/v1/vulns/fix-groups/${q ? `?q=${encodeURIComponent(q)}` : ''}`);
@@ -653,10 +662,8 @@ function _vfixHeadline(g) {
 }
 
 function renderFixGroups(q) {
-  const section = document.getElementById('vuln-fixes-section');
   const wrap = document.getElementById('vuln-fixes');
-  if (!section || !wrap) return;
-  section.hidden = !fixState.rows.length && !q;
+  if (!wrap) return;
   wrap.innerHTML = fixState.rows.map(g => {
     const chips = [
       `<span class="chip ${g.severity === 'critical' ? 'chip-rose' : g.severity === 'high' ? 'apps-chip-warn' : 'chip-muted'}">${escHtml(g.severity)}</span>`,
@@ -688,7 +695,7 @@ function renderFixGroups(q) {
         <div class="vfix-line"><span class="vfix-title">${_vfixHeadline(g)}</span><span class="vfix-chips">${chips}</span>${deploy}</div>
         ${detail}
       </div>`;
-  }).join('') || '<div class="apps-empty-state">No open findings match.</div>';
+  }).join('') || `<div class="apps-empty-state">${q ? 'No open findings match.' : 'No open findings — nothing to fix.'}</div>`;
 }
 
 async function deployFixGroup(fixKey) {
