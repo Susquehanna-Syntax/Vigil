@@ -96,10 +96,70 @@ class FixViewWiringTests(TestCase):
         deploy = (root / "static/js/vigil-deploy.js").read_text(encoding="utf-8")
         for element_id in ("vuln-fixes-section", "vuln-fixes", "vuln-fix-q"):
             self.assertIn(f'id="{element_id}"', html)
+            if element_id == "vuln-fixes-section":
+                # QA-10 moved the section into its own tab, so the template owns
+                # the id and JS no longer needs to look it up.
+                continue
             self.assertIn(f"'{element_id}'", js)
         self.assertIn("/api/v1/vulns/fix-groups/", js)
         self.assertIn("openDeployModal(body.definition_id, { hostIds: body.host_ids })", js)
         self.assertIn("prefill.hostIds", deploy)
+
+
+class VulnTabsTests(TestCase):
+    """QA-10: "By fix" and "By host" are tabs, and By fix skeletons while loading."""
+
+    def setUp(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[2]
+        self.html = (root / "templates/pages/_vulns.html").read_text(encoding="utf-8")
+        self.js = (root / "static/js/vigil-vulns.js").read_text(encoding="utf-8")
+        self.css = (root / "static/css/vigil.css").read_text(encoding="utf-8")
+
+    def test_two_tabs(self):
+        self.assertIn('data-tab="vulns-by-fix"', self.html)
+        self.assertIn('data-tab="vulns-by-host"', self.html)
+        bar = self.html.index('<div class="tab-bar vuln-tabs" data-tab-group="vulns">')
+        fix_tab = self.html.index('id="vulns-by-fix"')
+        fixes = self.html.index('id="vuln-fixes-section"')
+        host_tab = self.html.index('id="vulns-by-host"')
+        content = self.html.index('id="vulns-content"')
+        scans = self.html.index('id="vuln-scans-section"')
+        self.assertLess(bar, fix_tab, "the tab bar comes first")
+        self.assertLess(fix_tab, fixes, "the fix section lives in the By fix tab")
+        self.assertLess(fixes, host_tab, "the fix section closes before By host")
+        self.assertLess(host_tab, content, "the per-host table is in the By host tab")
+        self.assertLess(content, scans, "Recent scans stays below the tabs")
+        self.assertIn('class="tab-content active" id="vulns-by-fix"', self.html)
+        self.assertEqual(self.html.count('class="tab-content active"'), 1)
+        self.assertIn('<p class="apps-intro">One row per fix', self.html)
+        self.assertIn(".vuln-tabs { margin-bottom: 18px; }", self.css)
+        self.assertIn(".vfix-skeleton { padding:", self.css)
+        self.assertIn("pointer-events: none; }", self.css)
+
+    def test_fix_skeleton(self):
+        self.assertIn("function _fixSkeleton", self.js)
+        self.assertIn("vfix-skeleton", self.js)
+        self.assertIn('aria-label="Loading fixes"', self.js)
+        start = self.js.index("async function refreshFixGroups()")
+        body = self.js[start:self.js.index("\n}", start)]
+        self.assertLess(body.index("_fixSkeleton()"), body.index("apiJson("),
+                        "the skeleton is painted before the fetch starts")
+        self.assertIn("if (!fixState.rows.length) {", body,
+                      "a refetch with rows on screen must not flash the skeleton")
+        self.assertIn(".vfix-skeleton .sk-line", self.css)
+        self.assertIn(".vfix-skeleton .sk-w40 { width: 40%; }", self.css)
+        self.assertIn(".modal-skeleton .sk-w40,", self.css)
+        reduced = self.css.split("@media (prefers-reduced-motion: reduce) {")[-1]
+        self.assertIn("  .modal-skeleton .sk-line, .vfix-skeleton", reduced)
+
+    def test_empty_state_names_its_case(self):
+        self.assertIn("'No open findings match.' : 'No open findings", self.js)
+        self.assertIn("nothing to fix.'", self.js)
+
+    def test_section_no_longer_hides(self):
+        self.assertNotIn("section.hidden =", self.js)
+        self.assertNotIn('class="vfix-section" hidden', self.html)
 
 
 class DetectionAsFixTests(TestCase):
