@@ -3,10 +3,12 @@
 The UI has no JS runner (the architect drives it in Chromium), so its wiring is
 pinned by source scan: the ids and calls the page depends on.
 """
+import html
+import re
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, UserProfile
@@ -110,3 +112,67 @@ class AppsPageWiringTests(TestCase):
                              f"{field} reaches innerHTML unescaped")
         self.assertRegex(js, r"/software/apps/\$\{encodeURIComponent\(",
                          "name_key must be URL-encoded in the app detail URL")
+
+
+class AppsExplainedTests(SimpleTestCase):
+    """The page explains itself, and "By host" expands instead of navigating away."""
+
+    def _rendered_hints(self):
+        """The Apps page as the browser receives it, plus its decoded hints."""
+        from django.template.loader import render_to_string
+
+        rendered = render_to_string("pages/_apps.html", {})
+        # The hint names the Windows "Apps & features" setting; the attribute
+        # carries it escaped, so decode it the way the browser would.
+        return rendered, [html.unescape(h)
+                          for h in re.findall(r'data-hint="([^"]*)"', rendered)]
+
+    def test_unmanaged_is_explained(self):
+        _rendered, hints = self._rendered_hints()
+        with_manager = [h for h in hints if "package manager" in h]
+        self.assertGreaterEqual(len(with_manager), 3,
+                                "the unmanaged filter and both Unmanaged columns explain it")
+        self.assertTrue(any("cannot upgrade or uninstall" in h for h in hints),
+                        "unmanaged must say what Vigil cannot do")
+
+    def test_decisions_are_explained(self):
+        _rendered, hints = self._rendered_hints()
+        for phrase in ("without waiting out", "exclude list", "goes back to its own rules"):
+            self.assertTrue(any(phrase in h for h in hints), phrase)
+        self.assertNotIn("upd-note", _source("templates", "pages", "_apps.html"),
+                         "the bottom note is replaced by the hints")
+
+    def test_each_tab_has_an_intro(self):
+        rendered, _hints = self._rendered_hints()
+        self.assertEqual(rendered.count('class="apps-intro"'), 3,
+                         "by app, by host and by update each open with one line")
+
+    def test_by_host_expands_in_place(self):
+        js = _source("static", "js", "vigil-apps.js")
+        for literal in ('data-app-host-row="${', "function toggleHostDetail",
+                        "/api/v1/software/hosts/", "data-host-show-all="):
+            self.assertIn(literal, js, literal)
+        row_handler = re.search(r"delegateClick\('\[data-app-host-row\]',[\s\S]*?\n\}\);", js)
+        self.assertIsNotNone(row_handler, "the host row is not wired through delegateClick")
+        self.assertNotIn("navigateTo", row_handler.group(0),
+                         "clicking a host row must expand it, not leave the page")
+
+    def test_the_page_renders_its_new_markup(self):
+        """End-to-end: what the browser gets is what the hints promise.
+
+        A bare ampersand inside an attribute would silently truncate the
+        sentence it appears in, so this counts the markers and reads their
+        decoded values rather than trusting the template source.
+        """
+        from django.template.loader import render_to_string
+
+        rendered = render_to_string("pages/_apps.html", {})
+        self.assertEqual(rendered.count("upd-note"), 0)
+        self.assertEqual(rendered.count('class="field-hint"'), 8,
+                         "every hint the page promises renders")
+        _rendered, hints = self._rendered_hints()
+        unmanaged = [h for h in hints if "Apps & features" in h]
+        self.assertEqual(len(unmanaged), 3, "the filter and both Unmanaged columns")
+        self.assertTrue(all("cannot upgrade or uninstall" in h for h in unmanaged))
+        self.assertTrue(all("\n\n" in h for h in unmanaged),
+                        "the unmanaged hint's paragraphs must survive into the attribute")

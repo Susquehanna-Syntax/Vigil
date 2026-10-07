@@ -3765,13 +3765,22 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .apps-host-toolbar { margin-bottom: 10px; }
 .apps-host-toolbar .form-control { max-width: 320px; font-size: 12px; }
 .apps-show-all { margin-top: 10px; }
+.apps-intro { font-size: 13px; color: var(--text-3); margin: 4px 0 14px; max-width: 72ch; }
+.apps-chev { display: inline-block; color: var(--text-3); margin-right: 2px;
+  transition: transform 0.2s var(--ease-out-expo); }
+.apps-row.open .apps-chev { transform: rotate(90deg); }
+.apps-host-detail { margin: 0; }
+.apps-host-detail th, .apps-host-detail td { font-size: 12.5px; }
+.apps-host-open { display: inline-block; margin-top: 8px; font-size: 12.5px;
+  color: var(--sky-ink); text-decoration: none; }
+.apps-host-open:hover { text-decoration: underline; }
 
 /* ── Apps: by update (M8) ────────────────────────────────────────────── */
 .apps-table th.upd-check, .apps-table td.upd-check { width: 1%; padding-right: 4px; }
 .upd-title { font-size: 11px; color: var(--text-3); }
 .upd-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px;
   font-size: 12px; color: var(--text-2); }
-.upd-note { margin-top: 10px; font-size: 12px; }
+.upd-bulk .field-hint { margin-left: -2px; }
 .chip-mint { background: rgba(var(--rgb-mint), 0.14); color: var(--mint-ink); }
 .chip-lemon { background: rgba(var(--rgb-lemon), 0.16); color: var(--lemon-ink); }
 
