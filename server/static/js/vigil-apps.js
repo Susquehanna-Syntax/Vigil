@@ -252,15 +252,13 @@ function _hostDetailHtml(id) {
   const showAll = !!appsState.hostShowAll[id];
   const shown = showAll ? sorted : sorted.slice(0, APPS_HOST_DETAIL_LIMIT);
   const rows = shown.map(it => {
-    const latest = it.outdated
-      ? ` <span class="chip chip-rose" title="Latest version">${escHtml(it.latest_version)}</span>` : '';
     const unmanaged = it.managed ? '' : ' <span class="chip apps-chip-warn">unmanaged</span>';
     return `<tr${it.outdated ? ' class="upd-outdated"' : ''}>
-      <td>${escHtml(it.name)}${latest}${unmanaged}</td>
+      <td>${escHtml(it.name)}${unmanaged}</td>
       <td class="apps-mono">${escHtml(it.version)}</td>
-      <td class="apps-mono">${escHtml(it.latest_version)}</td>
+      <td>${it.outdated ? `<span class="chip chip-rose">${escHtml(it.latest_version)}</span>` : '<span class="apps-zero">—</span>'}</td>
       <td><span class="chip chip-muted apps-src">${escHtml(it.source)}</span></td>
-      <td>${escHtml(_scopeCell(it))}</td>
+      <td>${_scopeCell(it)}</td>
     </tr>`;
   }).join('');
   const more = (!showAll && sorted.length > APPS_HOST_DETAIL_LIMIT)
@@ -289,7 +287,7 @@ async function toggleHostDetail(id) {
   appsState.hostDetails[id] = null;
   let items = [];
   try {
-    const resp = await fetch(`/api/v1/software/hosts/${id}/`, { credentials: 'same-origin' });
+    const resp = await fetch(`/api/v1/software/hosts/${encodeURIComponent(id)}/`, { credentials: 'same-origin' });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     items = (await resp.json()).items || [];
   } catch { items = []; }
