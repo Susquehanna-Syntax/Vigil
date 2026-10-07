@@ -103,6 +103,9 @@ def refused_actions(host, action_types: set[str]) -> list[str]:
     ``[]`` when the agent has never reported an allowlist: unknown is not the
     same as refused, and an old agent must not look broken.
     """
+    if host.agent_runs_as_root is False and host.mode != "monitor":
+        # Its service is still the monitor-mode unit: it can run nothing (QA-08).
+        return sorted(set(action_types) & AGENT_ACTIONS)
     if host.agent_allowlist is None:
         return []
     mode = host.mode

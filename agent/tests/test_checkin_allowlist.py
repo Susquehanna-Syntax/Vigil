@@ -54,6 +54,19 @@ class CheckinAllowlistTests(unittest.TestCase):
             client.checkin(cfg, metrics=[])
         self.assertEqual(self.sent["allowlist"], [])
 
+    def test_payload_says_whether_it_runs_as_root(self):
+        """QA-08: a managed agent on the monitor-mode unit runs unprivileged,
+        and the server needs that fact to warn before a deploy."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = AgentConfig(server_url="http://127.0.0.1:1", agent_token="t" * 40,
+                              data_dir=Path(tmp), mode="managed")
+            with patch.object(client.os, "geteuid", return_value=0):
+                client.checkin(cfg, metrics=[])
+            self.assertIs(self.sent["runs_as_root"], True)
+            with patch.object(client.os, "geteuid", return_value=1000):
+                client.checkin(cfg, metrics=[])
+            self.assertIs(self.sent["runs_as_root"], False)
+
 
 if __name__ == "__main__":
     unittest.main()
