@@ -790,8 +790,8 @@ def _remove_firewall_rule(params: dict, _config: AgentConfig) -> str:
     if protocol not in ("tcp", "udp"):
         raise ValueError(f"Protocol must be tcp or udp, got {protocol!r}")
     action = str(params.get("action", "allow")).lower()
-    if action not in ("allow", "deny"):
-        raise ValueError(f"Action must be allow or deny, got {action!r}")
+    if action not in ("allow", "deny", "reject"):
+        raise ValueError(f"Action must be allow, deny or reject, got {action!r}")
     source = firewall.validate_source(params.get("source", "any"))
     # Optional: only WindowsBackend uses these, and it validates rule_id
     # itself (see firewall.validate_rule_name) before it ever reaches

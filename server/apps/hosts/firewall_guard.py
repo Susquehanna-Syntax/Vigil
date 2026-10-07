@@ -11,6 +11,11 @@ trip, and being wrong in the permissive direction is the failure that
 matters -- so a host on a custom SSH port is simply not protected here, and
 this is a deliberate, documented limitation.
 
+Removing a ``deny``/``reject`` rule on a protected port is always allowed:
+blocking a port is what cuts access off, and undoing that can only restore
+it. Refusing such a removal is what would strand a host whose SSH had been
+blocked -- the rule is the way back in.
+
 ``check_change`` must never raise. Task 9's endpoint calls it before doing
 anything else, so a malformed or partial snapshot -- missing keys, an
 ``unparsed`` bucket instead of a parsed rule, ``"unknown"`` defaults, a
@@ -46,6 +51,10 @@ RDP_PORT = 3389
 
 _LOCKOUT_POLICIES = ("deny", "reject")
 
+#: A rule disposition that blocks traffic. Removing one can only restore
+#: access; adding one on a protected port is how a lockout is done.
+_BLOCKING = ("deny", "reject")
+
 
 def _protected_ports(host, snapshot: dict) -> set[int]:
     ports = {SSH_PORT}
@@ -61,6 +70,33 @@ def _as_int(value) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _is_known_block(snapshot, params, disposition) -> bool:
+    """True only when the snapshot holds this exact rule as a block.
+
+    The claimed action comes from the client, and Windows removes by rule_id
+    regardless of action -- so a claimed "deny" carrying the RDP *allow*
+    rule's id must not pass. With a rule_id, the snapshot rule with that
+    rule_id must carry a blocking action. Without one, a rule with the same
+    port, a protocol matching the requested one (or "any"), and that same
+    blocking action must exist.
+    """
+    raw = snapshot.get("rules")
+    rules = [r for r in (raw if isinstance(raw, list) else []) if isinstance(r, dict)]
+    rule_id = str(params.get("rule_id") or "").strip()
+    port = _as_int(params.get("port"))
+    proto = str(params.get("protocol") or "").strip().lower()
+    for r in rules:
+        r_action = str(r.get("action", "")).strip().lower()
+        if rule_id:
+            if str(r.get("rule_id") or "").strip() == rule_id:
+                return r_action in _BLOCKING
+            continue
+        if (_as_int(r.get("port")) == port and r_action == disposition
+                and str(r.get("protocol", "")).strip().lower() in (proto, "any")):
+            return True
+    return False
 
 
 def _params(change: dict) -> dict:
@@ -108,23 +144,29 @@ def check_change(host, snapshot, change) -> str:
     if action == "add_firewall_rule":
         port = _as_int(params.get("port"))
         disposition = str(params.get("action", "allow")).strip().lower()
-        if disposition == "deny":
+        if disposition in _BLOCKING:
             if port is None:
                 return (
-                    "Refusing to deny an unparseable port -- the guard "
-                    "cannot confirm this is not one of the ports that "
+                    f"Refusing to {disposition} an unparseable port -- the "
+                    "guard cannot confirm this is not one of the ports that "
                     "reach this host (22, or 3389 on Windows). Write it as "
                     "a task by hand if you really mean it.")
             if port in protected:
                 return (
-                    f"Refusing to deny port {port} -- that is how this "
-                    f"host is reached, and Vigil could not undo it "
+                    f"Refusing to {disposition} port {port} -- that is how "
+                    f"this host is reached, and Vigil could not undo it "
                     f"remotely. Write it as a task by hand if you really "
                     f"mean it.")
         return ""
 
     if action == "remove_firewall_rule":
         port = _as_int(params.get("port"))
+        disposition = str(params.get("action", "allow")).strip().lower()
+        if disposition in _BLOCKING and _is_known_block(snapshot, params,
+                                                        disposition):
+            # Removing a block re-opens access; it can never lock anyone out.
+            # Refusing it is what would strand a host whose SSH was blocked.
+            return ""
         if port is None:
             return (
                 "Refusing to remove a rule for an unparseable port -- the "
