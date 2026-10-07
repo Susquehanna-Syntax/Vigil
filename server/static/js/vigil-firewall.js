@@ -29,7 +29,10 @@ function _fwRecall() { try { return localStorage.getItem(FW_HOST_KEY) || ''; } c
 // an *allow* on a protected port can cut off access, so deny/reject rules on
 // those ports are the way back in and must offer Remove.
 function _fwIsProtected(port, tool, action) {
-  if (action !== 'allow') return false;
+  // Only a block the guard can confirm is removable; anything else on a
+  // protected port (an allow, or an action the snapshot could not read)
+  // is refused server-side, so it is not offered here.
+  if (action === 'deny' || action === 'reject') return false;
   if (port === 22) return true;
   if (port === 3389 && tool === 'windows') return true;
   return false;

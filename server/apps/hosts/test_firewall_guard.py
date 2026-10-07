@@ -297,9 +297,12 @@ class FirewallUiMirrorTests(SimpleTestCase):
             encoding="utf-8")
 
     def test_the_protected_check_mirrors_the_allows_only_rule(self):
+        """Only deny/reject are removable on a protected port — the guard
+        refuses an allow, and a rule whose action could not be read."""
         self.assertIn("function _fwIsProtected(port, tool, action)",
                       self.source)
-        self.assertIn("action !== 'allow'", self.source)
+        self.assertIn("if (action === 'deny' || action === 'reject') return false;",
+                      self.source)
 
     def test_reject_rules_are_no_longer_marked_unremovable(self):
         """The agent removes reject rules now, so the tab must offer the
