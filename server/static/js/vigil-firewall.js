@@ -19,6 +19,10 @@
 
 let firewallHostsLoaded = false;
 let firewallCurrentHostId = null;
+const FW_HOST_KEY = 'vigil.firewall.host';
+
+function _fwRemember(id) { try { localStorage.setItem(FW_HOST_KEY, id); } catch { /* private window */ } }
+function _fwRecall() { try { return localStorage.getItem(FW_HOST_KEY) || ''; } catch { return ''; } }
 
 // Port 22 is always protected; 3389 joins it only on a Windows snapshot.
 // Mirrors apps/hosts/firewall_guard.py::_protected_ports exactly — the UI
@@ -56,6 +60,7 @@ function pickFirewallHost() {
   openPicker({ type: 'machine', title: 'Pick a host', allowAdd: false, onSelect: (item) => {
     const hidden = document.getElementById('firewall-host-select');
     hidden.value = item.key;
+    _fwRemember(item.key);
     document.getElementById('firewall-host-label').textContent = item.name;
     loadFirewallSnapshot(item.key);
   } });
@@ -80,14 +85,6 @@ async function _fwPopulateHosts() {
   // an explanation, beats listing hosts that can only ever fail here.
   const eligible = (Array.isArray(hosts) ? hosts : []).filter(h => h.mode !== 'monitor');
 
-  sel.replaceChildren();
-  for (const h of eligible) {
-    const opt = document.createElement('option');
-    opt.value = h.id;
-    opt.textContent = h.hostname; // host-reported string — textContent only
-    sel.appendChild(opt);
-  }
-
   const hasHosts = eligible.length > 0;
   sel.style.display = hasHosts ? '' : 'none';
   if (refreshBtn) refreshBtn.style.display = hasHosts ? '' : 'none';
@@ -102,9 +99,10 @@ async function _fwPopulateHosts() {
     return;
   }
 
-  sel.addEventListener('change', () => loadFirewallSnapshot(sel.value));
-  // The browser auto-selects the first <option>, so sel.value is already
-  // set — loadFirewall()'s caller reads it next; no extra fetch here.
+  const wanted = _fwRecall();
+  const start = eligible.find(h => String(h.id) === wanted) || eligible[0];
+  sel.value = start.id;
+  document.getElementById('firewall-host-label').textContent = start.hostname; // host-reported — textContent
 }
 
 /* ── Snapshot fetch + render ─────────────────────────────────────────── */
