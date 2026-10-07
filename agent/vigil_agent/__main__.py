@@ -61,6 +61,13 @@ def _process_tasks(tasks: list[dict], config, nonce_store: NonceStore, verify_ke
             )
         return
 
+    if _privilege_mismatch(config):
+        # Better one clear rejection now than the task dying on Errno 30
+        # halfway through a write (QA-08).
+        for task in tasks:
+            _report_rejected(config, task, PRIVILEGE_MISMATCH.format(mode=config.mode))
+        return
+
     if verify_key is None:
         if tasks:
             logger.warning(
@@ -578,6 +585,24 @@ def _report_skipped(config, task: dict, output: str, steps=None) -> None:
         logger.exception("Failed to report task %s skip", task.get("id"))
 
 
+#: What a task gets back when this agent cannot run it.
+PRIVILEGE_MISMATCH = (
+    "This agent's mode ({mode}) runs tasks as root, but its service still runs it as the "
+    "unprivileged 'vigil-agent' user under the monitor-mode sandbox (read-only /usr and /etc), "
+    "so every task would fail. Re-run the installer on this host to regenerate the service for "
+    "its mode: curl -fsSL <server>/agent/install.sh | sudo bash")
+
+
+def _privilege_mismatch(config) -> bool:
+    """True when the mode needs root and this process is not root (POSIX only)."""
+    if config.mode == "monitor":
+        return False
+    try:
+        return os.geteuid() != 0
+    except AttributeError:      # Windows has no geteuid
+        return False
+
+
 def _warn_on_privilege_mismatch(config) -> None:
     """Say so when the mode needs root and this process does not have it.
 
@@ -604,12 +629,7 @@ def _warn_on_privilege_mismatch(config) -> None:
     A warning, not a refusal: an agent that stops monitoring because it cannot
     execute is worse than one that monitors and says it cannot execute.
     """
-    if config.mode == "monitor":
-        return
-    try:
-        if os.geteuid() == 0:
-            return
-    except AttributeError:      # Windows has no geteuid
+    if not _privilege_mismatch(config):
         return
 
     logger.warning(

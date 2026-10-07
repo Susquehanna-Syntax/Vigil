@@ -24,7 +24,7 @@ import logging
 import unittest
 from unittest.mock import patch
 
-from vigil_agent.__main__ import _warn_on_privilege_mismatch
+from vigil_agent.__main__ import _privilege_mismatch, _process_tasks, _warn_on_privilege_mismatch
 
 
 class _Cfg:
@@ -71,6 +71,33 @@ class PrivilegeMismatchAdvice(unittest.TestCase):
             "read-only for root under ProtectSystem=strict, and reprovision "
             "still fails",
         )
+
+
+class PrivilegeMismatchRejection(unittest.TestCase):
+    """QA-08: the warning is invisible from the UI, and the task it warns about
+    dies on '[Errno 30] Read-only file system' one Errno at a time."""
+
+    def test_managed_as_non_root_rejects_every_task(self):
+        tasks = [{"id": "1", "action": "update_agent"}, {"id": "2", "action": "check_service"}]
+        with patch("vigil_agent.__main__.os.geteuid", return_value=1000):
+            with patch("vigil_agent.__main__.execute_action") as run, \
+                    patch("vigil_agent.__main__._report_rejected") as rejected:
+                _process_tasks(tasks, _Cfg("managed"), None, object())
+        self.assertEqual(rejected.call_count, 2,
+                         "every task the agent cannot run must be rejected, not run")
+        run.assert_not_called()
+        for call in rejected.call_args_list:
+            message = call.args[2]
+            self.assertIn("install.sh", message,
+                          "the only complete fix is re-running the installer")
+            self.assertIn("managed", message)
+
+    def test_root_managed_is_not_rejected_for_privilege(self):
+        with patch("vigil_agent.__main__.os.geteuid", return_value=0):
+            self.assertFalse(_privilege_mismatch(_Cfg("managed")))
+        with patch("vigil_agent.__main__.os.geteuid", return_value=1000):
+            self.assertFalse(_privilege_mismatch(_Cfg("monitor")),
+                             "monitor mode needs no root — it must keep monitoring")
 
 
 if __name__ == "__main__":

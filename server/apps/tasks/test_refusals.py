@@ -59,6 +59,26 @@ class RefusedActionsTests(TestCase):
         # An agent that never reported an allowlist is unknown, not refusing.
         self.assertEqual(refused_actions(_host("m6", allowlist=None), wanted), [])
 
+    def test_unprivileged_managed_host_refuses_everything(self):
+        """QA-08: an agent still running under the monitor-mode unit's sandbox
+        fails every task it accepts, so it refuses all of them up front."""
+        wanted = {"check_service", "hunt_service", "run_command", "reprovision_stage", "playbook"}
+        every = sorted(wanted & AGENT_ACTIONS)
+
+        host = _host("p1", allowlist=("check_service", "hunt_service"), reprovision=True)
+        host.agent_runs_as_root = False
+        host.save(update_fields=["agent_runs_as_root"])
+        self.assertEqual(refused_actions(host, wanted), every)
+
+        host.mode = Host.Mode.FULL_CONTROL
+        host.save(update_fields=["mode"])
+        self.assertEqual(refused_actions(host, wanted), every)
+
+        # Unknown (None) is not "refuses" — an old agent must not look broken.
+        host.agent_runs_as_root = None
+        host.save(update_fields=["agent_runs_as_root"])
+        self.assertEqual(refused_actions(host, wanted), [])
+
     def test_task_action_types_includes_relevant_probes(self):
         self.assertEqual(task_action_types(parse_and_validate(RELEVANT)),
                          {"check_service", "hunt_service"})
@@ -126,3 +146,15 @@ class CheckinStoresAllowlistTests(TestCase):
         self._checkin(host)                                   # absent: kept
         host.refresh_from_db()
         self.assertEqual(host.agent_allowlist, ["check_service", "hunt_file"])
+
+    def test_checkin_stores_runs_as_root(self):
+        """QA-08: the server needs the agent's privilege to warn about a host
+        whose service is still the monitor-mode unit."""
+        host = _host("rr")
+        self._checkin(host, runs_as_root=False)
+        host.refresh_from_db()
+        self.assertIs(host.agent_runs_as_root, False)
+        self._checkin(host, runs_as_root="no")               # malformed: kept
+        self._checkin(host)                                   # absent: kept
+        host.refresh_from_db()
+        self.assertIs(host.agent_runs_as_root, False)

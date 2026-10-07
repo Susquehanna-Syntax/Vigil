@@ -432,6 +432,9 @@ def checkin(request):
         host.agent_allowlist = sorted(set(raw_allow))
     if isinstance(data.get("allow_reprovision"), bool):
         host.agent_allow_reprovision = data["allow_reprovision"]
+    # Absent means an agent too old to report it (or Windows) — keep what we knew.
+    if isinstance(data.get("runs_as_root"), bool):
+        host.agent_runs_as_root = data["runs_as_root"]
 
     if data.get("features") is not None:
         # A list of short strings the agent understands (task-language

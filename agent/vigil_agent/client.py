@@ -4,6 +4,7 @@ All requests verify TLS certificates. There is no option to disable this.
 """
 
 import logging
+import os
 import platform
 import socket
 
@@ -72,6 +73,12 @@ def checkin(
         "allowlist": sorted(config.allowlist),
         "allow_reprovision": bool(config.allow_reprovision),
     }
+    # A managed agent left on the monitor-mode unit runs unprivileged and fails
+    # every task; the server marks such a host as refusing them (QA-08).
+    try:
+        payload["runs_as_root"] = os.geteuid() == 0
+    except AttributeError:      # Windows
+        pass
     # The ingest distinguishes an absent key (agent too old to report it —
     # stored value left alone) from an explicit False, so the key is only
     # sent when the probe produced a value.
