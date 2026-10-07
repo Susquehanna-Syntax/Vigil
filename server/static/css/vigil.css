@@ -3867,3 +3867,7 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
   display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 13px; color: var(--text-1);
 }
 .dh-refuse { display: inline-block; margin-top: 4px; font-size: 11px; }
+
+
+/* ── Sign-in session timeout (QA-14b) ────────────────────────────────── */
+.session-warn-msg { font-variant-numeric: tabular-nums; }
