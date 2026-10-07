@@ -76,6 +76,10 @@ async function apiJson(url, opts) {
   });
   const body = await resp.json().catch(() => ({}));
   if (!resp.ok) {
+    if (resp.status === 401 && typeof body.reason === 'string' && body.reason.startsWith('session_')
+        && typeof _sessionLeave === 'function') {
+      _sessionLeave(body.reason === 'session_max' ? 'max' : 'idle');
+    }
     throw new Error(body.detail || body.error || 'Request failed');
   }
   return body;
