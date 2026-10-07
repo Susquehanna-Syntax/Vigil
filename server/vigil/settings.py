@@ -161,6 +161,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.accounts.session_timeout.SessionTimeoutMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.accounts.middleware.SetupRedirectMiddleware",
@@ -501,6 +502,11 @@ VIGIL_METRIC_RETENTION_DAYS = int(os.environ.get("VIGIL_METRIC_RETENTION_DAYS", 
 #: state and are never pruned. 0 disables pruning entirely, for an operator who
 #: wants the whole history and has the disk for it.
 VIGIL_ALERT_RETENTION_DAYS = int(os.environ.get("VIGIL_ALERT_RETENTION_DAYS", "90"))
+
+# Sign-in sessions (QA-14). Read at request time through apps.instance.config,
+# so Settings → Account & Security can change them without a restart.
+VIGIL_SESSION_IDLE_MINUTES = int(os.environ.get("VIGIL_SESSION_IDLE_MINUTES", "15"))
+VIGIL_SESSION_MAX_HOURS = int(os.environ.get("VIGIL_SESSION_MAX_HOURS", "12"))
 
 #: How long per-host vulnerability score snapshots are kept. One row per host
 #: per day, so two years is ~36k rows at 50 hosts — generous on purpose, since

@@ -24,11 +24,14 @@
     <div class="auth-headline">Welcome back</div>
     <div class="auth-sub">Sign in to your {{ branding.product_name|default:"Vigil" }} instance</div>
 
+    {% if request.GET.expired == "idle" %}<div class="auth-error">You were signed out after a period of inactivity. Sign in to pick up where you left off.</div>{% endif %}
+    {% if request.GET.expired == "max" %}<div class="auth-error">Your sign-in reached its time limit. Sign in again to continue.</div>{% endif %}
+
     {% if error %}
     <div class="auth-error">{{ error }}</div>
     {% endif %}
 
-    <form method="post" action="{% url 'login' %}{% if request.GET.next %}?next={{ request.GET.next }}{% endif %}">
+    <form method="post" action="{% url 'login' %}{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% endif %}">
       {% csrf_token %}
       <div class="form-group">
         <label class="form-label">Username</label>
