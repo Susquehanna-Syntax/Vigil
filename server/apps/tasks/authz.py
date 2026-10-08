@@ -71,3 +71,29 @@ def author_denied(user) -> Response | None:
     if may_author(user):
         return None
     return Response({"error": "Your role may not create or change tasks"}, status=403)
+
+
+def fleet_runner_denied(user) -> Response | None:
+    """For actions that span every site (rollouts): the caller must be allowed to
+    run tasks fleet-wide, an admin or an operator whose authority is not limited
+    to some sites. A viewer, or anyone scoped to particular sites, is refused."""
+    from apps.accounts.models import Role
+    from apps.accounts.permissions import OWNER, can, role_of
+    from vigil import scoping
+
+    rows = scoping.site_roles_for(user)
+    if rows:
+        glob = rows.get("__global__")
+        if glob in (Role.ADMIN, OWNER):
+            return None
+        mods = scoping._sites_models()
+        glob_site = mods.Site.objects.global_site() if mods is not None else None
+        if glob == Role.OPERATOR and can(user, glob_site, "tasks", "run"):
+            return None
+        return Response({"error": "This acts on every site; it needs fleet-wide permission to run tasks"},
+                        status=403)
+    if role_of(user) in (OWNER, Role.ADMIN):
+        return None
+    if role_of(user) == Role.OPERATOR and can(user, None, "tasks", "run"):
+        return None
+    return Response({"error": "Your role may not run tasks"}, status=403)

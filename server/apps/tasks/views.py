@@ -1859,9 +1859,15 @@ def rollout_collection(request):
                 {"detail": "supply exactly one of definition_id or playbook_id"},
                 status=400,
             )
+        from .authz import fleet_runner_denied
+        denied = fleet_runner_denied(request.user)
+        if denied:
+            return denied
         definition = playbook = None
         if definition_id:
             definition = get_object_or_404(TaskDefinition, pk=definition_id)
+            if not _user_can_see(definition, request.user):
+                return Response({"detail": "Not found"}, status=404)
         else:
             playbook = get_object_or_404(Playbook, pk=playbook_id)
         error = _verify_confirmation(request.user, request.data)
@@ -1932,6 +1938,10 @@ def rollout_resume(request, rollout_id):
     """Clear a halt and continue from the same wave. TOTP-gated; records who
     did it. Failed tasks on the wave are re-queued so the gate re-evaluates
     over the whole wave."""
+    from .authz import fleet_runner_denied
+    denied = fleet_runner_denied(request.user)
+    if denied:
+        return denied
     rollout = get_object_or_404(PatchRollout, pk=rollout_id)
     error = _verify_confirmation(request.user, request.data)
     if error:

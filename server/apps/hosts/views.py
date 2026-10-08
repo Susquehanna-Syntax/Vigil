@@ -1219,6 +1219,10 @@ def check_pending(request):
       {"status": "pending", "host": {…}} — host registered, awaiting approval
       {"status": "approved", "host": {…}} — host already approved
     """
+    # Enrolment is an admin flow, and the answer describes a host (SEC-1).
+    from apps.accounts.permissions import IsAdmin
+    if not IsAdmin().has_permission(request, None):
+        return Response({"error": "Administrator access required."}, status=status.HTTP_403_FORBIDDEN)
     token = (request.data.get("token") or "").strip()
     if not token:
         return Response({"error": "token is required"}, status=status.HTTP_400_BAD_REQUEST)
