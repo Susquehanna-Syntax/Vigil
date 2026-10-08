@@ -95,6 +95,30 @@ New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
 #    /L: act on a link itself, never its target.
 Invoke-AclStep $ConfigDir /setowner $Admins /L
 Invoke-AclStep $ConfigDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" /grant "$($Admins):(OI)(CI)(F)" /grant "*S-1-5-32-545:(RX)" /L
+# 1b. Scripts someone other than SYSTEM, Administrators or TrustedInstaller
+#     owns are not adopted: taking ownership would make them look trusted to
+#     the agent. They are moved to a quarantine folder (locked like the rest)
+#     for an administrator to inspect.
+$Trusted = @("S-1-5-18", "S-1-5-32-544", "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464")
+$Quarantine = Join-Path $ConfigDir ("quarantine-" + (Get-Date -Format "yyyyMMddHHmmss"))
+if ((Test-Path -LiteralPath $ScriptsDir) -and -not (Test-Link $ScriptsDir)) {
+    # Walked by hand: a recursive Get-ChildItem can descend through a junction,
+    # and this runs elevated. Links are skipped here and removed by Lock-Tree.
+    $pending = New-Object System.Collections.Stack
+    $pending.Push($ScriptsDir)
+    while ($pending.Count -gt 0) {
+        foreach ($item in Get-ChildItem -LiteralPath $pending.Pop() -Force -ErrorAction Stop) {
+            if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { continue }
+            if ($item.PSIsContainer) { $pending.Push($item.FullName); continue }
+            $owner = (Get-Acl -LiteralPath $item.FullName).GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+            if ($Trusted -notcontains $owner) {
+                New-Item -ItemType Directory -Force -Path $Quarantine | Out-Null
+                Move-Item -LiteralPath $item.FullName -Destination (Join-Path $Quarantine $item.Name) -Force
+                Write-Host "Quarantined a script a non-administrator owned: $($item.FullName)"
+            }
+        }
+    }
+}
 # 2. Everything already inside: owned by Administrators, inheriting the lock,
 #    links removed. An owner can always rewrite an ACL, and icacls /grant only
 #    adds, so anything a user pre-created would otherwise stay theirs. agent.yml,
