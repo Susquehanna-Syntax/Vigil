@@ -107,8 +107,14 @@ def totp_disable(request):
     code = (request.data.get("code") or "").strip()
     if not profile.totp_confirmed_at or not profile.totp_secret:
         return Response({"error": "TOTP is not enrolled"}, status=400)
-    if not verify_totp(profile.totp_secret, code):
-        return Response({"error": "Invalid code"}, status=400)
+    # Through consume_totp, not verify_totp: turning TOTP off is the strongest
+    # thing a code unlocks (afterwards a new device can be enrolled), so it
+    # gets the same attempt limit and replay check as every other gate.
+    from .totp import consume_totp
+    ok, err = consume_totp(request.user, code)
+    if not ok:
+        return Response({"error": err or "Invalid code"}, status=400)
+    profile.refresh_from_db()
     profile.totp_secret = ""
     profile.totp_confirmed_at = None
     profile.save(update_fields=["totp_secret_encrypted", "totp_confirmed_at"])
