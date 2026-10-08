@@ -181,3 +181,41 @@ class FleetAndStackTests(Sec1Base):
         resp = self._post(_user("viewer", Role.VIEWER), "/api/v1/hosts/check-pending/",
                           {"token": "tok-west-1"})
         self.assertEqual(resp.status_code, 403)
+
+
+class ReadScopeTests(Sec1Base):
+    """Task output can carry anything a host printed, so history and run
+    detail are scoped by site like the hosts they ran on."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.tasks.models import TaskRun
+        admin = _user("adm", Role.ADMIN)
+        self.lab_run = TaskRun.objects.create(name_snapshot="lab run", requested_by=admin)
+        self.lab_task = Task.objects.create(host=self.lab_host, run=self.lab_run, action="check_service", nonce="n-lab",
+                                            params={}, requested_by=admin, result_output="lab secret")
+        self.west_run = TaskRun.objects.create(name_snapshot="west run", requested_by=admin)
+        Task.objects.create(host=self.west_host, run=self.west_run, action="check_service", nonce="n-west",
+                            params={}, requested_by=admin, result_output="west output")
+        self.dana = _user("dana")
+        UserSiteRole.objects.create(user=self.dana, site=self.west, role=Role.ADMIN)
+        self.client.force_login(self.dana)
+
+    def test_history_shows_only_tasks_in_scope(self):
+        body = self.client.get("/api/v1/tasks/history/").json()
+        hosts = {row["host_hostname"] for row in body["results"]}
+        self.assertEqual(hosts, {"west-1"})
+
+    def test_task_detail_out_of_scope_is_not_found(self):
+        self.assertEqual(self.client.get(f"/api/v1/tasks/{self.lab_task.id}/").status_code, 404)
+
+    def test_run_detail_out_of_scope_is_not_found(self):
+        self.assertEqual(self.client.get(f"/api/v1/tasks/runs/{self.lab_run.id}/").status_code, 404)
+        self.assertEqual(self.client.get(f"/api/v1/tasks/runs/{self.west_run.id}/").status_code, 200)
+
+    def test_run_history_hides_other_sites(self):
+        body = self.client.get("/api/v1/tasks/runs/").json()
+        rows = body["results"] if isinstance(body, dict) else body
+        names = {r["name_snapshot"] for r in rows}
+        self.assertIn("west run", names)
+        self.assertNotIn("lab run", names)

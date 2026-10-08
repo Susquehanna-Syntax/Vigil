@@ -1549,10 +1549,12 @@ def task_history(request):
         page = 1
     page_size = 50
 
-    qs = (
+    from .authz import visible_tasks
+    qs = visible_tasks(
         Task.objects.filter(hidden=False)
         .select_related("host", "requested_by")
-        .order_by("-created_at")
+        .order_by("-created_at"),
+        request.user,
     )
     total = qs.count()
     pages = max(1, (total + page_size - 1) // page_size)
@@ -1583,8 +1585,9 @@ def run_history(request):
         page = 1
     page_size = 25
 
-    qs = TaskRun.objects.select_related(
-        "automation", "playbook", "requested_by").order_by("-created_at")
+    from .authz import visible_runs
+    qs = visible_runs(TaskRun.objects.select_related(
+        "automation", "playbook", "requested_by").order_by("-created_at"), request.user)
 
     raw = (request.query_params.get("source") or "").strip()
     if raw:
@@ -1617,6 +1620,9 @@ def run_detail(request, run_id):
         ),
         pk=run_id,
     )
+    from .authz import run_visible
+    if not run_visible(request.user, run):
+        return Response({"error": "Not found"}, status=404)
     data = TaskRunSerializer(run).data
     from .summary import run_summary
     data["summary"] = run_summary(run)
@@ -1655,6 +1661,9 @@ def run_hunt_results(request, run_id):
     """
     run = get_object_or_404(
         TaskRun.objects.prefetch_related("tasks__host"), pk=run_id)
+    from .authz import run_visible
+    if not run_visible(request.user, run):
+        return Response({"error": "Not found"}, status=404)
     tasks = list(run.tasks.all())
     # Read the signed steps each task carried, so playbook and rollout
     # runs (no single definition) are recognised the same way. A task's
@@ -1738,10 +1747,13 @@ def task_detail(request, task_id):
     """Single-task fetch. History rows are the audit trail — who ran what,
     where, with what result — and are immutable by design; there is no
     delete."""
+    from vigil import scoping
     task = get_object_or_404(
         Task.objects.select_related("host", "run"),
         pk=task_id,
     )
+    if not scoping.host_in_scope(request.user, task.host):
+        return Response({"error": "Not found"}, status=404)
     return Response(TaskSerializer(task).data)
 
 

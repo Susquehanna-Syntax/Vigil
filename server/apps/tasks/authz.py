@@ -97,3 +97,32 @@ def fleet_runner_denied(user) -> Response | None:
     if role_of(user) == Role.OPERATOR and can(user, None, "tasks", "run"):
         return None
     return Response({"error": "Your role may not run tasks"}, status=403)
+
+
+# ── Reads ─────────────────────────────────────────────────────────────────────
+# A task's output is whatever its host printed, so history and run detail are
+# scoped by site like the hosts they ran on (SEC-1).
+
+def visible_tasks(qs, user):
+    """Tasks on hosts *user* may see."""
+    from vigil import scoping
+    return scoping.filter_by_site(qs, user, path="host__")
+
+
+def visible_runs(qs, user):
+    """Runs whose every task is on a host *user* may see. A run that touched a
+    site the user cannot see is hidden whole: its summary and outputs cover
+    every host it ran on."""
+    from apps.accounts.permissions import visible_site_ids
+
+    from .models import Task
+
+    if visible_site_ids(user) is None:
+        return qs
+    hidden = Task.objects.exclude(pk__in=visible_tasks(Task.objects.all(), user).values("pk"))
+    return qs.exclude(pk__in=hidden.values("run_id"))
+
+
+def run_visible(user, run) -> bool:
+    from .models import TaskRun
+    return visible_runs(TaskRun.objects.filter(pk=run.pk), user).exists()
