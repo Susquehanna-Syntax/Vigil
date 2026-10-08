@@ -99,31 +99,51 @@ class UninstallEndpoints(SimpleTestCase):
 
 class WindowsConfigTreeLockedTests(SimpleTestCase):
     """SEC-2: C:\\ProgramData's default ACL let a standard user create the scripts
-    folder the agent runs scripts from as LocalSystem. Proven on the Windows VM.
-    The installer locks the config tree with SIDs and takes the folder back."""
+    folder the agent runs scripts from as LocalSystem (proven on the Windows VM).
+    The installer takes the tree back and locks it: fail closed, never following a
+    link a user planted (both checked live on the VM)."""
 
     def setUp(self):
-        self.ps1 = render_to_string("agent_install.ps1", {"base_url": BASE_URL})
+        self.ps1 = render_to_string("agent_install.ps1", {"base_url": BASE_URL, "public_key": "K"})
 
-    def test_config_dir_is_locked_with_sids(self):
-        self.assertIn('icacls.exe $ConfigDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" '
-                      '/grant "*S-1-5-32-544:(OI)(CI)(F)" /grant "*S-1-5-32-545:(RX)"', self.ps1)
+    def _at(self, needle):
+        self.assertIn(needle, self.ps1)
+        return self.ps1.index(needle)
 
-    def test_scripts_dir_is_created_and_taken_back(self):
-        self.assertIn('$ScriptsDir = Join-Path $ConfigDir "scripts"', self.ps1)
-        reset = 'icacls.exe (Join-Path $ConfigDir "*") /reset /T /C'
-        self.assertIn(reset, self.ps1)
-        self.assertLess(self.ps1.index("/inheritance:r /grant \"*S-1-5-18"), self.ps1.index(reset),
-                        "the parent must be locked before its children inherit from it")
-        self.assertLess(self.ps1.index(reset), self.ps1.index("icacls.exe $ConfigPath /inheritance:r"),
+    def test_top_folder_is_locked_first_by_sid_without_following_links(self):
+        take = self._at('Invoke-AclStep $ConfigDir /setowner $Admins /L /C')
+        lock = self._at('Invoke-AclStep $ConfigDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" '
+                        '/grant "$($Admins):(OI)(CI)(F)" /grant "*S-1-5-32-545:(RX)" /L')
+        self.assertLess(take, lock)
+
+    def test_links_are_removed_before_anything_recurses(self):
+        remove = self._at("Remove-PlantedLinks $ConfigDir\n")
+        own = self._at('Invoke-AclStep (Join-Path $ConfigDir "*") /setowner $Admins /T /L /C')
+        reset = self._at('Invoke-AclStep (Join-Path $ConfigDir "*") /reset /T /L /C')
+        self.assertLess(self._at('Invoke-AclStep $ConfigDir /inheritance:r'), remove)
+        self.assertLess(remove, own)
+        self.assertLess(own, reset)
+        self.assertLess(reset, self._at("icacls.exe $ConfigPath /inheritance:r"),
                         "agent.yml's own lock must come after the reset, or the reset undoes it")
 
-    def test_the_whole_tree_is_owned_by_administrators_before_it_is_locked(self):
-        # An owner can always rewrite an ACL: a file a user pre-created must
-        # change hands before the lock means anything.
-        take = 'icacls.exe $ConfigDir /setowner "*S-1-5-32-544" /T /C'
-        self.assertIn(take, self.ps1)
-        self.assertLess(self.ps1.index(take), self.ps1.index("$ConfigDir /inheritance:r"))
+    def test_a_planted_config_folder_link_is_replaced_before_use(self):
+        check = self._at("if (Test-Link $ConfigDir)")
+        self.assertLess(check, self._at("New-Item -ItemType Directory -Force -Path $ConfigDir"))
+        self.assertLess(check, self._at("New-Item -ItemType Directory -Force -Path $DataDir"))
+
+    def test_every_lock_step_fails_closed(self):
+        self.assertIn("if ($LASTEXITCODE -ne 0) {", self.ps1)
+        self.assertIn("throw \"Could not secure", self.ps1)
+        block = self.ps1[self.ps1.index("function Invoke-AclStep"):self.ps1.index("New-Item -ItemType Directory -Force -Path $DataDir")]
+        self.assertNotIn("& icacls.exe $ConfigDir", block, "lock steps go through Invoke-AclStep")
+
+    def test_scripts_folder_is_created_after_the_lock(self):
+        self.assertLess(self._at('Invoke-AclStep $ConfigDir /inheritance:r'),
+                        self._at("New-Item -ItemType Directory -Force -Path $ScriptsDir"))
 
     def test_monitor_service_can_still_write_its_log(self):
         self.assertIn('icacls.exe $LogPath /grant "$($ServiceAccount):(M)"', self.ps1)
+
+    def test_server_key_is_written_into_agent_yml(self):
+        self.assertIn('$ServerPublicKey = "K"', self.ps1)
+        self.assertIn("server_public_key:", self.ps1)
