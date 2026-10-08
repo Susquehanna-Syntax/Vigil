@@ -74,6 +74,38 @@ def otpauth_uri(secret_b32: str, account_name: str, issuer: str = "Vigil") -> st
 _REPLAY_WINDOW_SECONDS = (2 * 1 + 1) * _STEP_SECONDS
 
 
+#: Wrong codes allowed per user inside the window before TOTP-gated actions
+#: are refused for the rest of it (architect review, 2026-10-08).
+MAX_TOTP_FAILURES = 5
+TOTP_FAILURE_WINDOW_MINUTES = 10
+
+
+def _totp_key(user) -> str:
+    # LoginAttempt.username doubles as the key; the prefix keeps these apart
+    # from sign-in failures for a username.
+    return f"totp:{user.pk}"
+
+
+def _totp_blocked(user) -> bool:
+    from datetime import timedelta
+
+    from django.utils.timezone import now
+
+    from .models import LoginAttempt
+    since = now() - timedelta(minutes=TOTP_FAILURE_WINDOW_MINUTES)
+    return LoginAttempt.objects.filter(username=_totp_key(user), created_at__gte=since).count() >= MAX_TOTP_FAILURES
+
+
+def _record_totp_failure(user) -> None:
+    from .models import LoginAttempt
+    LoginAttempt.objects.create(username=_totp_key(user), ip=None)
+
+
+def _clear_totp_failures(user) -> None:
+    from .models import LoginAttempt
+    LoginAttempt.objects.filter(username=_totp_key(user)).delete()
+
+
 def consume_totp(user, code: str) -> tuple[bool, str | None]:
     """Verify a TOTP code for ``user`` and mark it consumed.
 
@@ -93,8 +125,14 @@ def consume_totp(user, code: str) -> tuple[bool, str | None]:
     code = (code or "").strip().replace(" ", "")
     if not code:
         return False, "TOTP code required"
+    # A six-digit code falls to guessing without a limit, and the gate exists
+    # for exactly the case where someone holds a session but not the device.
+    if _totp_blocked(user):
+        return False, "Too many wrong codes — wait a few minutes and try again"
     if not verify_totp(secret, code):
+        _record_totp_failure(user)
         return False, "Invalid TOTP code"
+    _clear_totp_failures(user)
 
     if profile.last_totp_code == code and profile.last_totp_used_at:
         elapsed = (now() - profile.last_totp_used_at).total_seconds()
