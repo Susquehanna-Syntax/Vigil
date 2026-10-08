@@ -74,7 +74,13 @@ def get_pinned_key(data_dir: Path, configured: str = "") -> VerifyKey | None:
     return VerifyKey(base64.b64decode(stored))
 
 
-def verify_task_signature(task: dict, verify_key: VerifyKey) -> bool:
+def agent_fingerprint(agent_token: str) -> str:
+    """Must match server/vigil/signing.py:agent_fingerprint."""
+    import hashlib
+    return hashlib.sha256(agent_token.encode()).hexdigest()
+
+
+def verify_task_signature(task: dict, verify_key: VerifyKey, agent_token: str | None = None) -> bool:
     """Verify the Ed25519 signature on a task payload.
 
     The canonical payload must match exactly what the server signs
@@ -85,18 +91,25 @@ def verify_task_signature(task: dict, verify_key: VerifyKey) -> bool:
         logger.warning("Task %s has no signature — rejecting", task.get("id"))
         return False
 
+    fields = {
+        "id": task["id"],
+        "host_id": task.get("host_id", ""),
+        "action": task["action"],
+        "params": task.get("params", {}),
+        "nonce": task["nonce"],
+        "ttl_seconds": task.get("ttl_seconds", 300),
+    }
+    if agent_token is not None:
+        # This agent advertises signed_v2, so only a v2 signature counts: one
+        # covering when the task was sent and that it was sent to this agent.
+        # Accepting v1 here would let whoever relays a task strip both.
+        if task.get("sig_v") != 2 or not isinstance(task.get("dispatched_at"), str):
+            logger.warning("Task %s is not v2-signed — rejecting", task.get("id"))
+            return False
+        fields.update({"dispatched_at": task["dispatched_at"],
+                       "agent": agent_fingerprint(agent_token), "v": 2})
     # Reconstruct the canonical payload the server signs
-    canonical = json.dumps(
-        {
-            "id": task["id"],
-            "host_id": task.get("host_id", ""),
-            "action": task["action"],
-            "params": task.get("params", {}),
-            "nonce": task["nonce"],
-            "ttl_seconds": task.get("ttl_seconds", 300),
-        },
-        sort_keys=True,
-    ).encode()
+    canonical = json.dumps(fields, sort_keys=True).encode()
 
     try:
         signature = base64.b64decode(signature_b64)

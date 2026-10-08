@@ -43,7 +43,7 @@ def _bounded_labels(raw):
 from apps.tasks.models import Task
 from apps.tasks.spec import schedule_window_active
 from vigil import scoping
-from vigil.signing import get_public_key_b64, sign_task
+from vigil.signing import get_public_key_b64, sign_task, sign_task_v2
 
 from .auto_tags import merge_auto_tags
 from .authentication import authenticate_agent
@@ -689,10 +689,17 @@ def checkin(request):
         # the agent receives.
         dispatch_ts = now()
         dispatch_iso = dispatch_ts.isoformat()
+        # An agent that understands v2 gets a signature over the dispatch time
+        # and its own identity too (SEC-4), and refuses anything less.
+        signed_v2 = "signed_v2" in set(host.agent_features or [])
         for task in eligible:
-            if not task.signature:
-                task.signature = sign_task(task)
-                task.save(update_fields=["signature"])
+            if signed_v2:
+                signature = sign_task_v2(task, dispatch_iso, host.agent_token)
+            else:
+                if not task.signature:
+                    task.signature = sign_task(task)
+                    task.save(update_fields=["signature"])
+                signature = task.signature
             tasks_payload.append(
                 {
                     "id": str(task.id),
@@ -700,7 +707,8 @@ def checkin(request):
                     "action": task.action,
                     "params": task.params,
                     "nonce": task.nonce,
-                    "signature": task.signature,
+                    "signature": signature,
+                    **({"sig_v": 2} if signed_v2 else {}),
                     "ttl_seconds": task.ttl_seconds,
                     # ``dispatched_at`` is what the agent uses for TTL — it
                     # represents when the signed payload went on the wire, so
