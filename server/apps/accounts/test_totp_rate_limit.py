@@ -58,3 +58,27 @@ class TotpRateLimitTests(TestCase):
                           or real(s, c)):
             consume_totp(self.user, self._wrong())
         self.assertEqual(seen, [1])
+
+
+class TotpDisableLimitTests(TestCase):
+    """Disabling TOTP used verify_totp directly: unlimited guesses at the one
+    action that lets a new device be enrolled afterwards."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("d", password="pw")
+        self.profile = UserProfile.objects.create(user=self.user)
+        self.secret = generate_secret()
+        self.profile.totp_secret = self.secret
+        self.profile.totp_confirmed_at = now()
+        self.profile.save()
+        self.client.force_login(self.user)
+
+    def test_disable_is_rate_limited(self):
+        good = generate_totp(self.secret)
+        wrong = "000000" if good != "000000" else "111111"
+        for _ in range(MAX_TOTP_FAILURES):
+            self.client.post("/api/v1/accounts/totp/disable/", {"code": wrong}, content_type="application/json")
+        resp = self.client.post("/api/v1/accounts/totp/disable/", {"code": good}, content_type="application/json")
+        self.assertEqual(resp.status_code, 400)
+        self.profile.refresh_from_db()
+        self.assertIsNotNone(self.profile.totp_confirmed_at, "TOTP must still be enrolled")
