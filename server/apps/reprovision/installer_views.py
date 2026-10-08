@@ -124,9 +124,16 @@ def install_tree(request, image_id, path: str = ""):
     target = Path(os.path.normpath(root / path.lstrip("/")))
     if target != root and root not in target.parents:
         raise Http404
-    if not target.is_file():
+    # And where it really lands, links resolved. Extraction declines symlinks
+    # whose text escapes the tree, but this endpoint needs no login, so it does
+    # not rest on that alone: a link must not turn it into a reader for
+    # anything the server can open (/proc/self/environ holds the signing seed).
+    real = target.resolve()
+    if real != root and root not in real.parents:
         raise Http404
-    return FileResponse(target.open("rb"))
+    if not real.is_file():
+        raise Http404
+    return FileResponse(real.open("rb"))
 
 
 @api_view(["POST"])
