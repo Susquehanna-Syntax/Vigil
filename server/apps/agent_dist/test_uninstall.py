@@ -148,6 +148,14 @@ class WindowsConfigTreeLockedTests(SimpleTestCase):
         self.assertLess(self._at('Invoke-AclStep $ConfigDir /inheritance:r'),
                         self._at("New-Item -ItemType Directory -Force -Path $ScriptsDir"))
 
+    def test_scripts_a_non_admin_owned_are_quarantined_not_adopted(self):
+        quarantine = self._at('Write-Host "Quarantined a script a non-administrator owned')
+        self.assertLess(quarantine, self._at("Lock-Tree $ConfigDir\n"),
+                        "untrusted scripts must be moved before ownership is taken")
+        block = self.ps1[self.ps1.index("# 1b."):self.ps1.index("# 2. Everything already inside")]
+        self.assertNotIn("-Recurse", block, "Get-ChildItem -Recurse can follow a junction")
+        self.assertIn("ReparsePoint) { continue }", block)
+
     def test_monitor_service_can_still_write_its_log(self):
         self.assertIn('Invoke-AclStep $LogPath /grant "$($ServiceAccount):(M)" /L', self.ps1)
 
