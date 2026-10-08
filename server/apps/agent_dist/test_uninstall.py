@@ -148,13 +148,18 @@ class WindowsConfigTreeLockedTests(SimpleTestCase):
         self.assertLess(self._at('Invoke-AclStep $ConfigDir /inheritance:r'),
                         self._at("New-Item -ItemType Directory -Force -Path $ScriptsDir"))
 
-    def test_scripts_a_non_admin_owned_are_quarantined_not_adopted(self):
-        quarantine = self._at('Write-Host "Quarantined a script a non-administrator owned')
-        self.assertLess(quarantine, self._at("Lock-Tree $ConfigDir\n"),
-                        "untrusted scripts must be moved before ownership is taken")
-        block = self.ps1[self.ps1.index("# 1b."):self.ps1.index("# 2. Everything already inside")]
-        self.assertNotIn("-Recurse", block, "Get-ChildItem -Recurse can follow a junction")
-        self.assertIn("ReparsePoint) { continue }", block)
+    def test_untrusted_scripts_are_quarantined_inside_the_walk(self):
+        walk = self.ps1[self.ps1.index("function Lock-Tree"):self.ps1.index("$Quarantine = Join-Path")]
+        # Judged after their folder is locked, by owner and by who may write.
+        self.assertIn("Test-Untrusted $child.FullName", walk)
+        self.assertLess(walk.index("$pending.Push($child.FullName)"), len(walk))
+        trust = self.ps1[self.ps1.index("function Test-Untrusted"):self.ps1.index("function Move-ToQuarantine")]
+        self.assertIn("GetOwner($sid)", trust)
+        self.assertIn("FileSystemRights -band $WriteMask", trust)
+        move = self.ps1[self.ps1.index("function Move-ToQuarantine"):self.ps1.index("function Lock-Tree")]
+        self.assertIn("Substring($ScriptsDir.Length)", move, "keeps the relative path")
+        self.assertIn("Remove-Item -LiteralPath $Path -Force", move, "deletes what cannot be moved")
+        self.assertLess(self._at("$Quarantine = Join-Path"), self._at("Lock-Tree $ConfigDir\n"))
 
     def test_monitor_service_can_still_write_its_log(self):
         self.assertIn('Invoke-AclStep $LogPath /grant "$($ServiceAccount):(M)" /L', self.ps1)
