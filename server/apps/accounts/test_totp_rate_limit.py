@@ -36,3 +36,25 @@ class TotpRateLimitTests(TestCase):
         for _ in range(MAX_TOTP_FAILURES - 1):
             consume_totp(self.user, self._wrong())
         self.assertNotIn("Too many", consume_totp(self.user, self._wrong())[1])
+
+    def test_failed_logins_cannot_lock_someone_out(self):
+        # Failed sign-ins with a crafted username used to share the count.
+        from apps.accounts.models import LoginAttempt
+        for _ in range(20):
+            LoginAttempt.objects.create(username=f"totp:{self.user.pk}", ip="203.0.113.9")
+        self.assertTrue(consume_totp(self.user, generate_totp(self.secret))[0])
+
+    def test_an_attempt_is_recorded_before_the_code_is_checked(self):
+        # Record-then-count is what stops parallel guesses all passing a check
+        # none of them had incremented yet.
+        from unittest.mock import patch
+
+        from apps.accounts import totp
+        from apps.accounts.models import TotpAttempt
+        seen = []
+        real = totp.verify_totp
+        with patch.object(totp, "verify_totp",
+                          side_effect=lambda s, c: seen.append(TotpAttempt.objects.filter(user=self.user).count())
+                          or real(s, c)):
+            consume_totp(self.user, self._wrong())
+        self.assertEqual(seen, [1])
