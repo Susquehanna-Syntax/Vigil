@@ -353,7 +353,11 @@ WantedBy=multi-user.target
 EOF
   systemctl daemon-reload
   systemctl enable vigil-agent
-  if [ -n "${VIGIL_TOKEN:-}" ]; then
+  # A reinstall over a running agent must restart it: otherwise the old process
+  # keeps the old binary, privileges and config (including a config this run
+  # just rebuilt because it was not trusted) until something else restarts it.
+  if [ -n "${VIGIL_TOKEN:-}" ] || systemctl is-active --quiet vigil-agent; then
+    if systemctl is-active --quiet vigil-engine-proxy; then systemctl restart vigil-engine-proxy; fi
     systemctl restart vigil-agent
     echo "Vigil agent installed and started."
     echo "Approve this host in Vigil Settings > Enrollment Queue."
