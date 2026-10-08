@@ -3926,3 +3926,41 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
   letter-spacing: .4em;
   text-align: center;
 }
+
+/* QA-18: rollout cards. Wave rows were flex, so the counts, the failed chip,
+   the tags and the Machines button landed at a different x in every card. One
+   grid template per row lines the columns up down the whole page. */
+.rlt-card { padding: 14px 16px; cursor: pointer; }
+.rlt-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rlt-body { flex: 1; min-width: 0; }
+.rlt-head-meta { margin-left: auto; color: var(--text-3); font-size: 11px; }
+.rlt-state { font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.rlt-wave {
+  display: grid;
+  grid-template-columns: 14px minmax(110px, 160px) minmax(0, 1fr) 96px minmax(0, 180px) 92px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--s2);
+}
+.rlt-wave-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rlt-wave-count { color: var(--text-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rlt-wave-failed { display: flex; justify-content: flex-start; }
+.rlt-wave-tags { color: var(--text-3); font-size: 11px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rlt-wave-act { text-align: right; }
+.rlt-halted {
+  margin: 8px 0 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--rose);
+  border-radius: 6px;
+  color: var(--rose-ink);
+  font-size: 12px;
+}
+.rlt-waves { margin-top: 10px; }
+.rlt-gate { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.rlt-gate-text { color: var(--text-3); font-size: 11px; }
+
+@media (max-width: 640px) {
+  .rlt-wave { grid-template-columns: 14px 1fr auto; }
+  .rlt-wave-tags { display: none; }
+}

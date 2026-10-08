@@ -53,14 +53,14 @@ function _waveProgress(r) {
     const openable = wave.tasks_total > 0;
     const failed = wave.tasks_failed
       ? `<span class="chip" style="background:var(--rose);color:var(--bg);">${wave.tasks_failed} failed</span>`
-      : '';
-    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--s2);">
+      : '<span></span>';
+    return `<div class="rlt-wave">
       ${_waveDot(wave.status)}
-      <span style="min-width:130px;font-weight:600;color:${color};">${escHtml(wave.name)}</span>
-      <span style="color:var(--text-3);font-size:12px;">${wave.hosts} host${wave.hosts === 1 ? '' : 's'} · ${count}${validation}</span>
-      ${failed}
-      <span style="margin-left:auto;color:var(--text-3);font-size:11px;">${(wave.tags || []).map(escHtml).join(', ')}</span>
-      ${openable ? `<button class="btn btn-sky btn-xs" data-wave-hosts data-rollout="${escAttr(r.id)}" data-wave="${escAttr(wave.id)}">Machines</button>` : ''}
+      <span class="rlt-wave-name" style="color:${color};">${escHtml(wave.name)}</span>
+      <span class="rlt-wave-count">${wave.hosts} host${wave.hosts === 1 ? '' : 's'} · ${count}${validation}</span>
+      <span class="rlt-wave-failed">${failed}</span>
+      <span class="rlt-wave-tags">${(wave.tags || []).map(escHtml).join(', ')}</span>
+      <span class="rlt-wave-act">${openable ? `<button class="btn btn-sky btn-xs" data-wave-hosts data-rollout="${escAttr(r.id)}" data-wave="${escAttr(wave.id)}">Machines</button>` : '<span></span>'}</span>
     </div>`;
   }).join('');
 }
@@ -128,28 +128,29 @@ function _rolloutCard(r) {
     actions = `<button class="btn btn-sky btn-sm" data-rlt="${escAttr(r.id)}" data-rlt-act="resume" data-stop>Resume</button>`;
   }
   const reason = r.halted_reason
-    ? `<div style="margin:8px 0 2px;padding:8px 10px;border:1px solid var(--rose);border-radius:6px;color:var(--rose-ink);font-size:12px;">
+    ? `<div class="rlt-halted">
         <strong>Halted:</strong> ${escHtml(r.halted_reason)}
         ${r.halted_by_name ? `<span style="color:var(--text-3);">by ${escHtml(r.halted_by_name)}</span>` : ''}
        </div>`
     : '';
-  return `<div class="def-card" style="padding:14px 16px;cursor:pointer;"
-       data-rlt-open="${escAttr(r.id)}" role="button" tabindex="0"
-       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openRolloutDetail('${r.id}');}">
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      <strong>${escHtml(r.target_name || r.definition_name || r.playbook_name || '(deleted)')}</strong>${r.action_kind === 'playbook' ? ' <span class="chip">playbook</span>' : ''}
-      <span style="color:${color};font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;">${escHtml(r.state)}</span>
-      ${r.current_wave_name ? `<span style="color:var(--text-3);font-size:12px;">wave: ${escHtml(r.current_wave_name)}</span>` : ''}
-      <span style="color:var(--text-3);font-size:11px;margin-left:auto;">${escHtml(r.created_by_name || '')} · started ${_fmtTs(r.started_at)}</span>
-    </div>
-    ${reason}
-    <div style="margin-top:10px;">${_waveProgress(r)}</div>
-    <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;">
-      <span style="color:var(--text-3);font-size:11px;">
-        gate: halt above ${r.failure_threshold_pct}% · min ${r.min_results_before_halt} results
-        ${r.resumed_by_name ? ` · resumed by ${escHtml(r.resumed_by_name)}` : ''}
-      </span>
-      ${actions}
+  return `<div class="def-card rlt-card"
+       data-rlt-open="${escAttr(r.id)}" role="button" tabindex="0">
+    <div class="rlt-body">
+      <div class="rlt-head">
+        <strong>${escHtml(r.target_name || r.definition_name || r.playbook_name || '(deleted)')}</strong>${r.action_kind === 'playbook' ? ' <span class="chip">playbook</span>' : ''}
+        <span class="rlt-state" style="color:${color};">${escHtml(r.state)}</span>
+        ${r.current_wave_name ? `<span class="rlt-wave-count">wave: ${escHtml(r.current_wave_name)}</span>` : ''}
+        <span class="rlt-head-meta">${escHtml(r.created_by_name || '')} · started ${_fmtTs(r.started_at)}</span>
+      </div>
+      ${reason}
+      <div class="rlt-waves">${_waveProgress(r)}</div>
+      <div class="rlt-gate">
+        <span class="rlt-gate-text">
+          gate: halt above ${r.failure_threshold_pct}% · min ${r.min_results_before_halt} results
+          ${r.resumed_by_name ? ` · resumed by ${escHtml(r.resumed_by_name)}` : ''}
+        </span>
+        ${actions}
+      </div>
     </div>
   </div>`;
 }
@@ -533,4 +534,15 @@ delegateClick('[data-rlt-act]', (el, ev) => {
 delegateClick('[data-rlt-open]', (el, ev) => {
   if (ev.target.closest('button')) return;
   openRolloutDetail(el.dataset.rltOpen);
+});
+/* The card is role="button" tabindex="0", so the keyboard has to open it too.
+   An onkeydown attribute would do it but CSP forbids inline handlers, and a
+   listener per card would not survive the 5-second re-render — so one
+   delegated listener, keyed off the same attribute the click uses. */
+document.addEventListener('keydown', (ev) => {
+  const card = ev.target.closest && ev.target.closest('[data-rlt-open]');
+  if (!card || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+  if (ev.target.closest('button')) return;
+  ev.preventDefault();
+  openRolloutDetail(card.dataset.rltOpen);
 });
