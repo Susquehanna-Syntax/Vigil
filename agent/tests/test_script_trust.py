@@ -87,5 +87,18 @@ class WindowsTests(unittest.TestCase):
         self.assertIn("not an administrator", problem)
 
 
+class RunTimeBackstopTests(unittest.TestCase):
+    """The installer cannot revoke a handle opened before its lock, so the
+    check that counts is the one execute_script makes every time it runs."""
+
+    def test_execute_script_checks_trust_on_every_run(self):
+        import inspect
+
+        from vigil_agent import executor
+        src = inspect.getsource(executor._execute_script)
+        self.assertIn("untrusted(script_path, scripts_dir)", src)
+        self.assertLess(src.index("untrusted(script_path, scripts_dir)"), src.index("_run([str(script_path)]"))
+
+
 if __name__ == "__main__":
     unittest.main()

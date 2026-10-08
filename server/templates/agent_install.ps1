@@ -103,6 +103,14 @@ function Move-ToQuarantine([string]$Path) {
 # walk. Links are deleted (the link, not its target) and never entered. A file
 # under scripts that a non-administrator owns or may change is quarantined
 # rather than adopted: taking ownership would make it look trusted.
+#
+# What this cannot do: revoke a handle someone opened before the lock (Windows
+# checks access when a handle is opened, not on each write), so a file added
+# through one after the walk is possible. That is why the agent checks again,
+# at the moment it runs a script, that the file and every folder above it are
+# owned by and writable only by SYSTEM, Administrators or TrustedInstaller
+# (vigil_agent/scripttrust.py): a file added that way is the user's, and is
+# refused there. The installer narrows the window; the agent is the guarantee.
 function Lock-Tree([string]$Root) {
     $pending = New-Object System.Collections.Stack
     $pending.Push($Root)
