@@ -84,7 +84,10 @@ class ExecuteScriptPathGuard(unittest.TestCase):
             self.scripts_dir = scripts_dir
 
     def test_a_script_inside_the_directory_is_accepted(self):
-        with patch("vigil_agent.executor._run", return_value="hi") as run:
+        # The temp dir is the test user's, not root's: ownership is
+        # tests.test_script_trust's subject, the path guard is this one's.
+        with patch("vigil_agent.scripttrust.untrusted", return_value=""), \
+                patch("vigil_agent.executor._run", return_value="hi") as run:
             out = _execute_script({"script_name": "ok.sh"}, self._Cfg(self.dir))
         self.assertEqual(out, "hi")
         run.assert_called_once()
@@ -100,7 +103,8 @@ class ExecuteScriptPathGuard(unittest.TestCase):
         self.script.chmod(0o777)
         with self.assertRaises(ValueError) as ctx:
             _execute_script({"script_name": "ok.sh"}, self._Cfg(self.dir))
-        self.assertIn("writable by group/others", str(ctx.exception))
+        # Refused either way: the temp dir is not root's, and the file is 0777.
+        self.assertIn("Refusing to run ok.sh", str(ctx.exception))
 
 
 class ScriptsDirDefault(unittest.TestCase):

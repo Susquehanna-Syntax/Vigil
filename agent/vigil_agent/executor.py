@@ -625,17 +625,17 @@ def _execute_script(params: dict, config: AgentConfig, inputs: dict | None = Non
     if not script_path.is_file():
         raise ValueError(f"Script not found: {script_name}")
 
-    if os.name == "posix":
-        # POSIX mode bits only. Python synthesises st_mode on Windows, so this
-        # check there is meaningless and its remedy — chmod — is not a command
-        # the operator has. Windows access is governed by the ACL on
-        # scripts_dir, which the installer restricts.
-        st = script_path.stat()
-        if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
-            raise ValueError(
-                f"Script {script_name} is writable by group/others — refusing "
-                f"to execute. Run: chmod go-w {script_path}"
-            )
+    # Whoever can change the script, or any directory above it up to
+    # scripts_dir, chooses what runs here as root/LocalSystem (SEC-2).
+    from .scripttrust import untrusted
+    problem = untrusted(script_path, scripts_dir)
+    if problem:
+        fix = (f"Run: chown -R root {scripts_dir} && chmod -R go-w {scripts_dir}"
+               if os.name == "posix" else
+               "Re-run the agent installer as an administrator; it locks the scripts folder.")
+        raise ValueError(
+            f"Refusing to run {script_name}: {problem}. {fix}"
+        )
 
     return ActionOutput(
         _run([str(script_path)], extra_env=_input_env(inputs)),

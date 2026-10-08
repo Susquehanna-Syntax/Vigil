@@ -95,3 +95,27 @@ class UninstallEndpoints(SimpleTestCase):
         longer have working credentials."""
         for name in ("agent-uninstall-script", "agent-uninstall-ps1"):
             self.assertEqual(self.client.get(reverse(name)).status_code, 200)
+
+
+class WindowsConfigTreeLockedTests(SimpleTestCase):
+    """SEC-2: C:\\ProgramData's default ACL let a standard user create the scripts
+    folder the agent runs scripts from as LocalSystem. Proven on the Windows VM.
+    The installer locks the config tree with SIDs and takes the folder back."""
+
+    def setUp(self):
+        self.ps1 = render_to_string("agent_install.ps1", {"base_url": BASE_URL})
+
+    def test_config_dir_is_locked_with_sids(self):
+        self.assertIn('icacls.exe $ConfigDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" '
+                      '/grant "*S-1-5-32-544:(OI)(CI)(F)" /grant "*S-1-5-32-545:(RX)"', self.ps1)
+
+    def test_scripts_dir_is_created_and_taken_back(self):
+        self.assertIn('$ScriptsDir = Join-Path $ConfigDir "scripts"', self.ps1)
+        self.assertIn('icacls.exe $ScriptsDir /setowner "*S-1-5-32-544" /T /C', self.ps1)
+        self.assertIn("icacls.exe $ScriptsDir /reset /T /C", self.ps1)
+        self.assertLess(self.ps1.index("/inheritance:r /grant \"*S-1-5-18"),
+                        self.ps1.index("$ScriptsDir /reset"),
+                        "the parent must be locked before the folder inherits from it")
+
+    def test_monitor_service_can_still_write_its_log(self):
+        self.assertIn('icacls.exe $LogPath /grant "$($ServiceAccount):(M)"', self.ps1)

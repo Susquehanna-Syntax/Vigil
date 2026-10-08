@@ -34,6 +34,25 @@ New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 New-Item -ItemType Directory -Force -Path $ConfigDir  | Out-Null
 New-Item -ItemType Directory -Force -Path $DataDir    | Out-Null
 
+# Lock the config tree (SEC-2). C:\ProgramData's default ACL lets any local user
+# create files and folders in a new subfolder, and the agent runs scripts from
+# $ConfigDir\scripts as LocalSystem: a standard user who created that folder
+# first owned it, and every script in it. So: no inherited ACL on $ConfigDir;
+# SYSTEM and Administrators full; Users may only list the folder itself, never
+# read or create anything inside it. SIDs, not names: group names are localised.
+$ScriptsDir = Join-Path $ConfigDir "scripts"
+$LogPath    = Join-Path $ConfigDir "agent.log"
+New-Item -ItemType Directory -Force -Path $ScriptsDir | Out-Null
+if (-not (Test-Path $LogPath)) { New-Item -ItemType File -Path $LogPath | Out-Null }
+& icacls.exe $ConfigDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" /grant "*S-1-5-32-544:(OI)(CI)(F)" /grant "*S-1-5-32-545:(RX)" | Out-Null
+# An upgrade may find a scripts folder, or scripts, that a non-admin created and
+# therefore owns (an owner can always rewrite the ACL). Take ownership back and
+# reset everything under it to inherit the locked parent.
+& icacls.exe $ScriptsDir /setowner "*S-1-5-32-544" /T /C | Out-Null
+& icacls.exe $ScriptsDir /reset /T /C | Out-Null
+& icacls.exe $LogPath /setowner "*S-1-5-32-544" /C | Out-Null
+& icacls.exe $LogPath /reset /C | Out-Null
+
 # Download to a temp file and verify it before anything makes it the service
 # binary. This binary becomes a LocalSystem service, so an unverified download
 # is a full machine compromise for anyone who can substitute the bytes in
@@ -255,6 +274,9 @@ if ($AgentMode -eq "monitor") {
         # The virtual account exists only once the service does, so grant its
         # access now: read the config and binary, write its own state.
         & icacls.exe $ConfigPath /grant "$($ServiceAccount):(R)" | Out-Null
+        # The service writes its own log; the locked config folder no longer
+        # lets anyone but SYSTEM and Administrators create files in it.
+        & icacls.exe $LogPath /grant "$($ServiceAccount):(M)" | Out-Null
         & icacls.exe $DataDir /inheritance:r /grant "SYSTEM:(OI)(CI)(F)" /grant "Administrators:(OI)(CI)(F)" /grant "$($ServiceAccount):(OI)(CI)(M)" | Out-Null
         # The whole install tree, not just the exe. A onedir build is an exe
         # plus an _internal directory of DLLs and data; granting the account
