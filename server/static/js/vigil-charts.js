@@ -69,8 +69,9 @@ function donutHtml(segments, { size = 104, center = '', filterKind = '', legend 
 }
 
 // The summary at the top of a run's detail: hosts by state and, when the task
-// or playbook names outcomes, by outcome. Clicking a legend row shows only
-// those hosts' cards (`[data-host]` inside `scope`); clicking it again shows all.
+// or playbook names outcomes, by outcome. Clicking a slice or a legend row
+// floats that group's host cards (`[data-host]` inside `scope`) to the top of
+// their container and dims the rest; clicking it again restores the order.
 function runSummaryHtml(summary) {
   if (!summary || !summary.hosts) return '';
   const states = donutHtml(stateSegments(summary.states), {
@@ -81,20 +82,163 @@ function runSummaryHtml(summary) {
   return `<div class="run-summary">${states}${outcomes}</div>`;
 }
 
-function wireRunSummary(scope, summary) {
+function wireRunSummary(scope, summary, run) {
   if (!scope || !summary || !summary.per_host) return;
   let active = null;
-  scope.querySelectorAll('.donut-key').forEach(btn => btn.addEventListener('click', () => {
-    const key = `${btn.dataset.filterKind}:${btn.dataset.filter}`;
-    active = active === key ? null : key;
-    scope.querySelectorAll('.donut-key').forEach(b => b.setAttribute('aria-pressed',
+  const controls = Array.from(scope.querySelectorAll('.donut-key'));
+
+  const paint = () => {
+    controls.forEach(b => b.setAttribute('aria-pressed',
       String(active === `${b.dataset.filterKind}:${b.dataset.filter}`)));
-    scope.querySelectorAll('[data-host]').forEach(card => {
-      const host = summary.per_host[card.dataset.host] || {};
-      const value = btn.dataset.filterKind === 'state' ? host.state
-        : (host.outcome || 'No outcome yet');
-      card.hidden = !!active && value !== btn.dataset.filter
-        && !(btn.dataset.filter === '__other' && host.outcome);
+    scope.querySelectorAll('.donut-slice').forEach(slice =>
+      slice.classList.toggle('is-active',
+        !!active && active.startsWith(`${slice.dataset.sliceKind}:`)));
+  };
+
+  const hostMatches = (card, btn) => {
+    const host = summary.per_host[card.dataset.host] || {};
+    const value = btn.dataset.filterKind === 'state' ? host.state
+      : (host.outcome || 'No outcome yet');
+    return value === btn.dataset.filter
+      || (btn.dataset.filter === '__other' && host.outcome);
+  };
+
+  // FLIP: measure, reorder in the DOM, measure again, then play the delta as a
+  // slide so the cards visibly travel to the top instead of teleporting.
+  const reorder = (containers, matched) => {
+    const before = new Map();
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      containers.forEach(cards => cards.forEach(card =>
+        before.set(card, card.getBoundingClientRect().top)));
+    }
+    containers.forEach(cards => {
+      cards.forEach((card, i) => {
+        if (!card.hasAttribute('data-order')) card.setAttribute('data-order', String(i));
+      });
+      const original = cards.slice()
+        .sort((a, b) => Number(a.dataset.order) - Number(b.dataset.order));
+      const top = matched ? original.filter(card => hostMatches(card, matched)) : [];
+      const rest = matched ? original.filter(card => !top.includes(card)) : original;
+      top.concat(rest).forEach(card => card.parentElement.appendChild(card));
+      cards.forEach(card => card.classList.toggle('run-sort-dim',
+        !!matched && !top.includes(card)));
     });
-  }));
+    before.forEach((was, card) => {
+      const delta = was - card.getBoundingClientRect().top;
+      if (!delta) return;
+      card.style.transition = 'none';
+      card.style.transform = `translateY(${delta}px)`;
+      requestAnimationFrame(() => {
+        card.style.transition = 'transform 260ms var(--ease-out-expo)';
+        card.style.transform = '';
+        card.addEventListener('transitionend', function settle() {
+          card.style.transition = '';
+          card.removeEventListener('transitionend', settle);
+        });
+      });
+    });
+  };
+
+  const containers = () => {
+    const groups = new Map();
+    scope.querySelectorAll('[data-host]').forEach(card => {
+      if (!groups.has(card.parentElement)) groups.set(card.parentElement, []);
+      groups.get(card.parentElement).push(card);
+    });
+    return Array.from(groups.values());
+  };
+
+  const select = (btn) => {
+    const key = `${btn.dataset.filterKind}:${btn.dataset.filter}`;
+    const clear = active === key;
+    active = clear ? null : key;
+    paint();
+    reorder(containers(), clear ? null : btn);
+  };
+
+  controls.forEach(btn => btn.addEventListener('click', () => select(btn)));
+  // A slice is the legend row drawn as an arc: it borrows its donut's kind,
+  // which only the legend rows carry.
+  scope.querySelectorAll('.donut-slice').forEach(slice => {
+    const kind = slice.closest('.donut-block')?.querySelector('.donut-key')?.dataset.filterKind;
+    if (!kind) return;
+    slice.dataset.sliceKind = kind;
+    slice.addEventListener('click', () => {
+      const btn = controls.find(b => b.dataset.filterKind === kind
+        && b.dataset.filter === slice.dataset.slice);
+      if (btn) select(btn);
+    });
+  });
+
+  if (run) {
+    scope.querySelectorAll('[data-host-run]').forEach(el =>
+      el.addEventListener('click', () => openHostRunDetail(run, el.dataset.hostRun)));
+  }
+}
+
+function _hostRunWhen(iso) {
+  return iso ? new Date(iso).toLocaleString() : '—';
+}
+
+function _hostRunDuration(dispatched, completed) {
+  if (!dispatched || !completed) return '—';
+  const secs = Math.max(0, Math.round((new Date(completed) - new Date(dispatched)) / 1000));
+  return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+}
+
+function _hostRunTaskHtml(t) {
+  const color = _TASK_STATE_COLORS[t.state] || 'var(--text-3)';
+  const results = _stepResultsHtml(t.result_data, t.result_output);
+  const output = (t.result_output || '').trim();
+  const meta = [
+    ['Requested by', t.requested_by_username || '—'],
+    ['Risk', t.risk_level || '—'],
+    ['TTL', `${t.ttl_seconds}s`],
+    ['Created', _hostRunWhen(t.created_at)],
+    ['Dispatched', _hostRunWhen(t.dispatched_at)],
+    ['Completed', _hostRunWhen(t.completed_at)],
+    ['Duration', _hostRunDuration(t.dispatched_at, t.completed_at)],
+  ];
+  if (t.step_ref) meta.push(['Playbook step', t.step_ref]);
+  if (t.branch) meta.push(['Branch', t.branch]);
+  return `
+    <div class="host-run-task">
+      <div class="host-run-head">
+        <span class="host-run-step">${escHtml(t.step_label || t.action || '')}</span>
+        <span class="host-run-action">${escHtml(t.action || '')}</span>
+        <span class="host-run-state" style="color:${escAttr(color)}">${escHtml(TASK_STATE_LABELS[t.state] || t.state || '')}</span>
+      </div>
+      <dl class="host-run-meta">${meta.map(([k, v]) =>
+        `<dt>${escHtml(k)}</dt><dd>${escHtml(String(v))}</dd>`).join('')}</dl>
+      <div class="host-run-k">Params</div>
+      <pre class="host-run-json">${escHtml(JSON.stringify(t.params ?? {}, null, 2))}</pre>
+      ${results ? `<div class="host-run-results">${results}</div>` : ''}
+      <div class="host-run-k">Output</div>
+      <pre class="host-run-out">${output ? escHtml(output) : 'No output captured.'}</pre>
+    </div>`;
+}
+
+// A host's name in a run's results opens this: every task the run sent that
+// host, in step order.
+function openHostRunDetail(run, hostId) {
+  const tasks = (run.tasks || [])
+    .filter(t => String(t.host) === String(hostId))
+    .sort((a, b) => (a.step_order || 0) - (b.step_order || 0)
+      || String(a.created_at || '').localeCompare(String(b.created_at || '')));
+  const hostname = (tasks.find(t => t.host_hostname) || {}).host_hostname || String(hostId);
+
+  const m = mountModal('host-run-detail', { wide: true });
+  m.setBody(`
+    <div class="modal-title"><span id="host-run-title"></span>
+      <button class="modal-close" id="hrd-x" aria-label="Close">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    ${tasks.map(_hostRunTaskHtml).join('')}
+    <div class="confirm-actions"><button class="btn btn-outline btn-sm" id="hrd-close">Close</button></div>`);
+  m.modal.querySelector('#host-run-title').textContent =
+    `${hostname} · ${run.name_snapshot || 'Run'}`;
+  m.modal.querySelector('#hrd-x').onclick = () => m.close();
+  m.modal.querySelector('#hrd-close').onclick = () => m.close();
+  requestAnimationFrame(m.open);
 }
