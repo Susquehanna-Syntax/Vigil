@@ -44,14 +44,16 @@ $ScriptsDir = Join-Path $ConfigDir "scripts"
 $LogPath    = Join-Path $ConfigDir "agent.log"
 New-Item -ItemType Directory -Force -Path $ScriptsDir | Out-Null
 if (-not (Test-Path $LogPath)) { New-Item -ItemType File -Path $LogPath | Out-Null }
+# Ownership first, for the whole tree. An owner can always rewrite an ACL, so a
+# folder or file a standard user created before this install (the config dir
+# itself, agent.yml, data, scripts) would stay theirs however it was locked.
+& icacls.exe $ConfigDir /setowner "*S-1-5-32-544" /T /C | Out-Null
 & icacls.exe $ConfigDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" /grant "*S-1-5-32-544:(OI)(CI)(F)" /grant "*S-1-5-32-545:(RX)" | Out-Null
-# An upgrade may find a scripts folder, or scripts, that a non-admin created and
-# therefore owns (an owner can always rewrite the ACL). Take ownership back and
-# reset everything under it to inherit the locked parent.
-& icacls.exe $ScriptsDir /setowner "*S-1-5-32-544" /T /C | Out-Null
-& icacls.exe $ScriptsDir /reset /T /C | Out-Null
-& icacls.exe $LogPath /setowner "*S-1-5-32-544" /C | Out-Null
-& icacls.exe $LogPath /reset /C | Out-Null
+# Then drop every explicit entry below it (icacls /grant only ever adds, so an
+# entry a user put on a file they pre-created would otherwise survive) and let
+# everything inherit the locked parent. agent.yml, data and the service
+# account's grants are re-applied explicitly further down.
+& icacls.exe (Join-Path $ConfigDir "*") /reset /T /C | Out-Null
 
 # Download to a temp file and verify it before anything makes it the service
 # binary. This binary becomes a LocalSystem service, so an unverified download
@@ -211,7 +213,7 @@ allowlist:
     # agent.yml holds the agent token. install.sh writes it 0600; the Windows
     # default ACL on C:\ProgramData lets any local user read it. Strip
     # inheritance and grant only SYSTEM and Administrators.
-    & icacls.exe $ConfigPath /inheritance:r /grant "SYSTEM:(F)" /grant "Administrators:(F)" | Out-Null
+    & icacls.exe $ConfigPath /inheritance:r /grant "*S-1-5-18:(F)" /grant "*S-1-5-32-544:(F)" | Out-Null
 
     if ($env:VIGIL_TOKEN) {
         Write-Host "Agent token configured from VIGIL_TOKEN."
@@ -277,7 +279,7 @@ if ($AgentMode -eq "monitor") {
         # The service writes its own log; the locked config folder no longer
         # lets anyone but SYSTEM and Administrators create files in it.
         & icacls.exe $LogPath /grant "$($ServiceAccount):(M)" | Out-Null
-        & icacls.exe $DataDir /inheritance:r /grant "SYSTEM:(OI)(CI)(F)" /grant "Administrators:(OI)(CI)(F)" /grant "$($ServiceAccount):(OI)(CI)(M)" | Out-Null
+        & icacls.exe $DataDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" /grant "*S-1-5-32-544:(OI)(CI)(F)" /grant "$($ServiceAccount):(OI)(CI)(M)" | Out-Null
         # The whole install tree, not just the exe. A onedir build is an exe
         # plus an _internal directory of DLLs and data; granting the account
         # access to the exe alone starts a process that dies immediately
@@ -292,7 +294,7 @@ if ($AgentMode -eq "monitor") {
 } else {
     cmd.exe /c ('sc create ' + $ServiceName + ' binPath= ' + $BinPathQuoted + ' start= auto DisplayName= "Vigil Monitoring Agent"') | Out-Null
     $ServiceAccount = "LocalSystem"
-    & icacls.exe $DataDir /inheritance:r /grant "SYSTEM:(OI)(CI)(F)" /grant "Administrators:(OI)(CI)(F)" | Out-Null
+    & icacls.exe $DataDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" /grant "*S-1-5-32-544:(OI)(CI)(F)" | Out-Null
     Write-Host "Mode '$AgentMode' executes tasks, so the agent runs as LocalSystem."
 }
 & sc.exe description $ServiceName "Vigil agent — outbound-only monitoring and managed tasks." | Out-Null
