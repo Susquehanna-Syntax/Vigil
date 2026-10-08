@@ -188,6 +188,22 @@ class InstallTreeTests(TestCase):
             f"/reprovision/tree/{self.image.id}/../secret.txt")
         self.assertEqual(resp.status_code, 404)
 
+    def test_a_symlink_out_of_the_tree_is_not_followed(self):
+        # The endpoint needs no login: a link in the tree must not make it a
+        # reader for files outside it.
+        from pathlib import Path
+        tree = Path(self.image.tree_path)
+        (tree / "casper" / "leak").symlink_to(Path(self.tmp.name) / "secret.txt")
+        resp = self.client.get(f"/reprovision/tree/{self.image.id}/casper/leak")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_a_symlink_inside_the_tree_still_serves(self):
+        from pathlib import Path
+        tree = Path(self.image.tree_path)
+        (tree / "alias").symlink_to(tree / "casper")
+        resp = self.client.get(f"/reprovision/tree/{self.image.id}/alias/filesystem.squashfs")
+        self.assertEqual(resp.status_code, 200)
+
     def test_unready_image_is_not_served(self):
         self.image.status = OSImage.Status.IMPORTING
         self.image.save(update_fields=["status"])
