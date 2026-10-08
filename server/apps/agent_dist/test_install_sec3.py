@@ -85,3 +85,7 @@ class InstallShSec3Tests(SimpleTestCase):
         self.assertIn("chmod 640 /etc/vigil/agent.yml", script)
         self.assertNotIn("chown vigil-agent /etc/vigil/agent.yml", script)
         self.assertIsNone(re.search(r"AGENT_MODE=\"\$\(sed", script), "mode must come from CFG_MODE")
+
+    def test_a_reinstall_restarts_a_running_agent(self):
+        script = render_to_string("agent_install.sh", {"base_url": "https://vigil.test", "public_key": KEY})
+        self.assertIn('if [ -n "${VIGIL_TOKEN:-}" ] || systemctl is-active --quiet vigil-agent; then', script)
