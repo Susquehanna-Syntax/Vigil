@@ -19,7 +19,7 @@ def authenticate_agent(request, allow_unapproved: bool = False):
         return None, Response({"error": "Agent token required"}, status=401)
     token = header[7:].strip()
     try:
-        host = Host.objects.get(agent_token=token)
+        host = Host.objects.by_token(token).get()
     except Host.DoesNotExist:
         return None, Response({"error": "Invalid agent token"}, status=401)
     if not allow_unapproved and host.status in (Host.Status.PENDING, Host.Status.REJECTED):

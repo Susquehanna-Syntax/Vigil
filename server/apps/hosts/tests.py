@@ -18,7 +18,7 @@ class RegisterTests(TestCase):
             format="json",
         )
         self.assertEqual(resp.status_code, 201)
-        host = Host.objects.get(agent_token="tok-" + "a" * 32)
+        host = Host.objects.by_token("tok-" + "a" * 32).get()
         self.assertEqual(host.status, Host.Status.PENDING)
         self.assertEqual(host.hostname, "web-01")
 
@@ -44,7 +44,7 @@ class CheckinIpTrustTests(TestCase):
             "/api/v1/checkin",
             {"ip_address": "10.9.9.9", "hostname": "web-01"},
             format="json",
-            HTTP_AUTHORIZATION=f"Bearer {self.host.agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {self.host.raw_agent_token}",
             REMOTE_ADDR="203.0.113.7",
         )
         self.assertEqual(resp.status_code, 200)
@@ -58,7 +58,7 @@ class CheckinIpTrustTests(TestCase):
             "/api/v1/checkin",
             {"hostname": "web-01", "mode": "managed"},
             format="json",
-            HTTP_AUTHORIZATION=f"Bearer {self.host.agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {self.host.raw_agent_token}",
         )
         self.assertEqual(resp.status_code, 200)
         self.host.refresh_from_db()
@@ -69,7 +69,7 @@ class CheckinIpTrustTests(TestCase):
             "/api/v1/checkin",
             {"hostname": "web-01", "mode": "root_me_please"},
             format="json",
-            HTTP_AUTHORIZATION=f"Bearer {self.host.agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {self.host.raw_agent_token}",
         )
         self.assertEqual(resp.status_code, 200)
         self.host.refresh_from_db()
@@ -98,7 +98,7 @@ class AgentTagNamespaceTests(TestCase):
             {"agent_token": "tok-" + "c" * 32, "hostname": "h", "tags": ["prod"]},
             format="json",
         )
-        host = Host.objects.get(agent_token="tok-" + "c" * 32)
+        host = Host.objects.by_token("tok-" + "c" * 32).get()
         self.assertIn("agent:prod", host.tags)
         self.assertNotIn("prod", host.tags)
 
@@ -111,7 +111,7 @@ class AgentTagNamespaceTests(TestCase):
             "/api/v1/checkin",
             {"hostname": "h", "tags": ["office"]},
             format="json",
-            HTTP_AUTHORIZATION=f"Bearer {host.agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {host.raw_agent_token}",
         )
         host.refresh_from_db()
         self.assertIn("agent:office", host.tags)

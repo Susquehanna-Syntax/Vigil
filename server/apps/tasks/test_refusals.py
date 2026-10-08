@@ -134,7 +134,7 @@ class CheckinStoresAllowlistTests(TestCase):
     def _checkin(self, host, **payload):
         return self.client.post("/api/v1/checkin", {"hostname": host.hostname, "metrics": {}, **payload},
                                 content_type="application/json",
-                                HTTP_AUTHORIZATION=f"Bearer {host.agent_token}")
+                                HTTP_AUTHORIZATION=f"Bearer {host.raw_agent_token}")
 
     def test_checkin_stores_allowlist(self):
         host = _host("ci", allowlist=None)

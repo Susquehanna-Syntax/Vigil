@@ -83,7 +83,7 @@ class HuntResultsTests(TestCase):
                 "steps": steps,
             }),
             content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {task.host.agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {'t' * 31}{task.host.hostname[1:]}",  # _host(n): ("t" * 31) + str(n)
         )
         assert resp.status_code == 200, resp.content
         task.refresh_from_db()

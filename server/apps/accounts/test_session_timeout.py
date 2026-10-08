@@ -143,7 +143,7 @@ class AgentsUnaffectedTests(TestCase):
                 "/api/v1/checkin",
                 {},
                 format="json",
-                HTTP_AUTHORIZATION=f"Bearer {host.agent_token}",
+                HTTP_AUTHORIZATION=f"Bearer {host.raw_agent_token}",
             )
         self.assertEqual(resp.status_code, 200, getattr(resp, "data", None))
         self.assertNotIn("session_", resp.content.decode("utf-8", "ignore"))

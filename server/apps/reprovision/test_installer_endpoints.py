@@ -5,7 +5,7 @@ from datetime import timedelta
 from django.test import TestCase
 from django.utils.timezone import now
 
-from apps.hosts.models import Host
+from apps.hosts.models import Host, hash_agent_token
 from apps.reprovision import jobs
 from apps.reprovision.models import InstallProfile, OSImage, RebuildJob
 
@@ -90,7 +90,7 @@ class InstallerEndpointTests(TestCase):
         # A token recovered from a backup of the wiped disk must not keep
         # authenticating as this host.
         self.client.get(f"/reprovision/answer/{self.answer}/user-data")
-        self.assertFalse(Host.objects.filter(agent_token="tok-h1").exists())
+        self.assertFalse(Host.objects.by_token("tok-h1").exists())
 
     # ── Enrolment ────────────────────────────────────────────────────────
     def _installing(self):
@@ -98,7 +98,7 @@ class InstallerEndpointTests(TestCase):
         self.job.save(update_fields=["state"])
 
     def _enrol(self, **over):
-        body = {"enroll_token": self.enroll, "agent_token": "brand-new-token",
+        body = {"enroll_token": self.enroll, "agent_token": "brand-new-token-0001",
                 "hostname": "h1"}
         body.update(over)
         return self.client.post("/api/v1/reprovision/enroll", body,
@@ -109,7 +109,7 @@ class InstallerEndpointTests(TestCase):
         resp = self._enrol()
         self.assertEqual(resp.status_code, 200)
         self.host.refresh_from_db()
-        self.assertEqual(self.host.agent_token, "brand-new-token")
+        self.assertEqual(self.host.agent_token, hash_agent_token("brand-new-token-0001"))
         self.assertEqual(self.host.status, Host.Status.ONLINE)
 
     def test_enrol_keeps_the_same_host_id(self):
@@ -121,14 +121,22 @@ class InstallerEndpointTests(TestCase):
 
     def test_enrol_token_cannot_be_redeemed_twice(self):
         self._installing()
-        self.assertEqual(self._enrol(agent_token="first").status_code, 200)
-        second = self._enrol(agent_token="second")
+        self.assertEqual(self._enrol(agent_token="first-token-000001").status_code, 200)
+        second = self._enrol(agent_token="second-token-00002")
         self.assertEqual(second.status_code, 403)
         self.host.refresh_from_db()
-        self.assertEqual(self.host.agent_token, "first")
+        self.assertEqual(self.host.agent_token, hash_agent_token("first-token-000001"))
 
     def test_enrol_rejected_before_installing(self):
         self.assertEqual(self._enrol().status_code, 403)
+
+    def test_enrol_refuses_a_token_that_is_not_token_shaped(self):
+        self._installing()
+        self.assertEqual(self._enrol(agent_token="sha256$" + "a" * 64).status_code, 400)
+
+    def test_revoked_token_is_not_derived_from_the_job(self):
+        self.client.get(f"/reprovision/answer/{self.answer}/user-data")
+        self.assertFalse(Host.objects.by_token(f"revoked-{self.job.id}").exists())
 
     def test_enrol_requires_both_fields(self):
         self._installing()

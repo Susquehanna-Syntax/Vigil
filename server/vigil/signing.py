@@ -83,7 +83,7 @@ def agent_fingerprint(agent_token: str) -> str:
     return hashlib.sha256(agent_token.encode()).hexdigest()
 
 
-def sign_task_v2(task, dispatched_at: str, agent_token: str) -> str:
+def sign_task_v2(task, dispatched_at: str, agent_fingerprint_hex: str) -> str:
     """Signature over the v1 fields plus when the task was sent and to which
     agent (SEC-4). v1 left the dispatch time unsigned, so the TTL could be
     restarted by whoever relayed the task, and it named the target host
@@ -97,7 +97,9 @@ def sign_task_v2(task, dispatched_at: str, agent_token: str) -> str:
             "nonce": task.nonce,
             "ttl_seconds": task.ttl_seconds,
             "dispatched_at": dispatched_at,
-            "agent": agent_fingerprint(agent_token),
+            # The SHA-256 of the agent's token, which is exactly how the token
+            # is stored (Host.token_fingerprint); the agent hashes its own.
+            "agent": agent_fingerprint_hex,
             "v": 2,
         },
         sort_keys=True,
