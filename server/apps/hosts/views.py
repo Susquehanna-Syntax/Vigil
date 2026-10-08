@@ -372,7 +372,9 @@ def _refuse_unsupported_features(host: Host) -> None:
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def checkin(request):
-    host, err = authenticate_agent(request)
+    # A pending host checks in to reach the enrolment queue; rejected hosts
+    # are answered just below.
+    host, err = authenticate_agent(request, allow_unapproved=True)
     if err:
         return err
 
