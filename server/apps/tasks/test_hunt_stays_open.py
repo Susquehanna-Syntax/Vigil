@@ -87,7 +87,10 @@ class StaysOpenParamTests(TestCase):
             parse_and_validate(_hunt_yaml_with("'40d'"))
 
     def test_hunt_deploy_sets_expiry_default_7d(self):
+        from apps.accounts.models import Role, UserProfile
         user = get_user_model().objects.create_user("op", password="pw")
+        # Deploying needs tasks:run (SEC-1); a bare profile is a viewer.
+        UserProfile.objects.create(user=user, role=Role.OPERATOR)
         self.client = APIClient()
         self.client.force_login(user)
         host = _host(1)

@@ -17,6 +17,11 @@ logger = logging.getLogger("vigil.scoping")
 #: Every assignment model uses the reverse accessor ``site_assignment``, which
 #: is what lets the queries below stay uniform.
 _ASSIGNMENTS = {
+    # Without this entry scope_of(host) was always None, so every per-host
+    # capability check (edit, update_agent, firewall, reprovision, tasks:run)
+    # asked about "no site" and got the user's strongest role anywhere: a
+    # per-site operator restriction never applied to hosts (SEC-1).
+    "hosts.Host": ("HostSiteAssignment", "host"),
     "baselines.Playbook": ("PlaybookSiteAssignment", "playbook"),
     "automations.Automation": ("AutomationSiteAssignment", "automation"),
     "alerts.NotificationChannel": ("ChannelSiteAssignment", "channel"),
