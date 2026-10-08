@@ -1,7 +1,8 @@
 """Persistent nonce tracking for replay protection.
 
-Stores seen nonces in a flat file. Periodically prunes entries older than
-the maximum TTL to prevent unbounded growth.
+Stores each seen nonce with the time it may be forgotten: no earlier than the
+task's own TTL has run out (SEC-4). A fixed one-hour memory let a task whose
+TTL was longer be replayed once its nonce had been pruned.
 """
 
 import logging
@@ -10,9 +11,13 @@ from pathlib import Path
 
 logger = logging.getLogger("vigil.nonce")
 
-_NONCE_FILENAME = "seen_nonces"
-# Keep nonces for 1 hour — well beyond any reasonable task TTL (default 300s)
-_MAX_AGE_SECONDS = 3600
+# A new file: entries are expiry times now, where "seen_nonces" held the time a
+# nonce was recorded. Reading one as the other would forget nonces too early.
+_NONCE_FILENAME = "seen_nonces.v2"
+# Never forget a nonce sooner than this, whatever the task's TTL.
+_MIN_KEEP_SECONDS = 3600
+# Margin past a task's TTL, for clock skew between server and agent.
+_SKEW_SECONDS = 600
 
 
 class NonceStore:
@@ -43,13 +48,18 @@ class NonceStore:
         """Return True if this nonce was already used (replay attempt)."""
         return nonce in self._entries
 
-    def record(self, nonce: str) -> None:
-        """Mark a nonce as used."""
-        self._entries[nonce] = time.time()
+    def record(self, nonce: str, ttl_seconds: int | float = 0) -> None:
+        """Mark a nonce as used, remembered until its task could no longer run."""
+        try:
+            ttl = max(0.0, float(ttl_seconds))
+        except (TypeError, ValueError):
+            ttl = 0.0
+        keep = max(_MIN_KEEP_SECONDS, ttl + _SKEW_SECONDS)
+        self._entries[nonce] = time.time() + keep
         self._prune()
         self._save()
 
     def _prune(self) -> None:
-        """Remove nonces older than _MAX_AGE_SECONDS."""
-        cutoff = time.time() - _MAX_AGE_SECONDS
-        self._entries = {n: ts for n, ts in self._entries.items() if ts > cutoff}
+        """Forget nonces whose keep-until time has passed."""
+        now = time.time()
+        self._entries = {n: until for n, until in self._entries.items() if until > now}

@@ -90,36 +90,36 @@ def _process_tasks(tasks: list[dict], config, nonce_store: NonceStore, verify_ke
             _report_rejected(config, task, "Replayed nonce")
             continue
 
-        # TTL check — bounded against when the SERVER dispatched the task,
-        # not when it was originally created. A task can sit in PENDING for
-        # hours (waiting on a schedule.window, retry delay, or offline host);
-        # the TTL only makes sense once the signed payload is on the wire.
-        # Falls back to ``created_at`` for compatibility with older servers.
-        ttl = task.get("ttl_seconds", 300)
-        ref_str = task.get("dispatched_at") or task.get("created_at")
-        if ref_str:
-            try:
-                ref = datetime.fromisoformat(ref_str)
-                if ref.tzinfo is None:
-                    ref = ref.replace(tzinfo=timezone.utc)
-                if datetime.now(timezone.utc) > ref + timedelta(seconds=ttl):
-                    logger.warning("Task %s has expired (TTL %ds) — rejecting", task_id, ttl)
-                    _report_rejected(config, task, f"Task expired (TTL {ttl}s)")
-                    nonce_store.record(nonce)
-                    continue
-            except (ValueError, TypeError):
-                pass  # malformed timestamp — skip the gate, signature still gates execution
-
-        # Signature verification
-        if not verify.verify_task_signature(task, verify_key):
+        # Signature first (SEC-4): the dispatch time the TTL is measured from is
+        # inside the v2 signature, so it is only worth reading once verified.
+        if not verify.verify_task_signature(task, verify_key, config.agent_token):
             logger.warning("Task %s failed signature verification — rejecting", task_id)
             _report_rejected(config, task, "Invalid signature")
-            nonce_store.record(nonce)
+            continue
+
+        # TTL — bounded against when the SERVER dispatched the task, not when it
+        # was created: a task can wait days for a schedule window. The time is
+        # signed, so it cannot be restarted by whoever relays the task, and a
+        # missing or unreadable one is refused rather than skipped.
+        ttl = task.get("ttl_seconds", 300)
+        try:
+            ref = datetime.fromisoformat(task["dispatched_at"])
+            if ref.tzinfo is None:
+                ref = ref.replace(tzinfo=timezone.utc)
+        except (KeyError, ValueError, TypeError):
+            logger.warning("Task %s has no valid dispatch time — rejecting", task_id)
+            _report_rejected(config, task, "Task has no valid dispatch time")
+            nonce_store.record(nonce, ttl)
+            continue
+        if datetime.now(timezone.utc) > ref + timedelta(seconds=ttl):
+            logger.warning("Task %s has expired (TTL %ds) — rejecting", task_id, ttl)
+            _report_rejected(config, task, f"Task expired (TTL {ttl}s)")
+            nonce_store.record(nonce, ttl)
             continue
 
         # Execution — the agent validates each action against its own local
         # config.  The server sends the script; we decide what's allowed.
-        nonce_store.record(nonce)
+        nonce_store.record(nonce, ttl)
         params = task.get("params", {})
 
         if isinstance(params.get("steps"), list):
