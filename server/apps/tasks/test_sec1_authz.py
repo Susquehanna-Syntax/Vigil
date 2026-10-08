@@ -142,3 +142,42 @@ class HostScopeOfTests(Sec1Base):
             resp = self.client.post(f"/api/v1/hosts/{self.west_host.id}/update-agent/",
                                     {"totp": "123456"}, content_type="application/json")
         self.assertEqual(resp.status_code, 403, resp.content)
+
+
+class FleetAndStackTests(Sec1Base):
+    def _post(self, user, url, body=None):
+        self.client.force_login(user)
+        with patch("apps.accounts.totp.require_totp_confirmation", return_value=None):
+            return self.client.post(url, {"totp": "123456", **(body or {})}, content_type="application/json")
+
+    def test_rollout_needs_fleet_wide_permission_to_run(self):
+        admin = _user("adm", Role.ADMIN)
+        definition = self._definition(admin)
+        definition.visibility = TaskDefinition.Visibility.COMMUNITY
+        definition.save()
+        resp = self._post(_user("viewer", Role.VIEWER), "/api/v1/rollouts/",
+                          {"definition_id": str(definition.id)})
+        self.assertEqual(resp.status_code, 403, resp.content)
+        # A fleet-wide operator is allowed past the permission check.
+        resp = self._post(_user("oper", Role.OPERATOR), "/api/v1/rollouts/",
+                          {"definition_id": str(definition.id)})
+        self.assertNotEqual(resp.status_code, 403, resp.content)
+        dana = _user("dana")
+        UserSiteRole.objects.create(user=dana, site=self.west, role=Role.ADMIN)
+        resp = self._post(dana, "/api/v1/rollouts/", {"definition_id": str(definition.id)})
+        self.assertEqual(resp.status_code, 403, resp.content)
+
+    def test_site_admin_cannot_deploy_a_stack_where_they_are_a_viewer(self):
+        from apps.stacks.models import ManagedStack
+        stack = ManagedStack.objects.create(host=self.lab_host, name="web", compose_yaml="services: {}\n")
+        mixed = _user("mixed")
+        UserSiteRole.objects.create(user=mixed, site=self.west, role=Role.ADMIN)
+        UserSiteRole.objects.create(user=mixed, site=self.lab, role=Role.VIEWER)
+        resp = self._post(mixed, f"/api/v1/stacks/{stack.id}/deploy/")
+        self.assertEqual(resp.status_code, 403, resp.content)
+        self.assertFalse(Task.objects.exists())
+
+    def test_check_pending_is_admin_only(self):
+        resp = self._post(_user("viewer", Role.VIEWER), "/api/v1/hosts/check-pending/",
+                          {"token": "tok-west-1"})
+        self.assertEqual(resp.status_code, 403)

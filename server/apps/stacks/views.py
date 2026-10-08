@@ -212,6 +212,10 @@ def stack_deploy(request, stack_id):
     stack = _stack_or_404(request, stack_id)
     if stack is None:
         return Response(status=status.HTTP_404_NOT_FOUND)
+    # A stack task runs as root on its host: tasks:run in that host's site (SEC-1).
+    from apps.tasks.authz import run_denied
+    if refused := run_denied(request.user, [stack.host]):
+        return refused
     if denied := _confirmed(request):
         return denied
     params = {"project": stack.name, "compose": stack.compose_yaml,
@@ -234,6 +238,10 @@ def stack_remove(request, stack_id):
     stack = _stack_or_404(request, stack_id)
     if stack is None:
         return Response(status=status.HTTP_404_NOT_FOUND)
+    # A stack task runs as root on its host: tasks:run in that host's site (SEC-1).
+    from apps.tasks.authz import run_denied
+    if refused := run_denied(request.user, [stack.host]):
+        return refused
     if denied := _confirmed(request):
         return denied
     delete_files = bool(request.data.get("delete_files")) and not stack.adopted
@@ -290,6 +298,10 @@ def stack_adopt(request):
         return Response({"detail": "not a compose project name"}, status=status.HTTP_400_BAD_REQUEST)
     if ManagedStack.objects.filter(host=host, name=project).exists():
         return Response({"detail": f"{project} is already managed"}, status=status.HTTP_400_BAD_REQUEST)
+    # A stack task runs as root on its host: tasks:run in that host's site (SEC-1).
+    from apps.tasks.authz import run_denied
+    if refused := run_denied(request.user, [host]):
+        return refused
     if denied := _confirmed(request):
         return denied
     ticket = AdoptTicket.objects.create(host=host, project=project, requested_by=request.user,

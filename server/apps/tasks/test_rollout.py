@@ -12,7 +12,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils.timezone import now
 
-from apps.accounts.models import UserProfile
+from apps.accounts.models import Role, UserProfile
 from apps.accounts.totp import generate_secret, generate_totp
 from apps.hosts.models import Host
 from apps.tasks.models import (
@@ -441,7 +441,8 @@ class RolloutApiTests(TestCase):
         self.client = APIClient()
         self.operator = get_user_model().objects.create_user("op", password="pw")
         self.secret = generate_secret()
-        profile = UserProfile.objects.create(user=self.operator)
+        # Starting a rollout needs fleet-wide tasks:run (SEC-1); a bare profile is a viewer.
+        profile = UserProfile.objects.create(user=self.operator, role=Role.OPERATOR)
         profile.totp_secret = self.secret
         profile.totp_confirmed_at = now()
         profile.save()
