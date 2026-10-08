@@ -29,10 +29,9 @@ $DataDir     = Join-Path $ConfigDir "data"
 
 Write-Host "Installing Vigil agent for $Platform..."
 
-# Create directories
+# Create directories (the config folder is created further down, once it is
+# known not to be a link someone planted).
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-New-Item -ItemType Directory -Force -Path $ConfigDir  | Out-Null
-New-Item -ItemType Directory -Force -Path $DataDir    | Out-Null
 
 # Lock the config tree (SEC-2). C:\ProgramData's default ACL lets any local user
 # create files and folders in a new subfolder, and the agent runs scripts from
@@ -42,18 +41,70 @@ New-Item -ItemType Directory -Force -Path $DataDir    | Out-Null
 # read or create anything inside it. SIDs, not names: group names are localised.
 $ScriptsDir = Join-Path $ConfigDir "scripts"
 $LogPath    = Join-Path $ConfigDir "agent.log"
+$Admins     = "*S-1-5-32-544"
+
+# Every lock step must succeed. A failed one is not a warning: the tree would
+# be left as open as before, so the install stops (fail closed).
+function Invoke-AclStep {
+    & icacls.exe @args | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not secure $ConfigDir (icacls $($args -join ' ') exited $LASTEXITCODE). Nothing was installed."
+    }
+}
+
+function Test-Link([string]$Path) {
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    return ($null -ne $item) -and [bool]($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+}
+
+# A link a user planted is never part of Vigil's tree, and the steps below run
+# elevated: following one would rewrite owners and ACLs wherever it points.
+# Delete each link itself (Directory.Delete / File.Delete on a reparse point
+# removes the link, not its target) and never descend into one.
+function Remove-PlantedLinks([string]$Root) {
+    $pending = New-Object System.Collections.Stack
+    $pending.Push($Root)
+    while ($pending.Count -gt 0) {
+        $dir = $pending.Pop()
+        foreach ($child in Get-ChildItem -LiteralPath $dir -Force -ErrorAction Stop) {
+            if ($child.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                if ($child.PSIsContainer) { [System.IO.Directory]::Delete($child.FullName) }
+                else { [System.IO.File]::Delete($child.FullName) }
+                Write-Host "Removed a link someone planted in the agent's folder: $($child.FullName)"
+            } elseif ($child.PSIsContainer) {
+                $pending.Push($child.FullName)
+            }
+        }
+    }
+}
+
+# The folder itself may be a link a user made before the first install. Check
+# before anything is created inside it, or the first folder would land in the
+# link's target.
+if (Test-Link $ConfigDir) {
+    [System.IO.Directory]::Delete($ConfigDir)
+    Write-Host "Removed a link someone planted at $ConfigDir"
+}
+New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
+
+# 1. Take the top folder alone and lock it, so nobody else can add anything
+#    while the rest is cleaned. /L: act on a link itself, never its target.
+Invoke-AclStep $ConfigDir /setowner $Admins /L /C
+Invoke-AclStep $ConfigDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" /grant "$($Admins):(OI)(CI)(F)" /grant "*S-1-5-32-545:(RX)" /L
+# 2. No links below it.
+Remove-PlantedLinks $ConfigDir
+# 3. Ownership of everything already inside (an owner can always rewrite an
+#    ACL, so anything a user pre-created would otherwise stay theirs), then drop
+#    every explicit entry so it all inherits the locked parent. icacls /grant
+#    only ever adds, so an entry a user put on a file would otherwise survive.
+#    agent.yml, data and the service account's grants are re-applied below.
+if (Get-ChildItem -LiteralPath $ConfigDir -Force) {
+    Invoke-AclStep (Join-Path $ConfigDir "*") /setowner $Admins /T /L /C
+    Invoke-AclStep (Join-Path $ConfigDir "*") /reset /T /L /C
+}
+New-Item -ItemType Directory -Force -Path $DataDir    | Out-Null
 New-Item -ItemType Directory -Force -Path $ScriptsDir | Out-Null
 if (-not (Test-Path $LogPath)) { New-Item -ItemType File -Path $LogPath | Out-Null }
-# Ownership first, for the whole tree. An owner can always rewrite an ACL, so a
-# folder or file a standard user created before this install (the config dir
-# itself, agent.yml, data, scripts) would stay theirs however it was locked.
-& icacls.exe $ConfigDir /setowner "*S-1-5-32-544" /T /C | Out-Null
-& icacls.exe $ConfigDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" /grant "*S-1-5-32-544:(OI)(CI)(F)" /grant "*S-1-5-32-545:(RX)" | Out-Null
-# Then drop every explicit entry below it (icacls /grant only ever adds, so an
-# entry a user put on a file they pre-created would otherwise survive) and let
-# everything inherit the locked parent. agent.yml, data and the service
-# account's grants are re-applied explicitly further down.
-& icacls.exe (Join-Path $ConfigDir "*") /reset /T /C | Out-Null
 
 # Download to a temp file and verify it before anything makes it the service
 # binary. This binary becomes a LocalSystem service, so an unverified download
@@ -228,6 +279,23 @@ allowlist:
     [System.IO.File]::WriteAllText(
         $ConfigPath, $existingConfig, (New-Object System.Text.UTF8Encoding($false)))
     Write-Host "Existing config kept; agent token replaced from VIGIL_TOKEN."
+}
+
+# The server's public key arrives in this script, over the same TLS download as
+# the agent binary, and goes into agent.yml (SEC-3). The agent then accepts only
+# that key: no trust on first use. Replaced on every install, so re-running the
+# installer is how an intended key rotation reaches an agent.
+$ServerPublicKey = "{{ public_key }}"
+if ($ServerPublicKey) {
+    $cfgText = [System.IO.File]::ReadAllText($ConfigPath)
+    if ($cfgText -match '(?m)^server_public_key:') {
+        $cfgText = $cfgText -replace '(?m)^server_public_key:[^\r\n]*', "server_public_key: `"$ServerPublicKey`""
+    } else {
+        if ($cfgText -and -not $cfgText.EndsWith("`n")) { $cfgText += "`r`n" }
+        $cfgText += "server_public_key: `"$ServerPublicKey`"`r`n"
+    }
+    [System.IO.File]::WriteAllText(
+        $ConfigPath, $cfgText, (New-Object System.Text.UTF8Encoding($false)))
 }
 
 # Install / update Windows service

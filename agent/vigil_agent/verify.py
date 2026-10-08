@@ -27,13 +27,23 @@ def _pin_path(data_dir: Path) -> Path:
     return data_dir / _PIN_FILENAME
 
 
-def pin_public_key(data_dir: Path, key_b64: str) -> VerifyKey:
-    """Pin the server's public key using TOFU. Returns the VerifyKey.
+def pin_public_key(data_dir: Path, key_b64: str, configured: str = "") -> VerifyKey:
+    """Pin the server's public key. Returns the VerifyKey.
 
-    Raises KeyMismatchError if a different key was already pinned.
+    With *configured* (the key the installer wrote into agent.yml, SEC-3) that
+    key is the only one accepted: a different key from the server raises, and
+    the pin file is ignored. Without it, trust on first use: the first key seen
+    is pinned, and a different one later raises KeyMismatchError.
     """
-    pin_file = _pin_path(data_dir)
     key_b64 = key_b64.strip()
+    if configured:
+        if key_b64 != configured.strip():
+            raise KeyMismatchError(
+                "Server public key differs from the one this agent was installed with "
+                "(server_public_key in agent.yml). Re-run the installer if the server's "
+                "key was rotated on purpose.")
+        return VerifyKey(base64.b64decode(configured))
+    pin_file = _pin_path(data_dir)
 
     if pin_file.exists():
         stored = pin_file.read_text().strip()
@@ -52,8 +62,11 @@ def pin_public_key(data_dir: Path, key_b64: str) -> VerifyKey:
     return VerifyKey(base64.b64decode(key_b64))
 
 
-def get_pinned_key(data_dir: Path) -> VerifyKey | None:
-    """Return the pinned VerifyKey, or None if no key is pinned yet."""
+def get_pinned_key(data_dir: Path, configured: str = "") -> VerifyKey | None:
+    """Return the pinned VerifyKey, or None if no key is pinned yet. The key
+    from agent.yml, when there is one, wins over the pin file."""
+    if configured:
+        return VerifyKey(base64.b64decode(configured))
     pin_file = _pin_path(data_dir)
     if not pin_file.exists():
         return None

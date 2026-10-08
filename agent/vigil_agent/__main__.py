@@ -753,7 +753,7 @@ def run_agent() -> None:
         signal.signal(signal.SIGTERM, _handle_signal)
         signal.signal(signal.SIGINT, _handle_signal)
 
-    verify_key = verify.get_pinned_key(config.data_dir)
+    verify_key = verify.get_pinned_key(config.data_dir, config.server_public_key)
 
     # ── Main checkin loop ────────────────────────────────────────────────
     # Hardware inventory shifts at human timescales — refresh once per hour
@@ -859,7 +859,8 @@ def run_agent() -> None:
             pub_key_b64 = response.get("public_key")
             if pub_key_b64:
                 try:
-                    verify_key = verify.pin_public_key(config.data_dir, pub_key_b64)
+                    verify_key = verify.pin_public_key(config.data_dir, pub_key_b64,
+                                                       config.server_public_key)
                 except KeyMismatchError:
                     logger.critical(
                         "SERVER PUBLIC KEY HAS CHANGED. This could indicate a compromised server. "

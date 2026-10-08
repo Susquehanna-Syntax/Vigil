@@ -148,6 +148,47 @@ elif [ -n "${VIGIL_TOKEN:-}" ]; then
   echo "Existing config kept; agent token replaced from VIGIL_TOKEN."
 fi
 
+# ── Server key and mode (SEC-3) ─────────────────────────────────────────────
+# The server's public key arrives in this script, over the same TLS download as
+# the agent binary, and is written into agent.yml. The agent then accepts only
+# that key: no trust on first use, and a pin file in the data directory (owned
+# by the unprivileged service account in monitor mode) cannot override it.
+SERVER_PUBLIC_KEY="{{ public_key }}"
+if [ -n "$SERVER_PUBLIC_KEY" ]; then
+  if grep -q '^server_public_key:' /etc/vigil/agent.yml; then
+    sed -i.bak "s|^server_public_key:.*|server_public_key: \"${SERVER_PUBLIC_KEY}\"|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+  else
+    printf 'server_public_key: "%s"\n' "$SERVER_PUBLIC_KEY" >> /etc/vigil/agent.yml
+  fi
+fi
+
+# A monitor-mode install used to hand agent.yml to the vigil-agent account, and
+# the mode written in it decides whether the next install creates a root
+# service. So a task-running mode is only believed from a file root owns, or
+# when the person running this installer says so with VIGIL_MODE.
+CFG_MODE="$(sed -n 's/^mode:[[:space:]]*//p' /etc/vigil/agent.yml 2>/dev/null | head -1 | tr -d '"'"'"' ')"
+CFG_OWNER="$(stat -c %u /etc/vigil/agent.yml 2>/dev/null || stat -f %u /etc/vigil/agent.yml 2>/dev/null || echo unknown)"
+if [ -n "${VIGIL_MODE:-}" ]; then
+  case "$VIGIL_MODE" in
+    monitor|managed|full_control) CFG_MODE="$VIGIL_MODE" ;;
+    *) echo "ERROR: VIGIL_MODE must be monitor, managed or full_control" >&2; exit 1 ;;
+  esac
+elif [ "${CFG_MODE:-monitor}" != "monitor" ] && [ "$CFG_OWNER" != "0" ]; then
+  echo "WARNING: agent.yml asks for mode '${CFG_MODE}' but was writable by a non-root account," >&2
+  echo "so it is not trusted to grant root. Installing in monitor mode. To confirm the mode," >&2
+  echo "re-run with: sudo env VIGIL_MODE=${CFG_MODE} bash install.sh" >&2
+  CFG_MODE="monitor"
+fi
+CFG_MODE="${CFG_MODE:-monitor}"
+if grep -q '^mode:' /etc/vigil/agent.yml; then
+  sed -i.bak "s|^mode:.*|mode: ${CFG_MODE}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+else
+  printf 'mode: %s\n' "$CFG_MODE" >> /etc/vigil/agent.yml
+fi
+# Root owns the config in every mode; monitor mode gets group read below.
+chown root /etc/vigil/agent.yml
+chmod 600 /etc/vigil/agent.yml
+
 # ── Service installation ────────────────────────────────────────────────────
 
 if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
@@ -184,8 +225,7 @@ Environment=no_proxy=${_np_full}"
   #
   # This matters because monitor is the mode this installer writes by default,
   # so most agents were running as root to do a job that needs none of it.
-  AGENT_MODE="$(sed -n 's/^mode:[[:space:]]*//p' /etc/vigil/agent.yml 2>/dev/null | head -1)"
-  AGENT_MODE="${AGENT_MODE:-monitor}"
+  AGENT_MODE="$CFG_MODE"
 
   RUN_AS=""
   HARDENING=""
@@ -196,8 +236,9 @@ Environment=no_proxy=${_np_full}"
     if id vigil-agent >/dev/null 2>&1; then
       mkdir -p /var/lib/vigil-agent
       chown -R vigil-agent /var/lib/vigil-agent
-      chown vigil-agent /etc/vigil/agent.yml 2>/dev/null || true
-      chmod 600 /etc/vigil/agent.yml 2>/dev/null || true
+      # Readable by the service account, writable only by root (SEC-3).
+      chown root:vigil-agent /etc/vigil/agent.yml 2>/dev/null || true
+      chmod 640 /etc/vigil/agent.yml 2>/dev/null || true
       RUN_AS="User=vigil-agent"
       # Safe for a process that only reads counters. Deliberately NOT applied
       # to managed or full_control: an agent whose job is systemctl and
