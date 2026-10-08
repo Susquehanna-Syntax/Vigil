@@ -996,8 +996,16 @@ async function openTaskDetail(runId) {
       card.appendChild(hdr);
 
       const hostLine = _tdEl('div', 'font-size:11px;color:var(--text-3);margin-bottom:' + (output ? '8' : '0') + 'px;');
-      hostLine.textContent = (task.host_hostname || String(task.host)) +
-        (task.completed_at ? ' · ' + new Date(task.completed_at).toLocaleString() : '');
+      const hostLink = document.createElement('button');
+      hostLink.type = 'button';
+      hostLink.className = 'host-run-link';
+      hostLink.setAttribute('data-host-run', String(task.host));
+      hostLink.textContent = task.host_hostname || String(task.host);
+      hostLine.appendChild(hostLink);
+      if (task.completed_at) {
+        hostLine.appendChild(document.createTextNode(
+          ' · ' + new Date(task.completed_at).toLocaleString()));
+      }
       card.appendChild(hostLine);
 
       // Per-step rows first — what happened, in words — and the raw output
@@ -1029,7 +1037,7 @@ async function openTaskDetail(runId) {
       stepsEl.appendChild(card);
     }
 
-    if (typeof wireRunSummary === 'function') wireRunSummary(stepsEl, run.summary);
+    if (typeof wireRunSummary === 'function') wireRunSummary(stepsEl, run.summary, run);
 
     const huntBtn = document.getElementById('task-detail-hunt');
     if (huntBtn) {

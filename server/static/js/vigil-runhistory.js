@@ -128,7 +128,7 @@ async function _openRunDetail(runId) {
   const rows = tasks.length
     ? tasks.map((t) => `
         <div class="run-task" data-host="${escAttr(String(t.host))}">
-          <span class="run-task-host">${escHtml(t.host_hostname || t.hostname || t.host || '')}</span>
+          <button type="button" class="run-task-host host-run-link" data-host-run="${escAttr(String(t.host))}">${escHtml(t.host_hostname || t.hostname || t.host || '')}</button>
           <span class="run-state t-${_RUN_STATE_ACCENT[t.state] || 'lav'}">${escHtml(t.state)}</span>
           ${_stepResultsHtml(t.result_data, t.result_output)
             ? `${_stepResultsHtml(t.result_data, t.result_output)}<details class="step-output-more"><summary>Full output</summary><pre class="run-task-out">${escHtml(t.result_output || '')}</pre></details>`
@@ -150,7 +150,7 @@ async function _openRunDetail(runId) {
   const close = () => m.close();
   m.modal.querySelector('#rd-x').onclick = close;
   m.modal.querySelector('#rd-close').onclick = close;
-  if (typeof wireRunSummary === 'function') wireRunSummary(m.modal, run.summary);
+  if (typeof wireRunSummary === 'function') wireRunSummary(m.modal, run.summary, run);
   // A playbook run draws its flow: give it the room the lanes need.
   if (run.flow_snapshot) m.modal.classList.add('modal-flow');
   const huntBtnEl = m.modal.querySelector('#rd-hunt');
