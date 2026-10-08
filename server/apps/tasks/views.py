@@ -1203,6 +1203,10 @@ def definition_list(request):
                                    if run else None)
         return Response(data)
 
+    from .authz import author_denied
+    denied = author_denied(request.user)
+    if denied:
+        return denied
     yaml_source = request.data.get("yaml_source", "")
     # All tasks are created private. Sharing happens through the explicit
     # publish endpoint, which later will gate on community-repo upload.
@@ -1231,9 +1235,13 @@ def definition_detail(request, definition_id):
     if request.method == "GET":
         return Response(TaskDefinitionSerializer(definition).data)
 
-    # Mutations require ownership.
+    # Mutations require ownership, and a role that may write tasks at all.
     if definition.owner_id != request.user.id:
         return Response({"error": "You do not own this definition"}, status=403)
+    from .authz import author_denied
+    denied = author_denied(request.user)
+    if denied:
+        return denied
 
     # PUT — update from new YAML source. Visibility is NOT editable here;
     # use the publish/unpublish endpoints.
@@ -1263,6 +1271,10 @@ def definition_validate(request):
 @permission_classes([IsAuthenticated])
 def definition_fork(request, definition_id):
     """Fork a community template into the current user's library."""
+    from .authz import author_denied
+    denied = author_denied(request.user)
+    if denied:
+        return denied
     source = get_object_or_404(TaskDefinition, pk=definition_id)
     if not _user_can_see(source, request.user):
         return Response({"error": "Not found"}, status=404)
@@ -1345,12 +1357,15 @@ def definition_deploy(request, definition_id):
         wanted = {t.strip().lower() for t in raw_tags if t.strip()}
         if not wanted:
             return Response({"error": "tags is empty after normalization"}, status=400)
+        from .authz import runnable
         candidate_hosts = Host.objects.filter(
             status=Host.Status.ONLINE
         ).exclude(mode=Host.Mode.MONITOR)
+        # Only hosts this user may run tasks on: tag targeting must never
+        # reach into a site the user cannot see (SEC-1).
         host_ids = [
             str(h.id)
-            for h in candidate_hosts
+            for h in runnable(request.user, candidate_hosts)
             if any(isinstance(t, str) and t.lower() in wanted for t in (h.tags or []))
         ]
         if not host_ids:
@@ -1400,6 +1415,12 @@ def definition_deploy(request, definition_id):
     hosts = list(Host.objects.filter(id__in=host_ids))
     if len(hosts) != len(host_ids):
         return Response({"error": "One or more hosts not found"}, status=404)
+    # A signed task runs as root on its host: the caller must be allowed to run
+    # tasks on every target, in that target's site (SEC-1).
+    from .authz import run_denied
+    denied = run_denied(request.user, hosts)
+    if denied:
+        return denied
 
     # target_tags acts as an OR filter: a host is eligible if any of its
     # tags appears in the definition's target_tags. Auto-classified tags
@@ -2215,6 +2236,10 @@ def _plan_fork(kind: str, filename: str, user) -> dict:
 @permission_classes([IsAuthenticated])
 def community_fork_plan(request, kind: str, filename: str):
     """What forking this catalog item would create, without creating it."""
+    from .authz import author_denied
+    denied = author_denied(request.user)
+    if denied:
+        return denied
     if kind not in COMMUNITY_KINDS:
         return Response({"error": f"unknown content kind {kind!r}"}, status=404)
     try:
@@ -2328,6 +2353,17 @@ def definition_archive(request, definition_id):
     definition = get_object_or_404(TaskDefinition, pk=definition_id)
     if not _user_can_see(definition, request.user):
         return Response({"error": "Not found"}, status=404)
+    # Seeing a community definition is not owning it: archiving retires it for
+    # everyone, so only its owner (with a role that writes tasks) may.
+    from apps.accounts.models import Role
+    from apps.accounts.permissions import OWNER, role_of
+
+    from .authz import author_denied
+    denied = author_denied(request.user)
+    if denied:
+        return denied
+    if definition.owner_id != request.user.id and role_of(request.user) not in (OWNER, Role.ADMIN):
+        return Response({"error": "You do not own this definition"}, status=403)
 
     restore = bool(request.data.get("restore"))
     definition.archived_at = None if restore else now()
