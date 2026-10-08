@@ -923,6 +923,11 @@ def unmanaged_devices(request):
         qs = UnmanagedDevice.objects.all()
         return Response(UnmanagedDeviceSerializer(qs, many=True).data)
 
+    # Editing and deleting a device are admin-only; adding one is the same kind
+    # of inventory write (SEC-1).
+    from apps.accounts.permissions import IsAdmin
+    if not IsAdmin().has_permission(request, None):
+        return Response({"error": "Administrator access required."}, status=status.HTTP_403_FORBIDDEN)
     serializer = UnmanagedDeviceSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

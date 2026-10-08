@@ -219,3 +219,19 @@ class ReadScopeTests(Sec1Base):
         names = {r["name_snapshot"] for r in rows}
         self.assertIn("west run", names)
         self.assertNotIn("lab run", names)
+
+
+class SweepTests(Sec1Base):
+    def _post(self, user, url, body=None):
+        self.client.force_login(user)
+        with patch("apps.accounts.totp.require_totp_confirmation", return_value=None):
+            return self.client.post(url, {"totp": "123456", **(body or {})}, content_type="application/json")
+
+    def test_a_viewer_cannot_launch_a_vulnerability_scan(self):
+        resp = self._post(_user("viewer", Role.VIEWER), f"/api/v1/vulns/scans/{self.west_host.id}/")
+        self.assertEqual(resp.status_code, 403, resp.content)
+
+    def test_a_viewer_cannot_add_an_unmanaged_device(self):
+        resp = self._post(_user("viewer", Role.VIEWER), "/api/v1/hosts/devices/",
+                          {"name": "printer", "ip_address": "10.0.0.9"})
+        self.assertEqual(resp.status_code, 403, resp.content)

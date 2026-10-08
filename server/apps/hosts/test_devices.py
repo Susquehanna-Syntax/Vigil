@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from apps.accounts.models import Role, UserProfile
 from apps.hosts.models import UnmanagedDevice
 
 
@@ -9,6 +10,8 @@ class UnmanagedDeviceApiTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.user = get_user_model().objects.create_user("op", password="pw")
+        # Adding a device is admin-only, like editing one (SEC-1).
+        UserProfile.objects.create(user=self.user, role=Role.ADMIN)
         self.client.force_authenticate(self.user)
 
     def test_create_and_list_device(self):
