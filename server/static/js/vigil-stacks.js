@@ -155,7 +155,7 @@ async function saveStack() {
 }
 
 async function _stackTotpAction(path, payload, done) {
-  const code = window.prompt('This needs your TOTP code:');
+  const code = await totpPrompt('This change runs on the host.');
   if (!code) return null;
   try {
     return await apiJson(path, { method: 'POST', body: JSON.stringify({ ...payload, totp: code.trim() }) });

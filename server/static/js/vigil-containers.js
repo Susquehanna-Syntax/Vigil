@@ -5,9 +5,10 @@
 //   page are vigil-stacks.js's (#managed-stacks).
 // HTML: templates/pages/_containers.html
 // Depends on: vigil-utils.js (escHtml, escAttr, apiJson, showToast, getCsrf,
-//   pollingInterval), vigil-deploy.js (openBuiltinTask, openUpdateContainer),
-//   vigil-stacks.js (renderManagedStacks), vigil-host-cards.js (getPins),
-//   vigil-monitor.js (monitorHostId, to follow the host already on screen).
+//   pollingInterval, totpPrompt), vigil-deploy.js (openBuiltinTask,
+//   openUpdateContainer), vigil-stacks.js (renderManagedStacks),
+//   vigil-host-cards.js (getPins), vigil-monitor.js (monitorHostId, to follow
+//   the host already on screen).
 // API: GET /api/v1/hosts/{id}/containers/, /api/v1/hosts/{id}/stacks/,
 //      POST /api/v1/stacks/adopt/, POST /api/v1/hosts/{id}/containers/{name}/logs/
 
@@ -119,8 +120,12 @@ async function renderDockerContainers(hostId) {
         ${stackMeta}${stackActs}
       </div>
       <table class="ctr-table">
+        <colgroup>
+          <col class="ctr-c-name"><col class="ctr-c-image"><col class="ctr-c-state">
+          <col class="ctr-c-cpu"><col class="ctr-c-mem"><col class="ctr-c-acts">
+        </colgroup>
         <thead><tr>
-          <th>Container</th><th>Image</th><th>State</th>
+          <th>Name</th><th>Image</th><th>State</th>
           <th class="num">CPU</th><th class="num">Memory</th><th></th>
         </tr></thead>
         <tbody>`;
@@ -170,7 +175,7 @@ async function renderDockerContainers(hostId) {
     openContainerLogs(btn.dataset.host, btn.dataset.name);
   }));
   wrap.querySelectorAll('[data-stack-adopt]').forEach(btn => btn.addEventListener('click', async () => {
-    const totp = window.prompt(`Adopting ${btn.dataset.project} reads its compose file and .env into Vigil. Your TOTP code:`);
+    const totp = await totpPrompt(`Adopting ${btn.dataset.project} reads its compose file and .env into Vigil.`);
     if (!totp) return;
     try {
       await apiJson('/api/v1/stacks/adopt/', { method: 'POST', body: JSON.stringify(
@@ -219,7 +224,7 @@ function _logEls() {
 }
 
 async function openContainerLogs(hostId, name) {
-  const totp = window.prompt(`Reading the logs of ${name} needs your TOTP code:`);
+  const totp = await totpPrompt(`Reading the logs of ${name} shows everything those containers printed.`);
   if (!totp) return;
   let opened;
   try {

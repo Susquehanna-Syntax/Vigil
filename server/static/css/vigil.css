@@ -2044,7 +2044,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   font-size: 11px;
   color: var(--text-3);
 }
-.ctr-table { width: 100%; border-collapse: collapse; }
+.ctr-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .ctr-table thead th {
   text-align: left;
   font-size: 11px;
@@ -3896,4 +3896,33 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
   font-family: var(--font-mono); font-size: 11px; background: var(--s0);
   max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-all;
   margin: 0 0 10px; padding: 8px 10px; border-radius: var(--r-md);
+}
+
+/* QA-17: containers host control, aligned stack tables, TOTP dialog ───── */
+.ctr-controls { margin-bottom: 18px; }
+/* The base .form-control is width:100%, which a flex control bar does not
+   want; the Firewall page's picker does the same with .fw-host-select. */
+.ctr-host-select { width: auto; min-width: 260px; max-width: 100%; }
+
+/* Fixed columns so every stack card's Name/Image/State/CPU/Memory/buttons
+   sit at the same x down the page. */
+.ctr-c-name { width: 22%; }
+.ctr-c-image { width: 28%; }
+.ctr-c-state { width: 11%; }
+.ctr-c-cpu { width: 8%; }
+.ctr-c-mem { width: 9%; }
+.ctr-c-acts { width: 22%; }
+.ctr-table td { overflow: hidden; text-overflow: ellipsis; }
+.ctr-fix { white-space: normal; }
+
+@media (max-width: 760px) {
+  .docker-stack { overflow-x: auto; }
+  .ctr-table { min-width: 680px; }
+}
+
+.totp-input {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 22px;
+  letter-spacing: .4em;
+  text-align: center;
 }
