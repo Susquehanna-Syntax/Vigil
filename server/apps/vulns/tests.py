@@ -3,7 +3,7 @@ from django.test import TestCase, override_settings
 from django.utils.timezone import now
 from rest_framework.test import APIClient
 
-from apps.accounts.models import UserProfile
+from apps.accounts.models import Role, UserProfile
 from apps.accounts.totp import generate_secret, generate_totp
 from apps.hosts.models import Host
 
@@ -145,7 +145,8 @@ class ScanCreateTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.user = get_user_model().objects.create_user("op", password="pw")
-        profile = UserProfile.objects.create(user=self.user)
+        # Launching a scan needs tasks:run (SEC-1); a bare profile is a viewer.
+        profile = UserProfile.objects.create(user=self.user, role=Role.OPERATOR)
         self.secret = generate_secret()
         profile.totp_secret = self.secret
         profile.totp_confirmed_at = now()
