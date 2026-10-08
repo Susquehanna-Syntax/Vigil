@@ -57,12 +57,52 @@ function Test-Link([string]$Path) {
     return ($null -ne $item) -and [bool]($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
 }
 
+$Trusted = @("S-1-5-18", "S-1-5-32-544", "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464")
+# Write-type rights (the same set the agent checks in scripttrust.py).
+$WriteMask = 0x2 -bor 0x4 -bor 0x10 -bor 0x100 -bor 0x10000 -bor 0x40000 -bor 0x80000 -bor 0x40000000 -bor 0x10000000
+
+# True when someone other than SYSTEM, Administrators or TrustedInstaller owns
+# the file or may change it: the agent would refuse to run it, so the installer
+# must not adopt it either.
+function Test-Untrusted([string]$Path) {
+    $sid = [System.Security.Principal.SecurityIdentifier]
+    $acl = Get-Acl -LiteralPath $Path
+    if ($Trusted -notcontains $acl.GetOwner($sid).Value) { return $true }
+    foreach ($rule in $acl.GetAccessRules($true, $true, $sid)) {
+        if ($rule.AccessControlType -ne 'Allow') { continue }
+        if ($rule.PropagationFlags -band [System.Security.AccessControl.PropagationFlags]::InheritOnly) { continue }
+        if (($Trusted -notcontains $rule.IdentityReference.Value) -and ([int64]$rule.FileSystemRights -band $WriteMask)) { return $true }
+    }
+    return $false
+}
+
+# Move an untrusted file to the quarantine folder, keeping its path relative to
+# the scripts folder so two files with one name cannot overwrite each other. If
+# it cannot be moved it is deleted; only if that fails too does the install stop.
+function Move-ToQuarantine([string]$Path) {
+    $rel = $Path.Substring($ScriptsDir.Length).TrimStart('\')
+    $dest = Join-Path $Quarantine $rel
+    try {
+        New-Item -ItemType Directory -Force -Path (Split-Path $dest -Parent) | Out-Null
+        Move-Item -LiteralPath $Path -Destination $dest -ErrorAction Stop
+        Write-Host "Quarantined a script a non-administrator could change: $Path"
+    } catch {
+        try {
+            Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+            Write-Host "Deleted a script a non-administrator could change (it could not be moved): $Path"
+        } catch {
+            throw "A script under $ScriptsDir is not an administrator's and can be neither moved nor deleted: $Path"
+        }
+    }
+}
+
 # Take every item under $Root back and make it inherit the locked parent, top
-# down, one item at a time (SEC-2/SEC-3). icacls /T follows directory junctions
-# even with /L (measured on the Windows VM), so it is never used here. A folder
-# is reset before it is listed, so nobody can add an entry to it while the walk
-# is under way; a link a user planted is deleted (the link, not its target) and
-# never entered.
+# down, one item at a time. icacls /T follows directory junctions even with /L
+# (measured on the Windows VM), so it is never used. A folder is locked before
+# it is listed, so nothing can be added, renamed or swapped in it behind the
+# walk. Links are deleted (the link, not its target) and never entered. A file
+# under scripts that a non-administrator owns or may change is quarantined
+# rather than adopted: taking ownership would make it look trusted.
 function Lock-Tree([string]$Root) {
     $pending = New-Object System.Collections.Stack
     $pending.Push($Root)
@@ -73,6 +113,11 @@ function Lock-Tree([string]$Root) {
                 if ($child.PSIsContainer) { [System.IO.Directory]::Delete($child.FullName) }
                 else { [System.IO.File]::Delete($child.FullName) }
                 Write-Host "Removed a link someone planted in the agent's folder: $($child.FullName)"
+                continue
+            }
+            $inScripts = $child.FullName.StartsWith($ScriptsDir + '\', [System.StringComparison]::OrdinalIgnoreCase)
+            if (-not $child.PSIsContainer -and $inScripts -and (Test-Untrusted $child.FullName)) {
+                Move-ToQuarantine $child.FullName
                 continue
             }
             Invoke-AclStep $child.FullName /setowner $Admins /L
@@ -95,30 +140,7 @@ New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
 #    /L: act on a link itself, never its target.
 Invoke-AclStep $ConfigDir /setowner $Admins /L
 Invoke-AclStep $ConfigDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" /grant "$($Admins):(OI)(CI)(F)" /grant "*S-1-5-32-545:(RX)" /L
-# 1b. Scripts someone other than SYSTEM, Administrators or TrustedInstaller
-#     owns are not adopted: taking ownership would make them look trusted to
-#     the agent. They are moved to a quarantine folder (locked like the rest)
-#     for an administrator to inspect.
-$Trusted = @("S-1-5-18", "S-1-5-32-544", "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464")
 $Quarantine = Join-Path $ConfigDir ("quarantine-" + (Get-Date -Format "yyyyMMddHHmmss"))
-if ((Test-Path -LiteralPath $ScriptsDir) -and -not (Test-Link $ScriptsDir)) {
-    # Walked by hand: a recursive Get-ChildItem can descend through a junction,
-    # and this runs elevated. Links are skipped here and removed by Lock-Tree.
-    $pending = New-Object System.Collections.Stack
-    $pending.Push($ScriptsDir)
-    while ($pending.Count -gt 0) {
-        foreach ($item in Get-ChildItem -LiteralPath $pending.Pop() -Force -ErrorAction Stop) {
-            if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { continue }
-            if ($item.PSIsContainer) { $pending.Push($item.FullName); continue }
-            $owner = (Get-Acl -LiteralPath $item.FullName).GetOwner([System.Security.Principal.SecurityIdentifier]).Value
-            if ($Trusted -notcontains $owner) {
-                New-Item -ItemType Directory -Force -Path $Quarantine | Out-Null
-                Move-Item -LiteralPath $item.FullName -Destination (Join-Path $Quarantine $item.Name) -Force
-                Write-Host "Quarantined a script a non-administrator owned: $($item.FullName)"
-            }
-        }
-    }
-}
 # 2. Everything already inside: owned by Administrators, inheriting the lock,
 #    links removed. An owner can always rewrite an ACL, and icacls /grant only
 #    adds, so anything a user pre-created would otherwise stay theirs. agent.yml,
