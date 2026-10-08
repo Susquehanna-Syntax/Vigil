@@ -510,7 +510,7 @@ function _fwRenderRules(hostId, data) {
 /* ── Writes ──────────────────────────────────────────────────────────── */
 
 async function applyFirewallChange(hostId, action, params, btn) {
-  const totp = (window.prompt('Enter your TOTP code to apply this firewall change:') || '').trim();
+  const totp = await totpPrompt('Apply this firewall change.');
   if (!totp) return;
   const prevOpacity = btn ? btn.style.opacity : '';
   if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }

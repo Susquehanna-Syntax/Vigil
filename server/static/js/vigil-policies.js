@@ -256,7 +256,7 @@ async function savePolicy() {
   if (wantHighRisk !== (current ? current.allow_high_risk : false)) {
     body.allow_high_risk = wantHighRisk;
     if (wantHighRisk) {
-      const code = window.prompt('Allowing unattended restarts needs your TOTP code:');
+      const code = await totpPrompt('Allow unattended restarts from this policy.');
       if (!code) return;
       body.totp = code.trim();
     }

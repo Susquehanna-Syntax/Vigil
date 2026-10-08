@@ -253,7 +253,7 @@ async function refreshVulnScans() {
 }
 
 async function startVulnScan(hostId, btn) {
-  const totp = (window.prompt('Enter your TOTP code to launch a vulnerability scan:') || '').trim();
+  const totp = await totpPrompt('Launch a vulnerability scan.');
   if (!totp) return;
   try {
     btn.disabled = true; btn.style.opacity = '0.5';
