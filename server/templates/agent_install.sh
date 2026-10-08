@@ -84,6 +84,41 @@ mkdir -p /etc/vigil
 # 0755 regardless of umask: monitor mode runs as vigil-agent, which must traverse this dir (agent.yml itself stays 0600).
 chmod 0755 /etc/vigil
 
+# VIGIL_TOKEN ends up inside sed replacements: accept only a plain token.
+if [ -n "${VIGIL_TOKEN:-}" ] && ! printf '%s' "$VIGIL_TOKEN" | grep -Eq '^[A-Za-z0-9_-]{16,128}$'; then
+  echo "ERROR: VIGIL_TOKEN must be 16-128 letters, digits, '-' or '_'." >&2
+  exit 1
+fi
+
+# A config the unprivileged service account could write is not trusted at all
+# (SEC-3). Monitor-mode installs used to hand agent.yml to vigil-agent, and
+# everything in it (server_url, mode, allowlist, paths) would otherwise flow
+# into the service this installer creates, possibly as root. Reading single
+# keys back out of it with sed is no answer either: YAML and sed can disagree
+# about what a file says. So it is set aside and rebuilt below as on a fresh
+# install, carrying over only the agent token, which is the host's identity.
+if [ -f /etc/vigil/agent.yml ]; then
+  CFG_OWNER="$(stat -c %u /etc/vigil/agent.yml 2>/dev/null || stat -f %u /etc/vigil/agent.yml 2>/dev/null || echo unknown)"
+  CFG_PERM="$(stat -c %a /etc/vigil/agent.yml 2>/dev/null || stat -f %Lp /etc/vigil/agent.yml 2>/dev/null || echo 777)"
+  if [ "$CFG_OWNER" != "0" ] || [ $(( 0$CFG_PERM & 022 )) -ne 0 ]; then
+    if [ -z "${VIGIL_TOKEN:-}" ]; then
+      KEPT_TOKEN="$(sed -n 's/^agent_token:[[:space:]]*//p' /etc/vigil/agent.yml | head -1 | tr -d '"'"'"' ')"
+      # It came from a file root does not trust and goes into a sed command
+      # run as root: only a plain token shape is carried over.
+      if printf '%s' "$KEPT_TOKEN" | grep -Eq '^[A-Za-z0-9_-]{16,128}$'; then
+        VIGIL_TOKEN="$KEPT_TOKEN"
+      else
+        echo "WARNING: the old agent token was not a valid token; a new one is generated and the host must be approved again." >&2
+      fi
+    fi
+    mv -f /etc/vigil/agent.yml "/etc/vigil/agent.yml.untrusted.$(date +%s)"
+    chmod 600 /etc/vigil/agent.yml.untrusted.* 2>/dev/null || true
+    chown root /etc/vigil/agent.yml.untrusted.* 2>/dev/null || true
+    echo "WARNING: /etc/vigil/agent.yml was writable by a non-root account, so none of its" >&2
+    echo "settings are trusted. It was set aside and rebuilt; only the agent token was kept." >&2
+  fi
+fi
+
 if [ ! -f /etc/vigil/agent.yml ]; then
   cat > /etc/vigil/agent.yml << 'EOF'
 server_url: "REPLACE_WITH_SERVER_URL"
@@ -162,23 +197,19 @@ if [ -n "$SERVER_PUBLIC_KEY" ]; then
   fi
 fi
 
-# A monitor-mode install used to hand agent.yml to the vigil-agent account, and
-# the mode written in it decides whether the next install creates a root
-# service. So a task-running mode is only believed from a file root owns, or
-# when the person running this installer says so with VIGIL_MODE.
+# agent.yml is root-owned by now (an untrusted one was rebuilt above), so the
+# mode in it was written by root. VIGIL_MODE lets the admin set it here.
 CFG_MODE="$(sed -n 's/^mode:[[:space:]]*//p' /etc/vigil/agent.yml 2>/dev/null | head -1 | tr -d '"'"'"' ')"
-CFG_OWNER="$(stat -c %u /etc/vigil/agent.yml 2>/dev/null || stat -f %u /etc/vigil/agent.yml 2>/dev/null || echo unknown)"
 if [ -n "${VIGIL_MODE:-}" ]; then
   case "$VIGIL_MODE" in
     monitor|managed|full_control) CFG_MODE="$VIGIL_MODE" ;;
     *) echo "ERROR: VIGIL_MODE must be monitor, managed or full_control" >&2; exit 1 ;;
   esac
-elif [ "${CFG_MODE:-monitor}" != "monitor" ] && [ "$CFG_OWNER" != "0" ]; then
-  echo "WARNING: agent.yml asks for mode '${CFG_MODE}' but was writable by a non-root account," >&2
-  echo "so it is not trusted to grant root. Installing in monitor mode. To confirm the mode," >&2
-  echo "re-run with: sudo env VIGIL_MODE=${CFG_MODE} bash install.sh" >&2
-  CFG_MODE="monitor"
 fi
+case "${CFG_MODE:-monitor}" in
+  monitor|managed|full_control) ;;
+  *) echo "WARNING: unknown mode '${CFG_MODE}' in agent.yml; using monitor" >&2; CFG_MODE="monitor" ;;
+esac
 CFG_MODE="${CFG_MODE:-monitor}"
 if grep -q '^mode:' /etc/vigil/agent.yml; then
   sed -i.bak "s|^mode:.*|mode: ${CFG_MODE}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak

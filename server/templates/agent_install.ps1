@@ -57,11 +57,13 @@ function Test-Link([string]$Path) {
     return ($null -ne $item) -and [bool]($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
 }
 
-# A link a user planted is never part of Vigil's tree, and the steps below run
-# elevated: following one would rewrite owners and ACLs wherever it points.
-# Delete each link itself (Directory.Delete / File.Delete on a reparse point
-# removes the link, not its target) and never descend into one.
-function Remove-PlantedLinks([string]$Root) {
+# Take every item under $Root back and make it inherit the locked parent, top
+# down, one item at a time (SEC-2/SEC-3). icacls /T follows directory junctions
+# even with /L (measured on the Windows VM), so it is never used here. A folder
+# is reset before it is listed, so nobody can add an entry to it while the walk
+# is under way; a link a user planted is deleted (the link, not its target) and
+# never entered.
+function Lock-Tree([string]$Root) {
     $pending = New-Object System.Collections.Stack
     $pending.Push($Root)
     while ($pending.Count -gt 0) {
@@ -71,9 +73,11 @@ function Remove-PlantedLinks([string]$Root) {
                 if ($child.PSIsContainer) { [System.IO.Directory]::Delete($child.FullName) }
                 else { [System.IO.File]::Delete($child.FullName) }
                 Write-Host "Removed a link someone planted in the agent's folder: $($child.FullName)"
-            } elseif ($child.PSIsContainer) {
-                $pending.Push($child.FullName)
+                continue
             }
+            Invoke-AclStep $child.FullName /setowner $Admins /L
+            Invoke-AclStep $child.FullName /reset /L
+            if ($child.PSIsContainer) { $pending.Push($child.FullName) }
         }
     }
 }
@@ -87,21 +91,15 @@ if (Test-Link $ConfigDir) {
 }
 New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
 
-# 1. Take the top folder alone and lock it, so nobody else can add anything
-#    while the rest is cleaned. /L: act on a link itself, never its target.
-Invoke-AclStep $ConfigDir /setowner $Admins /L /C
+# 1. Take the top folder and lock it, so nobody else can add anything to it.
+#    /L: act on a link itself, never its target.
+Invoke-AclStep $ConfigDir /setowner $Admins /L
 Invoke-AclStep $ConfigDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" /grant "$($Admins):(OI)(CI)(F)" /grant "*S-1-5-32-545:(RX)" /L
-# 2. No links below it.
-Remove-PlantedLinks $ConfigDir
-# 3. Ownership of everything already inside (an owner can always rewrite an
-#    ACL, so anything a user pre-created would otherwise stay theirs), then drop
-#    every explicit entry so it all inherits the locked parent. icacls /grant
-#    only ever adds, so an entry a user put on a file would otherwise survive.
-#    agent.yml, data and the service account's grants are re-applied below.
-if (Get-ChildItem -LiteralPath $ConfigDir -Force) {
-    Invoke-AclStep (Join-Path $ConfigDir "*") /setowner $Admins /T /L /C
-    Invoke-AclStep (Join-Path $ConfigDir "*") /reset /T /L /C
-}
+# 2. Everything already inside: owned by Administrators, inheriting the lock,
+#    links removed. An owner can always rewrite an ACL, and icacls /grant only
+#    adds, so anything a user pre-created would otherwise stay theirs. agent.yml,
+#    data and the service account's grants are re-applied explicitly below.
+Lock-Tree $ConfigDir
 New-Item -ItemType Directory -Force -Path $DataDir    | Out-Null
 New-Item -ItemType Directory -Force -Path $ScriptsDir | Out-Null
 if (-not (Test-Path $LogPath)) { New-Item -ItemType File -Path $LogPath | Out-Null }
@@ -264,7 +262,7 @@ allowlist:
     # agent.yml holds the agent token. install.sh writes it 0600; the Windows
     # default ACL on C:\ProgramData lets any local user read it. Strip
     # inheritance and grant only SYSTEM and Administrators.
-    & icacls.exe $ConfigPath /inheritance:r /grant "*S-1-5-18:(F)" /grant "*S-1-5-32-544:(F)" | Out-Null
+    Invoke-AclStep $ConfigPath /inheritance:r /grant "*S-1-5-18:(F)" /grant "*S-1-5-32-544:(F)" /L
 
     if ($env:VIGIL_TOKEN) {
         Write-Host "Agent token configured from VIGIL_TOKEN."
@@ -343,11 +341,11 @@ if ($AgentMode -eq "monitor") {
     } else {
         # The virtual account exists only once the service does, so grant its
         # access now: read the config and binary, write its own state.
-        & icacls.exe $ConfigPath /grant "$($ServiceAccount):(R)" | Out-Null
+        Invoke-AclStep $ConfigPath /grant "$($ServiceAccount):(R)" /L
         # The service writes its own log; the locked config folder no longer
         # lets anyone but SYSTEM and Administrators create files in it.
-        & icacls.exe $LogPath /grant "$($ServiceAccount):(M)" | Out-Null
-        & icacls.exe $DataDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" /grant "*S-1-5-32-544:(OI)(CI)(F)" /grant "$($ServiceAccount):(OI)(CI)(M)" | Out-Null
+        Invoke-AclStep $LogPath /grant "$($ServiceAccount):(M)" /L
+        Invoke-AclStep $DataDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" /grant "*S-1-5-32-544:(OI)(CI)(F)" /grant "$($ServiceAccount):(OI)(CI)(M)" /L
         # The whole install tree, not just the exe. A onedir build is an exe
         # plus an _internal directory of DLLs and data; granting the account
         # access to the exe alone starts a process that dies immediately
@@ -362,7 +360,7 @@ if ($AgentMode -eq "monitor") {
 } else {
     cmd.exe /c ('sc create ' + $ServiceName + ' binPath= ' + $BinPathQuoted + ' start= auto DisplayName= "Vigil Monitoring Agent"') | Out-Null
     $ServiceAccount = "LocalSystem"
-    & icacls.exe $DataDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" /grant "*S-1-5-32-544:(OI)(CI)(F)" | Out-Null
+    Invoke-AclStep $DataDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" /grant "*S-1-5-32-544:(OI)(CI)(F)" /L
     Write-Host "Mode '$AgentMode' executes tasks, so the agent runs as LocalSystem."
 }
 & sc.exe description $ServiceName "Vigil agent — outbound-only monitoring and managed tasks." | Out-Null

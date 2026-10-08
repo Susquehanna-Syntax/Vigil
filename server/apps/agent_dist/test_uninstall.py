@@ -111,20 +111,27 @@ class WindowsConfigTreeLockedTests(SimpleTestCase):
         return self.ps1.index(needle)
 
     def test_top_folder_is_locked_first_by_sid_without_following_links(self):
-        take = self._at('Invoke-AclStep $ConfigDir /setowner $Admins /L /C')
+        take = self._at('Invoke-AclStep $ConfigDir /setowner $Admins /L')
         lock = self._at('Invoke-AclStep $ConfigDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" '
                         '/grant "$($Admins):(OI)(CI)(F)" /grant "*S-1-5-32-545:(RX)" /L')
         self.assertLess(take, lock)
 
-    def test_links_are_removed_before_anything_recurses(self):
-        remove = self._at("Remove-PlantedLinks $ConfigDir\n")
-        own = self._at('Invoke-AclStep (Join-Path $ConfigDir "*") /setowner $Admins /T /L /C')
-        reset = self._at('Invoke-AclStep (Join-Path $ConfigDir "*") /reset /T /L /C')
-        self.assertLess(self._at('Invoke-AclStep $ConfigDir /inheritance:r'), remove)
-        self.assertLess(remove, own)
-        self.assertLess(own, reset)
-        self.assertLess(reset, self._at("icacls.exe $ConfigPath /inheritance:r"),
-                        "agent.yml's own lock must come after the reset, or the reset undoes it")
+    def test_the_tree_is_walked_top_down_never_with_icacls_recursion(self):
+        # icacls /T follows directory junctions even with /L (measured on the VM).
+        walk = self.ps1[self.ps1.index("function Lock-Tree"):self.ps1.index("# The folder itself may be a link")]
+        self.assertNotIn("/T", walk)
+        self.assertIn("ReparsePoint", walk)
+        self.assertIn("[System.IO.Directory]::Delete($child.FullName)", walk)
+        self.assertLess(walk.index("/setowner $Admins /L"), walk.index("$pending.Push($child.FullName)"),
+                        "a folder is taken over before it is listed")
+        config_steps = [line for line in self.ps1.splitlines()
+                        if "$ConfigDir" in line and "icacls" in line.lower() and "/T" in line]
+        self.assertEqual(config_steps, [])
+
+    def test_the_walk_runs_after_the_top_lock_and_before_the_specific_grants(self):
+        walk = self._at("Lock-Tree $ConfigDir\n")
+        self.assertLess(self._at("Invoke-AclStep $ConfigDir /inheritance:r"), walk)
+        self.assertLess(walk, self._at("Invoke-AclStep $ConfigPath /inheritance:r"))
 
     def test_a_planted_config_folder_link_is_replaced_before_use(self):
         check = self._at("if (Test-Link $ConfigDir)")
@@ -142,7 +149,7 @@ class WindowsConfigTreeLockedTests(SimpleTestCase):
                         self._at("New-Item -ItemType Directory -Force -Path $ScriptsDir"))
 
     def test_monitor_service_can_still_write_its_log(self):
-        self.assertIn('icacls.exe $LogPath /grant "$($ServiceAccount):(M)"', self.ps1)
+        self.assertIn('Invoke-AclStep $LogPath /grant "$($ServiceAccount):(M)" /L', self.ps1)
 
     def test_server_key_is_written_into_agent_yml(self):
         self.assertIn('$ServerPublicKey = "K"', self.ps1)
