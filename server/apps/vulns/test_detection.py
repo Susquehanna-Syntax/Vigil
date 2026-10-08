@@ -29,7 +29,7 @@ class DetectionFindingTests(TestCase):
                                    nonce=f"{self.n}" * 64, state=Task.State.DISPATCHED)
         resp = self.client.post("/api/v1/tasks/result/", data=json.dumps(
             {"task_id": str(task.id), "state": state, "output": "x", "steps": steps}),
-            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.host.agent_token}")
+            content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.host.raw_agent_token}")
         self.assertEqual(resp.status_code, 200, resp.content)
 
     def _matched_steps(self, fix_status="ok", boost=True):

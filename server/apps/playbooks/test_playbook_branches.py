@@ -79,7 +79,7 @@ class BranchTestBase(TestCase):
             data=json.dumps({"task_id": str(task.id), "state": state, "output": "done",
                              "steps": steps}),
             content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.host.agent_token}")
+            HTTP_AUTHORIZATION=f"Bearer {self.host.raw_agent_token}")
         self.assertEqual(resp.status_code, 200, resp.content)
 
     def states(self, run):

@@ -211,6 +211,12 @@ def register(request):
             {"error": "Field value too long"},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    from .models import TOKEN_RE
+    if not TOKEN_RE.match(token):
+        # Tokens are stored hashed; one shaped like anything else (a stored
+        # hash included) is refused rather than guessed at.
+        return Response({"error": "agent_token must be 16-128 letters, digits, '-' or '_'"},
+                        status=status.HTTP_400_BAD_REQUEST)
 
     machine_id = str(request.data.get("machine_id") or "").strip()[:200]
 
@@ -243,7 +249,7 @@ def register(request):
         )
 
     # Idempotent: if the token already exists, return current status
-    existing = Host.objects.filter(agent_token=token).first()
+    existing = Host.objects.by_token(token).first()
     if existing:
         # An agent upgraded into this release backfills its own row on next
         # start; a changed machine_id means this token now belongs to another
@@ -696,7 +702,7 @@ def checkin(request):
         signed_v2 = "signed_v2" in set(host.agent_features or [])
         for task in eligible:
             if signed_v2:
-                signature = sign_task_v2(task, dispatch_iso, host.agent_token)
+                signature = sign_task_v2(task, dispatch_iso, host.token_fingerprint)
             else:
                 if not task.signature:
                     task.signature = sign_task(task)
@@ -1242,7 +1248,7 @@ def check_pending(request):
     if not token:
         return Response({"error": "token is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-    host = Host.objects.filter(agent_token=token).first()
+    host = Host.objects.by_token(token).first()
     if host is None:
         return Response({"status": "waiting"})
 

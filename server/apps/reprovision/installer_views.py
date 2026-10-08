@@ -101,8 +101,12 @@ def _revoke_old_agent_token(job) -> None:
     Without this, a token recovered from a backup or forensic image of the
     wiped disk authenticates as this host forever.
     """
+    import secrets
+
     host = job.host
-    host.agent_token = f"revoked-{job.id}"
+    # Random, not derived from the job: "revoked-<job id>" was itself a
+    # working token for anyone who could see the job's id.
+    host.agent_token = f"revoked-{secrets.token_urlsafe(32)}"
     host.save(update_fields=["agent_token"])
 
 
@@ -135,6 +139,9 @@ def enroll(request):
     if not token or not agent_token:
         return Response({"error": "enroll_token and agent_token are required"},
                         status=400)
+    from apps.hosts.models import TOKEN_RE
+    if not TOKEN_RE.match(agent_token):
+        return Response({"error": "agent_token must be 16-128 letters, digits, '-' or '_'"}, status=400)
 
     token_hash = jobs.hash_token(token)
     with transaction.atomic():

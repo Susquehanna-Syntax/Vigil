@@ -32,7 +32,7 @@ class DockerCheckinTests(TestCase):
     def _checkin(self, body):
         return self.client.post(
             "/api/v1/checkin", body, format="json",
-            HTTP_AUTHORIZATION=f"Bearer {self.host.agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {self.host.raw_agent_token}",
         )
 
     def test_checkin_ingests_docker_containers(self):
