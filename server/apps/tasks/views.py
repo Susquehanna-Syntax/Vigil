@@ -32,9 +32,11 @@ from .rollout import (
     FAILURE_STATES,
     _emit_hunt_text_requested,
     _hunt_text_step_ids,
+    halt_batch,
     halt_rollout,
     resume_rollout,
     start_rollout,
+    start_rollout_batch,
 )
 from .rollout_serializers import PatchRolloutSerializer
 from .serializers import (
@@ -1864,6 +1866,18 @@ def rollout_collection(request):
     if request.method == "POST":
         from apps.playbooks.models import Playbook
 
+        raw_tags = request.data.get("wave_group_tags")
+        if raw_tags is not None and not (
+            isinstance(raw_tags, list) and all(isinstance(t, str) for t in raw_tags)
+        ):
+            return Response({"detail": "wave_group_tags must be a list of strings"},
+                            status=400)
+        if raw_tags is not None and (request.data.get("wave_group_tag") or "").strip():
+            return Response(
+                {"detail": "send either wave_group_tag or wave_group_tags, not both"},
+                status=400,
+            )
+
         definition_id = request.data.get("definition_id")
         playbook_id = request.data.get("playbook_id")
         if bool(definition_id) == bool(playbook_id):
@@ -1885,6 +1899,23 @@ def rollout_collection(request):
         error = _verify_confirmation(request.user, request.data)
         if error:
             return Response({"detail": error}, status=401)
+
+        if raw_tags is not None:
+            try:
+                rollouts = start_rollout_batch(
+                    definition,
+                    playbook=playbook,
+                    user=request.user,
+                    group_tags=raw_tags,
+                    failure_threshold_pct=int(request.data.get("failure_threshold_pct", 10)),
+                    min_results_before_halt=int(request.data.get("min_results_before_halt", 3)),
+                )
+            except (ValueError, TypeError) as exc:
+                return Response({"detail": str(exc)}, status=400)
+            return Response({
+                "batch": str(rollouts[0].batch),
+                "rollouts": [_rollout_response(r) for r in rollouts],
+            }, status=201)
 
         try:
             rollout = start_rollout(
@@ -1942,6 +1973,24 @@ def rollout_halt(request, rollout_id):
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=400)
     return Response(_rollout_response(rollout))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def rollout_batch_halt(request, batch):
+    """Halt every running rollout in one batch. One request because one TOTP
+    code is single-use — three rollouts would otherwise need three codes."""
+    if not PatchRollout.objects.filter(batch=batch).exists():
+        return Response({"detail": "Not found"}, status=404)
+    error = _verify_confirmation(request.user, request.data)
+    if error:
+        return Response({"detail": error}, status=401)
+    reason = str(request.data.get("reason") or "").strip()
+    try:
+        halted = halt_batch(batch, user=request.user, reason=reason)
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=400)
+    return Response({"halted": halted})
 
 
 @api_view(["POST"])

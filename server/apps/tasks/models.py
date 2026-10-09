@@ -391,6 +391,9 @@ class PatchRollout(models.Model):
     #: the hosts that drifted, not every host its waves carry. Null = no
     #: restriction, which is what every other rollout is.
     host_ids = models.JSONField(null=True, blank=True)
+    #: Rollouts started together by one request share this id — a parallel
+    #: batch, one rollout per wave group. Null = a rollout on its own.
+    batch = models.UUIDField(null=True, blank=True, db_index=True)
     playbook = models.ForeignKey(
         "baselines.Playbook", on_delete=models.CASCADE, related_name="rollouts",
         null=True, blank=True,

@@ -9,6 +9,8 @@ from . import views
 
 urlpatterns = [
     path("rollouts/", views.rollout_collection, name="rollout-collection"),
+    path("rollouts/batch/<uuid:batch>/halt/", views.rollout_batch_halt,
+         name="rollout-batch-halt"),
     path("rollouts/<uuid:rollout_id>/", views.rollout_detail, name="rollout-detail"),
     path("rollouts/<uuid:rollout_id>/halt/", views.rollout_halt, name="rollout-halt"),
     path("rollouts/<uuid:rollout_id>/resume/", views.rollout_resume, name="rollout-resume"),
