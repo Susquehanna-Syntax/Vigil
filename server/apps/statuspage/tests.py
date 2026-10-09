@@ -151,6 +151,12 @@ class HostLabelTests(TestCase):
 
 
 class UptimeHistoryTests(TestCase):
+    def setUp(self):
+        # An account exists, as on any installed Vigil: otherwise
+        # SetupRedirectMiddleware sends the page to /setup/, unless an earlier
+        # test in the same process already set its once-per-process flag.
+        get_user_model().objects.create_user("someone", password="x")
+
     def test_sampler_records_one_reading_per_non_pending_host(self):
         from apps.statuspage.models import HostUptimeSample
         from apps.statuspage.tasks import sample_uptime
@@ -307,6 +313,12 @@ class HostUptimeApiTests(TestCase):
 class PublicPageDoesNotPublishHostIdsTests(TestCase):
     """The public page keyed its cards by the host's internal id; an opaque
     per-page key does the same job (architect review, 2026-10-08)."""
+
+    def setUp(self):
+        # An account exists, as on any installed Vigil: otherwise
+        # SetupRedirectMiddleware sends the page to /setup/, unless an earlier
+        # test in the same process already set its once-per-process flag.
+        get_user_model().objects.create_user("someone", password="x")
 
     def test_no_host_id_on_the_public_page_or_its_data(self):
         from apps.hosts.models import Host

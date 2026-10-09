@@ -68,6 +68,11 @@ class LapseBehaviorTests(TestCase):
     """On lapse we stop fixing it for you; we never stop telling you."""
 
     def setUp(self):
+        # The license state is cached in-process; a test that installed one
+        # earlier in the same worker would otherwise make this one licensed.
+        from vigil import licensing
+        licensing.reload()
+        self.addCleanup(licensing.reload)
         self.west = Site.objects.create(name="West Campus", slug="west-campus")
         self.scoped = Playbook.objects.create(name="Edge hardening")
         PlaybookSiteAssignment.objects.create(playbook=self.scoped, site=self.west)
