@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import stat
 from pathlib import Path
 
 from .. import collector
@@ -51,6 +52,50 @@ def _write_new(path: Path, text: str, mode: int) -> None:
     try:
         os.write(fd, text.encode())
         os.fchmod(fd, mode)
+    finally:
+        os.close(fd)
+
+
+MAX_READ = 1_000_000
+
+
+def _read_plain(path: Path) -> str | None:
+    """A regular file's text, read as root without following a symlink
+    anywhere on the way (each folder opened relative to the last, with
+    O_NOFOLLOW). The paths come from container labels and may sit in a folder a
+    non-root user owns, who could otherwise point .env at /etc/shadow and
+    have it posted to the server. None when there is no such file."""
+    path = Path(path)
+    if not path.is_absolute() or ".." in path.parts:
+        raise ValueError(f"{path} must be an absolute path without '..'")
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open("/", os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        for part in path.parts[1:-1]:
+            try:
+                nxt = os.open(part, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | nofollow, dir_fd=fd)
+            except FileNotFoundError:
+                return None
+            except OSError as exc:     # ELOOP / ENOTDIR: a symlink or not a folder
+                raise ValueError(f"refusing to read {path}: {part} is not a plain folder") from exc
+            os.close(fd)
+            fd = nxt
+        try:
+            leaf = os.open(path.name, os.O_RDONLY | nofollow | getattr(os, "O_NONBLOCK", 0), dir_fd=fd)
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            raise ValueError(f"refusing to read {path}: it is a symlink or unreadable") from exc
+        try:
+            st = os.fstat(leaf)
+            if not stat.S_ISREG(st.st_mode):
+                raise ValueError(f"refusing to read {path}: not a regular file")
+            if st.st_size > MAX_READ:
+                raise ValueError(f"refusing to read {path}: larger than {MAX_READ} bytes")
+            with os.fdopen(leaf, "rb", closefd=False) as fh:
+                return fh.read(MAX_READ + 1).decode()
+        finally:
+            os.close(leaf)
     finally:
         os.close(fd)
 
@@ -146,6 +191,8 @@ def _up(workdir: Path, project: str, resolved: dict, data_dir: Path) -> str:
     import json
 
     resolved_dir = Path(data_dir) / "stacks"
+    if resolved_dir.is_symlink():
+        raise ValueError(f"refusing to deploy: {resolved_dir} is a symlink")
     resolved_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(resolved_dir, 0o700)
     path = resolved_dir / f"{project}.json"
@@ -252,12 +299,15 @@ def _stack_read(params: dict, config: AgentConfig) -> str:
         else compose_path.parent
     env_path = Path(args[args.index("--env-file") + 1]) if "--env-file" in args \
         else workdir / ".env"
+    compose = _read_plain(compose_path)
+    if compose is None:
+        raise ValueError(f"{compose_path} does not exist")
     payload = {
         "project": project,
         "compose_file": compose_path.name,
         "working_dir": str(workdir),
-        "compose": compose_path.read_text(),
-        "env": env_path.read_text() if env_path.exists() else "",
+        "compose": compose,
+        "env": _read_plain(env_path) or "",
         "hashes": _hash_report(project, args),
     }
     client.post_stack_read(config, ticket, payload)

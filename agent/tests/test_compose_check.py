@@ -183,6 +183,25 @@ class OwnershipTests(unittest.TestCase):
             self.assertEqual(link.read_text(), "services: {}")
             self.assertEqual(target.read_text(), "untouched")
 
+    def test_adopt_reads_never_follow_a_planted_link(self):
+        """_stack_read runs as root on paths from container labels, possibly in
+        a folder a non-root user owns: .env -> /etc/shadow must not be posted."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "secret").write_text("root:$6$hash")
+            (root / "stack").mkdir()
+            (root / "stack" / "compose.yaml").write_text("services: {}")
+            self.assertEqual(stacks._read_plain(root / "stack" / "compose.yaml"), "services: {}")
+            self.assertIsNone(stacks._read_plain(root / "stack" / ".env"))
+            (root / "stack" / ".env").symlink_to(root / "secret")
+            with self.assertRaises(ValueError):
+                stacks._read_plain(root / "stack" / ".env")
+            (root / "linked").symlink_to(root / "stack")
+            with self.assertRaises(ValueError):
+                stacks._read_plain(root / "linked" / "compose.yaml")
+            with self.assertRaises(ValueError):
+                stacks._read_plain(root / "stack")                 # not a regular file
+
     def test_deploy_refuses_a_user_owned_stack_folder(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError):
