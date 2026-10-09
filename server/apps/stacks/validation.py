@@ -20,9 +20,21 @@ MAX_COMPOSE = 200_000
 MAX_ENV = 64_000
 
 #: Host paths a stack may not bind — the engine's socket and the system.
-_FORBIDDEN_BINDS = ("/var/run/docker.sock", "/run/docker.sock", "/run/podman", "/var/run/podman",
-                    "/etc", "/root", "/boot", "/proc", "/sys", "/dev", "/usr", "/bin", "/sbin",
-                    "/lib", "/var/lib/docker", "/var/lib/containers", "/opt/vigil")
+_FORBIDDEN_BINDS = ("/run", "/var/run", "/etc", "/root", "/boot", "/proc", "/sys", "/dev", "/usr",
+                    "/bin", "/sbin", "/lib", "/lib64", "/var/lib/docker", "/var/lib/containers",
+                    "/var/lib/containerd", "/var/lib/vigil-agent", "/var/spool/cron", "/opt/vigil")
+
+
+def _bind_forbidden(source: str) -> bool:
+    """A bind reaches a forbidden path if it is one, is inside one, or *contains*
+    one: binding /var reaches /var/lib/docker, and /run or /var/run reach every
+    engine and systemd socket on the host."""
+    import posixpath
+    path = posixpath.normpath(source)
+    if path == "/":
+        return True
+    return any(path == p or path.startswith(p + "/") or p.startswith(path + "/")
+               for p in _FORBIDDEN_BINDS)
 
 
 class StackError(ValueError):
@@ -80,7 +92,7 @@ _SERVICE_KEYS = {
     "memswap_limit", "mem_reservation", "cpus", "cpu_shares", "cpuset", "cpu_count", "cpu_percent",
     "pids_limit", "read_only", "init", "tty", "stdin_open", "platform", "pull_policy", "profiles",
     "group_add", "oom_score_adj", "oom_kill_disable", "mac_address", "links", "attach", "scale",
-    "annotations", "gpus",
+    "gpus",
     # checked below
     "build", "env_file", "volumes", "volumes_from", "devices", "cap_add", "security_opt",
     "privileged", "pid", "ipc", "userns_mode", "cgroup", "uts", "network_mode", "sysctls",
@@ -119,6 +131,19 @@ def _no_variables(value, where: str) -> None:
         raise StackError(f"{where}: variables are not allowed here ({value})")
 
 
+def _no_variable_keys(node, where: str = "compose file") -> None:
+    """No $ in any mapping key, anywhere. The checks below look keys up by
+    name, and a key compose would fill in at deploy time is one they cannot."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if "$" in str(key):
+                raise StackError(f"{where}: variables are not allowed in keys ({key})")
+            _no_variable_keys(value, f"{where}.{key}")
+    elif isinstance(node, list):
+        for value in node:
+            _no_variable_keys(value, where)
+
+
 def _flag(value) -> bool:
     return value is True or str(value).strip().lower() in _TRUTHY
 
@@ -141,6 +166,7 @@ def validate_compose(text: str) -> dict:
         if key not in _TOP_LEVEL_KEYS and not str(key).startswith("x-"):
             raise StackError(f"top-level key {key!r} is not allowed in a Vigil-managed stack")
 
+    _no_variable_keys(doc)
     service_names = set(doc["services"])
     for name, svc in doc["services"].items():
         where = f"service {name!r}"
@@ -237,8 +263,7 @@ def validate_compose(text: str) -> dict:
             parts = source.replace("\\", "/").split("/")
             if ".." in parts:
                 raise StackError(f"{where}: a bind source may not climb out with '..' ({source})")
-            if source.startswith("/") and (source.rstrip("/") == "" or any(
-                    source == p or source.startswith(p + "/") for p in _FORBIDDEN_BINDS)):
+            if source.startswith("/") and _bind_forbidden(source):
                 raise StackError(f"{where}: binding {source} from the host is not allowed")
 
     # Top-level named volumes can bind a host path through driver_opts, and

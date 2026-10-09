@@ -473,3 +473,30 @@ class SandboxReviewTests(SimpleTestCase):
         for text in good:
             with self.subTest(text=text):
                 validate_compose(text)
+
+
+class SandboxAncestorTests(SimpleTestCase):
+    """A bind of a directory that *contains* a forbidden path reaches it too."""
+
+    S = "services:\n  a:\n    image: x\n"
+
+    def test_refused(self):
+        bad = {
+            "/run holds the engine socket": self.S + "    volumes: ['/run:/host-run']\n",
+            "/var/run (a link to /run)": self.S + "    volumes: ['/var/run:/r']\n",
+            "/var holds /var/lib/docker": self.S + "    volumes: ['/var:/v']\n",
+            "/var/lib": self.S + "    volumes: ['/var/lib:/l']\n",
+            "containerd socket dir": self.S + "    volumes: ['/run/containerd:/c']\n",
+            "agent data": self.S + "    volumes: ['/var/lib/vigil-agent:/a']\n",
+            "variable in a key": self.S + "    volumes: ['d:/d']\nvolumes:\n  d:\n    driver_opts: {'${K}': /etc}\n",
+            "annotations": self.S + "    annotations: {run.oci.keep_original_groups: '1'}\n",
+        }
+        for label, text in bad.items():
+            with self.subTest(label):
+                with self.assertRaises(StackError):
+                    validate_compose(text)
+
+    def test_data_paths_still_allowed(self):
+        for path in ("/srv/media", "/mnt/storage", "/home/alice/music", "/var/log/app", "/opt/app-data"):
+            with self.subTest(path):
+                validate_compose(self.S + f"    volumes: ['{path}:/data']\n")
