@@ -498,9 +498,9 @@ settings before deciding anything.
       <div class="confirm-hint" id="rollout-start-def-hint" style="margin-top:4px;">Tasks that need someone to fill in an input cannot be rolled out unattended &mdash; a rollout runs with nobody watching.</div>
     </div>
     <div class="form-group" style="margin-bottom:14px;">
-      <label class="form-label">Wave group <span style="color:var(--text-3);font-weight:400;">(blank = every enabled wave)</span></label>
-      <input type="text" class="form-control" id="rollout-start-group" placeholder="servers">
-      <div class="confirm-hint" id="rollout-start-group-hint" style="margin-top:4px;">Send this to one ladder only. The rollout walks that group's waves in order and never touches a machine outside it.</div>
+      <label class="form-label">Wave groups <span style="color:var(--text-3);font-weight:400;">(none picked = every enabled wave)</span></label>
+      <div class="rlt-groups" id="rollout-start-groups" role="group" aria-label="Wave groups"></div>
+      <div class="confirm-hint" id="rollout-start-group-hint" style="margin-top:4px;">Pick one ladder, or several to run them in parallel. The rollout walks a group's waves in order and never touches a machine outside it.</div>
     </div>
     <div style="display:flex;gap:12px;margin-bottom:14px;">
       <div class="form-group" style="flex:1;margin-bottom:0;">
