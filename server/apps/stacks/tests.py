@@ -386,3 +386,51 @@ class SandboxEscapeTests(SimpleTestCase):
         for text in good:
             with self.subTest(text=text):
                 validate_compose(text)
+
+
+class SandboxAllowlistTests(SimpleTestCase):
+    """The denylist missed routes compose offers; the sandbox now allows only
+    keys it knows, refuses $ variables where a value decides what the
+    container can reach, and reads YAML booleans the way compose does."""
+
+    S = "services:\n  a:\n    image: x\n"
+
+    def test_more_routes_are_refused(self):
+        bad = {
+            "volumes_from another container": self.S + "    volumes_from: ['container:portainer']\n",
+            "include other compose files": "include: ['/opt/other/compose.yaml']\n" + self.S,
+            "extends a file": "services:\n  a:\n    extends: {file: /opt/x.yaml, service: b}\n",
+            "device cgroup rules": self.S + "    device_cgroup_rules: ['b 8:* rmw']\n",
+            "api socket": self.S + "    use_api_socket: true\n",
+            "privileged as string": self.S + "    privileged: 'true'\n",
+            "privileged as yes": self.S + "    privileged: yes\n",
+            "variable bind source": self.S + "    volumes: ['${HOSTDIR}:/data']\n",
+            "variable long bind": self.S + "    volumes:\n      - {type: bind, source: '${D}', target: /d}\n",
+            "variable cap": self.S + "    cap_add: ['${CAP}']\n",
+            "variable device": self.S + "    devices: ['${DEV}:/dev/x']\n",
+            "variable privileged": self.S + "    privileged: ${P}\n",
+            "variable env_file": self.S + "    env_file: ${F}\n",
+            "variable driver device": self.S + "    volumes: ['d:/d']\nvolumes:\n  d:\n    driver_opts: {o: bind, device: '${X}'}\n",
+            "unknown service key": self.S + "    some_future_key: true\n",
+            "unknown top-level key": "something: else\n" + self.S,
+            "pid of another container": self.S + "    pid: 'container:other'\n",
+            "host sysctl": self.S + "    sysctls: {kernel.core_pattern: '|/tmp/x'}\n",
+        }
+        for label, text in bad.items():
+            with self.subTest(label):
+                with self.assertRaises(StackError):
+                    validate_compose(text)
+
+    def test_ordinary_variables_and_keys_still_pass(self):
+        good = [
+            self.S + "    environment: {TZ: '${TZ:-UTC}', DB: '${DB_PASSWORD}'}\n",
+            "services:\n  a:\n    image: 'nginx:${TAG:-stable}'\n    ports: ['${PORT:-80}:80']\n",
+            self.S + "    volumes_from: [b]\n  b:\n    image: y\n",
+            self.S + "    sysctls: {net.core.somaxconn: 1024}\n",
+            self.S + "    deploy:\n      resources:\n        limits: {memory: 512M}\n",
+            "x-common: &c {restart: always}\n" + self.S + "    <<: *c\n",
+            self.S + "    healthcheck: {test: ['CMD', 'true']}\n    labels: {a: b}\n    logging: {driver: json-file}\n",
+        ]
+        for text in good:
+            with self.subTest(text=text):
+                validate_compose(text)
