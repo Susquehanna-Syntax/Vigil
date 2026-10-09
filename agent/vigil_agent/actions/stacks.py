@@ -85,17 +85,32 @@ def _resolved_config(workdir: Path, project: str, compose_file: str) -> dict:
         return doc
 
 
-def _check_resolved(workdir: Path, project: str, compose_file: str) -> dict:
+def _live_rw_binds(data_dir: Path) -> tuple:
+    """Host paths that running containers of Vigil-deployed stacks (those
+    started from a checked file in <data_dir>/stacks) mount writable."""
+    checked = str(Path(data_dir) / "stacks") + "/"
+    out = []
+    for c in ex._engine().get("/containers/json", query={"all": "1"}) or []:
+        files = str((c.get("Labels") or {}).get("com.docker.compose.project.config_files") or "")
+        if not any(f.strip().startswith(checked) for f in files.split(",")):
+            continue
+        out += [m.get("Source") for m in c.get("Mounts") or []
+                if m.get("Type") == "bind" and m.get("RW") and m.get("Source")]
+    return tuple(out)
+
+
+def _check_resolved(workdir: Path, project: str, compose_file: str, data_dir: Path) -> dict:
     """Refuse to start anything the resolved configuration would let reach the
     host (SEC, 2026-10-08). The server checks the text it was sent; this checks
     what compose resolved it to, and _up starts exactly that, so no second
     reading of the text (or of a .env changed in between) can differ."""
-    from ..composecheck import problems
+    from ..composecheck import pin, problems
     try:
-        resolved = _resolved_config(workdir, project, compose_file)
+        resolved = pin(_resolved_config(workdir, project, compose_file), str(workdir))
+        live_rw = _live_rw_binds(data_dir)
     except Exception as exc:     # noqa: BLE001 — cannot check it, so do not run it
         raise ValueError(f"could not read the resolved compose configuration: {exc}") from exc
-    found = problems(resolved, str(workdir))
+    found = problems(resolved, str(workdir), live_rw)
     if found:
         raise ValueError("refusing to deploy " + project + ": " + "; ".join(found[:10]))
     return resolved
@@ -138,7 +153,7 @@ def _stack_deploy(params: dict, config: AgentConfig) -> str:
     (workdir / compose_file).write_text(compose)
     if env_text is not None:
         _write_private(workdir / ".env", env_text)
-    resolved = _check_resolved(workdir, project, compose_file)
+    resolved = _check_resolved(workdir, project, compose_file, config.data_dir)
     output = _up(workdir, project, resolved, config.data_dir)
     collector.request_docker_recheck()
     revision = params.get("revision")

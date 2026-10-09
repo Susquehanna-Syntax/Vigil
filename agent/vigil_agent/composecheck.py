@@ -94,16 +94,35 @@ def _has_var(value) -> bool:
 def _abs(path: str, workdir: str) -> str:
     path = str(path)
     # "~" is the agent's home — never inside a stack, so leave it to be refused
-    return path if path.startswith(("/", "~")) else posixpath.join(workdir, path)
+    return path if path.startswith(("/", "~")) else posixpath.normpath(posixpath.join(workdir, path))
 
 
 def _bind_problem(source: str, workdir: str) -> str | None:
     if source.startswith("~"):
         return f"bind of a home directory ({source})"
     path = _abs(source, workdir)
+    link = _symlink_in(path, workdir)
+    if link:
+        return f"bind of {source}: {link} is a symlink"
     if _inside(path, workdir):                           # the stack's own folder, symlinks followed
         return None
     return f"bind of {source}" if bind_forbidden(path) else None
+
+
+def _symlink_in(path: str, workdir: str) -> str | None:
+    """The first symlink on the way from the stack folder down to *path*. A
+    container that can write the stack folder can plant one; the engine follows
+    it when it mounts, after any check here — so a link already there is
+    refused, and _covered() refuses a bind a running container could re-link."""
+    path, root = _norm(path), _norm(workdir)
+    if not path.startswith(root + "/"):
+        return None
+    current = root
+    for part in path[len(root) + 1:].split("/"):
+        current = posixpath.join(current, part)
+        if os.path.islink(current):
+            return current
+    return None
 
 
 def _volume_problem(vol, workdir: str) -> str | None:
@@ -222,11 +241,126 @@ def _build(where: str, build, workdir: str) -> list[str]:
     return out
 
 
-def problems(config: dict, workdir: str) -> list[str]:
-    """Every reason not to start this resolved configuration ([] = fine)."""
+#: Fields whose strings only reach inside the container: a $ there may stay
+#: ($$ in docker's output re-reads as a literal $). Anywhere else a $ is
+#: refused — compose reads the checked file again, and could substitute it.
+INERT_KEYS = {"environment", "command", "entrypoint", "healthcheck", "labels", "content"}
+
+
+def _variables(node, where: str, out: list[str], depth: int = 0) -> None:
+    if depth > 64:
+        out.append(f"{where}: nested too deeply")
+    elif isinstance(node, dict):
+        for key, value in node.items():
+            if _has_var(key):
+                out.append(f"{where}: key {key!r} has a variable")
+            elif key not in INERT_KEYS and not str(key).startswith("x-"):
+                _variables(value, f"{where}.{key}", out, depth + 1)
+    elif isinstance(node, list):
+        for value in node:
+            _variables(value, where, out, depth + 1)
+    elif _has_var(node):
+        out.append(f"{where}: {node!r} has a variable")
+
+
+def _pin_volume(vol, workdir: str):
+    if isinstance(vol, str):
+        parts = vol.split(":")
+        if len(parts) > 1 and parts[0].startswith("."):
+            return ":".join([_abs(parts[0], workdir), *parts[1:]])
+        return vol
+    if isinstance(vol, dict) and str(vol.get("source") or "").startswith("."):
+        return {**vol, "source": _abs(vol["source"], workdir)}
+    return vol
+
+
+def pin(config: dict, workdir: str) -> dict:
+    """The configuration with every relative host path made absolute against
+    the stack folder. docker's output already is; podman-compose's may not be,
+    and ``up`` reads the checked file from the agent's data dir, where compose
+    would resolve "./" and "../" against *that* folder instead. What is
+    checked and what is started is this pinned copy."""
+    import copy
+
+    config = copy.deepcopy(config)
+    if not isinstance(config, dict):
+        return config
+    for svc in (config.get("services") or {}).values() if isinstance(config.get("services"), dict) else ():
+        if not isinstance(svc, dict):
+            continue
+        if isinstance(svc.get("volumes"), list):
+            svc["volumes"] = [_pin_volume(v, workdir) for v in svc["volumes"]]
+        if "env_file" in svc:
+            svc["env_file"] = [{**e, "path": _abs(e["path"], workdir)} if isinstance(e, dict) and e.get("path")
+                               else _abs(e, workdir) if isinstance(e, str) else e
+                               for e in _items(svc["env_file"])]
+        build = svc.get("build")
+        if isinstance(build, str):
+            build = svc["build"] = {"context": build}
+        if isinstance(build, dict):
+            context = build.get("context") or "."
+            if _local_context(context):
+                build["context"] = _abs(context, workdir)
+            extra = build.get("additional_contexts")
+            if isinstance(extra, dict):
+                build["additional_contexts"] = {k: _abs(v, workdir) if _local_context(v) else v
+                                                for k, v in extra.items()}
+    for section in ("secrets", "configs"):
+        for spec in (config.get(section) or {}).values() if isinstance(config.get(section), dict) else ():
+            if isinstance(spec, dict) and spec.get("file"):
+                spec["file"] = _abs(spec["file"], workdir)
+    return config
+
+
+def rw_binds(config: dict, workdir: str) -> list[str]:
+    """Host paths this configuration mounts writable."""
+    out = []
+    for svc in (config.get("services") or {}).values():
+        for vol in _items((svc or {}).get("volumes")) if isinstance(svc, dict) else ():
+            if isinstance(vol, str):
+                parts = vol.split(":")                   # source:target[:options]
+                options = parts[2].split(",") if len(parts) > 2 else []
+                if len(parts) > 1 and parts[0].startswith(("/", ".")) and "ro" not in options:
+                    out.append(_norm(_abs(parts[0], workdir)))
+            elif isinstance(vol, dict) and str(vol.get("source") or "").startswith(("/", ".")) \
+                    and not _flag(vol.get("read_only")):
+                out.append(_norm(_abs(vol["source"], workdir)))
+    return out
+
+
+def _sources(config: dict, workdir: str) -> list[str]:
+    out = []
+    for svc in (config.get("services") or {}).values():
+        for vol in _items((svc or {}).get("volumes")) if isinstance(svc, dict) else ():
+            source = vol.split(":")[0] if isinstance(vol, str) and ":" in vol \
+                else str(vol.get("source") or "") if isinstance(vol, dict) else ""
+            if source.startswith(("/", ".")):
+                out.append(_norm(_abs(source, workdir)))
+    return out
+
+
+def _covered(config: dict, workdir: str, live_rw: tuple) -> list[str]:
+    """A bind inside a folder some Vigil stack's container can write: that
+    container can swap in a symlink between this check and the mount."""
+    writable = set(rw_binds(config, workdir)) | {_norm(p) for p in live_rw}
+    out = []
+    for source in sorted(set(_sources(config, workdir))):
+        for real in {source, os.path.realpath(source)}:
+            above = [w for w in writable if real.startswith(w.rstrip("/") + "/")]
+            if above:
+                out.append(f"bind of {source} is inside {above[0]}, which a container can write")
+                break
+    return out
+
+
+def problems(config: dict, workdir: str, live_rw: tuple = ()) -> list[str]:
+    """Every reason not to start this (pinned) resolved configuration ([] =
+    fine). *live_rw*: host paths running Vigil-stack containers mount writable."""
     if not isinstance(config, dict):
         return ["the configuration is not a mapping"]
     out: list[str] = []
+    _variables(config, "config", out)
+    out += _covered(config, workdir, live_rw)
     for key, value in config.items():
         if key not in TOP_LEVEL_KEYS and not str(key).startswith("x-") and value not in (None, "", [], {}):
             out.append(f"top-level {key} is not allowed")
