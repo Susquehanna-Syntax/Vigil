@@ -1,0 +1,58 @@
+{# Stack editor page section — a full-screen compose editor: highlighted YAML with a line gutter, live validation, masked .env, revisions #}
+{# Logic: static/js/vigil-stacks.js (openStackEditor / saveStack / validateStack / deployStack / removeStack) | Styles: vigil.css .sted-* (+ .te-editor/.te-highlight/.te-yaml from the task editor) | Data: client-side fetch /api/v1/stacks/ (CRUD), /<id>/revisions/, /<id>/env/reveal/, /<id>/deploy/, /<id>/remove/ (TOTP), POST /api/v1/stacks/validate/ #}
+    <section id="page-stack-editor" class="page sted">
+
+      <div class="sted-bar">
+        <div class="sted-crumbs">
+          <button class="sted-crumb" type="button" data-sted-back>Containers</button>
+          <span class="sted-sep">›</span>
+          <span class="sted-crumb-now" id="sted-host"></span>
+          <span class="sted-sep">›</span>
+          <span class="sted-crumb-now" id="sted-name-label"></span>
+        </div>
+        <span id="sted-status" class="sted-status"></span>
+        <div class="sted-actions">
+          <button class="btn btn-ghost btn-sm" type="button" data-stack-remove hidden>Take down…</button>
+          <button class="btn btn-lav btn-sm" type="button" data-stack-deploy hidden>Deploy</button>
+          <button class="btn btn-mint btn-sm" type="button" data-stack-save>Save revision</button>
+        </div>
+      </div>
+
+      <div class="sted-grid">
+        <div class="sted-main">
+          <div class="sted-field" id="stack-name-field">
+            <label class="sted-label" for="stack-name">Name</label>
+            <input class="form-control" id="stack-name" maxlength="63" placeholder="media"
+              autocomplete="off" autocapitalize="off" spellcheck="false">
+            <div class="bl-hint">Lowercase letters, digits, _ and -. It lives in /opt/vigil/stacks/&lt;name&gt; on the host.</div>
+          </div>
+
+          <div class="sted-label">compose.yaml</div>
+          <div class="sted-editor te-editor">
+            <div class="sted-gutter" id="sted-gutter" aria-hidden="true"></div>
+            <pre class="te-highlight" id="sted-hl" aria-hidden="true"></pre>
+            <textarea class="te-yaml" id="stack-compose" spellcheck="false" autocapitalize="off" autocorrect="off"
+              aria-label="compose.yaml"></textarea>
+          </div>
+
+          <div class="sted-check" id="sted-check"></div>
+          <div class="editor-error" id="stack-error"></div>
+        </div>
+
+        <aside class="sted-side">
+          <div class="sted-card">
+            <div class="sted-card-title">.env <span class="sted-card-sub">(values stay hidden; leave one blank to keep it)</span></div>
+            <div id="stack-env" class="stack-env"></div>
+            <div class="stack-env-actions">
+              <button class="btn btn-outline btn-xs" type="button" data-stack-env-add>+ Add variable</button>
+              <button class="btn btn-ghost btn-xs" type="button" data-stack-env-reveal>Show values</button>
+            </div>
+          </div>
+
+          <div class="sted-card" id="stack-revisions-field" hidden>
+            <div class="sted-card-title">Revisions</div>
+            <div id="stack-revisions" class="stack-revisions"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
