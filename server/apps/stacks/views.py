@@ -18,7 +18,14 @@ from apps.hosts.crypto import decrypt_secret, encrypt_secret
 from vigil import hooks, scoping
 
 from .models import ManagedStack, StackRevision
-from .validation import NAME_RE, StackError, parse_env, render_env, validate_compose
+from .validation import (
+    NAME_RE,
+    StackError,
+    describe_compose,
+    parse_env,
+    render_env,
+    validate_compose,
+)
 
 STACKS_ROOT = "/opt/vigil/stacks"
 
@@ -113,6 +120,17 @@ def stack_index(request):
     if error := _save(request, stack, request.data, note="created"):
         return error
     return Response(_row(stack), status=status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def stack_validate(request):
+    """Tell the editor what this compose text says — 200 whether it's valid
+    or not, so a bad file is an answer and never a failed request."""
+    text = str(request.data.get("compose_yaml") or "")
+    keys = request.data.get("env_keys")
+    env_keys = [k for k in keys if isinstance(k, str)] if isinstance(keys, list) else []
+    return Response(describe_compose(text, env_keys))
 
 
 def _stack_or_404(request, stack_id):

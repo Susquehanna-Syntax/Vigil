@@ -5,6 +5,7 @@ from . import registries, views
 urlpatterns = [
     path("", views.stack_index, name="stack-index"),
     path("adopt/", views.stack_adopt, name="stack-adopt"),
+    path("validate/", views.stack_validate, name="stack-validate"),
     path("registries/", registries.registry_index, name="stack-registries"),
     path("registries/<uuid:cred_id>/", registries.registry_detail, name="stack-registry-detail"),
     path("<uuid:stack_id>/", views.stack_detail, name="stack-detail"),
