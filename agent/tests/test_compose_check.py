@@ -8,6 +8,7 @@ import os
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 from unittest.mock import patch
 
@@ -102,6 +103,42 @@ class ProblemsTests(unittest.TestCase):
         self.assertEqual(composecheck.problems(_cfg(volumes=["./data:/d", "named:/n", "/anon"],
                                                     network_mode="host", sysctls=["net.ipv4.ip_forward=1"]), WD), [])
 
+    def test_relative_paths_are_pinned_to_the_stack_folder(self):
+        """`up` reads the checked file from the agent's data dir; a relative
+        path left in it would resolve there (../ = the agent's own state)."""
+        cfg = composecheck.pin(_cfg(volumes=["./data:/d", {"type": "bind", "source": "../x", "target": "/x"}],
+                                    env_file=".env", build="./src",
+                                    ), WD)
+        svc = cfg["services"]["a"]
+        self.assertEqual(svc["volumes"][0], WD + "/data:/d")
+        self.assertEqual(svc["volumes"][1]["source"], "/opt/vigil/stacks/x")
+        self.assertEqual(svc["env_file"], [WD + "/.env"])
+        self.assertEqual(svc["build"]["context"], WD + "/src")
+
+    def test_a_variable_anywhere_that_matters_is_refused(self):
+        self.assertTrue(composecheck.problems(_cfg(tmpfs=["/run/${X}"]), WD))
+        self.assertTrue(composecheck.problems(_cfg(networks={"${NET}": None}), WD))
+        self.assertTrue(composecheck.problems(_cfg(ulimits={"nofile": "$N"}), WD))
+        # where it can only reach inside the container, docker's $$ stays fine
+        self.assertEqual(composecheck.problems(_cfg(environment={"A": "x$$y"}, command=["sh", "-c", "echo $$HOME"],
+                                                    labels={"l": "$$"}), WD), [])
+
+    def test_a_bind_inside_a_writable_bind_is_refused(self):
+        """A container that can write a folder can swap a symlink into it
+        between the check and the mount."""
+        self.assertTrue(composecheck.problems(_cfg(volumes=["./:/stack", "./data:/d"]), WD))
+        self.assertTrue(composecheck.problems(_cfg(volumes=["./data:/d"]), WD, live_rw=(WD,)))
+        self.assertTrue(composecheck.problems(_cfg(volumes=["/srv/a/b:/d"]), WD, live_rw=("/srv/a",)))
+        # read-only, or the same folder, cannot plant anything
+        self.assertEqual(composecheck.problems(_cfg(volumes=["./:/stack:ro", "./data:/d"]), WD), [])
+        self.assertEqual(composecheck.problems(_cfg(volumes=["./data:/d"]), WD, live_rw=(WD + "/data",)), [])
+
+    def test_a_symlink_already_in_the_stack_folder_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.mkdir(os.path.join(tmp, "real"))
+            os.symlink(os.path.join(tmp, "real"), os.path.join(tmp, "data"))
+            self.assertTrue(composecheck.problems(_cfg(volumes=["./data/sub:/d"]), tmp))
+
     def test_a_symlink_planted_in_the_stack_folder_is_followed(self):
         with tempfile.TemporaryDirectory() as tmp:
             os.symlink("/etc", os.path.join(tmp, "data"))
@@ -119,15 +156,30 @@ class DeployRefusesTests(unittest.TestCase):
             return resolved if args[:1] == ("config",) else "up ok"
         with tempfile.TemporaryDirectory() as tmp, \
                 patch.object(stacks, "_compose", side_effect=fake_compose), \
+                patch.object(stacks, "_live_rw_binds", return_value=()), \
                 patch.object(stacks.client if hasattr(stacks, "client") else stacks, "fetch_stack_env", return_value="", create=True):
             with self.assertRaises(ValueError):
-                stacks._check_resolved(Path(tmp), "web", "compose.yaml")
+                stacks._check_resolved(Path(tmp), "web", "compose.yaml", Path(tmp))
         self.assertFalse([c for c in calls if c[:1] == ("up",)])
+
+    def test_live_writable_binds_come_from_vigil_stacks_only(self):
+        engine = unittest.mock.Mock()
+        engine.get.return_value = [
+            {"Labels": {"com.docker.compose.project.config_files": "/data/stacks/web.json"},
+             "Mounts": [{"Type": "bind", "Source": "/srv/web", "RW": True},
+                        {"Type": "bind", "Source": "/srv/ro", "RW": False},
+                        {"Type": "volume", "Source": "/var/lib/docker/volumes/x", "RW": True}]},
+            {"Labels": {"com.docker.compose.project.config_files": "/home/admin/compose.yml"},
+             "Mounts": [{"Type": "bind", "Source": "/home", "RW": True}]},
+            {"Labels": {}, "Mounts": [{"Type": "bind", "Source": "/", "RW": True}]},
+        ]
+        with patch.object(stacks.ex, "_engine", return_value=engine):
+            self.assertEqual(stacks._live_rw_binds(Path("/data")), ("/srv/web",))
 
     def test_unreadable_config_refuses(self):
         with patch.object(stacks, "_compose", side_effect=RuntimeError("compose missing")):
             with self.assertRaises(ValueError):
-                stacks._check_resolved(Path("/tmp"), "web", "compose.yaml")
+                stacks._check_resolved(Path("/tmp"), "web", "compose.yaml", Path("/tmp"))
 
 
 if __name__ == "__main__":
