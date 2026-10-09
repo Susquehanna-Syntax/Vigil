@@ -26,7 +26,8 @@ _FORBIDDEN_BINDS = ("/var/run/docker.sock", "/run/docker.sock", "/run/podman", "
 
 
 class StackError(ValueError):
-    pass
+    #: 1-based line of a YAML error, when the parser reported one.
+    line = None
 
 
 #: Capabilities that hand a container the host (kernel modules, mounts, other
@@ -61,6 +62,48 @@ def _bind_source(volume) -> str:
     return source if source.startswith(("/", ".", "~")) else ""
 
 
+#: Top-level keys a stack file may use. ``x-*`` extension fields are allowed
+#: too. Everything else is refused: ``include`` pulls in other compose files
+#: from the host, unchecked, and a key added to compose later is unknown here
+#: until someone has looked at what it can reach.
+_TOP_LEVEL_KEYS = {"version", "name", "services", "networks", "volumes", "secrets", "configs"}
+
+#: Service keys a stack may use. An allowlist, not a denylist: compose keeps
+#: adding ways to reach the host (use_api_socket, device_cgroup_rules,
+#: volumes_from a container that holds the engine socket), and a denylist only
+#: knows the ones someone already thought of. Keys checked further below are
+#: marked; the rest cannot reach outside the container's own namespaces.
+_SERVICE_KEYS = {
+    "image", "command", "entrypoint", "environment", "ports", "expose", "restart",
+    "depends_on", "networks", "healthcheck", "labels", "logging", "container_name", "hostname",
+    "domainname", "user", "working_dir", "stop_signal", "stop_grace_period", "deploy", "cap_drop",
+    "dns", "dns_search", "dns_opt", "extra_hosts", "tmpfs", "ulimits", "shm_size", "mem_limit",
+    "memswap_limit", "mem_reservation", "cpus", "cpu_shares", "cpuset", "cpu_count", "cpu_percent",
+    "pids_limit", "read_only", "init", "tty", "stdin_open", "platform", "pull_policy", "profiles",
+    "group_add", "oom_score_adj", "oom_kill_disable", "mac_address", "links", "attach", "scale",
+    "annotations", "gpus", "runtime", "stop_grace", "post_start", "pre_stop", "develop",
+    # checked below
+    "build", "env_file", "volumes", "volumes_from", "devices", "cap_add", "security_opt",
+    "privileged", "pid", "ipc", "userns_mode", "cgroup", "uts", "network_mode", "sysctls",
+    "secrets", "configs",
+}
+
+#: Values compose reads as true, whatever YAML parser read them first.
+_TRUTHY = {"true", "yes", "y", "on", "1"}
+
+
+def _no_variables(value, where: str) -> None:
+    """A $-variable is substituted by compose at deploy time, from the .env or
+    the agent's environment, after this check has run: in a field that decides
+    what the container can reach, it would let a later value undo the check."""
+    if "$" in str(value):
+        raise StackError(f"{where}: variables are not allowed here ({value})")
+
+
+def _flag(value) -> bool:
+    return value is True or str(value).strip().lower() in _TRUTHY
+
+
 def validate_compose(text: str) -> dict:
     if not text or not text.strip():
         raise StackError("the compose file is empty")
@@ -69,62 +112,110 @@ def validate_compose(text: str) -> dict:
     try:
         doc = yaml.safe_load(text)
     except yaml.YAMLError as exc:
-        raise StackError(f"the compose file is not valid YAML: {exc}") from exc
+        err = StackError(f"the compose file is not valid YAML: {exc}")
+        mark = getattr(exc, "problem_mark", None)
+        err.line = mark.line + 1 if mark is not None else None
+        raise err from exc
     if not isinstance(doc, dict) or not isinstance(doc.get("services"), dict) or not doc["services"]:
         raise StackError("the compose file needs a services: mapping with at least one service")
+    for key in doc:
+        if key not in _TOP_LEVEL_KEYS and not str(key).startswith("x-"):
+            raise StackError(f"top-level key {key!r} is not allowed in a Vigil-managed stack")
+
+    service_names = set(doc["services"])
     for name, svc in doc["services"].items():
+        where = f"service {name!r}"
         if not isinstance(svc, dict):
-            raise StackError(f"service {name!r} must be a mapping")
-        if svc.get("privileged") is True:
-            raise StackError(f"service {name!r}: privileged containers are not allowed")
-        if str(svc.get("pid") or "") == "host":
-            raise StackError(f"service {name!r}: pid: host is not allowed")
+            raise StackError(f"{where} must be a mapping")
+        for key in svc:
+            if key not in _SERVICE_KEYS and not str(key).startswith("x-"):
+                raise StackError(f"{where}: {key!r} is not allowed in a Vigil-managed stack")
+
+        if "privileged" in svc:
+            _no_variables(svc["privileged"], f"{where}: privileged")
+            if _flag(svc["privileged"]):
+                raise StackError(f"{where}: privileged containers are not allowed")
+        for key in ("pid", "ipc", "userns_mode", "cgroup", "uts"):
+            if key in svc:
+                value = str(svc[key] or "")
+                _no_variables(value, f"{where}: {key}")
+                if value == "host" or value.startswith("container:"):
+                    raise StackError(f"{where}: {key}: {value} is not allowed")
+        if "network_mode" in svc:
+            mode = str(svc["network_mode"] or "")
+            _no_variables(mode, f"{where}: network_mode")
+            if mode.startswith("service:") and mode.split(":", 1)[1] not in service_names:
+                raise StackError(f"{where}: network_mode {mode} names a service outside this stack")
         for cap in svc.get("cap_add") or []:
+            _no_variables(cap, f"{where}: cap_add")
             normal = str(cap).upper().removeprefix("CAP_")
             if normal in _FORBIDDEN_CAPS:
-                raise StackError(f"service {name!r}: cap_add: {normal} is not allowed")
-        for key in _HOST_NAMESPACE_KEYS:
-            if str(svc.get(key) or "") == "host":
-                raise StackError(f"service {name!r}: {key}: host is not allowed")
+                raise StackError(f"{where}: cap_add: {normal} is not allowed")
         for opt in svc.get("security_opt") or []:
+            _no_variables(opt, f"{where}: security_opt")
             low = str(opt).lower().replace("=", ":")
             if "unconfined" in low or low in ("label:disable", "no-new-privileges:false"):
-                raise StackError(f"service {name!r}: security_opt {opt} is not allowed")
+                raise StackError(f"{where}: security_opt {opt} is not allowed")
         for device in svc.get("devices") or []:
             source = (str(device.get("source") or "") if isinstance(device, dict)
                       else str(device).split(":", 1)[0])
+            _no_variables(source, f"{where}: devices")
             if not source.startswith(_ALLOWED_DEVICE_PREFIXES):
-                raise StackError(f"service {name!r}: passing through the host device {source} is not allowed")
+                raise StackError(f"{where}: passing through the host device {source} is not allowed")
+        for key, value in (svc.get("sysctls") or {}).items() if isinstance(svc.get("sysctls"), dict) else []:
+            if not str(key).startswith("net."):
+                raise StackError(f"{where}: sysctl {key} is not allowed (only net.*)")
+        for entry in svc.get("sysctls") or [] if isinstance(svc.get("sysctls"), list) else []:
+            if not str(entry).startswith("net."):
+                raise StackError(f"{where}: sysctl {entry} is not allowed (only net.*)")
+        for source in svc.get("volumes_from") or []:
+            _no_variables(source, f"{where}: volumes_from")
+            target = str(source).split(":", 1)[0]
+            if str(source).startswith("container:") or target not in service_names:
+                raise StackError(f"{where}: volumes_from may only name a service in this stack ({source})")
+
         env_files = svc.get("env_file") or []
         for env_file in env_files if isinstance(env_files, list) else [env_files]:
             path = env_file.get("path") if isinstance(env_file, dict) else env_file
-            _local_path_problem(path, "env_file", f"service {name!r}")
+            _no_variables(path, f"{where}: env_file")
+            _local_path_problem(path, "env_file", where)
         build = svc.get("build")
         if build is not None:
-            _local_path_problem(build.get("context") if isinstance(build, dict) else build,
-                                "the build context", f"service {name!r}")
+            for value in ((build.get("context"), build.get("dockerfile")) if isinstance(build, dict) else (build,)):
+                if value is not None:
+                    _no_variables(value, f"{where}: build")
+                    _local_path_problem(value, "the build context", where)
+
         for volume in svc.get("volumes") or []:
+            if isinstance(volume, dict):
+                _no_variables(volume.get("source") or "", f"{where}: volumes")
+            else:
+                _no_variables(str(volume).split(":", 1)[0], f"{where}: volumes")
             source = _bind_source(volume)
             if not source:
                 continue
             if source.startswith("~"):
-                raise StackError(f"service {name!r}: binding a home directory ({source}) is not allowed")
+                raise StackError(f"{where}: binding a home directory ({source}) is not allowed")
             parts = source.replace("\\", "/").split("/")
             if ".." in parts:
-                raise StackError(f"service {name!r}: a bind source may not climb out with '..' ({source})")
+                raise StackError(f"{where}: a bind source may not climb out with '..' ({source})")
             if source.startswith("/") and (source.rstrip("/") == "" or any(
                     source == p or source.startswith(p + "/") for p in _FORBIDDEN_BINDS)):
-                raise StackError(f"service {name!r}: binding {source} from the host is not allowed")
+                raise StackError(f"{where}: binding {source} from the host is not allowed")
+
     # Top-level named volumes can bind a host path through driver_opts, and
     # secrets/configs can read a host file into the container.
     for vname, vol in (doc.get("volumes") or {}).items():
         opts = (vol or {}).get("driver_opts") if isinstance(vol, dict) else None
+        for opt_value in (opts or {}).values():
+            _no_variables(opt_value, f"volume {vname!r}: driver_opts")
         device = str((opts or {}).get("device") or "")
         if device and (device.startswith(("/", "~")) or ".." in device.split("/")):
             raise StackError(f"volume {vname!r}: binding the host path {device} is not allowed")
     for section in ("secrets", "configs"):
         for item, spec in (doc.get(section) or {}).items():
             if isinstance(spec, dict) and "file" in spec:
+                _no_variables(spec["file"], f"{section[:-1]} {item!r}")
                 _local_path_problem(spec["file"], "file", f"{section[:-1]} {item!r}")
     return doc
 
