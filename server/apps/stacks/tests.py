@@ -504,3 +504,15 @@ class SandboxAncestorTests(SimpleTestCase):
         for path in ("/srv/media", "/mnt/storage", "/home/alice/music", "/var/log/app", "/opt/app-data"):
             with self.subTest(path):
                 validate_compose(self.S + f"    volumes: ['{path}:/data']\n")
+
+
+class SandboxDosTests(SimpleTestCase):
+    def test_an_anchor_bomb_is_checked_quickly(self):
+        import time
+        lines = ["x-a0: &a0 [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]"]
+        for i in range(1, 25):
+            lines.append(f"x-a{i}: &a{i} [" + ", ".join([f"*a{i-1}"] * 10) + "]")
+        text = "\n".join(lines) + "\nservices:\n  a:\n    image: x\n"
+        start = time.monotonic()
+        validate_compose(text)
+        self.assertLess(time.monotonic() - start, 2.0)

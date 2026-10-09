@@ -49,7 +49,8 @@ class StackDeployTests(unittest.TestCase):
                 "env_ticket": TICKET, "revision": 3, **extra}
 
     def test_deploy_writes_files_and_fetches_env_once(self):
-        with patch.object(client, "fetch_stack_env", return_value="API_KEY=hunter2\n") as fetch:
+        with patch.object(client, "fetch_stack_env", return_value="API_KEY=hunter2\n") as fetch, \
+                patch.object(stacks, "_check_resolved"):   # tests/test_compose_check.py covers it
             out = stacks._stack_deploy(self._params(), _CFG)
         fetch.assert_called_once_with(_CFG, TICKET)
         workdir = self.root / "media"

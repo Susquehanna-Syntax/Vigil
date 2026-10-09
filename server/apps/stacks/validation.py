@@ -133,17 +133,28 @@ def _no_variables(value, where: str) -> None:
         raise StackError(f"{where}: variables are not allowed here ({value})")
 
 
-def _no_variable_keys(node, where: str = "compose file") -> None:
+def _no_variable_keys(node, where: str = "compose file", _seen=None, _depth: int = 0) -> None:
     """No $ in any mapping key, anywhere. The checks below look keys up by
-    name, and a key compose would fill in at deploy time is one they cannot."""
+    name, and a key compose would fill in at deploy time is one they cannot.
+
+    YAML anchors let a small file reference one node many times over; each
+    node is walked once (by identity) and nesting is capped, so a crafted
+    file cannot make this walk run for ever."""
+    _seen = set() if _seen is None else _seen
+    if id(node) in _seen:
+        return
+    if _depth > 64:
+        raise StackError(f"{where}: nested too deeply")
     if isinstance(node, dict):
+        _seen.add(id(node))
         for key, value in node.items():
             if "$" in str(key):
                 raise StackError(f"{where}: variables are not allowed in keys ({key})")
-            _no_variable_keys(value, f"{where}.{key}")
+            _no_variable_keys(value, f"{where}.{key}", _seen, _depth + 1)
     elif isinstance(node, list):
+        _seen.add(id(node))
         for value in node:
-            _no_variable_keys(value, where)
+            _no_variable_keys(value, where, _seen, _depth + 1)
 
 
 def _flag(value) -> bool:
