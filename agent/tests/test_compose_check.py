@@ -201,6 +201,26 @@ class OwnershipTests(unittest.TestCase):
                 stacks._read_plain(root / "linked" / "compose.yaml")
             with self.assertRaises(ValueError):
                 stacks._read_plain(root / "stack")                 # not a regular file
+            (root / "stack" / ".env").unlink()
+            os.link(root / "secret", root / "stack" / ".env")      # a hard link is no symlink
+            with self.assertRaises(ValueError):
+                stacks._read_plain(root / "stack" / ".env")
+
+    def test_hash_report_uses_private_copies_and_hides_compose_errors(self):
+        seen = []
+
+        def fake_run(cmd, timeout=60, extra_env=None):
+            seen.append(cmd)
+            raise RuntimeError("unexpected character in variable name 'root:$6$hash'")
+        with patch.object(stacks.ex, "_run", side_effect=fake_run), \
+                patch.object(stacks.ex, "_compose_cmd", return_value=["docker", "compose"]), \
+                patch.object(stacks.ex, "_compose_env", return_value={}):
+            report = stacks._hash_report("shop", Path("/srv/shop"), "services: {}", "A=1\n")
+        self.assertNotIn("root:", str(report))
+        cmd = seen[0]
+        self.assertTrue(cmd[cmd.index("-f") + 1].startswith(tempfile.gettempdir()))
+        self.assertTrue(cmd[cmd.index("--env-file") + 1].startswith(tempfile.gettempdir()))
+        self.assertEqual(cmd[cmd.index("--project-directory") + 1], "/srv/shop")
 
     def test_deploy_refuses_a_user_owned_stack_folder(self):
         with tempfile.TemporaryDirectory() as tmp:

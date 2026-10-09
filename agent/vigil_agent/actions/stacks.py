@@ -90,6 +90,10 @@ def _read_plain(path: Path) -> str | None:
             st = os.fstat(leaf)
             if not stat.S_ISREG(st.st_mode):
                 raise ValueError(f"refusing to read {path}: not a regular file")
+            if st.st_nlink > 1:
+                # a hard link to /etc/shadow is no symlink, and needs no
+                # O_NOFOLLOW to get through (where fs.protected_hardlinks is off)
+                raise ValueError(f"refusing to read {path}: it has {st.st_nlink} hard links")
             if st.st_size > MAX_READ:
                 raise ValueError(f"refusing to read {path}: larger than {MAX_READ} bytes")
             with os.fdopen(leaf, "rb", closefd=False) as fh:
@@ -254,16 +258,28 @@ def _stack_remove(params: dict, config: AgentConfig) -> str:
     return ActionOutput(output, {"project": project, "files_deleted": deleted})
 
 
-def _hash_report(project: str, args: list[str]) -> dict:
+def _hash_report(project: str, workdir: Path, compose: str, env: str) -> dict:
     """Which services would compose recreate? ``config --hash '*'`` against
-    the config-hash label on each running container. Matching = untouched."""
+    the config-hash label on each running container. Matching = untouched.
+
+    Run on private copies of the files _stack_read already read safely, not on
+    the labelled paths (a second, link-following read as root); and compose's
+    error text is never passed on — its parse errors quote the offending line,
+    of whatever file it was."""
+    import tempfile
+
     from .containers import _COMPOSE_PROJECT_LABEL
 
-    try:
-        out = ex._run([*ex._compose_cmd(), *args, "config", "--hash", "*"], timeout=120,
-                      extra_env=ex._compose_env())
-    except RuntimeError as exc:
-        return {"error": str(exc)[:300]}
+    with tempfile.TemporaryDirectory(prefix="vigil-adopt-") as tmp:
+        compose_copy, env_copy = Path(tmp) / "compose.yaml", Path(tmp) / "stack.env"
+        _write_private(compose_copy, compose)
+        _write_private(env_copy, env)
+        try:
+            out = ex._run([*ex._compose_cmd(), "-p", project, "--project-directory", str(workdir),
+                           "--env-file", str(env_copy), "-f", str(compose_copy),
+                           "config", "--hash", "*"], timeout=120, extra_env=ex._compose_env())
+        except RuntimeError:
+            return {"error": "compose could not resolve this stack as it is on the host"}
     wanted = {}
     for line in out.splitlines():
         parts = line.split()
@@ -308,8 +324,9 @@ def _stack_read(params: dict, config: AgentConfig) -> str:
         "working_dir": str(workdir),
         "compose": compose,
         "env": _read_plain(env_path) or "",
-        "hashes": _hash_report(project, args),
+        "hashes": None,
     }
+    payload["hashes"] = _hash_report(project, workdir, compose, payload["env"])
     client.post_stack_read(config, ticket, payload)
     report = payload["hashes"]
     return ActionOutput(
