@@ -85,10 +85,11 @@ def _resolved_config(workdir: Path, project: str, compose_file: str) -> dict:
         return doc
 
 
-def _check_resolved(workdir: Path, project: str, compose_file: str) -> None:
+def _check_resolved(workdir: Path, project: str, compose_file: str) -> dict:
     """Refuse to start anything the resolved configuration would let reach the
     host (SEC, 2026-10-08). The server checks the text it was sent; this checks
-    what compose will actually run, so no reading of the text can differ."""
+    what compose resolved it to, and _up starts exactly that, so no second
+    reading of the text (or of a .env changed in between) can differ."""
     from ..composecheck import problems
     try:
         resolved = _resolved_config(workdir, project, compose_file)
@@ -97,6 +98,24 @@ def _check_resolved(workdir: Path, project: str, compose_file: str) -> None:
     found = problems(resolved, str(workdir))
     if found:
         raise ValueError("refusing to deploy " + project + ": " + "; ".join(found[:10]))
+    return resolved
+
+
+def _up(workdir: Path, project: str, resolved: dict, data_dir: Path) -> str:
+    """``up`` on the checked configuration, kept in the agent's own data dir:
+    outside the stack folder (a container bound there could swap a file) and a
+    path no stack may bind. It stays, because compose records it in the
+    containers' config_files label and stack_update re-runs ``up`` from it."""
+    import json
+
+    resolved_dir = Path(data_dir) / "stacks"
+    resolved_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(resolved_dir, 0o700)
+    path = resolved_dir / f"{project}.json"
+    _write_private(path, json.dumps(resolved))
+    return ex._run([*ex._compose_cmd(), "-p", project, "--project-directory", str(workdir),
+                    "-f", str(path), "up", "-d", "--remove-orphans"],
+                   timeout=600, extra_env=ex._compose_env())
 
 
 def _stack_deploy(params: dict, config: AgentConfig) -> str:
@@ -119,8 +138,8 @@ def _stack_deploy(params: dict, config: AgentConfig) -> str:
     (workdir / compose_file).write_text(compose)
     if env_text is not None:
         _write_private(workdir / ".env", env_text)
-    _check_resolved(workdir, project, compose_file)
-    output = _compose(workdir, project, "up", "-d", "--remove-orphans", compose_file=compose_file)
+    resolved = _check_resolved(workdir, project, compose_file)
+    output = _up(workdir, project, resolved, config.data_dir)
     collector.request_docker_recheck()
     revision = params.get("revision")
     return ActionOutput(output or f"deployed {project}",
@@ -128,7 +147,7 @@ def _stack_deploy(params: dict, config: AgentConfig) -> str:
                          "revision": revision if isinstance(revision, int) else 0})
 
 
-def _stack_remove(params: dict, _config: AgentConfig) -> str:
+def _stack_remove(params: dict, config: AgentConfig) -> str:
     project = _project(params)
     workdir = _workdir(params)
     delete = params.get("delete_files")
@@ -139,6 +158,8 @@ def _stack_remove(params: dict, _config: AgentConfig) -> str:
         raise ValueError(f"refusing to delete {workdir}: only {STACKS_ROOT}/<project> is Vigil's")
     output = _compose(workdir, project, "down", timeout=300) if (workdir / COMPOSE_NAME).exists() \
         else f"{project}: no compose file at {workdir} — nothing to take down"
+    # the configuration _up checked and started, kept for the containers' labels
+    (Path(config.data_dir) / "stacks" / f"{project}.json").unlink(missing_ok=True)
     deleted = False
     if delete:
         if workdir.exists():
