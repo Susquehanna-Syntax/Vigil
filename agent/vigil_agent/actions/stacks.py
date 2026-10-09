@@ -8,6 +8,7 @@ Compose runs with ``-p <project>`` against the agent's engine socket.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
@@ -18,6 +19,8 @@ from .. import collector
 from .. import executor as ex
 from ..config import AgentConfig
 from ..executor import ActionOutput
+
+log = logging.getLogger(__name__)
 
 STACKS_ROOT = Path("/opt/vigil/stacks")
 COMPOSE_NAME = "compose.yaml"
@@ -179,8 +182,12 @@ def _check_resolved(workdir: Path, project: str, compose_file: str, data_dir: Pa
     try:
         resolved = pin(_resolved_config(workdir, project, compose_file), str(workdir))
         live_rw = _live_rw_binds(data_dir)
-    except Exception as exc:     # noqa: BLE001 — cannot check it, so do not run it
-        raise ValueError(f"could not read the resolved compose configuration: {exc}") from exc
+    except Exception:     # noqa: BLE001 — cannot check it, so do not run it
+        # compose's errors quote the line they could not parse, of whatever
+        # file that was: the detail stays in the host's log, not the result
+        log.warning("compose config failed for stack %s", project, exc_info=True)
+        raise ValueError("could not read the resolved compose configuration "
+                         "(the agent's log on the host has compose's error)") from None
     found = problems(resolved, str(workdir), live_rw)
     if found:
         raise ValueError("refusing to deploy " + project + ": " + "; ".join(found[:10]))
