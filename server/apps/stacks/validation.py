@@ -299,6 +299,62 @@ def validate_compose(text: str) -> dict:
     return doc
 
 
+#: ``${VAR}`` / ``${VAR:-default}`` / ``$VAR``. Group 2 is a clause — a
+#: default or an error form — and either one settles the reference.
+_ENV_REF = re.compile(
+    r"\$\{([A-Za-z_][A-Za-z0-9_]*)(:?[-?][^}]*)?\}|\$([A-Za-z_][A-Za-z0-9_]*)"
+)
+
+
+def _env_refs(text: str) -> tuple[list[str], list[str]]:
+    """(every reference, the ones that need a value) — sorted, unique.
+
+    A reference whose match starts just after the first ``$`` of a ``$$`` is
+    an escaped dollar sign — ``$$FOO`` is a literal ``$`` followed by text,
+    and never something to satisfy. Only the bare ``$VAR`` / ``${VAR}`` forms
+    land in the second list; see ``describe_compose`` for why a clause of any
+    kind settles a reference."""
+    all_names, needed = set(), set()
+    for match in _ENV_REF.finditer(text):
+        if text[match.start() - 1:match.start()] == "$":
+            continue
+        name = match.group(1) or match.group(3)
+        all_names.add(name)
+        if match.group(1) is None or match.group(2) is None:
+            needed.add(name)
+    return sorted(all_names), sorted(needed)
+
+
+def describe_compose(text: str, env_keys=()) -> dict:
+    """What the editor's side panel shows for this text, valid or not.
+
+    Never raises: a refusal from ``validate_compose`` is the answer, not an
+    exception, so the editor can show it without treating a bad file as a
+    failed request. The full refusal is reused rather than a lighter copy of
+    the rules, so the sandbox in ``validate_compose`` stays the one gate.
+
+    A reference counts as missing only when nothing can resolve it: a
+    ``${VAR…}`` clause of any kind settles it (a default supplies a value, the
+    ``?`` forms fail in compose itself), and a bare ``$VAR``/``${VAR}`` is
+    resolved by the stack's ``.env`` — which is what ``env_keys`` is the
+    editor's view of, and which compose consults for exactly this form through
+    a service's ``env_file: .env``. Unset and un-defaulted, compose would
+    substitute an empty string, and that is what to warn about."""
+    try:
+        doc = validate_compose(text)
+    except StackError as exc:
+        return {"ok": False, "error": str(exc), "line": exc.line, "services": [],
+                "env_refs": _env_refs(text)[0], "missing_env": []}
+    services = [{"name": str(name), "image": str(svc.get("image") or ""),
+                 "ports": [str(p) for p in (svc.get("ports") or [])],
+                 "build": svc.get("build") is not None}
+                for name, svc in doc["services"].items()]
+    refs, needed = _env_refs(text)
+    known = {str(k) for k in env_keys if isinstance(k, str)}
+    return {"ok": True, "error": "", "line": None, "services": services,
+            "env_refs": refs, "missing_env": [r for r in needed if r not in known]}
+
+
 def parse_env(text: str) -> list[tuple[str, str]]:
     """``KEY=value`` lines (comments and blanks allowed), refused otherwise."""
     if len(text or "") > MAX_ENV:
