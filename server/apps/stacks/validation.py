@@ -29,6 +29,28 @@ class StackError(ValueError):
     pass
 
 
+#: Capabilities that hand a container the host (kernel modules, mounts, other
+#: processes' memory, raw devices, LSM policy). NET_ADMIN and friends stay
+#: allowed: VPN and network containers need them and they do not escape.
+_FORBIDDEN_CAPS = {"ALL", "SYS_ADMIN", "SYS_MODULE", "SYS_PTRACE", "SYS_RAWIO", "SYS_BOOT",
+                   "DAC_READ_SEARCH", "BPF", "PERFMON", "MAC_ADMIN", "MAC_OVERRIDE"}
+#: Host devices a stack may pass through: GPUs, a TUN device for VPNs, FUSE.
+_ALLOWED_DEVICE_PREFIXES = ("/dev/dri", "/dev/nvidia", "/dev/net/tun", "/dev/fuse", "/dev/kfd")
+#: Namespaces a stack may not share with the host. network_mode: host stays
+#: allowed; it shares ports, not the filesystem or other processes.
+_HOST_NAMESPACE_KEYS = ("pid", "ipc", "userns_mode", "cgroup", "uts")
+
+
+def _local_path_problem(value, what: str, name: str) -> None:
+    """A path compose reads on the host must stay inside the stack's folder."""
+    text = str(value or "").strip()
+    if not text:
+        return
+    parts = text.replace("\\", "/").split("/")
+    if text.startswith(("/", "~")) or ".." in parts:
+        raise StackError(f"{name}: {what} must be a path inside the stack's folder, not {text}")
+
+
 def _bind_source(volume) -> str:
     if isinstance(volume, dict):
         return str(volume.get("source") or "") if volume.get("type") == "bind" else ""
@@ -57,18 +79,53 @@ def validate_compose(text: str) -> dict:
             raise StackError(f"service {name!r}: privileged containers are not allowed")
         if str(svc.get("pid") or "") == "host":
             raise StackError(f"service {name!r}: pid: host is not allowed")
-        if any(str(c).upper() == "ALL" for c in svc.get("cap_add") or []):
-            raise StackError(f"service {name!r}: cap_add: ALL is not allowed")
+        for cap in svc.get("cap_add") or []:
+            normal = str(cap).upper().removeprefix("CAP_")
+            if normal in _FORBIDDEN_CAPS:
+                raise StackError(f"service {name!r}: cap_add: {normal} is not allowed")
+        for key in _HOST_NAMESPACE_KEYS:
+            if str(svc.get(key) or "") == "host":
+                raise StackError(f"service {name!r}: {key}: host is not allowed")
+        for opt in svc.get("security_opt") or []:
+            low = str(opt).lower().replace("=", ":")
+            if "unconfined" in low or low in ("label:disable", "no-new-privileges:false"):
+                raise StackError(f"service {name!r}: security_opt {opt} is not allowed")
+        for device in svc.get("devices") or []:
+            source = (str(device.get("source") or "") if isinstance(device, dict)
+                      else str(device).split(":", 1)[0])
+            if not source.startswith(_ALLOWED_DEVICE_PREFIXES):
+                raise StackError(f"service {name!r}: passing through the host device {source} is not allowed")
+        env_files = svc.get("env_file") or []
+        for env_file in env_files if isinstance(env_files, list) else [env_files]:
+            path = env_file.get("path") if isinstance(env_file, dict) else env_file
+            _local_path_problem(path, "env_file", f"service {name!r}")
+        build = svc.get("build")
+        if build is not None:
+            _local_path_problem(build.get("context") if isinstance(build, dict) else build,
+                                "the build context", f"service {name!r}")
         for volume in svc.get("volumes") or []:
             source = _bind_source(volume)
             if not source:
                 continue
+            if source.startswith("~"):
+                raise StackError(f"service {name!r}: binding a home directory ({source}) is not allowed")
             parts = source.replace("\\", "/").split("/")
             if ".." in parts:
                 raise StackError(f"service {name!r}: a bind source may not climb out with '..' ({source})")
             if source.startswith("/") and (source.rstrip("/") == "" or any(
                     source == p or source.startswith(p + "/") for p in _FORBIDDEN_BINDS)):
                 raise StackError(f"service {name!r}: binding {source} from the host is not allowed")
+    # Top-level named volumes can bind a host path through driver_opts, and
+    # secrets/configs can read a host file into the container.
+    for vname, vol in (doc.get("volumes") or {}).items():
+        opts = (vol or {}).get("driver_opts") if isinstance(vol, dict) else None
+        device = str((opts or {}).get("device") or "")
+        if device and (device.startswith(("/", "~")) or ".." in device.split("/")):
+            raise StackError(f"volume {vname!r}: binding the host path {device} is not allowed")
+    for section in ("secrets", "configs"):
+        for item, spec in (doc.get(section) or {}).items():
+            if isinstance(spec, dict) and "file" in spec:
+                _local_path_problem(spec["file"], "file", f"{section[:-1]} {item!r}")
     return doc
 
 

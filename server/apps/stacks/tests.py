@@ -337,3 +337,52 @@ class RegistryCredentialTests(TestCase):
             with self.subTest(body=body):
                 self.assertEqual(self.api.post("/api/v1/stacks/registries/", body, format="json").status_code, 400)
         self.assertEqual(self.client.get("/api/v1/agent/registry-auth/?registry=ghcr.io").status_code, 401)
+
+
+class SandboxEscapeTests(SimpleTestCase):
+    """validate_compose is what keeps a stack from owning its host where
+    stack_deploy is allowlisted but scripts are not (architect review,
+    2026-10-08). Each of these reached the host another way."""
+
+    S = "services:\n  a:\n    image: x\n"
+
+    def test_more_escapes_are_refused(self):
+        bad = {
+            "cap sys_admin": self.S + "    cap_add: [SYS_ADMIN]\n",
+            "cap sys_module lowercase": self.S + "    cap_add: [cap_sys_module]\n",
+            "cap sys_ptrace": self.S + "    cap_add: [SYS_PTRACE]\n",
+            "raw disk device": self.S + "    devices: ['/dev/sda:/dev/sda']\n",
+            "device long form": self.S + "    devices:\n      - /dev/mem\n",
+            "apparmor unconfined": self.S + "    security_opt: ['apparmor:unconfined']\n",
+            "seccomp unconfined": self.S + "    security_opt: ['seccomp=unconfined']\n",
+            "label disable": self.S + "    security_opt: ['label:disable']\n",
+            "ipc host": self.S + "    ipc: host\n",
+            "userns host": self.S + "    userns_mode: host\n",
+            "cgroup host": self.S + "    cgroup: host\n",
+            "home bind": self.S + "    volumes: ['~/.ssh:/keys']\n",
+            "env_file absolute": self.S + "    env_file: /etc/shadow\n",
+            "env_file climb": self.S + "    env_file: ['../../etc/x']\n",
+            "build context absolute": "services:\n  a:\n    build: /\n",
+            "build context climb": "services:\n  a:\n    build: {context: ../..}\n",
+            "named volume binds etc": self.S + "    volumes: ['data:/d']\nvolumes:\n  data:\n    driver_opts: {type: none, o: bind, device: /etc}\n",
+            "secret from host file": self.S + "secrets:\n  s:\n    file: /etc/shadow\n",
+            "config from host file": self.S + "configs:\n  c:\n    file: /root/.ssh/id_rsa\n",
+        }
+        for label, text in bad.items():
+            with self.subTest(label):
+                with self.assertRaises(StackError):
+                    validate_compose(text)
+
+    def test_ordinary_setups_still_pass(self):
+        good = [
+            self.S + "    devices: ['/dev/dri:/dev/dri']\n",
+            self.S + "    devices: ['/dev/net/tun:/dev/net/tun']\n    cap_add: [NET_ADMIN]\n",
+            self.S + "    network_mode: host\n",
+            self.S + "    env_file: .env\n",
+            "services:\n  a:\n    build: ./app\n",
+            self.S + "    volumes: ['data:/d']\nvolumes:\n  data: {}\n",
+            self.S + "secrets:\n  s:\n    file: ./secret.txt\n",
+        ]
+        for text in good:
+            with self.subTest(text=text):
+                validate_compose(text)
