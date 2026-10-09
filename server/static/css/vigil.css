@@ -3964,3 +3964,58 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
   .rlt-wave { grid-template-columns: 14px 1fr auto; }
   .rlt-wave-tags { display: none; }
 }
+
+/* ── Stack editor page (QA-20) ───────────────────────────────────────── */
+.sted { width: 100%; }
+.sted-bar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 14px;
+  margin: -12px 0 18px; padding: 12px 0;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+}
+.sted-crumbs { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 13px; color: var(--text-2); }
+.sted-crumb { background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit;
+  font-size: 13px; color: var(--text-3); }
+.sted-crumb:hover { color: var(--sky-ink); }
+.sted-crumb-now { color: var(--text-1); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sted-sep { color: var(--text-3); }
+.sted-status { margin-left: auto; font-size: 11px; font-weight: 600; padding: 3px 11px;
+  border-radius: 20px; background: var(--s3); color: var(--text-3); white-space: nowrap; }
+.sted-status.is-good { background: rgba(var(--rgb-mint), 0.14); color: var(--mint-ink); }
+.sted-status.is-bad { background: rgba(var(--rgb-rose), 0.14); color: var(--rose-ink); }
+.sted-actions { display: flex; align-items: center; gap: 8px; }
+
+.sted-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
+.sted-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sted-label { font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+  color: var(--text-3); }
+.sted-field { display: flex; flex-direction: column; gap: 6px; }
+.sted-editor { min-height: 60vh; }
+
+.sted-gutter { position: absolute; top: 0; left: 0; bottom: 0; z-index: 3; width: 52px;
+  /* line-height here must stay the 1.6 the .te-editor rule sets for the text
+     itself, or a gutter number stops lining up with its line. */
+  padding: 14px 10px 14px 0; text-align: right; overflow: hidden; pointer-events: none;
+  font-family: var(--font-mono); font-size: 13px; line-height: 1.6; color: var(--text-3);
+  border-right: 1px solid var(--border); }
+.sted-gutter .sted-ln.is-error { color: var(--rose-ink); font-weight: 700; }
+.sted-editor .te-highlight, .sted-editor .te-yaml { padding-left: 66px; }
+
+.sted-check { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.sted-check-ok { color: var(--mint-ink); font-weight: 600; }
+.sted-check-bad { color: var(--rose-ink); font-family: var(--font-mono); word-break: break-word; }
+.sted-check-line { color: var(--text-3); margin-left: 8px; }
+.sted-services { display: flex; flex-wrap: wrap; gap: 6px; }
+.sted-service { gap: 7px; }
+.sted-service-img { color: var(--text-3); font-family: var(--font-mono); font-weight: 400; }
+.sted-missing { color: var(--text-2); display: flex; align-items: center; gap: 8px; }
+
+.sted-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.sted-card { background: var(--s1); border-radius: var(--r-lg); padding: 16px; }
+.sted-card-title { font-size: 12px; font-weight: 600; color: var(--text-1); margin-bottom: 10px; }
+.sted-card-sub { font-weight: 400; color: var(--text-3); }
+.sted-side .stack-env { gap: 8px; }
+
+@media (max-width: 980px) {
+  .sted-grid { grid-template-columns: minmax(0, 1fr); }
+}
