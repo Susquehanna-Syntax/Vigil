@@ -39,14 +39,36 @@ def _workdir(params: dict) -> Path:
     return path
 
 
-def _write_private(path: Path, text: str) -> None:
-    """Create or replace *path* readable by its owner only."""
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+def _write_new(path: Path, text: str, mode: int) -> None:
+    """Replace *path* with a fresh file, never following a link: whatever is
+    there (a symlink a container planted, say) is removed, not written
+    through, and O_EXCL fails if one reappears in between."""
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), mode)
     try:
         os.write(fd, text.encode())
+        os.fchmod(fd, mode)
     finally:
         os.close(fd)
-    os.chmod(path, 0o600)
+
+
+def _write_private(path: Path, text: str) -> None:
+    """Create or replace *path* readable by its owner only."""
+    _write_new(path, text, 0o600)
+
+
+def _safe_workdir(workdir: Path) -> None:
+    """The agent writes here as root, so no one but root may be able to
+    re-point it: every folder above it root-owned and not group/other-writable."""
+    from ..composecheck import unsafe_dir
+    loose = unsafe_dir(str(workdir / "x"))
+    if loose:
+        raise ValueError(f"refusing to deploy into {workdir}: {loose} can be changed by a user other than root")
+    if workdir.is_symlink():
+        raise ValueError(f"refusing to deploy into {workdir}: it is a symlink")
 
 
 _FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.ya?ml$")
@@ -149,8 +171,9 @@ def _stack_deploy(params: dict, config: AgentConfig) -> str:
     # half-configured containers.
     env_text = client.fetch_stack_env(config, ticket) if ticket else None
 
+    _safe_workdir(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
-    (workdir / compose_file).write_text(compose)
+    _write_new(workdir / compose_file, compose, 0o644)
     if env_text is not None:
         _write_private(workdir / ".env", env_text)
     resolved = _check_resolved(workdir, project, compose_file, config.data_dir)

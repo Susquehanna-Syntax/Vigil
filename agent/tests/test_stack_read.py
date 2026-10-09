@@ -83,6 +83,7 @@ class StackReadTests(unittest.TestCase):
     def test_deploy_writes_an_adopted_stacks_own_file(self):
         with patch.object(client, "fetch_stack_env", return_value=""), \
                 patch.object(executor.collector, "request_docker_recheck"), \
+                patch.object(stacks, "_safe_workdir"), \
                 patch.object(stacks, "_check_resolved", return_value={"services": {}}) as check:
             stacks._stack_deploy({"project": "shop", "compose": "services:\n  web:\n    image: nginx\n",
                                   "working_dir": str(self.dir), "compose_file": "docker-compose.yml"},

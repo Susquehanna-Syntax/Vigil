@@ -146,6 +146,52 @@ class ProblemsTests(unittest.TestCase):
             self.assertTrue(composecheck.problems(_cfg(build={"context": tmp + "/data"}), tmp))
 
 
+class OwnershipTests(unittest.TestCase):
+    """A folder a non-root user can write lets that user swap a path
+    component for a symlink after the check — the engine, or the agent
+    writing as root, follows it."""
+
+    def test_a_bind_under_a_user_owned_folder_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:          # owned by the test user, under sticky /tmp
+            data = os.path.join(tmp, "data")
+            problems = composecheck.problems(_cfg(volumes=[f"{data}:/d"]), WD)
+            self.assertTrue(any("other than root" in p for p in problems), problems)
+        self.assertIsNone(composecheck.unsafe_dir("/srv/x/y"))   # root-owned all the way (or not there yet)
+
+    def test_the_stack_folder_itself_may_not_be_mounted_writable(self):
+        self.assertTrue(composecheck.problems(_cfg(volumes=["./:/stack"]), WD))
+        self.assertTrue(composecheck.problems(_cfg(volumes=["/opt/vigil/stacks:/s"]), WD))
+        self.assertTrue(composecheck.problems(_cfg(), WD, live_rw=(WD,)))
+        self.assertEqual(composecheck.problems(_cfg(volumes=["./:/stack:ro"]), WD), [])
+
+    def test_x_podman_is_refused_anywhere(self):
+        for cfg in ({**_cfg(), "x-podman": {"in_pod": False}},
+                    _cfg(**{"x-podman": {"podman_args": ["--privileged"]}}),
+                    _cfg(**{"X-Podman.uidmaps": ["0:0:1"]})):
+            with self.subTest(cfg=cfg):
+                self.assertTrue(composecheck.problems(cfg, WD))
+        self.assertEqual(composecheck.problems(_cfg(**{"x-common": {"a": 1}}), WD), [])
+
+    def test_agent_writes_never_follow_a_planted_link(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "elsewhere"
+            target.write_text("untouched")
+            link = Path(tmp) / "compose.yaml"
+            link.symlink_to(target)
+            stacks._write_new(link, "services: {}", 0o644)
+            self.assertFalse(link.is_symlink())
+            self.assertEqual(link.read_text(), "services: {}")
+            self.assertEqual(target.read_text(), "untouched")
+
+    def test_deploy_refuses_a_user_owned_stack_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                stacks._safe_workdir(Path(tmp) / "web")
+            os.symlink(tmp, Path(tmp) / "link")
+            with patch.object(composecheck, "unsafe_dir", return_value=None), self.assertRaises(ValueError):
+                stacks._safe_workdir(Path(tmp) / "link")
+
+
 class DeployRefusesTests(unittest.TestCase):
     def test_deploy_stops_before_up_when_the_resolved_config_escapes(self):
         resolved = json.dumps(_cfg(volumes=[{"type": "bind", "source": "/etc", "target": "/e"}]))

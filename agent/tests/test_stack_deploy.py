@@ -52,6 +52,7 @@ class StackDeployTests(unittest.TestCase):
 
     def test_deploy_writes_files_and_fetches_env_once(self):
         with patch.object(client, "fetch_stack_env", return_value="API_KEY=hunter2\n") as fetch, \
+                patch.object(stacks, "_safe_workdir"), \
                 patch.object(stacks, "_check_resolved", return_value={"services": {}}):   # test_compose_check.py
             cfg = dataclasses.replace(_CFG, data_dir=self.root / "agent-data")
             out = stacks._stack_deploy(self._params(), cfg)

@@ -104,9 +104,32 @@ def _bind_problem(source: str, workdir: str) -> str | None:
     link = _symlink_in(path, workdir)
     if link:
         return f"bind of {source}: {link} is a symlink"
+    loose = unsafe_dir(path)
+    if loose:
+        return (f"bind of {source}: {loose} can be changed by a user other than root "
+                f"(keep stack data in the stack folder or a root-owned path such as /srv)")
     if _inside(path, workdir):                           # the stack's own folder, symlinks followed
         return None
     return f"bind of {source}" if bind_forbidden(path) else None
+
+
+def unsafe_dir(path: str) -> str | None:
+    """The first folder above *path* (as written, and once links are
+    followed) that someone other than root could change: not root-owned, or
+    writable by group/others (sticky /tmp too). Whoever can write it can swap
+    a component of the path for a symlink after any check here, and the
+    engine — or the agent writing as root — would follow it."""
+    for candidate in {_norm(path), os.path.realpath(_norm(path))}:
+        current = "/"
+        for part in candidate.strip("/").split("/")[:-1]:
+            current = posixpath.join(current, part)
+            try:
+                st = os.stat(current)
+            except FileNotFoundError:
+                break                                    # created later by root
+            if st.st_uid != 0 or st.st_mode & 0o022:
+                return current
+    return None
 
 
 def _symlink_in(path: str, workdir: str) -> str | None:
@@ -247,18 +270,27 @@ def _build(where: str, build, workdir: str) -> list[str]:
 INERT_KEYS = {"environment", "command", "entrypoint", "healthcheck", "labels", "content"}
 
 
-def _variables(node, where: str, out: list[str], depth: int = 0) -> None:
+def _variables(node, where: str, out: list[str], depth: int = 0, seen=None) -> None:
+    # podman-compose's YAML can share nodes through anchors: walk each once
+    seen = set() if seen is None else seen
+    if isinstance(node, (dict, list)):
+        if id(node) in seen:
+            return
+        seen.add(id(node))
     if depth > 64:
         out.append(f"{where}: nested too deeply")
     elif isinstance(node, dict):
         for key, value in node.items():
-            if _has_var(key):
+            if str(key).lower().startswith("x-podman"):
+                # inert to docker, but podman-compose acts on it (podman_args, pod_args, …)
+                out.append(f"{where}: {key} is not allowed")
+            elif _has_var(key):
                 out.append(f"{where}: key {key!r} has a variable")
             elif key not in INERT_KEYS and not str(key).startswith("x-"):
-                _variables(value, f"{where}.{key}", out, depth + 1)
+                _variables(value, f"{where}.{key}", out, depth + 1, seen)
     elif isinstance(node, list):
         for value in node:
-            _variables(value, where, out, depth + 1)
+            _variables(value, where, out, depth + 1, seen)
     elif _has_var(node):
         out.append(f"{where}: {node!r} has a variable")
 
@@ -344,6 +376,11 @@ def _covered(config: dict, workdir: str, live_rw: tuple) -> list[str]:
     container can swap in a symlink between this check and the mount."""
     writable = set(rw_binds(config, workdir)) | {_norm(p) for p in live_rw}
     out = []
+    root = _norm(workdir)
+    for w in sorted(writable):
+        if root == w or root.startswith(w.rstrip("/") + "/"):
+            # the agent writes compose.yaml and .env here as root
+            out.append(f"{w} is mounted writable and holds the stack folder; bind a subfolder instead")
     for source in sorted(set(_sources(config, workdir))):
         for real in {source, os.path.realpath(source)}:
             above = [w for w in writable if real.startswith(w.rstrip("/") + "/")]
