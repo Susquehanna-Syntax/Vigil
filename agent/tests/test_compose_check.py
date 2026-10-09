@@ -262,9 +262,12 @@ class DeployRefusesTests(unittest.TestCase):
             self.assertEqual(stacks._live_rw_binds(Path("/data")), ("/srv/web",))
 
     def test_unreadable_config_refuses(self):
-        with patch.object(stacks, "_compose", side_effect=RuntimeError("compose missing")):
-            with self.assertRaises(ValueError):
+        leak = "line 1: unexpected character in 'root:$6$hash'"
+        with patch.object(stacks, "_compose", side_effect=RuntimeError(leak)), \
+                self.assertLogs("vigil_agent.actions.stacks", "WARNING"):
+            with self.assertRaises(ValueError) as caught:
                 stacks._check_resolved(Path("/tmp"), "web", "compose.yaml", Path("/tmp"))
+        self.assertNotIn("root:", str(caught.exception), "compose's error quotes host files: log it, don't return it")
 
 
 if __name__ == "__main__":
