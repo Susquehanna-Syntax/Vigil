@@ -506,6 +506,20 @@ class SandboxAncestorTests(SimpleTestCase):
                 validate_compose(self.S + f"    volumes: ['{path}:/data']\n")
 
 
+class SandboxPodmanTests(SimpleTestCase):
+    """x-* is an inert extension field to docker, but podman-compose acts on
+    x-podman (podman_args, pod_args, uidmaps): refused at any depth."""
+
+    def test_x_podman_is_refused(self):
+        S = "services:\n  a:\n    image: x\n"
+        for text in (S + "x-podman:\n  in_pod: false\n",
+                     S + "    x-podman:\n      podman_args: [--privileged]\n",
+                     S + "    X-Podman.uidmaps: ['0:0:1']\n"):
+            with self.subTest(text=text), self.assertRaises(StackError):
+                validate_compose(text)
+        validate_compose("x-common: &c {restart: always}\n" + S)
+
+
 class SandboxDosTests(SimpleTestCase):
     def test_an_anchor_bomb_is_checked_quickly(self):
         import time

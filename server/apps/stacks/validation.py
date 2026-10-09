@@ -150,6 +150,9 @@ def _no_variable_keys(node, where: str = "compose file", _seen=None, _depth: int
         for key, value in node.items():
             if "$" in str(key):
                 raise StackError(f"{where}: variables are not allowed in keys ({key})")
+            if str(key).lower().startswith("x-podman"):
+                # an extension field to docker, but podman-compose acts on it (podman_args, pod_args, …)
+                raise StackError(f"{where}: {key} is not allowed in a Vigil-managed stack")
             _no_variable_keys(value, f"{where}.{key}", _seen, _depth + 1)
     elif isinstance(node, list):
         _seen.add(id(node))
