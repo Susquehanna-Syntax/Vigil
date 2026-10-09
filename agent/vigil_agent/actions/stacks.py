@@ -68,6 +68,37 @@ def _compose(workdir: Path, project: str, *args: str, timeout: int = 600,
                    timeout=timeout, extra_env=ex._compose_env())
 
 
+def _resolved_config(workdir: Path, project: str, compose_file: str) -> dict:
+    """Compose's own resolved configuration: variables substituted from the
+    .env, include/extends merged, paths and booleans normalised."""
+    import json
+
+    import yaml
+    try:
+        return json.loads(_compose(workdir, project, "config", "--format", "json",
+                                   timeout=120, compose_file=compose_file))
+    except (RuntimeError, ValueError):
+        # podman-compose has no --format json; its plain output is YAML.
+        doc = yaml.safe_load(_compose(workdir, project, "config", timeout=120, compose_file=compose_file))
+        if not isinstance(doc, dict):
+            raise ValueError("compose config did not produce a configuration") from None
+        return doc
+
+
+def _check_resolved(workdir: Path, project: str, compose_file: str) -> None:
+    """Refuse to start anything the resolved configuration would let reach the
+    host (SEC, 2026-10-08). The server checks the text it was sent; this checks
+    what compose will actually run, so no reading of the text can differ."""
+    from ..composecheck import problems
+    try:
+        resolved = _resolved_config(workdir, project, compose_file)
+    except Exception as exc:     # noqa: BLE001 — cannot check it, so do not run it
+        raise ValueError(f"could not read the resolved compose configuration: {exc}") from exc
+    found = problems(resolved, str(workdir))
+    if found:
+        raise ValueError("refusing to deploy " + project + ": " + "; ".join(found[:10]))
+
+
 def _stack_deploy(params: dict, config: AgentConfig) -> str:
     from .. import client
 
@@ -88,6 +119,7 @@ def _stack_deploy(params: dict, config: AgentConfig) -> str:
     (workdir / compose_file).write_text(compose)
     if env_text is not None:
         _write_private(workdir / ".env", env_text)
+    _check_resolved(workdir, project, compose_file)
     output = _compose(workdir, project, "up", "-d", "--remove-orphans", compose_file=compose_file)
     collector.request_docker_recheck()
     revision = params.get("revision")

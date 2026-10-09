@@ -81,7 +81,8 @@ class StackReadTests(unittest.TestCase):
 
     def test_deploy_writes_an_adopted_stacks_own_file(self):
         with patch.object(client, "fetch_stack_env", return_value=""), \
-                patch.object(executor.collector, "request_docker_recheck"):
+                patch.object(executor.collector, "request_docker_recheck"), \
+                patch.object(stacks, "_check_resolved"):   # tests/test_compose_check.py covers it
             stacks._stack_deploy({"project": "shop", "compose": "services:\n  web:\n    image: nginx\n",
                                   "working_dir": str(self.dir), "compose_file": "docker-compose.yml"}, _CFG)
         self.assertIn(str(self.dir / "docker-compose.yml"), self.run_mock.call_args.args[0])
