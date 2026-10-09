@@ -1,4 +1,5 @@
 """M11 12: stack_read — adopt a stack in place, secrets off the task result."""
+import dataclasses
 import sys
 import tempfile
 import unittest
@@ -82,10 +83,11 @@ class StackReadTests(unittest.TestCase):
     def test_deploy_writes_an_adopted_stacks_own_file(self):
         with patch.object(client, "fetch_stack_env", return_value=""), \
                 patch.object(executor.collector, "request_docker_recheck"), \
-                patch.object(stacks, "_check_resolved"):   # tests/test_compose_check.py covers it
+                patch.object(stacks, "_check_resolved", return_value={"services": {}}) as check:
             stacks._stack_deploy({"project": "shop", "compose": "services:\n  web:\n    image: nginx\n",
-                                  "working_dir": str(self.dir), "compose_file": "docker-compose.yml"}, _CFG)
-        self.assertIn(str(self.dir / "docker-compose.yml"), self.run_mock.call_args.args[0])
+                                  "working_dir": str(self.dir), "compose_file": "docker-compose.yml"},
+                                 dataclasses.replace(_CFG, data_dir=self.dir / "agent-data"))
+        self.assertEqual(check.call_args.args[2], "docker-compose.yml")
         with self.assertRaises(ValueError):
             stacks._stack_deploy({"project": "shop", "compose": "services: {}", "working_dir": str(self.dir),
                                   "compose_file": "../etc/x.yml"}, _CFG)

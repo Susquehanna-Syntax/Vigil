@@ -4,6 +4,7 @@ path and boolean normalisation), so the check that counts is on what will run.""
 import tests._safety_net  # noqa: F401 — the guard, even when this file is run or imported on its own
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -13,7 +14,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # isort: split
-from vigil_agent import composecheck
+from vigil_agent import composecheck, executor  # noqa: F401 — executor first, it imports stacks
 from vigil_agent.actions import stacks
 
 WD = "/opt/vigil/stacks/web"
@@ -45,6 +46,67 @@ class ProblemsTests(unittest.TestCase):
         for label, cfg in cases.items():
             with self.subTest(label):
                 self.assertTrue(composecheck.problems(cfg, WD))
+
+    def test_podman_shapes_are_checked_too(self):
+        """podman-compose's `config` returns the file much as written, so the
+        short and string forms must be caught as well as docker's normal form."""
+        cases = {
+            "short bind": _cfg(volumes=["/etc:/e"]),
+            "short relative escape": _cfg(volumes=["../../../../etc:/e"]),
+            "short home": _cfg(volumes=["~:/h"]),
+            "dict bind without type": _cfg(volumes=[{"source": "/root", "target": "/r"}]),
+            "odd volume type": _cfg(volumes=[{"type": "npipe", "source": "x", "target": "/x"}]),
+            "privileged string": _cfg(privileged="true"),
+            "privileged yes": _cfg(privileged="Yes"),
+            "cap string": _cfg(cap_add="SYS_ADMIN"),
+            "sysctl list": _cfg(sysctls=["kernel.core_pattern=|/tmp/x"]),
+            "device short": _cfg(devices=["/dev/sda:/dev/sda:rwm"]),
+            "device escape": _cfg(devices=["/dev/dri/../sda"]),
+            "unknown key": _cfg(storage_opt={"size": "1G"}),
+            "include left over": {**_cfg(), "include": ["/etc/other.yml"]},
+            "network container": _cfg(network_mode="container:portainer"),
+            "seccomp profile": _cfg(security_opt=["seccomp=/tmp/allow-all.json"]),
+            "selinux spc": _cfg(security_opt=["label=type:spc_t"]),
+            "additional context": _cfg(build={"context": WD, "additional_contexts": {"x": "/etc"}}),
+            "additional context list": _cfg(build={"context": WD, "additional_contexts": ["x=/"]}),
+            "dockerfile outside": _cfg(build={"context": WD, "dockerfile": "/etc/shadow"}),
+            "env_file outside": _cfg(env_file=["/etc/shadow"]),
+            "env_file in home": _cfg(env_file=["~/.ssh/id_rsa"]),
+            "build in home": _cfg(build="~/src"),
+            "variable left in a bind": _cfg(volumes=["$$HOME:/h"]),
+            "variable privileged": _cfg(privileged="${P}"),
+            "relative device driver": {**_cfg(), "volumes": {"v": {"driver_opts": {"type": "none", "o": "bind", "device": "etc"}}}},
+        }
+        for label, cfg in cases.items():
+            with self.subTest(label):
+                self.assertTrue(composecheck.problems(cfg, WD), label)
+
+    def test_ordinary_stacks_still_pass(self):
+        # docker's resolved JSON for a normal stack, captured on the test VM 2026-10-08
+        cfg = {"name": "cc", "networks": {"default": {"name": "cc_default", "ipam": {}}},
+               "services": {"a": {"cap_add": ["NET_ADMIN"], "command": None, "entrypoint": None,
+                                  "environment": {"A": "1"}, "image": "nginx", "networks": {"default": None},
+                                  "ports": [{"mode": "ingress", "target": 80, "published": "8080", "protocol": "tcp"}],
+                                  "restart": "unless-stopped", "sysctls": {"net.core.somaxconn": "1024"},
+                                  "volumes": [{"type": "bind", "source": WD + "/data", "target": "/d",
+                                               "bind": {"create_host_path": True}},
+                                              {"type": "bind", "source": "/srv/x", "target": "/x", "read_only": True},
+                                              {"type": "volume", "source": "named", "target": "/n", "volume": {}}]},
+                            "b": {"build": {"context": WD + "/sub", "dockerfile": "Dockerfile"},
+                                  "depends_on": {"a": {"condition": "service_started", "required": True}},
+                                  "devices": [{"source": "/dev/fuse", "target": "/dev/fuse", "permissions": "rwm"}],
+                                  "volumes_from": ["a"], "privileged": False,
+                                  "security_opt": ["no-new-privileges:true"]}},
+               "volumes": {"named": {"name": "cc_named"}}}
+        self.assertEqual(composecheck.problems(cfg, WD), [])
+        self.assertEqual(composecheck.problems(_cfg(volumes=["./data:/d", "named:/n", "/anon"],
+                                                    network_mode="host", sysctls=["net.ipv4.ip_forward=1"]), WD), [])
+
+    def test_a_symlink_planted_in_the_stack_folder_is_followed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.symlink("/etc", os.path.join(tmp, "data"))
+            self.assertTrue(composecheck.problems(_cfg(volumes=["./data:/d"]), tmp))
+            self.assertTrue(composecheck.problems(_cfg(build={"context": tmp + "/data"}), tmp))
 
 
 class DeployRefusesTests(unittest.TestCase):
