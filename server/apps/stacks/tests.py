@@ -490,6 +490,10 @@ class SandboxAncestorTests(SimpleTestCase):
             "agent data": self.S + "    volumes: ['/var/lib/vigil-agent:/a']\n",
             "variable in a key": self.S + "    volumes: ['d:/d']\nvolumes:\n  d:\n    driver_opts: {'${K}': /etc}\n",
             "annotations": self.S + "    annotations: {run.oci.keep_original_groups: '1'}\n",
+            "double leading slash": self.S + "    volumes: ['//run:/r']\n",
+            "triple slash etc": self.S + "    volumes: ['///etc/:/e']\n",
+            "pid Host": self.S + "    pid: Host\n",
+            "ipc HOST": self.S + "    ipc: ' HOST '\n",
         }
         for label, text in bad.items():
             with self.subTest(label):

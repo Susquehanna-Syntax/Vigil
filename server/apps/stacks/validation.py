@@ -30,7 +30,9 @@ def _bind_forbidden(source: str) -> bool:
     one: binding /var reaches /var/lib/docker, and /run or /var/run reach every
     engine and systemd socket on the host."""
     import posixpath
-    path = posixpath.normpath(source)
+    # Linux reads //run as /run, but normpath keeps a leading "//" (POSIX
+    # leaves it implementation-defined), so collapse it before comparing.
+    path = "/" + posixpath.normpath(source).lstrip("/")
     if path == "/":
         return True
     return any(path == p or path.startswith(p + "/") or p.startswith(path + "/")
@@ -182,7 +184,7 @@ def validate_compose(text: str) -> dict:
                 raise StackError(f"{where}: privileged containers are not allowed")
         for key in ("pid", "ipc", "userns_mode", "cgroup", "uts"):
             if key in svc:
-                value = str(svc[key] or "")
+                value = str(svc[key] or "").strip().lower()
                 _no_variables(value, f"{where}: {key}")
                 if value == "host" or value.startswith("container:"):
                     raise StackError(f"{where}: {key}: {value} is not allowed")
