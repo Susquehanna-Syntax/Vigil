@@ -36,7 +36,6 @@ class StackError(ValueError):
 _FORBIDDEN_CAPS = {"ALL", "SYS_ADMIN", "SYS_MODULE", "SYS_PTRACE", "SYS_RAWIO", "SYS_BOOT",
                    "DAC_READ_SEARCH", "BPF", "PERFMON", "MAC_ADMIN", "MAC_OVERRIDE"}
 #: Host devices a stack may pass through: GPUs, a TUN device for VPNs, FUSE.
-_ALLOWED_DEVICE_PREFIXES = ("/dev/dri", "/dev/nvidia", "/dev/net/tun", "/dev/fuse", "/dev/kfd")
 #: Namespaces a stack may not share with the host. network_mode: host stays
 #: allowed; it shares ports, not the filesystem or other processes.
 _HOST_NAMESPACE_KEYS = ("pid", "ipc", "userns_mode", "cgroup", "uts")
@@ -81,12 +80,32 @@ _SERVICE_KEYS = {
     "memswap_limit", "mem_reservation", "cpus", "cpu_shares", "cpuset", "cpu_count", "cpu_percent",
     "pids_limit", "read_only", "init", "tty", "stdin_open", "platform", "pull_policy", "profiles",
     "group_add", "oom_score_adj", "oom_kill_disable", "mac_address", "links", "attach", "scale",
-    "annotations", "gpus", "runtime", "stop_grace", "post_start", "pre_stop", "develop",
+    "annotations", "gpus",
     # checked below
     "build", "env_file", "volumes", "volumes_from", "devices", "cap_add", "security_opt",
     "privileged", "pid", "ipc", "userns_mode", "cgroup", "uts", "network_mode", "sysctls",
     "secrets", "configs",
 }
+
+#: Build keys a stack may use. ssh, entitlements, privileged builds, host
+#: networking and local cache import/export all reach the host.
+_BUILD_KEYS = {"context", "dockerfile", "dockerfile_inline", "args", "target", "labels",
+               "cache_from", "tags", "platforms", "shm_size", "extra_hosts", "no_cache",
+               "pull", "additional_contexts", "network"}
+
+#: Devices a stack may pass through, matched on the normalised path: GPUs (DRI
+#: render/card nodes, NVIDIA, AMD KFD), TUN for VPNs, and FUSE.
+_DEVICE_RE = re.compile(
+    r"/dev/dri(/(card|renderD)\d+)?|/dev/nvidia(\d+|ctl|-uvm|-uvm-tools|-modeset)"
+    r"|/dev/net/tun|/dev/fuse|/dev/kfd")
+
+
+def _device_allowed(source: str) -> bool:
+    import posixpath
+    if ".." in source.split("/") or posixpath.normpath(source) != source.rstrip("/"):
+        return False
+    return bool(_DEVICE_RE.fullmatch(posixpath.normpath(source)))
+
 
 #: Values compose reads as true, whatever YAML parser read them first.
 _TRUTHY = {"true", "yes", "y", "on", "1"}
@@ -160,7 +179,7 @@ def validate_compose(text: str) -> dict:
             source = (str(device.get("source") or "") if isinstance(device, dict)
                       else str(device).split(":", 1)[0])
             _no_variables(source, f"{where}: devices")
-            if not source.startswith(_ALLOWED_DEVICE_PREFIXES):
+            if not _device_allowed(source):
                 raise StackError(f"{where}: passing through the host device {source} is not allowed")
         for key, value in (svc.get("sysctls") or {}).items() if isinstance(svc.get("sysctls"), dict) else []:
             if not str(key).startswith("net."):
@@ -181,10 +200,29 @@ def validate_compose(text: str) -> dict:
             _local_path_problem(path, "env_file", where)
         build = svc.get("build")
         if build is not None:
-            for value in ((build.get("context"), build.get("dockerfile")) if isinstance(build, dict) else (build,)):
-                if value is not None:
-                    _no_variables(value, f"{where}: build")
-                    _local_path_problem(value, "the build context", where)
+            if not isinstance(build, dict):
+                build = {"context": build}
+            for key in build:
+                if key not in _BUILD_KEYS:
+                    raise StackError(f"{where}: build.{key} is not allowed in a Vigil-managed stack")
+            for key in ("context", "dockerfile"):
+                if build.get(key) is not None:
+                    _no_variables(build[key], f"{where}: build.{key}")
+                    _local_path_problem(build[key], f"build.{key}", where)
+            if str(build.get("network") or "") not in ("", "default", "none"):
+                raise StackError(f"{where}: build.network {build['network']} is not allowed")
+            for ref in build.get("cache_from") or []:
+                text_ref = str(ref)
+                _no_variables(text_ref, f"{where}: build.cache_from")
+                if "type=local" in text_ref.replace(" ", ""):
+                    raise StackError(f"{where}: build.cache_from may not read a local path ({ref})")
+            contexts = build.get("additional_contexts") or {}
+            for ctx in (contexts.values() if isinstance(contexts, dict) else contexts):
+                text_ctx = str(ctx).split("=", 1)[-1] if not isinstance(contexts, dict) else str(ctx)
+                _no_variables(text_ctx, f"{where}: build.additional_contexts")
+                if text_ctx.startswith(("docker-image://", "service:", "https://", "git@")):
+                    continue
+                _local_path_problem(text_ctx, "build.additional_contexts", where)
 
         for volume in svc.get("volumes") or []:
             if isinstance(volume, dict):

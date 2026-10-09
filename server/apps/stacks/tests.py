@@ -434,3 +434,42 @@ class SandboxAllowlistTests(SimpleTestCase):
         for text in good:
             with self.subTest(text=text):
                 validate_compose(text)
+
+
+class SandboxReviewTests(SimpleTestCase):
+    """Second review of the allowlist: hooks, build options and device paths."""
+
+    S = "services:\n  a:\n    image: x\n"
+
+    def test_refused(self):
+        bad = {
+            "privileged post_start hook": self.S + "    post_start: [{command: id, privileged: true}]\n",
+            "pre_stop hook": self.S + "    pre_stop: [{command: id}]\n",
+            "develop watch": self.S + "    develop: {watch: [{path: /etc, action: sync, target: /x}]}\n",
+            "runtime": self.S + "    runtime: runc-unsafe\n",
+            "build additional context": "services:\n  a:\n    build: {context: ., additional_contexts: {h: /etc}}\n",
+            "build ssh": "services:\n  a:\n    build: {context: ., ssh: [default]}\n",
+            "build entitlements": "services:\n  a:\n    build: {context: ., entitlements: [network.host]}\n",
+            "build network host": "services:\n  a:\n    build: {context: ., network: host}\n",
+            "build cache_from local": "services:\n  a:\n    build: {context: ., cache_from: ['type=local,src=/etc']}\n",
+            "build cache_to local": "services:\n  a:\n    build: {context: ., cache_to: ['type=local,dest=/etc']}\n",
+            "build privileged": "services:\n  a:\n    build: {context: ., privileged: true}\n",
+            "device climbs out": self.S + "    devices: ['/dev/dri/../sda:/dev/sda']\n",
+            "device prefix trick": self.S + "    devices: ['/dev/fuse-not-really:/x']\n",
+            "nvidia prefix trick": self.S + "    devices: ['/dev/nvidiaXYZ:/x']\n",
+        }
+        for label, text in bad.items():
+            with self.subTest(label):
+                with self.assertRaises(StackError):
+                    validate_compose(text)
+
+    def test_still_allowed(self):
+        good = [
+            "services:\n  a:\n    build: {context: ./app, dockerfile: Dockerfile, args: {V: 1}, target: prod}\n",
+            "services:\n  a:\n    build: {context: ., additional_contexts: {base: 'docker-image://alpine:3', b: 'service:b'}}\n  b:\n    image: y\n",
+            "services:\n  a:\n    build: {context: ., cache_from: ['type=registry,ref=ghcr.io/x/y:cache']}\n",
+            self.S + "    devices: ['/dev/dri/renderD128:/dev/dri/renderD128', '/dev/nvidia0', '/dev/nvidiactl', '/dev/net/tun', '/dev/fuse']\n",
+        ]
+        for text in good:
+            with self.subTest(text=text):
+                validate_compose(text)
