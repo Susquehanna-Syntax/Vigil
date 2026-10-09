@@ -4019,3 +4019,35 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 @media (max-width: 980px) {
   .sted-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ── Parallel wave groups (QA-22) ─────────────────────────────────────── */
+/* The start dialog offers the ladders as toggle chips. Pick order matters — it
+   is the tie-break for a machine tagged into two of them — so a picked chip
+   carries its position. */
+.rlt-groups { display: flex; flex-wrap: wrap; gap: 6px; }
+.rlt-group-chip { border: 0; cursor: pointer; font-family: inherit; gap: 6px; }
+.rlt-group-chip-count { color: var(--text-3); font-weight: 400; }
+.rlt-group-chip[aria-pressed="true"] { background: var(--lavender); color: var(--lavender-ink); }
+.rlt-group-chip[aria-pressed="true"] .rlt-group-chip-count { color: var(--lavender-ink); opacity: .75; }
+.rlt-group-chip-order { display: none; font-size: 10px; font-weight: 700;
+  background: var(--on-accent); color: var(--lavender-ink); border-radius: 50%;
+  width: 16px; height: 16px; align-items: center; justify-content: center; }
+.rlt-group-chip[aria-pressed="true"] .rlt-group-chip-order { display: inline-flex; }
+
+/* A batch is one card with a column per group. The lane is a tinted surface,
+   never a striped edge. */
+.rlt-lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px; margin-top: 10px; }
+.rlt-lane { background: var(--s2); border-radius: var(--r-lg); padding: 10px 12px; min-width: 0; }
+.rlt-lane-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; cursor: pointer; }
+.rlt-lane-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rlt-lane-head .rlt-wave-count { flex: 1; }
+/* A lane is ~260px: the counts move under the wave name, so the dot, name,
+   failed chip and Machines button keep one row. */
+.rlt-lane-body .rlt-wave { grid-template-columns: 14px minmax(0, 1fr) auto auto; row-gap: 0; }
+.rlt-lane-body .rlt-wave-count { grid-column: 2 / -1; grid-row: 2; }
+.rlt-lane-body .rlt-wave-tags { display: none; }
+
+@media (max-width: 640px) {
+  .rlt-lanes { grid-template-columns: minmax(0, 1fr); }
+}
