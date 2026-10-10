@@ -237,6 +237,16 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
+#: The image sets VIGIL_HASHED_STATIC=1: collectstatic writes content-hashed
+#: copies (vigil-stacks.3f2a….js) and pages link those. A plain
+#: /static/js/x.js URL lets a cache in front of Vigil (Cloudflare's browser
+#: TTL is 4 hours) serve last release's script with this release's page.
+#: Off by default: tests and a source checkout have no collectstatic manifest.
+if os.environ.get("VIGIL_HASHED_STATIC", "").lower() in ("1", "true", "yes"):
+    STORAGES = {
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "vigil.storage.HashedStaticStorage"},
+    }
 
 # ---------------------------------------------------------------------------
 # Media files — agent binaries and other uploaded files
