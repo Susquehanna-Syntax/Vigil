@@ -8,4 +8,6 @@ it is told to).
 
 # signed_v2 (SEC-4): the server signs when it sent a task and to which agent,
 # and this agent refuses any task that is not signed that way.
-FEATURES = ("relevant", "branches", "boost", "signed_v2")
+# stack_source (2026.14.1): stack_deploy places a Git stack's source folder
+# from a ticketed, sha256-checked archive.
+FEATURES = ("relevant", "branches", "boost", "signed_v2", "stack_source")
