@@ -216,7 +216,7 @@ function _renderStackCheck(r) {
       + (r.line ? `<span class="sted-check-line">line ${r.line}</span>` : '') + '</div>';
   }
   (r.missing_env || []).forEach((v) => {
-    html += `<div class="sted-missing">⚠ ${escHtml(v)} is used but not set `
+    html += `<div class="sted-missing">${escHtml(v)} is used but not set `
       + `<button class="btn btn-ghost btn-xs" type="button" data-sted-add-env="${escAttr(v)}" `
       + `aria-label="Add ${escAttr(v)} to the .env">Add ${escHtml(v)}</button></div>`;
   });
