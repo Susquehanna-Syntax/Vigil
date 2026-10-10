@@ -49,6 +49,7 @@ KNOWN_EVENTS = frozenset({
     "task_completed",    # payload: task
     # Managed stacks (M11). Business audit subscribes; Free has no listener.
     "stack_saved",          # payload: stack, user, revision
+    "git_credential_added", # payload: credential, user
     "stack_env_revealed",   # payload: stack, user
     "stack_deployed",       # payload: stack, user, task
     # Reprovisioning (docs/reprovisioning.md §4.5). Audit subscribes to these

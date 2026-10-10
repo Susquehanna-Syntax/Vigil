@@ -174,7 +174,8 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "label": "Deploy a Vigil-managed compose stack",
         "risk": "high",
         "required": ["project", "compose", "working_dir"],
-        "optional": ["env_ticket", "revision", "compose_file"],
+        "optional": ["env_ticket", "revision", "compose_file",
+                     "source_ticket", "source_sha256", "source_commit"],
         "outputs": {"project": "str", "revision": "int"},
     },
     "stack_remove": {

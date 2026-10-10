@@ -529,6 +529,17 @@ def _validate_stack_params(params: dict[str, Any], position: int, action_type: s
         ticket = params.get("env_ticket")
         if ticket not in (None, "") and not (isinstance(ticket, str) and _UUID_RE.match(ticket)):
             raise SpecError(f"{where}: 'env_ticket' must be a ticket id")
+        # A Git stack's source folder: a one-time ticket, the sha256 the
+        # archive must have (the agent refuses anything else), its commit.
+        source = [params.get(k) for k in ("source_ticket", "source_sha256", "source_commit")]
+        if any(v not in (None, "") for v in source):
+            ticket, sha, commit = source
+            if not (isinstance(ticket, str) and _UUID_RE.match(ticket)):
+                raise SpecError(f"{where}: 'source_ticket' must be a ticket id")
+            if not (isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{64}", sha)):
+                raise SpecError(f"{where}: 'source_sha256' must be 64 hex characters")
+            if not (isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit)):
+                raise SpecError(f"{where}: 'source_commit' must be a commit id")
     else:
         delete = params.get("delete_files")
         if delete is not None and not isinstance(delete, bool):
