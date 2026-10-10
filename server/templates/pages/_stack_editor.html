@@ -19,12 +19,52 @@
       </div>
 
       <div class="sted-grid">
-        <div class="sted-main">
+        <div class="sted-main" id="sted-main">
+          <div class="sted-source" id="sted-source" role="radiogroup" aria-label="Where the compose file comes from" hidden>
+            <button class="sted-source-btn" type="button" role="radio" aria-checked="true" data-sted-source="editor">Write it here</button>
+            <button class="sted-source-btn" type="button" role="radio" aria-checked="false" data-sted-source="git">From Git</button>
+          </div>
+
           <div class="sted-field" id="stack-name-field">
             <label class="sted-label" for="stack-name">Name</label>
             <input class="form-control" id="stack-name" maxlength="63" placeholder="media"
               autocomplete="off" autocapitalize="off" spellcheck="false">
             <div class="bl-hint">Lowercase letters, digits, _ and -. It lives in /opt/vigil/stacks/&lt;name&gt; on the host.</div>
+          </div>
+
+          <div class="sted-git" id="sted-git" hidden>
+            <div class="sted-git-grid">
+              <div class="sted-field sted-git-wide">
+                <label class="sted-label" for="sted-git-url">Repository URL</label>
+                <input class="form-control" id="sted-git-url" placeholder="https://github.com/acme/app.git"
+                  autocomplete="off" autocapitalize="off" spellcheck="false">
+              </div>
+              <div class="sted-field">
+                <label class="sted-label" for="sted-git-branch">Branch</label>
+                <input class="form-control" id="sted-git-branch" value="main"
+                  autocomplete="off" autocapitalize="off" spellcheck="false">
+              </div>
+              <div class="sted-field">
+                <label class="sted-label" for="sted-git-pin">Pin to a tag or commit (optional)</label>
+                <input class="form-control" id="sted-git-pin" placeholder="v1.2, or a commit"
+                  autocomplete="off" autocapitalize="off" spellcheck="false">
+              </div>
+              <div class="sted-field">
+                <label class="sted-label" for="sted-git-path">Compose file in the repo</label>
+                <input class="form-control" id="sted-git-path" value="compose.yaml"
+                  autocomplete="off" autocapitalize="off" spellcheck="false">
+              </div>
+              <div class="sted-field">
+                <label class="sted-label" for="sted-git-cred">Credential</label>
+                <select class="form-control" id="sted-git-cred"></select>
+              </div>
+            </div>
+            <div class="sted-git-state">
+              <span id="sted-git-state" hidden>Commit <code>000000000000</code></span>
+              <button class="btn btn-ghost btn-sm" type="button" data-sted-git-pull hidden>Pull latest</button>
+            </div>
+            <div class="bl-hint">Vigil fetches the folder that holds this compose file and ships it to the host, so
+              build: contexts have their source. The compose file is edited in the repository, not here.</div>
           </div>
 
           <div class="sted-label">compose.yaml</div>
