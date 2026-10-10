@@ -50,7 +50,7 @@ def _waves_in_group(group_tag):
     qs = PatchWave.objects.filter(enabled=True)
     tag = (group_tag or "").strip()
     if tag:
-        qs = qs.filter(group_tag_rows__key=tag.lower())
+        qs = qs.filter(group_tag_rows__key=tag.lower()).distinct()
     return qs
 
 
@@ -214,20 +214,20 @@ def _batch_group_tags(group_tags) -> list[str]:
 def _batch_host_plan(tags: list[str], host_ids) -> "dict[str, list[str]]":
     """Hosts per ladder, each host on exactly one.
 
-    The plan is the whole fleet's — the same one a wave walks — so a host a
-    higher wave already claimed never shows up here twice. Within that, a host
-    tagged into two ladders goes to the **first listed** group only.
+    Each ladder's plan is its own — the same one its waves walk — so a host
+    an earlier wave of the ladder claimed never shows up twice, and a wave of
+    another ladder claims nothing from it. A host tagged into two ladders
+    goes to the **first listed** group only.
     """
-    plan = rollout_wave_plan(
-        list(PatchWave.objects.filter(enabled=True).order_by("order", "id"))
-    )
     wanted = ({str(h).strip().lower() for h in host_ids}
               if host_ids is not None else None)
     taken: set[str] = set()
     per_tag: dict[str, list[str]] = {}
     for tag in tags:
+        waves = list(_waves_in_group(tag).order_by("order", "id"))
+        plan = rollout_wave_plan(waves)
         hosts: list[str] = []
-        for wave in _waves_in_group(tag):
+        for wave in waves:
             for host_id in plan.get(wave.id, []):
                 host = str(host_id)
                 low = host.lower()
@@ -290,8 +290,8 @@ def start_rollout_batch(
 def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
     """Dispatch one task per wave host and open a TaskRun for them.
 
-    Hosts come from the cross-wave plan, not the raw wave membership: a
-    host tagged into two waves belongs to the earliest wave only, so this
+    Hosts come from the ladder's cross-wave plan, not the raw wave membership:
+    a host tagged into two of its waves belongs to the earliest only, so this
     wave must not re-claim it. Must run inside a transaction that holds
     the rollout row lock (see ``evaluate_rollout``) — otherwise two beat
     ticks can both pass the "no run yet for this wave" check and dispatch
@@ -301,10 +301,10 @@ def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
     """
     from apps.hosts.models import Host
 
-    enabled = list(
-        PatchWave.objects.filter(enabled=True).order_by("order", "id")
+    # The ladder's own plan: a wave of another ladder claims no host from it.
+    plan = rollout_wave_plan(
+        list(_waves_in_group(rollout.wave_group_tag).order_by("order", "id"))
     )
-    plan = rollout_wave_plan(enabled)
     host_ids = plan.get(rollout.current_wave.id, [])
     if rollout.host_ids is not None:
         allowed = set(rollout.host_ids)
