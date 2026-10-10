@@ -190,11 +190,25 @@ def stack_detail(request, stack_id):
                             status=status.HTTP_400_BAD_REQUEST)
         if denied := git_views.credential_step_up(request):
             return denied
+        env_given = "env" in request.data or "env_text" in request.data
         try:
             git_views.apply_git_settings(stack, request.data)
-            git_views.pull(stack, request.user, note="Git settings changed")
+            if env_given:
+                # The .env edited alongside goes into the revision the pull makes.
+                stack.env_encrypted = encrypt_secret(render_env(_merge_env(stack, request.data)))
+            changed = git_views.pull(stack, request.user, note="Git settings changed")
         except (gitsource.GitSourceError, StackError) as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        if not changed:
+            # Same commit: the settings (a branch at that commit, another
+            # credential) still stick, and a .env edit is its own revision.
+            if env_given:
+                if error := _save(request, stack, request.data,
+                                  note=str(request.data.get("note") or "edited")):
+                    return error
+            else:
+                stack.save(update_fields=["git_url", "git_branch", "git_pin", "git_path",
+                                          "git_credential"])
         return Response(_row(stack))
     if error := _save(request, stack, request.data, note=str(request.data.get("note") or "edited")):
         return error

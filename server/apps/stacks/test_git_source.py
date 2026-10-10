@@ -23,6 +23,7 @@ from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, UserProfile
+from apps.hosts.crypto import decrypt_secret
 from apps.hosts.models import Host
 
 from . import gitsource
@@ -303,6 +304,24 @@ class GitStackApiTests(TestCase):
         self.assertEqual(moved["stack"]["git"]["commit"], _run(self.repo, "rev-parse", "HEAD"))
         revs = self.api.get(f"/api/v1/stacks/{sid}/revisions/").json()["results"]
         self.assertEqual([r["git_commit"] for r in revs], [moved["stack"]["git"]["commit"], self.head])
+
+    def test_new_settings_at_the_same_commit_still_stick_with_the_env(self):
+        from .models import ManagedStack
+        sid = self._create().json()["id"]
+        _run(self.repo, "branch", "release")
+        git = {"url": self.repo, "branch": "release", "path": "deploy/compose.yaml"}
+        resp = self.api.put(f"/api/v1/stacks/{sid}/", {"git": git}, format="json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        stack = ManagedStack.objects.get(pk=sid)
+        self.assertEqual((stack.git_branch, stack.revision), ("release", 1), "same commit: no revision")
+        git["pin"] = self.head
+        resp = self.api.put(f"/api/v1/stacks/{sid}/", {
+            "git": git, "env": [{"key": "TOKEN", "value": "rotated"}]}, format="json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        stack.refresh_from_db()
+        self.assertEqual((stack.git_pin, stack.revision), (self.head, 2))
+        self.assertIn("TOKEN=rotated", decrypt_secret(bytes(stack.env_encrypted)))
+        self.assertEqual(stack.revisions.get(number=2).compose_yaml, COMPOSE)
 
     def test_a_refused_compose_file_makes_no_stack(self):
         Path(self.repo, "deploy", "compose.yaml").write_text(
