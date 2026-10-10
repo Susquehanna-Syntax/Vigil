@@ -40,3 +40,9 @@ class GitSourceInEditorTests(SimpleTestCase):
     def test_git_commit_shown_in_revisions(self):
         js = _text("static/js/vigil-stacks.js")
         self.assertIn("git_commit", js)
+
+    def test_credential_names_its_server_and_attaching_asks_totp(self):
+        js = _text("static/js/vigil-stacks.js")
+        self.assertIn("git_host: gitHost", js)
+        self.assertIn("body.git && body.git.credential_id", js)
+        self.assertIn("data-sted-git-ref", _text("templates/pages/_stack_editor.html"))

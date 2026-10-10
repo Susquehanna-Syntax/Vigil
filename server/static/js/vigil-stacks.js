@@ -228,7 +228,12 @@ async function _validateStack() {
   clearTimeout(_stackCheckTimer);
   const ta = _stedEl('stack-compose');
   if (!ta) return;
-  if (ta.closest('.sted-editor').hidden) { _setStackStatus(null); return; }
+  const pill = _stedEl('sted-status');
+  if (ta.closest('.sted-editor').hidden) {   // a new Git stack: nothing to check until it is fetched
+    ++_stackCheckSeq;
+    if (pill) { pill.className = 'sted-status'; pill.textContent = ''; }
+    return;
+  }
   const seq = ++_stackCheckSeq;
   _setStackStatus(null);
   let r;
@@ -251,7 +256,8 @@ async function _loadStackRevisions() {
     const isGit = !!stackEd.stack.git;
     wrap.innerHTML = revs.map(r => `<div class="apps-detail-item">
         <span class="apps-name">r${r.number}${r.git_commit ? ` <code class="sted-git-chip">${escHtml(r.git_commit.slice(0, 12))}</code>` : ''}</span><span class="apps-detail-scope">${escHtml(r.note || '')} · ${escHtml(r.created_by || '')} · ${escHtml(timeAgo(r.created_at) || '')}</span>
-        ${!isGit && r.number !== stackEd.stack.revision ? `<button class="btn btn-ghost btn-xs" type="button" data-stack-load-rev="${r.number}">Load this file</button>` : '<span class="chip chip-mint">current</span>'}
+        ${r.number === stackEd.stack.revision ? '<span class="chip chip-mint">current</span>'
+          : isGit ? '' : `<button class="btn btn-ghost btn-xs" type="button" data-stack-load-rev="${r.number}">Load this file</button>`}
       </div>`).join('');
     stackEd.revisions = revs;
   } catch { wrap.innerHTML = ''; }
@@ -280,9 +286,9 @@ function _newGitStackBody(name, env) {
 }
 
 /* An existing Git stack PUTs nothing but its .env, unless the repository
-   settings changed — then git: { … } takes effect by pulling it. */
-function _gitSettingsBody() {
-  return { git: _gitFields(), note: 'Git settings changed' };
+   settings changed — then git: { … } (with the .env) takes effect by pulling it. */
+function _gitSettingsBody(env) {
+  return { git: _gitFields(), env, note: 'Git settings changed' };
 }
 
 function _applyStackSource() {
@@ -314,7 +320,7 @@ function _renderGitState() {
   // "Commit abc123def456 · tracking main" / "· pinned to v1.2". The commit is
   // the span's only <code>, so a repository string never becomes markup.
   state.querySelector('code').textContent = (git.commit || '').slice(0, 12);
-  state.lastChild.textContent = git.pin ? ` · pinned to ${git.pin}` : ` · tracking ${git.branch || 'main'}`;
+  state.querySelector('[data-sted-git-ref]').textContent = git.pin ? ` · pinned to ${git.pin}` : ` · tracking ${git.branch || 'main'}`;
 }
 
 function _fillGitFields(git) {
@@ -386,7 +392,9 @@ function addGitCredential() {
     const username = pick('#git-cred-user').trim();
     const pass = pick('#git-cred-secret');
     const hosts = pick('#git-cred-hosts');
+    const gitHost = pick('#git-cred-host').trim().toLowerCase();
     if (!name) { showToast('Give the credential a name', 'warn'); return; }
+    if (!gitHost) { showToast('Name the Git server the credential is for', 'warn'); return; }
     if (!pass.trim()) { showToast('The secret is empty', 'warn'); return; }
     if (kind === 'ssh_key' && !hosts.trim()) {
       showToast('An SSH deploy key needs the host key', 'warn');
@@ -397,13 +405,13 @@ function addGitCredential() {
     try {
       const created = await apiJson('/api/v1/stacks/git-credentials/', {
         method: 'POST',
-        body: JSON.stringify({ name, kind, username, secret: pass, known_hosts: hosts,
+        body: JSON.stringify({ name, kind, git_host: gitHost, username, secret: pass, known_hosts: hosts,
                                totp: code.trim() }),
       });
       stackEd.gitCreds.push(created);
       _renderGitCredentials();
       stackEd.gitSnapshot = { ...(stackEd.gitSnapshot || {}), credential_id: created.id };
-      _pickCredentialOption(created.id);
+      _stedEl('sted-git-cred').value = created.id;
       showToast(`Added ${created.name}`, 'success');
     } catch (e) {
       _stackError(e.message);
@@ -411,19 +419,29 @@ function addGitCredential() {
     close();   // clears the secret whether the save landed or not
   };
 
+  // The host the repository URL names, so the usual case needs no typing.
+  const urlHost = (() => {
+    const url = _stedEl('sted-git-url').value.trim();
+    const m2 = url.match(/^https:\/\/([^/:@]+)/i) || url.match(/^[^@\s]+@([^:/\s]+):/);
+    return m2 ? m2[1].toLowerCase() : '';
+  })();
+
   const render = () => {
     const ssh = kind === 'ssh_key';
+    // Switching kind re-renders: keep the name and server already typed.
+    const keep = (id, fallback) => { const el = m.modal.querySelector(id); return el ? el.value : fallback; };
+    const keptName = keep('#git-cred-name', ''), keptHost = keep('#git-cred-host', urlHost);
     // The fields a kind needs, then the one that holds its key. Field ids in
     // markup strings; only the kind buttons interpolate.
     const extra = ssh ? `
       <div class="form-group">
-        <label class="bl-label" for="git-cred-hosts">Known hosts</label>
+        <label class="form-label" for="git-cred-hosts">Known hosts</label>
         <textarea class="form-control" id="git-cred-hosts" rows="3" spellcheck="false"></textarea>
         <div class="bl-hint">The output of <code>ssh-keyscan github.com</code> — Vigil does not
           trust an unknown host key.</div>
       </div>` : `
       <div class="form-group">
-        <label class="bl-label" for="git-cred-user">Username</label>
+        <label class="form-label" for="git-cred-user">Username</label>
         <input class="form-control" id="git-cred-user" maxlength="255" placeholder="x-access-token"
           autocomplete="off" autocapitalize="off" spellcheck="false">
       </div>`;
@@ -444,12 +462,18 @@ function addGitCredential() {
         <button class="btn btn-sm" type="button" data-cred-kind="ssh_key" aria-pressed="${ssh}">SSH deploy key</button>
       </div>
       <div class="form-group">
-        <label class="bl-label" for="git-cred-name">Name</label>
+        <label class="form-label" for="git-cred-name">Name</label>
         <input class="form-control" id="git-cred-name" maxlength="120" placeholder="GitHub deploy token">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="git-cred-host">Git server</label>
+        <input class="form-control" id="git-cred-host" maxlength="253" placeholder="github.com"
+          autocomplete="off" autocapitalize="off" spellcheck="false">
+        <div class="bl-hint">The credential is only ever sent to this server.</div>
       </div>
       ${extra}
       <div class="form-group">
-        <label class="bl-label" for="git-cred-secret">Secret</label>
+        <label class="form-label" for="git-cred-secret">Secret</label>
         ${holder}
         <div class="bl-hint">${holderHint}</div>
       </div>
@@ -463,6 +487,8 @@ function addGitCredential() {
       b.onclick = () => { if (kind === b.dataset.credKind) return; kind = b.dataset.credKind; render(); };
     });
     m.modal.querySelector('[data-cred-save]').onclick = save;
+    m.modal.querySelector('#git-cred-name').value = keptName;
+    m.modal.querySelector('#git-cred-host').value = keptHost;
   };
 
   render();
@@ -499,11 +525,17 @@ async function saveStack() {
   const env = stackEd.env.filter(e => e.key.trim()).map(e => (e.stored && !e.value && !e.revealed)
     ? { key: e.key.trim(), keep: true } : { key: e.key.trim(), value: e.value || '' });
   let body;
-  if (gitStack && gitChanged) body = _gitSettingsBody();
+  if (gitStack && gitChanged) body = _gitSettingsBody(env);
   else if (gitStack) body = { env, note: 'edited' };   // the compose file comes from Git, not from here
   else if (stackEd.source === 'git') body = _newGitStackBody(_stedEl('stack-name').value.trim(), env);
   else body = { compose_yaml: _stedEl('stack-compose').value, env, note: 'edited' };
   const wasNew = !editing;
+  if (body.git && body.git.credential_id) {
+    // Using a credential decides which server a secret goes to: the server asks for TOTP.
+    const code = await totpPrompt('Fetching with a Git credential');
+    if (!code) return;
+    body.totp = code.trim();
+  }
   try {
     const saved = await apiJson(editing ? `/api/v1/stacks/${editing.id}/` : '/api/v1/stacks/',
       { method: editing ? 'PUT' : 'POST', body: JSON.stringify(body) });
