@@ -29,7 +29,7 @@ class PatchRolloutSerializer(serializers.ModelSerializer):
             "id", "action_kind", "definition", "definition_name",
             "playbook", "playbook_name", "target_name", "state",
             "current_wave", "current_wave_name", "current_wave_order",
-            "wave_group_tag",
+            "wave_group_tag", "batch",
             "failure_threshold_pct", "min_results_before_halt",
             "halted_reason", "halted_by_name", "resumed_by_name",
             "started_at", "wave_started_at", "finished_at",

@@ -131,7 +131,7 @@ class ApproveReplacementTests(TestCase):
     def test_check_pending_reports_what_it_replaces(self):
         resp = self.client.post(
             "/api/v1/hosts/check-pending/",
-            {"token": self.host_b.agent_token},
+            {"token": self.host_b.raw_agent_token},
             format="json",
         )
         self.assertEqual(resp.status_code, 200)
@@ -149,7 +149,7 @@ class ApproveReplacementTests(TestCase):
         )
         resp = self.client.post(
             "/api/v1/hosts/check-pending/",
-            {"token": solo.agent_token},
+            {"token": solo.raw_agent_token},
             format="json",
         )
         self.assertEqual(resp.status_code, 200)

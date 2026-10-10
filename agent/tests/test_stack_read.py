@@ -1,4 +1,5 @@
 """M11 12: stack_read — adopt a stack in place, secrets off the task result."""
+import dataclasses
 import sys
 import tempfile
 import unittest
@@ -31,6 +32,7 @@ class StackReadTests(unittest.TestCase):
                                  "com.docker.compose.config-hash": h,
                                  "com.docker.compose.project.config_files": str(self.dir / "docker-compose.yml"),
                                  "com.docker.compose.project.working_dir": str(self.dir)}
+        self.labels = labels("web", "h-web")
         self.fake = FakeEngine(routes={("GET", "/containers/json"): (200, [
             {"Id": "a", "Labels": labels("web", "h-web")}, {"Id": "b", "Labels": labels("db", "h-old")}])})
         self.addCleanup(self.fake.close)
@@ -59,6 +61,18 @@ class StackReadTests(unittest.TestCase):
         self.assertEqual(out.data, {"project": "shop", "would_recreate": 1})
         self.assertEqual(self.run_mock.call_args.args[0][-3:], ["config", "--hash", "*"])
 
+    def test_reads_env_from_the_recorded_env_file(self):
+        """Portainer passes --env-file stack.env; adopt reads that, not .env."""
+        (self.dir / "stack.env").write_text("A=1\n")
+        self.fake.routes[("GET", "/containers/json")] = (200, [
+            {"Id": "a", "Labels": {**self.labels,
+                                   "com.docker.compose.project.environment_file":
+                                       str(self.dir / "stack.env")}}])
+        (self.dir / ".env").unlink()
+        with patch.object(client, "post_stack_read") as post:
+            stacks._stack_read({"project": "shop", "adopt_ticket": TICKET}, _CFG)
+        self.assertEqual(post.call_args.args[2]["env"], "A=1\n")
+
     def test_refusals(self):
         with patch.object(client, "post_stack_read") as post:
             for params in ({"project": "shop", "adopt_ticket": "nope"}, {"project": "Shop", "adopt_ticket": TICKET}):
@@ -68,10 +82,13 @@ class StackReadTests(unittest.TestCase):
 
     def test_deploy_writes_an_adopted_stacks_own_file(self):
         with patch.object(client, "fetch_stack_env", return_value=""), \
-                patch.object(executor.collector, "request_docker_recheck"):
+                patch.object(executor.collector, "request_docker_recheck"), \
+                patch.object(stacks, "_safe_workdir"), \
+                patch.object(stacks, "_check_resolved", return_value={"services": {}}) as check:
             stacks._stack_deploy({"project": "shop", "compose": "services:\n  web:\n    image: nginx\n",
-                                  "working_dir": str(self.dir), "compose_file": "docker-compose.yml"}, _CFG)
-        self.assertIn(str(self.dir / "docker-compose.yml"), self.run_mock.call_args.args[0])
+                                  "working_dir": str(self.dir), "compose_file": "docker-compose.yml"},
+                                 dataclasses.replace(_CFG, data_dir=self.dir / "agent-data"))
+        self.assertEqual(check.call_args.args[2], "docker-compose.yml")
         with self.assertRaises(ValueError):
             stacks._stack_deploy({"project": "shop", "compose": "services: {}", "working_dir": str(self.dir),
                                   "compose_file": "../etc/x.yml"}, _CFG)

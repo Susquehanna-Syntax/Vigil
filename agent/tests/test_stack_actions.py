@@ -48,7 +48,9 @@ class StackActionTests(unittest.TestCase):
                                "-f", "/opt/media/compose.yaml", "-f", "/opt/media/extra.yaml", "restart"])
         self.assertEqual(env, {"DOCKER_HOST": f"unix://{self.fake.path}"})
         self.assertEqual(out.data, {"project": "media"})
-        query = self.fake.requests[-1][1]
+        # The mount lookup QA-07 adds is also a /containers/json call, so the
+        # filtered request this asserts on is found by name, not by position.
+        query = [q for _, q, _ in self.fake.requests if "filters=" in (q or "")][-1]
         self.assertIn("filters=", query)
         self.assertIn("com.docker.compose.project%3Dmedia", query)
 

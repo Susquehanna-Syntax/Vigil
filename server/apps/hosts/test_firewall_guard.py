@@ -3,8 +3,16 @@
 The task editor stays unguarded on purpose — that is the escape hatch. This
 guard exists so a form cannot do by accident what a hand-written task can do
 deliberately.
+
+Rule actions in a snapshot are `allow` / `deny` / `reject` (lowercase), and
+the removal tests that name a specific rule use `snapshot_with()` to put that
+rule in the snapshot the guard checks. `remove()` stays the port-only shape
+so the pre-existing "a missing action means allow" tests keep their meaning;
+`remove_rule()` adds the `rule_id` the Firewall tab sends.
 """
-from django.test import TestCase
+from pathlib import Path
+
+from django.test import SimpleTestCase, TestCase
 
 from apps.hosts.firewall_guard import check_change
 
@@ -13,10 +21,29 @@ LINUX = {"tool": "ufw", "enabled": True,
          "rules": [{"port": 22, "protocol": "tcp", "action": "allow",
                     "source": "any", "interface": ""}]}
 
+WINDOWS = {"tool": "windows", "enabled": True,
+           "defaults": {"incoming": "allow", "outgoing": "allow"},
+           "rules": [{"port": 3389, "protocol": "tcp", "action": "allow",
+                      "source": "any", "interface": "", "rule_id": "RDP-In"}]}
+
+DENY_22 = {"port": 22, "protocol": "tcp", "action": "deny",
+           "source": "10.0.0.5", "interface": "", "rule_id": ""}
+
+REJECT_22 = {**DENY_22, "action": "reject"}
+
+
+def snapshot_with(base, *rules):
+    """A snapshot copy carrying extra rules, the way a real one does."""
+    return {**base, "rules": list(base["rules"]) + [dict(r) for r in rules]}
+
 
 class Host:
     def __init__(self, os="Ubuntu 24.04"):
         self.os = os
+
+
+def windows():
+    return Host(os="Windows Server 2022")
 
 
 def add(port, action="allow", protocol="tcp"):
@@ -24,9 +51,21 @@ def add(port, action="allow", protocol="tcp"):
             "params": {"port": port, "protocol": protocol, "action": action}}
 
 
-def remove(port, protocol="tcp"):
-    return {"action": "remove_firewall_rule",
-            "params": {"port": port, "protocol": protocol}}
+def remove(port, protocol="tcp", action=None):
+    params = {"port": port, "protocol": protocol}
+    if action is not None:
+        params["action"] = action
+    return {"action": "remove_firewall_rule", "params": params}
+
+
+def remove_rule(port, protocol="tcp", action=None, rule_id=None):
+    """A removal that names the rule, the way the Firewall tab does."""
+    params = {"port": port, "protocol": protocol}
+    if action is not None:
+        params["action"] = action
+    if rule_id is not None:
+        params["rule_id"] = rule_id
+    return {"action": "remove_firewall_rule", "params": params}
 
 
 def policy(direction, value):
@@ -35,14 +74,78 @@ def policy(direction, value):
 
 
 class LockoutGuardTests(TestCase):
+    def setUp(self):
+        self.host = Host()
+
     def test_an_ordinary_rule_is_allowed(self):
-        self.assertEqual(check_change(Host(), LINUX, add(8080)), "")
+        self.assertEqual(check_change(self.host, LINUX, add(8080)), "")
 
     def test_denying_ssh_is_refused(self):
-        self.assertIn("22", check_change(Host(), LINUX, add(22, "deny")))
+        r = check_change(self.host, LINUX, add(22, "deny"))
+        self.assertIn("22", r)
+        self.assertTrue(r)
 
     def test_removing_the_ssh_allow_rule_is_refused(self):
-        self.assertNotEqual(check_change(Host(), LINUX, remove(22)), "")
+        self.assertNotEqual(check_change(self.host, LINUX, remove(22)), "")
+
+    # -- removing a *block* is the way back in ------------------------------
+
+    def test_removing_a_deny_on_ssh_is_allowed(self):
+        self.assertEqual(
+            check_change(self.host, snapshot_with(LINUX, DENY_22),
+                         remove(22, action="deny")),
+            "")
+
+    def test_removing_a_reject_on_ssh_is_allowed(self):
+        self.assertEqual(
+            check_change(self.host, snapshot_with(LINUX, REJECT_22),
+                         remove(22, action="reject")),
+            "")
+
+    def test_removing_a_block_on_rdp_is_allowed_on_windows(self):
+        self.assertEqual(
+            check_change(
+                windows(),
+                snapshot_with(WINDOWS, {"port": 3389, "protocol": "tcp",
+                                        "action": "reject",
+                                        "rule_id": "Block-RDP"}),
+                remove_rule(3389, action="reject", rule_id="Block-RDP")),
+            "")
+
+    def test_removing_the_ssh_allow_is_still_refused_with_an_explicit_action(self):
+        self.assertNotEqual(
+            check_change(self.host, LINUX, remove(22, action="allow")), "")
+
+    def test_a_claimed_deny_on_the_rdp_allow_is_refused(self):
+        """The action comes from the browser and Windows removes by rule_id,
+        so a claimed deny carrying the RDP *allow* rule's id is a lockout."""
+        self.assertNotEqual(
+            check_change(windows(), WINDOWS,
+                         remove_rule(3389, action="deny", rule_id="RDP-In")),
+            "")
+
+    def test_a_block_missing_from_the_snapshot_is_refused(self):
+        """Nothing to remove, so nothing to confirm the claim against — fail
+        safe rather than wave an unverified action through."""
+        self.assertNotEqual(
+            check_change(self.host, LINUX, remove(22, action="deny")), "")
+
+    def test_removing_a_block_on_an_unprotected_port_is_allowed(self):
+        self.assertEqual(
+            check_change(self.host, LINUX, remove(8080, action="deny")), "")
+
+    # -- adding a block -----------------------------------------------------
+
+    def test_rejecting_ssh_is_refused(self):
+        r = check_change(self.host, LINUX, add(22, "reject"))
+        self.assertTrue(r)
+        self.assertIn("22", r)
+
+    def test_rejecting_rdp_is_refused_on_windows(self):
+        self.assertTrue(check_change(windows(), WINDOWS, add(3389, "reject")))
+
+    def test_rejecting_an_unparseable_port_is_refused(self):
+        self.assertTrue(check_change(self.host, LINUX, add("ssh", "reject")))
 
     def test_denying_outbound_is_refused(self):
         """The worst one: agents are outbound-only, so this severs the agent's
@@ -179,3 +282,34 @@ class LockoutGuardTests(TestCase):
     def test_removing_a_rule_for_a_non_numeric_port_is_refused(self):
         msg = check_change(Host(), LINUX, remove("ssh"))
         self.assertIn("unparseable", msg.lower())
+
+
+class FirewallUiMirrorTests(SimpleTestCase):
+    """The Firewall tab decides which rules get a Remove button by mirroring
+    this guard. When the two disagree the tab offers a change the server is
+    guaranteed to refuse, so the mirror is checked here rather than by eye."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.source = (Path(__file__).resolve().parents[2]
+                      / "static" / "js" / "vigil-firewall.js").read_text(
+            encoding="utf-8")
+
+    def test_the_protected_check_mirrors_the_allows_only_rule(self):
+        """Only deny/reject are removable on a protected port — the guard
+        refuses an allow, and a rule whose action could not be read."""
+        self.assertIn("function _fwIsProtected(port, tool, action)",
+                      self.source)
+        self.assertIn("if (action === 'deny' || action === 'reject') return false;",
+                      self.source)
+
+    def test_reject_rules_are_no_longer_marked_unremovable(self):
+        """The agent removes reject rules now, so the tab must offer the
+        button instead of a dead label."""
+        self.assertNotIn("[cannot remove]", self.source)
+
+    def test_the_protected_label_names_the_service_it_keeps_open(self):
+        for label in ("[protected — keeps SSH open]",
+                      "[protected — keeps RDP open]"):
+            self.assertIn(label, self.source)

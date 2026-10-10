@@ -5,9 +5,10 @@
 //   page are vigil-stacks.js's (#managed-stacks).
 // HTML: templates/pages/_containers.html
 // Depends on: vigil-utils.js (escHtml, escAttr, apiJson, showToast, getCsrf,
-//   pollingInterval), vigil-deploy.js (openBuiltinTask, openUpdateContainer),
-//   vigil-stacks.js (renderManagedStacks), vigil-host-cards.js (getPins),
-//   vigil-monitor.js (monitorHostId, to follow the host already on screen).
+//   pollingInterval, totpPrompt), vigil-deploy.js (openBuiltinTask,
+//   openUpdateContainer), vigil-stacks.js (renderManagedStacks),
+//   vigil-host-cards.js (getPins), vigil-monitor.js (monitorHostId, to follow
+//   the host already on screen).
 // API: GET /api/v1/hosts/{id}/containers/, /api/v1/hosts/{id}/stacks/,
 //      POST /api/v1/stacks/adopt/, POST /api/v1/hosts/{id}/containers/{name}/logs/
 
@@ -63,6 +64,46 @@ navigateTo = function(pageName) {
 /* ── Docker containers ───────────────────────────────────────────────── */
 const CTR_STATES = ['running', 'exited', 'dead', 'paused', 'restarting', 'created'];
 
+/* Docker's status text carries the exit code ("Exited (137) 2 hours ago").
+   Code 0 is a clean stop; anything else (or "dead") is a crash, and the two
+   must not look the same. */
+function _ctrExitCode(c) {
+  const m = /exited \((-?\d+)\)/i.exec(c.status || '');
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function _ctrStateBadge(c) {
+  const state = (c.state || '').toLowerCase();
+  const code = _ctrExitCode(c);
+  let text = state || 'unknown';
+  let cls = CTR_STATES.includes(state) ? state : '';
+  if (state === 'exited' && code !== null) {
+    text = code === 0 ? 'stopped (exit 0)' : `crashed (exit ${code})`;
+    cls = code === 0 ? 'stopped' : 'exited';
+  }
+  return `<span class="ctr-state ${cls}" title="${escAttr(c.status || state)}">${escHtml(text)}</span>`;
+}
+
+/* One state for a whole stack: running, partly running, stopped or crashed —
+   so a stack whose containers all exited still reads as down at a glance. */
+function _stackStateBadge(rows) {
+  const running = rows.filter(c => (c.state || '').toLowerCase() === 'running').length;
+  const crashed = rows.filter(c => (c.state || '').toLowerCase() === 'dead'
+    || ((c.state || '').toLowerCase() === 'exited' && (_ctrExitCode(c) || 0) !== 0));
+  const codes = [...new Set(crashed.map(_ctrExitCode).filter(x => x !== null))];
+  const exitNote = codes.length ? ` (exit ${codes.join(', ')})` : '';
+  let text, cls;
+  if (running === rows.length) { text = 'running'; cls = 'running'; }
+  else if (running === 0) {
+    text = crashed.length ? `crashed${exitNote}` : 'stopped (exit 0)';
+    cls = crashed.length ? 'exited' : 'stopped';
+  } else {
+    text = `${running}/${rows.length} running` + (crashed.length ? ` · ${crashed.length} crashed${exitNote}` : '');
+    cls = 'partial';
+  }
+  return `<span class="ctr-state ${cls}">${escHtml(text)}</span>`;
+}
+
 async function renderDockerContainers(hostId) {
   const wrap = document.getElementById('docker-stacks');
   const countEl = document.getElementById('docker-count');
@@ -81,7 +122,11 @@ async function renderDockerContainers(hostId) {
   } catch { containers = []; }
   const stackInfo = Object.fromEntries((stacks || []).map(s => [s.project, s]));
 
-  if (!containers.length) {
+  // A stack Vigil deployed or adopted keeps its row after `down` or after its
+  // containers are removed: it is still there, just down, so it stays listed.
+  const downStacks = (stacks || []).filter(s => s.ownership !== 'external'
+    && !containers.some(c => c.stack === s.project));
+  if (!containers.length && !downStacks.length) {
     countEl.textContent = '';
     wrap.innerHTML = '<div class="docker-empty">No containers reported for this host.</div>';
     return;
@@ -116,17 +161,21 @@ async function renderDockerContainers(hostId) {
       <div class="docker-stack-header">
         <span class="docker-stack-name">${escHtml(label)}</span>
         <span class="docker-stack-count">${rows.length} ${noun}</span>
+        ${stack ? _stackStateBadge(rows) : ''}
         ${stackMeta}${stackActs}
       </div>
       <table class="ctr-table">
+        <colgroup>
+          <col class="ctr-c-name"><col class="ctr-c-image"><col class="ctr-c-state">
+          <col class="ctr-c-cpu"><col class="ctr-c-mem"><col class="ctr-c-acts">
+        </colgroup>
         <thead><tr>
-          <th>Container</th><th>Image</th><th>State</th>
+          <th>Name</th><th>Image</th><th>State</th>
           <th class="num">CPU</th><th class="num">Memory</th><th></th>
         </tr></thead>
         <tbody>`;
     for (const c of rows) {
       const state = (c.state || '').toLowerCase();
-      const stateClass = CTR_STATES.includes(state) ? state : '';
       const cpu = (c.cpu_percent === null || c.cpu_percent === undefined)
         ? '—' : c.cpu_percent.toFixed(1) + '%';
       let mem = '—';
@@ -138,7 +187,7 @@ async function renderDockerContainers(hostId) {
       html += `<tr>
         <td><div class="ctr-name">${escHtml(c.name || '')}</div>${svc}</td>
         <td class="ctr-image">${escHtml(c.image || '')}</td>
-        <td><span class="ctr-state ${stateClass}">${escHtml(state || 'unknown')}</span></td>
+        <td>${_ctrStateBadge(c)}</td>
         <td class="ctr-stat">${cpu}</td>
         <td class="ctr-stat">${mem}</td>
         <td class="ctr-fix">${c.outdated ? `<button class="btn btn-xs btn-mint" data-ctr-update data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}" title="A newer image is available">Update</button>` : ''}
@@ -152,6 +201,17 @@ async function renderDockerContainers(hostId) {
       </tr>`;
     }
     html += `</tbody></table></div>`;
+  }
+  for (const s of downStacks) {
+    html += `<div class="docker-stack">
+      <div class="docker-stack-header">
+        <span class="docker-stack-name">${escHtml(s.project)}</span>
+        <span class="docker-stack-count">0 containers</span>
+        <span class="ctr-state stopped">down</span>
+        <span class="chip chip-muted apps-src">${escHtml(s.ownership)}</span>
+      </div>
+      <div class="docker-empty">No containers — it was taken down or its containers were removed. Deploy it again from Managed by Vigil above.</div>
+    </div>`;
   }
   wrap.innerHTML = html;
   wrap.querySelectorAll('[data-ctr-update]').forEach(btn => btn.addEventListener('click', () => {
@@ -170,7 +230,7 @@ async function renderDockerContainers(hostId) {
     openContainerLogs(btn.dataset.host, btn.dataset.name);
   }));
   wrap.querySelectorAll('[data-stack-adopt]').forEach(btn => btn.addEventListener('click', async () => {
-    const totp = window.prompt(`Adopting ${btn.dataset.project} reads its compose file and .env into Vigil. Your TOTP code:`);
+    const totp = await totpPrompt(`Adopting ${btn.dataset.project} reads its compose file and .env into Vigil.`);
     if (!totp) return;
     try {
       await apiJson('/api/v1/stacks/adopt/', { method: 'POST', body: JSON.stringify(
@@ -219,7 +279,7 @@ function _logEls() {
 }
 
 async function openContainerLogs(hostId, name) {
-  const totp = window.prompt(`Reading the logs of ${name} needs your TOTP code:`);
+  const totp = await totpPrompt(`Reading the logs of ${name} shows everything those containers printed.`);
   if (!totp) return;
   let opened;
   try {

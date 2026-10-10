@@ -28,6 +28,22 @@ def _engine():
     return ex._engine()
 
 
+def _mount_lookup():
+    """Every running container, for the mount lookup ``_host_path`` needs.
+    Unfiltered: the container holding the mount (Portainer itself) carries no
+    label of this project, so a project filter could never find it. None when
+    there is no engine to ask — the caller's error then names the label path,
+    which is what the admin can match. One lookup serves every path of an
+    action; ``_host_path`` and ``_label_env_files`` take it as ``known``."""
+    try:
+        return _engine().get("/containers/json") or []
+    except (RuntimeError, OSError, ValueError):
+        # no engine at all, or one that won't answer (EngineError is a
+        # RuntimeError): no mapping. The caller's error still names the
+        # labelled path, which is what the admin can see.
+        return None
+
+
 def _lifecycle(params: dict, verb: str) -> ActionOutput:
     name = _validate_name(
         params.get("container_name") or params.get("container_id", ""),
@@ -368,15 +384,16 @@ def _update_container(params: dict, _config: AgentConfig) -> str:
                 f"compose labels are missing config files — use "
                 f"docker_compose_up with an explicit compose_file"
             )
-        compose_file = str(ex._validate_path(compose_file, "compose_file"))
+        known = _mount_lookup()
+        compose_file = str(ex._validate_path(_host_path(compose_file, known), "compose_file"))
 
-        project_dir = labels.get("com.docker.compose.project.working_dir") or ""
+        project_dir = _host_path(labels.get("com.docker.compose.project.working_dir") or "", known)
         dir_args = []
         if project_dir:
             dir_args = ["--project-directory", str(ex._validate_path(project_dir, "project directory"))]
             _clear_rollback(project_dir)   # an update ends a rollback
 
-        cmd = [*ex._compose_cmd(), *dir_args, "-f", compose_file]
+        cmd = [*ex._compose_cmd(), *dir_args, *_label_env_files(labels, known), "-f", compose_file]
         ex._run(cmd + ["pull", service], timeout=600, extra_env=ex._compose_env())
         ex._run(cmd + ["up", "-d", "--no-deps", service], timeout=300,
                 extra_env=ex._compose_env())
@@ -480,14 +497,62 @@ def _stack_compose_args(project: str) -> list[str]:
         if not files:
             continue
         args = ["-p", project]
-        workdir = labels.get("com.docker.compose.project.working_dir") or ""
+        # One engine lookup serves the workdir, the env files and the compose files.
+        known = _mount_lookup()
+        workdir = _host_path(labels.get("com.docker.compose.project.working_dir") or "", known)
         if workdir:
             args += ["--project-directory", str(ex._validate_path(workdir, "project directory"))]
+        args += _label_env_files(labels, known)
         for f in files:
-            args += ["-f", str(ex._validate_path(f, "compose file"))]
+            args += ["-f", str(ex._validate_path(_host_path(f, known), "compose file"))]
         return args
     raise ValueError(f"No containers of stack {project!r} carry compose file labels — "
                      f"deploy it with docker_compose_up and an explicit compose_file")
+
+
+def _host_path(raw: str, known=None) -> str:
+    """The host's path for a path compose wrote into a label.
+
+    A stack started by a manager that runs compose in its own container
+    (Portainer: /data/compose/<id>/docker-compose.yml) carries that container's
+    paths. Map them through the mount that holds them; a path that already
+    exists, or that no mount explains, comes back unchanged. ``known`` is the
+    caller's ``_mount_lookup()``, so one action asks the engine once.
+    """
+    if not raw or Path(raw).exists():
+        return raw
+    target = Path(raw)
+    if not target.is_absolute() or ".." in target.parts:
+        # a relative label can be read as escaping the mount it maps through;
+        # leave it to the caller, whose error names the labelled path
+        return raw
+    if known is None:
+        known = _mount_lookup()
+    if known is None:
+        return raw
+    best = None
+    for c in known:
+        for m in c.get("Mounts") or []:
+            dest, src = str(m.get("Destination") or ""), str(m.get("Source") or "")
+            if not dest.startswith("/") or not src:
+                continue
+            d = Path(dest)
+            if (target == d or d in target.parents) and (best is None or len(d.parts) > len(best[0].parts)):
+                best = (d, Path(src))
+    if best is None:
+        return raw
+    mapped = best[1] / target.relative_to(best[0])
+    return str(mapped) if mapped.exists() else raw
+
+
+def _label_env_files(labels: dict, known=None) -> list[str]:
+    """``--env-file`` args for the env files compose recorded, mapped to the host."""
+    args = []
+    for f in str(labels.get("com.docker.compose.project.environment_file") or "").split(","):
+        f = _host_path(f.strip(), known)
+        if f and Path(f).is_file():
+            args += ["--env-file", str(ex._validate_path(f, "env file"))]
+    return args
 
 
 def _stack_restart(params: dict, _config: AgentConfig) -> str:
@@ -548,7 +613,8 @@ def _container_rollback(params: dict, _config: AgentConfig) -> str:
     if project:
         service = labels.get("com.docker.compose.service") or name
         _validate_name(service, "service name")
-        workdir = labels.get("com.docker.compose.project.working_dir") or ""
+        known = _mount_lookup()
+        workdir = _host_path(labels.get("com.docker.compose.project.working_dir") or "", known)
         files = [f.strip() for f in str(labels.get("com.docker.compose.project.config_files") or "")
                  .split(",") if f.strip() and not f.strip().endswith(ROLLBACK_OVERRIDE)]
         if not files or not workdir:
@@ -557,9 +623,10 @@ def _container_rollback(params: dict, _config: AgentConfig) -> str:
         override = wd / ROLLBACK_OVERRIDE
         override.write_text(f"# Written by Vigil: {service} rolled back. The next update removes it.\n"
                             f"services:\n  {service}:\n    image: {json.dumps(image)}\n")
-        cmd = [*ex._compose_cmd(), "-p", project, "--project-directory", str(wd)]
+        cmd = [*ex._compose_cmd(), "-p", project, "--project-directory", str(wd),
+               *_label_env_files(labels, known)]
         for f in files:
-            cmd += ["-f", str(ex._validate_path(f, "compose file"))]
+            cmd += ["-f", str(ex._validate_path(_host_path(f, known), "compose file"))]
         cmd += ["-f", str(override), "up", "-d", "--no-deps", service]
         ex._run(cmd, timeout=300, extra_env=ex._compose_env())
         via = "compose override"

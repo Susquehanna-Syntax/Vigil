@@ -97,10 +97,7 @@ function openHostDetail(card) {
 async function forceUpdateAgent() {
   const hostId = panel.dataset.hostId;
   if (!hostId) return;
-  const totp = (window.prompt(
-    'Force agent self-update on this host.\n\n' +
-    'Enter your 6-digit 2FA code to authorize:'
-  ) || '').trim();
+  const totp = await totpPrompt('Force the agent to self-update on this host. It applies on the next check-in.');
   if (!totp) return;
   try {
     const resp = await fetch(`/api/v1/hosts/${hostId}/update-agent/`, {
@@ -404,7 +401,7 @@ document.addEventListener('keydown', e => {
 
 /* ── Approve / reject / delete actions ───────────────────────────────── */
 async function approveHost(hostId, btn) {
-  const totp = (window.prompt('Enter your 6-digit TOTP code to approve this host:') || '').trim();
+  const totp = await totpPrompt('Approve this host.');
   if (!totp) return;
   try {
     btn.disabled = true;

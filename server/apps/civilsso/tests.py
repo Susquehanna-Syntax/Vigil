@@ -117,6 +117,12 @@ class CallbackTests(TestCase):
 
 
 class DisabledTests(TestCase):
+    def setUp(self):
+        # With no account at all, SetupRedirectMiddleware sends every page to
+        # /setup/ — unless an earlier test in the same process already set its
+        # once-per-process flag. A user makes this test about Civil, not order.
+        get_user_model().objects.create_user("someone", password="x")
+
     def test_unconfigured_means_404(self):
         # No CIVIL_URL: the routes simply do not exist for this install.
         self.assertEqual(
@@ -127,6 +133,12 @@ class DisabledTests(TestCase):
 
 @override_settings(CIVIL_URL="http://civil.test")
 class LoginStartTests(TestCase):
+    def setUp(self):
+        # An account exists, as on any installed Vigil: otherwise
+        # SetupRedirectMiddleware sends the page to /setup/, unless an earlier
+        # test in the same process already set its once-per-process flag.
+        get_user_model().objects.create_user("someone", password="x")
+
     def test_redirects_to_civil_with_state_and_callback(self):
         resp = self.client.get("/accounts/civil/login/", {"next": "/"})
         self.assertEqual(resp.status_code, 302)

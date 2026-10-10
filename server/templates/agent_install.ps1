@@ -29,10 +29,134 @@ $DataDir     = Join-Path $ConfigDir "data"
 
 Write-Host "Installing Vigil agent for $Platform..."
 
-# Create directories
+# Create directories (the config folder is created further down, once it is
+# known not to be a link someone planted).
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-New-Item -ItemType Directory -Force -Path $ConfigDir  | Out-Null
+
+# Lock the config tree (SEC-2). C:\ProgramData's default ACL lets any local user
+# create files and folders in a new subfolder, and the agent runs scripts from
+# $ConfigDir\scripts as LocalSystem: a standard user who created that folder
+# first owned it, and every script in it. So: no inherited ACL on $ConfigDir;
+# SYSTEM and Administrators full; Users may only list the folder itself, never
+# read or create anything inside it. SIDs, not names: group names are localised.
+$ScriptsDir = Join-Path $ConfigDir "scripts"
+$LogPath    = Join-Path $ConfigDir "agent.log"
+$Admins     = "*S-1-5-32-544"
+
+# Every lock step must succeed. A failed one is not a warning: the tree would
+# be left as open as before, so the install stops (fail closed).
+function Invoke-AclStep {
+    & icacls.exe @args | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not secure $ConfigDir (icacls $($args -join ' ') exited $LASTEXITCODE). Nothing was installed."
+    }
+}
+
+function Test-Link([string]$Path) {
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    return ($null -ne $item) -and [bool]($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)
+}
+
+$Trusted = @("S-1-5-18", "S-1-5-32-544", "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464")
+# Write-type rights (the same set the agent checks in scripttrust.py).
+$WriteMask = 0x2 -bor 0x4 -bor 0x10 -bor 0x100 -bor 0x10000 -bor 0x40000 -bor 0x80000 -bor 0x40000000 -bor 0x10000000
+
+# True when someone other than SYSTEM, Administrators or TrustedInstaller owns
+# the file or may change it: the agent would refuse to run it, so the installer
+# must not adopt it either.
+function Test-Untrusted([string]$Path) {
+    $sid = [System.Security.Principal.SecurityIdentifier]
+    $acl = Get-Acl -LiteralPath $Path
+    if ($Trusted -notcontains $acl.GetOwner($sid).Value) { return $true }
+    foreach ($rule in $acl.GetAccessRules($true, $true, $sid)) {
+        if ($rule.AccessControlType -ne 'Allow') { continue }
+        if ($rule.PropagationFlags -band [System.Security.AccessControl.PropagationFlags]::InheritOnly) { continue }
+        if (($Trusted -notcontains $rule.IdentityReference.Value) -and ([int64]$rule.FileSystemRights -band $WriteMask)) { return $true }
+    }
+    return $false
+}
+
+# Move an untrusted file to the quarantine folder, keeping its path relative to
+# the scripts folder so two files with one name cannot overwrite each other. If
+# it cannot be moved it is deleted; only if that fails too does the install stop.
+function Move-ToQuarantine([string]$Path) {
+    $rel = $Path.Substring($ScriptsDir.Length).TrimStart('\')
+    $dest = Join-Path $Quarantine $rel
+    try {
+        New-Item -ItemType Directory -Force -Path (Split-Path $dest -Parent) | Out-Null
+        Move-Item -LiteralPath $Path -Destination $dest -ErrorAction Stop
+        Write-Host "Quarantined a script a non-administrator could change: $Path"
+    } catch {
+        try {
+            Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+            Write-Host "Deleted a script a non-administrator could change (it could not be moved): $Path"
+        } catch {
+            throw "A script under $ScriptsDir is not an administrator's and can be neither moved nor deleted: $Path"
+        }
+    }
+}
+
+# Take every item under $Root back and make it inherit the locked parent, top
+# down, one item at a time. icacls /T follows directory junctions even with /L
+# (measured on the Windows VM), so it is never used. A folder is locked before
+# it is listed, so nothing can be added, renamed or swapped in it behind the
+# walk. Links are deleted (the link, not its target) and never entered. A file
+# under scripts that a non-administrator owns or may change is quarantined
+# rather than adopted: taking ownership would make it look trusted.
+#
+# What this cannot do: revoke a handle someone opened before the lock (Windows
+# checks access when a handle is opened, not on each write), so a file added
+# through one after the walk is possible. That is why the agent checks again,
+# at the moment it runs a script, that the file and every folder above it are
+# owned by and writable only by SYSTEM, Administrators or TrustedInstaller
+# (vigil_agent/scripttrust.py): a file added that way is the user's, and is
+# refused there. The installer narrows the window; the agent is the guarantee.
+function Lock-Tree([string]$Root) {
+    $pending = New-Object System.Collections.Stack
+    $pending.Push($Root)
+    while ($pending.Count -gt 0) {
+        $dir = $pending.Pop()
+        foreach ($child in Get-ChildItem -LiteralPath $dir -Force -ErrorAction Stop) {
+            if ($child.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                if ($child.PSIsContainer) { [System.IO.Directory]::Delete($child.FullName) }
+                else { [System.IO.File]::Delete($child.FullName) }
+                Write-Host "Removed a link someone planted in the agent's folder: $($child.FullName)"
+                continue
+            }
+            $inScripts = $child.FullName.StartsWith($ScriptsDir + '\', [System.StringComparison]::OrdinalIgnoreCase)
+            if (-not $child.PSIsContainer -and $inScripts -and (Test-Untrusted $child.FullName)) {
+                Move-ToQuarantine $child.FullName
+                continue
+            }
+            Invoke-AclStep $child.FullName /setowner $Admins /L
+            Invoke-AclStep $child.FullName /reset /L
+            if ($child.PSIsContainer) { $pending.Push($child.FullName) }
+        }
+    }
+}
+
+# The folder itself may be a link a user made before the first install. Check
+# before anything is created inside it, or the first folder would land in the
+# link's target.
+if (Test-Link $ConfigDir) {
+    [System.IO.Directory]::Delete($ConfigDir)
+    Write-Host "Removed a link someone planted at $ConfigDir"
+}
+New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
+
+# 1. Take the top folder and lock it, so nobody else can add anything to it.
+#    /L: act on a link itself, never its target.
+Invoke-AclStep $ConfigDir /setowner $Admins /L
+Invoke-AclStep $ConfigDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" /grant "$($Admins):(OI)(CI)(F)" /grant "*S-1-5-32-545:(RX)" /L
+$Quarantine = Join-Path $ConfigDir ("quarantine-" + (Get-Date -Format "yyyyMMddHHmmss"))
+# 2. Everything already inside: owned by Administrators, inheriting the lock,
+#    links removed. An owner can always rewrite an ACL, and icacls /grant only
+#    adds, so anything a user pre-created would otherwise stay theirs. agent.yml,
+#    data and the service account's grants are re-applied explicitly below.
+Lock-Tree $ConfigDir
 New-Item -ItemType Directory -Force -Path $DataDir    | Out-Null
+New-Item -ItemType Directory -Force -Path $ScriptsDir | Out-Null
+if (-not (Test-Path $LogPath)) { New-Item -ItemType File -Path $LogPath | Out-Null }
 
 # Download to a temp file and verify it before anything makes it the service
 # binary. This binary becomes a LocalSystem service, so an unverified download
@@ -192,7 +316,7 @@ allowlist:
     # agent.yml holds the agent token. install.sh writes it 0600; the Windows
     # default ACL on C:\ProgramData lets any local user read it. Strip
     # inheritance and grant only SYSTEM and Administrators.
-    & icacls.exe $ConfigPath /inheritance:r /grant "SYSTEM:(F)" /grant "Administrators:(F)" | Out-Null
+    Invoke-AclStep $ConfigPath /inheritance:r /grant "*S-1-5-18:(F)" /grant "*S-1-5-32-544:(F)" /L
 
     if ($env:VIGIL_TOKEN) {
         Write-Host "Agent token configured from VIGIL_TOKEN."
@@ -207,6 +331,23 @@ allowlist:
     [System.IO.File]::WriteAllText(
         $ConfigPath, $existingConfig, (New-Object System.Text.UTF8Encoding($false)))
     Write-Host "Existing config kept; agent token replaced from VIGIL_TOKEN."
+}
+
+# The server's public key arrives in this script, over the same TLS download as
+# the agent binary, and goes into agent.yml (SEC-3). The agent then accepts only
+# that key: no trust on first use. Replaced on every install, so re-running the
+# installer is how an intended key rotation reaches an agent.
+$ServerPublicKey = "{{ public_key }}"
+if ($ServerPublicKey) {
+    $cfgText = [System.IO.File]::ReadAllText($ConfigPath)
+    if ($cfgText -match '(?m)^server_public_key:') {
+        $cfgText = $cfgText -replace '(?m)^server_public_key:[^\r\n]*', "server_public_key: `"$ServerPublicKey`""
+    } else {
+        if ($cfgText -and -not $cfgText.EndsWith("`n")) { $cfgText += "`r`n" }
+        $cfgText += "server_public_key: `"$ServerPublicKey`"`r`n"
+    }
+    [System.IO.File]::WriteAllText(
+        $ConfigPath, $cfgText, (New-Object System.Text.UTF8Encoding($false)))
 }
 
 # Install / update Windows service
@@ -254,8 +395,11 @@ if ($AgentMode -eq "monitor") {
     } else {
         # The virtual account exists only once the service does, so grant its
         # access now: read the config and binary, write its own state.
-        & icacls.exe $ConfigPath /grant "$($ServiceAccount):(R)" | Out-Null
-        & icacls.exe $DataDir /inheritance:r /grant "SYSTEM:(OI)(CI)(F)" /grant "Administrators:(OI)(CI)(F)" /grant "$($ServiceAccount):(OI)(CI)(M)" | Out-Null
+        Invoke-AclStep $ConfigPath /grant "$($ServiceAccount):(R)" /L
+        # The service writes its own log; the locked config folder no longer
+        # lets anyone but SYSTEM and Administrators create files in it.
+        Invoke-AclStep $LogPath /grant "$($ServiceAccount):(M)" /L
+        Invoke-AclStep $DataDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" /grant "*S-1-5-32-544:(OI)(CI)(F)" /grant "$($ServiceAccount):(OI)(CI)(M)" /L
         # The whole install tree, not just the exe. A onedir build is an exe
         # plus an _internal directory of DLLs and data; granting the account
         # access to the exe alone starts a process that dies immediately
@@ -270,7 +414,7 @@ if ($AgentMode -eq "monitor") {
 } else {
     cmd.exe /c ('sc create ' + $ServiceName + ' binPath= ' + $BinPathQuoted + ' start= auto DisplayName= "Vigil Monitoring Agent"') | Out-Null
     $ServiceAccount = "LocalSystem"
-    & icacls.exe $DataDir /inheritance:r /grant "SYSTEM:(OI)(CI)(F)" /grant "Administrators:(OI)(CI)(F)" | Out-Null
+    Invoke-AclStep $DataDir /inheritance:r /grant "*S-1-5-18:(OI)(CI)(F)" /grant "*S-1-5-32-544:(OI)(CI)(F)" /L
     Write-Host "Mode '$AgentMode' executes tasks, so the agent runs as LocalSystem."
 }
 & sc.exe description $ServiceName "Vigil agent — outbound-only monitoring and managed tasks." | Out-Null

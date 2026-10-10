@@ -1,4 +1,5 @@
 import hashlib
+from vigil.signing import get_public_key_b64
 from pathlib import Path
 
 from django.conf import settings
@@ -156,14 +157,14 @@ def uninstall_ps1(request):
 def install_script(request):
     """Return the bash installer for Linux and macOS."""
     base_url = f"{request.scheme}://{request.get_host()}"
-    content = render_to_string("agent_install.sh", {"base_url": base_url})
+    content = render_to_string("agent_install.sh", {"base_url": base_url, "public_key": get_public_key_b64()})
     return HttpResponse(content, content_type="text/plain; charset=utf-8")
 
 
 def install_ps1(request):
     """Return the PowerShell installer for Windows."""
     base_url = f"{request.scheme}://{request.get_host()}"
-    content = render_to_string("agent_install.ps1", {"base_url": base_url})
+    content = render_to_string("agent_install.ps1", {"base_url": base_url, "public_key": get_public_key_b64()})
     return HttpResponse(content, content_type="text/plain; charset=utf-8")
 
 

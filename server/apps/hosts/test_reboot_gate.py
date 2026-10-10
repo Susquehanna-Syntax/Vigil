@@ -34,7 +34,7 @@ def _checkin(client, host, body):
         _CHECKIN,
         body,
         format="json",
-        HTTP_AUTHORIZATION=f"Bearer {host.agent_token}",
+        HTTP_AUTHORIZATION=f"Bearer {host.raw_agent_token}",
     )
 
 

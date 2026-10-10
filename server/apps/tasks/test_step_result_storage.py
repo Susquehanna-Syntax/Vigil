@@ -51,7 +51,7 @@ class StepResultStorageTests(TestCase):
             "/api/v1/tasks/result/",
             data=json.dumps(payload),
             content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.host.agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {self.host.raw_agent_token}",
         )
 
     def test_step_results_are_stored(self):

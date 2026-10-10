@@ -29,6 +29,7 @@ def _config(**kw):
 
 
 @unittest.skipUnless(os.name == "posix", "shell script")
+@patch("vigil_agent.scripttrust.untrusted", new=lambda *_a: "")   # temp dirs are not root's
 class ScriptInputEnvTests(unittest.TestCase):
     def _run_script(self, variables):
         with tempfile.TemporaryDirectory() as tmp:

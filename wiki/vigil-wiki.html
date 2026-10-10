@@ -173,7 +173,7 @@
   .api-method { display: inline-block; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.5px; min-width: 50px; text-align: center; }
   .m-get { background: rgba(130,196,238,0.15); color: var(--sky-ink); }
   .m-post { background: rgba(126,221,181,0.15); color: var(--mint-ink); }
-  .m-patch { background: rgba(240,184,136,0.15); color: var(--peach-ink); }
+  .m-patch, .m-put { background: rgba(240,184,136,0.15); color: var(--peach-ink); }
   .m-delete { background: rgba(242,160,184,0.15); color: var(--rose-ink); }
 
   .steps { counter-reset: step; margin: 16px 0 20px; }
@@ -1514,6 +1514,20 @@
       <p class="prose">The field tells you the blast radius before you commit, meaning how many waves the group holds and how many machines those waves actually patch. It says so plainly when no enabled wave carries the tag, rather than letting you start a rollout that gets refused.</p>
       <p class="prose">The group is <strong>pinned when the rollout starts</strong>. Re-tagging a wave afterwards cannot reshape a rollout that is already in flight.</p>
 
+      <h3 id="parallel-groups">Several groups at once</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Behavior</th><th>What you see</th></tr></thead>
+          <tbody>
+            <tr><td>Starting a rollout</td><td>The start dialog's group chips can pick <strong>more than one</strong> wave group. The groups start together, each walking its own ladder.</td></tr>
+            <tr><td>Watching it</td><td>The rollout card shows one <strong>lane</strong> per group, side by side. <em>Halt all</em> stops every lane with one TOTP code; each lane also has its own <em>Halt</em>.</td></tr>
+            <tr><td>A machine on two ladders</td><td>It goes to the <strong>first listed</strong> group only, so the task never reaches it twice. A group left with no machines is skipped.</td></tr>
+            <tr><td>Which machines a wave takes</td><td>Each ladder claims machines from <strong>its own waves only</strong>: a wave on another ladder never takes a machine away from this one, even when both ladders have a wave matching the same tag.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose">API: <code>POST /api/v1/rollouts/</code> with <code>wave_group_tags</code> (a list, 2–12 names) instead of <code>wave_group_tag</code>.</p>
+
       <h3>Rolling out a playbook</h3>
       <p class="prose">A rollout can carry a single task or a whole playbook. Picking a playbook runs all of its steps on each machine, wave by wave. It is the same composition the task editor uses, so a playbook that works when deployed directly works the same way in a rollout.</p>
       <p class="prose">One restriction: a task that needs someone to fill in an input cannot be rolled out. A rollout runs unattended across waves and has no value to supply, so it is refused when you start it rather than discovered halfway through.</p>
@@ -2072,9 +2086,51 @@ actions:
       <p class="prose"><strong>Roll back</strong> puts a container on the image it ran before its last update (by digest when known). A compose container is pinned with <code>vigil-rollback.override.yaml</code> next to its compose file, which stays untouched; a standalone one is recreated on the image. It shows <em>rolled back</em> until its next update clears the pin.</p>
 
       <h3 id="containers-managed-stacks">Stacks Vigil manages</h3>
-      <p class="prose"><em>New stack</em> under <strong>Managed by Vigil</strong> stores a compose file and its <code>.env</code> in Vigil. Every save is a revision. The file is checked first: it must have <code>services</code>, and may not climb out with <code>..</code>, bind the engine socket or system directories, run privileged, share the host's PID namespace or add every capability. The <code>.env</code> is encrypted at rest and never shown unmasked without a TOTP code.</p>
+      <p class="prose"><em>New stack</em> under <strong>Managed by Vigil</strong> stores a compose file and its <code>.env</code> in Vigil. Every save is a revision. The file is checked as you type and again when saved, and the host checks it once more before it runs anything (see <a href="#containers-sandbox">What a stack may do</a>). The <code>.env</code> is encrypted at rest and never shown unmasked without a TOTP code.</p>
       <p class="prose"><em>Deploy</em> (high risk, TOTP) writes the stack to <code>/opt/vigil/stacks/&lt;name&gt;</code> and runs <code>compose up -d</code>. The task carries the compose file but never the secrets: it carries a one-time ticket the agent redeems over its own connection for the <code>.env</code>, written mode 0600. A ticket works once, for its host, within 24 hours. <em>Take down</em> runs <code>compose down</code> and can delete the folder (only ever one under <code>/opt/vigil/stacks</code>).</p>
       <p class="prose"><em>Adopt</em> takes over an external stack where it stands. The agent reads its compose file and <code>.env</code> into Vigil (again by ticket, never in the task result) and compares <code>compose config --hash</code> with what each container runs. The editor then says whether deploying the file unchanged would recreate anything. A stack with more than one compose file is refused until the override is merged in.</p>
+
+      <h3 id="containers-states">Stopped, crashed and down</h3>
+      <p class="prose">A container that exited with code 0 shows <strong>stopped (exit 0)</strong>; one that exited with any other code shows <strong>crashed (exit N)</strong> with its code, e.g. <code>crashed (exit 137)</code>. A stack's header counts them: e.g. <code>1/2 running · 1 crashed (exit 137)</code>.</p>
+      <p class="prose">A stack Vigil manages that has no containers on the host at all — taken down, or its containers removed — still appears, marked <strong>down</strong>, with a note that it can be deployed again from <strong>Managed by Vigil</strong>.</p>
+
+      <h3 id="containers-stack-editor">The stack editor</h3>
+      <p class="prose"><em>New stack</em> or a stack's chip opens a full-screen editor: the compose file with line numbers and highlighting on the left; the <code>.env</code> and the revision list on the right.</p>
+      <p class="prose">The file is checked as you type; a pill in the bar reads <strong>valid</strong> or <strong>N problem(s)</strong>, and each problem names its line. <em>Save revision</em> stores a new revision; <em>Load this file</em> on an older revision puts it back in the editor. <em>Deploy</em> and <em>Take down…</em> ask for a TOTP code. Leaving with unsaved changes asks first. <code>Ctrl+S</code> saves.</p>
+      <p class="prose"><code>.env</code> values stay hidden; leave a value blank to keep the stored one. <em>Show values</em> asks for a TOTP code.</p>
+
+      <h3 id="containers-git-stacks">Stacks from Git</h3>
+      <p class="prose">For teams that build their own images instead of publishing them: <em>New stack</em> → <strong>From Git</strong> takes the compose file from a repository. <strong>Repository URL</strong> (<code>https://host/owner/repo.git</code> or <code>git@host:owner/repo.git</code>), <strong>Branch</strong> (default <code>main</code>), <strong>Pin to a tag or commit</strong> (optional), <strong>Compose file in the repo</strong> (default <code>compose.yaml</code>, e.g. <code>deploy/compose.yaml</code>) and <strong>Credential</strong> (none for a public repository) are the fields.</p>
+      <p class="prose">The repository is the source of truth: the compose file is shown <strong>read-only</strong> in Vigil and changed in the repository. The <code>.env</code> is still kept and edited in Vigil.</p>
+      <p class="prose">A stack tracks its branch: each deploy fetches the branch's latest commit first and records it. A pin (a tag or a 40-character commit) holds it still. <em>Pull latest</em> fetches now; a new commit becomes a new revision, and each revision lists the commit it came from. Deploy to apply it.</p>
+      <p class="prose">Vigil ships the folder that holds the compose file to the host, so <code>build:</code> contexts have their source, and the host builds the images itself.</p>
+      <p class="prose"><strong>Only the Vigil server talks to Git.</strong> Hosts never get repository access or a credential. A deploy hands the host a one-time ticket for that revision's files plus the files' SHA-256 inside the signed task; the host refuses files whose hash differs, takes regular files only (no links), and does not follow links when writing them.</p>
+      <ul class="prose">
+        <li>Fetching is limited: <code>https</code> and <code>ssh</code> only, no redirects, no addresses on the server's own machine or link-local ranges, a size and time limit on every fetch.</li>
+        <li><strong>Credentials:</strong> an HTTPS token (with a username, e.g. <code>x-access-token</code>) or an SSH deploy key. Each credential names the one Git server it may be sent to (e.g. <code>github.com</code>), is encrypted at rest and is never shown again.</li>
+        <li>An SSH key needs the server's host key pasted in (<code>ssh-keyscan github.com</code> output) — Vigil does not trust an unknown host key. Adding a credential, and using one on a stack, asks for a TOTP code.</li>
+        <li>The host's agent must be 2026.14.1 or newer; an older agent is refused with a message saying so.</li>
+      </ul>
+
+      <h3 id="containers-sandbox">What a stack may do</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Check</th><th>What Vigil refuses</th></tr></thead>
+          <tbody>
+            <tr><td>Host namespaces</td><td>Sharing the host's PID, IPC, user, cgroup or UTS namespace, or another container's (<code>network_mode: host</code> <strong>is</strong> allowed)</td></tr>
+            <tr><td>Privileges</td><td>Privileged containers; adding dangerous capabilities</td></tr>
+            <tr><td>Devices</td><td>Devices other than GPUs (<code>/dev/dri</code>, <code>/dev/nvidia*</code>)</td></tr>
+            <tr><td>Mounts and sockets</td><td>Binding the engine socket or system directories</td></tr>
+            <tr><td>Engine settings</td><td><code>x-podman</code> settings; build options that reach outside the stack</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="prose">Vigil checks a compose file in two places. The server's check gives quick feedback while you edit. <strong>The guarantee is the host's check</strong>: before <code>up</code>, the agent has the engine resolve the file (variables, <code>include</code>, <code>extends</code>) and checks the result; then it runs that checked result, not the original text.</p>
+      <p class="prose">A bind mount must sit inside the stack's own folder, or in a folder where every parent is owned by root and writable only by root. So binds under a user's home directory are refused on purpose — a user who could rename a parent folder could redirect the mount.</p>
+      <div class="callout callout-info">
+        <div class="callout-icon">i</div>
+        <div>Move the data under a root-owned path such as <code>/srv</code>, or inside the stack folder.</div>
+      </div>
 
       <h3 id="containers-registries">Private registries</h3>
       <p class="prose">Store a registry login at <code>POST /api/v1/stacks/registries/</code> (<code>registry</code>, <code>username</code>, <code>password</code>, optional <code>host_tags</code>). The password is encrypted and write-only. Pulls through the engine send it as <code>X-Registry-Auth</code>, but only from hosts the login covers. Compose pulls still use the host's own <code>docker login</code>.</p>
@@ -2084,14 +2140,14 @@ actions:
         <table>
           <thead><tr><th>Feature</th><th>Docker</th><th>Podman, rootful</th><th>Podman, rootless</th></tr></thead>
           <tbody>
-            <tr><td>Inventory, stats, logs</td><td>✅</td><td>✅ (compat API)</td><td>✅ per user</td></tr>
-            <tr><td>Restart / stop / start / remove / recreate / pull</td><td>✅</td><td>✅</td><td>✅ as that user's engine</td></tr>
-            <tr><td>Stacks (restart, update, deploy, adopt)</td><td>✅ <code>docker compose</code></td><td>✅ <code>podman compose</code> or <code>docker compose</code> on the socket</td><td>⚠ needs the compose CLI to reach that user's socket</td></tr>
-            <tr><td>Monitor-mode read-only proxy</td><td>✅</td><td>✅</td><td>— (rootful engines only)</td></tr>
+            <tr><td>Inventory, stats, logs</td><td>Yes</td><td>Yes (compat API)</td><td>Yes, per user</td></tr>
+            <tr><td>Restart / stop / start / remove / recreate / pull</td><td>Yes</td><td>Yes</td><td>Yes, as that user's engine</td></tr>
+            <tr><td>Stacks (restart, update, deploy, adopt)</td><td>Yes, <code>docker compose</code></td><td>Yes, <code>podman compose</code> or <code>docker compose</code> on the socket</td><td>Partly: needs the compose CLI to reach that user's socket</td></tr>
+            <tr><td>Monitor-mode read-only proxy</td><td>Yes</td><td>Yes</td><td>— (rootful engines only)</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="prose">Podman support is verified against the Engine API's compatibility layer in tests; check the rows marked ⚠ on your own hosts before relying on them.</p>
+      <p class="prose">Podman support is verified against the Engine API's compatibility layer in tests; check the rows marked <em>Partly</em> on your own hosts before relying on them.</p>
     </section>
     <div class="divider"></div>
 
@@ -2144,6 +2200,27 @@ actions:
           <div class="feature-card-title">Outbound-Only Agents</div>
           <div class="feature-card-desc">Agents never open a listening port. They connect to the server; the server never connects to them. Safe behind NAT and enterprise firewalls.</div>
         </div>
+      </div>
+
+      <h3 id="security-sessions">Sign-in sessions</h3>
+      <p class="prose">A sign-in ends after <strong>15 minutes</strong> without use and after <strong>12 hours</strong> in any case (settings <code>VIGIL_SESSION_IDLE_MINUTES</code>, minimum 5, and <code>VIGIL_SESSION_MAX_HOURS</code>, minimum 1). Only real use counts: a page load, a change, or the page's heartbeat when someone touches it — background refreshes never keep a session alive, so an open Monitor tab does not.</p>
+      <p class="prose">Two minutes before the end a dialog counts down: <em>Stay signed in</em> (idle limit only — the 12-hour cap cannot be extended) or <em>Sign out now</em>. After signing in again you return to the page you were on.</p>
+
+      <h3 id="security-agents">Agents, tokens and signed tasks</h3>
+      <ul class="prose">
+        <li>Agent endpoints answer only <strong>approved</strong> hosts; a pending or rejected host can check in and nothing else.</li>
+        <li>Agent tokens are stored <strong>hashed</strong> on the server, so a database copy does not hand out working tokens.</li>
+        <li>A signed task also covers when it was dispatched and which agent it is for; the agent accepts only this signature format and remembers each task's nonce for the task's lifetime, so a task cannot be replayed or sent to another host.</li>
+        <li>Who may run a task is checked on every path that creates one, rollouts included, with sites and per-host permissions applied.</li>
+        <li>TOTP codes are limited to 5 attempts per 10 minutes per user.</li>
+      </ul>
+
+      <h3 id="security-installer">What the installers lock down</h3>
+      <p class="prose">The installer writes the server's public key into the agent's config; the agent does not learn it on first contact. Linux: the agent config is rebuilt if it is not root-owned and private. Windows: <code>C:\ProgramData\Vigil</code> is locked so only SYSTEM and Administrators can change it.</p>
+      <p class="prose">The agent runs a script only when the file and every folder above it are owned by root (Windows: SYSTEM, Administrators or TrustedInstaller) and writable by no one else. This run-time check is the guarantee; the installer only narrows the window.</p>
+      <div class="callout callout-info">
+        <div class="callout-icon">i</div>
+        <div>These are aimed at a user who has an account on a managed machine but is not an administrator: they cannot change the agent's config, swap a script it runs, or feed a stack a folder they control.</div>
       </div>
     </section>
     <div class="divider"></div>
@@ -2745,6 +2822,10 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
       <p class="prose"><strong>The slug reference rule:</strong> a playbook does not copy its tasks, it references them <em>by slug</em>, meaning the filename without its extension. A step with <code>task: remove-pycharm-process-lock</code> refers to <code>tasks/remove-pycharm-process-lock.yaml</code>, and an automation that runs a playbook names it by the stem of the file in <code>playbooks/</code>. Every reference must resolve to a file that exists in the repo; the validators resolve each slug against the filesystem and reject a file that points at nothing, because a playbook that silently does nothing is worse than a rejected file.</p>
       <p class="prose"><strong><code>target: host</code> is not supported in community automations.</strong> An automation can target <code>event_host</code> (the host that raised the event), <code>tags</code> (hosts carrying one of <code>target_tags</code>), or <code>all</code>, but never a single host by id. Host ids are not portable across installations: a file that names "host 42" is right on the author's Vigil and meaningless on yours, so the community schema does not accept it and the validator rejects it. If you need "the machines that are my web servers," that is a tag.</p>
 
+      <h3 id="community-validate">Checking content before you submit</h3>
+      <p class="prose"><code>python manage.py validate_community &lt;checkout&gt;</code> checks a Vigil-Approved-Scripts checkout with Vigil's own parsers — the same ones the Community tab uses — so a file that passes is a file the server can read. <code>--strict</code> also fails tasks that parse with warnings (deprecated syntax).</p>
+      <p class="prose">It needs no database; references resolve against the checkout's own files. The community repository's CI runs it.</p>
+
       <h3>Submitting your work</h3>
       <p class="prose">Every editor has a <strong>Submit to Community</strong> button: the task editor's toolbar, and the <em>Edit as YAML</em> view for playbooks and automations. Each one targets its own directory in the catalog. Clicking it:</p>
       <ol class="prose">
@@ -2886,6 +2967,33 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
           <tbody>
             <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/health/</code></td><td>Liveness probe. Returns <code>{"status":"ok"}</code>. AllowAny.</td></tr>
             <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/about/</code></td><td>Server version, expected agent version, Python, database, and per-scanner configured status. AllowAny. Same content as the in-app About page.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="api-stacks">Stacks, rollouts and sessions</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/stacks/?host={id}</code></td><td>A host's managed stacks</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/stacks/</code></td><td>Create a stack: a <code>compose_yaml</code>, or <code>git: {url, branch, pin, path, credential_id}</code></td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/stacks/validate/</code></td><td>Check a compose file without saving</td></tr>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/stacks/{id}/</code></td><td>Stack detail</td></tr>
+            <tr><td><span class="api-method m-put">PUT</span></td><td><code>/api/v1/stacks/{id}/</code></td><td>Update a stack</td></tr>
+            <tr><td><span class="api-method m-delete">DELETE</span></td><td><code>/api/v1/stacks/{id}/</code></td><td>Delete a stack</td></tr>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/stacks/{id}/revisions/</code></td><td>The stack's revision list</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/stacks/{id}/deploy/</code></td><td>Deploy the stack (TOTP)</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/stacks/{id}/remove/</code></td><td>Take the stack down (TOTP)</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/stacks/{id}/env/reveal/</code></td><td>Show the stored <code>.env</code> values (TOTP)</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/stacks/{id}/pull/</code></td><td>Fetch the repository now (Git stacks)</td></tr>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/stacks/git-credentials/</code></td><td>List Git credentials</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/stacks/git-credentials/</code></td><td>Add a Git credential (needs TOTP; the secret is never returned)</td></tr>
+            <tr><td><span class="api-method m-delete">DELETE</span></td><td><code>/api/v1/stacks/git-credentials/{id}/</code></td><td>Remove a Git credential</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/rollouts/</code></td><td>Start a rollout (<code>wave_group_tags</code> for several groups)</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/rollouts/batch/{batch}/halt/</code></td><td>Halt a rollout batch (TOTP)</td></tr>
+            <tr><td><span class="api-method m-get">GET</span></td><td><code>/api/v1/accounts/session/</code></td><td>Time left on this sign-in</td></tr>
+            <tr><td><span class="api-method m-post">POST</span></td><td><code>/api/v1/accounts/session/activity/</code></td><td>The heartbeat</td></tr>
           </tbody>
         </table>
       </div>
@@ -3251,8 +3359,8 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
     <span class="hl-key">params</span>:
       <span class="hl-key">container_name</span>: <span class="hl-string">nextcloud</span></pre></div>
 </div></details>
-<details class="action" id="action-stack_deploy" data-group="container" data-risk="high" data-keywords="stack_deploy project compose working_dir env_ticket revision compose_file"><summary><code class="action-name">stack_deploy</code><span class="risk risk-high">high</span><span class="action-label">Deploy a Vigil-managed compose stack</span><span class="action-required">project, compose, working_dir</span></summary><div class="action-body">
-<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>project</code></td><td><span class="param-req">required</span></td><td>The compose project name.</td></tr><tr><td><code>compose</code></td><td><span class="param-req">required</span></td><td>The compose file itself, as Vigil stores it. Checked like the stack editor checks it.</td></tr><tr><td><code>working_dir</code></td><td><span class="param-req">required</span></td><td>Where the stack lives on the host — /opt/vigil/stacks/&lt;name&gt; for a new one.</td></tr><tr><td><code>env_ticket</code></td><td><span class="param-opt">optional</span></td><td>Set by Vigil, not by hand: a one-time id the agent redeems for the .env just before deploying. The secrets never ride in the task.</td></tr><tr><td><code>revision</code></td><td><span class="param-opt">optional</span></td><td>The stack revision being deployed, for the record.</td></tr><tr><td><code>compose_file</code></td><td><span class="param-opt">optional</span></td><td>The compose file&#x27;s name in working_dir — compose.yaml unless the stack was adopted with its own.</td></tr></tbody></table></div>
+<details class="action" id="action-stack_deploy" data-group="container" data-risk="high" data-keywords="stack_deploy project compose working_dir env_ticket revision compose_file source_ticket source_sha256 source_commit"><summary><code class="action-name">stack_deploy</code><span class="risk risk-high">high</span><span class="action-label">Deploy a Vigil-managed compose stack</span><span class="action-required">project, compose, working_dir</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>project</code></td><td><span class="param-req">required</span></td><td>The compose project name.</td></tr><tr><td><code>compose</code></td><td><span class="param-req">required</span></td><td>The compose file itself, as Vigil stores it. Checked like the stack editor checks it.</td></tr><tr><td><code>working_dir</code></td><td><span class="param-req">required</span></td><td>Where the stack lives on the host — /opt/vigil/stacks/&lt;name&gt; for a new one.</td></tr><tr><td><code>env_ticket</code></td><td><span class="param-opt">optional</span></td><td>Set by Vigil, not by hand: a one-time id the agent redeems for the .env just before deploying. The secrets never ride in the task.</td></tr><tr><td><code>revision</code></td><td><span class="param-opt">optional</span></td><td>The stack revision being deployed, for the record.</td></tr><tr><td><code>compose_file</code></td><td><span class="param-opt">optional</span></td><td>The compose file&#x27;s name in working_dir — compose.yaml unless the stack was adopted with its own.</td></tr><tr><td><code>source_ticket</code></td><td><span class="param-opt">optional</span></td><td>Set by Vigil for a stack from Git: a one-time id the agent redeems for the revision&#x27;s packed source folder. The repository credential never leaves the server.</td></tr><tr><td><code>source_sha256</code></td><td><span class="param-opt">optional</span></td><td>Set by Vigil for a stack from Git: the sha256 the source archive must have. The agent refuses any other archive before placing a file.</td></tr><tr><td><code>source_commit</code></td><td><span class="param-opt">optional</span></td><td>Set by Vigil for a stack from Git: the commit the source folder was taken from, for the record.</td></tr></tbody></table></div>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>project</code></td><td>str</td><td>The stack deployed.</td></tr><tr><td><code>revision</code></td><td>int</td><td>The revision deployed (0 when not given).</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Deploy media</span>
 <span class="hl-key">description</span>: <span class="hl-string">&quot;What Vigil sends when you deploy the media stack.&quot;</span>
@@ -4221,6 +4329,8 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
             <tr><td><code>VIGIL_TIMEZONE</code></td><td><code>UTC</code></td><td>IANA timezone for display and scheduling (e.g. <code>America/Chicago</code>).</td></tr>
             <tr><td><code>VIGIL_TIME_FORMAT</code></td><td><code>12h</code></td><td><code>12h</code> or <code>24h</code> clock display.</td></tr>
             <tr><td><code>VIGIL_SKIP_STARTUP_CHECKS</code></td><td><em>unset</em></td><td>Set <code>1</code> to bypass startup validation. Escape hatch for tooling/CI, not for production.</td></tr>
+            <tr><td><code>VIGIL_SESSION_IDLE_MINUTES</code></td><td><code>15</code></td><td>Minutes without use before a sign-in ends (minimum 5).</td></tr>
+            <tr><td><code>VIGIL_SESSION_MAX_HOURS</code></td><td><code>12</code></td><td>Hours after which a sign-in ends regardless of use (minimum 1).</td></tr>
           </tbody>
         </table>
       </div>

@@ -76,6 +76,10 @@ async function apiJson(url, opts) {
   });
   const body = await resp.json().catch(() => ({}));
   if (!resp.ok) {
+    if (resp.status === 401 && typeof body.reason === 'string' && body.reason.startsWith('session_')
+        && typeof _sessionLeave === 'function') {
+      _sessionLeave(body.reason === 'session_max' ? 'max' : 'idle');
+    }
     throw new Error(body.detail || body.error || 'Request failed');
   }
   return body;
@@ -358,6 +362,58 @@ function promptModal(message, opts) {
       if (ev.key === 'Escape') done(null);
     };
     requestAnimationFrame(() => { m.open(); input.focus(); input.select(); });
+  });
+}
+
+/* ── TOTP dialog (replaces the bare window.prompt the writes used) ────── */
+//: The reason is operator copy, not untrusted data: the dialog renders the
+//: `reason` argument as plain text via textContent, so callers interpolate
+//: freely without escaping.
+function totpPrompt(reason, opts) {
+  opts = opts || {};
+  return new Promise((resolve) => {
+    const m = mountModal('totp', { variant: 'm-pop' });
+    m.setBody(`
+      <div class="modal-title">
+        <span id="totp-title">Confirm with your authenticator</span>
+        <button class="modal-close" id="totp-x" aria-label="Close">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="confirm-msg" id="totp-reason"></div>
+      <div class="form-group">
+        <input type="text" class="form-control totp-input" id="totp-input" inputmode="numeric"
+               autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}"
+               aria-label="6-digit code" placeholder="••••••">
+      </div>
+      <div class="confirm-actions">
+        <button class="btn btn-outline btn-sm" id="totp-cancel">Cancel</button>
+        <button class="btn btn-mint btn-sm" id="totp-ok"></button>
+      </div>`);
+    m.modal.querySelector('#totp-reason').textContent = reason || '';
+    const input = m.modal.querySelector('#totp-input');
+    const okBtn = m.modal.querySelector('#totp-ok');
+    okBtn.textContent = opts.confirmText || 'Confirm';
+    okBtn.disabled = true;
+
+    // Digits only, and never more than six: the pattern in the markup is a
+    // hint, this is the enforcement (a pasted "12 34 56" still yields 123456).
+    input.oninput = () => {
+      input.value = input.value.replace(/\D/g, '').slice(0, 6);
+      okBtn.disabled = input.value.length !== 6;
+    };
+
+    const done = (val) => { m.close(); setTimeout(() => resolve(val), 200); };
+    const submit = () => { if (/^\d{6}$/.test(input.value)) done(input.value); };
+    okBtn.onclick = submit;
+    m.modal.querySelector('#totp-cancel').onclick = () => done(null);
+    m.modal.querySelector('#totp-x').onclick = () => done(null);
+    m.overlay.onclick = () => done(null);
+    input.onkeydown = (ev) => {
+      if (ev.key === 'Enter') submit();
+      if (ev.key === 'Escape') done(null);
+    };
+    requestAnimationFrame(() => { m.open(); input.focus(); });
   });
 }
 

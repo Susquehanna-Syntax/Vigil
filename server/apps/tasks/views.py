@@ -32,9 +32,11 @@ from .rollout import (
     FAILURE_STATES,
     _emit_hunt_text_requested,
     _hunt_text_step_ids,
+    halt_batch,
     halt_rollout,
     resume_rollout,
     start_rollout,
+    start_rollout_batch,
 )
 from .rollout_serializers import PatchRolloutSerializer
 from .serializers import (
@@ -1203,6 +1205,10 @@ def definition_list(request):
                                    if run else None)
         return Response(data)
 
+    from .authz import author_denied
+    denied = author_denied(request.user)
+    if denied:
+        return denied
     yaml_source = request.data.get("yaml_source", "")
     # All tasks are created private. Sharing happens through the explicit
     # publish endpoint, which later will gate on community-repo upload.
@@ -1231,9 +1237,13 @@ def definition_detail(request, definition_id):
     if request.method == "GET":
         return Response(TaskDefinitionSerializer(definition).data)
 
-    # Mutations require ownership.
+    # Mutations require ownership, and a role that may write tasks at all.
     if definition.owner_id != request.user.id:
         return Response({"error": "You do not own this definition"}, status=403)
+    from .authz import author_denied
+    denied = author_denied(request.user)
+    if denied:
+        return denied
 
     # PUT — update from new YAML source. Visibility is NOT editable here;
     # use the publish/unpublish endpoints.
@@ -1263,6 +1273,10 @@ def definition_validate(request):
 @permission_classes([IsAuthenticated])
 def definition_fork(request, definition_id):
     """Fork a community template into the current user's library."""
+    from .authz import author_denied
+    denied = author_denied(request.user)
+    if denied:
+        return denied
     source = get_object_or_404(TaskDefinition, pk=definition_id)
     if not _user_can_see(source, request.user):
         return Response({"error": "Not found"}, status=404)
@@ -1345,12 +1359,15 @@ def definition_deploy(request, definition_id):
         wanted = {t.strip().lower() for t in raw_tags if t.strip()}
         if not wanted:
             return Response({"error": "tags is empty after normalization"}, status=400)
+        from .authz import runnable
         candidate_hosts = Host.objects.filter(
             status=Host.Status.ONLINE
         ).exclude(mode=Host.Mode.MONITOR)
+        # Only hosts this user may run tasks on: tag targeting must never
+        # reach into a site the user cannot see (SEC-1).
         host_ids = [
             str(h.id)
-            for h in candidate_hosts
+            for h in runnable(request.user, candidate_hosts)
             if any(isinstance(t, str) and t.lower() in wanted for t in (h.tags or []))
         ]
         if not host_ids:
@@ -1400,6 +1417,12 @@ def definition_deploy(request, definition_id):
     hosts = list(Host.objects.filter(id__in=host_ids))
     if len(hosts) != len(host_ids):
         return Response({"error": "One or more hosts not found"}, status=404)
+    # A signed task runs as root on its host: the caller must be allowed to run
+    # tasks on every target, in that target's site (SEC-1).
+    from .authz import run_denied
+    denied = run_denied(request.user, hosts)
+    if denied:
+        return denied
 
     # target_tags acts as an OR filter: a host is eligible if any of its
     # tags appears in the definition's target_tags. Auto-classified tags
@@ -1528,10 +1551,12 @@ def task_history(request):
         page = 1
     page_size = 50
 
-    qs = (
+    from .authz import visible_tasks
+    qs = visible_tasks(
         Task.objects.filter(hidden=False)
         .select_related("host", "requested_by")
-        .order_by("-created_at")
+        .order_by("-created_at"),
+        request.user,
     )
     total = qs.count()
     pages = max(1, (total + page_size - 1) // page_size)
@@ -1562,8 +1587,9 @@ def run_history(request):
         page = 1
     page_size = 25
 
-    qs = TaskRun.objects.select_related(
-        "automation", "playbook", "requested_by").order_by("-created_at")
+    from .authz import visible_runs
+    qs = visible_runs(TaskRun.objects.select_related(
+        "automation", "playbook", "requested_by").order_by("-created_at"), request.user)
 
     raw = (request.query_params.get("source") or "").strip()
     if raw:
@@ -1596,6 +1622,9 @@ def run_detail(request, run_id):
         ),
         pk=run_id,
     )
+    from .authz import run_visible
+    if not run_visible(request.user, run):
+        return Response({"error": "Not found"}, status=404)
     data = TaskRunSerializer(run).data
     from .summary import run_summary
     data["summary"] = run_summary(run)
@@ -1634,6 +1663,9 @@ def run_hunt_results(request, run_id):
     """
     run = get_object_or_404(
         TaskRun.objects.prefetch_related("tasks__host"), pk=run_id)
+    from .authz import run_visible
+    if not run_visible(request.user, run):
+        return Response({"error": "Not found"}, status=404)
     tasks = list(run.tasks.all())
     # Read the signed steps each task carried, so playbook and rollout
     # runs (no single definition) are recognised the same way. A task's
@@ -1717,10 +1749,13 @@ def task_detail(request, task_id):
     """Single-task fetch. History rows are the audit trail — who ran what,
     where, with what result — and are immutable by design; there is no
     delete."""
+    from vigil import scoping
     task = get_object_or_404(
         Task.objects.select_related("host", "run"),
         pk=task_id,
     )
+    if not scoping.host_in_scope(request.user, task.host):
+        return Response({"error": "Not found"}, status=404)
     return Response(TaskSerializer(task).data)
 
 
@@ -1753,7 +1788,11 @@ def _rollout_wave_progress(rollout: PatchRollout) -> list:
     from .models import PatchWave
 
     SUCCESS_STATES = (Task.State.COMPLETED, Task.State.SKIPPED)
-    waves = list(PatchWave.objects.order_by("order", "id"))
+    waves = PatchWave.objects.order_by("order", "id")
+    if (rollout.wave_group_tag or "").strip():
+        # A rollout walks one ladder: show its waves, not every ladder's.
+        waves = waves.filter(group_tag_rows__key=rollout.wave_group_tag.strip().lower()).distinct()
+    waves = list(waves)
     per_wave: dict = {}
     for run in rollout.runs.all():
         if run.wave is None:
@@ -1831,6 +1870,18 @@ def rollout_collection(request):
     if request.method == "POST":
         from apps.playbooks.models import Playbook
 
+        raw_tags = request.data.get("wave_group_tags")
+        if raw_tags is not None and not (
+            isinstance(raw_tags, list) and all(isinstance(t, str) for t in raw_tags)
+        ):
+            return Response({"detail": "wave_group_tags must be a list of strings"},
+                            status=400)
+        if raw_tags is not None and (request.data.get("wave_group_tag") or "").strip():
+            return Response(
+                {"detail": "send either wave_group_tag or wave_group_tags, not both"},
+                status=400,
+            )
+
         definition_id = request.data.get("definition_id")
         playbook_id = request.data.get("playbook_id")
         if bool(definition_id) == bool(playbook_id):
@@ -1838,14 +1889,37 @@ def rollout_collection(request):
                 {"detail": "supply exactly one of definition_id or playbook_id"},
                 status=400,
             )
+        from .authz import fleet_runner_denied
+        denied = fleet_runner_denied(request.user)
+        if denied:
+            return denied
         definition = playbook = None
         if definition_id:
             definition = get_object_or_404(TaskDefinition, pk=definition_id)
+            if not _user_can_see(definition, request.user):
+                return Response({"detail": "Not found"}, status=404)
         else:
             playbook = get_object_or_404(Playbook, pk=playbook_id)
         error = _verify_confirmation(request.user, request.data)
         if error:
             return Response({"detail": error}, status=401)
+
+        if raw_tags is not None:
+            try:
+                rollouts = start_rollout_batch(
+                    definition,
+                    playbook=playbook,
+                    user=request.user,
+                    group_tags=raw_tags,
+                    failure_threshold_pct=int(request.data.get("failure_threshold_pct", 10)),
+                    min_results_before_halt=int(request.data.get("min_results_before_halt", 3)),
+                )
+            except (ValueError, TypeError) as exc:
+                return Response({"detail": str(exc)}, status=400)
+            return Response({
+                "batch": str(rollouts[0].batch),
+                "rollouts": [_rollout_response(r) for r in rollouts],
+            }, status=201)
 
         try:
             rollout = start_rollout(
@@ -1906,11 +1980,33 @@ def rollout_halt(request, rollout_id):
 
 
 @api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def rollout_batch_halt(request, batch):
+    """Halt every running rollout in one batch. One request because one TOTP
+    code is single-use — three rollouts would otherwise need three codes."""
+    if not PatchRollout.objects.filter(batch=batch).exists():
+        return Response({"detail": "Not found"}, status=404)
+    error = _verify_confirmation(request.user, request.data)
+    if error:
+        return Response({"detail": error}, status=401)
+    reason = str(request.data.get("reason") or "").strip()
+    try:
+        halted = halt_batch(batch, user=request.user, reason=reason)
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=400)
+    return Response({"halted": halted})
+
+
+@api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def rollout_resume(request, rollout_id):
     """Clear a halt and continue from the same wave. TOTP-gated; records who
     did it. Failed tasks on the wave are re-queued so the gate re-evaluates
     over the whole wave."""
+    from .authz import fleet_runner_denied
+    denied = fleet_runner_denied(request.user)
+    if denied:
+        return denied
     rollout = get_object_or_404(PatchRollout, pk=rollout_id)
     error = _verify_confirmation(request.user, request.data)
     if error:
@@ -2215,6 +2311,10 @@ def _plan_fork(kind: str, filename: str, user) -> dict:
 @permission_classes([IsAuthenticated])
 def community_fork_plan(request, kind: str, filename: str):
     """What forking this catalog item would create, without creating it."""
+    from .authz import author_denied
+    denied = author_denied(request.user)
+    if denied:
+        return denied
     if kind not in COMMUNITY_KINDS:
         return Response({"error": f"unknown content kind {kind!r}"}, status=404)
     try:
@@ -2328,6 +2428,17 @@ def definition_archive(request, definition_id):
     definition = get_object_or_404(TaskDefinition, pk=definition_id)
     if not _user_can_see(definition, request.user):
         return Response({"error": "Not found"}, status=404)
+    # Seeing a community definition is not owning it: archiving retires it for
+    # everyone, so only its owner (with a role that writes tasks) may.
+    from apps.accounts.models import Role
+    from apps.accounts.permissions import OWNER, role_of
+
+    from .authz import author_denied
+    denied = author_denied(request.user)
+    if denied:
+        return denied
+    if definition.owner_id != request.user.id and role_of(request.user) not in (OWNER, Role.ADMIN):
+        return Response({"error": "You do not own this definition"}, status=403)
 
     restore = bool(request.data.get("restore"))
     definition.archived_at = None if restore else now()

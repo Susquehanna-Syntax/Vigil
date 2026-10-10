@@ -212,9 +212,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Every tag field in the app, in one place so none gets forgotten.
+  // (The rollout start dialog picks wave groups from chips in vigil-rollout.js,
+  // so it has no tag field to wire.)
   attachTagPicker('wave-tags', { title: 'Machines in this wave are tagged' });
   attachTagPicker('wave-group-tags', { title: 'Ladders this wave belongs to' });
-  attachTagPicker('rollout-start-group', { title: 'Send this to the wave group' });
   attachTagPicker('bl-tags', { title: 'Machines this playbook targets' });
   attachTagPicker('auto-event-tags', { title: 'Only fire for hosts tagged' });
   attachTagPicker('auto-target-tags', { title: 'Run on hosts tagged' });

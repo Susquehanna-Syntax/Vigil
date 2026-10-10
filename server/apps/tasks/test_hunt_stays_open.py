@@ -87,7 +87,10 @@ class StaysOpenParamTests(TestCase):
             parse_and_validate(_hunt_yaml_with("'40d'"))
 
     def test_hunt_deploy_sets_expiry_default_7d(self):
+        from apps.accounts.models import Role, UserProfile
         user = get_user_model().objects.create_user("op", password="pw")
+        # Deploying needs tasks:run (SEC-1); a bare profile is a viewer.
+        UserProfile.objects.create(user=user, role=Role.OPERATOR)
         self.client = APIClient()
         self.client.force_login(user)
         host = _host(1)
@@ -174,7 +177,7 @@ class CheckinSkipTests(TestCase):
         resp = self.client.post(
             "/api/v1/checkin", {"hostname": self.host.hostname},
             content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.host.agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {self.host.raw_agent_token}",
         )
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.json().get("tasks", []), [],
@@ -187,7 +190,7 @@ class CheckinSkipTests(TestCase):
         resp = self.client.post(
             "/api/v1/checkin", {"hostname": self.host.hostname},
             content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.host.agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {self.host.raw_agent_token}",
         )
         self.assertEqual(resp.status_code, 200, resp.content)
         task.refresh_from_db()

@@ -45,7 +45,7 @@ class FeatureGateTests(TestCase):
     def _checkin(self, **extra):
         return self.client.post(
             _CHECKIN, {"hostname": self.host.hostname, **extra}, format="json",
-            HTTP_AUTHORIZATION=f"Bearer {self.host.agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {self.host.raw_agent_token}",
         )
 
     def test_old_agent_is_refused(self):
@@ -103,7 +103,7 @@ class ProbeEvidenceTests(TestCase):
             data=json.dumps({"task_id": str(task.id), "state": "not_applicable",
                              "output": "[NOT APPLICABLE]", "steps": [probe]}),
             content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.host.agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {self.host.raw_agent_token}",
         )
         self.assertEqual(resp.status_code, 200, resp.content)
         row = HuntMatch.objects.get(task=task)

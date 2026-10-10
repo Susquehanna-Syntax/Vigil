@@ -2044,7 +2044,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   font-size: 11px;
   color: var(--text-3);
 }
-.ctr-table { width: 100%; border-collapse: collapse; }
+.ctr-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .ctr-table thead th {
   text-align: left;
   font-size: 11px;
@@ -2095,7 +2095,16 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .ctr-state.exited,
 .ctr-state.dead { background: rgba(var(--rgb-rose), var(--tint-a)); color: var(--rose-ink); }
 .ctr-state.paused,
-.ctr-state.restarting { background: rgba(var(--rgb-lemon), var(--tint-a)); color: var(--lemon-ink); }
+.ctr-state.restarting,
+.ctr-state.partial { background: rgba(var(--rgb-lemon), var(--tint-a)); color: var(--lemon-ink); }
+/* A clean stop (exit 0) is not a crash: neutral, where a crash is rose. */
+.ctr-state.stopped { background: rgba(110,107,118,0.18); color: var(--text-2); text-transform: none; }
+.ctr-state.exited,
+.ctr-state.partial { text-transform: none; }
+.ctr-state.stopped,
+.ctr-state.exited,
+.ctr-state.partial { white-space: nowrap; }
+.docker-stack-header .ctr-state { margin-left: 4px; }
 
 /* Unmanaged devices (inventory page) */
 .dev-sub {
@@ -2711,21 +2720,25 @@ select.form-control:hover { border-color: var(--s4); }
 /* Skeleton shown while a modal's data is in flight, so opening one is
    instant rather than waiting on the network with a blank screen. */
 .modal-skeleton { padding: 6px 0 2px; }
-.modal-skeleton .sk-line {
+.modal-skeleton .sk-line, .vfix-skeleton .sk-line {
   height: 13px; margin-bottom: 11px; border-radius: 5px;
   background: linear-gradient(90deg, var(--s2) 25%, var(--s3) 50%, var(--s2) 75%);
   background-size: 200% 100%;
   animation: sk-shimmer 1.2s var(--ease-out-expo) infinite;
 }
-.modal-skeleton .sk-w80 { width: 80%; }
-.modal-skeleton .sk-w60 { width: 60%; }
+.modal-skeleton .sk-w80, .vfix-skeleton .sk-w80 { width: 80%; }
+.modal-skeleton .sk-w60, .vfix-skeleton .sk-w60 { width: 60%; }
+.modal-skeleton .sk-w40, .vfix-skeleton .sk-w40 { width: 40%; }
 @keyframes sk-shimmer {
   from { background-position: 200% 0; }
   to   { background-position: -200% 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .modal-skeleton .sk-line { animation: none; }
+  .modal-skeleton .sk-line, .vfix-skeleton .sk-line { animation: none; }
 }
+
+.vfix-skeleton { padding: 14px 16px 4px; pointer-events: none; }
+.vuln-tabs { margin-bottom: 18px; }
 
 /* ── Firewall + Reprovision (2026.7.1) ──────────────────────────────────────
    Classes these two pages were already emitting with no rule behind them.
@@ -3716,7 +3729,6 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .donut-block { min-width: 240px; }
 .donut-title { font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; }
 .donut-row { display: flex; align-items: center; gap: 14px; }
-.donut-slice { transition: opacity .15s; }
 .donut-total { font-size: 20px; font-weight: 700; fill: var(--text-1); }
 .donut-center { font-size: 9px; fill: var(--text-3); }
 .donut-legend { display: flex; flex-direction: column; gap: 2px; }
@@ -3765,13 +3777,22 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .apps-host-toolbar { margin-bottom: 10px; }
 .apps-host-toolbar .form-control { max-width: 320px; font-size: 12px; }
 .apps-show-all { margin-top: 10px; }
+.apps-intro { font-size: 13px; color: var(--text-3); margin: 4px 0 14px; max-width: 72ch; }
+.apps-chev { display: inline-block; color: var(--text-3); margin-right: 2px;
+  transition: transform 0.2s var(--ease-out-expo); }
+.apps-row.open .apps-chev { transform: rotate(90deg); }
+.apps-host-detail { margin: 0; }
+.apps-host-detail th, .apps-host-detail td { font-size: 12.5px; }
+.apps-host-open { display: inline-block; margin-top: 8px; font-size: 12.5px;
+  color: var(--sky-ink); text-decoration: none; }
+.apps-host-open:hover { text-decoration: underline; }
 
 /* ── Apps: by update (M8) ────────────────────────────────────────────── */
 .apps-table th.upd-check, .apps-table td.upd-check { width: 1%; padding-right: 4px; }
 .upd-title { font-size: 11px; color: var(--text-3); }
 .upd-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px;
   font-size: 12px; color: var(--text-2); }
-.upd-note { margin-top: 10px; font-size: 12px; }
+.upd-bulk .field-hint { margin-left: -2px; }
 .chip-mint { background: rgba(var(--rgb-mint), 0.14); color: var(--mint-ink); }
 .chip-lemon { background: rgba(var(--rgb-lemon), 0.16); color: var(--lemon-ink); }
 
@@ -3854,3 +3875,221 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
   display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 13px; color: var(--text-1);
 }
 .dh-refuse { display: inline-block; margin-top: 4px; font-size: 11px; }
+
+
+/* ── Sign-in session timeout (QA-14b) ────────────────────────────────── */
+.session-warn-msg { font-variant-numeric: tabular-nums; }
+
+/* ── Run results ring: sort, not filter (QA-16) ──────────────────────── */
+.donut-slice { cursor: pointer; transition: stroke-width .2s var(--ease-out-expo); }
+.donut-slice.is-active { stroke-width: 18; }
+.run-sort-dim { opacity: .45; transition: opacity .2s var(--ease-out-expo); }
+.host-run-link {
+  background: none; border: 0; padding: 0; color: var(--sky-ink);
+  font: inherit; cursor: pointer;
+}
+.host-run-link:hover, .host-run-link:focus-visible { text-decoration: underline; }
+.host-run-task {
+  background: var(--s1); border-radius: var(--r-md);
+  padding: 14px 16px; margin-bottom: 12px;
+}
+.host-run-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; margin-bottom: 8px; }
+.host-run-step { font-size: 13px; font-weight: 600; color: var(--text-1); }
+.host-run-action { font-family: var(--font-mono); font-size: 11px; color: var(--text-2); }
+.host-run-state { margin-left: auto; font-size: 11px; font-weight: 600; }
+.host-run-meta { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 14px; font-size: 12px; margin: 0 0 10px; }
+.host-run-meta dt { color: var(--text-3); }
+.host-run-meta dd { margin: 0; color: var(--text-1); }
+.host-run-k { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3); margin-bottom: 4px; }
+.host-run-json, .host-run-out {
+  font-family: var(--font-mono); font-size: 11px; background: var(--s0);
+  max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-all;
+  margin: 0 0 10px; padding: 8px 10px; border-radius: var(--r-md);
+}
+
+/* QA-17: containers host control, aligned stack tables, TOTP dialog ───── */
+.ctr-controls { margin-bottom: 18px; }
+/* The base .form-control is width:100%, which a flex control bar does not
+   want; the Firewall page's picker does the same with .fw-host-select. */
+.ctr-host-select { width: auto; min-width: 260px; max-width: 100%; }
+
+/* Fixed columns so every stack card's Name/Image/State/CPU/Memory/buttons
+   sit at the same x down the page. */
+.ctr-c-name { width: 20%; }
+.ctr-c-image { width: 24%; }
+.ctr-c-state { width: 17%; }   /* fits "crashed (exit 137)" on one line */
+.ctr-c-cpu { width: 8%; }
+.ctr-c-mem { width: 9%; }
+.ctr-c-acts { width: 22%; }
+.ctr-table td { overflow: hidden; text-overflow: ellipsis; }
+.ctr-fix { white-space: normal; }
+
+@media (max-width: 760px) {
+  .docker-stack { overflow-x: auto; }
+  .ctr-table { min-width: 680px; }
+}
+
+.totp-input {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 22px;
+  letter-spacing: .4em;
+  text-align: center;
+}
+
+/* QA-18: rollout cards. Wave rows were flex, so the counts, the failed chip,
+   the tags and the Machines button landed at a different x in every card. One
+   grid template per row lines the columns up down the whole page. */
+.rlt-card { padding: 14px 16px; cursor: pointer; }
+.rlt-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rlt-body { flex: 1; min-width: 0; }
+.rlt-head-meta { margin-left: auto; color: var(--text-3); font-size: 11px; }
+.rlt-state { font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.rlt-wave {
+  display: grid;
+  grid-template-columns: 14px minmax(110px, 160px) minmax(0, 1fr) 96px minmax(0, 180px) 92px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--s2);
+}
+.rlt-wave-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rlt-wave-count { color: var(--text-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rlt-wave-failed { display: flex; justify-content: flex-start; }
+.rlt-wave-tags { color: var(--text-3); font-size: 11px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rlt-wave-act { text-align: right; }
+.rlt-halted {
+  margin: 8px 0 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--rose);
+  border-radius: 6px;
+  color: var(--rose-ink);
+  font-size: 12px;
+}
+.rlt-waves { margin-top: 10px; }
+.rlt-gate { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.rlt-gate-text { color: var(--text-3); font-size: 11px; }
+
+@media (max-width: 640px) {
+  .rlt-wave { grid-template-columns: 14px 1fr auto; }
+  .rlt-wave-tags { display: none; }
+}
+
+/* ── Stack editor page (QA-20) ───────────────────────────────────────── */
+.sted { width: 100%; }
+.sted-bar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 14px;
+  margin: -12px 0 18px; padding: 12px 0;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+}
+.sted-crumbs { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 13px; color: var(--text-2); }
+.sted-crumb { background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit;
+  font-size: 13px; color: var(--text-3); }
+.sted-crumb:hover { color: var(--sky-ink); }
+.sted-crumb-now { color: var(--text-1); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sted-sep { color: var(--text-3); }
+.sted-status { margin-left: auto; font-size: 11px; font-weight: 600; padding: 3px 11px;
+  border-radius: 20px; background: var(--s3); color: var(--text-3); white-space: nowrap; }
+.sted-status.is-good { background: rgba(var(--rgb-mint), 0.14); color: var(--mint-ink); }
+.sted-status.is-bad { background: rgba(var(--rgb-rose), 0.14); color: var(--rose-ink); }
+.sted-actions { display: flex; align-items: center; gap: 8px; }
+
+.sted-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
+.sted-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sted-label { font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+  color: var(--text-3); }
+.sted-field { display: flex; flex-direction: column; gap: 6px; }
+.sted-editor { min-height: 60vh; }
+
+.sted-gutter { position: absolute; top: 0; left: 0; bottom: 0; z-index: 3; width: 52px;
+  /* line-height here must stay the 1.6 the .te-editor rule sets for the text
+     itself, or a gutter number stops lining up with its line. */
+  padding: 14px 10px 14px 0; text-align: right; overflow: hidden; pointer-events: none;
+  font-family: var(--font-mono); font-size: 13px; line-height: 1.6; color: var(--text-3);
+  border-right: 1px solid var(--border); }
+.sted-gutter .sted-ln.is-error { color: var(--rose-ink); font-weight: 700; }
+.sted-editor .te-highlight, .sted-editor .te-yaml { padding-left: 66px; }
+
+.sted-check { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.sted-check-ok { color: var(--mint-ink); font-weight: 600; }
+.sted-check-bad { color: var(--rose-ink); font-family: var(--font-mono); word-break: break-word; }
+.sted-check-line { color: var(--text-3); margin-left: 8px; }
+.sted-services { display: flex; flex-wrap: wrap; gap: 6px; }
+.sted-service { gap: 7px; }
+.sted-service-img { color: var(--text-3); font-family: var(--font-mono); font-weight: 400; }
+.sted-missing { color: var(--text-2); display: flex; align-items: center; gap: 8px; }
+
+.sted-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.sted-card { background: var(--s1); border-radius: var(--r-lg); padding: 16px; }
+.sted-card-title { font-size: 12px; font-weight: 600; color: var(--text-1); margin-bottom: 10px; }
+.sted-card-sub { font-weight: 400; color: var(--text-3); }
+.sted-side .stack-env { gap: 8px; }
+
+@media (max-width: 980px) {
+  .sted-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── Parallel wave groups (QA-22) ─────────────────────────────────────── */
+/* The start dialog offers the ladders as toggle chips. Pick order matters — it
+   is the tie-break for a machine tagged into two of them — so a picked chip
+   carries its position. */
+.rlt-groups { display: flex; flex-wrap: wrap; gap: 6px; }
+.rlt-group-chip { border: 0; cursor: pointer; font-family: inherit; gap: 6px; }
+.rlt-group-chip-count { color: var(--text-3); font-weight: 400; }
+.rlt-group-chip[aria-pressed="true"] { background: var(--lavender); color: var(--on-accent); }
+.rlt-group-chip[aria-pressed="true"] .rlt-group-chip-count { color: var(--on-accent); opacity: .75; }
+.rlt-group-chip-order { display: none; font-size: 10px; font-weight: 700;
+  background: var(--on-accent); color: var(--lavender-ink); border-radius: 50%;
+  width: 16px; height: 16px; align-items: center; justify-content: center; }
+.rlt-group-chip[aria-pressed="true"] .rlt-group-chip-order { display: inline-flex; }
+
+/* A batch is one card with a column per group. The lane is a tinted surface,
+   never a striped edge. */
+.rlt-lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px; margin-top: 10px; }
+.rlt-lane { background: var(--s2); border-radius: var(--r-lg); padding: 10px 12px; min-width: 0; }
+.rlt-lane-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; cursor: pointer; }
+.rlt-lane-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rlt-lane-head .rlt-wave-count { flex: 1; }
+/* A lane is ~260px: the counts move under the wave name, so the dot, name,
+   failed chip and Machines button keep one row. */
+.rlt-lane-body .rlt-wave { grid-template-columns: 14px minmax(0, 1fr) auto auto; row-gap: 0; }
+.rlt-lane-body .rlt-wave-count { grid-column: 2 / -1; grid-row: 2; }
+.rlt-lane-body .rlt-wave-tags { display: none; }
+
+@media (max-width: 640px) {
+  .rlt-lanes { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── Stacks from Git in the editor (QA-23) ────────────────────────────── */
+/* Two choices, one control: the picked half carries the accent across its
+   whole face, the way the wave-group chips do. */
+.sted-source { display: inline-flex; align-self: flex-start; gap: 2px; padding: 3px;
+  background: var(--s1); border-radius: var(--r-lg); }
+.sted-source-btn { border: 0; cursor: pointer; font-family: inherit; font-size: 12px;
+  font-weight: 600; padding: 6px 16px; border-radius: 16px;
+  background: transparent; color: var(--text-2); }
+.sted-source-btn:hover { color: var(--text-1); }
+.sted-source-btn[aria-checked="true"] { background: var(--lavender); color: var(--on-accent); }
+
+.sted-git { background: var(--s1); border-radius: var(--r-lg); padding: 16px;
+  display: flex; flex-direction: column; gap: 12px; }
+.sted-git-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.sted-git-wide { grid-column: 1 / -1; }
+.sted-git-state { display: flex; align-items: center; gap: 10px; font-size: 12px;
+  color: var(--text-2); flex-wrap: wrap; }
+.sted-git-state code { font-family: var(--font-mono); font-size: 11px; color: var(--text-1);
+  background: var(--s2); border-radius: var(--r-sm); padding: 2px 7px; }
+.sted-git-chip { font-family: var(--font-mono); font-size: 10px; font-weight: 400;
+  color: var(--text-3); background: var(--s2); border-radius: var(--r-sm); padding: 1px 5px; }
+.sted-git-kinds { display: flex; gap: 6px; margin-bottom: 12px; }
+.sted-git-kinds .btn[aria-pressed="true"] { background: var(--lavender); color: var(--on-accent); }
+
+#stack-compose.is-readonly { caret-color: transparent; cursor: default; }
+#stack-compose.is-readonly::selection { background: rgba(var(--rgb-lavender), var(--tint-a)); }
+
+@media (max-width: 700px) {
+  .sted-git-grid { grid-template-columns: minmax(0, 1fr); }
+}
+.sted-status:empty { visibility: hidden; }
+.managed-stack-chip .apps-zero { margin-left: 4px; }

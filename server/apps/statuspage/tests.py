@@ -151,6 +151,12 @@ class HostLabelTests(TestCase):
 
 
 class UptimeHistoryTests(TestCase):
+    def setUp(self):
+        # An account exists, as on any installed Vigil: otherwise
+        # SetupRedirectMiddleware sends the page to /setup/, unless an earlier
+        # test in the same process already set its once-per-process flag.
+        get_user_model().objects.create_user("someone", password="x")
+
     def test_sampler_records_one_reading_per_non_pending_host(self):
         from apps.statuspage.models import HostUptimeSample
         from apps.statuspage.tasks import sample_uptime
@@ -302,3 +308,26 @@ class HostUptimeApiTests(TestCase):
     def test_a_host_inside_your_sites_is_readable(self):
         self._sample(True, 1)
         self.assertEqual(self._get().status_code, 200)
+
+
+class PublicPageDoesNotPublishHostIdsTests(TestCase):
+    """The public page keyed its cards by the host's internal id; an opaque
+    per-page key does the same job (architect review, 2026-10-08)."""
+
+    def setUp(self):
+        # An account exists, as on any installed Vigil: otherwise
+        # SetupRedirectMiddleware sends the page to /setup/, unless an earlier
+        # test in the same process already set its once-per-process flag.
+        get_user_model().objects.create_user("someone", password="x")
+
+    def test_no_host_id_on_the_public_page_or_its_data(self):
+        from apps.hosts.models import Host
+        from apps.statuspage.models import StatusPage
+        host = Host.objects.create(hostname="web-1", agent_token="tok-web-1-000000000000", status=Host.Status.ONLINE)
+        page = StatusPage.objects.create(enabled=True, host_ids=[str(host.id)])
+        for url in (f"/status/{page.token}/", f"/status/{page.token}/data/"):
+            resp = self.client.get(url)
+            self.assertEqual(resp.status_code, 200, url)
+            body = resp.content.decode()
+            self.assertIn("web-1", body)
+            self.assertNotIn(str(host.id), body)

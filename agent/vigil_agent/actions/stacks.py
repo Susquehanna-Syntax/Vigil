@@ -8,15 +8,19 @@ Compose runs with ``-p <project>`` against the agent's engine socket.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
+import stat
 from pathlib import Path
 
 from .. import collector
 from .. import executor as ex
 from ..config import AgentConfig
 from ..executor import ActionOutput
+
+log = logging.getLogger(__name__)
 
 STACKS_ROOT = Path("/opt/vigil/stacks")
 COMPOSE_NAME = "compose.yaml"
@@ -39,14 +43,204 @@ def _workdir(params: dict) -> Path:
     return path
 
 
-def _write_private(path: Path, text: str) -> None:
-    """Create or replace *path* readable by its owner only."""
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+def _write_new(path: Path, text: str, mode: int) -> None:
+    """Replace *path* with a fresh file, never following a link: whatever is
+    there (a symlink a container planted, say) is removed, not written
+    through, and O_EXCL fails if one reappears in between."""
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), mode)
     try:
         os.write(fd, text.encode())
+        os.fchmod(fd, mode)
     finally:
         os.close(fd)
-    os.chmod(path, 0o600)
+
+
+MAX_READ = 1_000_000
+
+
+def _read_plain(path: Path) -> str | None:
+    """A regular file's text, read as root without following a symlink
+    anywhere on the way (each folder opened relative to the last, with
+    O_NOFOLLOW). The paths come from container labels and may sit in a folder a
+    non-root user owns, who could otherwise point .env at /etc/shadow and
+    have it posted to the server. None when there is no such file."""
+    path = Path(path)
+    if not path.is_absolute() or ".." in path.parts:
+        raise ValueError(f"{path} must be an absolute path without '..'")
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open("/", os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        for part in path.parts[1:-1]:
+            try:
+                nxt = os.open(part, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | nofollow, dir_fd=fd)
+            except FileNotFoundError:
+                return None
+            except OSError as exc:     # ELOOP / ENOTDIR: a symlink or not a folder
+                raise ValueError(f"refusing to read {path}: {part} is not a plain folder") from exc
+            os.close(fd)
+            fd = nxt
+        try:
+            leaf = os.open(path.name, os.O_RDONLY | nofollow | getattr(os, "O_NONBLOCK", 0), dir_fd=fd)
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            raise ValueError(f"refusing to read {path}: it is a symlink or unreadable") from exc
+        try:
+            st = os.fstat(leaf)
+            if not stat.S_ISREG(st.st_mode):
+                raise ValueError(f"refusing to read {path}: not a regular file")
+            if st.st_nlink > 1:
+                # a hard link to /etc/shadow is no symlink, and needs no
+                # O_NOFOLLOW to get through (where fs.protected_hardlinks is off)
+                raise ValueError(f"refusing to read {path}: it has {st.st_nlink} hard links")
+            if st.st_size > MAX_READ:
+                raise ValueError(f"refusing to read {path}: larger than {MAX_READ} bytes")
+            with os.fdopen(leaf, "rb", closefd=False) as fh:
+                return fh.read(MAX_READ + 1).decode()
+        finally:
+            os.close(leaf)
+    finally:
+        os.close(fd)
+
+
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+MAX_SOURCE_TREE = 100 * 1024 * 1024
+MAX_SOURCE_FILES = 5000
+
+
+def _source_files(archive: bytes, sha256: str) -> dict[str, tuple[bytes, int]]:
+    """A Git stack's source folder, from the archive the server packed: the
+    hash must be the one in the signed task, and it may hold regular files
+    only, at plain relative paths. {path: (bytes, mode)}."""
+    import gzip
+    import hashlib
+    import io
+    import tarfile
+
+    if hashlib.sha256(archive).hexdigest() != sha256:
+        raise ValueError("the stack's source does not match the signed task — refusing it")
+    files: dict[str, tuple[bytes, int]] = {}
+    total = 0
+    with tarfile.open(fileobj=io.BytesIO(gzip.decompress(archive)), mode="r:") as tar:
+        for member in tar:
+            parts = member.name.split("/")
+            if (member.name.startswith("/") or "\\" in member.name
+                    or any(p in ("", ".", "..") for p in parts)):
+                raise ValueError(f"the stack's source has an unusable path: {member.name!r}")
+            if member.isdir():
+                continue
+            if not member.isreg():
+                raise ValueError(f"the stack's source holds a non-regular file: {member.name!r}")
+            total += member.size
+            if len(files) >= MAX_SOURCE_FILES or total > MAX_SOURCE_TREE:
+                raise ValueError("the stack's source is too large")
+            files[member.name] = (tar.extractfile(member).read(), 0o755 if member.mode & 0o111 else 0o644)
+    return files
+
+
+def _open_dir(parent_fd: int, name: str, *, create: bool) -> int:
+    """A folder under *parent_fd*, never through a symlink."""
+    if create:
+        try:
+            os.mkdir(name, 0o755, dir_fd=parent_fd)
+        except FileExistsError:
+            pass
+    try:
+        return os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+    except OSError as exc:      # ELOOP / ENOTDIR: a symlink or a file where a folder belongs
+        raise ValueError(f"refusing to place the stack's source: {name} is not a plain folder") from exc
+
+
+def _place_source(workdir: Path, files: dict[str, tuple[bytes, int]], manifest: Path) -> None:
+    """Write the source folder into the stack folder as root without following
+    a link anywhere: each folder is opened relative to the last with
+    O_NOFOLLOW, each file replaced (unlink + O_EXCL|O_NOFOLLOW). Files a
+    previous deploy placed and this source no longer has are removed — known
+    from a manifest in the agent's own data dir, which no container can
+    reach — and nothing else in the folder (data, the .env) is touched."""
+    import json
+
+    root_fd = os.open(workdir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for rel, (data, mode) in sorted(files.items()):
+            *folders, name = rel.split("/")
+            fd = os.dup(root_fd)
+            try:
+                for folder in folders:
+                    nxt = _open_dir(fd, folder, create=True)
+                    os.close(fd)
+                    fd = nxt
+                try:
+                    os.unlink(name, dir_fd=fd)
+                except FileNotFoundError:
+                    pass
+                except IsADirectoryError as exc:
+                    raise ValueError(f"refusing to place {rel}: a folder of that name is in the way") from exc
+                out = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode, dir_fd=fd)
+                try:
+                    os.write(out, data)
+                    os.fchmod(out, mode)
+                finally:
+                    os.close(out)
+            finally:
+                os.close(fd)
+
+        try:
+            previous = set(json.loads(manifest.read_text()))
+        except (OSError, ValueError):
+            previous = set()
+        for rel in sorted(previous - set(files)):
+            *folders, name = str(rel).split("/")
+            if any(p in ("", ".", "..") for p in [*folders, name]):
+                continue
+            fd = os.dup(root_fd)
+            try:
+                for folder in folders:
+                    nxt = _open_dir(fd, folder, create=False)
+                    os.close(fd)
+                    fd = nxt
+                st = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                if stat.S_ISREG(st.st_mode):
+                    os.unlink(name, dir_fd=fd)
+            except (OSError, ValueError):
+                pass        # already gone, or no longer ours to remove
+            finally:
+                os.close(fd)
+    finally:
+        os.close(root_fd)
+    manifest.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _write_private(manifest, json.dumps(sorted(files)))
+
+
+def _source_params(params: dict) -> tuple[str, str] | None:
+    """(ticket, sha256) for a Git stack's deploy, or None for a stack edited in Vigil."""
+    ticket = str(params.get("source_ticket") or "")
+    sha = str(params.get("source_sha256") or "")
+    if not ticket and not sha:
+        return None
+    if not _TICKET.match(ticket) or not _SHA256.match(sha):
+        raise ValueError("source_ticket must be a ticket id and source_sha256 64 hex characters")
+    return ticket, sha
+
+
+def _write_private(path: Path, text: str) -> None:
+    """Create or replace *path* readable by its owner only."""
+    _write_new(path, text, 0o600)
+
+
+def _safe_workdir(workdir: Path) -> None:
+    """The agent writes here as root, so no one but root may be able to
+    re-point it: every folder above it root-owned and not group/other-writable."""
+    from ..composecheck import unsafe_dir
+    loose = unsafe_dir(str(workdir / "x"))
+    if loose:
+        raise ValueError(f"refusing to deploy into {workdir}: {loose} can be changed by a user other than root")
+    if workdir.is_symlink():
+        raise ValueError(f"refusing to deploy into {workdir}: it is a symlink")
 
 
 _FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\.ya?ml$")
@@ -68,6 +262,77 @@ def _compose(workdir: Path, project: str, *args: str, timeout: int = 600,
                    timeout=timeout, extra_env=ex._compose_env())
 
 
+def _resolved_config(workdir: Path, project: str, compose_file: str) -> dict:
+    """Compose's own resolved configuration: variables substituted from the
+    .env, include/extends merged, paths and booleans normalised."""
+    import json
+
+    import yaml
+    try:
+        return json.loads(_compose(workdir, project, "config", "--format", "json",
+                                   timeout=120, compose_file=compose_file))
+    except (RuntimeError, ValueError):
+        # podman-compose has no --format json; its plain output is YAML.
+        doc = yaml.safe_load(_compose(workdir, project, "config", timeout=120, compose_file=compose_file))
+        if not isinstance(doc, dict):
+            raise ValueError("compose config did not produce a configuration") from None
+        return doc
+
+
+def _live_rw_binds(data_dir: Path) -> tuple:
+    """Host paths that running containers of Vigil-deployed stacks (those
+    started from a checked file in <data_dir>/stacks) mount writable."""
+    checked = str(Path(data_dir) / "stacks") + "/"
+    out = []
+    for c in ex._engine().get("/containers/json", query={"all": "1"}) or []:
+        files = str((c.get("Labels") or {}).get("com.docker.compose.project.config_files") or "")
+        if not any(f.strip().startswith(checked) for f in files.split(",")):
+            continue
+        out += [m.get("Source") for m in c.get("Mounts") or []
+                if m.get("Type") == "bind" and m.get("RW") and m.get("Source")]
+    return tuple(out)
+
+
+def _check_resolved(workdir: Path, project: str, compose_file: str, data_dir: Path) -> dict:
+    """Refuse to start anything the resolved configuration would let reach the
+    host (SEC, 2026-10-08). The server checks the text it was sent; this checks
+    what compose resolved it to, and _up starts exactly that, so no second
+    reading of the text (or of a .env changed in between) can differ."""
+    from ..composecheck import pin, problems
+    try:
+        resolved = pin(_resolved_config(workdir, project, compose_file), str(workdir))
+        live_rw = _live_rw_binds(data_dir)
+    except Exception:     # noqa: BLE001 — cannot check it, so do not run it
+        # compose's errors quote the line they could not parse, of whatever
+        # file that was: the detail stays in the host's log, not the result
+        log.warning("compose config failed for stack %s", project, exc_info=True)
+        raise ValueError("could not read the resolved compose configuration "
+                         "(the agent's log on the host has compose's error)") from None
+    found = problems(resolved, str(workdir), live_rw)
+    if found:
+        raise ValueError("refusing to deploy " + project + ": " + "; ".join(found[:10]))
+    return resolved
+
+
+def _up(workdir: Path, project: str, resolved: dict, data_dir: Path) -> str:
+    """``up`` on the checked configuration, kept in the agent's own data dir:
+    outside the stack folder (a container bound there could swap a file) and a
+    path no stack may bind. It stays, because compose records it in the
+    containers' config_files label and stack_update re-runs ``up`` from it."""
+    import json
+
+    resolved_dir = Path(data_dir) / "stacks"
+    if resolved_dir.is_symlink():
+        raise ValueError(f"refusing to deploy: {resolved_dir} is a symlink")
+    resolved_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(resolved_dir, 0o700)
+    path = resolved_dir / f"{project}.json"
+    _write_private(path, json.dumps(resolved))
+    return ex._run([*ex._compose_cmd(), "-p", project, "--project-directory", str(workdir),
+                    "-f", str(path), "up", "-d", "--remove-orphans"],
+                   timeout=600, extra_env=ex._compose_env())
+
+
 def _stack_deploy(params: dict, config: AgentConfig) -> str:
     from .. import client
 
@@ -80,15 +345,23 @@ def _stack_deploy(params: dict, config: AgentConfig) -> str:
     if ticket and not _TICKET.match(ticket):
         raise ValueError("env_ticket must be a ticket id")
     compose_file = _compose_file(params)
-    # Redeemed first: a deploy that cannot have its secrets must not start
-    # half-configured containers.
+    source = _source_params(params)
+    # Redeemed first: a deploy that cannot have its secrets (or its source)
+    # must not start half-configured containers.
     env_text = client.fetch_stack_env(config, ticket) if ticket else None
+    files = _source_files(client.fetch_stack_source(config, source[0]), source[1]) if source else None
 
+    _safe_workdir(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
-    (workdir / compose_file).write_text(compose)
+    if files is not None:
+        # The repo's folder first; the compose file and .env below are then
+        # written over it — the compose text is the one the server checked.
+        _place_source(workdir, files, Path(config.data_dir) / "stacks" / f"{project}.source.json")
+    _write_new(workdir / compose_file, compose, 0o644)
     if env_text is not None:
         _write_private(workdir / ".env", env_text)
-    output = _compose(workdir, project, "up", "-d", "--remove-orphans", compose_file=compose_file)
+    resolved = _check_resolved(workdir, project, compose_file, config.data_dir)
+    output = _up(workdir, project, resolved, config.data_dir)
     collector.request_docker_recheck()
     revision = params.get("revision")
     return ActionOutput(output or f"deployed {project}",
@@ -96,7 +369,7 @@ def _stack_deploy(params: dict, config: AgentConfig) -> str:
                          "revision": revision if isinstance(revision, int) else 0})
 
 
-def _stack_remove(params: dict, _config: AgentConfig) -> str:
+def _stack_remove(params: dict, config: AgentConfig) -> str:
     project = _project(params)
     workdir = _workdir(params)
     delete = params.get("delete_files")
@@ -107,6 +380,10 @@ def _stack_remove(params: dict, _config: AgentConfig) -> str:
         raise ValueError(f"refusing to delete {workdir}: only {STACKS_ROOT}/<project> is Vigil's")
     output = _compose(workdir, project, "down", timeout=300) if (workdir / COMPOSE_NAME).exists() \
         else f"{project}: no compose file at {workdir} — nothing to take down"
+    # the configuration _up checked and started, kept for the containers' labels,
+    # and the list of source files a Git stack's deploys placed
+    for kept in (f"{project}.json", f"{project}.source.json"):
+        (Path(config.data_dir) / "stacks" / kept).unlink(missing_ok=True)
     deleted = False
     if delete:
         if workdir.exists():
@@ -116,16 +393,28 @@ def _stack_remove(params: dict, _config: AgentConfig) -> str:
     return ActionOutput(output, {"project": project, "files_deleted": deleted})
 
 
-def _hash_report(project: str, args: list[str]) -> dict:
+def _hash_report(project: str, workdir: Path, compose: str, env: str) -> dict:
     """Which services would compose recreate? ``config --hash '*'`` against
-    the config-hash label on each running container. Matching = untouched."""
+    the config-hash label on each running container. Matching = untouched.
+
+    Run on private copies of the files _stack_read already read safely, not on
+    the labelled paths (a second, link-following read as root); and compose's
+    error text is never passed on — its parse errors quote the offending line,
+    of whatever file it was."""
+    import tempfile
+
     from .containers import _COMPOSE_PROJECT_LABEL
 
-    try:
-        out = ex._run([*ex._compose_cmd(), *args, "config", "--hash", "*"], timeout=120,
-                      extra_env=ex._compose_env())
-    except RuntimeError as exc:
-        return {"error": str(exc)[:300]}
+    with tempfile.TemporaryDirectory(prefix="vigil-adopt-") as tmp:
+        compose_copy, env_copy = Path(tmp) / "compose.yaml", Path(tmp) / "stack.env"
+        _write_private(compose_copy, compose)
+        _write_private(env_copy, env)
+        try:
+            out = ex._run([*ex._compose_cmd(), "-p", project, "--project-directory", str(workdir),
+                           "--env-file", str(env_copy), "-f", str(compose_copy),
+                           "config", "--hash", "*"], timeout=120, extra_env=ex._compose_env())
+        except RuntimeError:
+            return {"error": "compose could not resolve this stack as it is on the host"}
     wanted = {}
     for line in out.splitlines():
         parts = line.split()
@@ -159,15 +448,20 @@ def _stack_read(params: dict, config: AgentConfig) -> str:
     compose_path = Path(files[0])
     workdir = Path(args[args.index("--project-directory") + 1]) if "--project-directory" in args \
         else compose_path.parent
-    env_path = workdir / ".env"
+    env_path = Path(args[args.index("--env-file") + 1]) if "--env-file" in args \
+        else workdir / ".env"
+    compose = _read_plain(compose_path)
+    if compose is None:
+        raise ValueError(f"{compose_path} does not exist")
     payload = {
         "project": project,
         "compose_file": compose_path.name,
         "working_dir": str(workdir),
-        "compose": compose_path.read_text(),
-        "env": env_path.read_text() if env_path.exists() else "",
-        "hashes": _hash_report(project, args),
+        "compose": compose,
+        "env": _read_plain(env_path) or "",
+        "hashes": None,
     }
+    payload["hashes"] = _hash_report(project, workdir, compose, payload["env"])
     client.post_stack_read(config, ticket, payload)
     report = payload["hashes"]
     return ActionOutput(

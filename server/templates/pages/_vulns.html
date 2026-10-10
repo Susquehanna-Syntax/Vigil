@@ -47,18 +47,28 @@
         </div>
       </div>
 
-      {# Remediation by fix (M9) — findings grouped by the action that resolves them. #}
-      <div id="vuln-fixes-section" class="vfix-section" hidden>
-        <div class="vfix-head">
-          <div class="section-label">Remediation by fix</div>
-          <input type="search" class="form-control vfix-search" id="vuln-fix-q" placeholder="Search package or CVE…" autocomplete="off">
-        </div>
-        <div id="vuln-fixes"></div>
+      <div class="tab-bar vuln-tabs" data-tab-group="vulns">
+        <div class="tab t-mint active" data-tab="vulns-by-fix">By fix</div>
+        <div class="tab t-sky" data-tab="vulns-by-host">By host</div>
       </div>
 
-      <div id="vulns-content">
-        <div style="background:var(--s1);border-radius:var(--r-md);padding:40px;text-align:center;color:var(--text-3);font-size:13px;" id="vulns-loading">
-          Loading vulnerability data…
+      {# By fix (M9) — findings grouped by the action that resolves them. #}
+      <div class="tab-content active" id="vulns-by-fix">
+        <div id="vuln-fixes-section" class="vfix-section">
+          <div class="vfix-head">
+            <p class="apps-intro">One row per fix: deploying it resolves every finding listed under it, on every host.</p>
+            <input type="search" class="form-control vfix-search" id="vuln-fix-q" placeholder="Search package or CVE…" autocomplete="off">
+          </div>
+          <div id="vuln-fixes"></div>
+        </div>
+      </div>
+
+      {# By host — each host's score and open findings. #}
+      <div class="tab-content" id="vulns-by-host">
+        <div id="vulns-content">
+          <div style="background:var(--s1);border-radius:var(--r-md);padding:40px;text-align:center;color:var(--text-3);font-size:13px;" id="vulns-loading">
+            Loading vulnerability data…
+          </div>
         </div>
       </div>
 
@@ -73,7 +83,6 @@
 
       <div id="vulns-not-configured" style="display:none;">
         <div style="background:var(--s1);border-radius:var(--r-lg);padding:48px;text-align:center;">
-          <div style="font-size:42px;margin-bottom:16px;opacity:0.5;">🛡</div>
           <div style="font-weight:600;font-size:16px;margin-bottom:10px;color:var(--text-1);">No scanner has reported yet</div>
           <div style="color:var(--text-2);font-size:13px;max-width:520px;margin:0 auto;line-height:1.7;">
             Vigil ingests findings from three scanners into this one view. Set up whichever you have &mdash; none are required, and you can run more than one.

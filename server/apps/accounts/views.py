@@ -107,8 +107,14 @@ def totp_disable(request):
     code = (request.data.get("code") or "").strip()
     if not profile.totp_confirmed_at or not profile.totp_secret:
         return Response({"error": "TOTP is not enrolled"}, status=400)
-    if not verify_totp(profile.totp_secret, code):
-        return Response({"error": "Invalid code"}, status=400)
+    # Through consume_totp, not verify_totp: turning TOTP off is the strongest
+    # thing a code unlocks (afterwards a new device can be enrolled), so it
+    # gets the same attempt limit and replay check as every other gate.
+    from .totp import consume_totp
+    ok, err = consume_totp(request.user, code)
+    if not ok:
+        return Response({"error": err or "Invalid code"}, status=400)
+    profile.refresh_from_db()
     profile.totp_secret = ""
     profile.totp_confirmed_at = None
     profile.save(update_fields=["totp_secret_encrypted", "totp_confirmed_at"])
@@ -290,6 +296,27 @@ def login_view(request):
 def logout_view(request):
     auth.logout(request)
     return redirect("login")
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def session_activity(request):
+    """The browser's heartbeat (QA-14). Sent only on real interaction.
+
+    The middleware already refreshed ``last_active`` — this path is on the
+    activity list — so the view just reports what that bought.
+    """
+    from .session_timeout import remaining
+    return Response(remaining(request.session))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def session_status(request):
+    """Time left on the session, for the countdown. A background GET: checked,
+    never refreshing, or an open tab would sit out the idle clock forever."""
+    from .session_timeout import remaining
+    return Response(remaining(request.session))
 
 
 @api_view(["POST"])
