@@ -212,10 +212,13 @@ MAX_FETCH_BYTES = 512 * 1024 * 1024
 
 
 def _git(args: list[str], env: dict, cwd: str | None = None, *, limit: int = 1_000_000,
-         pin: list[str] | None = None) -> bytes:
+         pin: list[str] | None = None, deadline: float | None = None) -> bytes:
     """Run git with output going to files, never into memory unbounded:
     ``prlimit --fsize`` caps every file the process writes (its pack and its
     stdout here), then stdout is read back only if it is within *limit*."""
+    import time
+    if deadline is not None and deadline - time.monotonic() <= 0:
+        raise GitSourceError("the Git server did not answer in time")
     cmd = ["prlimit", f"--fsize={MAX_FETCH_BYTES}", "--", "git", *_GIT_CONFIG, *(pin or ()), *args]
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
         try:
@@ -223,8 +226,9 @@ def _git(args: list[str], env: dict, cwd: str | None = None, *, limit: int = 1_0
                                     stdout=out, stderr=err)
         except FileNotFoundError as exc:
             raise GitSourceError("git (and prlimit) must be installed on the Vigil server") from exc
+        budget = TIMEOUT_SECONDS if deadline is None else min(TIMEOUT_SECONDS, deadline - time.monotonic())
         try:
-            proc.wait(timeout=TIMEOUT_SECONDS)
+            proc.wait(timeout=max(budget, 0.1))
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait()
@@ -249,7 +253,7 @@ def _git(args: list[str], env: dict, cwd: str | None = None, *, limit: int = 1_0
         return out.read(limit + 1)
 
 
-def _resolve(url: str, source: Source, env: dict, pin_args: list[str]) -> str:
+def _resolve(url: str, source: Source, env: dict, pin_args: list[str], deadline: float | None = None) -> str:
     """The commit a fetch should take: the pin if it is a commit, else what
     the pinned tag or tracked branch points at now."""
     pin = (source.pin or "").strip()
@@ -261,7 +265,7 @@ def _resolve(url: str, source: Source, env: dict, pin_args: list[str]) -> str:
     else:
         name = check_ref(source.branch or "main", "branch")
         refs = [f"refs/heads/{name}"]
-    out = _git(["ls-remote", "--", url, *refs], env, pin=pin_args).decode(errors="replace")
+    out = _git(["ls-remote", "--", url, *refs], env, pin=pin_args, deadline=deadline).decode(errors="replace")
     found = {}
     for line in out.splitlines():
         sha, _, ref = line.partition("\t")
@@ -324,33 +328,57 @@ def repack(raw_tar: bytes, folder: str) -> tuple[bytes, dict[str, bytes]]:
 
 # ── The fetch ────────────────────────────────────────────────────────────
 
-#: How long a fetch waits for another to finish before giving up.
+#: How long a fetch waits for a free slot before giving up.
 LOCK_WAIT_SECONDS = 30
+#: Fetches allowed at once on this server, across every worker. More than one,
+#: so a single slow repository cannot hold up every Git stack; few, so the
+#: size caps bound the disk a burst of requests can use.
+FETCH_SLOTS = 2
+#: The whole fetch — every git command in it — must finish within this.
+FETCH_DEADLINE_SECONDS = 180
+
+
+def _lock_dir() -> str:
+    """A folder only this server's user can write: a lock file in the shared
+    /tmp could be created first by anyone and held for ever."""
+    path = os.path.join(tempfile.gettempdir(), f"vigil-git-locks-{os.getuid()}")
+    try:
+        os.mkdir(path, 0o700)
+    except FileExistsError:
+        pass
+    st = os.lstat(path)
+    import stat as _stat
+    if not _stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid() or st.st_mode & 0o077:
+        raise GitSourceError(f"{path} is not a private folder of the Vigil server's user — refusing to use it")
+    return path
 
 
 @contextmanager
-def _one_fetch_at_a_time():
-    """One fetch on this server at a time, across every worker process — so
-    the size caps bound the disk a burst of requests can use, rather than
-    multiplying by however many arrive together."""
+def _fetch_slot():
+    """One of FETCH_SLOTS fetches at a time, across worker processes."""
     import fcntl
     import time
 
-    path = os.path.join(tempfile.gettempdir(), "vigil-git-fetch.lock")
-    fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    folder = _lock_dir()
+    fds = [os.open(os.path.join(folder, f"slot{i}.lock"),
+                   os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+           for i in range(FETCH_SLOTS)]
     try:
         deadline = time.monotonic() + LOCK_WAIT_SECONDS
         while True:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if time.monotonic() > deadline:
-                    raise GitSourceError("another Git fetch is running — try again in a moment") from None
-                time.sleep(0.25)
-        yield
+            for fd in fds:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    yield
+                    return
+                except BlockingIOError:
+                    continue
+            if time.monotonic() > deadline:
+                raise GitSourceError("other Git fetches are running — try again in a moment")
+            time.sleep(0.25)
     finally:
-        os.close(fd)        # releases the lock
+        for fd in fds:
+            os.close(fd)        # releases whichever lock was held
 
 
 def fetch(source: Source) -> Fetched:
@@ -369,19 +397,21 @@ def fetch(source: Source) -> Fetched:
     ip = _check_host_address(host, port)
     git_pin, ssh_pin = _pin_args(kind, host, port, ip)
 
-    with _one_fetch_at_a_time(), tempfile.TemporaryDirectory(prefix="vigil-git-") as tmp:
+    import time
+    deadline = time.monotonic() + FETCH_DEADLINE_SECONDS
+    with _fetch_slot(), tempfile.TemporaryDirectory(prefix="vigil-git-") as tmp:
         os.chmod(tmp, 0o700)
         env = _env(tmp, source, kind, ssh_pin)
-        commit = _resolve(url, source, env, git_pin)
+        commit = _resolve(url, source, env, git_pin, deadline)
         repo = os.path.join(tmp, "repo.git")
-        _git(["init", "-q", "--bare", repo], env)
+        _git(["init", "-q", "--bare", repo], env, deadline=deadline)
         _git(["fetch", "-q", "--depth", "1", "--no-tags", "--no-recurse-submodules",
-              "--", url, commit], env, cwd=repo, pin=git_pin)
+              "--", url, commit], env, cwd=repo, pin=git_pin, deadline=deadline)
         got = _git(["rev-parse", "--verify", "--end-of-options", f"{commit}^{{commit}}"],
-                   env, cwd=repo).decode().strip().lower()
+                   env, cwd=repo, deadline=deadline).decode().strip().lower()
         if got != commit:
             raise GitSourceError(f"the Git server returned {got[:12]} for {commit[:12]}")
-        raw = _git(["archive", "--format=tar", commit, "--", folder or "."], env, cwd=repo,
+        raw = _git(["archive", "--format=tar", commit, "--", folder or "."], env, cwd=repo, deadline=deadline,
                    limit=MAX_TREE_BYTES + MAX_FILES * 1024)
 
     archive, files = repack(raw, folder)
