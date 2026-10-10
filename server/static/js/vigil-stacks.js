@@ -15,7 +15,7 @@
 //      /git-credentials/ (list, add with TOTP, delete)
 
 const stackEd = {
-  hostId: null, stack: null, env: [], stacks: [], revisions: [], dirty: false,
+  hostId: null, stack: null, env: [], stacks: [], listed: new Set(), revisions: [], dirty: false,
   source: 'editor', gitCreds: null, gitSnapshot: null,
 };
 let _stackCheckSeq = 0;
@@ -27,17 +27,40 @@ const DEPLOY_SAVE_HINT = 'Save first: deploy ships a saved revision';
 async function renderManagedStacks(hostId) {
   const wrap = document.getElementById('managed-stacks');
   if (!wrap) return;
-  stackEd.hostId = hostId;
   let rows = [];
   try { rows = (await apiJson(`/api/v1/stacks/?host=${encodeURIComponent(hostId)}`)).results || []; }
   catch { rows = null; }
-  if (rows === null) { wrap.innerHTML = ''; return; }   // not an admin: nothing to manage
+  if (rows === null) { stackEd.stacks = []; wrap.innerHTML = ''; return; }   // not an admin: nothing to manage
+  if (stackEd.hostId !== hostId) stackEd.listed = new Set();
+  stackEd.hostId = hostId;
   stackEd.stacks = rows;
+  _renderManagedBar();
+}
+
+// A managed stack listed below gets its Edit button in its own header, next
+// to its name. The bar keeps New stack and the managed stacks with no row
+// below (saved, never deployed).
+function _renderManagedBar() {
+  const wrap = document.getElementById('managed-stacks');
+  if (!wrap) return;
+  const rest = stackEd.stacks.filter(s => !stackEd.listed.has(s.name));
   wrap.innerHTML = `<div class="managed-stacks-bar">
-      <span class="managed-stacks-label">Managed by Vigil</span>
-      ${rows.map(s => `<button class="chip chip-muted managed-stack-chip" type="button" data-stack-edit="${escAttr(s.id)}">${escHtml(s.name)} <span class="apps-zero">r${s.revision}</span></button>`).join('')}
+      ${rest.length ? '<span class="managed-stacks-label">Managed by Vigil, not deployed</span>' : ''}
+      ${rest.map(s => `<button class="chip chip-muted managed-stack-chip" type="button" data-stack-edit="${escAttr(s.id)}">${escHtml(s.name)} <span class="apps-zero">r${s.revision}</span></button>`).join('')}
       <button class="btn btn-xs btn-mint" type="button" data-stack-new>New stack</button>
     </div>`;
+}
+
+/** The Containers page lists these stacks; their Edit sits in their header. */
+function setListedStacks(names) {
+  stackEd.listed = new Set(names);
+  if (stackEd.stacks) _renderManagedBar();
+}
+
+/** The Edit button for a stack header, or '' when Vigil does not manage it. */
+function managedStackEditButton(name) {
+  const s = (stackEd.stacks || []).find(m => m.name === name);
+  return s ? `<button class="btn btn-xs btn-outline" type="button" data-stack-edit="${escAttr(s.id)}" title="Edit its compose file and .env (revision ${s.revision})">Edit</button>` : '';
 }
 
 function _renderStackEnv() {
