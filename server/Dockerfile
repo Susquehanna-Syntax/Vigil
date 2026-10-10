@@ -31,8 +31,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# git + openssh-client: stacks from Git (2026.14.1) are fetched by the server,
+# never by a host, so a repository credential stays in Vigil.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libpq-dev gosu && \
+    apt-get install -y --no-install-recommends libpq-dev gosu git openssh-client && \
     rm -rf /var/lib/apt/lists/*
 
 # Gunicorn and every request it serves ran as UID 0, so a code-execution bug in

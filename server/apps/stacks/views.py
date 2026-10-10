@@ -40,6 +40,11 @@ def _row(s: ManagedStack) -> dict:
             "name": s.name, "compose_yaml": s.compose_yaml, "revision": s.revision,
             "working_dir": s.working_dir, "adopted": s.adopted, "compose_file": s.compose_file,
             "adopt_report": s.adopt_report or {},
+            "git": ({"url": s.git_url, "branch": s.git_branch, "pin": s.git_pin, "path": s.git_path,
+                     "credential_id": str(s.git_credential_id) if s.git_credential_id else None,
+                     "commit": (s.revisions.filter(number=s.revision).values_list("git_commit", flat=True)
+                                .first() or "")}
+                    if s.git_url else None),
             "env": [{"key": k, "set": bool(v)} for k, v in _env_pairs(s)],
             "updated_at": s.updated_at.isoformat() if s.updated_at else None}
 
@@ -73,6 +78,9 @@ def _merge_env(stack: ManagedStack | None, data) -> list[tuple[str, str]]:
 
 
 def _save(request, stack: ManagedStack, data, *, note: str) -> Response | None:
+    if stack.git_url and "compose_yaml" in data:
+        return Response({"detail": "this stack's compose file comes from Git: change it in the "
+                                   "repository and pull"}, status=status.HTTP_400_BAD_REQUEST)
     try:
         if "compose_yaml" in data:
             validate_compose(str(data["compose_yaml"]))
@@ -113,12 +121,30 @@ def stack_index(request):
     if ManagedStack.objects.filter(host=host, name=name).exists():
         return Response({"detail": f"{host.hostname} already has a stack called {name}"},
                         status=status.HTTP_400_BAD_REQUEST)
-    if "compose_yaml" not in request.data:
-        return Response({"detail": "compose_yaml is required"}, status=status.HTTP_400_BAD_REQUEST)
     stack = ManagedStack(host=host, name=name, created_by=request.user,
                          working_dir=f"{STACKS_ROOT}/{name}")
+    if "git" in request.data:
+        return _create_from_git(request, stack)
+    if "compose_yaml" not in request.data:
+        return Response({"detail": "compose_yaml (or git) is required"},
+                        status=status.HTTP_400_BAD_REQUEST)
     if error := _save(request, stack, request.data, note="created"):
         return error
+    return Response(_row(stack), status=status.HTTP_201_CREATED)
+
+
+def _create_from_git(request, stack: ManagedStack) -> Response:
+    """A new stack whose compose file comes from a repository: fetch it,
+    check it like any compose file, and store revision 1 with its source."""
+    from . import git_views, gitsource
+
+    try:
+        git_views.apply_git_settings(stack, request.data)
+        if "env_text" in request.data or "env" in request.data:
+            stack.env_encrypted = encrypt_secret(render_env(_merge_env(None, request.data)))
+        git_views.pull(stack, request.user, note="created from Git")
+    except (gitsource.GitSourceError, StackError) as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     return Response(_row(stack), status=status.HTTP_201_CREATED)
 
 
@@ -153,6 +179,19 @@ def stack_detail(request, stack_id):
         # stack_remove task (phase 09). This only forgets Vigil's copy.
         stack.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+    if "git" in request.data:
+        # New repository settings take effect by pulling them.
+        from . import git_views, gitsource
+        if not stack.git_url:
+            return Response({"detail": "a stack edited in Vigil cannot be switched to Git; "
+                                       "create a new stack from the repository"},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            git_views.apply_git_settings(stack, request.data)
+            git_views.pull(stack, request.user, note="Git settings changed")
+        except (gitsource.GitSourceError, StackError) as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(_row(stack))
     if error := _save(request, stack, request.data, note=str(request.data.get("note") or "edited")):
         return error
     return Response(_row(stack))
@@ -236,8 +275,22 @@ def stack_deploy(request, stack_id):
         return refused
     if denied := _confirmed(request):
         return denied
+    source = {}
+    if stack.git_url and "stack_source" not in set(stack.host.agent_features or []):
+        # An older agent would ignore the source ticket and build with no source.
+        return Response({"detail": f"{stack.host.hostname}'s agent is too old for stacks from Git — "
+                                   "update the agent first"}, status=status.HTTP_400_BAD_REQUEST)
+    if stack.git_url:
+        # Tracking a branch means a deploy takes its latest commit; a pinned
+        # stack re-fetches the same one (and makes no revision).
+        from . import git_views, gitsource
+        try:
+            git_views.pull(stack, request.user)
+            source = git_views.deploy_source_params(stack)
+        except (gitsource.GitSourceError, StackError) as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     params = {"project": stack.name, "compose": stack.compose_yaml,
-              "working_dir": stack.working_dir, "revision": stack.revision}
+              "working_dir": stack.working_dir, "revision": stack.revision, **source}
     if stack.compose_file != "compose.yaml":
         params["compose_file"] = stack.compose_file
     if bytes(stack.env_encrypted or b""):

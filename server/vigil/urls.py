@@ -17,6 +17,7 @@ from apps.hosts import views as hosts_views
 from apps.hosts.enrollment import replacement_candidate
 from apps.hosts.logtail import agent_log_lines
 from apps.stacks.registries import agent_registry_auth
+from apps.stacks.git_views import agent_stack_source
 from apps.stacks.views import agent_stack_adopt, agent_stack_env
 from apps.hosts.views import checkin, register
 from apps.playbooks.urls import legacy_urlpatterns as _legacy_playbook_urls
@@ -108,6 +109,7 @@ urlpatterns = [
     path("api/v1/checkin", checkin, name="checkin"),
     path("api/v1/agent/log-tail/<uuid:session_id>/", agent_log_lines, name="agent-log-tail"),
     path("api/v1/agent/stack-env/<uuid:ticket_id>/", agent_stack_env, name="agent-stack-env"),
+    path("api/v1/agent/stack-source/<uuid:ticket_id>/", agent_stack_source, name="agent-stack-source"),
     path("api/v1/agent/stack-adopt/<uuid:ticket_id>/", agent_stack_adopt, name="agent-stack-adopt"),
     path("api/v1/agent/registry-auth/", agent_registry_auth, name="agent-registry-auth"),
     path("api/v1/hosts/", include("apps.hosts.urls")),
