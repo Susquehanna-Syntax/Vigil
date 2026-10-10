@@ -61,6 +61,13 @@ def _process_tasks(tasks: list[dict], config, nonce_store: NonceStore, verify_ke
             )
         return
 
+    if _privilege_mismatch(config):
+        # Better one clear rejection now than the task dying on Errno 30
+        # halfway through a write (QA-08).
+        for task in tasks:
+            _report_rejected(config, task, PRIVILEGE_MISMATCH.format(mode=config.mode))
+        return
+
     if verify_key is None:
         if tasks:
             logger.warning(
@@ -83,36 +90,36 @@ def _process_tasks(tasks: list[dict], config, nonce_store: NonceStore, verify_ke
             _report_rejected(config, task, "Replayed nonce")
             continue
 
-        # TTL check — bounded against when the SERVER dispatched the task,
-        # not when it was originally created. A task can sit in PENDING for
-        # hours (waiting on a schedule.window, retry delay, or offline host);
-        # the TTL only makes sense once the signed payload is on the wire.
-        # Falls back to ``created_at`` for compatibility with older servers.
-        ttl = task.get("ttl_seconds", 300)
-        ref_str = task.get("dispatched_at") or task.get("created_at")
-        if ref_str:
-            try:
-                ref = datetime.fromisoformat(ref_str)
-                if ref.tzinfo is None:
-                    ref = ref.replace(tzinfo=timezone.utc)
-                if datetime.now(timezone.utc) > ref + timedelta(seconds=ttl):
-                    logger.warning("Task %s has expired (TTL %ds) — rejecting", task_id, ttl)
-                    _report_rejected(config, task, f"Task expired (TTL {ttl}s)")
-                    nonce_store.record(nonce)
-                    continue
-            except (ValueError, TypeError):
-                pass  # malformed timestamp — skip the gate, signature still gates execution
-
-        # Signature verification
-        if not verify.verify_task_signature(task, verify_key):
+        # Signature first (SEC-4): the dispatch time the TTL is measured from is
+        # inside the v2 signature, so it is only worth reading once verified.
+        if not verify.verify_task_signature(task, verify_key, config.agent_token):
             logger.warning("Task %s failed signature verification — rejecting", task_id)
             _report_rejected(config, task, "Invalid signature")
-            nonce_store.record(nonce)
+            continue
+
+        # TTL — bounded against when the SERVER dispatched the task, not when it
+        # was created: a task can wait days for a schedule window. The time is
+        # signed, so it cannot be restarted by whoever relays the task, and a
+        # missing or unreadable one is refused rather than skipped.
+        ttl = task.get("ttl_seconds", 300)
+        try:
+            ref = datetime.fromisoformat(task["dispatched_at"])
+            if ref.tzinfo is None:
+                ref = ref.replace(tzinfo=timezone.utc)
+        except (KeyError, ValueError, TypeError):
+            logger.warning("Task %s has no valid dispatch time — rejecting", task_id)
+            _report_rejected(config, task, "Task has no valid dispatch time")
+            nonce_store.record(nonce, ttl)
+            continue
+        if datetime.now(timezone.utc) > ref + timedelta(seconds=ttl):
+            logger.warning("Task %s has expired (TTL %ds) — rejecting", task_id, ttl)
+            _report_rejected(config, task, f"Task expired (TTL {ttl}s)")
+            nonce_store.record(nonce, ttl)
             continue
 
         # Execution — the agent validates each action against its own local
         # config.  The server sends the script; we decide what's allowed.
-        nonce_store.record(nonce)
+        nonce_store.record(nonce, ttl)
         params = task.get("params", {})
 
         if isinstance(params.get("steps"), list):
@@ -578,6 +585,24 @@ def _report_skipped(config, task: dict, output: str, steps=None) -> None:
         logger.exception("Failed to report task %s skip", task.get("id"))
 
 
+#: What a task gets back when this agent cannot run it.
+PRIVILEGE_MISMATCH = (
+    "This agent's mode ({mode}) runs tasks as root, but its service still runs it as the "
+    "unprivileged 'vigil-agent' user under the monitor-mode sandbox (read-only /usr and /etc), "
+    "so every task would fail. Re-run the installer on this host to regenerate the service for "
+    "its mode: curl -fsSL <server>/agent/install.sh | sudo bash")
+
+
+def _privilege_mismatch(config) -> bool:
+    """True when the mode needs root and this process is not root (POSIX only)."""
+    if config.mode == "monitor":
+        return False
+    try:
+        return os.geteuid() != 0
+    except AttributeError:      # Windows has no geteuid
+        return False
+
+
 def _warn_on_privilege_mismatch(config) -> None:
     """Say so when the mode needs root and this process does not have it.
 
@@ -604,12 +629,7 @@ def _warn_on_privilege_mismatch(config) -> None:
     A warning, not a refusal: an agent that stops monitoring because it cannot
     execute is worse than one that monitors and says it cannot execute.
     """
-    if config.mode == "monitor":
-        return
-    try:
-        if os.geteuid() == 0:
-            return
-    except AttributeError:      # Windows has no geteuid
+    if not _privilege_mismatch(config):
         return
 
     logger.warning(
@@ -733,7 +753,7 @@ def run_agent() -> None:
         signal.signal(signal.SIGTERM, _handle_signal)
         signal.signal(signal.SIGINT, _handle_signal)
 
-    verify_key = verify.get_pinned_key(config.data_dir)
+    verify_key = verify.get_pinned_key(config.data_dir, config.server_public_key)
 
     # ── Main checkin loop ────────────────────────────────────────────────
     # Hardware inventory shifts at human timescales — refresh once per hour
@@ -839,7 +859,8 @@ def run_agent() -> None:
             pub_key_b64 = response.get("public_key")
             if pub_key_b64:
                 try:
-                    verify_key = verify.pin_public_key(config.data_dir, pub_key_b64)
+                    verify_key = verify.pin_public_key(config.data_dir, pub_key_b64,
+                                                       config.server_public_key)
                 except KeyMismatchError:
                     logger.critical(
                         "SERVER PUBLIC KEY HAS CHANGED. This could indicate a compromised server. "

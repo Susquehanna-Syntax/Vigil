@@ -19,11 +19,20 @@
 
 let firewallHostsLoaded = false;
 let firewallCurrentHostId = null;
+const FW_HOST_KEY = 'vigil.firewall.host';
+
+function _fwRemember(id) { try { localStorage.setItem(FW_HOST_KEY, id); } catch { /* private window */ } }
+function _fwRecall() { try { return localStorage.getItem(FW_HOST_KEY) || ''; } catch { return ''; } }
 
 // Port 22 is always protected; 3389 joins it only on a Windows snapshot.
-// Mirrors apps/hosts/firewall_guard.py::_protected_ports exactly — the UI
-// must not offer a remove/deny action the server is guaranteed to refuse.
-function _fwIsProtected(port, tool) {
+// Mirrors apps/hosts/firewall_guard.py::check_change exactly: only removing
+// an *allow* on a protected port can cut off access, so deny/reject rules on
+// those ports are the way back in and must offer Remove.
+function _fwIsProtected(port, tool, action) {
+  // Only a block the guard can confirm is removable; anything else on a
+  // protected port (an allow, or an action the snapshot could not read)
+  // is refused server-side, so it is not offered here.
+  if (action === 'deny' || action === 'reject') return false;
   if (port === 22) return true;
   if (port === 3389 && tool === 'windows') return true;
   return false;
@@ -56,6 +65,7 @@ function pickFirewallHost() {
   openPicker({ type: 'machine', title: 'Pick a host', allowAdd: false, onSelect: (item) => {
     const hidden = document.getElementById('firewall-host-select');
     hidden.value = item.key;
+    _fwRemember(item.key);
     document.getElementById('firewall-host-label').textContent = item.name;
     loadFirewallSnapshot(item.key);
   } });
@@ -80,14 +90,6 @@ async function _fwPopulateHosts() {
   // an explanation, beats listing hosts that can only ever fail here.
   const eligible = (Array.isArray(hosts) ? hosts : []).filter(h => h.mode !== 'monitor');
 
-  sel.replaceChildren();
-  for (const h of eligible) {
-    const opt = document.createElement('option');
-    opt.value = h.id;
-    opt.textContent = h.hostname; // host-reported string — textContent only
-    sel.appendChild(opt);
-  }
-
   const hasHosts = eligible.length > 0;
   sel.style.display = hasHosts ? '' : 'none';
   if (refreshBtn) refreshBtn.style.display = hasHosts ? '' : 'none';
@@ -102,9 +104,10 @@ async function _fwPopulateHosts() {
     return;
   }
 
-  sel.addEventListener('change', () => loadFirewallSnapshot(sel.value));
-  // The browser auto-selects the first <option>, so sel.value is already
-  // set — loadFirewall()'s caller reads it next; no extra fetch here.
+  const wanted = _fwRecall();
+  const start = eligible.find(h => String(h.id) === wanted) || eligible[0];
+  sel.value = start.id;
+  document.getElementById('firewall-host-label').textContent = start.hostname; // host-reported — textContent
 }
 
 /* ── Snapshot fetch + render ─────────────────────────────────────────── */
@@ -347,23 +350,13 @@ function _fwRenderRules(hostId, data) {
       const actTd = document.createElement('td');
       actTd.style.textAlign = 'right';
       const portNum = typeof r.port === 'number' ? r.port : parseInt(r.port, 10);
-      if (_fwIsProtected(portNum, tool)) {
+      if (_fwIsProtected(portNum, tool, r.action)) {
         // The server would refuse this change (firewall_guard.check_change)
         // — do not offer an action known to fail.
         const label = document.createElement('span');
         label.style.cssText = 'font-size:11px;color:var(--text-3);';
-        label.textContent = '[protected]';
-        actTd.appendChild(label);
-      } else if (r.action === 'reject') {
-        // ufw's parser also matches REJECT (see UfwBackend._RULE), but
-        // executor._remove_firewall_rule only accepts action in
-        // ("allow", "deny") and raises for anything else — Vigil cannot
-        // remove a reject rule. Offering a live Remove button here would
-        // always fail after "Change queued" — do not offer an action known
-        // to fail.
-        const label = document.createElement('span');
-        label.style.cssText = 'font-size:11px;color:var(--text-3);';
-        label.textContent = '[cannot remove]';
+        label.textContent = portNum === 3389 ? '[protected — keeps RDP open]'
+                                             : '[protected — keeps SSH open]';
         actTd.appendChild(label);
       } else {
         const rmBtn = document.createElement('button');
@@ -517,7 +510,7 @@ function _fwRenderRules(hostId, data) {
 /* ── Writes ──────────────────────────────────────────────────────────── */
 
 async function applyFirewallChange(hostId, action, params, btn) {
-  const totp = (window.prompt('Enter your TOTP code to apply this firewall change:') || '').trim();
+  const totp = await totpPrompt('Apply this firewall change.');
   if (!totp) return;
   const prevOpacity = btn ? btn.style.opacity : '';
   if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }

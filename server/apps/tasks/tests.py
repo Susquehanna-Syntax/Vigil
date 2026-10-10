@@ -9,7 +9,7 @@ from django.utils.timezone import now
 from nacl.signing import VerifyKey
 from rest_framework.test import APIClient
 
-from apps.accounts.models import UserProfile
+from apps.accounts.models import Role, UserProfile
 from apps.accounts.totp import generate_secret, generate_totp
 from apps.agent_dist.models import AgentBinary
 from apps.hosts.models import Host
@@ -118,7 +118,8 @@ class UpdateAgentDeployTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.user = get_user_model().objects.create_user("op", password="pw")
-        profile = UserProfile.objects.create(user=self.user)
+        # Deploying needs tasks:run (SEC-1); a bare profile is a viewer.
+        profile = UserProfile.objects.create(user=self.user, role=Role.OPERATOR)
         self.secret = generate_secret()
         profile.totp_secret = self.secret
         profile.totp_confirmed_at = now()

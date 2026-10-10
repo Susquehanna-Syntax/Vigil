@@ -51,6 +51,19 @@ class UserProfile(models.Model):
         return f"profile<{self.user_id}>"
 
 
+class TotpAttempt(models.Model):
+    """One TOTP code tried for a user, kept briefly to rate-limit guessing.
+
+    A table of its own, keyed by the user: sharing LoginAttempt let a failed
+    *login* typed with the right username land in the same count, so anyone
+    could lock a user out of TOTP-gated actions (architect review, 2026-10-08).
+    """
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+
 class LoginAttempt(models.Model):
     """A failed console login, kept briefly to rate-limit brute forcing.
 

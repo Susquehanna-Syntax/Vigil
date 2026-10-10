@@ -70,6 +70,12 @@ def _uptime_history(host_objs):
     return history
 
 
+def _public_key(page, host) -> str:
+    import hashlib
+    import hmac
+    return hmac.new(page.token.encode(), str(host.id).encode(), hashlib.sha256).hexdigest()[:16]
+
+
 def _page_hosts(page):
     """The host rows the page renders: current up/down, uptime bars, and the
     overall percent. Shared by the HTML page and its polling JSON endpoint."""
@@ -81,7 +87,10 @@ def _page_hosts(page):
         hist = history.get(str(h.id), {})
         pct = hist.get("pct")
         hosts.append({
-            "id": str(h.id),
+            # Opaque and per page: the live refresh only needs a stable key to
+            # find each card, and the public page should not publish the
+            # host's internal id.
+            "id": _public_key(page, h),
             "hostname": labels.get(str(h.id)) or h.hostname,
             "up": h.status == Host.Status.ONLINE,
             "bars": hist.get("bars", []),

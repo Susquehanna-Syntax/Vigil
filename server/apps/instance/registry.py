@@ -86,6 +86,11 @@ GROUPS: tuple[tuple[str, str, str], ...] = (
     ("locale", "Timezone & time format", (
         "Used to evaluate schedule windows and to render times in the UI."
     )),
+    ("sessions", "Sign-in sessions", (
+        "How long someone can leave Vigil idle before it signs them out, and "
+        "how long any sign-in lasts at most. Background auto-refresh does not "
+        "count as activity — only using the page does."
+    )),
 )
 
 KEYS: tuple[Key, ...] = (
@@ -156,6 +161,12 @@ KEYS: tuple[Key, ...] = (
         "in this zone.", "UTC"),
     Key("VIGIL_TIME_FORMAT", "locale", CHOICE, "Time format", "", "",
         ("12h", "24h")),
+
+    # ── Sign-in sessions ─────────────────────────────────────────────────
+    Key("VIGIL_SESSION_IDLE_MINUTES", "sessions", INT, "Sign out after idle (minutes)",
+        "5 to 720. Vigil warns two minutes before."),
+    Key("VIGIL_SESSION_MAX_HOURS", "sessions", INT, "Longest sign-in (hours)",
+        "1 to 168. Everyone signs in again at least this often, however active."),
 )
 
 BY_NAME: dict[str, Key] = {k.name: k for k in KEYS}

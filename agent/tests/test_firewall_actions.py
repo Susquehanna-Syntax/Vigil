@@ -38,6 +38,61 @@ class FakeBackend:
         return SNAPSHOT
 
 
+def _fw_cmd(params):
+    """The ufw command the removal action runs, with the tool calls faked."""
+    seen = {}
+
+    def fake_run(cmd, timeout=None):
+        seen["cmd"] = cmd
+        return "ok"
+
+    with patch.object(firewall, "_run", fake_run), \
+         patch.object(firewall.shutil, "which", lambda t: "/usr/sbin/ufw"
+                      if t == "ufw" else None):
+        executor._remove_firewall_rule(params, _config())
+    return seen["cmd"]
+
+
+def _firewalld_cmds(params):
+    """Every firewall-cmd call the removal action runs."""
+    calls = []
+
+    def fake_run(cmd, timeout=None):
+        calls.append(cmd)
+        return "ok"
+
+    with patch.object(firewall, "_run", fake_run), \
+         patch.object(firewall.shutil, "which",
+                      lambda t: "/usr/bin/firewall-cmd"
+                      if t == "firewall-cmd" else None):
+        executor._remove_firewall_rule(params, _config())
+    return calls
+
+
+class RemoveRejectRuleTests(unittest.TestCase):
+    """A reject rule (ufw reports REJECT) was removable by nobody: the agent
+    refused the action outright, so the only way back in was by hand."""
+
+    def test_a_reject_rule_is_removed_as_reject(self):
+        self.assertEqual(
+            _fw_cmd({"port": 22, "protocol": "tcp", "action": "reject"}),
+            ["ufw", "delete", "reject", "22/tcp"])
+
+    def test_firewalld_removes_a_reject_with_the_rich_rule(self):
+        calls = _firewalld_cmds({"port": 8080, "protocol": "tcp",
+                                 "action": "reject"})
+        joined = [" ".join(c) for c in calls]
+        self.assertTrue(
+            any("--remove-rich-rule=" in c and "reject" in c for c in joined),
+            "a reject was written as a rich rule, so it must be removed as one")
+        self.assertFalse(any("--remove-port" in c for c in joined),
+                         "a reject is not a port grant")
+
+    def test_a_bogus_action_is_still_refused(self):
+        with self.assertRaises(ValueError):
+            _fw_cmd({"port": 22, "protocol": "tcp", "action": "drop"})
+
+
 class ListRulesTests(unittest.TestCase):
     def test_the_snapshot_is_returned_as_json(self):
         with patch.object(firewall, "detect", lambda: FakeBackend()):

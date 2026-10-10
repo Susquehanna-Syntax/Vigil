@@ -183,6 +183,11 @@ class AgentConfig:
     # tags take precedence: this list is used to seed/augment, never to
     # overwrite tags an operator has set in the console.
     tags: list[str] = field(default_factory=list)
+    # The server's Ed25519 public key, written into agent.yml by the installer
+    # (SEC-3). When set it is the only key the agent accepts: no
+    # trust-on-first-use, and a pin file in data_dir (which a monitor-mode
+    # service account owns) cannot override it.
+    server_public_key: str = ""
     # Process names sampled at every scrape whether or not they rank in the
     # top ten. Without this a quiet process is invisible: the collector only
     # ships the busiest processes, so a chart of one named service would be
@@ -354,6 +359,16 @@ def load_config(path: Path | None = None) -> AgentConfig:
 
     data_dir = Path(raw.get("data_dir", "/var/lib/vigil-agent"))
 
+    server_public_key = str(raw.get("server_public_key") or "").strip()
+    if server_public_key:
+        import base64
+        import binascii
+        try:
+            if len(base64.b64decode(server_public_key, validate=True)) != 32:
+                raise ValueError
+        except (ValueError, binascii.Error):
+            raise ValueError("server_public_key in config is not a base64 Ed25519 public key") from None
+
     raw_tags = raw.get("tags") or []
     if not isinstance(raw_tags, list):
         raise ValueError("tags must be a list of strings")
@@ -390,6 +405,7 @@ def load_config(path: Path | None = None) -> AgentConfig:
         else _default_scripts_dir(),
         allowed_script_hashes=allowed_script_hashes,
         tags=raw_tags,
+        server_public_key=server_public_key,
         process_watch=raw_watch,
         gpu_extended=bool(raw.get("gpu_extended", False)),
         config_path=path,

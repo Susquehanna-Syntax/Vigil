@@ -1,10 +1,34 @@
+import hashlib
+import re
 import uuid
 
 from django.conf import settings
 from django.db import models
 
+#: Agent tokens are kept as a SHA-256, never in the clear: a database dump must
+#: not hand out a working credential for every machine (architect review,
+#: 2026-10-08). The hex part doubles as the agent fingerprint that v2 task
+#: signatures bind to (vigil/signing.py), since the agent hashes its own token.
+TOKEN_PREFIX = "sha256$"
+#: The shape a token presented at registration or enrolment must have.
+TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
+
+
+def hash_agent_token(raw: str) -> str:
+    """The stored form of a plaintext token. Always hashes: a caller holding a
+    stored value must not be able to present it as if it were the token."""
+    return TOKEN_PREFIX + hashlib.sha256(str(raw).encode()).hexdigest()
+
+
+class HostManager(models.Manager):
+    def by_token(self, raw: str):
+        """Hosts whose token is *raw* (the plaintext an agent presents)."""
+        return self.filter(agent_token=hash_agent_token(raw))
+
 
 class Host(models.Model):
+    objects = HostManager()
+
     class Status(models.TextChoices):
         PENDING = "pending", "Pending Enrollment"
         ONLINE = "online", "Online"
@@ -39,10 +63,23 @@ class Host(models.Model):
     tag_sync_fields = [("tags", "tag_rows")]
 
     def save(self, *args, **kwargs):
+        # A plaintext token set anywhere (registration, enrolment, tests) is
+        # stored hashed; one that already is stays as it is.
+        if self.agent_token and not self.agent_token.startswith(TOKEN_PREFIX):
+            # The plaintext stays on this in-memory instance only (never stored,
+            # never read by the server) so whoever just set it, a test or an
+            # enrolment flow, can still hand it to the agent.
+            self.raw_agent_token = self.agent_token
+            self.agent_token = hash_agent_token(self.agent_token)
         super().save(*args, **kwargs)
         # Defined below this class, hence the local import.
         for string_field, relation in self.tag_sync_fields:
             sync_tag_rows(self, string_field, relation)
+    @property
+    def token_fingerprint(self) -> str:
+        """SHA-256 hex of the agent's token: what a v2 signature binds to."""
+        return self.agent_token[len(TOKEN_PREFIX):] if self.agent_token.startswith(TOKEN_PREFIX) else ""
+
     agent_version = models.CharField(max_length=50, blank=True, default="")
     #: Task-language features the agent said it understands at check-in.
     #: The server refuses to hand a task to a host that lacks a feature the
@@ -53,6 +90,9 @@ class Host(models.Model):
     # agent new enough to report it checks in — unknown, which is not "refuses".
     agent_allowlist = models.JSONField(null=True, blank=True)
     agent_allow_reprovision = models.BooleanField(default=False)
+    # Whether the agent's process runs as root, as it last reported it (QA-08):
+    # None until an agent new enough to report it checks in.
+    agent_runs_as_root = models.BooleanField(null=True, blank=True)
     last_checkin = models.DateTimeField(null=True, blank=True)
     #: What this machine is missing, as the agent last counted it:
     #: {"pending", "critical", "important", "reboot_required"}. Null means no

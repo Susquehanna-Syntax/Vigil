@@ -74,7 +74,7 @@ class NotApplicableStateTests(TestCase):
             "/api/v1/tasks/result/",
             data=json.dumps(payload),
             content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.host.agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {self.host.raw_agent_token}",
         )
 
     def test_agent_can_report_not_applicable(self):

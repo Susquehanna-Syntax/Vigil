@@ -1,4 +1,6 @@
 """M11 09: stack_deploy writes the stack, fetches the .env once, ups it."""
+import dataclasses
+import json
 import os
 import stat
 import sys
@@ -49,17 +51,28 @@ class StackDeployTests(unittest.TestCase):
                 "env_ticket": TICKET, "revision": 3, **extra}
 
     def test_deploy_writes_files_and_fetches_env_once(self):
-        with patch.object(client, "fetch_stack_env", return_value="API_KEY=hunter2\n") as fetch:
-            out = stacks._stack_deploy(self._params(), _CFG)
-        fetch.assert_called_once_with(_CFG, TICKET)
+        with patch.object(client, "fetch_stack_env", return_value="API_KEY=hunter2\n") as fetch, \
+                patch.object(stacks, "_safe_workdir"), \
+                patch.object(stacks, "_check_resolved", return_value={"services": {}}):   # test_compose_check.py
+            cfg = dataclasses.replace(_CFG, data_dir=self.root / "agent-data")
+            out = stacks._stack_deploy(self._params(), cfg)
+        fetch.assert_called_once_with(cfg, TICKET)
         workdir = self.root / "media"
         self.assertEqual((workdir / "compose.yaml").read_text(), COMPOSE)
         env = workdir / ".env"
         self.assertEqual(env.read_text(), "API_KEY=hunter2\n")
         self.assertEqual(stat.S_IMODE(os.stat(env).st_mode), 0o600)
-        self.assertEqual(self.calls[0], ["docker", "compose", "-p", "media", "--project-directory",
-                                         str(workdir), "-f", str(workdir / "compose.yaml"),
-                                         "up", "-d", "--remove-orphans"])
+        up = self.calls[0]
+        self.assertEqual(up[:5], ["docker", "compose", "-p", "media", "--project-directory"])
+        self.assertEqual(up[5], str(workdir))
+        self.assertEqual(up[-3:], ["up", "-d", "--remove-orphans"])
+        # up reads the checked configuration, not compose.yaml again: kept in the agent's
+        # data dir (outside the stack folder, owner-only) for the containers' labels to name
+        checked = self.root / "agent-data" / "stacks" / "media.json"
+        self.assertEqual(up[6:8], ["-f", str(checked)])
+        self.assertEqual(json.loads(checked.read_text()), {"services": {}})
+        self.assertEqual(stat.S_IMODE(os.stat(checked).st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(os.stat(checked.parent).st_mode), 0o700)
         self.assertEqual(out.data, {"project": "media", "revision": 3})
         self.assertNotIn("hunter2", str(out))
 
@@ -81,8 +94,12 @@ class StackDeployTests(unittest.TestCase):
         workdir = self.root / "media"
         workdir.mkdir(parents=True)
         (workdir / "compose.yaml").write_text(COMPOSE)
-        out = stacks._stack_remove({"project": "media", "working_dir": str(workdir),
-                                    "delete_files": True}, _CFG)
+        checked = self.root / "agent-data" / "stacks" / "media.json"
+        checked.parent.mkdir(parents=True)
+        checked.write_text("{}")
+        out = stacks._stack_remove({"project": "media", "working_dir": str(workdir), "delete_files": True},
+                                   dataclasses.replace(_CFG, data_dir=self.root / "agent-data"))
+        self.assertFalse(checked.exists(), "the checked configuration goes with the stack")
         self.assertEqual(self.calls[0][-1], "down")
         self.assertEqual(out.data, {"project": "media", "files_deleted": True})
         self.assertFalse(workdir.exists())

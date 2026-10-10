@@ -347,7 +347,7 @@ class RunHistoryTests(TestCase):
             data=json.dumps({"task_id": str(task.id),
                              "state": "completed", "output": "done"}),
             content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {host.agent_token}")
+            HTTP_AUTHORIZATION=f"Bearer {host.raw_agent_token}")
         self.assertIn(resp.status_code, (200, 201), resp.content)
         run = TaskRun.objects.get()
         self.assertEqual(run.state, TaskRun.State.COMPLETED)

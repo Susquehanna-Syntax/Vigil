@@ -157,7 +157,7 @@ class PlaybookChainDispatchTests(TestCase):
                 {"task_id": str(task.id), "state": state, "output": "ok",
                  "result_output": "ok"},
                 content_type="application/json",
-                HTTP_AUTHORIZATION=f"Bearer {self.host.agent_token}",
+                HTTP_AUTHORIZATION=f"Bearer {self.host.raw_agent_token}",
             )
             self.assertEqual(resp.status_code, 200, resp.content)
             task.refresh_from_db()

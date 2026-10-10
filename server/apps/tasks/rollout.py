@@ -7,6 +7,7 @@ task-result webhook, and from tests. The one clock read goes through
 
 import logging
 import secrets
+import uuid
 from datetime import timedelta
 
 from django.db import transaction
@@ -49,7 +50,7 @@ def _waves_in_group(group_tag):
     qs = PatchWave.objects.filter(enabled=True)
     tag = (group_tag or "").strip()
     if tag:
-        qs = qs.filter(group_tag_rows__key=tag.lower())
+        qs = qs.filter(group_tag_rows__key=tag.lower()).distinct()
     return qs
 
 
@@ -192,11 +193,105 @@ def start_rollout(
     return rollout
 
 
+def _batch_group_tags(group_tags) -> list[str]:
+    """The request's ladders, cleaned: stripped, non-empty, de-duplicated
+    case-insensitively, first spelling kept and order preserved."""
+    tags: list[str] = []
+    seen: set[str] = set()
+    for raw in group_tags or ():
+        tag = str(raw).strip()
+        if not tag or tag.lower() in seen:
+            continue
+        seen.add(tag.lower())
+        tags.append(tag)
+    if len(tags) < 2:
+        raise ValueError("a parallel rollout needs at least two wave groups")
+    if len(tags) > 12:
+        raise ValueError("a parallel rollout takes at most 12 wave groups")
+    return tags
+
+
+def _batch_host_plan(tags: list[str], host_ids) -> "dict[str, list[str]]":
+    """Hosts per ladder, each host on exactly one.
+
+    Each ladder's plan is its own — the same one its waves walk — so a host
+    an earlier wave of the ladder claimed never shows up twice, and a wave of
+    another ladder claims nothing from it. A host tagged into two ladders
+    goes to the **first listed** group only.
+    """
+    wanted = ({str(h).strip().lower() for h in host_ids}
+              if host_ids is not None else None)
+    taken: set[str] = set()
+    per_tag: dict[str, list[str]] = {}
+    for tag in tags:
+        waves = list(_waves_in_group(tag).order_by("order", "id"))
+        plan = rollout_wave_plan(waves)
+        hosts: list[str] = []
+        for wave in waves:
+            for host_id in plan.get(wave.id, []):
+                host = str(host_id)
+                low = host.lower()
+                if low in taken or (wanted is not None and low not in wanted):
+                    continue
+                taken.add(low)
+                hosts.append(host)
+        per_tag[tag] = hosts
+    return per_tag
+
+
+def start_rollout_batch(
+    definition=None,
+    user=None,
+    failure_threshold_pct: int = 10,
+    min_results_before_halt: int = 3,
+    playbook=None,
+    group_tags=(),
+    host_ids=None,
+) -> list[PatchRollout]:
+    """Start one rollout per wave group, all at once, sharing a ``batch`` id.
+
+    Every host the request could reach ends up in exactly one of them: a
+    machine tagged into two ladders belongs to the first listed group, so
+    parallel ladders never send the same task twice.
+
+    Raises ``ValueError`` before anything is created when fewer than two (or
+    more than twelve) distinct groups are named, when one of them has no
+    enabled wave, or when none of them has a machine to send this to.
+    """
+    tags = _batch_group_tags(group_tags)
+    for tag in tags:
+        if _first_enabled_wave(tag) is None:
+            raise ValueError(f"no enabled patch waves tagged {tag!r}")
+
+    per_tag = _batch_host_plan(tags, host_ids)
+    kept = [(tag, hosts) for tag, hosts in per_tag.items() if hosts]
+    if not kept:
+        raise ValueError("none of those groups has a machine to send this to")
+
+    batch = uuid.uuid4()
+    with transaction.atomic():
+        rollouts = []
+        for tag, hosts in kept:
+            rollout = start_rollout(
+                definition,
+                user=user,
+                failure_threshold_pct=failure_threshold_pct,
+                min_results_before_halt=min_results_before_halt,
+                playbook=playbook,
+                wave_group_tag=tag,
+                host_ids=hosts,
+            )
+            rollout.batch = batch
+            rollout.save(update_fields=["batch"])
+            rollouts.append(rollout)
+    return rollouts
+
+
 def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
     """Dispatch one task per wave host and open a TaskRun for them.
 
-    Hosts come from the cross-wave plan, not the raw wave membership: a
-    host tagged into two waves belongs to the earliest wave only, so this
+    Hosts come from the ladder's cross-wave plan, not the raw wave membership:
+    a host tagged into two of its waves belongs to the earliest only, so this
     wave must not re-claim it. Must run inside a transaction that holds
     the rollout row lock (see ``evaluate_rollout``) — otherwise two beat
     ticks can both pass the "no run yet for this wave" check and dispatch
@@ -206,10 +301,10 @@ def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
     """
     from apps.hosts.models import Host
 
-    enabled = list(
-        PatchWave.objects.filter(enabled=True).order_by("order", "id")
+    # The ladder's own plan: a wave of another ladder claims no host from it.
+    plan = rollout_wave_plan(
+        list(_waves_in_group(rollout.wave_group_tag).order_by("order", "id"))
     )
-    plan = rollout_wave_plan(enabled)
     host_ids = plan.get(rollout.current_wave.id, [])
     if rollout.host_ids is not None:
         allowed = set(rollout.host_ids)
@@ -406,6 +501,28 @@ def halt_rollout(rollout: PatchRollout, user=None, reason: str = "") -> None:
     rollout.halted_reason = reason or "halted by operator"
     rollout.halted_by = user
     rollout.save(update_fields=["state", "halted_reason", "halted_by"])
+
+
+def halt_batch(batch, user=None, reason: str = "") -> int:
+    """Halt every still-active rollout in one batch. Returns how many.
+
+    TOTP codes are single-use, so halting a batch of rollouts has to be one
+    request — that is the whole reason this exists.
+    """
+    with transaction.atomic():
+        rollouts = [
+            r for r in PatchRollout.objects.filter(batch=batch)
+            if r.state in (
+                PatchRollout.State.PENDING,
+                PatchRollout.State.RUNNING,
+                PatchRollout.State.VALIDATING,
+            )
+        ]
+        for rollout in rollouts:
+            halt_rollout(rollout, user=user, reason=reason)
+    if not rollouts:
+        raise ValueError("nothing in that batch is running")
+    return len(rollouts)
 
 
 def skip_validation(rollout: PatchRollout, user=None) -> None:

@@ -101,8 +101,12 @@ def _revoke_old_agent_token(job) -> None:
     Without this, a token recovered from a backup or forensic image of the
     wiped disk authenticates as this host forever.
     """
+    import secrets
+
     host = job.host
-    host.agent_token = f"revoked-{job.id}"
+    # Random, not derived from the job: "revoked-<job id>" was itself a
+    # working token for anyone who could see the job's id.
+    host.agent_token = f"revoked-{secrets.token_urlsafe(32)}"
     host.save(update_fields=["agent_token"])
 
 
@@ -120,9 +124,16 @@ def install_tree(request, image_id, path: str = ""):
     target = Path(os.path.normpath(root / path.lstrip("/")))
     if target != root and root not in target.parents:
         raise Http404
-    if not target.is_file():
+    # And where it really lands, links resolved. Extraction declines symlinks
+    # whose text escapes the tree, but this endpoint needs no login, so it does
+    # not rest on that alone: a link must not turn it into a reader for
+    # anything the server can open (/proc/self/environ holds the signing seed).
+    real = target.resolve()
+    if real != root and root not in real.parents:
         raise Http404
-    return FileResponse(target.open("rb"))
+    if not real.is_file():
+        raise Http404
+    return FileResponse(real.open("rb"))
 
 
 @api_view(["POST"])
@@ -135,6 +146,9 @@ def enroll(request):
     if not token or not agent_token:
         return Response({"error": "enroll_token and agent_token are required"},
                         status=400)
+    from apps.hosts.models import TOKEN_RE
+    if not TOKEN_RE.match(agent_token):
+        return Response({"error": "agent_token must be 16-128 letters, digits, '-' or '_'"}, status=400)
 
     token_hash = jobs.hash_token(token)
     with transaction.atomic():

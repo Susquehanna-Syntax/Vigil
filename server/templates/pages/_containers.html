@@ -15,8 +15,9 @@
         </div>
       </div>
 
-      <div class="hunt-toolbar">
-        <select class="form-control" id="containers-host" aria-label="Host" data-change="selectContainersHost" data-a1="$value">
+      <div class="fw-controls ctr-controls">
+        <label class="fw-controls-label" for="containers-host">Host</label>
+        <select class="form-control ctr-host-select" id="containers-host" aria-label="Host" data-change="selectContainersHost" data-a1="$value">
           <option value="">Select a host…</option>
           {% for host in hosts %}
           <option value="{{ host.id }}">{{ host.hostname }}</option>

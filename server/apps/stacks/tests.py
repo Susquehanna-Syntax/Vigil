@@ -226,10 +226,14 @@ class StackEditorWiringTests(SimpleTestCase):
         from pathlib import Path
         root = Path(__file__).resolve().parents[2]
         js = (root / "static/js/vigil-stacks.js").read_text(encoding="utf-8")
-        page = (root / "templates/pages/_containers.html").read_text(encoding="utf-8")
+        bar = (root / "templates/pages/_containers.html").read_text(encoding="utf-8")
+        page = (root / "templates/pages/_stack_editor.html").read_text(encoding="utf-8")
         base = (root / "templates/base.html").read_text(encoding="utf-8")
-        self.assertIn('id="managed-stacks"', page)
+        self.assertIn('id="managed-stacks"', bar)
         self.assertIn("js/vigil-stacks.js", base)
+        for marker in ('id="page-stack-editor"', 'id="stack-compose"', 'data-stack-save',
+                       'data-stack-deploy', 'data-stack-remove', 'data-stack-env-reveal'):
+            self.assertIn(marker, page)
         for needle in ("/env/reveal/", "/deploy/", "/remove/", "/revisions/", "keep: true",
                        "type=\"${e.revealed ? 'text' : 'password'}\"", "async function renderManagedStacks"):
             self.assertIn(needle, js)
@@ -337,3 +341,196 @@ class RegistryCredentialTests(TestCase):
             with self.subTest(body=body):
                 self.assertEqual(self.api.post("/api/v1/stacks/registries/", body, format="json").status_code, 400)
         self.assertEqual(self.client.get("/api/v1/agent/registry-auth/?registry=ghcr.io").status_code, 401)
+
+
+class SandboxEscapeTests(SimpleTestCase):
+    """validate_compose is what keeps a stack from owning its host where
+    stack_deploy is allowlisted but scripts are not (architect review,
+    2026-10-08). Each of these reached the host another way."""
+
+    S = "services:\n  a:\n    image: x\n"
+
+    def test_more_escapes_are_refused(self):
+        bad = {
+            "cap sys_admin": self.S + "    cap_add: [SYS_ADMIN]\n",
+            "cap sys_module lowercase": self.S + "    cap_add: [cap_sys_module]\n",
+            "cap sys_ptrace": self.S + "    cap_add: [SYS_PTRACE]\n",
+            "raw disk device": self.S + "    devices: ['/dev/sda:/dev/sda']\n",
+            "device long form": self.S + "    devices:\n      - /dev/mem\n",
+            "apparmor unconfined": self.S + "    security_opt: ['apparmor:unconfined']\n",
+            "seccomp unconfined": self.S + "    security_opt: ['seccomp=unconfined']\n",
+            "label disable": self.S + "    security_opt: ['label:disable']\n",
+            "ipc host": self.S + "    ipc: host\n",
+            "userns host": self.S + "    userns_mode: host\n",
+            "cgroup host": self.S + "    cgroup: host\n",
+            "home bind": self.S + "    volumes: ['~/.ssh:/keys']\n",
+            "env_file absolute": self.S + "    env_file: /etc/shadow\n",
+            "env_file climb": self.S + "    env_file: ['../../etc/x']\n",
+            "build context absolute": "services:\n  a:\n    build: /\n",
+            "build context climb": "services:\n  a:\n    build: {context: ../..}\n",
+            "named volume binds etc": self.S + "    volumes: ['data:/d']\nvolumes:\n  data:\n    driver_opts: {type: none, o: bind, device: /etc}\n",
+            "secret from host file": self.S + "secrets:\n  s:\n    file: /etc/shadow\n",
+            "config from host file": self.S + "configs:\n  c:\n    file: /root/.ssh/id_rsa\n",
+        }
+        for label, text in bad.items():
+            with self.subTest(label):
+                with self.assertRaises(StackError):
+                    validate_compose(text)
+
+    def test_ordinary_setups_still_pass(self):
+        good = [
+            self.S + "    devices: ['/dev/dri:/dev/dri']\n",
+            self.S + "    devices: ['/dev/net/tun:/dev/net/tun']\n    cap_add: [NET_ADMIN]\n",
+            self.S + "    network_mode: host\n",
+            self.S + "    env_file: .env\n",
+            "services:\n  a:\n    build: ./app\n",
+            self.S + "    volumes: ['data:/d']\nvolumes:\n  data: {}\n",
+            self.S + "secrets:\n  s:\n    file: ./secret.txt\n",
+        ]
+        for text in good:
+            with self.subTest(text=text):
+                validate_compose(text)
+
+
+class SandboxAllowlistTests(SimpleTestCase):
+    """The denylist missed routes compose offers; the sandbox now allows only
+    keys it knows, refuses $ variables where a value decides what the
+    container can reach, and reads YAML booleans the way compose does."""
+
+    S = "services:\n  a:\n    image: x\n"
+
+    def test_more_routes_are_refused(self):
+        bad = {
+            "volumes_from another container": self.S + "    volumes_from: ['container:portainer']\n",
+            "include other compose files": "include: ['/opt/other/compose.yaml']\n" + self.S,
+            "extends a file": "services:\n  a:\n    extends: {file: /opt/x.yaml, service: b}\n",
+            "device cgroup rules": self.S + "    device_cgroup_rules: ['b 8:* rmw']\n",
+            "api socket": self.S + "    use_api_socket: true\n",
+            "privileged as string": self.S + "    privileged: 'true'\n",
+            "privileged as yes": self.S + "    privileged: yes\n",
+            "variable bind source": self.S + "    volumes: ['${HOSTDIR}:/data']\n",
+            "variable long bind": self.S + "    volumes:\n      - {type: bind, source: '${D}', target: /d}\n",
+            "variable cap": self.S + "    cap_add: ['${CAP}']\n",
+            "variable device": self.S + "    devices: ['${DEV}:/dev/x']\n",
+            "variable privileged": self.S + "    privileged: ${P}\n",
+            "variable env_file": self.S + "    env_file: ${F}\n",
+            "variable driver device": self.S + "    volumes: ['d:/d']\nvolumes:\n  d:\n    driver_opts: {o: bind, device: '${X}'}\n",
+            "unknown service key": self.S + "    some_future_key: true\n",
+            "unknown top-level key": "something: else\n" + self.S,
+            "pid of another container": self.S + "    pid: 'container:other'\n",
+            "host sysctl": self.S + "    sysctls: {kernel.core_pattern: '|/tmp/x'}\n",
+        }
+        for label, text in bad.items():
+            with self.subTest(label):
+                with self.assertRaises(StackError):
+                    validate_compose(text)
+
+    def test_ordinary_variables_and_keys_still_pass(self):
+        good = [
+            self.S + "    environment: {TZ: '${TZ:-UTC}', DB: '${DB_PASSWORD}'}\n",
+            "services:\n  a:\n    image: 'nginx:${TAG:-stable}'\n    ports: ['${PORT:-80}:80']\n",
+            self.S + "    volumes_from: [b]\n  b:\n    image: y\n",
+            self.S + "    sysctls: {net.core.somaxconn: 1024}\n",
+            self.S + "    deploy:\n      resources:\n        limits: {memory: 512M}\n",
+            "x-common: &c {restart: always}\n" + self.S + "    <<: *c\n",
+            self.S + "    healthcheck: {test: ['CMD', 'true']}\n    labels: {a: b}\n    logging: {driver: json-file}\n",
+        ]
+        for text in good:
+            with self.subTest(text=text):
+                validate_compose(text)
+
+
+class SandboxReviewTests(SimpleTestCase):
+    """Second review of the allowlist: hooks, build options and device paths."""
+
+    S = "services:\n  a:\n    image: x\n"
+
+    def test_refused(self):
+        bad = {
+            "privileged post_start hook": self.S + "    post_start: [{command: id, privileged: true}]\n",
+            "pre_stop hook": self.S + "    pre_stop: [{command: id}]\n",
+            "develop watch": self.S + "    develop: {watch: [{path: /etc, action: sync, target: /x}]}\n",
+            "runtime": self.S + "    runtime: runc-unsafe\n",
+            "build additional context": "services:\n  a:\n    build: {context: ., additional_contexts: {h: /etc}}\n",
+            "build ssh": "services:\n  a:\n    build: {context: ., ssh: [default]}\n",
+            "build entitlements": "services:\n  a:\n    build: {context: ., entitlements: [network.host]}\n",
+            "build network host": "services:\n  a:\n    build: {context: ., network: host}\n",
+            "build cache_from local": "services:\n  a:\n    build: {context: ., cache_from: ['type=local,src=/etc']}\n",
+            "build cache_to local": "services:\n  a:\n    build: {context: ., cache_to: ['type=local,dest=/etc']}\n",
+            "build privileged": "services:\n  a:\n    build: {context: ., privileged: true}\n",
+            "device climbs out": self.S + "    devices: ['/dev/dri/../sda:/dev/sda']\n",
+            "device prefix trick": self.S + "    devices: ['/dev/fuse-not-really:/x']\n",
+            "nvidia prefix trick": self.S + "    devices: ['/dev/nvidiaXYZ:/x']\n",
+        }
+        for label, text in bad.items():
+            with self.subTest(label):
+                with self.assertRaises(StackError):
+                    validate_compose(text)
+
+    def test_still_allowed(self):
+        good = [
+            "services:\n  a:\n    build: {context: ./app, dockerfile: Dockerfile, args: {V: 1}, target: prod}\n",
+            "services:\n  a:\n    build: {context: ., additional_contexts: {base: 'docker-image://alpine:3', b: 'service:b'}}\n  b:\n    image: y\n",
+            "services:\n  a:\n    build: {context: ., cache_from: ['type=registry,ref=ghcr.io/x/y:cache']}\n",
+            self.S + "    devices: ['/dev/dri/renderD128:/dev/dri/renderD128', '/dev/nvidia0', '/dev/nvidiactl', '/dev/net/tun', '/dev/fuse']\n",
+        ]
+        for text in good:
+            with self.subTest(text=text):
+                validate_compose(text)
+
+
+class SandboxAncestorTests(SimpleTestCase):
+    """A bind of a directory that *contains* a forbidden path reaches it too."""
+
+    S = "services:\n  a:\n    image: x\n"
+
+    def test_refused(self):
+        bad = {
+            "/run holds the engine socket": self.S + "    volumes: ['/run:/host-run']\n",
+            "/var/run (a link to /run)": self.S + "    volumes: ['/var/run:/r']\n",
+            "/var holds /var/lib/docker": self.S + "    volumes: ['/var:/v']\n",
+            "/var/lib": self.S + "    volumes: ['/var/lib:/l']\n",
+            "containerd socket dir": self.S + "    volumes: ['/run/containerd:/c']\n",
+            "agent data": self.S + "    volumes: ['/var/lib/vigil-agent:/a']\n",
+            "variable in a key": self.S + "    volumes: ['d:/d']\nvolumes:\n  d:\n    driver_opts: {'${K}': /etc}\n",
+            "annotations": self.S + "    annotations: {run.oci.keep_original_groups: '1'}\n",
+            "double leading slash": self.S + "    volumes: ['//run:/r']\n",
+            "triple slash etc": self.S + "    volumes: ['///etc/:/e']\n",
+            "pid Host": self.S + "    pid: Host\n",
+            "ipc HOST": self.S + "    ipc: ' HOST '\n",
+        }
+        for label, text in bad.items():
+            with self.subTest(label):
+                with self.assertRaises(StackError):
+                    validate_compose(text)
+
+    def test_data_paths_still_allowed(self):
+        for path in ("/srv/media", "/mnt/storage", "/home/alice/music", "/var/log/app", "/opt/app-data"):
+            with self.subTest(path):
+                validate_compose(self.S + f"    volumes: ['{path}:/data']\n")
+
+
+class SandboxPodmanTests(SimpleTestCase):
+    """x-* is an inert extension field to docker, but podman-compose acts on
+    x-podman (podman_args, pod_args, uidmaps): refused at any depth."""
+
+    def test_x_podman_is_refused(self):
+        S = "services:\n  a:\n    image: x\n"
+        for text in (S + "x-podman:\n  in_pod: false\n",
+                     S + "    x-podman:\n      podman_args: [--privileged]\n",
+                     S + "    X-Podman.uidmaps: ['0:0:1']\n"):
+            with self.subTest(text=text), self.assertRaises(StackError):
+                validate_compose(text)
+        validate_compose("x-common: &c {restart: always}\n" + S)
+
+
+class SandboxDosTests(SimpleTestCase):
+    def test_an_anchor_bomb_is_checked_quickly(self):
+        import time
+        lines = ["x-a0: &a0 [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]"]
+        for i in range(1, 25):
+            lines.append(f"x-a{i}: &a{i} [" + ", ".join([f"*a{i-1}"] * 10) + "]")
+        text = "\n".join(lines) + "\nservices:\n  a:\n    image: x\n"
+        start = time.monotonic()
+        validate_compose(text)
+        self.assertLess(time.monotonic() - start, 2.0)

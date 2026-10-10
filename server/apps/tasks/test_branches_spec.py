@@ -372,7 +372,7 @@ class BranchFeatureGateTests(TestCase):
     def _checkin(self, **extra):
         return self.client.post(
             _CHECKIN, {"hostname": self.host.hostname, **extra}, format="json",
-            HTTP_AUTHORIZATION=f"Bearer {self.host.agent_token}",
+            HTTP_AUTHORIZATION=f"Bearer {self.host.raw_agent_token}",
         )
 
     def test_branch_task_refused_without_feature(self):

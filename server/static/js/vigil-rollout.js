@@ -4,7 +4,8 @@
 // Depends on: vigil-utils.js (apiJson, showToast, navigateTo, el)
 // API: /api/v1/rollouts/ (GET list, POST start),
 //      /api/v1/rollouts/<id>/ (GET), <id>/halt/, <id>/resume/,
-//      <id>/skip-validation/ (POST, TOTP).
+//      <id>/skip-validation/ (POST, TOTP), /api/v1/rollouts/batch/<batch>/halt/
+//      (POST, TOTP), /api/v1/wave-groups/ (GET).
 // The server's beat task (tasks.advance_rollouts, every 5 min) advances the
 // state machine; this page only reads and sends operator actions.
 
@@ -29,7 +30,11 @@ const _rolloutState = {
   items: [],
   pollTimer: null,
   pendingAction: null,   // { title, message, fn(totp) } for the confirm modal
+  groups: [],            // picked wave-group tags, in pick order — order decides where a host on two ladders goes
+  groupChoices: [],      // the enabled groups GET /api/v1/wave-groups/ offered on open
 };
+
+const RLT_ACTIVE = ['pending', 'running', 'validating'];
 
 function _waveDot(status) {
   const color = WAVE_STATUS_COLOR[status] || 'var(--text-3)';
@@ -41,6 +46,9 @@ function _fmtTs(ts) {
   return new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+/* The wave rows: six cells always, so the columns line up with the next card.
+   An empty slot renders an empty <span>; `''` collapsed to nothing and
+   everything after the gap shifted. */
 function _waveProgress(r) {
   return (r.waves || []).map(wave => {
     const color = WAVE_STATUS_COLOR[wave.status] || 'var(--text-3)';
@@ -53,14 +61,14 @@ function _waveProgress(r) {
     const openable = wave.tasks_total > 0;
     const failed = wave.tasks_failed
       ? `<span class="chip" style="background:var(--rose);color:var(--bg);">${wave.tasks_failed} failed</span>`
-      : '';
-    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--s2);">
+      : '<span></span>';
+    return `<div class="rlt-wave">
       ${_waveDot(wave.status)}
-      <span style="min-width:130px;font-weight:600;color:${color};">${escHtml(wave.name)}</span>
-      <span style="color:var(--text-3);font-size:12px;">${wave.hosts} host${wave.hosts === 1 ? '' : 's'} · ${count}${validation}</span>
-      ${failed}
-      <span style="margin-left:auto;color:var(--text-3);font-size:11px;">${(wave.tags || []).map(escHtml).join(', ')}</span>
-      ${openable ? `<button class="btn btn-sky btn-xs" data-wave-hosts data-rollout="${escAttr(r.id)}" data-wave="${escAttr(wave.id)}">Machines</button>` : ''}
+      <span class="rlt-wave-name" style="color:${color};">${escHtml(wave.name)}</span>
+      <span class="rlt-wave-count">${wave.hosts} host${wave.hosts === 1 ? '' : 's'} · ${count}${validation}</span>
+      <span class="rlt-wave-failed">${failed}</span>
+      <span class="rlt-wave-tags">${(wave.tags || []).map(escHtml).join(', ')}</span>
+      <span class="rlt-wave-act">${openable ? `<button class="btn btn-sky btn-xs" data-wave-hosts data-rollout="${escAttr(r.id)}" data-wave="${escAttr(wave.id)}">Machines</button>` : '<span></span>'}</span>
     </div>`;
   }).join('');
 }
@@ -128,28 +136,29 @@ function _rolloutCard(r) {
     actions = `<button class="btn btn-sky btn-sm" data-rlt="${escAttr(r.id)}" data-rlt-act="resume" data-stop>Resume</button>`;
   }
   const reason = r.halted_reason
-    ? `<div style="margin:8px 0 2px;padding:8px 10px;border:1px solid var(--rose);border-radius:6px;color:var(--rose-ink);font-size:12px;">
+    ? `<div class="rlt-halted">
         <strong>Halted:</strong> ${escHtml(r.halted_reason)}
         ${r.halted_by_name ? `<span style="color:var(--text-3);">by ${escHtml(r.halted_by_name)}</span>` : ''}
        </div>`
     : '';
-  return `<div class="def-card" style="padding:14px 16px;cursor:pointer;"
-       data-rlt-open="${escAttr(r.id)}" role="button" tabindex="0"
-       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openRolloutDetail('${r.id}');}">
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      <strong>${escHtml(r.target_name || r.definition_name || r.playbook_name || '(deleted)')}</strong>${r.action_kind === 'playbook' ? ' <span class="chip">playbook</span>' : ''}
-      <span style="color:${color};font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.04em;">${escHtml(r.state)}</span>
-      ${r.current_wave_name ? `<span style="color:var(--text-3);font-size:12px;">wave: ${escHtml(r.current_wave_name)}</span>` : ''}
-      <span style="color:var(--text-3);font-size:11px;margin-left:auto;">${escHtml(r.created_by_name || '')} · started ${_fmtTs(r.started_at)}</span>
-    </div>
-    ${reason}
-    <div style="margin-top:10px;">${_waveProgress(r)}</div>
-    <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;">
-      <span style="color:var(--text-3);font-size:11px;">
-        gate: halt above ${r.failure_threshold_pct}% · min ${r.min_results_before_halt} results
-        ${r.resumed_by_name ? ` · resumed by ${escHtml(r.resumed_by_name)}` : ''}
-      </span>
-      ${actions}
+  return `<div class="def-card rlt-card"
+       data-rlt-open="${escAttr(r.id)}" role="button" tabindex="0">
+    <div class="rlt-body">
+      <div class="rlt-head">
+        <strong>${escHtml(r.target_name || r.definition_name || r.playbook_name || '(deleted)')}</strong>${r.action_kind === 'playbook' ? ' <span class="chip">playbook</span>' : ''}
+        <span class="rlt-state" style="color:${color};">${escHtml(r.state)}</span>
+        ${r.current_wave_name ? `<span class="rlt-wave-count">wave: ${escHtml(r.current_wave_name)}</span>` : ''}
+        <span class="rlt-head-meta">${escHtml(r.created_by_name || '')} · started ${_fmtTs(r.started_at)}</span>
+      </div>
+      ${reason}
+      <div class="rlt-waves">${_waveProgress(r)}</div>
+      <div class="rlt-gate">
+        <span class="rlt-gate-text">
+          gate: halt above ${r.failure_threshold_pct}% · min ${r.min_results_before_halt} results
+          ${r.resumed_by_name ? ` · resumed by ${escHtml(r.resumed_by_name)}` : ''}
+        </span>
+        ${actions}
+      </div>
     </div>
   </div>`;
 }
@@ -180,19 +189,80 @@ function _filterRollouts() {
                               (w.tags || []).some(t => (t || '').toLowerCase().includes(q))));
 }
 
+// Rollouts started together share a batch id, so they are one entry in the
+// list — a card with a lane per group, `1 2 | 1 2 | 1 2 3`. Members are taken
+// from the unfiltered list: a search that matches one lane shows the whole
+// batch, because one lane alone would hide what that group ran beside.
+function _groupRollouts(items) {
+  const members = new Map();
+  for (const r of _rolloutState.items) {
+    if (!r.batch) continue;
+    if (!members.has(r.batch)) members.set(r.batch, []);
+    members.get(r.batch).push(r);
+  }
+  const entries = new Map();
+  for (const r of items) {
+    if (!r.batch) { entries.set(r.id, [r]); continue; }
+    if (!entries.has(r.batch)) entries.set(r.batch, members.get(r.batch));
+  }
+  return [...entries.values()];
+}
+
+// One card, a column per group. The card itself is not openable — a batch has
+// N rollouts to open, so each lane head carries its own data-rlt-open.
+function _batchCard(rs) {
+  const batch = rs[0].batch;
+  const anyActive = rs.some(r => RLT_ACTIVE.includes(r.state));
+  const overall = anyActive
+    ? (rs.find(r => r.state === 'running' || r.state === 'validating') || rs[0]).state
+    : (rs.some(r => r.state === 'halted') ? 'halted'
+      : (rs.every(r => r.state === 'completed') ? 'completed' : rs[0].state));
+  // Same skeleton as _rolloutCard (def-card > rlt-body > head, then content):
+  // def-card is a flex row, so anything outside rlt-body sits beside it.
+  return `<div class="def-card rlt-card rlt-batch">
+    <div class="rlt-body">
+      <div class="rlt-head">
+        <strong>${escHtml(rs[0].target_name || rs[0].definition_name || rs[0].playbook_name || '(deleted)')}</strong>${rs[0].action_kind === 'playbook' ? ' <span class="chip">playbook</span>' : ''}
+        <span class="chip chip-muted">parallel · ${rs.length} groups</span>
+        <span class="rlt-state" style="color:${ROLLOUT_STATE_COLOR[overall] || 'var(--text-3)'};">${escHtml(overall)}</span>
+        <span class="rlt-head-meta">${escHtml(rs[0].created_by_name || '')} · started ${_fmtTs(rs[0].started_at)}</span>
+        ${anyActive ? `<button class="btn btn-ghost btn-xs" data-rlt-batch="${escAttr(batch)}" data-rlt-act="halt-batch" data-stop title="Stop every group now">Halt all</button>` : ''}
+      </div>
+      <div class="rlt-lanes">${rs.map(_batchLane).join('')}</div>
+    </div>
+  </div>`;
+}
+
+function _batchLane(r) {
+  const actions = r.state === 'halted'
+    ? `<button class="btn btn-ghost btn-xs" data-rlt="${escAttr(r.id)}" data-rlt-act="resume" data-stop title="Clear the halt and continue from this wave">Resume</button>`
+    : (RLT_ACTIVE.includes(r.state)
+      ? `<button class="btn btn-ghost btn-xs" data-rlt="${escAttr(r.id)}" data-rlt-act="halt" data-stop title="Stop this group now">Halt</button>`
+      : '');
+  return `<div class="rlt-lane">
+    <div class="rlt-lane-head" data-rlt-open="${escAttr(r.id)}" role="button" tabindex="0">
+      <strong>${escHtml(r.wave_group_tag || 'Ungrouped')}</strong>
+      <span class="rlt-state" style="color:${ROLLOUT_STATE_COLOR[r.state] || 'var(--text-3)'};">${escHtml(r.state)}</span>
+      ${r.current_wave_name ? `<span class="rlt-wave-count">${escHtml(r.current_wave_name)}</span>` : ''}
+      ${actions}
+    </div>
+    <div class="rlt-lane-body">${_waveProgress(r)}</div>
+  </div>`;
+}
+
 function _renderRollouts() {
   const box = document.getElementById('rollout-list');
   if (!box) return;
   const items = _filterRollouts();
-  {
-    if (!items.length) {
-      box.innerHTML = `<div class="empty-state" style="padding:28px;">
-        <div class="empty-state-title">${_rolloutState.items.length ? 'No rollouts match that search' : 'No rollouts yet'}</div>
-        <div style="color:var(--text-3);font-size:12px;margin-top:6px;">${_rolloutState.items.length ? 'Clear the search to see them all.' : 'Start one from a task definition — it fans out wave by wave and halts itself on failure.'}</div>
-      </div>`;
-    } else {
-      box.innerHTML = items.map(_rolloutCard).join('');
-    }
+  if (!items.length) {
+    box.innerHTML = `<div class="empty-state" style="padding:28px;">
+      <div class="empty-state-title">${_rolloutState.items.length ? 'No rollouts match that search' : 'No rollouts yet'}</div>
+      <div style="color:var(--text-3);font-size:12px;margin-top:6px;">${_rolloutState.items.length ? 'Clear the search to see them all.' : 'Start one from a task definition — it fans out wave by wave and halts itself on failure.'}</div>
+    </div>`;
+  } else {
+    box.innerHTML = _groupRollouts(items)
+      .map(group => (group.length > 1 ? _batchCard(group) : _rolloutCard(group[0])))
+      .join('');
   }
   _bindWaveHostButtons(box);
 }
@@ -239,19 +309,60 @@ async function openRolloutStart() {
   document.getElementById('rollout-start-def').value = '';
   document.getElementById('rollout-start-def-label').textContent = 'Choose a task or playbook…';
   document.getElementById('rollout-start-totp').value = '';
-  const groupInput = document.getElementById('rollout-start-group');
-  if (groupInput) {
-    groupInput.value = '';
-    if (!groupInput.dataset.hintBound) {
-      groupInput.dataset.hintBound = '1';
-      groupInput.addEventListener('input', _refreshRolloutGroupHint);
-      groupInput.addEventListener('change', _refreshRolloutGroupHint);
-    }
-  }
+  // The chips need no reset beyond clearing the pick: they are re-fetched and
+  // repainted on every open.
+  _rolloutState.groups = [];
+  await _renderRolloutGroupChips();
   _refreshRolloutGroupHint();
   document.getElementById('rollout-start-overlay').classList.add('open');
   modal.classList.add('open');
 }
+
+/* The ladders to pick from, fetched on open so a wave added in the waves tab
+   shows up without a reload. A group with no enabled wave cannot start a
+   rollout, so it isn't offered. */
+async function _renderRolloutGroupChips() {
+  const box = document.getElementById('rollout-start-groups');
+  if (!box) return;
+  _rolloutState.groupChoices = [];
+  box.innerHTML = '<span class="muted-note">Loading wave groups…</span>';
+  try {
+    const data = await apiJson('/api/v1/wave-groups/');
+    _rolloutState.groupChoices = (data.groups || []).filter(g => g.enabled_waves > 0);
+    _paintRolloutGroupChips();
+  } catch (e) {
+    box.innerHTML = `<span class="bad">Could not load wave groups: ${escHtml(e.message || 'Request failed')}</span>`;
+  }
+}
+
+function _paintRolloutGroupChips() {
+  const box = document.getElementById('rollout-start-groups');
+  if (!box) return;
+  const groups = _rolloutState.groupChoices || [];
+  if (!groups.length) {
+    box.innerHTML = '<span class="muted-note">No wave groups defined — every enabled wave is one ladder.</span>';
+    return;
+  }
+  box.innerHTML = groups.map(g => {
+    const at = _rolloutState.groups.indexOf(g.tag);
+    const waves = g.enabled_waves === 1 ? '1 wave' : `${g.enabled_waves} waves`;
+    return `<button type="button" class="chip rlt-group-chip" data-rlt-group="${escAttr(g.tag)}" aria-pressed="${at >= 0}">
+      ${escHtml(g.tag)}<span class="rlt-group-chip-count">${escHtml(waves)}</span>
+      ${at >= 0 ? `<span class="rlt-group-chip-order">${at + 1}</span>` : ''}
+    </button>`;
+  }).join('');
+}
+
+// Pick order is the tie-break for a machine tagged into two of the picked
+// groups, so a picked chip shows its position.
+delegateClick('[data-rlt-group]', (el) => {
+  const tag = el.dataset.rltGroup;
+  const at = _rolloutState.groups.indexOf(tag);
+  if (at >= 0) _rolloutState.groups.splice(at, 1);
+  else _rolloutState.groups.push(tag);
+  _paintRolloutGroupChips();
+  _refreshRolloutGroupHint();
+});
 
 function pickRolloutTarget() {
   openPicker({
@@ -278,24 +389,33 @@ async function submitRolloutStart() {
   const btn = document.getElementById('rollout-start-submit');
   if (!sel.value) { showToast('Pick something to roll out first', 'error'); return; }
   if (!/^\d{6}$/.test(totp)) { showToast('Enter the 6-digit TOTP code', 'error'); return; }
+  const picked = _rolloutState.groups;
   btn.disabled = true;
   try {
     const r = await apiJson('/api/v1/rollouts/', {
       method: 'POST',
       // The option value is "task:<id>" or "playbook:<id>"; the API wants
       // exactly one of the two id fields and rejects both or neither.
+      // Likewise exactly one of wave_group_tag / wave_group_tags: one group is
+      // an ordinary rollout, two or more are a parallel batch.
       body: JSON.stringify({
         ...(sel.value.startsWith('playbook:')
           ? { playbook_id: sel.value.slice('playbook:'.length) }
           : { definition_id: sel.value.replace(/^task:/, '') }),
         failure_threshold_pct: threshold,
         min_results_before_halt: minResults,
-        wave_group_tag: (document.getElementById('rollout-start-group')?.value || '').trim(),
+        ...(picked.length === 1 ? { wave_group_tag: picked[0] }
+          : picked.length > 1 ? { wave_group_tags: picked.slice() }
+          : {}),
         totp,
       }),
     });
     closeRolloutStart();
-    showToast(`Rollout started — wave 1 dispatched (${r.waves?.[0]?.tasks_total ?? 0} host(s))`, 'success');
+    if (r && r.batch) {
+      showToast(`Started ${r.rollouts.length} rollouts in parallel`, 'success');
+    } else {
+      showToast(`Rollout started — wave 1 dispatched (${r.waves?.[0]?.tasks_total ?? 0} host(s))`, 'success');
+    }
     refreshRollouts();
   } catch (e) {
     const msg = e.message || 'Request failed';
@@ -318,19 +438,30 @@ function promptRolloutAction(btn, kind) {
   const overlay = document.getElementById('rollout-action-overlay');
   if (!modal || !overlay) return;
   const rolloutId = btn ? btn.dataset.rlt : null;
+  const batch = btn ? btn.dataset.rltBatch : null;
+  const card = btn ? btn.closest('.rlt-batch') : null;
+  const lane = btn ? btn.closest('.rlt-lane') : null;
   const r = _rolloutState.items.find(x => x.id === rolloutId);
-  const name = r ? (r.target_name || r.definition_name || r.playbook_name) : 'the rollout';
+  // Inside a lane the group's own name reads better than the shared target.
+  const name = lane && lane.querySelector('strong')
+    ? lane.querySelector('strong').textContent
+    : (r ? (r.target_name || r.definition_name || r.playbook_name) : 'the rollout');
+  const lanes = card ? card.querySelectorAll('.rlt-lane').length : 0;
+  const batchName = (card && card.querySelector('strong')?.textContent) || 'the rollout';
   const title = kind === 'halt' ? 'Halt rollout'
     : kind === 'resume' ? 'Resume rollout'
+    : kind === 'halt-batch' ? 'Halt every group'
     : 'Skip the validation window';
   const message = kind === 'halt'
     ? `Stop ${name} now? The current wave keeps running; nothing new is dispatched. An admin TOTP is required.`
     : kind === 'resume'
       ? `Restart ${name} at its current wave? Failed tasks on the wave are re-queued and the gate re-evaluates.`
-      : `End this wave's validation window for ${name} and move to the next wave now? `
-        + `The window exists so a slow failure has time to show up, so only do this if you have `
-        + `checked the wave yourself. The failure gate still applies.`;
-  _rolloutState.pendingAction = { title, message, rolloutId, kind };
+      : kind === 'halt-batch'
+        ? `Stop all ${lanes} groups of ${batchName} now? Every group keeps its current wave; nothing new is dispatched. An admin TOTP is required.`
+        : `End this wave's validation window for ${name} and move to the next wave now? `
+          + `The window exists so a slow failure has time to show up, so only do this if you have `
+          + `checked the wave yourself. The failure gate still applies.`;
+  _rolloutState.pendingAction = { title, message, rolloutId, batch, kind };
   document.getElementById('rollout-action-title').textContent = title;
   document.getElementById('rollout-action-message').textContent = message;
   document.getElementById('rollout-action-totp').value = '';
@@ -355,15 +486,27 @@ async function confirmRolloutAction() {
   if (!/^\d{6}$/.test(totp)) { showToast('Enter the 6-digit TOTP code', 'error'); return; }
   btn.disabled = true;
   try {
-    await apiJson(`/api/v1/rollouts/${pending.rolloutId}/${pending.kind}/`, {
-      method: 'POST',
-      body: JSON.stringify({ totp }),
-    });
+    let note;
+    if (pending.kind === 'halt-batch') {
+      // One request, one code: TOTP codes are single-use, so halting a batch
+      // group by group would need a fresh code per group.
+      const res = await apiJson(`/api/v1/rollouts/batch/${encodeURIComponent(pending.batch)}/halt/`, {
+        method: 'POST',
+        body: JSON.stringify({ totp }),
+      });
+      note = `Halted ${res.halted} rollouts`;
+    } else {
+      await apiJson(`/api/v1/rollouts/${pending.rolloutId}/${pending.kind}/`, {
+        method: 'POST',
+        body: JSON.stringify({ totp }),
+      });
+      note = pending.kind === 'halt' ? 'Rollout halted'
+        : pending.kind === 'resume' ? 'Rollout resumed'
+        : 'Validation window skipped — moving to the next wave';
+    }
     closeRolloutAction();
     closeRolloutDetail();
-    showToast(pending.kind === 'halt' ? 'Rollout halted'
-      : pending.kind === 'resume' ? 'Rollout resumed'
-      : 'Validation window skipped — moving to the next wave', 'success');
+    showToast(note, 'success');
     refreshRollouts();
   } catch (e) {
     const msg = e.message || 'Request failed';
@@ -442,6 +585,7 @@ async function openRolloutDetail(rolloutId) {
     <div style="margin-bottom:12px;">${_waveProgress(r)}</div>
     ${_detailRow('What is rolling out', (r.target_name || '') + (r.action_kind === 'playbook' ? ' (playbook)' : ' (task)'))}
     ${_detailRow('State', r.state)}
+    ${r.batch && r.wave_group_tag ? _detailRow('Wave group', r.wave_group_tag) : ''}
     ${_detailRow('Current wave', r.current_wave_name)}
     ${_detailRow('Failure gate', gate)}
     ${_detailRow('Started', _fmtTs(r.started_at))}
@@ -493,23 +637,29 @@ document.addEventListener('keydown', (e) => {
 });
 
 
-/* The rollout picker is the one place the blast radius is chosen, so it says
-   how many waves and machines the named group covers before you start it. */
+/* The picker is the one place the blast radius is chosen, so it says what the
+   pick covers before you start it — and warns that a machine on two of the
+   picked ladders goes with the first group you picked. */
 async function _refreshRolloutGroupHint() {
-  const input = document.getElementById('rollout-start-group');
   const hint = document.getElementById('rollout-start-group-hint');
-  if (!input || !hint) return;
-  const tag = (input.value || '').trim();
-  if (!tag) {
-    hint.textContent = 'Blank sends it to every enabled wave, in order.';
+  if (!hint) return;
+  const picked = _rolloutState.groups;
+  if (!picked.length) {
+    hint.textContent = 'Every enabled wave, in order.';
+    return;
+  }
+  if (picked.length > 1) {
+    hint.textContent = `${picked.length} groups in parallel — each walks its own waves; `
+      + 'nothing waits for another group. A machine on more than one picked group '
+      + 'goes with the first one you picked.';
     return;
   }
   try {
-    const waves = await apiJson(`/api/v1/waves/?group=${encodeURIComponent(tag)}`);
+    const waves = await apiJson(`/api/v1/waves/?group=${encodeURIComponent(picked[0])}`);
     const live = waves.filter(w => w.enabled);
     if (!live.length) {
       hint.innerHTML = `<span class="bad">No enabled wave is tagged `
-        + `<strong>${escHtml(tag)}</strong> — the rollout would be refused.</span>`;
+        + `<strong>${escHtml(picked[0])}</strong> — the rollout would be refused.</span>`;
       return;
     }
     const machines = live.reduce((n, w) => n + (w.exclusive_host_count || 0), 0);
@@ -533,4 +683,15 @@ delegateClick('[data-rlt-act]', (el, ev) => {
 delegateClick('[data-rlt-open]', (el, ev) => {
   if (ev.target.closest('button')) return;
   openRolloutDetail(el.dataset.rltOpen);
+});
+/* The card is role="button" tabindex="0", so the keyboard has to open it too.
+   An onkeydown attribute would do it but CSP forbids inline handlers, and a
+   listener per card would not survive the 5-second re-render — so one
+   delegated listener, keyed off the same attribute the click uses. */
+document.addEventListener('keydown', (ev) => {
+  const card = ev.target.closest && ev.target.closest('[data-rlt-open]');
+  if (!card || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+  if (ev.target.closest('button')) return;
+  ev.preventDefault();
+  openRolloutDetail(card.dataset.rltOpen);
 });

@@ -84,6 +84,41 @@ mkdir -p /etc/vigil
 # 0755 regardless of umask: monitor mode runs as vigil-agent, which must traverse this dir (agent.yml itself stays 0600).
 chmod 0755 /etc/vigil
 
+# VIGIL_TOKEN ends up inside sed replacements: accept only a plain token.
+if [ -n "${VIGIL_TOKEN:-}" ] && ! printf '%s' "$VIGIL_TOKEN" | grep -Eq '^[A-Za-z0-9_-]{16,128}$'; then
+  echo "ERROR: VIGIL_TOKEN must be 16-128 letters, digits, '-' or '_'." >&2
+  exit 1
+fi
+
+# A config the unprivileged service account could write is not trusted at all
+# (SEC-3). Monitor-mode installs used to hand agent.yml to vigil-agent, and
+# everything in it (server_url, mode, allowlist, paths) would otherwise flow
+# into the service this installer creates, possibly as root. Reading single
+# keys back out of it with sed is no answer either: YAML and sed can disagree
+# about what a file says. So it is set aside and rebuilt below as on a fresh
+# install, carrying over only the agent token, which is the host's identity.
+if [ -f /etc/vigil/agent.yml ]; then
+  CFG_OWNER="$(stat -c %u /etc/vigil/agent.yml 2>/dev/null || stat -f %u /etc/vigil/agent.yml 2>/dev/null || echo unknown)"
+  CFG_PERM="$(stat -c %a /etc/vigil/agent.yml 2>/dev/null || stat -f %Lp /etc/vigil/agent.yml 2>/dev/null || echo 777)"
+  if [ "$CFG_OWNER" != "0" ] || [ $(( 0$CFG_PERM & 022 )) -ne 0 ]; then
+    if [ -z "${VIGIL_TOKEN:-}" ]; then
+      KEPT_TOKEN="$(sed -n 's/^agent_token:[[:space:]]*//p' /etc/vigil/agent.yml | head -1 | tr -d '"'"'"' ')"
+      # It came from a file root does not trust and goes into a sed command
+      # run as root: only a plain token shape is carried over.
+      if printf '%s' "$KEPT_TOKEN" | grep -Eq '^[A-Za-z0-9_-]{16,128}$'; then
+        VIGIL_TOKEN="$KEPT_TOKEN"
+      else
+        echo "WARNING: the old agent token was not a valid token; a new one is generated and the host must be approved again." >&2
+      fi
+    fi
+    mv -f /etc/vigil/agent.yml "/etc/vigil/agent.yml.untrusted.$(date +%s)"
+    chmod 600 /etc/vigil/agent.yml.untrusted.* 2>/dev/null || true
+    chown root /etc/vigil/agent.yml.untrusted.* 2>/dev/null || true
+    echo "WARNING: /etc/vigil/agent.yml was writable by a non-root account, so none of its" >&2
+    echo "settings are trusted. It was set aside and rebuilt; only the agent token was kept." >&2
+  fi
+fi
+
 if [ ! -f /etc/vigil/agent.yml ]; then
   cat > /etc/vigil/agent.yml << 'EOF'
 server_url: "REPLACE_WITH_SERVER_URL"
@@ -148,6 +183,43 @@ elif [ -n "${VIGIL_TOKEN:-}" ]; then
   echo "Existing config kept; agent token replaced from VIGIL_TOKEN."
 fi
 
+# ── Server key and mode (SEC-3) ─────────────────────────────────────────────
+# The server's public key arrives in this script, over the same TLS download as
+# the agent binary, and is written into agent.yml. The agent then accepts only
+# that key: no trust on first use, and a pin file in the data directory (owned
+# by the unprivileged service account in monitor mode) cannot override it.
+SERVER_PUBLIC_KEY="{{ public_key }}"
+if [ -n "$SERVER_PUBLIC_KEY" ]; then
+  if grep -q '^server_public_key:' /etc/vigil/agent.yml; then
+    sed -i.bak "s|^server_public_key:.*|server_public_key: \"${SERVER_PUBLIC_KEY}\"|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+  else
+    printf 'server_public_key: "%s"\n' "$SERVER_PUBLIC_KEY" >> /etc/vigil/agent.yml
+  fi
+fi
+
+# agent.yml is root-owned by now (an untrusted one was rebuilt above), so the
+# mode in it was written by root. VIGIL_MODE lets the admin set it here.
+CFG_MODE="$(sed -n 's/^mode:[[:space:]]*//p' /etc/vigil/agent.yml 2>/dev/null | head -1 | tr -d '"'"'"' ')"
+if [ -n "${VIGIL_MODE:-}" ]; then
+  case "$VIGIL_MODE" in
+    monitor|managed|full_control) CFG_MODE="$VIGIL_MODE" ;;
+    *) echo "ERROR: VIGIL_MODE must be monitor, managed or full_control" >&2; exit 1 ;;
+  esac
+fi
+case "${CFG_MODE:-monitor}" in
+  monitor|managed|full_control) ;;
+  *) echo "WARNING: unknown mode '${CFG_MODE}' in agent.yml; using monitor" >&2; CFG_MODE="monitor" ;;
+esac
+CFG_MODE="${CFG_MODE:-monitor}"
+if grep -q '^mode:' /etc/vigil/agent.yml; then
+  sed -i.bak "s|^mode:.*|mode: ${CFG_MODE}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+else
+  printf 'mode: %s\n' "$CFG_MODE" >> /etc/vigil/agent.yml
+fi
+# Root owns the config in every mode; monitor mode gets group read below.
+chown root /etc/vigil/agent.yml
+chmod 600 /etc/vigil/agent.yml
+
 # ── Service installation ────────────────────────────────────────────────────
 
 if [ "$OS" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
@@ -184,8 +256,7 @@ Environment=no_proxy=${_np_full}"
   #
   # This matters because monitor is the mode this installer writes by default,
   # so most agents were running as root to do a job that needs none of it.
-  AGENT_MODE="$(sed -n 's/^mode:[[:space:]]*//p' /etc/vigil/agent.yml 2>/dev/null | head -1)"
-  AGENT_MODE="${AGENT_MODE:-monitor}"
+  AGENT_MODE="$CFG_MODE"
 
   RUN_AS=""
   HARDENING=""
@@ -196,8 +267,9 @@ Environment=no_proxy=${_np_full}"
     if id vigil-agent >/dev/null 2>&1; then
       mkdir -p /var/lib/vigil-agent
       chown -R vigil-agent /var/lib/vigil-agent
-      chown vigil-agent /etc/vigil/agent.yml 2>/dev/null || true
-      chmod 600 /etc/vigil/agent.yml 2>/dev/null || true
+      # Readable by the service account, writable only by root (SEC-3).
+      chown root:vigil-agent /etc/vigil/agent.yml 2>/dev/null || true
+      chmod 640 /etc/vigil/agent.yml 2>/dev/null || true
       RUN_AS="User=vigil-agent"
       # Safe for a process that only reads counters. Deliberately NOT applied
       # to managed or full_control: an agent whose job is systemctl and
@@ -281,7 +353,11 @@ WantedBy=multi-user.target
 EOF
   systemctl daemon-reload
   systemctl enable vigil-agent
-  if [ -n "${VIGIL_TOKEN:-}" ]; then
+  # A reinstall over a running agent must restart it: otherwise the old process
+  # keeps the old binary, privileges and config (including a config this run
+  # just rebuilt because it was not trusted) until something else restarts it.
+  if [ -n "${VIGIL_TOKEN:-}" ] || systemctl is-active --quiet vigil-agent; then
+    if systemctl is-active --quiet vigil-engine-proxy; then systemctl restart vigil-engine-proxy; fi
     systemctl restart vigil-agent
     echo "Vigil agent installed and started."
     echo "Approve this host in Vigil Settings > Enrollment Queue."

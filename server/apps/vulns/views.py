@@ -204,6 +204,11 @@ def scan_create(request, host_id):
     host, denied = scoping.host_or_404(request, host_id)
     if denied:
         return denied
+    # A scan is work run against the host from the network: the same right as
+    # running a task there (SEC-1), not merely being able to see the host.
+    from apps.tasks.authz import run_denied
+    if refused := run_denied(request.user, [host]):
+        return refused
 
     network_engines = (VulnScan.Scanner.NESSUS, VulnScan.Scanner.GREENBONE)
     requested = (request.data.get("scanner") or "").strip().lower()

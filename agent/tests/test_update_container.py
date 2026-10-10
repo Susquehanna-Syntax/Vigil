@@ -18,7 +18,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -68,6 +68,8 @@ def seams(calls, spec, *, pulled="sha256:newimageidnew", after="sha256:newimagei
         stack.enter_context(patch.object(executor, "_container_image_id", return_value=after))
         stack.enter_context(patch.object(executor, "_compose_cmd", return_value=["docker", "compose"]))
         stack.enter_context(patch.object(executor, "_compose_env", return_value={}))
+        stack.enter_context(patch.object(
+            executor, "_engine", return_value=MagicMock(get=MagicMock(return_value=[]))))
         mock = stack.enter_context(patch.object(executor, "_recreate_container",
                                                 return_value="recreated")) if recreate else None
         yield mock

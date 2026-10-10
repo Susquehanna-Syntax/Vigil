@@ -20,28 +20,28 @@ with `seats: 9999`). SSO/SAML is "available — talk to us," not a tier.
 
 | Feature | Free | Business |
 |---|:--:|:--:|
-| Monitoring, alerting (smart defaults), unlimited agents/hosts/retention | ✅ | ✅ |
-| Remote task execution + agent (agent is 100% OSS, no tier awareness) | ✅ | ✅ |
-| Vuln scanning (Trivy / Nessus / Greenbone) | ✅ | ✅ |
-| Vigil's own vulnerability matcher (OSV / KEV / EPSS, offline bundle), evidence and fix groups | ✅ | ✅ |
-| Remediation by fix (deploy a fix to every affected host), AI mitigations when there is no fix | ✅ | ✅ |
-| Detection tasks (severity / cves / boost), Organization · Community · Vendor tags, Anvil SARIF import | ✅ | ✅ |
-| Containers & stacks (Docker / Podman): lifecycle, logs, rollback, single-host stack editor and .env, adopt | ✅ | ✅ |
-| Audit trail of stack and .env events (viewer) | — | ✅ |
-| **Baselines** (auto-dispatch on host approval) | ✅ | ✅ |
-| **AI suggestions** — BYO endpoint, any OpenAI-compatible or Anthropic | ✅ | ✅ |
-| **Status page** (public token URL, Powered-by-Vigil badge) | ✅ | ✅ |
-| Jackil integration (alert → ticket) | ✅ | ✅ |
-| **App & patch policies** (present / latest / pinned / absent, patching windows, deferral, approve each change) | ✅ | ✅ |
-| Fleet view by update, fleet-wide approve / decline | ✅ | ✅ |
-| Patch compliance numbers (% of hosts patched within SLA) | ✅ | ✅ |
-| **Compliance report** — pass/fail per site, CSV export, branded printable report with "Licensed to" | — | ✅ |
+| Monitoring, alerting (smart defaults), unlimited agents/hosts/retention | Yes | Yes |
+| Remote task execution + agent (agent is 100% OSS, no tier awareness) | Yes | Yes |
+| Vuln scanning (Trivy / Nessus / Greenbone) | Yes | Yes |
+| Vigil's own vulnerability matcher (OSV / KEV / EPSS, offline bundle), evidence and fix groups | Yes | Yes |
+| Remediation by fix (deploy a fix to every affected host), AI mitigations when there is no fix | Yes | Yes |
+| Detection tasks (severity / cves / boost), Organization · Community · Vendor tags, Anvil SARIF import | Yes | Yes |
+| Containers & stacks (Docker / Podman): lifecycle, logs, rollback, single-host stack editor and .env, adopt | Yes | Yes |
+| Audit trail of stack and .env events (viewer) | — | Yes |
+| **Baselines** (auto-dispatch on host approval) | Yes | Yes |
+| **AI suggestions** — BYO endpoint, any OpenAI-compatible or Anthropic | Yes | Yes |
+| **Status page** (public token URL, Powered-by-Vigil badge) | Yes | Yes |
+| Jackil integration (alert → ticket) | Yes | Yes |
+| **App & patch policies** (present / latest / pinned / absent, patching windows, deferral, approve each change) | Yes | Yes |
+| Fleet view by update, fleet-wide approve / decline | Yes | Yes |
+| Patch compliance numbers (% of hosts patched within SLA) | Yes | Yes |
+| **Compliance report** — pass/fail per site, CSV export, branded printable report with "Licensed to" | — | Yes |
 | Seats | 1 admin + 1 viewer | **per-seat pricing** |
 | Roles | Admin, Viewer | + **Operator**, custom roles |
 | **Sites** (administrative boundaries; per-site scoping) | 1 (default) | **unlimited** |
-| **Audit log** viewer + CSV export (recording is always on) | — | ✅ |
-| **Status page branding** (logo, no badge, per-site client pages) | — | ✅ |
-| **Branding** (reports, portal) | — | ✅ |
+| **Audit log** viewer + CSV export (recording is always on) | — | Yes |
+| **Status page branding** (logo, no badge, per-site client pages) | — | Yes |
+| **Branding** (reports, portal) | — | Yes |
 | SSO/SAML | — | talk to us |
 
 **Seats are the only meter.** Sites are unlimited on Business because seats
