@@ -4060,3 +4060,34 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 @media (max-width: 640px) {
   .rlt-lanes { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ── Stacks from Git in the editor (QA-23) ────────────────────────────── */
+/* Two choices, one control: the picked half carries the accent across its
+   whole face, the way the wave-group chips do. */
+.sted-source { display: inline-flex; align-self: flex-start; gap: 2px; padding: 3px;
+  background: var(--s1); border-radius: var(--r-lg); }
+.sted-source-btn { border: 0; cursor: pointer; font-family: inherit; font-size: 12px;
+  font-weight: 600; padding: 6px 16px; border-radius: 16px;
+  background: transparent; color: var(--text-2); }
+.sted-source-btn:hover { color: var(--text-1); }
+.sted-source-btn[aria-checked="true"] { background: var(--lavender); color: var(--lavender-ink); }
+
+.sted-git { background: var(--s1); border-radius: var(--r-lg); padding: 16px;
+  display: flex; flex-direction: column; gap: 12px; }
+.sted-git-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.sted-git-wide { grid-column: 1 / -1; }
+.sted-git-state { display: flex; align-items: center; gap: 10px; font-size: 12px;
+  color: var(--text-2); flex-wrap: wrap; }
+.sted-git-state code { font-family: var(--font-mono); font-size: 11px; color: var(--text-1);
+  background: var(--s2); border-radius: var(--r-sm); padding: 2px 7px; }
+.sted-git-chip { font-family: var(--font-mono); font-size: 10px; font-weight: 400;
+  color: var(--text-3); background: var(--s2); border-radius: var(--r-sm); padding: 1px 5px; }
+.sted-git-kinds { display: flex; gap: 6px; margin-bottom: 12px; }
+.sted-git-kinds .btn[aria-pressed="true"] { background: var(--lavender); color: var(--lavender-ink); }
+
+#stack-compose.is-readonly { caret-color: transparent; cursor: default; }
+#stack-compose.is-readonly::selection { background: rgba(var(--rgb-lavender), var(--tint-a)); }
+
+@media (max-width: 700px) {
+  .sted-git-grid { grid-template-columns: minmax(0, 1fr); }
+}

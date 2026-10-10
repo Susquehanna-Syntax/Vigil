@@ -7,13 +7,17 @@
 // HTML: #managed-stacks in templates/pages/_containers.html;
 //   #page-stack-editor in templates/pages/_stack_editor.html.
 // Depends on: vigil-utils.js (escHtml, escAttr, apiJson, showToast, getCsrf,
-//   confirmModal, totpPrompt, yamlToHtml, timeAgo), vigil-nav.js (navigateTo —
-//   wrapped below, and it needs every .page section to exist, so this file
-//   loads after base.html's content block is parsed).
+//   confirmModal, totpPrompt, yamlToHtml, timeAgo, mountModal), vigil-nav.js
+//   (navigateTo — wrapped below, and it needs every .page section to exist, so
+//   this file loads after base.html's content block is parsed).
 // API: /api/v1/stacks/ (CRUD), /validate/, /<id>/revisions/, /<id>/env/reveal/
-//      (TOTP), /<id>/deploy/ (TOTP), /<id>/remove/ (TOTP)
+//      (TOTP), /<id>/deploy/ (TOTP), /<id>/remove/ (TOTP), /<id>/pull/ (Git),
+//      /git-credentials/ (list, add with TOTP, delete)
 
-const stackEd = { hostId: null, stack: null, env: [], stacks: [], revisions: [], dirty: false };
+const stackEd = {
+  hostId: null, stack: null, env: [], stacks: [], revisions: [], dirty: false,
+  source: 'editor', gitCreds: null, gitSnapshot: null,
+};
 let _stackCheckSeq = 0;
 let _stackCheckTimer = null;
 
@@ -123,7 +127,9 @@ async function openStackEditor(stackId) {
   stackEd.stack = stack;
   stackEd.env = stack ? stack.env.map(e => ({ key: e.key, value: '', stored: true })) : [];
   stackEd.revisions = [];
+  stackEd.gitSnapshot = null;
   stackEd.errorLine = null;
+  stackEd.source = (stack && stack.git) ? 'git' : 'editor';
   _clearStackDirty();
   _stedEl('sted-host').textContent = _stedHostLabel(stack);
   _stedEl('sted-name-label').textContent = stack ? stack.name : 'New stack';
@@ -131,6 +137,8 @@ async function openStackEditor(stackId) {
   name.value = stack ? stack.name : '';
   name.disabled = !!stack;
   _stedEl('stack-compose').value = stack ? stack.compose_yaml : _NEW_COMPOSE;
+  _applyStackSource();
+  if (stack && stack.git) _fillGitFields(stack.git);
   const err = _stedEl('stack-error');
   err.textContent = '';
   err.classList.remove('show');
@@ -149,6 +157,7 @@ async function openStackEditor(stackId) {
   navigateTo('stack-editor');
   (stack ? _stedEl('stack-compose') : name).focus();
   if (stack) _loadStackRevisions();
+  _loadGitCredentials();
   _validateStack();
 }
 
@@ -219,6 +228,7 @@ async function _validateStack() {
   clearTimeout(_stackCheckTimer);
   const ta = _stedEl('stack-compose');
   if (!ta) return;
+  if (ta.closest('.sted-editor').hidden) { _setStackStatus(null); return; }
   const seq = ++_stackCheckSeq;
   _setStackStatus(null);
   let r;
@@ -235,28 +245,272 @@ async function _validateStack() {
 
 async function _loadStackRevisions() {
   const wrap = _stedEl('stack-revisions');
+  if (!stackEd.stack) { wrap.innerHTML = ''; return; }   // saved-and-closed beats the in-flight fetch
   try {
     const revs = (await apiJson(`/api/v1/stacks/${stackEd.stack.id}/revisions/`)).results || [];
+    const isGit = !!stackEd.stack.git;
     wrap.innerHTML = revs.map(r => `<div class="apps-detail-item">
-        <span class="apps-name">r${r.number}</span><span class="apps-detail-scope">${escHtml(r.note || '')} · ${escHtml(r.created_by || '')} · ${escHtml(timeAgo(r.created_at) || '')}</span>
-        ${r.number !== stackEd.stack.revision ? `<button class="btn btn-ghost btn-xs" type="button" data-stack-load-rev="${r.number}">Load this file</button>` : '<span class="chip chip-mint">current</span>'}
+        <span class="apps-name">r${r.number}${r.git_commit ? ` <code class="sted-git-chip">${escHtml(r.git_commit.slice(0, 12))}</code>` : ''}</span><span class="apps-detail-scope">${escHtml(r.note || '')} · ${escHtml(r.created_by || '')} · ${escHtml(timeAgo(r.created_at) || '')}</span>
+        ${!isGit && r.number !== stackEd.stack.revision ? `<button class="btn btn-ghost btn-xs" type="button" data-stack-load-rev="${r.number}">Load this file</button>` : '<span class="chip chip-mint">current</span>'}
       </div>`).join('');
     stackEd.revisions = revs;
   } catch { wrap.innerHTML = ''; }
 }
 
+/* ── Source: written here, or a Git repository ───────────────────────── */
+
+/* The five Git fields a save sends, read in the one place they are touched. */
+function _gitFields() {
+  const pick = (id) => _stedEl(id).value.trim();
+  const credential = _stedEl('sted-git-cred').value;
+  return {
+    url: pick('sted-git-url'),
+    branch: pick('sted-git-branch') || 'main',
+    pin: pick('sted-git-pin'),
+    path: pick('sted-git-path') || 'compose.yaml',
+    credential_id: credential || null,
+  };
+}
+
+/* A new Git stack POSTs this instead of compose_yaml: git: { url, branch,
+   pin, path, credential_id }. The .env is still Vigil's own — only the compose
+   file belongs to the repository. */
+function _newGitStackBody(name, env) {
+  return { host_id: stackEd.hostId, name, git: _gitFields(), env };
+}
+
+/* An existing Git stack PUTs nothing but its .env, unless the repository
+   settings changed — then git: { … } takes effect by pulling it. */
+function _gitSettingsBody() {
+  return { git: _gitFields(), note: 'Git settings changed' };
+}
+
+function _applyStackSource() {
+  const git = stackEd.source === 'git';
+  const stack = stackEd.stack;
+  document.querySelectorAll('[data-sted-source]').forEach(
+    b => b.setAttribute('aria-checked', String(b.dataset.stedSource === stackEd.source)));
+  _stedEl('sted-source').hidden = !!stack;      // an existing stack's source is fixed
+  _stedEl('sted-git').hidden = !git;
+  // A Git stack shows the repository's compose file so its folders can be
+  // understood here; a new one has no file to show until the first fetch.
+  const showEditor = !git || !!stack;
+  const editor = _stedEl('stack-compose').closest('.sted-editor');
+  editor.hidden = !showEditor;
+  editor.previousElementSibling.hidden = !showEditor;
+  _stedEl('sted-check').hidden = !showEditor;
+  const ta = _stedEl('stack-compose');
+  ta.readOnly = git;                            // the repository is the source of truth
+  ta.classList.toggle('is-readonly', git);
+  _renderGitState();
+}
+
+function _renderGitState() {
+  const git = stackEd.stack && stackEd.stack.git;
+  const state = _stedEl('sted-git-state');
+  const pull = document.querySelector('.sted [data-sted-git-pull]');
+  state.hidden = pull.hidden = !git;
+  if (!git) return;
+  // "Commit abc123def456 · tracking main" / "· pinned to v1.2". The commit is
+  // the span's only <code>, so a repository string never becomes markup.
+  state.querySelector('code').textContent = (git.commit || '').slice(0, 12);
+  state.lastChild.textContent = git.pin ? ` · pinned to ${git.pin}` : ` · tracking ${git.branch || 'main'}`;
+}
+
+function _fillGitFields(git) {
+  _stedEl('sted-git-url').value = git.url || '';
+  _stedEl('sted-git-branch').value = git.branch || 'main';
+  _stedEl('sted-git-pin').value = git.pin || '';
+  _stedEl('sted-git-path').value = git.path || 'compose.yaml';
+  stackEd.gitSnapshot = { url: git.url || '', branch: git.branch || 'main', pin: git.pin || '',
+                          path: git.path || 'compose.yaml', credential_id: git.credential_id || '' };
+}
+
+function _gitSettingsChanged() {
+  const was = stackEd.gitSnapshot, fresh = _gitFields();
+  if (!was) return true;
+  return ['url', 'branch', 'pin', 'path', 'credential_id'].some(k => (was[k] || '') !== (fresh[k] || ''));
+}
+
+function _setStackSource(source) {
+  if (stackEd.stack || stackEd.source === source) return;   // fixed once the stack exists
+  stackEd.source = source;
+  _applyStackSource();
+  _validateStack();
+}
+
+async function _loadGitCredentials() {
+  if (stackEd.gitCreds === null) {
+    stackEd.gitCreds = [];
+    try {
+      stackEd.gitCreds = (await apiJson('/api/v1/stacks/git-credentials/')).results || [];
+    } catch (e) {
+      _stackError(e.message);
+    }
+  }
+  _renderGitCredentials();
+}
+
+function _renderGitCredentials() {
+  const sel = _stedEl('sted-git-cred');
+  const wanted = stackEd.gitSnapshot ? stackEd.gitSnapshot.credential_id : '';
+  sel.innerHTML = '<option value="">None (public repo)</option>'
+    + stackEd.gitCreds.map(c => `<option value="${escAttr(c.id)}">${escHtml(c.name)}</option>`).join('')
+    + '<option value="__add__">Add a credential…</option>';
+  // A credential that vanishes between the list and now (another tab deleted
+  // it) leaves the field empty rather than throwing.
+  sel.value = wanted && stackEd.gitCreds.some(c => c.id === wanted) ? wanted : '';
+}
+
+function _pickGitCredential() {
+  const sel = _stedEl('sted-git-cred');
+  if (sel.value !== '__add__') return;
+  sel.value = stackEd.gitSnapshot ? stackEd.gitSnapshot.credential_id || '' : '';
+  addGitCredential();
+}
+
+function addGitCredential() {
+  const m = mountModal('git-cred', { variant: 'm-pop' });
+  let kind = 'token';
+
+  const close = () => {
+    // The secret leaves the page on close, saved or not: it is only ever sent.
+    const field = m.modal.querySelector('#git-cred-secret');
+    if (field) field.value = '';      // the secret is only ever sent, never kept on screen
+    m.close();
+  };
+
+  const save = async () => {
+    const pick = (id) => { const el = m.modal.querySelector(id); return el ? el.value : ''; };
+    const name = pick('#git-cred-name').trim();
+    const username = pick('#git-cred-user').trim();
+    const pass = pick('#git-cred-secret');
+    const hosts = pick('#git-cred-hosts');
+    if (!name) { showToast('Give the credential a name', 'warn'); return; }
+    if (!pass.trim()) { showToast('The secret is empty', 'warn'); return; }
+    if (kind === 'ssh_key' && !hosts.trim()) {
+      showToast('An SSH deploy key needs the host key', 'warn');
+      return;
+    }
+    const code = await totpPrompt('Adding a Git credential');
+    if (!code) { close(); return; }
+    try {
+      const created = await apiJson('/api/v1/stacks/git-credentials/', {
+        method: 'POST',
+        body: JSON.stringify({ name, kind, username, secret: pass, known_hosts: hosts,
+                               totp: code.trim() }),
+      });
+      stackEd.gitCreds.push(created);
+      _renderGitCredentials();
+      stackEd.gitSnapshot = { ...(stackEd.gitSnapshot || {}), credential_id: created.id };
+      _pickCredentialOption(created.id);
+      showToast(`Added ${created.name}`, 'success');
+    } catch (e) {
+      _stackError(e.message);
+    }
+    close();   // clears the secret whether the save landed or not
+  };
+
+  const render = () => {
+    const ssh = kind === 'ssh_key';
+    // The fields a kind needs, then the one that holds its key. Field ids in
+    // markup strings; only the kind buttons interpolate.
+    const extra = ssh ? `
+      <div class="form-group">
+        <label class="bl-label" for="git-cred-hosts">Known hosts</label>
+        <textarea class="form-control" id="git-cred-hosts" rows="3" spellcheck="false"></textarea>
+        <div class="bl-hint">The output of <code>ssh-keyscan github.com</code> — Vigil does not
+          trust an unknown host key.</div>
+      </div>` : `
+      <div class="form-group">
+        <label class="bl-label" for="git-cred-user">Username</label>
+        <input class="form-control" id="git-cred-user" maxlength="255" placeholder="x-access-token"
+          autocomplete="off" autocapitalize="off" spellcheck="false">
+      </div>`;
+    const holder = ssh
+      ? '<textarea class="form-control" id="git-cred-secret" rows="6" spellcheck="false" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>'
+      : '<input class="form-control" id="git-cred-secret" type="password" autocomplete="new-password">';
+    const holderHint = ssh ? 'Paste the private key Vigil should authenticate with.'
+                           : 'The token Vigil should authenticate with.';
+    m.setBody(`
+      <div class="modal-title">
+        <span>A Git credential</span>
+        <button class="modal-close" data-cred-x aria-label="Close">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="sted-git-kinds" role="radiogroup" aria-label="Credential kind">
+        <button class="btn btn-sm" type="button" data-cred-kind="token" aria-pressed="${!ssh}">HTTPS token</button>
+        <button class="btn btn-sm" type="button" data-cred-kind="ssh_key" aria-pressed="${ssh}">SSH deploy key</button>
+      </div>
+      <div class="form-group">
+        <label class="bl-label" for="git-cred-name">Name</label>
+        <input class="form-control" id="git-cred-name" maxlength="120" placeholder="GitHub deploy token">
+      </div>
+      ${extra}
+      <div class="form-group">
+        <label class="bl-label" for="git-cred-secret">Secret</label>
+        ${holder}
+        <div class="bl-hint">${holderHint}</div>
+      </div>
+      <div class="confirm-actions">
+        <button class="btn btn-outline btn-sm" data-cred-x>Cancel</button>
+        <button class="btn btn-mint btn-sm" data-cred-save>Save</button>
+      </div>`);
+    m.overlay.onclick = close;
+    m.modal.querySelectorAll('[data-cred-x]').forEach(b => { b.onclick = close; });
+    m.modal.querySelectorAll('[data-cred-kind]').forEach(b => {
+      b.onclick = () => { if (kind === b.dataset.credKind) return; kind = b.dataset.credKind; render(); };
+    });
+    m.modal.querySelector('[data-cred-save]').onclick = save;
+  };
+
+  render();
+  requestAnimationFrame(() => { m.open(); m.modal.querySelector('#git-cred-name').focus(); });
+}
+
+async function pullStackFromGit() {
+  const stack = stackEd.stack;
+  if (!stack) return;
+  try {
+    const res = await apiJson(`/api/v1/stacks/${stack.id}/pull/`, { method: 'POST', body: '{}' });
+    if (!res.changed) {
+      showToast('Already at the latest commit', 'info');
+      return;
+    }
+    const commit = ((res.stack.git || {}).commit || '').slice(0, 12);
+    await renderManagedStacks(stackEd.hostId);   // the chip's r-number changed too
+    showToast(`New commit ${commit} is revision ${res.stack.revision} — deploy it to apply`, 'info');
+    openStackEditor(res.stack.id);
+  } catch (e) {
+    _stackError(e.message);
+  }
+}
+
+function _gitFetchedToast(saved) {
+  const git = saved.git || {};
+  return `Fetched ${(git.commit || '').slice(0, 12)} from ${git.pin || git.branch || 'main'} — deploy it to run`;
+}
+
 async function saveStack() {
-  const compose = _stedEl('stack-compose').value;
+  const editing = stackEd.stack;
+  const gitStack = !!(editing && editing.git);
+  const gitChanged = gitStack && _gitSettingsChanged();
   const env = stackEd.env.filter(e => e.key.trim()).map(e => (e.stored && !e.value && !e.revealed)
     ? { key: e.key.trim(), keep: true } : { key: e.key.trim(), value: e.value || '' });
-  const editing = stackEd.stack;
-  const body = editing ? { compose_yaml: compose, env, note: 'edited' }
-    : { host_id: stackEd.hostId, name: _stedEl('stack-name').value.trim(), compose_yaml: compose, env };
+  let body;
+  if (gitStack && gitChanged) body = _gitSettingsBody();
+  else if (gitStack) body = { env, note: 'edited' };   // the compose file comes from Git, not from here
+  else if (stackEd.source === 'git') body = _newGitStackBody(_stedEl('stack-name').value.trim(), env);
+  else body = { compose_yaml: _stedEl('stack-compose').value, env, note: 'edited' };
+  const wasNew = !editing;
   try {
     const saved = await apiJson(editing ? `/api/v1/stacks/${editing.id}/` : '/api/v1/stacks/',
       { method: editing ? 'PUT' : 'POST', body: JSON.stringify(body) });
-    showToast(`Saved ${saved.name} as revision ${saved.revision} — deploy it to apply`, 'success');
     await renderManagedStacks(stackEd.hostId);
+    if (wasNew && stackEd.source === 'git') showToast(_gitFetchedToast(saved), 'success');
+    else showToast(gitChanged ? 'Repository settings updated — pulled what it holds now'
+                              : `Saved ${saved.name} as revision ${saved.revision} — deploy it to apply`, 'success');
     // Reopen the saved row — but only if the editor is still on screen. An
     // async Ctrl+S can land after the operator has moved on, and dragging
     // them back to the page they left would be worse than a stale view.
@@ -316,6 +570,8 @@ delegateClick('[data-sted-back]', () => closeStackEditor());
 delegateClick('[data-stack-save]', () => saveStack());
 delegateClick('[data-stack-deploy]', () => deployStack());
 delegateClick('[data-stack-remove]', () => removeStack());
+delegateClick('[data-sted-source]', (el) => _setStackSource(el.dataset.stedSource));
+delegateClick('[data-sted-git-pull]', () => pullStackFromGit());
 delegateClick('[data-stack-env-reveal]', () => revealStackEnv());
 delegateClick('[data-stack-env-add]', () => {
   stackEd.env.push({ key: '', value: '', stored: false });
@@ -401,6 +657,18 @@ document.addEventListener('keydown', (ev) => {
     closeStackEditor();
   }
 });
+
+/* A <select> answers to 'change', not a click — the dispatcher's idiom is
+   built for buttons, so this one wires itself. Typing in a focused <select>
+   can select an option too, which is why the handler stops at the sentinel. */
+(function () {
+  const wire = () => {
+    const sel = _stedEl('sted-git-cred');
+    if (sel) sel.addEventListener('change', () => _pickGitCredential());
+  };
+  document.addEventListener('DOMContentLoaded', wire);
+  if (document.readyState !== 'loading') wire();
+})();
 
 /* ── navigateTo wrapper: leaving the editor with unsaved edits asks first ─ */
 (function () {
