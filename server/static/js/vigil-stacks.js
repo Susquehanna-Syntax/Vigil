@@ -428,7 +428,7 @@ function addGitCredential() {
           autocomplete="off" autocapitalize="off" spellcheck="false">
       </div>`;
     const holder = ssh
-      ? '<textarea class="form-control" id="git-cred-secret" rows="6" spellcheck="false" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>'
+      ? '<textarea class="form-control" id="git-cred-secret" rows="6" spellcheck="false" autocomplete="off" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>'
       : '<input class="form-control" id="git-cred-secret" type="password" autocomplete="new-password">';
     const holderHint = ssh ? 'Paste the private key Vigil should authenticate with.'
                            : 'The token Vigil should authenticate with.';
