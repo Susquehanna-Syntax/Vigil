@@ -92,11 +92,11 @@ class UpdateContainerTests(unittest.TestCase):
 
         pull = [c for c in calls if "compose" in c and "pull" in c]
         self.assertEqual(pull, [[
-            "docker", "compose", "-f", "/srv/stack/docker-compose.yml",
+            "docker", "compose", "-p", "stack", "-f", "/srv/stack/docker-compose.yml",
             "pull", "web"]])
         up = [c for c in calls if "compose" in c and "up" in c]
         self.assertEqual(up, [[
-            "docker", "compose", "-f", "/srv/stack/docker-compose.yml",
+            "docker", "compose", "-p", "stack", "-f", "/srv/stack/docker-compose.yml",
             "up", "-d", "--no-deps", "web"]])
         self.assertFalse(any(c[:2] == ["docker", "run"] for c in calls))
         self.assertIn("via compose", out)
