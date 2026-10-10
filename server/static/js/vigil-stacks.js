@@ -138,7 +138,9 @@ async function openStackEditor(stackId) {
   name.disabled = !!stack;
   _stedEl('stack-compose').value = stack ? stack.compose_yaml : _NEW_COMPOSE;
   _applyStackSource();
-  if (stack && stack.git) _fillGitFields(stack.git);
+  // A new stack starts from blank Git fields, not the last stack opened.
+  _fillGitFields((stack && stack.git) || {});
+  if (!(stack && stack.git)) stackEd.gitSnapshot = null;
   const err = _stedEl('stack-error');
   err.textContent = '';
   err.classList.remove('show');

@@ -4091,4 +4091,5 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 @media (max-width: 700px) {
   .sted-git-grid { grid-template-columns: minmax(0, 1fr); }
 }
-.sted-status:empty { display: none; }
+.sted-status:empty { visibility: hidden; }
+.managed-stack-chip .apps-zero { margin-left: 4px; }
