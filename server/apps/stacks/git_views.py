@@ -6,6 +6,7 @@ not edited in Vigil — while its .env still is. See gitsource.py for how the
 server talks to the Git server.
 """
 
+import re
 from datetime import timedelta
 
 from django.db import transaction
@@ -33,7 +34,7 @@ KEEP_SNAPSHOTS = 5
 
 
 def _cred_row(c: GitCredential) -> dict:
-    return {"id": str(c.id), "name": c.name, "kind": c.kind, "username": c.username,
+    return {"id": str(c.id), "name": c.name, "kind": c.kind, "git_host": c.git_host, "username": c.username,
             "has_known_hosts": bool(c.known_hosts.strip()),
             "created_at": c.created_at.isoformat()}
 
@@ -52,8 +53,13 @@ def git_credential_index(request):
     kind = str(request.data.get("kind") or "")
     secret = str(request.data.get("secret") or "")
     known_hosts = str(request.data.get("known_hosts") or "")
+    git_host = str(request.data.get("git_host") or "").strip().lower()
     if not name or kind not in GitCredential.Kind.values or not secret.strip():
         return Response({"detail": "name, kind (token or ssh_key) and secret are required"},
+                        status=status.HTTP_400_BAD_REQUEST)
+    if not re.fullmatch(gitsource._HOST, git_host):
+        return Response({"detail": "git_host must be the Git server's host name, e.g. github.com — "
+                                   "the credential is used with that server only"},
                         status=status.HTTP_400_BAD_REQUEST)
     if kind == GitCredential.Kind.SSH_KEY:
         if "PRIVATE KEY" not in secret:
@@ -67,7 +73,7 @@ def git_credential_index(request):
         return Response({"detail": "that is too long for a credential"},
                         status=status.HTTP_400_BAD_REQUEST)
     cred = GitCredential.objects.create(
-        name=name, kind=kind, username=str(request.data.get("username") or "").strip()[:255],
+        name=name, kind=kind, git_host=git_host, username=str(request.data.get("username") or "").strip()[:255],
         secret_encrypted=encrypt_secret(secret), known_hosts=known_hosts.strip(),
         created_by=request.user)
     hooks.emit("git_credential_added", credential=cred, user=request.user)
@@ -88,7 +94,8 @@ def source_for(stack: ManagedStack) -> gitsource.Source:
     cred = None
     if stack.git_credential_id:
         c = stack.git_credential
-        cred = (c.kind, c.username, decrypt_secret(bytes(c.secret_encrypted)), c.known_hosts)
+        cred = (c.kind, c.username, decrypt_secret(bytes(c.secret_encrypted)), c.known_hosts,
+                c.git_host)
     return gitsource.Source(url=stack.git_url, branch=stack.git_branch or "main",
                             pin=stack.git_pin, path=stack.git_path or "compose.yaml",
                             credential=cred)
@@ -114,6 +121,9 @@ def apply_git_settings(stack: ManagedStack, data) -> None:
         cred = GitCredential.objects.filter(pk=cred_id).first()
         if cred is None:
             raise gitsource.GitSourceError("that Git credential does not exist")
+        _kind, host = gitsource.parse_url(url)
+        if cred.git_host != host:
+            raise gitsource.GitSourceError(f"the credential {cred.name!r} is for {cred.git_host}, not {host}")
     stack.git_url, stack.git_branch, stack.git_pin, stack.git_path = url, branch, pin, path
     stack.git_credential = cred
 
@@ -204,3 +214,16 @@ def agent_stack_source(request, ticket_id):
     response["Content-Length"] = str(len(data))
     response["Cache-Control"] = "no-store"
     return response
+
+
+def credential_step_up(request) -> Response | None:
+    """Attaching a credential to a stack decides which server a secret is
+    sent to: it asks for TOTP, like every other action that releases one."""
+    git = request.data.get("git")
+    if not (isinstance(git, dict) and git.get("credential_id")):
+        return None
+    from apps.accounts.totp import require_totp_confirmation
+    if error := require_totp_confirmation(request.user, request.data):
+        return Response({"detail": f"Using a Git credential needs confirmation: {error}", "needs_totp": True},
+                        status=status.HTTP_401_UNAUTHORIZED)
+    return None

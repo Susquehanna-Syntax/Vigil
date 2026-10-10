@@ -138,6 +138,8 @@ def _create_from_git(request, stack: ManagedStack) -> Response:
     check it like any compose file, and store revision 1 with its source."""
     from . import git_views, gitsource
 
+    if denied := git_views.credential_step_up(request):
+        return denied
     try:
         git_views.apply_git_settings(stack, request.data)
         if "env_text" in request.data or "env" in request.data:
@@ -186,6 +188,8 @@ def stack_detail(request, stack_id):
             return Response({"detail": "a stack edited in Vigil cannot be switched to Git; "
                                        "create a new stack from the repository"},
                             status=status.HTTP_400_BAD_REQUEST)
+        if denied := git_views.credential_step_up(request):
+            return denied
         try:
             git_views.apply_git_settings(stack, request.data)
             git_views.pull(stack, request.user, note="Git settings changed")

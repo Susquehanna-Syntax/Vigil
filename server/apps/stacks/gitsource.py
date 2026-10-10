@@ -65,8 +65,8 @@ class Source:
     branch: str = "main"
     pin: str = ""
     path: str = "compose.yaml"
-    #: (kind, username, secret, known_hosts) or None.
-    credential: tuple[str, str, str, str] | None = None
+    #: (kind, username, secret, known_hosts, git_host) or None.
+    credential: tuple[str, str, str, str, str] | None = None
 
 
 @dataclass
@@ -118,20 +118,34 @@ def check_path(path: str) -> tuple[str, str]:
     return "/".join(parts[:-1]), parts[-1]
 
 
-def _check_host_address(host: str, port: int) -> None:
+def _check_host_address(host: str, port: int) -> str:
     """Loopback, link-local (cloud metadata) and unspecified are refused —
     the server must not be talked into fetching from itself. Every address the
-    name resolves to is checked."""
+    name resolves to is checked, and the first is returned: git is then held
+    to that address (``_pin_args``), so a DNS answer that changes between this
+    check and git's own lookup (rebinding) cannot move it somewhere else."""
     try:
         infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
     except socket.gaierror as exc:
         raise GitSourceError(f"cannot resolve {host}") from exc
+    if not infos:
+        raise GitSourceError(f"cannot resolve {host}")
     for info in infos:
         addr = ipaddress.ip_address(info[4][0].split("%", 1)[0])
         mapped = getattr(addr, "ipv4_mapped", None)
         for a in (addr, mapped) if mapped else (addr,):
             if a.is_loopback or a.is_link_local or a.is_unspecified or a.is_multicast:
                 raise GitSourceError(f"{host} resolves to {a}, which Vigil will not fetch from")
+    return infos[0][4][0].split("%", 1)[0]
+
+
+def _pin_args(kind: str, host: str, port: int, ip: str) -> tuple[list[str], list[str]]:
+    """(git -c args, ssh options) that make git connect to the checked *ip*
+    while still verifying *host*'s TLS certificate or SSH host key."""
+    if kind == "https":
+        literal = f"[{ip}]" if ":" in ip else ip
+        return ["-c", f"http.curloptResolve={host}:{port}:{literal}"], []
+    return [], ["-o", f"HostName={ip}", "-o", f"HostKeyAlias={host}", "-o", f"Port={port}"]
 
 
 # ── Running git ──────────────────────────────────────────────────────────
@@ -144,7 +158,7 @@ _GIT_CONFIG = (
 )
 
 
-def _env(tmp: str, source: Source, kind: str) -> dict:
+def _env(tmp: str, source: Source, kind: str, ssh_pin: list[str] | None = None) -> dict:
     env = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "HOME": tmp,
@@ -182,34 +196,55 @@ def _env(tmp: str, source: Source, kind: str) -> dict:
             "ssh", "-F", "/dev/null", "-i", shlex.quote(key), "-o", "IdentitiesOnly=yes",
             "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
             "-o", f"UserKnownHostsFile={shlex.quote(known)}", "-o", "GlobalKnownHostsFile=/dev/null",
-            "-o", "ConnectTimeout=15"])
+            "-o", "ConnectTimeout=15", *(shlex.quote(a) for a in ssh_pin or ())])
     return env
 
 
-def _git(args: list[str], env: dict, cwd: str | None = None, *, limit: int = 1_000_000) -> bytes:
-    try:
-        proc = subprocess.Popen(["git", *_GIT_CONFIG, *args], cwd=cwd, env=env,
-                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
-    except FileNotFoundError as exc:
-        raise GitSourceError("git is not installed on the Vigil server") from exc
-    try:
-        out, err = proc.communicate(timeout=TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.communicate()
-        raise GitSourceError("the Git server did not answer in time") from None
-    if len(out) > limit:
-        raise GitSourceError("the repository folder is too large for a stack")
-    if proc.returncode != 0:
-        # The last stderr line says what went wrong; the token is never in it
-        # (it never was on a command line or in the URL).
-        lines = [ln for ln in err.decode(errors="replace").splitlines() if ln.strip()]
-        raise GitSourceError(f"git failed: {lines[-1][:300] if lines else 'unknown error'}")
-    return out
+#: The most any file git writes may grow to — the fetched pack, and the
+#: captured output below. Past it the kernel stops git (SIGXFSZ), so a huge
+#: repository cannot fill the server's disk or memory.
+MAX_FETCH_BYTES = 512 * 1024 * 1024
 
 
-def _resolve(url: str, source: Source, env: dict) -> str:
+def _git(args: list[str], env: dict, cwd: str | None = None, *, limit: int = 1_000_000,
+         pin: list[str] | None = None) -> bytes:
+    """Run git with output going to files, never into memory unbounded:
+    ``prlimit --fsize`` caps every file the process writes (its pack and its
+    stdout here), then stdout is read back only if it is within *limit*."""
+    cmd = ["prlimit", f"--fsize={MAX_FETCH_BYTES}", "--", "git", *_GIT_CONFIG, *(pin or ()), *args]
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        try:
+            proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+                                    stdout=out, stderr=err)
+        except FileNotFoundError as exc:
+            raise GitSourceError("git (and prlimit) must be installed on the Vigil server") from exc
+        try:
+            proc.wait(timeout=TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            raise GitSourceError("the Git server did not answer in time") from None
+        if proc.returncode in (-25, 128 + 25, 153):      # SIGXFSZ, however it is reported
+            raise GitSourceError("the repository is too large for a stack")
+        size = out.seek(0, os.SEEK_END)
+        if size > limit:
+            raise GitSourceError("the repository folder is too large for a stack")
+        if proc.returncode != 0:
+            # The last stderr line says what went wrong; the token is never in it
+            # (it never was on a command line or in the URL).
+            err.seek(max(0, err.seek(0, os.SEEK_END) - 4096))
+            text = err.read().decode(errors="replace")
+            # The size cap usually stops git's unpacking child, and the parent
+            # then reports only that unpacking failed.
+            if re.search(r"(unpack-objects|index-pack) failed|File size limit", text):
+                raise GitSourceError("the repository is too large for a stack (or its data could not be unpacked)")
+            lines = [ln for ln in text.splitlines() if ln.strip()]
+            raise GitSourceError(f"git failed: {lines[-1][:300] if lines else 'unknown error'}")
+        out.seek(0)
+        return out.read(limit + 1)
+
+
+def _resolve(url: str, source: Source, env: dict, pin_args: list[str]) -> str:
     """The commit a fetch should take: the pin if it is a commit, else what
     the pinned tag or tracked branch points at now."""
     pin = (source.pin or "").strip()
@@ -221,7 +256,7 @@ def _resolve(url: str, source: Source, env: dict) -> str:
     else:
         name = check_ref(source.branch or "main", "branch")
         refs = [f"refs/heads/{name}"]
-    out = _git(["ls-remote", "--", url, *refs], env).decode(errors="replace")
+    out = _git(["ls-remote", "--", url, *refs], env, pin=pin_args).decode(errors="replace")
     found = {}
     for line in out.splitlines():
         sha, _, ref = line.partition("\t")
@@ -294,16 +329,21 @@ def fetch(source: Source) -> Fetched:
     port = 443 if kind == "https" else 22
     if (m := (_HTTPS_RE.match(url) or _SSH_RE.match(url))) and m.groupdict().get("port"):
         port = int(m.group("port"))
-    _check_host_address(host, port)
+    if source.credential and source.credential[4].lower() != host:
+        # A credential is for one Git server. Using it with any other would
+        # hand a token to whoever runs that server.
+        raise GitSourceError(f"that credential is for {source.credential[4]}, not {host}")
+    ip = _check_host_address(host, port)
+    git_pin, ssh_pin = _pin_args(kind, host, port, ip)
 
     with tempfile.TemporaryDirectory(prefix="vigil-git-") as tmp:
         os.chmod(tmp, 0o700)
-        env = _env(tmp, source, kind)
-        commit = _resolve(url, source, env)
+        env = _env(tmp, source, kind, ssh_pin)
+        commit = _resolve(url, source, env, git_pin)
         repo = os.path.join(tmp, "repo.git")
         _git(["init", "-q", "--bare", repo], env)
         _git(["fetch", "-q", "--depth", "1", "--no-tags", "--no-recurse-submodules",
-              "--", url, commit], env, cwd=repo)
+              "--", url, commit], env, cwd=repo, pin=git_pin)
         got = _git(["rev-parse", "--verify", "--end-of-options", f"{commit}^{{commit}}"],
                    env, cwd=repo).decode().strip().lower()
         if got != commit:
