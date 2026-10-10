@@ -90,6 +90,9 @@ RUN if [ ! -f /app/agent_dist/VERSION ]; then \
 # VIGIL_SKIP_STARTUP_CHECKS=1 lets manage.py boot without VIGIL_SIGNING_KEY_SEED.
 # Build-time collectstatic doesn't need a real signing key — the runtime env
 # (compose/Portainer) supplies the seed. Required since DEBUG defaults to false.
+# VIGIL_HASHED_STATIC: hashed static file names, so an upgrade can never be
+# served last release's scripts from a cache (settings.py, STORAGES).
+ENV VIGIL_HASHED_STATIC=1
 RUN VIGIL_SKIP_STARTUP_CHECKS=1 python manage.py collectstatic --noinput
 
 EXPOSE 8000
