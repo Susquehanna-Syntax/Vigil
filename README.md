@@ -96,7 +96,7 @@ python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
 VIGIL_SIGNING_KEY_SEED=Hk3PtP...P0c=
 ```
 
-> ⚠️ **If you're pasting the compose stack into Portainer** (or any other UI that round-trips through YAML), set the value in the **Environment variables** tab — never inline it into the YAML. If you must inline it, **wrap it in double quotes** (`"Hk3...P0c="`) — the trailing `=` is base64 padding and unquoted YAML can strip or mangle it. A malformed seed produces `binascii.Error: Incorrect padding` and breaks every agent checkin in the fleet.
+> **If you're pasting the compose stack into Portainer** (or any other UI that round-trips through YAML), set the value in the **Environment variables** tab — never inline it into the YAML. If you must inline it, **wrap it in double quotes** (`"Hk3...P0c="`) — the trailing `=` is base64 padding and unquoted YAML can strip or mangle it. A malformed seed produces `binascii.Error: Incorrect padding` and breaks every agent checkin in the fleet.
 
 **3. Verify the seed is good before bringing the stack up:**
 

@@ -2140,14 +2140,14 @@ actions:
         <table>
           <thead><tr><th>Feature</th><th>Docker</th><th>Podman, rootful</th><th>Podman, rootless</th></tr></thead>
           <tbody>
-            <tr><td>Inventory, stats, logs</td><td>✅</td><td>✅ (compat API)</td><td>✅ per user</td></tr>
-            <tr><td>Restart / stop / start / remove / recreate / pull</td><td>✅</td><td>✅</td><td>✅ as that user's engine</td></tr>
-            <tr><td>Stacks (restart, update, deploy, adopt)</td><td>✅ <code>docker compose</code></td><td>✅ <code>podman compose</code> or <code>docker compose</code> on the socket</td><td>⚠ needs the compose CLI to reach that user's socket</td></tr>
-            <tr><td>Monitor-mode read-only proxy</td><td>✅</td><td>✅</td><td>— (rootful engines only)</td></tr>
+            <tr><td>Inventory, stats, logs</td><td>Yes</td><td>Yes (compat API)</td><td>Yes, per user</td></tr>
+            <tr><td>Restart / stop / start / remove / recreate / pull</td><td>Yes</td><td>Yes</td><td>Yes, as that user's engine</td></tr>
+            <tr><td>Stacks (restart, update, deploy, adopt)</td><td>Yes, <code>docker compose</code></td><td>Yes, <code>podman compose</code> or <code>docker compose</code> on the socket</td><td>Partly: needs the compose CLI to reach that user's socket</td></tr>
+            <tr><td>Monitor-mode read-only proxy</td><td>Yes</td><td>Yes</td><td>— (rootful engines only)</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="prose">Podman support is verified against the Engine API's compatibility layer in tests; check the rows marked ⚠ on your own hosts before relying on them.</p>
+      <p class="prose">Podman support is verified against the Engine API's compatibility layer in tests; check the rows marked <em>Partly</em> on your own hosts before relying on them.</p>
     </section>
     <div class="divider"></div>
 
