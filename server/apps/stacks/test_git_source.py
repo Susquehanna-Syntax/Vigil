@@ -190,6 +190,29 @@ class FetchTests(SimpleTestCase):
                 self.assertRaisesRegex(GitSourceError, "too large"):
             self._fetch(branch="main")
 
+    def test_many_small_objects_cannot_get_past_the_cap(self):
+        """Loose objects would each be under a per-file cap; one pack is not."""
+        for i in range(120):
+            Path(self.repo, "deploy", f"f{i}.bin").write_bytes(os.urandom(2048))
+        _run(self.repo, "add", ".")
+        _run(self.repo, "commit", "-q", "-m", "many")
+        with mock.patch.object(gitsource, "MAX_FETCH_BYTES", 64 * 1024), \
+                self.assertRaisesRegex(GitSourceError, "too large"):
+            self._fetch(branch="main")
+
+    def test_fetches_wait_for_each_other(self):
+        import fcntl
+        path = os.path.join(tempfile.gettempdir(), "vigil-git-fetch.lock")
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            with mock.patch.object(gitsource, "LOCK_WAIT_SECONDS", 0.3), \
+                    self.assertRaisesRegex(GitSourceError, "another Git fetch"):
+                self._fetch(branch="main")
+        finally:
+            os.close(fd)
+        self._fetch(branch="main")      # free again
+
     def test_a_token_is_never_on_a_command_line(self):
         seen = []
         real = subprocess.Popen
