@@ -238,6 +238,20 @@ class StackEditorWiringTests(SimpleTestCase):
                        "type=\"${e.revealed ? 'text' : 'password'}\"", "async function renderManagedStacks"):
             self.assertIn(needle, js)
 
+    def test_a_listed_stack_is_edited_from_its_own_header(self):
+        """Edit sits next to the stack's name; the bar above keeps only New
+        stack and the managed stacks with no row on the page."""
+        import re
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[2]
+        js = (root / "static/js/vigil-stacks.js").read_text(encoding="utf-8")
+        ctr = (root / "static/js/vigil-containers.js").read_text(encoding="utf-8")
+        self.assertIn("!stackEd.listed.has(s.name)", js)
+        self.assertIn("setListedStacks(", ctr)
+        headers = re.findall(r'<span class="docker-stack-name">[^\n]*\n\s*(\$\{[^\n]*\})', ctr)
+        self.assertEqual(len(headers), 2, "both header shapes (running and down) carry Edit")
+        self.assertTrue(all("editButton(" in h for h in headers), headers)
+
 
 class StackAdoptTests(TestCase):
     def setUp(self):
