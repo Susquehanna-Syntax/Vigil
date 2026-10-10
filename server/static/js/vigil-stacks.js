@@ -157,7 +157,7 @@ async function openStackEditor(stackId) {
   navigateTo('stack-editor');
   (stack ? _stedEl('stack-compose') : name).focus();
   if (stack) _loadStackRevisions();
-  _loadGitCredentials();
+  _loadGitCredentials();   // fills #sted-git-cred; _renderGitCredentials() re-selects from gitSnapshot
   _validateStack();
 }
 
