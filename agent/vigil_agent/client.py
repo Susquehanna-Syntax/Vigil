@@ -194,6 +194,26 @@ def fetch_stack_env(config: AgentConfig, ticket: str) -> str:
     return str(resp.json().get("env") or "")
 
 
+#: A Git stack's packed source folder (the server caps it at 20 MB).
+MAX_STACK_SOURCE_BYTES = 20 * 1024 * 1024
+
+
+def fetch_stack_source(config: AgentConfig, ticket: str) -> bytes:
+    """Redeem a deploy's one-time source ticket (2026.14.1) for the packed
+    folder of a Git stack. The caller checks it against the signed sha256."""
+    url = f"{config.server_url}/api/v1/agent/stack-source/{ticket}/"
+    with requests.get(url, headers=_headers(config), timeout=_TIMEOUT, stream=True) as resp:
+        if resp.status_code != 200:
+            raise RuntimeError(f"the server would not hand over this deploy's source "
+                               f"({resp.status_code}) — the ticket is used or expired; deploy again")
+        body = bytearray()
+        for chunk in resp.iter_content(64 * 1024):
+            body += chunk
+            if len(body) > MAX_STACK_SOURCE_BYTES:
+                raise RuntimeError("the stack's source is larger than an agent accepts")
+    return bytes(body)
+
+
 def post_stack_read(config: AgentConfig, ticket: str, payload: dict) -> None:
     """Hand an adopted stack's files to the server (M11) — over the agent's
     own connection, never in the task result, because .env holds secrets."""

@@ -107,6 +107,126 @@ def _read_plain(path: Path) -> str | None:
         os.close(fd)
 
 
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+MAX_SOURCE_TREE = 100 * 1024 * 1024
+MAX_SOURCE_FILES = 5000
+
+
+def _source_files(archive: bytes, sha256: str) -> dict[str, tuple[bytes, int]]:
+    """A Git stack's source folder, from the archive the server packed: the
+    hash must be the one in the signed task, and it may hold regular files
+    only, at plain relative paths. {path: (bytes, mode)}."""
+    import gzip
+    import hashlib
+    import io
+    import tarfile
+
+    if hashlib.sha256(archive).hexdigest() != sha256:
+        raise ValueError("the stack's source does not match the signed task — refusing it")
+    files: dict[str, tuple[bytes, int]] = {}
+    total = 0
+    with tarfile.open(fileobj=io.BytesIO(gzip.decompress(archive)), mode="r:") as tar:
+        for member in tar:
+            parts = member.name.split("/")
+            if (member.name.startswith("/") or "\\" in member.name
+                    or any(p in ("", ".", "..") for p in parts)):
+                raise ValueError(f"the stack's source has an unusable path: {member.name!r}")
+            if member.isdir():
+                continue
+            if not member.isreg():
+                raise ValueError(f"the stack's source holds a non-regular file: {member.name!r}")
+            total += member.size
+            if len(files) >= MAX_SOURCE_FILES or total > MAX_SOURCE_TREE:
+                raise ValueError("the stack's source is too large")
+            files[member.name] = (tar.extractfile(member).read(), 0o755 if member.mode & 0o111 else 0o644)
+    return files
+
+
+def _open_dir(parent_fd: int, name: str, *, create: bool) -> int:
+    """A folder under *parent_fd*, never through a symlink."""
+    if create:
+        try:
+            os.mkdir(name, 0o755, dir_fd=parent_fd)
+        except FileExistsError:
+            pass
+    try:
+        return os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+    except OSError as exc:      # ELOOP / ENOTDIR: a symlink or a file where a folder belongs
+        raise ValueError(f"refusing to place the stack's source: {name} is not a plain folder") from exc
+
+
+def _place_source(workdir: Path, files: dict[str, tuple[bytes, int]], manifest: Path) -> None:
+    """Write the source folder into the stack folder as root without following
+    a link anywhere: each folder is opened relative to the last with
+    O_NOFOLLOW, each file replaced (unlink + O_EXCL|O_NOFOLLOW). Files a
+    previous deploy placed and this source no longer has are removed — known
+    from a manifest in the agent's own data dir, which no container can
+    reach — and nothing else in the folder (data, the .env) is touched."""
+    import json
+
+    root_fd = os.open(workdir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for rel, (data, mode) in sorted(files.items()):
+            *folders, name = rel.split("/")
+            fd = os.dup(root_fd)
+            try:
+                for folder in folders:
+                    nxt = _open_dir(fd, folder, create=True)
+                    os.close(fd)
+                    fd = nxt
+                try:
+                    os.unlink(name, dir_fd=fd)
+                except FileNotFoundError:
+                    pass
+                except IsADirectoryError as exc:
+                    raise ValueError(f"refusing to place {rel}: a folder of that name is in the way") from exc
+                out = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode, dir_fd=fd)
+                try:
+                    os.write(out, data)
+                    os.fchmod(out, mode)
+                finally:
+                    os.close(out)
+            finally:
+                os.close(fd)
+
+        try:
+            previous = set(json.loads(manifest.read_text()))
+        except (OSError, ValueError):
+            previous = set()
+        for rel in sorted(previous - set(files)):
+            *folders, name = str(rel).split("/")
+            if any(p in ("", ".", "..") for p in [*folders, name]):
+                continue
+            fd = os.dup(root_fd)
+            try:
+                for folder in folders:
+                    nxt = _open_dir(fd, folder, create=False)
+                    os.close(fd)
+                    fd = nxt
+                st = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                if stat.S_ISREG(st.st_mode):
+                    os.unlink(name, dir_fd=fd)
+            except (OSError, ValueError):
+                pass        # already gone, or no longer ours to remove
+            finally:
+                os.close(fd)
+    finally:
+        os.close(root_fd)
+    manifest.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _write_private(manifest, json.dumps(sorted(files)))
+
+
+def _source_params(params: dict) -> tuple[str, str] | None:
+    """(ticket, sha256) for a Git stack's deploy, or None for a stack edited in Vigil."""
+    ticket = str(params.get("source_ticket") or "")
+    sha = str(params.get("source_sha256") or "")
+    if not ticket and not sha:
+        return None
+    if not _TICKET.match(ticket) or not _SHA256.match(sha):
+        raise ValueError("source_ticket must be a ticket id and source_sha256 64 hex characters")
+    return ticket, sha
+
+
 def _write_private(path: Path, text: str) -> None:
     """Create or replace *path* readable by its owner only."""
     _write_new(path, text, 0o600)
@@ -225,12 +345,18 @@ def _stack_deploy(params: dict, config: AgentConfig) -> str:
     if ticket and not _TICKET.match(ticket):
         raise ValueError("env_ticket must be a ticket id")
     compose_file = _compose_file(params)
-    # Redeemed first: a deploy that cannot have its secrets must not start
-    # half-configured containers.
+    source = _source_params(params)
+    # Redeemed first: a deploy that cannot have its secrets (or its source)
+    # must not start half-configured containers.
     env_text = client.fetch_stack_env(config, ticket) if ticket else None
+    files = _source_files(client.fetch_stack_source(config, source[0]), source[1]) if source else None
 
     _safe_workdir(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
+    if files is not None:
+        # The repo's folder first; the compose file and .env below are then
+        # written over it — the compose text is the one the server checked.
+        _place_source(workdir, files, Path(config.data_dir) / "stacks" / f"{project}.source.json")
     _write_new(workdir / compose_file, compose, 0o644)
     if env_text is not None:
         _write_private(workdir / ".env", env_text)
@@ -254,8 +380,10 @@ def _stack_remove(params: dict, config: AgentConfig) -> str:
         raise ValueError(f"refusing to delete {workdir}: only {STACKS_ROOT}/<project> is Vigil's")
     output = _compose(workdir, project, "down", timeout=300) if (workdir / COMPOSE_NAME).exists() \
         else f"{project}: no compose file at {workdir} — nothing to take down"
-    # the configuration _up checked and started, kept for the containers' labels
-    (Path(config.data_dir) / "stacks" / f"{project}.json").unlink(missing_ok=True)
+    # the configuration _up checked and started, kept for the containers' labels,
+    # and the list of source files a Git stack's deploys placed
+    for kept in (f"{project}.json", f"{project}.source.json"):
+        (Path(config.data_dir) / "stacks" / kept).unlink(missing_ok=True)
     deleted = False
     if delete:
         if workdir.exists():
