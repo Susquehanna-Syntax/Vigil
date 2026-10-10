@@ -35,6 +35,7 @@ import socket
 import subprocess
 import tarfile
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 #: The packed archive a host downloads.
@@ -155,6 +156,10 @@ _GIT_CONFIG = (
     "-c", "protocol.ssh.allow=always", "-c", "http.followRedirects=false",
     "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false",
     "-c", "credential.helper=", "-c", "submodule.recurse=false",
+    # Keep what is fetched as one pack file, never unpacked into one loose
+    # file per object: the per-file size cap (MAX_FETCH_BYTES) then bounds the
+    # whole fetch, where a million small loose objects would each pass it.
+    "-c", "fetch.unpackLimit=1", "-c", "transfer.unpackLimit=1",
 )
 
 
@@ -236,7 +241,7 @@ def _git(args: list[str], env: dict, cwd: str | None = None, *, limit: int = 1_0
             text = err.read().decode(errors="replace")
             # The size cap usually stops git's unpacking child, and the parent
             # then reports only that unpacking failed.
-            if re.search(r"(unpack-objects|index-pack) failed|File size limit", text):
+            if re.search(r"(unpack-objects|index-pack) failed|invalid index-pack output|File size limit", text):
                 raise GitSourceError("the repository is too large for a stack (or its data could not be unpacked)")
             lines = [ln for ln in text.splitlines() if ln.strip()]
             raise GitSourceError(f"git failed: {lines[-1][:300] if lines else 'unknown error'}")
@@ -319,6 +324,34 @@ def repack(raw_tar: bytes, folder: str) -> tuple[bytes, dict[str, bytes]]:
 
 # ── The fetch ────────────────────────────────────────────────────────────
 
+#: How long a fetch waits for another to finish before giving up.
+LOCK_WAIT_SECONDS = 30
+
+
+@contextmanager
+def _one_fetch_at_a_time():
+    """One fetch on this server at a time, across every worker process — so
+    the size caps bound the disk a burst of requests can use, rather than
+    multiplying by however many arrive together."""
+    import fcntl
+    import time
+
+    path = os.path.join(tempfile.gettempdir(), "vigil-git-fetch.lock")
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        deadline = time.monotonic() + LOCK_WAIT_SECONDS
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() > deadline:
+                    raise GitSourceError("another Git fetch is running — try again in a moment") from None
+                time.sleep(0.25)
+        yield
+    finally:
+        os.close(fd)        # releases the lock
+
 
 def fetch(source: Source) -> Fetched:
     """Fetch, check and pack one commit's compose folder. Raises
@@ -336,7 +369,7 @@ def fetch(source: Source) -> Fetched:
     ip = _check_host_address(host, port)
     git_pin, ssh_pin = _pin_args(kind, host, port, ip)
 
-    with tempfile.TemporaryDirectory(prefix="vigil-git-") as tmp:
+    with _one_fetch_at_a_time(), tempfile.TemporaryDirectory(prefix="vigil-git-") as tmp:
         os.chmod(tmp, 0o700)
         env = _env(tmp, source, kind, ssh_pin)
         commit = _resolve(url, source, env, git_pin)
