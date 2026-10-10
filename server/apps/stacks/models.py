@@ -160,6 +160,10 @@ class GitCredential(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=120)
     kind = models.CharField(max_length=10, choices=Kind.choices)
+    #: The one Git server this credential may be used with (github.com,
+    #: gitea.lan). A stack pointed anywhere else is refused, so a credential
+    #: cannot be handed to a server someone else runs.
+    git_host = models.CharField(max_length=255, default="")
     #: For a token: the user name the host expects (x-access-token, oauth2 …).
     username = models.CharField(max_length=255, blank=True)
     secret_encrypted = models.BinaryField()

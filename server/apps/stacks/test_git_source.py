@@ -64,12 +64,12 @@ def _local_git():
     skip the URL/host checks (which are tested on their own below)."""
     real_env = gitsource._env
 
-    def env(tmp, source, kind):
-        e = real_env(tmp, source, kind)
+    def env(tmp, source, kind, ssh_pin=None):
+        e = real_env(tmp, source, kind, ssh_pin)
         e["GIT_ALLOW_PROTOCOL"] = "https:ssh:file"
         return e
     with mock.patch.object(gitsource, "parse_url", return_value=("https", "git.test")), \
-            mock.patch.object(gitsource, "_check_host_address"), \
+            mock.patch.object(gitsource, "_check_host_address", return_value="192.0.2.10"), \
             mock.patch.object(gitsource, "_env", side_effect=env), \
             mock.patch.object(gitsource, "_GIT_CONFIG", gitsource._GIT_CONFIG + ("-c", "protocol.file.allow=always")):
         yield
@@ -161,6 +161,35 @@ class FetchTests(SimpleTestCase):
         with _local_git(), self.assertRaisesRegex(GitSourceError, "not in the repository"):
             gitsource.fetch(Source(url=self.repo, path="deploy/other.yaml"))
 
+    def test_git_is_held_to_the_checked_address(self):
+        """No second DNS lookup: the address that passed the check is the one git uses."""
+        seen = []
+        real = subprocess.Popen
+
+        def spy(args, **kw):
+            seen.append(args)
+            return real(args, **kw)
+        with mock.patch.object(gitsource.subprocess, "Popen", side_effect=spy):
+            self._fetch(branch="main")
+        network = [a for a in seen if "ls-remote" in a or "fetch" in a]
+        self.assertTrue(network)
+        for args in network:
+            self.assertIn("http.curloptResolve=git.test:443:192.0.2.10", args)
+        self.assertEqual(gitsource._pin_args("https", "h", 443, "2001:db8::1")[0][1],
+                         "http.curloptResolve=h:443:[2001:db8::1]")
+
+    def test_a_credential_only_goes_to_its_own_server(self):
+        with self.assertRaisesRegex(GitSourceError, "is for github.com"):
+            self._fetch(branch="main", credential=("token", "bot", "tok", "", "github.com"))
+
+    def test_a_huge_repository_is_stopped_not_buffered(self):
+        Path(self.repo, "deploy", "big.bin").write_bytes(os.urandom(256 * 1024))
+        _run(self.repo, "add", ".")
+        _run(self.repo, "commit", "-q", "-m", "big")
+        with mock.patch.object(gitsource, "MAX_FETCH_BYTES", 64 * 1024), \
+                self.assertRaisesRegex(GitSourceError, "too large"):
+            self._fetch(branch="main")
+
     def test_a_token_is_never_on_a_command_line(self):
         seen = []
         real = subprocess.Popen
@@ -169,7 +198,7 @@ class FetchTests(SimpleTestCase):
             seen.append((args, kw.get("env") or {}))
             return real(args, **kw)
         with mock.patch.object(gitsource.subprocess, "Popen", side_effect=spy):
-            self._fetch(branch="main", credential=("token", "bot", "s3cr3t-token", ""))
+            self._fetch(branch="main", credential=("token", "bot", "s3cr3t-token", "", "git.test"))
         self.assertTrue(seen)
         for args, env in seen:
             self.assertNotIn("s3cr3t-token", " ".join(args))
@@ -182,12 +211,14 @@ class FetchTests(SimpleTestCase):
             src = Source(url="git@github.com:a/b.git")
             with self.assertRaises(GitSourceError):
                 gitsource._env(tmp, src, "ssh")
-            src.credential = ("ssh_key", "", "-----BEGIN OPENSSH PRIVATE KEY-----\nx\n", "")
+            src.credential = ("ssh_key", "", "-----BEGIN OPENSSH PRIVATE KEY-----\nx\n", "", "github.com")
             with self.assertRaisesRegex(GitSourceError, "known_hosts"):
                 gitsource._env(tmp, src, "ssh")
             src.credential = ("ssh_key", "", "-----BEGIN OPENSSH PRIVATE KEY-----\nx\n",
-                              "github.com ssh-ed25519 AAAA")
-            env = gitsource._env(tmp, src, "ssh")
+                              "github.com ssh-ed25519 AAAA", "github.com")
+            env = gitsource._env(tmp, src, "ssh", ["-o", "HostName=140.82.112.3", "-o", "HostKeyAlias=github.com"])
+            self.assertIn("HostName=140.82.112.3", env["GIT_SSH_COMMAND"])
+            self.assertIn("HostKeyAlias=github.com", env["GIT_SSH_COMMAND"])
             self.assertIn("StrictHostKeyChecking=yes", env["GIT_SSH_COMMAND"])
             self.assertIn("GlobalKnownHostsFile=/dev/null", env["GIT_SSH_COMMAND"])
             self.assertEqual(os.stat(Path(tmp, "id_key")).st_mode & 0o777, 0o600)
@@ -283,16 +314,31 @@ class GitStackApiTests(TestCase):
 
     def test_credentials_are_write_only_and_need_totp(self):
         url = "/api/v1/stacks/git-credentials/"
-        body = {"name": "gh", "kind": "token", "secret": "ghp_secret", "username": "bot"}
+        body = {"name": "gh", "kind": "token", "secret": "ghp_secret", "username": "bot", "git_host": "github.com"}
         self.assertEqual(self.api.post(url, body, format="json").status_code, 401)
         with mock.patch(_TOTP, return_value=None):
             self.assertEqual(self.api.post(url, body, format="json").status_code, 201)
-            ssh = {"name": "deploy", "kind": "ssh_key",
+            nohost = {**body, "git_host": ""}
+            self.assertEqual(self.api.post(url, nohost, format="json").status_code, 400, "a credential names its server")
+            ssh = {"name": "deploy", "kind": "ssh_key", "git_host": "github.com",
                    "secret": "-----BEGIN OPENSSH PRIVATE KEY-----\nx\n-----END OPENSSH PRIVATE KEY-----"}
             self.assertEqual(self.api.post(url, ssh, format="json").status_code, 400, "no host key pinned")
         listed = self.api.get(url).json()["results"]
         self.assertEqual([c["name"] for c in listed], ["gh"])
         self.assertNotIn("ghp_secret", str(listed))
+
+    def test_attaching_a_credential_needs_totp_and_the_right_server(self):
+        from .models import GitCredential
+        cred = GitCredential.objects.create(name="gh", kind="token", git_host="github.com",
+                                            secret_encrypted=b"x")
+        body = {"host_id": str(self.host.id), "name": "web",
+                "git": {"url": "https://github.com/acme/app.git", "credential_id": str(cred.id)}}
+        self.assertEqual(self.api.post("/api/v1/stacks/", body, format="json").status_code, 401)
+        body["git"]["url"] = "https://evil.example/acme/app.git"
+        with mock.patch(_TOTP, return_value=None):
+            resp = self.api.post("/api/v1/stacks/", body, format="json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("is for github.com", resp.json()["detail"])
 
     def test_viewers_cannot_touch_git_stacks(self):
         viewer = get_user_model().objects.create_user("v", password="x")
