@@ -2095,7 +2095,16 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .ctr-state.exited,
 .ctr-state.dead { background: rgba(var(--rgb-rose), var(--tint-a)); color: var(--rose-ink); }
 .ctr-state.paused,
-.ctr-state.restarting { background: rgba(var(--rgb-lemon), var(--tint-a)); color: var(--lemon-ink); }
+.ctr-state.restarting,
+.ctr-state.partial { background: rgba(var(--rgb-lemon), var(--tint-a)); color: var(--lemon-ink); }
+/* A clean stop (exit 0) is not a crash: neutral, where a crash is rose. */
+.ctr-state.stopped { background: rgba(110,107,118,0.18); color: var(--text-2); text-transform: none; }
+.ctr-state.exited,
+.ctr-state.partial { text-transform: none; }
+.ctr-state.stopped,
+.ctr-state.exited,
+.ctr-state.partial { white-space: nowrap; }
+.docker-stack-header .ctr-state { margin-left: 4px; }
 
 /* Unmanaged devices (inventory page) */
 .dev-sub {
@@ -3906,9 +3915,9 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 
 /* Fixed columns so every stack card's Name/Image/State/CPU/Memory/buttons
    sit at the same x down the page. */
-.ctr-c-name { width: 22%; }
-.ctr-c-image { width: 28%; }
-.ctr-c-state { width: 11%; }
+.ctr-c-name { width: 20%; }
+.ctr-c-image { width: 24%; }
+.ctr-c-state { width: 17%; }   /* fits "crashed (exit 137)" on one line */
 .ctr-c-cpu { width: 8%; }
 .ctr-c-mem { width: 9%; }
 .ctr-c-acts { width: 22%; }

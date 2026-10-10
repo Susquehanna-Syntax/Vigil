@@ -64,6 +64,46 @@ navigateTo = function(pageName) {
 /* ── Docker containers ───────────────────────────────────────────────── */
 const CTR_STATES = ['running', 'exited', 'dead', 'paused', 'restarting', 'created'];
 
+/* Docker's status text carries the exit code ("Exited (137) 2 hours ago").
+   Code 0 is a clean stop; anything else (or "dead") is a crash, and the two
+   must not look the same. */
+function _ctrExitCode(c) {
+  const m = /exited \((-?\d+)\)/i.exec(c.status || '');
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function _ctrStateBadge(c) {
+  const state = (c.state || '').toLowerCase();
+  const code = _ctrExitCode(c);
+  let text = state || 'unknown';
+  let cls = CTR_STATES.includes(state) ? state : '';
+  if (state === 'exited' && code !== null) {
+    text = code === 0 ? 'stopped (exit 0)' : `crashed (exit ${code})`;
+    cls = code === 0 ? 'stopped' : 'exited';
+  }
+  return `<span class="ctr-state ${cls}" title="${escAttr(c.status || state)}">${escHtml(text)}</span>`;
+}
+
+/* One state for a whole stack: running, partly running, stopped or crashed —
+   so a stack whose containers all exited still reads as down at a glance. */
+function _stackStateBadge(rows) {
+  const running = rows.filter(c => (c.state || '').toLowerCase() === 'running').length;
+  const crashed = rows.filter(c => (c.state || '').toLowerCase() === 'dead'
+    || ((c.state || '').toLowerCase() === 'exited' && (_ctrExitCode(c) || 0) !== 0));
+  const codes = [...new Set(crashed.map(_ctrExitCode).filter(x => x !== null))];
+  const exitNote = codes.length ? ` (exit ${codes.join(', ')})` : '';
+  let text, cls;
+  if (running === rows.length) { text = 'running'; cls = 'running'; }
+  else if (running === 0) {
+    text = crashed.length ? `crashed${exitNote}` : 'stopped (exit 0)';
+    cls = crashed.length ? 'exited' : 'stopped';
+  } else {
+    text = `${running}/${rows.length} running` + (crashed.length ? ` · ${crashed.length} crashed${exitNote}` : '');
+    cls = 'partial';
+  }
+  return `<span class="ctr-state ${cls}">${escHtml(text)}</span>`;
+}
+
 async function renderDockerContainers(hostId) {
   const wrap = document.getElementById('docker-stacks');
   const countEl = document.getElementById('docker-count');
@@ -82,7 +122,11 @@ async function renderDockerContainers(hostId) {
   } catch { containers = []; }
   const stackInfo = Object.fromEntries((stacks || []).map(s => [s.project, s]));
 
-  if (!containers.length) {
+  // A stack Vigil deployed or adopted keeps its row after `down` or after its
+  // containers are removed: it is still there, just down, so it stays listed.
+  const downStacks = (stacks || []).filter(s => s.ownership !== 'external'
+    && !containers.some(c => c.stack === s.project));
+  if (!containers.length && !downStacks.length) {
     countEl.textContent = '';
     wrap.innerHTML = '<div class="docker-empty">No containers reported for this host.</div>';
     return;
@@ -117,6 +161,7 @@ async function renderDockerContainers(hostId) {
       <div class="docker-stack-header">
         <span class="docker-stack-name">${escHtml(label)}</span>
         <span class="docker-stack-count">${rows.length} ${noun}</span>
+        ${stack ? _stackStateBadge(rows) : ''}
         ${stackMeta}${stackActs}
       </div>
       <table class="ctr-table">
@@ -131,7 +176,6 @@ async function renderDockerContainers(hostId) {
         <tbody>`;
     for (const c of rows) {
       const state = (c.state || '').toLowerCase();
-      const stateClass = CTR_STATES.includes(state) ? state : '';
       const cpu = (c.cpu_percent === null || c.cpu_percent === undefined)
         ? '—' : c.cpu_percent.toFixed(1) + '%';
       let mem = '—';
@@ -143,7 +187,7 @@ async function renderDockerContainers(hostId) {
       html += `<tr>
         <td><div class="ctr-name">${escHtml(c.name || '')}</div>${svc}</td>
         <td class="ctr-image">${escHtml(c.image || '')}</td>
-        <td><span class="ctr-state ${stateClass}">${escHtml(state || 'unknown')}</span></td>
+        <td>${_ctrStateBadge(c)}</td>
         <td class="ctr-stat">${cpu}</td>
         <td class="ctr-stat">${mem}</td>
         <td class="ctr-fix">${c.outdated ? `<button class="btn btn-xs btn-mint" data-ctr-update data-host="${escAttr(hostId)}" data-name="${escAttr(c.name || '')}" title="A newer image is available">Update</button>` : ''}
@@ -157,6 +201,17 @@ async function renderDockerContainers(hostId) {
       </tr>`;
     }
     html += `</tbody></table></div>`;
+  }
+  for (const s of downStacks) {
+    html += `<div class="docker-stack">
+      <div class="docker-stack-header">
+        <span class="docker-stack-name">${escHtml(s.project)}</span>
+        <span class="docker-stack-count">0 containers</span>
+        <span class="ctr-state stopped">down</span>
+        <span class="chip chip-muted apps-src">${escHtml(s.ownership)}</span>
+      </div>
+      <div class="docker-empty">No containers — it was taken down or its containers were removed. Deploy it again from Managed by Vigil above.</div>
+    </div>`;
   }
   wrap.innerHTML = html;
   wrap.querySelectorAll('[data-ctr-update]').forEach(btn => btn.addEventListener('click', () => {
