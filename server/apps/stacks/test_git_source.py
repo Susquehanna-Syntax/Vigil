@@ -200,18 +200,29 @@ class FetchTests(SimpleTestCase):
                 self.assertRaisesRegex(GitSourceError, "too large"):
             self._fetch(branch="main")
 
-    def test_fetches_wait_for_each_other(self):
+    def test_fetch_slots_are_shared_and_private(self):
         import fcntl
-        path = os.path.join(tempfile.gettempdir(), "vigil-git-fetch.lock")
-        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+        folder = gitsource._lock_dir()
+        self.assertEqual(os.stat(folder).st_mode & 0o777, 0o700)
+        held = [os.open(os.path.join(folder, f"slot{i}.lock"), os.O_RDWR | os.O_CREAT, 0o600)
+                for i in range(gitsource.FETCH_SLOTS)]
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX)
+            for fd in held[:-1]:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+            self._fetch(branch="main")                 # one slot still free: no waiting
+            fcntl.flock(held[-1], fcntl.LOCK_EX)
             with mock.patch.object(gitsource, "LOCK_WAIT_SECONDS", 0.3), \
-                    self.assertRaisesRegex(GitSourceError, "another Git fetch"):
+                    self.assertRaisesRegex(GitSourceError, "other Git fetches"):
                 self._fetch(branch="main")
         finally:
-            os.close(fd)
-        self._fetch(branch="main")      # free again
+            for fd in held:
+                os.close(fd)
+        self._fetch(branch="main")
+
+    def test_a_slow_git_server_is_cut_off_by_the_deadline(self):
+        with mock.patch.object(gitsource, "FETCH_DEADLINE_SECONDS", 0), \
+                self.assertRaisesRegex(GitSourceError, "did not answer in time"):
+            self._fetch(branch="main")
 
     def test_a_token_is_never_on_a_command_line(self):
         seen = []
