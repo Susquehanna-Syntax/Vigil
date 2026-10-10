@@ -236,6 +236,8 @@ class GitStackApiTests(TestCase):
         self.assertTrue(moved["changed"])
         self.assertEqual(moved["stack"]["revision"], 2)
         self.assertEqual(moved["stack"]["git"]["commit"], _run(self.repo, "rev-parse", "HEAD"))
+        revs = self.api.get(f"/api/v1/stacks/{sid}/revisions/").json()["results"]
+        self.assertEqual([r["git_commit"] for r in revs], [moved["stack"]["git"]["commit"], self.head])
 
     def test_a_refused_compose_file_makes_no_stack(self):
         Path(self.repo, "deploy", "compose.yaml").write_text(

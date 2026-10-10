@@ -204,7 +204,7 @@ def stack_revisions(request, stack_id):
     if stack is None:
         return Response(status=status.HTTP_404_NOT_FOUND)
     return Response({"results": [{
-        "number": r.number, "note": r.note, "compose_yaml": r.compose_yaml,
+        "number": r.number, "note": r.note, "compose_yaml": r.compose_yaml, "git_commit": r.git_commit,
         "env_keys": [k for k, _v in _env_pairs(r)],
         "created_by": r.created_by.username if r.created_by else None,
         "created_at": r.created_at.isoformat()} for r in stack.revisions.all()[:50]]})
