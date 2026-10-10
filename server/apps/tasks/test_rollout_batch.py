@@ -118,6 +118,25 @@ class BatchStartTests(TestCase):
         self.assertEqual(hosts["Desktops"], [str(canary.id), str(desk.id)])
         self.assertEqual(hosts["Servers"], [str(srv.id)])
         self.assertEqual(Task.objects.filter(host=canary).count(), 1)
+
+    def test_each_ladder_claims_hosts_from_its_own_waves_only(self):
+        # Each ladder has its own Canary rung matching the same tag. A wave of
+        # one ladder claims nothing from the other: a desktop tagged canary is
+        # still patched by a Desktops-only rollout, and once — not left out
+        # because the Servers ladder's Canary sorted first.
+        from apps.tasks.rollout import start_rollout
+        from apps.tasks.views import _rollout_wave_progress
+        _wave("srv-canary", 1, ["canary"], groups=["Servers"], validation_hours=0)
+        _wave("srv-broad", 2, ["srv"], groups=["Servers"], validation_hours=0)
+        _wave("desk-canary", 1, ["canary"], groups=["Desktops"], validation_hours=0)
+        _wave("desk-broad", 2, ["desk"], groups=["Desktops"], validation_hours=0)
+        desk = _host("desk-a", ["desk", "canary"])
+        rollout = start_rollout(self.definition, user=self.user, wave_group_tag="Desktops")
+        self.assertEqual(list(Task.objects.filter(host=desk).values_list("run__wave__name", flat=True)),
+                         ["desk-canary"])
+        self.assertEqual([w["name"] for w in _rollout_wave_progress(rollout)],
+                         ["desk-canary", "desk-broad"], "a lane shows its own ladder's waves")
+
     def test_unknown_group_refuses_the_whole_batch(self):
         _wave("srv-1", 1, ["srv1"], groups=["Servers"], validation_hours=0)
         _host("srv-a", ["srv1"])

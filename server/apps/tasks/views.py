@@ -1788,7 +1788,11 @@ def _rollout_wave_progress(rollout: PatchRollout) -> list:
     from .models import PatchWave
 
     SUCCESS_STATES = (Task.State.COMPLETED, Task.State.SKIPPED)
-    waves = list(PatchWave.objects.order_by("order", "id"))
+    waves = PatchWave.objects.order_by("order", "id")
+    if (rollout.wave_group_tag or "").strip():
+        # A rollout walks one ladder: show its waves, not every ladder's.
+        waves = waves.filter(group_tag_rows__key=rollout.wave_group_tag.strip().lower()).distinct()
+    waves = list(waves)
     per_wave: dict = {}
     for run in rollout.runs.all():
         if run.wave is None:
