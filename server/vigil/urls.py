@@ -14,6 +14,7 @@ from apps.instance.config import setting
 from apps.alerts.models import Alert
 from apps.hosts.models import Host
 from apps.hosts import views as hosts_views
+from apps.hosts import search as hosts_search
 from apps.hosts.enrollment import replacement_candidate
 from apps.hosts.logtail import agent_log_lines
 from apps.stacks.registries import agent_registry_auth
@@ -132,6 +133,7 @@ urlpatterns = [
     path("api/v1/software/", include("apps.software.urls")),
     path("api/v1/policies/", include("apps.policies.urls")),
     path("api/v1/stacks/", include("apps.stacks.urls")),
+    path("api/v1/search/", hosts_search.search, name="search"),
     path("api/v1/dashboards/", include("apps.dashboards.urls")),
     # Playbooks were called baselines until 2026.11.0. Anything an operator
     # already scripted against the old path keeps working; nothing in Vigil

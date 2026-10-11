@@ -29,7 +29,6 @@ const ROLLOUT_STATE_COLOR = {
 const _rolloutState = {
   items: [],
   pollTimer: null,
-  pendingAction: null,   // { title, message, fn(totp) } for the confirm modal
   groups: [],            // picked wave-group tags, in pick order — order decides where a host on two ladders goes
   groupChoices: [],      // the enabled groups GET /api/v1/wave-groups/ offered on open
 };
@@ -308,7 +307,6 @@ async function openRolloutStart() {
   // Cleared on every open so a previous pick can't be submitted by accident.
   document.getElementById('rollout-start-def').value = '';
   document.getElementById('rollout-start-def-label').textContent = 'Choose a task or playbook…';
-  document.getElementById('rollout-start-totp').value = '';
   // The chips need no reset beyond clearing the pick: they are re-fetched and
   // repainted on every open.
   _rolloutState.groups = [];
@@ -383,13 +381,14 @@ function closeRolloutStart() {
 
 async function submitRolloutStart() {
   const sel = document.getElementById('rollout-start-def');
-  const totp = document.getElementById('rollout-start-totp').value.trim();
   const threshold = parseInt(document.getElementById('rollout-start-threshold').value, 10);
   const minResults = parseInt(document.getElementById('rollout-start-min').value, 10);
   const btn = document.getElementById('rollout-start-submit');
   if (!sel.value) { showToast('Pick something to roll out first', 'error'); return; }
-  if (!/^\d{6}$/.test(totp)) { showToast('Enter the 6-digit TOTP code', 'error'); return; }
   const picked = _rolloutState.groups;
+  const totp = await totpPrompt('Wave 1 starts as soon as you confirm.',
+    { title: 'Start rollout', confirmText: 'Start rollout' });
+  if (!totp) return;
   btn.disabled = true;
   try {
     const r = await apiJson('/api/v1/rollouts/', {
@@ -421,8 +420,6 @@ async function submitRolloutStart() {
     const msg = e.message || 'Request failed';
     if (/TOTP|two-factor/i.test(msg)) {
       showToast('TOTP code rejected — check your authenticator', 'error');
-      document.getElementById('rollout-start-totp').value = '';
-      document.getElementById('rollout-start-totp').focus();
     } else {
       showToast('Could not start rollout: ' + msg, 'error');
     }
@@ -431,12 +428,9 @@ async function submitRolloutStart() {
   }
 }
 
-/* ── Halt / resume (TOTP confirm modal) ──────────────────────────────── */
+/* ── Halt / resume (confirmed with TOTP) ─────────────────────────────── */
 
-function promptRolloutAction(btn, kind) {
-  const modal = document.getElementById('rollout-action-modal');
-  const overlay = document.getElementById('rollout-action-overlay');
-  if (!modal || !overlay) return;
+async function promptRolloutAction(btn, kind) {
   const rolloutId = btn ? btn.dataset.rlt : null;
   const batch = btn ? btn.dataset.rltBatch : null;
   const card = btn ? btn.closest('.rlt-batch') : null;
@@ -453,58 +447,35 @@ function promptRolloutAction(btn, kind) {
     : kind === 'halt-batch' ? 'Halt every group'
     : 'Skip the validation window';
   const message = kind === 'halt'
-    ? `Stop ${name} now? The current wave keeps running; nothing new is dispatched. An admin TOTP is required.`
+    ? `Stop ${name} now? The current wave keeps running; nothing new is dispatched.`
     : kind === 'resume'
       ? `Restart ${name} at its current wave? Failed tasks on the wave are re-queued and the gate re-evaluates.`
       : kind === 'halt-batch'
-        ? `Stop all ${lanes} groups of ${batchName} now? Every group keeps its current wave; nothing new is dispatched. An admin TOTP is required.`
+        ? `Stop all ${lanes} groups of ${batchName} now? Every group keeps its current wave; nothing new is dispatched.`
         : `End this wave's validation window for ${name} and move to the next wave now? `
           + `The window exists so a slow failure has time to show up, so only do this if you have `
           + `checked the wave yourself. The failure gate still applies.`;
-  _rolloutState.pendingAction = { title, message, rolloutId, batch, kind };
-  document.getElementById('rollout-action-title').textContent = title;
-  document.getElementById('rollout-action-message').textContent = message;
-  document.getElementById('rollout-action-totp').value = '';
-  overlay.classList.add('open');
-  modal.classList.add('open');
-  setTimeout(() => document.getElementById('rollout-action-totp').focus(), 50);
-}
-
-function closeRolloutAction() {
-  const modal = document.getElementById('rollout-action-modal');
-  const overlay = document.getElementById('rollout-action-overlay');
-  if (modal) modal.classList.remove('open');
-  if (overlay) overlay.classList.remove('open');
-  _rolloutState.pendingAction = null;
-}
-
-async function confirmRolloutAction() {
-  const pending = _rolloutState.pendingAction;
-  if (!pending) return;
-  const totp = document.getElementById('rollout-action-totp').value.trim();
-  const btn = document.getElementById('rollout-action-confirm');
-  if (!/^\d{6}$/.test(totp)) { showToast('Enter the 6-digit TOTP code', 'error'); return; }
-  btn.disabled = true;
+  const totp = await totpPrompt(message, { title, confirmText: title });
+  if (!totp) return;
   try {
     let note;
-    if (pending.kind === 'halt-batch') {
+    if (kind === 'halt-batch') {
       // One request, one code: TOTP codes are single-use, so halting a batch
       // group by group would need a fresh code per group.
-      const res = await apiJson(`/api/v1/rollouts/batch/${encodeURIComponent(pending.batch)}/halt/`, {
+      const res = await apiJson(`/api/v1/rollouts/batch/${encodeURIComponent(batch)}/halt/`, {
         method: 'POST',
         body: JSON.stringify({ totp }),
       });
       note = `Halted ${res.halted} rollouts`;
     } else {
-      await apiJson(`/api/v1/rollouts/${pending.rolloutId}/${pending.kind}/`, {
+      await apiJson(`/api/v1/rollouts/${rolloutId}/${kind}/`, {
         method: 'POST',
         body: JSON.stringify({ totp }),
       });
-      note = pending.kind === 'halt' ? 'Rollout halted'
-        : pending.kind === 'resume' ? 'Rollout resumed'
+      note = kind === 'halt' ? 'Rollout halted'
+        : kind === 'resume' ? 'Rollout resumed'
         : 'Validation window skipped — moving to the next wave';
     }
-    closeRolloutAction();
     closeRolloutDetail();
     showToast(note, 'success');
     refreshRollouts();
@@ -512,15 +483,11 @@ async function confirmRolloutAction() {
     const msg = e.message || 'Request failed';
     if (/TOTP|two-factor/i.test(msg)) {
       showToast('TOTP code rejected — check your authenticator', 'error');
-      document.getElementById('rollout-action-totp').value = '';
-      document.getElementById('rollout-action-totp').focus();
     } else if (/admin|permission/i.test(msg)) {
       showToast('Halting a rollout requires an admin account', 'error');
     } else {
       showToast('Action failed: ' + msg, 'error');
     }
-  } finally {
-    btn.disabled = false;
   }
 }
 

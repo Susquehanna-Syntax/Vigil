@@ -373,6 +373,11 @@ def _update_container(params: dict, _config: AgentConfig) -> str:
 
     compose_file = ""
     if labels.get(_COMPOSE_PROJECT_LABEL):
+        # Re-up under the container's own project. Without -p compose names
+        # the project after the folder (Portainer's /data/compose/49 makes it
+        # "49"), does not recognise the running container, and fails on its
+        # container_name.
+        project = _validate_name(labels[_COMPOSE_PROJECT_LABEL], "compose project")
         service = labels.get("com.docker.compose.service") or name
         _validate_name(service, "service name")
 
@@ -393,7 +398,8 @@ def _update_container(params: dict, _config: AgentConfig) -> str:
             dir_args = ["--project-directory", str(ex._validate_path(project_dir, "project directory"))]
             _clear_rollback(project_dir)   # an update ends a rollback
 
-        cmd = [*ex._compose_cmd(), *dir_args, *_label_env_files(labels, known), "-f", compose_file]
+        cmd = [*ex._compose_cmd(), "-p", project, *dir_args, *_label_env_files(labels, known),
+               "-f", compose_file]
         ex._run(cmd + ["pull", service], timeout=600, extra_env=ex._compose_env())
         ex._run(cmd + ["up", "-d", "--no-deps", service], timeout=300,
                 extra_env=ex._compose_env())

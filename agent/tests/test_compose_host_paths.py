@@ -191,7 +191,10 @@ class PortainerActionTests(unittest.TestCase):
             executor._update_container({"container_name": "searxng"}, _CFG)
 
         self.assertEqual(len(self.calls), 2)
-        tail = ["--project-directory", str(self.host / "compose" / "49"),
+        # -p keeps compose on the container's own project: without it the
+        # project is named after the folder ("49"), and the re-up fails with
+        # 'The container name "/searxng" is already in use'.
+        tail = ["-p", "searxng", "--project-directory", str(self.host / "compose" / "49"),
                 "--env-file", str(self.env), "-f", str(self.compose)]
         self.assertEqual(self.calls[0], ["docker", "compose", *tail, "pull", "searxng"])
         self.assertEqual(self.calls[1], ["docker", "compose", *tail,

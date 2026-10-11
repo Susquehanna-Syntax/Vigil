@@ -510,7 +510,6 @@ async function openDeployModal(definitionId, prefill) {
   document.getElementById('deploy-modal-title').textContent = 'Loading…';
   document.getElementById('deploy-risk-label').innerHTML = '';
   document.getElementById('deploy-yaml-view').innerHTML = '';
-  document.getElementById('deploy-totp').value = '';
   document.getElementById('deploy-host-search').value = '';
   deployState.definitionId = definitionId;
   deployState.selectedHosts = new Set();
@@ -687,12 +686,8 @@ async function submitDeploy(event) {
     return;
   }
 
-  const totp = document.getElementById('deploy-totp').value.trim();
-  if (!totp) { showToast('Enter your TOTP code', 'error'); return; }
-
   const policy = _readDeployPolicy();
   const body = {
-    totp,
     inputs: _readDeployInputs(),
     schedule: policy.schedule,
     on_failure: policy.on_failure,
@@ -710,6 +705,13 @@ async function submitDeploy(event) {
   }
 
   body.send_to_refusing = !!document.getElementById('deploy-send-refusing')?.checked;
+
+  const target = body.tags
+    ? `every host tagged ${body.tags.join(', ')}`
+    : `${body.host_ids.length} host${body.host_ids.length === 1 ? '' : 's'}`;
+  const totp = await totpPrompt(`Deploying to ${target}.`, { title: 'Confirm deploy', confirmText: 'Deploy' });
+  if (!totp) return;
+  body.totp = totp;
 
   const btn = document.getElementById('deploy-submit-btn');
   btn.disabled = true; btn.style.opacity = '0.6';

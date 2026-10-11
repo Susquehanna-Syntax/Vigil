@@ -34,6 +34,10 @@
   {# Logic: static/js/vigil-stacks.js | Data: client-side fetch /api/v1/stacks/ (+ /<id>/revisions/, POST /api/v1/stacks/validate/) #}
   {% include "pages/_stack_editor.html" %}
 
+  {# Search page — one box over hosts, containers, stacks, apps, CVEs, tasks, playbooks, policies, alerts #}
+  {# Logic: static/js/vigil-search.js | Data: client-side fetch /api/v1/search/?q= #}
+  {% include "pages/_search.html" %}
+
   {# Playbooks page — sequence editor for auto-enroll task chains #}
   {# Logic: static/js/vigil-playbooks.js | Data: /api/v1/playbooks/ + /api/v1/tasks/definitions/ #}
   {% include "pages/_playbooks.html" %}

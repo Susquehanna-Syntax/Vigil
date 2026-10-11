@@ -126,13 +126,9 @@
     <div class="bl-highrisk-lede">
       High-risk steps will run <strong>unattended</strong> on every host this
       playbook matches, with nobody at the keyboard to approve or stop them.
-      Confirm with your TOTP code to authorize that now — it stands for every
+      Saving asks for your TOTP code to authorize that — it stands for every
       future enrollment.
     </div>
-    <label class="form-label" for="bl-highrisk-totp">TOTP code</label>
-    <input type="text" class="form-control mono" id="bl-highrisk-totp"
-           inputmode="numeric" autocomplete="one-time-code" maxlength="6"
-           placeholder="123456">
     <div class="muted-note" style="margin-top:8px;">
       <code>update_agent</code> stays excluded either way — it replaces the
       executable that enforces the agent's own allowlist.

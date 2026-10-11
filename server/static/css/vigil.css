@@ -306,8 +306,9 @@ body {
    MAIN
    ═══════════════════════════════════════════ */
 .main {
+  --main-pad-top: 36px;
   grid-column: 2;
-  padding: 36px 44px 60px;
+  padding: var(--main-pad-top) 44px 60px;
   overflow-y: auto;
   max-height: 100vh;
 }
@@ -1268,13 +1269,6 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .deploy-right-col { display: flex; flex-direction: column; min-height: 0; }
 .deploy-right-col > #deploy-target-hosts,
 .deploy-right-col > #deploy-target-tags { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.deploy-totp-row {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.deploy-totp-row .form-control { letter-spacing: 4px; font-family: 'IBM Plex Mono', monospace; }
 
 /* Deploy tabs (LEFT pane) */
 .deploy-tabs {
@@ -2409,7 +2403,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 }
 .te-highlight { pointer-events: none; color: var(--text-1); z-index: 1; }
 .te-yaml { z-index: 2; background: transparent; color: transparent; caret-color: var(--sky);
-  resize: none; outline: none; }
+  resize: none; outline: none; overscroll-behavior: contain; }
 .te-yaml::placeholder { color: var(--text-3); }
 .te-yaml::selection { background: rgba(var(--rgb-sky), var(--tint-a)); }
 
@@ -2511,7 +2505,7 @@ select.form-control:hover { border-color: var(--s4); }
 }
 .toggle[aria-checked="true"]::after { transform: translateX(20px); background: #fff; }
 
-:root[data-density="compact"] .main { padding: 20px 26px 40px; }
+:root[data-density="compact"] .main { --main-pad-top: 20px; padding: var(--main-pad-top) 26px 40px; }
 :root[data-density="compact"] .page-header { margin-bottom: 18px; }
 :root[data-density="compact"] .section-label { margin: 22px 0 10px; }
 :root[data-density="compact"] .host-card { padding: 14px; gap: 12px; }
@@ -3198,6 +3192,20 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 /* The "add a tag" row in the host detail drawer. */
 .host-tag-add-row { display: flex; gap: 8px; align-items: center; }
 
+/* Tag combobox (attachTagCombobox in vigil-tags.js). */
+.tag-combo { position: relative; flex: 1; min-width: 0; }
+.tag-combo > .form-control { width: 100%; }
+.tag-combo-list { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30;
+  background: var(--s1); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); padding: 4px; max-height: 280px; overflow-y: auto; }
+.tag-combo-opt { display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; color: var(--text-1); }
+.tag-combo-opt:hover, .tag-combo-opt.is-active { background: var(--s3); }
+.tag-combo-opt.is-disabled { cursor: default; color: var(--text-3); background: none; }
+.tag-combo-name b { font-weight: 600; }
+.tag-combo-meta { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.tag-combo-empty { padding: 8px 10px; font-size: 12px; color: var(--text-3); }
+
 /* ── Widget dashboard ───────────────────────────────────────────────────── */
 .dash-root { margin-bottom: 22px; }
 .dash-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
@@ -3821,7 +3829,6 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .pol-drift { max-height: 280px; overflow-y: auto; }
 .pol-run { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }
 .pol-run-now { display: inline-flex; align-items: center; gap: 8px; }
-.pol-totp { width: 120px; font-size: 12px; }
 .pol-compliance { margin-bottom: 16px; }
 .pol-explain { background: var(--s1); border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px 16px; margin-bottom: 16px; font-size: 13px; color: var(--text-2); }
 .pol-explain summary { cursor: pointer; font-weight: 600; color: var(--text-1); }
@@ -3863,7 +3870,7 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .managed-stack-chip { border: 0; cursor: pointer; font-family: inherit; }
 .stack-compose { min-height: 260px; font-family: var(--font-mono); font-size: 12px; }
 .stack-env { display: flex; flex-direction: column; gap: 6px; }
-.stack-env-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: 6px; }
+.stack-env-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto; gap: 6px; }
 .stack-env-actions { display: flex; gap: 8px; margin-top: 8px; }
 .stack-revisions { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
 
@@ -3976,10 +3983,14 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 
 /* ── Stack editor page (QA-20) ───────────────────────────────────────── */
 .sted { width: 100%; }
+/* The bar reaches up through .main's top padding and sticks at the very top:
+   a bar stuck at top: 0 sits below that padding, and the page scrolled past
+   it showed through the gap above. */
 .sted-bar {
-  position: sticky; top: 0; z-index: 20;
+  position: sticky; top: calc(-1 * var(--main-pad-top, 36px)); z-index: 20;
   display: flex; align-items: center; gap: 14px;
-  margin: -12px 0 18px; padding: 12px 0;
+  margin: calc(-1 * var(--main-pad-top, 36px)) 0 18px;
+  padding: var(--main-pad-top, 36px) 0 12px;
   background: var(--bg); border-bottom: 1px solid var(--border);
 }
 .sted-crumbs { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 13px; color: var(--text-2); }
@@ -3993,6 +4004,10 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .sted-status.is-good { background: rgba(var(--rgb-mint), 0.14); color: var(--mint-ink); }
 .sted-status.is-bad { background: rgba(var(--rgb-rose), 0.14); color: var(--rose-ink); }
 .sted-actions { display: flex; align-items: center; gap: 8px; }
+.sted-close { margin-left: 4px; }
+.sted-name-error { font-size: 12px; color: var(--rose-ink); }
+.sted-name-error:empty { display: none; }
+#stack-name.is-invalid { border-color: var(--rose); box-shadow: 0 0 0 3px rgba(var(--rgb-rose), 0.14); }
 
 .sted-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
 .sted-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
@@ -4009,6 +4024,15 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
   border-right: 1px solid var(--border); }
 .sted-gutter .sted-ln.is-error { color: var(--rose-ink); font-weight: 700; }
 .sted-editor .te-highlight, .sted-editor .te-yaml { padding-left: 66px; }
+/* Scrolling past the end stays in the editor instead of moving the page
+   under the cursor; and the layers that follow the textarea's scroll get
+   spare room below, so the textarea can never scroll further than the
+   colored text and the line numbers (browsers count a textarea's bottom
+   padding differently). */
+.sted-editor .te-yaml { overscroll-behavior: contain; }
+.sted-editor .te-highlight { padding-bottom: 50vh; scrollbar-width: none; }
+.sted-editor .te-highlight::-webkit-scrollbar { display: none; }
+.sted-gutter { padding-bottom: 50vh; }
 
 .sted-check { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
 .sted-check-ok { color: var(--mint-ink); font-weight: 600; }
@@ -4093,3 +4117,18 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 }
 .sted-status:empty { visibility: hidden; }
 .managed-stack-chip .apps-zero { margin-left: 4px; }
+
+/* ── Search page (QA-25) ─────────────────────────────────────────────── */
+.srch-input { max-width: 720px; font-size: 15px; padding: 12px 14px; }
+.srch-hint { font-size: 12px; color: var(--text-3); margin-top: 6px; }
+.srch-results { display: flex; flex-direction: column; gap: 18px; margin-top: 18px; max-width: 720px; }
+.srch-group { display: flex; flex-direction: column; gap: 6px; }
+.srch-label { font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+  color: var(--text-3); }
+.srch-count { font-weight: 600; margin-left: 4px; }
+.srch-row { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
+  border: 0; background: var(--s2); border-radius: var(--r-md); padding: 10px 14px; cursor: pointer;
+  font-family: inherit; }
+.srch-row:hover, .srch-row:focus-visible { background: var(--s3); outline: none; }
+.srch-title { font-size: 13px; color: var(--text-1); }
+.srch-sub { font-size: 12px; color: var(--text-3); }
