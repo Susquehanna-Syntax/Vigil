@@ -134,6 +134,7 @@ urlpatterns = [
     path("api/v1/policies/", include("apps.policies.urls")),
     path("api/v1/stacks/", include("apps.stacks.urls")),
     path("api/v1/search/", hosts_search.search, name="search"),
+    path("api/v1/catalog/", include("apps.catalog.urls")),
     path("api/v1/dashboards/", include("apps.dashboards.urls")),
     # Playbooks were called baselines until 2026.11.0. Anything an operator
     # already scripted against the old path keeps working; nothing in Vigil
