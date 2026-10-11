@@ -1,8 +1,8 @@
 """Flathub: the AppStream catalogue, one ``<component>`` per app, with names,
 summaries, descriptions, categories, licences and cached 128px icons."""
-import gzip
-import io
 import xml.etree.ElementTree as ET
+
+from ..download import gunzip_stream
 
 SOURCE = "flatpak"
 PLATFORM = "linux"
@@ -37,27 +37,27 @@ def _description(el):
 
 
 def parse(data: bytes, release: str = ""):
-    with gzip.open(io.BytesIO(data)) as stream:
-        for _event, el in ET.iterparse(stream, events=("end",)):
-            if el.tag != "component":
-                continue
-            if el.get("type") in _APP_TYPES:
-                pid = (el.findtext("id") or "").strip()
-                name = _text(el, "name")
-                if pid and name:
-                    icon = next((i.text for i in el.findall("icon")
-                                 if i.get("type") == "cached" and i.get("width") == "128" and i.text), "")
-                    rel = el.find("releases/release")
-                    developer = _text(el, "developer_name") or _text(el, "developer/name")
-                    yield {
-                        "package_id": pid, "name": name, "summary": _text(el, "summary")[:300],
-                        "description": _description(el)[:8000],
-                        "version": (rel.get("version") if rel is not None else "") or "",
-                        "publisher": developer[:200],
-                        "homepage": next((u.text.strip() for u in el.findall("url")
-                                          if u.get("type") == "homepage" and u.text), "")[:500],
-                        "license": (el.findtext("project_license") or "")[:200],
-                        "categories": [c.text for c in el.findall("categories/category") if c.text][:8],
-                        "icon_url": ICON_BASE + icon if icon and "/" not in icon else "",
-                    }
-            el.clear()
+    # Capped: a gzip that inflates past MAX_UNPACKED_BYTES is refused.
+    for _event, el in ET.iterparse(gunzip_stream(data), events=("end",)):
+        if el.tag != "component":
+            continue
+        if el.get("type") in _APP_TYPES:
+            pid = (el.findtext("id") or "").strip()
+            name = _text(el, "name")
+            if pid and name:
+                icon = next((i.text for i in el.findall("icon")
+                             if i.get("type") == "cached" and i.get("width") == "128" and i.text), "")
+                rel = el.find("releases/release")
+                developer = _text(el, "developer_name") or _text(el, "developer/name")
+                yield {
+                    "package_id": pid, "name": name, "summary": _text(el, "summary")[:300],
+                    "description": _description(el)[:8000],
+                    "version": (rel.get("version") if rel is not None else "") or "",
+                    "publisher": developer[:200],
+                    "homepage": next((u.text.strip() for u in el.findall("url")
+                                      if u.get("type") == "homepage" and u.text), "")[:500],
+                    "license": (el.findtext("project_license") or "")[:200],
+                    "categories": [c.text for c in el.findall("categories/category") if c.text][:8],
+                    "icon_url": ICON_BASE + icon if icon and "/" not in icon else "",
+                }
+        el.clear()

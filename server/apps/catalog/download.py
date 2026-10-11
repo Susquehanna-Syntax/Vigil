@@ -27,14 +27,11 @@ def fetch(url: str, max_bytes: int = MAX_INDEX_BYTES) -> bytes:
     import requests
 
     parts = urlsplit(url)
-    # Ubuntu's and Debian's archives serve plain HTTP as their primary
-    # mirrors; apt itself checks signatures, Vigil only reads names and
-    # versions, and installing still goes through the host's own apt.
-    if parts.scheme not in ("https", "http") or parts.hostname not in ALLOWED_HOSTS:
+    # HTTPS only, to the official hosts: the transport is the trust here.
+    # (Installing goes through the host's own package manager, which checks
+    # the packages' signatures itself.)
+    if parts.scheme != "https" or parts.hostname not in ALLOWED_HOSTS:
         raise FetchError(f"not an allowed catalog source: {url}")
-    if parts.scheme == "http" and parts.hostname not in ("archive.ubuntu.com", "ports.ubuntu.com",
-                                                           "deb.debian.org"):
-        raise FetchError(f"{parts.hostname} must be fetched over HTTPS")
     try:
         response = requests.get(url, timeout=(10, 120), allow_redirects=False, stream=True,
                                 headers={"User-Agent": "Vigil package catalog"})
@@ -57,3 +54,38 @@ def fetch(url: str, max_bytes: int = MAX_INDEX_BYTES) -> bytes:
         raise FetchError(f"{parts.hostname} failed mid-download: {exc}") from None
     finally:
         response.close()
+
+
+#: Decompressed, an index is a few times its download (Ubuntu universe:
+#: 19 MB → 69 MiB). A gzip that inflates past this is refused, not read.
+MAX_UNPACKED_BYTES = 256 * 1024 * 1024
+
+
+class _Capped:
+    """A file-like over a gzip stream that refuses to inflate past a cap."""
+
+    def __init__(self, stream, cap):
+        self._stream, self._left = stream, cap
+
+    def read(self, n=-1):
+        if n is None or n < 0:
+            n = self._left + 1
+        chunk = self._stream.read(min(n, self._left + 1))
+        self._left -= len(chunk)
+        if self._left < 0:
+            raise ValueError(f"index inflates past {MAX_UNPACKED_BYTES} bytes")
+        return chunk
+
+
+def gunzip_stream(data: bytes, cap: int = MAX_UNPACKED_BYTES):
+    """A readable over ``data`` decompressed, capped at ``cap`` bytes."""
+    import gzip
+    import io
+    return _Capped(gzip.GzipFile(fileobj=io.BytesIO(data)), cap)
+
+
+def gunzip(data: bytes, cap: int = MAX_UNPACKED_BYTES) -> bytes:
+    stream, out = gunzip_stream(data, cap), []
+    while chunk := stream.read(1 << 20):
+        out.append(chunk)
+    return b"".join(out)
