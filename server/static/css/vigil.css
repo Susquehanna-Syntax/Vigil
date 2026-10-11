@@ -291,6 +291,24 @@ body {
 }
 
 .sidebar-spacer { flex: 1; }
+
+/* Expanded sidebar: each icon gets its page name (toggleSidebar in vigil-utils.js). */
+.sidebar-label { display: none; }
+.sidebar-toggle svg { transition: transform 0.3s var(--ease-out-expo); }
+:root[data-sidebar="expanded"] .layout { grid-template-columns: 196px 1fr; }
+:root[data-sidebar="expanded"] .sidebar { width: 196px; align-items: stretch; padding: 20px 12px; overflow-y: auto; }
+:root[data-sidebar="expanded"] .sidebar-logo { margin-left: 2px; }
+:root[data-sidebar="expanded"] .sidebar-icon {
+  width: auto; height: 38px; display: flex; align-items: center; justify-content: flex-start;
+  gap: 12px; padding: 0 11px; flex: none; }
+:root[data-sidebar="expanded"] .sidebar-icon:hover { transform: none; }
+:root[data-sidebar="expanded"] .sidebar-icon svg { flex: none; }
+:root[data-sidebar="expanded"] .sidebar-label { display: block; font-size: 13px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:root[data-sidebar="expanded"] .sidebar-icon[data-tip]:hover::after { display: none; }
+:root[data-sidebar="expanded"] .sidebar-toggle svg { transform: rotate(180deg); }
+:root[data-sidebar="expanded"] .sidebar-avatar { margin-left: 4px; }
+:root[data-sidebar="expanded"] .sidebar-icon .badge-dot { left: 26px; right: auto; }
 .sidebar-avatar {
   width: 34px; height: 34px;
   border-radius: 50%;

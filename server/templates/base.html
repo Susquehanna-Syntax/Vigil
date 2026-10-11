@@ -43,6 +43,9 @@
       if (localStorage.getItem('vigil-reduce-motion') === '1') {
         document.documentElement.classList.add('rm-sim');
       }
+      if (localStorage.getItem('vigil-sidebar') === 'expanded') {
+        document.documentElement.setAttribute('data-sidebar', 'expanded');
+      }
     } catch (e) {}
   })();
 </script>
@@ -107,6 +110,10 @@
     </div>
 
     <div class="sidebar-spacer"></div>
+    <div class="sidebar-icon sidebar-toggle" id="sidebar-toggle" data-act="toggleSidebar" data-tip="Show page names"
+      role="button" tabindex="0" aria-label="Show page names" aria-expanded="false">
+      <svg viewBox="0 0 24 24"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
+    </div>
     <div class="sidebar-icon" data-tip="Theme: Dark" id="theme-toggle" data-act="toggleTheme">
       <svg id="theme-icon-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
       <svg id="theme-icon-sun" viewBox="0 0 24 24" style="display:none;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
