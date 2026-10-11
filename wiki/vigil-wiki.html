@@ -1873,6 +1873,7 @@ risk: standard
 actions:
 - id: app-1
   type: app_ensure
+  when: agent.os == "windows"
   params:
     app: Mozilla.Firefox
     state: latest
@@ -1893,7 +1894,7 @@ actions:
   params:
     security_only: true</pre>
       </div>
-      <p class="prose"><code>app_ensure</code> takes <code>app</code> and <code>state</code>, plus optional <code>source</code> and (pinned only) <code>version</code>, and reports <code>changed</code>, <code>action</code> (none, install, upgrade, pin or uninstall), <code>version_before</code> and <code>version_after</code>. It is a normal action: use it in your own tasks too.</p>
+      <p class="prose"><code>app_ensure</code> takes <code>app</code> and <code>state</code>, plus optional <code>source</code> and (pinned only) <code>version</code>, and reports <code>changed</code>, <code>action</code> (none, install, upgrade, pin or uninstall), <code>version_before</code> and <code>version_after</code>. It is a normal action: use it in your own tasks too. A rule that names a source runs only where that package manager exists (winget, Chocolatey and Scoop on Windows; dpkg where apt is; rpm where dnf, yum or zypper is; Flatpak and Snap on Linux), so one policy can keep the same app current on every platform.</p>
 
       <h3 id="by-update">By update</h3>
       <p class="prose"><strong>Apps → By update</strong> turns pending updates inside out: one row per Windows KB or Linux package, with its severity, how many hosts miss it and how long the oldest has. Windows agents send their pending list after each update scan; Linux hosts count every outdated package from their own manager. Select updates and <em>Approve</em> (skip every policy's deferral) or <em>Decline</em> (keep it off every host — it joins every policy's exclude list). Decisions are fleet-wide and can be cleared.</p>

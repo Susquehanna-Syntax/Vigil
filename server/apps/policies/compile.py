@@ -13,6 +13,7 @@ import re
 
 import yaml
 
+from apps.software.guards import source_guard
 from apps.tasks.models import TaskDefinition
 from apps.tasks.spec import parse_and_validate
 
@@ -34,7 +35,13 @@ def app_steps(policy: UpdatePolicy) -> list[dict]:
             params["source"] = rule.source
         if rule.version:
             params["version"] = rule.version
-        steps.append({"id": f"app-{n}", "type": "app_ensure", "params": params})
+        step = {"id": f"app-{n}", "type": "app_ensure"}
+        # A rule for one package manager is skipped on hosts without it,
+        # instead of failing there (apps/software/guards.py).
+        if guard := source_guard(rule.source):
+            step["when"] = guard
+        step["params"] = params
+        steps.append(step)
     return steps
 
 
