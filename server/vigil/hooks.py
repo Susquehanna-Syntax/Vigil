@@ -52,6 +52,7 @@ KNOWN_EVENTS = frozenset({
     "git_credential_added", # payload: credential, user
     "stack_env_revealed",   # payload: stack, user
     "stack_deployed",       # payload: stack, user, task
+    "stack_revisions_pruned",  # payload: stack, user, numbers
     # Reprovisioning (docs/reprovisioning.md §4.5). Audit subscribes to these
     # rather than reprovision importing apps_business.audits — reprovision is
     # Free, audits is Business, and the bus is the seam for exactly that.

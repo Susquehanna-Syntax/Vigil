@@ -21,6 +21,8 @@ class ManagedStack(models.Model):
     compose_yaml = models.TextField()
     env_encrypted = models.BinaryField(blank=True, default=b"")
     revision = models.PositiveIntegerField(default=1)
+    #: The revision last sent to the host to deploy (pruning keeps it).
+    deployed_revision = models.PositiveIntegerField(null=True, blank=True)
     #: Where the stack lives on the host: /opt/vigil/stacks/<name> for one
     #: Vigil created; the stack's own folder for an adopted one.
     working_dir = models.CharField(max_length=500, blank=True)
@@ -68,6 +70,9 @@ class StackRevision(models.Model):
     compose_yaml = models.TextField()
     env_encrypted = models.BinaryField(blank=True, default=b"")
     note = models.CharField(max_length=200, blank=True)
+    #: A name someone gave it ("before the 2.0 upgrade"). A named revision
+    #: survives pruning by count; only deleting it by number removes it.
+    name = models.CharField(max_length=80, blank=True, default="")
     #: The commit this revision's compose file came from (Git stacks only).
     git_commit = models.CharField(max_length=64, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,

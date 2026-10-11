@@ -304,6 +304,57 @@ class StackNameTests(TestCase):
         self.assertIn("else body = { host_id: stackEd.hostId, name: _stedEl('stack-name').value.trim(),", js)
 
 
+class StackRevisionPruneTests(TestCase):
+    """14.3: name revisions, and prune old ones without losing the ones that matter."""
+
+    def setUp(self):
+        self.host = Host.objects.create(hostname="nas", agent_token="nastok", status=Host.Status.ONLINE,
+                                        mode="managed")
+        user = get_user_model().objects.create_user("a", password="x")
+        UserProfile.objects.create(user=user, role=Role.ADMIN)
+        self.api = APIClient()
+        self.api.force_authenticate(user)
+        self.sid = self.api.post("/api/v1/stacks/", {"host_id": str(self.host.id), "name": "media",
+                                                     "compose_yaml": COMPOSE}, format="json").json()["id"]
+        for n in range(2, 9):   # r1 … r8
+            self.api.put(f"/api/v1/stacks/{self.sid}/", {"compose_yaml": COMPOSE + f"# {n}\n", "env": [],
+                                                        "note": f"edit {n}"}, format="json")
+        stack = ManagedStack.objects.get()
+        stack.deployed_revision = 3
+        stack.save()
+
+    def _numbers(self):
+        return sorted(StackRevision.objects.values_list("number", flat=True))
+
+    def test_naming(self):
+        resp = self.api.patch(f"/api/v1/stacks/{self.sid}/revisions/2/", {"name": "  before   upgrade "},
+                              format="json")
+        self.assertEqual(resp.json()["name"], "before upgrade")
+        revs = {r["number"]: r for r in self.api.get(f"/api/v1/stacks/{self.sid}/revisions/").json()["results"]}
+        self.assertEqual(revs[2]["name"], "before upgrade")
+        self.assertTrue(revs[8]["current"] and revs[3]["deployed"])
+        self.assertEqual(self.api.patch(f"/api/v1/stacks/{self.sid}/revisions/2/", {"name": "x" * 81},
+                                        format="json").status_code, 400)
+
+    def test_keep_n_spares_named_current_and_deployed(self):
+        self.api.patch(f"/api/v1/stacks/{self.sid}/revisions/1/", {"name": "first"}, format="json")
+        resp = self.api.post(f"/api/v1/stacks/{self.sid}/revisions/prune/", {"keep": 2}, format="json").json()
+        self.assertEqual(resp["deleted"], [2, 4, 5, 6])
+        self.assertEqual(self._numbers(), [1, 3, 7, 8])
+
+    def test_by_number_never_takes_current_or_deployed(self):
+        resp = self.api.post(f"/api/v1/stacks/{self.sid}/revisions/prune/", {"numbers": [3, 5, 8]},
+                             format="json").json()
+        self.assertEqual(resp["deleted"], [5])
+        self.assertEqual(self.api.post(f"/api/v1/stacks/{self.sid}/revisions/prune/", {"keep": 0},
+                                       format="json").status_code, 400)
+
+    def test_a_deploy_records_its_revision(self):
+        with mock.patch(_TOTP, return_value=None):
+            self.api.post(f"/api/v1/stacks/{self.sid}/deploy/", {"totp": "1"}, format="json")
+        self.assertEqual(ManagedStack.objects.get().deployed_revision, 8)
+
+
 class StackAdoptTests(TestCase):
     def setUp(self):
         from apps.hosts.models import ContainerStack
