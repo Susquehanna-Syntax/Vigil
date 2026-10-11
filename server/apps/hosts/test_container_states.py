@@ -37,7 +37,7 @@ class ContainerStateTests(SimpleTestCase):
         self.assertIn("_stackStateBadge(rows)", self.src)
 
     def test_a_down_managed_stack_stays_listed(self):
-        self.assertRegex(self.src, r"downStacks = \(stacks \|\| \[\]\)\.filter\(s => s\.ownership !== 'external'")
+        self.assertRegex(self.src, r"allDown = \(stacks \|\| \[\]\)\.filter\(s => s\.ownership !== 'external'")
         self.assertIn("for (const s of downStacks)", self.src)
 
     @skipUnless(shutil.which("node"), "node is not installed")

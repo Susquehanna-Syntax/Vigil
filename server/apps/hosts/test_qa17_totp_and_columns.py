@@ -70,12 +70,12 @@ class TotpDialogTests(SimpleTestCase):
 class ContainersControlTests(SimpleTestCase):
 
     def test_containers_host_control(self):
+        """14.3: a searchable host picker (the Firewall page's), not a dropdown."""
         page = _read(TEMPLATES / "pages" / "_containers.html")
-        self.assertIn('class="fw-controls-label" for="containers-host"', page)
+        self.assertIn('id="containers-host-btn"', page)
+        self.assertIn('data-ctr-pick-host', page)
         self.assertIn('id="containers-host"', page)
-        self.assertIn('data-change="selectContainersHost"', page)
-        self.assertIn('data-a1="$value"', page)
-        self.assertIn('class="form-control ctr-host-select"', page)
+        self.assertNotIn("<select", page)
 
 
 class ContainersColumnTests(SimpleTestCase):

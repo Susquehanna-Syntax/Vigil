@@ -13,6 +13,14 @@ from .models import DockerContainer, DockerImage, DockerNetwork, DockerVolume, H
 _BUILTIN_NETWORKS = {"bridge", "host", "none", "podman"}
 
 
+def _engine_kind(engines) -> str:
+    """The first engine's kind; agents report a list of dicts, older ones of names."""
+    first = (engines or [None])[0] if isinstance(engines, list) else None
+    if isinstance(first, dict):
+        return str(first.get("kind") or "")[:20]
+    return str(first or "")[:20]
+
+
 def _short(image_id: str) -> str:
     return image_id.split(":", 1)[-1][:12]
 
@@ -64,3 +72,23 @@ def host_docker(request, host_id):
                   if usage else None),
         "images": images, "volumes": volumes, "networks": networks,
     })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def host_docker_summary(request):
+    """Every host the user may see, with its container count — the
+    Containers page's host picker lists hosts that run containers first."""
+    from django.db.models import Count, Q
+
+    from .models import Host
+
+    hosts = (scoping.filter_by_site(Host.objects.exclude(status__in=("rejected", "pending")), request.user)
+             .annotate(containers=Count("docker_containers", distinct=True),
+                       running=Count("docker_containers", filter=Q(docker_containers__state="running"),
+                                     distinct=True))
+             .order_by("-containers", "hostname"))
+    return Response([{"id": str(h.id), "hostname": h.hostname, "os": h.os, "status": h.status,
+                      "containers": h.containers, "running": h.running,
+                      "engine": _engine_kind(h.container_engines)}
+                     for h in hosts])
