@@ -105,6 +105,32 @@ class SearchApiTests(TestCase):
         self.assertEqual(len(self._search("fleet")["host"]), 8)
 
 
+class SearchCrossSiteTests(TestCase):
+    """An admin of one site finds nothing that lives in another."""
+
+    def setUp(self):
+        from apps_business.sites.models import HostSiteAssignment, Site, UserSiteRole
+        west = Site.objects.create(name="West", slug="west")
+        lab = Site.objects.create(name="Lab", slug="lab")
+        self.dana = get_user_model().objects.create_user("dana", password="x")
+        UserSiteRole.objects.create(user=self.dana, site=west, role=Role.ADMIN)
+        for site in (west, lab):
+            host = Host.objects.create(hostname=f"probe-{site.slug}", agent_token=f"t-{site.slug}",
+                                       status=Host.Status.ONLINE)
+            HostSiteAssignment.objects.create(host=host, site=site)
+            ManagedStack.objects.create(host=host, name=f"probe-{site.slug}", compose_yaml="services: {}")
+            DockerContainer.objects.create(host=host, container_id=site.slug, name=f"probe-{site.slug}")
+            Alert.objects.create(host=host, severity="critical", message=f"probe {site.slug}", state="firing")
+            UpdatePolicy.objects.create(name=f"probe {site.slug}", site_id=site.id)
+
+    def test_nothing_from_the_other_site(self):
+        resp = _client(self.dana).get("/api/v1/search/", {"q": "probe"})
+        found = {g["kind"]: [r["title"] for r in g["results"]] for g in resp.json()["groups"]}
+        for kind in ("host", "container", "stack", "alert", "policy"):
+            self.assertTrue(found.get(kind), f"{kind}: West's own row is found")
+            self.assertFalse([t for t in found[kind] if "lab" in t], f"{kind} leaked Lab: {found[kind]}")
+
+
 class SearchWiringTests(SimpleTestCase):
     def test_page_sidebar_and_script(self):
         base = (ROOT / "templates/base.html").read_text(encoding="utf-8")

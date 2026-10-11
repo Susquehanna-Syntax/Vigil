@@ -104,8 +104,14 @@ def _playbooks(request, q):
 
 
 def _policies(request, q):
+    from apps.accounts.permissions import visible_site_ids
     from apps.policies.models import UpdatePolicy
     qs = UpdatePolicy.objects.filter(name__icontains=q)
+    # A policy belongs to one site (or none = every site). An admin of one
+    # site still counts as an admin, so narrow to the sites they can see.
+    sites = visible_site_ids(request.user)
+    if sites is not None:
+        qs = qs.filter(Q(site_id__isnull=True) | Q(site_id__in=sites))
     return [{"kind": "policy", "id": str(p.id), "title": p.name,
              "subtitle": "enabled" if p.enabled else "disabled"}
             for p in qs.order_by("name")[:LIMIT]]
