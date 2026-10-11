@@ -1,0 +1,17 @@
+name: Remove network
+description: |
+  Remove one network. The engine refuses a network a container is attached
+  to, and Vigil refuses the engine's own bridge, host and none.
+risk: standard
+author: Vigil
+created: 2026-10-11
+inputs:
+  - id: network
+    type: text
+    label: Network
+    required: true
+actions:
+  - id: remove
+    type: network_remove
+    params:
+      network: "${{ inputs.network }}"

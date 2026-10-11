@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import logtail, views
+from . import docker_views, logtail, views
 
 urlpatterns = [
     path("", views.host_list, name="host-list"),
@@ -24,6 +24,7 @@ urlpatterns = [
     path("<uuid:host_id>/update-agent/", views.host_update_agent, name="host-update-agent"),
     path("<uuid:host_id>/rdp/", views.host_rdp, name="host-rdp"),
     path("<uuid:host_id>/tags/", views.host_tags, name="host-tags"),
+    path("<uuid:host_id>/docker/", docker_views.host_docker, name="host-docker"),
     path("<uuid:host_id>/inventory/", views.inventory_detail, name="inventory-detail"),
     path("<uuid:host_id>/containers/", views.host_containers, name="host-containers"),
     path("<uuid:host_id>/stacks/", views.host_stacks, name="host-stacks"),

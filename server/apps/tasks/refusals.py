@@ -15,6 +15,13 @@ from __future__ import annotations
 #: Pseudo-actions the server expands or the agent handles itself (``playbook``,
 #: ``_script`` …) are not here, so they are never reported as refused.
 AGENT_ACTIONS = frozenset({
+    "volume_remove",
+    "volume_prune",
+    "network_remove",
+    "network_prune",
+    "image_remove",
+    "image_prune",
+    "docker_disk_usage",
     "add_firewall_rule",
     "add_tag",
     "add_user_to_group",

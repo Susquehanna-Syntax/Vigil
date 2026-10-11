@@ -1,0 +1,12 @@
+name: Prune dangling images
+description: |
+  Remove untagged images left behind by updates and builds. Tagged images
+  stay, used or not.
+risk: standard
+author: Vigil
+created: 2026-10-11
+actions:
+  - id: prune
+    type: image_prune
+    params:
+      all: false

@@ -1,0 +1,13 @@
+name: Measure container storage
+description: |
+  How much space images, volumes, containers and the build cache take, and
+  how much pruning would free. The engine walks every volume to size it, so
+  this can take a minute on a busy host. The Containers page's Images and
+  Volumes tabs show the result.
+risk: low
+author: Vigil
+created: 2026-10-11
+actions:
+  - id: usage
+    type: docker_disk_usage
+    params: {}
