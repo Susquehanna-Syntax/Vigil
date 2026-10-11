@@ -72,7 +72,8 @@ async function totpConfirm() {
 }
 
 async function totpDisablePrompt() {
-  const code = prompt('Enter a current 6-digit code to disable TOTP:');
+  const code = await totpPrompt('Turning off two-factor authentication. Enter a current code to confirm.',
+    { title: 'Disable TOTP', confirmText: 'Disable' });
   if (!code) return;
   try {
     await apiJson('/api/v1/accounts/totp/disable/', {

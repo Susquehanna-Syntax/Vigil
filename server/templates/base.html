@@ -372,15 +372,6 @@
 
     </div>
 
-    <!-- BOTTOM: TOTP -->
-    <div class="deploy-totp-row">
-      <div class="form-group" style="margin-bottom: 0;">
-        <label class="form-label">Confirm with TOTP</label>
-        <input class="form-control" type="text" id="deploy-totp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
-        <div class="confirm-hint">Enter the 6-digit code from your authenticator app. Enrollment is required (Settings → Two-Factor Authentication).</div>
-      </div>
-    </div>
-
     <!-- Hosts whose agent allowlist would refuse this task (M7): skipped unless ticked. -->
     <div class="deploy-refusals" id="deploy-refusals" hidden>
       <span id="deploy-refusals-text"></span>
@@ -473,7 +464,7 @@ settings before deciding anything.
   <div class="modal-actions" id="rollout-detail-actions" style="align-items:center;gap:10px;"></div>
 </div>
 
-{# Rollout start modal — opened by openRolloutStart() in vigil-rollout.js; TOTP-gated like the deploy modal. #}
+{# Rollout start modal — opened by openRolloutStart() in vigil-rollout.js; Start asks for TOTP (totpPrompt) like a deploy. #}
 <div class="modal-overlay" id="rollout-start-overlay" data-act="closeRolloutStart"></div>
 <div class="modal modal-wide" id="rollout-start-modal">
   <div class="modal-title">
@@ -512,36 +503,10 @@ settings before deciding anything.
         <input type="number" class="form-control" id="rollout-start-min" min="1" value="3">
       </div>
     </div>
-    <div class="form-group" style="margin-bottom:4px;">
-      <label class="form-label">Confirm with TOTP</label>
-      <input class="form-control" type="text" id="rollout-start-totp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
-      <div class="confirm-hint">Rollouts are 2FA-gated fleet-wide operations, same as deploys.</div>
-    </div>
   </div>
   <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
     <button class="btn btn-ghost btn-sm" data-act="closeRolloutStart">Cancel</button>
     <button class="btn btn-sky btn-sm" id="rollout-start-submit" data-act="submitRolloutStart">Start rollout</button>
-  </div>
-</div>
-
-{# Rollout halt/resume confirm — TOTP-gated operator actions. #}
-<div class="modal-overlay" id="rollout-action-overlay" data-act="closeRolloutAction"></div>
-<div class="modal" id="rollout-action-modal">
-  <div class="modal-title">
-    <span id="rollout-action-title">Confirm</span>
-    <button class="modal-close" data-act="closeRolloutAction">
-      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
-  </div>
-  <div class="totp-sub" style="margin-bottom:14px;" id="rollout-action-message"></div>
-  <div class="form-group" style="margin-bottom:4px;">
-    <label class="form-label">Confirm with TOTP</label>
-    <input class="form-control" type="text" id="rollout-action-totp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
-    <div class="confirm-hint">Halting and resuming rollouts are 2FA-gated fleet-wide operations.</div>
-  </div>
-  <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
-    <button class="btn btn-ghost btn-sm" data-act="closeRolloutAction">Cancel</button>
-    <button class="btn btn-sky btn-sm" id="rollout-action-confirm" data-act="confirmRolloutAction">Confirm</button>
   </div>
 </div>
 
@@ -748,11 +713,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
         <div class="enroll-meta" id="enroll-replaces" style="display:none;margin-top:6px;"></div>
       </div>
     </div>
-    <div class="totp-sub" style="margin-bottom:12px;">Review the details above and approve the host to bring it online. Confirm with your TOTP code — approval is 2FA-gated because an approved host immediately becomes eligible to receive signed tasks.</div>
-    <div class="form-group" style="margin-bottom:14px;">
-      <label class="form-label">TOTP code</label>
-      <input class="form-control" type="text" id="enroll-approve-totp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
-    </div>
+    <div class="totp-sub" style="margin-bottom:14px;">Review the details above and approve the host to bring it online. Approving asks for your TOTP code — an approved host immediately becomes eligible to receive signed tasks.</div>
     <div style="display:flex;gap:8px;">
       <button class="btn btn-mint btn-sm" id="enroll-approve-btn" data-act="enrollApproveHost">Approve &amp; Activate</button>
       <button class="btn btn-outline btn-sm" data-act="closeEnrollWizard">Cancel</button>
