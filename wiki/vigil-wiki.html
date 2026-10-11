@@ -3418,6 +3418,82 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
       <span class="hl-key">container_name</span>: <span class="hl-string">nextcloud</span>
       <span class="hl-key">image</span>: <span class="hl-string">nginx:1.27-alpine</span></pre></div>
 </div></details>
+<details class="action" id="action-docker_disk_usage" data-group="container" data-risk="low" data-keywords="docker_disk_usage"><summary><code class="action-name">docker_disk_usage</code><span class="risk risk-low">low</span><span class="action-label">Measure container storage (images, volumes, build cache)</span><span class="action-required">none</span></summary><div class="action-body">
+<p class="action-noparams">This action takes no params.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>images_size</code></td><td>int</td><td>Bytes all image layers take.</td></tr><tr><td><code>volumes_size</code></td><td>int</td><td>Bytes all volumes take.</td></tr><tr><td><code>reclaimable</code></td><td>int</td><td>Bytes unused images, volumes and build cache could free.</td></tr><tr><td><code>summary</code></td><td>str</td><td>A one-line summary.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Measure container storage (images, volumes, build cache)</span>
+<span class="hl-key">description</span>: <span class="hl-string">Measure container storage (images, volumes, build cache) on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">low</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">docker-disk-usage</span>
+    <span class="hl-key">type</span>: <span class="hl-string">docker_disk_usage</span></pre></div>
+</div></details>
+<details class="action" id="action-image_remove" data-group="container" data-risk="standard" data-keywords="image_remove image"><summary><code class="action-name">image_remove</code><span class="risk risk-std">standard</span><span class="action-label">Remove an image no container uses</span><span class="action-required">image</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>image</code></td><td><span class="param-req">required</span></td><td>A tag (nginx:1.25) or an image id. The engine refuses an image a container still uses.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>removed</code></td><td>bool</td><td>True once the image is gone.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Remove an image no container uses</span>
+<span class="hl-key">description</span>: <span class="hl-string">Remove an image no container uses on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">image-remove</span>
+    <span class="hl-key">type</span>: <span class="hl-string">image_remove</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">image</span>: <span class="hl-string">nginx:1.27-alpine</span></pre></div>
+</div></details>
+<details class="action" id="action-image_prune" data-group="container" data-risk="standard" data-keywords="image_prune all"><summary><code class="action-name">image_prune</code><span class="risk risk-std">standard</span><span class="action-label">Prune dangling (or all unused) images</span><span class="action-required">none</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>all</code></td><td><span class="param-opt">optional</span></td><td>false (the default) removes dangling images only; true removes every image no container uses.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>removed</code></td><td>int</td><td>How many images were removed.</td></tr><tr><td><code>space_reclaimed</code></td><td>int</td><td>Bytes freed.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Prune dangling (or all unused) images</span>
+<span class="hl-key">description</span>: <span class="hl-string">Prune dangling (or all unused) images on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">image-prune</span>
+    <span class="hl-key">type</span>: <span class="hl-string">image_prune</span></pre></div>
+</div></details>
+<details class="action" id="action-volume_remove" data-group="container" data-risk="high" data-keywords="volume_remove volume"><summary><code class="action-name">volume_remove</code><span class="risk risk-high">high</span><span class="action-label">Remove a volume and its data</span><span class="action-required">volume</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>volume</code></td><td><span class="param-req">required</span></td><td>The volume&#x27;s name as the engine lists it. A volume a container uses (even a stopped one) is refused.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>removed</code></td><td>bool</td><td>True once the volume and its data are gone.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Remove a volume and its data</span>
+<span class="hl-key">description</span>: <span class="hl-string">Remove a volume and its data on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">high</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">volume-remove</span>
+    <span class="hl-key">type</span>: <span class="hl-string">volume_remove</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">volume</span>: <span class="hl-string">shop_db</span></pre></div>
+</div></details>
+<details class="action" id="action-volume_prune" data-group="container" data-risk="high" data-keywords="volume_prune all"><summary><code class="action-name">volume_prune</code><span class="risk risk-high">high</span><span class="action-label">Prune volumes no container uses, and their data</span><span class="action-required">none</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>all</code></td><td><span class="param-opt">optional</span></td><td>true also removes named volumes no container uses; without it newer engines remove anonymous ones only.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>removed</code></td><td>int</td><td>How many volumes were removed.</td></tr><tr><td><code>space_reclaimed</code></td><td>int</td><td>Bytes freed.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Prune volumes no container uses, and their data</span>
+<span class="hl-key">description</span>: <span class="hl-string">Prune volumes no container uses, and their data on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">high</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">volume-prune</span>
+    <span class="hl-key">type</span>: <span class="hl-string">volume_prune</span></pre></div>
+</div></details>
+<details class="action" id="action-network_remove" data-group="container" data-risk="standard" data-keywords="network_remove network"><summary><code class="action-name">network_remove</code><span class="risk risk-std">standard</span><span class="action-label">Remove a network no container uses</span><span class="action-required">network</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>network</code></td><td><span class="param-req">required</span></td><td>The network&#x27;s name or id. The engine&#x27;s own bridge, host and none networks are refused.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>removed</code></td><td>bool</td><td>True once the network is gone.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Remove a network no container uses</span>
+<span class="hl-key">description</span>: <span class="hl-string">Remove a network no container uses on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">network-remove</span>
+    <span class="hl-key">type</span>: <span class="hl-string">network_remove</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">network</span>: <span class="hl-string">shop_default</span></pre></div>
+</div></details>
+<details class="action" id="action-network_prune" data-group="container" data-risk="standard" data-keywords="network_prune"><summary><code class="action-name">network_prune</code><span class="risk risk-std">standard</span><span class="action-label">Prune networks no container uses</span><span class="action-required">none</span></summary><div class="action-body">
+<p class="action-noparams">This action takes no params.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>removed</code></td><td>int</td><td>How many networks were removed.</td></tr><tr><td><code>space_reclaimed</code></td><td>int</td><td>Always 0: networks take no space.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Prune networks no container uses</span>
+<span class="hl-key">description</span>: <span class="hl-string">Prune networks no container uses on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">network-prune</span>
+    <span class="hl-key">type</span>: <span class="hl-string">network_prune</span></pre></div>
+</div></details>
 </div>
 <div class="action-group" data-group="files">
 <h4 class="action-group-title">Files and directories</h4>

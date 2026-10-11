@@ -1103,6 +1103,61 @@ def _container_detail(cid: str, image_id: str, digests: dict) -> dict:
     return out
 
 
+def _container_networks(c: dict) -> list[dict]:
+    nets = ((c.get("NetworkSettings") or {}).get("Networks") or {})
+    return [{"name": str(name)[:255], "ip": str((n or {}).get("IPAddress") or "")[:64],
+             "network_id": str((n or {}).get("NetworkID") or "")[:64]}
+            for name, n in list(nets.items())[:16]]
+
+
+def _container_mounts(c: dict) -> list[dict]:
+    return [{"type": str(m.get("Type") or "")[:16], "name": str(m.get("Name") or "")[:255],
+             "source": str(m.get("Source") or "")[:500], "destination": str(m.get("Destination") or "")[:500],
+             "rw": bool(m.get("RW"))}
+            for m in (c.get("Mounts") or [])[:32] if isinstance(m, dict)]
+
+
+def collect_docker_resources() -> dict | None:
+    """Images, volumes and networks for the check-in (14.3). Three cheap list
+    calls; sizes beyond each image's own come from the on-demand
+    ``docker_disk_usage`` action. None when the engine is unavailable."""
+    if not _engine_available():
+        return None
+    try:
+        images = _docker_api_get("/images/json") or []
+        volumes = (_docker_api_get("/volumes") or {}).get("Volumes") or []
+        networks = _docker_api_get("/networks") or []
+    except Exception as exc:  # noqa: BLE001 — optional, never break a check-in
+        logger.debug("Docker resource list failed: %s", exc)
+        return None
+    return {
+        "images": [{
+            "id": str(i.get("Id") or "")[:80],
+            "tags": [str(t)[:255] for t in (i.get("RepoTags") or []) if t and t != "<none>:<none>"][:16],
+            "digests": [str(d)[:300] for d in (i.get("RepoDigests") or [])][:4],
+            "size": int(i.get("Size") or 0),
+            "created": int(i.get("Created") or 0),
+        } for i in images[:2000] if isinstance(i, dict)],
+        "volumes": [{
+            "name": str(v.get("Name") or "")[:255],
+            "driver": str(v.get("Driver") or "")[:64],
+            "mountpoint": str(v.get("Mountpoint") or "")[:500],
+            "created": str(v.get("CreatedAt") or "")[:40],
+            "stack": str((v.get("Labels") or {}).get("com.docker.compose.project") or "")[:200],
+        } for v in volumes[:2000] if isinstance(v, dict)],
+        "networks": [{
+            "id": str(n.get("Id") or "")[:64],
+            "name": str(n.get("Name") or "")[:255],
+            "driver": str(n.get("Driver") or "")[:64],
+            "scope": str(n.get("Scope") or "")[:16],
+            "internal": bool(n.get("Internal")),
+            "subnets": [str(c.get("Subnet") or "")[:64]
+                        for c in ((n.get("IPAM") or {}).get("Config") or []) if isinstance(c, dict)][:8],
+            "stack": str((n.get("Labels") or {}).get("com.docker.compose.project") or "")[:200],
+        } for n in networks[:500] if isinstance(n, dict)],
+    }
+
+
 def collect_docker_containers() -> list[dict] | None:
     """Snapshot of Docker containers on this host for the checkin payload.
 
@@ -1149,6 +1204,10 @@ def collect_docker_containers() -> list[dict] | None:
             "config_files": labels.get("com.docker.compose.project.config_files", "")[:1000],
             "working_dir": labels.get("com.docker.compose.project.working_dir", "")[:500],
             "config_hash": labels.get("com.docker.compose.config-hash", "")[:80],
+            # Edges for the Networks/Volumes tabs (and a topology view): which
+            # networks the container sits on, which volumes it mounts.
+            "networks": _container_networks(c),
+            "mounts": _container_mounts(c),
         }
         entry.update(_container_detail(cid, c.get("ImageID", ""), digests))
         if state == "running" and cid:

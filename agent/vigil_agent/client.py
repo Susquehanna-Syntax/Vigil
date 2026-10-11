@@ -55,6 +55,7 @@ def checkin(
     metrics: list[dict],
     inventory: dict | None = None,
     docker_containers: list[dict] | None = None,
+    docker_resources: dict | None = None,
     reboot_required: bool | None = None,
     windows_updates: dict | None = None,
     software: dict | None = None,
@@ -105,6 +106,8 @@ def checkin(
     # snapshot. An empty list is meaningful ("no containers now") and is sent.
     if docker_containers is not None:
         payload["docker_containers"] = docker_containers
+    if docker_resources is not None:
+        payload["docker_resources"] = docker_resources
     # Same contract: an absent key means "nothing new to store", so the server
     # keeps the software list it already has. Only a fresh payload is sent.
     if software is not None:

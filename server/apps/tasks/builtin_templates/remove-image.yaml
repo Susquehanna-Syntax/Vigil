@@ -1,0 +1,17 @@
+name: Remove image
+description: |
+  Remove one image. The engine refuses an image a container still uses, even
+  a stopped one.
+risk: standard
+author: Vigil
+created: 2026-10-11
+inputs:
+  - id: image
+    type: text
+    label: Image (tag or id)
+    required: true
+actions:
+  - id: remove
+    type: image_remove
+    params:
+      image: "${{ inputs.image }}"

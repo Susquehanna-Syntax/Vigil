@@ -546,6 +546,14 @@ def _validate_stack_params(params: dict[str, Any], position: int, action_type: s
             raise SpecError(f"{where}: 'delete_files' must be true or false")
 
 
+def _validate_prune_params(params: dict[str, Any], position: int) -> None:
+    """``image_prune`` / ``volume_prune``: ``all`` is a true/false."""
+    flag = params.get("all")
+    if (flag is not None and not isinstance(flag, bool) and flag not in ("true", "false")
+            and not (isinstance(flag, str) and "${{" in flag)):
+        raise SpecError(f"action #{position}: 'all' must be true or false")
+
+
 _APP_ENSURE_STATES = frozenset({"present", "latest", "pinned", "absent"})
 
 
@@ -1421,6 +1429,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
             _validate_stack_params(params, index + 1, action_type)
         elif action_type == "app_ensure":
             _validate_app_ensure_params(params, index + 1)
+        elif action_type in ("image_prune", "volume_prune"):
+            _validate_prune_params(params, index + 1)
         elif action_type == "app_install_custom":
             _validate_custom_install_params(params, index + 1)
         elif action_type == "execute_script":

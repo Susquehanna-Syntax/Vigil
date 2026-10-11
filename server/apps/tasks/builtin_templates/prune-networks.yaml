@@ -1,0 +1,11 @@
+name: Prune unused networks
+description: |
+  Remove every network no container is attached to. The engine's own
+  networks stay.
+risk: standard
+author: Vigil
+created: 2026-10-11
+actions:
+  - id: prune
+    type: network_prune
+    params: {}
