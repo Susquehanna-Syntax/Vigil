@@ -200,6 +200,118 @@ function attachTagPicker(inputId, opts = {}) {
   });
 }
 
+/* ── Tag combobox: type, pick or create, one tag at a time ──────────── */
+
+const _RESERVED_TAG = /^(os|os_family|pkg|arch|agent):/i;
+
+/**
+ * Turn a text input into a tag combobox. Typing filters the existing tags
+ * (with machine counts) in a list under the field; a name that does not exist
+ * yet is offered as "Create tag …", so a typo is a visible choice. Enter or a
+ * click calls `opts.onAdd(name)` and clears the field for the next one.
+ *
+ *   opts.current()  → the tags already on the thing, left out of the list
+ *   opts.onAdd(name) → add it (may be async)
+ */
+function attachTagCombobox(inputId, opts) {
+  const input = document.getElementById(inputId);
+  if (!input || input.dataset.tagCombo) return;
+  input.dataset.tagCombo = '1';
+  input.setAttribute('role', 'combobox');
+  input.setAttribute('aria-autocomplete', 'list');
+  input.setAttribute('aria-expanded', 'false');
+  input.autocomplete = 'off';
+
+  const list = document.createElement('div');
+  list.className = 'tag-combo-list';
+  list.id = inputId + '-options';
+  list.setAttribute('role', 'listbox');
+  list.hidden = true;
+  input.setAttribute('aria-controls', list.id);
+  const wrap = document.createElement('div');
+  wrap.className = 'tag-combo';
+  input.parentNode.insertBefore(wrap, input);
+  wrap.appendChild(input);
+  wrap.appendChild(list);
+
+  let options = [];   // [{name, meta, create}]
+  let active = -1;
+
+  const close = () => { list.hidden = true; input.setAttribute('aria-expanded', 'false'); active = -1; };
+
+  function render() {
+    const q = input.value.trim().toLowerCase();
+    const have = new Set((opts.current() || []).map(t => String(t).toLowerCase()));
+    const matches = _allTags
+      .filter(t => t.editable && !have.has(t.name.toLowerCase())
+        && (!q || t.name.toLowerCase().includes(q)))
+      .sort((a, b) => (b.name.toLowerCase().startsWith(q) - a.name.toLowerCase().startsWith(q))
+        || (b.host_count - a.host_count) || a.name.localeCompare(b.name))
+      .slice(0, 8)
+      .map(t => ({ name: t.name,
+                   meta: t.host_count === 1 ? '1 machine' : `${t.host_count} machines` }));
+    options = matches;
+    if (q && !have.has(q) && !_allTags.some(t => t.name.toLowerCase() === q)) {
+      options.push(_RESERVED_TAG.test(q)
+        ? { name: q, meta: 'set by Vigil from inventory — cannot be added by hand', disabled: true }
+        : { name: q, meta: 'new tag', create: true });
+    }
+    if (!options.length) {
+      list.innerHTML = `<div class="tag-combo-empty">${q ? 'Already on this machine.' : 'No other tags yet — type one to create it.'}</div>`;
+    } else {
+      list.innerHTML = options.map((o, i) => `<div class="tag-combo-opt${i === active ? ' is-active' : ''}${o.disabled ? ' is-disabled' : ''}"
+          role="option" id="${escAttr(list.id)}-${i}" data-combo-idx="${i}" aria-selected="${i === active}"${o.disabled ? ' aria-disabled="true"' : ''}>
+          <span class="tag-combo-name">${o.create ? 'Create tag ' : ''}<b>${escHtml(o.name)}</b></span>
+          <span class="tag-combo-meta">${escHtml(o.meta)}</span></div>`).join('');
+    }
+    input.setAttribute('aria-activedescendant', active >= 0 ? `${list.id}-${active}` : '');
+    list.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+  }
+
+  async function choose(i) {
+    const o = options[i];
+    if (!o || o.disabled) return;
+    input.value = '';
+    active = -1;
+    await opts.onAdd(o.name);
+    if (o.create) _allTags = [];   // it exists now; refetch next time
+    await ensureTagsLoaded();
+    if (document.activeElement === input) render(); else close();
+  }
+
+  input.addEventListener('focus', async () => { await ensureTagsLoaded(); render(); });
+  input.addEventListener('input', async () => { active = -1; await ensureTagsLoaded(); render(); });
+  input.addEventListener('blur', () => setTimeout(close, 120));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (list.hidden) { render(); return; }
+      const n = options.length;
+      if (!n) return;
+      active = e.key === 'ArrowDown' ? (active + 1) % n : (active - 1 + n) % n;
+      render();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const typed = input.value.trim().toLowerCase();
+      // Enter takes the highlighted option, else an exact or new name.
+      let i = active;
+      if (i < 0) i = options.findIndex(o => o.name.toLowerCase() === typed);
+      if (i < 0 && options.length === 1 && typed) i = 0;
+      if (i >= 0) choose(i);
+    } else if (e.key === 'Escape') {
+      if (!list.hidden) { e.preventDefault(); e.stopPropagation(); close(); }
+    }
+  });
+  // mousedown, not click: a click lands after the input's blur closed the list.
+  list.addEventListener('mousedown', (e) => {
+    const row = e.target.closest('[data-combo-idx]');
+    if (!row) return;
+    e.preventDefault();
+    choose(Number(row.dataset.comboIdx));
+  });
+}
+
 /* ── Wiring ───────────────────────────────────────────────────────────── */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -221,7 +333,14 @@ document.addEventListener('DOMContentLoaded', () => {
   attachTagPicker('auto-target-tags', { title: 'Run on hosts tagged' });
   attachTagPicker('repro-prof-tags', { title: 'Tag the rebuilt host with',
                                        includeReserved: true });
-  attachTagPicker('detail-tag-input', { title: 'Add a tag to this machine' });
+  attachTagPicker('pol-tags', { title: 'Hosts this policy applies to are tagged',
+                               includeReserved: true });
+  // The host drawer adds one tag at a time and saves it at once: a combobox,
+  // not a comma field (vigil-host-cards.js).
+  attachTagCombobox('detail-tag-input', {
+    current: () => _detailTagState.tags,
+    onAdd: (name) => addDetailTag(name),
+  });
 });
 
 
