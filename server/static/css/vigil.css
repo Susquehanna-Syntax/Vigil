@@ -4117,3 +4117,18 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 }
 .sted-status:empty { visibility: hidden; }
 .managed-stack-chip .apps-zero { margin-left: 4px; }
+
+/* ── Search page (QA-25) ─────────────────────────────────────────────── */
+.srch-input { max-width: 720px; font-size: 15px; padding: 12px 14px; }
+.srch-hint { font-size: 12px; color: var(--text-3); margin-top: 6px; }
+.srch-results { display: flex; flex-direction: column; gap: 18px; margin-top: 18px; max-width: 720px; }
+.srch-group { display: flex; flex-direction: column; gap: 6px; }
+.srch-label { font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+  color: var(--text-3); }
+.srch-count { font-weight: 600; margin-left: 4px; }
+.srch-row { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
+  border: 0; background: var(--s2); border-radius: var(--r-md); padding: 10px 14px; cursor: pointer;
+  font-family: inherit; }
+.srch-row:hover, .srch-row:focus-visible { background: var(--s3); outline: none; }
+.srch-title { font-size: 13px; color: var(--text-1); }
+.srch-sub { font-size: 12px; color: var(--text-3); }
