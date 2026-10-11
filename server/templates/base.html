@@ -58,6 +58,9 @@
     <div class="sidebar-icon active" data-page="dashboard" data-tip="Dashboard">
       <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
     </div>
+    <div class="sidebar-icon" data-page="search" data-tip="Search (Ctrl+K)">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </div>
     <div class="sidebar-icon" data-page="inventory" data-tip="Inventory">
       <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
     </div>
@@ -220,8 +223,7 @@
     <div class="detail-section-title">Tags</div>
     <div id="detail-tags-row" class="host-tag-row" style="margin-bottom:8px;"></div>
     <div class="host-tag-add-row">
-      <input type="text" class="form-control" id="detail-tag-input" placeholder="Add tag (press Enter)" style="flex:1;font-size:12px;padding:7px 10px;">
-      <button type="button" class="btn btn-ghost" id="detail-tag-add">Add</button>
+      <input type="text" class="form-control" id="detail-tag-input" placeholder="Add a tag: type to search or create" aria-label="Add a tag" maxlength="40" style="font-size:12px;padding:7px 10px;">
     </div>
     <div class="confirm-hint" style="margin-top:6px;">Server-side tags. Agent.yml tags are merged in (server values always win).</div>
   </div>
@@ -372,15 +374,6 @@
 
     </div>
 
-    <!-- BOTTOM: TOTP -->
-    <div class="deploy-totp-row">
-      <div class="form-group" style="margin-bottom: 0;">
-        <label class="form-label">Confirm with TOTP</label>
-        <input class="form-control" type="text" id="deploy-totp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
-        <div class="confirm-hint">Enter the 6-digit code from your authenticator app. Enrollment is required (Settings → Two-Factor Authentication).</div>
-      </div>
-    </div>
-
     <!-- Hosts whose agent allowlist would refuse this task (M7): skipped unless ticked. -->
     <div class="deploy-refusals" id="deploy-refusals" hidden>
       <span id="deploy-refusals-text"></span>
@@ -473,7 +466,7 @@ settings before deciding anything.
   <div class="modal-actions" id="rollout-detail-actions" style="align-items:center;gap:10px;"></div>
 </div>
 
-{# Rollout start modal — opened by openRolloutStart() in vigil-rollout.js; TOTP-gated like the deploy modal. #}
+{# Rollout start modal — opened by openRolloutStart() in vigil-rollout.js; Start asks for TOTP (totpPrompt) like a deploy. #}
 <div class="modal-overlay" id="rollout-start-overlay" data-act="closeRolloutStart"></div>
 <div class="modal modal-wide" id="rollout-start-modal">
   <div class="modal-title">
@@ -512,36 +505,10 @@ settings before deciding anything.
         <input type="number" class="form-control" id="rollout-start-min" min="1" value="3">
       </div>
     </div>
-    <div class="form-group" style="margin-bottom:4px;">
-      <label class="form-label">Confirm with TOTP</label>
-      <input class="form-control" type="text" id="rollout-start-totp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
-      <div class="confirm-hint">Rollouts are 2FA-gated fleet-wide operations, same as deploys.</div>
-    </div>
   </div>
   <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
     <button class="btn btn-ghost btn-sm" data-act="closeRolloutStart">Cancel</button>
     <button class="btn btn-sky btn-sm" id="rollout-start-submit" data-act="submitRolloutStart">Start rollout</button>
-  </div>
-</div>
-
-{# Rollout halt/resume confirm — TOTP-gated operator actions. #}
-<div class="modal-overlay" id="rollout-action-overlay" data-act="closeRolloutAction"></div>
-<div class="modal" id="rollout-action-modal">
-  <div class="modal-title">
-    <span id="rollout-action-title">Confirm</span>
-    <button class="modal-close" data-act="closeRolloutAction">
-      <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
-  </div>
-  <div class="totp-sub" style="margin-bottom:14px;" id="rollout-action-message"></div>
-  <div class="form-group" style="margin-bottom:4px;">
-    <label class="form-label">Confirm with TOTP</label>
-    <input class="form-control" type="text" id="rollout-action-totp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
-    <div class="confirm-hint">Halting and resuming rollouts are 2FA-gated fleet-wide operations.</div>
-  </div>
-  <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
-    <button class="btn btn-ghost btn-sm" data-act="closeRolloutAction">Cancel</button>
-    <button class="btn btn-sky btn-sm" id="rollout-action-confirm" data-act="confirmRolloutAction">Confirm</button>
   </div>
 </div>
 
@@ -748,11 +715,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
         <div class="enroll-meta" id="enroll-replaces" style="display:none;margin-top:6px;"></div>
       </div>
     </div>
-    <div class="totp-sub" style="margin-bottom:12px;">Review the details above and approve the host to bring it online. Confirm with your TOTP code — approval is 2FA-gated because an approved host immediately becomes eligible to receive signed tasks.</div>
-    <div class="form-group" style="margin-bottom:14px;">
-      <label class="form-label">TOTP code</label>
-      <input class="form-control" type="text" id="enroll-approve-totp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
-    </div>
+    <div class="totp-sub" style="margin-bottom:14px;">Review the details above and approve the host to bring it online. Approving asks for your TOTP code — an approved host immediately becomes eligible to receive signed tasks.</div>
     <div style="display:flex;gap:8px;">
       <button class="btn btn-mint btn-sm" id="enroll-approve-btn" data-act="enrollApproveHost">Approve &amp; Activate</button>
       <button class="btn btn-outline btn-sm" data-act="closeEnrollWizard">Cancel</button>
@@ -841,6 +804,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-policies.js' %}"></script>
 <!-- vigil-stacks.js — Vigil-managed compose stacks on a host: editor, masked .env, revisions, deploy (M11) -->
 <script src="{% static 'js/vigil-stacks.js' %}"></script>
+<!-- vigil-search.js — Search everything: the sidebar page, Ctrl+K, one API over every kind (QA-25) -->
+<script src="{% static 'js/vigil-search.js' %}"></script>
 <!-- vigil-containers.js — Containers page: containers by stack, lifecycle buttons, live logs, host picker (wraps navigateTo) -->
 <script src="{% static 'js/vigil-containers.js' %}"></script>
 <!-- vigil-devices.js — unmanaged device registry on the Inventory page (wraps navigateTo) -->

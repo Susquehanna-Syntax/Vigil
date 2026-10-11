@@ -108,7 +108,8 @@ async function renderDockerContainers(hostId) {
   const wrap = document.getElementById('docker-stacks');
   const countEl = document.getElementById('docker-count');
   if (!wrap) return;
-  if (typeof renderManagedStacks === 'function') renderManagedStacks(hostId);
+  const managed = typeof renderManagedStacks === 'function' ? renderManagedStacks(hostId) : null;
+  const editButton = (name) => (typeof managedStackEditButton === 'function' ? managedStackEditButton(name) : '');
 
   let containers = [];
   let stacks = [];
@@ -120,12 +121,17 @@ async function renderDockerContainers(hostId) {
     if (resp.ok) containers = await resp.json();
     if (stackResp.ok) stacks = await stackResp.json();
   } catch { containers = []; }
+  await managed;   // the Edit buttons need the managed stacks
   const stackInfo = Object.fromEntries((stacks || []).map(s => [s.project, s]));
 
   // A stack Vigil deployed or adopted keeps its row after `down` or after its
   // containers are removed: it is still there, just down, so it stays listed.
   const downStacks = (stacks || []).filter(s => s.ownership !== 'external'
     && !containers.some(c => c.stack === s.project));
+  if (typeof setListedStacks === 'function') {
+    const withContainers = [...new Set(containers.map(c => c.stack).filter(Boolean))];
+    setListedStacks([...withContainers, ...downStacks.map(s => s.project)], withContainers);
+  }
   if (!containers.length && !downStacks.length) {
     countEl.textContent = '';
     wrap.innerHTML = '<div class="docker-empty">No containers reported for this host.</div>';
@@ -160,6 +166,7 @@ async function renderDockerContainers(hostId) {
     html += `<div class="docker-stack">
       <div class="docker-stack-header">
         <span class="docker-stack-name">${escHtml(label)}</span>
+        ${stack ? editButton(stack) : ''}
         <span class="docker-stack-count">${rows.length} ${noun}</span>
         ${stack ? _stackStateBadge(rows) : ''}
         ${stackMeta}${stackActs}
@@ -206,11 +213,12 @@ async function renderDockerContainers(hostId) {
     html += `<div class="docker-stack">
       <div class="docker-stack-header">
         <span class="docker-stack-name">${escHtml(s.project)}</span>
+        ${editButton(s.project)}
         <span class="docker-stack-count">0 containers</span>
         <span class="ctr-state stopped">down</span>
         <span class="chip chip-muted apps-src">${escHtml(s.ownership)}</span>
       </div>
-      <div class="docker-empty">No containers — it was taken down or its containers were removed. Deploy it again from Managed by Vigil above.</div>
+      <div class="docker-empty">No containers — it was taken down or its containers were removed. Edit it to deploy it again.</div>
     </div>`;
   }
   wrap.innerHTML = html;

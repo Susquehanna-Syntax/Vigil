@@ -126,8 +126,9 @@ async function _pollForHost() {
 
 async function enrollApproveHost() {
   if (!_enrollDetectedHost) return;
-  const totp = (document.getElementById('enroll-approve-totp').value || '').trim();
-  if (!totp) { showToast('Enter your TOTP code to approve', 'error'); return; }
+  const totp = await totpPrompt(`Approving ${_enrollDetectedHost.hostname || 'this host'} lets it receive signed tasks.`,
+    { title: 'Approve host', confirmText: 'Approve' });
+  if (!totp) return;
   const btn = document.getElementById('enroll-approve-btn');
   btn.disabled = true;
   try {

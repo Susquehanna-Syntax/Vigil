@@ -253,23 +253,12 @@ function _removeDetailTag(tag) {
   _saveDetailTags(next);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  const input = document.getElementById('detail-tag-input');
-  const btn = document.getElementById('detail-tag-add');
-  if (!input || !btn) return;
-  function commit() {
-    const v = (input.value || '').trim().toLowerCase();
-    if (!v) return;
-    if (_detailTagState.tags.includes(v)) { input.value = ''; return; }
-    const next = [..._detailTagState.tags, v];
-    input.value = '';
-    _saveDetailTags(next);
-  }
-  btn.addEventListener('click', commit);
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); commit(); }
-  });
-});
+/** Add one tag to the open host and save (the drawer's tag combobox, vigil-tags.js). */
+async function addDetailTag(name) {
+  const v = String(name || '').trim().toLowerCase();
+  if (!v || _detailTagState.tags.includes(v)) return;
+  await _saveDetailTags([..._detailTagState.tags, v]);
+}
 
 let detailChartCpu = null;
 let detailChartNet = null;

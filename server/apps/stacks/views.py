@@ -121,6 +121,13 @@ def stack_index(request):
     if ManagedStack.objects.filter(host=host, name=name).exists():
         return Response({"detail": f"{host.hostname} already has a stack called {name}"},
                         status=status.HTTP_400_BAD_REQUEST)
+    from apps.hosts.models import ContainerStack
+    if ContainerStack.objects.filter(host=host, project=name, container_count__gt=0).exists():
+        # Deploying under a running project's name would take over its
+        # containers (compose -p <name>): adopt that one instead.
+        return Response({"detail": f"{host.hostname} already runs a compose stack called {name} "
+                                   f"— adopt it to manage it"},
+                        status=status.HTTP_400_BAD_REQUEST)
     stack = ManagedStack(host=host, name=name, created_by=request.user,
                          working_dir=f"{STACKS_ROOT}/{name}")
     if "git" in request.data:

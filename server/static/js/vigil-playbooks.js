@@ -470,8 +470,6 @@ function _openEditor(data, editingId) {
   _blHighRiskWasOn = !!(editingId && data && data.allow_high_risk);
   const allowBox = document.getElementById('bl-allow-high-risk');
   if (allowBox) allowBox.checked = _blHighRiskWasOn;
-  const totpInput = document.getElementById('bl-highrisk-totp');
-  if (totpInput) totpInput.value = '';
   _blSyncHighRiskWarning();
   _editingTree = data ? flowTreeFromRow(data) : [];
   _blSel = null;
@@ -500,14 +498,6 @@ async function _savePlaybook() {
     allow_high_risk: allowHighRisk,
     flow_steps: flowSerialize(_editingTree),
   };
-  // Only sent when the flag is being turned on — the server ignores it
-  // otherwise, and a code spent on a no-op change is a code burned for
-  // nothing (they are single-use within their validity window).
-  if (allowHighRisk && !_blHighRiskWasOn) {
-    const totp = (document.getElementById('bl-highrisk-totp')?.value || '').trim();
-    if (!totp) return showToast('Enter your TOTP code to allow high-risk steps', 'error');
-    body.totp = totp;
-  }
   if (!body.name) return showToast('Give the playbook a name', 'error');
   const allSteps = flowSteps(_editingTree);
   if (!allSteps.length) return showToast('Add at least one task', 'error');
@@ -517,6 +507,15 @@ async function _savePlaybook() {
   }
   const blocking = flowFindings(_editingTree).filter(f => f.text.startsWith('A branch has no condition'));
   if (blocking.length) return showToast('Give every branch a condition before saving', 'error');
+  // Only asked when the flag is being turned on — the server ignores it
+  // otherwise, and a code spent on a no-op change is a code burned for
+  // nothing (they are single-use within their validity window).
+  if (allowHighRisk && !_blHighRiskWasOn) {
+    const totp = await totpPrompt('High-risk steps will run unattended on every host this playbook matches.',
+      { title: 'Allow high-risk steps', confirmText: 'Authorize and save' });
+    if (!totp) return;
+    body.totp = totp;
+  }
   const editing = document.getElementById('bl-editor-modal').dataset.editing;
   try {
     if (editing) await apiJson(`/api/v1/playbooks/${editing}/`, { method: 'PATCH', body: JSON.stringify(body) });

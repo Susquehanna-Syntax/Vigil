@@ -15,7 +15,7 @@
 //      /git-credentials/ (list, add with TOTP, delete)
 
 const stackEd = {
-  hostId: null, stack: null, env: [], stacks: [], revisions: [], dirty: false,
+  hostId: null, stack: null, env: [], stacks: [], listed: new Set(), running: new Set(), revisions: [], dirty: false,
   source: 'editor', gitCreds: null, gitSnapshot: null,
 };
 let _stackCheckSeq = 0;
@@ -27,17 +27,41 @@ const DEPLOY_SAVE_HINT = 'Save first: deploy ships a saved revision';
 async function renderManagedStacks(hostId) {
   const wrap = document.getElementById('managed-stacks');
   if (!wrap) return;
-  stackEd.hostId = hostId;
   let rows = [];
   try { rows = (await apiJson(`/api/v1/stacks/?host=${encodeURIComponent(hostId)}`)).results || []; }
   catch { rows = null; }
-  if (rows === null) { wrap.innerHTML = ''; return; }   // not an admin: nothing to manage
+  if (rows === null) { stackEd.stacks = []; wrap.innerHTML = ''; return; }   // not an admin: nothing to manage
+  if (stackEd.hostId !== hostId) { stackEd.listed = new Set(); stackEd.running = new Set(); }
+  stackEd.hostId = hostId;
   stackEd.stacks = rows;
+  _renderManagedBar();
+}
+
+// A managed stack listed below gets its Edit button in its own header, next
+// to its name. The bar keeps New stack and the managed stacks with no row
+// below (saved, never deployed).
+function _renderManagedBar() {
+  const wrap = document.getElementById('managed-stacks');
+  if (!wrap) return;
+  const rest = stackEd.stacks.filter(s => !stackEd.listed.has(s.name));
   wrap.innerHTML = `<div class="managed-stacks-bar">
-      <span class="managed-stacks-label">Managed by Vigil</span>
-      ${rows.map(s => `<button class="chip chip-muted managed-stack-chip" type="button" data-stack-edit="${escAttr(s.id)}">${escHtml(s.name)} <span class="apps-zero">r${s.revision}</span></button>`).join('')}
+      ${rest.length ? '<span class="managed-stacks-label">Managed by Vigil, not deployed</span>' : ''}
+      ${rest.map(s => `<button class="chip chip-muted managed-stack-chip" type="button" data-stack-edit="${escAttr(s.id)}">${escHtml(s.name)} <span class="apps-zero">r${s.revision}</span></button>`).join('')}
       <button class="btn btn-xs btn-mint" type="button" data-stack-new>New stack</button>
     </div>`;
+}
+
+/** The Containers page lists these stacks; their Edit sits in their header. */
+function setListedStacks(names, withContainers) {
+  stackEd.listed = new Set(names);
+  stackEd.running = new Set(withContainers || []);
+  if (stackEd.stacks) _renderManagedBar();
+}
+
+/** The Edit button for a stack header, or '' when Vigil does not manage it. */
+function managedStackEditButton(name) {
+  const s = (stackEd.stacks || []).find(m => m.name === name);
+  return s ? `<button class="btn btn-xs btn-outline" type="button" data-stack-edit="${escAttr(s.id)}" title="Edit its compose file and .env (revision ${s.revision})">Edit</button>` : '';
 }
 
 function _renderStackEnv() {
@@ -50,6 +74,9 @@ function _renderStackEnv() {
         placeholder="${e.stored ? '•••••• (unchanged)' : 'value'}" aria-label="Value of ${escAttr(e.key || 'variable')}" autocomplete="off">
       <button class="btn btn-ghost btn-xs" type="button" data-env-remove="${i}" aria-label="Remove">Remove</button>
     </div>`).join('') || '<div class="apps-empty-state">No variables.</div>';
+  // Show values only when there are saved values to show.
+  const reveal = document.querySelector('.sted [data-stack-env-reveal]');
+  if (reveal) reveal.hidden = !stackEd.env.some(e => e.stored && !e.revealed);
   wrap.querySelectorAll('[data-env-row]').forEach((row) => {
     const entry = stackEd.env[parseInt(row.dataset.envRow, 10)];
     if (!entry) return;
@@ -96,12 +123,53 @@ function _mirrorStackScroll() {
   gutter.scrollTop = ta.scrollTop;
 }
 
+const STACK_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/;   // apps/stacks/validation.py NAME_RE
+
+/** Why a new stack cannot take this name, or '' when it can. */
+function _stackNameProblem(name) {
+  const host = _stedHostLabel(null) || 'This host';
+  if (!name) return 'Give the stack a name.';
+  if (!STACK_NAME_RE.test(name)) {
+    return /[A-Z]/.test(name) && STACK_NAME_RE.test(name.toLowerCase())
+      ? 'Use lowercase letters only.'
+      : 'Use lowercase letters, digits, _ and -, starting with a letter or digit (e.g. media or my-app-2).';
+  }
+  if (stackEd.stacks.some(s => s.name === name)) return `${host} already has a stack called ${name}.`;
+  if (stackEd.running.has(name)) {
+    return `${host} already runs a compose stack called ${name}. Adopt it from the Containers page to manage it.`;
+  }
+  return '';
+}
+
+/** Live check of a new stack's name, as you type. ``force`` shows the
+ *  problem even before the field was touched (a Save click). */
+function _checkStackName(force) {
+  const input = _stedEl('stack-name');
+  const out = _stedEl('stack-name-error');
+  const save = document.querySelector('.sted [data-stack-save]');
+  if (stackEd.stack) {   // an existing stack's name is fixed
+    input.classList.remove('is-invalid');
+    out.textContent = '';
+    save.disabled = false;
+    return true;
+  }
+  const problem = _stackNameProblem(input.value.trim());
+  const show = problem && (force || stackEd.nameTouched);
+  input.classList.toggle('is-invalid', !!show);
+  input.setAttribute('aria-invalid', show ? 'true' : 'false');
+  out.textContent = show ? problem : '';
+  save.disabled = !!problem && !!stackEd.nameTouched;
+  save.title = save.disabled ? problem : '';
+  return !problem;
+}
+
 function _stedButtons() {
   const editing = !!stackEd.stack;
   document.querySelector('.sted [data-stack-deploy]').hidden = !editing;
   document.querySelector('.sted [data-stack-remove]').hidden = !editing;
   _stedEl('stack-revisions-field').hidden = !editing;
   _stedEl('stack-name-field').hidden = editing;
+  _checkStackName(false);
   _updateDeployButton();
 }
 
@@ -136,6 +204,7 @@ async function openStackEditor(stackId) {
   const name = _stedEl('stack-name');
   name.value = stack ? stack.name : '';
   name.disabled = !!stack;
+  stackEd.nameTouched = false;
   _stedEl('stack-compose').value = stack ? stack.compose_yaml : _NEW_COMPOSE;
   _applyStackSource();
   // A new stack starts from blank Git fields, not the last stack opened.
@@ -522,6 +591,10 @@ function _gitFetchedToast(saved) {
 
 async function saveStack() {
   const editing = stackEd.stack;
+  if (!editing && !_checkStackName(true)) {
+    _stedEl('stack-name').focus();
+    return;
+  }
   const gitStack = !!(editing && editing.git);
   const gitChanged = gitStack && _gitSettingsChanged();
   const env = stackEd.env.filter(e => e.key.trim()).map(e => (e.stored && !e.value && !e.revealed)
@@ -530,7 +603,9 @@ async function saveStack() {
   if (gitStack && gitChanged) body = _gitSettingsBody(env);
   else if (gitStack) body = { env, note: 'edited' };   // the compose file comes from Git, not from here
   else if (stackEd.source === 'git') body = _newGitStackBody(_stedEl('stack-name').value.trim(), env);
-  else body = { compose_yaml: _stedEl('stack-compose').value, env, note: 'edited' };
+  else if (editing) body = { compose_yaml: _stedEl('stack-compose').value, env, note: 'edited' };
+  else body = { host_id: stackEd.hostId, name: _stedEl('stack-name').value.trim(),
+                compose_yaml: _stedEl('stack-compose').value, env };
   const wasNew = !editing;
   if (body.git && body.git.credential_id) {
     // Using a credential decides which server a secret goes to: the server asks for TOTP.
@@ -562,11 +637,28 @@ async function _stackTotpAction(path, payload) {
 
 async function revealStackEnv() {
   if (!stackEd.stack) return;
-  const body = await _stackTotpAction(`/api/v1/stacks/${stackEd.stack.id}/env/reveal/`, {});
-  if (!body) return;
+  if (!stackEd.env.some(e => e.stored)) {
+    showToast(`${stackEd.stack.name} has no saved variables to show`, 'info');
+    return;
+  }
+  const code = await totpPrompt('Showing the .env values in the clear.',
+    { title: 'Show values', confirmText: 'Show values' });
+  if (!code) return;
+  let body;
+  try {
+    body = await apiJson(`/api/v1/stacks/${stackEd.stack.id}/env/reveal/`,
+      { method: 'POST', body: JSON.stringify({ totp: code.trim() }) });
+  } catch (e) {
+    // Said where the button is: the editor's error line sits below the
+    // compose file, out of sight of the .env card.
+    showToast(e.message, 'error');
+    return;
+  }
   const values = Object.fromEntries(body.env.map(e => [e.key, e.value]));
   stackEd.env = stackEd.env.map(e => (e.stored && e.key in values) ? { ...e, value: values[e.key], revealed: true } : e);
   _renderStackEnv();
+  const shown = stackEd.env.filter(e => e.revealed).length;
+  showToast(shown ? `Showing ${shown} value${shown === 1 ? '' : 's'}` : 'No saved values matched these variables', shown ? 'success' : 'info');
 }
 
 async function deployStack() {
@@ -649,6 +741,8 @@ document.addEventListener('input', (ev) => {
     _markStackDirty();
     _scheduleStackCheck();
   } else if (ev.target.id === 'stack-name') {
+    stackEd.nameTouched = true;
+    _checkStackName(false);
     _markStackDirty();
   }
 });

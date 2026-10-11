@@ -9,7 +9,7 @@ from apps.accounts.models import Role, UserProfile
 from apps.hosts.models import Host
 
 from .models import ManagedStack, StackRevision
-from .validation import StackError, parse_env, validate_compose
+from .validation import NAME_RE, StackError, parse_env, validate_compose
 
 COMPOSE = """services:
   jellyfin:
@@ -237,6 +237,58 @@ class StackEditorWiringTests(SimpleTestCase):
         for needle in ("/env/reveal/", "/deploy/", "/remove/", "/revisions/", "keep: true",
                        "type=\"${e.revealed ? 'text' : 'password'}\"", "async function renderManagedStacks"):
             self.assertIn(needle, js)
+
+    def test_a_listed_stack_is_edited_from_its_own_header(self):
+        """Edit sits next to the stack's name; the bar above keeps only New
+        stack and the managed stacks with no row on the page."""
+        import re
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[2]
+        js = (root / "static/js/vigil-stacks.js").read_text(encoding="utf-8")
+        ctr = (root / "static/js/vigil-containers.js").read_text(encoding="utf-8")
+        self.assertIn("!stackEd.listed.has(s.name)", js)
+        self.assertIn("setListedStacks(", ctr)
+        headers = re.findall(r'<span class="docker-stack-name">[^\n]*\n\s*(\$\{[^\n]*\})', ctr)
+        self.assertEqual(len(headers), 2, "both header shapes (running and down) carry Edit")
+        self.assertTrue(all("editButton(" in h for h in headers), headers)
+
+
+class StackNameTests(TestCase):
+    def setUp(self):
+        from apps.hosts.models import ContainerStack
+        self.host = Host.objects.create(hostname="nas", agent_token="nastok", status=Host.Status.ONLINE,
+                                        mode="managed")
+        ContainerStack.objects.create(host=self.host, project="searxng", ownership="external",
+                                      container_count=1)
+        ContainerStack.objects.create(host=self.host, project="gone", ownership="vigil",
+                                      container_count=0)
+        user = get_user_model().objects.create_user("a", password="x")
+        UserProfile.objects.create(user=user, role=Role.ADMIN)
+        self.api = APIClient()
+        self.api.force_authenticate(user)
+
+    def _create(self, name):
+        return self.api.post("/api/v1/stacks/", {"host_id": str(self.host.id), "name": name,
+                                                 "compose_yaml": COMPOSE}, format="json")
+
+    def test_a_running_projects_name_is_refused(self):
+        """compose -p <name> would take over the running project's containers."""
+        resp = self._create("searxng")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("adopt", resp.json()["detail"])
+
+    def test_a_project_with_no_containers_left_frees_its_name(self):
+        self.assertEqual(self._create("gone").status_code, 201)
+
+    def test_the_editor_checks_the_name_as_you_type_and_sends_it(self):
+        from pathlib import Path
+        js = (Path(__file__).resolve().parents[2] / "static/js/vigil-stacks.js").read_text(encoding="utf-8")
+        self.assertIn("const STACK_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/;", js)
+        self.assertEqual(NAME_RE.pattern, "^[a-z0-9][a-z0-9_-]{0,62}$", "keep the two in step")
+        self.assertIn("stackEd.running.has(name)", js)
+        self.assertIn("stackEd.nameTouched = true;\n    _checkStackName(false);", js)
+        # A new stack written here (not from Git) carries its host and name.
+        self.assertIn("else body = { host_id: stackEd.hostId, name: _stedEl('stack-name').value.trim(),", js)
 
 
 class StackAdoptTests(TestCase):
