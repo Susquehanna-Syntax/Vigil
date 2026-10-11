@@ -18,7 +18,7 @@ class PolicyPageWiringTests(SimpleTestCase):
         self.assertIn('{% include "pages/_policies.html" %}', dash)
         self.assertIn('id="page-policies"', html)
         for element_id in ("pol-table-body", "pol-changes-list", "pol-name", "pol-rules",
-                           "pol-classes", "pol-preview", "pol-run-totp", "pol-high-risk"):
+                           "pol-classes", "pol-preview", "pol-run", "pol-high-risk"):
             self.assertIn(f'id="{element_id}"', html)
             self.assertIn(f"'{element_id}'", js)
         for act in ("openPolicyEditor", "closePolicyEditor", "savePolicy", "deletePolicy",
@@ -36,3 +36,14 @@ class PolicyPageWiringTests(SimpleTestCase):
         # A reset to 0 is fine; any real width on one side is a stripe.
         self.assertIsNone(re.search(r"border-(left|right)\s*:(?!\s*0[;\s])", block))
         self.assertNotIn("box-shadow: inset", block)
+
+
+class PolicyTotpTests(SimpleTestCase):
+    def test_codes_are_asked_by_the_shared_prompt(self):
+        """Approve and Run now ask through totpPrompt, not a field on the page."""
+        root = Path(__file__).resolve().parents[2]
+        html = (root / "templates/pages/_policies.html").read_text(encoding="utf-8")
+        js = (root / "static/js/vigil-policies.js").read_text(encoding="utf-8")
+        self.assertNotIn("one-time-code", html)
+        for title in ("title: 'Approve changes'", "title: 'Run policy now'"):
+            self.assertIn(title, js)

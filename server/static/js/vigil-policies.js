@@ -126,16 +126,15 @@ async function decidePolicyChanges(kind) {
   if (!ids.length) return;
   const body = { ids };
   if (kind === 'approve') {
-    body.totp = (document.getElementById('pol-changes-totp')?.value || '').trim();
-    if (!body.totp) { showToast('Enter your TOTP code', 'error'); return; }
+    body.totp = await totpPrompt(`Sending ${ids.length} approved change${ids.length === 1 ? '' : 's'} to their hosts.`,
+      { title: 'Approve changes', confirmText: 'Approve and send' });
+    if (!body.totp) return;
   }
   try {
     const result = await apiJson(`/api/v1/policies/changes/${kind}/`, { method: 'POST', body: JSON.stringify(body) });
     showToast(kind === 'approve' ? `Sent to ${result.dispatched} host${result.dispatched === 1 ? '' : 's'}`
       : `Rejected ${result.rejected}`, 'success');
     polState.selected.clear();
-    const totp = document.getElementById('pol-changes-totp');
-    if (totp) totp.value = '';
     fetchPolicyChanges();
   } catch (e) { showToast(e.message, 'error'); }
 }
@@ -313,11 +312,11 @@ async function loadPolicyPreview() {
 }
 
 async function runPolicyNow() {
-  const totp = (_polEl('pol-run-totp')?.value || '').trim();
-  if (!totp) { showToast('Enter your TOTP code', 'error'); return; }
+  const totp = await totpPrompt('Running this policy now applies it to every host it targets.',
+    { title: 'Run policy now', confirmText: 'Run now' });
+  if (!totp) return;
   try {
     const result = await apiJson(`/api/v1/policies/${polState.editing}/run/`, { method: 'POST', body: JSON.stringify({ totp }) });
-    _polEl('pol-run-totp').value = '';
     if (result.error) { showToast(result.error, 'error'); return; }
     const text = result.mode === 'approval' ? `${result.queued} change${result.queued === 1 ? '' : 's'} waiting for approval`
       : result.mode === 'rollout' ? `Rollout started for ${result.dispatched} host${result.dispatched === 1 ? '' : 's'}`

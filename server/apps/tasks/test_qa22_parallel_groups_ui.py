@@ -113,7 +113,7 @@ class BatchLaneTests(SimpleTestCase):
         code = _code_only(JS.read_text())
         self.assertIn("/api/v1/rollouts/batch/", code)
         self.assertIn("halt-batch", code)
-        self.assertEqual(1, _function(code, "confirmRolloutAction")
+        self.assertEqual(1, _function(code, "promptRolloutAction")
                          .count("/api/v1/rollouts/batch/"))
 
 

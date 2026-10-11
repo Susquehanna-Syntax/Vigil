@@ -1269,13 +1269,6 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .deploy-right-col { display: flex; flex-direction: column; min-height: 0; }
 .deploy-right-col > #deploy-target-hosts,
 .deploy-right-col > #deploy-target-tags { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.deploy-totp-row {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.deploy-totp-row .form-control { letter-spacing: 4px; font-family: 'IBM Plex Mono', monospace; }
 
 /* Deploy tabs (LEFT pane) */
 .deploy-tabs {
@@ -3822,7 +3815,6 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .pol-drift { max-height: 280px; overflow-y: auto; }
 .pol-run { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }
 .pol-run-now { display: inline-flex; align-items: center; gap: 8px; }
-.pol-totp { width: 120px; font-size: 12px; }
 .pol-compliance { margin-bottom: 16px; }
 .pol-explain { background: var(--s1); border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px 16px; margin-bottom: 16px; font-size: 13px; color: var(--text-2); }
 .pol-explain summary { cursor: pointer; font-weight: 600; color: var(--text-1); }

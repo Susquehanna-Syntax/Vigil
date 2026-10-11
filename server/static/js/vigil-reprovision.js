@@ -97,7 +97,6 @@ async function openRebuildModal(hostId, hostname) {
       : '') +
     `<hr>` +
     `<label>Password<input class="form-control" type="password" id="rb-password" autocomplete="current-password"></label>` +
-    `<label>Authenticator code<input class="form-control mono" id="rb-totp" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label>` +
     // placeholder is set as a DOM property below, not interpolated: escHtml
     // does not escape quotes, and the hostname is agent-supplied.
     `<label>Type the hostname to confirm<input class="form-control mono" id="rb-hostname" autocomplete="off"></label>` +
@@ -161,6 +160,9 @@ async function openRebuildModal(hostId, hostname) {
   _runPreflight(hostId);
 
   goBtn.onclick = async () => {
+    const totp = await totpPrompt(`Rebuilding ${hostname} erases it and reinstalls the operating system.`,
+      { title: 'Rebuild this machine', confirmText: 'Rebuild' });
+    if (!totp) return;
     goBtn.disabled = true;
     try {
       const job = await apiJson('/api/v1/reprovision/jobs/', {
@@ -170,7 +172,7 @@ async function openRebuildModal(hostId, hostname) {
           image: imageSel.value,
           profile: profileSel.value,
           password: document.getElementById('rb-password').value,
-          totp: document.getElementById('rb-totp').value.trim(),
+          totp,
           typed_hostname: hostnameInput.value,
           acknowledge_plaintext_transport: !!(ackBox && ackBox.checked),
         }),

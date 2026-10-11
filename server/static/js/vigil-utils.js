@@ -368,7 +368,8 @@ function promptModal(message, opts) {
 /* ── TOTP dialog (replaces the bare window.prompt the writes used) ────── */
 //: The reason is operator copy, not untrusted data: the dialog renders the
 //: `reason` argument as plain text via textContent, so callers interpolate
-//: freely without escaping.
+//: freely without escaping. opts: title, confirmText. Every confirm-with-a-code
+//: goes through here, so a second factor (a hardware key) has one place to land.
 function totpPrompt(reason, opts) {
   opts = opts || {};
   return new Promise((resolve) => {
@@ -390,6 +391,7 @@ function totpPrompt(reason, opts) {
         <button class="btn btn-outline btn-sm" id="totp-cancel">Cancel</button>
         <button class="btn btn-mint btn-sm" id="totp-ok"></button>
       </div>`);
+    m.modal.querySelector('#totp-title').textContent = opts.title || 'Confirm with your authenticator';
     m.modal.querySelector('#totp-reason').textContent = reason || '';
     const input = m.modal.querySelector('#totp-input');
     const okBtn = m.modal.querySelector('#totp-ok');
@@ -410,8 +412,9 @@ function totpPrompt(reason, opts) {
     m.modal.querySelector('#totp-x').onclick = () => done(null);
     m.overlay.onclick = () => done(null);
     input.onkeydown = (ev) => {
-      if (ev.key === 'Enter') submit();
-      if (ev.key === 'Escape') done(null);
+      if (ev.key === 'Enter') { ev.preventDefault(); submit(); }
+      // Escape closes this prompt only, not the modal it was opened over.
+      if (ev.key === 'Escape') { ev.stopPropagation(); done(null); }
     };
     requestAnimationFrame(() => { m.open(); input.focus(); });
   });
