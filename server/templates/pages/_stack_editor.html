@@ -15,6 +15,9 @@
           <button class="btn btn-ghost btn-sm" type="button" data-stack-remove hidden>Take down…</button>
           <button class="btn btn-lav btn-sm" type="button" data-stack-deploy hidden>Deploy</button>
           <button class="btn btn-mint btn-sm" type="button" data-stack-save>Save revision</button>
+          <button class="modal-close sted-close" type="button" data-sted-back aria-label="Close the editor" title="Close">
+            <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
       </div>
 
@@ -28,7 +31,8 @@
           <div class="sted-field" id="stack-name-field">
             <label class="sted-label" for="stack-name">Name</label>
             <input class="form-control" id="stack-name" maxlength="63" placeholder="media"
-              autocomplete="off" autocapitalize="off" spellcheck="false">
+              autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="stack-name-error">
+            <div class="sted-name-error" id="stack-name-error" role="alert"></div>
             <div class="bl-hint">Lowercase letters, digits, _ and -. It lives in /opt/vigil/stacks/&lt;name&gt; on the host.</div>
           </div>
 

@@ -129,7 +129,8 @@ async function renderDockerContainers(hostId) {
   const downStacks = (stacks || []).filter(s => s.ownership !== 'external'
     && !containers.some(c => c.stack === s.project));
   if (typeof setListedStacks === 'function') {
-    setListedStacks([...new Set(containers.map(c => c.stack).filter(Boolean)), ...downStacks.map(s => s.project)]);
+    const withContainers = [...new Set(containers.map(c => c.stack).filter(Boolean))];
+    setListedStacks([...withContainers, ...downStacks.map(s => s.project)], withContainers);
   }
   if (!containers.length && !downStacks.length) {
     countEl.textContent = '';
