@@ -1,0 +1,16 @@
+{# Search page section — one box over everything the user may see (QA-25, ported from Jackil's Search Everything) #}
+{# Logic: static/js/vigil-search.js | Styles: vigil.css .srch-* | Data: client-side fetch /api/v1/search/?q= #}
+    <section id="page-search" class="page">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Search<span>.</span></div>
+          <div class="page-sub">Hosts, containers, stacks, apps, vulnerabilities, tasks, playbooks, policies and alerts</div>
+        </div>
+      </div>
+
+      <input type="search" class="form-control srch-input" id="srch-input" placeholder="Search everything…"
+        autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Search everything" maxlength="100">
+      <div class="srch-hint">Ctrl+K or / from anywhere. Arrow keys move through the results.</div>
+      <div id="srch-results" class="srch-results" aria-live="polite"></div>
+    </section>
