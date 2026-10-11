@@ -324,6 +324,14 @@ def stack_deploy(request, stack_id):
         params["env_ticket"] = str(ticket.id)
     task = _dispatch(request, stack, [{"id": "deploy", "type": "stack_deploy", "params": params}],
                      f"Deploy stack {stack.name} (r{stack.revision})")
+    # Record the project as Vigil's now: until the host's next check-in
+    # reports its containers, the Containers page would otherwise call a
+    # stack that is being deployed "not deployed".
+    from apps.hosts.models import ContainerStack
+    ContainerStack.objects.update_or_create(
+        host=stack.host, project=stack.name,
+        defaults={"ownership": (ContainerStack.Ownership.ADOPTED if stack.adopted
+                                else ContainerStack.Ownership.MANAGED)})
     hooks.emit("stack_deployed", stack=stack, user=request.user, task=task)
     return Response({"task": str(task.id), "run": str(task.run_id)}, status=status.HTTP_201_CREATED)
 

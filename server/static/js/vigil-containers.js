@@ -218,7 +218,7 @@ async function renderDockerContainers(hostId) {
         <span class="ctr-state stopped">down</span>
         <span class="chip chip-muted apps-src">${escHtml(s.ownership)}</span>
       </div>
-      <div class="docker-empty">No containers — it was taken down or its containers were removed. Edit it to deploy it again.</div>
+      <div class="docker-empty">No containers reported. Just deployed? They appear after the host's next check-in. Otherwise it was taken down or its containers were removed; Edit it to deploy it again.</div>
     </div>`;
   }
   wrap.innerHTML = html;
