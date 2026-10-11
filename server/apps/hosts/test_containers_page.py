@@ -35,7 +35,7 @@ class ContainersPageTests(SimpleTestCase):
 
     def test_the_containers_script_owns_rendering_and_logs(self):
         js = _read("static/js/vigil-containers.js")
-        for needle in ("async function renderDockerContainers(hostId)", "function openContainerLogs",
+        for needle in ("async function renderDockerContainers(hostId, fromCache)", "function openContainerLogs",
                        "function selectContainersHost", "function openContainersForCurrentMonitor",
                        "pageName !== 'containers'"):
             self.assertIn(needle, js)

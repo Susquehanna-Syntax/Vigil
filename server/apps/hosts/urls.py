@@ -25,6 +25,7 @@ urlpatterns = [
     path("<uuid:host_id>/rdp/", views.host_rdp, name="host-rdp"),
     path("<uuid:host_id>/tags/", views.host_tags, name="host-tags"),
     path("<uuid:host_id>/docker/", docker_views.host_docker, name="host-docker"),
+    path("docker-summary/", docker_views.host_docker_summary, name="host-docker-summary"),
     path("<uuid:host_id>/inventory/", views.inventory_detail, name="inventory-detail"),
     path("<uuid:host_id>/containers/", views.host_containers, name="host-containers"),
     path("<uuid:host_id>/stacks/", views.host_stacks, name="host-stacks"),

@@ -109,7 +109,11 @@ def stack_index(request):
         qs = scoping.filter_by_site(ManagedStack.objects.select_related("host"), request.user,
                                     path="host__")
         if host_id := request.query_params.get("host"):
-            qs = qs.filter(host_id=host_id)
+            import uuid
+            try:
+                qs = qs.filter(host_id=uuid.UUID(str(host_id)))
+            except ValueError:
+                return Response({"detail": "host must be a host id"}, status=status.HTTP_400_BAD_REQUEST)
         return Response({"results": [_row(s) for s in qs]})
     host, denied = scoping.host_or_404(request, request.data.get("host_id"))
     if denied:

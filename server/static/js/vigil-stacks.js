@@ -89,10 +89,7 @@ function _stedEl(id) { return document.getElementById(id); }
 
 function _stedHostLabel(stack) {
   if (stack && stack.hostname) return stack.hostname;
-  if (stackEd.hostId) {
-    const opt = document.querySelector(`#containers-host option[value="${CSS.escape(stackEd.hostId)}"]`);
-    if (opt) return opt.textContent.trim();
-  }
+  if (stackEd.hostId && typeof containersHostLabel === 'function') return containersHostLabel(stackEd.hostId);
   return '';
 }
 
