@@ -71,6 +71,10 @@
   {# Logic: static/js/vigil-apps.js | Data: client-side fetch /api/v1/software/{apps,hosts}/ #}
   {% include "pages/_apps.html" %}
 
+  {# Store page — the package catalog as an app store: install an app, or keep it with a policy #}
+  {# Logic: static/js/vigil-store.js | Data: client-side fetch /api/v1/catalog/ #}
+  {% include "pages/_store.html" %}
+
   {# Policies page — app and patch policies, their drift, and changes waiting for approval #}
   {# Logic: static/js/vigil-policies.js | Data: /api/v1/policies/ #}
   {% include "pages/_policies.html" %}

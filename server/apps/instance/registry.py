@@ -154,6 +154,11 @@ KEYS: tuple[Key, ...] = (
         "Fetch the CISA KEV catalog live",
         "Off by default — Vigil ships a bundled snapshot and never reaches "
         "out on its own."),
+    Key("VIGIL_CATALOG_SYNC", "retention", BOOL,
+        "Fetch package catalogs for the Store",
+        "Off by default. Daily, Vigil downloads the public package lists your "
+        "fleet uses (winget, Flathub, the Ubuntu/Debian releases you run) so "
+        "the Store can show what is available."),
 
     # ── Locale ───────────────────────────────────────────────────────────
     Key("VIGIL_TIMEZONE", "locale", TIMEZONE, "Server timezone",
