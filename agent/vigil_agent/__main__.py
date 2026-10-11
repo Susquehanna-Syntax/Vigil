@@ -809,6 +809,12 @@ def run_agent() -> None:
             except Exception:
                 logger.exception("Docker container collection failed")
                 docker_containers = None
+            try:
+                docker_resources = (collector.collect_docker_resources()
+                                    if docker_containers is not None else None)
+            except Exception:
+                logger.exception("Docker image/volume/network collection failed")
+                docker_resources = None
             # Installed software: collect on schedule (and on demand through
             # app_inventory, which fills the pending payload directly). Send
             # the pending list only when the server doesn't already hold this
@@ -834,6 +840,7 @@ def run_agent() -> None:
                 response = client.checkin(
                     config, metrics, inventory=inventory_payload,
                     docker_containers=docker_containers,
+                    docker_resources=docker_resources,
                     reboot_required=collector.reboot_required(),
                     windows_updates=windows_updates,
                     software=software_payload,

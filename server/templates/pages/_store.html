@@ -1,0 +1,28 @@
+{# Store page section — the package catalog as an app store (QA-26) #}
+{# Logic: static/js/vigil-store.js | Styles: vigil.css .store-* | Data: client-side fetch /api/v1/catalog/ (browse, categories, status, <id>/, <id>/icon/, install-task/, enable/) #}
+    <section id="page-store" class="page">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Store<span>.</span></div>
+          <div class="page-sub">Apps your machines can install, from winget, Flathub and your Linux releases' own repositories</div>
+        </div>
+        <div class="right">
+          <span class="store-status" id="store-status"></span>
+        </div>
+      </div>
+
+      <div class="store-bar">
+        <input type="search" class="form-control store-search" id="store-q" placeholder="Search apps…"
+          autocomplete="off" spellcheck="false" aria-label="Search apps">
+        <div class="store-tabs" role="tablist" aria-label="Platform">
+          <button class="store-tab is-on" type="button" role="tab" aria-selected="true" data-store-platform="">All</button>
+          <button class="store-tab" type="button" role="tab" aria-selected="false" data-store-platform="windows">Windows</button>
+          <button class="store-tab" type="button" role="tab" aria-selected="false" data-store-platform="linux">Linux</button>
+        </div>
+      </div>
+      <div class="store-cats" id="store-cats" aria-label="Categories"></div>
+
+      <div id="store-grid" class="store-grid" aria-live="polite"></div>
+      <div class="store-more"><button class="btn btn-outline btn-sm" type="button" id="store-more" data-store-more hidden>Load more</button></div>
+    </section>

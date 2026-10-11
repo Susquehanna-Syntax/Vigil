@@ -592,6 +592,8 @@ def checkin(request):
                 image_digest=str(c.get("image_digest") or "")[:300],
                 restart_policy=str(c.get("restart_policy") or "")[:40],
                 config_hash=str(c.get("config_hash") or "")[:80],
+                networks=_edge_list(c.get("networks"), 16),
+                mounts=_edge_list(c.get("mounts"), 32),
             ))
         if len(rows) > MAX_CONTAINERS_PER_CHECKIN:
             logger.warning(
@@ -605,6 +607,9 @@ def checkin(request):
             host.docker_snapshot_at = now()
             host.save(update_fields=["docker_snapshot_at"])
             _sync_container_stacks(host, containers_payload)
+
+    if isinstance(data.get("docker_resources"), dict):
+        _ingest_docker_resources(host, data["docker_resources"])
 
     # Pending hosts must wait for admin approval before receiving tasks
     if host.status == Host.Status.PENDING:
@@ -1625,6 +1630,68 @@ def _rename_in_string_mirrors(old_key: str, new_name: str) -> None:
     rewrite(InstallProfile.objects.all(), "completion_tags")
 
 
+def _edge_list(value, cap: int) -> list:
+    """A container's networks or mounts as the agent sent them: a short list
+    of flat dicts of short strings (and bools), nothing else."""
+    if not isinstance(value, list):
+        return []
+    out = []
+    for item in value[:cap]:
+        if isinstance(item, dict):
+            out.append({str(k)[:32]: (v if isinstance(v, bool) else str(v)[:500])
+                        for k, v in list(item.items())[:8]
+                        if isinstance(v, (str, bool, int))})
+    return out
+
+
+#: Caps per check-in, like MAX_CONTAINERS_PER_CHECKIN: a broken or hostile
+#: agent cannot fill the database through these lists.
+MAX_DOCKER_OBJECTS = 2000
+
+
+def _ingest_docker_resources(host, payload: dict) -> None:
+    """Replace the host's images, volumes and networks wholesale (14.3)."""
+    from datetime import datetime, timezone as _tz
+
+    from .models import DockerImage, DockerNetwork, DockerVolume
+
+    def items(key):
+        value = payload.get(key)
+        return [x for x in value[:MAX_DOCKER_OBJECTS] if isinstance(x, dict)] if isinstance(value, list) else None
+
+    images, volumes, networks = items("images"), items("volumes"), items("networks")
+
+    def strs(value, cap, n=16):
+        return [str(v)[:cap] for v in value[:n]] if isinstance(value, list) else []
+
+    def created(ts):
+        try:
+            return datetime.fromtimestamp(int(ts), tz=_tz.utc) if int(ts) > 0 else None
+        except (TypeError, ValueError, OverflowError, OSError):
+            return None
+
+    with transaction.atomic():
+        if images is not None:
+            DockerImage.objects.filter(host=host).delete()
+            DockerImage.objects.bulk_create([DockerImage(
+                host=host, image_id=str(i.get("id") or "")[:80], tags=strs(i.get("tags"), 255),
+                digests=strs(i.get("digests"), 300, 4), size_bytes=_safe_int(i.get("size")) or 0,
+                created=created(i.get("created"))) for i in images])
+        if volumes is not None:
+            DockerVolume.objects.filter(host=host).delete()
+            DockerVolume.objects.bulk_create([DockerVolume(
+                host=host, name=str(v.get("name") or "")[:255], driver=str(v.get("driver") or "")[:64],
+                mountpoint=str(v.get("mountpoint") or "")[:500], created=str(v.get("created") or "")[:40],
+                stack=str(v.get("stack") or "")[:200]) for v in volumes if v.get("name")])
+        if networks is not None:
+            DockerNetwork.objects.filter(host=host).delete()
+            DockerNetwork.objects.bulk_create([DockerNetwork(
+                host=host, network_id=str(n.get("id") or "")[:64], name=str(n.get("name") or "")[:255],
+                driver=str(n.get("driver") or "")[:64], scope=str(n.get("scope") or "")[:16],
+                internal=n.get("internal") is True, subnets=strs(n.get("subnets"), 64, 8),
+                stack=str(n.get("stack") or "")[:200]) for n in networks if n.get("name")])
+
+
 def _sync_container_stacks(host, containers: list) -> None:
     """Upsert the host's compose stacks from its containers' labels (M11).
 
@@ -1648,11 +1715,19 @@ def _sync_container_stacks(host, containers: list) -> None:
         if c.get("working_dir") and not entry["working_dir"]:
             entry["working_dir"] = str(c["working_dir"])[:500]
     stamp = now()
+    from apps.stacks.models import ManagedStack
+    # A project Vigil holds the compose file for is Vigil's, not "external",
+    # however its containers were started.
+    managed = dict(ManagedStack.objects.filter(host=host, name__in=list(found))
+                   .values_list("name", "adopted"))
     for project, entry in found.items():
         stack, created = ContainerStack.objects.get_or_create(
             host=host, project=project,
             defaults={"config_files": entry["config_files"], "working_dir": entry["working_dir"],
                       "engine": engine})
+        if project in managed and stack.ownership == ContainerStack.Ownership.EXTERNAL:
+            stack.ownership = (ContainerStack.Ownership.ADOPTED if managed[project]
+                               else ContainerStack.Ownership.MANAGED)
         stack.container_count, stack.running_count = entry["count"], entry["running"]
         stack.seen_at = stamp
         if entry["config_files"] and stack.ownership == ContainerStack.Ownership.EXTERNAL:

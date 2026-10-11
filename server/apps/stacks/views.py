@@ -109,7 +109,11 @@ def stack_index(request):
         qs = scoping.filter_by_site(ManagedStack.objects.select_related("host"), request.user,
                                     path="host__")
         if host_id := request.query_params.get("host"):
-            qs = qs.filter(host_id=host_id)
+            import uuid
+            try:
+                qs = qs.filter(host_id=uuid.UUID(str(host_id)))
+            except ValueError:
+                return Response({"detail": "host must be a host id"}, status=status.HTTP_400_BAD_REQUEST)
         return Response({"results": [_row(s) for s in qs]})
     host, denied = scoping.host_or_404(request, request.data.get("host_id"))
     if denied:
@@ -229,10 +233,60 @@ def stack_revisions(request, stack_id):
     if stack is None:
         return Response(status=status.HTTP_404_NOT_FOUND)
     return Response({"results": [{
-        "number": r.number, "note": r.note, "compose_yaml": r.compose_yaml, "git_commit": r.git_commit,
+        "number": r.number, "name": r.name, "note": r.note, "compose_yaml": r.compose_yaml,
+        "git_commit": r.git_commit, "current": r.number == stack.revision,
+        "deployed": r.number == stack.deployed_revision,
         "env_keys": [k for k, _v in _env_pairs(r)],
         "created_by": r.created_by.username if r.created_by else None,
         "created_at": r.created_at.isoformat()} for r in stack.revisions.all()[:50]]})
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def stack_revision_name(request, stack_id, number):
+    """Name a revision ({"name": "before the 2.0 upgrade"}; "" clears it)."""
+    stack = _stack_or_404(request, stack_id)
+    if stack is None:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    rev = stack.revisions.filter(number=number).first()
+    if rev is None:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    name = request.data.get("name")
+    if not isinstance(name, str) or len(name.strip()) > 80:
+        return Response({"detail": "name must be text of at most 80 characters"},
+                        status=status.HTTP_400_BAD_REQUEST)
+    rev.name = " ".join(name.split())
+    rev.save(update_fields=["name"])
+    return Response({"number": rev.number, "name": rev.name})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def stack_revisions_prune(request, stack_id):
+    """Delete old revisions: {"keep": N} keeps the newest N plus every named
+    one; {"numbers": [..]} deletes exactly those. Either way the current
+    revision and the one last deployed stay — they are what the stack is."""
+    stack = _stack_or_404(request, stack_id)
+    if stack is None:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    protected = {stack.revision, stack.deployed_revision}
+    revs = stack.revisions.order_by("-number")
+    keep, numbers = request.data.get("keep"), request.data.get("numbers")
+    if numbers is not None:
+        if not isinstance(numbers, list) or not all(isinstance(n, int) for n in numbers):
+            return Response({"detail": "numbers must be a list of revision numbers"},
+                            status=status.HTTP_400_BAD_REQUEST)
+        doomed = revs.filter(number__in=numbers).exclude(number__in=[p for p in protected if p])
+    elif isinstance(keep, int) and not isinstance(keep, bool) and keep >= 1:
+        newest = list(revs.values_list("number", flat=True)[:keep])
+        doomed = (revs.exclude(number__in=newest).exclude(name__gt="")
+                  .exclude(number__in=[p for p in protected if p]))
+    else:
+        return Response({"detail": "send keep (at least 1) or numbers"}, status=status.HTTP_400_BAD_REQUEST)
+    deleted = sorted(doomed.values_list("number", flat=True))
+    doomed.delete()
+    hooks.emit("stack_revisions_pruned", stack=stack, user=request.user, numbers=deleted)
+    return Response({"deleted": deleted, "remaining": stack.revisions.count()})
 
 
 @api_view(["POST"])
@@ -324,6 +378,16 @@ def stack_deploy(request, stack_id):
         params["env_ticket"] = str(ticket.id)
     task = _dispatch(request, stack, [{"id": "deploy", "type": "stack_deploy", "params": params}],
                      f"Deploy stack {stack.name} (r{stack.revision})")
+    stack.deployed_revision = stack.revision
+    stack.save(update_fields=["deployed_revision"])
+    # Record the project as Vigil's now: until the host's next check-in
+    # reports its containers, the Containers page would otherwise call a
+    # stack that is being deployed "not deployed".
+    from apps.hosts.models import ContainerStack
+    ContainerStack.objects.update_or_create(
+        host=stack.host, project=stack.name,
+        defaults={"ownership": (ContainerStack.Ownership.ADOPTED if stack.adopted
+                                else ContainerStack.Ownership.MANAGED)})
     hooks.emit("stack_deployed", stack=stack, user=request.user, task=task)
     return Response({"task": str(task.id), "run": str(task.run_id)}, status=status.HTTP_201_CREATED)
 

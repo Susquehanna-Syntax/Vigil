@@ -104,6 +104,7 @@ INSTALLED_APPS = [
     "apps.instance",
     "apps.jackil",
     "apps.software",
+    "apps.catalog",
     "apps.policies",
     "apps.stacks",
     # Business features (apps_business/LICENSE) — installed always, unlocked by license
@@ -462,6 +463,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "vulns.snapshot_scores",
         "schedule": 86400.0,  # once daily — powers score sparklines + trend
     },
+    "sync-package-catalog": {
+        "task": "catalog.sync",
+        "schedule": 86400.0,  # once daily — no-op unless VIGIL_CATALOG_SYNC is on
+    },
     "refresh-kev-catalogue": {
         "task": "vulns.refresh_kev",
         "schedule": 86400.0,  # once daily — no-op unless VIGIL_KEV_LIVE_REFRESH
@@ -532,12 +537,15 @@ VIGIL_DB_SIZE_CRIT_GB = float(os.environ.get("VIGIL_DB_SIZE_CRIT_GB", "40"))
 # Server build version — surfaced on the About page and the /api/v1/about/
 # endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
 # this constant should stay in lockstep.
-VIGIL_VERSION = "2026.14.2"
+VIGIL_VERSION = "2026.14.3"
 
 # Opt-in daily refresh of the CISA KEV catalogue. Off by default: a self-hosted
 # install makes no outbound call unless its operator asks for one, and the
 # bundled snapshot in apps/vulns/data/ works fine air-gapped.
 VIGIL_KEV_LIVE_REFRESH = os.environ.get("VIGIL_KEV_LIVE_REFRESH", "") == "1"
+#: The Store's package catalog (apps/catalog): fetch the public package
+#: indexes the fleet needs, daily. Off by default, like the KEV refresh.
+VIGIL_CATALOG_SYNC = os.environ.get("VIGIL_CATALOG_SYNC", "") == "1"
 
 # ---------------------------------------------------------------------------
 # Agent distribution — filesystem path where compiled binaries live.
