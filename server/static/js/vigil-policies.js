@@ -218,6 +218,40 @@ async function openPolicyEditor(policyId) {
   _loadAppPicker();
 }
 
+/** From the Apps page: put an app's rules into a new policy or an existing
+ *  one. Opens the editor with the rules added (state Latest); nothing is
+ *  saved until Save. */
+async function policyFromApp(appName, pairs) {
+  try {
+    polState.rows = (await apiJson('/api/v1/policies/')).results || [];
+  } catch (e) {
+    showToast(`Update policies need an admin account: ${e.message}`, 'error');
+    return;
+  }
+  const items = [
+    { key: '', name: 'New policy', meta: `keeps ${appName} installed and up to date` },
+    ...polState.rows.map(p => ({ key: p.id, name: p.name,
+      meta: `${p.app_rules.length} app rule${p.app_rules.length === 1 ? '' : 's'}${p.enabled ? '' : ' · disabled'}` })),
+  ];
+  openPicker({
+    type: 'policy', title: `Add ${appName} to a policy`, allowAdd: false, items,
+    onSelect: async (item) => {
+      navigateTo('policies');
+      await openPolicyEditor(item.key || null);
+      if (!item.key) _polEl('pol-name').value = `${appName} updates`;
+      let added = 0;
+      for (const pr of pairs) {
+        if (polState.rules.some(r => r.app === pr.app && r.source === pr.source)) continue;
+        polState.rules.push({ app: pr.app, source: pr.source, state: 'latest', version: '' });
+        added += 1;
+      }
+      renderPolicyRules();
+      showToast(added ? `Added ${appName}. Choose the hosts, then Save.` : `${appName} is already in this policy`,
+        added ? 'success' : 'info');
+    },
+  });
+}
+
 function closePolicyEditor() {
   _polEl('pol-overlay').classList.remove('open');
   _polEl('pol-modal').classList.remove('open');

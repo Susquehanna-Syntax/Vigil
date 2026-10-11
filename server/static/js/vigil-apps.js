@@ -12,7 +12,7 @@
 
 const APPS_PAGE_SIZE = 100;
 const APPS_DEBOUNCE_MS = 250;
-const APPS_COLUMNS = 6;
+const APPS_COLUMNS = 7;
 const APPS_EMPTY_TEXT = 'No software reported yet — agents send their list within a few '
   + 'minutes of starting, or run the "Refresh software inventory" task.';
 
@@ -135,6 +135,8 @@ function renderAppsTable() {
       <td class="num">${_countChip(row.outdated, 'chip-rose')}</td>
       <td class="num">${_countChip(row.unmanaged, 'apps-chip-warn')}</td>
       <td>${_sourceChips(row.sources)}</td>
+      <td class="apps-act"><button class="btn btn-xs btn-outline" type="button" data-app-policy="${escAttr(key)}"
+        title="Keep ${escAttr(row.name)} installed and up to date with an update policy">Policy…</button></td>
     </tr>`;
     if (appsState.expanded[key]) html += _appDetailHtml(key);
   }
@@ -548,8 +550,46 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 delegateClick('[data-app-row]', (el, ev) => {
-  if (ev.target.closest('a')) return;
+  if (ev.target.closest('a, button')) return;
   toggleAppDetail(el.dataset.appRow);
+});
+
+/** The package ids a policy rule can name for one app, from its per-host rows:
+ *  one (package id, source) per package manager it comes from. Homebrew,
+ *  Windows Update and unmanaged installs cannot be a policy rule. */
+async function _appPolicyPairs(key) {
+  let rows = appsState.details[key];
+  if (!rows) {
+    rows = (await apiJson(`/api/v1/software/apps/${encodeURIComponent(key)}/`)).rows || [];
+    appsState.details[key] = rows;
+  }
+  const seen = new Set();
+  const pairs = [];
+  for (const r of rows) {
+    if (!r.managed || !POLICY_APP_SOURCES.includes(r.source)) continue;
+    const id = `${r.source}\u0000${r.package_id}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    pairs.push({ app: r.package_id, source: r.source });
+  }
+  return { pairs, sources: [...new Set(rows.map(r => r.source))] };
+}
+
+//: apps/tasks/spec.py _APP_SOURCE_CHOICES — what an app rule may name.
+const POLICY_APP_SOURCES = ['dpkg', 'rpm', 'apk', 'pacman', 'flatpak', 'snap',
+  'winget', 'chocolatey', 'scoop', 'registry'];
+
+delegateClick('[data-app-policy]', async (el) => {
+  const key = el.dataset.appPolicy;
+  const row = appsState.rows.find(r => r.name_key === key);
+  const name = row ? row.name : key;
+  let found;
+  try { found = await _appPolicyPairs(key); } catch (e) { showToast(e.message, 'error'); return; }
+  if (!found.pairs.length) {
+    showToast(`A policy cannot manage ${name}: it comes from ${found.sources.join(', ') || 'no package manager'}`, 'error');
+    return;
+  }
+  policyFromApp(name, found.pairs);
 });
 
 delegateClick('[data-upd-pick]', (el) => {
