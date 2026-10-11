@@ -30,6 +30,7 @@ def wire():
     hooks.subscribe("stack_saved", _on_stack_saved)
     hooks.subscribe("stack_env_revealed", _on_stack_env_revealed)
     hooks.subscribe("stack_deployed", _on_stack_deployed)
+    hooks.subscribe("stack_revisions_pruned", _on_stack_revisions_pruned)
 
     user_logged_in.connect(_on_login, dispatch_uid="business_audits.login")
     user_logged_out.connect(_on_logout, dispatch_uid="business_audits.logout")
@@ -90,6 +91,12 @@ def _on_stack_deployed(stack=None, user=None, task=None, **_):
     from .models import record
     record("stack.deployed", user=user, target=_stack_target(stack),
            revision=getattr(stack, "revision", None), task_id=str(getattr(task, "id", "")))
+
+
+def _on_stack_revisions_pruned(stack=None, user=None, numbers=None, **_):
+    """Old revisions of a stack deleted — which ones, never their contents."""
+    from .models import record
+    record("stack.revisions_pruned", user=user, target=_stack_target(stack), revisions=list(numbers or []))
 
 
 def _on_instance_settings_changed(names=None, changed_by=None, **_):

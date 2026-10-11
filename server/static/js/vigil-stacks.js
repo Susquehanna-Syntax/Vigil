@@ -322,14 +322,50 @@ async function _loadStackRevisions() {
   try {
     const revs = (await apiJson(`/api/v1/stacks/${stackEd.stack.id}/revisions/`)).results || [];
     const isGit = !!stackEd.stack.git;
-    wrap.innerHTML = revs.map(r => `<div class="apps-detail-item">
-        <span class="apps-name">r${r.number}${r.git_commit ? ` <code class="sted-git-chip">${escHtml(r.git_commit.slice(0, 12))}</code>` : ''}</span><span class="apps-detail-scope">${escHtml(r.note || '')} · ${escHtml(r.created_by || '')} · ${escHtml(timeAgo(r.created_at) || '')}</span>
-        ${r.number === stackEd.stack.revision ? '<span class="chip chip-mint">current</span>'
-          : isGit ? '' : `<button class="btn btn-ghost btn-xs" type="button" data-stack-load-rev="${r.number}">Load this file</button>`}
+    wrap.innerHTML = revs.map(r => `<div class="apps-detail-item sted-rev">
+        <span class="apps-name">r${r.number}${r.name ? ` <span class="sted-rev-name">${escHtml(r.name)}</span>` : ''}${r.git_commit ? ` <code class="sted-git-chip">${escHtml(r.git_commit.slice(0, 12))}</code>` : ''}</span><span class="apps-detail-scope">${escHtml(r.note || '')} · ${escHtml(r.created_by || '')} · ${escHtml(timeAgo(r.created_at) || '')}</span>
+        <span class="sted-rev-acts">
+          ${r.current ? '<span class="chip chip-mint">current</span>' : ''}
+          ${r.deployed ? '<span class="chip chip-muted">deployed</span>' : ''}
+          <button class="btn btn-ghost btn-xs" type="button" data-stack-rev-name="${r.number}">${r.name ? 'Rename' : 'Name'}</button>
+          ${r.current || isGit ? '' : `<button class="btn btn-ghost btn-xs" type="button" data-stack-load-rev="${r.number}">Load this file</button>`}
+        </span>
       </div>`).join('');
     stackEd.revisions = revs;
   } catch { wrap.innerHTML = ''; }
 }
+
+async function nameStackRevision(number) {
+  const rev = stackEd.revisions.find(r => r.number === number);
+  const name = await promptModal(`Name revision r${number}`, {
+    value: rev ? rev.name : '', placeholder: 'e.g. before the 2.0 upgrade' });
+  if (name === null) return;
+  try {
+    await apiJson(`/api/v1/stacks/${stackEd.stack.id}/revisions/${number}/`,
+      { method: 'PATCH', body: JSON.stringify({ name: name.trim() }) });
+    _loadStackRevisions();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function pruneStackRevisions() {
+  const total = stackEd.revisions.length;
+  const raw = await promptModal(
+    `Keep the newest how many of ${stackEd.stack.name}'s ${total} revisions? Named revisions, the current one `
+    + 'and the one last deployed always stay.', { value: '10', placeholder: '10' });
+  if (raw === null) return;
+  const keep = parseInt(raw, 10);
+  if (!(keep >= 1)) { showToast('Keep at least one revision', 'error'); return; }
+  try {
+    const res = await apiJson(`/api/v1/stacks/${stackEd.stack.id}/revisions/prune/`,
+      { method: 'POST', body: JSON.stringify({ keep }) });
+    showToast(res.deleted.length ? `Deleted ${res.deleted.length} revision${res.deleted.length === 1 ? '' : 's'}`
+      : 'Nothing to prune', res.deleted.length ? 'success' : 'info');
+    _loadStackRevisions();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+delegateClick('[data-stack-rev-name]', (el) => nameStackRevision(Number(el.dataset.stackRevName)));
+delegateClick('[data-stack-rev-prune]', () => pruneStackRevisions());
 
 /* ── Source: written here, or a Git repository ───────────────────────── */
 
