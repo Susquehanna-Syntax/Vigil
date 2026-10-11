@@ -1648,11 +1648,19 @@ def _sync_container_stacks(host, containers: list) -> None:
         if c.get("working_dir") and not entry["working_dir"]:
             entry["working_dir"] = str(c["working_dir"])[:500]
     stamp = now()
+    from apps.stacks.models import ManagedStack
+    # A project Vigil holds the compose file for is Vigil's, not "external",
+    # however its containers were started.
+    managed = dict(ManagedStack.objects.filter(host=host, name__in=list(found))
+                   .values_list("name", "adopted"))
     for project, entry in found.items():
         stack, created = ContainerStack.objects.get_or_create(
             host=host, project=project,
             defaults={"config_files": entry["config_files"], "working_dir": entry["working_dir"],
                       "engine": engine})
+        if project in managed and stack.ownership == ContainerStack.Ownership.EXTERNAL:
+            stack.ownership = (ContainerStack.Ownership.ADOPTED if managed[project]
+                               else ContainerStack.Ownership.MANAGED)
         stack.container_count, stack.running_count = entry["count"], entry["running"]
         stack.seen_at = stamp
         if entry["config_files"] and stack.ownership == ContainerStack.Ownership.EXTERNAL:

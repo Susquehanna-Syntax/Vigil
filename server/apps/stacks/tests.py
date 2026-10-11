@@ -131,6 +131,19 @@ class StackDeployTests(TestCase):
     def _redeem(self, ticket, token="nastok"):
         return self.client.get(f"/api/v1/agent/stack-env/{ticket}/", HTTP_AUTHORIZATION=f"Bearer {token}")
 
+    def test_a_deployed_stack_is_vigils_before_and_after_the_host_reports_it(self):
+        """It used to be recorded as "external" at check-in, and as nothing at
+        all before it, so the Containers page called it "not deployed"."""
+        from apps.hosts.models import ContainerStack
+        from apps.hosts.views import _sync_container_stacks
+        self.assertEqual(self._deploy().status_code, 201)
+        self.assertEqual(ContainerStack.objects.get(host=self.host, project="media").ownership, "managed")
+        ContainerStack.objects.filter(project="media").update(ownership="external")   # a 14.2 row
+        _sync_container_stacks(self.host, [{"stack": "media", "state": "running"},
+                                           {"stack": "other", "state": "running"}])
+        owners = dict(ContainerStack.objects.values_list("project", "ownership"))
+        self.assertEqual(owners, {"media": "managed", "other": "external"})
+
     def test_deploy_sends_a_ticket_not_the_secret(self):
         from apps.tasks.models import Task
         resp = self._deploy()
