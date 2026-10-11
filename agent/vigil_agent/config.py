@@ -52,6 +52,8 @@ _ALL_ACTIONS = {
     "update_container", "docker_compose_up", "docker_compose_down",
     "stack_restart", "stack_update", "container_logs", "stack_deploy", "stack_remove",
     "stack_read", "container_rollback",
+    "docker_disk_usage", "image_remove", "image_prune", "volume_remove", "volume_prune",
+    "network_remove", "network_prune",
     "clear_docker_logs", "check_docker_updates",
     # File / directory operations
     "write_file", "create_directory", "delete_path",

@@ -1,0 +1,13 @@
+name: Prune unused volumes
+description: |
+  Delete every volume no container uses, named ones included, and the data
+  in them. A stack that is taken down but not removed loses its data too.
+  This cannot be undone.
+risk: high
+author: Vigil
+created: 2026-10-11
+actions:
+  - id: prune
+    type: volume_prune
+    params:
+      all: true

@@ -1,0 +1,12 @@
+name: Prune unused images
+description: |
+  Remove every image no container uses, stopped containers included, and
+  free the space. Images are pulled again when something needs them.
+risk: standard
+author: Vigil
+created: 2026-10-11
+actions:
+  - id: prune
+    type: image_prune
+    params:
+      all: true

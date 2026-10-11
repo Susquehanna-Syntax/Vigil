@@ -324,6 +324,7 @@ def task_result(request):
             _maybe_request_nessus_scan(task)
             _maybe_ingest_trivy_report(task, output)
             _maybe_ingest_firewall_rules(task, output)
+            _maybe_ingest_docker_usage(task, output)
         if new_state in (Task.State.COMPLETED, Task.State.NOT_APPLICABLE):
             # A chain that stops as not applicable is finished on this host
             # too, so the completion tag must land here as well — otherwise
@@ -703,6 +704,61 @@ def _maybe_ingest_firewall_rules(task: Task, output: str) -> None:
     except Exception:  # noqa: BLE001
         logger.exception(
             "Could not attach firewall ingest status to task %s", task.id)
+
+
+def _maybe_ingest_docker_usage(task: Task, output: str) -> None:
+    """Store a ``docker_disk_usage`` reading (14.3) as the host's HostDockerUsage.
+
+    Like the firewall hook this runs inside task_result's transaction and
+    must never raise: the output is agent-reported JSON, found by its
+    ``"kind": "docker_disk_usage"`` marker in a possibly multi-step transcript.
+    """
+    import json as _json
+    import logging
+
+    from django.utils.timezone import now as _now
+
+    from apps.hosts.models import HostDockerUsage
+
+    steps = (task.params or {}).get("steps") or []
+    if not (task.action == "docker_disk_usage"
+            or any(isinstance(st, dict) and st.get("action") == "docker_disk_usage" for st in steps)):
+        return
+    if not output:
+        return
+    decoder = _json.JSONDecoder()
+    start, data = output.find("{"), None
+    while start != -1:
+        try:
+            candidate, _end = decoder.raw_decode(output, start)
+        except ValueError:
+            start = output.find("{", start + 1)
+            continue
+        if isinstance(candidate, dict) and candidate.get("kind") == "docker_disk_usage":
+            data = candidate
+            break
+        start = output.find("{", start + 1)
+    if data is None:
+        return
+
+    def n(key):
+        value = data.get(key)
+        return value if isinstance(value, int) and value >= 0 else 0
+
+    try:
+        volume_sizes = {str(v.get("name"))[:255]: (v.get("size") if isinstance(v.get("size"), int) else None)
+                        for v in (data.get("volumes") or [])[:2000] if isinstance(v, dict) and v.get("name")}
+        image_containers = {str(i.get("id"))[:80]: int(i.get("containers") or 0)
+                            for i in (data.get("images") or [])[:2000] if isinstance(i, dict) and i.get("id")}
+        HostDockerUsage.objects.update_or_create(host=task.host, defaults={
+            "read_at": _now(), "images_size": n("images_size"), "images_reclaimable": n("images_reclaimable"),
+            "containers_size": n("containers_size"), "volumes_size": n("volumes_size"),
+            "volumes_reclaimable": n("volumes_reclaimable"), "build_cache_size": n("build_cache_size"),
+            "build_cache_reclaimable": n("build_cache_reclaimable"),
+            "volume_sizes": volume_sizes, "image_containers": image_containers,
+        })
+    except Exception:  # noqa: BLE001
+        logging.getLogger(__name__).exception("Docker usage ingest failed for task %s", task.id)
 
 
 def _maybe_capture_inventory_column(task: Task, output: str) -> None:

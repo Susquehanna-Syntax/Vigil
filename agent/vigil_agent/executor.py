@@ -1423,6 +1423,15 @@ from .actions.containers import (  # noqa: E402,F401
     _registry_auth,
     registry_of,
 )
+from .actions.docker_resources import (  # noqa: E402,F401
+    _docker_disk_usage,
+    _image_remove,
+    _image_prune,
+    _volume_remove,
+    _volume_prune,
+    _network_remove,
+    _network_prune,
+)
 from .actions.logs import _container_logs  # noqa: E402,F401
 from .actions.stacks import _stack_deploy, _stack_read, _stack_remove  # noqa: E402,F401
 from .actions.tags_scans import (  # noqa: E402,F401
@@ -1494,6 +1503,13 @@ _HANDLERS: dict[str, callable] = {
     "stack_remove": _stack_remove,
     "stack_read": _stack_read,
     "container_rollback": _container_rollback,
+    "docker_disk_usage": _docker_disk_usage,
+    "image_remove": _image_remove,
+    "image_prune": _image_prune,
+    "volume_remove": _volume_remove,
+    "volume_prune": _volume_prune,
+    "network_remove": _network_remove,
+    "network_prune": _network_prune,
     "clear_docker_logs": _clear_docker_logs,
     # File / directory operations
     "write_file": _write_file,

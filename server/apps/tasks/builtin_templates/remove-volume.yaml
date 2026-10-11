@@ -1,0 +1,17 @@
+name: Remove volume
+description: |
+  Delete one volume and everything stored in it. The engine refuses a volume
+  a container still uses, even a stopped one. This cannot be undone.
+risk: high
+author: Vigil
+created: 2026-10-11
+inputs:
+  - id: volume
+    type: text
+    label: Volume
+    required: true
+actions:
+  - id: remove
+    type: volume_remove
+    params:
+      volume: "${{ inputs.volume }}"

@@ -252,6 +252,11 @@ class DockerContainer(models.Model):
     restart_policy = models.CharField(max_length=40, blank=True)
     #: compose's own hash of the service config; a change means drift.
     config_hash = models.CharField(max_length=80, blank=True)
+    #: [{name, ip, network_id}] — the networks it sits on (14.3; the edges a
+    #: topology view draws).
+    networks = models.JSONField(default=list, blank=True)
+    #: [{type, name, source, destination, rw}] — what it mounts.
+    mounts = models.JSONField(default=list, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -260,6 +265,58 @@ class DockerContainer(models.Model):
 
     def __str__(self):
         return f"{self.host.hostname}/{self.name}"
+
+
+class DockerImage(models.Model):
+    """One image on a host, from the check-in (14.3). Replaced wholesale on
+    each check-in that carries ``docker_resources``, like DockerContainer."""
+
+    host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="docker_images")
+    image_id = models.CharField(max_length=80)
+    tags = models.JSONField(default=list, blank=True)
+    digests = models.JSONField(default=list, blank=True)
+    size_bytes = models.BigIntegerField(default=0)
+    created = models.DateTimeField(null=True, blank=True)
+
+
+class DockerVolume(models.Model):
+    host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="docker_volumes")
+    name = models.CharField(max_length=255)
+    driver = models.CharField(max_length=64, blank=True)
+    mountpoint = models.CharField(max_length=500, blank=True)
+    created = models.CharField(max_length=40, blank=True)
+    #: The compose project that made it, when one did.
+    stack = models.CharField(max_length=200, blank=True)
+
+
+class DockerNetwork(models.Model):
+    host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="docker_networks")
+    network_id = models.CharField(max_length=64)
+    name = models.CharField(max_length=255)
+    driver = models.CharField(max_length=64, blank=True)
+    scope = models.CharField(max_length=16, blank=True)
+    internal = models.BooleanField(default=False)
+    subnets = models.JSONField(default=list, blank=True)
+    stack = models.CharField(max_length=200, blank=True)
+
+
+class HostDockerUsage(models.Model):
+    """The last ``docker_disk_usage`` reading for a host: totals, and each
+    image's and volume's size (the check-in lists carry no volume sizes)."""
+
+    host = models.OneToOneField(Host, on_delete=models.CASCADE, related_name="docker_usage")
+    read_at = models.DateTimeField()
+    images_size = models.BigIntegerField(default=0)
+    images_reclaimable = models.BigIntegerField(default=0)
+    containers_size = models.BigIntegerField(default=0)
+    volumes_size = models.BigIntegerField(default=0)
+    volumes_reclaimable = models.BigIntegerField(default=0)
+    build_cache_size = models.BigIntegerField(default=0)
+    build_cache_reclaimable = models.BigIntegerField(default=0)
+    #: {volume name: bytes or null}
+    volume_sizes = models.JSONField(default=dict, blank=True)
+    #: {image id: containers using it}
+    image_containers = models.JSONField(default=dict, blank=True)
 
 
 class UnmanagedDevice(models.Model):

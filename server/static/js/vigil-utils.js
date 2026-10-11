@@ -527,6 +527,47 @@ if (_MQ_DARK && _MQ_DARK.addEventListener) {
   });
 }
 
+/* ── Sidebar: icons only, or icons with page names ───────────────────── */
+// The names are the icons' own data-tip text, so a page added to the sidebar
+// is labelled without a second copy of its name. "Theme: Dark" and
+// "Search (Ctrl+K)" read as "Theme" and "Search".
+function _sidebarLabels() {
+  document.querySelectorAll('.sidebar .sidebar-icon[data-tip]').forEach((icon) => {
+    if (icon.querySelector('.sidebar-label')) return;
+    const label = document.createElement('span');
+    label.className = 'sidebar-label';
+    label.textContent = icon.dataset.tip.replace(/\s*\(.*\)\s*$/, '').replace(/:.*$/, '');
+    icon.appendChild(label);
+  });
+}
+function _applySidebarToggle(expanded) {
+  const btn = document.getElementById('sidebar-toggle');
+  if (!btn) return;
+  const words = expanded ? 'Hide page names' : 'Show page names';
+  btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  btn.setAttribute('aria-label', words);
+  btn.dataset.tip = words;
+  const label = btn.querySelector('.sidebar-label');
+  if (label) label.textContent = expanded ? 'Collapse' : 'Expand';
+}
+function toggleSidebar() {
+  const expanded = document.documentElement.getAttribute('data-sidebar') !== 'expanded';
+  if (expanded) document.documentElement.setAttribute('data-sidebar', 'expanded');
+  else document.documentElement.removeAttribute('data-sidebar');
+  try { localStorage.setItem('vigil-sidebar', expanded ? 'expanded' : 'collapsed'); } catch (e) {}
+  _applySidebarToggle(expanded);
+}
+document.addEventListener('DOMContentLoaded', () => {
+  _sidebarLabels();
+  _applySidebarToggle(document.documentElement.getAttribute('data-sidebar') === 'expanded');
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.target && ev.target.id === 'sidebar-toggle' && (ev.key === 'Enter' || ev.key === ' ')) {
+    ev.preventDefault();
+    toggleSidebar();
+  }
+});
+
 /* ── Layout density (cozy / compact) ─────────────────────────────────── */
 function _applyDensityButtons(mode) {
   const cozy = document.getElementById('density-cozy');
