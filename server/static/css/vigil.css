@@ -306,8 +306,9 @@ body {
    MAIN
    ═══════════════════════════════════════════ */
 .main {
+  --main-pad-top: 36px;
   grid-column: 2;
-  padding: 36px 44px 60px;
+  padding: var(--main-pad-top) 44px 60px;
   overflow-y: auto;
   max-height: 100vh;
 }
@@ -2409,7 +2410,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 }
 .te-highlight { pointer-events: none; color: var(--text-1); z-index: 1; }
 .te-yaml { z-index: 2; background: transparent; color: transparent; caret-color: var(--sky);
-  resize: none; outline: none; }
+  resize: none; outline: none; overscroll-behavior: contain; }
 .te-yaml::placeholder { color: var(--text-3); }
 .te-yaml::selection { background: rgba(var(--rgb-sky), var(--tint-a)); }
 
@@ -2511,7 +2512,7 @@ select.form-control:hover { border-color: var(--s4); }
 }
 .toggle[aria-checked="true"]::after { transform: translateX(20px); background: #fff; }
 
-:root[data-density="compact"] .main { padding: 20px 26px 40px; }
+:root[data-density="compact"] .main { --main-pad-top: 20px; padding: var(--main-pad-top) 26px 40px; }
 :root[data-density="compact"] .page-header { margin-bottom: 18px; }
 :root[data-density="compact"] .section-label { margin: 22px 0 10px; }
 :root[data-density="compact"] .host-card { padding: 14px; gap: 12px; }
@@ -3863,7 +3864,7 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .managed-stack-chip { border: 0; cursor: pointer; font-family: inherit; }
 .stack-compose { min-height: 260px; font-family: var(--font-mono); font-size: 12px; }
 .stack-env { display: flex; flex-direction: column; gap: 6px; }
-.stack-env-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: 6px; }
+.stack-env-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) auto; gap: 6px; }
 .stack-env-actions { display: flex; gap: 8px; margin-top: 8px; }
 .stack-revisions { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
 
@@ -3976,10 +3977,14 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 
 /* ── Stack editor page (QA-20) ───────────────────────────────────────── */
 .sted { width: 100%; }
+/* The bar reaches up through .main's top padding and sticks at the very top:
+   a bar stuck at top: 0 sits below that padding, and the page scrolled past
+   it showed through the gap above. */
 .sted-bar {
-  position: sticky; top: 0; z-index: 20;
+  position: sticky; top: calc(-1 * var(--main-pad-top, 36px)); z-index: 20;
   display: flex; align-items: center; gap: 14px;
-  margin: -12px 0 18px; padding: 12px 0;
+  margin: calc(-1 * var(--main-pad-top, 36px)) 0 18px;
+  padding: var(--main-pad-top, 36px) 0 12px;
   background: var(--bg); border-bottom: 1px solid var(--border);
 }
 .sted-crumbs { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 13px; color: var(--text-2); }
@@ -3993,6 +3998,10 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .sted-status.is-good { background: rgba(var(--rgb-mint), 0.14); color: var(--mint-ink); }
 .sted-status.is-bad { background: rgba(var(--rgb-rose), 0.14); color: var(--rose-ink); }
 .sted-actions { display: flex; align-items: center; gap: 8px; }
+.sted-close { margin-left: 4px; }
+.sted-name-error { font-size: 12px; color: var(--rose-ink); }
+.sted-name-error:empty { display: none; }
+#stack-name.is-invalid { border-color: var(--rose); box-shadow: 0 0 0 3px rgba(var(--rgb-rose), 0.14); }
 
 .sted-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
 .sted-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
@@ -4009,6 +4018,15 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
   border-right: 1px solid var(--border); }
 .sted-gutter .sted-ln.is-error { color: var(--rose-ink); font-weight: 700; }
 .sted-editor .te-highlight, .sted-editor .te-yaml { padding-left: 66px; }
+/* Scrolling past the end stays in the editor instead of moving the page
+   under the cursor; and the layers that follow the textarea's scroll get
+   spare room below, so the textarea can never scroll further than the
+   colored text and the line numbers (browsers count a textarea's bottom
+   padding differently). */
+.sted-editor .te-yaml { overscroll-behavior: contain; }
+.sted-editor .te-highlight { padding-bottom: 50vh; scrollbar-width: none; }
+.sted-editor .te-highlight::-webkit-scrollbar { display: none; }
+.sted-gutter { padding-bottom: 50vh; }
 
 .sted-check { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
 .sted-check-ok { color: var(--mint-ink); font-weight: 600; }
