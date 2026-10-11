@@ -3,7 +3,9 @@
 A release is "ubuntu:noble" or "debian:bookworm"; hosts are mapped to one
 from their inventory (OS name + version) by ``release_for``.
 """
-import gzip
+import re
+
+from ..download import gunzip
 
 SOURCE = "dpkg"
 PLATFORM = "linux"
@@ -28,11 +30,14 @@ def release_for(os_name: str, os_version: str) -> str:
 def urls(release: str, arch: str = "amd64") -> list[str]:
     distro, code = release.split(":", 1)
     if distro == "ubuntu":
-        base = ("http://archive.ubuntu.com/ubuntu" if arch in ("amd64", "i386")
-                else "http://ports.ubuntu.com/ubuntu-ports")
+        base = ("https://archive.ubuntu.com/ubuntu" if arch in ("amd64", "i386")
+                else "https://ports.ubuntu.com/ubuntu-ports")
         return [f"{base}/dists/{code}/{comp}/binary-{arch}/Packages.gz" for comp in ("main", "universe")]
-    return [f"http://deb.debian.org/debian/dists/{code}/main/binary-{arch}/Packages.gz"]
+    return [f"https://deb.debian.org/debian/dists/{code}/main/binary-{arch}/Packages.gz"]
 
+
+#: Debian policy §5.6.7: what a package name may be.
+_DEB_NAME = re.compile(r"^[a-z0-9][a-z0-9+.-]+$")
 
 #: Sections and name shapes that are libraries, headers, debug symbols or
 #: data — there are tens of thousands and nobody shops for them.
@@ -49,7 +54,7 @@ def _not_an_app(pid: str, section: str) -> bool:
 
 
 def parse(data: bytes, release: str = ""):
-    text = gzip.decompress(data).decode("utf-8", "replace")
+    text = gunzip(data).decode("utf-8", "replace")
     for stanza in text.split("\n\n"):
         fields, last = {}, None
         for line in stanza.split("\n"):
@@ -59,7 +64,7 @@ def parse(data: bytes, release: str = ""):
                 last, _, value = line.partition(":")
                 fields[last] = value.strip()
         pid = fields.get("Package")
-        if not pid or _not_an_app(pid, fields.get("Section", "")):
+        if not pid or not _DEB_NAME.match(pid) or _not_an_app(pid, fields.get("Section", "")):
             continue
         desc = fields.get("Description", "")
         summary, _, body = desc.partition("\n")

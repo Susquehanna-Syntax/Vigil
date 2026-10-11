@@ -126,7 +126,7 @@ class ParserTests(SimpleTestCase):
         self.assertEqual(apt.release_for("Ubuntu", "24.04.1"), "ubuntu:noble")
         self.assertEqual(apt.release_for("Debian GNU/Linux", "12"), "debian:bookworm")
         self.assertEqual(apt.release_for("Fedora Linux", "40"), "")
-        self.assertTrue(apt.urls("ubuntu:noble", "arm64")[0].startswith("http://ports.ubuntu.com/"))
+        self.assertTrue(apt.urls("ubuntu:noble", "arm64")[0].startswith("https://ports.ubuntu.com/"))
 
 
 class FetchRuleTests(SimpleTestCase):
@@ -308,3 +308,24 @@ class StorePageWiringTests(SimpleTestCase):
                        "policyFromApp(storeState.current.name", "escHtml(c.name)", "data-store-enable"):
             self.assertIn(needle, js)
         self.assertNotIn("onerror=", js, "CSP: no inline handlers; icons fall back in _wireIcons")
+
+
+class DecompressionCapTests(SimpleTestCase):
+    def test_a_gzip_bomb_is_refused_not_inflated(self):
+        from . import download
+        bomb = gzip.compress(b"\0" * (4 * 1024 * 1024))   # 4 MiB of zeros, a few KiB packed
+        with self.assertRaises(ValueError):
+            download.gunzip(bomb, cap=1024 * 1024)
+        with self.assertRaises(ValueError):
+            download.gunzip_stream(bomb, cap=1024 * 1024).read(-1)
+        with mock.patch.object(download, "MAX_UNPACKED_BYTES", 1024 * 1024), \
+                mock.patch.object(download.gunzip, "__defaults__", (1024 * 1024,)):
+            with self.assertRaises(ValueError):
+                list(apt.parse(bomb))
+
+    def test_apt_is_https_and_names_follow_debian_policy(self):
+        self.assertTrue(all(u.startswith("https://") for u in apt.urls("ubuntu:noble") + apt.urls("debian:bookworm")))
+        with self.assertRaises(FetchError):
+            fetch("http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/Packages.gz")
+        odd = APT_PACKAGES.replace("Package: nginx\n", "Package: Nginx;rm\n", 1)
+        self.assertEqual(list(apt.parse(gzip.compress(odd.encode()))), [])
