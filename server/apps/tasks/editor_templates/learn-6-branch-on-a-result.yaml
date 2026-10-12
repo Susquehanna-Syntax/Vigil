@@ -1,0 +1,58 @@
+# LEARN 6 - Branch on a result
+#
+# What this does: looks for a strayed nginx process; if there is one, it
+# restarts the service, and if there is not, it starts it.
+#
+# When to use it: when what the task should do next depends on what it found,
+# rather than being fixed when you wrote the YAML.
+#
+# What to change: the service name, the probe, and the two paths.
+#
+# An item in `actions:` may be a branch instead of a step:
+#   - if: <expression>
+#     then: [steps...]
+#     else: [steps...]        # else is optional
+# The expression may read
+#   steps.<id>.status                - ok, failed, not_applicable or skipped
+#   steps.<id>.result.<field>        - a declared output of that step
+#   inputs.* and agent.*             - the same names a when: can read
+# Only steps that appear earlier may be named, and the field must be one the
+# earlier step's action really reports - a typo is a save error, not a silent
+# false. hunt_* actions report matched (true or false), count and truncated,
+# so a hunt is the usual thing to branch on.
+#
+# The steps of the path that was not taken report "skipped" and later steps
+# still run, so you can put ordinary steps after the branch. Branches nest at
+# most 3 levels.
+
+name: Learn 6 - Branch on what a step found
+description: |
+  If an nginx process is already running, restart the service; if not, start
+  it. One task, two routes, chosen by what the host looks like.
+risk: standard
+
+actions:
+  # Hunts are read-only and report matched / count / truncated.
+  - id: running
+    type: hunt_process
+    params:
+      name: nginx
+
+  - if: steps.running.result.count > 0
+    then:
+      - id: restart
+        type: restart_service
+        params:
+          service_name: nginx
+    else:
+      - id: start
+        type: start_service
+        params:
+          service_name: nginx
+
+  # Runs whichever way the branch went - the skipped path does not stop it.
+  - id: confirm
+    type: check_service
+    params:
+      service_name: nginx
+      expect: active

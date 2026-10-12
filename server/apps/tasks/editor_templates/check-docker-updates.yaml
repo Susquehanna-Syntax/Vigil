@@ -1,0 +1,31 @@
+# Check Docker images for updates now
+#
+# What this does: forces an immediate re-check of the digests of the images
+# your containers run, instead of waiting for the agent's scheduled one.
+#
+# When to use it: right after you publish a new image tag, or when you want
+# today's answer rather than the next scheduled check.
+#
+# What to change: nothing. It takes no parameters.
+#
+# The agent re-checks Docker Hub digests on a timer (docker_check_interval in
+# agent.yml, six hours by default). This step runs the same check now: for each
+# Hub-tagged container, is the digest behind the tag still the one running.
+#
+# What comes back: each container as up to date or OUTDATED, plus the counts
+# `checked` and `outdated`, which are the fields a branch can decide on.
+# Outdated-image alerts fire or resolve on the next check-in, about a minute.
+#
+# It is read-only and low risk: HEAD requests against the registry, never a
+# pull. Updating the containers is a different action - see the "Update stack"
+# template, or the Update button on the Containers page.
+
+name: Check Docker images for updates
+description: |
+  Force an immediate Docker Hub digest re-check instead of waiting for the
+  agent's scheduled one. Reports which containers are behind.
+risk: low
+
+actions:
+  - id: check
+    type: check_docker_updates

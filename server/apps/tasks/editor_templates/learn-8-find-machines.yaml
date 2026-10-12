@@ -1,0 +1,68 @@
+# LEARN 8 - Find machines
+#
+# What this does: asks a host what is listening on a port, and what package
+# of a given name it has installed, then reports both as counts.
+#
+# When to use it: before you change anything, when the question is "which
+# machines does this even apply to?".
+#
+# What to change: the port and the package name.
+#
+# A hunt_* action searches and reports; it changes nothing on the host, which
+# is why every hunt is low risk and why you can deploy one to a whole fleet tag
+# in one go.
+#
+# What a hunt's results are:
+#   matched    - true or false: did anything answer the question at all
+#   count      - how many things matched
+#   truncated  - true when the cap was reached, so "20" may mean "20 or more"
+# The run's Results tab lists the individual matches - the port, the process
+# that owns it, the package version - up to a few thousand per step. Deploying
+# the same hunt across a fleet and reading the counts side by side is usually
+# enough to know where to look.
+#
+# Because the outputs are ordinary step outputs, a hunt is also what a branch
+# decides on: `if: steps.<hunt id>.result.count > 0` (see Learn 6). Hunt params
+# are the same whether a hunt is a step or a `relevant:` probe.
+
+name: Learn 8 - Find out what a host is running
+description: |
+  Two read-only searches in one task: what is listening on a port, and
+  whether a named package is installed. Nothing changes on the host.
+risk: low
+
+inputs:
+  - id: port
+    type: text
+    label: Port to look for
+    description: A port number, for example 6379
+    default: "22"
+    required: true
+
+  - id: package
+    type: text
+    label: Package that should be installed
+    default: curl
+    required: true
+
+actions:
+  # protocol and process are optional; port alone is a complete question.
+  - id: listening
+    type: hunt_port
+    params:
+      port: "${{ inputs.port }}"
+      protocol: tcp
+
+  # Version bounds work too: version_lt, version_lte, version_gt,
+  # version_gte, version_eq.
+  - id: package-present
+    type: hunt_package
+    params:
+      name: "${{ inputs.package }}"
+
+  # A hunt's own count is a number a later step or branch can read.
+  - id: say-so
+    type: run_command
+    params:
+      command: "echo Hunted port ${{ inputs.port }} and package ${{ inputs.package }}."
+      timeout: 10

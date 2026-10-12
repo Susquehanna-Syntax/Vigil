@@ -734,6 +734,49 @@ async function _savePlaybook() {
   } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
 }
 
+/* ── Template playbooks ──────────────────────────────────────────────── */
+/* The bundled examples live on the server as community playbook YAML whose
+   steps are built-in tasks (apps/playbooks/library/). Using one creates the
+   playbook in your library and opens it, so the example is the thing you edit
+   rather than a screenshot of it. */
+
+async function _openPlaybookTemplatePicker() {
+  let templates;
+  try {
+    templates = (await apiJson('/api/v1/playbooks/library/')).results || [];
+  } catch (e) {
+    showToast('Could not load the templates: ' + e.message, 'error');
+    return;
+  }
+  if (!templates.length) {
+    showToast('No template playbooks are available.', 'info');
+    return;
+  }
+  openPicker({
+    type: 'playbook_template',
+    title: 'Start from a template playbook',
+    allowAdd: false,
+    items: templates.map(t => ({ key: t.id, name: t.name, meta: t.steps.join(' → ') })),
+    onSelect: async (item) => {
+      const tpl = templates.find(t => t.id === item.key);
+      let totp = '';
+      if (tpl && tpl.allow_high_risk) {
+        const code = await totpPrompt('This template runs high-risk steps.',
+          { title: 'Use template', confirmText: 'Create playbook' });
+        if (!code) return;
+        totp = code;
+      }
+      try {
+        const row = await apiJson(`/api/v1/playbooks/library/${encodeURIComponent(item.key)}/use/`,
+          { method: 'POST', body: JSON.stringify({ totp }) });
+        showToast(`Created “${row.name}”`, 'success');
+        await loadPlaybooks();
+        _startEdit(row.id);
+      } catch (e) { showToast('Could not create the playbook: ' + e.message, 'error'); }
+    },
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('bl-allow-high-risk')
     ?.addEventListener('change', _blSyncHighRiskWarning);
@@ -742,6 +785,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (save) save.addEventListener('click', _savePlaybook);
   const nu = document.getElementById('bl-new-btn');
   if (nu) nu.addEventListener('click', () => _openEditor(null, null));
+  document.getElementById('bl-library-btn')?.addEventListener('click', _openPlaybookTemplatePicker);
   document.getElementById('bl-cancel-btn')?.addEventListener('click', _closeBlEditor);
   document.getElementById('bl-cancel-btn-2')?.addEventListener('click', _closeBlEditor);
   document.getElementById('bl-editor-overlay')?.addEventListener('click', _closeBlEditor);

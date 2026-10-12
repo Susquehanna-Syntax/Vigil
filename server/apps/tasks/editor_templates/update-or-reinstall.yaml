@@ -1,0 +1,62 @@
+# Update OR reinstall - the operator picks at deploy time
+#
+# What this does: asks, when the task is deployed, whether to do a fast
+# in-place update or a clean remove-and-reinstall - then does the one picked.
+#
+# When to use it: when the right answer depends on the machine, and you would
+# rather decide in the deploy form than maintain two tasks.
+#
+# What to change: the package name, and the two options.
+#
+# The trick is a choice input plus a `when:` per step. A choice input is a
+# dropdown in the deploy form; its value arrives as the option's `value`, not
+# its label, so the guard compares against "update" and "reinstall". The step
+# whose guard is false reports skipped and the task carries on, so exactly one
+# of the two paths does any work.
+#
+# This is the shape to reach for whenever the operator should choose at deploy
+# time: two or more guarded steps after one choice input.
+
+name: Update or reinstall a package
+description: |
+  Asks at deploy time whether to update the package in place or reinstall it
+  from scratch, and runs whichever answer was picked.
+risk: standard
+
+inputs:
+  - id: pkg
+    label: Package name
+    type: text
+    default: hashcat
+    required: true
+
+  - id: mode
+    label: How should we handle it
+    type: choice
+    choices:
+      - { value: update,    label: "Update in place" }
+      - { value: reinstall, label: "Reinstall from scratch" }
+    default: update
+
+actions:
+  # Both paths want a current index, so this one has no guard.
+  - id: refresh-index
+    type: run_package_updates
+
+  - id: update-only
+    type: update_package
+    when: inputs.mode == "update"
+    params:
+      package_name: "${{ inputs.pkg }}"
+
+  - id: remove
+    type: remove_package
+    when: inputs.mode == "reinstall"
+    params:
+      package_name: "${{ inputs.pkg }}"
+
+  - id: install
+    type: install_package
+    when: inputs.mode == "reinstall"
+    params:
+      package_name: "${{ inputs.pkg }}"

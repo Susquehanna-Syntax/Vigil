@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from django.db import transaction
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
@@ -365,55 +367,42 @@ def playbook_yaml(request, playbook_id):
     })
 
 
-@api_view(["POST"])
-@permission_classes([IsAuthenticated, IsAdmin])
-def playbook_from_yaml(request):
-    """Create or replace a playbook from community YAML.
+def _create_playbook_from_parsed(request, parsed, resolved, existing=None,
+                                 *, name=None):
+    """Create (or replace) a Playbook from parsed community YAML.
 
-    ``playbook_id`` in the body updates that playbook in place; without it a
-    new one is created. Importing over an existing playbook is how Fork →
-    edit → re-import works without accumulating duplicates.
+    *parsed* is :func:`community_yaml.parse`'s dict and *resolved* the same
+    steps after :func:`community_yaml.resolve_steps`, so no caller re-implements
+    the part that matters: the high-risk flag goes through the same two-factor
+    gate a checkbox does, the inputs are declared before the steps that map to
+    them, and the steps run past eligibility. Returns a Response — the row on
+    success, the error with the transaction rolled back.
+
+    *existing* updates a playbook in place (how Fork → edit → re-import works
+    without accumulating duplicates); *name* overrides the parsed one, which is
+    how the template library picks a free name when the example's own is taken.
     """
-    from vigil.contentyaml import ContentYamlError
-
-    from .community_yaml import parse, resolve_steps
-
-    try:
-        parsed = parse(request.data.get("yaml") or "")
-    except ContentYamlError as exc:
-        return Response({"detail": str(exc)}, status=400)
-
-    from apps.tasks.views import community_names_by_slug
-
-    visible_defs = scoping.filter_by_site(
-        TaskDefinition.objects.all(), request.user, cascade_global=True)
-    try:
-        resolved = resolve_steps(parsed["steps"], visible_defs,
-                                 community_names_by_slug("tasks"))
-    except ContentYamlError as exc:
-        return Response({"detail": str(exc)}, status=400)
-    # A plain playbook runs in its `order`; a branching one in document order.
-    steps = sorted(resolved, key=lambda s: s["order"])
-
-    playbook_id = request.data.get("playbook_id")
-    existing = None
-    if playbook_id:
+    playbook_id = request.data.get("playbook_id") if existing is None else None
+    if existing is None and playbook_id:
         existing = get_object_or_404(
             scoping.filter_by_site(Playbook.objects.all(), request.user,
                                    cascade_global=True),
             pk=playbook_id)
 
-    clash = Playbook.objects.filter(name__iexact=parsed["name"])
+    wanted = name or parsed["name"]
+    clash = Playbook.objects.filter(name__iexact=wanted)
     if existing is not None:
         clash = clash.exclude(pk=existing.pk)
     if clash.exists():
-        return Response(
-            {"detail": f"a playbook named {parsed['name']!r} already exists"},
-            status=400)
+        return Response({"detail": f"a playbook named {wanted!r} already exists"},
+                        status=400)
+
+    # A plain playbook runs in its `order`; a branching one in document order.
+    steps = sorted(resolved, key=lambda s: s["order"])
 
     with transaction.atomic():
         playbook = existing or Playbook(created_by=request.user)
-        playbook.name = parsed["name"]
+        playbook.name = wanted
         playbook.description = parsed["description"]
         playbook.target_tags = parsed["target_tags"]
         # Keep the catalog's identity for this playbook. Without it a second
@@ -462,6 +451,121 @@ def playbook_from_yaml(request):
     return Response(_row(playbook),
                     status=status.HTTP_200_OK if existing
                     else status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def playbook_from_yaml(request):
+    """Create or replace a playbook from community YAML.
+
+    ``playbook_id`` in the body updates that playbook in place; without it a
+    new one is created. Importing over an existing playbook is how Fork →
+    edit → re-import works without accumulating duplicates.
+    """
+    from vigil.contentyaml import ContentYamlError
+
+    from .community_yaml import parse, resolve_steps
+
+    try:
+        parsed = parse(request.data.get("yaml") or "")
+    except ContentYamlError as exc:
+        return Response({"detail": str(exc)}, status=400)
+
+    from apps.tasks.views import community_names_by_slug
+
+    visible_defs = scoping.filter_by_site(
+        TaskDefinition.objects.all(), request.user, cascade_global=True)
+    try:
+        resolved = resolve_steps(parsed["steps"], visible_defs,
+                                 community_names_by_slug("tasks"))
+    except ContentYamlError as exc:
+        return Response({"detail": str(exc)}, status=400)
+
+    return _create_playbook_from_parsed(request, parsed, resolved)
+
+
+def _library_dir() -> Path:
+    return Path(__file__).resolve().parent / "library"
+
+
+def _library_texts() -> dict[str, str]:
+    return {p.stem: p.read_text() for p in _library_dir().glob("*.yaml")}
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def playbook_library(request):
+    """The template playbooks bundled with the server, one file per example.
+
+    Parsed rather than listed blind: a template that no longer resolves should
+    be missing from the picker rather than offered and refused, so a step whose
+    task was renamed drops the template out of the list.
+    """
+    from vigil.contentyaml import ContentYamlError
+
+    from .community_yaml import parse, resolve_steps
+
+    builtins = TaskDefinition.objects.filter(owner=None,
+                                             archived_at__isnull=True)
+    results = []
+    for template_id, text in sorted(_library_texts().items()):
+        try:
+            parsed = parse(text)
+            resolved = resolve_steps(parsed["steps"], builtins)
+        except ContentYamlError:
+            continue
+        results.append({
+            "id": template_id,
+            "name": parsed["name"],
+            "description": parsed["description"],
+            "steps": [s["definition"].name for s in
+                      sorted(resolved, key=lambda s: s["order"])],
+            "allow_high_risk": parsed["allow_high_risk"],
+            "inputs": parsed["inputs"],
+        })
+    return Response({"results": results})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def playbook_library_use(request, template_id):
+    """Create a playbook from one of the bundled templates.
+
+    The steps resolve against the built-in tasks the server seeds, so the
+    template works on a fresh install with nothing forked first. The example's
+    own name is used when it is free and ``name (2)``, ``name (3)`` … when it
+    is not, because these are starting points people keep several of.
+    """
+    from vigil.contentyaml import ContentYamlError
+
+    from .community_yaml import parse, resolve_steps
+
+    text = _library_texts().get(template_id)
+    if text is None:
+        return Response({"detail": "no such template"}, status=404)
+    try:
+        parsed = parse(text)
+    except ContentYamlError as exc:
+        return Response({"detail": str(exc)}, status=400)
+
+    builtins = TaskDefinition.objects.filter(owner=None,
+                                            archived_at__isnull=True)
+    try:
+        resolved = resolve_steps(parsed["steps"], builtins)
+    except ContentYamlError as exc:
+        return Response({"detail": str(exc)}, status=400)
+
+    base = parsed["name"]
+    taken = {n.lower() for n in Playbook.objects.values_list("name", flat=True)}
+    wanted = base
+    n = 1
+    while wanted.lower() in taken:
+        n += 1
+        if n > 100:
+            return Response({"detail": f"a playbook named {base!r} already exists"},
+                            status=400)
+        wanted = f"{base} ({n})"
+    return _create_playbook_from_parsed(request, parsed, resolved, name=wanted)
 
 
 @api_view(["POST"])

@@ -1,0 +1,56 @@
+# LEARN 4 - Only run where it makes sense
+#
+# What this does: restarts nginx and checks that it came back, but only on a
+# machine that actually runs nginx.
+#
+# When to use it: when deploying to a whole fleet is right, and the task
+# should quietly do nothing on the machines it does not belong to.
+#
+# What to change: the service name and the two probes, so they describe the
+# machines you want.
+#
+# A top-level `relevant:` block answers "does this task apply to this host at
+# all?" before any step runs. It is a tree of three keys:
+#   all:  every item must hold
+#   any:  at least one item must hold
+#   not:  none of the items may hold
+# Each item is either a nested all / any / not block or a probe - one hunt_*
+# action with the same params it would take as a step. A tree nests at most 3
+# levels deep and holds at most 10 probes.
+#
+# What the host reports: probes run first; if none of them matches, the task
+# ends "not applicable" and no step runs. That is not a failure - the deploy
+# screen lists the host as not applicable instead of red.
+#
+# Probes are read-only hunts, so they cost a little time on the host and
+# nothing else. Keep them cheap: "is this service installed", not "walk the
+# whole disk".
+
+name: Learn 4 - Only run where nginx lives
+description: |
+  Restart nginx and confirm it came back, on hosts that have an nginx
+  service. Anywhere else the task reports not applicable and runs nothing.
+risk: standard
+
+relevant:
+  all:
+    # The service exists, however it is registered - systemd here...
+    - hunt_service: {name: nginx}
+    # ...or a Windows service manager there. One of the two must be true.
+    - any:
+        - hunt_service: {name: nginx, state: running}
+        - hunt_service: {name: nginx, start_mode: auto}
+
+actions:
+  - id: restart
+    type: restart_service
+    params:
+      service_name: nginx
+
+  # check_service reports active and state; a service that is installed but
+  # stopped fails this step, which is exactly the moment you want to hear about.
+  - id: confirm
+    type: check_service
+    params:
+      service_name: nginx
+      expect: active

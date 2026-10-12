@@ -1,0 +1,53 @@
+# Keep an app at the latest version
+#
+# What this does: makes sure a named app is installed and up to date. It
+# installs the app when it is missing, upgrades it when it is behind, and does
+# nothing when it is already current.
+#
+# When to use it: for the handful of apps you want everywhere and current -
+# an editor, a browser, an agent, a backup client.
+#
+# What to change: the app id, and the state.
+#
+# app_ensure is the declarative one: you say what you want the host to look
+# like, and it reports what it had to do about that. `state` takes:
+#   present  - installed, any version
+#   latest   - installed and at the newest version the manager offers
+#   pinned   - exactly the `version` you name (only state that takes a version)
+#   absent   - not installed at all
+# The step reports changed, the action it took, and the versions before and
+# after, so a run that did nothing is visibly a run that had nothing to do.
+#
+# `source` is optional: name the package manager when a host could install the
+# app two ways and you have an opinion about which. Leaving it out lets the
+# agent use the host's own manager.
+#
+# Run this on a schedule - an automation or a playbook - and the app stays
+# current without anyone deploying it again.
+
+name: Keep an app at the latest version
+description: |
+  Install a named app if it is missing and bring it to the newest version the
+  host's package manager offers. Safe to run repeatedly.
+risk: standard
+
+inputs:
+  - id: app
+    type: text
+    label: App id
+    description: The inventory id the Apps page shows for the app
+    default: org.mozilla.firefox
+    required: true
+
+actions:
+  - id: ensure-latest
+    type: app_ensure
+    params:
+      app: "${{ inputs.app }}"
+      state: latest
+
+  # changed / action / version_before / version_after come back from the step,
+  # so this prints what the ensure actually did rather than guessing.
+  - id: refresh-catalogue
+    type: app_inventory
+    params: {}

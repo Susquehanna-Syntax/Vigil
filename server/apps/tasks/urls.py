@@ -6,6 +6,9 @@ urlpatterns = [
     path("history/", views.task_history, name="task-history"),
     path("result/", views.task_result, name="task-result"),
     path("actions/", views.action_registry, name="task-actions"),
+    # The editor's "Start from a template" list: task templates bundled with
+    # the server, as opposed to the community ones below.
+    path("editor-templates/", views.editor_templates, name="editor-templates"),
     # The bare path keeps the pre-2026.9.1 URL working; it means tasks.
     path("community/", views.community_templates, name="community-templates"),
     path("community/<str:kind>/", views.community_templates,

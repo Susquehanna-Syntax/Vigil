@@ -1,0 +1,12 @@
+name: Upgrade outdated apps
+description: |
+  Bring every app the host reports as outdated up to the newest version its
+  package manager offers, and report how many made it and how many did not.
+  Run a software inventory first so the list of outdated apps is current.
+risk: standard
+author: Vigil
+created: 2026-10-12
+actions:
+  - id: upgrade-outdated
+    type: app_upgrade
+    params: {}

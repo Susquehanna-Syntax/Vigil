@@ -1,0 +1,38 @@
+# A template playbook: scan a host with Trivy.
+#
+# This is a Vigil playbook in the community YAML format, written by hand and
+# kept with the server as an example. The Playbooks page's Templates button
+# copies one into your library so you can open it, change it, and run it.
+#
+# What a playbook is, in one paragraph: a sequence of tasks that run one after
+# another on the same host. Each step names a task by its slug - the task's
+# name, lowercased with non-alphanumerics turned into hyphens - so a step here
+# refers to a task in the library rather than repeating its YAML.
+
+name: Scan with Trivy
+description: |
+  Install the Trivy scanner on the host and run a filesystem scan with it. The
+  report lands in the Vulnerabilities tab, where every other finding lives.
+
+  What this one shows you about playbooks: two dependent steps, where the
+  second is useless without the first, and why a playbook that contains a
+  high-risk task says so out loud. Installing software is high risk, which is
+  what allow_high_risk is for: a playbook can dispatch unattended, so the flag
+  is a separate act of authorization, guarded by two-factor confirmation,
+  rather than something a file can quietly ask for. Turn it off and the
+  playbook refuses its own first step.
+author: Vigil
+created: 2026-10-12
+
+# Needed because "Install Trivy" is a high-risk task. Without this the
+# playbook is created, but the install step is refused as ineligible.
+allow_high_risk: true
+
+steps:
+  - task: install-trivy
+    order: 1
+    outcome: Trivy installed
+
+  - task: run-a-trivy-scan
+    order: 2
+    outcome: Scanned
