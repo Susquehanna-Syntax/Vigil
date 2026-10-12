@@ -254,6 +254,8 @@ const _blFlowCtx = {
   defName: _defName,
   defRisk: _defRisk,
   defOutputs: _blDefOutputs,
+  defInputs: id => (_playbookDefs.find(d => String(d.id) === String(id).replace(/^sid:/, ''))?.parsed_spec?.inputs) || [],
+  playbookInputs: () => _blInputs.map(i => i.id),
   ineligible: id => _blIneligible(_playbookDefs.find(d => String(d.id) === String(id))),
 };
 
@@ -395,6 +397,24 @@ function _renderInspector() {
   on('[data-flow-cond]', 'change', redrawCanvas);
   on('[data-flow-outcome]', 'input', el => { _blAt(el.dataset.flowOutcome).node.outcome = el.value; });
   on('[data-flow-outcome]', 'change', redrawCanvas);
+  /* Task-input mapping: the text is the step's, empty means "use the task's
+     own default" — which is what an absent key says on the server. */
+  on('[data-flow-inp]', 'input', el => {
+    const { node } = _blAt(el.dataset.flowInp);
+    if (!node.inp) node.inp = {};
+    const v = el.value;
+    if (v === '') delete node.inp[el.dataset.inpId];
+    else node.inp[el.dataset.inpId] = v;
+    _refreshAnalysis();
+  });
+  on('[data-flow-inp-ins]', 'change', el => {
+    const field = box.querySelector(`[data-flow-inp="${CSS.escape(el.dataset.flowInpIns)}"][data-inp-id="${CSS.escape(el.dataset.inpId)}"]`);
+    if (!field || !el.value) return;
+    field.value += `\${{ inputs.${el.value} }}`;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    el.value = '';
+    field.focus();
+  });
   on('[data-flow-inputs]', 'click', el => {
     const { node } = _blAt(el.dataset.flowInputs);
     const def = _playbookDefs.find(d => String(d.id) === node.def);
@@ -456,6 +476,183 @@ function _blSetupBuilder(box, at) {
   };
 }
 
+// The playbook inputs declared on the playbook being edited — the same shape
+// the task spec's `inputs:` uses. The server validates them on save and the
+// step inspector offers their ids for ${{ inputs.<id> }}.
+let _blInputs = [];
+
+function _blInputChoices(inp) {
+  return String(inp.choicesText || '')
+    .split('\n')
+    .map((line) => {
+      const i = line.indexOf('=');
+      const value = (i >= 0 ? line.slice(0, i) : line).trim();
+      const label = i >= 0 ? line.slice(i + 1).trim() : '';
+      return { value, label: label || value };
+    })
+    .filter(c => c.value);
+}
+
+function _blInputTypeMeta(type) {
+  return { text: 'Text', number: 'Number', boolean: 'Yes / no', choice: 'Choice' }[type] || type;
+}
+
+function _renderBlInputs() {
+  const box = document.getElementById('bl-inputs');
+  if (!box) return;
+  if (!_blInputs.length) {
+    box.innerHTML = '<div class="bl-inputs-empty">This playbook asks for no inputs.</div>';
+    return;
+  }
+  box.innerHTML = _blInputs.map((inp, i) => {
+    const bits = [escHtml(inp.id), escHtml(_blInputTypeMeta(inp.type))];
+    if (inp.type !== 'boolean') bits.push(escHtml(`${inp.default === '' || inp.default == null ? '(no default)' : inp.default}`));
+    if (inp.required) bits.push('<span class="bl-inputs-flag">required</span>');
+    return `<div class="bl-inputs-row">
+      <span class="bl-inputs-bits">${bits.join(' · ')}</span>
+      <button type="button" class="btn btn-sky btn-xs" data-bl-input-edit="${i}">Edit</button>
+      <button type="button" class="btn btn-rose btn-xs" data-bl-input-rm="${i}">Remove</button>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('[data-bl-input-edit]').forEach(b => b.addEventListener(
+    'click', () => _editBlInput(+b.dataset.blInputEdit)));
+  box.querySelectorAll('[data-bl-input-rm]').forEach(b => b.addEventListener('click', () => {
+    _blInputs.splice(+b.dataset.blInputRm, 1);
+    _renderBlInputs();
+  }));
+}
+
+// Add (index null) or edit one declaration. The form mirrors what the server's
+// input validator accepts: an id it will take, choices only for a choice,
+// required only for text.
+function _editBlInput(index) {
+  const editing = index != null ? _blInputs[index] : null;
+  const m = mountModal('bl-input', { variant: 'm-pop' });
+  m.setBody(`<div class="modal-title">
+      <span>${editing ? 'Edit playbook input' : 'Add playbook input'}</span>
+      <button class="modal-close" data-bli-close aria-label="Close">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <label class="form-group">Id
+      <input class="form-control" id="bli-id" maxlength="60" spellcheck="false"
+             placeholder="restart_window" pattern="[a-zA-Z_][a-zA-Z0-9_]*">
+      <span class="muted-note">Letters, digits and underscores, starting with a letter or underscore.
+        A step uses it as \${{ inputs.&lt;id&gt; }}, and a task input with the
+        same id takes this value by itself.</span>
+    </label>
+    <label class="form-group">Label
+      <input class="form-control" id="bli-label" maxlength="120" placeholder="Restart window">
+    </label>
+    <label class="form-group">Type
+      <select class="form-control" id="bli-type">
+        <option value="text">Text</option>
+        <option value="number">Number</option>
+        <option value="boolean">Yes / no</option>
+        <option value="choice">Choice</option>
+      </select>
+    </label>
+    <label class="form-group">Description
+      <input class="form-control" id="bli-desc" maxlength="255" placeholder="Says what the person starting the run should type here">
+    </label>
+    <label class="setting-check" id="bli-required-wrap"><input type="checkbox" id="bli-required"> Required — nobody may start a run without it</label>
+    <label class="form-group" id="bli-default-wrap">Default
+      <input class="form-control" id="bli-default" maxlength="500">
+    </label>
+    <div class="form-group" id="bli-default-choice-wrap">
+      <label>Default</label>
+      <select class="form-control" id="bli-default-choice"></select>
+    </div>
+    <label class="form-group" id="bli-choices-wrap">Choices
+      <textarea class="form-control" id="bli-choices" rows="4" spellcheck="false"
+                placeholder="nightly = Nightly maintenance&#10;weekend = Weekend window"></textarea>
+      <span class="muted-note">One per line: value, or value = label.</span>
+    </label>
+    <div class="confirm-actions">
+      <button class="btn btn-outline btn-sm" data-bli-close>Cancel</button>
+      <button class="btn btn-mint btn-sm" data-bli-save>${editing ? 'Save input' : 'Add input'}</button>
+    </div>`);
+
+  const q = (id) => m.modal.querySelector(id);
+  const idEl = q('#bli-id'), labelEl = q('#bli-label'), typeEl = q('#bli-type');
+  const descEl = q('#bli-desc'), reqWrap = q('#bli-required-wrap'), reqEl = q('#bli-required');
+  const defWrap = q('#bli-default-wrap'), defEl = q('#bli-default');
+  const defChoiceWrap = q('#bli-default-choice-wrap'), defChoiceEl = q('#bli-default-choice');
+  const choicesWrap = q('#bli-choices-wrap'), choicesEl = q('#bli-choices');
+  if (editing) {
+    idEl.value = editing.id;
+    labelEl.value = editing.label || '';
+    typeEl.value = editing.type;
+    descEl.value = editing.description || '';
+    reqEl.checked = !!editing.required;
+    choicesEl.value = (editing.choices || [])
+      .map(c => (c.label && c.label !== c.value ? `${c.value} = ${c.label}` : c.value)).join('\n');
+    defEl.value = editing.default ?? '';
+  }
+
+  const sync = () => {
+    const t = typeEl.value;
+    reqWrap.hidden = t !== 'text';
+    reqEl.disabled = t !== 'text';
+    if (t !== 'text') reqEl.checked = false;
+    choicesWrap.hidden = t !== 'choice';
+    defChoiceWrap.hidden = t !== 'choice';
+    defWrap.hidden = t === 'choice' || t === 'boolean';
+    if (t === 'choice') {
+      const keep = (editing && editing.type === 'choice') ? editing.default : '';
+      defChoiceEl.replaceChildren();
+      for (const c of _blInputChoices({ choicesText: choicesEl.value })) {
+        const opt = document.createElement('option');
+        opt.value = c.value;
+        opt.textContent = c.label;
+        defChoiceEl.appendChild(opt);
+      }
+      if (keep) defChoiceEl.value = keep;
+    }
+  };
+  typeEl.addEventListener('change', sync);
+  choicesEl.addEventListener('input', () => { if (typeEl.value === 'choice') sync(); });
+  sync();
+
+  m.modal.querySelectorAll('[data-bli-close]').forEach(b => b.addEventListener('click', m.close));
+  m.modal.querySelector('[data-bli-save]').addEventListener('click', () => {
+    const id = idEl.value.trim();
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)) {
+      showToast('An input id is letters, digits and underscores, starting with a letter or underscore', 'error');
+      return;
+    }
+    if (_blInputs.some((x, i) => x.id === id && i !== index)) {
+      showToast(`The playbook already has an input named ${id}`, 'error');
+      return;
+    }
+    const type = typeEl.value;
+    const choices = type === 'choice' ? _blInputChoices({ choicesText: choicesEl.value }) : [];
+    if (type === 'choice' && !choices.length) {
+      showToast('A choice input needs at least one choice', 'error');
+      return;
+    }
+    let def;
+    if (type === 'boolean') def = false;
+    else if (type === 'number') def = defEl.value.trim() === '' ? 0 : Number(defEl.value);
+    else if (type === 'choice') def = defChoiceEl.value || (choices[0] ? choices[0].value : '');
+    else def = defEl.value;
+    const inp = {
+      id,
+      type,
+      label: labelEl.value.trim() || id,
+      description: descEl.value.trim(),
+      required: type === 'text' ? reqEl.checked : type !== 'boolean',
+      default: def,
+      choices,
+    };
+    if (index != null) _blInputs[index] = inp; else _blInputs.push(inp);
+    _renderBlInputs();
+    m.close();
+  });
+  m.open();
+  idEl.focus();
+}
+
 function _openEditor(data, editingId) {
   const modal = document.getElementById('bl-editor-modal');
   modal.dataset.editing = editingId || '';
@@ -471,6 +668,8 @@ function _openEditor(data, editingId) {
   const allowBox = document.getElementById('bl-allow-high-risk');
   if (allowBox) allowBox.checked = _blHighRiskWasOn;
   _blSyncHighRiskWarning();
+  _blInputs = JSON.parse(JSON.stringify((data && data.inputs) || []));
+  _renderBlInputs();
   _editingTree = data ? flowTreeFromRow(data) : [];
   _blSel = null;
   _blView = null;
@@ -496,6 +695,7 @@ async function _savePlaybook() {
     target_tags: document.getElementById('bl-tags').value.split(',').map(t => t.trim()).filter(Boolean),
     completion_tag: document.getElementById('bl-completion-tag').value.trim(),
     allow_high_risk: allowHighRisk,
+    inputs: _blInputs,
     flow_steps: flowSerialize(_editingTree),
   };
   if (!body.name) return showToast('Give the playbook a name', 'error');
@@ -529,6 +729,7 @@ async function _savePlaybook() {
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('bl-allow-high-risk')
     ?.addEventListener('change', _blSyncHighRiskWarning);
+  document.getElementById('bl-input-add')?.addEventListener('click', () => _editBlInput(null));
   const save = document.getElementById('bl-save-btn');
   if (save) save.addEventListener('click', _savePlaybook);
   const nu = document.getElementById('bl-new-btn');

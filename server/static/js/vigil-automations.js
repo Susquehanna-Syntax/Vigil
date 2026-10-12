@@ -11,6 +11,9 @@ let _autoPlaybooks = [];   // playbook names
 let _autoHosts = [];       // selectable hosts
 let _autoRules = [];       // alert rules (for specific-event)
 let _autoParamsOverride = {};  // task input overrides for the automation being edited
+let _autoInputs = {};          // values for the picked playbook's or task's declared inputs
+let _autoDefCache = {};        // definition id → its detail row, so the Inputs button is instant
+let _autoPlaybookCache = {};   // playbook id → its detail row, for the same reason on playbooks
 let _allAutomations = [];  // unfiltered, so the search box can re-filter without refetching
 
 async function loadAutomations() {
@@ -144,12 +147,14 @@ function _autoPickAction() {
       if (item.raw && !_autoDefs.some(d => String(d.id) === String(item.key))) _autoDefs.push(item.raw);
       document.getElementById('auto-action-task').value = item.key;
       _autoParamsOverride = {};   // new task — old inputs are meaningless
+      _autoInputs = {};           // ditto for its declared inputs
       _autoRefreshActionLabel();
     } });
   } else {
     openPicker({ type: 'playbook', title: 'Pick a playbook to run', onSelect: (item) => {
       if (!_autoPlaybooks.some(b => b.name === item.key)) _autoPlaybooks.push(item.raw);
       document.getElementById('auto-action-playbook').value = item.key;
+      _autoInputs = {};
       _autoRefreshActionLabel();
     } });
   }
@@ -161,6 +166,100 @@ function _autoPickHost() {
     document.getElementById('auto-target-host').value = item.key;
     _autoRefreshHostLabel();
   } });
+}
+
+// Inputs for the action the editor has picked: a playbook's declared inputs,
+// or the task's. The playbook list row carries them; a task's are in its
+// definition detail, fetched once per editor session.
+async function _autoActionInputs() {
+  const kind = document.getElementById('auto-action-kind').value;
+  if (kind === 'playbook') {
+    const name = (document.getElementById('auto-action-playbook').value || '').trim().toLowerCase();
+    if (!name) return [];
+    const row = _autoPlaybooks.find(p => (p.name || '').toLowerCase() === name);
+    if (!row) return [];
+    if (row.inputs) return row.inputs;
+    if (!_autoPlaybookCache[row.id]) {
+      _autoPlaybookCache[row.id] = await apiJson(`/api/v1/playbooks/${row.id}/`)
+        .catch(() => ({ inputs: [] }));
+    }
+    return _autoPlaybookCache[row.id].inputs || [];
+  }
+  const id = document.getElementById('auto-action-task').value;
+  if (!id) return [];
+  if (!_autoDefCache[id]) {
+    _autoDefCache[id] = await apiJson(`/api/v1/tasks/definitions/${id}/`)
+      .catch(() => ({ parsed_spec: {} }));
+  }
+  return (_autoDefCache[id].parsed_spec && _autoDefCache[id].parsed_spec.inputs) || [];
+}
+
+function _autoInputsNote() {
+  const note = document.getElementById('auto-inputs-note');
+  if (!note) return;
+  const kind = document.getElementById('auto-action-kind')?.value;
+  const n = Object.keys(_autoInputs || {}).length;
+  if (n && (kind === 'task' || kind === 'playbook')) {
+    note.hidden = false;
+    note.textContent = `${n} input${n === 1 ? '' : 's'} set — Inputs`;
+  } else {
+    note.hidden = true;
+    note.textContent = '';
+  }
+}
+
+// The Inputs button. A target that declares inputs gets the same form as the
+// deploy dialog; a task that declares none keeps the old per-action override
+// editor, and a playbook with none says so — there is nothing to fill.
+async function _openAutoInputs() {
+  const kind = document.getElementById('auto-action-kind').value;
+  let inputs;
+  try {
+    inputs = await _autoActionInputs();
+  } catch (e) {
+    return showToast(`Could not load this target's inputs: ${e.message || 'Request failed'}`, 'error');
+  }
+  if (!inputs.length) {
+    if (kind === 'playbook') return showToast('This playbook has no inputs', 'error');
+    return _openAutoParamOverride();
+  }
+  const m = mountModal('auto-inputs', { variant: 'm-pop' });
+  m.setBody(`<div class="modal-title">
+      <span>Inputs</span>
+      <button class="modal-close" data-ai-close aria-label="Close">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="muted-note" style="margin-bottom:10px;">The automation runs with these values,
+      whenever it fires — nobody is asked when it does.</div>
+    <div class="inputs-form" id="ai-form"></div>
+    <div class="confirm-actions">
+      ${kind === 'task' ? '<button class="btn btn-outline btn-sm" data-ai-adv>Advanced: override action params</button>' : ''}
+      <button class="btn btn-outline btn-sm" data-ai-close>Cancel</button>
+      <button class="btn btn-mint btn-sm" data-ai-save>Save</button>
+    </div>`);
+  inputsFormMount(m.modal.querySelector('#ai-form'), inputs, _autoInputs);
+  m.modal.querySelectorAll('[data-ai-close]').forEach(b => b.addEventListener('click', m.close));
+  m.modal.querySelector('[data-ai-adv]')?.addEventListener('click', () => {
+    m.close();
+    _openAutoParamOverride();
+  });
+  m.modal.querySelector('[data-ai-save]').addEventListener('click', () => {
+    const read = inputsFormRead(m.modal.querySelector('#ai-form'));
+    if (read.error) return showToast(read.error, 'error');
+    _autoInputs = read.values;
+    _autoInputsNote();
+    m.close();
+  });
+  m.open();
+}
+
+function _openAutoParamOverride() {
+  const id = document.getElementById('auto-action-task').value;
+  const def = _autoDefs.find(d => String(d.id) === id);
+  if (!def) return showToast('Pick a task first', 'error');
+  openInputsModal({ def, override: _autoParamsOverride,
+    onSave: (ov) => { _autoParamsOverride = ov; } });
 }
 
 function _autoSyncVisibility() {
@@ -184,7 +283,8 @@ function _autoSyncVisibility() {
 
   const kind = document.getElementById('auto-action-kind').value;
   const inputsBtn = document.getElementById('auto-inputs-btn');
-  if (inputsBtn) inputsBtn.hidden = kind !== 'task';
+  if (inputsBtn) inputsBtn.hidden = false;
+  _autoInputsNote();
 
   const tgt = document.getElementById('auto-target').value;
   document.getElementById('auto-target-tags').hidden = tgt !== 'tags';
@@ -244,10 +344,14 @@ function _openAutoEditor(a) {
   set('auto-target-tags', a ? (a.target_tags || []).join(', ') : '');
   set('auto-target-host', a && a.target_host ? a.target_host : '');
   _autoParamsOverride = (a && a.params_override) || {};
+  _autoInputs = (a && a.inputs) || {};
+  _autoDefCache = {};
+  _autoPlaybookCache = {};
   document.getElementById('auto-enabled').checked = a ? a.enabled : true;
   _autoSyncVisibility();
   _autoRefreshActionLabel();
   _autoRefreshHostLabel();
+  _autoInputsNote();
   document.getElementById('auto-editor-overlay').classList.add('open');
   modal.classList.add('open');
 }
@@ -299,6 +403,7 @@ async function _saveAutomation() {
     target_tags: v('auto-target-tags').split(',').map(s => s.trim()).filter(Boolean),
     target_host: v('auto-target-host') || null,
     params_override: _autoParamsOverride,
+    inputs: _autoInputs,
     enabled: document.getElementById('auto-enabled').checked,
   };
   if (!body.name) return showToast('Name the automation', 'error');
@@ -332,17 +437,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('auto-action-task').value = '';
     document.getElementById('auto-action-playbook').value = '';
     _autoParamsOverride = {};
+    _autoInputs = {};
     _autoRefreshActionLabel();
   });
-  document.getElementById('auto-inputs-btn')?.addEventListener('click', () => {
-    if (document.getElementById('auto-action-kind').value !== 'task')
-      return showToast('Inputs apply to tasks — edit the playbook’s steps instead', 'error');
-    const id = document.getElementById('auto-action-task').value;
-    const def = _autoDefs.find(d => String(d.id) === String(id));
-    if (!def) return showToast('Pick a task first', 'error');
-    openInputsModal({ def, override: _autoParamsOverride,
-      onSave: (ov) => { _autoParamsOverride = ov; } });
-  });
+  document.getElementById('auto-inputs-btn')?.addEventListener('click', _openAutoInputs);
 });
 
 
