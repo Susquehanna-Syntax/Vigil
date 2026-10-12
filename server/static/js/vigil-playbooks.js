@@ -534,40 +534,48 @@ function _editBlInput(index) {
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <label class="form-group">Id
+    <div class="form-group">
+      <label class="form-label" for="bli-id">Id</label>
       <input class="form-control" id="bli-id" maxlength="60" spellcheck="false"
              placeholder="restart_window" pattern="[a-zA-Z_][a-zA-Z0-9_]*">
-      <span class="muted-note">Letters, digits and underscores, starting with a letter or underscore.
+      <div class="muted-note bli-hint">Letters, digits and underscores, starting with a letter or underscore.
         A step uses it as \${{ inputs.&lt;id&gt; }}, and a task input with the
-        same id takes this value by itself.</span>
-    </label>
-    <label class="form-group">Label
+        same id takes this value by itself.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="bli-label">Label</label>
       <input class="form-control" id="bli-label" maxlength="120" placeholder="Restart window">
-    </label>
-    <label class="form-group">Type
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="bli-type">Type</label>
       <select class="form-control" id="bli-type">
         <option value="text">Text</option>
         <option value="number">Number</option>
         <option value="boolean">Yes / no</option>
         <option value="choice">Choice</option>
       </select>
-    </label>
-    <label class="form-group">Description
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="bli-desc">Description</label>
       <input class="form-control" id="bli-desc" maxlength="255" placeholder="Says what the person starting the run should type here">
-    </label>
-    <label class="setting-check" id="bli-required-wrap"><input type="checkbox" id="bli-required"> Required — nobody may start a run without it</label>
-    <label class="form-group" id="bli-default-wrap">Default
+    </div>
+    <div class="form-group" id="bli-required-wrap">
+      <label class="setting-check"><input type="checkbox" id="bli-required"> Required — nobody may start a run without it</label>
+    </div>
+    <div class="form-group" id="bli-default-wrap">
+      <label class="form-label" for="bli-default">Default</label>
       <input class="form-control" id="bli-default" maxlength="500">
-    </label>
+    </div>
     <div class="form-group" id="bli-default-choice-wrap">
-      <label>Default</label>
+      <label class="form-label" for="bli-default-choice">Default</label>
       <select class="form-control" id="bli-default-choice"></select>
     </div>
-    <label class="form-group" id="bli-choices-wrap">Choices
+    <div class="form-group" id="bli-choices-wrap">
+      <label class="form-label" for="bli-choices">Choices</label>
       <textarea class="form-control" id="bli-choices" rows="4" spellcheck="false"
                 placeholder="nightly = Nightly maintenance&#10;weekend = Weekend window"></textarea>
-      <span class="muted-note">One per line: value, or value = label.</span>
-    </label>
+      <div class="muted-note bli-hint">One per line: value, or value = label.</div>
+    </div>
     <div class="confirm-actions">
       <button class="btn btn-outline btn-sm" data-bli-close>Cancel</button>
       <button class="btn btn-mint btn-sm" data-bli-save>${editing ? 'Save input' : 'Add input'}</button>

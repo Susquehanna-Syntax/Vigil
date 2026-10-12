@@ -225,6 +225,14 @@ async function openPolicyEditor(policyId) {
  *  `opts.windowsClassifications` is the same idea for OS updates: the Windows
  *  Update classifications an update actually arrived under, ticked into the
  *  Patching tab so the policy fetches that kind of update. */
+function _polNewMeta(appName, pairs, classifications) {
+  if (!pairs.length && classifications.length) return `patches ${classifications.join(', ')} on Windows`;
+  if (pairs.length && classifications.length) {
+    return `keeps the packages up to date and patches ${classifications.join(', ')} on Windows`;
+  }
+  return `keeps ${appName} installed and up to date`;
+}
+
 async function policyFromApp(appName, pairs, opts = {}) {
   try {
     polState.rows = (await apiJson('/api/v1/policies/')).results || [];
@@ -234,7 +242,7 @@ async function policyFromApp(appName, pairs, opts = {}) {
   }
   const want = (opts.windowsClassifications || []).filter(c => POL_CLASSIFICATIONS.includes(c));
   const items = [
-    { key: '', name: 'New policy', meta: `keeps ${appName} installed and up to date` },
+    { key: '', name: 'New policy', meta: _polNewMeta(appName, pairs, want) },
     ...polState.rows.map(p => ({ key: p.id, name: p.name,
       meta: `${p.app_rules.length} app rule${p.app_rules.length === 1 ? '' : 's'}${p.enabled ? '' : ' · disabled'}` })),
   ];

@@ -4256,6 +4256,29 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .ctr-res-table th:nth-child(3) { width: 11%; }
 .ctr-res-table th:nth-child(5) { width: 12%; }
 .ctr-res-table th:nth-child(6) { width: 104px; }
+/* Ids, sizes and buttons never break mid-word; subnets break only between
+   entries. Short fixed-width cells clip with an ellipsis instead. */
+.ctr-res-table td.ctr-image, .ctr-res-table td.ctr-stat {
+  overflow-wrap: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ctr-res-table td.ctr-subnets { white-space: normal; }
+.ctr-res-table td.ctr-subnets > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctr-res-table td .btn { white-space: nowrap; }
+.ctr-res-table td.ctr-fix { overflow: visible; text-overflow: clip; }
+.ctr-res-table th:nth-child(6) { width: 112px; }
+/* Images: a 12-character id and a size need fixed room; the name takes the rest. */
+.ctr-img-table th:nth-child(1) { width: auto; }
+.ctr-img-table th:nth-child(2) { width: 138px; }
+.ctr-img-table th:nth-child(3) { width: 108px; }
+.ctr-img-table th:nth-child(4) { width: 96px; }
+.ctr-img-table th:nth-child(5) { width: 16%; }
+/* Volumes: the size column needs room for "123.4 MB". */
+.ctr-vol-table th:nth-child(3) { width: 108px; }
+/* Networks: the subnet column holds addresses, not a size. */
+.ctr-net-table th:nth-child(1) { width: 24%; }
+.ctr-net-table th:nth-child(2) { width: 10%; }
+.ctr-net-table th:nth-child(3) { width: 20%; }
+
+.bli-hint { display: block; margin-top: 6px; font-size: 12px; color: var(--text-3); line-height: 1.5; }
 
 /* ── Stack revisions: names, chips, prune (14.3) ─────────────────────── */
 .sted-card-title-row { display: flex; align-items: center; justify-content: space-between; }
@@ -4349,7 +4372,7 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .topo-site-title { font-size: 13px; font-weight: 700; fill: var(--text-2); letter-spacing: .2px; }
 .topo-tagbox { fill-opacity: .08; stroke-width: 1.5; stroke-dasharray: 5 5; stroke-opacity: .55;
   pointer-events: none; }
-.topo-tagbox-label { font-size: 11px; font-weight: 700; letter-spacing: .4px; }
+.topo-tagbox-label { font-size: 10px; font-weight: 700; letter-spacing: .4px; }
 
 .topo-link { fill: none; stroke: var(--text-3); stroke-width: 1.5; stroke-opacity: .7; }
 .topo-link-ext { stroke-dasharray: 3 5; }
