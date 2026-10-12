@@ -311,14 +311,13 @@ function storeAddToPolicy() {
 async function storeSaveTask() {
   const picked = _storePicked();
   if (!picked.length) { showToast('Pick at least one package manager', 'error'); return; }
-  const name = picked.length === 1 ? picked[0].name : `${picked.length} packages`;
   try {
     const res = await apiJson('/api/v1/catalog/install-task/', {
       method: 'POST', body: JSON.stringify({ packages: picked.map(p => p.id) }) });
     _closeStoreApp();
     navigateTo('tasks');
     if (typeof openDefinitionEditor === 'function') await openDefinitionEditor(res.definition_id);
-    showToast(`Saved “${name}” to your tasks`, 'success');
+    showToast(`Saved “${res.name}” to your tasks`, 'success');
   } catch (e) { showToast(e.message, 'error'); }
 }
 
