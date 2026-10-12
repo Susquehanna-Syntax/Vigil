@@ -279,6 +279,30 @@ class DockerImage(models.Model):
     created = models.DateTimeField(null=True, blank=True)
 
 
+class HostNetwork(models.Model):
+    """The last network snapshot an agent reported (14.4): interface
+    addresses, listening sockets, and live connections to other machines.
+
+    The topology page reads it, along with QA-31's topology API. Replaced
+    wholesale on each check-in that carries a ``network`` block — one row per
+    host, since a topology view wants what is true now, not history.
+    """
+
+    host = models.OneToOneField(Host, on_delete=models.CASCADE, related_name="network")
+    #: [{name, up, mac, addrs: [{family, address, prefix}]}]
+    interfaces = models.JSONField(default=list, blank=True)
+    #: [{proto, address, port, process}] — what accepts traffic here.
+    listening = models.JSONField(default=list, blank=True)
+    #: [{proto, direction, remote_ip, remote_port, local_port, process, count}]
+    connections = models.JSONField(default=list, blank=True)
+    #: True when the agent could not read the socket table (needs root on macOS).
+    partial = models.BooleanField(default=False)
+    collected_at = models.DateTimeField()
+
+    def __str__(self):
+        return f"{self.host.hostname} network @ {self.collected_at:%Y-%m-%d %H:%M}"
+
+
 class DockerVolume(models.Model):
     host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="docker_volumes")
     name = models.CharField(max_length=255)

@@ -16,7 +16,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import client, collector, software, verify, windows_update
+from . import client, collector, netmap, software, verify, windows_update
 from .config import load_config
 from .executor import execute_action
 from .nonce_store import NonceStore
@@ -772,6 +772,7 @@ def run_agent() -> None:
     inventory_refresh_after = 0.0  # monotonic deadline; 0 → refresh now
     docker_refresh_after = 0.0    # monotonic deadline; 0 → check now
     software_refresh_after = 0.0  # monotonic deadline; 0 → collect now
+    network_refresh_after = 0.0   # monotonic deadline; 0 → collect now
     server_software_digest: str | None = None  # the digest the server holds
     last_software_sent = 0.0      # monotonic; underpins the resend-every-24h rule
     last_inventory: dict | None = None
@@ -836,6 +837,17 @@ def run_agent() -> None:
             windows_updates = windows_update.summary()
             update_list = windows_update.take_update_list()
             engines = _container_engines()
+            # Network map: sockets and addresses move faster than the rest of
+            # the inventory but not faster than 5 minutes, and the snapshot is
+            # one row on the server — sending it every check-in would only
+            # rewrite it with what it already holds.
+            network_payload = None
+            if time.monotonic() >= network_refresh_after:
+                try:
+                    network_payload = netmap.collect_network()
+                except Exception:
+                    logger.exception("Network map collection failed")
+                network_refresh_after = time.monotonic() + 300
             try:
                 response = client.checkin(
                     config, metrics, inventory=inventory_payload,
@@ -846,6 +858,7 @@ def run_agent() -> None:
                     software=software_payload,
                     windows_update_list=update_list,
                     container_engines=engines,
+                    network=network_payload,
                 )
             except Exception:
                 windows_update.restore_update_list(update_list)
