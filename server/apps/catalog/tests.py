@@ -273,6 +273,44 @@ class ApiTests(_FreshSettings, TestCase):
         self.assertTrue(body["enabled"])
         kick.assert_called_once()
 
+    def test_search_ranks_name_matches_before_summary_matches(self):
+        CatalogPackage.objects.bulk_create([
+            CatalogPackage(source="dpkg", package_id=f"lib-x-{n}", name=f"lib-x-{n}",
+                           summary="tool for pycharm users", platform="linux")
+            for n in range(600)])
+        CatalogPackage.objects.create(source="flatpak", package_id="com.jetbrains.PyCharm-Community",
+                                      name="PyCharm Community", platform="linux")
+        body = self.client_admin.get("/api/v1/catalog/", {"q": "pycharm"}).json()
+        self.assertEqual(body["count"], 601)
+        self.assertEqual(body["results"][0]["package_id"], "com.jetbrains.PyCharm-Community",
+                         "the app you typed, not the first summary match alphabetically")
+
+    def test_search_words_any_order_and_case(self):
+        CatalogPackage.objects.create(source="flatpak", package_id="com.jetbrains.PyCharm-Community",
+                                      name="PyCharm Community Edition", platform="linux")
+        CatalogPackage.objects.create(source="dpkg", package_id="pycharm", name="pycharm",
+                                      platform="linux", summary="Community edition")
+        for q in ("community PYCHARM", "pycharm-community"):
+            hits = self.client_admin.get("/api/v1/catalog/", {"q": q}).json()
+            self.assertEqual([c["package_id"] for c in hits["results"]],
+                             ["com.jetbrains.PyCharm-Community", "pycharm"], q)
+
+    def test_status_lists_wanted_sources(self):
+        Host.objects.filter(pk=Host.objects.first().pk).update(os="Windows 11")
+        wanted = self.client_admin.get("/api/v1/catalog/status/").json()["wanted"]
+        self.assertIn(("winget", "windows"), {(w["source"], w["platform"]) for w in wanted})
+
+    def test_sync_now_is_admin_only_and_needs_the_catalog_on(self):
+        _viewer, client_viewer = _user(Role.VIEWER)
+        self.assertEqual(client_viewer.post("/api/v1/catalog/sync/", {}, format="json").status_code, 403)
+        self.assertEqual(self.client_admin.post("/api/v1/catalog/sync/", {}, format="json").status_code, 409)
+        from apps.instance import config
+        config.write("VIGIL_CATALOG_SYNC", "true", user=self.admin)
+        with mock.patch("apps.catalog.views._sync_in_background") as kick:
+            resp = self.client_admin.post("/api/v1/catalog/sync/", {}, format="json")
+        self.assertEqual(resp.status_code, 202)
+        kick.assert_called_once()
+
     def test_icons_are_not_fetched_while_the_catalog_is_off(self):
         with mock.patch("apps.catalog.views.fetch") as get:
             resp = self.client_admin.get(f"/api/v1/catalog/{self.ff_flat.id}/icon/")
