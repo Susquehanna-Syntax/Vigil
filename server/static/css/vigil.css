@@ -4450,3 +4450,5 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
   .topo-body { flex-direction: column; }
   .topo-panel { flex: 1 1 auto; width: 100%; max-height: none; }
 }
+
+.bl-desc { resize: vertical; min-height: 64px; line-height: 1.5; font-family: inherit; }
