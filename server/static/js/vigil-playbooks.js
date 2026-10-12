@@ -15,11 +15,17 @@ async function loadPlaybooks() {
   if (!list) return;
   list.innerHTML = '<div class="empty-block"><p>Loading…</p></div>';
   try {
-    const [playbooks, defs] = await Promise.all([
+    // Steps may name your own tasks or shared ones (the built-ins a template
+    // playbook uses), so both lists feed the names, risks and outputs.
+    const [playbooks, defs, shared] = await Promise.all([
       apiJson('/api/v1/playbooks/'),
       apiJson('/api/v1/tasks/definitions/'),
+      apiJson('/api/v1/tasks/definitions/?scope=community').catch(() => []),
     ]);
-    _playbookDefs = Array.isArray(defs) ? defs : (defs.results || []);
+    const rows = (x) => (Array.isArray(x) ? x : (x.results || []));
+    const own = rows(defs);
+    const seen = new Set(own.map(d => String(d.id)));
+    _playbookDefs = own.concat(rows(shared).filter(d => !seen.has(String(d.id))));
     _allPlaybooks = playbooks;
     _renderDefPicker();
     _renderPlaybookList(_filterPlaybooks());
