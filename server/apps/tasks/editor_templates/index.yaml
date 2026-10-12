@@ -1,0 +1,176 @@
+# The task editor's "Start from a template" list.
+#
+# One entry per template file in this directory. The endpoint
+# GET /api/v1/tasks/editor-templates/ reads this file and returns the entries
+# in the order written here, each carrying the YAML of the file it names.
+#
+#   id      - stable identifier the browser picks with
+#   file    - the YAML file beside this index
+#   label   - what the picker shows as the name
+#   group   - the picker's second line; the section the template belongs to
+#   summary - one sentence on what the template is for
+#
+# The groups appear in this order: Learn the task language, Software,
+# Services and system, Containers, Security scanning.
+
+- id: learn-1
+  file: learn-1-your-first-task.yaml
+  label: "Learn 1: Your first task"
+  group: Learn the task language
+  summary: The smallest task that does something - restart a service.
+
+- id: learn-2
+  file: learn-2-ask-for-values.yaml
+  label: "Learn 2: Ask for values when it runs"
+  group: Learn the task language
+  summary: Inputs and ${{ inputs.x }} so nobody edits YAML to reuse a task.
+
+- id: learn-3
+  file: learn-3-one-task-two-operating-systems.yaml
+  label: "Learn 3: One task for Windows and Linux"
+  group: Learn the task language
+  summary: "when: guards so each host runs only the steps that fit it."
+
+- id: learn-4
+  file: learn-4-only-where-it-applies.yaml
+  label: "Learn 4: Only run where it makes sense"
+  group: Learn the task language
+  summary: "A relevant: block so the task is not applicable anywhere else."
+
+- id: learn-5
+  file: learn-5-what-success-means.yaml
+  label: "Learn 5: Decide what success means"
+  group: Learn the task language
+  summary: success_criteria, so a command that fails quietly is still a failure.
+
+- id: learn-6
+  file: learn-6-branch-on-a-result.yaml
+  label: "Learn 6: Branch on a result"
+  group: Learn the task language
+  summary: if / then / else on what an earlier step reported.
+
+- id: learn-7
+  file: learn-7-reuse-another-task.yaml
+  label: "Learn 7: Reuse another task"
+  group: Learn the task language
+  summary: "use: copies a task's steps into your branch at deploy time."
+
+- id: learn-8
+  file: learn-8-find-machines.yaml
+  label: "Learn 8: Find machines"
+  group: Learn the task language
+  summary: A hunt - read-only, reporting matched, count and truncated.
+
+- id: learn-9
+  file: learn-9-run-your-own-script.yaml
+  label: "Learn 9: Run your own script safely"
+  group: Learn the task language
+  summary: An inline script, and the hash approval a managed host asks for.
+
+- id: install-app-windows-linux
+  file: install-app-windows-linux.yaml
+  label: Install an app on Windows and Linux
+  group: Software
+  summary: "One app, one step per package manager, each guarded by a when:."
+
+- id: keep-app-latest
+  file: keep-app-latest.yaml
+  label: Keep an app at the latest version
+  group: Software
+  summary: app_ensure with state latest - install it if missing, upgrade if behind.
+
+- id: update-package
+  file: update-package.yaml
+  label: Update a package
+  group: Software
+  summary: Refresh the package index, then upgrade one package.
+
+- id: reinstall-package
+  file: reinstall-package.yaml
+  label: Reinstall a package from scratch
+  group: Software
+  summary: Remove the package, then install it fresh.
+
+- id: update-or-reinstall
+  file: update-or-reinstall.yaml
+  label: Update or reinstall (choose at deploy)
+  group: Software
+  summary: A choice input lets the operator pick the approach when deploying.
+
+- id: restart-service
+  file: restart-service.yaml
+  label: Restart a service
+  group: Services and system
+  summary: Bounce one service and confirm it came back.
+
+- id: clear-tmp
+  file: clear-tmp.yaml
+  label: Clear /tmp older than N days
+  group: Services and system
+  summary: Delete temp files older than an age you choose.
+
+- id: wait-then-act
+  file: wait-then-act.yaml
+  label: Wait until nobody is logged in, then act
+  group: Services and system
+  summary: Poll until the sessions clear, then restart - for workstations.
+
+- id: reboot-host
+  file: reboot-host.yaml
+  label: Reboot a host, with a delay
+  group: Services and system
+  summary: A delayed reboot, so you can back out before it happens.
+
+- id: check-docker-updates
+  file: check-docker-updates.yaml
+  label: Check Docker images for updates now
+  group: Containers
+  summary: Force the digest re-check instead of waiting for the scheduled one.
+
+- id: update-stack
+  file: update-stack.yaml
+  label: Update a compose stack
+  group: Containers
+  summary: Pull the newest images and bring up what changed.
+
+- id: measure-container-storage
+  file: measure-container-storage.yaml
+  label: Measure container storage
+  group: Containers
+  summary: What images, volumes, containers and the build cache are using.
+
+- id: install-trivy
+  file: install-trivy.yaml
+  label: Install Trivy
+  group: Security scanning
+  summary: The same install on apt, dnf, brew or winget, picked per host.
+
+- id: run-trivy-scan
+  file: run-trivy-scan.yaml
+  label: Run a Trivy scan
+  group: Security scanning
+  summary: Scan the filesystem and file the report under Vulnerabilities.
+
+- id: install-nessus
+  file: install-nessus.yaml
+  label: Install Nessus Essentials
+  group: Security scanning
+  summary: Install the scanner on the host you want to run scans from.
+
+- id: request-nessus-scan
+  file: request-nessus-scan.yaml
+  label: Request a Nessus scan of this host
+  group: Security scanning
+  summary: Ask the server to queue a scan; nothing runs on the host itself.
+
+- id: install-greenbone-ce
+  file: install-greenbone-ce.yaml
+  label: Install Greenbone Community Edition
+  group: Security scanning
+  summary: Bring up the Greenbone scanner stack in Docker.
+
+- id: request-network-scan
+  file: request-network-scan.yaml
+  label: Request a network scan of this host
+  group: Security scanning
+  summary: Engine-agnostic - whichever network scanner the server has configured.

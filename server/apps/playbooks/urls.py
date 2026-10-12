@@ -5,6 +5,11 @@ from . import views
 urlpatterns = [
     path("", views.playbook_index, name="playbook-index"),
     path("yaml/", views.playbook_from_yaml, name="playbook-from-yaml"),
+    # The bundled template playbooks. Before <uuid:playbook_id>/ so that
+    # "library/" is not read as a playbook id.
+    path("library/", views.playbook_library, name="playbook-library"),
+    path("library/<str:template_id>/use/", views.playbook_library_use,
+         name="playbook-library-use"),
     path("<uuid:playbook_id>/", views.playbook_detail, name="playbook-detail"),
     path("<uuid:playbook_id>/yaml/", views.playbook_yaml, name="playbook-yaml"),
     path("<uuid:playbook_id>/archive/", views.playbook_archive, name="playbook-archive"),

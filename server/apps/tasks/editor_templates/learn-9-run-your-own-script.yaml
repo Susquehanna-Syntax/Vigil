@@ -1,0 +1,66 @@
+# LEARN 9 - Run your own script, safely
+#
+# What this does: runs a small inline shell script that reports the kernel,
+# the uptime and how much disk is left.
+#
+# When to use it: when no built-in action fits, and the thing you need is a
+# dozen lines of shell.
+#
+# What to change: the script body.
+#
+# An inline script is high risk by definition: the server is sending
+# executable text to the host. It also needs one act of approval on each host
+# it runs on, and that act is the point of this template:
+#
+#   The agent identifies an inline script by the SHA-256 of its exact body.
+#   Save the task and the editor shows that hash next to the script step. Copy
+#   it and run, on each host the script should run on:
+#
+#       sudo vigil-agent allow-script --hash sha256:<hash the editor shows>
+#
+#   A host that has not seen that hash refuses the task, and the refusal names
+#   the hash it wanted - paste that line and approve it once. Editing even one
+#   character of the body changes the hash, so an edited script needs approving
+#   again. That is deliberate: the approval is about those exact bytes.
+#
+# Two format rules the validator enforces:
+#   - give `script` (a body) or `script_name` (a script already on the host in
+#     the agent's script directory), never both;
+#   - a body does NOT read ${{ inputs.x }} markers - scripts are full of bare
+#     braces. Inputs arrive as VIGIL_INPUT_<ID> environment variables instead,
+#     named with the input id in capitals.
+#
+# `shell` chooses the interpreter for the body: sh, bash, powershell or pwsh.
+
+name: Learn 9 - Run a script of your own
+description: |
+  Print the kernel version, the uptime and the free space on the root
+  filesystem. Needs the script's hash approved on each managed host.
+risk: high
+
+inputs:
+  - id: min_free_gb
+    type: number
+    label: Warn when the root filesystem has less than this many GB free
+    default: 10
+
+actions:
+  # `shell` is optional. Give it when the body is written for one interpreter
+  # in particular, as this bash script is; without it the agent picks.
+  - id: report
+    type: execute_script
+    params:
+      shell: bash
+      script: |
+        #!/usr/bin/env bash
+        # Inputs are environment variables, not Vigil markers. The name is
+        # VIGIL_INPUT_ plus the input id in capitals.
+        threshold="${VIGIL_INPUT_MIN_FREE_GB:-10}"
+        echo "kernel:  $(uname -r)"
+        echo "uptime:  $(uptime -p 2>/dev/null || uptime)"
+        free_kb=$(df -Pk / | awk 'NR==2 {print $4}')
+        free_gb=$((free_kb / 1024 / 1024))
+        echo "free:    ${free_gb} GB on /"
+        if [ "${free_gb}" -lt "${threshold}" ]; then
+          echo "WARNING: less than ${threshold} GB free"
+        fi

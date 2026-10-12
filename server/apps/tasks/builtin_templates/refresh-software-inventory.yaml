@@ -1,0 +1,12 @@
+name: Refresh software inventory
+description: |
+  Ask the host what it has installed, how much of it is out of date, and how
+  much Vigil is not managing. Read-only. This is what fills the Apps page, so
+  run it before you ask anything else about software.
+risk: low
+author: Vigil
+created: 2026-10-12
+actions:
+  - id: inventory
+    type: app_inventory
+    params: {}

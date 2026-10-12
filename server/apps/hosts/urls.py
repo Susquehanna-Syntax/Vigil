@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import docker_views, logtail, views
+from . import docker_views, logtail, topology, views
 
 urlpatterns = [
     path("", views.host_list, name="host-list"),
@@ -12,6 +12,9 @@ urlpatterns = [
     path("transport-ack/", views.transport_ack, name="transport-ack"),
     path("ad/", views.ad_config, name="ad-config"),
     path("ad/sync/", views.ad_sync_now, name="ad-sync"),
+    # Before any <uuid:host_id>/ path: "topology/" must not be swallowed by
+    # the host-detail route, whose converter would reject it with a 404.
+    path("topology/", topology.topology, name="host-topology"),
     path("<uuid:host_id>/firewall/", views.host_firewall, name="host-firewall"),
     path("<uuid:host_id>/firewall/refresh/", views.host_firewall_refresh,
          name="host-firewall-refresh"),

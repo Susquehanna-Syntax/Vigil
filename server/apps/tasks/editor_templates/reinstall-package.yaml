@@ -1,0 +1,47 @@
+# Reinstall a package from scratch
+#
+# What this does: removes a package, refreshes the index, then installs it
+# again.
+#
+# When to use it: when a package is in a state an upgrade will not fix - a
+# half-completed install, a corrupted install tree, config left behind by an
+# old version that the new one refuses to read.
+#
+# What to change: the package name.
+#
+# The order matters. Remove first, so nothing is holding the files; refresh
+# second, so the install resolves against a current index rather than the one
+# that was current when the package was installed; install last.
+#
+# Know what you are removing: on most managers, removing a package does not
+# remove its data directories, and anything that depends on it is removed with
+# it. Where a package is a dependency of something you care about, prefer the
+# plain "Update a package" template.
+
+name: Reinstall package from scratch
+description: |
+  Remove the package and any leftover state, then install it fresh. For a
+  package an upgrade is no longer able to fix.
+risk: standard
+
+inputs:
+  - id: pkg
+    label: Package name
+    type: text
+    default: hashcat
+    required: true
+
+actions:
+  - id: remove
+    type: remove_package
+    params:
+      package_name: "${{ inputs.pkg }}"
+
+  # So the install below resolves against a current index, not an old one.
+  - id: refresh-index
+    type: run_package_updates
+
+  - id: install
+    type: install_package
+    params:
+      package_name: "${{ inputs.pkg }}"

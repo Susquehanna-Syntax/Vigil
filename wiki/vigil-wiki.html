@@ -3088,9 +3088,9 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
 <div class="action-group" data-group="composition">
 <h4 class="action-group-title">Composition</h4>
 <p class="action-group-note">Expanded by the server before the task is signed. The agent never receives a playbook action, only the steps it expands into.</p>
-<details class="action" id="action-playbook" data-group="composition" data-risk="standard" data-keywords="playbook name"><summary><code class="action-name">playbook</code><span class="risk risk-std">standard</span><span class="action-label">Run playbook</span><span class="action-required">name</span></summary><div class="action-body">
+<details class="action" id="action-playbook" data-group="composition" data-risk="standard" data-keywords="playbook name inputs"><summary><code class="action-name">playbook</code><span class="risk risk-std">standard</span><span class="action-label">Run playbook</span><span class="action-required">name</span></summary><div class="action-body">
 <p class="prose">Expand a playbook by name and run every step in it.</p>
-<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>name</code></td><td><span class="param-req">required</span></td><td>Name of the playbook to expand.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>name</code></td><td><span class="param-req">required</span></td><td>Name of the playbook to expand.</td></tr><tr><td><code>inputs</code></td><td><span class="param-opt">optional</span></td><td></td></tr></tbody></table></div>
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr></tbody></table></div>
 <div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Run the patching playbook</span>
 <span class="hl-key">description</span>: <span class="hl-string">Run playbook on the hosts you dispatch this to.</span>

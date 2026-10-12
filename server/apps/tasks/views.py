@@ -3,6 +3,7 @@ import math
 import secrets
 import uuid
 from datetime import timedelta
+from pathlib import Path
 
 from django.db import IntegrityError, transaction
 from django.db.models import Count
@@ -1195,6 +1196,49 @@ def community_names_by_slug(kind: str) -> dict[str, str]:
     return names
 
 
+# ── Editor templates (bundled with the server) ───────────────────────────────
+#
+# The editor's "Start from a template" list. Each template is a real task YAML
+# file under ``editor_templates/`` and ``index.yaml`` is the order and the
+# labels, so one file per template keeps them readable and diffable, and a test
+# can prove each one parses. Read once per process and kept in memory: they are
+# static files, and the editor asks for them on every page it opens.
+
+_EDITOR_TEMPLATE_DIR = Path(__file__).resolve().parent / "editor_templates"
+_editor_templates: list[dict] | None = None
+
+
+def _load_editor_templates() -> list[dict]:
+    global _editor_templates
+    if _editor_templates is not None:
+        return _editor_templates
+    import yaml as _yaml
+
+    index = _yaml.safe_load(
+        (_EDITOR_TEMPLATE_DIR / "index.yaml").read_text()) or []
+    loaded: list[dict] = []
+    for entry in index:
+        path = _EDITOR_TEMPLATE_DIR / str(entry.get("file", ""))
+        if not path.is_file():
+            continue
+        loaded.append({
+            "id": str(entry.get("id", path.stem)),
+            "label": str(entry.get("label", path.stem)),
+            "group": str(entry.get("group", "")),
+            "summary": str(entry.get("summary", "")),
+            "yaml": path.read_text(),
+        })
+    _editor_templates = loaded
+    return loaded
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def editor_templates(request):
+    """The bundled task templates, in index order, each with its YAML."""
+    return Response({"results": _load_editor_templates()})
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def community_templates(request, kind: str = "tasks"):
@@ -1960,6 +2004,12 @@ def rollout_collection(request):
         if error:
             return Response({"detail": error}, status=401)
 
+        inputs = request.data.get("inputs")
+        if inputs is not None and not isinstance(inputs, dict):
+            return Response({"detail": "inputs must be a mapping of input id to value"},
+                            status=400)
+        inputs = inputs or {}
+
         if raw_tags is not None:
             try:
                 rollouts = start_rollout_batch(
@@ -1969,6 +2019,7 @@ def rollout_collection(request):
                     group_tags=raw_tags,
                     failure_threshold_pct=int(request.data.get("failure_threshold_pct", 10)),
                     min_results_before_halt=int(request.data.get("min_results_before_halt", 3)),
+                    inputs=inputs,
                 )
             except (ValueError, TypeError) as exc:
                 return Response({"detail": str(exc)}, status=400)
@@ -1985,6 +2036,7 @@ def rollout_collection(request):
                 wave_group_tag=(request.data.get("wave_group_tag") or "").strip(),
                 failure_threshold_pct=int(request.data.get("failure_threshold_pct", 10)),
                 min_results_before_halt=int(request.data.get("min_results_before_halt", 3)),
+                inputs=inputs,
             )
         except (ValueError, TypeError) as exc:
             return Response({"detail": str(exc)}, status=400)

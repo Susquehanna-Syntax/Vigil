@@ -1,0 +1,60 @@
+# Wait until nobody is logged in, then act
+#
+# What this does: polls the host until no user session is left, then restarts
+# the service you named.
+#
+# When to use it: on interactive workstations, where restarting something in
+# front of a user is exactly the thing you are trying not to do.
+#
+# What to change: the service, and the wait budget.
+#
+# Three things this template is really about:
+#
+#   Shell features need sh -c. The agent runs commands with no shell, so &&,
+#   pipes and $(...) would be passed to a program as literal arguments.
+#   Wrapping the body in sh -c '...' is how a pipeline becomes a pipeline.
+#
+#   The step timeout is a whole number of seconds between 1 and 3600. The loop
+#   below waits at most max_wait_minutes minutes, one check per minute, so the
+#   timeout is that budget plus a minute of slack - and the ceiling is why the
+#   wait input tops out near an hour. For a longer wait, run the task again
+#   later from an automation instead of stretching one step.
+#
+#   run_command is high risk. It sends a command line to the host; on a
+#   managed-mode agent it needs the host to allow the command, and full_control
+#   hosts run anything. That is why this task, and anything built on
+#   run_command, is declared high.
+#
+# The `who | grep -q .` test is "is anyone logged in": grep finds a line, the
+# step keeps waiting, and an empty output means the machine is empty.
+
+name: Wait until user offline, then restart
+description: |
+  Polls 'who' until no users are logged in, then restarts the named service.
+  For workstations you would rather not interrupt.
+risk: high
+
+inputs:
+  - id: service
+    label: Service to restart once nobody is logged in
+    type: text
+    default: nginx
+    required: true
+
+  - id: max_wait_minutes
+    label: Maximum minutes to wait for the sessions to clear
+    type: number
+    default: 55
+
+actions:
+  - id: wait-for-idle
+    type: run_command
+    params:
+      command: "sh -c 'for i in $(seq 1 ${{ inputs.max_wait_minutes }}); do who | grep -q . || exit 0; sleep 60; done; exit 1'"
+      # The wait budget in seconds, plus a minute of slack. Ceiling: 3600.
+      timeout: 3360
+
+  - id: restart-service
+    type: restart_service
+    params:
+      service_name: "${{ inputs.service }}"

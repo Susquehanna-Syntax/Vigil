@@ -1,0 +1,30 @@
+# Request a Nessus scan of this host
+#
+# What this does: asks the Vigil server to schedule a Nessus scan of this
+# host. Nothing runs locally.
+#
+# When to use it: when you want this machine scanned now, rather than at the
+# next scheduled sweep.
+#
+# What to change: nothing. It takes no parameters.
+#
+# How it works, because it looks like a step that does nothing: the agent
+# reports the step, and the server notices on completion and records the
+# request under the Vulnerabilities tab. The central Nessus instance launches
+# the actual scan on its next sync cycle. The host never needs the scanner
+# installed, which is what makes this low risk.
+#
+# Prerequisite: Vigil has a working Nessus server configured, and this host is
+# reachable from it. If you would rather not care which scanner runs, use the
+# "Request a network scan" template instead - it lets the server choose.
+
+name: Request Nessus scan
+description: |
+  Asks the Vigil server to schedule a Nessus scan of this host. The agent
+  emits a marker and the central scanner does the work, so nothing runs
+  locally.
+risk: low
+
+actions:
+  - id: request_scan
+    type: request_nessus_scan

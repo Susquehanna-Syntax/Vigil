@@ -309,7 +309,7 @@ function refreshApps() {
 function loadMoreApps() { fetchApps(false); }
 
 /* ── By update (M8) ──────────────────────────────────────────────────── */
-const UPDATE_COLUMNS = 6;
+const UPDATE_COLUMNS = 7;
 const updState = { rows: [], seq: 0, selected: new Set(), details: {}, expanded: {} };
 
 function _updKey(row) { return `${row.kind}|${row.key}`; }
@@ -368,6 +368,7 @@ function renderUpdatesTable() {
       <td class="num">${row.hosts}</td>
       <td class="num">${_ageCell(row.age_days)}</td>
       <td>${_decisionChip(row.decision)}</td>
+      <td><button class="btn btn-xs btn-outline" type="button" data-upd-policy="${escAttr(key)}">Policy…</button></td>
     </tr>`;
     if (updState.expanded[key]) {
       const hosts = updState.details[key];
@@ -599,11 +600,44 @@ delegateClick('[data-upd-pick]', (el) => {
 });
 
 delegateClick('[data-upd-row]', (el, ev) => {
-  if (ev.target.closest('a, input')) return;
+  if (ev.target.closest('a, input, button')) return;
   toggleUpdateHosts(el.dataset.updRow);
 });
 
 delegateClick('[data-upd-decide]', (el) => decideUpdates(el.dataset.updDecide));
+
+/** "Policy…" from an update row: a Linux package becomes an app rule for its
+ *  package manager; a Windows update is not an app, so what it teaches the
+ *  policy is which Windows Update classification to fetch. */
+delegateClick('[data-upd-policy]', (el) => {
+  const row = updState.rows.find(r => _updKey(r) === el.dataset.updPolicy);
+  if (row) _updPolicy([row]);
+});
+
+delegateClick('[data-upd-policy-selected]', () => {
+  const rows = updState.rows.filter(r => updState.selected.has(_updKey(r)));
+  if (!rows.length) return;
+  _updPolicy(rows);
+});
+
+function _updPolicy(rows) {
+  const pairs = [];
+  const classifications = new Set();
+  for (const row of rows) {
+    if (row.kind === 'linux' && POLICY_APP_SOURCES.includes(row.classification)) {
+      pairs.push({ app: row.key, source: row.classification });
+    } else if (row.kind === 'windows' && row.classification) {
+      classifications.add(row.classification);
+    }
+  }
+  const label = rows.length === 1 ? rows[0].key : `${rows.length} updates`;
+  if (!pairs.length && !classifications.size) {
+    const first = rows[0];
+    showToast(`A policy cannot manage ${first.key}: it comes from ${first.classification || 'no package manager'}`, 'error');
+    return;
+  }
+  policyFromApp(label, pairs, { windowsClassifications: [...classifications] });
+}
 
 delegateClick('[data-app-host-row]', (el, ev) => {
   if (ev.target.closest('a, button')) return;

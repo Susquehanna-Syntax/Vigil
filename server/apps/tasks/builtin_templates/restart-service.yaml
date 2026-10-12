@@ -1,0 +1,18 @@
+name: Restart a service
+description: |
+  Restart one service and report whether it came back active. The everyday
+  repair after a config change or an update that needed a restart.
+risk: standard
+author: Vigil
+created: 2026-10-12
+inputs:
+  - id: service
+    type: text
+    label: Service
+    default: nginx
+    required: true
+actions:
+  - id: restart
+    type: restart_service
+    params:
+      service_name: "${{ inputs.service }}"

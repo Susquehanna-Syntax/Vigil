@@ -8,6 +8,9 @@
 //                                    editor (name + YAML + live preview) that
 //                                    never navigates away, so editing a task
 //                                    from a picker keeps the modal you were in.
+// Also: inputsFormMount / inputsFormRead — the declared-inputs form shared by
+//   the rollout start dialog and the automation editor (same rows as the
+//   deploy dialog's inputs, in a container the caller owns).
 // Depends on: vigil-utils.js (mountModal, apiJson, escHtml, showToast,
 //             confirmModal, yamlToHtml).
 
@@ -228,6 +231,104 @@ async function openInputsModal(opts) {
     opts.onSave(built);
   };
   m.open();
+}
+
+
+/* ── Declared-inputs form ────────────────────────────────────────────────
+   The deploy dialog renders a task's declared inputs into its own fixed
+   markup; the rollout start dialog and the automation editor need the same
+   rows inside a container the caller owns, with starting values that come
+   from a saved automation rather than the declaration's defaults. Same
+   per-type controls and the same reading/validation rules as
+   _renderDeployInputs / _readDeployInputs in vigil-deploy.js. */
+function inputsFormMount(container, inputs, values) {
+  values = values || {};
+  container.replaceChildren();
+  for (const inp of inputs || []) {
+    const start = Object.prototype.hasOwnProperty.call(values, inp.id) ? values[inp.id] : undefined;
+    const row = document.createElement('div');
+    row.className = 'inputs-form-row' + (inp.type === 'boolean' ? ' bool' : '');
+    row.dataset.inputId = inp.id;
+    row.dataset.inputType = inp.type;
+
+    const label = document.createElement('label');
+    label.className = 'inputs-form-label';
+    label.textContent = inp.label || inp.id;
+    if (inp.type === 'text' && inp.required) {
+      const req = document.createElement('span');
+      req.className = 'inputs-form-req';
+      req.textContent = ' (required)';
+      label.appendChild(req);
+    }
+
+    let control;
+    if (inp.type === 'choice') {
+      control = document.createElement('select');
+      control.className = 'form-control';
+      for (const c of (inp.choices || [])) {
+        const opt = document.createElement('option');
+        opt.value = c.value;
+        opt.textContent = c.label || c.value;
+        if (c.value === (start !== undefined ? String(start) : inp.default)) opt.selected = true;
+        control.appendChild(opt);
+      }
+    } else if (inp.type === 'boolean') {
+      control = document.createElement('input');
+      control.type = 'checkbox';
+      control.checked = start !== undefined ? !!start : !!inp.default;
+    } else if (inp.type === 'number') {
+      control = document.createElement('input');
+      control.type = 'number';
+      control.step = 'any';   // the server accepts decimals; the browser default (1) would refuse 3.7
+      control.className = 'form-control';
+      control.value = start !== undefined && start !== null ? start : (inp.default ?? '');
+    } else {
+      control = document.createElement('input');
+      control.type = 'text';
+      control.className = 'form-control';
+      control.value = start !== undefined && start !== null ? start : (inp.default ?? '');
+      if (inp.required) control.required = true;
+    }
+    control.classList.add('inputs-form-control');
+
+    if (inp.type === 'boolean') {
+      row.appendChild(control);
+      row.appendChild(label);
+    } else {
+      row.appendChild(label);
+      if (inp.description) {
+        const d = document.createElement('div');
+        d.className = 'inputs-form-desc';
+        d.textContent = inp.description;
+        row.appendChild(d);
+      }
+      row.appendChild(control);
+    }
+    container.appendChild(row);
+  }
+}
+
+function inputsFormRead(container) {
+  const values = {};
+  let error = '';
+  for (const row of container.querySelectorAll('.inputs-form-row')) {
+    const id = row.dataset.inputId;
+    const type = row.dataset.inputType;
+    const ctrl = row.querySelector('.inputs-form-control');
+    if (!ctrl) continue;
+    if (!error) {
+      const name = (row.querySelector('.inputs-form-label')?.firstChild?.textContent || id).trim();
+      if (type === 'number' && (ctrl.value === '' || !ctrl.checkValidity())) {
+        error = `${name}: enter a number`;
+      } else if (ctrl.required && !ctrl.value.trim()) {
+        error = `${name} is required`;
+      }
+    }
+    if (type === 'boolean') values[id] = !!ctrl.checked;
+    else if (type === 'number') values[id] = ctrl.value === '' ? null : Number(ctrl.value);
+    else values[id] = ctrl.value;
+  }
+  return { values, error };
 }
 
 /* ═══ In-modal task editor ═══════════════════════════════════════════════ */

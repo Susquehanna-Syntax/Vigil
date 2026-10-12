@@ -1,0 +1,41 @@
+# Update a package
+#
+# What this does: refreshes the host's package index, then upgrades one named
+# package to the newest version the index offers.
+#
+# When to use it: when you want one package current on a machine or a tag of
+# machines, and nothing else.
+#
+# What to change: the package name.
+#
+# The index refresh comes first on purpose. Package managers answer "what is
+# the newest version?" from a local index, so without the refresh step an
+# upgrade can quietly conclude that the installed version is already the
+# latest one. run_package_updates refreshes on every supported manager;
+# security_only: true restricts the refresh-and-upgrade to security updates.
+#
+# If the package might not be installed at all, use install_package - or use
+# the app_ensure template, which is the declarative version of the same idea.
+
+name: Update package
+description: |
+  Refresh the package index and upgrade a single package to its latest
+  version. Nothing else on the host is touched.
+risk: standard
+
+inputs:
+  - id: pkg
+    label: Package name
+    type: text
+    default: hashcat
+    required: true
+
+actions:
+  # The index has to be current before "latest" means anything.
+  - id: refresh-index
+    type: run_package_updates
+
+  - id: upgrade
+    type: update_package
+    params:
+      package_name: "${{ inputs.pkg }}"

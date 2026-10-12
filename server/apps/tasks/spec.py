@@ -837,6 +837,33 @@ def _check_step_ref(
 _MAX_BRANCH_DEPTH = 3
 _MAX_BRANCH_LEAVES = 50
 
+#: Values for a playbook's inputs, carried by a ``type: playbook`` action.
+#: Scalars only — the playbook coerces them against its own declarations.
+MAX_ACTION_INPUTS = 16
+MAX_ACTION_INPUT_LEN = 500
+
+
+def _validate_action_inputs(value: Any) -> dict[str, Any]:
+    """The optional ``inputs`` mapping of a ``type: playbook`` action."""
+    if value is None or value == {}:
+        return {}
+    if not isinstance(value, dict):
+        raise SpecError("playbook action: 'inputs' must be a mapping of "
+                        "playbook input id to value")
+    if len(value) > MAX_ACTION_INPUTS:
+        raise SpecError(f"playbook action: 'inputs' has at most "
+                        f"{MAX_ACTION_INPUTS} entries")
+    for key, val in value.items():
+        if not isinstance(key, str) or not key.strip():
+            raise SpecError("playbook action: 'inputs' keys must be names")
+        if isinstance(val, bool) or not isinstance(val, (str, int, float)):
+            raise SpecError(f"playbook action: input {key!r} must be text, "
+                            "a number, or true/false")
+        if isinstance(val, str) and len(val) > MAX_ACTION_INPUT_LEN:
+            raise SpecError(f"playbook action: input {key!r} is at most "
+                            f"{MAX_ACTION_INPUT_LEN} characters")
+    return {str(k): v for k, v in value.items()}
+
 
 def _flatten_actions(actions_raw: list) -> tuple[list[dict], list | None, list[str]]:
     """Flatten ``actions`` (steps, ``if/then/else`` branches and ``use:``
@@ -1087,23 +1114,21 @@ def _check_variable_refs(
             _check_variable_refs(v, declared_ids, f"{where}[{i}]", warnings, earlier)
 
 
-def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[str, Any]:
-    """Substitute supplied input values into action params.
+def coerce_inputs(declared: list[dict[str, Any]], values: dict[str, Any]) -> dict[str, Any]:
+    """Coerce *values* against a declared ``inputs:`` list.
 
-    Returns a copy of ``parsed_spec`` with ``actions[*].params`` rewritten so
-    that every ``{{ inputs.x }}`` placeholder is replaced with the resolved
-    value. Raises :class:`SpecError` if a required input is missing or a value
-    fails type/choice validation.
+    The type/choice/required half of :func:`resolve_inputs`, split out so a
+    playbook (whose inputs live on the Playbook row, not in a task spec) can
+    validate a caller's values the same way a task does. A declaration written
+    by hand may leave out the keys the task YAML's validator always fills in,
+    so they are read with their canonical defaults. Raises :class:`SpecError`
+    on a missing required input or a bad value.
     """
-    declared = parsed_spec.get("inputs") or []
-    if not declared:
-        return parsed_spec
-
     resolved: dict[str, Any] = {}
     for inp in declared:
         iid = inp["id"]
-        supplied = values.get(iid, inp["default"])
-        itype = inp["type"]
+        itype = inp.get("type") or "text"
+        supplied = values.get(iid, inp.get("default"))
 
         if itype == "boolean":
             resolved[iid] = bool(supplied)
@@ -1116,7 +1141,7 @@ def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[
             resolved[iid] = supplied
         elif itype == "choice":
             sval = str(supplied) if supplied is not None else ""
-            valid = {c["value"] for c in inp["choices"]}
+            valid = {c["value"] for c in inp.get("choices") or []}
             if sval not in valid:
                 raise SpecError(f"input {iid!r}: {sval!r} is not a valid choice")
             resolved[iid] = sval
@@ -1127,6 +1152,38 @@ def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[
             if len(sval) > 500:
                 raise SpecError(f"input {iid!r}: value too long (max 500)")
             resolved[iid] = sval
+    return resolved
+
+
+def substitute_refs(text: str, values: dict[str, Any]) -> str:
+    """Replace every ``${{ inputs.x }}`` in *text* with ``str(values[x])``.
+
+    A value is data: any ``${{`` inside it is written as the escaped ``$${{``
+    so the agent's templater leaves it literal, exactly as :func:`resolve_inputs`
+    does. Raises :class:`SpecError` on a reference with no value.
+    """
+    def repl(m: re.Match) -> str:
+        name = m.group(1)
+        if name not in values:
+            raise SpecError(f"unknown input reference ${{{{ inputs.{name} }}}}")
+        return str(values[name]).replace("${{", "$${{")
+
+    return _INPUT_REF.sub(repl, text)
+
+
+def resolve_inputs(parsed_spec: dict[str, Any], values: dict[str, Any]) -> dict[str, Any]:
+    """Substitute supplied input values into action params.
+
+    Returns a copy of ``parsed_spec`` with ``actions[*].params`` rewritten so
+    that every ``${{ inputs.x }}`` placeholder is replaced with the resolved
+    value. Raises :class:`SpecError` if a required input is missing or a value
+    fails type/choice validation.
+    """
+    declared = parsed_spec.get("inputs") or []
+    if not declared:
+        return parsed_spec
+
+    resolved = coerce_inputs(declared, values)
 
     def _sub(value: Any) -> Any:
         if isinstance(value, str):
@@ -1422,6 +1479,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
 
         if action_type in ("add_tag", "remove_tag"):
             _validate_tag_param(params.get("tags", ""), index + 1, action_type)
+        elif action_type == "playbook":
+            params["inputs"] = _validate_action_inputs(params.get("inputs"))
         elif action_type in ("app_install", "app_upgrade", "app_uninstall",
                              "app_pin"):
             _validate_app_params(params, index + 1, action_type)
@@ -1476,9 +1535,12 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                 f"action #{index + 1} ({action_type}) has unknown params: {sorted(extra)}"
             )
 
-        # All param values must be primitives for safe signing
+        # All param values must be primitives for safe signing. A playbook
+        # action's `inputs` is the one structured param: it is consumed
+        # server-side when the playbook is inlined and never signed as a step.
         for pk, pv in params.items():
-            if not isinstance(pv, (str, int, float, bool)):
+            structured = action_type == "playbook" and pk == "inputs"
+            if not structured and not isinstance(pv, (str, int, float, bool)):
                 raise SpecError(
                     f"action #{index + 1}: param {pk!r} must be a primitive value"
                 )

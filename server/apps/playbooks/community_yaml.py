@@ -57,6 +57,8 @@ def to_yaml(playbook, *, author: str = "", created=None) -> str:
         # that spells out every default is harder to review than one that
         # states only what is unusual about it.
         fields["allow_high_risk"] = True
+    if playbook.inputs:
+        fields["inputs"] = list(playbook.inputs)
 
     def step_entry(step, position: int) -> dict[str, Any]:
         entry: dict[str, Any] = {
@@ -72,6 +74,8 @@ def to_yaml(playbook, *, author: str = "", created=None) -> str:
             entry["uid"] = str(step.definition.community_uid)
         if step.params_override:
             entry["params_override"] = step.params_override
+        if step.inputs:
+            entry["inputs"] = step.inputs
         # Only emitted when it is not the default, like allow_high_risk.
         if step.on_not_applicable != "stop":
             entry["on_not_applicable"] = step.on_not_applicable
@@ -150,6 +154,9 @@ def parse(text: str) -> dict[str, Any]:
     has_branch = False
 
     def parse_step(entry: dict, position: int) -> dict[str, Any]:
+        if "inputs" in entry and not isinstance(entry["inputs"], dict):
+            raise ContentYamlError(
+                f"{_WHAT}: step {position} has a non-mapping 'inputs'.")
         slug = entry.get("task")
         if not isinstance(slug, str) or not slug.strip():
             raise ContentYamlError(
@@ -200,6 +207,10 @@ def parse(text: str) -> dict[str, Any]:
         return {"task": slug.strip(), "order": order, "id": step_id,
                 "uid": parse_uid(entry, f"{_WHAT} step {position}"),
                 "params_override": override,
+                # The step's playbook-input mapping (task input id → text with
+                # playbook ``${{ inputs.x }}`` references), checked against the
+                # playbook's own declarations when the steps are saved.
+                "inputs": entry.get("inputs") or {},
                 "on_not_applicable": on_not_applicable,
                 "on_failure": on_failure,
                 "color": color,
@@ -233,6 +244,9 @@ def parse(text: str) -> dict[str, Any]:
         return nodes
 
     tree = walk(raw_steps, "steps")
+    inputs = raw.get("inputs")
+    if inputs is not None and not isinstance(inputs, list):
+        raise ContentYamlError(f"{_WHAT}: 'inputs' must be a list of input declarations.")
     return {
         "uid": uid,
         "name": name,
@@ -240,6 +254,7 @@ def parse(text: str) -> dict[str, Any]:
         "author": author,
         "target_tags": target_tags,
         "allow_high_risk": allow_high_risk,
+        "inputs": inputs or [],
         "steps": steps,
         # The authored if/then/else tree over indexes into ``steps`` (M6 08b),
         # or None for a plain ordered playbook.

@@ -44,7 +44,8 @@ def _build_for(automation):
                 logger.warning("automation %s: playbook %s no longer exists",
                                automation.pk, automation.playbook_id)
                 return None
-            built = build_playbook_steps(playbook, user=automation.created_by)
+            built = build_playbook_steps(playbook, user=automation.created_by,
+                                         inputs=automation.inputs)
             if not built:
                 return None
             return "playbook", built, highest_risk(built)
@@ -53,6 +54,7 @@ def _build_for(automation):
         if definition is None:
             return None
         spec = resolve_task_spec(definition, user=automation.created_by,
+                                 inputs=automation.inputs or {},
                                  params_override=automation.params_override or {})
         params, risk, expires_at = task_params(spec)
         return "task", (params, risk, expires_at), risk
@@ -350,13 +352,15 @@ def _start_rollout_for(automation) -> int:
                 logger.warning("automation %s: playbook missing, cannot roll out",
                                automation.pk)
                 return 0
-            start_rollout(playbook=automation.playbook, user=automation.created_by)
+            start_rollout(playbook=automation.playbook, user=automation.created_by,
+                          inputs=automation.inputs)
         else:
             if automation.task_definition is None:
                 logger.warning("automation %s: definition missing, cannot roll out",
                                automation.pk)
                 return 0
-            start_rollout(automation.task_definition, user=automation.created_by)
+            start_rollout(automation.task_definition, user=automation.created_by,
+                          inputs=automation.inputs)
     except ValueError as exc:
         logger.warning("automation %s: rollout refused: %s", automation.pk, exc)
         return 0

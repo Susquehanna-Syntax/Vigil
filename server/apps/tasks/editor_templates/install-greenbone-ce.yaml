@@ -1,0 +1,56 @@
+# Install Greenbone Community Edition (in Docker)
+#
+# What this does: drops the official Greenbone CE compose stack into
+# /opt/greenbone and brings it up.
+#
+# When to use it: on the Linux host you want to act as your network scanner,
+# next to or instead of Nessus.
+#
+# What to change: nothing, unless you keep project files somewhere else.
+#
+# What happens afterwards, because the task cannot do it for you: the first
+# run of the NVT feed sync takes 20 to 30 minutes. Watch it at
+# https://<this-host>:9392. When it has finished, set the admin password,
+# create a service account for Vigil, and put GREENBONE_URL, USERNAME and
+# PASSWORD into the Vigil server's environment so the scan requests have
+# somewhere to go.
+#
+# The steps show three different actions doing what would be one shell
+# pipeline by hand: make a directory, fetch a file, then bring the compose
+# project up. The last step prints the URL to open, so the run's own output is
+# the instructions.
+#
+# Linux only: `target_tags: [os:linux]` keeps Windows and macOS hosts out of
+# the deploy picker for this task. Installing anything is high risk.
+
+name: Install Greenbone Community Edition
+description: |
+  Brings up the official Greenbone CE docker-compose stack in /opt/greenbone.
+  First-run NVT feed sync takes 20-30 minutes; check it at
+  https://<this-host>:9392, then wire the credentials into the Vigil server.
+risk: high
+target_tags:
+  - os:linux
+
+actions:
+  - id: make_dir
+    type: create_directory
+    params:
+      path: /opt/greenbone
+
+  - id: download_compose
+    type: run_command
+    params:
+      command: 'curl -fsSL -o /opt/greenbone/docker-compose.yml https://greenbone.github.io/docs/latest/_static/docker-compose-22.04.yml'
+      timeout: 120
+
+  - id: bring_up
+    type: docker_compose_up
+    params:
+      compose_file: /opt/greenbone/docker-compose.yml
+
+  - id: ready_message
+    type: run_command
+    params:
+      command: 'sh -c "echo \"Greenbone CE is starting. Initial NVT sync runs 20-30 minutes. Open https://$(hostname -I | cut -d\  -f1):9392 once it finishes.\""'
+      timeout: 5

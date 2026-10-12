@@ -28,7 +28,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "label": "Run playbook",
         "risk": "standard",
         "required": ["name"],
-        "optional": [],
+        "optional": ["inputs"],
         "outputs": {},  # expanded server-side, never executed by the agent
     },
     # ── Service management ──────────────────────────────────────────────────

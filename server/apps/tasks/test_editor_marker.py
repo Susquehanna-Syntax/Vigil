@@ -20,12 +20,21 @@ JS = Path(settings.BASE_DIR) / "static" / "js" / "vigil-tasks.js"
 
 
 class TemplateMarkerTests(SimpleTestCase):
+    # The editor's starter templates moved to the server (one YAML file per
+    # template under editor_templates/, served by /api/v1/tasks/editor-templates/),
+    # so the markers they teach live in YAML now — where a ${{ }} marker needs
+    # no backslash, because there is no JS template literal to break.
 
     def setUp(self):
         self.src = JS.read_text()
+        self.templates = "\n".join(
+            path.read_text()
+            for path in sorted((JS.parents[2] / "apps" / "tasks"
+                                / "editor_templates").glob("*.yaml")))
 
     def test_templates_use_the_new_marker(self):
-        self.assertTrue("\\${{ inputs.pkg }}" in self.src, "the templates no longer show \\${{ inputs.pkg }}")
+        self.assertIn("${{ inputs.pkg }}", self.templates,
+                      "the templates no longer show ${{ inputs.pkg }}")
         self.assertEqual(
             re.findall(r"(?<!\\\$)\{\{ inputs\.", self.src),
             [],

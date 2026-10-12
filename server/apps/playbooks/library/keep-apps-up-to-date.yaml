@@ -1,0 +1,35 @@
+# A template playbook: keep the software on a host current.
+#
+# This is a Vigil playbook in the community YAML format, written by hand and
+# kept with the server as an example. The Playbooks page's Templates button
+# copies one into your library so you can open it, change it, and run it.
+#
+# What a playbook is, in one paragraph: a sequence of tasks that run one after
+# another on the same host. Each step names a task by its slug - the task's
+# name, lowercased with non-alphanumerics turned into hyphens - so a step here
+# refers to a task in the library rather than repeating its YAML.
+
+name: Keep apps up to date
+description: |
+  Ask the host what it has installed and what is out of date, then upgrade
+  every app the inventory called outdated. The second step is only as good as
+  the first, which is the whole reason they are one playbook instead of two
+  buttons.
+
+  What this one shows you about playbooks: ordering as the only logic you
+  sometimes need, and a playbook that is safe to run on a schedule - no inputs
+  to fill in, nothing high risk, and repeating it costs nothing when there is
+  nothing to upgrade.
+author: Vigil
+created: 2026-10-12
+
+steps:
+  # Reads the host and fills the Apps page; the upgrade step works from it.
+  - task: refresh-software-inventory
+    order: 1
+    outcome: Inventoried
+
+  # No `app` param, so it means every app the inventory marked outdated.
+  - task: upgrade-outdated-apps
+    order: 2
+    outcome: Upgraded

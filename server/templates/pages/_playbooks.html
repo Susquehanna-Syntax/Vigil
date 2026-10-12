@@ -18,6 +18,7 @@
   <div class="sub-panel active" id="bl-panel">
     <div class="bl-toolbar">
       <input type="text" class="form-control bl-search" id="bl-search" placeholder="Search playbooks by name, step, or tag…">
+      <button class="btn btn-outline btn-sm" id="bl-library-btn">Templates</button>
       <button class="btn btn-mint" id="bl-new-btn">New playbook</button>
     </div>
     <div id="playbooks-list" class="bl-list"></div>
@@ -91,7 +92,7 @@
   </div>
   <div class="bl-field">
     <label>Description <span style="color:var(--text-3);font-weight:400;">(optional)</span></label>
-    <input type="text" class="form-control" id="bl-desc" placeholder="What this playbook does" maxlength="2000">
+    <textarea class="form-control bl-desc" id="bl-desc" rows="3" placeholder="What this playbook does" maxlength="2000"></textarea>
   </div>
   <div class="bl-field">
     <label>Steps</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="Each step is a task, run left to right on the target machine. Press + on a line to add a task or an If / else there to choose between tasks from an earlier step's result — its status (ok, failed, not applicable, skipped) or any output its task reports.&#10;&#10;Not applicable: stop here, or go on to the next step.&#10;If it fails: stop here, or carry on so a later branch can recover.&#10;&#10;Colours are yours: use them to group steps that belong together.">?</span>
@@ -112,6 +113,18 @@
       A host carrying this tag is treated as done and is not run again. Remove
       it from a host to run the playbook there a second time. Required before
       auto-enrolment can be switched on.
+    </div>
+  </div>
+  <div class="bl-field">
+    <label>Inputs</label>
+    <div class="bl-inputs" id="bl-inputs"></div>
+    <button class="btn btn-outline btn-xs" type="button" id="bl-input-add">Add input</button>
+    <div class="muted-note" style="margin-top:6px;">
+      {% verbatim %}
+      Ask for values when the playbook runs. A step uses them as
+      ${{ inputs.&lt;id&gt; }}; a task input with the same id gets the value
+      by itself.
+      {% endverbatim %}
     </div>
   </div>
   <label class="setting-check"><input type="checkbox" id="bl-allow-high-risk"> Allow high-risk steps in this playbook</label>
@@ -248,6 +261,7 @@
       <button class="btn btn-sky btn-sm" id="auto-view-action" type="button">View / edit</button>
       <button class="btn btn-outline btn-sm" id="auto-inputs-btn" type="button">Inputs</button>
     </div>
+    <span class="muted-note" id="auto-inputs-note" style="display:block;margin-top:5px;" hidden></span>
     <input type="hidden" id="auto-action-task">
     <input type="hidden" id="auto-action-playbook">
   </div>

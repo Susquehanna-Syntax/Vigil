@@ -1,0 +1,21 @@
+name: Run a Trivy scan
+description: |
+  Scan the host's filesystem with the Trivy that is already installed there
+  and send the JSON report back. The server files each finding under the
+  Vulnerabilities tab and recomputes the host's score. Install Trivy first.
+risk: low
+author: Vigil
+created: 2026-10-12
+inputs:
+  - id: scope
+    type: choice
+    label: Scan scope
+    default: fs
+    choices:
+      - { value: fs, label: "Filesystem (root)" }
+      - { value: rootfs, label: "Root filesystem (alias)" }
+actions:
+  - id: scan
+    type: run_trivy_scan
+    params:
+      scope: "${{ inputs.scope }}"
