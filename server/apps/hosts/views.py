@@ -1,3 +1,4 @@
+import ipaddress
 import logging
 import secrets
 import zoneinfo
@@ -50,7 +51,7 @@ from .authentication import authenticate_agent
 from .crypto import encrypt_secret
 from .enrollment import adopt_enrolment, replacement_candidate
 from .models import (ADConfig, ContainerStack, DockerContainer, Host, HostInventory,
-                     TransportAck, UnmanagedDevice)
+                     HostNetwork, TransportAck, UnmanagedDevice)
 from .serializers import (
     DockerContainerSerializer,
     HostInventorySerializer,
@@ -610,6 +611,9 @@ def checkin(request):
 
     if isinstance(data.get("docker_resources"), dict):
         _ingest_docker_resources(host, data["docker_resources"])
+
+    if isinstance(data.get("network"), dict):
+        _ingest_network(host, data["network"])
 
     # Pending hosts must wait for admin approval before receiving tasks
     if host.status == Host.Status.PENDING:
@@ -1690,6 +1694,94 @@ def _ingest_docker_resources(host, payload: dict) -> None:
                 driver=str(n.get("driver") or "")[:64], scope=str(n.get("scope") or "")[:16],
                 internal=n.get("internal") is True, subnets=strs(n.get("subnets"), 64, 8),
                 stack=str(n.get("stack") or "")[:200]) for n in networks if n.get("name")])
+
+
+#: Caps per check-in for the network snapshot (14.4), the same reasoning as
+#: MAX_DOCKER_OBJECTS: a broken or hostile agent cannot fill the database
+#: through these lists. A machine with 32 interfaces or 300 aggregates is
+#: already far past an ordinary one.
+MAX_NETWORK_INTERFACES = 32
+MAX_NETWORK_ADDR = 16
+MAX_NETWORK_LISTENING = 256
+MAX_NETWORK_CONNECTIONS = 300
+NET_PROTOS = {"tcp", "udp"}
+NET_DIRECTIONS = {"in", "out"}
+
+
+def _net_ip(value):
+    """An address the ingest will store, or None if it isn't one. Keeps the
+    canonical form, so the topology view joins on the same text everywhere."""
+    try:
+        return str(ipaddress.ip_address(str(value)))
+    except ValueError:
+        return None
+
+
+def _net_port(value):
+    port = _safe_int(value)
+    return port if port is not None and 0 <= port <= 65535 else None
+
+
+def _net_items(value, cap: int) -> list:
+    if not isinstance(value, list):
+        return []
+    return [x for x in value[:cap] if isinstance(x, dict)]
+
+
+def _ingest_network(host, payload: dict) -> None:
+    """Store this host's network snapshot (14.4): what it is called, what it
+    listens on, who it talks to. One row per host, replaced on arrival."""
+    interfaces = []
+    for iface in _net_items(payload.get("interfaces"), MAX_NETWORK_INTERFACES):
+        addrs = []
+        for addr in _net_items(iface.get("addrs"), MAX_NETWORK_ADDR):
+            address = _net_ip(addr.get("address"))
+            if address is None:
+                continue
+            prefix = _safe_int(addr.get("prefix"))
+            if prefix is not None and not 0 <= prefix <= 128:
+                prefix = None
+            addrs.append({"family": str(addr.get("family") or "")[:8],
+                          "address": address, "prefix": prefix})
+        interfaces.append({"name": str(iface.get("name") or "")[:64],
+                           "up": iface.get("up") is True,
+                           "mac": str(iface.get("mac") or "")[:32],
+                           "addrs": addrs})
+
+    listening = []
+    for row in _net_items(payload.get("listening"), MAX_NETWORK_LISTENING):
+        proto = str(row.get("proto") or "")
+        address = _net_ip(row.get("address"))
+        port = _net_port(row.get("port"))
+        if proto not in NET_PROTOS or address is None or port is None:
+            continue
+        listening.append({"proto": proto, "address": address, "port": port,
+                          "process": str(row.get("process") or "")[:64]})
+
+    connections = []
+    for row in _net_items(payload.get("connections"), MAX_NETWORK_CONNECTIONS):
+        proto = str(row.get("proto") or "")
+        direction = str(row.get("direction") or "")
+        remote_ip = _net_ip(row.get("remote_ip"))
+        remote_port = _net_port(row.get("remote_port"))
+        local_port = _net_port(row.get("local_port"))
+        if (proto not in NET_PROTOS or direction not in NET_DIRECTIONS
+                or remote_ip is None or remote_port is None or local_port is None):
+            continue
+        count = _safe_int(row.get("count"))
+        if count is None or count < 1:
+            count = 1
+        connections.append({"proto": proto, "direction": direction,
+                            "remote_ip": remote_ip, "remote_port": remote_port,
+                            "local_port": local_port,
+                            "process": str(row.get("process") or "")[:64],
+                            "count": min(count, 100000)})
+
+    HostNetwork.objects.update_or_create(
+        host=host,
+        defaults={"interfaces": interfaces, "listening": listening,
+                  "connections": connections, "partial": payload.get("partial") is True,
+                  "collected_at": now()})
 
 
 def _sync_container_stacks(host, containers: list) -> None:
