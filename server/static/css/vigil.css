@@ -4276,3 +4276,32 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
   display: flex; flex-direction: column; gap: 2px; }
 .store-sync-name { font-size: 13px; color: var(--text-1); }
 .store-sync-meta { font-size: 12px; color: var(--text-3); }
+
+/* ── Playbook inputs (14.4) */
+/* The declared-inputs form, shared by the rollout start dialog and the
+   automation editor (inputsFormMount in vigil-pickers.js) — same shape as the
+   deploy dialog's input rows, in a container the caller owns. */
+.inputs-form { display: grid; gap: 12px; margin-bottom: 14px; }
+.inputs-form-row { display: flex; flex-direction: column; gap: 5px; }
+.inputs-form-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.inputs-form-req { font-weight: 400; color: var(--text-3); }
+.inputs-form-desc { font-size: 11px; color: var(--text-3); }
+.inputs-form-row .form-control { padding: 8px 11px; font-size: 13px; }
+.inputs-form-row.bool { flex-direction: row; align-items: center; gap: 10px; }
+.inputs-form-row.bool input { accent-color: var(--sky); width: 16px; height: 16px; }
+.inputs-form-row.bool .inputs-form-label { font-weight: 500; }
+
+/* The playbook editor's list of declarations. */
+.bl-inputs { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.bl-inputs:empty { margin-bottom: 0; }
+.bl-inputs-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  background: var(--s2); border-radius: var(--r-md); padding: 7px 10px; }
+.bl-inputs-bits { flex: 1 1 220px; font-size: 12px; color: var(--text-1);
+  overflow-wrap: anywhere; }
+.bl-inputs-flag { color: var(--peach-ink); }
+.bl-inputs-empty { font-size: 12px; color: var(--text-3); }
+
+/* The step inspector's task-input rows: the field and its Insert… menu. */
+.fci-ctl { display: flex; gap: 6px; align-items: stretch; }
+.fci-ctl .flow-sid { flex: 1 1 auto; min-width: 0; }
+.fci-insert { flex: 0 0 auto; width: auto; max-width: 120px; }

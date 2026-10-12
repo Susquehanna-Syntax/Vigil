@@ -114,6 +114,18 @@
       auto-enrolment can be switched on.
     </div>
   </div>
+  <div class="bl-field">
+    <label>Inputs</label>
+    <div class="bl-inputs" id="bl-inputs"></div>
+    <button class="btn btn-outline btn-xs" type="button" id="bl-input-add">Add input</button>
+    <div class="muted-note" style="margin-top:6px;">
+      {% verbatim %}
+      Ask for values when the playbook runs. A step uses them as
+      ${{ inputs.&lt;id&gt; }}; a task input with the same id gets the value
+      by itself.
+      {% endverbatim %}
+    </div>
+  </div>
   <label class="setting-check"><input type="checkbox" id="bl-allow-high-risk"> Allow high-risk steps in this playbook</label>
   {% comment %}
     Shown only while the box is being ticked. Run by hand, a high-risk task
@@ -248,6 +260,7 @@
       <button class="btn btn-sky btn-sm" id="auto-view-action" type="button">View / edit</button>
       <button class="btn btn-outline btn-sm" id="auto-inputs-btn" type="button">Inputs</button>
     </div>
+    <span class="muted-note" id="auto-inputs-note" style="display:block;margin-top:5px;" hidden></span>
     <input type="hidden" id="auto-action-task">
     <input type="hidden" id="auto-action-playbook">
   </div>

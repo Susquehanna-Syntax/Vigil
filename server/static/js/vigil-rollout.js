@@ -370,8 +370,39 @@ function pickRolloutTarget() {
     onSelect: (item) => {
       document.getElementById('rollout-start-def').value = item.key;
       document.getElementById('rollout-start-def-label').textContent = item.name;
+      _loadRolloutStartInputs();
     },
   });
+}
+
+/* What the picked target asks for, as a form. A playbook's inputs are its
+   row's; a task's are the ones its spec declares. Empty (or a target that
+   declares nothing) leaves the section hidden, and then the POST sends no
+   `inputs` key at all. */
+async function _loadRolloutStartInputs() {
+  const box = document.getElementById('rollout-start-inputs');
+  if (!box) return;
+  const key = document.getElementById('rollout-start-def').value;
+  box.hidden = true;
+  box.replaceChildren();
+  if (!key) return;
+  try {
+    let inputs = [];
+    if (key.startsWith('playbook:')) {
+      const row = await apiJson(`/api/v1/playbooks/${key.slice('playbook:'.length)}/`);
+      inputs = row.inputs || [];
+    } else if (key.startsWith('task:')) {
+      const def = await apiJson(`/api/v1/tasks/definitions/${key.slice('task:'.length)}/`);
+      inputs = (def.parsed_spec && def.parsed_spec.inputs) || [];
+    }
+    if (!inputs.length) return;
+    inputsFormMount(box, inputs);
+    box.hidden = false;
+  } catch (e) {
+    // The form is a convenience here; starting the rollout without it is the
+    // server's call to make, so say what failed and let the pick stand.
+    showToast(`Could not load this target's inputs: ${e.message || 'Request failed'}`, 'error');
+  }
 }
 
 function closeRolloutStart() {
@@ -385,6 +416,14 @@ async function submitRolloutStart() {
   const minResults = parseInt(document.getElementById('rollout-start-min').value, 10);
   const btn = document.getElementById('rollout-start-submit');
   if (!sel.value) { showToast('Pick something to roll out first', 'error'); return; }
+  const inputBox = document.getElementById('rollout-start-inputs');
+  const withInputs = !!(inputBox && !inputBox.hidden);
+  let values = null;
+  if (withInputs) {
+    const read = inputsFormRead(inputBox);
+    if (read.error) { showToast(read.error, 'error'); return; }
+    values = read.values;
+  }
   const picked = _rolloutState.groups;
   const totp = await totpPrompt('Wave 1 starts as soon as you confirm.',
     { title: 'Start rollout', confirmText: 'Start rollout' });
@@ -403,6 +442,7 @@ async function submitRolloutStart() {
           : { definition_id: sel.value.replace(/^task:/, '') }),
         failure_threshold_pct: threshold,
         min_results_before_halt: minResults,
+        ...(withInputs ? { inputs: values } : {}),
         ...(picked.length === 1 ? { wave_group_tag: picked[0] }
           : picked.length > 1 ? { wave_group_tags: picked.slice() }
           : {}),
@@ -511,6 +551,10 @@ navigateTo = function (pageName) {
 };
 document.addEventListener('DOMContentLoaded', () => {
   if (_rolloutsTabVisible()) refreshRollouts();
+  // "when the dialog opens with a value" — the pick sets the hidden input, so
+  // this is what loads the inputs form for a target already chosen.
+  document.getElementById('rollout-start-def')
+    ?.addEventListener('change', _loadRolloutStartInputs);
 });
 
 
