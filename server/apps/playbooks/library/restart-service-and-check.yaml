@@ -1,0 +1,64 @@
+# A template playbook: restart a service, and start it if that did not work.
+#
+# This is a Vigil playbook in the community YAML format, written by hand and
+# kept with the server as an example. The Playbooks page's Templates button
+# copies one into your library so you can open it, change it, and run it.
+#
+# What a playbook is, in one paragraph: a sequence of tasks that run one after
+# another on the same host. Each step names a task by its slug - the task's
+# name, lowercased with non-alphanumerics turned into hyphens - so a step here
+# refers to a task in the library rather than repeating its YAML.
+
+name: Restart a service and check it
+description: |
+  Restart the service you name at dispatch, check whether it is running, and
+  start it if the check says it is not.
+
+  What this one shows you about playbooks, all three at once:
+    - inputs: the playbook asks for a service name once and passes it to the
+      steps that need it, through step `inputs` and a ${{ inputs.service }}
+      reference. Nobody edits a task to reuse this.
+    - on_failure: continue on the check step. The default, stop, would end the
+      playbook the moment the check failed - which is precisely the case the
+      last step exists to handle.
+    - branches: `if: steps.check.status == "failed"` runs the start step only
+      on the hosts that need it. A condition may name any earlier step by id
+      and read its status or the outputs its task reported.
+author: Vigil
+created: 2026-10-12
+
+# The playbook's own input. Every step that wants it maps its task's input id
+# to a value below; required means the dispatch form will not run without one.
+inputs:
+  - id: service
+    type: text
+    label: Service
+    description: The service to restart, for example nginx
+    required: true
+
+steps:
+  # The playbook input arrives as the task's own `service` input.
+  - task: restart-a-service
+    order: 1
+    inputs:
+      service: "${{ inputs.service }}"
+    outcome: Restarted
+
+  # Named `check`, because the branch below reads its status. `continue` makes
+  # a failure here a handled one: the playbook carries on and the run is not
+  # marked failed by the check alone.
+  - task: check-a-service
+    id: check
+    order: 2
+    on_failure: continue
+    inputs:
+      service: "${{ inputs.service }}"
+    outcome: Checked
+
+  - if: steps.check.status == "failed"
+    then:
+      - task: start-a-service
+        order: 3
+        inputs:
+          service: "${{ inputs.service }}"
+        outcome: Started

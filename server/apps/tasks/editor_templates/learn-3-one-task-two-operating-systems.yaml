@@ -1,0 +1,70 @@
+# LEARN 3 - One task for Windows and Linux
+#
+# What this does: clears old temp files and restarts a service, the right way
+# for whatever operating system the agent is running on.
+#
+# When to use it: when you want one task deployed to a mixed fleet, and the
+# steps differ per operating system.
+#
+# What to change: the service name.
+#
+# A `when:` on a step is a small Python-style expression the agent evaluates
+# on the host just before the step. False means the step reports "skipped" and
+# the task carries on: the task does not fail, and the steps after it still
+# run. What you may read is the agent's own context - agent.os ("linux",
+# "windows" or "darwin"), agent.pkg_manager (apt-get, dnf, yum, zypper, apk,
+# pacman, brew or winget), agent.arch, agent.hostname, inputs.* and an earlier
+# step's status or result.
+#
+# The alternative to per-step guards is a `relevant:` block (Learn 4): use
+# `when:` when the task applies everywhere but its steps differ, and
+# `relevant:` when whole machines should be left alone.
+
+name: Learn 3 - One task for Windows and Linux
+description: |
+  Clear the temp directory and restart a service, measuring the space with
+  the command that belongs to whichever operating system the host runs.
+risk: standard
+
+inputs:
+  - id: service
+    type: text
+    label: Service to restart once the temp files are gone
+    default: nginx
+    required: true
+
+actions:
+  # This one needs no guard: the agent's own temp-file action already knows
+  # where the temp directory is on every platform it supports.
+  - id: clean-temp
+    type: clear_temp_files
+    params:
+      older_than_days: 7
+
+  # Each of the three below runs on exactly one platform; on the other two it
+  # reports skipped.
+  - id: journal-space-linux
+    type: run_command
+    when: agent.os == "linux"
+    params:
+      command: "journalctl --disk-usage"
+      timeout: 30
+
+  - id: temp-space-windows
+    type: run_command
+    when: agent.os == "windows"
+    params:
+      command: "cmd /c dir %TEMP% /s"
+      timeout: 60
+
+  - id: temp-space-macos
+    type: run_command
+    when: agent.os == "darwin"
+    params:
+      command: "du -sh /private/var/tmp"
+      timeout: 60
+
+  - id: restart
+    type: restart_service
+    params:
+      service_name: "${{ inputs.service }}"

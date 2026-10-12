@@ -41,429 +41,39 @@ actions:
       service_name: nginx
 `;
 
-/* Pre-canned task templates exposed in the editor's "Start from template…"
-   dropdown. Each entry's YAML is a complete, valid TaskDefinition. */
-const EDITOR_TEMPLATES = [
-  {
-    id: 'check-docker-updates',
-    label: 'Check Docker images for updates now',
-    yaml: `name: Check Docker images for updates
-description: |
-  Force an immediate Docker Hub digest re-check instead of waiting for the
-  agent's scheduled check (default every 6 hours — docker_check_interval in
-  agent.yml). Output lists each Hub-tagged container as up to date or
-  OUTDATED, and outdated-image alerts fire or resolve on the next check-in.
-  Relevant to any host running Docker containers.
-risk: low
+/* The editor's "Start from a template" list lives on the server: one YAML file
+   per template under apps/tasks/editor_templates/, served by
+   GET /api/v1/tasks/editor-templates/. Each is a real task file a test can
+   prove valid, rather than a string literal kept in sync by hand. Fetched once
+   per page load and held here; the picker and the loader read this cache. */
+let _editorTemplates = null;
 
-actions:
-  - id: check
-    type: check_docker_updates
-`
-  },
-  {
-    id: 'update-package',
-    label: 'Update a package',
-    yaml: `name: Update package
-description: Refresh the package index and upgrade a single package to its latest version.
-risk: standard
-
-inputs:
-  - id: pkg
-    label: Package name
-    type: text
-    default: hashcat
-    required: true
-
-actions:
-  - id: refresh-index
-    type: run_package_updates
-  - id: upgrade
-    type: update_package
-    params:
-      package_name: "\${{ inputs.pkg }}"
-`
-  },
-  {
-    id: 'reinstall-package',
-    label: 'Reinstall a package from scratch',
-    yaml: `name: Reinstall package from scratch
-description: Remove the package and any leftover config, then install it fresh.
-risk: standard
-
-inputs:
-  - id: pkg
-    label: Package name
-    type: text
-    default: hashcat
-    required: true
-
-actions:
-  - id: remove
-    type: remove_package
-    params:
-      package_name: "\${{ inputs.pkg }}"
-  - id: refresh-index
-    type: run_package_updates
-  - id: install
-    type: install_package
-    params:
-      package_name: "\${{ inputs.pkg }}"
-`
-  },
-  {
-    id: 'update-or-reinstall',
-    label: 'Update OR reinstall (user picks at deploy time)',
-    yaml: `name: Update or reinstall a package
-description: |
-  Lets the operator pick whether to do a fast in-place update or a clean
-  remove + reinstall when deploying.
-risk: standard
-
-inputs:
-  - id: pkg
-    label: Package name
-    type: text
-    default: hashcat
-    required: true
-  - id: mode
-    label: How should we handle it
-    type: choice
-    choices:
-      - { value: update,    label: "Update in place" }
-      - { value: reinstall, label: "Reinstall from scratch" }
-    default: update
-
-actions:
-  # NOTE: Only one of these branches will produce a meaningful change for
-  # any given run, but both are always executed. The agent's package
-  # manager treats a no-op install as a fast no-op.
-  - id: refresh-index
-    type: run_package_updates
-  - id: upgrade-only
-    type: update_package
-    params:
-      package_name: "\${{ inputs.pkg }}"
-`
-  },
-  {
-    id: 'restart-service',
-    label: 'Restart a systemd service',
-    yaml: `name: Restart service
-description: Bounce a single systemd service.
-risk: standard
-
-inputs:
-  - id: service
-    label: Service name
-    type: text
-    default: nginx
-    required: true
-
-actions:
-  - id: restart
-    type: restart_service
-    params:
-      service_name: "\${{ inputs.service }}"
-`
-  },
-  {
-    id: 'clear-tmp',
-    label: 'Clear /tmp older than N days',
-    yaml: `name: Clear /tmp
-description: Delete files in /tmp older than the chosen age.
-risk: low
-
-inputs:
-  - id: days
-    label: Older than (days)
-    type: number
-    default: 7
-
-actions:
-  - id: clean
-    type: clear_temp_files
-    params:
-      older_than_days: "\${{ inputs.days }}"
-`
-  },
-  {
-    id: 'wait-then-act',
-    label: 'Wait until user offline, then act (full_control)',
-    yaml: `name: Wait until user offline, then restart
-description: |
-  Polls 'who' until no users are logged in, then restarts the named service.
-  Requires the agent to be in full_control mode because run_command is used.
-  Relevant to interactive workstations where you don't want to disrupt
-  active users.
-risk: high
-
-inputs:
-  - id: service
-    label: Service to restart once nobody is logged in
-    type: text
-    default: nginx
-    required: true
-  - id: max_wait_minutes
-    label: Maximum minutes to wait for sessions to clear
-    type: number
-    default: 60
-
-actions:
-  - id: wait-for-idle
-    type: run_command
-    params:
-      command: "sh -c 'for i in $(seq 1 \${{ inputs.max_wait_minutes }}); do who | grep -q . || exit 0; sleep 60; done; exit 1'"
-      timeout: 7200
-  - id: restart-service
-    type: restart_service
-    params:
-      service_name: "\${{ inputs.service }}"
-`
-  },
-  {
-    id: 'install-nessus',
-    label: 'Install Nessus Essentials on this host',
-    yaml: `name: Install Nessus Essentials
-description: |
-  Downloads and installs Nessus Essentials, then starts the service.
-  After the task completes, finish activation in the browser at
-  https://<this-host>:8834 using the activation code emailed to you
-  by Tenable. Plugin compilation takes ~20-30 minutes the first time.
-  Relevant to the host you want to run as your central Nessus scanner.
-risk: high
-
-inputs:
-  - id: deb_url
-    label: Nessus .deb URL (defaults to latest Debian/Ubuntu x86_64)
-    type: text
-    default: "https://www.tenable.com/downloads/api/v2/pages/nessus/files/Nessus-latest-debian10_amd64.deb"
-    required: true
-
-actions:
-  - id: download
-    type: run_command
-    params:
-      command: 'curl -sSfL -o /tmp/nessus.deb "\${{ inputs.deb_url }}"'
-      timeout: 600
-  - id: install
-    type: run_command
-    params:
-      command: 'sudo dpkg -i /tmp/nessus.deb && rm /tmp/nessus.deb'
-      timeout: 300
-  - id: start
-    type: run_command
-    params:
-      command: 'sudo systemctl enable --now nessusd'
-      timeout: 60
-  - id: ready_message
-    type: run_command
-    params:
-      command: 'echo "Nessus installed. Finish activation at https://$(hostname -I | awk \"{print \\$1}\"):8834"'
-      timeout: 5
-`
-  },
-  {
-    id: 'request-nessus-scan',
-    label: 'Request a Nessus scan of this host',
-    yaml: `name: Request Nessus scan
-description: |
-  Asks the Vigil server to schedule a Nessus scan of this host.
-  Nothing runs locally — the agent emits a marker, the server records
-  the request in the Vulnerabilities tab, and the central Nessus
-  instance launches the actual scan on the next sync cycle. Relevant to
-  any host you want scanned for vulnerabilities.
-risk: low
-
-actions:
-  - id: request_scan
-    type: request_nessus_scan
-`
-  },
-  {
-    id: 'install-trivy',
-    label: 'Install Trivy on this host',
-    yaml: `name: Install Trivy
-description: |
-  Cross-platform Trivy install. The agent picks the right path based
-  on its own platform (apt / dnf / brew / winget) via per-step when:
-  predicates. Hosts without a known package manager are filtered out
-  by target_tags so the editor only offers eligible targets. Relevant to
-  any host you want to scan with the agent-local Trivy scanner.
-risk: high
-target_tags:
-  - pkg:apt
-  - pkg:dnf
-  - pkg:yum
-  - pkg:brew
-  - pkg:winget
-
-actions:
-  - id: trivy_apt
-    type: run_command
-    when: agent.pkg_manager == "apt"
-    params:
-      command: 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y wget gnupg ca-certificates && wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor -o /usr/share/keyrings/trivy.gpg && echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" > /etc/apt/sources.list.d/trivy.list && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y trivy'
-      timeout: 600
-
-  - id: trivy_dnf
-    type: run_command
-    when: agent.pkg_manager in ("dnf", "yum")
-    params:
-      command: 'rpm -ivh https://github.com/aquasecurity/trivy/releases/latest/download/trivy_$(uname -m).rpm'
-      timeout: 600
-
-  - id: trivy_brew
-    type: run_command
-    when: agent.os == "darwin"
-    params:
-      command: 'su - $(stat -f %Su /dev/console) -c "/opt/homebrew/bin/brew install trivy 2>/dev/null || /usr/local/bin/brew install trivy"'
-      timeout: 600
-
-  - id: trivy_winget
-    type: run_command
-    when: agent.os == "windows"
-    params:
-      command: 'winget install --id AquaSecurity.Trivy --accept-source-agreements --accept-package-agreements --silent'
-      timeout: 600
-
-  - id: verify
-    type: run_command
-    params:
-      command: 'trivy --version'
-      timeout: 30
-`
-  },
-  {
-    id: 'run-trivy-scan',
-    label: 'Run a Trivy vulnerability scan on this host',
-    yaml: `name: Trivy filesystem scan
-description: |
-  Runs Trivy against the local filesystem, captures the JSON report,
-  and ships it back. The server parses each (package, CVE) pair into a
-  VulnFinding row and recomputes the host score. Requires the trivy
-  binary already installed (see the "Install Trivy on this host"
-  template). Relevant to any host with the Trivy CLI installed.
-risk: low
-
-inputs:
-  - id: scope
-    label: Scan scope
-    type: choice
-    default: fs
-    choices:
-      - { value: fs, label: "Filesystem (root)" }
-      - { value: rootfs, label: "Root filesystem (alias)" }
-
-actions:
-  - id: scan
-    type: run_trivy_scan
-    params:
-      scope: "\${{ inputs.scope }}"
-`
-  },
-  {
-    id: 'install-greenbone-ce',
-    label: 'Install Greenbone Community Edition (Docker)',
-    yaml: `name: Install Greenbone Community Edition
-description: |
-  Drops the official Greenbone CE docker-compose stack into
-  /opt/greenbone and brings it up. First-run NVT feed sync takes
-  20-30 minutes; check progress at https://<this-host>:9392.
-  After it's ready, set the admin password, create a Vigil service
-  account, and wire GREENBONE_URL/USERNAME/PASSWORD into the Vigil
-  server stack. Linux-only — restricted to docker-capable hosts via
-  target_tags. Relevant to a Linux host you want to run as your Greenbone
-  scanner.
-risk: high
-target_tags:
-  - os:linux
-
-actions:
-  - id: make_dir
-    type: run_command
-    params:
-      command: 'sudo mkdir -p /opt/greenbone'
-      timeout: 10
-  - id: download_compose
-    type: run_command
-    params:
-      command: 'sudo curl -fsSL -o /opt/greenbone/docker-compose.yml https://greenbone.github.io/docs/latest/_static/docker-compose-22.04.yml'
-      timeout: 120
-  - id: bring_up
-    type: docker_compose_up
-    params:
-      compose_file: /opt/greenbone/docker-compose.yml
-  - id: ready_message
-    type: run_command
-    params:
-      command: 'echo "Greenbone CE is starting. Initial NVT sync runs for 20-30 minutes. Open https://$(hostname -I | awk \"{print \\$1}\"):9392 once sync completes."'
-      timeout: 5
-`
-  },
-  {
-    id: 'request-network-scan',
-    label: 'Request a network scan of this host (engine-agnostic)',
-    yaml: `name: Request network scan
-description: |
-  Asks the server to queue a network scan against this host. The
-  engine field picks which central scanner runs — set it to "nessus"
-  or "greenbone", or leave blank to let the server choose based on
-  what's configured. Relevant to any host you want scanned by whichever
-  network scanner is configured.
-risk: low
-
-inputs:
-  - id: engine
-    label: Scanner engine
-    type: choice
-    default: auto
-    choices:
-      - { value: auto, label: "Server's default" }
-      - { value: nessus, label: "Nessus" }
-      - { value: greenbone, label: "Greenbone" }
-
-actions:
-  - id: request_scan
-    type: request_network_scan
-    params:
-      engine: "\${{ inputs.engine }}"
-`
-  },
-  {
-    id: 'reboot-host',
-    label: 'Reboot host (with delay)',
-    yaml: `name: Reboot host
-description: Schedule a delayed reboot.
-risk: high
-
-inputs:
-  - id: delay
-    label: Delay before reboot (seconds)
-    type: number
-    default: 60
-
-actions:
-  - id: reboot
-    type: reboot
-    params:
-      delay_seconds: "\${{ inputs.delay }}"
-`
-  },
-];
+async function _loadEditorTemplates() {
+  if (_editorTemplates) return _editorTemplates;
+  try {
+    const body = await apiJson('/api/v1/tasks/editor-templates/');
+    _editorTemplates = body.results || [];
+  } catch (e) {
+    showToast('Could not load the task templates: ' + e.message, 'error');
+    _editorTemplates = [];
+  }
+  return _editorTemplates;
+}
 
 function _populateTemplatePicker() {
-  // Templates are a fixed in-page list, so this opens a search modal over
-  // EDITOR_TEMPLATES rather than going through the API-backed openPicker.
+  // One template file per example on the server, so this fetches the list once
+  // and opens a search modal over the result rather than an in-page constant.
   const btn = document.getElementById('editor-template-btn');
   if (!btn || btn.dataset.wired) return;
   btn.dataset.wired = '1';
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
+    const templates = await _loadEditorTemplates();
+    if (!templates.length) return;
     openPicker({
       type: 'editor_template',
       title: 'Start from a template',
       allowAdd: false,
-      items: EDITOR_TEMPLATES.map(t => ({ key: t.id, name: t.label, meta: 'template' })),
+      items: templates.map(t => ({ key: t.id, name: t.label, meta: t.group })),
       onSelect: (item) => loadEditorTemplate(item.key),
     });
   });
@@ -471,7 +81,7 @@ function _populateTemplatePicker() {
 
 function loadEditorTemplate(id) {
   if (!id) return;
-  const tpl = EDITOR_TEMPLATES.find(t => t.id === id);
+  const tpl = (_editorTemplates || []).find(t => t.id === id);
   if (!tpl) return;
   const ta = document.getElementById('editor-yaml');
   const current = (ta.value || '').trim();

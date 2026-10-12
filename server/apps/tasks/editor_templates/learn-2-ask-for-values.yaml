@@ -1,0 +1,76 @@
+# LEARN 2 - Ask for values when it runs
+#
+# What this does: restarts a service on a host, waiting until nobody is
+# logged in, and tells you afterwards what it did.
+#
+# When to use it: on workstations, where restarting something in front of a
+# user is the thing you are trying to avoid.
+#
+# What to change: the input defaults and labels below. An input is a question
+# the task asks the operator at deploy time, so nobody has to edit YAML to
+# reuse your work.
+#
+# An input has an id (what you write in the markers), a type (text, number,
+# boolean or choice), a label the deploy form shows, an optional default, and
+# optional choices when the type is choice.
+#
+# Write ${{ inputs.some_id }} in any param and Vigil substitutes the answer
+# before the task is signed. Two rules worth knowing:
+#   - a marker must be the param's whole value or a piece of one; a misspelled
+#     input name fails the save rather than silently sending the text.
+#   - an inline script body is the exception: it reads inputs as
+#     VIGIL_INPUT_<ID> environment variables instead, because shell scripts
+#     are full of bare braces.
+
+name: Learn 2 - Ask for values when it runs
+description: |
+  Restart a service once the machine has no logged-in users, with the age
+  limit, the service and the warning all asked at deploy time.
+risk: high
+
+inputs:
+  - id: service
+    type: text
+    label: Service to restart
+    default: nginx
+    required: true
+
+  - id: max_wait_minutes
+    type: number
+    label: Maximum minutes to wait for the sessions to clear
+    default: 60
+
+  - id: notify_user
+    type: boolean
+    label: Tell the user before the restart
+    default: true
+
+  - id: how
+    type: choice
+    label: How should we restart it
+    default: restart
+    choices:
+      - { value: restart, label: "Restart it now that nobody is here" }
+      - { value: reload,  label: "Reload its config instead" }
+
+actions:
+  # A shell loop, so it is wrapped in sh -c: the agent runs commands without
+  # a shell, and && or | or $(...) would otherwise be read as plain arguments.
+  # The timeout is the wait budget plus a minute of slack, in seconds.
+  - id: wait-for-idle
+    type: run_command
+    params:
+      command: "sh -c 'for i in $(seq 1 ${{ inputs.max_wait_minutes }}); do who | grep -q . || exit 0; sleep 60; done; exit 1'"
+      timeout: 3660
+
+  - id: restart
+    type: restart_service
+    params:
+      service_name: "${{ inputs.service }}"
+
+  # The value of a choice input arrives as the option's value, not its label.
+  - id: report
+    type: run_command
+    params:
+      command: "echo Restarted ${{ inputs.service }} using the ${{ inputs.how }} path."
+      timeout: 10

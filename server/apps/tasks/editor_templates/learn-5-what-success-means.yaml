@@ -1,0 +1,50 @@
+# LEARN 5 - Decide what success means
+#
+# What this does: asks the local web server how it is and calls the task a
+# failure unless the answer is the status code you expect.
+#
+# When to use it: whenever "the command exited 0" is not enough. A script that
+# prints "NOTHING DONE" and exits 0 is a script you did not want to believe.
+#
+# What to change: the expected status code, and the command.
+#
+# `success_criteria` is one top-level block, applied to every step of the task:
+#   exit_code: 0          # the exit code a step must return (default 0)
+#   output_contains: "ok" # a substring that must appear in the output
+#   output_regex: "^OK"   # a regex that must match somewhere in the output
+# The three are ANDed. A step that runs cleanly and misses a criterion is
+# reported as a failure, with the missed criterion named as the reason, so the
+# run history tells you which promise the task broke.
+#
+# Two things worth knowing:
+#   - the criteria apply to every step, so write strings that fit the whole
+#     task, or split the work into two tasks.
+#   - a criterion may hold a ${{ inputs.x }} marker, so the person deploying
+#     decides what "good" looks like.
+
+name: Learn 5 - Decide what success means
+description: |
+  Ask the local web server for its status line and fail the task unless the
+  output really carries the status code you expect.
+risk: low
+
+inputs:
+  - id: expect
+    type: text
+    label: Status code the server must answer with
+    default: "200"
+    required: true
+
+success_criteria:
+  # curl exits non-zero on a refused connection, which covers the dead case.
+  exit_code: 0
+  # This catches the alive-but-wrong case: a server answering 503 still exits
+  # 0, so the exit code on its own would call that a success.
+  output_contains: "${{ inputs.expect }}"
+
+actions:
+  - id: ask-the-web-server
+    type: run_command
+    params:
+      command: "sh -c 'curl -sS -o /dev/null -w \"HTTP %{http_code}\\n\" http://127.0.0.1/ || true'"
+      timeout: 30

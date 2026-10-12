@@ -3,6 +3,7 @@ import math
 import secrets
 import uuid
 from datetime import timedelta
+from pathlib import Path
 
 from django.db import IntegrityError, transaction
 from django.db.models import Count
@@ -1193,6 +1194,49 @@ def community_names_by_slug(kind: str) -> dict[str, str]:
         if stem and item.get("name"):
             names[stem] = item["name"]
     return names
+
+
+# ── Editor templates (bundled with the server) ───────────────────────────────
+#
+# The editor's "Start from a template" list. Each template is a real task YAML
+# file under ``editor_templates/`` and ``index.yaml`` is the order and the
+# labels, so one file per template keeps them readable and diffable, and a test
+# can prove each one parses. Read once per process and kept in memory: they are
+# static files, and the editor asks for them on every page it opens.
+
+_EDITOR_TEMPLATE_DIR = Path(__file__).resolve().parent / "editor_templates"
+_editor_templates: list[dict] | None = None
+
+
+def _load_editor_templates() -> list[dict]:
+    global _editor_templates
+    if _editor_templates is not None:
+        return _editor_templates
+    import yaml as _yaml
+
+    index = _yaml.safe_load(
+        (_EDITOR_TEMPLATE_DIR / "index.yaml").read_text()) or []
+    loaded: list[dict] = []
+    for entry in index:
+        path = _EDITOR_TEMPLATE_DIR / str(entry.get("file", ""))
+        if not path.is_file():
+            continue
+        loaded.append({
+            "id": str(entry.get("id", path.stem)),
+            "label": str(entry.get("label", path.stem)),
+            "group": str(entry.get("group", "")),
+            "summary": str(entry.get("summary", "")),
+            "yaml": path.read_text(),
+        })
+    _editor_templates = loaded
+    return loaded
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def editor_templates(request):
+    """The bundled task templates, in index order, each with its YAML."""
+    return Response({"results": _load_editor_templates()})
 
 
 @api_view(["GET"])

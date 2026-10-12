@@ -1,0 +1,48 @@
+# LEARN 7 - Reuse another task
+#
+# What this does: when an nginx service is present, reuses another task to
+# collect its status; when it is not, restarts it here instead.
+#
+# When to use it: when you already have a task that does part of the job, and
+# copying its steps would mean maintaining two copies of the same fix.
+#
+# What to change: the task name in the `use:` line, and the service name.
+#
+# Inside a `then:` or `else:` list, an item can be `- use: <task name>`
+# instead of a step. At deploy time Vigil copies that task's current steps
+# into the branch and signs the result, so:
+#   - a later edit to the named task never changes a run that already went out;
+#   - the named task may be your own or a community one - if both exist, yours
+#     wins;
+#   - the reused task's own inputs must have defaults, or the deploy form asks
+#     for them;
+#   - `use:` belongs inside a branch. To reuse a whole task with no condition,
+#     write a playbook instead: it sequences tasks, and its steps are tasks.
+#
+# A task that cannot be found by name at deploy time fails the deploy with its
+# name in the message, so a rename is loud rather than a missing step.
+
+name: Learn 7 - Reuse the task that reports nginx
+description: |
+  Where an nginx service exists, splice in the task that collects its status;
+  where there is none, restart the one named in this task.
+risk: standard
+
+actions:
+  # Step ids are written inside expressions, so keep them to letters, digits
+  # and underscores: a hyphen would read as subtraction.
+  - id: has_nginx
+    type: hunt_service
+    params:
+      name: nginx
+
+  - if: steps.has_nginx.result.count > 0
+    then:
+      # Any task of yours named "Collect nginx status" is spliced in here.
+      - use: Collect nginx status
+    else:
+      # Hosts with no nginx service at all get the plain repair instead.
+      - id: restart
+        type: restart_service
+        params:
+          service_name: nginx

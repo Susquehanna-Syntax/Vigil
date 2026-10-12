@@ -1,0 +1,30 @@
+# LEARN 1 - Your first task: restart a service
+#
+# What this does: restarts a service by name.
+#
+# When to use it: after a config edit, after a package update, or when a
+# service has wedged and needs bouncing.
+#
+# What to change: the service name in params. Pick something the machine
+# really runs - nginx, cron, ssh.
+#
+# The parts every task has:
+#   name        - how the library, the deploy picker and the history show it
+#   description - what it does and when to run it; the card shows the first line
+#   risk        - low, standard or high. Bouncing one service is standard.
+#   actions     - the steps, run in the order they are written
+#   a step      - id (unique inside the task), type (an action Vigil knows) and
+#                 params (what that action needs). The Wiki's "Task actions"
+#                 section lists every type and its params.
+
+name: Learn 1 - Restart a service
+description: |
+  Restart one service. The smallest task that changes something: a name goes
+  in, the agent restarts it, and the run reports whether it came back active.
+risk: standard
+
+actions:
+  - id: restart
+    type: restart_service
+    params:
+      service_name: nginx

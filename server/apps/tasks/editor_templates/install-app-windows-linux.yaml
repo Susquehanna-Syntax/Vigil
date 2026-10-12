@@ -1,0 +1,69 @@
+# Install an app on Windows and Linux
+#
+# What this does: installs one app through whichever package manager the host
+# has - winget on Windows, apt on Debian and Ubuntu - and reports the version
+# that ended up installed.
+#
+# When to use it: when you want one task that installs the same app across a
+# mixed fleet, instead of one task per operating system.
+#
+# What to change: the app id, and which managers you actually have.
+#
+# app_install names an app and a `source` (the manager to install it with).
+# The app id is that manager's own identifier - a winget id such as
+# VideoLAN.VLC, or a Debian package name - so the two steps below can name the
+# same app in the two dialects.
+#
+# Each step carries the `when:` guard Vigil's own software code writes for the
+# source (apps/software/guards.py). Without a guard, every host tries every
+# manager and fails the ones it does not have; with one, the wrong step simply
+# reports skipped.
+#
+# Other things worth knowing:
+#   - omit `source` and the agent picks the host's own manager;
+#   - `version` pins an install on the managers that accept one (not snap or
+#     flatpak);
+#   - the final step works on both platforms because `which` and `where` are
+#     each guarded in the same way if you want them - here the app's own
+#     version flag is enough.
+
+name: Install an app on Windows and Linux
+description: |
+  Install one app with the package manager the host actually has, and print
+  the version that is installed afterwards.
+risk: standard
+
+inputs:
+  - id: winget_id
+    type: text
+    label: Winget id (Windows)
+    description: For example VideoLAN.VLC
+    default: VideoLAN.VLC
+    required: true
+
+  - id: deb_name
+    type: text
+    label: Package name (Debian / Ubuntu)
+    default: vlc
+    required: true
+
+actions:
+  - id: install-windows
+    type: app_install
+    when: agent.os == "windows"
+    params:
+      app: "${{ inputs.winget_id }}"
+      source: winget
+
+  - id: install-linux
+    type: app_install
+    when: agent.pkg_manager in ["apt", "apt-get"]
+    params:
+      app: "${{ inputs.deb_name }}"
+      source: dpkg
+
+  - id: confirm
+    type: run_command
+    params:
+      command: "sh -c 'command -v vlc >/dev/null && vlc --version | head -1 || echo vlc not on PATH'"
+      timeout: 30

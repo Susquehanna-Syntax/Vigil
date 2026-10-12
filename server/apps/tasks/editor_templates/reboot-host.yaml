@@ -1,0 +1,39 @@
+# Reboot a host, with a delay
+#
+# What this does: schedules a reboot some seconds in the future.
+#
+# When to use it: after an update that needs a restart, or to clear a kernel
+# or driver change - on a machine you do not need in the next minute.
+#
+# What to change: the delay.
+#
+# The delay is the safety feature. A reboot with no delay is a reboot you
+# cannot take back; a 60-second one gives you time to cancel the task from the
+# run history, or to log in and finish what you were doing.
+#
+# Optional params on the same action:
+#   notify / notify_message - a message to logged-in users before the reboot
+#   defer_limit / defer_minutes - let the host put the reboot off, how many
+#     times and by how long each time, for a machine with someone in front of it
+#
+# Rebooting is high risk and the deploy path treats it that way: a high-risk
+# task costs a two-factor confirmation and waits 60 seconds before an agent may
+# collect it, which is the window in which you notice you picked the wrong host.
+
+name: Reboot host
+description: |
+  Schedule a delayed reboot, with an optional message to whoever is logged in.
+  The delay is what leaves you room to cancel it.
+risk: high
+
+inputs:
+  - id: delay
+    label: Delay before reboot (seconds)
+    type: number
+    default: 60
+
+actions:
+  - id: reboot
+    type: reboot
+    params:
+      delay_seconds: "${{ inputs.delay }}"
