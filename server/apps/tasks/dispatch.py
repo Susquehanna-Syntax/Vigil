@@ -62,11 +62,13 @@ def resolve_task_spec(
         ]
 
     actions, _expanded_risk = expand_actions(spec.get("actions") or [])
-    # A playbook's steps arrive with the values that playbook resolved, still
-    # as references into *this* task's inputs where the caller wrote them.
-    # This is the one place both sets are known, so it is where they are
-    # filled in — once, over the flat result.
-    spec["actions"] = resolve_playbook_inputs(actions, inputs or {})
+    # A playbook's steps arrive carrying the values that playbook resolved.
+    # This task's own inputs were substituted into the playbook action's
+    # params.inputs above, before expansion, and checked against this task's
+    # declarations there. The raw request is never consulted again: a key in
+    # it named like a step's task input must not replace what the playbook
+    # resolved and validated.
+    spec["actions"] = resolve_playbook_inputs(actions)
     return spec
 
 

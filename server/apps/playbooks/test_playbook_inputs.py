@@ -140,6 +140,19 @@ class PlaybookInputsTests(TestCase):
         self.assertEqual(
             spec["actions"][0]["params"]["service_name"], "example")
 
+    def test_caller_keys_cannot_override_a_step_input(self):
+        """A deploy's raw inputs reach only the calling task's declared
+        inputs. A key named like a step's task input (here ``domain``, which
+        the calling task does not declare) must not replace the value the
+        playbook resolved for that step."""
+        self.playbook(
+            inputs=[{"id": "domain", "type": "text", "required": True}],
+            steps=[(self.definition(DECLARES_DOMAIN), {})])
+        task = self.definition(INLINE)
+        spec = resolve_task_spec(task, user=self.user,
+                                 inputs={"t": "safe", "domain": "injected"})
+        self.assertEqual(spec["actions"][0]["params"]["service_name"], "safe")
+
     # -- API ----------------------------------------------------------------
 
     def test_api_saves_inputs_and_rejects_unknown_refs(self):
