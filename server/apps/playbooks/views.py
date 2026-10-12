@@ -24,6 +24,7 @@ def _row(b: Playbook, *, failing: int | None = None) -> dict:
         "archived_at": b.archived_at.isoformat() if b.archived_at else None,
         "completion_tag": b.completion_tag,
         "allow_high_risk": b.allow_high_risk,
+        "inputs": b.inputs or [],
         "created_at": b.created_at.isoformat(),
         # How many hosts auto-enrolment has stopped trying, because the last
         # run failed there. Zero is the ordinary answer and the card says
@@ -36,7 +37,11 @@ def _row(b: Playbook, *, failing: int | None = None) -> dict:
                 "definition_name": s.definition.name,
                 "risk": s.definition.risk_level,
                 "order": s.order,
+                # ``inputs`` here is the step's playbook-input mapping
+                # (task input id → text with playbook references);
+                # ``params_override`` is the per-action param override.
                 "params_override": s.params_override or {},
+                "inputs": s.inputs or {},
                 "on_not_applicable": s.on_not_applicable,
                 "on_failure": s.on_failure,
                 "color": s.color,
@@ -93,10 +98,13 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
     Eligibility is judged against the playbook's own allow_high_risk flag, so
     callers must set it before calling — otherwise a playbook created with
     the flag on in the same request would still reject its high-risk steps.
+    ``playbook.inputs`` must be set before calling too: a step's input
+    mapping is checked against the playbook's declarations.
     """
     from apps.tasks.spec import validate_params_override
 
     from .flow import FlowError, build_flow
+    from .inputs import validate_step_inputs
 
     if not isinstance(definition_ids, list) or not definition_ids:
         return Response({"detail": "definition_ids must be a non-empty list"},
@@ -113,11 +121,13 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
                 tree.append({**entry, "then": load(then_nodes), "else": load(else_nodes)})
                 continue
             override, on_not_applicable, on_failure, step_id, did = {}, "stop", "stop", None, entry
+            step_inputs_mapping: dict = {}
             color = ""
             outcome = ""
             if isinstance(entry, dict):
                 did = entry.get("definition_id")
                 override = entry.get("params_override") or {}
+                step_inputs_mapping = entry.get("inputs") or {}
                 on_not_applicable = entry.get("on_not_applicable") or "stop"
                 step_id = entry.get("id")
                 if on_not_applicable not in ("skip", "stop"):
@@ -140,7 +150,11 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
             err = validate_params_override(d.parsed_spec or {}, override)
             if err is not None:
                 raise FlowError(f"{d.name}: {err}")
+            err = validate_step_inputs(d, step_inputs_mapping, playbook.inputs)
+            if err is not None:
+                raise FlowError(f"{d.name}: {err}")
             tree.append({"definition": d, "id": step_id, "params_override": override,
+                         "inputs": step_inputs_mapping,
                          "on_not_applicable": on_not_applicable,
                          "on_failure": on_failure, "color": color, "outcome": outcome})
         return tree
@@ -152,7 +166,7 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
     playbook.steps.all().delete()
     PlaybookStep.objects.bulk_create([
         PlaybookStep(playbook=playbook, definition=st["definition"], order=i,
-                     params_override=st["params_override"],
+                     params_override=st["params_override"], inputs=st["inputs"],
                      on_not_applicable=st["on_not_applicable"],
                      on_failure=st["on_failure"], color=st["color"], outcome=st["outcome"],
                      step_id=st["step_id"], branch=st["branch"])
@@ -161,6 +175,41 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
     playbook.flow = flow
     playbook.save(update_fields=["flow"])
     return None
+
+
+#: One playbook input per step is enough for anyone; the task spec's own cap.
+MAX_PLAYBOOK_INPUTS = 16
+
+
+def _validate_and_set_inputs(playbook: Playbook, raw, auto_enroll=None, *,
+                             save: bool = True) -> Response | None:
+    """Validate and set ``playbook.inputs``. Returns an error Response or None.
+
+    Runs **before** the steps are validated: a step's input mapping is checked
+    against the declarations. *auto_enroll* is the flag as the save will leave
+    it — a PATCH can turn it on in the same request that declares the inputs.
+    """
+    from apps.tasks.spec import SpecError, _validate_inputs
+
+    try:
+        declared = _validate_inputs(raw)
+    except SpecError as exc:
+        return Response({"detail": str(exc)}, status=400)
+    enrols = playbook.auto_enroll if auto_enroll is None else bool(auto_enroll)
+    # Only a text input can be left empty; the other types always carry a value.
+    if enrols and any(i.get("type", "text") == "text" and i.get("required") and not i.get("default")
+                      for i in declared):
+        # The same rule as the YAML importer's: nothing is ever here to fill an
+        # input in when a schedule runs the playbook by itself.
+        return Response(
+            {"detail": "auto-enrolment runs without anyone to fill in inputs: "
+                       "give every required input a default"},
+            status=400)
+    playbook.inputs = declared
+    if save:
+        playbook.save(update_fields=["inputs"])
+    return None
+
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
@@ -205,6 +254,11 @@ def playbook_index(request):
             transaction.set_rollback(True)
             return err
         playbook.save(update_fields=["allow_high_risk"])
+        # Before the steps: a step's input mapping names these ids.
+        if "inputs" in request.data and (
+                err_inputs := _validate_and_set_inputs(playbook, request.data["inputs"])):
+            transaction.set_rollback(True)
+            return err_inputs
         err = _validate_and_set_steps(
             playbook, request.data.get("flow_steps") or request.data.get("definition_ids"))
         if err is not None:
@@ -257,6 +311,15 @@ def playbook_detail(request, playbook_id):
         playbook.target_tags = [t.strip() for t in tags if t.strip()]
     if err := _high_risk_gate(request, playbook, data.get("allow_high_risk")):
         return err
+    # Before the steps are validated: a step's input mapping names these ids.
+    # The auto-enrol rule inside reads what this save will leave set, since
+    # auto_enroll may be turning on in the same request.
+    if "inputs" in data and (err_inputs := _validate_and_set_inputs(
+            playbook, data["inputs"],
+            auto_enroll=bool(data["auto_enroll"]) if "auto_enroll" in data
+            else playbook.auto_enroll, save=False)):
+        # Saved with the rest below, inside the transaction a bad step undoes.
+        return err_inputs
     with transaction.atomic():
         playbook.save()
         if "flow_steps" in data or "definition_ids" in data:
@@ -367,10 +430,14 @@ def playbook_from_yaml(request):
         if err := _high_risk_gate(request, playbook, parsed["allow_high_risk"]):
             transaction.set_rollback(True)
             return err
+        if err_inputs := _validate_and_set_inputs(playbook, parsed["inputs"]):
+            transaction.set_rollback(True)
+            return err_inputs
         playbook.save()
         def entry(s):
             return {"definition_id": str(s["definition"].id), "id": s.get("id"),
                     "params_override": s["params_override"],
+                    "inputs": s.get("inputs") or {},
                     "on_not_applicable": s.get("on_not_applicable") or "stop",
                     "on_failure": s.get("on_failure") or "stop",
                     "color": s.get("color") or "",

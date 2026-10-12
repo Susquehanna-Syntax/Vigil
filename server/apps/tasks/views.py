@@ -1960,6 +1960,12 @@ def rollout_collection(request):
         if error:
             return Response({"detail": error}, status=401)
 
+        inputs = request.data.get("inputs")
+        if inputs is not None and not isinstance(inputs, dict):
+            return Response({"detail": "inputs must be a mapping of input id to value"},
+                            status=400)
+        inputs = inputs or {}
+
         if raw_tags is not None:
             try:
                 rollouts = start_rollout_batch(
@@ -1969,6 +1975,7 @@ def rollout_collection(request):
                     group_tags=raw_tags,
                     failure_threshold_pct=int(request.data.get("failure_threshold_pct", 10)),
                     min_results_before_halt=int(request.data.get("min_results_before_halt", 3)),
+                    inputs=inputs,
                 )
             except (ValueError, TypeError) as exc:
                 return Response({"detail": str(exc)}, status=400)
@@ -1985,6 +1992,7 @@ def rollout_collection(request):
                 wave_group_tag=(request.data.get("wave_group_tag") or "").strip(),
                 failure_threshold_pct=int(request.data.get("failure_threshold_pct", 10)),
                 min_results_before_halt=int(request.data.get("min_results_before_halt", 3)),
+                inputs=inputs,
             )
         except (ValueError, TypeError) as exc:
             return Response({"detail": str(exc)}, status=400)

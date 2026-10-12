@@ -52,6 +52,7 @@ def _row(a: Automation) -> dict:
         # internal correctness concern.
         "playbook_name": a.playbook.name if a.playbook_id else "",
         "params_override": a.params_override or {},
+        "inputs": a.inputs or {},
         "target": a.target, "target_tags": a.target_tags,
         "target_host": str(a.target_host_id) if a.target_host_id else None,
         "last_run": a.last_run.isoformat() if a.last_run else None,
@@ -85,6 +86,39 @@ def _high_risk_gate(request, automation: Automation, requested) -> "Response | N
              "needs_totp": True},
             status=status.HTTP_401_UNAUTHORIZED)
     automation.allow_high_risk = True
+    return None
+
+
+def _apply_inputs(a: Automation, data) -> str | None:
+    """Set and validate ``data["inputs"]`` against the target's declarations.
+
+    An automation runs unattended, so its values are checked when it is saved:
+    a playbook input nobody ever fills in is a bug fixed in the form, not a
+    task that expires mid-rollout. Returns an error string or None.
+    """
+    if "inputs" not in data:
+        return None
+    from apps.tasks.spec import SpecError, coerce_inputs
+
+    raw = data["inputs"] or {}
+    if not isinstance(raw, dict) or len(raw) > 16 or not all(
+        isinstance(k, str) and isinstance(v, (str, int, float, bool))
+        for k, v in raw.items()
+    ):
+        return "inputs must be a mapping of input id to value"
+    try:
+        if a.action_kind == Automation.ActionKind.PLAYBOOK and a.playbook_id:
+            from apps.playbooks.inputs import playbook_values
+            from apps.playbooks.models import Playbook
+
+            playbook = Playbook.objects.filter(pk=a.playbook_id).first()
+            if playbook is not None:
+                playbook_values(playbook, raw)
+        elif a.task_definition_id:
+            coerce_inputs((a.task_definition.parsed_spec or {}).get("inputs") or [], raw)
+    except (SpecError, ValueError) as exc:
+        return str(exc)
+    a.inputs = raw
     return None
 
 
@@ -164,6 +198,8 @@ def _apply(a: Automation, data) -> str | None:
                       if wanted_playbook else None)
     if "params_override" in data:
         a.params_override = data["params_override"] or {}
+    if (err := _apply_inputs(a, data)) is not None:
+        return err
     if "target" in data:
         if data["target"] not in Automation.Target.values:
             return "invalid target"

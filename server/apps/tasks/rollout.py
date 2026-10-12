@@ -65,12 +65,13 @@ def _next_enabled_wave(after_order, group_tag=""):
             .first())
 
 
-def _validate_definition(definition) -> dict:
-    """Prove the definition can be dispatched without operator inputs.
+def _validate_definition(definition, inputs=None) -> dict:
+    """Prove the definition can be dispatched with *inputs*.
 
     A rollout runs unattended across waves; a definition with required
-    inputs has no value to fill them with, so it is refused at start rather
-    than discovered mid-rollout. Returns the resolved spec.
+    inputs the caller did not supply has no value to fill them with, so it is
+    refused at start rather than discovered mid-rollout. Returns the resolved
+    spec.
     """
     from apps.playbooks.expansion import PlaybookExpandError
 
@@ -78,22 +79,27 @@ def _validate_definition(definition) -> dict:
     try:
         # Re-derived on every wave, so a later wave carries any used tasks'
         # steps as they are when that wave is dispatched.
-        return resolve_task_spec(definition, user=definition.owner)
+        return resolve_task_spec(definition, user=definition.owner,
+                                 inputs=inputs or {})
     except (SpecError, PlaybookExpandError) as exc:
         raise ValueError(f"definition {definition.name!r} cannot roll out: {exc}") from exc
 
 
-def _playbook_spec(playbook) -> dict:
+def _playbook_spec(playbook, inputs=None) -> dict:
     """A one-action spec that expands into the playbook's steps.
 
     `expand_actions` already inlines a `type: playbook` action, with cycle
     detection and a depth limit, so rolling out a playbook needs no separate
     expansion path — it reuses the same composition the task editor uses.
+    The rollout's input values ride along as the action's ``inputs``.
     """
+    params: dict = {"name": playbook.name}
+    if inputs:
+        params["inputs"] = inputs
     return {
         "name": playbook.name,
         "risk": "high" if playbook.allow_high_risk else "standard",
-        "actions": [{"type": "playbook", "params": {"name": playbook.name}}],
+        "actions": [{"type": "playbook", "params": params}],
     }
 
 
@@ -120,20 +126,25 @@ def _emit_hunt_text_requested(run, actor, step_ids: list[str]) -> None:
     hooks.emit("hunt_text_requested", run=run, actor=actor, step_ids=step_ids)
 
 
-def rollout_spec(rollout) -> dict:
+def rollout_spec(rollout, inputs=None) -> dict:
     """Re-derive the spec for a rollout, whichever target it carries.
 
     Called on every wave advance, not just at start — a playbook rollout has no
     `definition`, so anything that reaches for `rollout.definition` directly
     breaks on wave 2 rather than wave 1, which is a nasty place to find out.
+    The rollout's stored input values ride along: for a playbook as the action's
+    ``inputs`` (the expansion resolves the playbook's inputs with them), for a
+    task as the values ``resolve_task_spec`` substitutes.
     """
+    if inputs is None:
+        inputs = rollout.inputs or {}
     if rollout.action_kind == PatchRollout.ActionKind.PLAYBOOK:
         if rollout.playbook is None:
             raise ValueError("rollout's playbook no longer exists")
-        return _playbook_spec(rollout.playbook)
+        return _playbook_spec(rollout.playbook, inputs)
     if rollout.definition is None:
         raise ValueError("rollout's task definition no longer exists")
-    return _validate_definition(rollout.definition)
+    return _validate_definition(rollout.definition, inputs)
 
 
 def start_rollout(
@@ -144,8 +155,12 @@ def start_rollout(
     playbook=None,
     wave_group_tag="",
     host_ids=None,
+    inputs=None,
 ) -> PatchRollout:
     """Create a rollout and dispatch its first wave.
+
+    *inputs* are the caller's values for the target's own inputs; they are
+    validated up front, so a rollout never starts on inputs it cannot fill.
 
     Raises ``ValueError`` when no enabled wave exists, the definition
     cannot be dispatched without operator inputs, or the gate settings are
@@ -162,15 +177,22 @@ def start_rollout(
             if wave_group_tag else "no enabled patch waves")
     if (definition is None) == (playbook is None):
         raise ValueError("a rollout needs exactly one of a definition or a playbook")
+    if inputs is not None and not isinstance(inputs, dict):
+        raise ValueError("inputs must be a mapping of input id to value")
+    inputs = inputs or {}
 
     if playbook is not None:
         # Deliberately no auto_enroll check. That flag governs unattended
         # enrolment; a rollout is the opposite — someone chose this playbook
         # and is staging it wave by wave. Refusing here made the recommended
         # path impossible for the recommended configuration.
-        spec = _playbook_spec(playbook)
+        # Values are checked here, before a row exists: a rollout that starts
+        # and then cannot dispatch would sit running with no wave in flight.
+        from apps.playbooks.inputs import playbook_values
+        playbook_values(playbook, inputs)
+        spec = _playbook_spec(playbook, inputs)
     else:
-        spec = _validate_definition(definition)
+        spec = _validate_definition(definition, inputs)
 
     ts = _now()
     rollout = PatchRollout.objects.create(
@@ -180,6 +202,7 @@ def start_rollout(
                      else PatchRollout.ActionKind.TASK),
         state=PatchRollout.State.RUNNING,
         wave_group_tag=wave_group_tag,
+        inputs=inputs or {},
         host_ids=[str(h) for h in host_ids] if host_ids is not None else None,
         current_wave=_first_enabled_wave(wave_group_tag),
         failure_threshold_pct=failure_threshold_pct,
@@ -247,6 +270,7 @@ def start_rollout_batch(
     playbook=None,
     group_tags=(),
     host_ids=None,
+    inputs=None,
 ) -> list[PatchRollout]:
     """Start one rollout per wave group, all at once, sharing a ``batch`` id.
 
@@ -280,6 +304,7 @@ def start_rollout_batch(
                 playbook=playbook,
                 wave_group_tag=tag,
                 host_ids=hosts,
+                inputs=inputs,
             )
             rollout.batch = batch
             rollout.save(update_fields=["batch"])
@@ -316,7 +341,8 @@ def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
     if rollout.action_kind == PatchRollout.ActionKind.PLAYBOOK:
         # A playbook rollout runs each playbook step as its own signed task,
         # chained per host — the same as any other playbook dispatch.
-        built = build_playbook_steps(rollout.playbook, user=rollout.created_by)
+        built = build_playbook_steps(rollout.playbook, user=rollout.created_by,
+                                     inputs=rollout.inputs or {})
         if not built:
             raise ValueError("playbook has no steps")
         run = TaskRun.objects.create(
