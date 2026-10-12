@@ -165,6 +165,24 @@ class ProviderTests(SimpleTestCase):
             with self.assertRaisesRegex(ProviderError, "model qwen not found"):
                 OpenAICompatProvider("http://x/v1", "m").complete("s", "u")
 
+    def test_an_http_error_never_echoes_a_raw_body(self):
+        page = b"<html><title>Internal admin</title>secret=hunter2</html>"
+        err = urllib.error.HTTPError("http://x", 500, "Server Error", {}, io.BytesIO(page))
+        with mock.patch("apps.aisuggest.providers._timeout", return_value=5), \
+                mock.patch("urllib.request.urlopen", side_effect=err):
+            with self.assertRaises(ProviderError) as ctx:
+                OpenAICompatProvider("http://x/v1", "m").complete("s", "u")
+        self.assertEqual(str(ctx.exception), "endpoint returned HTTP 500: Server Error")
+
+    def test_an_openai_style_error_message_is_read(self):
+        body = b'{"error": {"message": "Incorrect API key", "type": "auth", "key": "sk-x"}}'
+        err = urllib.error.HTTPError("http://x", 401, "Unauthorized", {}, io.BytesIO(body))
+        with mock.patch("apps.aisuggest.providers._timeout", return_value=5), \
+                mock.patch("urllib.request.urlopen", side_effect=err):
+            with self.assertRaises(ProviderError) as ctx:
+                OpenAICompatProvider("http://x/v1", "m").complete("s", "u")
+        self.assertEqual(str(ctx.exception), "endpoint returned HTTP 401: Incorrect API key")
+
     def test_a_timeout_names_the_fix(self):
         with mock.patch("apps.aisuggest.providers._timeout", return_value=5), \
                 mock.patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")):
