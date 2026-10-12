@@ -220,16 +220,29 @@ async function openPolicyEditor(policyId) {
 
 /** From the Apps page: put an app's rules into a new policy or an existing
  *  one. Opens the editor with the rules added (state Latest); nothing is
- *  saved until Save. */
-async function policyFromApp(appName, pairs) {
+ *  saved until Save.
+ *
+ *  `opts.windowsClassifications` is the same idea for OS updates: the Windows
+ *  Update classifications an update actually arrived under, ticked into the
+ *  Patching tab so the policy fetches that kind of update. */
+function _polNewMeta(appName, pairs, classifications) {
+  if (!pairs.length && classifications.length) return `patches ${classifications.join(', ')} on Windows`;
+  if (pairs.length && classifications.length) {
+    return `keeps the packages up to date and patches ${classifications.join(', ')} on Windows`;
+  }
+  return `keeps ${appName} installed and up to date`;
+}
+
+async function policyFromApp(appName, pairs, opts = {}) {
   try {
     polState.rows = (await apiJson('/api/v1/policies/')).results || [];
   } catch (e) {
     showToast(`Update policies need an admin account: ${e.message}`, 'error');
     return;
   }
+  const want = (opts.windowsClassifications || []).filter(c => POL_CLASSIFICATIONS.includes(c));
   const items = [
-    { key: '', name: 'New policy', meta: `keeps ${appName} installed and up to date` },
+    { key: '', name: 'New policy', meta: _polNewMeta(appName, pairs, want) },
     ...polState.rows.map(p => ({ key: p.id, name: p.name,
       meta: `${p.app_rules.length} app rule${p.app_rules.length === 1 ? '' : 's'}${p.enabled ? '' : ' · disabled'}` })),
   ];
@@ -246,8 +259,19 @@ async function policyFromApp(appName, pairs) {
         added += 1;
       }
       renderPolicyRules();
-      showToast(added ? `Added ${appName}. Choose the hosts, then Save.` : `${appName} is already in this policy`,
-        added ? 'success' : 'info');
+      let patched = 0;
+      if (want.length) {
+        _polEl('pol-patch').checked = true;
+        for (const box of _polEl('pol-classes').querySelectorAll('input')) {
+          if (!want.includes(box.value)) continue;
+          box.checked = true;
+          patched += 1;
+        }
+      }
+      const what = [added ? `${added} app rule${added === 1 ? '' : 's'}` : '',
+        patched ? `${patched} update type${patched === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ');
+      showToast(what ? `Added ${appName}: ${what}. Choose the hosts, then Save.` : `${appName} is already in this policy`,
+        what ? 'success' : 'info');
     },
   });
 }

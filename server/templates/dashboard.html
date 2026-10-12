@@ -30,6 +30,10 @@
   {# Logic: static/js/vigil-containers.js + vigil-stacks.js | Data: client-side fetch /api/v1/hosts/{id}/containers/, /api/v1/stacks/ #}
   {% include "pages/_containers.html" %}
 
+  {# Topology page — the fleet as one map: sites, tag boxes, hosts, ports, firewalls, stacks, connections #}
+  {# Logic: static/js/vigil-topology.js | Data: client-side fetch /api/v1/hosts/topology/ #}
+  {% include "pages/_topology.html" %}
+
   {# Stack editor page — full-screen compose editor (YAML + gutter, live validation, masked .env, revisions) #}
   {# Logic: static/js/vigil-stacks.js | Data: client-side fetch /api/v1/stacks/ (+ /<id>/revisions/, POST /api/v1/stacks/validate/) #}
   {% include "pages/_stack_editor.html" %}

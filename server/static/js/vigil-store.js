@@ -11,7 +11,8 @@
 
 const storeState = {
   q: '', platform: '', category: '', page: 1, seq: 0, timer: null, cards: [],
-  loaded: false, poll: null, current: null,
+  syncTimer: null, syncTicks: 0, syncAt: null,
+  loaded: false, poll: null, current: null, status: null,
 };
 
 const _STORE_TINTS = ['mint', 'sky', 'lavender', 'peach', 'rose', 'lemon'];
@@ -90,15 +91,75 @@ function _storeEmpty(status) {
     </div>`;
 }
 
+/** Why one platform's tab is empty, read off the last status: the lists Vigil
+ *  would download for that platform, and what each of them did. An empty tab
+ *  is not "nothing matched" — it is a list that never downloaded. */
+function _storeEmptyPlatform(status, platform) {
+  const grid = _storeEl('store-grid');
+  if (!grid) return;
+  const wanted = ((status && status.wanted) || []).filter(w => w.platform === platform);
+  if (!wanted.length) {
+    const sentence = platform === 'windows'
+      ? "No Windows machines are enrolled, so Vigil has not downloaded winget's list."
+      : "No Linux machines are enrolled, so Vigil has not downloaded Flathub's or apt's lists.";
+    grid.innerHTML = `<div class="store-empty">
+        <div class="store-empty-title">Nothing to show yet</div>
+        <div class="store-empty-text">${escHtml(sentence)}</div>
+      </div>`;
+    return;
+  }
+  const rows = wanted.map((w) => {
+    const sync = (status.syncs || []).find(s => s.source === w.source && (!w.release || s.release === w.release))
+      || (status.syncs || []).find(s => s.source === w.source);
+    const detail = sync && sync.error
+      ? `<span class="store-empty-err">${escHtml(sync.error)}</span>`
+      : sync
+        ? `<span class="store-empty-text">${(sync.count || 0).toLocaleString()} packages · ${escHtml(timeAgo(sync.synced_at) || 'unknown')}</span>`
+        : '<span class="store-empty-text">not synced yet</span>';
+    return `<div class="store-empty-src">
+        <span class="store-empty-src-name">${escHtml(w.source_label)}${w.release ? ' · ' + escHtml(w.release) : ''}</span>
+        ${detail}</div>`;
+  }).join('');
+  grid.innerHTML = `<div class="store-empty">
+      <div class="store-empty-title">Nothing to show yet</div>
+      <div class="store-empty-text">Vigil downloads these package lists for the machines you have.</div>
+      ${rows}
+    </div>`;
+}
+
+/** The Store page offers Sync now to everyone, as it offers every write: the
+ *  server answers 403 to a Viewer and apiJson's message is what the toast
+ *  says. vigil-config.js carries the username but no role. */
+function _storeStatusButtons(el, failed) {
+  if (failed.length) {
+    el.appendChild(_statusButton('store-status-warn',
+      `${failed.length} sync problem${failed.length === 1 ? '' : 's'}`, 'storeSyncInfo'));
+  }
+  el.appendChild(_statusButton('btn btn-outline btn-xs', 'Sync now', 'storeSync'));
+}
+
 function _renderStoreStatus(status) {
   const el = _storeEl('store-status');
   if (!el) return;
+  storeState.status = status;
   const ok = status.syncs.filter(s => s.synced_at);
   const newest = ok.map(s => s.synced_at).sort().pop();
   el.textContent = status.packages
     ? `${status.packages.toLocaleString()} packages · ${[...new Set(ok.map(s => s.source_label))].join(', ')}`
       + (newest && typeof timeAgo === 'function' ? ` · synced ${timeAgo(newest)}` : '')
     : '';
+  _storeStatusButtons(el, status.syncs.filter(s => s.error));
+}
+
+/** The status line's buttons, wired through delegateClick — CSP forbids an
+ *  onclick attribute in a generated string. */
+function _statusButton(className, text, datasetKey) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = className;
+  btn.dataset[datasetKey] = '';
+  btn.textContent = text;
+  return btn;
 }
 
 async function loadStore(reset) {
@@ -120,14 +181,20 @@ async function loadStore(reset) {
   }
   if (seq !== storeState.seq) return;
   if (body.empty) {
-    const status = await apiJson('/api/v1/catalog/status/').catch(() => ({ enabled: body.enabled, syncs: [], packages: 0 }));
-    _storeEmpty(status);
+    await refreshStoreStatus();
+    _storeEmpty(storeState.status || { enabled: body.enabled, syncs: [], packages: 0 });
     return;
   }
   storeState.cards = storeState.cards.concat(body.results);
-  grid.innerHTML = storeState.cards.length
-    ? storeState.cards.map(_storeCard).join('')
-    : `<div class="apps-empty-state">Nothing matched${storeState.q ? ` “${escHtml(storeState.q)}”` : ''}.</div>`;
+  if (storeState.cards.length) {
+    grid.innerHTML = storeState.cards.map(_storeCard).join('');
+  } else if (!storeState.q && storeState.platform) {
+    // A tab with no packages at all is not "nothing matched": the list for
+    // that platform was never downloaded, or the download failed.
+    _storeEmptyPlatform(storeState.status, storeState.platform);
+  } else {
+    grid.innerHTML = `<div class="apps-empty-state">Nothing matched${storeState.q ? ` “${escHtml(storeState.q)}”` : ''}.</div>`;
+  }
   _wireIcons(grid);
   _storeEl('store-more').hidden = storeState.cards.length >= body.count;
 }
@@ -148,8 +215,9 @@ async function loadStoreCategories() {
 }
 
 async function refreshStoreStatus() {
-  const status = await apiJson('/api/v1/catalog/status/').catch(() => null);
-  if (status) _renderStoreStatus(status);
+  try {
+    _renderStoreStatus(await apiJson('/api/v1/catalog/status/'));
+  } catch { /* the status line is decoration; the grid is the page */ }
 }
 
 /* ── An app's page ───────────────────────────────────────────────────── */
@@ -202,6 +270,7 @@ async function openStoreApp(id) {
       task or policy covers Windows and Linux together.</div>
     <div class="modal-actions">
       <button class="btn btn-outline btn-sm" type="button" data-store-policy>Add to policy…</button>
+      <button class="btn btn-outline btn-sm" type="button" data-store-save>Save as task</button>
       <button class="btn btn-mint btn-sm" type="button" data-store-install>Install…</button>
     </div>`);
   m.modal.querySelector('#store-x').onclick = m.close;
@@ -237,11 +306,96 @@ function storeAddToPolicy() {
   policyFromApp(storeState.current.name, picked.map(p => ({ app: p.package_id, source: p.source })));
 }
 
+/** The same task Install… would deploy, saved and opened in the task editor
+ *  instead of being sent now: the operator adds the hosts and the window. */
+async function storeSaveTask() {
+  const picked = _storePicked();
+  if (!picked.length) { showToast('Pick at least one package manager', 'error'); return; }
+  try {
+    const res = await apiJson('/api/v1/catalog/install-task/', {
+      method: 'POST', body: JSON.stringify({ packages: picked.map(p => p.id) }) });
+    _closeStoreApp();
+    navigateTo('tasks');
+    if (typeof openDefinitionEditor === 'function') await openDefinitionEditor(res.definition_id);
+    showToast(`Saved “${res.name}” to your tasks`, 'success');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+/* ── Sync problems, seen from the Store page ─────────────────────────── */
+const STORE_SYNC_POLL_MS = 5000;
+const STORE_SYNC_TICKS = 24;
+
+function _newestSyncedAt(status) {
+  return ((status && status.syncs) || []).map(s => s.synced_at).filter(Boolean).sort().pop() || null;
+}
+
+function storeSyncNow() {
+  apiJson('/api/v1/catalog/sync/', { method: 'POST', body: '{}' })
+    .then(() => {
+      showToast('Syncing the package lists', 'success');
+      // The 202 body is the status before the thread got anywhere, so the
+      // moment to watch for is the newest time on the page right now.
+      storeState.syncAt = _newestSyncedAt(storeState.status);
+      _storeSyncPoll();
+    })
+    .catch((e) => showToast(e.message, 'error'));
+}
+
+/** The run happens in a background thread, so watch the status until its
+ *  newest sync time moves — then show the apps that arrived. */
+function _storeSyncPoll() {
+  if (storeState.syncTimer !== null) clearPollingInterval(storeState.syncTimer);
+  storeState.syncTicks = 0;
+  storeState.syncTimer = pollingInterval(async () => {
+    if (++storeState.syncTicks > STORE_SYNC_TICKS) {
+      clearPollingInterval(storeState.syncTimer);
+      storeState.syncTimer = null;
+      return;
+    }
+    await refreshStoreStatus();
+    if (_newestSyncedAt(storeState.status) !== storeState.syncAt) {
+      clearPollingInterval(storeState.syncTimer);
+      storeState.syncTimer = null;
+      loadStore(true);
+    }
+  }, STORE_SYNC_POLL_MS);
+}
+
+function openStoreSyncInfo() {
+  const status = storeState.status;
+  if (!status) return;
+  const m = mountModal('store-sync-info', {});
+  const failed = status.syncs.filter(s => s.error);
+  const rows = (list, note) => `<div class="store-sync-rows">${list.map(s => `
+      <div class="store-sync-row">
+        <div class="store-sync-name">${escHtml(s.source_label)}${s.release ? ' · ' + escHtml(s.release) : ''}</div>
+        <div class="store-sync-meta">${note(s)}</div>
+      </div>`).join('')}</div>`;
+  m.setBody(`<div class="modal-title">
+      <span>Package lists</span>
+      <button class="btn btn-ghost btn-sm" type="button" id="store-sync-info-x" aria-label="Close">Close</button>
+    </div>
+    <div class="store-sync-lead">${failed.length
+      ? escHtml(`${failed.length} list${failed.length === 1 ? '' : 's'} did not download, so their apps are missing from the Store. An admin can press Sync now to try again.`)
+      : escHtml('Every package list downloaded on its last run.')}</div>
+    ${status.syncs.length ? rows(status.syncs, s => `${(s.count || 0).toLocaleString()} packages · ${escHtml(timeAgo(s.synced_at) || 'never')}`
+      + (s.error ? `<div class="store-empty-err">${escHtml(s.error)}</div>` : '')) : ''}
+    ${(status.wanted || []).filter(w => !status.syncs.some(s => s.source === w.source)).length
+      ? `<div class="store-app-label">Not synced yet</div>${
+          rows((status.wanted || []).filter(w => !status.syncs.some(s => s.source === w.source)),
+            () => 'not synced yet')}` : ''}`);
+  m.modal.querySelector('#store-sync-info-x').onclick = m.close;
+  m.open();
+}
+
 /* ── Wiring ──────────────────────────────────────────────────────────── */
 
 delegateClick('[data-store-open]', (el) => openStoreApp(el.dataset.storeOpen));
 delegateClick('[data-store-install]', () => storeInstall());
+delegateClick('[data-store-save]', () => storeSaveTask());
 delegateClick('[data-store-policy]', () => storeAddToPolicy());
+delegateClick('[data-store-sync]', () => storeSyncNow());
+delegateClick('[data-store-sync-info]', () => openStoreSyncInfo());
 delegateClick('[data-store-more]', () => { storeState.page += 1; loadStore(false); });
 delegateClick('[data-store-cat]', (el) => {
   storeState.category = el.dataset.storeCat;

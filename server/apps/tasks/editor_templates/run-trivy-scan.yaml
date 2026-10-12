@@ -1,0 +1,42 @@
+# Run a Trivy vulnerability scan on this host
+#
+# What this does: runs Trivy against the host's filesystem, sends the JSON
+# report back to Vigil, and files it under the Vulnerabilities tab.
+#
+# When to use it: on demand, after you want a fresh answer - or on a schedule
+# from an automation.
+#
+# What to change: the scope, if you want the root filesystem rather than the
+# default.
+#
+# Nothing scans on the server: the agent runs `trivy fs --format json` locally
+# and ships the report back in the task output. Vigil reads each
+# (package, CVE) pair into a finding and recomputes the host's score, so the
+# scan shows up where every other finding shows up.
+#
+# Prerequisite: the trivy binary. See the "Install Trivy" template; a host
+# without it fails this step with "trivy: command not found".
+#
+# Low risk and read-only, so it is a good first candidate for a scheduled run
+# across a whole tag of hosts.
+
+name: Trivy filesystem scan
+description: |
+  Runs Trivy against the local filesystem, captures the JSON report, and ships
+  it back. The server files each finding and recomputes the host score.
+risk: low
+
+inputs:
+  - id: scope
+    label: Scan scope
+    type: choice
+    default: fs
+    choices:
+      - { value: fs, label: "Filesystem (root)" }
+      - { value: rootfs, label: "Root filesystem (alias)" }
+
+actions:
+  - id: scan
+    type: run_trivy_scan
+    params:
+      scope: "${{ inputs.scope }}"

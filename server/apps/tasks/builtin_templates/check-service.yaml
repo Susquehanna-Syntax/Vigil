@@ -1,0 +1,20 @@
+name: Check a service
+description: |
+  Report whether a service is running and what state it is in. Read-only, so
+  it is the step to put after a change when you want the run to say whether
+  the service is actually up rather than only that the change ran.
+risk: low
+author: Vigil
+created: 2026-10-12
+inputs:
+  - id: service
+    type: text
+    label: Service
+    default: nginx
+    required: true
+actions:
+  - id: check
+    type: check_service
+    params:
+      service_name: "${{ inputs.service }}"
+      expect: active

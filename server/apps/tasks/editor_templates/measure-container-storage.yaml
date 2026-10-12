@@ -1,0 +1,37 @@
+# Measure container storage
+#
+# What this does: asks the container engine how much space images, volumes,
+# containers and the build cache are taking, and how much of it pruning would
+# free.
+#
+# When to use it: before you prune anything, and afterwards to see whether it
+# was worth it.
+#
+# What to change: nothing. It takes no parameters.
+#
+# Read-only, so it is low risk and safe to deploy across a fleet at once -
+# which is the useful version of the question, because "who is running out of
+# space" is a fleet question.
+#
+# What comes back: images_size, volumes_size, reclaimable (all bytes) and a
+# one-line summary. The Containers page's Images and Volumes tabs show the same
+# numbers; the step's outputs are what a playbook step or a branch reads.
+#
+# The walk sizes every volume, so on a host with a great many volumes it can
+# take a minute.
+#
+# The follow-ups are separate actions on purpose: image_prune, network_prune
+# and volume_prune. The first two are ordinary housekeeping; pruning volumes
+# deletes the data in them, which is why it is high risk and why it is not
+# bundled in here.
+
+name: Measure container storage
+description: |
+  How much space images, volumes, containers and the build cache take, and how
+  much pruning would free. Read-only.
+risk: low
+
+actions:
+  - id: usage
+    type: docker_disk_usage
+    params: {}

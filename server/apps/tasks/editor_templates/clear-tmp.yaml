@@ -1,0 +1,34 @@
+# Clear the temp directory
+#
+# What this does: deletes files in the host's temp directory that are older
+# than an age you choose.
+#
+# When to use it: on a host whose disk keeps filling up with installers,
+# extracted archives and crash dumps nobody went back for.
+#
+# What to change: the age in days.
+#
+# The agent knows where the temp directory is on each platform it supports, so
+# there is no path to write and no shell to get wrong. Files still in use, and
+# anything newer than the age, are left alone and reported as skipped.
+#
+# Age is the whole safety of this task. Start at 7 days, look at the skipped
+# count, and only lower it once you have seen what the recent files are.
+
+name: Clear /tmp
+description: |
+  Delete files in the temp directory older than the chosen age. Reports how
+  many went and how many were left because they are newer or in use.
+risk: low
+
+inputs:
+  - id: days
+    label: Older than (days)
+    type: number
+    default: 7
+
+actions:
+  - id: clean
+    type: clear_temp_files
+    params:
+      older_than_days: "${{ inputs.days }}"

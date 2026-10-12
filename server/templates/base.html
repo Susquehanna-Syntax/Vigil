@@ -97,6 +97,9 @@
     <div class="sidebar-icon" data-page="containers" data-tip="Containers">
       <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="13" rx="2"/><line x1="7" y1="7" x2="7" y2="20"/><line x1="12" y1="7" x2="12" y2="20"/><line x1="17" y1="7" x2="17" y2="20"/><path d="M6 7V4h12v3"/></svg>
     </div>
+    <div class="sidebar-icon" data-page="topology" data-tip="Topology">
+      <svg viewBox="0 0 24 24"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><line x1="7" y1="7.5" x2="10.5" y2="16"/><line x1="17" y1="7.5" x2="13.5" y2="16"/><line x1="7.5" y1="6" x2="16.5" y2="6"/></svg>
+    </div>
     <div class="sidebar-icon" data-page="alerts" data-tip="Alerts">
       <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
       {% if alert_count %}<div class="badge-dot" style="background: var(--rose);"></div>{% endif %}
@@ -500,6 +503,7 @@ settings before deciding anything.
       <input type="hidden" id="rollout-start-def">
       <div class="confirm-hint" id="rollout-start-def-hint" style="margin-top:4px;">Tasks that need someone to fill in an input cannot be rolled out unattended &mdash; a rollout runs with nobody watching.</div>
     </div>
+    <div id="rollout-start-inputs" class="inputs-form" hidden></div>
     <div class="form-group" style="margin-bottom:14px;">
       <label class="form-label">Wave groups <span style="color:var(--text-3);font-weight:400;">(none picked = every enabled wave)</span></label>
       <div class="rlt-groups" id="rollout-start-groups" role="group" aria-label="Wave groups"></div>
@@ -820,6 +824,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-store.js' %}"></script>
 <!-- vigil-containers.js — Containers page: containers by stack, lifecycle buttons, live logs, host picker (wraps navigateTo) -->
 <script src="{% static 'js/vigil-containers.js' %}"></script>
+<!-- vigil-topology.js — Topology page: sites, tag boxes, hosts with ports/firewalls/stacks, links and the Internet (QA-32) -->
+<script src="{% static 'js/vigil-topology.js' %}"></script>
 <!-- vigil-devices.js — unmanaged device registry on the Inventory page (wraps navigateTo) -->
 <script src="{% static 'js/vigil-devices.js' %}"></script>
 <!-- vigil-instance-settings.js — Settings panes backed by /api/v1/instance-settings/ (scanners, email, retention, timezone) -->

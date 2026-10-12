@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from django.db import transaction
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
@@ -24,6 +26,7 @@ def _row(b: Playbook, *, failing: int | None = None) -> dict:
         "archived_at": b.archived_at.isoformat() if b.archived_at else None,
         "completion_tag": b.completion_tag,
         "allow_high_risk": b.allow_high_risk,
+        "inputs": b.inputs or [],
         "created_at": b.created_at.isoformat(),
         # How many hosts auto-enrolment has stopped trying, because the last
         # run failed there. Zero is the ordinary answer and the card says
@@ -36,7 +39,11 @@ def _row(b: Playbook, *, failing: int | None = None) -> dict:
                 "definition_name": s.definition.name,
                 "risk": s.definition.risk_level,
                 "order": s.order,
+                # ``inputs`` here is the step's playbook-input mapping
+                # (task input id → text with playbook references);
+                # ``params_override`` is the per-action param override.
                 "params_override": s.params_override or {},
+                "inputs": s.inputs or {},
                 "on_not_applicable": s.on_not_applicable,
                 "on_failure": s.on_failure,
                 "color": s.color,
@@ -93,10 +100,13 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
     Eligibility is judged against the playbook's own allow_high_risk flag, so
     callers must set it before calling — otherwise a playbook created with
     the flag on in the same request would still reject its high-risk steps.
+    ``playbook.inputs`` must be set before calling too: a step's input
+    mapping is checked against the playbook's declarations.
     """
     from apps.tasks.spec import validate_params_override
 
     from .flow import FlowError, build_flow
+    from .inputs import validate_step_inputs
 
     if not isinstance(definition_ids, list) or not definition_ids:
         return Response({"detail": "definition_ids must be a non-empty list"},
@@ -113,11 +123,13 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
                 tree.append({**entry, "then": load(then_nodes), "else": load(else_nodes)})
                 continue
             override, on_not_applicable, on_failure, step_id, did = {}, "stop", "stop", None, entry
+            step_inputs_mapping: dict = {}
             color = ""
             outcome = ""
             if isinstance(entry, dict):
                 did = entry.get("definition_id")
                 override = entry.get("params_override") or {}
+                step_inputs_mapping = entry.get("inputs") or {}
                 on_not_applicable = entry.get("on_not_applicable") or "stop"
                 step_id = entry.get("id")
                 if on_not_applicable not in ("skip", "stop"):
@@ -140,7 +152,11 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
             err = validate_params_override(d.parsed_spec or {}, override)
             if err is not None:
                 raise FlowError(f"{d.name}: {err}")
+            err = validate_step_inputs(d, step_inputs_mapping, playbook.inputs)
+            if err is not None:
+                raise FlowError(f"{d.name}: {err}")
             tree.append({"definition": d, "id": step_id, "params_override": override,
+                         "inputs": step_inputs_mapping,
                          "on_not_applicable": on_not_applicable,
                          "on_failure": on_failure, "color": color, "outcome": outcome})
         return tree
@@ -152,7 +168,7 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
     playbook.steps.all().delete()
     PlaybookStep.objects.bulk_create([
         PlaybookStep(playbook=playbook, definition=st["definition"], order=i,
-                     params_override=st["params_override"],
+                     params_override=st["params_override"], inputs=st["inputs"],
                      on_not_applicable=st["on_not_applicable"],
                      on_failure=st["on_failure"], color=st["color"], outcome=st["outcome"],
                      step_id=st["step_id"], branch=st["branch"])
@@ -161,6 +177,41 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
     playbook.flow = flow
     playbook.save(update_fields=["flow"])
     return None
+
+
+#: One playbook input per step is enough for anyone; the task spec's own cap.
+MAX_PLAYBOOK_INPUTS = 16
+
+
+def _validate_and_set_inputs(playbook: Playbook, raw, auto_enroll=None, *,
+                             save: bool = True) -> Response | None:
+    """Validate and set ``playbook.inputs``. Returns an error Response or None.
+
+    Runs **before** the steps are validated: a step's input mapping is checked
+    against the declarations. *auto_enroll* is the flag as the save will leave
+    it — a PATCH can turn it on in the same request that declares the inputs.
+    """
+    from apps.tasks.spec import SpecError, _validate_inputs
+
+    try:
+        declared = _validate_inputs(raw)
+    except SpecError as exc:
+        return Response({"detail": str(exc)}, status=400)
+    enrols = playbook.auto_enroll if auto_enroll is None else bool(auto_enroll)
+    # Only a text input can be left empty; the other types always carry a value.
+    if enrols and any(i.get("type", "text") == "text" and i.get("required") and not i.get("default")
+                      for i in declared):
+        # The same rule as the YAML importer's: nothing is ever here to fill an
+        # input in when a schedule runs the playbook by itself.
+        return Response(
+            {"detail": "auto-enrolment runs without anyone to fill in inputs: "
+                       "give every required input a default"},
+            status=400)
+    playbook.inputs = declared
+    if save:
+        playbook.save(update_fields=["inputs"])
+    return None
+
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
@@ -205,6 +256,11 @@ def playbook_index(request):
             transaction.set_rollback(True)
             return err
         playbook.save(update_fields=["allow_high_risk"])
+        # Before the steps: a step's input mapping names these ids.
+        if "inputs" in request.data and (
+                err_inputs := _validate_and_set_inputs(playbook, request.data["inputs"])):
+            transaction.set_rollback(True)
+            return err_inputs
         err = _validate_and_set_steps(
             playbook, request.data.get("flow_steps") or request.data.get("definition_ids"))
         if err is not None:
@@ -257,6 +313,15 @@ def playbook_detail(request, playbook_id):
         playbook.target_tags = [t.strip() for t in tags if t.strip()]
     if err := _high_risk_gate(request, playbook, data.get("allow_high_risk")):
         return err
+    # Before the steps are validated: a step's input mapping names these ids.
+    # The auto-enrol rule inside reads what this save will leave set, since
+    # auto_enroll may be turning on in the same request.
+    if "inputs" in data and (err_inputs := _validate_and_set_inputs(
+            playbook, data["inputs"],
+            auto_enroll=bool(data["auto_enroll"]) if "auto_enroll" in data
+            else playbook.auto_enroll, save=False)):
+        # Saved with the rest below, inside the transaction a bad step undoes.
+        return err_inputs
     with transaction.atomic():
         playbook.save()
         if "flow_steps" in data or "definition_ids" in data:
@@ -302,6 +367,92 @@ def playbook_yaml(request, playbook_id):
     })
 
 
+def _create_playbook_from_parsed(request, parsed, resolved, existing=None,
+                                 *, name=None):
+    """Create (or replace) a Playbook from parsed community YAML.
+
+    *parsed* is :func:`community_yaml.parse`'s dict and *resolved* the same
+    steps after :func:`community_yaml.resolve_steps`, so no caller re-implements
+    the part that matters: the high-risk flag goes through the same two-factor
+    gate a checkbox does, the inputs are declared before the steps that map to
+    them, and the steps run past eligibility. Returns a Response — the row on
+    success, the error with the transaction rolled back.
+
+    *existing* updates a playbook in place (how Fork → edit → re-import works
+    without accumulating duplicates); *name* overrides the parsed one, which is
+    how the template library picks a free name when the example's own is taken.
+    """
+    playbook_id = request.data.get("playbook_id") if existing is None else None
+    if existing is None and playbook_id:
+        existing = get_object_or_404(
+            scoping.filter_by_site(Playbook.objects.all(), request.user,
+                                   cascade_global=True),
+            pk=playbook_id)
+
+    wanted = name or parsed["name"]
+    clash = Playbook.objects.filter(name__iexact=wanted)
+    if existing is not None:
+        clash = clash.exclude(pk=existing.pk)
+    if clash.exists():
+        return Response({"detail": f"a playbook named {wanted!r} already exists"},
+                        status=400)
+
+    # A plain playbook runs in its `order`; a branching one in document order.
+    steps = sorted(resolved, key=lambda s: s["order"])
+
+    with transaction.atomic():
+        playbook = existing or Playbook(created_by=request.user)
+        playbook.name = wanted
+        playbook.description = parsed["description"]
+        playbook.target_tags = parsed["target_tags"]
+        # Keep the catalog's identity for this playbook. Without it a second
+        # fork cannot tell it already has this one, and tries to import it
+        # again — which fails on the duplicate name and reads as an error when
+        # nothing is wrong.
+        if parsed.get("uid"):
+            playbook.community_uid = parsed["uid"]
+        if existing is None:
+            playbook.save()
+        # The flag is a 2FA-guarded act whichever door it comes through. A
+        # YAML file asking for high-risk steps has to pass the same gate a
+        # checkbox does, or importing would be the way around it.
+        if err := _high_risk_gate(request, playbook, parsed["allow_high_risk"]):
+            transaction.set_rollback(True)
+            return err
+        if err_inputs := _validate_and_set_inputs(playbook, parsed["inputs"]):
+            transaction.set_rollback(True)
+            return err_inputs
+        playbook.save()
+        def entry(s):
+            return {"definition_id": str(s["definition"].id), "id": s.get("id"),
+                    "params_override": s["params_override"],
+                    "inputs": s.get("inputs") or {},
+                    "on_not_applicable": s.get("on_not_applicable") or "stop",
+                    "on_failure": s.get("on_failure") or "stop",
+                    "color": s.get("color") or "",
+                    "outcome": s.get("outcome") or ""}
+
+        if parsed.get("tree"):
+            by_index = {i: s for i, s in enumerate(resolved)}
+
+            def rebuild(nodes):
+                return [entry(by_index[n["step"]]) if "step" in n
+                        else {"if": n["if"], "then": rebuild(n["then"]),
+                              "else": rebuild(n["else"])}
+                        for n in nodes]
+            items = rebuild(parsed["tree"])
+        else:
+            items = [entry(s) for s in steps]
+        err = _validate_and_set_steps(playbook, items)
+        if err is not None:
+            transaction.set_rollback(True)
+            return err
+
+    return Response(_row(playbook),
+                    status=status.HTTP_200_OK if existing
+                    else status.HTTP_201_CREATED)
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def playbook_from_yaml(request):
@@ -329,72 +480,92 @@ def playbook_from_yaml(request):
                                  community_names_by_slug("tasks"))
     except ContentYamlError as exc:
         return Response({"detail": str(exc)}, status=400)
-    # A plain playbook runs in its `order`; a branching one in document order.
-    steps = sorted(resolved, key=lambda s: s["order"])
 
-    playbook_id = request.data.get("playbook_id")
-    existing = None
-    if playbook_id:
-        existing = get_object_or_404(
-            scoping.filter_by_site(Playbook.objects.all(), request.user,
-                                   cascade_global=True),
-            pk=playbook_id)
+    return _create_playbook_from_parsed(request, parsed, resolved)
 
-    clash = Playbook.objects.filter(name__iexact=parsed["name"])
-    if existing is not None:
-        clash = clash.exclude(pk=existing.pk)
-    if clash.exists():
-        return Response(
-            {"detail": f"a playbook named {parsed['name']!r} already exists"},
-            status=400)
 
-    with transaction.atomic():
-        playbook = existing or Playbook(created_by=request.user)
-        playbook.name = parsed["name"]
-        playbook.description = parsed["description"]
-        playbook.target_tags = parsed["target_tags"]
-        # Keep the catalog's identity for this playbook. Without it a second
-        # fork cannot tell it already has this one, and tries to import it
-        # again — which fails on the duplicate name and reads as an error when
-        # nothing is wrong.
-        if parsed.get("uid"):
-            playbook.community_uid = parsed["uid"]
-        if existing is None:
-            playbook.save()
-        # The flag is a 2FA-guarded act whichever door it comes through. A
-        # YAML file asking for high-risk steps has to pass the same gate a
-        # checkbox does, or importing would be the way around it.
-        if err := _high_risk_gate(request, playbook, parsed["allow_high_risk"]):
-            transaction.set_rollback(True)
-            return err
-        playbook.save()
-        def entry(s):
-            return {"definition_id": str(s["definition"].id), "id": s.get("id"),
-                    "params_override": s["params_override"],
-                    "on_not_applicable": s.get("on_not_applicable") or "stop",
-                    "on_failure": s.get("on_failure") or "stop",
-                    "color": s.get("color") or "",
-                    "outcome": s.get("outcome") or ""}
+def _library_dir() -> Path:
+    return Path(__file__).resolve().parent / "library"
 
-        if parsed.get("tree"):
-            by_index = {i: s for i, s in enumerate(resolved)}
 
-            def rebuild(nodes):
-                return [entry(by_index[n["step"]]) if "step" in n
-                        else {"if": n["if"], "then": rebuild(n["then"]),
-                              "else": rebuild(n["else"])}
-                        for n in nodes]
-            items = rebuild(parsed["tree"])
-        else:
-            items = [entry(s) for s in steps]
-        err = _validate_and_set_steps(playbook, items)
-        if err is not None:
-            transaction.set_rollback(True)
-            return err
+def _library_texts() -> dict[str, str]:
+    return {p.stem: p.read_text() for p in _library_dir().glob("*.yaml")}
 
-    return Response(_row(playbook),
-                    status=status.HTTP_200_OK if existing
-                    else status.HTTP_201_CREATED)
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def playbook_library(request):
+    """The template playbooks bundled with the server, one file per example.
+
+    Parsed rather than listed blind: a template that no longer resolves should
+    be missing from the picker rather than offered and refused, so a step whose
+    task was renamed drops the template out of the list.
+    """
+    from vigil.contentyaml import ContentYamlError
+
+    from .community_yaml import parse, resolve_steps
+
+    builtins = TaskDefinition.objects.filter(owner=None,
+                                             archived_at__isnull=True)
+    results = []
+    for template_id, text in sorted(_library_texts().items()):
+        try:
+            parsed = parse(text)
+            resolved = resolve_steps(parsed["steps"], builtins)
+        except ContentYamlError:
+            continue
+        results.append({
+            "id": template_id,
+            "name": parsed["name"],
+            "description": parsed["description"],
+            "steps": [s["definition"].name for s in
+                      sorted(resolved, key=lambda s: s["order"])],
+            "allow_high_risk": parsed["allow_high_risk"],
+            "inputs": parsed["inputs"],
+        })
+    return Response({"results": results})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def playbook_library_use(request, template_id):
+    """Create a playbook from one of the bundled templates.
+
+    The steps resolve against the built-in tasks the server seeds, so the
+    template works on a fresh install with nothing forked first. The example's
+    own name is used when it is free and ``name (2)``, ``name (3)`` … when it
+    is not, because these are starting points people keep several of.
+    """
+    from vigil.contentyaml import ContentYamlError
+
+    from .community_yaml import parse, resolve_steps
+
+    text = _library_texts().get(template_id)
+    if text is None:
+        return Response({"detail": "no such template"}, status=404)
+    try:
+        parsed = parse(text)
+    except ContentYamlError as exc:
+        return Response({"detail": str(exc)}, status=400)
+
+    builtins = TaskDefinition.objects.filter(owner=None,
+                                            archived_at__isnull=True)
+    try:
+        resolved = resolve_steps(parsed["steps"], builtins)
+    except ContentYamlError as exc:
+        return Response({"detail": str(exc)}, status=400)
+
+    base = parsed["name"]
+    taken = {n.lower() for n in Playbook.objects.values_list("name", flat=True)}
+    wanted = base
+    n = 1
+    while wanted.lower() in taken:
+        n += 1
+        if n > 100:
+            return Response({"detail": f"a playbook named {base!r} already exists"},
+                            status=400)
+        wanted = f"{base} ({n})"
+    return _create_playbook_from_parsed(request, parsed, resolved, name=wanted)
 
 
 @api_view(["POST"])

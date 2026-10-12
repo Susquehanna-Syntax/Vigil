@@ -20,7 +20,7 @@ class PolicyFromAppTests(SimpleTestCase):
         self.assertIn("delegateClick('[data-app-policy]'", self.apps)
         self.assertIn("if (ev.target.closest('a, button')) return;", self.apps,
                       "clicking the button must not also expand the row")
-        self.assertIn("async function policyFromApp(appName, pairs)", self.pol)
+        self.assertIn("async function policyFromApp(appName, pairs, opts = {})", self.pol)
         self.assertIn("state: 'latest'", self.pol)
 
     def test_only_sources_a_rule_can_name(self):

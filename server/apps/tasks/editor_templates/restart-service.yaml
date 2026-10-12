@@ -1,0 +1,46 @@
+# Restart a service
+#
+# What this does: restarts one service and reports whether it came back
+# active.
+#
+# When to use it: the everyday repair - a config change that needs a reload of
+# the whole process, or a service that has stopped answering.
+#
+# What to change: the service name default.
+#
+# The service name is an input rather than a hard-coded param, so one saved
+# task serves every service you manage; the deploy form asks for the name each
+# time. Leave a default so a scheduled run has something to use when nobody is
+# there to type.
+#
+# restart_service works on systemd and on the Windows service controller. The
+# step reports `active`, and a follow-up check_service step with expect: active
+# turns "the command ran" into "the service is up" - which is the thing you
+# actually wanted to know.
+
+name: Restart service
+description: |
+  Bounce one service and confirm it came back. Asks for the service name at
+  deploy time, so one task covers every service on the fleet.
+risk: standard
+
+inputs:
+  - id: service
+    label: Service name
+    type: text
+    default: nginx
+    required: true
+
+actions:
+  - id: restart
+    type: restart_service
+    params:
+      service_name: "${{ inputs.service }}"
+
+  # The restart reports whether it thinks the service is active; this checks
+  # independently, and a stopped service fails the run.
+  - id: confirm
+    type: check_service
+    params:
+      service_name: "${{ inputs.service }}"
+      expect: active

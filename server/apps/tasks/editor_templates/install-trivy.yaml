@@ -1,0 +1,86 @@
+# Install Trivy on this host
+#
+# What this does: installs Trivy, the vulnerability scanner, using whichever
+# package manager the host has - apt, dnf or yum, Homebrew, or winget.
+#
+# When to use it: once per host you want to scan with the agent-local scanner,
+# before the "Run a Trivy scan" template has anything to run.
+#
+# What to change: nothing, unless you want to drop a manager you do not have.
+#
+# Two ideas in this one file, both worth stealing:
+#
+#   target_tags restricts which hosts the deploy picker offers at all. A host
+#   with none of these tags is not offered for this task, so you do not find
+#   out by deploying to it. Tags of the form pkg:<manager> come from the
+#   agent's own inventory, so the filter is honest about what the machine
+#   really has. Debian systems report apt-get, Ubuntu reports apt; both are
+#   listed.
+#
+#   Per-step `when:` guards do the rest: each install path runs only on the
+#   platform that has its manager, and reports skipped elsewhere. The last
+#   step has no guard, because `trivy --version` is the same question
+#   everywhere and is the one answer you actually want in the run output.
+#
+# Commands that use shell features (&&, |, >, $(...)) are wrapped in
+# sh -c '...'. The agent's run_command executes without a shell - shell=False
+# is a security invariant - so a bare pipeline would be tokenised into plain
+# arguments and fail.
+#
+# Installing software is high risk. The deploy costs a two-factor
+# confirmation, and the agent needs the command permitted on the host.
+
+name: Install Trivy
+description: |
+  Cross-platform Trivy install. The agent picks the right path based on its
+  own platform (apt / dnf / brew / winget) via per-step when: predicates.
+  Hosts without a known package manager are filtered out by target_tags.
+risk: high
+target_tags:
+  - pkg:apt
+  - pkg:apt-get
+  - pkg:dnf
+  - pkg:yum
+  - pkg:brew
+  - pkg:winget
+
+actions:
+  - id: trivy_apt
+    type: run_command
+    when: agent.pkg_manager in ("apt", "apt-get")
+    params:
+      command: |-
+        sh -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y wget gnupg ca-certificates && wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor -o /usr/share/keyrings/trivy.gpg && echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" > /etc/apt/sources.list.d/trivy.list && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y trivy'
+      timeout: 600
+
+  - id: trivy_dnf
+    type: run_command
+    when: agent.pkg_manager in ("dnf", "yum")
+    params:
+      command: |-
+        sh -c 'rpm -ivh https://github.com/aquasecurity/trivy/releases/latest/download/trivy_$(uname -m).rpm'
+      timeout: 600
+
+  # Homebrew is installed per-user on macOS, so the install runs as whoever is
+  # logged in at the console rather than as the agent's own account.
+  - id: trivy_brew
+    type: run_command
+    when: agent.os == "darwin"
+    params:
+      command: |-
+        sh -c 'su - $(stat -f %Su /dev/console) -c "/opt/homebrew/bin/brew install trivy 2>/dev/null || /usr/local/bin/brew install trivy"'
+      timeout: 600
+
+  - id: trivy_winget
+    type: run_command
+    when: agent.os == "windows"
+    params:
+      command: 'winget install --id AquaSecurity.Trivy --accept-source-agreements --accept-package-agreements --silent'
+      timeout: 600
+
+  # No guard: this is the step whose output tells you the install worked.
+  - id: verify
+    type: run_command
+    params:
+      command: 'trivy --version'
+      timeout: 30

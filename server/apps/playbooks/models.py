@@ -60,6 +60,11 @@ class Playbook(TagRowSyncMixin, models.Model):
     # plain ordered playbook. Nodes: {"step": "<step_id>"} or
     # {"id": "b<n>", "if": "<expr>", "then": [...], "else": [...]}.
     flow = models.JSONField(null=True, blank=True)
+    #: The playbook's own input declarations, in the task spec's ``inputs:``
+    #: shape (validated by ``apps.tasks.spec._validate_inputs``). Steps map
+    #: them onto their task's inputs; callers — an automation, a rollout, a
+    #: task's inline ``type: playbook`` — supply values for them.
+    inputs = models.JSONField(default=list, blank=True)
     # Opt-in to high-risk steps. Off by default, and turning it ON requires a
     # fresh TOTP code — that confirmation IS the 2FA for every future
     # unattended dispatch, exactly as playbook creation is for standard-risk
@@ -152,6 +157,10 @@ class PlaybookStep(models.Model):
     # over the definition's action params at dispatch, so one shared task can
     # run with different inputs in different playbooks.
     params_override = models.JSONField(default=dict, blank=True)
+    #: {task input id: text with playbook ``${{ inputs.x }}`` references}.
+    #: A task input with no entry here takes the playbook value with the same
+    #: id, when there is one; with neither, the task's own default applies.
+    inputs = models.JSONField(default=dict, blank=True)
     # What "not applicable" means for this step on a host: "stop" ends the
     # host's playbook there (the rest of the chain is not applicable too),
     # "skip" goes on to the next step.
@@ -243,6 +252,14 @@ def dispatch_to_host(host, *, playbooks=None) -> int:
         .prefetch_related("steps__definition"))
     for playbook in rows:
         try:
+            if playbook.inputs and playbooks is None:
+                # The auto-enrol set only. An explicit *playbooks* is a rebuild
+                # or a manual apply, which runs with the playbook's defaults
+                # because someone is there asking for it.
+                logger.warning("skipping playbook %s: it has inputs and "
+                               "auto-enrolment has nobody to fill them in",
+                               playbook.name)
+                continue
             if not playbook.matches(host):
                 continue
             bad = [s.definition.name for s in playbook.steps.all()

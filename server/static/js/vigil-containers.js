@@ -520,7 +520,7 @@ function _usedBy(list) {
 }
 
 function _renderImages(items) {
-  return `<table class="ctr-table ctr-res-table"><thead><tr><th>Image</th><th>ID</th><th class="num">Size</th>
+  return `<table class="ctr-table ctr-res-table ctr-img-table"><thead><tr><th>Image</th><th>ID</th><th class="num">Size</th>
       <th>Created</th><th>Used by</th><th></th></tr></thead><tbody>${items.map(i => `<tr>
       <td>${i.tags.length ? i.tags.map(t => `<div class="ctr-name">${escHtml(t)}</div>`).join('') : '<span class="ctr-unused">&lt;none&gt; dangling</span>'}</td>
       <td class="ctr-image">${escHtml(i.short_id)}</td>
@@ -533,7 +533,7 @@ function _renderImages(items) {
 }
 
 function _renderVolumes(items) {
-  return `<table class="ctr-table ctr-res-table"><thead><tr><th>Volume</th><th>Stack</th><th class="num">Size</th>
+  return `<table class="ctr-table ctr-res-table ctr-vol-table"><thead><tr><th>Volume</th><th>Stack</th><th class="num">Size</th>
       <th>Mounted by</th><th>Driver</th><th></th></tr></thead><tbody>${items.map(v => `<tr>
       <td><div class="ctr-name">${escHtml(v.name)}</div><div class="ctr-svc">${escHtml(v.mountpoint)}</div></td>
       <td>${escHtml(v.stack || '')}</td>
@@ -546,11 +546,11 @@ function _renderVolumes(items) {
 }
 
 function _renderNetworks(items) {
-  return `<table class="ctr-table ctr-res-table"><thead><tr><th>Network</th><th>Driver</th><th>Subnet</th>
+  return `<table class="ctr-table ctr-res-table ctr-net-table"><thead><tr><th>Network</th><th>Driver</th><th>Subnet</th>
       <th>Containers</th><th>Stack</th><th></th></tr></thead><tbody>${items.map(n => `<tr>
       <td><div class="ctr-name">${escHtml(n.name)}</div>${n.internal ? '<div class="ctr-svc">internal</div>' : ''}</td>
       <td class="ctr-image">${escHtml(n.driver)}${n.scope && n.scope !== 'local' ? ' · ' + escHtml(n.scope) : ''}</td>
-      <td class="ctr-image">${escHtml(n.subnets.join(', '))}</td>
+      <td class="ctr-image ctr-subnets">${n.subnets.map(x => `<div title="${escAttr(x)}">${escHtml(x)}</div>`).join('')}</td>
       <td>${n.containers.length ? n.containers.map(c => `<span class="chip chip-muted">${escHtml(c.container)}${c.ip ? ' <span class="ctr-ip">' + escHtml(c.ip) + '</span>' : ''}</span>`).join(' ') : '<span class="ctr-unused">none</span>'}</td>
       <td>${escHtml(n.stack || '')}</td>
       <td class="ctr-fix">${n.containers.length || n.builtin ? (n.builtin ? '<span class="ctr-unused">engine</span>' : '')

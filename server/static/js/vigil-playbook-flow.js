@@ -9,7 +9,7 @@
 //     shows how many hosts reached each step and which way they went;
 //   * flow analysis: every path through the playbook, and the mistakes worth
 //     catching before it runs anywhere.
-// Tree nodes: { kind: 'step', def, ov, ona, onf, sid, color }
+// Tree nodes: { kind: 'step', def, ov, inp, ona, onf, sid, color }
 //           | { kind: 'if', cond, then: [...], else: [...] }
 // Depends on: vigil-utils.js (escHtml, escAttr).
 
@@ -47,6 +47,7 @@ function flowTreeFromRow(row) {
   const bySid = {};
   (row.steps || []).forEach(s => { bySid[s.step_id] = s; });
   const mk = s => ({ kind: 'step', def: String(s.definition_id), ov: s.params_override || {},
+    inp: s.inputs || {},
     ona: s.on_not_applicable || 'stop', onf: s.on_failure || 'stop', sid: s.step_id || '',
     color: s.color || '', outcome: s.outcome || '', name: s.definition_name, risk: s.risk });
   if (!row.flow) return (row.steps || []).map(mk);
@@ -61,6 +62,7 @@ function flowSerialize(tree) {
   return tree.map(n => (n.kind === 'if'
     ? { if: (n.cond || '').trim(), then: flowSerialize(n.then), else: flowSerialize(n.else) }
     : { definition_id: n.def, id: n.sid, params_override: n.ov || {},
+        inputs: n.inp || {},
         on_not_applicable: n.ona || 'stop', on_failure: n.onf || 'stop', color: n.color || '',
         outcome: (n.outcome || '').trim() }));
 }
@@ -511,6 +513,39 @@ function flowInspectorHtml(tree, at, ctx) {
   const nOv = Object.values(s.ov || {}).reduce((k, p) => k + Object.keys(p).length, 0);
   const swatches = ['', ...FLOW_COLORS].map(c => `<button type="button" class="flow-swatch ${_flowColorClass(c)}${(s.color || '') === c ? ' on' : ''}"
       data-flow-color="${escAttr(at)}" data-c="${escAttr(c)}" aria-label="${escAttr(c ? 'Colour ' + c : 'No colour')}" title="${escAttr(c || 'no colour')}"></button>`).join('');
+  /* Task inputs — how this step gets the values its task asks for. Rows only
+     for a definition that declares inputs; the text may name a playbook input
+     as ${{ inputs.<id> }} (see apps/playbooks/inputs.py). */
+  const declared = ((ctx && ctx.defInputs) ? ctx.defInputs(s.def) : []) || [];
+  let inputsHtml = '';
+  if (declared.length) {
+    const nodeInputs = s.inp || {};
+    const pbIds = ((ctx && ctx.playbookInputs) ? ctx.playbookInputs() : []) || [];
+    const rows = declared.map((ti) => {
+      const id = ti.id || '';
+      const val = nodeInputs[id] != null ? nodeInputs[id] : '';
+      const ph = pbIds.indexOf(id) >= 0
+        ? `from playbook input "${id}"`
+        : (ti.default !== '' && ti.default != null ? `default: ${ti.default}` : 'required');
+      const ins = pbIds.length
+        ? `<select class="fci-insert" data-flow-inp-ins="${escAttr(at)}" data-inp-id="${escAttr(id)}" title="Insert a playbook input">
+             <option value="">Insert…</option>${pbIds.map(p => `<option value="${escAttr(p)}">${escHtml(p)}</option>`).join('')}
+           </select>`
+        : '';
+      return `<label class="fi-field">Task input ${escHtml(ti.label || id)}${ti.required ? ' (required)' : ''}
+          <span class="fci-ctl">
+            <input class="flow-sid" data-flow-inp="${escAttr(at)}" data-inp-id="${escAttr(id)}"
+                   value="${escAttr(val)}" maxlength="500" spellcheck="false"
+                   placeholder="${escAttr(ph)}">${ins}
+          </span>
+        </label>`;
+    }).join('');
+    inputsHtml = `<div class="fi-sub">Task inputs</div>${rows}`
+      + (pbIds.length
+        ? '<span class="muted-note">Insert… puts ${{ inputs.&lt;id&gt; }} in the field.</span>'
+        : '');
+  }
+
   return `<div class="fi">
     <div class="fi-head">${escHtml(ctx.defName(s.def))}
       <span class="risk-badge risk-${escHtml(ctx.defRisk(s.def))}">${escHtml(ctx.defRisk(s.def))}</span></div>
@@ -528,6 +563,7 @@ function flowInspectorHtml(tree, at, ctx) {
       </select></label>
     <label class="fi-field">Outcome <input class="flow-outcome-in" data-flow-outcome="${escAttr(at)}" value="${escAttr(s.outcome || '')}" maxlength="40" placeholder="e.g. Recovered"></label>
     <div class="fi-field">Colour <span class="flow-swatches" role="group" aria-label="Step colour">${swatches}</span></div>
+    ${inputsHtml}
     <div class="fi-actions">
       <button type="button" class="btn btn-lav btn-xs" data-flow-inputs="${escAttr(at)}">Inputs${nOv ? ' · ' + nOv : ''}</button>
       <button type="button" class="btn btn-sky btn-xs" data-flow-view="${escAttr(s.def)}">View task</button>

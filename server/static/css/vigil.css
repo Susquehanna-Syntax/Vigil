@@ -4246,10 +4246,209 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .ctr-res-table { width: 100%; background: var(--s1); border: 1px solid var(--border); border-radius: var(--r-md); }
 .ctr-unused { font-size: 12px; color: var(--text-3); font-style: italic; }
 .ctr-ip { color: var(--text-3); font-family: var(--font-mono); margin-left: 6px; }
-.ctr-res-table { table-layout: auto; }
+.ctr-res-table { table-layout: fixed; }
+/* Long image tags, mount paths and lists of users wrap inside their column
+   instead of widening the table past the page (14.4). */
+.ctr-res-table td { white-space: normal; overflow-wrap: anywhere; }
+.ctr-res-table td .chip { margin: 2px 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctr-res-table th:nth-child(1) { width: 26%; }
+.ctr-res-table th:nth-child(2) { width: 13%; }
+.ctr-res-table th:nth-child(3) { width: 11%; }
+.ctr-res-table th:nth-child(5) { width: 12%; }
+.ctr-res-table th:nth-child(6) { width: 104px; }
+/* Ids, sizes and buttons never break mid-word; subnets break only between
+   entries. Short fixed-width cells clip with an ellipsis instead. */
+.ctr-res-table td.ctr-image, .ctr-res-table td.ctr-stat {
+  overflow-wrap: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ctr-res-table td.ctr-subnets { white-space: normal; }
+.ctr-res-table td.ctr-subnets > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctr-res-table td .btn { white-space: nowrap; }
+.ctr-res-table td.ctr-fix { overflow: visible; text-overflow: clip; }
+.ctr-res-table th:nth-child(6) { width: 112px; }
+/* Images: a 12-character id and a size need fixed room; the name takes the rest. */
+.ctr-img-table th:nth-child(1) { width: auto; }
+.ctr-img-table th:nth-child(2) { width: 138px; }
+.ctr-img-table th:nth-child(3) { width: 108px; }
+.ctr-img-table th:nth-child(4) { width: 96px; }
+.ctr-img-table th:nth-child(5) { width: 16%; }
+/* Volumes: the size column needs room for "123.4 MB". */
+.ctr-vol-table th:nth-child(3) { width: 108px; }
+/* Networks: the subnet column holds addresses, not a size. */
+.ctr-net-table th:nth-child(1) { width: 24%; }
+.ctr-net-table th:nth-child(2) { width: 10%; }
+.ctr-net-table th:nth-child(3) { width: 20%; }
+
+.bli-hint { display: block; margin-top: 6px; font-size: 12px; color: var(--text-3); line-height: 1.5; }
 
 /* ── Stack revisions: names, chips, prune (14.3) ─────────────────────── */
 .sted-card-title-row { display: flex; align-items: center; justify-content: space-between; }
 .sted-rev { flex-wrap: wrap; row-gap: 4px; }
 .sted-rev-name { font-weight: 600; color: var(--lavender-ink); }
 .sted-rev-acts { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+
+/* ── Store sync (14.4) ───────────────────────────────────────────────── */
+.store-status { display: flex; gap: 8px; align-items: center; }
+.store-status-warn { border: 0; background: none; padding: 0; font: inherit; font-size: 12px;
+  color: var(--peach-ink); cursor: pointer; }
+.store-status-warn:hover { text-decoration: underline; }
+.store-empty-src { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.store-empty-src-name { font-size: 13px; color: var(--text-1); }
+.store-sync-lead { font-size: 13px; color: var(--text-2); line-height: 1.6; margin-bottom: 12px; }
+.store-sync-rows { display: flex; flex-direction: column; gap: 6px; }
+.store-sync-row { background: var(--s2); border-radius: var(--r-md); padding: 9px 12px;
+  display: flex; flex-direction: column; gap: 2px; }
+.store-sync-name { font-size: 13px; color: var(--text-1); }
+.store-sync-meta { font-size: 12px; color: var(--text-3); }
+
+/* ── Playbook inputs (14.4) */
+/* The declared-inputs form, shared by the rollout start dialog and the
+   automation editor (inputsFormMount in vigil-pickers.js) — same shape as the
+   deploy dialog's input rows, in a container the caller owns. */
+.inputs-form { display: grid; gap: 12px; margin-bottom: 14px; }
+.inputs-form-row { display: flex; flex-direction: column; gap: 5px; }
+.inputs-form-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.inputs-form-req { font-weight: 400; color: var(--text-3); }
+.inputs-form-desc { font-size: 11px; color: var(--text-3); }
+.inputs-form-row .form-control { padding: 8px 11px; font-size: 13px; }
+.inputs-form-row.bool { flex-direction: row; align-items: center; gap: 10px; }
+.inputs-form-row.bool input { accent-color: var(--sky); width: 16px; height: 16px; }
+.inputs-form-row.bool .inputs-form-label { font-weight: 500; }
+
+/* The playbook editor's list of declarations. */
+.bl-inputs { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.bl-inputs:empty { margin-bottom: 0; }
+.bl-inputs-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  background: var(--s2); border-radius: var(--r-md); padding: 7px 10px; }
+.bl-inputs-bits { flex: 1 1 220px; font-size: 12px; color: var(--text-1);
+  overflow-wrap: anywhere; }
+.bl-inputs-flag { color: var(--peach-ink); }
+.bl-inputs-empty { font-size: 12px; color: var(--text-3); }
+
+/* The step inspector's task-input rows: the field and its Insert… menu. */
+.fci-ctl { display: flex; gap: 6px; align-items: stretch; }
+.fci-ctl .flow-sid { flex: 1 1 auto; min-width: 0; }
+.fci-insert { flex: 0 0 auto; width: auto; max-width: 120px; }
+
+/* ── Topology (14.4) */
+/* The map is one SVG; every shape carries a vigil class and takes its colours
+   from the tokens, so all four themes paint the same structure. */
+.topo-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.topo-search { flex: 1 1 260px; max-width: 420px; font-size: 13px; padding: 9px 13px; }
+.topo-site { flex: 0 0 auto; width: auto; min-width: 140px; font-size: 13px; padding: 9px 12px; }
+.topo-count { font-size: 12px; color: var(--text-3); }
+.topo-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.topo-tags-none { font-size: 12px; color: var(--text-3); }
+.topo-tag { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12px;
+  font-weight: 600; cursor: pointer; padding: 5px 11px; border-radius: 20px;
+  background: var(--s2); border: 1.5px solid var(--border); color: var(--text-2);
+  transition: border-color .2s var(--ease-out-expo), color .2s var(--ease-out-expo); }
+.topo-tag:hover { color: var(--text-1); border-color: var(--text-3); }
+.topo-tag .topo-tag-n { font-size: 11px; color: var(--text-3); }
+.topo-tag[aria-pressed="true"] { color: var(--text-1); border-color: var(--tc-border);
+  background: var(--tc-fill); }
+.topo-tag[aria-pressed="true"] .topo-tag-n { color: inherit; opacity: .75; }
+.topo-tag[data-topo-color="0"] { --tc-border: var(--lavender-ink); --tc-fill: rgba(var(--rgb-lavender), var(--tint-a)); }
+.topo-tag[data-topo-color="1"] { --tc-border: var(--mint-ink); --tc-fill: rgba(var(--rgb-mint), var(--tint-a)); }
+.topo-tag[data-topo-color="2"] { --tc-border: var(--sky-ink); --tc-fill: rgba(var(--rgb-sky), var(--tint-a)); }
+.topo-tag[data-topo-color="3"] { --tc-border: var(--peach-ink); --tc-fill: rgba(var(--rgb-peach), var(--tint-a)); }
+.topo-tag[data-topo-color="4"] { --tc-border: var(--rose-ink); --tc-fill: rgba(var(--rgb-rose), var(--tint-a)); }
+.topo-tag[data-topo-color="5"] { --tc-border: var(--lemon-ink); --tc-fill: rgba(var(--rgb-lemon), var(--tint-a)); }
+.topo-toggles { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+.topo-toggles .btn[aria-pressed="true"] { border-color: var(--sky-ink); color: var(--sky-ink);
+  background: rgba(var(--rgb-sky), var(--tint-a)); }
+
+.topo-banner { font-size: 13px; color: var(--peach-ink); background: rgba(var(--rgb-peach), var(--tint-a));
+  border-radius: var(--r-md); padding: 10px 14px; margin-bottom: 12px; }
+
+.topo-body { display: flex; gap: 14px; align-items: stretch; }
+.topo-canvas { flex: 1 1 auto; min-height: 560px; min-width: 0; overflow: hidden; touch-action: none;
+  background: var(--s1); border: 1px solid var(--border); border-radius: var(--r-md); }
+.topo-canvas .topo-error { display: flex; align-items: center; justify-content: center; height: 100%;
+  min-height: 200px; font-size: 13px; color: var(--rose-ink); text-align: center; padding: 20px; }
+#topo-svg { display: block; cursor: grab; user-select: none; }
+#topo-svg:active { cursor: grabbing; }
+
+.topo-site { fill: var(--s2); stroke: var(--border); stroke-width: 1; }
+.topo-site-title { font-size: 13px; font-weight: 700; fill: var(--text-2); letter-spacing: .2px; }
+.topo-tagbox { fill-opacity: .08; stroke-width: 1.5; stroke-dasharray: 5 5; stroke-opacity: .55;
+  pointer-events: none; }
+.topo-tagbox-label { font-size: 10px; font-weight: 700; letter-spacing: .4px; }
+
+.topo-link { fill: none; stroke: var(--text-3); stroke-width: 1.5; stroke-opacity: .7; }
+.topo-link-ext { stroke-dasharray: 3 5; }
+.topo-link-hi { stroke: var(--lavender-ink); stroke-width: 2.5; stroke-opacity: 1; }
+.topo-link-dim { stroke-opacity: .16; }
+.topo-link-label { font-size: 10px; font-weight: 700; fill: var(--text-2); paint-order: stroke;
+  stroke: var(--s1); stroke-width: 3px; }
+
+.topo-card rect { fill: var(--s1); stroke: var(--border); stroke-width: 1; }
+.topo-card { cursor: pointer; }
+.topo-card:hover rect { stroke: var(--text-3); }
+.topo-card.topo-sel rect { stroke: var(--lavender-ink); stroke-width: 2; }
+.topo-card.topo-match rect { stroke: var(--sky-ink); stroke-width: 2; }
+.topo-card-device rect { fill: var(--s2); }
+.topo-card-internet rect { fill: var(--s2); stroke: var(--sky-ink); stroke-dasharray: 4 4; }
+.topo-card-empty rect { fill: none; stroke-dasharray: 4 6; }
+.topo-card-offline .topo-card-title, .topo-card-offline .topo-card-line { fill: var(--text-3); }
+.topo-card-title { font-size: 13px; font-weight: 600; fill: var(--text-1); }
+.topo-card-line { font-size: 11px; fill: var(--text-2); }
+.topo-card-sub { fill: var(--text-3); }
+.topo-card-warn { fill: var(--peach-ink); }
+.topo-dot { fill: var(--text-3); }
+.topo-dot[data-dot="online"] { fill: var(--mint); }
+.topo-dot[data-dot="device"], .topo-dot[data-dot="net"] { fill: var(--sky); }
+.topo-dot[data-dot="offline"], .topo-dot[data-dot="error"] { fill: var(--coral); }
+
+.topo-port { fill: var(--s3); stroke: var(--border); stroke-width: 1; }
+.topo-port-public { fill: rgba(var(--rgb-mint), var(--tint-a)); stroke: var(--mint-ink); }
+.topo-port-text { font-size: 10px; font-weight: 700; fill: var(--text-2); font-family: var(--font-mono); }
+.topo-port-text.topo-port-public { fill: var(--mint-ink); }
+.topo-port-more { font-size: 10px; }
+.topo-stack-name { font-size: 10px; font-weight: 700; fill: var(--text-3); }
+.topo-ctr { fill: var(--s3); }
+.topo-ctr-down { fill: rgba(var(--rgb-coral), var(--tint-a)); }
+.topo-ctr-text { font-size: 9px; fill: var(--text-2); font-family: var(--font-mono); }
+
+.topo-panel { flex: 0 0 340px; align-self: flex-start; max-height: calc(100vh - 220px); overflow-y: auto;
+  background: var(--s2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 16px; }
+.topo-p-head { display: flex; align-items: center; gap: 8px; }
+.topo-p-title { font-size: 15px; font-weight: 600; color: var(--text-1); overflow-wrap: anywhere; }
+.topo-p-close { margin-left: auto; background: none; border: 0; color: var(--text-3); font-size: 18px;
+  line-height: 1; cursor: pointer; padding: 0 2px; }
+.topo-p-close:hover { color: var(--text-1); }
+.topo-p-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-3); flex: 0 0 auto; }
+.topo-p-dot[data-dot="online"] { background: var(--mint); }
+.topo-p-dot[data-dot="device"], .topo-p-dot[data-dot="net"] { background: var(--sky); }
+.topo-p-dot[data-dot="offline"], .topo-p-dot[data-dot="error"] { background: var(--coral); }
+.topo-p-sub { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+.topo-p-actions { margin: 12px 0 4px; }
+.topo-p-label { font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+  color: var(--text-3); margin: 16px 0 7px; }
+.topo-p-rows { display: flex; flex-direction: column; gap: 6px; }
+.topo-p-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.topo-p-line { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
+.topo-p-none { font-size: 12px; color: var(--text-3); }
+.topo-pill { display: inline-block; font-size: 11px; font-family: var(--font-mono); padding: 3px 9px;
+  border-radius: 20px; background: var(--s3); color: var(--text-2); margin: 0 5px 5px 0; }
+.topo-pill-key { background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink); }
+.topo-p-stack { background: var(--s1); border-radius: var(--r-sm); padding: 8px 10px; margin-bottom: 7px; }
+.topo-p-stack-name { font-size: 12px; font-weight: 600; color: var(--text-1); margin-bottom: 4px; }
+.topo-p-ctr { font-size: 11px; color: var(--text-2); display: flex; align-items: center; gap: 6px;
+  margin-top: 3px; overflow-wrap: anywhere; }
+.topo-p-ctr-state { width: 6px; height: 6px; border-radius: 50%; background: var(--mint); flex: 0 0 auto; }
+.topo-p-ctr-state[data-state="exited"], .topo-p-ctr-state[data-state="dead"] { background: var(--coral); }
+.topo-p-link { display: flex; align-items: baseline; gap: 7px; width: 100%; text-align: left; font: inherit;
+  font-size: 12px; color: var(--text-1); background: var(--s1); border: 0; border-radius: var(--r-sm);
+  padding: 7px 10px; cursor: pointer; margin-bottom: 5px; }
+.topo-p-link:hover { background: var(--s3); }
+.topo-p-dir { color: var(--lavender-ink); }
+.topo-p-meta { margin-left: auto; font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.topo-p-foot { font-size: 11px; color: var(--text-3); margin-top: 16px; border-top: 1px solid var(--border);
+  padding-top: 10px; }
+
+@media (max-width: 760px) {
+  .topo-body { flex-direction: column; }
+  .topo-panel { flex: 1 1 auto; width: 100%; max-height: none; }
+}
+
+.bl-desc { resize: vertical; min-height: 64px; line-height: 1.5; font-family: inherit; }

@@ -61,6 +61,7 @@ def checkin(
     software: dict | None = None,
     windows_update_list: list[dict] | None = None,
     container_engines: list[dict] | None = None,
+    network: dict | None = None,
 ) -> dict:
     """Send metrics and receive tasks. Returns the full server response."""
     payload = {
@@ -112,6 +113,10 @@ def checkin(
     # keeps the software list it already has. Only a fresh payload is sent.
     if software is not None:
         payload["software"] = software
+    # Same contract: absent means "nothing new to store", so the server keeps
+    # the network snapshot it already has (14.4 — the topology view).
+    if network is not None:
+        payload["network"] = network
     url = f"{config.server_url}/api/v1/checkin"
     resp = requests.post(url, json=payload, headers=_headers(config), timeout=_TIMEOUT)
     resp.raise_for_status()

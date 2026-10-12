@@ -398,6 +398,10 @@ class PatchRollout(models.Model):
         "baselines.Playbook", on_delete=models.CASCADE, related_name="rollouts",
         null=True, blank=True,
     )
+    #: Values for the target's inputs, passed by whoever started the rollout —
+    #: the start view, or an automation in rollout mode. Empty for a target
+    #: that declares none.
+    inputs = models.JSONField(default=dict, blank=True)
     state = models.CharField(max_length=12, choices=State.choices, default=State.PENDING)
     current_wave = models.ForeignKey(
         PatchWave, on_delete=models.SET_NULL, null=True, blank=True,

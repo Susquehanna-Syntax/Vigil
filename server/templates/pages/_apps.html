@@ -101,6 +101,7 @@
         </div>
         <div class="upd-bulk" id="upd-bulk" hidden>
           <span id="upd-bulk-count"></span>
+          <button class="btn btn-outline btn-xs" type="button" data-upd-policy-selected>Policy…</button>
           <button class="btn btn-outline btn-xs" type="button" data-upd-decide="approved">Approve</button><span class="field-hint" tabindex="0" aria-label="What Approve does" data-hint="Install this update at the next maintenance window of every policy that patches — without waiting out the policy's deferral.">?</span>
           <button class="btn btn-outline btn-xs" type="button" data-upd-decide="declined">Decline</button><span class="field-hint" tabindex="0" aria-label="What Decline does" data-hint="Keep this update off every host. It joins every patch policy's exclude list until you clear the decision.">?</span>
           <button class="btn btn-outline btn-xs" type="button" data-upd-decide="clear">Clear decision</button><span class="field-hint" tabindex="0" aria-label="What Clear decision does" data-hint="Forget the approval or decline. Each patch policy goes back to its own rules for this update.">?</span>
@@ -115,6 +116,7 @@
                 <th class="num">Hosts</th>
                 <th class="num">Missing for</th>
                 <th>Decision<span class="field-hint" tabindex="0" aria-label="What the decisions mean" data-hint="Approved — install this update at the next maintenance window of every policy that patches, without waiting out the policy's deferral.&#10;&#10;Declined — keep this update off every host. It joins every patch policy's exclude list until you clear the decision.&#10;&#10;Undecided — each patch policy's own rules apply.">?</span></th>
+                <th></th>
               </tr>
             </thead>
             <tbody id="apps-updates-body"></tbody>

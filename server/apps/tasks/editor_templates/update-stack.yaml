@@ -1,0 +1,41 @@
+# Update a compose stack
+#
+# What this does: pulls the newest images for one compose stack and brings up
+# what changed.
+#
+# When to use it: when you publish new images for a stack and want the hosts
+# running it to take them.
+#
+# What to change: the stack name default, or leave the input to fill in at
+# deploy time.
+#
+# stack_update is the two commands compose users already type - pull, then up
+# - through the engine API. It reads the compose file paths from the stack's
+# own container labels rather than guessing where the project lives, so it
+# finds the right files wherever you keep them.
+#
+# Only services whose image changed are recreated; a container already on the
+# newest image is left running. If you would rather take the project down
+# first, docker_compose_down followed by docker_compose_up is that, with the
+# compose file path as a param.
+#
+# Related actions on the same project: stack_restart, stack_remove, and
+# stack_read to bring an existing project under Vigil's management.
+
+name: Update stack
+description: |
+  Pull the newest images of a compose stack and bring up what changed. The
+  compose files come from the stack's own container labels.
+risk: standard
+
+inputs:
+  - id: project
+    type: text
+    label: Stack
+    required: true
+
+actions:
+  - id: update
+    type: stack_update
+    params:
+      project: "${{ inputs.project }}"

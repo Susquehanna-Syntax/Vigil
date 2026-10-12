@@ -1,0 +1,65 @@
+# Install Nessus Essentials on this host
+#
+# What this does: downloads and installs Nessus Essentials, starts the service,
+# and prints the URL you finish activation at.
+#
+# When to use it: on the one machine you want to act as your central Nessus
+# scanner - not on the hosts you intend to scan.
+#
+# What to change: the download URL, if you pin a version or need a mirror.
+#
+# What happens afterwards, because the task cannot do it for you: open
+# https://<this-host>:8834, paste the activation code Tenable emails you, and
+# wait out the first plugin compilation - 20 to 30 minutes, once. Point
+# Vigil's scanner settings at this host when it has finished; the requests
+# templates then have somewhere to send scans to.
+#
+# The steps are ordinary shell in sequence, each with its own timeout: a
+# download is allowed far longer than a `systemctl enable`. Note the quoting
+# in the last step - the command is split by the agent with no shell, so the
+# awk program carries escaped quotes to survive that split.
+#
+# Installing software is high risk: two-factor confirmation at deploy, and a
+# host that permits the commands.
+
+name: Install Nessus Essentials
+description: |
+  Downloads and installs Nessus Essentials, then starts the service. Finish
+  activation in the browser at https://<this-host>:8834 with the code Tenable
+  emails you; plugin compilation takes 20-30 minutes the first time.
+risk: high
+
+inputs:
+  - id: deb_url
+    label: Nessus .deb URL (defaults to latest Debian/Ubuntu x86_64)
+    type: text
+    default: "https://www.tenable.com/downloads/api/v2/pages/nessus/files/Nessus-latest-debian10_amd64.deb"
+    required: true
+
+actions:
+  - id: download
+    type: run_command
+    params:
+      command: 'curl -sSfL -o /tmp/nessus.deb "${{ inputs.deb_url }}"'
+      timeout: 600
+
+  - id: install
+    type: run_command
+    params:
+      command: 'sh -c "dpkg -i /tmp/nessus.deb && rm /tmp/nessus.deb"'
+      timeout: 300
+
+  - id: start
+    type: run_command
+    params:
+      command: 'sh -c "systemctl enable --now nessusd"'
+      timeout: 60
+
+  # hostname -I prints every address separated by spaces; the shell that the
+  # agent starts here keeps the first. The quoting inside this scalar is for
+  # that shell, not for the agent, which splits the line without one.
+  - id: ready_message
+    type: run_command
+    params:
+      command: 'sh -c "echo \"Nessus installed. Finish activation at https://$(hostname -I | cut -d\  -f1):8834\""'
+      timeout: 5
