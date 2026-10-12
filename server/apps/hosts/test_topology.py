@@ -217,6 +217,16 @@ class TopologyApiTests(TestCase):
 
         self.assertEqual({h["hostname"] for h in self._get()["hosts"]}, {"live"})
 
+    def test_tags_differing_only_in_case_are_one_tag(self):
+        make_host("a", tags=["Canary", "web"])
+        make_host("b", tags=["canary"])
+        make_host("c", tags=["Canary"])
+
+        data = self._get()
+        self.assertEqual(data["tags"], [{"name": "Canary", "count": 3}, {"name": "web", "count": 1}])
+        self.assertEqual({h["hostname"]: h["tags"] for h in data["hosts"]},
+                         {"a": ["Canary", "web"], "b": ["Canary"], "c": ["Canary"]})
+
     def test_query_count_does_not_grow(self):
         def seed(count):
             Host.objects.all().delete()
