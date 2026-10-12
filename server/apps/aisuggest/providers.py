@@ -36,6 +36,30 @@ def strip_thinking(text: str) -> str:
     return _THINK.sub("", text or "").strip()
 
 
+def _error_message(exc: urllib.error.HTTPError) -> str:
+    """The error message from a model API's JSON error body, and nothing else.
+
+    It says what is wrong (an unknown model, a bad key, a parameter the
+    server does not take), which the status line does not. Only a message
+    field is used, never the raw body: the base URL is whatever an admin
+    typed, and an operator running a suggestion must not be shown the pages
+    of some other internal service it points at.
+    """
+    try:
+        body = json.loads(exc.read(4096).decode(errors="replace"))
+    except Exception:  # noqa: BLE001 — not JSON: say nothing more
+        return ""
+    if not isinstance(body, dict):
+        return ""
+    err = body.get("error")
+    msg = err.get("message") if isinstance(err, dict) else err
+    if not isinstance(msg, str):
+        msg = body.get("message") or body.get("detail")
+    if not isinstance(msg, str):
+        return ""
+    return " ".join(msg.split())[:200]
+
+
 def _post_json(url: str, payload: dict, headers: dict) -> dict:
     req = urllib.request.Request(
         url,
@@ -48,14 +72,9 @@ def _post_json(url: str, payload: dict, headers: dict) -> dict:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
-        # The endpoint's own error body says what is wrong (an unknown model,
-        # a bad key, a parameter it does not take); the status line alone
-        # does not.
-        try:
-            detail = exc.read().decode(errors="replace")[:400]
-        except Exception:  # noqa: BLE001
-            detail = ""
-        raise ProviderError(f"endpoint returned HTTP {exc.code}: {detail or exc.reason}") from exc
+        raise ProviderError(
+            f"endpoint returned HTTP {exc.code}: {_error_message(exc) or exc.reason}"
+        ) from exc
     except Exception as exc:  # noqa: BLE001 — normalized for the caller
         # A timeout arrives bare from a read, or wrapped in a URLError from
         # the connect; either way the operator needs to know what to change.
