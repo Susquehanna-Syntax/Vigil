@@ -18,7 +18,7 @@ const TOPO_TAG_KEY = 'vigil-topo-tags';
 const TOPO_COLORS = ['lavender', 'mint', 'sky', 'peach', 'rose', 'lemon'];
 const TOPO_CARD_W = 200, TOPO_CARD_H = 96, TOPO_DEV_W = 150, TOPO_DEV_H = 56;
 const TOPO_STACK_ROW_H = 22, TOPO_GAP = 28, TOPO_PAD = 36, TOPO_TITLE_H = 52;
-const TOPO_SITE_GAP = 48, TOPO_INTERNET_H = 44;
+const TOPO_SITE_GAP = 48, TOPO_INTERNET_H = 58;
 const TOPO_FADE_MS = 180, TOPO_PAN_MS = 320;
 
 function _topoEl(id) { return document.getElementById(id); }
@@ -113,11 +113,20 @@ function _topoInternetSite(hosts, sites) {
     row of sites onto the line below. A row is as tall as its tallest card, so a
     card that grew — the Containers toggle adds a row per stack — grows the site
     with it instead of overlapping the card under it. */
-function _topoPackSite(group, gap, pad, titleH) {
-  const cols = Math.max(1, Math.ceil(Math.sqrt(group.cards.length * 1.6)));
+function _topoPackSite(group, gap, pad, titleH, tagPad = 0) {
+  // The Internet node gets a row of its own above the hosts, far enough up
+  // that no tag box drawn around the hosts can take it in.
+  const internet = group.cards.filter(card => card.kind === 'internet');
+  const cards = group.cards.filter(card => card.kind !== 'internet');
   let y = titleH, widest = 0;
-  for (let start = 0; start < group.cards.length; start += cols) {
-    const row = group.cards.slice(start, start + cols);
+  for (const card of internet) {
+    card.x = pad; card.y = y;
+    widest = Math.max(widest, pad * 2 + card.w);
+    y += card.h + gap + tagPad;
+  }
+  const cols = Math.max(1, Math.ceil(Math.sqrt(cards.length * 1.6)));
+  for (let start = 0; start < cards.length; start += cols) {
+    const row = cards.slice(start, start + cols);
     row.forEach((card, i) => { card.x = pad + i * (TOPO_CARD_W + gap); card.y = y; });
     widest = Math.max(widest, pad * 2 + row.length * TOPO_CARD_W + (row.length - 1) * gap);
     y += Math.max(...row.map(card => card.h)) + gap;
@@ -161,12 +170,15 @@ function _topoHostRows(host) {
 }
 
 function _topoHostCard(host, containersOn, siteId) {
-  const extra = containersOn ? (host.stacks || []).length * TOPO_STACK_ROW_H : 0;
+  const rows = _topoHostRows(host);
+  // Title, then a 16 px line per row from y+44: a card is as tall as its rows.
+  const baseH = Math.max(TOPO_CARD_H, 40 + rows.length * 16);
+  const extra = containersOn ? (host.stacks || []).length * TOPO_STACK_ROW_H + 6 : 0;
   return {
-    x: 0, y: 0, w: TOPO_CARD_W, h: TOPO_CARD_H + extra,
+    x: 0, y: 0, w: TOPO_CARD_W, h: baseH + extra, baseH,
     kind: 'host', refId: host.id, siteId,
     label: host.hostname, offline: host.status !== 'online',
-    rows: _topoHostRows(host),
+    rows,
   };
 }
 
@@ -177,6 +189,10 @@ function _topoStackRows(host) {
   }));
 }
 
+/** How far the box for the tag at `index` stands off its cards: room for its
+ *  label inside the strip, and a step per tag so nested boxes stay apart. */
+function _topoTagPad(index) { return 16 + 14 * index; }
+
 function _topoTagBoxes(groups, activeTags) {
   const boxes = [];
   for (const group of groups) {
@@ -184,7 +200,7 @@ function _topoTagBoxes(groups, activeTags) {
       const own = group.cards.filter(card => card.kind === 'host'
         && (card.tags || []).includes(tag));
       if (!own.length) return;
-      const pad = 10 + 8 * index;
+      const pad = _topoTagPad(index);
       const x0 = Math.min(...own.map(c => c.x));
       const y0 = Math.min(...own.map(c => c.y));
       const x1 = Math.max(...own.map(c => c.x + c.w));
@@ -263,8 +279,12 @@ function layoutTopology(data, sitesIn, chosenSite) {
   const groups = drawn.map(site => ({ id: site.id, name: site.name, cards: [] }));
   _topoSiteCards(groups, hosts, devices, activeTags, internetSite, deviceSites, slot, drawn);
 
+  // The widest tag box must fit inside its site without covering the title.
+  const tagPad = activeTags.length ? _topoTagPad(activeTags.length - 1) : 0;
+  const sitePad = Math.max(TOPO_PAD, tagPad + 12);
+  const titleH = Math.max(TOPO_TITLE_H, 40 + tagPad);
   for (const group of groups) {
-    Object.assign(group, _topoPackSite(group, TOPO_GAP, TOPO_PAD, TOPO_TITLE_H));
+    Object.assign(group, _topoPackSite(group, TOPO_GAP, sitePad, titleH, tagPad));
   }
 
   // The canvas's width is the one thing the layout measures: a map wrapped for
@@ -425,7 +445,7 @@ function renderTopology() {
       class: 'topo-tagbox', x: box.x, y: box.y, width: box.w, height: box.h, rx: 12,
       stroke: box.color, fill: box.color,
     }));
-    _topoText(root, { class: 'topo-tagbox-label', x: box.x + 12, y: box.y + 16, fill: box.color }, box.tag);
+    _topoText(root, { class: 'topo-tagbox-label', x: box.x + 12, y: box.y + 12, fill: box.color }, box.tag);
   }
 
   const linkLayer = _topoSvgEl('g', { id: 'topo-links' });
@@ -506,7 +526,7 @@ function _topoCard(card, data) {
   }
 
   if (card.stackRows) {
-    y = card.y + TOPO_CARD_H + 4;
+    y = card.y + (card.baseH || TOPO_CARD_H) + 6;
     for (const stack of card.stackRows) {
       _topoText(g, { class: 'topo-stack-name', x: card.x + 16, y }, _topoClip(stack.name, 12));
       let x = card.x + 92;

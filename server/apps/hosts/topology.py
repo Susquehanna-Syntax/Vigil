@@ -63,6 +63,7 @@ def build_topology(user) -> dict:
     subnets = _subnets(addresses)
 
     site_of = scoping.sites_for_hosts(host_ids)
+    tag_names = _tag_names(hosts)
     host_rows, per_link = [], {}
 
     for host in hosts:
@@ -83,7 +84,7 @@ def build_topology(user) -> dict:
             "status": host.status,
             "os": host.os,
             "site_id": str(site.id) if site is not None else None,
-            "tags": [t for t in (host.tags or []) if isinstance(t, str)],
+            "tags": _host_tags(host, tag_names),
             "ips": ips[host.id],
             "primary_ip": _primary_ip(host.ip_address, ips[host.id]),
             "listening": _listening(host),
@@ -101,7 +102,7 @@ def build_topology(user) -> dict:
 
     return {
         "sites": _sites(site_of),
-        "tags": _tags(hosts),
+        "tags": _tags(hosts, tag_names),
         "subnets": subnets,
         "hosts": host_rows,
         "devices": devices,
@@ -150,10 +151,32 @@ def _sites(site_of):
     return sorted(unique.values(), key=lambda s: s["name"].lower())
 
 
-def _tags(hosts):
+def _tag_names(hosts):
+    """Tags match without regard to case, as they do everywhere else in Vigil:
+    "Canary" and "canary" are one tag, shown in its most common spelling."""
+    spellings: dict = defaultdict(lambda: defaultdict(int))
+    for host in hosts:
+        for tag in host.tags or []:
+            if isinstance(tag, str) and tag.strip():
+                spellings[tag.strip().casefold()][tag.strip()] += 1
+    return {key: sorted(forms.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+            for key, forms in spellings.items()}
+
+
+def _host_tags(host, tag_names):
+    out = []
+    for tag in host.tags or []:
+        if isinstance(tag, str) and tag.strip():
+            name = tag_names[tag.strip().casefold()]
+            if name not in out:
+                out.append(name)
+    return out
+
+
+def _tags(hosts, tag_names):
     counts: dict = defaultdict(int)
     for host in hosts:
-        for tag in {t for t in (host.tags or []) if isinstance(t, str)}:
+        for tag in _host_tags(host, tag_names):
             counts[tag] += 1
     return [{"name": name, "count": count}
             for name, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
