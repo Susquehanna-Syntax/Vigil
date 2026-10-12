@@ -17,10 +17,9 @@ max across everything that got pulled in.
 The playbook's inputs are resolved here, where its declarations are in hand;
 the values are then filled into the inlined steps' params by
 :func:`resolve_playbook_inputs`, which the caller that started the expansion
-runs once over the flat result. That second pass is what lets a supplied value
-be a ``${{ inputs.x }}`` reference into the *calling task's* inputs — its own
-values are only known there, and substituting twice over a value holding braces
-would corrupt it.
+runs once over the flat result, with those values only. A supplied value that
+is a ``${{ inputs.x }}`` reference into the calling task's inputs was already
+substituted by that task's own ``resolve_inputs`` before expansion.
 """
 
 from __future__ import annotations
@@ -147,13 +146,14 @@ def expand_actions(actions: list[dict], *, _seen: frozenset = frozenset(),
     return out, max_risk
 
 
-def resolve_playbook_inputs(actions: list[dict], values: dict) -> list[dict]:
+def resolve_playbook_inputs(actions: list[dict]) -> list[dict]:
     """Fill the input references the inlined steps still carry.
 
-    Run once, by the task that started the expansion, with that task's own
-    input values: each inlined action's playbook values are the defaults its
-    params substitute from, and the task's values are what a playbook input's
-    own ``${{ inputs.x }}`` reference resolves against.
+    Run once, by the task that started the expansion. Each inlined action
+    carries the values its playbook resolved (and validated) for its step;
+    those are the only values substituted. The calling task's own inputs
+    were already substituted into the playbook reference before expansion,
+    so nothing from the request is consulted here.
     """
     from apps.tasks.spec import resolve_inputs
 
@@ -162,7 +162,7 @@ def resolve_playbook_inputs(actions: list[dict], values: dict) -> list[dict]:
         if declared:
             action["params"] = resolve_inputs(
                 {"inputs": list(declared.values()), "actions": [action]},
-                values)["actions"][0]["params"]
+                {})["actions"][0]["params"]
     return actions
 
 
