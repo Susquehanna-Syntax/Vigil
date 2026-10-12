@@ -325,12 +325,12 @@ function _topoEdge(a, b) {
 function _topoLinkGeometry(data, cards) {
   const out = [];
   for (const link of data.links || []) {
-    if (link.source.kind !== 'host' || link.target.kind !== 'host') continue;
-    const a = cards[link.source.id], b = cards[link.target.id];
+    const key = (ref) => (ref.kind === 'device' ? `device:${ref.id}` : ref.id);
+    const a = cards[key(link.source)], b = cards[key(link.target)];
     if (!a || !b) continue;                    // the other end is filtered out of this map
     const edge = _topoEdge(a, b);
     out.push({
-      fromId: link.source.id, toId: link.target.id,
+      fromId: key(link.source), toId: key(link.target),
       path: _topoCurve(edge), lx: (edge.x1 + edge.x2) / 2, ly: (edge.y1 + edge.y2) / 2,
       count: link.count || 0, ports: link.ports || [],
     });
@@ -488,7 +488,7 @@ function _topoCard(card, data) {
     class: `topo-card topo-card-${card.kind}${card.offline ? ' topo-offline' : ''}`
       + (topoState.selected === _topoSelKey(card) ? ' topo-sel' : ''),
     'data-topo-card': _topoSelKey(card),
-    'data-topo-link': card.refId,
+    'data-topo-link': _topoSelKey(card),
   });
   g.appendChild(_topoSvgEl('rect', { x: card.x, y: card.y, width: card.w, height: card.h, rx: 10 }));
   if (card.kind !== 'empty') {
@@ -680,7 +680,7 @@ function _topoPanelList(title, items, renderItem) {
 function _topoLinkRow(link, outgoing, otherId, name) {
   return `<button type="button" class="topo-p-link" data-topo-goto="${escAttr(otherId)}">`
     + `<span class="topo-p-dir">${outgoing ? '→' : '←'}</span>${escHtml(name)}`
-    + `<span class="topo-p-meta">${link.count} session${link.count === 1 ? '' : 's'}`
+    + `<span class="topo-p-meta">${escHtml(String(link.count))} session${link.count === 1 ? '' : 's'}`
     + `${(link.ports || []).length ? ` · ${escHtml(link.ports.join(', '))}` : ''}</span></button>`;
 }
 
@@ -713,7 +713,7 @@ function openTopoHost(id) {
     _topoPanelList('Addresses', host.ips || [], ip =>
       `<span class="topo-pill${ip === host.primary_ip ? ' topo-pill-key' : ''}">${escHtml(ip)}</span>`),
     _topoPanelList('Listening ports', host.listening || [], l =>
-      `<span class="topo-pill${l.public ? ' topo-pill-key' : ''}">${escHtml(l.proto || 'tcp')} ${l.port}`
+      `<span class="topo-pill${l.public ? ' topo-pill-key' : ''}">${escHtml(l.proto || 'tcp')} ${escHtml(String(l.port))}`
       + `${l.public ? ' · public' : ''}${l.process ? ` · ${escHtml(l.process)}` : ''}</span>`),
     '<div class="topo-p-label">Firewall</div>',
   ];
@@ -722,12 +722,12 @@ function openTopoHost(id) {
       + `${escHtml(fw.tool || 'firewall')} is ${fw.enabled ? 'on' : 'off'}`
       + `${fw.incoming ? `, default incoming ${escHtml(fw.incoming)}` : ''}</div>`
       + ((fw.allows || []).length
-        ? `<div class="topo-p-chips">${fw.allows.map(port => `<span class="topo-pill">${port}</span>`).join('')}</div>`
+        ? `<div class="topo-p-chips">${fw.allows.map(port => `<span class="topo-pill">${escHtml(String(port))}</span>`).join('')}</div>`
         : '<div class="topo-p-none">No allowed ports reported</div>') + '</div>');
   } else {
     out.push('<div class="topo-p-none">No firewall reported. The 2026.14.4 agent collects it.</div>');
   }
-  out.push(`<div class="topo-p-label">Stacks${stacks.length ? ` · ${_topoCount(host)} containers` : ''}</div>`);
+  out.push(`<div class="topo-p-label">Stacks${stacks.length ? ` · ${escHtml(String(_topoCount(host)))} containers` : ''}</div>`);
   out.push(stacks.length
     ? stacks.map(stack => `<div class="topo-p-stack"><div class="topo-p-stack-name">${escHtml(stack.name || 'unnamed')}</div>`
       + (stack.containers || []).map(c => `<div class="topo-p-ctr">`
@@ -744,7 +744,7 @@ function openTopoHost(id) {
   }));
   const external = host.external || [];
   out.push(_topoPanelList('External destinations', external, e =>
-    `<div class="topo-p-line"><span class="mono">${escHtml(e.ip)}</span> · ${e.count}`
+    `<div class="topo-p-line"><span class="mono">${escHtml(e.ip)}</span> · ${escHtml(String(e.count))}`
     + ` session${e.count === 1 ? '' : 's'}`
     + `${(e.ports || []).length ? ` · ${escHtml(e.ports.join(', '))}` : ''}</div>`));
   out.push(`<div class="topo-p-foot">${host.network_at
@@ -813,6 +813,16 @@ function _topoSaveTags() {
   }
 }
 
+/** The API names each end of a link by its id alone; the map needs to know
+ *  whether that id is a host or a device, so each end becomes {kind, id}. */
+function _topoNormalise(data) {
+  const hostIds = new Set((data.hosts || []).map(host => host.id));
+  const end = (ref) => (ref && typeof ref === 'object') ? ref
+    : { kind: hostIds.has(ref) ? 'host' : 'device', id: ref };
+  data.links = (data.links || []).map(link => ({ ...link, source: end(link.source), target: end(link.target) }));
+  return data;
+}
+
 async function loadTopology() {
   const canvas = _topoEl('topo-canvas');
   let data;
@@ -822,7 +832,7 @@ async function loadTopology() {
     if (canvas) canvas.innerHTML = `<div class="topo-error">${escHtml(e.message)}</div>`;
     return;
   }
-  topoState.data = data;
+  topoState.data = _topoNormalise(data);
   const known = new Set((data.tags || []).map(t => t.name));
   if (topoState.loadedOnce) {
     for (const tag of [...topoState.tags]) if (!known.has(tag)) topoState.tags.delete(tag);
@@ -853,15 +863,16 @@ function _renderTopoToolbar() {
       ? data.tags.map((t, i) =>
         `<button type="button" class="topo-tag" data-topo-tag="${escAttr(t.name)}"`
         + ` aria-pressed="${topoState.tags.has(t.name)}" data-topo-color="${i % TOPO_COLORS.length}">`
-        + `${escHtml(t.name)}<span class="topo-tag-n">${t.count}</span></button>`).join('')
+        + `${escHtml(t.name)}<span class="topo-tag-n">${escHtml(String(t.count))}</span></button>`).join('')
       : '<span class="topo-tags-none">No tags on your hosts</span>';
   }
   const count = _topoEl('topo-count');
   if (count) {
-    count.textContent = `${data.hosts.length} hosts`
+    const n = (k, word) => `${k} ${word}${k === 1 ? '' : 's'}`;
+    count.textContent = n(data.hosts.length, 'host')
       + ` · ${data.hosts.filter(h => h.status === 'online').length} online`
-      + ` · ${(data.links || []).length} connections`
-      + `${(data.devices || []).length ? ` · ${data.devices.length} devices` : ''}`;
+      + ` · ${n((data.links || []).length, 'connection')}`
+      + `${(data.devices || []).length ? ` · ${n(data.devices.length, 'device')}` : ''}`;
   }
   document.querySelectorAll('[data-topo-toggle]').forEach(btn => {
     btn.setAttribute('aria-pressed', String(!!topoState[btn.dataset.topoToggle]));
