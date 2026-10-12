@@ -33,7 +33,7 @@ def resolve_task_spec(
     merged over each action's params the way a direct deploy would. Raises
     ``SpecError`` / ``UseError`` when the definition cannot be built.
     """
-    from apps.playbooks.expansion import expand_actions
+    from apps.playbooks.expansion import (expand_actions, resolve_playbook_inputs)
 
     spec = definition.parsed_spec or {}
     if spec.get("uses"):
@@ -62,7 +62,11 @@ def resolve_task_spec(
         ]
 
     actions, _expanded_risk = expand_actions(spec.get("actions") or [])
-    spec["actions"] = actions
+    # A playbook's steps arrive with the values that playbook resolved, still
+    # as references into *this* task's inputs where the caller wrote them.
+    # This is the one place both sets are known, so it is where they are
+    # filled in — once, over the flat result.
+    spec["actions"] = resolve_playbook_inputs(actions, inputs or {})
     return spec
 
 
@@ -118,16 +122,25 @@ def task_params(
     return _deploy_params(spec, steps_payload), risk, expires_at
 
 
-def build_playbook_steps(playbook, *, user) -> list[tuple]:
+def build_playbook_steps(playbook, *, user, inputs: dict | None = None) -> list[tuple]:
     """Every step of *playbook*, built as its own signed task.
 
+    *inputs* are the caller's values for the playbook's own inputs (an
+    automation, a rollout, a task's inline playbook action); ``None`` — what
+    auto-enrolment passes — means "nobody is here to fill anything in", which
+    works only when every required input has a default.
+
     Returns ``[(playbook_step, params, risk, expires_at), …]`` in order.
-    Raises (``SpecError`` / ``PlaybookExpandError``) if any step cannot be
-    built, so a caller never writes half a chain.
+    Raises (``SpecError`` / ``PlaybookExpandError`` / ``PlaybookInputError``)
+    if any step cannot be built, so a caller never writes half a chain.
     """
+    from apps.playbooks.inputs import playbook_values, step_inputs
+
+    values = playbook_values(playbook, inputs)
     built = []
     for step in playbook.steps.select_related("definition").order_by("order"):
         spec = resolve_task_spec(step.definition, user=user,
+                                 inputs=step_inputs(step, values),
                                  params_override=step.params_override)
         params, risk, expires_at = task_params(spec)
         built.append((step, params, risk, expires_at))

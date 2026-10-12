@@ -166,6 +166,10 @@ class Automation(TagRowSyncMixin, models.Model):
     # Input overrides for the task action: {"<action_index>": {"<param>": value}}
     # merged over the definition's params at dispatch (TASK kind only).
     params_override = models.JSONField(default=dict, blank=True)
+    #: Values for the target's inputs — the automation's playbook inputs, or
+    #: its task definition's (validated against them when the automation is
+    #: saved). Passed to the dispatch path on every run.
+    inputs = models.JSONField(default=dict, blank=True)
 
     # -- target (ignored for EVENT_HOST) --
     target = models.CharField(max_length=12, choices=Target.choices,
