@@ -2287,6 +2287,12 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .ai-sug-actions .btn { flex: 1; justify-content: center; }
 .ai-empty, .ai-err { font-size: 13px; color: var(--text-3); padding: 20px 0; text-align: center; }
 .ai-err { color: var(--rose-ink); }
+.ai-note { font-size: 13px; color: var(--text-1); line-height: 1.5; padding: 12px 0; white-space: pre-wrap; }
+.ai-rejected { margin-top: 10px; font-size: 12px; color: var(--text-2); }
+.ai-rejected summary { cursor: pointer; font-weight: 500; }
+.ai-rejected-item { margin-top: 8px; }
+.ai-rejected-why { color: var(--rose-ink); margin-bottom: 6px; line-height: 1.4; overflow-wrap: anywhere; }
+.ai-rejected .ai-sug-yaml { max-height: 180px; }
 @media (max-width: 820px) { .ai-compare { grid-template-columns: 1fr !important; } }
 
 /* Settings rows / provider cards */
@@ -2299,6 +2305,10 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .provider-row-main { display: flex; flex-direction: column; gap: 3px; }
 .provider-row-name { font-weight: 600; font-size: 14px; }
 .provider-row-sub { font-size: 12px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; }
+.provider-row-main { min-width: 0; }
+.provider-test { font-size: 12px; color: var(--text-2); margin-top: 4px; line-height: 1.4; overflow-wrap: anywhere; }
+.provider-test.ok { color: var(--mint-ink); }
+.provider-test.bad { color: var(--rose-ink); }
 
 /* Status pages */
 .sp-list { display: flex; flex-direction: column; gap: 16px; }

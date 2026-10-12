@@ -971,6 +971,38 @@ def _flow_by_id(nodes: list, leaf_ids: dict[int, str]) -> list:
     return out
 
 
+#: What steps.<id>.status can be — the agent's StepResult.state.
+STEP_STATUSES = ("ok", "error", "skipped")
+
+
+def _check_status_values(tree: ast.Expression, where: str) -> None:
+    """A step's status compared with a string must name a real status.
+
+    ``steps.up.status == "success"`` validates as an expression and is false
+    on every host, so the step it guards never runs — and nothing says why.
+    """
+    def _is_status(node):
+        return (isinstance(node, ast.Attribute) and node.attr == "status"
+                and isinstance(node.value, ast.Attribute)
+                and isinstance(node.value.value, ast.Name)
+                and node.value.value.id == "steps")
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Compare):
+            continue
+        sides = [node.left, *node.comparators]
+        for op, (left, right) in zip(node.ops, zip(sides, sides[1:])):
+            if not isinstance(op, (ast.Eq, ast.NotEq)):
+                continue
+            for a, b in ((left, right), (right, left)):
+                if (_is_status(a) and isinstance(b, ast.Constant)
+                        and isinstance(b.value, str) and b.value not in STEP_STATUSES):
+                    raise SpecError(
+                        f"{where}: a step's status is one of "
+                        f"{', '.join(STEP_STATUSES)}, not {b.value!r}"
+                    )
+
+
 def _check_ordering_types(
     expr: str, tree: ast.Expression, earlier: dict[str, str], where: str
 ) -> None:
@@ -1465,6 +1497,7 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
             for step_id, field in sorted(referenced_steps(tree), key=str):
                 _check_step_ref(step_id, field, earlier, where)
             _check_ordering_types(cond, tree, earlier, where)
+            _check_status_values(tree, where)
 
         params = entry.get("params") or {}
         if not isinstance(params, dict):
@@ -1590,8 +1623,9 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
                     ) from exc
                 for step_id, field in sorted(step_refs, key=str):
                     _check_step_ref(step_id, field, earlier, f"action #{index + 1} when")
-                _check_ordering_types(when_expr, expression_parse(when_expr),
-                                      earlier, f"action #{index + 1} when")
+                when_tree = expression_parse(when_expr)
+                _check_ordering_types(when_expr, when_tree, earlier, f"action #{index + 1} when")
+                _check_status_values(when_tree, f"action #{index + 1} when")
 
         # Optional per-step timeout, in seconds. The 1..3600 range mirrors
         # the agent's own validation — a limit the server accepts but the

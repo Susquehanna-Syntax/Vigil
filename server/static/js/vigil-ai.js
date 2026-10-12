@@ -193,7 +193,9 @@ function _renderColumn(id) {
   if (!data || data.error) {
     body = `<div class="ai-col-body"><div class="ai-err">${escHtml((data && data.error) || 'failed')}</div></div>`;
   } else if (!sugs.length) {
-    body = `<div class="ai-col-body"><div class="ai-empty">No valid suggestions returned.</div></div>`;
+    body = `<div class="ai-col-body">
+      ${data.note ? `<div class="ai-note">${escHtml(data.note)}</div>` : '<div class="ai-empty">The model wrote no task Vigil could accept.</div>'}
+      ${_rejectedHtml(data.rejected)}</div>`;
   } else {
     const s = sugs[page];
     const nav = sugs.length > 1 ? `
@@ -212,6 +214,7 @@ function _renderColumn(id) {
         <pre class="ai-sug-yaml">${yamlToHtml(s.yaml)}</pre>
       </div>
       ${nav}
+      ${_rejectedHtml(data.rejected)}
       <div class="ai-sug-actions">
         <button class="btn btn-lav btn-sm" data-ai-copy>Copy YAML</button>
         <button class="btn btn-mint btn-sm" data-ai-open>Use this</button>
@@ -235,6 +238,18 @@ function _renderColumn(id) {
     copyText(cur.yaml).then((ok) => showToast(
       ok ? 'YAML copied' : 'Copy failed', ok ? 'success' : 'error'));
   });
+}
+
+// Tasks the model wrote that Vigil refused, each with the validator's reason,
+// so an empty or short column explains itself.
+function _rejectedHtml(rejected) {
+  if (!rejected || !rejected.length) return '';
+  return `<details class="ai-rejected">
+    <summary>${rejected.length} ${rejected.length === 1 ? 'task was' : 'tasks were'} rejected</summary>
+    ${rejected.map(r => `<div class="ai-rejected-item">
+      <div class="ai-rejected-why">${escHtml(r.error)}</div>
+      <pre class="ai-sug-yaml">${yamlToHtml(r.yaml)}</pre></div>`).join('')}
+  </details>`;
 }
 
 function _addBestTag(col) {
@@ -311,9 +326,11 @@ async function loadAiProviders() {
           <span class="provider-row-name">${escHtml(p.name)}
             <span class="bl-badge ${p.enabled ? 'on' : 'off'}">${p.enabled ? 'enabled' : 'off'}</span>
             ${p.configured ? '' : '<span class="bl-badge off">needs setup</span>'}</span>
-          <span class="provider-row-sub">${escHtml(p.kind)} · ${escHtml(p.model || 'no model')} · ${escHtml(p.base_url || 'default endpoint')}${p.api_key_set ? ' · key set' : ''}</span>
+          <span class="provider-row-sub">${escHtml(p.kind)} · ${escHtml(p.model || 'no model')} · ${escHtml(p.base_url || 'default endpoint')}${p.reasoning_effort ? ' · ' + escHtml(p.reasoning_effort) + ' reasoning' : ''}${p.api_key_set ? ' · key set' : ''}</span>
+          <div class="provider-test" id="ap-test-${p.id}" hidden></div>
         </div>
         <div class="card-actions">
+          <button class="btn btn-mint btn-xs" data-ap-test="${p.id}">Test</button>
           <button class="btn btn-sky btn-xs" data-ap-edit="${p.id}">Edit</button>
           <button class="btn btn-${p.enabled ? 'lemon' : 'mint'} btn-xs" data-ap-toggle="${p.id}" data-en="${p.enabled}">${p.enabled ? 'Disable' : 'Enable'}</button>
           <button class="btn btn-rose btn-xs" data-ap-del="${p.id}">Delete</button>
@@ -328,8 +345,44 @@ async function loadAiProviders() {
       await apiJson(`/api/v1/ai/providers/${b.dataset.apToggle}/`, { method: 'PATCH', body: JSON.stringify({ enabled: b.dataset.en !== 'true' }) });
       loadAiProviders();
     }));
+    list.querySelectorAll('[data-ap-test]').forEach(b => b.addEventListener('click', () => _testProvider(b)));
     list.querySelectorAll('[data-ap-edit]').forEach(b => b.addEventListener('click', () => _editProvider(rows.find(r => r.id == b.dataset.apEdit))));
   } catch (e) { /* card stays as-is */ }
+}
+
+// Asks the provider for one real task and says what came back: the time it
+// took, whether Vigil accepted the task, and the reason when it did not.
+async function _testProvider(btn) {
+  const id = btn.dataset.apTest;
+  const out = document.getElementById(`ap-test-${id}`);
+  const t0 = performance.now();
+  btn.disabled = true;
+  out.hidden = false;
+  out.className = 'provider-test';
+  out.textContent = 'Asking the model for a task…';
+  const timer = pollingInterval(() => {
+    out.textContent = `Asking the model for a task… ${((performance.now() - t0) / 1000).toFixed(0)}s`;
+  }, 1000);
+  try {
+    const d = await apiJson(`/api/v1/ai/providers/${id}/test/`, { method: 'POST' });
+    const secs = d.elapsed_ms != null ? `${(d.elapsed_ms / 1000).toFixed(1)}s` : '';
+    if (d.ok) {
+      out.classList.add('ok');
+      out.textContent = `Working: the model wrote a task Vigil accepts, in ${secs}.`;
+    } else {
+      out.classList.add('bad');
+      const why = d.error || (d.rejected && d.rejected.length
+        ? `it wrote a task Vigil rejected: ${d.rejected[0].error}`
+        : `it answered without a task${d.note ? ': ' + d.note.slice(0, 200) : ''}`);
+      out.textContent = `Not working${secs ? ' (' + secs + ')' : ''}: ${why}`;
+    }
+  } catch (e) {
+    out.classList.add('bad');
+    out.textContent = 'Test failed: ' + e.message;
+  } finally {
+    clearPollingInterval(timer);
+    btn.disabled = false;
+  }
 }
 
 function _editProvider(p) {
@@ -339,6 +392,7 @@ function _editProvider(p) {
   document.getElementById('ap-kind').value = p ? p.kind : 'openai';
   document.getElementById('ap-url').value = p ? p.base_url : '';
   document.getElementById('ap-model').value = p ? p.model : '';
+  document.getElementById('ap-effort').value = p ? (p.reasoning_effort || '') : '';
   document.getElementById('ap-key').value = '';
   document.getElementById('ap-key-note').textContent = p && p.api_key_set ? 'A key is stored — leave blank to keep it.' : '';
   document.getElementById('ap-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -350,6 +404,7 @@ async function _saveProvider() {
     kind: document.getElementById('ap-kind').value,
     base_url: document.getElementById('ap-url').value.trim(),
     model: document.getElementById('ap-model').value.trim(),
+    reasoning_effort: document.getElementById('ap-effort').value,
   };
   const key = document.getElementById('ap-key').value;
   if (key) body.api_key = key;
