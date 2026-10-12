@@ -99,6 +99,13 @@
             </select></div>
           <div class="setting-row"><label>Base URL</label><input type="text" class="form-control" id="ap-url" placeholder="http://10.0.0.108:11434/v1"></div>
           <div class="setting-row"><label>Model</label><input type="text" class="form-control" id="ap-model" placeholder="qwopus / gpt-4o-mini / claude-sonnet-..."></div>
+          <div class="setting-row"><label>Reasoning effort</label>
+            <select class="form-control" id="ap-effort">
+              <option value="">Model default</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select><p class="bl-hint">For thinking models (Qwen, DeepSeek, o-series). Low answers in well under a minute where the default can take five. Leave on Model default for models that do not reason.</p></div>
           <div class="setting-row"><label>API key</label><input type="password" class="form-control" id="ap-key" placeholder="blank = keyless local / keep current"><p class="bl-hint" id="ap-key-note"></p></div>
           <div class="bl-editor-actions">
             <button class="btn btn-mint btn-sm" id="ap-save">Save provider</button>

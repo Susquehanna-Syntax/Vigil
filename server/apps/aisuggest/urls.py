@@ -8,6 +8,9 @@ urlpatterns = [
         "providers/<int:provider_id>/", views.provider_detail, name="ai-provider-detail"
     ),
     path(
+        "providers/<int:provider_id>/test/", views.provider_test, name="ai-provider-test"
+    ),
+    path(
         "suggest/alert/<uuid:alert_id>/",
         views.suggest_for_alert,
         name="ai-suggest-alert",

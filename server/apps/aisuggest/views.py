@@ -18,62 +18,13 @@ from apps.accounts.permissions import IsAdmin, IsOperator
 from apps.alerts.models import Alert
 from apps.tasks.spec import SpecError, parse_and_validate
 
-from .models import AiProvider, ProviderKind
+from .models import AiProvider, ProviderKind, ReasoningEffort
+from .prompt import repair_prompt, system_prompt
 from .providers import ProviderError, provider_for
 
 logger = logging.getLogger("vigil.aisuggest")
 
-SYSTEM_PROMPT = """You are Vigil's remediation assistant. Given an \
-infrastructure problem, propose 1-3 remediation tasks as Vigil task YAML.
-
-Rules:
-- Output ONLY fenced yaml blocks (```yaml ... ```), one per suggestion.
-- Each block: name, description, risk (low|standard|high), optional inputs, and actions as a
-  list of `- id:` blocks, each with `type:` and a `params:` mapping on its own lines.
-- Refer to an input as ${{ inputs.<id> }}. Never write {{ inputs.<id> }}.
-- A later step may use an earlier step's declared outputs as
-  ${{ steps.<id>.result.<field> }}, or its status as ${{ steps.<id>.status }};
-  when: may test steps.<id>.result.<field>.
-- A script receives inputs as environment variables VIGIL_INPUT_<ID>
-  ($VIGIL_INPUT_APP in bash, $env:VIGIL_INPUT_APP in PowerShell); never paste
-  an input into a command line.
-- To answer "which hosts have X" (a file, package version, process, listening port, service,
-  registry value, or text in files), use a hunt_* action rather than run_command or execute_script.
-- Never set return: text on hunt_content unless the user asks for the matched text; it makes the
-  task high risk.
-- To make a task apply only to some hosts, add a top-level relevant: tree of all:/any:/not: lists
-  whose items are hunt_* probes (e.g. - hunt_service: {name: nginx}); hosts where it is false report
-  not applicable and run nothing. Do not use relevance: (free text) for this.
-- To choose between steps, use an actions item with if: <expression>, then: [steps], else: [steps];
-  conditions may read earlier steps' steps.<id>.status and steps.<id>.result.<field>.
-- Write if: and when: conditions bare, never inside ${{ }}; booleans are True and False.
-- <, <=, >, >= compare numbers only.
-- Test only outputs a step really has: every hunt_* step outputs matched, count and truncated;
-  check_service outputs active and state.
-- A step may carry outcome: <short label> naming what finishing it means (e.g. Restarted); use that
-  instead of a step that only prints a message.
-- Quote any YAML value that contains ": ".
-- For services use check_service / restart_service / start_service with params: {service_name: <name>},
-  never run_command; an output is always read as steps.<id>.result.<field>.
-- Prefer low-risk, reversible diagnostics before invasive fixes.
-- To install, upgrade, pin or remove software use app_install / app_upgrade / app_pin / app_uninstall
-  with params: {app: <package id>, source: <dpkg|rpm|apk|pacman|snap|flatpak|winget|chocolatey|registry>};
-  omit source to use the host's own manager. app_upgrade without app upgrades everything outdated.
-- Refresh the inventory with app_inventory (outputs count, outdated, unmanaged) and branch on it.
-- Use app_install_custom (high risk, needs url + sha256) only when no package manager has the software.
-- To keep one app in a state use app_ensure with app + state (present, latest, pinned, absent); version only with pinned.
-  It reads the host's inventory and changes nothing when the host already matches, so it is safe to run on a schedule.
-- App and patch policies are set on the Policies page, not in YAML. Never write or edit a task named "Policy: ..." —
-  it is generated from its policy and rewritten on every save.
-- A vulnerability is fixed per fix group: one upgrade of the package to its fixed version (app_upgrade) or one
-  KB (windows_update_install include_kb) clears every CVE in the group. When the prompt says NO FIX IS AVAILABLE,
-  propose mitigations only and never an upgrade or a version.
-- A detection task is a normal task with severity (critical/high/medium/low), cves and a relevant: block that detects;
-  its actions are the fix. boost: lists up to five hunt probes that only raise confidence, never decide.
-- Containers: use restart_container / stop_container / start_container / update_container / container_rollback for one
-  container, stack_restart / stack_update for a compose stack (project name), never run docker or podman via a script.
-  Never write stack_deploy or stack_read yourself — Vigil builds them, because they carry one-time tickets.
-- Never propose update_agent."""
+SYSTEM_PROMPT = system_prompt()
 
 
 def _provider_dict(p: "AiProvider", *, with_key_state=False) -> dict:
@@ -83,6 +34,7 @@ def _provider_dict(p: "AiProvider", *, with_key_state=False) -> dict:
         "kind": p.kind,
         "base_url": p.base_url,
         "model": p.model,
+        "reasoning_effort": p.reasoning_effort,
         "enabled": p.enabled,
         "configured": p.configured,
         "order": p.order,
@@ -110,6 +62,10 @@ def providers(request):
         enabled=bool(request.data.get("enabled", True)),
         order=AiProvider.objects.count(),
     )
+    effort = _effort(request.data.get("reasoning_effort"))
+    if effort is None:
+        return _bad_effort()
+    p.reasoning_effort = effort
     if request.data.get("api_key"):
         p.api_key = request.data["api_key"]
     p.save()
@@ -128,6 +84,11 @@ def provider_detail(request, provider_id):
             setattr(p, field, (request.data[field] or "").strip())
     if "kind" in request.data:
         p.kind = request.data["kind"]
+    if "reasoning_effort" in request.data:
+        effort = _effort(request.data["reasoning_effort"])
+        if effort is None:
+            return _bad_effort()
+        p.reasoning_effort = effort
     if "enabled" in request.data:
         p.enabled = bool(request.data["enabled"])
     if "order" in request.data:
@@ -136,6 +97,52 @@ def provider_detail(request, provider_id):
         p.api_key = request.data["api_key"]
     p.save()
     return Response(_provider_dict(p, with_key_state=True))
+
+
+def _effort(value):
+    """A valid reasoning effort, "" for none, or None when it is not one."""
+    value = (value or "").strip().lower()
+    return value if value in ReasoningEffort.values else None
+
+
+def _bad_effort():
+    return Response(
+        {"detail": "reasoning_effort must be blank, low, medium or high"}, status=400
+    )
+
+
+#: A request small enough to answer fast and specific enough to judge: a
+#: provider that passes this can write a task Vigil accepts.
+_TEST_PROMPT = (
+    "Alert: [critical] web-02: nginx.service is inactive (failed)\n"
+    "Host: web-02\nOS: Ubuntu 24.04\n"
+    "Propose exactly one task."
+)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def provider_test(request, provider_id):
+    """Ask the provider for one real suggestion and report what came back:
+    how long it took, whether Vigil accepted the task, and why not."""
+    p = get_object_or_404(AiProvider, pk=provider_id)
+    if not p.configured:
+        return Response({"ok": False, "error": f"{p.name} is missing a model/URL"})
+    started = time.monotonic()
+    try:
+        text = provider_for(p).complete(SYSTEM_PROMPT, _TEST_PROMPT)
+    except ProviderError as exc:
+        return Response({"ok": False, "error": str(exc),
+                         "elapsed_ms": int((time.monotonic() - started) * 1000)})
+    found = _extract_suggestions(text)
+    return Response({
+        "ok": bool(found["suggestions"]),
+        "elapsed_ms": int((time.monotonic() - started) * 1000),
+        "accepted": len(found["suggestions"]),
+        "rejected": found["rejected"],
+        "note": found["note"],
+        "reply": text[:2000],
+    })
 
 
 # ── Suggestion runs ────────────────────────────────────────────────────────
@@ -150,8 +157,22 @@ def _run_provider(provider_id: int, prompt: str) -> Response:
             {"detail": f"{provider.name} is missing a model/URL"}, status=409
         )
     started = time.monotonic()
+    client = provider_for(provider)
     try:
-        text = provider_for(provider).complete(SYSTEM_PROMPT, prompt)
+        text = client.complete(SYSTEM_PROMPT, prompt)
+        found = _extract_suggestions(text)
+        # One second chance for the tasks Vigil rejected, told exactly why.
+        # Small models get a param name or an input type wrong far more often
+        # than they get the remedy wrong, and the reason is enough to fix it.
+        if found["rejected"] and len(found["suggestions"]) < MAX_SUGGESTIONS:
+            try:
+                retry = _extract_suggestions(
+                    client.complete(SYSTEM_PROMPT, repair_prompt(prompt, found["rejected"]))
+                )
+            except ProviderError as exc:
+                logger.info("repair via %s failed: %s", provider.name, exc)
+            else:
+                found = _merge(found, retry)
     except ProviderError as exc:
         logger.warning("suggestion via %s failed: %s", provider.name, exc)
         return Response(
@@ -165,7 +186,7 @@ def _run_provider(provider_id: int, prompt: str) -> Response:
     return Response(
         {
             "provider": _provider_dict(provider),
-            "suggestions": _extract_suggestions(text),
+            **found,
             "elapsed_ms": int((time.monotonic() - started) * 1000),
         }
     )
@@ -279,41 +300,96 @@ def _no_providers():
     )
 
 
-def _extract_suggestions(text: str) -> list[dict]:
-    out = []
-    for block in re.findall(r"```(?:yaml)?\s*\n(.*?)```", text, flags=re.S):
+#: Suggestions returned per provider.
+MAX_SUGGESTIONS = 3
+
+_FENCE = re.compile(r"```[ \t]*(?:ya?ml)?[ \t]*\n(.*?)```", re.S | re.I)
+
+
+def _extract_suggestions(text: str) -> dict:
+    """Split a model's answer into tasks Vigil accepts and ones it rejects.
+
+    A rejected task comes back with the validator's reason, so the operator
+    sees why a model produced nothing usable rather than an empty column. The
+    prose outside the blocks is kept as ``note``: a model told to say plainly
+    when no task can help does exactly that, and it is worth showing.
+    """
+    suggestions, rejected = [], []
+    for block in _FENCE.findall(text):
         try:
             spec = parse_and_validate(block)
         except SpecError as exc:
-            logger.info("dropping invalid suggestion: %s", exc)
+            logger.info("rejecting suggestion: %s", exc)
+            rejected.append({"yaml": block.strip(), "error": str(exc)})
             continue
         if any(a.get("type") == "update_agent" for a in spec.get("actions", [])):
             continue
-        out.append(
-            {
-                "yaml": block.strip(),
-                "parsed": spec,
-                "risk": spec.get("derived_risk") or spec.get("risk", "standard"),
-            }
-        )
-        if len(out) == 3:
-            break
-    return out
+        if len(suggestions) < MAX_SUGGESTIONS:
+            suggestions.append(_suggestion(block, spec))
+    note = _FENCE.sub("", text).strip()
+    return {"suggestions": suggestions, "rejected": rejected[:MAX_SUGGESTIONS],
+            "note": note[:1500]}
+
+
+def _suggestion(block: str, spec: dict) -> dict:
+    return {
+        "yaml": block.strip(),
+        "parsed": spec,
+        "risk": spec.get("derived_risk") or spec.get("risk", "standard"),
+    }
+
+
+def _merge(first: dict, retry: dict) -> dict:
+    """The first answer's tasks, then any the repair fixed. What the repair
+    still could not get right replaces the original rejections."""
+    seen = {s["yaml"] for s in first["suggestions"]}
+    merged = list(first["suggestions"])
+    for s in retry["suggestions"]:
+        if s["yaml"] not in seen and len(merged) < MAX_SUGGESTIONS:
+            merged.append(s)
+            seen.add(s["yaml"])
+    return {"suggestions": merged, "rejected": retry["rejected"],
+            "note": first["note"] or retry["note"]}
+
+
+def _host_lines(host) -> list[str]:
+    """The facts about a host that decide which actions make sense on it."""
+    lines = [
+        f"Host: {host.hostname}",
+        f"OS: {host.os or 'unknown'}" + (f" (kernel {host.kernel})" if host.kernel else ""),
+    ]
+    engines = [e for e in (host.container_engines or []) if isinstance(e, dict)]
+    if engines:
+        lines.append("Container engine: " + ", ".join(
+            f"{e.get('kind', '?')} {e.get('version', '')}".strip() for e in engines))
+    else:
+        # Without this a model reaches for Docker cleanup on every disk alert.
+        lines.append("Container engine: none reported, so do not use container actions")
+    if host.tags:
+        lines.append(f"Tags: {', '.join(map(str, host.tags))}")
+    return lines
 
 
 def _alert_prompt(alert) -> str:
+    """What fired, against what threshold, on what kind of machine."""
     host = getattr(alert, "host", None)
     lines = [f"Alert: {alert}"]
     if host is not None:
-        lines += [
-            f"Host: {host.hostname}",
-            f"OS: {host.os}",
-            f"Tags: {', '.join(map(str, host.tags or []))}",
-        ]
-    for attr in ("message", "severity", "metric_value"):
-        v = getattr(alert, attr, None)
-        if v:
-            lines.append(f"{attr.capitalize()}: {v}")
+        lines += _host_lines(host)
+    rule = getattr(alert, "rule", None)
+    if rule is not None:
+        op = {"gt": ">", "gte": ">=", "lt": "<", "lte": "<=", "eq": "=="}.get(
+            rule.operator, rule.operator)
+        held = f" for {rule.duration_seconds}s" if rule.duration_seconds else ""
+        lines.append(f"Rule: {rule.name} ({rule.category}): {rule.metric} {op} "
+                     f"{rule.threshold:g}{held}")
+    if alert.metric_value is not None:
+        lines.append(f"Current value: {alert.metric_value:g}")
+    lines.append(f"Severity: {alert.severity}")
+    for key, value in (alert.fix_context or {}).items():
+        if key in ("host_id",) or value in (None, ""):
+            continue
+        lines.append(f"{key.replace('_', ' ').capitalize()}: {value}")
     return "\n".join(lines)
 
 
@@ -340,6 +416,7 @@ def _vuln_prompt(finding, note: str = "") -> str:
         f"Vulnerability on host {host.hostname} ({host.os or 'unknown OS'})",
         f"Severity: {finding.get_severity_display()}",
     ]
+    lines += [line for line in _host_lines(host) if line.startswith("Container engine")]
     if finding.cve_id:
         lines.append(f"CVE: {finding.cve_id}")
     if finding.title:

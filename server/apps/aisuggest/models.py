@@ -23,6 +23,13 @@ class ProviderKind(models.TextChoices):
     ANTHROPIC = "anthropic", "Anthropic"
 
 
+class ReasoningEffort(models.TextChoices):
+    DEFAULT = "", "Model default"
+    LOW = "low", "Low"
+    MEDIUM = "medium", "Medium"
+    HIGH = "high", "High"
+
+
 class AiProvider(models.Model):
     """One configured model endpoint. Several may exist; enabled ones show up
     in the suggest picker and can be compared against each other."""
@@ -33,6 +40,11 @@ class AiProvider(models.Model):
     base_url = models.URLField(blank=True, default="")
     model = models.CharField(max_length=200, blank=True, default="")
     api_key_encrypted = models.BinaryField(blank=True, default=b"")
+    # Sent as ``reasoning_effort`` to OpenAI-compatible endpoints when set.
+    # A local thinking model (Qwen, DeepSeek) at its default effort can take
+    # five minutes on one suggestion; low answers in under a minute.
+    reasoning_effort = models.CharField(max_length=10, blank=True, default="",
+                                        choices=ReasoningEffort.choices)
     enabled = models.BooleanField(default=True)
     order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
