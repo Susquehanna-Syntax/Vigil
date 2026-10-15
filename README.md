@@ -3,7 +3,8 @@
 <img src="docs/screenshots/banner.png" alt="Vigil: self-hosted infrastructure monitoring and endpoint management" width="720">
 
 [Quick start](#quick-start) ·
-[Features](#features) ·
+[Tour](#a-tour-of-vigil) ·
+[Security](#built-to-be-safe-to-run) ·
 [Editions](#editions) ·
 [Documentation](#documentation)
 
@@ -15,30 +16,55 @@ A [Susquehanna Syntax](https://github.com/Susquehanna-Syntax) product.
 
 ![The Vigil dashboard: stat tiles and a grid of host cards showing live CPU, memory, disk and network](docs/screenshots/dashboard.png)
 
-Vigil is a lightweight monitoring system. A small agent on each of your hosts
-checks in with a central Django server. The server collects metrics, fires
-alerts, keeps a hardware inventory, and sends signed tasks back to the agents
-to change things. It runs on Linux, Windows and macOS hosts, on a single
-`docker compose up`, with unlimited hosts and retention for free.
+Vigil watches your machines and, when you want it to, changes them. A small
+agent on each host checks in with a central server. The server collects
+metrics, raises alerts, keeps a hardware and software inventory, finds
+vulnerabilities, and sends **signed** tasks back to the agents to fix things:
+patch an app, restart a service, clear a disk, rebuild a machine.
 
-## Features
+It runs on Linux, Windows and macOS hosts, installs with `docker compose up`,
+and has no limit on hosts, agents or retention.
+
+> Every screenshot below is a demo instance with made-up hosts and data.
+
+## What is in the box
+
+| | |
+|---|---|
+| **See** | Live dashboards, per-host monitoring, alerts, a hardware and software inventory, a network map |
+| **Act** | Tasks in YAML, playbooks with if/else branches, automations on events and schedules, wave-by-wave rollouts |
+| **Patch** | App and update policies with maintenance windows, approvals and SLA tracking |
+| **Secure** | Vulnerability management with one-click fixes, firewall management, signed tasks, two-factor approval |
+| **Operate** | Docker and Podman, remote reprovisioning, public status pages, Active Directory import |
+
+## A tour of Vigil
 
 ### See everything
 
-Live CPU, memory, disk, network and load for every host, with history from one
-hour to seven days. Build your own dashboards from a catalogue of widgets,
-keep several, and share them.
+The **dashboard** is a grid of widgets you arrange, resize and name. Keep
+several (an overview, a wall display, one per client) and share them. The host
+cards show status, OS, tags, agent mode, and live CPU, memory, disk and network.
+
+The **Monitor** page opens one host: gauges, load, and history from an hour to
+a week.
 
 ![The Monitor page for one host: gauges for CPU, memory and disk, and a CPU history chart](docs/screenshots/monitor.png)
 
 ### Know what you own
 
-A hardware and software inventory of the whole fleet: OS, CPU, RAM, BIOS,
-disks, MAC addresses, uptime, last logged-in user. Sort, filter, reorder the
-columns, export to CSV, and add your own columns from a task's output.
-Tag hosts however you like and act on a whole tag at once.
+The **Inventory** is a sortable, filterable table of every host: manufacturer,
+model, CPU, RAM, BIOS, disks, MAC addresses, uptime, last logged-in user. Drag
+columns into order, export to CSV, and add your own columns from the output of
+a task. Tag hosts however you like and act on a whole tag at once.
 
 ![The Inventory page: a sortable hardware table with one row per host](docs/screenshots/inventory.png)
+
+The **Apps** page lists every piece of software your hosts report, by app, by
+host, or by the update it is missing. It reads dpkg, rpm, Flatpak, Snap, winget,
+Chocolatey, Scoop and the Windows registry, and flags what is outdated or
+unmanaged.
+
+![The Apps page: every app once, with host counts, versions, and how many are outdated](docs/screenshots/apps.png)
 
 ### Get told when something is wrong
 
@@ -50,33 +76,127 @@ any OpenAI-compatible endpoint or Anthropic) when one is needed.
 
 ![The Alerts page: firing alerts with Suggest Fix and Ack buttons](docs/screenshots/alerts.png)
 
-### Fix what is vulnerable
+### Do things with tasks
 
-Findings from Trivy, Nessus and Greenbone, plus Vigil's own matcher against
-OSV, CISA KEV and EPSS that works offline. Findings are grouped by the fix that
-resolves them, so one **Deploy fix** patches every affected host at once.
+A **task** is a short YAML file: a name, a risk level, and a list of actions
+such as `restart_service`, `update_package`, `clear_temp_files` or
+`hunt_process`. Deploy one to a host, a tag, or the whole fleet. Tasks can have
+schedule windows, retries, success criteria, typed inputs asked for at deploy
+time, and a `collect:` block that writes their output into the inventory.
+Detection tasks hunt for files, packages, processes and ports. Browse and
+submit to the [community catalog](https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts).
+
+![The Tasks page: a library of tasks with risk level, action count and last run result](docs/screenshots/tasks.png)
+
+### Chain them into playbooks, with branches
+
+A **playbook** runs tasks in order on a host, and it can decide what to do
+next. Add **if / else** branches that read an earlier step's status or the
+values its task reported, nest them up to three deep, let a step fail and carry
+on, and pass inputs down from the playbook to its steps. The page draws the
+flow as you build it.
+
+This one finds out whether nginx is running. If it is, it updates it; if not,
+it installs it. Then it verifies, and if the verify fails it reloads and tries
+once more.
+
+![A playbook flow: find nginx, branch to update or install, verify, then branch again to retry](docs/screenshots/playbook-branches.png)
+
+Branches nest, so a fallback can have its own decision inside it:
+
+![A playbook with a nested branch: scan for Log4j, then either patch or clean up and conditionally restart the database](docs/screenshots/playbook-nested.png)
+
+A playbook can run on its own when a matching host is approved (auto-enroll),
+or be called from any task with `type: playbook`. Templates give you a head
+start.
+
+### Automate the reaction
+
+An **automation** runs a task or a playbook when something happens, or on a
+schedule. Triggers are events (an alert is sent, a host is approved) filtered by
+severity, alert rule, text in the alert, or tag, or a cron schedule. Run it on
+the host the event came from, on a tag, or on everything, either all at once or
+**wave by wave** with automatic halting if too many hosts fail.
+
+![The Automation tab: a nightly schedule, a disk-full reaction, a new-host playbook, and a disabled rule](docs/screenshots/automations.png)
+
+### Keep apps and updates in line
+
+A **policy** says what a set of hosts should have: each app **present**,
+**latest**, **pinned** to a version, or **absent**, plus which OS updates to
+install, how long to defer them, and when hosts may restart. Vigil compares each
+host against its policy and fixes drift only inside the maintenance window. Turn
+on **approve each change** and the changes wait for a person instead. A
+compliance view tracks the percentage of hosts patched within your SLA.
+
+![The Policies page: three policies with their windows and patching, and changes waiting for approval](docs/screenshots/policies.png)
+
+The **By update** view on the Apps page groups what hosts are missing by KB or
+package. Approve or decline one update and it overrides every policy at once.
+
+![The By update view: pending Windows and Linux updates grouped by KB or package, with severity and how many hosts are missing each](docs/screenshots/app-updates.png)
+
+### Find and fix vulnerabilities
+
+Findings come from Trivy, Nessus and Greenbone, plus Vigil's own matcher
+against OSV, CISA KEV and EPSS that works offline. Findings are grouped by the
+fix that resolves them, so one **Deploy fix** patches every affected host at
+once.
 
 ![The Vulnerabilities page: fleet score, severity totals, and one row per fix with a Deploy fix button](docs/screenshots/vulns.png)
 
-### Run Docker and Podman
+### Manage firewalls without locking yourself out
 
-Containers and compose stacks across your hosts: start, stop, restart, read
-logs, update images, roll back, and edit a stack and its `.env` in place.
+Read a host's firewall (ufw, firewalld, or Windows Firewall) on demand, change
+the default policies, and add or remove rules. The page refuses the changes that
+would lock you out: blocking the agent's own outbound connection, closing SSH
+(or RDP on Windows), or defaulting incoming traffic to deny with no rule for it.
+
+![The Firewall page for one host: default policies and a rules table with allow and deny rules](docs/screenshots/firewall.png)
+
+### Map your network
+
+The **Topology** page groups your hosts by site and shows each one's address,
+open ports, firewall state, compose stacks, and which hosts talk to which.
+
+![The Topology page: hosts in a site with their ports and the connections between them](docs/screenshots/topology.png)
+
+### Run containers
+
+Docker and Podman containers and compose stacks across your hosts: start, stop,
+restart, read logs, update images, roll back, and edit a stack and its `.env`
+in place.
 
 ![The Containers page: compose stacks and their containers with state, CPU and memory](docs/screenshots/containers.png)
 
-### And more
+### Rebuild a machine from the dashboard
 
-| | |
-|---|---|
-| **Tasks and playbooks** | Write multi-step tasks in YAML with schedule windows, retries and success criteria. Deploy by host or tag, or let a baseline run on every newly approved host. Browse and submit to the [community catalog](https://github.com/Susquehanna-Syntax/Vigil-Approved-Scripts). |
-| **Patching and app policies** | Set an app to present, latest, pinned or absent. Patch inside maintenance windows, defer, approve each change, and track the percent of hosts patched within your SLA. |
-| **Firewall and topology** | Read firewall rules on demand, see your hosts grouped by site with their ports and connections, and get a warning before a change would lock you out over SSH or RDP. |
-| **Reprovisioning** | Rebuild a host remotely from an image library and install profiles. |
-| **Status pages** | Publish a public status page from the same data. |
-| **Active Directory** | Import computers and auto-tag them from their OU. |
+**Reprovision** keeps a library of OS images (Ubuntu, Debian and RHEL-family),
+install profiles that answer everything the installer asks (disk, partitioning,
+network, admin user, packages, tags to apply when done), and rebuild jobs that
+reinstall a host unattended and bring it back enrolled. It destroys the target
+disk, so it asks first.
 
-### Built to be safe to run
+![The Reprovision page: an image library with ready images and one downloading](docs/screenshots/reprovision.png)
+
+### Publish a status page
+
+Share a public status page from the same data your monitoring already has.
+Choose which hosts appear, give them customer-facing names, and the page shows
+a 90-day uptime history for each. The first page is free; branding and per-site
+pages are part of Business.
+
+![A public status page: all systems operational, with a 90-day uptime bar for each service](docs/screenshots/status-page.png)
+
+### Also included
+
+- **Active Directory import** with automatic tags from OU paths.
+- **Sites, roles and an audit log** (Business) to separate offices or clients,
+  scope who can do what, and record who changed what.
+- **Notifications** by webhook or email, and **Jackil** to turn an alert into a ticket.
+- **Agent modes** so each host decides how much Vigil may do to it.
+
+## Built to be safe to run
 
 - Every task is **signed with Ed25519**. Agents pin the server key on first use
   and refuse tasks if it ever changes.
