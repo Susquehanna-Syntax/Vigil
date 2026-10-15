@@ -1,0 +1,1237 @@
+# Vigil reference
+
+The full operator and developer manual: install options, configuration, every
+task action, the API, and the project layout. For the short tour, see the
+[README](../README.md).
+
+---
+
+## Overview
+
+Vigil is a lightweight monitoring system where agents on your hosts phone home to a central Django server. The server collects metrics, evaluates alert rules, dispatches signed tasks back to agents, and maintains a hardware inventory of your fleet. Everything runs over HTTPS with Ed25519 task signing and TOFU key pinning.
+
+**Key features:**
+- Real-time metric collection (CPU, memory, disk, network, swap, load average, processes)
+- 20 built-in alert rules with auto-resolution and host-offline detection
+- Notification dispatch (webhook, email)
+- Hardware inventory with OS, CPU, RAM, BIOS, MAC, uptime, timezone, and custom collector columns
+- Nessus/Tenable vulnerability integration — ingest scan results, launch scans from the UI ("Scan now"), or have agents request a scan via a task action; high-risk and critical findings raise alerts
+- Active Directory computer import with auto-tagging from OU paths
+- Tag-based fleet segmentation — deploy tasks by tag or by individual host
+- Multistep task authoring (YAML editor) with schedule windows, retry policies, and success criteria
+- Live-polled task history with pagination (5 s refresh while the History tab is visible)
+- Community task catalog on GitHub — submit your YAML as a pull request from the editor, browse approved entries
+- TOTP-based two-factor authentication for task execution and host enrollment approval, with single-use codes (replay protection)
+- Signed remote task execution with mode/allowlist enforcement on the agent
+- SQSY dark-theme dashboard with Chart.js visualizations
+
+## Editions
+
+Free Vigil answers "is my stuff up"; Business Vigil answers "can I prove to a
+third party that their stuff is up." Monitoring, alerting, and unlimited
+agents, hosts, and retention are free forever — the Business tier adds
+accountability features (sites, audit log, roles, branding). See
+[docs/EDITIONS.md](EDITIONS.md) for the full feature matrix.
+
+## What's new in 2026.12.1
+
+**A dashboard keeps the size you gave it.** Shrinking a widget to its smallest
+allowed size was discarded on save — the card came back at whatever size it had
+been before, and because a restored, larger widget collides with whatever is
+beside it, one ignored resize shoved its neighbours down and read as the whole
+board rearranging itself.
+
+The cause was in how the layout was collected, not in how it was stored.
+Gridstack's `save()` is a lossy serialiser: it drops a widget's width whenever
+that width equals the widget's own minimum, and its height on the same rule.
+Vigil passes the catalogue's minimums into every widget, so every widget sitting
+at its minimum came back from `save()` carrying no size at all, and the gap was
+filled from the last layout the server had sent — the size from before the
+resize. The layout is now read off the live grid nodes, which always carry a
+complete position and size, so what is saved is what is on screen.
+
+This is the third and last part of a defect whose first two parts shipped in
+2026.12.0: saves used to grow every minimum-sized widget to its catalogue size,
+and gravity used to pull every widget up so that deliberate whitespace could not
+be expressed at all. Verified as a round trip — arrange, save, reload — with
+widgets at their minimums and gaps between them.
+
+---
+
+## Quick Start (Local Dev — SQLite)
+
+```bash
+cd server
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+USE_SQLITE=true .venv/bin/python manage.py migrate
+USE_SQLITE=true .venv/bin/python manage.py createsuperuser
+USE_SQLITE=true .venv/bin/python manage.py runserver
+```
+
+- Dashboard: http://localhost:8000
+- Health check: http://localhost:8000/api/v1/health/
+- Admin: http://localhost:8000/admin/
+
+`USE_SQLITE=true` switches the database engine to SQLite and bypasses the need for PostgreSQL and TimescaleDB.
+
+---
+
+## Quick Start (Docker Compose)
+
+```bash
+cp .env.example .env
+```
+
+**1. Generate a signing key seed** (32-byte Ed25519 seed, base64-encoded — required, every checkin signs with it):
+
+```bash
+python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
+# Output is exactly 44 characters ending in '=' — example: Hk3PtP...P0c=
+```
+
+**2. Put it in `.env`** (along with `DJANGO_SECRET_KEY` and `POSTGRES_PASSWORD`). In a `.env` file the value is bare, no quotes:
+
+```
+VIGIL_SIGNING_KEY_SEED=Hk3PtP...P0c=
+```
+
+> **If you're pasting the compose stack into Portainer** (or any other UI that round-trips through YAML), set the value in the **Environment variables** tab — never inline it into the YAML. If you must inline it, **wrap it in double quotes** (`"Hk3...P0c="`) — the trailing `=` is base64 padding and unquoted YAML can strip or mangle it. A malformed seed produces `binascii.Error: Incorrect padding` and breaks every agent checkin in the fleet.
+
+**3. Verify the seed is good before bringing the stack up:**
+
+```bash
+python3 -c "import base64,sys; s=sys.argv[1]; print('OK',len(base64.b64decode(s)),'bytes')" \
+  "$(grep '^VIGIL_SIGNING_KEY_SEED=' .env | cut -d= -f2-)"
+# Expect: OK 32 bytes
+```
+
+Any other output (especially `binascii.Error: Incorrect padding` or a length that isn't 32) means fix the seed before continuing.
+
+**4. Start the stack:**
+
+```bash
+docker compose up -d
+docker compose exec web python manage.py createsuperuser
+```
+
+This brings up Django, PostgreSQL + TimescaleDB, Redis, Celery worker, and Celery beat.
+
+---
+
+## Upgrading
+
+```bash
+./scripts/vigil-backup.sh          # takes a dump first — see Backups below
+docker compose pull
+docker compose up -d
+```
+
+What that does, so nothing is a surprise:
+
+- **Migrations run automatically**, from the entrypoint of whichever container
+  starts first. They are applied once and are safe to attempt concurrently.
+- **In-flight tasks are lost.** Replacing the worker container drops whatever
+  it was executing; Vigil expires those tasks server-side rather than leaving
+  them `DISPATCHED` forever, and you re-run them. Upgrade when a rollout is not
+  mid-wave.
+- **Agents keep working across the upgrade.** They retry with backoff and
+  reconnect on their own; you do not need to touch them.
+- **A new agent version in the image does not update your fleet.** Deploy the
+  `update_agent` task when you want that, which verifies the new binary's
+  SHA-256 against the digest in the signed task before replacing anything.
+
+Downgrading is not supported: migrations are one-way. Restore a backup instead.
+
+## Backups
+
+There are three named volumes — `pgdata`, `media` and `images` — and deleting
+any of them deletes exactly what it holds, with no copy anywhere else.
+
+```bash
+./scripts/vigil-backup.sh /mnt/backups     # db + media + a manifest
+./scripts/vigil-restore.sh /mnt/backups/vigil-20260910T120000Z
+```
+
+`images` is deliberately not included: those are multi-gigabyte OS install
+trees that can be re-imported from source, and copying them would make a
+routine backup too expensive to run often. The manifest records what was
+registered so it can be fetched again.
+
+Run the backup from cron and keep a copy off the machine. A backup on the same
+disk as the database is a copy, not a backup.
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `DJANGO_SECRET_KEY` | _(none — required)_ | Django secret key. Vigil refuses to start without it; the compose file no longer substitutes a default |
+| `DJANGO_DEBUG` | `false` | Leave it off. On, it disables the production configuration checks and serves verbose error pages |
+| `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated allowed hosts |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | _(empty)_ | Comma-separated origins trusted for POSTs, scheme included — required behind a proxy or external hostname, else `Origin checking failed` |
+| `USE_SQLITE` | _(unset)_ | Set to `true` to use SQLite instead of PostgreSQL |
+| `POSTGRES_DB` | `vigil` | PostgreSQL database name |
+| `POSTGRES_USER` | `vigil` | PostgreSQL user |
+| `POSTGRES_PASSWORD` | `vigil` | PostgreSQL password |
+| `POSTGRES_HOST` | `db` in compose, `localhost` otherwise | PostgreSQL host. The compose file sets this itself — editing it in `.env` changes nothing |
+| `CELERY_BROKER_URL` | `redis://redis:6379/0` in compose | Redis URL. The compose file sets this itself — editing it in `.env` changes nothing |
+| `VIGIL_SIGNING_KEY_SEED` | _(empty)_ | Base64 Ed25519 seed — required for task deployment |
+| `VIGIL_TIMEZONE` | `UTC` | IANA timezone for schedule window evaluation (e.g. `America/New_York`) |
+| `VIGIL_METRIC_RETENTION_DAYS` | `30` | Days of raw metric history to keep |
+| `VIGIL_ALERT_RETENTION_DAYS` | `90` | Days to keep *resolved* alerts. Firing and acknowledged alerts are never pruned. `0` disables pruning |
+| `VIGIL_MAX_REQUEST_BODY_BYTES` | `8388608` (8 MB) | Largest request body Django will accept. Task results are the big payload — a Trivy scan report. Raising Django's 2.5 MB default matters because the limit is enforced before any view runs: an oversized result fails the whole POST with a bare `400` nothing can annotate, and the task stays `DISPATCHED` forever |
+| `VIGIL_AGENT_VERSION` | _(ignored)_ | **No longer used.** The expected agent version is detected from the agent bundled in the build. Leaving it set is harmless — the server logs a note at startup and carries on |
+| `NESSUS_URL` | _(empty)_ | Nessus/Tenable server URL |
+| `NESSUS_ACCESS_KEY` | _(empty)_ | Nessus API access key |
+| `NESSUS_SECRET_KEY` | _(empty)_ | Nessus API secret key |
+| `NESSUS_VERIFY_SSL` | `true` | Verify Nessus TLS certificate |
+| `EMAIL_BACKEND` | `console` | Django email backend |
+| `EMAIL_HOST` | `localhost` | SMTP host |
+| `EMAIL_PORT` | `587` | SMTP port |
+| `VIGIL_NOTIFICATION_FROM_EMAIL` | `vigil@localhost` | From address for alert emails |
+| `VIGIL_PUBLIC_URL` | — | External URL for remote access; its host/origin are auto-added to `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS` |
+| `VIGIL_TRUST_PROXY` | `false` | Trust `X-Forwarded-Proto`/`Host` from a TLS-terminating proxy/tunnel |
+| `TUNNEL_TOKEN` | — | Cloudflare Tunnel token for `docker compose --profile tunnel up` |
+
+---
+
+## Remote Access (off-LAN check-in)
+
+Agents are outbound-only, so reaching Vigil from outside the LAN is just a matter
+of exposing the server at a public or overlay address. Set `VIGIL_PUBLIC_URL` to
+your external URL and `VIGIL_TRUST_PROXY=true` when a proxy terminates TLS. The
+repo ships a `cloudflared` sidecar (`docker compose --profile tunnel up -d`) for
+Cloudflare Tunnel. Full recipes for **Cloudflare Tunnel**, **Tailscale**, and a
+generic **reverse proxy** are in [docs/REMOTE-ACCESS.md](REMOTE-ACCESS.md).
+
+---
+
+## Running the Agent
+
+### Local dev (agent + server on the same machine)
+
+```bash
+cd agent
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cp config.example.yml agent.yml
+```
+
+Edit `agent.yml`:
+
+```yaml
+server_url: http://localhost:8000
+mode: monitor            # start with monitor, upgrade later
+checkin_interval: 15     # faster for testing
+data_dir: ./data
+```
+
+> **Monitor mode runs unprivileged**, on Windows as well as Linux — as
+> `vigil-agent` under systemd hardening, or as the `NT SERVICE\vigil-agent`
+> virtual account. Switching to `managed` or `full_control` runs it privileged
+> and is one config line plus a re-run of the installer. See
+> [docs/AGENT-PRIVILEGES.md](AGENT-PRIVILEGES.md) for what each mode can
+> and cannot do — notably, an unprivileged Windows agent cannot report Windows
+> Update status, and cannot stage a reprovision.
+
+Run the agent:
+
+```bash
+python3 -m vigil_agent -c agent.yml --log-level DEBUG
+```
+
+On first run the agent will:
+- Generate a cryptographic token and save it to `agent.yml`
+- Register with the server (creates a **pending** host)
+- Start checking in — the server responds with `{"status": "pending"}` until you approve
+
+Approve the host from **Settings → Enrollment Queue** in the dashboard, or via API:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/hosts/<host-id>/approve/ \
+  -H "Cookie: sessionid=<your-session>" \
+  -H "X-CSRFToken: <csrf-token>"
+```
+
+### Production (remote hosts, TLS)
+
+```yaml
+# /etc/vigil/agent.yml on each monitored host
+server_url: https://vigil.yourdomain.com
+mode: managed
+checkin_interval: 60
+data_dir: /var/lib/vigil-agent
+tags:
+  - web-server
+  - prod
+allowlist:
+  - restart_service
+  - restart_container
+  - clear_temp_files
+  - run_package_updates
+```
+
+**Security notes:**
+- `chmod 600 agent.yml` — the config contains the agent token
+- **TOFU key pinning:** the first public key received from the server is pinned to `data_dir/server_public_key.pin`. Any future key change is treated as a potential compromise — all tasks are rejected until the pin file is manually deleted
+- **Agent mode is authoritative** — a compromised server cannot escalate an agent's mode or allowlist
+- No `shell=True` anywhere; all task parameters are validated before execution
+
+---
+
+## Dashboard Pages
+
+| Page | Description |
+|---|---|
+| **Dashboard** | A grid of widgets you arrange, resize and name. Add from a catalogue grouped by what they are for; keep several dashboards and switch between them. The **Host status** widget carries the full host cards — status dot, OS logo, tags, mode badge, live CPU/Memory/Disk/Network bars, RDP, Deploy, Remove — and opens the host detail drawer on click. |
+| **Inventory** | Hardware table for all enrolled hosts. Columns: hostname, IP, OS, CPU, RAM, MAC, BIOS, disks, uptime, last user, timezone, and more. Scrollable, sortable (click header), filterable per-column (`=value` for exact, default contains), drag-to-reorder columns, column visibility toggled via Columns button. |
+| **Tasks** | YAML task editor (with **Submit to Community** that opens a GitHub PR) and your private library. The **History** tab lists every dispatched task with live polling — newest first, paginated. |
+| **Vulns** | Nessus/Tenable scan findings per host, with a **Scan now** button per row. The **Recent scans** section below shows every scan request — UI-launched or agent-requested — and its state. |
+| **Firewall** | Per-host firewall rules and default policies, fetched on demand (not polled). See [Firewall Management](#firewall-management). |
+| **Monitor** | Select a host for live SVG gauges (CPU, Memory, Disk, Load) and Chart.js time-series with 1h/6h/24h/7d range selector. RDP download button for Windows hosts. |
+| **Alerts** | Firing, acknowledged, and resolved alerts across the fleet. |
+| **Community** | Browse forks of approved community tasks. New submissions live on GitHub at [SusquehannaSyntax/Vigil-Approved-Scripts](https://github.com/SusquehannaSyntax/Vigil-Approved-Scripts) — use **Submit to Community** in the task editor to open a PR. |
+| **Settings** | Enrollment queue (approve/reject pending hosts), TOTP enrollment, AD import, server timezone display. |
+
+---
+
+## Hardware Inventory
+
+Agents ship a hardware snapshot on an hourly cadence (separate from the 60-second metric checkin). The inventory page shows:
+
+| Field | Source |
+|---|---|
+| OS (agent) | Agent-reported `host.os` string |
+| OS Name | `/etc/os-release PRETTY_NAME` |
+| OS Version | `/etc/os-release VERSION_ID` |
+| Kernel | `platform.release()` |
+| Architecture | `platform.machine()` |
+| Uptime | `time.time() - psutil.boot_time()` |
+| Last User | `psutil.users()` — most recent login |
+| Manufacturer | `/sys/class/dmi/id/sys_vendor` |
+| Model | `/sys/class/dmi/id/product_name` |
+| Service Tag | `/sys/class/dmi/id/product_serial` |
+| BIOS | `/sys/class/dmi/id/bios_version` + `bios_date` |
+| RAM | `psutil.virtual_memory().total` |
+| CPU | `/proc/cpuinfo model name` |
+| Cores | `psutil.cpu_count(logical=True)` |
+| MAC | `psutil.net_if_addrs()` — preferred eth/en interface |
+| Disks | `psutil.disk_partitions()` |
+| Timezone | `/etc/timezone` |
+
+**Custom columns** — tasks marked with a `collect:` block in their YAML write key/value pairs into `HostInventory.custom_columns`, which auto-appear as additional columns on the Inventory page.
+
+---
+
+## Tags
+
+Tags are free-form strings attached to hosts. They enable tag-based task deployment and fleet segmentation.
+
+**Sources (merged in order):**
+1. `agent.yml` — `tags: [web-server, prod, rack-3]` — sent at each checkin
+2. Server-side tags — editable in the host detail panel (click any host card)
+3. Auto-tags — applied at checkin based on OS (`linux`, `windows`, `macos`) and mode (`managed`, `monitor`, `full_control`)
+4. AD import — tags from OU path segments (e.g. `OU=Servers,OU=IT` → `servers`, `it`)
+5. Tasks — the `add_tag` / `remove_tag` actions (2026.8.0), so a task or baseline can tag a host it just changed
+6. Install profiles — a rebuilt host is tagged when it checks back in (2026.7.4)
+
+**Deploy by tag** — in the deploy modal, switch the target toggle from "Individual Hosts" to "By Tag" to deploy to all online managed hosts with a given tag.
+
+**Distro logos** are real logo images bundled under `server/static/img/os/`
+(built from [Simple Icons](https://simpleicons.org), CC0-1.0, on a
+brand-coloured disc; Windows and Bazzite drawn by hand since Simple Icons
+carries neither). They are served from Vigil, never hot-linked — the console
+has to work on a network with no route to the internet.
+
+**The `agent:` namespace is reserved.** Tags an agent asserts about itself at
+check-in live under `agent:`, and nothing else may write there — not a task,
+not an install profile, not the API. That separation is what stops a
+compromised agent from granting itself a tag that an operator's baselines or
+deploy rules target.
+
+---
+
+## Task Authoring
+
+Tasks are YAML definitions authored in the built-in editor (Tasks → New Task) and deployed across hosts via the deploy modal.
+
+### Full YAML schema
+
+```yaml
+name: Restart nginx and verify
+description: Gracefully reload nginx, confirm the service is running.
+relevance: web servers
+risk: standard   # low | standard | high
+
+# Optional inputs — filled in at deploy time
+inputs:
+  - id: service
+    label: Service name
+    type: text
+    default: nginx
+    required: true
+
+# Optional: restrict dispatch to a maintenance window (server timezone)
+schedule:
+  window:
+    start_hour: 8       # 0–23
+    start_minute: 0     # 0–59, default 0
+    end_hour: 17        # inclusive through end_hour:59
+    end_minute: 0
+    days: [mon, tue, wed, thu, fri]   # default: all 7
+
+# Optional: retry failed steps
+on_failure:
+  retry:
+    attempts: 3         # 0 = no retry
+    delay_seconds: 60
+
+# Optional: validate step output (supports ${{ inputs.x }} variables)
+success_criteria:
+  exit_code: 0
+  output_contains: "active (running)"   # substring match
+  output_regex: "^OK"                   # regex (applied after output_contains)
+
+# Optional: write this task's output into the host's inventory as a custom column
+collect:
+  column: nginx_version           # required — the custom_columns key (≤ 80 chars)
+  parse: output_line_1            # optional — output_line_1 (default) | output_trim | output_full
+
+actions:
+  - id: reload
+    type: reload_service
+    params:
+      service_name: "${{ inputs.service }}"
+    success_criteria:
+      exit_code: 0
+      output_contains: "${{ inputs.service }} reloaded"
+
+  - id: verify
+    type: check_service
+    params:
+      service_name: "${{ inputs.service }}"
+      expect: active
+
+  # Optional per-step keys
+  - id: build
+    type: run_command
+    when: 'inputs.run_build == "yes"'   # skip this step unless it matches
+    timeout: 1800                       # seconds, 1–3600 (default 120)
+    params:
+      command: "make -j8 all"
+```
+
+**`when:`** gates a single step on a predicate over `agent.*` (platform facts:
+`os`, `arch`, `pkg_manager`, `hostname`) and `inputs.*` (the values supplied at
+deploy time). A step whose predicate is false is skipped and recorded, and does
+not block later steps. Referencing an input you did not declare is rejected when
+the task is saved — otherwise the step would silently never run.
+
+**`timeout:`** raises the per-step limit past the 120-second default, up to one
+hour. Use it for source builds, large image pulls, and filesystem scans on big
+volumes rather than detaching the work with `nohup` and polling for it.
+
+**Schedule windows** are evaluated in the server's `VIGIL_TIMEZONE`. Tasks outside the window stay `PENDING` and are dispatched on the next checkin that falls inside the window.
+
+**Retry** — on step failure the agent re-runs the step after `delay_seconds`, up to `attempts` times, before marking the task as failed.
+
+**Success criteria** — even a zero exit code is treated as failure if `output_contains` or `output_regex` doesn't match. Per-step criteria override the top-level criteria.
+
+**Collect** — a task marked with a top-level `collect:` block becomes an inventory data collector: when the run finishes on a host, the task's output is written into that host's `HostInventory.custom_columns`, and the column auto-appears on the Inventory page. The block is a **single mapping** (not a list, and not one entry per column — one task collects one column), with these keys:
+
+| Key | Required | Meaning |
+|---|---|---|
+| `column` | yes | The `custom_columns` key to write. String, ≤ 80 characters. |
+| `parse` | no | How the task output becomes the stored value. One of `output_line_1` (default), `output_trim`, `output_full`. |
+
+There is **no `value:` key and no `{{ steps.* }}` templating** — the value always comes from the task's own output, transformed by `parse`:
+
+- `output_line_1` *(default)* — the first non-empty line of output, with a leading `[OK]` step prefix and any `label:` prefix stripped; truncated to 500 characters. Best for a task whose script echoes a single value.
+- `output_trim` — the entire output, whitespace-trimmed, truncated to 500 characters.
+- `output_full` — the entire output verbatim, truncated to 2000 characters.
+
+The column is written per host when that host's task completes, so running one `collect:` task against a tag or fleet fills the column for every targeted host. Worked example — record each host's kernel release into a `kernel` column:
+
+```yaml
+name: Record kernel version
+description: Capture uname -r into the host inventory.
+risk: low
+collect:
+  column: kernel
+  parse: output_line_1
+actions:
+  - id: uname
+    type: run_command
+    params:
+      command: "uname -r"
+```
+
+### Available actions
+
+All 53 primitives are defined in `server/apps/tasks/spec.py` and executed in `agent/vigil_agent/executor.py`. `run_command` and `execute_script` require `full_control` mode; all others require `managed` or higher.
+
+**Service management**
+
+| Action | Params | Optional |
+|---|---|---|
+| `restart_service` | `service_name` | — |
+| `start_service` | `service_name` | — |
+| `stop_service` | `service_name` | — |
+| `reload_service` | `service_name` | — |
+| `enable_service` | `service_name` | — |
+| `disable_service` | `service_name` | — |
+| `check_service` | `service_name` | `expect` |
+
+**Container management**
+
+| Action | Params | Optional |
+|---|---|---|
+| `restart_container` | `container_name` | — |
+| `start_container` | `container_name` | — |
+| `stop_container` | `container_name` | — |
+| `remove_container` | `container_name` | — |
+| `pull_image` | `image` | — |
+| `recreate_container` | `container_name` | `image` |
+| `docker_compose_up` | `compose_file` | `services` |
+| `docker_compose_down` | `compose_file` | — |
+| `clear_docker_logs` | — | `container_name` |
+| `check_docker_updates` | — | — |
+
+**Package management**
+
+| Action | Params | Optional |
+|---|---|---|
+| `install_package` | `package_name` | — |
+| `remove_package` | `package_name` | — |
+| `update_package` | `package_name` | — |
+| `run_package_updates` | — | `security_only` |
+
+**File operations**
+
+| Action | Params | Optional |
+|---|---|---|
+| `write_file` | `path`, `content` | `mode` |
+| `create_directory` | `path` | `owner`, `group`, `mode` |
+| `delete_path` | `path` | `recursive` |
+| `copy_file` | `src`, `dest` | — |
+| `move_file` | `src`, `dest` | — |
+| `set_permissions` | `path` | `owner`, `group`, `mode` |
+
+**System**
+
+| Action | Params | Optional |
+|---|---|---|
+| `clear_temp_files` | — | `older_than_days` |
+| `execute_script` | `script_name` | — |
+| `reboot` | — | `delay_seconds` |
+| `run_command` | `command` | `timeout` |
+| `set_hostname` | `hostname` | — |
+
+**Networking**
+
+| Action | Params | Optional |
+|---|---|---|
+| `add_firewall_rule` | `port`, `protocol` | `action`, `source`, `interface` |
+| `remove_firewall_rule` | `port`, `protocol` | `action`, `source` |
+| `list_firewall_rules` (low risk — read-only) | — | — |
+| `set_firewall_policy` | `direction`, `policy` | — |
+| `enable_firewall` | — | — |
+| `disable_firewall` | — | — |
+
+`list_firewall_rules` is the only low-risk action in this group — it changes nothing, so the Firewall tab dispatches it freely. The other five are high-risk. See [Firewall Management](#firewall-management).
+
+**User management**
+
+| Action | Params | Optional |
+|---|---|---|
+| `create_user` | `username` | `groups`, `shell` |
+| `delete_user` | `username` | `remove_home` |
+| `add_user_to_group` | `username`, `group` | — |
+
+**Cron**
+
+| Action | Params | Optional |
+|---|---|---|
+| `create_cron_job` | `schedule`, `command` | `user` |
+| `delete_cron_job` | `pattern` | `user` |
+
+**Vulnerability scanning**
+
+| Action | Params | Optional |
+|---|---|---|
+| `request_nessus_scan` | — | — |
+| `request_network_scan` | — | `engine` (`nessus` \| `greenbone`) |
+| `run_trivy_scan` | — | `scope` (`fs` \| `rootfs` \| `image:<name>`) |
+| `trivy_db_update` | — | — |
+
+The two `request_*` actions only leave a marker: the agent finishes, and the server creates a `VulnScan` for the central scanner to run. `run_trivy_scan` is the opposite — the scan *is* the task, and the findings arrive with its output. See [Vulnerability Management](#vulnerability-management).
+
+**Host tagging** *(2026.8.0 — needs an agent on 2026.8.0 or newer)*
+
+| Action | Params | Optional |
+|---|---|---|
+| `add_tag` | `tags` | — |
+| `remove_tag` | `tags` | — |
+
+`tags` is a **comma-separated string**, not a list — every param value has to
+be a primitive so the signed payload stays flat:
+
+```yaml
+actions:
+  - type: add_tag
+    when: has_docker            # evaluated on the host, so tagging is conditional
+    params:
+      tags: "role:docker, env:lab"
+```
+
+Like the `request_*` scan actions these only leave a marker; tags are
+server-side metadata about a host, not state on it, so the server applies the
+change when the result arrives. What it applies comes from the task it signed,
+**never from what the agent reports back** — a compromised agent can at most
+claim success on a tag you already wrote into the definition, it cannot choose
+one. The reserved `agent:` prefix is refused when the definition is saved and
+again when the tags are applied.
+
+**Agent & baselines**
+
+| Action | Params | Optional |
+|---|---|---|
+| `baseline` | `name` | — |
+| `update_agent` | — | `platform` |
+
+`update_agent` replaces the agent executable, so the server stamps the verified SHA-256 of each platform binary into the signed task — TLS alone is not proof enough for that swap.
+
+**Reprovisioning** (see [`docs/reprovisioning.md`](reprovisioning.md))
+
+| Action | Params | Optional |
+|---|---|---|
+| `reprovision_preflight` | — | `disk_target`, `os_family` |
+| `reprovision_stage` | `job_id`, `kernel_url`, `initrd_url`, `kernel_sha256`, `initrd_sha256` | — |
+| `reprovision_commit` | `job_id`, `cmdline` | — |
+| `reprovision_cleanup` | `job_id` | — |
+
+All except `reprovision_preflight` are high-risk and additionally gated by the agent's own `allow_reprovision` opt-in — a compromised server cannot wipe a host that never opted in.
+
+### Deployment flow
+
+1. Write a task definition in the YAML editor (Tasks → New Task)
+2. Click **Deploy** on a library card
+3. Fill in any inputs on the **Inputs** tab
+4. Optionally set a schedule window, retry policy, and success criteria on their tabs
+5. Select target hosts (or choose a tag) on the **Hosts** tab
+6. Enter your 6-digit TOTP code and submit
+7. Track execution in the run detail view (Tasks → History — the list polls every 5 seconds while open)
+
+---
+
+## Community Catalog
+
+The Vigil community catalog lives on GitHub at [SusquehannaSyntax/Vigil-Approved-Scripts](https://github.com/SusquehannaSyntax/Vigil-Approved-Scripts). Every Vigil instance can browse approved entries; submissions are PR-reviewed by SQSY maintainers.
+
+### Submitting your task
+
+The task editor's toolbar has a **Submit to Community** button. Clicking it:
+
+1. Reads the YAML currently in the editor and slugifies the task name into a filename (e.g. `restart-nginx-and-verify.yaml`).
+2. **Auto-injects attribution** — adds `author: <your-vigil-username>` and `created: <today>` after the `name:` line if they aren't already declared. The community repo policy requires both fields; auto-injection means you never have to remember.
+3. Opens a modal with two actions: **Copy YAML** (clipboard) and **Open GitHub PR**.
+4. The **Open GitHub PR** link points at `github.com/SusquehannaSyntax/Vigil-Approved-Scripts/new/main/tasks?filename=<slug>.yaml&value=<your YAML>` — GitHub's new-file editor with the body pre-filled.
+5. If you don't have write access on the repo, GitHub forks it into your account automatically; click **Propose new file** → **Create pull request**.
+6. A SQSY maintainer reviews and merges. Once merged, every Vigil instance can see the entry.
+
+### Required YAML fields for community submissions
+
+| Field | Type | Auto-filled by Submit-to-Community |
+|---|---|---|
+| `name` | string | No (must be in your YAML) |
+| `description` | string | No |
+| `risk` | `low` / `standard` / `high` | No |
+| `actions` | non-empty list | No |
+| `author` | string (your Vigil username) | **Yes** |
+| `created` | ISO-8601 date (`YYYY-MM-DD`) | **Yes** |
+
+`author` and `created` are also optional in the local schema, so private tasks aren't forced to carry them. When present, both fields surface in card meta lines and the editor preview — YAML-declared `author` takes precedence over the local `owner_username` so a forked task keeps its original attribution.
+
+This replaces the older local "publish to community" flow — there is no per-server community tab managed by API anymore. The advantage: one curated repo for everyone, version history, audit trail, and no shared DB to operate.
+
+---
+
+## Automations — event filters
+
+An event automation fires when a hook does. Beyond severity and alert rule,
+these narrow *which* alerts count:
+
+| Filter | Effect |
+|---|---|
+| **Only for events on host** | Fires only for alerts on that one host |
+| **Only when the alert's name/description contains…** | Substring match, case-insensitive |
+| **…does not contain** | Fires only when the text is absent |
+
+The alert's **name** is its rule's name; its **description** is the alert
+text. Matching "name or description" with *does not contain* means the text
+appears in **neither** — a filter meant to exclude something must not let it
+through because it matched the field you weren't thinking about.
+
+These scope the **trigger**, not the target: an automation can watch one host
+and act on another, which is why "Only for events on host" is separate from
+"Run on" below it. An alert Vigil raises directly (rather than from a rule)
+has no name, so *contains* cannot match it and *does not contain* passes it.
+
+---
+
+## Alerting
+
+Vigil ships with **20 default alert rules** created automatically on first migration. Rules evaluate every 60 seconds via Celery beat. Alerts auto-resolve when the metric returns below the threshold.
+
+**CPU**
+
+| Rule | Threshold | Severity | Duration |
+|---|---|---|---|
+| Elevated CPU Usage | > 75% | Warning | 5 min |
+| High CPU Usage | > 90% | Critical | 5 min |
+| CPU Critical (95%) | > 95% | Critical | 1 min |
+| High Load Average (1m) | > 10 | Warning | 2 min |
+| High Load Average (5m) | > 8 | Warning | 5 min |
+| Sustained High Load (15m) | > 6 | Critical | 10 min |
+
+**Memory & Swap**
+
+| Rule | Threshold | Severity | Duration |
+|---|---|---|---|
+| Elevated Memory Usage | > 80% | Warning | 2 min |
+| High Memory Usage | > 90% | Critical | 2 min |
+| Memory Critical (95%) | > 95% | Critical | 1 min |
+| High Swap Usage | > 50% | Warning | 5 min |
+| Swap Nearly Exhausted | > 80% | Critical | 2 min |
+
+**Disk**
+
+| Rule | Threshold | Severity | Duration |
+|---|---|---|---|
+| Disk Usage High | > 80% | Warning | Instant |
+| Disk Nearly Full | > 90% | Critical | Instant |
+| Disk Critical (95%) | > 95% | Critical | Instant |
+
+**Network**
+
+| Rule | Threshold | Severity | Duration |
+|---|---|---|---|
+| High Network Error Rate (In) | > 100 errors | Warning | 2 min |
+| High Network Error Rate (Out) | > 100 errors | Warning | 2 min |
+| High Network Drop Rate (In) | > 200 drops | Warning | 2 min |
+| High Network Drop Rate (Out) | > 200 drops | Warning | 2 min |
+
+**Process**
+
+| Rule | Threshold | Severity | Duration |
+|---|---|---|---|
+| Process CPU Spike | > 95% (single process) | Warning | 2 min |
+| Process Memory Spike | > 50% (single process) | Warning | 2 min |
+
+**Host offline** — when a host misses 5+ minutes of checkins, an alert is automatically created. It auto-resolves on the next successful checkin.
+
+Custom rules can be created via the Django admin.
+
+---
+
+## Notifications
+
+Configure notification channels in the Django admin under **Alerts → Notification channels**:
+
+- **Webhook** — POST JSON payload to a URL. Set a `secret` in the config for an `X-Vigil-Secret` request header.
+- **Email** — Sent via Django's email backend. Configure `EMAIL_HOST`, `EMAIL_PORT`, etc. in your `.env`.
+
+---
+
+## Two-Factor Authentication (TOTP)
+
+Vigil implements RFC 6238 TOTP natively. Task deployments require a 6-digit TOTP code once enrolled.
+
+**Enrollment:**
+1. Go to Settings → Two-Factor Authentication
+2. Click **Enroll TOTP** — copy the secret into any authenticator app (Google Authenticator, Authy, 1Password, Bitwarden, Aegis)
+3. Enter a code from the app to confirm
+
+Task deploys are blocked until enrolled. TOTP can be disabled from Settings (requires a current code).
+
+### High-risk steps in a baseline
+
+A baseline dispatches **unattended**, on every host that matches it at
+enrollment. Run by hand, a high-risk task costs a TOTP code and a 60-second
+delay with somebody watching; in a baseline there is nobody to prompt. So
+baselines refused high-risk definitions outright.
+
+Since 2026.7.3 that is a per-baseline opt-in — **Allow high-risk steps in this
+baseline**, off by default. Ticking it costs a fresh TOTP code, and that one
+confirmation authorizes every future dispatch of that baseline, the same
+bargain baseline creation already makes for standard-risk steps. Unticking it
+costs nothing: withdrawing an authorization needs no authorization.
+Duplicating a baseline does not inherit the flag — the original's code
+authorized that baseline, not a copy of it.
+
+**`update_agent` stays excluded whatever the flag says.** It replaces the
+executable that enforces the agent's own allowlist, so it keeps the human and
+the digest ceremony in the loop.
+
+---
+
+## Vulnerability Management
+
+Vigil ingests findings from three scanners into one `VulnFinding` table, one host score, and one Vulnerabilities tab. Configure whichever you have — none are required, and an unconfigured scanner is skipped silently.
+
+| Scanner | Where it runs | How Vigil gets findings | Setup |
+|---|---|---|---|
+| **Nessus / Tenable** | Central server you run | Vigil launches scans over the REST API and polls | `NESSUS_*` env vars |
+| **Greenbone / OpenVAS** | Container you run | Vigil launches scans over GMP (XML/TLS) and polls | `GREENBONE_*` env vars |
+| **Trivy** | The monitored host itself | The scan *is* an agent task; findings arrive with its output | Nothing server-side |
+
+`vulns.sync_vulns` (hourly beat) walks every registered scanner, skips the unconfigured ones, and isolates failures so one bad scanner can't break the rest. Trivy is event-driven and does nothing during that walk — its findings land when the task completes.
+
+> `vulns.sync_nessus_vulns` still exists as a deprecated alias for one release, for pinned callers. New code should call `sync_vulns`.
+
+### Trivy — agent-local, no server setup
+
+Trivy scans the monitored host's own filesystem and installed packages against a CVE database. Nothing listens on the network and there is no central scanner to run. Deploy a task using the `run_trivy_scan` action:
+
+```yaml
+name: Trivy filesystem scan
+risk: low
+actions:
+  - id: scan
+    type: run_trivy_scan
+    params: { scope: fs }      # or image:<name> for a container image
+```
+
+The agent needs the `trivy` binary — use the **Install Trivy on this host** task template, or install it by hand.
+
+> **`managed`-mode agents must allowlist the action.** The shipped `agent.yml` allowlist does *not* include `run_trivy_scan`, so a managed agent rejects the task and no findings ever arrive. Add it (and `trivy_db_update` if you refresh the DB explicitly) to the host's `allowlist:`. `full_control` agents ignore the allowlist entirely.
+
+On completion the server writes one `VulnFinding` per (package, CVE) pair, marks previously-open findings that didn't reappear as `FIXED`, and recomputes the host score. The outcome is appended to the task's own output, so run details show either `[INGEST] trivy: N finding(s) ingested` or `[INGEST FAILED] <reason>`.
+
+**Report size.** A full `trivy fs /` report is very large — around 30 MB on a stock Ubuntu workstation, of which roughly 90% is a package inventory Vigil never reads. The agent strips it to the fields the server ingests, deduplicates on (package, CVE) — the same package/CVE is reported once per binary that links it, so a raw report carries about 3x the findings the server actually stores — and gzips the result. That workstation's report goes out at 22.9 KB, **1317x smaller**, with every finding intact. A host with thousands of findings still fits in one request. Two consequences worth knowing:
+
+- Agents older than **2026.6.2** send the raw report, which is truncated in transit and cannot be ingested. The Vulnerabilities tab stays empty and run details say the report is truncated. Update the agent.
+- If you put a proxy in front of Vigil, its request body limit must clear `VIGIL_MAX_REQUEST_BODY_BYTES` (8 MB by default), or results are rejected before Vigil ever sees them.
+- Compression is transparent to the server: a plain report from an older agent still ingests, and a compressed one is decompressed before any diagnostic quotes it back, so refusal messages stay readable rather than showing base64.
+
+### Suggest Fix
+
+Every finding on the Vulnerabilities tab has a **Suggest Fix** button. Where the scanner reported a package and a fixed version — always the case for Trivy — it prefills a precise `update_package` task with **no model call at all**:
+
+```yaml
+name: "Upgrade openssl to 3.0.3"
+description: "Remediates CVE-2024-0001 on web-01 (installed 3.0.2 -> fixed 3.0.3)"
+risk: standard
+actions:
+  - type: update_package
+    params:
+      package_name: "openssl"
+```
+
+It is scoped to the **package**, not the CVE. One upgrade clears every CVE open against that package, so the suggestion says how many it covers rather than implying it fixes only the one you clicked.
+
+Any AI providers you have configured run alongside it, in parallel, for the cases a deterministic task cannot cover: no fixed version published, or no package at all (common for Nessus network findings, where the prompt asks for a diagnostic rather than an upgrade). Suggestions are still untrusted — everything passes through `parse_and_validate`, `update_agent` is dropped on sight, and nothing runs until you deploy it.
+
+**A report with no `Vulnerabilities` section is refused rather than ingested.** That shape means the scan never ran the vulnerability scanner — ingesting it would mark every existing finding fixed and report the host clean, which is the worst possible failure for a security feature. Existing findings are left untouched and the reason appears in run details.
+
+### Nessus setup
+
+1. Install **Nessus Essentials** (free, scans up to 16 IPs) — register at <https://www.tenable.com/products/nessus/nessus-essentials> for an activation code, then:
+
+   ```bash
+   curl -o nessus.deb 'https://www.tenable.com/downloads/api/v2/pages/nessus/files/Nessus-latest-debian10_amd64.deb'
+   sudo dpkg -i nessus.deb
+   sudo systemctl enable --now nessusd
+   ```
+
+   Open `https://localhost:8834`, complete activation, and wait ~20–30 minutes for plugin compilation. Generate API keys under **My Account → API Keys → Generate**.
+
+2. Wire the keys into Vigil's `.env`:
+
+   ```env
+   NESSUS_URL=https://localhost:8834
+   NESSUS_ACCESS_KEY=<paste>
+   NESSUS_SECRET_KEY=<paste>
+   NESSUS_VERIFY_SSL=false        # self-signed cert by default
+   ```
+
+   When Vigil runs in Docker against a host-installed Nessus, use `https://host.docker.internal:8834` (Mac) or `https://172.17.0.1:8834` (Linux bridge).
+
+3. Verify the connection:
+
+   ```bash
+   docker compose exec server python manage.py shell -c \
+     "from apps.vulns.tasks import sync_nessus_vulns; print(sync_nessus_vulns())"
+   ```
+
+### What runs automatically
+
+The `vulns.sync_vulns` Celery beat (hourly) does three things in order, for each configured network scanner:
+
+1. **Launches** every `VulnScan` in the `requested` state by calling Nessus's `Basic Network Scan` template against the host's IP (or the Greenbone equivalent over GMP).
+2. **Polls** in-flight scans and updates their state in the dashboard.
+3. **Ingests** results from completed scans into `VulnSummary`, fires alerts on new criticals and new highs, and resolves them once findings clear.
+
+### Launching scans from Vigil
+
+Three paths, all converge on a `VulnScan` row visible in the **Recent scans** list:
+
+| Path | Who triggers | TOTP gate |
+|---|---|---|
+| **Scan now** button (Vulnerabilities tab) | Operator from UI | Yes |
+| **Request a Nessus scan** task template | Operator dispatches to a host | Yes (at deploy time) |
+| `request_nessus_scan` action in a custom YAML task | Anyone with a published YAML using this action | Yes (deploy gate) |
+
+One active scan per host is enforced — repeated requests while a scan is in flight return `409 Conflict`.
+
+### Ready-made templates in the editor
+
+The task editor's **Start from template…** dropdown covers all three scanners:
+
+| Template | Risk | What it does |
+|---|---|---|
+| **Install Nessus Essentials on this host** | high | Downloads, installs and starts `nessusd`, then echoes the activation URL |
+| **Request a Nessus scan of this host** | low | `request_nessus_scan` — the server picks up the marker on completion and queues a scan |
+| **Install Greenbone Community Edition** | high | Drops the official CE compose stack into `/opt/greenbone` and brings it up (Linux, docker-capable hosts only) |
+| **Request a network scan of this host** | low | `request_network_scan` — engine-agnostic; the server picks Nessus or Greenbone |
+| **Install Trivy on this host** | high | Cross-platform install via apt / dnf / brew / winget, chosen by per-step `when:` predicates |
+| **Run a Trivy vulnerability scan** | low | `run_trivy_scan` — the scan runs on the host and the findings come back with the task |
+
+---
+
+## Firewall Management
+
+The **Firewall** app (sidebar, between Vulns and Monitor) reads and edits a host's `ufw`, `firewalld`, or Windows Firewall state — rules, per-rule source/interface, and the default incoming/outgoing policy.
+
+### Fetch-on-demand, not polled
+
+Unlike metrics, firewall state is not part of the regular checkin. Selecting a host dispatches `list_firewall_rules`; the snapshot lands with the host's *next* check-in, not immediately. **The first view of a host is an empty "Nothing read yet" state — that's normal, not a bug.** Press Refresh (or wait for the interval) and the tab fills in once the read completes. The same is true after any edit: the tab doesn't re-read automatically, so re-refresh to confirm a change landed.
+
+### Three changes the tab refuses
+
+`server/apps/hosts/firewall_guard.py` refuses three shapes of change outright, before the 2FA prompt ever appears:
+
+1. **Setting the default outgoing policy to `deny` or `reject`.** Lead concern: Vigil agents are outbound-only, so this severs the agent's own connection back to the server. The host stops checking in, and — because dispatch itself requires the agent to check in — no task can ever be sent to undo it. Recovery needs console access to the host.
+2. **Denying the remote-access port, or removing the rule that allows it** — port 22 always, plus 3389 on Windows.
+3. **Setting the default incoming policy to `deny`** when no allow rule covers the remote-access port.
+
+`disable_firewall` is **not** refused — it opens the host rather than closing it, so it goes through the ordinary high-risk 2FA gate like any other write, not the lockout guard.
+
+**The task editor is the deliberate, unguarded escape hatch.** The guard only applies to the Firewall tab's write endpoint (`POST /api/v1/hosts/{id}/firewall/apply/`); a task written by hand in the YAML editor using `set_firewall_policy`, `add_firewall_rule`, or `remove_firewall_rule` bypasses it entirely. A rule Vigil won't write from the form is still one you can write on purpose — that's what makes refusing in the tab reasonable instead of paternalistic.
+
+**Known limitation, by design:** the protected ports (22, 3389) are the well-known ones, hard-coded — never read from the host. A host with SSH moved to a custom port is **not** protected by this guard; a `deny`/incoming-default change against it goes through even though it would lock the host out just the same.
+
+### `managed`-mode agents must allowlist the actions
+
+Same trap as [Trivy](#trivy--agent-local-no-server-setup): the shipped `agent.yml` allowlist does not include any of the six firewall actions. On a `managed`-mode agent that hasn't added them, every firewall task — including the read — is rejected, and the Firewall tab just shows nothing for that host, with no obvious error on screen. `full_control` agents ignore the allowlist entirely. See `agent/config.example.yml` for the commented-out block.
+
+### Rules Vigil couldn't parse
+
+Some rules don't fit Vigil's port/protocol/source model — ufw app-profile rules (`ufw allow OpenSSH`), firewalld port ranges, Windows rules with a non-integer port. These are never silently dropped: they land in a separate "Unparsed rules" section on the tab, listed as raw text ("these rules exist on the host but Vigil could not interpret them"), and cannot be edited from there. A host whose SSH access comes entirely from an app-profile rule has no port-22 entry in the parsed rule list — the lockout guard treats that as *not* covered and refuses a default-deny-incoming change, which is the correct, conservative call even though the host may in fact be fine.
+
+---
+
+## Active Directory Import
+
+Configure AD in **Settings → Active Directory**:
+
+- LDAP server URL, bind DN, bind password, base DN, and the OU containing computer objects
+- **Import Now** runs a Celery task that queries LDAP for computer objects, creates `PENDING` host records for any not already enrolled, and auto-tags them from their OU path (e.g. `OU=Servers,OU=IT` → tags `servers`, `it`)
+
+---
+
+## Agent Modes
+
+| Mode | Metrics | Tasks |
+|---|---|---|
+| `monitor` | Collected | Ignored entirely |
+| `managed` | Collected | Only allowlisted actions |
+| `full_control` | Collected | Any action |
+
+The allowlist is defined in `agent.yml` and enforced locally by the agent — the server cannot override it.
+
+One action sits outside this table entirely. **Remote reprovisioning — wiping
+and reinstalling the machine — is not granted by `full_control`** and cannot be
+allowlisted. It requires its own flag:
+
+```yaml
+allow_reprovision: true   # default false, everywhere
+```
+
+The authority to destroy a machine lives on that machine, so a compromised
+Vigil server cannot order a fleet to rebuild itself.
+
+---
+
+## Remote Reprovisioning
+
+Start one from **Reprovision → Rebuild jobs → Rebuild a host…**, or from the
+host's detail drawer. Both open the same ceremony — picking the host up front
+only saves finding its card first, it does not shorten the confirmation.
+
+Rebuild a host's operating system from the console: pick an image and a
+profile, confirm with password + authenticator code + the typed hostname, and
+the machine wipes itself, installs unattended, re-enrols its agent against the
+same host record, takes a tag you chose, and optionally runs a baseline —
+taking a drifted or compromised box back to known-good without a site visit.
+
+Ubuntu, Debian, and the RHEL family. Free feature.
+
+**This destroys all data on the target disk, and there is no undo once the
+installer starts.** Read [docs/reprovisioning-runbook.md](reprovisioning-runbook.md)
+before running one — including its note on why rebuild is *not* a guaranteed
+eradication path against an attacker with kernel-level persistence. Design
+rationale is in [docs/reprovisioning.md](reprovisioning.md).
+
+### OS image library
+
+The **Reprovision** sidebar app manages the images a rebuild installs from. Vigil fetches an image once and serves it to every host that rebuilds against it — one download per fleet instead of one per host, and it means a rebuild works on a machine with no route to the internet at all, only to Vigil.
+
+`apps/reprovision/catalog.py` ships a small, hand-curated list of distros Vigil can pull on its own:
+
+| Catalog entry | Family | Size |
+|---|---|---|
+| Ubuntu Server 26.04 LTS | `ubuntu` | 2.9 GB |
+| Ubuntu Desktop 26.04 LTS | `ubuntu` | 6.5 GB |
+| Ubuntu Server 24.04 LTS | `ubuntu` | 3.4 GB |
+| Ubuntu Server 22.04 LTS | `ubuntu` | 2.1 GB |
+| Linux Mint 22.3 Cinnamon | `ubuntu` | 3.1 GB |
+| Debian 13 (netinst) | `debian` | 0.8 GB |
+| Fedora Server 43 | `rhel` | 3.5 GB |
+| Fedora Workstation 43 | `rhel` | 2.7 GB |
+| Bazzite (stable) | `rhel` | 7.9 GB |
+| Rocky Linux 9 (minimal) | `rhel` | 2.8 GB |
+| AlmaLinux 9 (minimal) | `rhel` | 2.8 GB |
+
+The **Add an image** tab shows these as cards, one per distro; anything
+already in your library is greyed out, because the same bytes are never
+fetched twice — a digest already present answers 409, and a *failed* pull
+retries in place rather than leaving a second row behind.
+
+Import needs room for the ISO **and** the extracted tree at the same time —
+roughly twice the size above, transiently, falling back to about one after
+the ISO is discarded. Import is also single-threaded pure Python (`pycdlib`,
+so no loop mount and no privileged container), so on a low-power host expect
+a long first import per image. It is a one-time cost per image, not per
+rebuild.
+
+Every entry needs a stable anonymous URL *and* a published SHA-256 — an entry that can't actually fetch would fail at the worst possible moment, after an operator has already chosen it for a rebuild. Entries go stale as distros cut new releases; the custom-URL path below covers the gap until `catalog.py` is updated.
+
+**RHEL proper and Windows are not in the catalog, on purpose.** RHEL needs an active Red Hat subscription to download, so there's no anonymous URL to point at; Microsoft publishes no stable direct download with a published hash. Neither is a Vigil limitation — both reach the library the same way: upload the ISO you're entitled to, or paste a URL (plus its SHA-256) to wherever you're already hosting it. **A digest is always required** — pulling from the catalog carries the published digest automatically, but a custom URL or an upload needs the operator to supply one; an image with no SHA-256 is refused before a single byte moves.
+
+**Windows images can't be imported yet.** The upload/pull buttons for it are disabled in the UI rather than silently failing after a multi-gigabyte transfer. Vigil's importer extracts a Linux-style `vmlinuz`/`initrd` pair to PXE-boot the installer; Windows boots from `bootmgr` against `boot.wim`, a different pipeline that doesn't exist yet. It's planned as its own piece of work, not a config flag someone forgot to flip.
+
+### Install profiles
+
+A profile is the set of answers the installer needs to run unattended — which
+image and disk, partitioning and filesystem, addressing, locale, and who can
+log in afterwards. **Reprovision → Install profiles → + New profile.**
+
+Two things the form enforces, because both are otherwise discovered after the
+disk has already been wiped:
+
+- **Somebody has to be able to log in.** A profile with neither an SSH key nor
+  an admin password hash is refused. The password field takes a *crypt hash*
+  (`mkpasswd -m sha-512`), never a plaintext password — the answer file
+  carries it verbatim.
+- **Static addressing needs an address and a gateway.** Those fields only
+  appear when you pick Static.
+
+Editing an existing profile leaves the password box blank, and blank means
+*keep the stored hash* — Vigil never hands a stored secret back, not even to
+the admin who set it.
+
+**Tag the host with** *(2026.7.4)* applies tags when the rebuilt machine
+checks back in, so baselines and alert rules that target those tags pick it up
+on its own without anyone remembering to tag it. The rebuild ceremony's own
+tag field still works alongside it for a one-off; both are applied, and the
+reserved `agent:` prefix is refused in either.
+
+### The fetch guard
+
+Before Vigil fetches any URL — catalog or custom — `apps/reprovision/fetch_guard.py` checks the address it actually resolves to (re-checked after every redirect, so a hostname can't launder its way past the check). It refuses outright: loopback (`127.0.0.0/8`, `::1`), the unspecified address (`0.0.0.0`, `::`), link-local (`169.254.0.0/16`, `fe80::/10` — this range covers AWS/Azure instance metadata), and the metadata addresses specific to other clouds (`metadata.google.internal`/`metadata.goog`, Alibaba's `100.100.100.200`, AWS's IMDSv6 address). The reason is the same for all of them: on a cloud-hosted Vigil, the metadata service hands out credentials for the whole account, and Vigil's server sits where it can reach that service even though an operator's own workstation cannot — fetching a URL on the operator's behalf must not become a proxy into the account.
+
+**Private ranges are allowed on purpose.** An internal mirror is a completely legitimate image source, so RFC1918 addresses are never refused. A non-catalog URL shows a warning that Vigil will fetch it from inside your network, not from your browser — advisory, not a block.
+
+### Upload limits Vigil doesn't control
+
+An ISO upload passes through whatever sits in front of Vigil. **Cloudflare Tunnel** caps request bodies at 100 MB on free plans; **nginx** defaults `client_max_body_size` to 1 MB. Either one will fail a multi-gigabyte ISO upload with no explanation from Vigil itself — raise the limit on the proxy, or use the URL-pull path instead, which never touches the browser's upload connection.
+
+Two settings exist in this repo specifically because of the upload path — both are load-bearing, not leftovers:
+
+- **`server/Dockerfile`**'s gunicorn `--timeout 1800` — the 30-second default kills the worker mid-upload, because the ISO upload endpoint holds the request open synchronously for the whole transfer.
+- **`FILE_UPLOAD_TEMP_DIR`** (`server/vigil/settings.py`) — points Django's multipart spool at the `VIGIL_IMAGE_ROOT` volume instead of the container's writable layer, which a multi-gigabyte upload would otherwise fill.
+
+---
+
+## API Reference
+
+### Agent-facing (Bearer token)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/v1/register` | Agent self-registration (creates pending host) |
+| `POST` | `/api/v1/checkin` | Metric ingest + hardware inventory + task dispatch |
+| `POST` | `/api/v1/tasks/result/` | Report task execution outcome |
+
+### Hosts
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/hosts/` | List enrolled hosts |
+| `GET` `DELETE` | `/api/v1/hosts/{id}/` | Host detail / remove host and all data |
+| `POST` | `/api/v1/hosts/{id}/approve/` | Approve pending enrollment |
+| `POST` | `/api/v1/hosts/{id}/reject/` | Reject pending enrollment |
+| `POST` | `/api/v1/hosts/{id}/poll/` | Request immediate checkin |
+| `GET` | `/api/v1/hosts/{id}/rdp/` | Download `.rdp` file (Windows hosts) |
+| `GET` `PATCH` | `/api/v1/hosts/{id}/tags/` | Get / update host tags |
+| `GET` | `/api/v1/hosts/tags/` | All tags in use across the fleet with host counts |
+| `GET` | `/api/v1/hosts/inventory/` | Inventory list for all hosts |
+| `GET` | `/api/v1/hosts/{id}/inventory/` | Inventory detail for one host |
+| `GET` `PUT` | `/api/v1/hosts/ad/` | AD configuration |
+| `POST` | `/api/v1/hosts/ad/sync/` | Trigger AD import now |
+
+### Metrics
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/metrics/{host}/{cat}/{metric}/` | Metric history (supports `?from=`, `?to=`, `?limit=`) |
+| `GET` | `/api/v1/metrics/catalog/` | The category/metric pairs this fleet is actually reporting |
+
+Categories the agent emits: `cpu`, `memory`, `disk`, `network`, `process`,
+`temperature`, and `gpu`.
+
+**Processes.** The agent reports the ten busiest by CPU and the ten busiest by
+memory, labelled `name`, `pid` and `rank`. Names listed under `process_watch`
+in `agent.yml` are additionally sampled at *every* check-in regardless of
+rank, labelled `watched=1` — without that, a chart of one named service has
+holes exactly when the service is behaving, and an outage looks the same as a
+quiet period. Processes sharing a name are summed, with the live count
+reported as `process/instances`, so a watched name that is not running reports
+zero rather than nothing.
+
+**GPUs.** Collected from `nvidia-smi` and `rocm-smi` when either is on the
+PATH, and skipped silently when neither is — no configuration needed. Per GPU,
+labelled `vendor`, `index` and `name`: `utilization_percent`,
+`memory_used_mb`, `memory_total_mb`, `memory_percent`, `temperature_celsius`
+and `power_watts`. Setting `gpu_extended: true` adds `fan_percent`,
+`clock_graphics_mhz`, `clock_memory_mhz`, `memory_bandwidth_percent`,
+`pcie_generation`, `pcie_width` and ECC counters where the card reports them —
+roughly twice the points per GPU per check-in, which is worth being deliberate
+about on a multi-GPU host.
+
+### Alerts
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/alerts/` | List alerts (`?state=firing\|acknowledged\|resolved`) |
+| `POST` | `/api/v1/alerts/{id}/acknowledge/` | Acknowledge a firing alert |
+| `POST` | `/api/v1/alerts/{id}/silence/` | Silence a firing alert |
+
+### Tasks
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/tasks/actions/` | Full action registry |
+| `GET` `POST` | `/api/v1/tasks/definitions/` | List / create task definitions |
+| `POST` | `/api/v1/tasks/definitions/validate/` | Validate YAML without saving |
+| `GET` `PUT` `DELETE` | `/api/v1/tasks/definitions/{id}/` | Read / update / delete a definition |
+| `POST` | `/api/v1/tasks/definitions/{id}/fork/` | Fork a community template |
+| `POST` | `/api/v1/tasks/definitions/{id}/deploy/` | Deploy across hosts (requires TOTP) |
+| `GET` | `/api/v1/tasks/history/?page=N` | Paginated task history feed (50/page, polled by the History tab) |
+| `GET` | `/api/v1/tasks/runs/{id}/` | Run detail with per-host step status |
+
+> The legacy single-action dispatch endpoint (`POST /api/v1/tasks/`) was removed in 2026.1.9 — it bypassed the TOTP gate. Use the definition-deploy endpoint instead. Community publish/unpublish endpoints were also removed; the community catalog now lives on GitHub (see [Community catalog](#community-catalog)).
+
+### Reprovisioning — image library
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/reprovision/catalog/` | The distros Vigil can fetch on its own (`view`) |
+| `POST` | `/api/v1/reprovision/images/pull/` | Queue a download — from `catalog_id`, or a custom `url` + `sha256` (admin only) |
+| `POST` | `/api/v1/reprovision/images/upload/` | Upload an ISO directly, synchronously verified and imported (admin only) |
+| `GET` `POST` | `/api/v1/reprovision/images/` | List the library (`view`) / register an image (admin only) |
+| `GET` `DELETE` | `/api/v1/reprovision/images/{id}/` | Image detail (`view`) / remove it (admin only) |
+| `GET` `POST` | `/api/v1/reprovision/profiles/` | List install profiles (`view`) / create one (admin only) |
+| `GET` `PATCH` `DELETE` | `/api/v1/reprovision/profiles/{id}/` | Profile detail (`view`) / edit or remove (admin only) |
+| `POST` | `/api/v1/reprovision/profiles/{id}/preview/` | Render the answer file this profile would produce, without running anything |
+
+A pull of a digest already in the library answers **409** naming the existing
+image; a pull of one whose last attempt *failed* retries in place on the same
+row rather than adding a duplicate.
+
+Full job/ceremony surface is in [docs/reprovisioning.md §9](reprovisioning.md#9-api-surface).
+
+### Misc
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/vulns/` | Vulnerability summaries per host |
+| `GET` | `/api/v1/vulns/scans/` | Recent scan requests / runs (newest first, capped at 100) |
+| `POST` | `/api/v1/vulns/scans/{host_id}/` | Queue a Nessus scan for a host (requires TOTP, one active per host) |
+| `POST` | `/api/v1/hosts/{id}/approve/` | Approve a pending host (requires TOTP) |
+| `GET` | `/api/v1/accounts/totp/` | TOTP enrollment status |
+| `POST` | `/api/v1/accounts/totp/enroll/` | Start TOTP enrollment |
+| `POST` | `/api/v1/accounts/totp/enroll/confirm/` | Confirm with 6-digit code |
+| `POST` | `/api/v1/accounts/totp/disable/` | Disable TOTP |
+| `GET` | `/api/v1/health/` | Health check (no auth) |
+
+---
+
+## Project Layout
+
+```
+Vigil/
+├── docker-compose.yml
+├── .env.example
+├── agent/                       # Python monitoring agent
+│   ├── config.example.yml       # Annotated agent config template
+│   ├── requirements.txt
+│   └── vigil_agent/
+│       ├── __main__.py          # Main loop: register → checkin → collect → execute
+│       ├── client.py            # HTTPS client (register, checkin, report result)
+│       ├── collector.py         # psutil metrics + hardware inventory collection
+│       ├── config.py            # YAML config loading + token generation
+│       ├── executor.py          # Task execution, mode/allowlist enforcement
+│       ├── runtime.py           # Multi-step task runtime with success criteria
+│       ├── verify.py            # Ed25519 signature verification + TOFU key pinning
+│       └── nonce_store.py       # Replay protection (SQLite-backed nonce store)
+└── server/
+    ├── Dockerfile
+    ├── requirements.txt
+    ├── manage.py
+    ├── vigil/
+    │   ├── settings.py          # All settings (SQLite fallback via USE_SQLITE=true)
+    │   ├── celery.py
+    │   ├── signing.py           # Ed25519 task signing (key loaded from env)
+    │   └── urls.py              # URL config + dashboard view
+    ├── templates/
+    │   ├── dashboard.html       # Full SQSY single-page dashboard
+    │   └── _host_card.html      # Host card partial (included in dashboard)
+    └── apps/
+        ├── hosts/               # Host model, enrollment, checkin, inventory, tags, AD import
+        ├── metrics/             # MetricPoint model + metric history API
+        ├── alerts/              # AlertRule, Alert, NotificationChannel, Celery evaluation
+        ├── tasks/               # TaskDefinition (YAML), Task, TaskRun — authoring + deploy
+        ├── vulns/               # Nessus vulnerability sync + findings API
+        └── accounts/            # UserProfile, TOTP enrollment (RFC 6238 from scratch)
+```
+
+---
+
+## Tiers
+
+Vigil is free — full monitoring, alerting, unlimited agents, hosts, and
+retention, forever. **Vigil Business** adds the accountability features
+(unlimited Sites, audit-log viewer/export, seats + Operator role, branding)
+via a signed, instance-bound, offline-verified license. Nothing ever blocks:
+an expired license means Business features switch off and monitoring carries
+on untouched. See `docs/EDITIONS.md`.
+
+## License
+
+AGPLv3 for everything except `server/apps_business/`, which is source-visible
+under a commercial license (`server/apps_business/LICENSE`) and requires a
+Vigil Business subscription for production use
