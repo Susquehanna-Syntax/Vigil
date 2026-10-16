@@ -4604,3 +4604,40 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .rpt-wprev .rpt-chart { height: 200px; }
 .rpt-how { font-size: 12px; color: var(--text-3); }
 @media (max-width: 640px) { .rpt-wcard { grid-template-columns: minmax(0, 1fr); } }
+
+/* QA-49: container logs as a terminal */
+/* The dialog is a column and the log fills what is left of it, so dragging
+   the QA-40 grip grows the log, not empty space under it. */
+.modal.ctr-logs-modal { display: flex; flex-direction: column; height: 80vh; overflow: hidden;
+  width: min(1100px, calc(100vw - 32px)); }
+.modal.ctr-logs-modal.is-resized .ctr-logs { height: auto; }
+.ctr-logs-modal .ctr-logs { flex: 1 1 auto; min-height: 120px; height: auto; }
+.ctr-logs-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.ctr-logs-bar .ctr-logs-state { flex: 1; min-width: 0; margin: 0; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.ctr-logs-bar [aria-pressed="true"] { border-color: var(--sky-ink); color: var(--sky-ink); }
+/* A terminal is dark whatever the page theme, like the window it stands for. */
+.term {
+  --term-bg: #15161b; --term-fg: #d7d9e0; --term-dim: #8a8f9c;
+  --term-k: #4b4f5c; --term-r: #ef6b73; --term-g: #7fcf8a; --term-y: #e6c36a;
+  --term-b: #6aa7ef; --term-m: #c792ea; --term-c: #5ccfd6; --term-w: #d7d9e0;
+  --term-bk: #6b7080; --term-br: #ff8f96; --term-bg-g: #a3e6ac; --term-by: #f5d98c;
+  --term-bb: #92c0ff; --term-bm: #ddb3f7; --term-bc: #86e3e8; --term-bw: #ffffff;
+  background: var(--term-bg); color: var(--term-fg);
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.45; tab-size: 8;
+  white-space: pre; overflow-wrap: normal; word-break: normal;
+}
+.term.term-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.term .term-ts { color: var(--term-dim); }
+.term .term-bold { font-weight: 700; }
+.term .term-dim { opacity: .65; }
+.term .term-italic { font-style: italic; }
+.term .term-ul { text-decoration: underline; }
+.term .term-k { color: var(--term-k); } .term .term-r { color: var(--term-r); }
+.term .term-g { color: var(--term-g); } .term .term-y { color: var(--term-y); }
+.term .term-b { color: var(--term-b); } .term .term-m { color: var(--term-m); }
+.term .term-c { color: var(--term-c); } .term .term-w { color: var(--term-w); }
+.term .term-bk { color: var(--term-bk); } .term .term-br { color: var(--term-br); }
+.term .term-bg { color: var(--term-bg-g); } .term .term-by { color: var(--term-by); }
+.term .term-bb { color: var(--term-bb); } .term .term-bm { color: var(--term-bm); }
+.term .term-bc { color: var(--term-bc); } .term .term-bw { color: var(--term-bw); }

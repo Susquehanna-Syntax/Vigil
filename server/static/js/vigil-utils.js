@@ -831,3 +831,125 @@ document.addEventListener('submit', (ev) => {
   const el = ev.target.closest && ev.target.closest('[data-submit]');
   if (el) _runAct(el, ev, el.dataset.submit);
 });
+
+/* ── Terminal text (container logs, run output) ─────────────────────────
+   User, 2026-10-16: logs should read the way they look in the log file, not
+   as a wall of text. termHtml turns raw output into escaped markup: ANSI
+   colours become spans, a carriage return overwrites the line the way a
+   terminal does, and any other control byte or escape sequence is dropped.
+   Every piece of text goes through escHtml; nothing from the log is markup. */
+
+//: Docker's `timestamps=1` prefix: RFC 3339 with nanoseconds, then a space.
+const _TERM_TS = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(\.\d+)?Z /;
+//: The escape sequences a terminal acts on rather than prints: CSI (colours,
+//: cursor moves), OSC (titles, links) and the two-byte ones.
+const _TERM_ESC = /\x1b\[([0-9;:?]*)([@-~])|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b[@-Z\\-_]/g;
+//: C0 controls but tab, and DEL — a lone ESC included, once the sequences it
+//: starts are gone. A newline never reaches here (lines are split first).
+const _TERM_CTRL = /[\x00-\x08\x0b-\x1f\x7f]/g;
+const _TERM_COLOURS = ['k', 'r', 'g', 'y', 'b', 'm', 'c', 'w'];
+
+function termNewState() {
+  return { fg: '', bold: false, dim: false, italic: false, underline: false };
+}
+
+//: One SGR sequence applied to the running state. 256- and 24-bit colours are
+//: consumed with their arguments; the first sixteen of the 256 are honoured.
+function _termSgr(state, params) {
+  const codes = params === '' ? [0] : params.split(/[;:]/).map(n => Number(n) || 0);
+  for (let i = 0; i < codes.length; i++) {
+    const c = codes[i];
+    if (c === 0) Object.assign(state, termNewState());
+    else if (c === 1) state.bold = true;
+    else if (c === 2) state.dim = true;
+    else if (c === 3) state.italic = true;
+    else if (c === 4) state.underline = true;
+    else if (c === 22) { state.bold = false; state.dim = false; }
+    else if (c === 23) state.italic = false;
+    else if (c === 24) state.underline = false;
+    else if (c >= 30 && c <= 37) state.fg = _TERM_COLOURS[c - 30];
+    else if (c >= 90 && c <= 97) state.fg = 'b' + _TERM_COLOURS[c - 90];
+    else if (c === 39) state.fg = '';
+    else if (c === 38 || c === 48) {
+      if (codes[i + 1] === 5) {
+        const n = codes[i + 2];
+        if (c === 38) state.fg = n < 8 ? _TERM_COLOURS[n] : n < 16 ? 'b' + _TERM_COLOURS[n - 8] : '';
+        i += 2;
+      } else if (codes[i + 1] === 2) {
+        if (c === 38) state.fg = '';
+        i += 4;
+      }
+    }
+  }
+}
+
+function _termClasses(state) {
+  const out = [];
+  if (state.fg) out.push('term-' + state.fg);
+  if (state.bold) out.push('term-bold');
+  if (state.dim) out.push('term-dim');
+  if (state.italic) out.push('term-italic');
+  if (state.underline) out.push('term-ul');
+  return out.join(' ');
+}
+
+//: What a terminal leaves on screen after a carriage return: the text written
+//: last. A trailing \r (a CRLF line end) leaves the line as it was.
+function _termOverwrite(line) {
+  const parts = line.split('\r');
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i] !== '') return parts[i];
+  }
+  return '';
+}
+
+//: One line as markup. opts.timestamps: 'off' drops Docker's prefix, 'time'
+//: keeps it as a dim HH:MM:SS, anything else leaves the line as it came.
+function _termLineHtml(raw, state, opts) {
+  // Docker's timestamp is written ahead of the program's own output, so it
+  // comes off before a carriage return in that output overwrites anything.
+  let line = raw;
+  let prefix = '';
+  const ts = opts.timestamps ? _TERM_TS.exec(line) : null;
+  if (ts) line = line.slice(ts[0].length);
+  line = _termOverwrite(line);
+  if (ts && opts.timestamps === 'time') {
+    prefix = `<span class="term-ts" title="${escAttr(ts[1] + ' ' + ts[2] + (ts[3] || '') + ' UTC')}">${escHtml(ts[2])}</span> `;
+  }
+  let html = '';
+  let last = 0;
+  const emit = (text) => {
+    const clean = text.replace(_TERM_CTRL, '');
+    if (!clean) return;
+    const cls = _termClasses(state);
+    html += cls ? `<span class="${cls}">${escHtml(clean)}</span>` : escHtml(clean);
+  };
+  _TERM_ESC.lastIndex = 0;
+  let m;
+  while ((m = _TERM_ESC.exec(line)) !== null) {
+    emit(line.slice(last, m.index));
+    if (m[2] === 'm') _termSgr(state, m[1] || '');
+    last = _TERM_ESC.lastIndex;
+  }
+  emit(line.slice(last));
+  return prefix + html;
+}
+
+//: Raw output as terminal markup, one line per line. Pass the same state to
+//: carry colours across calls when lines arrive a few at a time.
+function termHtml(text, opts, state) {
+  const o = opts || {};
+  const st = state || termNewState();
+  return String(text ?? '').split('\n').map(l => _termLineHtml(l, st, o)).join('\n');
+}
+
+//: The same text as plain characters, for copying: no escapes, no controls.
+function termPlain(text, opts) {
+  const o = opts || {};
+  return String(text ?? '').split('\n').map(raw => {
+    const ts = o.timestamps ? _TERM_TS.exec(raw) : null;
+    let line = _termOverwrite(ts ? raw.slice(ts[0].length) : raw);
+    if (ts && o.timestamps === 'time') line = `${ts[2]} ${line}`;
+    return line.replace(_TERM_ESC, '').replace(_TERM_CTRL, '');
+  }).join('\n');
+}
