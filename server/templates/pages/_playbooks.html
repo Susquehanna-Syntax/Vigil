@@ -13,7 +13,6 @@
     <div class="sub-tab t-lemon" data-subtab="wave-panel">Waves</div>
     <div class="sub-tab t-peach" data-subtab="rollout-panel">Rollouts</div>
     <div class="sub-tab t-mint" data-subtab="hist-panel">History</div>
-    <div class="sub-tab t-rose" data-subtab="rpt-panel">Reports</div>
   </div>
 
   <!-- ── Playbooks panel ─────────────────────────────────────────────── -->
@@ -77,15 +76,6 @@
     <div id="run-history-pager" class="hist-pager"></div>
   </div>
 
-  <!-- ── Reports panel ────────────────────────────────────────────── -->
-  <div class="sub-panel" id="rpt-panel">
-    <div class="bl-toolbar" id="rpt-toolbar">
-      <input type="text" class="form-control bl-search" id="rpt-search" placeholder="Search reports…">
-      <button class="btn btn-mint" id="rpt-new-btn">New report</button>
-    </div>
-    <div id="rpt-list" class="bl-list"></div>
-    <div id="rpt-view" hidden></div>
-  </div>
 </section>
 
 <!-- ── Playbook editor modal ─────────────────────────────────────────── -->
@@ -312,47 +302,3 @@
     <button class="btn btn-mint" id="auto-save-btn">Save automation</button>
   </div>
 </div>
-
-<!-- ── Report builder modal ──────────────────────────────────────────── -->
-<div class="modal-overlay" id="rpt-editor-overlay"></div>
-<div class="modal modal-wide" id="rpt-editor-modal" data-editing="">
-  <div class="modal-title">
-    <span id="rpt-editor-title">New report</span>
-    <button class="modal-close" id="rpt-cancel-btn" aria-label="Close">
-      <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
-  </div>
-  <div class="bl-field">
-    <label for="rpt-name">Name</label>
-    <input type="text" class="form-control" id="rpt-name" maxlength="120">
-  </div>
-  <div class="bl-field">
-    <label for="rpt-description">Description</label>
-    <textarea class="form-control" id="rpt-description" rows="2"></textarea>
-  </div>
-  <div class="bl-field">
-    <label for="rpt-range">Range</label>
-    <select class="form-control" id="rpt-range"></select>
-  </div>
-  <div class="bl-field">
-    <label for="rpt-pb-filter">Playbooks</label>
-    <input type="text" class="form-control" id="rpt-pb-filter" placeholder="Filter playbooks…">
-    <div class="rpt-picks" id="rpt-pb-picks"></div>
-  </div>
-  <div class="bl-field">
-    <label for="rpt-auto-filter">Automations</label>
-    <input type="text" class="form-control" id="rpt-auto-filter" placeholder="Filter automations…">
-    <div class="rpt-picks" id="rpt-auto-picks"></div>
-  </div>
-  <div class="bl-field">
-    <label for="rpt-widget-add">Charts</label>
-    <div class="rpt-widgets" id="rpt-widgets"></div>
-    <select class="form-control" id="rpt-widget-add"></select>
-  </div>
-  <div class="modal-actions">
-    <button class="btn btn-outline" id="rpt-cancel-btn-2" type="button">Cancel</button>
-    <button class="btn btn-mint" id="rpt-save-btn">Save report</button>
-  </div>
-</div>
-
-<script src="{% static 'js/vigil-reports.js' %}" defer></script>

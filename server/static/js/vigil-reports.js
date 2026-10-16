@@ -1,5 +1,5 @@
 // vigil-reports.js
-// Owns: the Reports sub-panel on the Deployments page — the saved-report list,
+// Owns: the Reports page — the saved-report list,
 //   the builder dialog, and the viewer that charts a report's widgets with
 //   Chart.js and offers each one as CSV. Backed by /api/v1/reports/.
 // Depends on: vigil-utils.js (apiJson, escHtml, escAttr, showToast, confirmModal,
@@ -330,7 +330,9 @@ function _drawRptWidget(body, w) {
     return;
   }
   if (!_rptHasData(w)) {
-    body.innerHTML = '<div class="rpt-empty muted">Nothing ran in this range.</div>';
+    // An empty failures chart means nothing failed, not that nothing ran.
+    const empty = w.kind === 'failures_by_step' ? 'No failures in this range.' : 'Nothing ran in this range.';
+    body.innerHTML = `<div class="rpt-empty muted">${empty}</div>`;
     return;
   }
   const d = w.data || {};
@@ -550,14 +552,19 @@ document.addEventListener('DOMContentLoaded', () => {
     _renderRptWidgets();
   });
 
-  document.querySelectorAll('#page-playbooks .sub-tab').forEach((tab) => {
-    tab.addEventListener('click', () => {
-      if (tab.dataset.subtab !== 'rpt-panel') return;
-      if (_rptOpenId !== null) _showReportList();
-      loadReports();
-    });
-  });
 });
+
+/* The page fetches its reports each time it is shown. */
+(function () {
+  const previous = window.navigateTo;
+  if (typeof previous !== 'function') return;
+  window.navigateTo = function (pageName) {
+    previous.apply(this, arguments);
+    if (pageName !== 'reports') return;
+    if (_rptOpenId !== null) _showReportList();
+    loadReports();
+  };
+})();
 
 function _moveRptWidget(i, delta) {
   const j = i + delta;
