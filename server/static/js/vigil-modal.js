@@ -231,6 +231,13 @@ function _forgetModalSize(el) {
   try { localStorage.removeItem(_MODAL_SIZE_KEY + el.id); } catch (e) {}
 }
 
+//: The dialog's layout size. Not getBoundingClientRect(): that includes the
+//: open animation's scale (and .recede's 0.95), which would save a size a few
+//: percent smaller than the one the user dragged to.
+function _modalLayoutSize(el) {
+  return { width: el.offsetWidth, height: el.offsetHeight };
+}
+
 function _applyModalSize(el, w, h) {
   el.style.width = w + 'px';
   el.style.height = h + 'px';
@@ -253,7 +260,7 @@ function _resetModalSize(el) {
 //: corner. Double the delta to keep the grip under the pointer.
 function _modalDragStart(el, grip, ev) {
   ev.preventDefault();
-  const rect = el.getBoundingClientRect();
+  const rect = _modalLayoutSize(el);
   const startW = rect.width;
   const startH = rect.height;
   const startX = ev.clientX;
@@ -273,7 +280,7 @@ function _modalDragStart(el, grip, ev) {
     grip.removeEventListener('pointercancel', stop);
     // the pointer is already up when pointercancel ends the drag
     try { grip.releasePointerCapture(mv.pointerId); } catch (e) {}
-    const now = el.getBoundingClientRect();
+    const now = _modalLayoutSize(el);
     const size = modalClampSize(now.width, now.height, window.innerWidth, window.innerHeight);
     _saveModalSize(el, size.w, size.h);
     // Canvases inside the dialog measure themselves on resize; tell them again.
@@ -305,7 +312,7 @@ function _resizableInit(el) {
       else if (ev.key === 'ArrowUp') dH = -step;
       else return;                  // Escape in particular: the window handler owns it
       ev.preventDefault();
-      const rect = el.getBoundingClientRect();
+      const rect = _modalLayoutSize(el);
       const size = modalClampSize(rect.width + dW, rect.height + dH, window.innerWidth, window.innerHeight);
       _applyModalSize(el, size.w, size.h);
       _saveModalSize(el, size.w, size.h);
@@ -324,7 +331,7 @@ function _resizableInit(el) {
 window.addEventListener('resize', () => {
   document.querySelectorAll('.modal.is-resized').forEach(el => {
     if (!_isOpen(el)) return;
-    const rect = el.getBoundingClientRect();
+    const rect = _modalLayoutSize(el);
     const size = modalClampSize(rect.width, rect.height, window.innerWidth, window.innerHeight);
     _applyModalSize(el, size.w, size.h);
   });
