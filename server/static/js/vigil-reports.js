@@ -15,6 +15,15 @@ let _rptPlaybooks = [];
 let _rptAutomations = [];
 let _rptLoaded = false;
 let _rptCharts = [];
+// The viewer's Gridstack and the charts drawn inside it, by widget index: a
+// resize hands the card new pixels and Chart.js only fills them when asked.
+let _rptGrid = null;
+let _rptChartAt = [];
+let _rptEditing = false;
+let _rptDirty = false;
+// The row _rptReports holds for the report on screen — its saved widget specs,
+// which is what a layout save writes its new places into.
+let _rptOpen = null;
 // The builder's working state: the widget rows, and the ids ticked in the two
 // checkbox lists.
 let _rptDraft = { widgets: [], 'rpt-pb': new Set(), 'rpt-auto': new Set() };
@@ -124,6 +133,7 @@ function _renderReportList() {
 
 function _showReportList() {
   _rptOpenId = null;
+  _rptOpen = null;
   _destroyRptCharts();
   const view = document.getElementById('rpt-view');
   if (view) { view.hidden = true; view.replaceChildren(); }
@@ -277,6 +287,14 @@ async function deleteReport(id) {
 function _destroyRptCharts() {
   _rptCharts.forEach(c => c.destroy());
   _rptCharts = [];
+  _rptChartAt = [];
+  // The grid holds the cards the charts were drawn into, so it goes with them:
+  // destroy(false) leaves our markup in the DOM rather than tearing it out from
+  // under a view we are about to replace wholesale.
+  if (_rptGrid) _rptGrid.destroy(false);
+  _rptGrid = null;
+  _rptEditing = false;
+  _rptDirty = false;
 }
 
 async function openReport(id) {
@@ -291,6 +309,7 @@ async function openReport(id) {
   }
   const report = _rptReports.find(r => r.id === id) || {};
   _rptOpenId = id;
+  _rptOpen = report;
   _destroyRptCharts();
   const list = document.getElementById('rpt-list');
   if (list) { list.hidden = true; list.replaceChildren(); }
@@ -306,27 +325,133 @@ async function openReport(id) {
       <span class="rpt-head-range muted">${escHtml(String(range.from || ''))} – ${escHtml(String(range.to || ''))}
         · last ${escHtml(String((range.days || []).length || report.range_days || ''))} days</span>
       <button class="btn btn-lemon btn-sm" type="button" data-rpt-view-edit>Edit</button>
+      <button class="btn btn-outline btn-sm" type="button" data-rpt-layout>Edit layout</button>
     </div>
     ${data.truncated
       ? '<div class="rpt-note muted">Too much history to read at once — this covers the most recent runs only.</div>'
       : ''}
-    <div class="rpt-grid">${widgets.map((w, i) => `
-      <div class="rpt-card" data-rpt-card="${i}">
-        <div class="rpt-card-head">
-          <span class="rpt-card-title">${escHtml(w.title)}</span>
-          <a class="btn btn-outline btn-xs" href="/api/v1/reports/${escAttr(id)}/data/${i}.csv" download>CSV</a>
-        </div>
-        <div class="rpt-card-body" data-rpt-body="${i}"></div>
-      </div>`).join('')}</div>`;
+    <div class="grid-stack rpt-gs" id="rpt-gs"></div>`;
+  _renderRptGrid(id, widgets);
+}
+
+//: The viewer's grid: the widgets someone placed go where they left them, and
+//: the ones nobody has placed yet take the first space there is. staticGrid to
+//: begin with — the cards only move while the header says Done.
+function _renderRptGrid(id, widgets) {
+  const el = document.getElementById('rpt-gs');
+  if (!el) return;
+  _rptGrid = gridMake(el, {
+    column: 12,
+    staticGrid: true,
+    columnOpts: { breakpoints: [{ w: 700, c: 1 }] },
+  });
+  _rptGrid.on('change', () => { _rptDirty = true; });
+  // A resize hands the card new pixels; Chart.js only fills them when asked.
+  // The chart's own container is what Gridstack passes back, so the index is
+  // read off the body inside it.
+  _rptGrid.on('resizestop', (event, item) => {
+    const chart = _rptChartAt[_rptIndexOf(item)];
+    if (chart) chart.resize();
+  });
+
+  const placed = widgets.filter(w => w.layout);
+  const rest = widgets.filter(w => !w.layout);
+  for (const w of placed) _rptAddWidget(w, widgets.indexOf(w), { ...w.layout });
+  for (const w of rest) _rptAddWidget(w, widgets.indexOf(w), { autoPosition: true, w: 4, h: 4 });
+
   widgets.forEach((w, i) => {
-    _drawRptWidget(view.querySelector(`[data-rpt-body="${i}"]`), w);
+    _drawRptWidget(el.querySelector(`[data-rpt-body="${i}"]`), w, i);
   });
 }
 
-function _drawRptWidget(body, w) {
+//: The id Gridstack carries is the widget's index in the report's own order —
+//: the same index the CSV link and the saved specs are counted in.
+function _rptAddWidget(w, i, place) {
+  _rptGrid.addWidget({
+    ...place,
+    id: String(i),
+    minW: 2,
+    minH: 2,
+    content: `<div class="rpt-card">
+        <div class="rpt-card-head">
+          <span class="rpt-card-title">${escHtml(w.title)}</span>
+          <a class="btn btn-outline btn-xs" href="/api/v1/reports/${escAttr(_rptOpenId)}/data/${i}.csv" download>CSV</a>
+        </div>
+        <div class="rpt-card-body" data-rpt-body="${i}"></div>
+      </div>`,
+  });
+}
+
+//: Which widget an event's grid item is: Gridstack's own node id, read off the
+//: live node where it has one and off the `gs-id` attribute it stamps on the
+//: element otherwise — resizestop hands back the inner content div, whose only
+//: route to the item is up to its parent. The id is the widget's index in the
+//: report's own order, the same index the CSV link and the saved specs use.
+function _rptIndexOf(item) {
+  const el = item && item.closest ? item.closest('.grid-stack-item') : null;
+  const node = (el && el.gridstackNode) || (item && item.gridstackNode) || null;
+  const id = node ? node.id : (el ? el.getAttribute('gs-id') : null);
+  const n = Number(id);
+  return Number.isInteger(n) ? n : -1;
+}
+
+//: Edit layout lets the cards move; Done puts them back and saves the places
+//: that changed. A failed save leaves the operator in edit mode — the
+//: arrangement on screen is still the one they wanted, and leaving would throw
+//: it away as surely as discarding it.
+async function _rptToggleLayout() {
+  if (!_rptGrid) return;
+  if (_rptEditing) {
+    if (_rptDirty && !(await _rptSaveLayout())) return;
+    _rptSetLayoutEditing(false);
+  } else {
+    // Under the breakpoint every card is one column wide; places saved from
+    // there would squash the twelve-column layout for everyone.
+    if (_rptGrid.getColumn() !== 12) {
+      showToast('Widen the window to arrange the cards.', 'info');
+      return;
+    }
+    // Only a move made while editing is worth saving, not the grid settling.
+    _rptDirty = false;
+    _rptSetLayoutEditing(true);
+  }
+}
+
+function _rptSetLayoutEditing(on) {
+  _rptEditing = on;
+  _rptGrid.setStatic(!on);
+  const button = document.querySelector('[data-rpt-layout]');
+  if (button) button.textContent = on ? 'Done' : 'Edit layout';
+  const grid = document.getElementById('rpt-gs');
+  if (grid) grid.classList.toggle('rpt-gs-editing', on);
+}
+
+//: The saved specs plus where the cards are now, PATCHed to the report.
+//: Resolves true when the layout is saved, false when the operator is staying
+//: in edit mode to try again.
+async function _rptSaveLayout() {
+  const saved = (_rptOpen && _rptOpen.widgets) || [];
+  try {
+    const updated = await apiJson(`/api/v1/reports/${_rptOpenId}/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ widgets: rptMergeLayout(saved, gridLayoutOf(_rptGrid)) }),
+    });
+    const at = _rptReports.findIndex(r => r.id === _rptOpenId);
+    if (at >= 0) _rptReports[at] = updated;
+    _rptOpen = updated;
+    _rptDirty = false;
+    showToast('Layout saved', 'success');
+    return true;
+  } catch (e) {
+    showToast(e.message, 'error');
+    return false;
+  }
+}
+
+function _drawRptWidget(body, w, i) {
   if (!body) return;
   if (w.chart === 'table') {
-    body.innerHTML = _rptTableHtml(w.data);
+    body.innerHTML = _rptTableHtml(w);
     return;
   }
   if (!_rptHasData(w)) {
@@ -335,23 +460,7 @@ function _drawRptWidget(body, w) {
     body.innerHTML = `<div class="rpt-empty muted">${empty}</div>`;
     return;
   }
-  const d = w.data || {};
-  let cfg = null;
-  if (w.kind === 'success_rate' || w.kind === 'duration') {
-    cfg = rptLineConfig(d, w.kind);
-  } else if (w.kind === 'runs_per_day') {
-    cfg = rptStackedConfig(d.days, [
-      { name: 'ok', values: d.ok, color: '--st-ok' },
-      { name: 'failed', values: d.failed, color: '--st-failed' },
-      { name: 'pending', values: d.pending, color: '--st-pending' },
-    ]);
-  } else if (w.kind === 'automation_fires') {
-    cfg = rptStackedConfig(d.days, rptFoldedSeries(d.series));
-  } else if (w.kind === 'failures_by_step') {
-    cfg = rptBarRowsConfig(d.rows, 'failed', row => `${row.source} · ${row.step}`);
-  } else if (w.kind === 'branch_paths') {
-    cfg = rptBarRowsConfig(d.rows, 'hosts', row => `${row.source} · ${row.branch}`);
-  }
+  const cfg = rptChartConfig(w);
   if (!cfg) {
     body.innerHTML = '<div class="rpt-empty muted">This chart kind is not known to this build.</div>';
     return;
@@ -360,7 +469,9 @@ function _drawRptWidget(body, w) {
   holder.className = 'rpt-chart';
   holder.innerHTML = '<canvas></canvas>';
   body.replaceChildren(holder);
-  _rptCharts.push(new Chart(holder.querySelector('canvas').getContext('2d'), cfg));
+  const chart = new Chart(holder.querySelector('canvas').getContext('2d'), cfg);
+  _rptCharts.push(chart);
+  _rptChartAt[i] = chart;
 }
 
 const RPT_STATE_ACCENT = {
@@ -368,16 +479,58 @@ const RPT_STATE_ACCENT = {
   failed: 'rose', pending: 'peach',
 };
 
-function _rptTableHtml(data) {
-  const rows = (data && data.rows) || [];
-  if (!rows.length) return '<div class="rpt-empty muted">Nothing ran in this range.</div>';
+//: A widget asked for a table gets one: one row per day with a column per
+//: series, one row per host-run for outcomes, otherwise one row per record.
+function _rptTableHtml(w) {
+  return rptFamily(w) === 'days' ? _rptDaysTable(w) : _rptRowsTable(w);
+}
+
+function _rptDaysTable(w) {
+  const series = rptDaySeries(w);
+  const days = (w.data || {}).days || [];
+  if (!days.length) return '<div class="rpt-empty muted">Nothing ran in this range.</div>';
   return `<table class="rpt-table">
-    <thead><tr><th>Host</th><th>Source</th><th>Outcome</th><th>When</th></tr></thead>
+    <thead><tr><th>Day</th>${series.map(x => `<th>${escHtml(x.name)}</th>`).join('')}</tr></thead>
+    <tbody>${days.map((day, d) => `<tr><td>${escHtml(day)}</td>${
+      series.map(x => `<td>${escHtml(_rptCell(w.kind, (x.values || [])[d]))}</td>`).join('')
+    }</tr>`).join('')}</tbody>
+  </table>`;
+}
+
+//: A day with no runs is an empty cell, not a 0 and not a "null". A rate is
+//: already a percentage and a duration is seconds; both read wrong as plain
+//: numbers.
+function _rptCell(kind, value) {
+  if (value === null || value === undefined) return '';
+  if (kind === 'success_rate') return `${value}%`;
+  if (kind === 'duration') return rptFormatSeconds(value);
+  return String(value);
+}
+
+function _rptRowsTable(w) {
+  const rows = (w.data || {}).rows || [];
+  if (!rows.length) return '<div class="rpt-empty muted">Nothing ran in this range.</div>';
+  if (w.kind === 'host_outcomes') {
+    return `<table class="rpt-table">
+      <thead><tr><th>Host</th><th>Source</th><th>Outcome</th><th>When</th></tr></thead>
+      <tbody>${rows.map(r => `<tr>
+          <td>${escHtml(r.host)}</td>
+          <td>${escHtml(r.source)}</td>
+          <td><span class="run-state t-${escAttr(RPT_STATE_ACCENT[r.outcome] || 'lav')}">${escHtml(r.outcome)}</span></td>
+          <td>${escHtml(r.at ? new Date(r.at).toLocaleString() : '')}</td>
+        </tr>`).join('')}</tbody>
+    </table>`;
+  }
+  // The value column's name and the field under it differ; the header says
+  // which one this widget counts.
+  const [second, head, field] = w.kind === 'branch_paths'
+    ? ['branch', 'Host-runs', 'hosts'] : ['step', 'Failed', 'failed'];
+  return `<table class="rpt-table">
+    <thead><tr><th>Source</th><th>${second === 'branch' ? 'Branch' : 'Step'}</th><th>${head}</th></tr></thead>
     <tbody>${rows.map(r => `<tr>
-        <td>${escHtml(r.host)}</td>
         <td>${escHtml(r.source)}</td>
-        <td><span class="run-state t-${escAttr(RPT_STATE_ACCENT[r.outcome] || 'lav')}">${escHtml(r.outcome)}</span></td>
-        <td>${escHtml(r.at ? new Date(r.at).toLocaleString() : '')}</td>
+        <td>${escHtml(r[second])}</td>
+        <td>${escHtml(String(r[field] ?? ''))}</td>
       </tr>`).join('')}</tbody>
   </table>`;
 }
@@ -429,80 +582,264 @@ function _rptLegend(display) {
 
 const RPT_AXIS_X = { ticks: { maxTicksLimit: 6, color: tok('--text-3') }, grid: { color: tok('--grid-line') } };
 
-//: Line charts on a category axis: the day names come from the server, so the
-//: date adapter isn't involved and days with no runs still take up their slot.
-function rptLineConfig(data, kind) {
-  const d = data || {};
-  const datasets = kind === 'duration'
-    ? [
-        { label: 'median', data: d.median || [], borderColor: tok('--oc-1'), borderWidth: 2, pointRadius: 0, tension: 0.25 },
-        { label: 'p95', data: d.p95 || [], borderColor: tok('--oc-2'), borderWidth: 2, pointRadius: 0, tension: 0.25 },
-      ]
-    : rptFoldedSeries(d.series, true).map(s => ({
-        label: s.name, data: s.values || [], borderColor: tok(s.color),
-        borderWidth: 2, pointRadius: 0, tension: 0.25, spanGaps: true,
-      }));
-  const y = kind === 'success_rate'
-    ? { min: 0, max: 100, ticks: { maxTicksLimit: 4, color: tok('--text-3'), callback: v => `${v}%` } }
-    : { beginAtZero: true, ticks: { maxTicksLimit: 4, color: tok('--text-3'), callback: v => rptFormatSeconds(v) } };
-  return {
-    type: 'line',
-    data: { labels: d.days || [], datasets },
-    options: {
-      responsive: true, maintainAspectRatio: false, animation: false,
-      interaction: { mode: 'index', intersect: false },
-      scales: { x: RPT_AXIS_X, y },
-      plugins: _rptLegend(datasets.length > 1),
-    },
-  };
+//: The charts each kind can draw, mirrored from the server's catalogue so a
+//: widget built before a chart existed still draws the right thing. A days
+//: widget asked for a pie draws nothing rather than a pie over dates.
+const RPT_CHARTS = {
+  success_rate: ['line', 'area', 'bar', 'table'],
+  runs_per_day: ['stacked-bar', 'bar', 'line', 'area', 'table'],
+  failures_by_step: ['bar', 'column', 'pie', 'doughnut', 'table'],
+  branch_paths: ['bar', 'column', 'pie', 'doughnut', 'table'],
+  duration: ['line', 'area', 'bar', 'table'],
+  host_outcomes: ['table', 'pie', 'doughnut', 'column'],
+  automation_fires: ['stacked-bar', 'bar', 'line', 'area', 'table'],
+};
+
+//: Which family each kind's data is, mirrored from the server's catalogue. A
+//: days widget has one value per day; a rows widget has one row per record —
+//: and host_outcomes is a rows widget whatever it draws, even though as a
+//: table it lists records and as a chart it counts them.
+const RPT_FAMILY = {
+  success_rate: 'days',
+  runs_per_day: 'days',
+  failures_by_step: 'rows',
+  branch_paths: 'rows',
+  duration: 'days',
+  host_outcomes: 'rows',
+  automation_fires: 'days',
+};
+
+//: Outcomes in the order the tables and the pies list them, whatever order the
+//: rows arrived in.
+const RPT_OUTCOME_ORDER = ['ok', 'failed', 'not_applicable', 'skipped', 'pending'];
+
+//: #rrggbb with an alpha on it, so an area's fill is the line's own colour
+//: washed out. Anything else — already an rgba(), a var(), a named colour — is
+//: returned untouched rather than guessed at.
+function rptAlpha(color, alpha) {
+  const hex = /^#([0-9a-f]{6})$/i.exec(String(color).trim());
+  if (!hex) return color;
+  const n = parseInt(hex[1], 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
-function rptStackedConfig(days, stacks) {
-  const list = stacks || [];
+//: The report's saved widget specs with the grid's current places written into
+//: them. A spec the grid does not carry — one added since the grid was drawn —
+//: is returned as it came in, place and all.
+function rptMergeLayout(specs, layout) {
+  const byId = new Map((layout || []).map(l => [String(l.id), l]));
+  return (specs || []).map((spec, i) => {
+    const at = byId.get(String(i));
+    if (!at) return { ...spec };
+    return { ...spec, x: at.x, y: at.y, w: at.w, h: at.h };
+  });
+}
+
+//: Which builder a widget's data has. The server's catalogue calls the days
+//: family "days" and the rows family "rows"; the two differ by more than their
+//: shape — host_outcomes as a table lists records, as a chart counts them.
+function rptFamily(w) {
+  const known = RPT_FAMILY[w.kind];
+  if (known) return known;
+  return Array.isArray((w.data || {}).rows) ? 'rows' : 'days';
+}
+
+//: The days family as named series, in the colours the legend and the tables
+//: both use. Percentages are folded by average and counts by sum — see
+//: rptFoldedSeries.
+function rptDaySeries(w) {
+  const d = w.data || {};
+  const one = (name, values, color) => [{ name, values: values || [], color }];
+  switch (w.kind) {
+    case 'success_rate':
+      return rptFoldedSeries(d.series, true);
+    case 'automation_fires':
+      return rptFoldedSeries(d.series);
+    case 'runs_per_day':
+      return [
+        ...one('ok', d.ok, '--st-ok'),
+        ...one('failed', d.failed, '--st-failed'),
+        ...one('pending', d.pending, '--st-pending'),
+      ];
+    case 'duration':
+      return [...one('median', d.median, '--oc-1'), ...one('p95', d.p95, '--oc-2')];
+    default:
+      return [];
+  }
+}
+
+//: The rows family as (label, value) points: one per row, or — for outcomes —
+//: one per outcome, counting its rows and leaving out the outcomes nobody has.
+function rptRowPoints(w) {
+  const rows = (w.data || {}).rows || [];
+  if (w.kind === 'host_outcomes') {
+    const counts = new Map();
+    for (const r of rows) {
+      const key = String(r.outcome);
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    const names = [...RPT_OUTCOME_ORDER,
+                   ...[...counts.keys()].filter(k => !RPT_OUTCOME_ORDER.includes(k))];
+    return names.filter(k => counts.has(k)).map(k => ({ label: k, value: counts.get(k) }));
+  }
+  const pair = w.kind === 'branch_paths' ? ['branch', 'hosts'] : ['step', 'failed'];
+  return rows.map(r => ({ label: `${r.source} · ${r[pair[0]]}`, value: r[pair[1]] }));
+}
+
+//: A pie is unreadable past a handful of wedges: the four biggest keep their
+//: colours and everything else becomes one "Other".
+function rptPieSlices(points) {
+  const sorted = [...(points || [])].sort((a, b) => b.value - a.value);
+  const head = sorted.slice(0, RPT_SERIES_TOKENS.length)
+    .map((p, i) => ({ ...p, color: RPT_SERIES_TOKENS[i] }));
+  const tail = sorted.slice(RPT_SERIES_TOKENS.length);
+  if (tail.length) {
+    head.push({ label: 'Other', value: tail.reduce((n, p) => n + (Number(p.value) || 0), 0),
+                color: '--st-skipped' });
+  }
+  return head;
+}
+
+//: The value axis keeps what each kind measures: a rate is 0–100 with a %, a
+//: duration reads as seconds, counts are whole numbers.
+function _rptDayValueAxis(kind) {
+  if (kind === 'success_rate') {
+    return { min: 0, max: 100, ticks: { maxTicksLimit: 4, color: tok('--text-3'), callback: v => `${v}%` },
+             grid: { color: tok('--grid-line') } };
+  }
+  if (kind === 'duration') {
+    return { beginAtZero: true, ticks: { maxTicksLimit: 4, color: tok('--text-3'), callback: v => rptFormatSeconds(v) },
+             grid: { color: tok('--grid-line') } };
+  }
+  return { beginAtZero: true, ticks: { maxTicksLimit: 4, color: tok('--text-3'), precision: 0 },
+           grid: { color: tok('--grid-line') } };
+}
+
+//: Where the widget's two axis titles go. A days chart always has days along x
+//: and its measure down y; a rows widget takes them from the table above, and
+//: keeps them where they are when neither names its chart.
+//: x_label titles the horizontal axis and y_label the vertical one, as drawn:
+//: the server's default_labels has already turned them round for columns.
+function _rptAxisTitles(w) {
+  return { x: w.x_label, y: w.y_label };
+}
+
+//: Chart.js wants a real string where a title colour goes — a function there
+//: is not a scriptable option and comes out black on Dark.
+function _rptTitle(label) {
+  return { display: !!label, text: label || '', color: cssVar('--text-3') };
+}
+
+//: A legend earns its rows: the widget decides, and left to us it appears with
+//: more than one thing to name — or always on a pie, where the wedges carry no
+//: axis to read their names off.
+function _rptLegendDisplay(w, datasets, isPie) {
+  if (w.legend === true || w.legend === false) return w.legend;
+  return isPie || datasets.length > 1;
+}
+
+//: Everything a chart of these options draws from: its type, its datasets, its
+//: axis titles, its legend. null is "this build cannot draw that combination".
+function rptChartConfig(w) {
+  const chart = w.chart;
+  if (chart === 'table') return null;
+  const allowed = RPT_CHARTS[w.kind] || [];
+  if (!allowed.includes(chart)) return null;
+  if (rptFamily(w) === 'days') return _rptDaysChart(w, chart);
+  if (chart === 'pie' || chart === 'doughnut') return _rptPieChart(w, chart);
+  return _rptRowsBars(w, chart);
+}
+
+function _rptDaysChart(w, chart) {
+  const series = rptDaySeries(w);
+  const stacked = chart === 'stacked-bar';
+  const datasets = series.map((s) => {
+    const color = tok(s.color);
+    if (chart === 'line' || chart === 'area') {
+      return {
+        label: s.name, data: s.values || [], borderColor: color, borderWidth: 2,
+        pointRadius: 0, tension: 0.25, spanGaps: true,
+        fill: chart === 'area' ? 'origin' : false,
+        // tok() hands back a function, which rptAlpha cannot see through;
+        // the alpha is applied to the token's value on every draw instead.
+        backgroundColor: chart === 'area' ? () => rptAlpha(cssVar(s.color), 0.25) : color,
+      };
+    }
+    return { label: s.name, data: s.values || [], backgroundColor: color, borderWidth: 0,
+             ...(stacked ? { stack: 'rpt' } : {}) };
+  });
+  const titles = _rptAxisTitles(w);
   return {
-    type: 'bar',
-    data: {
-      labels: days || [],
-      datasets: list.map(s => ({
-        label: s.name, data: s.values || [], stack: 'rpt',
-        backgroundColor: tok(s.color), borderWidth: 0,
-      })),
-    },
+    type: chart === 'bar' || chart === 'stacked-bar' ? 'bar' : 'line',
+    data: { labels: (w.data || {}).days || [], datasets },
     options: {
       responsive: true, maintainAspectRatio: false, animation: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
-        x: { ...RPT_AXIS_X, stacked: true },
-        y: { beginAtZero: true, stacked: true,
-             ticks: { maxTicksLimit: 4, color: tok('--text-3'), precision: 0 },
-             grid: { color: tok('--grid-line') } },
+        x: { ...RPT_AXIS_X, ...(stacked ? { stacked: true } : {}),
+             title: _rptTitle(titles.x) },
+        y: { ..._rptDayValueAxis(w.kind), ...(stacked ? { stacked: true } : {}),
+             title: _rptTitle(titles.y) },
       },
-      plugins: _rptLegend(list.length > 1),
+      plugins: _rptLegend(_rptLegendDisplay(w, datasets, false)),
     },
   };
 }
 
-function rptBarRowsConfig(rows, valueKey, labelFn) {
-  const list = rows || [];
+function _rptRowsBars(w, chart) {
+  const points = rptRowPoints(w);
+  // indexAxis says which way the bars run; the titles follow the axes they
+  // title, so a widget's "Step" stays under the categories however it is drawn.
+  const horizontal = chart === 'bar';
+  const titles = _rptAxisTitles(w);
   return {
     type: 'bar',
     data: {
-      labels: list.map(labelFn),
+      labels: points.map(p => p.label),
       datasets: [{
-        label: valueKey, data: list.map(r => r[valueKey]),
+        label: w.title || '', data: points.map(p => p.value),
         backgroundColor: tok('--oc-1'), borderWidth: 0,
       }],
     },
     options: {
-      indexAxis: 'y',
+      indexAxis: horizontal ? 'y' : 'x',
       responsive: true, maintainAspectRatio: false, animation: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
-        x: { beginAtZero: true, ticks: { maxTicksLimit: 5, color: tok('--text-3'), precision: 0 },
-             grid: { color: tok('--grid-line') } },
-        y: { ticks: { autoSkip: false, color: tok('--text-3') }, grid: { display: false } },
+        x: horizontal
+          ? { beginAtZero: true, ticks: { maxTicksLimit: 5, color: tok('--text-3'), precision: 0 },
+              grid: { color: tok('--grid-line') }, title: _rptTitle(titles.x) }
+          : { ticks: { autoSkip: false, color: tok('--text-3') }, grid: { display: false },
+              title: _rptTitle(titles.x) },
+        y: horizontal
+          ? { ticks: { autoSkip: false, color: tok('--text-3') }, grid: { display: false },
+              title: _rptTitle(titles.y) }
+          : { beginAtZero: true, ticks: { maxTicksLimit: 5, color: tok('--text-3'), precision: 0 },
+              grid: { color: tok('--grid-line') }, title: _rptTitle(titles.y) },
       },
-      plugins: _rptLegend(false),
+      plugins: _rptLegend(_rptLegendDisplay(w, [{}], false)),
+    },
+  };
+}
+
+function _rptPieChart(w, chart) {
+  const slices = rptPieSlices(rptRowPoints(w));
+  // No scales at all: a pie has no axes to hang a title on, and Chart.js would
+  // draw the empty ones anyway.
+  return {
+    type: chart,
+    data: {
+      labels: slices.map(s => s.label),
+      datasets: [{
+        label: w.title || '', data: slices.map(s => s.value),
+        // One scriptable option per dataset: Chart.js indexes into an array
+        // but never calls the functions inside one.
+        backgroundColor: (ctx) => cssVar((slices[ctx.dataIndex] || slices[0]).color), borderWidth: 0,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: _rptLegend(_rptLegendDisplay(w, [], true)),
     },
   };
 }
@@ -545,6 +882,7 @@ document.addEventListener('DOMContentLoaded', () => {
   delegateClick('[data-rpt-del]', (el) => deleteReport(el.dataset.rptDel));
   delegateClick('[data-rpt-back]', _showReportList);
   delegateClick('[data-rpt-view-edit]', () => openReportEditor(_rptReports.find(r => r.id === _rptOpenId)));
+  delegateClick('[data-rpt-layout]', () => { _rptToggleLayout(); });
   delegateClick('[data-rpt-wup]', (el) => _moveRptWidget(Number(el.dataset.rptWup), -1));
   delegateClick('[data-rpt-wdown]', (el) => _moveRptWidget(Number(el.dataset.rptWdown), 1));
   delegateClick('[data-rpt-wdel]', (el) => {
