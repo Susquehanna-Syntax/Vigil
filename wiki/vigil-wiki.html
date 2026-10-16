@@ -1744,7 +1744,7 @@
 
       <h3 id="goto">Go to: joining paths and trying again</h3>
       <p class="prose">A <strong>go to</strong> sends a host to another step of the same playbook. Two uses: lanes that end differently but should finish the same way can jump forward to one shared step, and a step that should be retried can jump back.</p>
-      <p class="prose">In YAML it is a step-list item with <code>goto:</code> naming a step id, and an optional <code>max:</code>:</p>
+      <p class="prose">In YAML it is a step-list item with <code>goto:</code> naming a step id, and an optional <code>max</code>:</p>
       <div class="code-block">
         <div class="code-label">goto-item.yaml</div>
         <pre>  - <span class="hl-key">goto</span>: <span class="hl-string">verify</span>
