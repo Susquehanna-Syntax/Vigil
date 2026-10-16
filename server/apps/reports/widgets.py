@@ -198,17 +198,36 @@ def compute_for(playbooks_qs, automations_qs, range_days, widget_specs, user,
     }
 
 
+#: The charts drawn with an x and a y axis; pie, doughnut and table have none.
+AXIS_CHARTS = ("line", "area", "bar", "stacked-bar", "column")
+
+
+def default_labels(kind: str, chart: str) -> tuple[str, str]:
+    """The (horizontal, vertical) axis titles a chart gets when none are set.
+
+    The catalogue's labels are written for the kind's default chart. A rows
+    metric drawn by default as bars across (value along x) turns its axes round
+    when drawn as columns, so its labels turn round with them.
+    """
+    spec = WIDGETS[kind]
+    if chart == "column" and spec["chart"] == "bar":
+        return spec["y_label"], spec["x_label"]
+    return spec["x_label"], spec["y_label"]
+
+
 def _widget(kind: str, spec: dict, context: dict) -> dict:
     """One computed widget: its drawing options, the sources it covers, and its
     data — narrowed to those sources when the spec names any."""
     defaults = WIDGETS[kind]
+    chart = spec.get("chart") or defaults["chart"]
+    x_default, y_default = default_labels(kind, chart)
     covered = _covered_names(context, spec.get("sources"))
     return {
         "kind": kind,
         "title": spec.get("title") or defaults["title"],
-        "chart": spec.get("chart") or defaults["chart"],
-        "x_label": spec["x_label"] if "x_label" in spec else defaults["x_label"],
-        "y_label": spec["y_label"] if "y_label" in spec else defaults["y_label"],
+        "chart": chart,
+        "x_label": spec["x_label"] if "x_label" in spec else x_default,
+        "y_label": spec["y_label"] if "y_label" in spec else y_default,
         # None leaves the call to the browser.
         "legend": spec.get("legend"),
         "layout": ({"x": spec["x"], "y": spec["y"], "w": spec["w"], "h": spec["h"]}
