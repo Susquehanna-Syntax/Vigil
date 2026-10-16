@@ -4462,3 +4462,12 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 }
 
 .bl-desc { resize: vertical; min-height: 64px; line-height: 1.5; font-family: inherit; }
+/* QA-34: an if's condition is a list of rows joined with all-of / any-of.
+   The inspector is 270px wide, so each row is a 2-column grid with the op,
+   value and remove control on one line under it. */
+.fb-rows { display: flex; flex-direction: column; gap: 6px; }
+.fb-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px; padding: 6px;
+  border-radius: 6px; background: var(--s1); }
+.fb-row .fb-line { grid-column: 1 / -1; }
+.fb-row .fb-line [data-fb-rm] { flex: 0 0 auto; }
+.fb-mode { font-size: 12px; color: var(--text-2); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
