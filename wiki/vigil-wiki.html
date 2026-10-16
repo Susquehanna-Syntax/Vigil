@@ -3074,6 +3074,7 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
     <option value="agent">Agent lifecycle</option>
     <option value="reprovision">Reprovisioning</option>
     <option value="tags">Host tagging</option>
+    <option value="alerts">Alerts and notifications</option>
     <option value="hunts">Hunts</option>
     <option value="vuln">Vulnerability scanning</option>
   </select>
@@ -4064,6 +4065,59 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
     <span class="hl-key">type</span>: <span class="hl-string">remove_tag</span>
     <span class="hl-key">params</span>:
       <span class="hl-key">tags</span>: <span class="hl-string">&quot;role:web, env:prod&quot;</span></pre></div>
+</div></details>
+</div>
+<div class="action-group" data-group="alerts">
+<h4 class="action-group-title">Alerts and notifications</h4>
+<p class="action-group-note">The agent reports the step and the server acts on the result, taking severity, key and channel from the task it signed — an agent can reword an alert but never choose its severity, its key or where it goes.</p>
+<details class="action" id="action-raise_alert" data-group="alerts" data-risk="low" data-keywords="raise_alert severity message key"><summary><code class="action-name">raise_alert</code><span class="risk risk-low">low</span><span class="action-label">Raise an alert</span><span class="action-required">severity, message</span></summary><div class="action-body">
+<p class="prose">Opens an alert on this host and notifies your channels. A repeat run under the same key does not page twice.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>severity</code></td><td><span class="param-req">required</span></td><td>info, warning or critical. Taken from the task the server signed, not from the agent&#x27;s report.</td></tr><tr><td><code>message</code></td><td><span class="param-req">required</span></td><td>The alert text. May reference an earlier step&#x27;s output; the agent renders it and the server stores it as plain text, cut at 2,000 characters.</td></tr><tr><td><code>key</code></td><td><span class="param-opt">optional</span></td><td>Names this problem on this host, so a repeat run does not page twice and resolve_alert can find the alert again. Cut at 80 characters.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>message</code></td><td>str</td><td>The message the server was asked to raise, as the agent reported it.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Page when the disk sweep fails</span>
+<span class="hl-key">description</span>: <span class="hl-string">Opens an alert on this host and notifies your channels. A repeat run under the same key does not page twice.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">low</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">check-cron</span>
+    <span class="hl-key">type</span>: <span class="hl-string">check_service</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">service_name</span>: <span class="hl-string">cron</span>
+  - <span class="hl-key">id</span>: <span class="hl-string">raise-alert</span>
+    <span class="hl-key">type</span>: <span class="hl-string">raise_alert</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">severity</span>: <span class="hl-string">warning</span>
+      <span class="hl-key">key</span>: <span class="hl-string">disk-cleanup</span>
+      <span class="hl-key">message</span>: <span class="hl-string">&quot;Nightly disk sweep failed. Cron state: ${{ steps.check-cron.result.state }}&quot;</span></pre></div>
+</div></details>
+<details class="action" id="action-resolve_alert" data-group="alerts" data-risk="low" data-keywords="resolve_alert key"><summary><code class="action-name">resolve_alert</code><span class="risk risk-low">low</span><span class="action-label">Resolve an alert</span><span class="action-required">key</span></summary><div class="action-body">
+<p class="prose">Resolves this host&#x27;s open alert with that key, and notifies the resolution.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>key</code></td><td><span class="param-req">required</span></td><td>The key the alert was raised with. Required: alerts opened by a metric rule are resolved by the evaluator, not by a task.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>key</code></td><td>str</td><td>The key whose alert the server was asked to resolve.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Clear the disk-sweep alert once it succeeds</span>
+<span class="hl-key">description</span>: <span class="hl-string">Resolves this host&#x27;s open alert with that key, and notifies the resolution.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">low</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">resolve-alert</span>
+    <span class="hl-key">type</span>: <span class="hl-string">resolve_alert</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">key</span>: <span class="hl-string">disk-cleanup</span></pre></div>
+</div></details>
+<details class="action" id="action-send_notification" data-group="alerts" data-risk="low" data-keywords="send_notification message channel"><summary><code class="action-name">send_notification</code><span class="risk risk-low">low</span><span class="action-label">Send a notification</span><span class="action-required">message</span></summary><div class="action-body">
+<p class="prose">One message to every enabled channel, or to the one you name. Creates no alert.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>message</code></td><td><span class="param-req">required</span></td><td>The message body. May reference an earlier step&#x27;s output; the agent renders it and the server sends it as plain text, cut at 2,000 characters.</td></tr><tr><td><code>channel</code></td><td><span class="param-opt">optional</span></td><td>A notification channel&#x27;s name, as the Notifications page shows it. Omit to send to every enabled channel.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>message</code></td><td>str</td><td>The message the server was asked to send, as the agent reported it.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Tell Ops the sweep finished</span>
+<span class="hl-key">description</span>: <span class="hl-string">One message to every enabled channel, or to the one you name. Creates no alert.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">low</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">check-cron</span>
+    <span class="hl-key">type</span>: <span class="hl-string">check_service</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">service_name</span>: <span class="hl-string">cron</span>
+  - <span class="hl-key">id</span>: <span class="hl-string">send-notification</span>
+    <span class="hl-key">type</span>: <span class="hl-string">send_notification</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">message</span>: <span class="hl-string">&quot;Nightly disk sweep failed. Cron state: ${{ steps.check-cron.result.state }}&quot;</span></pre></div>
 </div></details>
 </div>
 <div class="action-group" data-group="hunts">

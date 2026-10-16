@@ -326,6 +326,12 @@ def task_result(request):
             _maybe_ingest_trivy_report(task, output)
             _maybe_ingest_firewall_rules(task, output)
             _maybe_ingest_docker_usage(task, output)
+        if new_state in (Task.State.COMPLETED, Task.State.FAILED,
+                         Task.State.NOT_APPLICABLE):
+            # A step that ran before a later one failed still fired, so these
+            # run on any terminal state and pick their steps from the agent's
+            # per-step statuses rather than the task's.
+            _maybe_run_alert_actions(task)
         if new_state in (Task.State.COMPLETED, Task.State.NOT_APPLICABLE):
             # A chain that stops as not applicable is finished on this host
             # too, so the completion tag must land here as well — otherwise
@@ -333,6 +339,24 @@ def task_result(request):
             _maybe_apply_playbook_completion_tag(task)
 
     return Response(TaskSerializer(task).data)
+
+
+def _maybe_run_alert_actions(task: Task) -> None:
+    """Carry out the raise_alert / resolve_alert / send_notification steps of
+    a task that reached a terminal state.
+
+    The work lives with the alerts app. Never raises: a task result must be
+    recordable even if alerting fails, which is why the import is here too —
+    a broken alerts app must not cost the result.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    try:
+        from apps.alerts.task_actions import apply
+        apply(task)
+    except Exception:
+        logger.exception("alert task actions failed on task %s", task.pk)
 
 
 def _tag_steps(task: Task, actions: tuple[str, ...]) -> list[dict]:
