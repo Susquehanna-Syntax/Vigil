@@ -6,7 +6,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from django.db import IntegrityError, transaction
-from django.db.models import Count
+from django.db.models import Count, F
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
@@ -828,6 +828,68 @@ def _merged_outputs(task: Task) -> dict:
     return merged
 
 
+def _resolve_goto(goto: Task, tasks: list) -> None:
+    """Resolve a go to the release walk reached (QA-36); it never reaches an agent.
+
+    A target later in the chain that has not run yet: everything blocked in
+    between is skipped (branches converge). Otherwise the target ran earlier:
+    the chain from its newest run through this go to is cloned right after the
+    go to (a retry loop), at most ``max`` times per host run; after that the
+    go to does nothing and the host goes on.
+    """
+    target = goto.params.get("goto")
+    gid = goto.params.get("goto_id")
+    limit = int(goto.params.get("max") or 3)
+    stamp = now()
+    later = [t for t in tasks if t.step_order > goto.step_order]
+    dest = next((t for t in later
+                 if t.step_ref == target and t.state == Task.State.BLOCKED), None)
+    if dest is not None:
+        for t in later:
+            if t.step_order >= dest.step_order:
+                break
+            if t.state == Task.State.BLOCKED:
+                t.state = Task.State.SKIPPED
+                t.completed_at = stamp
+                t.result_output = f"[SKIPPED] jumped over by go to {target}"
+                t.save(update_fields=["state", "completed_at", "result_output"])
+        goto.result_output = f"[GOTO] jumped ahead to {target}"
+    else:
+        start = next((t for t in reversed(tasks)
+                      if t.step_order < goto.step_order and t.step_ref == target), None)
+        jumps = Task.objects.filter(
+            run=goto.run, host=goto.host, action="_goto", params__goto_id=gid,
+            result_output__startswith="[GOTO] jumped back").count()
+        if start is None:
+            goto.result_output = f"[GOTO] {target} not found — going on"
+        elif jumps >= limit:
+            goto.result_output = f"[GOTO] went back to {target} {limit} times already — going on"
+        else:
+            templates = [t for t in tasks if start.step_order <= t.step_order <= goto.step_order]
+            Task.objects.filter(
+                run=goto.run, host=goto.host, step_order__gt=goto.step_order,
+            ).update(step_order=F("step_order") + len(templates))
+            for j, t in enumerate(templates):
+                expires_at = None
+                if t.expires_at and t.created_at:
+                    expires_at = stamp + (t.expires_at - t.created_at)
+                Task.objects.create(
+                    host=t.host, run=t.run, requested_by=t.requested_by,
+                    step_label=t.step_label, action=t.action, params=t.params,
+                    risk_level=t.risk_level, ttl_seconds=t.ttl_seconds,
+                    schedule=t.schedule, max_retries=t.max_retries,
+                    retry_delay_seconds=t.retry_delay_seconds,
+                    on_failure=t.on_failure, on_not_applicable=t.on_not_applicable,
+                    step_ref=t.step_ref, branch=t.branch, guard=t.guard,
+                    state=Task.State.BLOCKED, step_order=goto.step_order + 1 + j,
+                    expires_at=expires_at, nonce=secrets.token_hex(32),
+                )
+            goto.result_output = f"[GOTO] jumped back to {target} ({jumps + 1}/{limit})"
+    goto.state = Task.State.COMPLETED
+    goto.completed_at = stamp
+    goto.save(update_fields=["state", "completed_at", "result_output"])
+
+
 def _release_next(run: TaskRun, host) -> None:
     """Release the host's next runnable task in *run* (M6 08b).
 
@@ -865,6 +927,10 @@ def _release_next(run: TaskRun, host) -> None:
                 if task.step_ref:
                     context[task.step_ref] = {"status": "skipped", "result": {}}
                 continue
+        if task.action == "_goto":
+            _resolve_goto(task, tasks)
+            _release_next(run, host)
+            return
         task.state = Task.State.PENDING
         task.save(update_fields=["state"])
         return

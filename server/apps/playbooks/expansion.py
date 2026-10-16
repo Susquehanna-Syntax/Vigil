@@ -81,6 +81,7 @@ def expand_actions(actions: list[dict], *, _seen: frozenset = frozenset(),
     """
     from apps.tasks.spec import SpecError, substitute_refs
 
+    from .flow import flow_sequence
     from .inputs import PlaybookInputError, playbook_values
     from .models import Playbook
 
@@ -104,6 +105,12 @@ def expand_actions(actions: list[dict], *, _seen: frozenset = frozenset(),
         playbook = Playbook.objects.filter(name__iexact=name).first()
         if playbook is None:
             raise PlaybookExpandError(f"no playbook named {name!r}")
+        # Inline expansion flattens a playbook into one task's actions, where
+        # a go to has no chain to jump through (QA-36).
+        if any("goto" in node for node in flow_sequence(playbook.flow)):
+            raise PlaybookExpandError(
+                f"playbook {name!r} uses go to, which only runs when the "
+                "playbook runs on its own")
 
         supplied = dict((action.get("params") or {}).get("inputs") or {})
         # A supplied value may name an input of the playbook that runs this
