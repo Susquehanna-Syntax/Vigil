@@ -542,6 +542,52 @@ class ScopingTests(ReportTestBase):
         self.assertEqual(response.status_code, 400, response.content)
 
 
+class ReportAccessTests(ReportTestBase):
+    """A site-scoped user sees only reports with a source they can open, and
+    an edit never drops the sources they were not shown."""
+
+    def _scope_away(self, hidden):
+        from apps.reports import views
+
+        real = views.scoping.filter_by_site
+
+        def hide(qs, user, path="", cascade_global=False):
+            return real(qs, user, path=path, cascade_global=cascade_global).exclude(
+                pk__in=[h.pk for h in hidden if h._meta.model is qs.model])
+
+        self.addsetattr(views.scoping, "filter_by_site", hide)
+        self.addsetattr(__import__("apps.accounts.permissions", fromlist=["x"]),
+                        "visible_site_ids", lambda user: [1])
+
+    def test_another_sites_report_is_a_404(self):
+        theirs = self.playbook("Their patch")
+        report = self.report(sources=[theirs], name="Theirs")
+        self._scope_away([theirs])
+        self.client.force_authenticate(self.viewer)
+        self.assertEqual(self.client.get("/api/v1/reports/").json(), [])
+        for url in (f"/api/v1/reports/{report.id}/", f"/api/v1/reports/{report.id}/data/",
+                    f"/api/v1/reports/{report.id}/data/0.csv"):
+            self.assertEqual(self.client.get(url).status_code, 404, url)
+        # An operator of another site cannot delete it either; its owner can.
+        other = get_user_model().objects.create_user("rop", password="pw")
+        UserProfile.objects.create(user=other, role=Role.OPERATOR)
+        self.client.force_authenticate(other)
+        self.assertEqual(self.client.delete(f"/api/v1/reports/{report.id}/").status_code, 404)
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.get(f"/api/v1/reports/{report.id}/").status_code, 200)
+
+    def test_an_edit_keeps_the_sources_it_was_not_shown(self):
+        mine, theirs = self.playbook("My patch"), self.playbook("Their patch")
+        report = self.report(sources=[mine, theirs])
+        self._scope_away([theirs])
+        row = self.client.get(f"/api/v1/reports/{report.id}/").json()
+        self.assertEqual(row["playbooks"], [str(mine.id)])
+        response = self.client.patch(f"/api/v1/reports/{report.id}/",
+                                     {"playbooks": [str(mine.id)]}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(set(report.playbooks.all()), {mine, theirs})
+
+
 class CsvTests(ReportTestBase):
     def test_csv_export(self):
         pb = self.playbook("Patch web")
@@ -635,6 +681,15 @@ class CsvTests(ReportTestBase):
                          204)
         self.assertEqual(self.client.get(f"/api/v1/reports/{report_id}/data/").status_code,
                          404)
+
+    def test_csv_cells_never_start_a_formula(self):
+        widget = {"kind": "host_outcomes", "data": {"rows": [
+            {"host": "=HYPERLINK(\"http://x\")", "source": "+cmd", "outcome": "-1", "at": "@now"}]}}
+        lines = widgets.to_csv(widget).splitlines()
+        self.assertEqual(lines[1], "'@now,\"'=HYPERLINK(\"\"http://x\"\")\",'-1,'+cmd")
+        rate = {"kind": "success_rate", "data": {"days": ["2026-10-15"],
+                                                 "series": [{"name": "=sum", "values": [-5]}]}}
+        self.assertEqual(widgets.to_csv(rate).splitlines(), ["day,'=sum", "2026-10-15,-5"])
 
     def test_csv_filename_slugs_the_report_name(self):
         pb = self.playbook("Patch web")

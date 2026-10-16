@@ -1,5 +1,6 @@
 """The reports API: saved selections and their computed chart data."""
 
+from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view, permission_classes
@@ -21,7 +22,7 @@ _FIELDS = ("name", "description", "range_days", "widgets", "playbooks", "automat
 @permission_classes([IsAuthenticated])
 def report_index(request):
     if request.method == "GET":
-        return Response([_row(report) for report in Report.objects.all()])
+        return Response([_row(report, request.user) for report in _visible_reports(request.user)])
 
     if not IsOperator().has_permission(request, None):
         return Response({"detail": IsOperator.message}, status=403)
@@ -36,16 +37,16 @@ def report_index(request):
         range_days=payload["range_days"],
         widgets=payload["widgets"],
     )
-    _set_sources(report, payload)
-    return Response(_row(report), status=201)
+    _set_sources(report, payload, request.user)
+    return Response(_row(report, request.user), status=201)
 
 
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def report_detail(request, report_id):
-    report = get_object_or_404(Report, pk=report_id)
+    report = get_object_or_404(_visible_reports(request.user), pk=report_id)
     if request.method == "GET":
-        return Response(_row(report))
+        return Response(_row(report, request.user))
     if not IsOperator().has_permission(request, None):
         return Response({"detail": IsOperator.message}, status=403)
     if request.method == "DELETE":
@@ -60,8 +61,8 @@ def report_detail(request, report_id):
         if field in payload:
             setattr(report, field, payload[field])
     report.save()
-    _set_sources(report, payload)
-    return Response(_row(report))
+    _set_sources(report, payload, request.user)
+    return Response(_row(report, request.user))
 
 
 @api_view(["GET"])
@@ -75,14 +76,14 @@ def widget_catalog(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def report_data(request, report_id):
-    report = get_object_or_404(Report, pk=report_id)
+    report = get_object_or_404(_visible_reports(request.user), pk=report_id)
     return Response(widgets.compute(report, request.user))
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def report_data_csv(request, report_id, index):
-    report = get_object_or_404(Report, pk=report_id)
+    report = get_object_or_404(_visible_reports(request.user), pk=report_id)
     computed = widgets.compute(report, request.user)
     if not 0 <= index < len(computed["widgets"]):
         return Response({"detail": "no such widget"}, status=404)
@@ -96,25 +97,47 @@ def report_data_csv(request, report_id, index):
 
 # -- serialisation -------------------------------------------------------------
 
-def _row(report) -> dict:
+def _visible_reports(user):
+    """The reports *user* may open: ones they own, or that name at least one
+    playbook or automation they can see. A report built from another site's
+    sources is not theirs to read, rename or delete — it 404s."""
+    from apps.accounts.permissions import visible_site_ids
+
+    qs = Report.objects.all()
+    if visible_site_ids(user) is None:
+        return qs
+    return qs.filter(
+        Q(owner=user)
+        | Q(playbooks__in=_visible(Playbook.objects.all(), user))
+        | Q(automations__in=_visible(Automation.objects.all(), user))).distinct()
+
+
+def _row(report, user) -> dict:
+    playbooks = _ids(_visible(report.playbooks.all(), user))
+    automations = _ids(_visible(report.automations.all(), user))
     return {
         "id": str(report.id),
         "name": report.name,
         "description": report.description,
         "range_days": report.range_days,
         "widgets": report.widgets,
-        "playbooks": [str(pk) for pk in report.playbooks.values_list("id", flat=True)],
-        "automations": [str(pk) for pk in report.automations.values_list("id", flat=True)],
+        # Only the sources this user can see: another site's are not named.
+        "playbooks": sorted(playbooks),
+        "automations": sorted(automations),
         "owner": report.owner.username if report.owner_id else None,
         "updated_at": report.updated_at.isoformat(),
     }
 
 
-def _set_sources(report, payload):
-    if "playbooks" in payload:
-        report.playbooks.set(Playbook.objects.filter(id__in=payload["playbooks"]))
-    if "automations" in payload:
-        report.automations.set(Automation.objects.filter(id__in=payload["automations"]))
+def _set_sources(report, payload, user):
+    """Set the sources the request names. Sources the editor cannot see were
+    never shown to them, so an edit keeps them rather than dropping them."""
+    for model, key in ((Playbook, "playbooks"), (Automation, "automations")):
+        if key not in payload:
+            continue
+        field = getattr(report, key)
+        hidden = field.exclude(pk__in=_visible(model.objects.all(), user).values("pk"))
+        field.set(list(model.objects.filter(id__in=payload[key])) + list(hidden))
 
 
 # -- validation ----------------------------------------------------------------

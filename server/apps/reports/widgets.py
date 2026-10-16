@@ -149,7 +149,7 @@ def to_csv(widget: dict) -> str:
         return buf.getvalue()
     rows = data.get("rows") or []
     keys = sorted(rows[0]) if rows else _ROWS_KEYS[widget["kind"]]
-    writer.writerow(keys)
+    writer.writerow([_cell(k) for k in keys])
     for row in rows:
         writer.writerow([_cell(row.get(k)) for k in keys])
     return buf.getvalue()
@@ -433,15 +433,25 @@ def _iso(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat()
 
 
+#: A cell starting with one of these is read as a formula by spreadsheet apps.
+#: Hostnames, step ids and source names are user- or agent-supplied, so a
+#: quote in front keeps them as text when the CSV is opened.
+_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+
+
 def _cell(value):
-    return "" if value is None else value
+    if value is None:
+        return ""
+    if isinstance(value, str) and value.startswith(_FORMULA_START):
+        return "'" + value
+    return value
 
 
 def _days_csv(writer, data):
     days = data["days"]
     if "series" in data:
         series = data["series"]
-        writer.writerow(["day"] + [s["name"] for s in series])
+        writer.writerow(["day"] + [_cell(s["name"]) for s in series])
         for i, day in enumerate(days):
             writer.writerow([day] + [_cell(s["values"][i]) for s in series])
         return
