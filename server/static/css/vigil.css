@@ -4501,3 +4501,60 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
    there; take it out of the form's layout. */
 .modal-xwide > .modal-grip { position: absolute; right: 6px; bottom: 6px; flex: 0 0 auto; }
 @media (max-width: 640px) { .modal-grip { display: none; } }
+
+/* ═══════════════════════════════════════════
+   Reports — Deployments → Reports sub-tab (QA-42)
+   ═══════════════════════════════════════════ */
+.rpt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 14px; }
+.rpt-card {
+  background: var(--s1); border: 1.5px solid var(--border); border-radius: var(--r-md);
+  padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0;
+}
+.rpt-card-head { display: flex; align-items: center; gap: 10px; }
+.rpt-card-title {
+  font-family: 'Fraunces', serif; font-size: 15px; font-weight: 500; color: var(--text-1);
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Chart.js needs a boxed height or maintainAspectRatio: false collapses it. */
+.rpt-chart { height: 220px; position: relative; }
+.rpt-empty { font-size: 12px; padding: 20px 0; }
+.rpt-note { font-size: 12px; margin-bottom: 12px; }
+.rpt-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+.rpt-head-title { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 500; color: var(--text-1); }
+.rpt-head-range { font-size: 12px; }
+.rpt-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rpt-table th {
+  text-align: left; font-weight: 600; color: var(--text-3); font-size: 10px;
+  letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.rpt-table td {
+  padding: 5px 8px; border-bottom: 1px solid var(--border); color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.rpt-table tr:last-child td { border-bottom: none; }
+.rpt-table .run-state { text-align: left; }
+.rpt-picks {
+  max-height: 180px; overflow-y: auto; margin-top: 8px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--s2); padding: 6px;
+}
+.rpt-pick {
+  display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+  font-size: 13px; color: var(--text-2); cursor: pointer; border-radius: var(--r-sm);
+}
+.rpt-pick:hover { background: var(--s3); color: var(--text-1); }
+.rpt-none { font-size: 12px; padding: 8px; }
+.rpt-widgets { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.rpt-widget-row {
+  display: grid; grid-template-columns: minmax(90px, 150px) minmax(0, 1fr) auto auto auto;
+  gap: 8px; align-items: center;
+}
+.rpt-widget-kind {
+  font-size: 12px; font-weight: 600; color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .rpt-grid { grid-template-columns: minmax(0, 1fr); }
+  .rpt-widget-row { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+  .rpt-widget-kind { grid-column: 1 / -1; }
+}
