@@ -319,21 +319,28 @@ function _blAddTask(at) {
     } });
 }
 
-// The small menu a "+" on an edge opens: a task or an if / else goes there.
+// The small menu a "+" on an edge opens: a task, an if / else, or (at the end
+// of a lane only) a go to goes there.
 function _blInsertMenu(btn) {
   document.querySelectorAll('.fce-menu').forEach(m => m.remove());
   const vp = btn.closest('.fcv');
   const menu = document.createElement('div');
   menu.className = 'fce-menu';
   menu.setAttribute('role', 'menu');
+  const at = btn.dataset.flowInsert;
+  const [lane, i] = String(at).split('|');
+  // A go to must be the last item of its lane, so it is only offered there;
+  // and once a lane ends in one, that "+" is gone (its edge carries no
+  // insert), which is how "nothing after a go to" holds on the canvas too.
+  const atLaneEnd = +i === flowLane(_editingTree, lane).length;
   menu.innerHTML = `<button type="button" role="menuitem" class="btn btn-mint btn-xs" data-m="task">Task</button>
-    <button type="button" role="menuitem" class="btn btn-lav btn-xs" data-m="if">If / else</button>`;
+    <button type="button" role="menuitem" class="btn btn-lav btn-xs" data-m="if">If / else</button>`
+    + (atLaneEnd ? `<button type="button" role="menuitem" class="btn btn-sky btn-xs" data-m="goto">Go to</button>` : '');
   const vr = vp.getBoundingClientRect();
   const br = btn.getBoundingClientRect();
   menu.style.left = `${br.left - vr.left + br.width / 2}px`;
   menu.style.top = `${br.bottom - vr.top + 6}px`;
   vp.appendChild(menu);
-  const at = btn.dataset.flowInsert;
   const close = () => { menu.remove(); document.removeEventListener('pointerdown', outside, true); };
   const outside = (e) => { if (!menu.contains(e.target)) close(); };
   document.addEventListener('pointerdown', outside, true);
@@ -341,6 +348,10 @@ function _blInsertMenu(btn) {
   menu.querySelector('[data-m="if"]').addEventListener('click', () => {
     close();
     _blInsert(at, { kind: 'if', cond: '', then: [], else: [] });
+  });
+  menu.querySelector('[data-m="goto"]')?.addEventListener('click', () => {
+    close();
+    _blInsert(at, { kind: 'goto', gid: '', target: '', max: 3 });
   });
   menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { close(); btn.focus(); } });
   menu.querySelector('button').focus();
@@ -384,6 +395,11 @@ function _renderInspector() {
   on('[data-flow-color]', 'click', el => { _blAt(el.dataset.flowColor).node.color = el.dataset.c; _renderEditorSteps(); });
   on('[data-flow-ona]', 'change', el => { _blAt(el.dataset.flowOna).node.ona = el.value; _renderEditorSteps(); });
   on('[data-flow-onf]', 'change', el => { _blAt(el.dataset.flowOnf).node.onf = el.value; _renderEditorSteps(); });
+  on('[data-flow-goto-target]', 'change', el => { _blAt(el.dataset.flowGotoTarget).node.target = el.value; _renderEditorSteps(); });
+  on('[data-flow-goto-max]', 'change', el => {
+    _blAt(el.dataset.flowGotoMax).node.max = Math.min(10, Math.max(1, Math.round(+el.value || 3)));
+    _renderEditorSteps();
+  });
   // Typing redraws the canvas only when the field loses focus, so it keeps the caret.
   const redrawCanvas = () => {
     const wrap = document.getElementById('bl-editor-steps');
@@ -793,8 +809,13 @@ async function _savePlaybook() {
     const why = _blIneligible(_playbookDefs.find(d => String(d.id) === String(s.def)));
     if (why) return showToast(`Fix ineligible steps first: ${_defName(s.def)} — ${why}`, 'error');
   }
-  const blocking = flowFindings(_editingTree).filter(f => f.text.startsWith('A branch has no condition'));
-  if (blocking.length) return showToast('Give every branch a condition before saving', 'error');
+  const findings = flowFindings(_editingTree);
+  if (findings.some(f => f.text.startsWith('A branch has no condition'))) {
+    return showToast('Give every branch a condition before saving', 'error');
+  }
+  if (findings.some(f => f.text.startsWith('A go to has no target'))) {
+    return showToast('Choose a step for every go to before saving', 'error');
+  }
   // Only asked when the flag is being turned on — the server ignores it
   // otherwise, and a code spent on a no-op change is a code burned for
   // nothing (they are single-use within their validity window).
