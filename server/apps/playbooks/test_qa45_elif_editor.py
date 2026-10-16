@@ -80,7 +80,7 @@ const tree = [S('a'), { kind: 'if', bid: 'b1', cond: 'steps.a.status == "ok"',
   else: [S('d')] }, S('z')];
 const L = flowLayout(tree);
 const ifNode = L.nodes.find(n => n.type === 'if');
-const mine = L.edges.filter(e => e.branch && e.branch.bid === 'b1');
+const mine = L.edges.filter(e => e.branch && e.branch.bid === 'b1' && !e.tail);
 // Each arm's band centre is where its edge ends: the first step node's
 // centre line, or the join's for an empty arm.
 const bandY = side => {
@@ -119,7 +119,7 @@ const nested = { kind: 'if', bid: 'bx', cond: 'z', then: [S('x')], else: [S('y')
 const tree = [{ kind: 'if', bid: 'b1', cond: 'c0', then: [S('a'), nested],
   elifs: [{ cond: 'c1', then: [S('e1')] }, { cond: 'c2', then: [] }], else: [S('o')] }];
 const L = flowLayout(tree);
-const mine = L.edges.filter(e => e.branch && e.branch.bid === 'b1');
+const mine = L.edges.filter(e => e.branch && e.branch.bid === 'b1' && !e.tail);
 console.log(JSON.stringify({
   ports: mine.map(e => Math.round(e.a.y)),
   bandEdges: mine.map(e => [e.branch.side, Math.round(e.a.y), Math.round(e.b.y)]),
@@ -285,3 +285,42 @@ class MarkupTests(SimpleTestCase):
         block = css[css.index("QA-45: or-if exits"):]
         self.assertNotIn("border-left", block)
         self.assertNotIn("border-right", block)
+
+
+class ReviewFixTests(NodeFlowTests):
+    def test_an_exit_nobody_took_reads_zero(self):
+        got = self._node("""
+const S = sid => ({ kind: 'step', sid, def: '1' });
+const tree = [S('a'), { kind: 'if', bid: 'b1', cond: 'x == 0', then: [S('b')],
+  elifs: [{ cond: 'x == 1', then: [S('c')] }, { cond: 'x == 2', then: [S('d')] }], else: [S('e')] }];
+const stats = flowRunStats([
+  { step_ref: 'b', branch: 'b1.then', host: 'h1', state: 'completed' },
+  { step_ref: 'c', branch: 'b1.elif1', host: 'h2', state: 'completed' }]);
+console.log(JSON.stringify(flowReadOnlyHtml(tree, stats)));
+""")
+        self.assertNotIn("undefined", got)
+        self.assertIn("or if 2 <b>0</b>", got)
+
+    def test_inspector_markup_is_balanced(self):
+        got = self._node("""
+const S = sid => ({ kind: 'step', sid, def: '1' });
+const tree = [S('a'), { kind: 'if', bid: 'b1', cond: '', then: [S('b')],
+  elifs: [{ cond: '', then: [S('c')] }], else: [] }];
+const ctx = { ineligible: () => null, defName: () => '', defs: [] };
+console.log(JSON.stringify(flowInspectorHtml(tree, '|1', ctx)));
+""")
+        self.assertEqual(len(re.findall(r"<div\b", got)), got.count("</div>"))
+
+    def test_an_empty_or_if_runs_along_its_own_band(self):
+        got = self._node("""
+const S = sid => ({ kind: 'step', sid, def: '1' });
+const tree = [S('a'), { kind: 'if', bid: 'b1', cond: 'x == 0', then: [S('b')],
+  elifs: [{ cond: 'x == 1', then: [S('c')] }, { cond: 'x == 2', then: [] }], else: [S('e')] }];
+const L = flowLayout(tree);
+const e = L.edges.find(e => e.insert === '1.elif2|0');
+const mid = { x: (e.a.x + e.b.x) / 2, y: (e.a.y + e.b.y) / 2 };
+const hits = L.nodes.filter(n => n.type === 'step'
+  && mid.x >= n.x && mid.x <= n.x + n.w && mid.y >= n.y && mid.y <= n.y + n.h).map(n => n.node.sid);
+console.log(JSON.stringify(hits));
+""")
+        self.assertEqual(got, [])
