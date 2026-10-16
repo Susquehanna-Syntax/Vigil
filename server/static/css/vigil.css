@@ -4558,3 +4558,9 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
   .rpt-widget-row { grid-template-columns: minmax(0, 1fr) auto auto auto; }
   .rpt-widget-kind { grid-column: 1 / -1; }
 }
+/* Six sub-tabs are wider than a phone: the row scrolls on its own rather than
+   widening the page (QA-42 added the sixth). */
+@media (max-width: 640px) {
+  .sub-tabs { overflow-x: auto; scrollbar-width: none; }
+  .sub-tab { flex: 0 0 auto; padding: 10px 12px; }
+}

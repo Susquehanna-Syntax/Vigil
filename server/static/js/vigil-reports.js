@@ -33,14 +33,17 @@ function _rptSourceNames(report) {
   return names;
 }
 
+// Whether a widget has anything to draw. A rate or a duration is null on a day
+// with nothing finished, so any number counts, 0 included: a playbook that
+// failed everywhere has a success rate of 0%, which is the point of the chart.
+// A count is 0 on an empty day, so only a count above 0 counts.
 function _rptHasData(w) {
   const d = w.data || {};
   if (Array.isArray(d.rows)) return d.rows.length > 0;
-  if (Array.isArray(d.series)) {
-    return d.series.some(s => (s.values || []).some(v => v !== null && v !== undefined && v !== 0));
-  }
-  return ['ok', 'failed', 'pending', 'median', 'p95']
-    .some(k => (d[k] || []).some(v => v !== null && v !== undefined && v !== 0));
+  const measured = w.kind === 'success_rate' || w.kind === 'duration';
+  const has = v => (measured ? v !== null && v !== undefined : Number(v) > 0);
+  if (Array.isArray(d.series)) return d.series.some(s => (s.values || []).some(has));
+  return ['ok', 'failed', 'pending', 'median', 'p95'].some(k => (d[k] || []).some(has));
 }
 
 /* ── List ────────────────────────────────────────────────────────────── */
@@ -301,7 +304,7 @@ async function openReport(id) {
       <button class="btn btn-outline btn-sm" type="button" data-rpt-back>Back to reports</button>
       <span class="rpt-head-title">${escHtml(report.name || 'Report')}</span>
       <span class="rpt-head-range muted">${escHtml(String(range.from || ''))} – ${escHtml(String(range.to || ''))}
-        · last ${escHtml(String(range.days || report.range_days || ''))} days</span>
+        · last ${escHtml(String((range.days || []).length || report.range_days || ''))} days</span>
       <button class="btn btn-lemon btn-sm" type="button" data-rpt-view-edit>Edit</button>
     </div>
     ${data.truncated
@@ -397,9 +400,10 @@ function rptFormatSeconds(s) {
   return `${hours % 1 === 0 ? String(hours) : hours.toFixed(1)}h`;
 }
 
-//: Sum the tail into one "Other" series, so a report over forty automations
-//: still draws four distinguishable colours.
-function rptFoldedSeries(series) {
+//: Fold the tail into one "Other" series, so a report over forty automations
+//: still draws four distinguishable colours. Counts add up; percentages do
+//: not, so `mean` averages the tail's numbers per day (null where none has one).
+function rptFoldedSeries(series, mean) {
   const rows = series || [];
   const { colors, fold } = rptSeriesColors(rows.length);
   const out = rows.slice(0, RPT_SERIES_TOKENS.length)
@@ -407,9 +411,12 @@ function rptFoldedSeries(series) {
   if (fold) {
     const tail = rows.slice(RPT_SERIES_TOKENS.length);
     const len = Math.max(0, ...tail.map(s => (s.values || []).length));
-    const values = Array.from({ length: len },
-      (_, i) => tail.reduce((n, s) => n + ((s.values || [])[i] || 0), 0));
-    out.push({ name: 'Other', values, color: '--st-skipped' });
+    const values = Array.from({ length: len }, (_, i) => {
+      const day = tail.map(s => (s.values || [])[i]).filter(v => v !== null && v !== undefined);
+      if (!mean) return day.reduce((n, v) => n + v, 0);
+      return day.length ? Math.round(day.reduce((n, v) => n + v, 0) * 10 / day.length) / 10 : null;
+    });
+    out.push({ name: mean ? 'Other (average)' : 'Other', values, color: '--st-skipped' });
   }
   return out;
 }
@@ -429,7 +436,7 @@ function rptLineConfig(data, kind) {
         { label: 'median', data: d.median || [], borderColor: tok('--oc-1'), borderWidth: 2, pointRadius: 0, tension: 0.25 },
         { label: 'p95', data: d.p95 || [], borderColor: tok('--oc-2'), borderWidth: 2, pointRadius: 0, tension: 0.25 },
       ]
-    : rptFoldedSeries(d.series).map(s => ({
+    : rptFoldedSeries(d.series, true).map(s => ({
         label: s.name, data: s.values || [], borderColor: tok(s.color),
         borderWidth: 2, pointRadius: 0, tension: 0.25, spanGaps: true,
       }));
