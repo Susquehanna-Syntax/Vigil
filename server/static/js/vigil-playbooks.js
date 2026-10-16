@@ -214,7 +214,7 @@ async function _openFailures(playbookId, name) {
           ${r.at ? `<span class="muted-note">${escHtml(new Date(r.at).toLocaleString())}</span>` : ''}
           <button class="btn btn-mint btn-xs" data-blf-retry="${escAttr(r.host_id)}">Retry here</button>
         </div>
-        ${r.output ? `<pre class="blf-output">${escHtml(r.output)}</pre>`
+        ${r.output ? `<pre class="blf-output term term-wrap">${termHtml(r.output)}</pre>`
                    : '<p class="muted-note">The agent reported no output.</p>'}
       </div>`).join('')
     : '<p class="muted-note">Nothing is held back any more.</p>';

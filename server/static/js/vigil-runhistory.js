@@ -131,8 +131,8 @@ async function _openRunDetail(runId) {
           <button type="button" class="run-task-host host-run-link" data-host-run="${escAttr(String(t.host))}">${escHtml(t.host_hostname || t.hostname || t.host || '')}</button>
           <span class="run-state t-${_RUN_STATE_ACCENT[t.state] || 'lav'}">${escHtml(t.state)}</span>
           ${_stepResultsHtml(t.result_data, t.result_output)
-            ? `${_stepResultsHtml(t.result_data, t.result_output)}<details class="step-output-more"><summary>Full output</summary><pre class="run-task-out">${escHtml(t.result_output || '')}</pre></details>`
-            : `<pre class="run-task-out">${escHtml(t.result_output || '')}</pre>`}
+            ? `${_stepResultsHtml(t.result_data, t.result_output)}<details class="step-output-more"><summary>Full output</summary><pre class="run-task-out term term-wrap">${termHtml(t.result_output || '')}</pre></details>`
+            : `<pre class="run-task-out term term-wrap">${termHtml(t.result_output || '')}</pre>`}
         </div>`).join('')
     : '<p class="muted">No task rows for this run.</p>';
   const huntBtn = _runHasHuntSteps(run)

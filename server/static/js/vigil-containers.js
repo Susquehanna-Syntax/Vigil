@@ -348,7 +348,11 @@ async function renderDockerContainers(hostId, fromCache) {
 // Opening logs is a signed task (TOTP). The agent sends the last lines, then
 // streams new ones while this view polls; closing it (or 15 s without a poll)
 // stops the agent.
-const logView = { session: null, after: 0, timer: null, initialShown: false };
+const logView = { session: null, after: 0, timer: null, initialShown: false,
+                  lines: [], ansi: null, wrap: false, timestamps: 'off' };
+//: The viewer keeps this many lines; past it the oldest go, as in a terminal's
+//: scrollback.
+const LOG_VIEW_MAX = 5000;
 
 function _logEls() {
   let overlay = document.getElementById('ctr-logs-overlay');
@@ -357,7 +361,7 @@ function _logEls() {
     overlay.className = 'modal-overlay';
     overlay.id = 'ctr-logs-overlay';
     const modal = document.createElement('div');
-    modal.className = 'modal modal-wide';
+    modal.className = 'modal modal-wide ctr-logs-modal';
     modal.id = 'ctr-logs-modal';
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
@@ -365,17 +369,65 @@ function _logEls() {
         <button class="modal-close" type="button" id="ctr-logs-close" aria-label="Close">
           <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button></div>
-      <div class="ctr-logs-state" id="ctr-logs-state">Waiting for the agent…</div>
-      <pre class="ctr-logs" id="ctr-logs-body" tabindex="0"></pre>`;
+      <div class="ctr-logs-bar">
+        <span class="ctr-logs-state" id="ctr-logs-state">Waiting for the agent…</span>
+        <button class="btn btn-outline btn-xs" type="button" id="ctr-logs-wrap" aria-pressed="false">Wrap lines</button>
+        <button class="btn btn-outline btn-xs" type="button" id="ctr-logs-ts" aria-pressed="false">Timestamps</button>
+        <button class="btn btn-outline btn-xs" type="button" id="ctr-logs-copy">Copy</button>
+      </div>
+      <pre class="ctr-logs term" id="ctr-logs-body" tabindex="0"></pre>`;
     document.body.append(overlay, modal);
     overlay.addEventListener('click', closeContainerLogs);
     modal.querySelector('#ctr-logs-close').addEventListener('click', closeContainerLogs);
+    modal.querySelector('#ctr-logs-wrap').addEventListener('click', (ev) => {
+      logView.wrap = !logView.wrap;
+      ev.currentTarget.setAttribute('aria-pressed', String(logView.wrap));
+      document.getElementById('ctr-logs-body').classList.toggle('term-wrap', logView.wrap);
+    });
+    modal.querySelector('#ctr-logs-ts').addEventListener('click', (ev) => {
+      logView.timestamps = logView.timestamps === 'off' ? 'time' : 'off';
+      ev.currentTarget.setAttribute('aria-pressed', String(logView.timestamps === 'time'));
+      _renderLogLines();
+    });
+    modal.querySelector('#ctr-logs-copy').addEventListener('click', _copyLogLines);
     document.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape' && modal.classList.contains('open')) closeContainerLogs();
     });
   }
   return { overlay, modal: document.getElementById('ctr-logs-modal'),
            body: document.getElementById('ctr-logs-body'), state: document.getElementById('ctr-logs-state') };
+}
+
+//: Redraws every kept line, for a change of how they are shown.
+function _renderLogLines() {
+  const body = document.getElementById('ctr-logs-body');
+  if (!body) return;
+  logView.ansi = termNewState();
+  body.innerHTML = logView.lines.length
+    ? termHtml(logView.lines.join('\n'), { timestamps: logView.timestamps }, logView.ansi) + '\n' : '';
+}
+
+//: New lines onto the end; the colour state carries on from the line before.
+function _appendLogLines(lines) {
+  if (!lines.length) return;
+  logView.lines.push(...lines);
+  if (logView.lines.length > LOG_VIEW_MAX) {
+    logView.lines.splice(0, logView.lines.length - LOG_VIEW_MAX);
+    _renderLogLines();
+    return;
+  }
+  document.getElementById('ctr-logs-body').insertAdjacentHTML('beforeend',
+    termHtml(lines.join('\n'), { timestamps: logView.timestamps }, logView.ansi) + '\n');
+}
+
+async function _copyLogLines() {
+  const text = termPlain(logView.lines.join('\n'), { timestamps: logView.timestamps });
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(`Copied ${logView.lines.length} line${logView.lines.length === 1 ? '' : 's'}`, 'success');
+  } catch {
+    showToast('The browser would not let the page copy; select the text instead.', 'error');
+  }
 }
 
 async function openContainerLogs(hostId, name) {
@@ -387,7 +439,8 @@ async function openContainerLogs(hostId, name) {
       { method: 'POST', body: JSON.stringify({ totp: totp.trim(), tail: 200 }) });
   } catch (e) { showToast(e.message, 'error'); return; }
   const els = _logEls();
-  Object.assign(logView, { session: opened.session, after: 0, initialShown: false });
+  Object.assign(logView, { session: opened.session, after: 0, initialShown: false,
+                           lines: [], ansi: termNewState() });
   document.getElementById('ctr-logs-title').textContent = `Logs — ${name}`;
   els.body.textContent = '';
   els.state.textContent = 'Waiting for the agent (up to one check-in)…';
@@ -406,15 +459,19 @@ async function _pollContainerLogs() {
   try {
     body = await apiJson(`/api/v1/hosts/log-tails/${logView.session}/?after=${logView.after}`);
   } catch { return; }
+  // Follow the tail only while the reader is already at the bottom; someone
+  // scrolled up to read is left where they are.
   const atBottom = els.body.scrollTop + els.body.clientHeight >= els.body.scrollHeight - 8;
   if (!logView.initialShown && body.initial) {
-    els.body.textContent = body.initial + '\n';
+    _appendLogLines(String(body.initial).split('\n'));
     logView.initialShown = true;
   }
+  const fresh = [];
   for (const [seq, line] of body.lines) {
-    els.body.textContent += line + '\n';
+    fresh.push(line);
     logView.after = seq;
   }
+  _appendLogLines(fresh);
   els.state.textContent = body.task_state === 'failed' ? 'The agent could not read the logs.'
     : body.task_state === 'completed' ? (body.live ? 'Live — new lines appear as they are written.' : 'Stopped.')
       : 'Waiting for the agent (up to one check-in)…';

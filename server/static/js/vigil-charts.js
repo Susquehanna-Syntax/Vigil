@@ -214,7 +214,7 @@ function _hostRunTaskHtml(t) {
       <pre class="host-run-json">${escHtml(JSON.stringify(t.params ?? {}, null, 2))}</pre>
       ${results ? `<div class="host-run-results">${results}</div>` : ''}
       <div class="host-run-k">Output</div>
-      <pre class="host-run-out">${output ? escHtml(output) : 'No output captured.'}</pre>
+      <pre class="host-run-out term term-wrap">${output ? termHtml(output) : 'No output captured.'}</pre>
     </div>`;
 }
 
