@@ -710,8 +710,8 @@ class HelperTests(ReportTestBase):
         report = Report(name="x", widgets=[{"kind": "success_rate"},
                                            {"kind": "nope"}, {"kind": "success_rate"},
                                            "junk"])
-        self.assertEqual([kind for kind, _spec in widgets._widget_specs(report)],
-                         ["success_rate"])
+        self.assertEqual([kind for kind, _spec in widgets._widget_specs(report.widgets)],
+                         ["success_rate", "success_rate"])
 
     def test_host_state_comes_from_the_shared_helper(self):
         seen = []
