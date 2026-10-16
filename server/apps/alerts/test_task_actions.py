@@ -44,6 +44,9 @@ def _ok(step_id, **result):
 
 
 class FiredStepsTests(TestCase):
+    """The seam QA-39's Jackil actions reuse: which signed steps fired, and
+    which text the server is allowed to take from the agent."""
+
     def setUp(self):
         self.host = Host.objects.create(hostname="h", agent_token="t" * 32)
 
