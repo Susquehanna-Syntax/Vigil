@@ -397,7 +397,7 @@ function _renderInspector() {
   on('[data-flow-cond]', 'input', el => {
     _blAt(el.dataset.flowCond).node.cond = el.value;
     const words = box.querySelector('[data-flow-words]');
-    if (words) words.textContent = flowCondWords(el.value);
+    if (words) words.textContent = flowCondSummary(el.value);
     _refreshAnalysis();
   });
   on('[data-flow-cond]', 'change', redrawCanvas);
@@ -436,50 +436,124 @@ function _renderInspector() {
     } });
   });
   const builder = box.querySelector('[data-flow-builder]');
-  if (builder && builder.querySelector('[data-fb-step]')) _blSetupBuilder(builder, builder.dataset.flowBuilder);
+  if (builder && builder.querySelector('[data-fb-rows]')) _blSetupBuilder(builder, builder.dataset.flowBuilder);
 }
 
-// The guided condition builder: pick an earlier step, what to test and how.
+// The guided condition builder: rows of "step · field · op · value", joined
+// with all-of / any-of into the expression the textarea above shows.
 function _blSetupBuilder(box, at) {
-  const stepSel = box.querySelector('[data-fb-step]');
-  const whatSel = box.querySelector('[data-fb-what]');
-  const opSel = box.querySelector('[data-fb-op]');
-  const valueWrap = box.querySelector('[data-fb-value-wrap]');
-  const stepBySid = sid => flowSteps(_editingTree).find(s => s.sid === sid);
-  const fillWhat = () => {
-    const step = stepBySid(stepSel.value);
-    const outputs = step ? _blDefOutputs(step.def) : [];
-    whatSel.innerHTML = '<option value="status">its result (ok, failed, …)</option>' +
-      outputs.map(o => `<option value="${escAttr(o)}">output: ${escHtml(o)}</option>`).join('');
-    fillOp();
+  const rowsBox = box.querySelector('[data-fb-rows]');
+  const modeWrap = box.querySelector('[data-fb-mode-wrap]');
+  const modeSel = box.querySelector('[data-fb-mode]');
+  const rawNote = box.querySelector('[data-fb-raw]');
+  const before = flowStepsBefore(_editingTree, at);
+  let parsed = flowCondParse(_blAt(at).node.cond || '');
+
+  if (!parsed) {
+    modeWrap.hidden = true;
+    rowsBox.hidden = true;
+    box.querySelector('[data-fb-add]').hidden = true;
+    rawNote.hidden = false;
+    box.querySelector('[data-fb-reset]').onclick = () => { _blAt(at).node.cond = ''; _renderEditorSteps(); };
+    return;
+  }
+
+  const stepBySid = sid => before.find(s => s.sid === sid);
+  // A row naming a step that is no longer before the if still renders, with
+  // that sid added, so nothing the author wrote is silently rewritten.
+  const stepOptions = (sid) => {
+    const opts = before.map(s => `<option value="${escAttr(s.sid)}">${escHtml(s.sid)}: ${escHtml(_defName(s.def))}</option>`);
+    if (sid && !stepBySid(sid)) opts.push(`<option value="${escAttr(sid)}">${escHtml(sid)}</option>`);
+    return opts.join('');
   };
-  const fillOp = () => {
-    const status = whatSel.value === 'status';
-    opSel.innerHTML = (status ? ['==', '!='] : ['==', '!=', '>', '>=', '<', '<='])
-      .map(o => `<option value="${o}">${escHtml({ '==': 'is', '!=': 'is not', '>': '>', '>=': '≥', '<': '<', '<=': '≤' }[o])}</option>`).join('');
-    valueWrap.innerHTML = status
+  const whatOptions = (sid, what) => {
+    const step = stepBySid(sid);
+    const outputs = step ? _blDefOutputs(step.def) : [];
+    const opts = ['<option value="status">its result (ok, failed, …)</option>']
+      .concat(outputs.map(o => `<option value="${escAttr(o)}">output: ${escHtml(o)}</option>`));
+    if (what !== 'status' && !outputs.includes(what)) {
+      opts.push(`<option value="${escAttr(what)}">output: ${escHtml(what)}</option>`);
+    }
+    return opts.join('');
+  };
+  const opOptions = (what) => (what === 'status' ? ['==', '!='] : ['==', '!=', '>', '>=', '<', '<='])
+    .map(o => `<option value="${o}">${escHtml({ '==': 'is', '!=': 'is not', '>': '>', '>=': '≥', '<': '<', '<=': '≤' }[o])}</option>`).join('');
+
+  const renderRows = () => {
+    rowsBox.innerHTML = parsed.rows.map((r, i) => `<div class="fb-row">
+      <select data-fb-step data-row="${i}">${stepOptions(r.sid)}</select>
+      <select data-fb-what data-row="${i}">${whatOptions(r.sid, r.what)}</select>
+      <div class="fb-line">
+        <select data-fb-op data-row="${i}">${opOptions(r.what)}</select>
+        <span data-fb-value-wrap data-row="${i}"></span>
+        <button type="button" class="btn btn-rose btn-xs" data-fb-rm data-row="${i}" aria-label="Remove this condition">×</button>
+      </div>
+    </div>`).join('');
+    rowsBox.querySelectorAll('[data-fb-step]').forEach(el => {
+      el.value = parsed.rows[+el.dataset.row].sid;
+      el.onchange = () => {
+        const r = parsed.rows[+el.dataset.row];
+        r.sid = el.value; r.what = 'status'; r.op = '=='; r.value = 'ok';
+        commit(true);
+      };
+    });
+    rowsBox.querySelectorAll('[data-fb-what]').forEach(el => {
+      el.value = parsed.rows[+el.dataset.row].what;
+      el.onchange = () => {
+        const r = parsed.rows[+el.dataset.row];
+        r.what = el.value; r.op = '=='; r.value = r.what === 'status' ? 'ok' : '';
+        commit(true);
+      };
+    });
+    rowsBox.querySelectorAll('[data-fb-op]').forEach(el => {
+      el.value = parsed.rows[+el.dataset.row].op;
+      el.onchange = () => { parsed.rows[+el.dataset.row].op = el.value; commit(false); };
+    });
+    rowsBox.querySelectorAll('[data-fb-value-wrap]').forEach(el => renderRowValue(el, parsed.rows[+el.dataset.row]));
+    rowsBox.querySelectorAll('[data-fb-rm]').forEach(el => {
+      el.onclick = () => { parsed.rows.splice(+el.dataset.row, 1); commit(true); };
+    });
+    modeWrap.hidden = parsed.rows.length < 2;
+    modeSel.value = parsed.mode;
+  };
+
+  // Typing rewrites the expression without rebuilding the field, so the caret
+  // stays where the author left it; the canvas redraws when the field blurs.
+  const renderRowValue = (wrap, r) => {
+    wrap.innerHTML = r.what === 'status'
       ? `<select data-fb-value>${FLOW_STATUS.map(v => `<option value="${v}">${escHtml(v.replace('_', ' '))}</option>`).join('')}</select>`
       : '<input data-fb-value placeholder="0" size="8">';
+    const field = wrap.querySelector('[data-fb-value]');
+    field.value = r.value;
+    field.oninput = () => { r.value = field.value; syncText(); };
+    field.onchange = () => { r.value = field.value; commit(true); };
   };
-  stepSel.onchange = fillWhat;
-  whatSel.onchange = fillOp;
-  // Start from the step just before the if: usually the one being tested.
-  stepSel.selectedIndex = stepSel.options.length - 1;
-  fillWhat();
-  box.querySelector('[data-fb-use]').onclick = () => {
-    const sid = stepSel.value;
-    if (!sid) return;
-    const raw = (valueWrap.querySelector('[data-fb-value]').value || '').trim();
-    let literal;
-    if (whatSel.value === 'status' || !/^(-?\d+(\.\d+)?|true|false|True|False)$/.test(raw)) {
-      literal = JSON.stringify(raw);
-    } else {
-      literal = /^(true|True)$/.test(raw) ? 'True' : /^(false|False)$/.test(raw) ? 'False' : raw;
-    }
-    const lhs = whatSel.value === 'status' ? `steps.${sid}.status` : `steps.${sid}.result.${whatSel.value}`;
-    _blAt(at).node.cond = `${lhs} ${opSel.value} ${literal}`;
-    _renderEditorSteps();
+
+  const syncText = () => {
+    const expr = flowCondJoin(parsed.rows, parsed.mode);
+    _blAt(at).node.cond = expr;
+    const inspector = box.closest('#bl-inspector');
+    const area = inspector && inspector.querySelector('[data-flow-cond]');
+    if (area) area.value = expr;
+    const words = inspector && inspector.querySelector('[data-flow-words]');
+    if (words) words.textContent = flowCondSummary(expr);
+    _refreshAnalysis();
   };
+
+  // A structural change redraws canvas and inspector; op or value do not.
+  const commit = (structural) => {
+    syncText();
+    if (structural) _renderEditorSteps(); else renderRows();
+  };
+
+  modeSel.onchange = () => { parsed.mode = modeSel.value; commit(true); };
+  box.querySelector('[data-fb-add]').onclick = () => {
+    const last = before[before.length - 1];
+    if (!last) return;
+    parsed.rows.push({ sid: last.sid, what: 'status', op: '==', value: 'ok' });
+    commit(true);
+  };
+  renderRows();
 }
 
 // The playbook inputs declared on the playbook being edited — the same shape

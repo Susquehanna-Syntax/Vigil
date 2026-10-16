@@ -166,6 +166,148 @@ function flowCondWords(cond) {
     .replace(/\s*>=\s*/g, ' ≥ ').replace(/\s*<=\s*/g, ' ≤ ');
 }
 
+/* ── Condition rows ────────────────────────────────────────────────────── */
+// An if's condition is a list of rows joined with and / or. Rows serialize to
+// an ordinary expression, so the server and the agent never see the difference.
+
+function flowCondRow(row) {
+  const rhs = row.value == null ? '' : String(row.value);
+  const lhs = row.what === 'status' ? `steps.${row.sid}.status` : `steps.${row.sid}.result.${row.what}`;
+  if (row.what === 'status' || !/^(-?\d+(\.\d+)?|true|false|True|False)$/.test(rhs)) {
+    return `${lhs} ${row.op} ${JSON.stringify(rhs)}`;
+  }
+  const literal = /^(true|True)$/.test(rhs) ? 'True' : /^(false|False)$/.test(rhs) ? 'False' : rhs;
+  return `${lhs} ${row.op} ${literal}`;
+}
+
+function flowCondJoin(rows, mode) {
+  const list = rows || [];
+  if (!list.length) return '';
+  const parts = list.map(flowCondRow);
+  if (parts.length === 1) return parts[0];
+  return parts.map(p => `(${p})`).join(mode === 'any' ? ' or ' : ' and ');
+}
+
+// Split at the top level — outside quotes and outside parentheses — on the
+// words `and` / `or`. Returns [{ text, op }] in order; op is the separator
+// that precedes the part ('' for the first).
+function _flowCondParts(text) {
+  const parts = [];
+  let buf = '';
+  let quote = '';
+  let depth = 0;
+  let op = '';
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (quote) {
+      buf += c;
+      if (c === '\\') { buf += text[i + 1] || ''; i += 2; continue; }
+      if (c === quote) quote = '';
+      i += 1;
+      continue;
+    }
+    if (c === '"' || c === "'") { quote = c; buf += c; i += 1; continue; }
+    if (c === '(') depth += 1;
+    else if (c === ')') depth -= 1;
+    if (depth === 0 && c === ' ') {
+      const m = /^ (and|or) /.exec(text.slice(i));
+      if (m) {
+        parts.push({ text: buf, op });
+        buf = '';
+        op = m[1];
+        i += m[0].length;
+        continue;
+      }
+    }
+    buf += c;
+    i += 1;
+  }
+  parts.push({ text: buf, op });
+  return parts;
+}
+
+// True when the whole string is one balanced parenthesised group.
+function _flowCondWrapped(text) {
+  if (!text.startsWith('(') || !text.endsWith(')')) return false;
+  let depth = 0;
+  let quote = '';
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (quote) {
+      if (c === '\\') { i += 1; continue; }
+      if (c === quote) quote = '';
+      continue;
+    }
+    if (c === '"' || c === "'") { quote = c; continue; }
+    if (c === '(') depth += 1;
+    else if (c === ')') {
+      depth -= 1;
+      if (depth === 0) return i === text.length - 1;
+    }
+  }
+  return false;
+}
+
+// A quoted string, True/False, or a number — anything else is not a row value.
+function _flowCondValue(raw) {
+  const first = raw[0];
+  if (first === '"' || first === "'") {
+    if (raw.length < 2 || raw[raw.length - 1] !== first) return null;
+    if (first === '"') {
+      try { return JSON.parse(raw); } catch (e) { return null; }
+    }
+    let out = '';
+    for (let i = 1; i < raw.length - 1; i += 1) {
+      out += raw[i] === '\\' ? raw[++i] : raw[i];
+    }
+    return out;
+  }
+  if (raw === 'True') return 'true';
+  if (raw === 'False') return 'false';
+  if (/^-?\d+(\.\d+)?$/.test(raw)) return raw;
+  return null;
+}
+
+const _FLOW_COND_ROW = /^steps\.([A-Za-z][\w-]*)\.(status|result\.(\w+))\s*(==|!=|>=|<=|>|<)\s*(.+)$/;
+
+// Rows back out of an expression, or null when it is something rows cannot
+// hold (not, mixed and/or, inputs.x, a bare name, ordering on status).
+function flowCondParse(cond) {
+  const text = (cond || '').trim();
+  if (!text) return { mode: 'all', rows: [] };
+  const parts = _flowCondParts(text);
+  const ops = new Set(parts.slice(1).map(p => p.op));
+  if (ops.size > 1) return null;
+  const mode = ops.has('or') ? 'any' : 'all';
+  const rows = [];
+  for (const part of parts) {
+    let p = part.text.trim();
+    if (!p) return null;
+    if (_flowCondWrapped(p)) p = p.slice(1, -1).trim();
+    const m = _FLOW_COND_ROW.exec(p);
+    if (!m) return null;
+    const what = m[2] === 'status' ? 'status' : m[3];
+    const op = m[4];
+    if (what === 'status' && op !== '==' && op !== '!=') return null;
+    const value = _flowCondValue(m[5].trim());
+    if (value === null) return null;
+    rows.push({ sid: m[1], what, op, value });
+  }
+  return { mode, rows };
+}
+
+// A condition in words, row by row: flowCondWords alone runs a multi-row
+// condition into one sentence with its parentheses still in it, so a condition
+// the rows can hold is read one row at a time and the joins put back.
+function flowCondSummary(cond) {
+  const parsed = flowCondParse(cond);
+  if (parsed && parsed.rows.length >= 2) {
+    return parsed.rows.map(r => flowCondWords(flowCondRow(r))).join(parsed.mode === 'any' ? ' or ' : ' and ');
+  }
+  return flowCondWords(cond);
+}
+
 function _flMeasure(nodes) {
   const parts = nodes.map((n) => {
     if (n.kind !== 'if') return { w: FL.NW, up: FL.NH / 2, down: FL.NH / 2 };
@@ -296,7 +438,7 @@ function _flIfNodeHtml(ln, opts) {
   return `<${tag} class="${cls}" style="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px"
       ${ctx ? `data-flow-sel="${escAttr(ln.at)}" ` : ''}title="${escAttr(cond ? `if ${cond}` : 'No condition yet')}">
     <span class="fcn-if-mark">if</span>
-    <span class="fcn-cond">${cond ? escHtml(flowCondWords(cond)) : '<em>add a condition</em>'}</span>
+    <span class="fcn-cond">${cond ? escHtml(flowCondSummary(cond)) : '<em>add a condition</em>'}</span>
     ${port('then', 'true')}${port('else', 'otherwise')}
   </${tag.split(' ')[0]}>`;
 }
@@ -489,19 +631,21 @@ function flowInspectorHtml(tree, at, ctx) {
     </div>`;
   if (node.kind === 'if') {
     const before = flowStepsBefore(tree, at);
-    const options = before.map(s => `<option value="${escAttr(s.sid)}">${escHtml(s.sid)}: ${escHtml(ctx.defName(s.def))}</option>`).join('');
     const inside = flowSteps(node.then).length + flowSteps(node.else).length;
     return `<div class="fi">
       <div class="fi-head"><span class="fcn-if-mark">if</span> Decision</div>
-      <label class="fi-field">Condition
+      <label class="fi-field">Expression
         <textarea class="flow-cond" rows="2" data-flow-cond="${escAttr(at)}" placeholder="steps.check.result.count > 0" spellcheck="false">${escHtml(node.cond || '')}</textarea></label>
-      <div class="fi-words" data-flow-words>${node.cond ? escHtml(flowCondWords(node.cond)) : ''}</div>
+      <div class="fi-words" data-flow-words>${node.cond ? escHtml(flowCondSummary(node.cond)) : ''}</div>
       <div class="flow-builder" data-flow-builder="${escAttr(at)}">
-        <div class="fi-sub">Build it from an earlier step</div>
-        ${before.length ? `<select data-fb-step>${options}</select>
-        <select data-fb-what></select>
-        <div class="fb-line"><select data-fb-op></select><span data-fb-value-wrap></span></div>
-        <button type="button" class="btn btn-sky btn-xs" data-fb-use>Use this condition</button>`
+        ${before.length ? `<div class="fi-sub">Conditions</div>
+        <div class="fb-mode" data-fb-mode-wrap>Run the true band when
+          <select data-fb-mode><option value="all">all of these hold</option><option value="any">any of these holds</option></select>
+        </div>
+        <div class="fb-rows" data-fb-rows></div>
+        <button type="button" class="btn btn-outline btn-xs" data-fb-add>Add a condition</button>
+        <div class="muted-note" data-fb-raw hidden>This condition is written by hand, so it can only be edited as text above.
+          <button type="button" class="btn btn-outline btn-xs" data-fb-reset>Start again with rows</button></div>`
     : '<div class="muted-note">Add a step before this if first: a condition tests an earlier step.</div>'}
       </div>
       ${inside ? `<div class="muted-note">Removing this if also removes the ${inside} step${inside === 1 ? '' : 's'} inside it.</div>` : ''}
