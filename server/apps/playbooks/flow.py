@@ -24,6 +24,9 @@ from apps.tasks.registry import action_outputs
 
 MAX_DEPTH = 3
 MAX_STEPS = 32
+MAX_GOTOS = 8
+GOTO_MAX_DEFAULT = 3
+GOTO_MAX_LIMIT = 10
 _STEP_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,59}$")
 _ORDERING = (ast.Lt, ast.LtE, ast.Gt, ast.GtE)
 
@@ -81,21 +84,53 @@ def build_flow(items: list) -> tuple[list[dict], list | None]:
     ``{"if": str, "then": [...], "else": [...]}``. Returns ``(steps, flow)``:
     the steps in document order, each with ``step_id`` and ``branch`` added,
     and the flow by step id (``None`` when there is no branch).
+
+    A go-to node ``{"goto": <step id>, "max": n}`` is stored in the flow as
+    ``{"id": "g<n>", "goto": ..., "max": ...}``. Resolving it at dispatch is
+    QA-36's job; this phase only accepts, validates and stores it.
     """
     if not isinstance(items, list) or not items:
         raise FlowError("a playbook needs at least one step")
     steps: list[dict] = []
     earlier: dict[str, dict[str, str]] = {}
     counter = 0
+    goto_counter = 0
+    gotos: list[tuple[str, str, str, int, str]] = []
     has_branch = False
 
     def walk(nodes: list, depth: int, path: str, where: str) -> list:
-        nonlocal counter, has_branch
+        nonlocal counter, goto_counter, has_branch
         out = []
         for index, node in enumerate(nodes):
             here = f"{where}[{index}]"
             if not isinstance(node, dict):
                 raise FlowError(f"{here}: must be a step or an if/then/else")
+            if "goto" in node:
+                unknown = set(node) - {"goto", "max"}
+                if unknown:
+                    raise FlowError(f"{here}: a go to is goto/max only, not {sorted(unknown)}")
+                if index != len(nodes) - 1:
+                    raise FlowError(
+                        f"{here}: a go to must be the last item in its lane — "
+                        "anything after it could never run")
+                target = node.get("goto")
+                if not isinstance(target, str) or not target.strip():
+                    raise FlowError(f"{here}.goto must name a step id")
+                max_ = node.get("max")
+                if max_ is None:
+                    max_ = GOTO_MAX_DEFAULT
+                elif not isinstance(max_, int) or isinstance(max_, bool) \
+                        or not 1 <= max_ <= GOTO_MAX_LIMIT:
+                    raise FlowError(
+                        f"{here}.max must be a whole number from 1 to {GOTO_MAX_LIMIT}")
+                if len(gotos) >= MAX_GOTOS:
+                    raise FlowError(f"a playbook has at most {MAX_GOTOS} go to nodes")
+                has_branch = True
+                goto_counter += 1
+                gid = f"g{goto_counter}"
+                gotos.append((gid, target.strip(), path.rstrip("."), len(steps), here))
+                out.append({"id": gid, "goto": target.strip(), "max": max_})
+                continue
             if "if" in node:
                 has_branch = True
                 if depth + 1 > MAX_DEPTH:
@@ -141,6 +176,16 @@ def build_flow(items: list) -> tuple[list[dict], list | None]:
         return out
 
     flow = walk(items, 0, "", "steps")
+    by_id = {st["step_id"]: st for st in steps}
+    for gid, target, lane, _position, _here in gotos:
+        target_step = by_id.get(target)
+        if target_step is None:
+            raise FlowError(f"go to {gid}: {target!r} is not a step in this playbook")
+        tb = target_step["branch"]
+        if not (tb == "" or tb == lane or lane.startswith(tb + ".")):
+            raise FlowError(
+                f"go to {gid}: it can jump to a step in its own lane or a lane "
+                "around it, not into another branch")
     return steps, (flow if has_branch else None)
 
 
@@ -158,11 +203,46 @@ def branch_guards(flow: list | None) -> dict[str, tuple[str, str]]:
                         ".".join(f"{b}.{side}" for b, side, _c in conds),
                     )
                 continue
+            if "goto" in node:
+                # A go to inside a branch must not run when its branch was not
+                # taken either. Step ids must start with a letter, so the "@"
+                # key can never collide with one.
+                if conds:
+                    guards["@" + node["id"]] = (
+                        " and ".join(f"not ({c})" if side == "else" else f"({c})"
+                                     for _b, side, c in conds),
+                        ".".join(f"{b}.{side}" for b, side, _c in conds),
+                    )
+                continue
             walk(node.get("then") or [], [*conds, (node["id"], "then", node["if"])])
             walk(node.get("else") or [], [*conds, (node["id"], "else", node["if"])])
 
     walk(list(flow or []), [])
     return guards
+
+
+def flow_sequence(flow) -> list[dict[str, Any]]:
+    """The flow's leaf nodes in document order.
+
+    This is the order QA-36 creates a host's task chain in: steps as
+    ``{"step": id}`` and go-tos as ``{"goto": target, "id": gid, "max": n}``,
+    a branch's ``then`` items before its ``else`` items, recursively.
+    """
+    out: list[dict[str, Any]] = []
+
+    def walk(nodes: list) -> None:
+        for node in nodes or []:
+            if "step" in node:
+                out.append({"step": node["step"]})
+                continue
+            if "goto" in node:
+                out.append({"goto": node["goto"], "id": node["id"], "max": node["max"]})
+                continue
+            walk(node.get("then") or [])
+            walk(node.get("else") or [])
+
+    walk(list(flow or []))
+    return out
 
 
 def tree_from(playbook) -> list[dict[str, Any]]:
@@ -178,6 +258,8 @@ def tree_from(playbook) -> list[dict[str, Any]]:
             if "step" in node:
                 if node["step"] in steps:
                     out.append({"step": steps[node["step"]]})
+            elif "goto" in node:
+                out.append({"goto": node["goto"], "max": node["max"]})
             else:
                 out.append({"if": node["if"], "then": walk(node.get("then") or []),
                             "else": walk(node.get("else") or [])})

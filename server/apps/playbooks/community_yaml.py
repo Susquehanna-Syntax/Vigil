@@ -102,6 +102,8 @@ def to_yaml(playbook, *, author: str = "", created=None) -> str:
             for node in nodes:
                 if "step" in node:
                     out.append(step_entry(node["step"], positions[node["step"].step_id]))
+                elif "goto" in node:
+                    out.append({"goto": node["goto"], "max": node["max"]})
                 else:
                     branch: dict[str, Any] = {"if": node["if"], "then": emit(node["then"])}
                     if node["else"]:
@@ -225,6 +227,12 @@ def parse(text: str) -> dict[str, Any]:
                 raise ContentYamlError(
                     f"{_WHAT}: {where} entries must be a mapping with a 'task' "
                     "key, or an if/then/else.")
+            if "goto" in entry:
+                # Not a plain list of steps any more; build_flow (which the
+                # import runs) validates the target.
+                has_branch = True
+                nodes.append({"goto": entry.get("goto"), "max": entry.get("max")})
+                continue
             if "if" in entry:
                 has_branch = True
                 then_items = entry.get("then")
