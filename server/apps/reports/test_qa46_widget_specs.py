@@ -188,3 +188,31 @@ class WidgetSpecTests(ReportTestBase):
         hidden = self.preview(self.as_viewer(),
                               {**body, "playbooks": [str(other_site.id)]})
         self.assertEqual(hidden.status_code, 400, hidden.content)
+
+
+class ReviewFixTests(ReportTestBase):
+    def test_a_preview_missing_its_range_or_widgets_is_a_400(self):
+        pb = self.playbook("Patch web")
+        body = {"range_days": 7, "widgets": [{"kind": "success_rate"}],
+                "playbooks": [str(pb.id)], "automations": []}
+        for key in ("range_days", "widgets"):
+            short = {k: v for k, v in body.items() if k != key}
+            response = self.client.post("/api/v1/reports/preview/", short, format="json")
+            self.assertEqual(response.status_code, 400, f"{key}: {response.content}")
+
+    def test_column_labels_turn_round_with_the_chart(self):
+        self.assertEqual(widgets.default_labels("failures_by_step", "bar"), ("Failures", "Step"))
+        self.assertEqual(widgets.default_labels("failures_by_step", "column"), ("Step", "Failures"))
+        self.assertEqual(widgets.default_labels("host_outcomes", "column"), ("Outcome", "Hosts"))
+        rows = {r["kind"]: r for r in self.client.get("/api/v1/reports/widgets/").json()}
+        self.assertEqual(rows["branch_paths"]["labels"],
+                         {"bar": ["Host-runs", "Branch"], "column": ["Branch", "Host-runs"]})
+        self.assertEqual(rows["success_rate"]["labels"]["line"], ["Day", "Succeeded (%)"])
+        self.assertNotIn("table", rows["success_rate"]["labels"])
+        pb = self.playbook("Patch web")
+        report = self.client.post("/api/v1/reports/", {
+            "name": "Cols", "range_days": 7, "playbooks": [str(pb.id)],
+            "widgets": [{"kind": "failures_by_step", "chart": "column"}]}, format="json").json()
+        data = self.client.get(f"/api/v1/reports/{report['id']}/data/").json()
+        self.assertEqual((data["widgets"][0]["x_label"], data["widgets"][0]["y_label"]),
+                         ("Step", "Failures"))

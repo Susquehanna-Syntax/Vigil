@@ -78,7 +78,9 @@ def widget_catalog(request):
                       "description": spec["description"], "chart": spec["chart"],
                       "family": spec["family"], "charts": spec["charts"],
                       "x_label": spec["x_label"], "y_label": spec["y_label"],
-                      "how": spec["how"], "size": spec["size"]}
+                      "how": spec["how"], "size": spec["size"],
+                      "labels": {chart: list(widgets.default_labels(kind, chart))
+                                 for chart in spec["charts"] if chart in widgets.AXIS_CHARTS}}
                      for kind, spec in widgets.WIDGETS.items()])
 
 
@@ -181,27 +183,27 @@ def _validate(payload, user, report=None, partial=False, need_name=True):
     stays refused here too. ``need_name=False`` is a preview, which has no name
     and nothing to keep.
     """
-    required = not partial and need_name
+    # A preview has no name, but it still needs a range and widgets to draw.
     if "name" in payload:
         if not payload["name"]:
             return Response({"detail": "name is required"}, status=400)
         if len(payload["name"]) > 120:
             return Response({"detail": "name must be at most 120 characters"}, status=400)
-    elif required:
+    elif not partial and need_name:
         return Response({"detail": "name is required"}, status=400)
 
     if "range_days" in payload:
         if payload["range_days"] not in Report.RANGES:
             return Response(
                 {"detail": f"range_days must be one of {list(Report.RANGES)}"}, status=400)
-    elif required:
+    elif not partial:
         return Response({"detail": "range_days is required"}, status=400)
 
     if "widgets" in payload:
         problem = _widget_errors(payload["widgets"])
         if problem:
             return Response({"detail": problem}, status=400)
-    elif required:
+    elif not partial:
         return Response({"detail": "widgets are required"}, status=400)
 
     for model, key, detail in ((Playbook, "playbooks", "unknown playbook"),
