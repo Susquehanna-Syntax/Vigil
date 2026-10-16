@@ -153,6 +153,34 @@ class ReportChartFunctionTests(SimpleTestCase):
         self.assertIn("RPT_SERIES_TOKENS.length", folded)
 
     @skipUnless(shutil.which("node"), "node is not installed")
+    def test_other_averages_rates_and_sums_counts(self):
+        """Six success-rate series: the tail's 50% and 100% are one 75%
+        "Other", never a 150% line; a count tail still adds up."""
+        code = "\n".join([self._prologue(), _function(self.src, "rptFoldedSeries"),
+                          "const S = v => ({ name: 'x', values: v });",
+                          "const six = [[10], [20], [30], [40], [50], [100]].map(S);",
+                          "const gaps = [[1], [1], [1], [1], [null], [null]].map(S);",
+                          "console.log(JSON.stringify([rptFoldedSeries(six, true).pop(),"
+                          " rptFoldedSeries(six).pop(), rptFoldedSeries(gaps, true).pop()]));"])
+        rate, count, empty = json.loads(_node(code))
+        self.assertEqual((rate["name"], rate["values"]), ("Other (average)", [75]))
+        self.assertEqual((count["name"], count["values"]), ("Other", [150]))
+        self.assertEqual(empty["values"], [None])
+
+    @skipUnless(shutil.which("node"), "node is not installed")
+    def test_a_zero_success_rate_is_data(self):
+        """A playbook that failed on every host draws a 0% line; it is not
+        "Nothing ran in this range". Zero counts are still nothing."""
+        code = "\n".join([_function(self.src, "_rptHasData"), "console.log(JSON.stringify(["
+                          "_rptHasData({kind: 'success_rate', data: {series: [{values: [null, 0]}]}}),"
+                          "_rptHasData({kind: 'success_rate', data: {series: [{values: [null, null]}]}}),"
+                          "_rptHasData({kind: 'runs_per_day', data: {ok: [0], failed: [0], pending: [0]}}),"
+                          "_rptHasData({kind: 'runs_per_day', data: {ok: [0], failed: [2], pending: [0]}}),"
+                          "_rptHasData({kind: 'automation_fires', data: {series: [{values: [0, 0]}]}}),"
+                          "]));"])
+        self.assertEqual(json.loads(_node(code)), [True, False, False, True, False])
+
+    @skipUnless(shutil.which("node"), "node is not installed")
     def test_format_seconds(self):
         code = f"{self._prologue()}\n" \
                "console.log(JSON.stringify([45, 120, 3600, 5400].map(rptFormatSeconds)));"
@@ -169,6 +197,16 @@ class ReportChartLifecycleTests(SimpleTestCase):
         self.assertIn("c.destroy()", _function(code, "_destroyRptCharts"))
         self.assertIn("_destroyRptCharts()", _function(code, "openReport"))
         self.assertIn("_destroyRptCharts()", _function(code, "_showReportList"))
+
+
+class ReportHeaderTests(SimpleTestCase):
+
+    def test_the_range_reads_as_a_number_of_days(self):
+        """`range.days` is the list of dates; the header counts it rather than
+        printing every date between "last" and "days"."""
+        code = _code_only(JS.read_text())
+        self.assertIn("(range.days || []).length", _function(code, "openReport"))
+        self.assertNotIn("String(range.days ||", code)
 
 
 class ReportSafetyTests(SimpleTestCase):
