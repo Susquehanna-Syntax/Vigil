@@ -67,7 +67,10 @@ class Wiki146Tests(SimpleTestCase):
 
     def test_goto_facts(self):
         text = _wiki()
-        subsection = _slice(text, '<h3 id="goto"', "<h3>Quoting step ids</h3>")
+        start = text.index('<h3 id="goto"')
+        ends = [e for e in (text.find(nxt, start + 5) for nxt in
+                            ("<h3", "<h2", "</section>")) if e != -1]
+        subsection = text[start:min(ends)] if ends else text[start:]
         for fact in ("max:", "jumped over by go to", "last item in its lane", "8",
                      "retry-the-service.yaml"):
             self.assertIn(fact, subsection, f"go to subsection lacks {fact!r}")
