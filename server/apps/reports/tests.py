@@ -505,6 +505,29 @@ class ScopingTests(ReportTestBase):
         self.assertEqual([s["name"] for s in rate["series"]], ["Patch web"])
         self.assertEqual(data["widgets"][1]["data"]["series"], [])
 
+    def test_hosts_the_viewer_cannot_see_drop_out(self):
+        pb = self.playbook("Patch web")
+        auto = self.automation("Nightly patch", playbook=pb)
+        report = self.report(sources=[pb, auto], range_days=7,
+                             widget_kinds=("runs_per_day", "host_outcomes", "automation_fires"))
+        self.host_run(playbook=pb, day=TODAY, host="web", steps=(("patch", "completed"),))
+        self.host_run(playbook=pb, automation=auto, day=TODAY, host="hidden",
+                      steps=(("patch", "failed"),))
+        hidden = self.hosts["hidden"]
+        real = widgets.scoping.filter_by_site
+
+        def hide_one_host(qs, user, path="", cascade_global=False):
+            if qs.model is Task:
+                return qs.exclude(host=hidden)
+            return real(qs, user, path=path, cascade_global=cascade_global)
+
+        self.addsetattr(widgets.scoping, "filter_by_site", hide_one_host)
+        per_day, outcomes, fires = (w["data"] for w in
+                                    widgets.compute(report, self.viewer, now=NOW)["widgets"])
+        self.assertEqual((per_day["ok"][-1], per_day["failed"][-1]), (1, 0))
+        self.assertEqual([r["host"] for r in outcomes["rows"]], ["web"])
+        self.assertEqual(fires["series"], [{"name": "Nightly patch", "values": [0] * 7}])
+
     def test_invisible_source_cannot_be_selected(self):
         pb = self.playbook("Patch web")
 
