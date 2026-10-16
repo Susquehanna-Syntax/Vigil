@@ -4573,3 +4573,14 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .fi-elif { padding: 0 7px; border-radius: 999px; color: var(--on-accent); font-weight: 600; font-size: 12px; background: var(--sky); }
 #bl-inspector .fi + .fi { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
 #bl-inspector > .fi-actions, #bl-inspector > .muted-note { margin-top: 12px; }
+
+/* QA-47: report grid */
+/* The card is the grid cell, so it fills it and lets its own body take the
+   slack; a chart holding its natural height would leave the cell empty below
+   it and the resize handle out of reach. */
+.rpt-gs .rpt-card { height: 100%; box-sizing: border-box; overflow: hidden; }
+.rpt-gs .rpt-card-body { flex: 1; min-height: 0; overflow: auto; }
+/* .rpt-chart keeps its boxed height outside the grid; inside it the card body
+   is the box, and Chart.js fills whatever the operator dragged out. */
+.rpt-gs .rpt-chart { height: 100%; min-height: 120px; }
+.rpt-gs-editing .rpt-card { border-color: var(--sky); cursor: move; }
