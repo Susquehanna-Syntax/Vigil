@@ -33,41 +33,97 @@ _EXCLUDED_ACTIONS = ("_goto",)
 #: unbounded query. Newest rows win; the page shows a "truncated" notice.
 _MAX_TASK_ROWS = 200_000
 
-WIDGETS: dict[str, dict[str, str]] = {
+#: Per kind: the default `chart` plus the `charts` that suit it, the axis
+#: label defaults, the `family` the browser draws it for ("days" is one series
+#: per day, "rows" one row per record), the plain-words `how` the metric is
+#: worked out, and the default card `size` on a 12-column grid.
+WIDGETS: dict[str, dict] = {
     "success_rate": {
         "title": "Success rate",
         "description": "Share of finished host-runs that succeeded, per day and per source.",
         "chart": "line",
+        "family": "days",
+        "charts": ["line", "area", "bar", "table"],
+        "x_label": "Day",
+        "y_label": "Succeeded (%)",
+        "how": ("For each day, the share of host-runs that ended ok, not applicable "
+                "or skipped, out of every host-run that finished. A host-run is one "
+                "host's go at one run; a failure the playbook handles with carry on "
+                "does not count against it. One line per playbook or automation."),
+        "size": {"w": 4, "h": 4},
     },
     "runs_per_day": {
         "title": "Runs per day",
         "description": "Host-runs per day by outcome: ok, failed and still pending.",
         "chart": "stacked-bar",
+        "family": "days",
+        "charts": ["stacked-bar", "bar", "line", "area", "table"],
+        "x_label": "Day",
+        "y_label": "Host-runs",
+        "how": ("For each day, how many host-runs started, split by how they ended: "
+                "ok, failed, or still running."),
+        "size": {"w": 4, "h": 4},
     },
     "failures_by_step": {
         "title": "Failures by step",
         "description": "The steps that fail most often, by failing task across the range.",
         "chart": "bar",
+        "family": "rows",
+        "charts": ["bar", "column", "pie", "doughnut", "table"],
+        "x_label": "Failures",
+        "y_label": "Step",
+        "how": ("Failed tasks across the whole range, counted per playbook step. "
+                "Failures the step handles with carry on are left out. The 15 steps "
+                "that fail most are shown."),
+        "size": {"w": 4, "h": 4},
     },
     "branch_paths": {
         "title": "Branch paths",
         "description": "How many host-runs reached each branch of the playbook's flow.",
         "chart": "bar",
+        "family": "rows",
+        "charts": ["bar", "column", "pie", "doughnut", "table"],
+        "x_label": "Host-runs",
+        "y_label": "Branch",
+        "how": ("How many host-runs took each exit of each decision in the playbook's "
+                "flow, across the whole range. A host that ran the playbook twice "
+                "counts twice."),
+        "size": {"w": 4, "h": 4},
     },
     "duration": {
         "title": "Duration",
         "description": "Median and 95th-percentile wall-clock seconds of a host-run, per day.",
         "chart": "line",
+        "family": "days",
+        "charts": ["line", "area", "bar", "table"],
+        "x_label": "Day",
+        "y_label": "Time per host-run",
+        "how": ("For each day, the median and the 95th-percentile time from a "
+                "host-run's first task starting to its last task finishing."),
+        "size": {"w": 4, "h": 4},
     },
     "host_outcomes": {
         "title": "Host outcomes",
         "description": "Each host's newest host-run per source, and how it ended.",
         "chart": "table",
+        "family": "rows",
+        "charts": ["table", "pie", "doughnut", "column"],
+        "x_label": "Outcome",
+        "y_label": "Hosts",
+        "how": ("Each host's most recent host-run per playbook or automation, and how "
+                "it ended. As a chart, the hosts are counted per outcome."),
+        "size": {"w": 4, "h": 4},
     },
     "automation_fires": {
         "title": "Automation fires",
         "description": "How often each selected automation ran, per day.",
         "chart": "stacked-bar",
+        "family": "days",
+        "charts": ["stacked-bar", "bar", "line", "area", "table"],
+        "x_label": "Day",
+        "y_label": "Runs",
+        "how": "For each day, how many runs each selected automation started.",
+        "size": {"w": 4, "h": 4},
     },
 }
 
@@ -83,7 +139,15 @@ _ROWS_KEYS: dict[str, tuple[str, ...]] = {
 
 
 def compute(report, user, now=None) -> dict:
-    """Every widget's data for `report`, as the requesting user can see it.
+    """Every widget's data for `report`, as the requesting user can see it."""
+    return compute_for(report.playbooks.all(), report.automations.all(),
+                       report.range_days, report.widgets, user, now)
+
+
+def compute_for(playbooks_qs, automations_qs, range_days, widget_specs, user,
+                now=None) -> dict:
+    """The same, from a source selection rather than a saved report — so the
+    editor can preview a chart before anything is written down.
 
     Sources the user cannot open are dropped, so a shared report never shows
     numbers drawn from a playbook or automation the viewer could not read.
@@ -91,11 +155,11 @@ def compute(report, user, now=None) -> dict:
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
-    days = _days(now, report.range_days)
+    days = _days(now, range_days)
     start = _day_start(days[0])
 
-    playbooks = {p.pk: p.name for p in _visible(report.playbooks.all(), user)}
-    automations = {a.pk: a.name for a in _visible(report.automations.all(), user)}
+    playbooks = {p.pk: p.name for p in _visible(playbooks_qs, user)}
+    automations = {a.pk: a.name for a in _visible(automations_qs, user)}
 
     runs = _runs_in_scope(start, playbooks, automations)
     sources, run_source = _sources(runs, automations, playbooks)
@@ -120,7 +184,8 @@ def compute(report, user, now=None) -> dict:
         # Every selected source, even one with no runs in the window: a report
         # that names a playbook shows that playbook's (empty) series.
         "sources": sources,
-        # name → id, for the automations the viewer can still see.
+        # id → name, for the sources a widget may narrow itself to.
+        "playbooks": playbooks,
         "automations": automations,
         "run_source": run_source,
         "host_runs": host_runs,
@@ -129,13 +194,59 @@ def compute(report, user, now=None) -> dict:
     return {
         "range": {"from": days[0], "to": days[-1], "days": days},
         "truncated": truncated,
-        "widgets": [
-            {"kind": kind,
-             "title": spec.get("title") or WIDGETS[kind]["title"],
-             "chart": WIDGETS[kind]["chart"],
-             "data": _BUILDERS[kind](context)}
-            for kind, spec in _widget_specs(report)
-        ],
+        "widgets": [_widget(kind, spec, context) for kind, spec in _widget_specs(widget_specs)],
+    }
+
+
+def _widget(kind: str, spec: dict, context: dict) -> dict:
+    """One computed widget: its drawing options, the sources it covers, and its
+    data — narrowed to those sources when the spec names any."""
+    defaults = WIDGETS[kind]
+    covered = _covered_names(context, spec.get("sources"))
+    return {
+        "kind": kind,
+        "title": spec.get("title") or defaults["title"],
+        "chart": spec.get("chart") or defaults["chart"],
+        "x_label": spec["x_label"] if "x_label" in spec else defaults["x_label"],
+        "y_label": spec["y_label"] if "y_label" in spec else defaults["y_label"],
+        # None leaves the call to the browser.
+        "legend": spec.get("legend"),
+        "layout": ({"x": spec["x"], "y": spec["y"], "w": spec["w"], "h": spec["h"]}
+                   if "x" in spec else None),
+        "sources": covered,
+        "data": _BUILDERS[kind](_narrow(context, covered) if covered is not None
+                                else context),
+    }
+
+
+def _covered_names(context: dict, source_ids) -> list[str] | None:
+    """The names of the sources one widget covers, or None for all of them.
+
+    Ids the report does not name (or the viewer cannot open) are ignored; if
+    none of them are left the widget covers nothing, never everything.
+    """
+    if not source_ids:
+        return None
+    wanted = {str(pk) for pk in source_ids}
+    names = {name for name, ids in _sources_by_name(context).items() if ids & wanted}
+    return [name for name in context["sources"] if name in names]
+
+
+def _narrow(context: dict, names: list[str]) -> dict:
+    """`context` kept to the sources named. Anything the builders read that
+    carries a source goes: each run keeps one source name, so every row built
+    from a dropped run drops with it."""
+    covered = set(names)
+    return {
+        **context,
+        "sources": [name for name in context["sources"] if name in covered],
+        "runs": [run for run in context["runs"]
+                 if context["run_source"][run["pk"]] in covered],
+        "host_runs": [run for run in context["host_runs"] if run["source"] in covered],
+        "tasks": [task for task in context["tasks"]
+                  if context["run_source"][task["run"]] in covered],
+        "automations": {pk: name for pk, name in context["automations"].items()
+                        if name in covered},
     }
 
 
@@ -290,7 +401,7 @@ def _visible(qs, user):
     return list(scoping.filter_by_site(qs, user, cascade_global=True))
 
 
-def _sources(runs, automation_names, playbook_names):
+def _sources(runs, automation_names: dict, playbook_names: dict):
     """The report's source names and each run's attribution.
 
     Every selected source is listed, automations first — one with no runs in
@@ -306,6 +417,19 @@ def _sources(runs, automation_names, playbook_names):
         run_source[run["pk"]] = (automation_names.get(run["automation"])
                                  or playbook_names.get(run["playbook"], ""))
     return list(dict.fromkeys(name for name in names if name)), run_source
+
+
+def _sources_by_name(context: dict) -> dict:
+    """The ids that draw each source name — both of a report's sources when two
+    share a display name, the automation id included.
+
+    Sources the viewer cannot open are not in the context at all, so a widget
+    naming one covers nothing rather than falling back to everything.
+    """
+    by_name = defaultdict(set)
+    for pk, name in {**context["playbooks"], **context["automations"]}.items():
+        by_name[name].add(str(pk))
+    return by_name
 
 
 def _runs_in_scope(start, playbook_names, automation_names):
@@ -383,16 +507,16 @@ def _host_runs(runs, run_source, tasks):
     return out
 
 
-def _widget_specs(report):
-    """The report's widgets, sanitised: unknown kinds and duplicates dropped."""
-    out, seen = [], set()
-    for spec in report.widgets or []:
+def _widget_specs(widgets_list):
+    """The report's widgets, sanitised: unknown kinds dropped, duplicates kept —
+    one metric may be charted twice, once as a line and once as a table."""
+    out = []
+    for spec in (widgets_list if isinstance(widgets_list, list) else []):
         if not isinstance(spec, dict):
             continue
         kind = spec.get("kind")
-        if kind not in WIDGETS or kind in seen:
+        if kind not in WIDGETS:
             continue
-        seen.add(kind)
         out.append((kind, spec))
     return out
 

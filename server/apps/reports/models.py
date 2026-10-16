@@ -26,7 +26,10 @@ class Report(models.Model):
     automations = models.ManyToManyField("automations.Automation", blank=True,
                                          related_name="reports")
     range_days = models.PositiveIntegerField(default=30)
-    #: [{"kind": <a widgets.WIDGETS key>, "title": "<optional, max 80>"}], max 12, in display order.
+    #: The report's widgets, in display order, max 12. Each is
+    #: {"kind": <a widgets.WIDGETS key>, "title": "<optional, max 80>"} plus any
+    #: of the optional "chart", "x_label", "y_label", "legend", "sources" (a list
+    #: of playbook/automation ids) and the card's grid place "x"/"y"/"w"/"h".
     widgets = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
