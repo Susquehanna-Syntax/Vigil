@@ -23,6 +23,7 @@ from apps.tasks.expression import ExprError, parse, referenced_steps
 from apps.tasks.registry import action_outputs
 
 MAX_DEPTH = 3
+MAX_ELIF = 8
 MAX_STEPS = 32
 MAX_GOTOS = 8
 GOTO_MAX_DEFAULT = 3
@@ -135,9 +136,9 @@ def build_flow(items: list) -> tuple[list[dict], list | None]:
                 has_branch = True
                 if depth + 1 > MAX_DEPTH:
                     raise FlowError(f"{here}: branches nested deeper than {MAX_DEPTH} levels")
-                unknown = set(node) - {"if", "then", "else"}
+                unknown = set(node) - {"if", "then", "elif", "else"}
                 if unknown:
-                    raise FlowError(f"{here}: a branch is if/then/else only, not {sorted(unknown)}")
+                    raise FlowError(f"{here}: a branch is if/then/elif/else only, not {sorted(unknown)}")
                 cond = node.get("if")
                 if not isinstance(cond, str) or not cond.strip():
                     raise FlowError(f"{here}.if must be a non-empty condition")
@@ -147,16 +148,47 @@ def build_flow(items: list) -> tuple[list[dict], list | None]:
                     raise FlowError(f"{here}.then must list at least one step")
                 if not isinstance(else_nodes, list):
                     raise FlowError(f"{here}.else must be a list")
+                elif_nodes = node.get("elif") or []
+                if not isinstance(elif_nodes, list):
+                    raise FlowError(f"{here}.elif must be a list")
+                if len(elif_nodes) > MAX_ELIF:
+                    raise FlowError(f"{here}: at most {MAX_ELIF} or-if exits")
+                for arm in elif_nodes:
+                    if not isinstance(arm, dict):
+                        raise FlowError(f"{here}.elif: an or-if is a mapping of if/then")
+                    unknown = set(arm) - {"if", "then"}
+                    if unknown:
+                        raise FlowError(
+                            f"{here}.elif: an or-if is if/then only, not {sorted(unknown)}")
+                    arm_cond = arm.get("if")
+                    if not isinstance(arm_cond, str) or not arm_cond.strip():
+                        raise FlowError(f"{here}.elif: an or-if needs a non-empty 'if'")
+                    arm_then = arm.get("then")
+                    if not isinstance(arm_then, list) or not arm_then:
+                        raise FlowError(f"{here}.elif: an or-if's 'then' must list at least one step")
                 counter += 1
                 bid = f"b{counter}"
                 # Judged against the steps before the branch, before any of its
                 # own steps join the "earlier" set.
                 _check_condition(cond.strip(), dict(earlier), f"branch {bid}")
-                out.append({
+                # Every or-if is judged against the same snapshot: a condition
+                # may not name a step inside the same decision.
+                for k, arm in enumerate(elif_nodes, start=1):
+                    _check_condition(arm["if"].strip(), dict(earlier),
+                                     f"branch {bid} or-if {k}")
+                branch: dict[str, Any] = {
                     "id": bid, "if": cond.strip(),
                     "then": walk(then_nodes, depth + 1, f"{path}{bid}.then.", f"{here}.then"),
-                    "else": walk(else_nodes, depth + 1, f"{path}{bid}.else.", f"{here}.else"),
-                })
+                }
+                if elif_nodes:
+                    branch["elif"] = [
+                        {"if": arm["if"].strip(),
+                         "then": walk(arm["then"], depth + 1,
+                                      f"{path}{bid}.elif{k}.", f"{here}.elif[{k - 1}].then")}
+                        for k, arm in enumerate(elif_nodes, start=1)
+                    ]
+                branch["else"] = walk(else_nodes, depth + 1, f"{path}{bid}.else.", f"{here}.else")
+                out.append(branch)
                 continue
             definition = node.get("definition")
             if definition is None:
@@ -198,9 +230,8 @@ def branch_guards(flow: list | None) -> dict[str, tuple[str, str]]:
             if "step" in node:
                 if conds:
                     guards[node["step"]] = (
-                        " and ".join(f"not ({c})" if side == "else" else f"({c})"
-                                     for _b, side, c in conds),
-                        ".".join(f"{b}.{side}" for b, side, _c in conds),
+                        " and ".join(term for _b, _s, term in conds),
+                        ".".join(f"{b}.{side}" for b, side, _t in conds),
                     )
                 continue
             if "goto" in node:
@@ -209,16 +240,38 @@ def branch_guards(flow: list | None) -> dict[str, tuple[str, str]]:
                 # key can never collide with one.
                 if conds:
                     guards["@" + node["id"]] = (
-                        " and ".join(f"not ({c})" if side == "else" else f"({c})"
-                                     for _b, side, c in conds),
-                        ".".join(f"{b}.{side}" for b, side, _c in conds),
+                        " and ".join(term for _b, _s, term in conds),
+                        ".".join(f"{b}.{side}" for b, side, _t in conds),
                     )
                 continue
-            walk(node.get("then") or [], [*conds, (node["id"], "then", node["if"])])
-            walk(node.get("else") or [], [*conds, (node["id"], "else", node["if"])])
+            arms = arms_of(node)
+            walk(arms["then"], [*conds, (node["id"], "then", f"({node['if']})")])
+            for k, arm in enumerate(arms["elif"], start=1):
+                walk(arm["then"], [*conds, (node["id"], f"elif{k}", or_if_term(arms, k))])
+            walk(arms["else"], [*conds, (node["id"], "else", else_term(arms))])
 
     walk(list(flow or []), [])
     return guards
+
+
+def arms_of(node: dict) -> dict[str, Any]:
+    """A decision's three kinds of arm: ``then``, its or-ifs, ``else``."""
+    return {"node": node,
+            "then": node.get("then") or [],
+            "elif": node.get("elif") or [],
+            "else": node.get("else") or []}
+
+
+def or_if_term(arms: dict, k: int) -> str:
+    """The k-th or-if runs when the ``if`` and every earlier or-if said no."""
+    conds = [arms["node"]["if"]] + [arm["if"] for arm in arms["elif"]]
+    return " and ".join([f"not ({c})" for c in conds[:k]] + [f"({conds[k]})"])
+
+
+def else_term(arms: dict) -> str:
+    """``else`` runs when every exit above it said no."""
+    conds = [arms["node"]["if"]] + [arm["if"] for arm in arms["elif"]]
+    return " and ".join(f"not ({c})" for c in conds)
 
 
 def flow_sequence(flow) -> list[dict[str, Any]]:
@@ -239,6 +292,8 @@ def flow_sequence(flow) -> list[dict[str, Any]]:
                 out.append({"goto": node["goto"], "id": node["id"], "max": node["max"]})
                 continue
             walk(node.get("then") or [])
+            for arm in node.get("elif") or []:
+                walk(arm["then"] or [])
             walk(node.get("else") or [])
 
     walk(list(flow or []))
@@ -261,8 +316,12 @@ def tree_from(playbook) -> list[dict[str, Any]]:
             elif "goto" in node:
                 out.append({"goto": node["goto"], "max": node["max"]})
             else:
-                out.append({"if": node["if"], "then": walk(node.get("then") or []),
-                            "else": walk(node.get("else") or [])})
+                branch: dict[str, Any] = {"if": node["if"], "then": walk(node.get("then") or [])}
+                if node.get("elif"):
+                    branch["elif"] = [{"if": arm["if"], "then": walk(arm["then"] or [])}
+                                      for arm in node["elif"]]
+                branch["else"] = walk(node.get("else") or [])
+                out.append(branch)
         return out
 
     return walk(playbook.flow)
