@@ -115,6 +115,9 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
     def load(entries) -> list:
         tree = []
         for entry in entries:
+            if isinstance(entry, dict) and "goto" in entry:
+                tree.append(dict(entry))
+                continue
             if isinstance(entry, dict) and "if" in entry:
                 then_nodes = entry.get("then")
                 else_nodes = entry.get("else") or []
@@ -437,6 +440,7 @@ def _create_playbook_from_parsed(request, parsed, resolved, existing=None,
 
             def rebuild(nodes):
                 return [entry(by_index[n["step"]]) if "step" in n
+                        else {"goto": n["goto"], "max": n.get("max")} if "goto" in n
                         else {"if": n["if"], "then": rebuild(n["then"]),
                               "else": rebuild(n["else"])}
                         for n in nodes]
