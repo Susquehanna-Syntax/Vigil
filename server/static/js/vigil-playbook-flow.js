@@ -10,7 +10,7 @@
 //   * flow analysis: every path through the playbook, and the mistakes worth
 //     catching before it runs anywhere.
 // Tree nodes: { kind: 'step', def, ov, inp, ona, onf, sid, color }
-//           | { kind: 'if', cond, then: [...], else: [...] }
+//           | { kind: 'if', cond, then: [...], elifs: [{ cond, then: [...] }], else: [...] }
 //           | { kind: 'goto', gid, target, max }
 // Depends on: vigil-utils.js (escHtml, escAttr).
 
@@ -20,18 +20,56 @@ const FLOW_STATUS = ['ok', 'failed', 'not_applicable', 'skipped'];
 /* ── Tree helpers ─────────────────────────────────────────────────────── */
 
 // A lane is addressed by a path: '' is the top level, '2.then' the then-lane
-// of the branch at index 2, '2.then.0.else' deeper still.
-function flowLane(tree, lane) {
-  let list = tree;
-  if (!lane) return list;
+// of the branch at index 2, '2.then.0.else' deeper still. An or-if lane is
+// '2.elif1' — the same name the server's branch paths use.
+function flowLane(list, lane) {
+  let list_ = list;
+  if (!lane) return list_;
   const parts = lane.split('.');
-  for (let i = 0; i < parts.length; i += 2) list = list[+parts[i]][parts[i + 1]];
-  return list;
+  for (let i = 0; i < parts.length; i += 2) list_ = flowArmList(list_[+parts[i]], parts[i + 1]);
+  return list_;
+}
+
+// One lane of a node by arm key: 'then', 'else', or 'elif<k>' (k from 1).
+function flowArmList(node, key) {
+  if (key.startsWith('elif')) return (node.elifs || [])[+key.slice(4) - 1].then;
+  return node[key];
+}
+
+// A decision's exits in the order they are judged: then, each or-if, else.
+// Without or-ifs these are exactly then and else, so every walker that
+// iterates them behaves as it always did.
+function flowArms(node) {
+  const elifs = node.elifs || [];
+  const arms = [{ key: 'then', list: node.then, cond: node.cond }];
+  elifs.forEach((arm, i) => arms.push({ key: `elif${i + 1}`, list: arm.then, cond: arm.cond }));
+  arms.push({ key: 'else', list: node.else, cond: null });
+  return arms;
+}
+
+// A decision's own condition is addressed by `at`; its k-th or-if's by
+// `${at}#elif<k>`.
+function flowCondGet(tree, addr) {
+  const { node, elif } = _flowCondTarget(tree, addr);
+  return ((elif ? elif.cond : node.cond) || '');
+}
+
+function flowCondSet(tree, addr, value) {
+  const { node, elif } = _flowCondTarget(tree, addr);
+  if (elif) elif.cond = value; else node.cond = value;
+}
+
+function _flowCondTarget(tree, addr) {
+  const [at, part] = String(addr).split('#');
+  const [lane, i] = at.split('|');
+  const node = flowLane(tree, lane)[+i];
+  if (!part) return { node, elif: null };
+  return { node, elif: (node.elifs || [])[+part.slice(4) - 1] };
 }
 
 function flowSteps(tree, out = []) {
   for (const n of tree) {
-    if (n.kind === 'if') { flowSteps(n.then, out); flowSteps(n.else, out); } else if (n.kind === 'step') out.push(n);
+    if (n.kind === 'if') { for (const arm of flowArms(n)) flowSteps(arm.list, out); } else if (n.kind === 'step') out.push(n);
   }
   return out;
 }
@@ -47,8 +85,7 @@ function _flowStepsWithLanes(tree, lane = '', out = []) {
   tree.forEach((n, i) => {
     const here = lane ? `${lane}.${i}` : String(i);
     if (n.kind === 'if') {
-      _flowStepsWithLanes(n.then, `${here}.then`, out);
-      _flowStepsWithLanes(n.else, `${here}.else`, out);
+      for (const arm of flowArms(n)) _flowStepsWithLanes(arm.list, `${here}.${arm.key}`, out);
     } else if (n.kind === 'step') out.push({ step: n, lane });
   });
   return out;
@@ -84,14 +121,20 @@ function flowTreeFromRow(row) {
     ? (bySid[n.step] ? mk(bySid[n.step]) : null)
     : n.goto
       ? { kind: 'goto', gid: n.id || '', target: n.goto || '', max: n.max || 3 }
-      : { kind: 'if', bid: n.id, cond: n.if, then: walk(n.then || []), else: walk(n.else || []) })).filter(Boolean);
+      : { kind: 'if', bid: n.id, cond: n.if, then: walk(n.then || []),
+        elifs: (n.elif || []).map(e => ({ cond: e.if, then: walk(e.then || []) })),
+        else: walk(n.else || []) })).filter(Boolean);
   return walk(row.flow);
 }
 
 // The editor's tree → the API's flow_steps.
 function flowSerialize(tree) {
   return tree.map(n => (n.kind === 'if'
-    ? { if: (n.cond || '').trim(), then: flowSerialize(n.then), else: flowSerialize(n.else) }
+    ? { if: (n.cond || '').trim(), then: flowSerialize(n.then),
+      ...(n.elifs && n.elifs.length
+        ? { elif: n.elifs.map(e => ({ if: (e.cond || '').trim(), then: flowSerialize(e.then) })) }
+        : {}),
+      else: flowSerialize(n.else) }
     : n.kind === 'goto'
       ? { goto: n.target, max: +n.max || 3 }
       : { definition_id: n.def, id: n.sid, params_override: n.ov || {},
@@ -112,9 +155,8 @@ function flowPaths(tree, cap = 64) {
     let current = acc;
     for (const n of nodes) {
       if (n.kind === 'if') {
-        const thenPaths = walk(n.then, current.map(p => [...p]));
-        const elsePaths = walk(n.else, current.map(p => [...p]));
-        current = [...thenPaths, ...elsePaths].slice(0, cap);
+        const splits = flowArms(n).map(arm => walk(arm.list, current.map(p => [...p])));
+        current = splits.flat().slice(0, cap);
       } else if (n.kind === 'step') {
         current = current.map(p => [...p, n]);
       }
@@ -144,7 +186,7 @@ function flowFindings(tree) {
   const walk = (nodes, arm) => nodes.forEach(n => {
     if (n.kind !== 'if') return;
     branches.push({ node: n, arm });
-    walk(n.then, n); walk(n.else, n);
+    for (const a of flowArms(n)) walk(a.list, n);
   });
   walk(tree, null);
 
@@ -152,7 +194,7 @@ function flowFindings(tree) {
   const gotos = [];
   const gwalk = (nodes, lane) => nodes.forEach((n, i) => {
     const here = lane ? `${lane}.${i}` : String(i);
-    if (n.kind === 'if') { gwalk(n.then, `${here}.then`); gwalk(n.else, `${here}.else`); }
+    if (n.kind === 'if') { for (const a of flowArms(n)) gwalk(a.list, `${here}.${a.key}`); }
     else if (n.kind === 'goto') gotos.push({ node: n, at: `${here}|${i}`, lane, i });
   });
   gwalk(tree, '');
@@ -175,20 +217,37 @@ function flowFindings(tree) {
   if (gotos.length > 8) findings.push({ level: 'warn', text: 'A playbook has at most 8 go to nodes.' });
 
   for (const { node } of branches) {
-    const cond = (node.cond || '').trim();
-    if (!cond) { findings.push({ level: 'warn', text: 'A branch has no condition yet.' }); continue; }
-    if (!node.then.length) findings.push({ level: 'warn', text: `“if ${cond}” has nothing to run when it is true.` });
-    for (const ref of _flowCondRefs(cond)) {
-      const target = bySid[ref.sid];
-      if (!target) { findings.push({ level: 'warn', text: `“if ${cond}” names ${ref.sid}, which is not a step in this playbook.` }); continue; }
-      if (ref.status && /["']failed["']/.test(cond)) {
-        testedForFailure.add(ref.sid);
-        if (target.onf !== 'continue') {
-          findings.push({ level: 'warn', text: `“if ${cond}” can never be true: when ${ref.sid} fails the playbook stops there. Set “If it fails” on ${ref.sid} to “carry on”.` });
-        }
+    const arms = flowArms(node);
+    if (arms.length > 10) findings.push({ level: 'warn', text: 'A decision has at most 8 or-if exits.' });
+    const seen = [];
+    for (const arm of arms) {
+      const label = arm.key === 'then' ? 'if' : arm.key === 'else' ? null : 'or if';
+      if (!label) continue;  // otherwise runs when nothing above it held — nothing to check
+      const cond = (arm.cond || '').trim();
+      if (!cond) {
+        findings.push({ level: 'warn', text: label === 'if' ? 'A branch has no condition yet.' : 'An or-if has no condition yet.' });
+        seen.push('');
+        continue;
       }
-      if (ref.status && /["']not_applicable["']/.test(cond) && target.ona !== 'skip') {
-        findings.push({ level: 'warn', text: `“if ${cond}” can never be true: when ${ref.sid} is not applicable the playbook stops there. Set “Not applicable” on ${ref.sid} to “go on”.` });
+      if (seen.includes(cond)) {
+        findings.push({ level: 'warn', text: `“or if ${cond}” can never be true: an earlier exit of the same decision already catches it.` });
+      }
+      seen.push(cond);
+      if (!arm.list.length) {
+        findings.push({ level: 'warn', text: `“${label} ${cond}” has nothing to run when it is true.` });
+      }
+      for (const ref of _flowCondRefs(cond)) {
+        const target = bySid[ref.sid];
+        if (!target) { findings.push({ level: 'warn', text: `“${label} ${cond}” names ${ref.sid}, which is not a step in this playbook.` }); continue; }
+        if (ref.status && /["']failed["']/.test(cond)) {
+          testedForFailure.add(ref.sid);
+          if (target.onf !== 'continue') {
+            findings.push({ level: 'warn', text: `“${label} ${cond}” can never be true: when ${ref.sid} fails the playbook stops there. Set “If it fails” on ${ref.sid} to “carry on”.` });
+          }
+        }
+        if (ref.status && /["']not_applicable["']/.test(cond) && target.ona !== 'skip') {
+          findings.push({ level: 'warn', text: `“${label} ${cond}” can never be true: when ${ref.sid} is not applicable the playbook stops there. Set “Not applicable” on ${ref.sid} to “go on”.` });
+        }
       }
     }
   }
@@ -372,21 +431,62 @@ function flowCondSummary(cond) {
   return flowCondWords(cond);
 }
 
-function _flMeasure(nodes) {
-  const parts = nodes.map((n) => {
-    // A go to sits at the end of its lane and arcs to its target; the arc's
-    // apex is accounted for by flowLayout when it works out the canvas top.
-    if (n.kind === 'goto') return { w: FL.GW, up: FL.GH / 2, down: FL.GH / 2 };
-    if (n.kind !== 'if') return { w: FL.NW, up: FL.NH / 2, down: FL.NH / 2 };
+// A decision's layout. With or-ifs (more than two exits) every arm gets a
+// band of its own; two-way decisions keep the numbers they have always had.
+// `belowY` / `aboveY` are the band's half-heights, measured from the band's
+// centre line, so a band can be centred without clashing with its neighbours.
+function _flIfMeasure(n) {
+  const arms = flowArms(n);
+  if (arms.length <= 2) {
     const t = _flMeasure(n.then);
     const e = _flMeasure(n.else);
     // An empty "otherwise" runs straight through; the true band sits above it.
     const thenY = e.empty ? -(FL.GY + t.down) : -(FL.GY / 2 + t.down);
     const elseY = e.empty ? 0 : FL.GY / 2 + e.up;
     const bodyW = Math.max(t.w, e.w, FL.GX);
-    return { t, e, thenY, elseY, bodyW,
+    return { twoWay: true, t, e, thenY, elseY, bodyW,
       w: FL.IW + FL.GX + bodyW + FL.GX + FL.J,
       up: Math.max(FL.IH / 2, -thenY + t.up), down: Math.max(FL.IH / 2, elseY + e.down) };
+  }
+  const bands = arms.map(arm => _flMeasure(arm.list));
+  // Half-heights of a band measured from its own centre line; an empty arm
+  // is a straight line to the join, 24px tall, so its "+" is clickable.
+  const above = (lm, o) => (lm.empty ? 12 : lm.up + o);
+  const below = (lm, o) => (lm.empty ? 12 : lm.down - o);
+  const ih = Math.max(FL.IH, 18 * arms.length + 12);
+  // Bands stack in arm order with FL.GY between neighbours, each centred on
+  // its own contents the way two-way bands are; the stack is then centred on
+  // the decision's centre line.
+  const off = [];
+  let cursor = 0;   // top edge of the band being placed
+  bands.forEach((lm, k) => {
+    if (k) cursor += FL.GY;
+    off.push(cursor + (lm.empty ? 12 : lm.up));
+    cursor += lm.empty ? 24 : lm.up + lm.down;
+  });
+  const mid = cursor / 2;
+  off.forEach((v, k) => { off[k] = v - mid; });
+  const bodyW = Math.max(...bands.map(lm => lm.w), FL.GX);
+  // The tallest node in a band may reach above / below the band's centre
+  // line, and the canvas has to hold it.
+  return { bands, off, ih, bodyW, w: FL.IW + FL.GX + bodyW + FL.GX + FL.J,
+    up: Math.max(ih / 2, ...bands.map((lm, k) => above(lm, off[k]))),
+    down: Math.max(ih / 2, ...bands.map((lm, k) => below(lm, off[k]))) };
+}
+
+function _flMeasure(nodes) {
+  const parts = nodes.map((n) => {
+    // A go to sits at the end of its lane and arcs to its target; the arc's
+    // apex is accounted for by flowLayout when it works out the canvas top.
+    if (n.kind === 'goto') return { w: FL.GW, up: FL.GH / 2, down: FL.GH / 2 };
+    if (n.kind !== 'if') return { w: FL.NW, up: FL.NH / 2, down: FL.NH / 2 };
+    const pm = _flIfMeasure(n);
+    if (pm.twoWay) {
+      return { if_: pm, t: pm.t, e: pm.e, thenY: pm.thenY, elseY: pm.elseY,
+        bodyW: pm.bodyW, w: pm.w,
+        up: Math.max(FL.IH / 2, -pm.thenY + pm.t.up), down: Math.max(FL.IH / 2, pm.elseY + pm.e.down) };
+    }
+    return { if_: pm, bands: pm.bands, off: pm.off, ih: pm.ih, w: pm.w, up: pm.up, down: pm.down };
   });
   if (!parts.length) return { parts, w: 0, up: 12, down: 12, empty: true };
   return { parts,
@@ -411,33 +511,64 @@ function _flPlace(nodes, m, x, y, lane, tone, out) {
       ports.push({ in: { x: cx, y }, out: { x: cx + FL.NW, y }, sid: n.sid });
     } else {
       const here = lane ? `${lane}.${i}` : String(i);
-      out.nodes.push({ type: 'if', node: n, at, x: cx, y: y - FL.IH / 2, w: FL.IW, h: FL.IH });
-      const bx = cx + FL.IW + FL.GX;
-      const jx = bx + pm.bodyW + FL.GX;
-      out.nodes.push({ type: 'join', x: jx, y: y - FL.J / 2, w: FL.J, h: FL.J });
-      [['then', pm.t, y + pm.thenY, { x: cx + FL.IW, y: y - 14 }],
-        ['else', pm.e, y + pm.elseY, { x: cx + FL.IW, y: y + 14 }]].forEach(([side, lm, ly, port]) => {
-        const list = n[side];
-        const lanePath = `${here}.${side}`;
-        const branch = { bid: n.bid, side };
-        if (!list.length) {
-          out.edges.push({ a: port, b: { x: jx, y }, tone: side, insert: `${lanePath}|0`, branch, empty: true });
-          return;
-        }
-        // A shorter band is centred under the longer one, so both meet the join evenly.
-        const p = _flPlace(list, lm, bx + (pm.bodyW - lm.w) / 2, ly, lanePath, side, out);
-        out.edges.push({ a: port, b: p.first, tone: side, insert: `${lanePath}|0`, branch, toSid: p.firstSid });
-        // Nothing can be inserted after a go to, so its trailing edge has no "+".
-        out.edges.push({ a: p.last, b: { x: jx, y }, tone: side, after: true,
-          afterGoto: p.endsInGoto, insert: p.endsInGoto ? null : `${lanePath}|${list.length}` });
-      });
-      ports.push({ in: { x: cx, y }, out: { x: jx + FL.J, y }, sid: null });
+      if (!pm.if_.twoWay) {
+        _flPlaceIfMulti(n, pm.if_, here, at, cx, y, lane, out);
+        ports.push({ in: { x: cx, y }, out: { x: cx + pm.w, y }, sid: null });
+      } else {
+        out.nodes.push({ type: 'if', node: n, at, x: cx, y: y - FL.IH / 2, w: FL.IW, h: FL.IH });
+        const bx = cx + FL.IW + FL.GX;
+        const jx = bx + pm.bodyW + FL.GX;
+        out.nodes.push({ type: 'join', x: jx, y: y - FL.J / 2, w: FL.J, h: FL.J });
+        [['then', pm.t, y + pm.thenY, { x: cx + FL.IW, y: y - 14 }],
+          ['else', pm.e, y + pm.elseY, { x: cx + FL.IW, y: y + 14 }]].forEach(([side, lm, ly, port]) => {
+          const list = n[side];
+          const lanePath = `${here}.${side}`;
+          const branch = { bid: n.bid, side };
+          if (!list.length) {
+            out.edges.push({ a: port, b: { x: jx, y }, tone: side, insert: `${lanePath}|0`, branch, empty: true });
+            return;
+          }
+          // A shorter band is centred under the longer one, so both meet the join evenly.
+          const p = _flPlace(list, lm, bx + (pm.bodyW - lm.w) / 2, ly, lanePath, side, out);
+          out.edges.push({ a: port, b: p.first, tone: side, insert: `${lanePath}|0`, branch, toSid: p.firstSid });
+          // Nothing can be inserted after a go to, so its trailing edge has no "+".
+          out.edges.push({ a: p.last, b: { x: jx, y }, tone: side, after: true,
+            afterGoto: p.endsInGoto, insert: p.endsInGoto ? null : `${lanePath}|${list.length}` });
+        });
+        ports.push({ in: { x: cx, y }, out: { x: jx + FL.J, y }, sid: null });
+      }
     }
     if (i > 0) out.edges.push({ a: ports[i - 1].out, b: ports[i].in, tone, insert: at, toSid: ports[i].sid });
     cx += pm.w + FL.GX;
   });
   return { first: ports[0].in, last: ports[ports.length - 1].out, firstSid: ports[0].sid,
     endsInGoto: nodes.length > 0 && nodes[nodes.length - 1].kind === 'goto' };
+}
+
+// A decision with or-ifs: one band per exit, stacked in arm order, each
+// centred in the body width and meeting one join on the centre line.
+function _flPlaceIfMulti(n, pm, here, at, cx, y, lane, out) {
+  const arms = flowArms(n);
+  out.nodes.push({ type: 'if', node: n, at, x: cx, y: y - pm.ih / 2, w: FL.IW, h: pm.ih });
+  const bx = cx + FL.IW + FL.GX;
+  const jx = bx + pm.bodyW + FL.GX;
+  out.nodes.push({ type: 'join', x: jx, y: y - FL.J / 2, w: FL.J, h: FL.J });
+  arms.forEach((arm, k) => {
+    const tone = arm.key === 'then' ? 'then' : arm.key === 'else' ? 'else' : 'elif';
+    const ly = y + pm.off[k];
+    const port = { x: cx + FL.IW, y: y - (arms.length - 1) * 9 + 18 * k };
+    const lanePath = `${here}.${arm.key}`;
+    const branch = { bid: n.bid, side: arm.key };
+    const lm = pm.bands[k];
+    if (!arm.list.length) {
+      out.edges.push({ a: port, b: { x: jx, y }, tone, insert: `${lanePath}|0`, branch, empty: true });
+      return;
+    }
+    const p = _flPlace(arm.list, lm, bx + (pm.bodyW - lm.w) / 2, ly, lanePath, tone, out);
+    out.edges.push({ a: port, b: p.first, tone, insert: `${lanePath}|0`, branch, toSid: p.firstSid });
+    out.edges.push({ a: p.last, b: { x: jx, y }, tone, after: true,
+      afterGoto: p.endsInGoto, insert: p.endsInGoto ? null : `${lanePath}|${arm.list.length}` });
+  });
 }
 
 // Tree → { nodes, edges, jumps, w, h } in canvas pixels.
@@ -527,11 +658,21 @@ function _flIfNodeHtml(ln, opts) {
   const cls = ['fcn', 'fcn-if', cond ? '' : 'fcn-bad', selected === ln.at ? 'is-sel' : ''].filter(Boolean).join(' ');
   const tag = ctx ? 'button type="button"' : 'div';
   const port = (side, label) => `<span class="fcn-port p-${side}">${label}${took ? ` <b>${took[side]}</b>` : ''}</span>`;
+  const arms = flowArms(node);
+  // With or-ifs every exit gets its own port at its own height; the two-way
+  // node keeps the markup — and the CSS's centring — it has always had.
+  const ports = arms.length > 2
+    ? arms.map((arm, k) => {
+        const side = arm.key === 'then' ? 'then' : arm.key === 'else' ? 'else' : 'elif';
+        const label = arm.key === 'then' ? 'true' : arm.key === 'else' ? 'otherwise' : `or if ${arm.key.slice(4)}`;
+        return `<span class="fcn-port p-${side}" style="top:${ln.h / 2 - (arms.length - 1) * 9 + 18 * k - 8}px">${label}${took ? ` <b>${took[arm.key]}</b>` : ''}</span>`;
+      }).join('')
+    : `${port('then', 'true')}${port('else', 'otherwise')}`;
   return `<${tag} class="${cls}" style="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px"
       ${ctx ? `data-flow-sel="${escAttr(ln.at)}" ` : ''}title="${escAttr(cond ? `if ${cond}` : 'No condition yet')}">
     <span class="fcn-if-mark">if</span>
     <span class="fcn-cond">${cond ? escHtml(flowCondSummary(cond)) : '<em>add a condition</em>'}</span>
-    ${port('then', 'true')}${port('else', 'otherwise')}
+    ${ports}
   </${tag.split(' ')[0]}>`;
 }
 
@@ -715,7 +856,8 @@ if (typeof MutationObserver !== 'undefined') {
 
 // Read-only flow: playbook cards and run history. `stats` (optional) maps a
 // step id to { total, ok, failed, skipped, not_applicable, pending } across the
-// run's hosts, and `__lanes` maps a branch id to { then, else } host counts.
+// run's hosts, and `__lanes` maps a branch id to its per-exit host counts —
+// `{ then, else }` without or-ifs, plus `elif1` … once there are any.
 function flowReadOnlyHtml(tree, stats, maxHeight) {
   return flowCanvasHtml(tree, { stats, maxHeight });
 }
@@ -735,7 +877,7 @@ function flowStepsBefore(tree, at) {
     if (found) return;
     if (`${lane}|${i}` === at) { found = true; return; }
     const here = lane ? `${lane}.${i}` : String(i);
-    if (n.kind === 'if') { walk(n.then, `${here}.then`); walk(n.else, `${here}.else`); } else if (n.kind === 'step') before.push(n);
+    if (n.kind === 'if') { for (const arm of flowArms(n)) walk(arm.list, `${here}.${arm.key}`); } else if (n.kind === 'step') before.push(n);
   });
   walk(tree, '');
   return before;
@@ -751,7 +893,7 @@ function flowInspectorHtml(tree, at, ctx) {
     return `<div class="fi-empty">
       <p><b>Select a step or an if</b> to change it.</p>
       <p>Press <span class="fi-plus">+</span> on any line to add a task or an if / else at that point.</p>
-      <p>Each if forks the flow: the <span class="fi-then">true</span> band runs when its condition holds, the <span class="fi-else">otherwise</span> band when it doesn't, and both meet again at the dot.</p>
+      <p>Each if forks the flow: the <span class="fi-then">true</span> band runs when its condition holds, the <span class="fi-else">otherwise</span> band when it doesn't, and both meet again at the dot. Add an <span class="fi-elif">or if</span> exit for anything in between.</p>
     </div>`;
   }
   const [lane, idx] = at.split('|');
@@ -781,15 +923,11 @@ function flowInspectorHtml(tree, at, ctx) {
   }
   if (node.kind === 'if') {
     const before = flowStepsBefore(tree, at);
-    const inside = flowSteps(node.then).length + flowSteps(node.else).length;
-    return `<div class="fi">
-      <div class="fi-head"><span class="fcn-if-mark">if</span> Decision</div>
-      <label class="fi-field">Expression
-        <textarea class="flow-cond" rows="2" data-flow-cond="${escAttr(at)}" placeholder="steps.check.result.count > 0" spellcheck="false">${escHtml(node.cond || '')}</textarea></label>
-      <div class="fi-words" data-flow-words>${node.cond ? escHtml(flowCondSummary(node.cond)) : ''}</div>
-      <div class="flow-builder" data-flow-builder="${escAttr(at)}">
-        ${before.length ? `<div class="fi-sub">Conditions</div>
-        <div class="fb-mode" data-fb-mode-wrap>Run the true band when
+    const arms = flowArms(node);
+    const inside = arms.reduce((k, arm) => k + flowSteps(arm.list).length, 0);
+    const builder = (addr, cond, label) => `<div class="flow-builder" data-flow-builder="${escAttr(addr)}">
+        ${before.length ? `<div class="fi-sub">${label}</div>
+        <div class="fb-mode" data-fb-mode-wrap>Run this exit when
           <select data-fb-mode><option value="all">all of these hold</option><option value="any">any of these holds</option></select>
         </div>
         <div class="fb-rows" data-fb-rows></div>
@@ -797,10 +935,31 @@ function flowInspectorHtml(tree, at, ctx) {
         <div class="muted-note" data-fb-raw hidden>This condition is written by hand, so it can only be edited as text above.
           <button type="button" class="btn btn-outline btn-xs" data-fb-reset>Start again with rows</button></div>`
     : '<div class="muted-note">Add a step before this if first: a condition tests an earlier step.</div>'}
+      </div>`;
+    const elifs = arms.slice(1, -1).map((arm, k) => `<div class="fi">
+      <div class="fi-head"><span class="fi-elif">or if ${k + 1}</span> Another exit</div>
+      <label class="fi-field">Expression
+        <textarea class="flow-cond" rows="2" data-flow-cond="${escAttr(`${at}#elif${k + 1}`)}" placeholder="steps.check.result.count > 5" spellcheck="false">${escHtml(arm.cond || '')}</textarea></label>
+      <div class="fi-words" data-flow-words="${escAttr(`${at}#elif${k + 1}`)}">${arm.cond ? escHtml(flowCondSummary(arm.cond)) : ''}</div>
+      ${builder(`${at}#elif${k + 1}`, arm.cond, 'Conditions')}
+      <div class="fi-actions">
+        <button type="button" class="btn btn-rose btn-xs" data-flow-elif-rm="${escAttr(`${at}#elif${k + 1}`)}">Remove this exit</button>
       </div>
+    </div>`).join('');
+    return `<div class="fi">
+      <div class="fi-head"><span class="fcn-if-mark">if</span> Decision</div>
+      <label class="fi-field">Expression
+        <textarea class="flow-cond" rows="2" data-flow-cond="${escAttr(at)}" placeholder="steps.check.result.count > 0" spellcheck="false">${escHtml(node.cond || '')}</textarea></label>
+      <div class="fi-words" data-flow-words="${escAttr(at)}">${node.cond ? escHtml(flowCondSummary(node.cond)) : ''}</div>
+      ${builder(at, node.cond, 'Conditions')}
       ${inside ? `<div class="muted-note">Removing this if also removes the ${inside} step${inside === 1 ? '' : 's'} inside it.</div>` : ''}
       ${moves}
-    </div>`;
+    </div>
+    ${elifs}
+    <div class="fi-actions">
+      <button type="button" class="btn btn-sky btn-xs" data-flow-elif-add="${escAttr(at)}" ${arms.length >= 10 ? 'disabled' : ''}>Add an or-if exit</button>
+    </div>
+    <div class="muted-note">Exits are checked in order: the first one that holds wins, and otherwise runs when none do.`;
   }
   const s = node;
   const why = ctx.ineligible(s.def);
@@ -933,13 +1092,20 @@ function flowRunStats(tasks) {
     if (reached && t.branch) {
       const parts = t.branch.split('.');
       for (let i = 0; i + 1 < parts.length; i += 2) {
-        const sets = lanes[parts[i]] || (lanes[parts[i]] = { then: new Set(), else: new Set() });
-        sets[parts[i + 1]].add(t.host);
+        const sets = lanes[parts[i]] || (lanes[parts[i]] = {});
+        const side = parts[i + 1];
+        (sets[side] || (sets[side] = new Set())).add(t.host);
       }
     }
   }
   for (const [bid, sets] of Object.entries(lanes)) {
-    stats.__lanes[bid] = { then: sets.then.size, else: sets.else.size };
+    // A two-way run always reports both keys, even the arm nobody took —
+    // faded() reads a missing key as 0, and the port labels read these.
+    const out = {};
+    for (const [key, hosts] of Object.entries(sets)) out[key] = hosts.size;
+    const twoWay = !Object.keys(out).some(k => k.startsWith('elif'));
+    if (twoWay) { out.then = out.then || 0; out.else = out.else || 0; }
+    stats.__lanes[bid] = out;
   }
   return stats;
 }

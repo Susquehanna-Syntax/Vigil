@@ -4564,3 +4564,10 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
   .sub-tabs { overflow-x: auto; scrollbar-width: none; }
   .sub-tab { flex: 0 0 auto; padding: 10px 12px; }
 }
+
+/* QA-45: or-if exits */
+.fce.t-elif { stroke: var(--sky-ink); }
+:root[data-theme="light"] .fce.t-elif { stroke: color-mix(in srgb, var(--sky) 70%, #000 30%); }
+.fce-add.t-elif { border-color: var(--sky); }
+.fcn-port.p-elif { background: var(--sky); }
+.fi-elif { background: var(--sky); }
