@@ -102,9 +102,15 @@ def compute(report, user, now=None) -> dict:
     # The one task query every widget reads. Its row cap is asked of the
     # queryset itself: slicing at the cap would report every smaller report
     # as truncated too.
-    rows = _task_rows(runs, _MAX_TASK_ROWS + 1)
+    rows = _task_rows(runs, user, _MAX_TASK_ROWS + 1)
     truncated = len(rows) > _MAX_TASK_ROWS
     tasks = _task_dicts(rows[:_MAX_TASK_ROWS])
+    # A source the viewer may open can still run on hosts they may not (a
+    # global playbook runs in every site). Only runs with a task on a host
+    # they can see count, so a run on a hidden host adds nothing anywhere,
+    # automation fires included.
+    seen_runs = {task["run"] for task in tasks}
+    runs = [run for run in runs if run["pk"] in seen_runs]
 
     host_runs = _host_runs(runs, run_source, tasks)
     context = {
@@ -321,17 +327,18 @@ def _runs_in_scope(start, playbook_names, automation_names):
             for run in runs]
 
 
-def _task_rows(runs, limit):
+def _task_rows(runs, user, limit):
     from apps.tasks.models import Task
 
     run_ids = [run["pk"] for run in runs]
     if not run_ids:
         return []
+    qs = Task.objects.filter(run_id__in=run_ids).exclude(action__in=_EXCLUDED_ACTIONS)
+    # Hosts the viewer cannot see stay out of every widget.
+    qs = scoping.filter_by_site(qs, user, path="host__")
     return list(
-        Task.objects.filter(run_id__in=run_ids)
-        .exclude(action__in=_EXCLUDED_ACTIONS)
-        .order_by("-created_at")
-        .values("run_id", "host_id", "host__hostname", "state", "on_failure",
+        qs.order_by("-created_at")
+        .values("id", "run_id", "host_id", "host__hostname", "state", "on_failure",
                 "step_ref", "branch", "created_at", "dispatched_at",
                 "completed_at")[:limit]
     )
