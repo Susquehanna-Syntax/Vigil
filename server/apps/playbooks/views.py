@@ -123,7 +123,14 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
                 else_nodes = entry.get("else") or []
                 if not isinstance(then_nodes, list) or not isinstance(else_nodes, list):
                     raise FlowError("a branch's then/else must be lists")
-                tree.append({**entry, "then": load(then_nodes), "else": load(else_nodes)})
+                elif_nodes = entry.get("elif") or []
+                if not isinstance(elif_nodes, list) or any(
+                        not isinstance(arm, dict) or not isinstance(arm.get("then"), list)
+                        for arm in elif_nodes):
+                    raise FlowError("a branch's elif must be a list of {if, then}")
+                tree.append({**entry, "then": load(then_nodes),
+                             "elif": [{**arm, "then": load(arm["then"])} for arm in elif_nodes],
+                             "else": load(else_nodes)})
                 continue
             override, on_not_applicable, on_failure, step_id, did = {}, "stop", "stop", None, entry
             step_inputs_mapping: dict = {}
@@ -438,11 +445,18 @@ def _create_playbook_from_parsed(request, parsed, resolved, existing=None,
         if parsed.get("tree"):
             by_index = {i: s for i, s in enumerate(resolved)}
 
+            def branch(n):
+                out = {"if": n["if"], "then": rebuild(n["then"]),
+                       "else": rebuild(n["else"])}
+                if n.get("elif"):
+                    out["elif"] = [{"if": a["if"], "then": rebuild(a["then"])}
+                                   for a in n["elif"]]
+                return out
+
             def rebuild(nodes):
                 return [entry(by_index[n["step"]]) if "step" in n
                         else {"goto": n["goto"], "max": n.get("max")} if "goto" in n
-                        else {"if": n["if"], "then": rebuild(n["then"]),
-                              "else": rebuild(n["else"])}
+                        else branch(n)
                         for n in nodes]
             items = rebuild(parsed["tree"])
         else:

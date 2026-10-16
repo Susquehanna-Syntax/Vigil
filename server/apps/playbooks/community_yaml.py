@@ -106,6 +106,9 @@ def to_yaml(playbook, *, author: str = "", created=None) -> str:
                     out.append({"goto": node["goto"], "max": node["max"]})
                 else:
                     branch: dict[str, Any] = {"if": node["if"], "then": emit(node["then"])}
+                    if node.get("elif"):
+                        branch["elif"] = [{"if": arm["if"], "then": emit(arm["then"])}
+                                          for arm in node["elif"]]
                     if node["else"]:
                         branch["else"] = emit(node["else"])
                     out.append(branch)
@@ -239,11 +242,29 @@ def parse(text: str) -> dict[str, Any]:
                 if not isinstance(then_items, list) or not then_items:
                     raise ContentYamlError(
                         f"{_WHAT}: a branch's 'then' must list at least one step.")
+                elif_items = entry.get("elif") or []
+                if not isinstance(elif_items, list):
+                    raise ContentYamlError(
+                        f"{_WHAT}: a branch's 'elif' must be a list of if/then.")
+                for arm in elif_items:
+                    if not isinstance(arm, dict) or "if" not in arm:
+                        raise ContentYamlError(
+                            f"{_WHAT}: each 'elif' needs an 'if' and a 'then' "
+                            "that lists at least one step.")
+                    arm_then = arm.get("then")
+                    if not isinstance(arm_then, list) or not arm_then:
+                        raise ContentYamlError(
+                            f"{_WHAT}: each 'elif' needs an 'if' and a 'then' "
+                            "that lists at least one step.")
                 else_items = entry.get("else") or []
                 if not isinstance(else_items, list):
                     raise ContentYamlError(f"{_WHAT}: a branch's 'else' must be a list.")
-                nodes.append({"if": entry["if"], "then": walk(then_items, "then"),
-                              "else": walk(else_items, "else")})
+                branch: dict[str, Any] = {"if": entry["if"], "then": walk(then_items, "then")}
+                if elif_items:
+                    branch["elif"] = [{"if": arm["if"], "then": walk(arm["then"], "elif")}
+                                      for arm in elif_items]
+                branch["else"] = walk(else_items, "else")
+                nodes.append(branch)
                 continue
             if len(steps) >= _MAX_STEPS:
                 raise ContentYamlError(f"{_WHAT}: at most {_MAX_STEPS} steps.")
