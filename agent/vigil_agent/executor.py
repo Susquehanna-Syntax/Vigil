@@ -1441,6 +1441,11 @@ from .actions.alerts import (  # noqa: E402,F401
     _resolve_alert,
     _send_notification,
 )
+from .actions.jackil import (  # noqa: E402,F401
+    _jackil_ticket,
+    _jackil_note,
+    _jackil_resolve,
+)
 from .actions.tags_scans import (  # noqa: E402,F401
     _tag_names,
     _add_tag,
@@ -1492,6 +1497,9 @@ _HANDLERS: dict[str, callable] = {
     "raise_alert": _raise_alert,
     "resolve_alert": _resolve_alert,
     "send_notification": _send_notification,
+    "jackil_ticket": _jackil_ticket,
+    "jackil_note": _jackil_note,
+    "jackil_resolve": _jackil_resolve,
     "request_nessus_scan": _request_nessus_scan,
     "request_network_scan": _request_network_scan,
     "run_trivy_scan": _run_trivy_scan,

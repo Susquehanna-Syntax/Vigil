@@ -357,6 +357,11 @@ def _maybe_run_alert_actions(task: Task) -> None:
         apply(task)
     except Exception:
         logger.exception("alert task actions failed on task %s", task.pk)
+    try:
+        from apps.jackil.task_actions import apply as apply_jackil
+        apply_jackil(task)
+    except Exception:
+        logger.exception("jackil task actions failed on task %s", task.pk)
 
 
 def _tag_steps(task: Task, actions: tuple[str, ...]) -> list[dict]:

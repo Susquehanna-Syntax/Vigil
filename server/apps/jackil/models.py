@@ -39,3 +39,30 @@ class JackilTicket(models.Model):
 
     def __str__(self) -> str:
         return f"jackil#{self.ticket_id} for alert {self.alert_id}"
+
+
+class JackilWorkTicket(models.Model):
+    """A ticket a task opened for one host and one key (2026.14.6).
+
+    The key is the author's name for "this problem on this host", so a
+    playbook that runs every night finds last night's ticket instead of
+    opening another. A closed link stays as history; a new failure after it
+    opens a fresh ticket.
+    """
+
+    host = models.ForeignKey("hosts.Host", on_delete=models.CASCADE,
+                             related_name="jackil_work_tickets")
+    key = models.CharField(max_length=80)
+    ticket_id = models.PositiveIntegerField()
+    url = models.URLField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [models.UniqueConstraint(
+            fields=["host", "key"], condition=models.Q(closed_at__isnull=True),
+            name="uniq_open_jackil_work_ticket")]
+
+    def __str__(self) -> str:
+        return f"jackil#{self.ticket_id} for {self.host_id}/{self.key}"

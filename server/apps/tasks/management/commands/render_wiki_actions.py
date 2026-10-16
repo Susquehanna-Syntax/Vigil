@@ -84,6 +84,14 @@ GROUPS: list[tuple[str, str, list[str]]] = [
     ("tags", "Host tagging", ["add_tag", "remove_tag"]),
     ("alerts", "Alerts and notifications", ["raise_alert", "resolve_alert",
                                             "send_notification"]),
+    # ── Jackil helpdesk ─────────────────────────────────────────────────────
+    #
+    # A ticket is keyed by host + key, so a playbook that runs every night
+    # finds last night's ticket instead of opening another. key, priority and
+    # status come from the task the server signed; the free text comes from
+    # the agent's report. With Jackil turned off the steps do nothing.
+    ("jackil", "Jackil helpdesk", ["jackil_ticket", "jackil_note",
+                                   "jackil_resolve"]),
     ("hunts", "Hunts", ["hunt_file", "hunt_package", "hunt_process", "hunt_port",
                         "hunt_service", "hunt_registry", "hunt_content"]),
     ("vuln", "Vulnerability scanning", [
@@ -129,6 +137,12 @@ GROUP_NOTES: dict[str, str] = {
               "taking severity, key and channel from the task it signed — an "
               "agent can reword an alert but never choose its severity, its "
               "key or where it goes.",
+    "jackil": "The agent reports the step and the server works the ticket, "
+              "taking key, priority and status from the task it signed. A "
+              "ticket belongs to one host and one key: run the playbook "
+              "again and Vigil notes the open ticket instead of opening a "
+              "second one, and once it is resolved the next failure opens a "
+              "fresh ticket.",
     "vuln": "These leave a marker rather than doing the scan inline. The "
             "server starts the scan when the result arrives.",
     "hunts": "Read-only discovery: the walk runs in a low-priority thread "
@@ -204,6 +218,12 @@ PARAM_EXAMPLES: dict[str, str] = {
     "message": '"Disk cleanup failed. Last free space reading: ${{ steps.check-disk.result.state }}"',
     "key": "disk-cleanup",
     "channel": '"Ops email"',
+    "title": '"Nightly backup failed"',
+    "description": '"rsync exited 23. Last successful run: ${{ steps.check-backup.result.state }}"',
+    "priority": "high",
+    "body": '"Retried the backup by hand — same failure. Ticket kept open."',
+    "note": '"Repointed rsync at the new share; the backup ran clean."',
+    "status": "resolved",
     "severity_floor": "important",
     "shell": "/bin/bash",
     "source": '"10.0.0.0/24"',
@@ -350,6 +370,17 @@ EXAMPLE_TITLES: dict[str, tuple[str, str]] = {
     "send_notification": ("Tell Ops the sweep finished",
                           "One message to every enabled channel, or to the "
                           "one you name. Creates no alert."),
+    "jackil_ticket": ("Open a ticket when the backup fails",
+                      "Opens a ticket for this host and key, or notes the "
+                      "open one when it happens again. Does nothing while "
+                      "Jackil is turned off."),
+    "jackil_note": ("Say what you tried on the ticket",
+                    "Adds an internal note to this host's open ticket for "
+                    "the key. Does nothing when none is open."),
+    "jackil_resolve": ("Close the ticket once the backup works",
+                       "Optionally notes the recovery, sets the ticket's "
+                       "status, and closes the link so the next failure "
+                       "opens a fresh ticket."),
     "remove_tag": ("Drop a tag once a host is patched",
                    "Tags are applied server-side from the definition it signed."),
     "run_trivy_scan": ("Scan the host filesystem with Trivy",
@@ -474,6 +505,15 @@ ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
     ("resolve_alert", "key"): "The key the alert was raised with. Required: alerts opened by a metric rule are resolved by the evaluator, not by a task.",
     ("send_notification", "message"): "The message body. May reference an earlier step's output; the agent renders it and the server sends it as plain text, cut at 2,000 characters.",
     ("send_notification", "channel"): "A notification channel's name, as the Notifications page shows it. Omit to send to every enabled channel.",
+    ("jackil_ticket", "title"): "The ticket's title. The server prefixes it with the hostname; cut at 200 characters.",
+    ("jackil_ticket", "key"): "Names this problem on this host, which is how a repeat run finds its open ticket instead of opening a second one. Cut at 80 characters.",
+    ("jackil_ticket", "description"): "Detail for the ticket body, on a line of its own above the host and key lines the server adds. May reference an earlier step's output; cut at 4,000 characters.",
+    ("jackil_ticket", "priority"): "critical, high, medium or low; anything else is treated as medium. Taken from the task the server signed, not from the agent's report.",
+    ("jackil_note", "key"): "The key whose open ticket to note. A note without an open ticket does nothing.",
+    ("jackil_note", "body"): "The internal note — visible to whoever works the ticket, not emailed to the requester. May reference an earlier step's output; cut at 4,000 characters.",
+    ("jackil_resolve", "key"): "The key whose open ticket to resolve. Does nothing when none is open.",
+    ("jackil_resolve", "note"): "A closing note added before the status change — what fixed it. Cut at 4,000 characters.",
+    ("jackil_resolve", "status"): "resolved (default) or closed. Taken from the task the server signed, not from the agent's report.",
 }
 
 
@@ -582,6 +622,9 @@ OUTPUT_NOTES: dict[str, dict[str, str]] = {
     "raise_alert": {"message": "The message the server was asked to raise, as the agent reported it."},
     "resolve_alert": {"key": "The key whose alert the server was asked to resolve."},
     "send_notification": {"message": "The message the server was asked to send, as the agent reported it."},
+    "jackil_ticket": {"title": "The ticket title the server was asked to open or note, as the agent reported it."},
+    "jackil_note": {"body": "The note the server was asked to add, as the agent reported it."},
+    "jackil_resolve": {"key": "The key whose open ticket the server was asked to resolve."},
     "remove_tag": {"tags": "The tags requested for removal (comma-separated)."},
     "request_nessus_scan": {"requested": "Always true once the request is recorded."},
     "request_network_scan": {"engine": "The scan engine requested, or auto when the server picks."},
