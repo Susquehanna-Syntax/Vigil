@@ -588,6 +588,36 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "optional": ["channel"],
         "outputs": {"message": "str"},
     },
+    # ── Jackil helpdesk ─────────────────────────────────────────────────────
+    #
+    # Markers in the same shape: the agent reports the step, the server works
+    # the ticket when the result arrives. key, priority and status come from
+    # the task it signed; the free text (title, description, body, note) comes
+    # from the agent's report, capped and stored as plain text. A ticket is
+    # keyed by host + key, so a playbook that runs every night finds last
+    # night's ticket instead of opening another. When Jackil is not enabled
+    # the steps log a warning and do nothing.
+    "jackil_ticket": {
+        "label": "Open a helpdesk ticket",
+        "risk": "low",
+        "required": ["title", "key"],
+        "optional": ["description", "priority"],
+        "outputs": {"title": "str"},
+    },
+    "jackil_note": {
+        "label": "Note on a helpdesk ticket",
+        "risk": "low",
+        "required": ["key", "body"],
+        "optional": [],
+        "outputs": {"body": "str"},
+    },
+    "jackil_resolve": {
+        "label": "Resolve a helpdesk ticket",
+        "risk": "low",
+        "required": ["key"],
+        "optional": ["note", "status"],
+        "outputs": {"key": "str"},
+    },
     # The agent emits a "please scan me" marker; the server picks it up
     # on task completion and creates a VulnScan(requested). The actual
     # scan is launched by the central Nessus instance, not the agent.

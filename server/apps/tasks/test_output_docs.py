@@ -86,6 +86,10 @@ EXPECTED = {
     "create_user": {"username"}, "delete_user": {"username"},
     "add_user_to_group": {"username", "group"},
     "create_cron_job": {"user"}, "delete_cron_job": {"user", "removed"},
+    "raise_alert": {"message"}, "resolve_alert": {"key"},
+    "send_notification": {"message"},
+    "jackil_ticket": {"title"}, "jackil_note": {"body"},
+    "jackil_resolve": {"key"},
 }
 
 
