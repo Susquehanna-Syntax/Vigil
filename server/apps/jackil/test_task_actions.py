@@ -26,6 +26,7 @@ _ENABLED = "apps.jackil.task_actions.client.enabled"
 _CREATE = "apps.jackil.task_actions.client.create_ticket"
 _NOTE = "apps.jackil.task_actions.client.add_note"
 _STATUS = "apps.jackil.task_actions.client.set_status"
+_GET = "apps.jackil.task_actions.client.get_ticket"
 
 
 def _turn_on():
@@ -84,10 +85,11 @@ class TicketTests(TestCase):
     def tearDown(self):
         config.invalidate()
 
+    @mock.patch(_GET, return_value={"id": 42, "status": "in_progress"})
     @mock.patch(_STATUS)
     @mock.patch(_NOTE)
     @mock.patch(_CREATE, return_value={"id": 42})
-    def test_ticket_opens_once_then_notes(self, create, note, status):
+    def test_ticket_opens_once_then_notes(self, create, note, status, get):
         step = _ticket_step()
         _run(self.host, [step])
         self.assertEqual(create.call_count, 1)
@@ -137,15 +139,43 @@ class TicketTests(TestCase):
         _run(self.host, [_ticket_step(priority="urgent")])
         self.assertEqual(create.call_args.kwargs["priority"], "medium")
 
+    @mock.patch(_GET, return_value={"id": 42, "status": "open"})
     @mock.patch(_NOTE)
     @mock.patch(_CREATE, return_value={"id": 42})
-    def test_the_repeat_note_carries_the_description_too(self, create, note):
+    def test_the_repeat_note_carries_the_description_too(self, create, note, get):
         step = _ticket_step(description="rsync exited 23")
         _run(self.host, [step])
         _run(self.host, [step])
         body = note.call_args[0][1]
         self.assertIn("happened again", body)
         self.assertIn("rsync exited 23", body)
+
+    @mock.patch(_NOTE)
+    @mock.patch(_CREATE, side_effect=[{"id": 42}, {"id": 43}])
+    def test_a_ticket_closed_in_jackil_is_not_noted_again(self, create, note):
+        """Someone resolved it by hand: the repeat opens a fresh ticket, and the
+        old link becomes history instead of swallowing every repeat."""
+        step = _ticket_step()
+        _run(self.host, [step])
+        for gone in ({"id": 42, "status": "resolved"}, client.JackilNotFound("404")):
+            JackilWorkTicket.objects.all().delete()
+            JackilWorkTicket.objects.create(host=self.host, key="backup", ticket_id=42)
+            create.side_effect = [{"id": 43}]
+            with mock.patch(_GET, side_effect=[gone]):
+                _run(self.host, [step])
+            note.assert_not_called()
+            self.assertIsNotNone(JackilWorkTicket.objects.get(ticket_id=42).closed_at)
+            self.assertIsNone(JackilWorkTicket.objects.get(ticket_id=43).closed_at)
+
+    @mock.patch(_GET, side_effect=client.JackilError("Jackil is down"))
+    @mock.patch(_NOTE)
+    @mock.patch(_CREATE, return_value={"id": 42})
+    def test_an_outage_never_opens_a_duplicate(self, create, note, get):
+        step = _ticket_step()
+        _run(self.host, [step])
+        _run(self.host, [step])
+        self.assertEqual(create.call_count, 1)
+        self.assertIsNone(JackilWorkTicket.objects.get().closed_at)
 
     @mock.patch(_CREATE, return_value={"id": 42})
     def test_the_title_is_the_reported_one(self, create):
