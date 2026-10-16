@@ -1738,9 +1738,34 @@
 
       <h3 id="condition-rows">Conditions with several rows</h3>
       <p class="prose">In the flow editor an if node's condition is built from <strong>rows</strong>. Each row picks an earlier step, what to read from it (its status, or one of the outputs its task produces), a comparison and a value. <em>Add a condition</em> adds a row; each row has a remove button.</p>
-      <p class="prose">With more than one row, a select reads <strong>Run the true band when</strong> <em>all of these hold</em> or <em>any of these holds</em>. The rows are saved as an ordinary condition: two rows with <em>all of these hold</em> become <code>(steps.a.status == "ok") and (steps.b.result.count &gt; 0)</code>; <em>any</em> joins them with <code>or</code>. So YAML and the editor stay in step, and a playbook written by hand still imports.</p>
+      <p class="prose">With more than one row, a select reads <strong>Run this exit when</strong> <em>all of these hold</em> or <em>any of these holds</em>. The rows are saved as an ordinary condition: two rows with <em>all of these hold</em> become <code>(steps.a.status == "ok") and (steps.b.result.count &gt; 0)</code>; <em>any</em> joins them with <code>or</code>. So YAML and the editor stay in step, and a playbook written by hand still imports.</p>
       <p class="prose">A condition the rows cannot hold (for example one using <code>not</code>, <code>inputs.</code>, or <code>and</code> mixed with <code>or</code>) is kept as text. The editor says it was written by hand and can only be edited as text, and <em>Start again with rows</em> clears it.</p>
       <p class="prose">The canvas and the inspector read a multi-row condition in words, row by row: <code>a is ok and b failed</code>.</p>
+
+      <h3 id="or-if">Or if: more than two ways out</h3>
+      <p class="prose">An if node can have <strong>or-if</strong> exits between its true and otherwise outputs, so one decision can split hosts many ways. Splitting on an install's exit code is the usual case. The exits are checked in order: the first one whose condition holds wins, and <em>otherwise</em> runs only when none do. A decision has at most 8 or-ifs, so 10 exits in all.</p>
+      <div class="code-block">
+        <div class="code-label">split-on-exit-code.yaml</div>
+        <pre>  - <span class="hl-key">if</span>: <span class="hl-string">steps.install.result.exit_code == 0</span>
+    <span class="hl-key">then</span>:
+      - <span class="hl-key">id</span>: <span class="hl-string">done</span>
+        <span class="hl-key">task</span>: <span class="hl-string">confirm-installed</span>
+    <span class="hl-key">elif</span>:
+      - <span class="hl-key">if</span>: <span class="hl-string">steps.install.result.exit_code == 3010</span>
+        <span class="hl-key">then</span>:
+          - <span class="hl-key">id</span>: <span class="hl-string">reboot</span>
+            <span class="hl-key">task</span>: <span class="hl-string">reboot-later</span>
+      - <span class="hl-key">if</span>: <span class="hl-string">steps.install.result.exit_code == 1618</span>
+        <span class="hl-key">then</span>:
+          - <span class="hl-key">id</span>: <span class="hl-string">retry</span>
+            <span class="hl-key">task</span>: <span class="hl-string">retry-install</span>
+    <span class="hl-key">else</span>:
+      - <span class="hl-key">id</span>: <span class="hl-string">escalate</span>
+        <span class="hl-key">task</span>: <span class="hl-string">open-ticket</span></pre>
+      </div>
+      <p class="prose">Each or-if needs a condition and at least one step. Like the if's own condition, it may only test steps before the decision, not steps inside any of its exits. A go to inside an or-if lane follows the usual rule: its own lane or a lane around it.</p>
+      <p class="prose">In the flow editor, select an if and press <em>Add an or-if exit</em>. Each or-if gets its own expression and condition rows in the inspector, and <em>Remove this exit</em> takes it away along with its steps. On the canvas the if node grows one port per exit (<strong>true</strong>, <strong>or if 1</strong>, <strong>or if 2</strong> and so on, then <strong>otherwise</strong>), and each exit runs in its own lane to the join. The analysis warns about an or-if with no condition, and one that repeats an earlier exit's condition and so can never be reached. A run's canvas counts the hosts that took each exit; a skipped step reads <code>[SKIPPED] branch b1.elif2 not taken</code>.</p>
+      <p class="prose">Or-if exits are for playbook decisions. An <code>if:</code> inside a single task's YAML runs on the agent and is still true or otherwise.</p>
 
       <h3 id="goto">Go to: joining paths and trying again</h3>
       <p class="prose">A <strong>go to</strong> sends a host to another step of the same playbook. Two uses: lanes that end differently but should finish the same way can jump forward to one shared step, and a step that should be retried can jump back.</p>
