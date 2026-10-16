@@ -372,10 +372,12 @@ function _topoCurve(edge) {
     recognised by `attrs.id` (a real DOM node answers `undefined` there, which
     is as honest as it needs to be). Looking the canvas up by id rather than
     finding the child some other way is what makes this the *current* map. */
+//: The map's <svg>. A real element: an id lookup, never a property a test
+//: fake has and the DOM does not (the attrs-property check this replaced never
+//: matched in a browser, so the map could not pan, zoom or fit).
 function _topoSvg() {
   const canvas = _topoEl('topo-canvas');
-  const svg = canvas && canvas.children && canvas.children.length === 1 ? canvas.children[0] : null;
-  return svg && svg.attrs && svg.attrs.id === 'topo-svg' ? svg : null;
+  return canvas && canvas.querySelector ? canvas.querySelector('#topo-svg') : null;
 }
 
 function _topoSvgEl(name, attrs) {
@@ -468,7 +470,9 @@ function renderTopology() {
 
   for (const id in layout.cards) root.appendChild(_topoCard(layout.cards[id], data));
 
-  canvas.replaceChildren(svg);
+  svg.setAttribute('tabindex', '0');
+  svg.setAttribute('aria-label', 'Topology map: drag to move, wheel or + and - to zoom, arrow keys to pan');
+  canvas.replaceChildren(svg, _topoZoomControls());
   _topoWirePanZoom(svg);
   _topoHighlightMatch();
 }
@@ -582,7 +586,36 @@ function _topoCentreOn(card) {
 /** The <g> the pan and zoom transform lives on. */
 function _topoSvgRoot() {
   const svg = _topoSvg();
-  return svg ? svg.children[0] : null;
+  return svg ? svg.querySelector(':scope > g') : null;
+}
+
+const TOPO_ZOOM_MIN = 0.25, TOPO_ZOOM_MAX = 2.5;
+//: How far one press of an arrow key moves the map, in screen pixels.
+const TOPO_KEY_STEP = 60;
+//: A press that moves less than this is a click, not a drag.
+const TOPO_DRAG_SLOP = 4;
+
+/** Zoom by *factor*, keeping the map point under (px, py) — canvas pixels —
+ *  where it is on screen. */
+function topoZoomAt(view, px, py, factor) {
+  const k = Math.min(TOPO_ZOOM_MAX, Math.max(TOPO_ZOOM_MIN, view.k * factor));
+  return { x: px - (px - view.x) * (k / view.k), y: py - (py - view.y) * (k / view.k), k };
+}
+
+function _topoZoomBy(factor) {
+  const canvas = _topoEl('topo-canvas');
+  const w = (canvas && canvas.clientWidth) || 900, h = (canvas && canvas.clientHeight) || 560;
+  topoState.view = topoZoomAt(topoState.view, w / 2, h / 2, factor);
+  _topoApplyView();
+}
+
+function _topoZoomControls() {
+  const box = document.createElement('div');
+  box.className = 'topo-zoom';
+  box.innerHTML = '<button type="button" class="topo-zoom-btn" data-topo-zoom="in" aria-label="Zoom in">+</button>'
+    + '<button type="button" class="topo-zoom-btn" data-topo-zoom="out" aria-label="Zoom out">&minus;</button>'
+    + '<button type="button" class="topo-zoom-btn topo-zoom-fit" data-topo-zoom="fit" aria-label="Fit the map">Fit</button>';
+  return box;
 }
 
 function _topoApplyView() {
@@ -592,37 +625,105 @@ function _topoApplyView() {
   root.setAttribute('transform', `translate(${view.x.toFixed(1)},${view.y.toFixed(1)}) scale(${view.k})`);
 }
 
+//: Drag pans from anywhere, a card included: a press only becomes a drag once
+//: it has moved a few pixels, so a still click still opens the card, and the
+//: click that ends a drag is swallowed before it reaches the card. Two
+//: fingers pinch-zoom; the wheel (and a trackpad pinch, sent as ctrl+wheel)
+//: zooms around the pointer.
 function _topoWirePanZoom(svg) {
+  const pointers = new Map();
   let drag = null;
+  let pinch = null;
+  let swallowClick = false;
+  const local = (ev) => {
+    const box = svg.getBoundingClientRect();
+    return { x: ev.clientX - box.left, y: ev.clientY - box.top };
+  };
+  const pinchState = () => {
+    const [a, b] = [...pointers.values()];
+    return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+  };
   svg.addEventListener('pointerdown', (ev) => {
-    if (ev.target.closest('.topo-card')) return;
-    drag = { x: ev.clientX, y: ev.clientY, vx: topoState.view.x, vy: topoState.view.y };
-    svg.setPointerCapture(ev.pointerId);
+    if (ev.button !== undefined && ev.button !== 0) return;
+    pointers.set(ev.pointerId, local(ev));
+    if (pointers.size === 2) {
+      drag = null;
+      pinch = pinchState();
+      return;
+    }
+    drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, vx: topoState.view.x, vy: topoState.view.y,
+             moving: false };
   });
   svg.addEventListener('pointermove', (ev) => {
-    if (!drag) return;
-    topoState.view.x = drag.vx + (ev.clientX - drag.x);
-    topoState.view.y = drag.vy + (ev.clientY - drag.y);
+    if (pointers.has(ev.pointerId)) pointers.set(ev.pointerId, local(ev));
+    if (pinch && pointers.size === 2) {
+      const now = pinchState();
+      topoState.view = topoZoomAt(topoState.view, now.mx, now.my, now.d / pinch.d);
+      topoState.view.x += now.mx - pinch.mx;
+      topoState.view.y += now.my - pinch.my;
+      pinch = now;
+      swallowClick = true;
+      _topoApplyView();
+      return;
+    }
+    if (!drag || drag.id !== ev.pointerId) return;
+    const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+    if (!drag.moving) {
+      if (Math.hypot(dx, dy) < TOPO_DRAG_SLOP) return;
+      drag.moving = true;
+      svg.classList.add('topo-panning');
+      try { svg.setPointerCapture(ev.pointerId); } catch { /* the pointer can be gone already */ }
+    }
+    topoState.view.x = drag.vx + dx;
+    topoState.view.y = drag.vy + dy;
     _topoApplyView();
   });
   const stop = (ev) => {
-    if (!drag) return;
+    pointers.delete(ev.pointerId);
+    if (pointers.size < 2) pinch = null;
+    if (!drag || drag.id !== ev.pointerId) return;
+    if (drag.moving) swallowClick = true;
     drag = null;
-    if (svg.hasPointerCapture && svg.hasPointerCapture(ev.pointerId)) svg.releasePointerCapture(ev.pointerId);
+    svg.classList.remove('topo-panning');
+    try { if (svg.hasPointerCapture(ev.pointerId)) svg.releasePointerCapture(ev.pointerId); } catch { /* gone */ }
   };
   svg.addEventListener('pointerup', stop);
   svg.addEventListener('pointercancel', stop);
+  // Capture phase: the click a drag ends with never reaches a card's handler.
+  svg.addEventListener('click', (ev) => {
+    if (!swallowClick) return;
+    swallowClick = false;
+    ev.stopPropagation();
+    ev.preventDefault();
+  }, true);
+  svg.addEventListener('pointerdown', () => { swallowClick = false; }, true);
   svg.addEventListener('wheel', (ev) => {
     ev.preventDefault();
-    const box = svg.getBoundingClientRect();
-    const px = ev.clientX - box.left, py = ev.clientY - box.top;
-    const view = topoState.view;
-    const k = Math.min(2.5, Math.max(0.25, view.k * (ev.deltaY < 0 ? 1.12 : 1 / 1.12)));
-    view.x = px - (px - view.x) * (k / view.k);
-    view.y = py - (py - view.y) * (k / view.k);
-    view.k = k;
+    const at = local(ev);
+    // Proportional to the scroll, so a trackpad zooms smoothly and a mouse
+    // wheel notch is still a clear step.
+    const factor = Math.min(1.5, Math.max(1 / 1.5, Math.exp(-ev.deltaY * (ev.ctrlKey ? 0.01 : 0.0015))));
+    topoState.view = topoZoomAt(topoState.view, at.x, at.y, factor);
     _topoApplyView();
   }, { passive: false });
+  svg.addEventListener('keydown', (ev) => {
+    const step = ev.shiftKey ? TOPO_KEY_STEP * 3 : TOPO_KEY_STEP;
+    const pan = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }[ev.key];
+    if (pan) {
+      topoState.view.x += pan[0];
+      topoState.view.y += pan[1];
+      _topoApplyView();
+    } else if (ev.key === '+' || ev.key === '=') {
+      _topoZoomBy(1.2);
+    } else if (ev.key === '-' || ev.key === '_') {
+      _topoZoomBy(1 / 1.2);
+    } else if (ev.key === '0') {
+      fitTopology();
+    } else {
+      return;
+    }
+    ev.preventDefault();
+  });
   svg.addEventListener('pointerover', (ev) => {
     const card = ev.target.closest('.topo-card');
     _topoDimLinks(card && card.dataset.topoLink ? card.dataset.topoLink : '');
@@ -649,7 +750,9 @@ function fitTopology() {
   const layout = topoState.layout;
   if (!canvas || !layout) return;
   const w = canvas.clientWidth || 900, h = canvas.clientHeight || 560;
-  const k = Math.min(2.5, Math.max(0.25, Math.min((w - 32) / layout.width, (h - 32) / layout.height)));
+  // Fit shrinks a big map to the canvas but never blows a small one up past
+  // its own size: two hosts at 250% read as a mistake, not a map.
+  const k = Math.min(1, Math.max(TOPO_ZOOM_MIN, Math.min((w - 32) / layout.width, (h - 32) / layout.height)));
   const from = { ...topoState.view };
   topoState.view = { x: (w - layout.width * k) / 2, y: (h - layout.height * k) / 2, k };
   const root = _topoSvgRoot();
@@ -937,6 +1040,11 @@ delegateClick('[data-topo-containers]', (el) => {
 });
 
 delegateClick('#topo-fit', () => fitTopology());
+delegateClick('[data-topo-zoom]', (el) => {
+  const how = el.dataset.topoZoom;
+  if (how === 'fit') fitTopology();
+  else _topoZoomBy(how === 'in' ? 1.2 : 1 / 1.2);
+});
 delegateClick('#topo-refresh', () => loadTopology());
 
 document.addEventListener('change', (ev) => {
