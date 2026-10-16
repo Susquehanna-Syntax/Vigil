@@ -4570,4 +4570,6 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 :root[data-theme="light"] .fce.t-elif { stroke: color-mix(in srgb, var(--sky) 70%, #000 30%); }
 .fce-add.t-elif { border-color: var(--sky); }
 .fcn-port.p-elif { background: var(--sky); }
-.fi-elif { background: var(--sky); }
+.fi-elif { padding: 0 7px; border-radius: 999px; color: var(--on-accent); font-weight: 600; font-size: 12px; background: var(--sky); }
+#bl-inspector .fi + .fi { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+#bl-inspector > .fi-actions, #bl-inspector > .muted-note { margin-top: 12px; }

@@ -561,7 +561,11 @@ function _flPlaceIfMulti(n, pm, here, at, cx, y, lane, out) {
     const branch = { bid: n.bid, side: arm.key };
     const lm = pm.bands[k];
     if (!arm.list.length) {
-      out.edges.push({ a: port, b: { x: jx, y }, tone, insert: `${lanePath}|0`, branch, empty: true });
+      // An empty exit still runs along its own band, so its line and "+"
+      // never cross a neighbour's steps on the way to the join.
+      const mid = { x: bx + pm.bodyW / 2, y: ly };
+      out.edges.push({ a: port, b: mid, tone, insert: `${lanePath}|0`, branch, empty: true });
+      out.edges.push({ a: mid, b: { x: jx, y }, tone, branch, empty: true, after: true, tail: true });
       return;
     }
     const p = _flPlace(arm.list, lm, bx + (pm.bodyW - lm.w) / 2, ly, lanePath, tone, out);
@@ -665,7 +669,7 @@ function _flIfNodeHtml(ln, opts) {
     ? arms.map((arm, k) => {
         const side = arm.key === 'then' ? 'then' : arm.key === 'else' ? 'else' : 'elif';
         const label = arm.key === 'then' ? 'true' : arm.key === 'else' ? 'otherwise' : `or if ${arm.key.slice(4)}`;
-        return `<span class="fcn-port p-${side}" style="top:${ln.h / 2 - (arms.length - 1) * 9 + 18 * k - 8}px">${label}${took ? ` <b>${took[arm.key]}</b>` : ''}</span>`;
+        return `<span class="fcn-port p-${side}" style="top:${ln.h / 2 - (arms.length - 1) * 9 + 18 * k - 8}px">${label}${took ? ` <b>${took[arm.key] || 0}</b>` : ''}</span>`;
       }).join('')
     : `${port('then', 'true')}${port('else', 'otherwise')}`;
   return `<${tag} class="${cls}" style="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px"
@@ -959,7 +963,7 @@ function flowInspectorHtml(tree, at, ctx) {
     <div class="fi-actions">
       <button type="button" class="btn btn-sky btn-xs" data-flow-elif-add="${escAttr(at)}" ${arms.length >= 10 ? 'disabled' : ''}>Add an or-if exit</button>
     </div>
-    <div class="muted-note">Exits are checked in order: the first one that holds wins, and otherwise runs when none do.`;
+    <div class="muted-note">Exits are checked in order: the first one that holds wins, and otherwise runs when none do.</div>`;
   }
   const s = node;
   const why = ctx.ineligible(s.def);
