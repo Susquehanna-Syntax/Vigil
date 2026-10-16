@@ -4651,3 +4651,19 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 }
 .inv-host-link:hover { color: var(--sky-ink); text-decoration-color: currentColor; }
 .inv-host-link:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; border-radius: 2px; }
+
+/* QA-51: the topology map moves */
+.topo-canvas { position: relative; }
+#topo-svg:focus-visible { outline: 2px solid var(--sky); outline-offset: -2px; }
+#topo-svg.topo-panning, #topo-svg.topo-panning .topo-card { cursor: grabbing; }
+.topo-zoom {
+  position: absolute; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 4px;
+}
+.topo-zoom-btn {
+  min-width: 32px; height: 32px; padding: 0 8px; border-radius: var(--r-sm);
+  border: 1px solid var(--border); background: var(--s1); color: var(--text-1);
+  font: inherit; font-size: 16px; line-height: 1; cursor: pointer;
+}
+.topo-zoom-btn.topo-zoom-fit { font-size: 11px; }
+.topo-zoom-btn:hover { background: var(--s2); }
+.topo-zoom-btn:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
