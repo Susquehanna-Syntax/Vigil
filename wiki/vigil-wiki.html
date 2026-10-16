@@ -1353,6 +1353,14 @@
       <h3>Bulk actions</h3>
       <p class="prose">Every firing and acknowledged alert has a checkbox. Selecting any shows a bulk bar with <strong>Ack selected</strong> (same duration menu) and <strong>Un-ack selected</strong>. One request handles the whole selection (<code>POST /api/v1/alerts/bulk/</code>, up to 200 ids). Alerts in the wrong state for the action are skipped and reported, so a selection can safely span tabs. All alert actions update the page in place; nothing reloads or navigates away.</p>
 
+      <h3 id="alert-actions">Alerts and tickets from a task</h3>
+      <p class="prose">Six task actions let a task, playbook, automation or rollout raise and clear alerts and helpdesk tickets. The agent does no real work for them; the server acts when the step reports <code>ok</code>. A step skipped by <code>when:</code> does nothing.</p>
+      <p class="prose"><code>raise_alert</code> opens an alert on the host with a <code>severity</code> (<code>info</code>, <code>warning</code> or <code>critical</code>) and a <code>message</code>, and notifies through the usual channels. With a <code>key</code>, it does not open a second one while one with that key is still firing on that host. <code>resolve_alert</code> with the same <code>key</code> resolves it.</p>
+      <p class="prose"><code>send_notification</code> sends a <code>message</code> to every enabled notification channel, or only the one named in <code>channel</code>. It opens no alert.</p>
+      <p class="prose"><code>jackil_ticket</code>, <code>jackil_note</code> and <code>jackil_resolve</code> work one Jackil ticket per host and <code>key</code>: open it (or, if one is already open, note that it happened again), add a note, and resolve or close it. They do nothing while Jackil is off.</p>
+      <p class="prose">A message may use <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>. The severity, key, priority and channel always come from the task as signed, never from the agent, so an agent can change an alert's wording but not how serious it is or where it goes. Messages are capped at 2,000 characters (ticket text at 4,000) and stored as plain text.</p>
+      <p class="prose"><a href="#task-spec">Task YAML Spec</a> → <strong>Built-in Actions</strong> lists every parameter.</p>
+
       <h3>Default Thresholds</h3>
       <div class="table-wrap">
         <table>
@@ -1555,6 +1563,27 @@
       <p class="prose">An automation normally sends its work to every matching host at once. Set <strong>How</strong> to <em>Wave by wave</em> and it hands the work to the rollout machinery instead, so "when a critical alert fires, patch, but canary first" is expressible.</p>
       <p class="prose">In wave mode the automation's own target selection is ignored. The waves decide which machines get it, by tag. Two competing host-selection rules would be worse than one, so the waves win and the editor says so.</p>
 
+      <h3 id="reports">Reports</h3>
+      <p class="prose"><strong>Deployments → Reports</strong> keeps saved reports. A report names some playbooks and automations, a range (7, 14, 30, 90, 180 or 365 days) and up to 12 charts. <em>New report</em> opens the builder; a new report starts with <em>Success rate</em>, <em>Runs per day</em> and <em>Failures by step</em>. Operators and admins create and edit reports; anyone signed in can open one.</p>
+      <p class="prose">Every number is worked out from run history when the report is opened, per host-run: one host's go at one run. A host-run is ok, failed or still pending exactly as the run's own detail page says. A failure the playbook handles with <code>on_failure: continue</code> is not a failure, and go tos are left out.</p>
+      <p class="prose">A run from an automation that runs a playbook counts once, under the automation when the report names it. A report never shows a playbook or automation the viewer could not open: those drop out of the numbers.</p>
+      <p class="prose">Past four sources, the rest are drawn as one grey <em>Other</em> line or bar (for the success rate it is their average, labelled <em>Other (average)</em>). A chart with nothing in range says <em>Nothing ran in this range.</em></p>
+      <p class="prose">Each chart has a <em>CSV</em> button. Days are UTC. Very large reports stop at 200,000 task rows, newest first, and say so.</p>
+
+      <h3 id="report-charts">The charts</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Chart</th><th>What it shows</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Success rate</strong></td><td>Per day and per source, the share of finished host-runs that ended ok (pending ones are left out).</td></tr>
+          <tr><td><strong>Runs per day</strong></td><td>Host-runs per day, stacked as ok, failed and pending.</td></tr>
+          <tr><td><strong>Failures by step</strong></td><td>The 15 steps that failed most often across the range.</td></tr>
+          <tr><td><strong>Branch paths</strong></td><td>How many host-runs went down each branch of a playbook.</td></tr>
+          <tr><td><strong>Duration</strong></td><td>The median and 95th-percentile length of a host-run, per day.</td></tr>
+          <tr><td><strong>Host outcomes</strong></td><td>Each host's newest host-run per source, and how it ended.</td></tr>
+          <tr><td><strong>Automation fires</strong></td><td>How often each selected automation ran, per day.</td></tr>
+        </tbody>
+      </table></div>
+
       <h3>Operator actions</h3>
       <p class="prose">Click any rollout to open it. Which actions appear depends on what the rollout is doing:</p>
       <div class="table-wrap"><table>
@@ -1705,6 +1734,41 @@
       <h3>The flow editor</h3>
       <p class="prose"><strong>Playbooks → Edit</strong> draws the flow on a canvas. Steps run left to right, and an if node's <strong>true</strong> and <strong>otherwise</strong> outputs fork into two lanes that meet again at a dot. Drag to pan, Ctrl + scroll (or pinch) to zoom, and press <strong>Fit</strong> to see all of it. The <strong>+</strong> on any line adds a task or an if / else at that point. Click a node to open its settings beside the canvas: its id, what happens when it is not applicable or fails, its outcome and colour. For an if, you get the condition and a builder that picks an earlier step and one of the outputs its task really produces.</p>
       <p class="prose">Under the canvas, the analysis counts the paths a host can take and flags branches that can never be true. For example, testing for <code>failed</code> on a step whose failure stops the playbook. Hover over a path to light it up on the canvas. A playbook run's detail draws the same canvas, with how many hosts reached each step and went each way.</p>
+      <p class="prose">The editor dialogs (playbooks, automations, policies, deploys and run details among them) have a grip in the bottom-right corner. Drag it to make the dialog bigger or smaller, or focus it and use the arrow keys (Shift for bigger steps). Each dialog remembers its size in this browser; double-click the grip to go back to the default.</p>
+
+      <h3 id="condition-rows">Conditions with several rows</h3>
+      <p class="prose">In the flow editor an if node's condition is built from <strong>rows</strong>. Each row picks an earlier step, what to read from it (its status, or one of the outputs its task produces), a comparison and a value. <em>Add a condition</em> adds a row; each row has a remove button.</p>
+      <p class="prose">With more than one row, a select reads <strong>Run the true band when</strong> <em>all of these hold</em> or <em>any of these holds</em>. The rows are saved as an ordinary condition: two rows with <em>all of these hold</em> become <code>(steps.a.status == "ok") and (steps.b.result.count &gt; 0)</code>; <em>any</em> joins them with <code>or</code>. So YAML and the editor stay in step, and a playbook written by hand still imports.</p>
+      <p class="prose">A condition the rows cannot hold (for example one using <code>not</code>, <code>inputs.</code>, or <code>and</code> mixed with <code>or</code>) is kept as text. The editor says it was written by hand and can only be edited as text, and <em>Start again with rows</em> clears it.</p>
+      <p class="prose">The canvas and the inspector read a multi-row condition in words, row by row: <code>a is ok and b failed</code>.</p>
+
+      <h3 id="goto">Go to: joining paths and trying again</h3>
+      <p class="prose">A <strong>go to</strong> sends a host to another step of the same playbook. Two uses: lanes that end differently but should finish the same way can jump forward to one shared step, and a step that should be retried can jump back.</p>
+      <p class="prose">In YAML it is a step-list item with <code>goto:</code> naming a step id, and an optional <code>max:</code>:</p>
+      <div class="code-block">
+        <div class="code-label">goto-item.yaml</div>
+        <pre>  - <span class="hl-key">goto</span>: <span class="hl-string">verify</span>
+    <span class="hl-key">max</span>: <span class="hl-string">3</span></pre>
+      </div>
+      <p class="prose">It must be the <strong>last item in its lane</strong>: nothing after it could run. It may jump to a step in its own lane or in a lane around it (the top level, or a lane that contains it), never into a different branch. A playbook holds at most 8.</p>
+      <p class="prose"><strong>Forward:</strong> the steps it jumps over are marked skipped with <code>jumped over by go to &lt;step&gt;</code>. <strong>Back:</strong> the host runs again from the target step. <code>max:</code> (1 to 10, default 3) caps how many times this go to may send a host back in one run. After that it records that it went back <code>max</code> times already and the host goes on past it.</p>
+      <p class="prose">The server decides a go to itself when the step before it finishes; nothing is sent to the agent. A go to's row in the run reads e.g. <code>[GOTO] jumped back to verify (1/3)</code>. Go tos are not counted as steps: they never make a host ok or failed.</p>
+      <p class="prose">In the flow editor, the <strong>+</strong> at the end of a lane offers <em>Go to</em>; the inspector picks the target from the steps it may reach and sets the limit. The canvas draws a dashed arc from the go to to its target, labelled <em>go to</em> or <em>back ×N</em>, and the line after it is dimmed because nothing runs there. The analysis warns about a go to with no target, a target that is not a step, a jump into another branch, and anything placed after a go to. A run's canvas shows how many hosts jumped.</p>
+      <div class="code-block">
+        <div class="code-label">retry-the-service.yaml</div>
+        <pre><span class="hl-key">name</span>: <span class="hl-string">Retry the service</span>
+<span class="hl-key">steps</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">restart</span>
+    <span class="hl-key">task</span>: <span class="hl-string">restart-nginx</span>
+  - <span class="hl-key">id</span>: <span class="hl-string">verify</span>
+    <span class="hl-key">task</span>: <span class="hl-string">nginx-must-be-running</span>
+    <span class="hl-key">on_failure</span>: <span class="hl-string">continue</span>
+  - <span class="hl-key">if</span>: <span class="hl-string">steps.verify.status == "failed"</span>
+    <span class="hl-key">then</span>:
+      - <span class="hl-key">goto</span>: <span class="hl-string">restart</span>
+        <span class="hl-key">max</span>: <span class="hl-string">2</span></pre>
+      </div>
+      <p class="prose">If <code>verify</code> fails, the failure is handled and the go to sends the host back to <code>restart</code>, at most twice. If it still fails after that, the host goes on past the go to and the run ends there; because <code>on_failure: continue</code> handles the failure, the host does not count as failed.</p>
 
       <h3>Quoting step ids</h3>
       <p class="prose">YAML reads a few bare words as yes/no. A step written <code>id: yes</code>, <code>id: no</code>, <code>id: on</code> or <code>id: off</code> becomes a boolean, and the import is refused with a hint. Quote them: <code>id: "yes"</code>.</p>
