@@ -143,6 +143,11 @@ class GotoFlowTests(BranchTestBase):
         self.assertIn("goto: verify", text)
         tree = parse(text)["tree"]
         self.assertIn({"goto": "verify", "max": 3}, tree[1]["then"])
+        # A go to is not a step, so it takes no ``task:`` entry: the exported
+        # steps stay in document order and the numbering is contiguous.
+        self.assertEqual([s["task"] for s in parse(text)["steps"]],
+                         ["check-nginx", "patch-nginx", "install-nginx",
+                          "clean-temp", "clean-temp"])
 
         imported = text.replace("name: Round Trip", "name: Round Trip Two")
         client = APIClient()
