@@ -94,6 +94,13 @@ def _ticket(task, signed: dict, result: dict) -> None:
     description = reported_text(signed_params, result, "description", TEXT_CAP)
 
     open_ = _open_link(task, key)
+    if open_ is not None and not _still_open(open_):
+        # Someone resolved, closed or deleted it in Jackil. Noting a repeat
+        # on a ticket nobody is watching would hide it, so this link is
+        # history now and the repeat opens a fresh ticket.
+        open_.closed_at = now()
+        open_.save(update_fields=["closed_at"])
+        open_ = None
     if open_ is not None:
         note = f"Vigil: this happened again on {task.host.hostname}: {title}"
         if description:
@@ -134,6 +141,19 @@ def _ticket(task, signed: dict, result: dict) -> None:
             client.set_status(ticket_id, "closed")
         except client.JackilError:
             pass
+
+
+def _still_open(link: JackilWorkTicket) -> bool:
+    """Whether Jackil still has the linked ticket and it is not finished.
+
+    Any other failure (Jackil down, a bad key) raises, so a repeat during an
+    outage is logged rather than opening a duplicate ticket.
+    """
+    try:
+        ticket = client.get_ticket(link.ticket_id)
+    except client.JackilNotFound:
+        return False
+    return ticket.get("status") not in RESOLVE_STATUSES
 
 
 def _note(task, signed: dict, result: dict) -> None:
