@@ -558,6 +558,36 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "optional": [],
         "outputs": {"tags": "str"},
     },
+    # ── Alerts and notifications ────────────────────────────────────────────
+    #
+    # Markers again: the agent reports the step and the server acts when the
+    # result arrives. severity, key and channel come from the task the server
+    # stored and signed, never from what the agent sends back — a compromised
+    # agent can reword an alert it is told to raise, but cannot choose its
+    # severity, its key or where it goes. The message is the one param the
+    # report supplies, because only the agent can resolve the step references
+    # it may contain; the server caps it and stores it as plain text.
+    "raise_alert": {
+        "label": "Raise an alert",
+        "risk": "low",
+        "required": ["severity", "message"],
+        "optional": ["key"],
+        "outputs": {"message": "str"},
+    },
+    "resolve_alert": {
+        "label": "Resolve an alert",
+        "risk": "low",
+        "required": ["key"],
+        "optional": [],
+        "outputs": {"key": "str"},
+    },
+    "send_notification": {
+        "label": "Send a notification",
+        "risk": "low",
+        "required": ["message"],
+        "optional": ["channel"],
+        "outputs": {"message": "str"},
+    },
     # The agent emits a "please scan me" marker; the server picks it up
     # on task completion and creates a VulnScan(requested). The actual
     # scan is launched by the central Nessus instance, not the agent.

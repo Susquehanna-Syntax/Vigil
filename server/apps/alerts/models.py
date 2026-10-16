@@ -75,6 +75,12 @@ class Alert(models.Model):
     resolved_at = models.DateTimeField(null=True, blank=True)
     fix_context = models.JSONField(blank=True, default=dict)
 
+    #: Set by a `raise_alert` task action: the author's name for "this problem
+    #: on this host", so a repeat run deduplicates against it and a
+    #: `resolve_alert` step finds the alert again. Empty for every alert the
+    #: metric evaluator opens.
+    source_key = models.CharField(max_length=80, blank=True, default="", db_index=True)
+
     #: How many times this alert has re-fired inside the flap window without
     #: paging again. Zero is the ordinary case; a high number is the signal
     #: that a threshold is set where a metric lives.

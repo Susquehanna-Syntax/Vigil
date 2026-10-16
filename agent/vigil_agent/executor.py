@@ -1434,6 +1434,13 @@ from .actions.docker_resources import (  # noqa: E402,F401
 )
 from .actions.logs import _container_logs  # noqa: E402,F401
 from .actions.stacks import _stack_deploy, _stack_read, _stack_remove  # noqa: E402,F401
+from .actions.alerts import (  # noqa: E402,F401
+    SEVERITIES as _ALERT_SEVERITIES,
+    MESSAGE_CAP as _ALERT_MESSAGE_CAP,
+    _raise_alert,
+    _resolve_alert,
+    _send_notification,
+)
 from .actions.tags_scans import (  # noqa: E402,F401
     _tag_names,
     _add_tag,
@@ -1482,6 +1489,9 @@ _HANDLERS: dict[str, callable] = {
     "check_docker_updates": _check_docker_updates,
     "add_tag": _add_tag,
     "remove_tag": _remove_tag,
+    "raise_alert": _raise_alert,
+    "resolve_alert": _resolve_alert,
+    "send_notification": _send_notification,
     "request_nessus_scan": _request_nessus_scan,
     "request_network_scan": _request_network_scan,
     "run_trivy_scan": _run_trivy_scan,

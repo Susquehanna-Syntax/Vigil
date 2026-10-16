@@ -82,6 +82,8 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "reprovision_cleanup",
     ]),
     ("tags", "Host tagging", ["add_tag", "remove_tag"]),
+    ("alerts", "Alerts and notifications", ["raise_alert", "resolve_alert",
+                                            "send_notification"]),
     ("hunts", "Hunts", ["hunt_file", "hunt_package", "hunt_process", "hunt_port",
                         "hunt_service", "hunt_registry", "hunt_content"]),
     ("vuln", "Vulnerability scanning", [
@@ -123,6 +125,10 @@ GROUP_NOTES: dict[str, str] = {
     "tags": "Tags are server-side metadata about a host. The agent reports "
             "the step and the server applies the change from the definition "
             "it signed.",
+    "alerts": "The agent reports the step and the server acts on the result, "
+              "taking severity, key and channel from the task it signed — an "
+              "agent can reword an alert but never choose its severity, its "
+              "key or where it goes.",
     "vuln": "These leave a marker rather than doing the scan inline. The "
             "server starts the scan when the result arrives.",
     "hunts": "Read-only discovery: the walk runs in a low-priority thread "
@@ -194,6 +200,10 @@ PARAM_EXAMPLES: dict[str, str] = {
     "security_only": "true",
     "service_name": "nginx",
     "services": '"web, worker"',
+    "severity": "warning",
+    "message": '"Disk cleanup failed. Last free space reading: ${{ steps.check-disk.result.state }}"',
+    "key": "disk-cleanup",
+    "channel": '"Ops email"',
     "severity_floor": "important",
     "shell": "/bin/bash",
     "source": '"10.0.0.0/24"',
@@ -331,6 +341,15 @@ EXAMPLE_TITLES: dict[str, tuple[str, str]] = {
                      "The agent replaces its binary and restarts its service."),
     "add_tag": ("Tag Docker hosts automatically",
                 "Runs only where the when: predicate is true on the host."),
+    "raise_alert": ("Page when the disk sweep fails",
+                    "Opens an alert on this host and notifies your channels. "
+                    "A repeat run under the same key does not page twice."),
+    "resolve_alert": ("Clear the disk-sweep alert once it succeeds",
+                      "Resolves this host's open alert with that key, and "
+                      "notifies the resolution."),
+    "send_notification": ("Tell Ops the sweep finished",
+                          "One message to every enabled channel, or to the "
+                          "one you name. Creates no alert."),
     "remove_tag": ("Drop a tag once a host is patched",
                    "Tags are applied server-side from the definition it signed."),
     "run_trivy_scan": ("Scan the host filesystem with Trivy",
@@ -449,6 +468,12 @@ ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
     ("app_pin", "unpin"): "true releases the hold instead of adding one. Takes no `version`.",
     ("app_pin", "source"): "Where to look for the app. Defaults to the host's own package manager.",
     ("app_pin", "version"): "Install this version first, then hold it. Sources that cannot pin a version refuse it.",
+    ("raise_alert", "severity"): "info, warning or critical. Taken from the task the server signed, not from the agent's report.",
+    ("raise_alert", "message"): "The alert text. May reference an earlier step's output; the agent renders it and the server stores it as plain text, cut at 2,000 characters.",
+    ("raise_alert", "key"): "Names this problem on this host, so a repeat run does not page twice and resolve_alert can find the alert again. Cut at 80 characters.",
+    ("resolve_alert", "key"): "The key the alert was raised with. Required: alerts opened by a metric rule are resolved by the evaluator, not by a task.",
+    ("send_notification", "message"): "The message body. May reference an earlier step's output; the agent renders it and the server sends it as plain text, cut at 2,000 characters.",
+    ("send_notification", "channel"): "A notification channel's name, as the Notifications page shows it. Omit to send to every enabled channel.",
 }
 
 
@@ -554,6 +579,9 @@ OUTPUT_NOTES: dict[str, dict[str, str]] = {
     },
     "update_agent": {"version": "The agent version now installed."},
     "add_tag": {"tags": "The tags requested (comma-separated)."},
+    "raise_alert": {"message": "The message the server was asked to raise, as the agent reported it."},
+    "resolve_alert": {"key": "The key whose alert the server was asked to resolve."},
+    "send_notification": {"message": "The message the server was asked to send, as the agent reported it."},
     "remove_tag": {"tags": "The tags requested for removal (comma-separated)."},
     "request_nessus_scan": {"requested": "Always true once the request is recorded."},
     "request_network_scan": {"engine": "The scan engine requested, or auto when the server picks."},
@@ -680,7 +708,40 @@ def example_yaml(action: str) -> str:
     this function returns is run through ``parse_and_validate`` by the tests.
     """
     entry = ACTION_REGISTRY[action]
-    title, _ = EXAMPLE_TITLES.get(action, (entry["label"], ""))
+    title, description = EXAMPLE_TITLES.get(action, (entry["label"], ""))
+    if action in ("raise_alert", "send_notification"):
+        # The marker only says anything useful when the message names what an
+        # earlier step found, and a step reference must name a step that
+        # precedes it — so the example carries that earlier step.
+        lines = [
+            f"name: {title}",
+            f"description: {description}",
+            "risk: low",
+            "actions:",
+            "  - id: check-cron",
+            "    type: check_service",
+            "    params:",
+            "      service_name: cron",
+            f"  - id: {action.replace('_', '-')}",
+            f"    type: {action}",
+            "    params:",
+        ]
+        if action == "raise_alert":
+            lines += ["      severity: warning", "      key: disk-cleanup"]
+        lines.append('      message: "Nightly disk sweep failed. Cron state: '
+                     '${{ steps.check-cron.result.state }}"')
+        return "\n".join(lines) + "\n"
+    if action == "resolve_alert":
+        return "\n".join([
+            f"name: {title}",
+            f"description: {description}",
+            "risk: low",
+            "actions:",
+            "  - id: resolve-alert",
+            "    type: resolve_alert",
+            "    params:",
+            "      key: disk-cleanup",
+        ]) + "\n"
     params = list(entry["required"])
     if not params and action == "execute_script":
         # `execute_script` accepts exactly one of script_name or an inline
