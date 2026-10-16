@@ -1,7 +1,7 @@
-"""The Reports tab: the panel exists, the charts fold their colours, and the
+"""The Reports page: the panel exists, the charts fold their colours, and the
 stylesheet is still the stylesheet.
 
-QA-42 put a sixth sub-tab on the Deployments page. The page is assembled from
+QA-42 added Reports as a Deployments sub-tab; it is now its own sidebar page. The page is assembled from
 template strings the browser runs, so most of this is a text scan of the JS and
 HTML; the two pure functions the charts depend on — the series-colour fold and
 the seconds formatter — are run for real, out of the file, with node.
@@ -19,7 +19,9 @@ from django.test import SimpleTestCase
 ROOT = Path(__file__).resolve().parents[2]
 JS = ROOT / "static/js/vigil-reports.js"
 CSS = ROOT / "static/css/vigil.css"
-HTML = ROOT / "templates/pages/_playbooks.html"
+HTML = ROOT / "templates/pages/_reports.html"
+PLAYBOOKS_HTML = ROOT / "templates/pages/_playbooks.html"
+DASHBOARD = ROOT / "templates/dashboard.html"
 BASE = ROOT / "templates/base.html"
 
 
@@ -92,12 +94,24 @@ class ReportsTabMarkupTests(SimpleTestCase):
 
     def test_tab_panel_and_dialog_exist(self):
         html = HTML.read_text()
-        for needed in ('data-subtab="rpt-panel"', 'id="rpt-panel"', 'id="rpt-list"',
+        for needed in ('id="page-reports"', 'id="rpt-panel"', 'id="rpt-list"',
                        'id="rpt-view"', 'id="rpt-editor-modal"', "js/vigil-reports.js"):
             self.assertIn(needed, html)
         # base.html has someone else's uncommitted edits; the module is loaded
         # by the template that owns the tab, and must stay out of the base.
         self.assertNotIn("vigil-reports", BASE.read_text())
+
+    def test_no_failures_does_not_read_as_nothing_ran(self):
+        src = _function(JS.read_text(), "_drawRptWidget")
+        self.assertIn("No failures in this range.", src)
+
+    def test_reports_is_its_own_sidebar_page(self):
+        self.assertIn('data-page="reports"', BASE.read_text())
+        self.assertIn('{% include "pages/_reports.html" %}', DASHBOARD.read_text())
+        # No longer a tab under Deployments.
+        self.assertNotIn("rpt-panel", PLAYBOOKS_HTML.read_text())
+        self.assertNotIn("vigil-reports", PLAYBOOKS_HTML.read_text())
+        self.assertIn("pageName !== 'reports'", JS.read_text())
 
     def test_the_panel_has_a_toolbar_and_a_search_box(self):
         html = HTML.read_text()
