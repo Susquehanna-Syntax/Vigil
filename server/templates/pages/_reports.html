@@ -19,7 +19,7 @@
 
 <!-- ── Report builder modal ──────────────────────────────────────────── -->
 <div class="modal-overlay" id="rpt-editor-overlay"></div>
-<div class="modal modal-wide" id="rpt-editor-modal" data-editing="">
+<div class="modal modal-wide rpt-editor-modal" id="rpt-editor-modal" data-editing="">
   <div class="modal-title">
     <span id="rpt-editor-title">New report</span>
     <button class="modal-close" id="rpt-cancel-btn" aria-label="Close">
@@ -50,6 +50,7 @@
   </div>
   <div class="bl-field">
     <label for="rpt-widget-add">Charts</label>
+    <div class="rpt-hint muted">Each chart picks its own data and how to draw it. The preview uses your real run history.</div>
     <div class="rpt-widgets" id="rpt-widgets"></div>
     <select class="form-control" id="rpt-widget-add"></select>
   </div>

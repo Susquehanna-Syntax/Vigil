@@ -28,6 +28,12 @@ let _rptOpen = null;
 // checkbox lists.
 let _rptDraft = { widgets: [], 'rpt-pb': new Set(), 'rpt-auto': new Set() };
 let _rptOpenId = null;
+// The builder's live preview: its own charts (the viewer's and the preview's
+// never destroy each other), the pending debounce, and the number of the latest
+// request so a slow reply to an older one is dropped.
+let _rptPreviewCharts = [];
+let _rptPreviewTimer = null;
+let _rptPreviewSeq = 0;
 
 function _rptSourceNames(report) {
   const names = [];
@@ -144,6 +150,76 @@ function _showReportList() {
   _renderReportList();
 }
 
+/* ── Builder: draft rows (no DOM work) ───────────────────────────────── */
+
+const RPT_CHART_NAMES = {
+  line: 'Line', area: 'Area', 'stacked-bar': 'Stacked bars', column: 'Columns',
+  pie: 'Pie', doughnut: 'Doughnut', table: 'Table',
+};
+
+//: A days metric's bars stand up; a rows metric's run across the page.
+function rptChartLabel(chart, family) {
+  if (chart === 'bar') return family === 'rows' ? 'Bars across' : 'Bars';
+  return RPT_CHART_NAMES[chart] || chart;
+}
+
+function rptHasAxes(chart) {
+  return !['pie', 'doughnut', 'table'].includes(chart);
+}
+
+//: A saved spec as the builder edits it. Blank label text means "the default";
+//: both labels saved as "" means the titles were switched off. The card's place
+//: on the viewer grid is carried through untouched.
+function rptDraftFrom(spec, catalog) {
+  const entry = (catalog || []).find(c => c.kind === spec.kind) || {};
+  return {
+    kind: spec.kind,
+    title: spec.title || '',
+    chart: spec.chart || entry.chart,
+    xLabel: typeof spec.x_label === 'string' ? spec.x_label : '',
+    yLabel: typeof spec.y_label === 'string' ? spec.y_label : '',
+    axes: !(spec.x_label === '' && spec.y_label === ''),
+    legend: spec.legend === true ? 'show' : spec.legend === false ? 'hide' : 'auto',
+    sourceMode: (spec.sources || []).length ? 'some' : 'all',
+    sources: new Set((spec.sources || []).map(String)),
+    place: ('x' in spec) ? { x: spec.x, y: spec.y, w: spec.w, h: spec.h } : null,
+  };
+}
+
+//: The spec to save: only what the operator set, so every default stays the
+//: server's to choose.
+function rptSpecFromDraft(d) {
+  const spec = { kind: d.kind, chart: d.chart };
+  const title = (d.title || '').trim();
+  if (title) spec.title = title;
+  if (rptHasAxes(d.chart)) {
+    if (!d.axes) {
+      spec.x_label = '';
+      spec.y_label = '';
+    } else {
+      const x = (d.xLabel || '').trim();
+      const y = (d.yLabel || '').trim();
+      if (x) spec.x_label = x;
+      if (y) spec.y_label = y;
+    }
+  }
+  if (d.legend === 'show') spec.legend = true;
+  if (d.legend === 'hide') spec.legend = false;
+  if (d.sourceMode === 'some' && d.sources && d.sources.size) spec.sources = [...d.sources];
+  if (d.place) Object.assign(spec, d.place);
+  return spec;
+}
+
+//: Another metric picked: keep the chart if the new one can be drawn that way,
+//: and drop typed axis titles, which named the old metric's axes.
+function rptKindChanged(d, entry) {
+  d.kind = entry.kind;
+  if (!(entry.charts || []).includes(d.chart)) d.chart = entry.chart;
+  d.xLabel = '';
+  d.yLabel = '';
+  return d;
+}
+
 /* ── Builder ─────────────────────────────────────────────────────────── */
 
 function openReportEditor(report) {
@@ -156,9 +232,8 @@ function openReportEditor(report) {
   range.innerHTML = RPT_RANGES.map(n => `<option value="${n}">Last ${n} days</option>`).join('');
   range.value = String(report ? report.range_days : 30);
   _rptDraft = {
-    widgets: report
-      ? (report.widgets || []).map(w => ({ kind: w.kind, title: w.title || '' }))
-      : RPT_DEFAULT_KINDS.map(kind => ({ kind, title: '' })),
+    widgets: (report ? (report.widgets || []) : RPT_DEFAULT_KINDS.map(kind => ({ kind })))
+      .map(spec => rptDraftFrom(spec, _rptCatalog)),
     'rpt-pb': new Set(report ? (report.playbooks || []).map(String) : []),
     'rpt-auto': new Set(report ? (report.automations || []).map(String) : []),
   };
@@ -172,11 +247,16 @@ function openReportEditor(report) {
   _renderRptWidgets();
   document.getElementById('rpt-editor-overlay').classList.add('open');
   document.getElementById('rpt-editor-modal').classList.add('open');
+  _rptRunPreview();
 }
 
 function closeRptEditor() {
   document.getElementById('rpt-editor-modal')?.classList.remove('open');
   document.getElementById('rpt-editor-overlay')?.classList.remove('open');
+  clearTimeout(_rptPreviewTimer);
+  _rptPreviewTimer = null;
+  _rptPreviewSeq += 1;
+  _destroyRptPreview();
 }
 
 function _rptPicked(group) {
@@ -210,23 +290,143 @@ function _renderRptWidgetAdd() {
 function _renderRptWidgets() {
   const box = document.getElementById('rpt-widgets');
   if (!box) return;
+  // The canvases are about to go; their charts go with them, and the
+  // scheduled preview draws fresh ones.
+  _destroyRptPreview();
   if (!_rptDraft.widgets.length) {
     box.innerHTML = '<div class="rpt-none muted">Pick at least one chart.</div>';
     return;
   }
-  box.innerHTML = _rptDraft.widgets.map((w, i) => {
-    const c = _rptCatalog.find(x => x.kind === w.kind) || { title: w.kind };
-    return `<div class="rpt-widget-row">
-      <span class="rpt-widget-kind">${escHtml(c.title)}</span>
-      <input type="text" class="form-control" data-rpt-wtitle="${i}" maxlength="80"
-        placeholder="${escAttr(c.title)}" value="${escAttr(w.title || '')}" aria-label="Chart title">
-      <button class="btn btn-outline btn-xs" type="button" data-rpt-wup="${i}" aria-label="Move up"
-        ${i === 0 ? 'disabled' : ''}>&#8593;</button>
-      <button class="btn btn-outline btn-xs" type="button" data-rpt-wdown="${i}" aria-label="Move down"
-        ${i === _rptDraft.widgets.length - 1 ? 'disabled' : ''}>&#8595;</button>
-      <button class="btn btn-outline btn-xs" type="button" data-rpt-wdel="${i}" aria-label="Remove">&times;</button>
-    </div>`;
-  }).join('');
+  const picked = _rptPickedSources();
+  box.innerHTML = _rptDraft.widgets.map((d, i) => _rptWidgetCardHtml(d, i, picked)).join('');
+}
+
+//: The report's ticked playbooks and automations, by id and name: the choices
+//: a chart's "Only these" can narrow to.
+function _rptPickedSources() {
+  return [
+    ..._rptPlaybooks.filter(p => _rptDraft['rpt-pb'].has(String(p.id))),
+    ..._rptAutomations.filter(a => _rptDraft['rpt-auto'].has(String(a.id))),
+  ].map(s => ({ id: String(s.id), name: s.name }));
+}
+
+function _rptWidgetCardHtml(d, i, picked) {
+  const entry = _rptCatalog.find(c => c.kind === d.kind) || { title: d.kind, charts: [d.chart], labels: {} };
+  const last = _rptDraft.widgets.length - 1;
+  const labels = (entry.labels || {})[d.chart] || ['', ''];
+  const axesOff = d.axes ? '' : 'disabled';
+  const sourcePicks = !picked.length
+    ? '<div class="rpt-none muted">Tick a playbook or automation above first.</div>'
+    : picked.map(s => `<label class="rpt-pick">
+        <input type="checkbox" data-rpt-wsrc="${i}" value="${escAttr(s.id)}"
+          ${d.sources.has(s.id) ? 'checked' : ''} ${d.sourceMode === 'some' ? '' : 'disabled'}>
+        <span>${escHtml(s.name)}</span>
+      </label>`).join('');
+  return `<div class="rpt-wcard">
+    <div class="rpt-wset">
+      <label class="rpt-wfield">Data
+        <select class="form-control" data-rpt-wkind="${i}">
+          ${_rptCatalog.map(c => `<option value="${escAttr(c.kind)}" ${c.kind === d.kind ? 'selected' : ''}>${escHtml(c.title)}</option>`).join('')}
+        </select>
+      </label>
+      <div class="rpt-how">${escHtml(entry.how || '')}</div>
+      <label class="rpt-wfield">Show as
+        <select class="form-control" data-rpt-wchart="${i}">
+          ${(entry.charts || []).map(ch => `<option value="${escAttr(ch)}" ${ch === d.chart ? 'selected' : ''}>${escHtml(rptChartLabel(ch, entry.family))}</option>`).join('')}
+        </select>
+      </label>
+      <label class="rpt-wfield">Title
+        <input type="text" class="form-control" data-rpt-wtitle="${i}" maxlength="80"
+          placeholder="${escAttr(entry.title)}" value="${escAttr(d.title)}">
+      </label>
+      <div class="rpt-axes" ${rptHasAxes(d.chart) ? '' : 'hidden'}>
+        <label class="rpt-check"><input type="checkbox" data-rpt-waxes="${i}" ${d.axes ? 'checked' : ''}> Show axis titles</label>
+        <label class="rpt-wfield">Horizontal axis
+          <input type="text" class="form-control" data-rpt-wx="${i}" maxlength="40"
+            placeholder="${escAttr(labels[0] || '')}" value="${escAttr(d.xLabel)}" ${axesOff}>
+        </label>
+        <label class="rpt-wfield">Vertical axis
+          <input type="text" class="form-control" data-rpt-wy="${i}" maxlength="40"
+            placeholder="${escAttr(labels[1] || '')}" value="${escAttr(d.yLabel)}" ${axesOff}>
+        </label>
+      </div>
+      <label class="rpt-wfield">Legend
+        <select class="form-control" data-rpt-wlegend="${i}">
+          ${[['auto', 'Auto'], ['show', 'Show'], ['hide', 'Hide']].map(([v, t]) =>
+            `<option value="${v}" ${d.legend === v ? 'selected' : ''}>${t}</option>`).join('')}
+        </select>
+      </label>
+      <div class="rpt-wsrc">
+        <label class="rpt-check"><input type="radio" name="rpt-wsrcmode-${i}" data-rpt-wsrcmode="${i}" value="all"
+          ${d.sourceMode === 'all' ? 'checked' : ''}> All of this report's sources</label>
+        <label class="rpt-check"><input type="radio" name="rpt-wsrcmode-${i}" data-rpt-wsrcmode="${i}" value="some"
+          ${d.sourceMode === 'some' ? 'checked' : ''}> Only these</label>
+        <div class="rpt-wsrc-picks">${sourcePicks}</div>
+      </div>
+      <div class="rpt-wbtns">
+        ${_rptDraft.widgets.length < 12
+          ? `<button class="btn btn-outline btn-xs" type="button" data-rpt-wdup="${i}">Duplicate</button>` : ''}
+        <button class="btn btn-outline btn-xs" type="button" data-rpt-wup="${i}" ${i === 0 ? 'disabled' : ''}>Move up</button>
+        <button class="btn btn-outline btn-xs" type="button" data-rpt-wdown="${i}" ${i === last ? 'disabled' : ''}>Move down</button>
+        <button class="btn btn-rose btn-xs" type="button" data-rpt-wdel="${i}">Remove</button>
+      </div>
+    </div>
+    <div class="rpt-wprev" data-rpt-wprev="${i}"><div class="rpt-empty muted">Drawing the preview…</div></div>
+  </div>`;
+}
+
+/* ── Builder: live preview ───────────────────────────────────────────── */
+
+function _destroyRptPreview() {
+  _rptPreviewCharts.forEach(c => c.destroy());
+  _rptPreviewCharts = [];
+}
+
+function _rptSchedulePreview() {
+  clearTimeout(_rptPreviewTimer);
+  _rptPreviewTimer = setTimeout(_rptRunPreview, 400);
+}
+
+function _rptPreviewBoxes() {
+  return [...document.querySelectorAll('#rpt-widgets [data-rpt-wprev]')];
+}
+
+function _rptPreviewMessage(text) {
+  _destroyRptPreview();
+  for (const el of _rptPreviewBoxes()) el.innerHTML = `<div class="rpt-empty muted">${escHtml(text)}</div>`;
+}
+
+//: Draws every chart from the draft as it stands, from real run history. A
+//: reply to anything but the latest request is dropped, so typing fast never
+//: leaves an older preview on screen.
+async function _rptRunPreview() {
+  _rptPreviewTimer = null;
+  if (!_rptDraft.widgets.length) return;
+  const body = _rptBodyFromForm();
+  if (!body.playbooks.length && !body.automations.length) {
+    _rptPreviewSeq += 1;
+    _rptPreviewMessage('Pick a playbook or automation to see a preview.');
+    return;
+  }
+  const seq = ++_rptPreviewSeq;
+  let data;
+  try {
+    data = await apiJson('/api/v1/reports/preview/', {
+      method: 'POST',
+      body: JSON.stringify({ range_days: body.range_days, playbooks: body.playbooks,
+                             automations: body.automations, widgets: body.widgets }),
+    });
+  } catch (e) {
+    if (seq === _rptPreviewSeq) _rptPreviewMessage(e.message);
+    return;
+  }
+  if (seq !== _rptPreviewSeq) return;
+  _destroyRptPreview();
+  const widgets = data.widgets || [];
+  for (const el of _rptPreviewBoxes()) {
+    const i = Number(el.dataset.rptWprev);
+    if (widgets[i]) _drawRptWidget(el, widgets[i], i, _rptPreviewCharts);
+  }
 }
 
 function _rptBodyFromForm() {
@@ -235,7 +435,7 @@ function _rptBodyFromForm() {
     name: document.getElementById('rpt-name').value.trim(),
     description: document.getElementById('rpt-description').value.trim(),
     range_days: Number.isFinite(range) ? range : 30,
-    widgets: _rptDraft.widgets.map(w => (w.title ? { kind: w.kind, title: w.title } : { kind: w.kind })),
+    widgets: _rptDraft.widgets.map(rptSpecFromDraft),
     playbooks: _rptPicked('rpt-pb'),
     automations: _rptPicked('rpt-auto'),
   };
@@ -448,7 +648,9 @@ async function _rptSaveLayout() {
   }
 }
 
-function _drawRptWidget(body, w, i) {
+//: charts is the list the instance joins: the viewer's by default, the
+//: builder's preview its own, so neither tears down the other's.
+function _drawRptWidget(body, w, i, charts = _rptCharts) {
   if (!body) return;
   if (w.chart === 'table') {
     body.innerHTML = _rptTableHtml(w);
@@ -470,8 +672,8 @@ function _drawRptWidget(body, w, i) {
   holder.innerHTML = '<canvas></canvas>';
   body.replaceChildren(holder);
   const chart = new Chart(holder.querySelector('canvas').getContext('2d'), cfg);
-  _rptCharts.push(chart);
-  _rptChartAt[i] = chart;
+  charts.push(chart);
+  if (charts === _rptCharts) _rptChartAt[i] = chart;
 }
 
 const RPT_STATE_ACCENT = {
@@ -857,23 +1059,44 @@ document.addEventListener('DOMContentLoaded', () => {
     () => _renderRptPicks('rpt-pb-picks', 'rpt-pb', _rptPlaybooks));
   document.getElementById('rpt-auto-filter')?.addEventListener('input',
     () => _renderRptPicks('rpt-auto-picks', 'rpt-auto', _rptAutomations));
+  // Typing only updates the draft: re-rendering the cards would throw the
+  // cursor out of the box being typed in.
   document.getElementById('rpt-widgets')?.addEventListener('input', (e) => {
-    const i = Number(e.target.dataset.rptWtitle);
-    if (Number.isFinite(i) && _rptDraft.widgets[i]) _rptDraft.widgets[i].title = e.target.value;
+    const t = e.target;
+    const field = ['rptWtitle', 'rptWx', 'rptWy'].find(k => k in t.dataset);
+    if (!field) return;
+    const d = _rptDraft.widgets[Number(t.dataset[field])];
+    if (!d) return;
+    d[{ rptWtitle: 'title', rptWx: 'xLabel', rptWy: 'yLabel' }[field]] = t.value;
+    _rptSchedulePreview();
+  });
+  // Every other control changes what the card shows, so the cards redraw.
+  document.getElementById('rpt-widgets')?.addEventListener('change', (e) => {
+    if (_rptWidgetChanged(e.target)) {
+      _renderRptWidgets();
+      _rptSchedulePreview();
+    }
   });
   document.getElementById('rpt-widget-add')?.addEventListener('change', (e) => {
     const kind = e.target.value;
     if (!kind) return;
-    _rptDraft.widgets.push({ kind, title: '' });
+    if (_rptDraft.widgets.length < 12) _rptDraft.widgets.push(rptDraftFrom({ kind }, _rptCatalog));
     _renderRptWidgetAdd();
     _renderRptWidgets();
+    _rptSchedulePreview();
   });
+  document.getElementById('rpt-range')?.addEventListener('change', _rptSchedulePreview);
   // Delegated from the panel, so a refiltered checkbox list keeps its ticks.
   document.getElementById('rpt-editor-modal')?.addEventListener('change', (e) => {
     const box = e.target.closest('[data-rpt-src]');
     if (!box || !_rptDraft[box.dataset.rptSrc]) return;
     if (box.checked) _rptDraft[box.dataset.rptSrc].add(box.value);
     else _rptDraft[box.dataset.rptSrc].delete(box.value);
+    // A chart can only narrow to sources the report still has.
+    const kept = new Set(_rptPickedSources().map(x => x.id));
+    for (const d of _rptDraft.widgets) d.sources = new Set([...d.sources].filter(id => kept.has(id)));
+    _renderRptWidgets();
+    _rptSchedulePreview();
   });
 
   delegateClick('[data-rpt-new]', () => openReportEditor(null));
@@ -888,6 +1111,16 @@ document.addEventListener('DOMContentLoaded', () => {
   delegateClick('[data-rpt-wdel]', (el) => {
     _rptDraft.widgets.splice(Number(el.dataset.rptWdel), 1);
     _renderRptWidgets();
+    _rptSchedulePreview();
+  });
+  delegateClick('[data-rpt-wdup]', (el) => {
+    const i = Number(el.dataset.rptWdup);
+    const d = _rptDraft.widgets[i];
+    if (!d || _rptDraft.widgets.length >= 12) return;
+    // The copy is a new card: no place of its own yet, and its own sources.
+    _rptDraft.widgets.splice(i + 1, 0, { ...d, place: null, sources: new Set(d.sources) });
+    _renderRptWidgets();
+    _rptSchedulePreview();
   });
 
 });
@@ -910,4 +1143,32 @@ function _moveRptWidget(i, delta) {
   const rows = _rptDraft.widgets;
   [rows[i], rows[j]] = [rows[j], rows[i]];
   _renderRptWidgets();
+  _rptSchedulePreview();
+}
+
+//: A select, box or radio on a chart's card, written into its draft row.
+//: false when the control is not one of the card's (typing is handled apart).
+function _rptWidgetChanged(t) {
+  const ds = t.dataset;
+  const at = (k) => _rptDraft.widgets[Number(ds[k])];
+  if ('rptWkind' in ds) {
+    const entry = _rptCatalog.find(c => c.kind === t.value);
+    if (entry && at('rptWkind')) rptKindChanged(at('rptWkind'), entry);
+  } else if ('rptWchart' in ds) {
+    if (at('rptWchart')) at('rptWchart').chart = t.value;
+  } else if ('rptWaxes' in ds) {
+    if (at('rptWaxes')) at('rptWaxes').axes = t.checked;
+  } else if ('rptWlegend' in ds) {
+    if (at('rptWlegend')) at('rptWlegend').legend = t.value;
+  } else if ('rptWsrcmode' in ds) {
+    if (at('rptWsrcmode')) at('rptWsrcmode').sourceMode = t.value;
+  } else if ('rptWsrc' in ds) {
+    const d = at('rptWsrc');
+    if (!d) return false;
+    if (t.checked) d.sources.add(t.value);
+    else d.sources.delete(t.value);
+  } else {
+    return false;
+  }
+  return true;
 }

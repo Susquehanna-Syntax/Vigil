@@ -4584,3 +4584,23 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
    is the box, and Chart.js fills whatever the operator dragged out. */
 .rpt-gs .rpt-chart { height: 100%; min-height: 120px; }
 .rpt-gs-editing .rpt-card { border-color: var(--sky); cursor: move; }
+
+/* QA-48: report editor */
+.modal.rpt-editor-modal { width: min(1080px, calc(100vw - 32px)); }
+.rpt-hint { font-size: 12px; margin-bottom: 8px; }
+.rpt-wcard {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 14px;
+  border: 1.5px solid var(--border); border-radius: var(--r-md); background: var(--s1); padding: 14px;
+}
+.rpt-wcard + .rpt-wcard { margin-top: 10px; }
+.rpt-wset { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.rpt-wfield { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-2); }
+.rpt-check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+.rpt-axes { display: flex; flex-direction: column; gap: 8px; }
+.rpt-axes[hidden] { display: none; }
+.rpt-wsrc-picks { display: flex; flex-wrap: wrap; gap: 4px 12px; padding-left: 22px; }
+.rpt-wbtns { display: flex; flex-wrap: wrap; gap: 6px; }
+.rpt-wprev { height: 200px; position: relative; min-width: 0; overflow: auto; }
+.rpt-wprev .rpt-chart { height: 200px; }
+.rpt-how { font-size: 12px; color: var(--text-3); }
+@media (max-width: 640px) { .rpt-wcard { grid-template-columns: minmax(0, 1fr); } }
