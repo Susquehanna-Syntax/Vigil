@@ -300,6 +300,24 @@ function _blSelect(at) {
   _renderInspector();
 }
 
+function _blElifAdd(at) {
+  const node = _blAt(at).node;
+  node.elifs = node.elifs || [];
+  if (node.elifs.length >= 8) return;
+  node.elifs.push({ cond: '', then: [] });
+  _renderEditorSteps();
+}
+
+function _blElifRemove(addr) {
+  const at = addr.split('#')[0];
+  const node = _blAt(at).node;
+  const k = +addr.split('#')[1].slice(4) - 1;
+  const inside = flowSteps(node.elifs[k].then).length;
+  if (inside && !confirm(`Remove this exit and the ${inside} step${inside === 1 ? '' : 's'} inside it?`)) return;
+  node.elifs.splice(k, 1);
+  _renderEditorSteps();
+}
+
 // Put a new node at "<lane>|<index>" and select it.
 function _blInsert(at, node) {
   const [lane, i] = at.split('|');
@@ -347,7 +365,7 @@ function _blInsertMenu(btn) {
   menu.querySelector('[data-m="task"]').addEventListener('click', () => { close(); _blAddTask(at); });
   menu.querySelector('[data-m="if"]').addEventListener('click', () => {
     close();
-    _blInsert(at, { kind: 'if', cond: '', then: [], else: [] });
+    _blInsert(at, { kind: 'if', cond: '', then: [], elifs: [], else: [] });
   });
   menu.querySelector('[data-m="goto"]')?.addEventListener('click', () => {
     close();
@@ -371,7 +389,8 @@ function _wireFlowCanvas(wrap) {
 
 function _blRemove(at) {
   const { list, i, node } = _blAt(at);
-  const inside = node && node.kind === 'if' ? flowSteps(node.then).length + flowSteps(node.else).length : 0;
+  const inside = node && node.kind === 'if'
+    ? flowArms(node).reduce((k, arm) => k + flowSteps(arm.list).length, 0) : 0;
   if (inside && !confirm(`Remove this if and the ${inside} step${inside === 1 ? '' : 's'} inside it?`)) return;
   list.splice(i, 1);
   _blSel = null;
@@ -384,6 +403,8 @@ function _renderInspector() {
   box.innerHTML = flowInspectorHtml(_editingTree, _blSel, _blFlowCtx);
   const on = (sel, ev, fn) => box.querySelectorAll(sel).forEach(el => el.addEventListener(ev, () => fn(el)));
   on('[data-flow-rm]', 'click', el => _blRemove(el.dataset.flowRm));
+  on('[data-flow-elif-add]', 'click', el => _blElifAdd(el.dataset.flowElifAdd));
+  on('[data-flow-elif-rm]', 'click', el => _blElifRemove(el.dataset.flowElifRm));
   on('[data-flow-mv]', 'click', el => {
     const { list, i } = _blAt(el.dataset.flowMv);
     const j = i + (+el.dataset.dir);
@@ -411,8 +432,8 @@ function _renderInspector() {
   on('[data-flow-sid]', 'input', el => { _blAt(el.dataset.flowSid).node.sid = el.value.trim(); _refreshAnalysis(); });
   on('[data-flow-sid]', 'change', redrawCanvas);
   on('[data-flow-cond]', 'input', el => {
-    _blAt(el.dataset.flowCond).node.cond = el.value;
-    const words = box.querySelector('[data-flow-words]');
+    flowCondSet(_editingTree, el.dataset.flowCond, el.value);
+    const words = box.querySelector(`[data-flow-words="${CSS.escape(el.dataset.flowCond)}"]`);
     if (words) words.textContent = flowCondSummary(el.value);
     _refreshAnalysis();
   });
@@ -451,8 +472,9 @@ function _renderInspector() {
       _renderEditorSteps();
     } });
   });
-  const builder = box.querySelector('[data-flow-builder]');
-  if (builder && builder.querySelector('[data-fb-rows]')) _blSetupBuilder(builder, builder.dataset.flowBuilder);
+  box.querySelectorAll('[data-flow-builder]').forEach(b => {
+    if (b.querySelector('[data-fb-rows]')) _blSetupBuilder(b, b.dataset.flowBuilder);
+  });
 }
 
 // The guided condition builder: rows of "step · field · op · value", joined
@@ -463,14 +485,14 @@ function _blSetupBuilder(box, at) {
   const modeSel = box.querySelector('[data-fb-mode]');
   const rawNote = box.querySelector('[data-fb-raw]');
   const before = flowStepsBefore(_editingTree, at);
-  let parsed = flowCondParse(_blAt(at).node.cond || '');
+  let parsed = flowCondParse(flowCondGet(_editingTree, at) || '');
 
   if (!parsed) {
     modeWrap.hidden = true;
     rowsBox.hidden = true;
     box.querySelector('[data-fb-add]').hidden = true;
     rawNote.hidden = false;
-    box.querySelector('[data-fb-reset]').onclick = () => { _blAt(at).node.cond = ''; _renderEditorSteps(); };
+    box.querySelector('[data-fb-reset]').onclick = () => { flowCondSet(_editingTree, at, ''); _renderEditorSteps(); };
     return;
   }
 
@@ -547,11 +569,11 @@ function _blSetupBuilder(box, at) {
 
   const syncText = () => {
     const expr = flowCondJoin(parsed.rows, parsed.mode);
-    _blAt(at).node.cond = expr;
+    flowCondSet(_editingTree, at, expr);
     const inspector = box.closest('#bl-inspector');
-    const area = inspector && inspector.querySelector('[data-flow-cond]');
+    const area = inspector && inspector.querySelector(`[data-flow-cond="${CSS.escape(at)}"]`);
     if (area) area.value = expr;
-    const words = inspector && inspector.querySelector('[data-flow-words]');
+    const words = inspector && inspector.querySelector(`[data-flow-words="${CSS.escape(at)}"]`);
     if (words) words.textContent = flowCondSummary(expr);
     _refreshAnalysis();
   };
