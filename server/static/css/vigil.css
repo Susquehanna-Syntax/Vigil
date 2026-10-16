@@ -1887,7 +1887,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   vertical-align: middle; white-space: nowrap;
 }
 .inv-table tbody tr:last-child td { border-bottom: none; }
-.inv-table tbody tr { cursor: pointer; transition: background 0.12s; }
+.inv-table tbody tr { transition: background 0.12s; }
 .inv-table tbody tr:hover { background: var(--s2); }
 .inv-table .mono { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-2); }
 .inv-table .col-status .dot {
@@ -4641,3 +4641,13 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .term .term-bg { color: var(--term-bg-g); } .term .term-by { color: var(--term-by); }
 .term .term-bb { color: var(--term-bb); } .term .term-bm { color: var(--term-bm); }
 .term .term-bc { color: var(--term-bc); } .term .term-bw { color: var(--term-bw); }
+
+/* QA-50: inventory cells are for copying; the host name opens the panel */
+.inv-table tbody td { user-select: text; cursor: text; }
+.inv-host-link {
+  font: inherit; font-weight: 600; color: var(--text-1); background: none; border: 0; padding: 0;
+  cursor: pointer; text-decoration: underline; text-decoration-color: var(--border);
+  text-underline-offset: 3px; user-select: text;
+}
+.inv-host-link:hover { color: var(--sky-ink); text-decoration-color: currentColor; }
+.inv-host-link:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; border-radius: 2px; }
