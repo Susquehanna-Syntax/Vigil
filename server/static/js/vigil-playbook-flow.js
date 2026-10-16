@@ -429,7 +429,7 @@ function _flPlace(nodes, m, x, y, lane, tone, out) {
         out.edges.push({ a: port, b: p.first, tone: side, insert: `${lanePath}|0`, branch, toSid: p.firstSid });
         // Nothing can be inserted after a go to, so its trailing edge has no "+".
         out.edges.push({ a: p.last, b: { x: jx, y }, tone: side, after: true,
-          insert: p.endsInGoto ? null : `${lanePath}|${list.length}` });
+          afterGoto: p.endsInGoto, insert: p.endsInGoto ? null : `${lanePath}|${list.length}` });
       });
       ports.push({ in: { x: cx, y }, out: { x: jx + FL.J, y }, sid: null });
     }
@@ -455,7 +455,7 @@ function flowLayout(tree) {
     endX = x0 + m.w + FL.GX;
     // Nothing can be inserted after a go to, so its trailing edge has no "+".
     out.edges.push({ a: p.last, b: { x: endX, y }, tone: 'main', after: true,
-      insert: p.endsInGoto ? null : `|${tree.length}` });
+      afterGoto: p.endsInGoto, insert: p.endsInGoto ? null : `|${tree.length}` });
   } else {
     endX = x0 + FL.GX;
     out.edges.push({ a: { x: FL.PAD + FL.PW, y }, b: { x: endX, y }, tone: 'main', insert: '|0' });
@@ -589,7 +589,7 @@ function flowCanvasHtml(tree, opts = {}) {
     if (e.branch && stats.__lanes && e.branch.bid && stats.__lanes[e.branch.bid]) return !stats.__lanes[e.branch.bid][e.branch.side];
     return !!(e.toSid && stats[e.toSid] && !stats[e.toSid].total);
   };
-  const paths = (lay.edges.map(e => `<path class="fce t-${e.tone}${faded(e) ? ' fce-off' : ''}" d="${_flEdgePath(e.a, e.b)}"/>`).join('')
+  const paths = (lay.edges.map(e => `<path class="fce t-${e.tone}${faded(e) || e.afterGoto ? ' fce-off' : ''}" d="${_flEdgePath(e.a, e.b)}"/>`).join('')
     + lay.jumps.map(j => `<path class="fce fce-jump${j.back ? ' fce-back' : ''}" d="${_flJumpPath(j.a, j.b, j.apexY)}"/>`).join(''));
   const adds = edit ? lay.edges.filter(e => e.insert).map(e => `<button type="button" class="fce-add t-${e.tone}" data-flow-insert="${escAttr(e.insert)}"
       style="left:${(e.a.x + e.b.x) / 2}px;top:${(e.a.y + e.b.y) / 2}px" aria-label="Add a step here" title="Add a task or an if / else here">+</button>`).join('') : '';
