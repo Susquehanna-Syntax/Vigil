@@ -52,7 +52,7 @@ def run_summary(run) -> dict:
     """``{"hosts", "states": {state: n}, "outcomes": {name: n} | None,
     "per_host": {host_id: {"state", "outcome"}}}``."""
     by_host: dict = {}
-    for task in run.tasks.all():
+    for task in run.tasks.exclude(action="_goto"):
         by_host.setdefault(task.host_id, []).append(task)
     task_labels = _task_outcome_labels(run)
     labelled = bool(task_labels) or any(

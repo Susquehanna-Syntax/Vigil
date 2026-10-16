@@ -11,6 +11,7 @@
 //     catching before it runs anywhere.
 // Tree nodes: { kind: 'step', def, ov, inp, ona, onf, sid, color }
 //           | { kind: 'if', cond, then: [...], else: [...] }
+//           | { kind: 'goto', gid, target, max }
 // Depends on: vigil-utils.js (escHtml, escAttr).
 
 const FLOW_COLORS = ['rose', 'peach', 'lemon', 'mint', 'sky', 'lavender'];
@@ -30,9 +31,37 @@ function flowLane(tree, lane) {
 
 function flowSteps(tree, out = []) {
   for (const n of tree) {
-    if (n.kind === 'if') { flowSteps(n.then, out); flowSteps(n.else, out); } else out.push(n);
+    if (n.kind === 'if') { flowSteps(n.then, out); flowSteps(n.else, out); } else if (n.kind === 'step') out.push(n);
   }
   return out;
+}
+
+// The lane path ("", "2.then", "2.then.0.else") part of a "<lane>|<index>" address.
+function flowLaneOf(tree, at) {
+  return String(at || '').split('|')[0];
+}
+
+// Every step with the lane path its lane is, using the layout's lane paths:
+// '' for the top lane, "<index>.then" / "<index>.else" per branch.
+function _flowStepsWithLanes(tree, lane = '', out = []) {
+  tree.forEach((n, i) => {
+    const here = lane ? `${lane}.${i}` : String(i);
+    if (n.kind === 'if') {
+      _flowStepsWithLanes(n.then, `${here}.then`, out);
+      _flowStepsWithLanes(n.else, `${here}.else`, out);
+    } else if (n.kind === 'step') out.push({ step: n, lane });
+  });
+  return out;
+}
+
+// The steps a go to sitting at "<lane>|<index>" may name: one in its own lane,
+// or in the top lane or an outer branch's lane — never into a sibling branch.
+// The same rule apps/playbooks/flow.py enforces, in document order.
+function flowGotoTargets(tree, at) {
+  const goLane = flowLaneOf(tree, at);
+  return _flowStepsWithLanes(tree)
+    .filter(e => e.step.sid && (e.lane === '' || e.lane === goLane || goLane.startsWith(`${e.lane}.`)))
+    .map(e => e.step.sid);
 }
 
 function flowNextSid(tree) {
@@ -53,7 +82,9 @@ function flowTreeFromRow(row) {
   if (!row.flow) return (row.steps || []).map(mk);
   const walk = nodes => nodes.map(n => (n.step
     ? (bySid[n.step] ? mk(bySid[n.step]) : null)
-    : { kind: 'if', bid: n.id, cond: n.if, then: walk(n.then || []), else: walk(n.else || []) })).filter(Boolean);
+    : n.goto
+      ? { kind: 'goto', gid: n.id || '', target: n.goto || '', max: n.max || 3 }
+      : { kind: 'if', bid: n.id, cond: n.if, then: walk(n.then || []), else: walk(n.else || []) })).filter(Boolean);
   return walk(row.flow);
 }
 
@@ -61,7 +92,9 @@ function flowTreeFromRow(row) {
 function flowSerialize(tree) {
   return tree.map(n => (n.kind === 'if'
     ? { if: (n.cond || '').trim(), then: flowSerialize(n.then), else: flowSerialize(n.else) }
-    : { definition_id: n.def, id: n.sid, params_override: n.ov || {},
+    : n.kind === 'goto'
+      ? { goto: n.target, max: +n.max || 3 }
+      : { definition_id: n.def, id: n.sid, params_override: n.ov || {},
         inputs: n.inp || {},
         on_not_applicable: n.ona || 'stop', on_failure: n.onf || 'stop', color: n.color || '',
         outcome: (n.outcome || '').trim() }));
@@ -71,16 +104,20 @@ function flowSerialize(tree) {
 
 // Every path a host can take: one list of steps per combination of branch
 // outcomes. Capped, because nine nested branches are 512 paths and nobody
-// reads that many.
+// reads that many. A go to adds nothing to a path and the list does not
+// follow jumps — the paths are the branch structure, not the run order.
 function flowPaths(tree, cap = 64) {
   let paths = [[]];
   const walk = (nodes, acc) => {
     let current = acc;
     for (const n of nodes) {
-      if (n.kind !== 'if') { current = current.map(p => [...p, n]); continue; }
-      const thenPaths = walk(n.then, current.map(p => [...p]));
-      const elsePaths = walk(n.else, current.map(p => [...p]));
-      current = [...thenPaths, ...elsePaths].slice(0, cap);
+      if (n.kind === 'if') {
+        const thenPaths = walk(n.then, current.map(p => [...p]));
+        const elsePaths = walk(n.else, current.map(p => [...p]));
+        current = [...thenPaths, ...elsePaths].slice(0, cap);
+      } else if (n.kind === 'step') {
+        current = current.map(p => [...p, n]);
+      }
     }
     return current;
   };
@@ -110,6 +147,32 @@ function flowFindings(tree) {
     walk(n.then, n); walk(n.else, n);
   });
   walk(tree, null);
+
+  // Go tos, with the lane address each one sits at.
+  const gotos = [];
+  const gwalk = (nodes, lane) => nodes.forEach((n, i) => {
+    const here = lane ? `${lane}.${i}` : String(i);
+    if (n.kind === 'if') { gwalk(n.then, `${here}.then`); gwalk(n.else, `${here}.else`); }
+    else if (n.kind === 'goto') gotos.push({ node: n, at: `${here}|${i}`, lane, i });
+  });
+  gwalk(tree, '');
+  const stepSids = new Set(flowSteps(tree).map(s => s.sid));
+  const gotoSids = new Set(gotos.map(g => g.node.gid));
+  for (const g of gotos) {
+    const target = (g.node.target || '').trim();
+    if (!target) { findings.push({ level: 'warn', text: 'A go to has no target yet.' }); continue; }
+    if (gotoSids.has(target) || !stepSids.has(target)) {
+      findings.push({ level: 'warn', text: `A go to names ${target}, which is not a step in this playbook.` });
+      continue;
+    }
+    if (!flowGotoTargets(tree, g.at).includes(target)) {
+      findings.push({ level: 'warn', text: `A go to can only jump to ${target} from its own lane or a lane around it, not into another branch.` });
+    }
+    if (g.i !== flowLane(tree, g.lane).length - 1) {
+      findings.push({ level: 'warn', text: 'Nothing after a go to can run: move it to the end of its lane.' });
+    }
+  }
+  if (gotos.length > 8) findings.push({ level: 'warn', text: 'A playbook has at most 8 go to nodes.' });
 
   for (const { node } of branches) {
     const cond = (node.cond || '').trim();
@@ -143,7 +206,8 @@ function flowFindings(tree) {
 // into two bands that merge again at a small join. Layout is computed from the
 // tree, so nobody drags nodes around and two people see the same picture.
 
-const FL = { NW: 200, NH: 80, IW: 208, IH: 66, GX: 60, GY: 30, PW: 64, PH: 30, J: 12, PAD: 24 };
+const FL = { NW: 200, NH: 80, IW: 208, IH: 66, GX: 60, GY: 30, PW: 64, PH: 30, J: 12, PAD: 24,
+  GW: 132, GH: 46 };
 
 const FLOW_MIN_FIT = 0.6;
 
@@ -310,6 +374,9 @@ function flowCondSummary(cond) {
 
 function _flMeasure(nodes) {
   const parts = nodes.map((n) => {
+    // A go to sits at the end of its lane and arcs to its target; the arc's
+    // apex is accounted for by flowLayout when it works out the canvas top.
+    if (n.kind === 'goto') return { w: FL.GW, up: FL.GH / 2, down: FL.GH / 2 };
     if (n.kind !== 'if') return { w: FL.NW, up: FL.NH / 2, down: FL.NH / 2 };
     const t = _flMeasure(n.then);
     const e = _flMeasure(n.else);
@@ -336,7 +403,10 @@ function _flPlace(nodes, m, x, y, lane, tone, out) {
   nodes.forEach((n, i) => {
     const pm = m.parts[i];
     const at = `${lane}|${i}`;
-    if (n.kind !== 'if') {
+    if (n.kind === 'goto') {
+      out.nodes.push({ type: 'goto', node: n, at, x: cx, y: y - FL.GH / 2, w: FL.GW, h: FL.GH });
+      ports.push({ in: { x: cx, y }, out: { x: cx + FL.GW, y }, sid: null });
+    } else if (n.kind !== 'if') {
       out.nodes.push({ type: 'step', node: n, at, x: cx, y: y - FL.NH / 2, w: FL.NW, h: FL.NH });
       ports.push({ in: { x: cx, y }, out: { x: cx + FL.NW, y }, sid: n.sid });
     } else {
@@ -357,19 +427,22 @@ function _flPlace(nodes, m, x, y, lane, tone, out) {
         // A shorter band is centred under the longer one, so both meet the join evenly.
         const p = _flPlace(list, lm, bx + (pm.bodyW - lm.w) / 2, ly, lanePath, side, out);
         out.edges.push({ a: port, b: p.first, tone: side, insert: `${lanePath}|0`, branch, toSid: p.firstSid });
-        out.edges.push({ a: p.last, b: { x: jx, y }, tone: side, insert: `${lanePath}|${list.length}` });
+        // Nothing can be inserted after a go to, so its trailing edge has no "+".
+        out.edges.push({ a: p.last, b: { x: jx, y }, tone: side, after: true,
+          insert: p.endsInGoto ? null : `${lanePath}|${list.length}` });
       });
       ports.push({ in: { x: cx, y }, out: { x: jx + FL.J, y }, sid: null });
     }
     if (i > 0) out.edges.push({ a: ports[i - 1].out, b: ports[i].in, tone, insert: at, toSid: ports[i].sid });
     cx += pm.w + FL.GX;
   });
-  return { first: ports[0].in, last: ports[ports.length - 1].out, firstSid: ports[0].sid };
+  return { first: ports[0].in, last: ports[ports.length - 1].out, firstSid: ports[0].sid,
+    endsInGoto: nodes.length > 0 && nodes[nodes.length - 1].kind === 'goto' };
 }
 
-// Tree → { nodes, edges, w, h } in canvas pixels.
+// Tree → { nodes, edges, jumps, w, h } in canvas pixels.
 function flowLayout(tree) {
-  const out = { nodes: [], edges: [] };
+  const out = { nodes: [], edges: [], jumps: [] };
   const m = _flMeasure(tree);
   const y = 0;
   const start = { type: 'start', x: FL.PAD, y: y - FL.PH / 2, w: FL.PW, h: FL.PH };
@@ -380,16 +453,30 @@ function flowLayout(tree) {
     const p = _flPlace(tree, m, x0, y, '', 'main', out);
     out.edges.push({ a: { x: FL.PAD + FL.PW, y }, b: p.first, tone: 'main', insert: '|0', toSid: p.firstSid });
     endX = x0 + m.w + FL.GX;
-    out.edges.push({ a: p.last, b: { x: endX, y }, tone: 'main', insert: `|${tree.length}` });
+    // Nothing can be inserted after a go to, so its trailing edge has no "+".
+    out.edges.push({ a: p.last, b: { x: endX, y }, tone: 'main', after: true,
+      insert: p.endsInGoto ? null : `|${tree.length}` });
   } else {
     endX = x0 + FL.GX;
     out.edges.push({ a: { x: FL.PAD + FL.PW, y }, b: { x: endX, y }, tone: 'main', insert: '|0' });
   }
   out.nodes.push({ type: 'end', x: endX, y: y - FL.PH / 2, w: FL.PW, h: FL.PH });
-  const top = Math.min(...out.nodes.map(n => n.y)) - FL.PAD;
+  // Each go to arcs above both its own node and its target.
+  for (const ln of out.nodes) {
+    if (ln.type !== 'goto') continue;
+    const t = out.nodes.find(k => k.type === 'step' && k.node.sid === ln.node.target);
+    if (!t) continue;
+    ln.back = t.x < ln.x;
+    out.jumps.push({ a: { x: ln.x + ln.w / 2, y: ln.y }, b: { x: t.x + t.w / 2, y: t.y },
+      back: t.x < ln.x, at: ln.at, apexY: Math.min(ln.y, t.y) - FL.GY - 20 });
+  }
+  const top = Math.min(...out.nodes.map(n => n.y), ...out.jumps.map(j => j.apexY)) - FL.PAD;
   const bottom = Math.max(...out.nodes.map(n => n.y + n.h)) + FL.PAD;
   out.nodes.forEach(n => { n.y -= top; });
   out.edges.forEach(e => { e.a = { x: e.a.x, y: e.a.y - top }; e.b = { x: e.b.x, y: e.b.y - top }; });
+  out.jumps.forEach(j => {
+    j.a = { x: j.a.x, y: j.a.y - top }; j.b = { x: j.b.x, y: j.b.y - top }; j.apexY -= top;
+  });
   out.w = endX + FL.PW + FL.PAD;
   out.h = bottom - top;
   out.anchor = -top;   // the y of the Start → End line
@@ -399,6 +486,11 @@ function flowLayout(tree) {
 function _flEdgePath(a, b) {
   const dx = Math.max(28, (b.x - a.x) / 2);
   return `M${a.x},${a.y} C${a.x + dx},${a.y} ${b.x - dx},${b.y} ${b.x},${b.y}`;
+}
+
+// The dashed arc from a go to to its target, bowing above both nodes.
+function _flJumpPath(a, b, apexY) {
+  return `M${a.x},${a.y} C${a.x},${apexY} ${b.x},${apexY} ${b.x},${b.y}`;
 }
 
 const _FLOW_COUNT_WORDS = { ok: 'ok', failed: 'failed', not_applicable: 'n/a', skipped: 'skipped', pending: 'waiting' };
@@ -443,6 +535,40 @@ function _flIfNodeHtml(ln, opts) {
   </${tag.split(' ')[0]}>`;
 }
 
+// A go to: the end of a lane, and the step its arc lands on.
+function _flGotoNodeHtml(ln, opts) {
+  const node = ln.node;
+  const { ctx, stats, selected } = opts;
+  const target = (node.target || '').trim();
+  const jumped = stats && stats[`@${node.gid}`];
+  const cls = ['fcn', 'fcn-goto', target ? '' : 'fcn-bad', selected === ln.at ? 'is-sel' : ''].filter(Boolean).join(' ');
+  const tag = ctx ? 'button type="button"' : 'div';
+  const max = node.max || 3;
+  const sub = jumped && jumped.jumped != null
+    ? `${jumped.jumped} jumped`
+    : ln.back ? `back, up to ${escHtml(max)} times` : 'jump ahead';
+  return `<${tag} class="${cls}" style="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px"
+      ${ctx ? `data-flow-sel="${escAttr(ln.at)}" ` : ''}title="${escAttr(target ? `go to ${target}` : 'Choose a step for this go to')}">
+    <span class="fcn-row"><span class="fcn-goto-mark">go to</span><code>${escHtml(target || '?')}</code></span>
+    <span class="fcn-row fcn-sub">${sub}</span>
+  </${tag.split(' ')[0]}>`;
+}
+
+// A step by its id, or {} when the id names nothing (yet).
+function _flowStepBySid(tree, sid) {
+  return flowSteps(tree).find(s => s.sid === sid) || {};
+}
+
+// The go-to node sitting at "<lane>|<index>", or {} when nothing is there.
+function _flowGotoNodeAt(tree, at) {
+  try {
+    const node = flowLane(tree, flowLaneOf(tree, at))[+String(at).split('|')[1]];
+    return node && node.kind === 'goto' ? node : {};
+  } catch (e) {
+    return {};
+  }
+}
+
 // The canvas markup. opts: { ctx } makes it the editor (nodes select, edges
 // take "+"), { stats } draws a run onto it, `selected` rings a node, `height`
 // sets the viewport's height in px.
@@ -454,6 +580,7 @@ function flowCanvasHtml(tree, opts = {}) {
   const nodes = lay.nodes.map((ln) => {
     if (ln.type === 'step') { num += 1; return _flStepNodeHtml(ln, num, opts); }
     if (ln.type === 'if') return _flIfNodeHtml(ln, opts);
+    if (ln.type === 'goto') return _flGotoNodeHtml(ln, opts);
     if (ln.type === 'join') return `<span class="fcn-join" style="left:${ln.x}px;top:${ln.y}px"></span>`;
     return `<span class="fcn-pill" style="left:${ln.x}px;top:${ln.y}px;width:${ln.w}px;height:${ln.h}px">${ln.type === 'start' ? 'Start' : 'End'}</span>`;
   }).join('');
@@ -462,16 +589,22 @@ function flowCanvasHtml(tree, opts = {}) {
     if (e.branch && stats.__lanes && e.branch.bid && stats.__lanes[e.branch.bid]) return !stats.__lanes[e.branch.bid][e.branch.side];
     return !!(e.toSid && stats[e.toSid] && !stats[e.toSid].total);
   };
-  const paths = lay.edges.map(e => `<path class="fce t-${e.tone}${faded(e) ? ' fce-off' : ''}" d="${_flEdgePath(e.a, e.b)}"/>`).join('');
-  const adds = edit ? lay.edges.map(e => `<button type="button" class="fce-add t-${e.tone}" data-flow-insert="${escAttr(e.insert)}"
+  const paths = (lay.edges.map(e => `<path class="fce t-${e.tone}${faded(e) ? ' fce-off' : ''}" d="${_flEdgePath(e.a, e.b)}"/>`).join('')
+    + lay.jumps.map(j => `<path class="fce fce-jump${j.back ? ' fce-back' : ''}" d="${_flJumpPath(j.a, j.b, j.apexY)}"/>`).join(''));
+  const adds = edit ? lay.edges.filter(e => e.insert).map(e => `<button type="button" class="fce-add t-${e.tone}" data-flow-insert="${escAttr(e.insert)}"
       style="left:${(e.a.x + e.b.x) / 2}px;top:${(e.a.y + e.b.y) / 2}px" aria-label="Add a step here" title="Add a task or an if / else here">+</button>`).join('') : '';
+  const jumpLabels = lay.jumps.map((j) => {
+    const max = _flowGotoNodeAt(tree, j.at).max;
+    return `<span class="fcj-label" style="left:${(j.a.x + j.b.x) / 2}px;top:${j.apexY}px">`
+      + `${j.back ? `back ×${escHtml(max)}` : 'go to'}</span>`;
+  }).join('');
   // Tall enough to show the flow at the smallest scale a fit will use.
   const [lo, hi] = edit ? [320, 620] : [140, 420];
   const height = Math.round(Math.min(Math.max(lay.h * FLOW_MIN_FIT + 16, lo), opts.maxHeight || hi));
   return `<div class="fcv${edit ? ' fcv-edit' : ''}" style="height:${height}px" data-w="${lay.w}" data-h="${lay.h}" data-anchor="${lay.anchor}">
     <div class="fcv-world" style="width:${lay.w}px;height:${lay.h}px">
       <svg class="fcv-edges" width="${lay.w}" height="${lay.h}" aria-hidden="true">${paths}</svg>
-      ${nodes}${adds}
+      ${nodes}${jumpLabels}${adds}
     </div>
     <div class="fcv-tools">
       <button type="button" class="fcv-btn" data-fcv="out" aria-label="Zoom out" title="Zoom out">−</button>
@@ -602,7 +735,7 @@ function flowStepsBefore(tree, at) {
     if (found) return;
     if (`${lane}|${i}` === at) { found = true; return; }
     const here = lane ? `${lane}.${i}` : String(i);
-    if (n.kind === 'if') { walk(n.then, `${here}.then`); walk(n.else, `${here}.else`); } else before.push(n);
+    if (n.kind === 'if') { walk(n.then, `${here}.then`); walk(n.else, `${here}.else`); } else if (n.kind === 'step') before.push(n);
   });
   walk(tree, '');
   return before;
@@ -626,9 +759,26 @@ function flowInspectorHtml(tree, at, ctx) {
   const i = +idx;
   const moves = `<div class="fi-actions">
       <button type="button" class="btn btn-outline btn-xs" data-flow-mv="${escAttr(at)}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>Move earlier</button>
-      <button type="button" class="btn btn-outline btn-xs" data-flow-mv="${escAttr(at)}" data-dir="1" ${i === siblings.length - 1 ? 'disabled' : ''}>Move later</button>
+      <button type="button" class="btn btn-outline btn-xs" data-flow-mv="${escAttr(at)}" data-dir="1" ${i === siblings.length - 1 || (siblings[i + 1] && siblings[i + 1].kind === 'goto') ? 'disabled' : ''}>Move later</button>
       <button type="button" class="btn btn-rose btn-xs" data-flow-rm="${escAttr(at)}">Remove</button>
     </div>`;
+  if (node.kind === 'goto') {
+    const targets = flowGotoTargets(tree, at);
+    const options = ['<option value="">Choose a step…</option>'].concat(targets.map(sid =>
+      `<option value="${escAttr(sid)}"${node.target === sid ? ' selected' : ''}>${escHtml(sid)} — ${escHtml(ctx.defName(_flowStepBySid(tree, sid).def))}</option>`)).join('');
+    return `<div class="fi">
+      <div class="fi-head"><span class="fcn-goto-mark">go to</span> Jump</div>
+      <label class="fi-field">Jump to
+        <select data-flow-goto-target="${escAttr(at)}">${options}</select></label>
+      <label class="fi-field">At most, going back
+        <input type="number" min="1" max="10" data-flow-goto-max="${escAttr(at)}" value="${escAttr(node.max || 3)}"></label>
+      <div class="muted-note">A step later in the playbook: hosts skip ahead to it, so branches meet.
+        An earlier step: hosts go back and run from there again, at most this many times, then carry on.</div>
+      <div class="fi-actions">
+        <button type="button" class="btn btn-rose btn-xs" data-flow-rm="${escAttr(at)}">Remove</button>
+      </div>
+    </div>`;
+  }
   if (node.kind === 'if') {
     const before = flowStepsBefore(tree, at);
     const inside = flowSteps(node.then).length + flowSteps(node.else).length;
@@ -768,6 +918,12 @@ function flowRunStats(tasks) {
   const stats = { __lanes: {} };
   const lanes = {};
   for (const t of tasks || []) {
+    // A go to's own row is not a step; what it did is a count on the node.
+    if (t.action === '_goto' && t.params && t.params.goto_id) {
+      const g = stats[`@${t.params.goto_id}`] || (stats[`@${t.params.goto_id}`] = { jumped: 0 });
+      if ((t.result_output || '').startsWith('[GOTO] jumped')) g.jumped += 1;
+      continue;
+    }
     if (!t.step_ref) continue;
     const st = stats[t.step_ref] || (stats[t.step_ref] = { total: 0 });
     const bucket = _FLOW_TASK_BUCKET[t.state];
