@@ -4484,3 +4484,20 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
   padding: 0 7px; border-radius: 999px; background: var(--s1); border: 1px solid var(--border); color: var(--text-1);
   pointer-events: none;
 }
+
+/* Resizable dialogs (2026.14.6): the grip rides the bottom-right corner even
+   while the content scrolls. */
+.modal-grip {
+  position: sticky; float: right; bottom: -24px; margin: 8px -24px -24px 0;
+  width: 18px; height: 18px; padding: 0; border: 0; border-radius: 4px;
+  background:
+    linear-gradient(135deg, transparent 45%, var(--text-3) 45% 52%, transparent 52% 65%, var(--text-3) 65% 72%, transparent 72%);
+  cursor: nwse-resize; opacity: .7; touch-action: none;
+}
+.modal-grip:hover, .modal-grip:focus-visible { opacity: 1; outline: 2px solid var(--sky); outline-offset: 2px; }
+.modal.is-resized { transition: none; }
+/* The xwide dialog does not scroll — its form does — so the grip pins to the
+   corner instead of riding the (nonexistent) scroll. It is also a flex item
+   there; take it out of the form's layout. */
+.modal-xwide > .modal-grip { position: absolute; right: 6px; bottom: 6px; flex: 0 0 auto; }
+@media (max-width: 640px) { .modal-grip { display: none; } }
