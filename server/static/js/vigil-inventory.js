@@ -69,10 +69,17 @@ const INV_COLUMNS = [
     val: r => r.last_checkin || '' },
 ];
 
+//: The Host column is always shown: its name is the way into a host's detail
+//: panel now that a row click no longer opens it (QA-50).
 function _invVisibleIds() {
-  const saved = localStorage.getItem('vigil_inv_cols');
-  if (saved) { try { return new Set(JSON.parse(saved)); } catch {} }
-  return new Set(INV_COLUMNS.filter(c => c.dv).map(c => c.id));
+  let ids = null;
+  try {
+    const saved = localStorage.getItem('vigil_inv_cols');
+    if (saved) ids = new Set(JSON.parse(saved));
+  } catch { ids = null; }   // storage can throw in a private window
+  if (!ids) ids = new Set(INV_COLUMNS.filter(c => c.dv).map(c => c.id));
+  ids.add('hostname');
+  return ids;
 }
 function _invSaveVisible(ids) {
   localStorage.setItem('vigil_inv_cols', JSON.stringify([...ids]));
@@ -115,6 +122,10 @@ function toggleInvColEditor() {
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = visible.has(col.id);
+    if (col.id === 'hostname') {
+      cb.disabled = true;
+      row.title = 'Always shown: click a host name to open its details.';
+    }
     cb.onchange = () => {
       const cur = _invVisibleIds();
       cb.checked ? cur.add(col.id) : cur.delete(col.id);
@@ -332,8 +343,9 @@ function renderInventory() {
   // ── Body ──
   const tbody = document.createElement('tbody');
   for (const r of rows) {
+    // No click on the row itself (user, 2026-10-16): a cell is for selecting
+    // and copying. The host's name is the way into its detail panel.
     const row = document.createElement('tr');
-    row.addEventListener('click', () => openInventoryDetail(r));
     for (const col of allCols) row.appendChild(col.fn(r));
     tbody.appendChild(row);
   }
@@ -351,9 +363,12 @@ function _hostCell(r) {
                        : r.status === 'pending' ? 'var(--peach)'
                        : 'var(--rose)';
   td.appendChild(dot);
-  const name = document.createElement('span');
+  const name = document.createElement('button');
+  name.type = 'button';
+  name.className = 'inv-host-link';
   name.textContent = r.hostname || '';
-  name.style.fontWeight = '600';
+  name.title = 'Open host details';
+  name.addEventListener('click', () => openInventoryDetail(r));
   td.appendChild(name);
   return td;
 }

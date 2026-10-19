@@ -82,6 +82,14 @@ _ALL_ACTIONS = {
     # signed into the task. Allowlistable because nothing on this machine
     # changes.
     "add_tag", "remove_tag",
+    # Alerts and notifications — same shape as tagging: an alert is server
+    # state, so the agent reports the step and the server raises, resolves or
+    # sends from the params it signed into the task.
+    "raise_alert", "resolve_alert", "send_notification",
+    # Jackil helpdesk — same shape again: a ticket is server-side, so the
+    # agent reports the step and the server opens, notes or resolves it from
+    # the params it signed into the task.
+    "jackil_ticket", "jackil_note", "jackil_resolve",
     # Vulnerability scanning
     "request_nessus_scan", "request_network_scan",
     "run_trivy_scan", "trivy_db_update",

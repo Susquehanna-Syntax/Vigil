@@ -24,6 +24,10 @@ class JackilError(RuntimeError):
     """A Jackil call failed. The message is written to be shown to a human."""
 
 
+class JackilNotFound(JackilError):
+    """Jackil answered 404: a wrong URL, or a ticket that no longer exists."""
+
+
 def configured() -> bool:
     return bool(setting("JACKIL_URL") and setting("JACKIL_API_KEY"))
 
@@ -59,7 +63,7 @@ def _request(method: str, path: str, payload: dict | None = None):
         raise JackilError(
             "The API key works but its user is not an agent or admin in Jackil.")
     if resp.status_code == 404:
-        raise JackilError(
+        raise JackilNotFound(
             f"{url} was not found — check the URL, and that Jackil has its API "
             f"feature enabled.")
     if resp.status_code >= 400:
@@ -106,6 +110,10 @@ def add_note(ticket_id: int, body: str) -> dict:
     """
     return _request("POST", f"/tickets/{ticket_id}/messages/",
                     {"body": body, "kind": "note"})
+
+
+def get_ticket(ticket_id: int) -> dict:
+    return _request("GET", f"/tickets/{ticket_id}/")
 
 
 def set_status(ticket_id: int, status: str) -> dict:

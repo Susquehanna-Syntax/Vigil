@@ -108,6 +108,7 @@ function _syncModals() {
       _overlayFor(el)?.classList.add('stacked');
     }
     _modalStack.push({ el, trigger: _openerOf(el) });
+    _resizableInit(el);
     _focusInto(el);
     changed = true;
   });
@@ -184,3 +185,154 @@ function shakeEl(el) {
   el.classList.add('shake');
   el.addEventListener('animationend', () => el.classList.remove('shake'), { once: true });
 }
+
+/* ── Resizable dialogs ──────────────────────────────────────────────────────
+   User, 2026-10-15: "We should also be able to resize the modals that we're
+   editing in." A grip at the bottom-right corner of every wide dialog drags it
+   to a new size; the size is remembered per dialog id and comes back the next
+   time that dialog opens. Double-click the grip to go back to the default.
+
+   Small dialogs — confirms and prompts (.m-pop) — never get a grip. */
+
+const _RESIZABLE_SEL = '.modal.modal-wide, .modal.modal-xwide, .modal.modal-flow, .modal[data-resizable]';
+const _MODAL_SIZE_KEY = 'vigil.modalSize.';
+
+//: Clamp a dragged size to the whole window, rounding to whole pixels. The max
+//: wins when the window is smaller than the minimum, so clamp min first.
+function modalClampSize(w, h, vw, vh) {
+  const maxW = vw - 32;
+  const maxH = vh - 32;
+  return {
+    w: Math.round(Math.min(maxW, Math.max(360, w))),
+    h: Math.round(Math.min(maxH, Math.max(240, h))),
+  };
+}
+
+function _readModalSize(el) {
+  if (!el.id) return null;
+  try {
+    const raw = localStorage.getItem(_MODAL_SIZE_KEY + el.id);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s || typeof s.w !== 'number' || typeof s.h !== 'number') return null;
+    return s;
+  } catch (e) { return null; }   // storage can throw in a private window
+}
+
+function _saveModalSize(el, w, h) {
+  if (!el.id) return;
+  // storage can throw in a private window
+  try { localStorage.setItem(_MODAL_SIZE_KEY + el.id, JSON.stringify({ w: w, h: h })); } catch (e) {}
+}
+
+function _forgetModalSize(el) {
+  if (!el.id) return;
+  // storage can throw in a private window
+  try { localStorage.removeItem(_MODAL_SIZE_KEY + el.id); } catch (e) {}
+}
+
+//: The dialog's layout size. Not getBoundingClientRect(): that includes the
+//: open animation's scale (and .recede's 0.95), which would save a size a few
+//: percent smaller than the one the user dragged to.
+function _modalLayoutSize(el) {
+  return { width: el.offsetWidth, height: el.offsetHeight };
+}
+
+function _applyModalSize(el, w, h) {
+  el.style.width = w + 'px';
+  el.style.height = h + 'px';
+  el.style.maxHeight = 'none';
+  el.style.maxWidth = 'none';
+  el.classList.add('is-resized');
+}
+
+function _resetModalSize(el) {
+  el.style.width = '';
+  el.style.height = '';
+  el.style.maxHeight = '';
+  el.style.maxWidth = '';
+  el.classList.remove('is-resized');
+  _forgetModalSize(el);
+}
+
+//: The dialog is centred by translate(-50%, -50%), so it grows in both
+//: directions at once and only half of the pointer's movement reaches the
+//: corner. Double the delta to keep the grip under the pointer.
+function _modalDragStart(el, grip, ev) {
+  ev.preventDefault();
+  const rect = _modalLayoutSize(el);
+  const startW = rect.width;
+  const startH = rect.height;
+  const startX = ev.clientX;
+  const startY = ev.clientY;
+  // setPointerCapture is best-effort: the id can be gone by the time we get here
+  try { grip.setPointerCapture(ev.pointerId); } catch (e) {}
+
+  const move = mv => {
+    const size = modalClampSize(startW + 2 * (mv.clientX - startX),
+                                startH + 2 * (mv.clientY - startY),
+                                window.innerWidth, window.innerHeight);
+    _applyModalSize(el, size.w, size.h);
+  };
+  const stop = mv => {
+    grip.removeEventListener('pointermove', move);
+    grip.removeEventListener('pointerup', stop);
+    grip.removeEventListener('pointercancel', stop);
+    // the pointer is already up when pointercancel ends the drag
+    try { grip.releasePointerCapture(mv.pointerId); } catch (e) {}
+    const now = _modalLayoutSize(el);
+    const size = modalClampSize(now.width, now.height, window.innerWidth, window.innerHeight);
+    _saveModalSize(el, size.w, size.h);
+    // Canvases inside the dialog measure themselves on resize; tell them again.
+    window.dispatchEvent(new Event('resize'));
+  };
+  grip.addEventListener('pointermove', move);
+  grip.addEventListener('pointerup', stop);
+  grip.addEventListener('pointercancel', stop);
+}
+
+function _resizableInit(el) {
+  if (!el.matches(_RESIZABLE_SEL) || el.matches('.m-pop')) return;
+
+  if (!el.dataset.resizableReady) {
+    el.dataset.resizableReady = '1';
+    const grip = document.createElement('button');
+    grip.type = 'button';
+    grip.className = 'modal-grip';
+    grip.setAttribute('aria-label', 'Resize dialog');
+    grip.title = 'Drag to resize · double-click to reset';
+    grip.addEventListener('pointerdown', ev => _modalDragStart(el, grip, ev));
+    grip.addEventListener('dblclick', () => _resetModalSize(el));
+    grip.addEventListener('keydown', ev => {
+      const step = ev.shiftKey ? 64 : 16;
+      let dW = 0, dH = 0;
+      if (ev.key === 'ArrowRight') dW = step;
+      else if (ev.key === 'ArrowLeft') dW = -step;
+      else if (ev.key === 'ArrowDown') dH = step;
+      else if (ev.key === 'ArrowUp') dH = -step;
+      else return;                  // Escape in particular: the window handler owns it
+      ev.preventDefault();
+      const rect = _modalLayoutSize(el);
+      const size = modalClampSize(rect.width + dW, rect.height + dH, window.innerWidth, window.innerHeight);
+      _applyModalSize(el, size.w, size.h);
+      _saveModalSize(el, size.w, size.h);
+    });
+    el.appendChild(grip);
+  }
+
+  const saved = _readModalSize(el);
+  if (saved) {
+    const size = modalClampSize(saved.w, saved.h, window.innerWidth, window.innerHeight);
+    _applyModalSize(el, size.w, size.h);
+  }
+}
+
+// A dialog the window has shrunk under slides back on screen.
+window.addEventListener('resize', () => {
+  document.querySelectorAll('.modal.is-resized').forEach(el => {
+    if (!_isOpen(el)) return;
+    const rect = _modalLayoutSize(el);
+    const size = modalClampSize(rect.width, rect.height, window.innerWidth, window.innerHeight);
+    _applyModalSize(el, size.w, size.h);
+  });
+});

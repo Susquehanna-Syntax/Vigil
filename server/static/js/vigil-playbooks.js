@@ -214,7 +214,7 @@ async function _openFailures(playbookId, name) {
           ${r.at ? `<span class="muted-note">${escHtml(new Date(r.at).toLocaleString())}</span>` : ''}
           <button class="btn btn-mint btn-xs" data-blf-retry="${escAttr(r.host_id)}">Retry here</button>
         </div>
-        ${r.output ? `<pre class="blf-output">${escHtml(r.output)}</pre>`
+        ${r.output ? `<pre class="blf-output term term-wrap">${termHtml(r.output)}</pre>`
                    : '<p class="muted-note">The agent reported no output.</p>'}
       </div>`).join('')
     : '<p class="muted-note">Nothing is held back any more.</p>';
@@ -300,6 +300,24 @@ function _blSelect(at) {
   _renderInspector();
 }
 
+function _blElifAdd(at) {
+  const node = _blAt(at).node;
+  node.elifs = node.elifs || [];
+  if (node.elifs.length >= 8) return;
+  node.elifs.push({ cond: '', then: [] });
+  _renderEditorSteps();
+}
+
+function _blElifRemove(addr) {
+  const at = addr.split('#')[0];
+  const node = _blAt(at).node;
+  const k = +addr.split('#')[1].slice(4) - 1;
+  const inside = flowSteps(node.elifs[k].then).length;
+  if (inside && !confirm(`Remove this exit and the ${inside} step${inside === 1 ? '' : 's'} inside it?`)) return;
+  node.elifs.splice(k, 1);
+  _renderEditorSteps();
+}
+
 // Put a new node at "<lane>|<index>" and select it.
 function _blInsert(at, node) {
   const [lane, i] = at.split('|');
@@ -319,28 +337,39 @@ function _blAddTask(at) {
     } });
 }
 
-// The small menu a "+" on an edge opens: a task or an if / else goes there.
+// The small menu a "+" on an edge opens: a task, an if / else, or (at the end
+// of a lane only) a go to goes there.
 function _blInsertMenu(btn) {
   document.querySelectorAll('.fce-menu').forEach(m => m.remove());
   const vp = btn.closest('.fcv');
   const menu = document.createElement('div');
   menu.className = 'fce-menu';
   menu.setAttribute('role', 'menu');
+  const at = btn.dataset.flowInsert;
+  const [lane, i] = String(at).split('|');
+  // A go to must be the last item of its lane, so it is only offered there;
+  // and once a lane ends in one, that "+" is gone (its edge carries no
+  // insert), which is how "nothing after a go to" holds on the canvas too.
+  const atLaneEnd = +i === flowLane(_editingTree, lane).length;
   menu.innerHTML = `<button type="button" role="menuitem" class="btn btn-mint btn-xs" data-m="task">Task</button>
-    <button type="button" role="menuitem" class="btn btn-lav btn-xs" data-m="if">If / else</button>`;
+    <button type="button" role="menuitem" class="btn btn-lav btn-xs" data-m="if">If / else</button>`
+    + (atLaneEnd ? `<button type="button" role="menuitem" class="btn btn-sky btn-xs" data-m="goto">Go to</button>` : '');
   const vr = vp.getBoundingClientRect();
   const br = btn.getBoundingClientRect();
   menu.style.left = `${br.left - vr.left + br.width / 2}px`;
   menu.style.top = `${br.bottom - vr.top + 6}px`;
   vp.appendChild(menu);
-  const at = btn.dataset.flowInsert;
   const close = () => { menu.remove(); document.removeEventListener('pointerdown', outside, true); };
   const outside = (e) => { if (!menu.contains(e.target)) close(); };
   document.addEventListener('pointerdown', outside, true);
   menu.querySelector('[data-m="task"]').addEventListener('click', () => { close(); _blAddTask(at); });
   menu.querySelector('[data-m="if"]').addEventListener('click', () => {
     close();
-    _blInsert(at, { kind: 'if', cond: '', then: [], else: [] });
+    _blInsert(at, { kind: 'if', cond: '', then: [], elifs: [], else: [] });
+  });
+  menu.querySelector('[data-m="goto"]')?.addEventListener('click', () => {
+    close();
+    _blInsert(at, { kind: 'goto', gid: '', target: '', max: 3 });
   });
   menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { close(); btn.focus(); } });
   menu.querySelector('button').focus();
@@ -360,7 +389,8 @@ function _wireFlowCanvas(wrap) {
 
 function _blRemove(at) {
   const { list, i, node } = _blAt(at);
-  const inside = node && node.kind === 'if' ? flowSteps(node.then).length + flowSteps(node.else).length : 0;
+  const inside = node && node.kind === 'if'
+    ? flowArms(node).reduce((k, arm) => k + flowSteps(arm.list).length, 0) : 0;
   if (inside && !confirm(`Remove this if and the ${inside} step${inside === 1 ? '' : 's'} inside it?`)) return;
   list.splice(i, 1);
   _blSel = null;
@@ -373,6 +403,8 @@ function _renderInspector() {
   box.innerHTML = flowInspectorHtml(_editingTree, _blSel, _blFlowCtx);
   const on = (sel, ev, fn) => box.querySelectorAll(sel).forEach(el => el.addEventListener(ev, () => fn(el)));
   on('[data-flow-rm]', 'click', el => _blRemove(el.dataset.flowRm));
+  on('[data-flow-elif-add]', 'click', el => _blElifAdd(el.dataset.flowElifAdd));
+  on('[data-flow-elif-rm]', 'click', el => _blElifRemove(el.dataset.flowElifRm));
   on('[data-flow-mv]', 'click', el => {
     const { list, i } = _blAt(el.dataset.flowMv);
     const j = i + (+el.dataset.dir);
@@ -384,6 +416,11 @@ function _renderInspector() {
   on('[data-flow-color]', 'click', el => { _blAt(el.dataset.flowColor).node.color = el.dataset.c; _renderEditorSteps(); });
   on('[data-flow-ona]', 'change', el => { _blAt(el.dataset.flowOna).node.ona = el.value; _renderEditorSteps(); });
   on('[data-flow-onf]', 'change', el => { _blAt(el.dataset.flowOnf).node.onf = el.value; _renderEditorSteps(); });
+  on('[data-flow-goto-target]', 'change', el => { _blAt(el.dataset.flowGotoTarget).node.target = el.value; _renderEditorSteps(); });
+  on('[data-flow-goto-max]', 'change', el => {
+    _blAt(el.dataset.flowGotoMax).node.max = Math.min(10, Math.max(1, Math.round(+el.value || 3)));
+    _renderEditorSteps();
+  });
   // Typing redraws the canvas only when the field loses focus, so it keeps the caret.
   const redrawCanvas = () => {
     const wrap = document.getElementById('bl-editor-steps');
@@ -395,9 +432,9 @@ function _renderInspector() {
   on('[data-flow-sid]', 'input', el => { _blAt(el.dataset.flowSid).node.sid = el.value.trim(); _refreshAnalysis(); });
   on('[data-flow-sid]', 'change', redrawCanvas);
   on('[data-flow-cond]', 'input', el => {
-    _blAt(el.dataset.flowCond).node.cond = el.value;
-    const words = box.querySelector('[data-flow-words]');
-    if (words) words.textContent = flowCondWords(el.value);
+    flowCondSet(_editingTree, el.dataset.flowCond, el.value);
+    const words = box.querySelector(`[data-flow-words="${CSS.escape(el.dataset.flowCond)}"]`);
+    if (words) words.textContent = flowCondSummary(el.value);
     _refreshAnalysis();
   });
   on('[data-flow-cond]', 'change', redrawCanvas);
@@ -435,51 +472,126 @@ function _renderInspector() {
       _renderEditorSteps();
     } });
   });
-  const builder = box.querySelector('[data-flow-builder]');
-  if (builder && builder.querySelector('[data-fb-step]')) _blSetupBuilder(builder, builder.dataset.flowBuilder);
+  box.querySelectorAll('[data-flow-builder]').forEach(b => {
+    if (b.querySelector('[data-fb-rows]')) _blSetupBuilder(b, b.dataset.flowBuilder);
+  });
 }
 
-// The guided condition builder: pick an earlier step, what to test and how.
+// The guided condition builder: rows of "step · field · op · value", joined
+// with all-of / any-of into the expression the textarea above shows.
 function _blSetupBuilder(box, at) {
-  const stepSel = box.querySelector('[data-fb-step]');
-  const whatSel = box.querySelector('[data-fb-what]');
-  const opSel = box.querySelector('[data-fb-op]');
-  const valueWrap = box.querySelector('[data-fb-value-wrap]');
-  const stepBySid = sid => flowSteps(_editingTree).find(s => s.sid === sid);
-  const fillWhat = () => {
-    const step = stepBySid(stepSel.value);
-    const outputs = step ? _blDefOutputs(step.def) : [];
-    whatSel.innerHTML = '<option value="status">its result (ok, failed, …)</option>' +
-      outputs.map(o => `<option value="${escAttr(o)}">output: ${escHtml(o)}</option>`).join('');
-    fillOp();
+  const rowsBox = box.querySelector('[data-fb-rows]');
+  const modeWrap = box.querySelector('[data-fb-mode-wrap]');
+  const modeSel = box.querySelector('[data-fb-mode]');
+  const rawNote = box.querySelector('[data-fb-raw]');
+  const before = flowStepsBefore(_editingTree, at);
+  let parsed = flowCondParse(flowCondGet(_editingTree, at) || '');
+
+  if (!parsed) {
+    modeWrap.hidden = true;
+    rowsBox.hidden = true;
+    box.querySelector('[data-fb-add]').hidden = true;
+    rawNote.hidden = false;
+    box.querySelector('[data-fb-reset]').onclick = () => { flowCondSet(_editingTree, at, ''); _renderEditorSteps(); };
+    return;
+  }
+
+  const stepBySid = sid => before.find(s => s.sid === sid);
+  // A row naming a step that is no longer before the if still renders, with
+  // that sid added, so nothing the author wrote is silently rewritten.
+  const stepOptions = (sid) => {
+    const opts = before.map(s => `<option value="${escAttr(s.sid)}">${escHtml(s.sid)}: ${escHtml(_defName(s.def))}</option>`);
+    if (sid && !stepBySid(sid)) opts.push(`<option value="${escAttr(sid)}">${escHtml(sid)}</option>`);
+    return opts.join('');
   };
-  const fillOp = () => {
-    const status = whatSel.value === 'status';
-    opSel.innerHTML = (status ? ['==', '!='] : ['==', '!=', '>', '>=', '<', '<='])
-      .map(o => `<option value="${o}">${escHtml({ '==': 'is', '!=': 'is not', '>': '>', '>=': '≥', '<': '<', '<=': '≤' }[o])}</option>`).join('');
-    valueWrap.innerHTML = status
+  const whatOptions = (sid, what) => {
+    const step = stepBySid(sid);
+    const outputs = step ? _blDefOutputs(step.def) : [];
+    const opts = ['<option value="status">its result (ok, failed, …)</option>']
+      .concat(outputs.map(o => `<option value="${escAttr(o)}">output: ${escHtml(o)}</option>`));
+    if (what !== 'status' && !outputs.includes(what)) {
+      opts.push(`<option value="${escAttr(what)}">output: ${escHtml(what)}</option>`);
+    }
+    return opts.join('');
+  };
+  const opOptions = (what) => (what === 'status' ? ['==', '!='] : ['==', '!=', '>', '>=', '<', '<='])
+    .map(o => `<option value="${o}">${escHtml({ '==': 'is', '!=': 'is not', '>': '>', '>=': '≥', '<': '<', '<=': '≤' }[o])}</option>`).join('');
+
+  const renderRows = () => {
+    rowsBox.innerHTML = parsed.rows.map((r, i) => `<div class="fb-row">
+      <select data-fb-step data-row="${i}">${stepOptions(r.sid)}</select>
+      <select data-fb-what data-row="${i}">${whatOptions(r.sid, r.what)}</select>
+      <div class="fb-line">
+        <select data-fb-op data-row="${i}">${opOptions(r.what)}</select>
+        <span data-fb-value-wrap data-row="${i}"></span>
+        <button type="button" class="btn btn-rose btn-xs" data-fb-rm data-row="${i}" aria-label="Remove this condition">×</button>
+      </div>
+    </div>`).join('');
+    rowsBox.querySelectorAll('[data-fb-step]').forEach(el => {
+      el.value = parsed.rows[+el.dataset.row].sid;
+      el.onchange = () => {
+        const r = parsed.rows[+el.dataset.row];
+        r.sid = el.value; r.what = 'status'; r.op = '=='; r.value = 'ok';
+        commit(true);
+      };
+    });
+    rowsBox.querySelectorAll('[data-fb-what]').forEach(el => {
+      el.value = parsed.rows[+el.dataset.row].what;
+      el.onchange = () => {
+        const r = parsed.rows[+el.dataset.row];
+        r.what = el.value; r.op = '=='; r.value = r.what === 'status' ? 'ok' : '';
+        commit(true);
+      };
+    });
+    rowsBox.querySelectorAll('[data-fb-op]').forEach(el => {
+      el.value = parsed.rows[+el.dataset.row].op;
+      el.onchange = () => { parsed.rows[+el.dataset.row].op = el.value; commit(false); };
+    });
+    rowsBox.querySelectorAll('[data-fb-value-wrap]').forEach(el => renderRowValue(el, parsed.rows[+el.dataset.row]));
+    rowsBox.querySelectorAll('[data-fb-rm]').forEach(el => {
+      el.onclick = () => { parsed.rows.splice(+el.dataset.row, 1); commit(true); };
+    });
+    modeWrap.hidden = parsed.rows.length < 2;
+    modeSel.value = parsed.mode;
+  };
+
+  // Typing rewrites the expression without rebuilding the field, so the caret
+  // stays where the author left it; the canvas redraws when the field blurs.
+  const renderRowValue = (wrap, r) => {
+    wrap.innerHTML = r.what === 'status'
       ? `<select data-fb-value>${FLOW_STATUS.map(v => `<option value="${v}">${escHtml(v.replace('_', ' '))}</option>`).join('')}</select>`
       : '<input data-fb-value placeholder="0" size="8">';
+    const field = wrap.querySelector('[data-fb-value]');
+    field.value = r.value;
+    field.oninput = () => { r.value = field.value; syncText(); };
+    field.onchange = () => { r.value = field.value; commit(true); };
   };
-  stepSel.onchange = fillWhat;
-  whatSel.onchange = fillOp;
-  // Start from the step just before the if: usually the one being tested.
-  stepSel.selectedIndex = stepSel.options.length - 1;
-  fillWhat();
-  box.querySelector('[data-fb-use]').onclick = () => {
-    const sid = stepSel.value;
-    if (!sid) return;
-    const raw = (valueWrap.querySelector('[data-fb-value]').value || '').trim();
-    let literal;
-    if (whatSel.value === 'status' || !/^(-?\d+(\.\d+)?|true|false|True|False)$/.test(raw)) {
-      literal = JSON.stringify(raw);
-    } else {
-      literal = /^(true|True)$/.test(raw) ? 'True' : /^(false|False)$/.test(raw) ? 'False' : raw;
-    }
-    const lhs = whatSel.value === 'status' ? `steps.${sid}.status` : `steps.${sid}.result.${whatSel.value}`;
-    _blAt(at).node.cond = `${lhs} ${opSel.value} ${literal}`;
-    _renderEditorSteps();
+
+  const syncText = () => {
+    const expr = flowCondJoin(parsed.rows, parsed.mode);
+    flowCondSet(_editingTree, at, expr);
+    const inspector = box.closest('#bl-inspector');
+    const area = inspector && inspector.querySelector(`[data-flow-cond="${CSS.escape(at)}"]`);
+    if (area) area.value = expr;
+    const words = inspector && inspector.querySelector(`[data-flow-words="${CSS.escape(at)}"]`);
+    if (words) words.textContent = flowCondSummary(expr);
+    _refreshAnalysis();
   };
+
+  // A structural change redraws canvas and inspector; op or value do not.
+  const commit = (structural) => {
+    syncText();
+    if (structural) _renderEditorSteps(); else renderRows();
+  };
+
+  modeSel.onchange = () => { parsed.mode = modeSel.value; commit(true); };
+  box.querySelector('[data-fb-add]').onclick = () => {
+    const last = before[before.length - 1];
+    if (!last) return;
+    parsed.rows.push({ sid: last.sid, what: 'status', op: '==', value: 'ok' });
+    commit(true);
+  };
+  renderRows();
 }
 
 // The playbook inputs declared on the playbook being edited — the same shape
@@ -719,8 +831,13 @@ async function _savePlaybook() {
     const why = _blIneligible(_playbookDefs.find(d => String(d.id) === String(s.def)));
     if (why) return showToast(`Fix ineligible steps first: ${_defName(s.def)} — ${why}`, 'error');
   }
-  const blocking = flowFindings(_editingTree).filter(f => f.text.startsWith('A branch has no condition'));
-  if (blocking.length) return showToast('Give every branch a condition before saving', 'error');
+  const findings = flowFindings(_editingTree);
+  if (findings.some(f => f.text.startsWith('A branch has no condition'))) {
+    return showToast('Give every branch a condition before saving', 'error');
+  }
+  if (findings.some(f => f.text.startsWith('A go to has no target'))) {
+    return showToast('Choose a step for every go to before saving', 'error');
+  }
   // Only asked when the flag is being turned on — the server ignores it
   // otherwise, and a code spent on a no-op change is a code burned for
   // nothing (they are single-use within their validity window).

@@ -111,7 +111,7 @@ class FlowUiSourceTests(SimpleTestCase):
     def test_flow_ui_escapes_what_it_draws(self):
         flow = self.src("vigil-playbook-flow.js")
         # Step names, ids, conditions and outcomes are author- or agent-supplied.
-        for needle in ("escHtml(name)", "escHtml(s.sid)", "escHtml(flowCondWords(cond))",
+        for needle in ("escHtml(name)", "escHtml(s.sid)", "escHtml(flowCondSummary(cond))",
                        "escHtml(s.outcome)", "escHtml(node.cond || '')", "escAttr(cond ? `if ${cond}`"):
             self.assertIn(needle, flow)
         charts = self.src("vigil-charts.js")

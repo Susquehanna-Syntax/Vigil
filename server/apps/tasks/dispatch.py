@@ -159,7 +159,7 @@ def create_chain(run, host, built, *, requested_by, label: str) -> list:
     """
     import secrets
 
-    from apps.playbooks.flow import branch_guards
+    from apps.playbooks.flow import branch_guards, flow_sequence
 
     from .models import Task
     from .views import _release_next
@@ -177,8 +177,39 @@ def create_chain(run, host, built, *, requested_by, label: str) -> list:
                       for step, _params, risk, _expires in built],
         }
         run.save(update_fields=["flow_snapshot"])
+    # A go to (QA-36) is a task of its own in the chain, resolved by the
+    # server in _release_next and never sent to the agent. The returned list
+    # holds the step tasks only: callers count it as the steps.
+    # Only a chain of one playbook's steps follows its flow; a chain built
+    # from several playbooks (whose step ids may repeat) keeps built order.
+    sequence = [{"built": b} for b in built]
+    if len({step.playbook_id for step, *_rest in built}) == 1:
+        by_sid = {b[0].step_id: b for b in built}
+        flowed = [n if "goto" in n else {"built": by_sid[n["step"]]}
+                  for n in flow_sequence(flow) if "goto" in n or n["step"] in by_sid]
+        if any("goto" in n for n in flowed) and len(flowed) - sum(
+                "goto" in n for n in flowed) == len(built):
+            sequence = flowed
     tasks = []
-    for i, (step, params, risk, expires_at) in enumerate(built):
+    for i, node in enumerate(sequence):
+        if "goto" in node:
+            guard, branch = guards.get("@" + node["id"], ("", ""))
+            Task.objects.create(
+                host=host,
+                run=run,
+                requested_by=requested_by,
+                step_label=f"{label} → go to {node['goto']}"[:120],
+                action="_goto",
+                params={"goto": node["goto"], "goto_id": node["id"], "max": node["max"]},
+                risk_level="low",
+                state=Task.State.BLOCKED,
+                step_order=i,
+                branch=branch,
+                guard=guard,
+                nonce=secrets.token_hex(32),
+            )
+            continue
+        step, params, risk, expires_at = node["built"]
         guard, branch = guards.get(step.step_id, ("", ""))
         tasks.append(Task.objects.create(
             host=host,

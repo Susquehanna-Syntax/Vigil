@@ -1887,7 +1887,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
   vertical-align: middle; white-space: nowrap;
 }
 .inv-table tbody tr:last-child td { border-bottom: none; }
-.inv-table tbody tr { cursor: pointer; transition: background 0.12s; }
+.inv-table tbody tr { transition: background 0.12s; }
 .inv-table tbody tr:hover { background: var(--s2); }
 .inv-table .mono { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-2); }
 .inv-table .col-status .dot {
@@ -4462,3 +4462,208 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 }
 
 .bl-desc { resize: vertical; min-height: 64px; line-height: 1.5; font-family: inherit; }
+/* QA-34: an if's condition is a list of rows joined with all-of / any-of.
+   The inspector is 270px wide, so each row is a 2-column grid with the op,
+   value and remove control on one line under it. */
+.fb-rows { display: flex; flex-direction: column; gap: 6px; }
+.fb-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px; padding: 6px;
+  border-radius: 6px; background: var(--s1); }
+.fb-row .fb-line { grid-column: 1 / -1; }
+.fb-row .fb-line [data-fb-rm] { flex: 0 0 auto; }
+.fb-mode { font-size: 12px; color: var(--text-2); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+
+/* Go to (2026.14.6): a small node at the end of its lane and a dashed arc to its target. */
+.fcn-goto { background: var(--s1); border: 1.5px dashed var(--sky); gap: 2px; }
+.fcn-goto.fcn-bad { border-color: var(--rose); }
+.fcn-goto-mark { font-weight: 700; font-size: 11px; padding: 0 8px; border-radius: 999px; background: var(--sky); color: var(--on-accent); }
+.fcn-goto code { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; }
+.fce.fce-jump { stroke: var(--sky); stroke-dasharray: 6 5; }
+.fce.fce-jump.fce-back { stroke: var(--peach); }
+.fcj-label {
+  position: absolute; transform: translate(-50%, -50%); font-size: 10.5px; font-weight: 600; white-space: nowrap;
+  padding: 0 7px; border-radius: 999px; background: var(--s1); border: 1px solid var(--border); color: var(--text-1);
+  pointer-events: none;
+}
+
+/* Resizable dialogs (2026.14.6): the grip rides the bottom-right corner even
+   while the content scrolls. */
+.modal-grip {
+  position: sticky; float: right; bottom: -24px; margin: 8px -24px -24px 0;
+  width: 18px; height: 18px; padding: 0; border: 0; border-radius: 4px;
+  background:
+    linear-gradient(135deg, transparent 45%, var(--text-3) 45% 52%, transparent 52% 65%, var(--text-3) 65% 72%, transparent 72%);
+  cursor: nwse-resize; opacity: .7; touch-action: none;
+}
+.modal-grip:hover, .modal-grip:focus-visible { opacity: 1; outline: 2px solid var(--sky); outline-offset: 2px; }
+.modal.is-resized { transition: none; }
+/* The xwide dialog does not scroll — its form does — so the grip pins to the
+   corner instead of riding the (nonexistent) scroll. It is also a flex item
+   there; take it out of the form's layout. */
+.modal-xwide > .modal-grip { position: absolute; right: 6px; bottom: 6px; flex: 0 0 auto; }
+@media (max-width: 640px) { .modal-grip { display: none; } }
+
+/* ═══════════════════════════════════════════
+   Reports — Deployments → Reports sub-tab (QA-42)
+   ═══════════════════════════════════════════ */
+.rpt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 14px; }
+.rpt-card {
+  background: var(--s1); border: 1.5px solid var(--border); border-radius: var(--r-md);
+  padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0;
+}
+.rpt-card-head { display: flex; align-items: center; gap: 10px; }
+.rpt-card-title {
+  font-family: 'Fraunces', serif; font-size: 15px; font-weight: 500; color: var(--text-1);
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Chart.js needs a boxed height or maintainAspectRatio: false collapses it. */
+.rpt-chart { height: 220px; position: relative; }
+.rpt-empty { font-size: 12px; padding: 20px 0; }
+.rpt-note { font-size: 12px; margin-bottom: 12px; }
+.rpt-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+.rpt-head-title { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 500; color: var(--text-1); }
+.rpt-head-range { font-size: 12px; }
+.rpt-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rpt-table th {
+  text-align: left; font-weight: 600; color: var(--text-3); font-size: 10px;
+  letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.rpt-table td {
+  padding: 5px 8px; border-bottom: 1px solid var(--border); color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.rpt-table tr:last-child td { border-bottom: none; }
+.rpt-table .run-state { text-align: left; }
+.rpt-picks {
+  max-height: 180px; overflow-y: auto; margin-top: 8px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--s2); padding: 6px;
+}
+.rpt-pick {
+  display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+  font-size: 13px; color: var(--text-2); cursor: pointer; border-radius: var(--r-sm);
+}
+.rpt-pick:hover { background: var(--s3); color: var(--text-1); }
+.rpt-none { font-size: 12px; padding: 8px; }
+.rpt-widgets { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.rpt-widget-row {
+  display: grid; grid-template-columns: minmax(90px, 150px) minmax(0, 1fr) auto auto auto;
+  gap: 8px; align-items: center;
+}
+.rpt-widget-kind {
+  font-size: 12px; font-weight: 600; color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .rpt-grid { grid-template-columns: minmax(0, 1fr); }
+  .rpt-widget-row { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+  .rpt-widget-kind { grid-column: 1 / -1; }
+}
+/* Six sub-tabs are wider than a phone: the row scrolls on its own rather than
+   widening the page (QA-42 added the sixth). */
+@media (max-width: 640px) {
+  .sub-tabs { overflow-x: auto; scrollbar-width: none; }
+  .sub-tab { flex: 0 0 auto; padding: 10px 12px; }
+}
+
+/* QA-45: or-if exits */
+.fce.t-elif { stroke: var(--sky-ink); }
+:root[data-theme="light"] .fce.t-elif { stroke: color-mix(in srgb, var(--sky) 70%, #000 30%); }
+.fce-add.t-elif { border-color: var(--sky); }
+.fcn-port.p-elif { background: var(--sky); }
+.fi-elif { padding: 0 7px; border-radius: 999px; color: var(--on-accent); font-weight: 600; font-size: 12px; background: var(--sky); }
+#bl-inspector .fi + .fi { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+#bl-inspector > .fi-actions, #bl-inspector > .muted-note { margin-top: 12px; }
+
+/* QA-47: report grid */
+/* The card is the grid cell, so it fills it and lets its own body take the
+   slack; a chart holding its natural height would leave the cell empty below
+   it and the resize handle out of reach. */
+.rpt-gs .rpt-card { height: 100%; box-sizing: border-box; overflow: hidden; }
+.rpt-gs .rpt-card-body { flex: 1; min-height: 0; overflow: auto; }
+/* .rpt-chart keeps its boxed height outside the grid; inside it the card body
+   is the box, and Chart.js fills whatever the operator dragged out. */
+.rpt-gs .rpt-chart { height: 100%; min-height: 120px; }
+.rpt-gs-editing .rpt-card { border-color: var(--sky); cursor: move; }
+
+/* QA-48: report editor */
+.modal.rpt-editor-modal { width: min(1080px, calc(100vw - 32px)); }
+.rpt-hint { font-size: 12px; margin-bottom: 8px; }
+.rpt-wcard {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 14px;
+  border: 1.5px solid var(--border); border-radius: var(--r-md); background: var(--s1); padding: 14px;
+}
+.rpt-wcard + .rpt-wcard { margin-top: 10px; }
+.rpt-wset { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.rpt-wfield { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-2); }
+.rpt-check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+.rpt-axes { display: flex; flex-direction: column; gap: 8px; }
+.rpt-axes[hidden] { display: none; }
+.rpt-wsrc-picks { display: flex; flex-wrap: wrap; gap: 4px 12px; padding-left: 22px; }
+.rpt-wbtns { display: flex; flex-wrap: wrap; gap: 6px; }
+.rpt-wprev { height: 200px; position: relative; min-width: 0; overflow: auto; }
+.rpt-wprev .rpt-chart { height: 200px; }
+.rpt-how { font-size: 12px; color: var(--text-3); }
+@media (max-width: 640px) { .rpt-wcard { grid-template-columns: minmax(0, 1fr); } }
+
+/* QA-49: container logs as a terminal */
+/* The dialog is a column and the log fills what is left of it, so dragging
+   the QA-40 grip grows the log, not empty space under it. */
+.modal.ctr-logs-modal { display: flex; flex-direction: column; height: 80vh; overflow: hidden;
+  width: min(1100px, calc(100vw - 32px)); }
+.modal.ctr-logs-modal.is-resized .ctr-logs { height: auto; }
+.ctr-logs-modal .ctr-logs { flex: 1 1 auto; min-height: 120px; height: auto; }
+.ctr-logs-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.ctr-logs-bar .ctr-logs-state { flex: 1; min-width: 0; margin: 0; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.ctr-logs-bar [aria-pressed="true"] { border-color: var(--sky-ink); color: var(--sky-ink); }
+/* A terminal is dark whatever the page theme, like the window it stands for. */
+.term {
+  --term-bg: #15161b; --term-fg: #d7d9e0; --term-dim: #8a8f9c;
+  --term-k: #4b4f5c; --term-r: #ef6b73; --term-g: #7fcf8a; --term-y: #e6c36a;
+  --term-b: #6aa7ef; --term-m: #c792ea; --term-c: #5ccfd6; --term-w: #d7d9e0;
+  --term-bk: #6b7080; --term-br: #ff8f96; --term-bg-g: #a3e6ac; --term-by: #f5d98c;
+  --term-bb: #92c0ff; --term-bm: #ddb3f7; --term-bc: #86e3e8; --term-bw: #ffffff;
+  background: var(--term-bg); color: var(--term-fg);
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.45; tab-size: 8;
+  white-space: pre; overflow-wrap: normal; word-break: normal;
+}
+.term.term-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.term .term-ts { color: var(--term-dim); }
+.term .term-bold { font-weight: 700; }
+.term .term-dim { opacity: .65; }
+.term .term-italic { font-style: italic; }
+.term .term-ul { text-decoration: underline; }
+.term .term-k { color: var(--term-k); } .term .term-r { color: var(--term-r); }
+.term .term-g { color: var(--term-g); } .term .term-y { color: var(--term-y); }
+.term .term-b { color: var(--term-b); } .term .term-m { color: var(--term-m); }
+.term .term-c { color: var(--term-c); } .term .term-w { color: var(--term-w); }
+.term .term-bk { color: var(--term-bk); } .term .term-br { color: var(--term-br); }
+.term .term-bg { color: var(--term-bg-g); } .term .term-by { color: var(--term-by); }
+.term .term-bb { color: var(--term-bb); } .term .term-bm { color: var(--term-bm); }
+.term .term-bc { color: var(--term-bc); } .term .term-bw { color: var(--term-bw); }
+
+/* QA-50: inventory cells are for copying; the host name opens the panel */
+.inv-table tbody td { user-select: text; cursor: text; }
+.inv-host-link {
+  font: inherit; font-weight: 600; color: var(--text-1); background: none; border: 0; padding: 0;
+  cursor: pointer; text-decoration: underline; text-decoration-color: var(--border);
+  text-underline-offset: 3px; user-select: text;
+}
+.inv-host-link:hover { color: var(--sky-ink); text-decoration-color: currentColor; }
+.inv-host-link:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; border-radius: 2px; }
+
+/* QA-51: the topology map moves */
+.topo-canvas { position: relative; }
+#topo-svg:focus-visible { outline: 2px solid var(--sky); outline-offset: -2px; }
+#topo-svg.topo-panning, #topo-svg.topo-panning .topo-card { cursor: grabbing; }
+.topo-zoom {
+  position: absolute; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 4px;
+}
+.topo-zoom-btn {
+  min-width: 32px; height: 32px; padding: 0 8px; border-radius: var(--r-sm);
+  border: 1px solid var(--border); background: var(--s1); color: var(--text-1);
+  font: inherit; font-size: 16px; line-height: 1; cursor: pointer;
+}
+.topo-zoom-btn.topo-zoom-fit { font-size: 11px; }
+.topo-zoom-btn:hover { background: var(--s2); }
+.topo-zoom-btn:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }

@@ -82,6 +82,16 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "reprovision_cleanup",
     ]),
     ("tags", "Host tagging", ["add_tag", "remove_tag"]),
+    ("alerts", "Alerts and notifications", ["raise_alert", "resolve_alert",
+                                            "send_notification"]),
+    # ── Jackil helpdesk ─────────────────────────────────────────────────────
+    #
+    # A ticket is keyed by host + key, so a playbook that runs every night
+    # finds last night's ticket instead of opening another. key, priority and
+    # status come from the task the server signed; the free text comes from
+    # the agent's report. With Jackil turned off the steps do nothing.
+    ("jackil", "Jackil helpdesk", ["jackil_ticket", "jackil_note",
+                                   "jackil_resolve"]),
     ("hunts", "Hunts", ["hunt_file", "hunt_package", "hunt_process", "hunt_port",
                         "hunt_service", "hunt_registry", "hunt_content"]),
     ("vuln", "Vulnerability scanning", [
@@ -123,6 +133,16 @@ GROUP_NOTES: dict[str, str] = {
     "tags": "Tags are server-side metadata about a host. The agent reports "
             "the step and the server applies the change from the definition "
             "it signed.",
+    "alerts": "The agent reports the step and the server acts on the result, "
+              "taking severity, key and channel from the task it signed — an "
+              "agent can reword an alert but never choose its severity, its "
+              "key or where it goes.",
+    "jackil": "The agent reports the step and the server works the ticket, "
+              "taking key, priority and status from the task it signed. A "
+              "ticket belongs to one host and one key: run the playbook "
+              "again and Vigil notes the open ticket instead of opening a "
+              "second one, and once it is resolved the next failure opens a "
+              "fresh ticket.",
     "vuln": "These leave a marker rather than doing the scan inline. The "
             "server starts the scan when the result arrives.",
     "hunts": "Read-only discovery: the walk runs in a low-priority thread "
@@ -194,6 +214,16 @@ PARAM_EXAMPLES: dict[str, str] = {
     "security_only": "true",
     "service_name": "nginx",
     "services": '"web, worker"',
+    "severity": "warning",
+    "message": '"Disk cleanup failed. Last free space reading: ${{ steps.check-disk.result.state }}"',
+    "key": "disk-cleanup",
+    "channel": '"Ops email"',
+    "title": '"Nightly backup failed"',
+    "description": '"rsync exited 23. Last successful run: ${{ steps.check-backup.result.state }}"',
+    "priority": "high",
+    "body": '"Retried the backup by hand — same failure. Ticket kept open."',
+    "note": '"Repointed rsync at the new share; the backup ran clean."',
+    "status": "resolved",
     "severity_floor": "important",
     "shell": "/bin/bash",
     "source": '"10.0.0.0/24"',
@@ -331,6 +361,26 @@ EXAMPLE_TITLES: dict[str, tuple[str, str]] = {
                      "The agent replaces its binary and restarts its service."),
     "add_tag": ("Tag Docker hosts automatically",
                 "Runs only where the when: predicate is true on the host."),
+    "raise_alert": ("Page when the disk sweep fails",
+                    "Opens an alert on this host and notifies your channels. "
+                    "A repeat run under the same key does not page twice."),
+    "resolve_alert": ("Clear the disk-sweep alert once it succeeds",
+                      "Resolves this host's open alert with that key, and "
+                      "notifies the resolution."),
+    "send_notification": ("Tell Ops the sweep finished",
+                          "One message to every enabled channel, or to the "
+                          "one you name. Creates no alert."),
+    "jackil_ticket": ("Open a ticket when the backup fails",
+                      "Opens a ticket for this host and key, or notes the "
+                      "open one when it happens again. Does nothing while "
+                      "Jackil is turned off."),
+    "jackil_note": ("Say what you tried on the ticket",
+                    "Adds an internal note to this host's open ticket for "
+                    "the key. Does nothing when none is open."),
+    "jackil_resolve": ("Close the ticket once the backup works",
+                       "Optionally notes the recovery, sets the ticket's "
+                       "status, and closes the link so the next failure "
+                       "opens a fresh ticket."),
     "remove_tag": ("Drop a tag once a host is patched",
                    "Tags are applied server-side from the definition it signed."),
     "run_trivy_scan": ("Scan the host filesystem with Trivy",
@@ -449,6 +499,21 @@ ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
     ("app_pin", "unpin"): "true releases the hold instead of adding one. Takes no `version`.",
     ("app_pin", "source"): "Where to look for the app. Defaults to the host's own package manager.",
     ("app_pin", "version"): "Install this version first, then hold it. Sources that cannot pin a version refuse it.",
+    ("raise_alert", "severity"): "info, warning or critical. Taken from the task the server signed, not from the agent's report.",
+    ("raise_alert", "message"): "The alert text. May reference an earlier step's output; the agent renders it and the server stores it as plain text, cut at 2,000 characters.",
+    ("raise_alert", "key"): "Names this problem on this host, so a repeat run does not page twice and resolve_alert can find the alert again. Cut at 80 characters.",
+    ("resolve_alert", "key"): "The key the alert was raised with. Required: alerts opened by a metric rule are resolved by the evaluator, not by a task.",
+    ("send_notification", "message"): "The message body. May reference an earlier step's output; the agent renders it and the server sends it as plain text, cut at 2,000 characters.",
+    ("send_notification", "channel"): "A notification channel's name, as the Notifications page shows it. Omit to send to every enabled channel.",
+    ("jackil_ticket", "title"): "The ticket's title. The server prefixes it with the hostname; cut at 200 characters.",
+    ("jackil_ticket", "key"): "Names this problem on this host, which is how a repeat run finds its open ticket instead of opening a second one. Cut at 80 characters.",
+    ("jackil_ticket", "description"): "Detail for the ticket body, on a line of its own above the host and key lines the server adds. May reference an earlier step's output; cut at 4,000 characters.",
+    ("jackil_ticket", "priority"): "critical, high, medium or low; anything else is treated as medium. Taken from the task the server signed, not from the agent's report.",
+    ("jackil_note", "key"): "The key whose open ticket to note. A note without an open ticket does nothing.",
+    ("jackil_note", "body"): "The internal note — visible to whoever works the ticket, not emailed to the requester. May reference an earlier step's output; cut at 4,000 characters.",
+    ("jackil_resolve", "key"): "The key whose open ticket to resolve. Does nothing when none is open.",
+    ("jackil_resolve", "note"): "A closing note added before the status change — what fixed it. Cut at 4,000 characters.",
+    ("jackil_resolve", "status"): "resolved (default) or closed. Taken from the task the server signed, not from the agent's report.",
 }
 
 
@@ -554,6 +619,12 @@ OUTPUT_NOTES: dict[str, dict[str, str]] = {
     },
     "update_agent": {"version": "The agent version now installed."},
     "add_tag": {"tags": "The tags requested (comma-separated)."},
+    "raise_alert": {"message": "The message the server was asked to raise, as the agent reported it."},
+    "resolve_alert": {"key": "The key whose alert the server was asked to resolve."},
+    "send_notification": {"message": "The message the server was asked to send, as the agent reported it."},
+    "jackil_ticket": {"title": "The ticket title the server was asked to open or note, as the agent reported it."},
+    "jackil_note": {"body": "The note the server was asked to add, as the agent reported it."},
+    "jackil_resolve": {"key": "The key whose open ticket the server was asked to resolve."},
     "remove_tag": {"tags": "The tags requested for removal (comma-separated)."},
     "request_nessus_scan": {"requested": "Always true once the request is recorded."},
     "request_network_scan": {"engine": "The scan engine requested, or auto when the server picks."},
@@ -680,7 +751,40 @@ def example_yaml(action: str) -> str:
     this function returns is run through ``parse_and_validate`` by the tests.
     """
     entry = ACTION_REGISTRY[action]
-    title, _ = EXAMPLE_TITLES.get(action, (entry["label"], ""))
+    title, description = EXAMPLE_TITLES.get(action, (entry["label"], ""))
+    if action in ("raise_alert", "send_notification"):
+        # The marker only says anything useful when the message names what an
+        # earlier step found, and a step reference must name a step that
+        # precedes it — so the example carries that earlier step.
+        lines = [
+            f"name: {title}",
+            f"description: {description}",
+            "risk: low",
+            "actions:",
+            "  - id: check-cron",
+            "    type: check_service",
+            "    params:",
+            "      service_name: cron",
+            f"  - id: {action.replace('_', '-')}",
+            f"    type: {action}",
+            "    params:",
+        ]
+        if action == "raise_alert":
+            lines += ["      severity: warning", "      key: disk-cleanup"]
+        lines.append('      message: "Nightly disk sweep failed. Cron state: '
+                     '${{ steps.check-cron.result.state }}"')
+        return "\n".join(lines) + "\n"
+    if action == "resolve_alert":
+        return "\n".join([
+            f"name: {title}",
+            f"description: {description}",
+            "risk: low",
+            "actions:",
+            "  - id: resolve-alert",
+            "    type: resolve_alert",
+            "    params:",
+            "      key: disk-cleanup",
+        ]) + "\n"
     params = list(entry["required"])
     if not params and action == "execute_script":
         # `execute_script` accepts exactly one of script_name or an inline

@@ -58,7 +58,8 @@ class Playbook(TagRowSyncMixin, models.Model):
     completion_tag = models.CharField(max_length=120, blank=True, default="")
     # The playbook's if/then/else structure over its step ids, or None for a
     # plain ordered playbook. Nodes: {"step": "<step_id>"} or
-    # {"id": "b<n>", "if": "<expr>", "then": [...], "else": [...]}.
+    # {"id": "b<n>", "if": "<expr>", "then": [...], "else": [...]}, with an
+    # optional "elif": [{"if": "<expr>", "then": [...]}] between then and else.
     flow = models.JSONField(null=True, blank=True)
     #: The playbook's own input declarations, in the task spec's ``inputs:``
     #: shape (validated by ``apps.tasks.spec._validate_inputs``). Steps map

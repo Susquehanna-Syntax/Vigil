@@ -91,6 +91,34 @@ function _widgetShell(widget) {
     </div>`;
 }
 
+/* ── Shared grid (Dashboard and Reports) ───────────────────────────────── */
+
+// The grid both pages use: 90px rows, 8px gaps, and gravity off. With
+// float:false Gridstack pulls every widget up to fill the space above it, so a
+// gap cannot be made and cannot be saved: drop a card at row 6 with empty rows
+// above and it is back at row 0 before the change event fires. What was saved
+// was never what was placed. A grid is a layout someone arranged, and
+// whitespace is part of arranging it.
+function gridBaseOptions() {
+  return { cellHeight: 90, margin: 8, animate: true, float: true };
+}
+
+// Gridstack's default renderCB assigns widget content with textContent, so a
+// markup string arrives on screen as literal angle brackets. Ours is built with
+// every interpolated value already through escHtml/escAttr (see _widgetShell),
+// so innerHTML is the correct assignment. Set here rather than at each call
+// site, so whichever page draws a grid first gets it.
+function gridMake(el, options) {
+  GridStack.renderCB = (node, w) => { node.innerHTML = w.content || ''; };
+  return GridStack.init({ ...gridBaseOptions(), ...options }, el);
+}
+
+// Each item's geometry from the live nodes (never save(): see _dashCollectLayout).
+function gridLayoutOf(grid) {
+  return grid.getGridItems().map(el => el.gridstackNode).filter(Boolean)
+    .map(n => ({ id: String(n.id), x: n.x, y: n.y, w: n.w, h: n.h }));
+}
+
 /* ── Render ────────────────────────────────────────────────────────────── */
 
 function _dashRender() {
@@ -102,29 +130,14 @@ function _dashRender() {
   host.innerHTML = _dashToolbar()
     + '<div class="grid-stack" id="dash-grid"></div>';
 
-  // Gridstack's default renderCB assigns widget content with textContent, so a
-  // markup string arrives on screen as literal angle brackets rather than as
-  // elements. Its reason is to stop a caller injecting HTML by accident; ours
-  // is built in _widgetShell with every interpolated value already through
-  // escHtml/escAttr, so innerHTML is the correct assignment here.
-  GridStack.renderCB = (el, widget) => { el.innerHTML = widget.content || ''; };
-
   // Gridstack rewrites the container, so it is rebuilt rather than reused.
-  DASH.grid = GridStack.init({
+  // gridMake carries the shared base (cellHeight, margin, animate, float) and
+  // the renderCB override both pages need.
+  DASH.grid = gridMake(document.getElementById('dash-grid'), {
     column: DASH.catalog.grid_columns || 12,
-    cellHeight: 90,
-    margin: 8,
     disableDrag: !DASH.editing || !DASH.current.is_mine,
     disableResize: !DASH.editing || !DASH.current.is_mine,
-    animate: true,
-    // Gravity off. With float:false Gridstack pulls every widget up to fill
-    // the space above it, so a gap cannot be made and cannot be saved: drop a
-    // card at row 6 with empty rows above and it is back at row 0 before the
-    // change event fires. The layout then "would not stick", because what was
-    // saved was never what was placed. A dashboard is a layout someone
-    // arranged, and whitespace is part of arranging it.
-    float: true,
-  }, document.getElementById('dash-grid'));
+  });
 
   for (const w of DASH.current.widgets) {
     DASH.grid.addWidget({
