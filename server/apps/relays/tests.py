@@ -66,6 +66,9 @@ class RelayModelTests(TestCase):
 
 class RelayApiTests(TestCase):
     def setUp(self):
+        totp = patch("apps.relays.views.require_totp_confirmation", return_value=None)
+        totp.start()
+        self.addCleanup(totp.stop)
         self.client = APIClient()
         self.admin = get_user_model().objects.create_user(username="admin")
         UserProfile.objects.create(user=self.admin, role=Role.ADMIN)
@@ -74,8 +77,7 @@ class RelayApiTests(TestCase):
     def _create(self, **body):
         body.setdefault("name", "edge")
         body.setdefault("url", "https://relay.example.com/")
-        with patch("apps.relays.views.require_totp_confirmation", return_value=None):
-            return self.client.post("/api/v1/relays/", body, format="json")
+        return self.client.post("/api/v1/relays/", body, format="json")
 
     def test_community_limit_is_one(self):
         self.assertEqual(licensing.relays_allowed(), 1)
@@ -287,3 +289,27 @@ class MiddlewarePassthroughTests(TestCase):
 
         self.assertEqual(mw(Fake()), "ok")
         self.assertEqual(len(calls), 1)
+
+
+class RelayStepUpTests(TestCase):
+    """Moving a relay, switching one on or off, or deleting it needs a fresh code."""
+
+    def setUp(self):
+        self.client = APIClient()
+        admin = get_user_model().objects.create_user(username="admin")
+        UserProfile.objects.create(user=admin, role=Role.ADMIN)
+        self.client.force_authenticate(admin)
+        self.remote = make_relay(enabled=False)
+
+    def test_url_enabled_and_delete_need_totp(self):
+        with patch("apps.relays.views.require_totp_confirmation", return_value="bad code"):
+            for body in ({"url": "https://evil.example.com"}, {"enabled": True}):
+                resp = self.client.patch(f"/api/v1/relays/{self.remote.id}/", body, format="json")
+                self.assertEqual(resp.status_code, 400, body)
+            self.assertEqual(self.client.delete(f"/api/v1/relays/{self.remote.id}/").status_code, 400)
+            renamed = self.client.patch(f"/api/v1/relays/{self.remote.id}/", {"name": "edge-2"},
+                                        format="json")
+        self.assertEqual(renamed.status_code, 200)
+        self.remote.refresh_from_db()
+        self.assertEqual(self.remote.url, "https://relay.example.com")
+        self.assertFalse(self.remote.enabled)

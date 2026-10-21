@@ -105,6 +105,13 @@ def relay_detail(request, relay_id):
     relay = get_object_or_404(Relay, pk=relay_id)
     payload = request.data or {}
 
+    # A relay's url is the fallback every agent is handed, and enabled decides
+    # whether agents get in at all (the built-in relay) — the same weight as
+    # creating one, so the same second factor. Renaming needs none.
+    if request.method == "DELETE" or "url" in payload or "enabled" in payload:
+        if err := require_totp_confirmation(request.user, payload):
+            return Response({"detail": err}, status=400)
+
     if request.method == "DELETE":
         if relay.kind == Relay.Kind.BUILTIN:
             return Response({"detail": "The built-in relay cannot be deleted."},
