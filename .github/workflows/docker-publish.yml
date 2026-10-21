@@ -10,6 +10,7 @@ on:
 
 env:
   SERVER_IMAGE: susquehannasyntax/vigil
+  RELAY_IMAGE: susquehannasyntax/vigil-relay
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -73,6 +74,11 @@ jobs:
         run: python manage.py migrate --noinput
       - name: Run tests
         run: python manage.py test --verbosity=2
+      # The relay container (2026.15.0) is its own package; aiohttp is already
+      # in the server requirements because the dashboard's link uses it too.
+      - name: Run relay tests
+        working-directory: relay
+        run: python -m unittest discover -s tests -t . -v
 
   # ── Build agent binaries (parallel) ─────────────────────────────────────────
   # Both macOS targets run on macos-latest (Apple Silicon). PyInstaller's
@@ -467,4 +473,27 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      # The relay is small and has no agent builds in it: one more image from
+      # the same commit, so a relay and the dashboard it links to match.
+      - name: Extract relay metadata
+        id: relaymeta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.RELAY_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+
+      - name: Build and push relay
+        uses: docker/build-push-action@v5
+        with:
+          context: relay
+          file: relay/Dockerfile
+          push: true
+          tags: ${{ steps.relaymeta.outputs.tags }}
+          labels: ${{ steps.relaymeta.outputs.labels }}
+          cache-from: type=gha,scope=relay
+          cache-to: type=gha,mode=max,scope=relay
           platforms: linux/amd64,linux/arm64
