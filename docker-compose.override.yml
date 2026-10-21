@@ -28,6 +28,10 @@ services:
     volumes:
       - ./server:/app
 
+  link:
+    volumes:
+      - ./server:/app
+
   db:
     ports:
       - "5432:5432"

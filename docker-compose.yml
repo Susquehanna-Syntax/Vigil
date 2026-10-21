@@ -185,6 +185,33 @@ services:
   # after creating a tunnel in the Cloudflare Zero Trust dashboard and setting
   # TUNNEL_TOKEN (and VIGIL_PUBLIC_URL + VIGIL_TRUST_PROXY=true). Point the
   # tunnel's public hostname at http://web:8000. See docs/REMOTE-ACCESS.md.
+  # Keeps the outbound link to each relay (Settings → Relays). Idle with none.
+  link:
+    image: susquehannasyntax/vigil:latest
+    restart: unless-stopped
+    command: python manage.py relay_link
+    environment:
+      DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is not set — see the header of this file for how to generate one}"
+      VIGIL_SIGNING_KEY_SEED: ${VIGIL_SIGNING_KEY_SEED:-}
+      POSTGRES_DB: ${POSTGRES_DB:-vigil}
+      POSTGRES_USER: ${POSTGRES_USER:-vigil}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
+      # The pruning beats run here, so these must reach the worker
+      # and not only the web container — documented settings that
+      # were never passed through are settings that do nothing.
+      VIGIL_METRIC_RETENTION_DAYS: ${VIGIL_METRIC_RETENTION_DAYS:-30}
+      VIGIL_ALERT_RETENTION_DAYS: ${VIGIL_ALERT_RETENTION_DAYS:-90}
+      POSTGRES_HOST: db
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      VIGIL_PUBLIC_URL: ${VIGIL_PUBLIC_URL:-}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      VIGIL_LINK_UPSTREAM: http://web:8000
+      VIGIL_LINK_HOST: localhost
+    depends_on:
+      web:
+        condition: service_healthy
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
