@@ -188,7 +188,7 @@ class ReportChartTypeTests(SimpleTestCase):
                   "data": {"rows": [{"source": "Patch web", "step": f"s{i}", "failed": i}
                                     for i in range(1, 4)]}}
         self.assertEqual(_config(_widget("pie", widget))["data"]["labels"],
-                         ["Patch web · s3", "Patch web · s2", "Patch web · s1"])
+                         ["s3", "s2", "s1"])
 
     @skipUnless(shutil.which("node"), "node is not installed")
     def test_the_days_value_axis_keeps_its_units(self):
@@ -281,18 +281,24 @@ class ReportRowPointsTests(SimpleTestCase):
              {"label": "pending", "value": 1}])
 
     @skipUnless(shutil.which("node"), "node is not installed")
-    def test_step_points_name_their_source(self):
+    def test_step_points_name_their_source_only_when_there_are_several(self):
         self.assertEqual(self._points({
             "kind": "failures_by_step",
             "data": {"rows": [{"source": "Patch web", "step": "apt", "failed": 3}]}}),
-            [{"label": "Patch web · apt", "value": 3}])
+            [{"label": "apt", "value": 3}])
+        self.assertEqual(self._points({
+            "kind": "failures_by_step",
+            "data": {"rows": [{"source": "Patch web", "step": "apt", "failed": 3},
+                              {"source": "Patch db", "step": "apt", "failed": 1}]}}),
+            [{"label": "Patch web · apt", "value": 3}, {"label": "Patch db · apt", "value": 1}])
 
     @skipUnless(shutil.which("node"), "node is not installed")
-    def test_branch_points_name_their_source(self):
+    def test_branch_points_use_the_readable_label(self):
         self.assertEqual(self._points({
             "kind": "branch_paths",
-            "data": {"rows": [{"source": "Patch web", "branch": "if patchy", "hosts": 2}]}}),
-            [{"label": "Patch web · if patchy", "value": 2}])
+            "data": {"rows": [{"source": "Patch web", "branch": "b1.then",
+                               "label": "if upgrade ok", "hosts": 2}]}}),
+            [{"label": "if upgrade ok", "value": 2}])
 
 
 class ReportLayoutMergeTests(SimpleTestCase):

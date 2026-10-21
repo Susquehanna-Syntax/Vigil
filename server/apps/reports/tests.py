@@ -9,7 +9,7 @@ says — and that a report never shows a source the viewer cannot open.
 from datetime import datetime, timedelta, timezone
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, UserProfile
@@ -366,8 +366,8 @@ class BranchTests(ReportTestBase):
                       steps=(("c", "skipped"),))
         rows = self.data(report, "branch_paths")["rows"]
         self.assertEqual(rows, [
-            {"source": "Patch web", "branch": "b1.else", "hosts": 1},
-            {"source": "Patch web", "branch": "b1.then", "hosts": 2},
+            {"source": "Patch web", "branch": "b1.else", "hosts": 1, "label": "b1.else"},
+            {"source": "Patch web", "branch": "b1.then", "hosts": 2, "label": "b1.then"},
         ])
 
     def test_a_host_taking_a_branch_in_two_runs_counts_twice(self):
@@ -376,7 +376,8 @@ class BranchTests(ReportTestBase):
         self.host_run(playbook=pb, day=YESTERDAY, host="web", branch="b1.then")
         self.host_run(playbook=pb, day=TODAY, host="web", branch="b1.then")
         rows = self.data(report, "branch_paths")["rows"]
-        self.assertEqual(rows, [{"source": "Patch web", "branch": "b1.then", "hosts": 2}])
+        self.assertEqual(rows, [{"source": "Patch web", "branch": "b1.then", "hosts": 2,
+                                 "label": "b1.then"}])
 
 
 class SharedHostnameTests(ReportTestBase):
@@ -772,3 +773,29 @@ class MutationProbes(ReportTestBase):
         data = self.data(report)
         self.assertEqual(data["widgets"][0]["data"]["series"][0]["values"][-1], 100.0)
         self.assertEqual(data["widgets"][1]["data"]["failed"][-1], 0)
+
+
+class BranchLabelTests(SimpleTestCase):
+    FLOW = [
+        {"step": "upgrade"},
+        {"id": "b1", "if": 'steps.upgrade.status == "ok"',
+         "then": [{"step": "inventory"}],
+         "elif": [{"if": 'steps.upgrade.status == "not_applicable"', "then": [{"step": "images"}]}],
+         "else": [{"step": "storage"},
+                  {"id": "b2", "if": "steps.storage.result.free_gb < 10",
+                   "then": [{"step": "prune"}]}]},
+    ]
+
+    def test_lanes_read_as_words(self):
+        from apps.reports.widgets import branch_label
+        self.assertEqual(branch_label(self.FLOW, "b1.then"), "if upgrade ok")
+        self.assertEqual(branch_label(self.FLOW, "b1.elif1"), "or if upgrade not applicable")
+        self.assertEqual(branch_label(self.FLOW, "b1.else"), "otherwise")
+        self.assertEqual(branch_label(self.FLOW, "b1.else.b2.then"),
+                         "otherwise › if storage.result.free_gb < 10")
+
+    def test_unknown_paths_fall_back_to_themselves(self):
+        from apps.reports.widgets import branch_label
+        for path in ("b9.then", "b1.elif4", "b1", "", "b1.sideways"):
+            self.assertEqual(branch_label(self.FLOW, path), path)
+        self.assertEqual(branch_label(None, "b1.then"), "b1.then")

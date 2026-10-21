@@ -731,7 +731,7 @@ function _rptRowsTable(w) {
     <thead><tr><th>Source</th><th>${second === 'branch' ? 'Branch' : 'Step'}</th><th>${head}</th></tr></thead>
     <tbody>${rows.map(r => `<tr>
         <td>${escHtml(r.source)}</td>
-        <td>${escHtml(r[second])}</td>
+        <td>${escHtml(second === 'branch' && r.label ? r.label : r[second])}</td>
         <td>${escHtml(String(r[field] ?? ''))}</td>
       </tr>`).join('')}</tbody>
   </table>`;
@@ -885,7 +885,12 @@ function rptRowPoints(w) {
     return names.filter(k => counts.has(k)).map(k => ({ label: k, value: counts.get(k) }));
   }
   const pair = w.kind === 'branch_paths' ? ['branch', 'hosts'] : ['step', 'failed'];
-  return rows.map(r => ({ label: `${r.source} · ${r[pair[0]]}`, value: r[pair[1]] }));
+  // One source needs no prefix: "Patch web · if upgrade ok" says the name on every bar.
+  const several = new Set(rows.map(r => r.source)).size > 1;
+  return rows.map(r => {
+    const what = (pair[0] === 'branch' && r.label) ? r.label : r[pair[0]];
+    return { label: several ? `${r.source} · ${what}` : String(what), value: r[pair[1]] };
+  });
 }
 
 //: A pie is unreadable past a handful of wedges: the four biggest keep their
