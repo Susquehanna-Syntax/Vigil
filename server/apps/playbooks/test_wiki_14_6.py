@@ -59,11 +59,10 @@ class Wiki146Tests(SimpleTestCase):
         self.assertLess(pos, text.index("<h3>Default Thresholds</h3>"))
         self.assertEqual(_section_of(text, pos), "alerts")
 
-        pos = text.index('<h3 id="reports"')
-        self.assertLess(pos, text.index("<h3>Operator actions</h3>"))
-        self.assertEqual(_section_of(text, pos), "deployments")
+        # 2026.15.0: Reports moved out of Deployments into a section of their own.
+        self.assertIn('<section class="section" id="reports">', text)
         self.assertEqual(_section_of(text, text.index('<h3 id="report-charts"')),
-                         "deployments")
+                         "reports")
 
     def test_goto_facts(self):
         text = _wiki()
@@ -96,7 +95,7 @@ class Wiki146Tests(SimpleTestCase):
         slices = (
             _slice(text, '<h3 id="condition-rows"', "<h3>Quoting step ids</h3>"),
             _slice(text, '<h3 id="alert-actions"', "<h3>Default Thresholds</h3>"),
-            _slice(text, '<h3 id="reports"', "<h3>Operator actions</h3>"),
+            _slice(text, '<h3 id="report-charts"', '<section class="section" id="hunts">'),
         )
         for chunk in slices:
             self.assertNotIn(' style="', chunk, "inline style added")

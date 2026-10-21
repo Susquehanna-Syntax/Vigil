@@ -287,6 +287,10 @@
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
       Remote Access
     </a>
+    <a href="#relays" class="nav-link">
+      <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="19" cy="18" r="2.5"/><line x1="7.5" y1="12" x2="12" y2="12"/><path d="M12 12L16.5 7M12 12l4.5 5"/></svg>
+      Relays
+    </a>
     <a href="#editions" class="nav-link">
       <svg viewBox="0 0 24 24"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4z"/></svg>
       Tiers &amp; Licensing
@@ -341,6 +345,10 @@
       <svg viewBox="0 0 24 24"><path d="M2 12h4l3 8 4-16 3 8h4"/></svg>
       Deployments
     </a>
+    <a href="#reports" class="nav-link">
+      <svg viewBox="0 0 24 24"><line x1="5" y1="20" x2="5" y2="12"/><line x1="12" y1="20" x2="12" y2="5"/><line x1="19" y1="20" x2="19" y2="9"/></svg>
+      Reports
+    </a>
     <a href="#hunts" class="nav-link">
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16" y2="16"/></svg>
       Hunts
@@ -371,6 +379,10 @@
     </a>
 
     <span class="nav-section-label">Security</span>
+    <a href="#remote-sessions" class="nav-link">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><polyline points="7 9 10 11.5 7 14"/><line x1="12" y1="14" x2="16" y2="14"/></svg>
+      Web shell &amp; RDP
+    </a>
     <a href="#security" class="nav-link">
       <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
       Security Model
@@ -523,19 +535,9 @@
               <pre><span class="hl-comment"># Generate a signing key seed (Ed25519, 32 bytes base64: exactly 44 chars, trailing '=')</span>
 <span class="hl-var">DJANGO_SECRET_KEY</span>=<span class="hl-string">$(openssl rand -hex 32)</span>
 <span class="hl-var">VIGIL_SIGNING_KEY_SEED</span>=<span class="hl-string">$(python3 -c "import os,base64; print(base64.b64encode(os.urandom(32)).decode())")</span>
-<span class="hl-var">POSTGRES_PASSWORD</span>=<span class="hl-string">changeme</span>
-
-<span class="hl-comment"># Verify the seed is valid base64 of 32 bytes BEFORE bringing up the stack.</span>
-<span class="hl-comment"># A malformed seed 500s every agent checkin in your fleet.</span>
-<span class="hl-cmd">python3 -c "import base64,sys; print(len(base64.b64decode(sys.argv[1])))" "$VIGIL_SIGNING_KEY_SEED"</span>
-<span class="hl-comment"># Expect: 32</span></pre>
+<span class="hl-var">POSTGRES_PASSWORD</span>=<span class="hl-string">changeme</span></pre>
             </div>
-            <div class="callout callout-warn" style="margin-top:14px;">
-              <div class="callout-icon">!</div>
-              <div>
-                <strong>Portainer / YAML editor users:</strong> do <em>not</em> paste the seed as a bare value inside <code>docker-compose.yml</code>. The trailing <code>=</code> on base64 strings is padding and can be silently stripped by YAML parsing. Either set it in Portainer's <strong>Environment variables</strong> tab (one of the three required variables in step 2), or wrap the value in double quotes if you inline it: <code>VIGIL_SIGNING_KEY_SEED: "Hk3...P0c="</code>. A bad seed produces <code>binascii.Error: Incorrect padding</code> and 500s every <code>/api/v1/checkin</code> until fixed.
-              </div>
-            </div>
+            <p style="margin-top:10px;">Put these in Portainer's <strong>Environment variables</strong> tab or a <code>.env</code> file, not inside the YAML: YAML can strip the seed's trailing <code>=</code>.</p>
           </div>
         </div>
         <div class="step">
@@ -549,11 +551,8 @@
         </div>
         <div class="step">
           <div class="step-content">
-            <strong>Create your admin account and enroll your first host</strong><br>
-            <div class="code-block" style="margin-top:10px;">
-              <pre><span class="hl-cmd">docker compose exec web python manage.py createsuperuser</span></pre>
-            </div>
-            Log in, click <strong>Add Host</strong> in the dashboard, and follow the four-step enrollment wizard.
+            <strong>Create your admin account and add a host</strong><br>
+            Open <code>http://your-host:9200</code>. The first visit asks you to create the admin account. Then press <strong>Add Host</strong> on the dashboard and run the command it gives you on the machine.
           </div>
         </div>
       </div>
@@ -569,185 +568,55 @@
     <section class="section" id="deployment">
       <p class="section-label">Infrastructure</p>
       <h2 class="section-title" style="color:var(--peach-ink)">Deployment</h2>
-      <p class="section-desc">Vigil ships as a single Docker image containing the Django app, Celery workers, and all pre-compiled agent binaries for every supported platform.</p>
+      <p class="section-desc">Vigil is one Docker image (<code>susquehannasyntax/vigil</code>) run as several services from one compose file. Use the <code>docker-compose.yml</code> in the repo as-is: paste it into <strong>Portainer → Stacks → Add Stack</strong>, or run <code>docker compose up -d</code> next to a <code>.env</code> file.</p>
 
       <h3>Services</h3>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Service</th><th>Image</th><th>Purpose</th></tr></thead>
+          <thead><tr><th>Service</th><th>What it does</th></tr></thead>
           <tbody>
-            <tr><td><code>web</code></td><td><code>susquehannasyntax/vigil:latest</code></td><td>Django + Gunicorn, serves the UI and API</td></tr>
-            <tr><td><code>celery-worker</code></td><td><code>susquehannasyntax/vigil:latest</code></td><td>Background task processing (metrics, alerts, task dispatch)</td></tr>
-            <tr><td><code>celery-beat</code></td><td><code>susquehannasyntax/vigil:latest</code></td><td>Periodic scheduler (alert evaluation, outdated-agent check)</td></tr>
-            <tr><td><code>db</code></td><td><code>timescale/timescaledb:latest-pg16</code></td><td>PostgreSQL + TimescaleDB time-series extension</td></tr>
-            <tr><td><code>redis</code></td><td><code>redis:7-alpine</code></td><td>Celery broker and result backend</td></tr>
+            <tr><td><code>web</code></td><td>The dashboard, the API and live sessions. Published on port <strong>9200</strong>.</td></tr>
+            <tr><td><code>link</code></td><td>Keeps the outbound connection to each <a href="#relays" style="color:var(--sky-ink)">relay</a>. Idle when you have none.</td></tr>
+            <tr><td><code>celery-worker</code>, <code>celery-beat</code></td><td>Background jobs and the scheduler: alerts, rollouts, automations, retention.</td></tr>
+            <tr><td><code>db</code></td><td>PostgreSQL with TimescaleDB. Holds everything.</td></tr>
+            <tr><td><code>redis</code></td><td>The job queue, and the channel live sessions use.</td></tr>
+            <tr><td><code>guacd</code> <em>(profile <code>rdp</code>)</em></td><td>Only for <a href="#remote-sessions" style="color:var(--sky-ink)">Web RDP</a>. Start with <code>docker compose --profile rdp up -d</code>.</td></tr>
+            <tr><td><code>cloudflared</code> <em>(profile <code>tunnel</code>)</em></td><td>Only for a <a href="#remote-access" style="color:var(--sky-ink)">Cloudflare Tunnel</a>.</td></tr>
           </tbody>
         </table>
       </div>
 
-      <h3>docker-compose.yml</h3>
-      <div class="code-block">
-        <div class="code-label">docker-compose.yml</div>
-        <pre><span class="hl-comment"># Vigil: self-hosted infrastructure monitoring &amp; endpoint management
-# Paste into Portainer → Stacks → Add Stack, or run:
-#   docker compose up -d
-#
-# Required environment variables (set in Portainer's "Environment variables"
-# tab or in a .env file alongside this compose):
-#
-#   DJANGO_SECRET_KEY      random secret, e.g. openssl rand -hex 32
-#   VIGIL_SIGNING_KEY_SEED Ed25519 seed for task signing (base64, 32 bytes)
-#   POSTGRES_PASSWORD      database password</span>
-
-<span class="hl-keyword">services</span>:
-  <span class="hl-var">db</span>:
-    <span class="hl-keyword">image</span>: <span class="hl-string">timescale/timescaledb:latest-pg16</span>
-    <span class="hl-keyword">restart</span>: <span class="hl-string">unless-stopped</span>
-    <span class="hl-keyword">environment</span>:
-      <span class="hl-var">POSTGRES_DB</span>: <span class="hl-string">${POSTGRES_DB:-vigil}</span>
-      <span class="hl-var">POSTGRES_USER</span>: <span class="hl-string">${POSTGRES_USER:-vigil}</span>
-      <span class="hl-var">POSTGRES_PASSWORD</span>: <span class="hl-string">${POSTGRES_PASSWORD:-vigil}</span>
-    <span class="hl-keyword">volumes</span>:
-      - <span class="hl-string">pgdata:/var/lib/postgresql/data</span>
-    <span class="hl-keyword">healthcheck</span>:
-      <span class="hl-keyword">test</span>: <span class="hl-string">["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vigil}"]</span>
-      <span class="hl-keyword">interval</span>: <span class="hl-num">5s</span>
-      <span class="hl-keyword">timeout</span>: <span class="hl-num">5s</span>
-      <span class="hl-keyword">retries</span>: <span class="hl-num">5</span>
-
-  <span class="hl-var">redis</span>:
-    <span class="hl-keyword">image</span>: <span class="hl-string">redis:7-alpine</span>
-    <span class="hl-keyword">restart</span>: <span class="hl-string">unless-stopped</span>
-    <span class="hl-keyword">healthcheck</span>:
-      <span class="hl-keyword">test</span>: <span class="hl-string">["CMD", "redis-cli", "ping"]</span>
-      <span class="hl-keyword">interval</span>: <span class="hl-num">5s</span>
-      <span class="hl-keyword">timeout</span>: <span class="hl-num">5s</span>
-      <span class="hl-keyword">retries</span>: <span class="hl-num">5</span>
-
-  <span class="hl-var">web</span>:
-    <span class="hl-keyword">image</span>: <span class="hl-string">susquehannasyntax/vigil:latest</span>
-    <span class="hl-keyword">restart</span>: <span class="hl-string">unless-stopped</span>
-    <span class="hl-keyword">environment</span>:
-      <span class="hl-var">DJANGO_SECRET_KEY</span>: <span class="hl-string">${DJANGO_SECRET_KEY:-insecure-change-me}</span>
-      <span class="hl-var">VIGIL_SIGNING_KEY_SEED</span>: <span class="hl-string">${VIGIL_SIGNING_KEY_SEED:-}</span>
-      <span class="hl-var">VIGIL_TIMEZONE</span>: <span class="hl-string">${VIGIL_TIMEZONE:-UTC}</span>
-      <span class="hl-var">POSTGRES_DB</span>: <span class="hl-string">${POSTGRES_DB:-vigil}</span>
-      <span class="hl-var">POSTGRES_USER</span>: <span class="hl-string">${POSTGRES_USER:-vigil}</span>
-      <span class="hl-var">POSTGRES_PASSWORD</span>: <span class="hl-string">${POSTGRES_PASSWORD:-vigil}</span>
-      <span class="hl-var">POSTGRES_HOST</span>: <span class="hl-string">db</span>
-      <span class="hl-var">CELERY_BROKER_URL</span>: <span class="hl-string">redis://redis:6379/0</span>
-      <span class="hl-var">CELERY_RESULT_BACKEND</span>: <span class="hl-string">redis://redis:6379/0</span>
-    <span class="hl-keyword">ports</span>:
-      - <span class="hl-string">"9200:8000"</span>
-    <span class="hl-keyword">depends_on</span>:
-      <span class="hl-var">db</span>:
-        <span class="hl-keyword">condition</span>: <span class="hl-string">service_healthy</span>
-      <span class="hl-var">redis</span>:
-        <span class="hl-keyword">condition</span>: <span class="hl-string">service_healthy</span>
-    <span class="hl-keyword">volumes</span>:
-      - <span class="hl-string">media:/app/media</span>
-
-  <span class="hl-var">celery-worker</span>:
-    <span class="hl-keyword">image</span>: <span class="hl-string">susquehannasyntax/vigil:latest</span>
-    <span class="hl-keyword">restart</span>: <span class="hl-string">unless-stopped</span>
-    <span class="hl-keyword">command</span>: <span class="hl-string">celery -A vigil worker -l info</span>
-    <span class="hl-keyword">environment</span>:
-      <span class="hl-var">DJANGO_SECRET_KEY</span>: <span class="hl-string">${DJANGO_SECRET_KEY:-insecure-change-me}</span>
-      <span class="hl-var">VIGIL_SIGNING_KEY_SEED</span>: <span class="hl-string">${VIGIL_SIGNING_KEY_SEED:-}</span>
-      <span class="hl-var">POSTGRES_DB</span>: <span class="hl-string">${POSTGRES_DB:-vigil}</span>
-      <span class="hl-var">POSTGRES_USER</span>: <span class="hl-string">${POSTGRES_USER:-vigil}</span>
-      <span class="hl-var">POSTGRES_PASSWORD</span>: <span class="hl-string">${POSTGRES_PASSWORD:-vigil}</span>
-      <span class="hl-var">POSTGRES_HOST</span>: <span class="hl-string">db</span>
-      <span class="hl-var">CELERY_BROKER_URL</span>: <span class="hl-string">redis://redis:6379/0</span>
-      <span class="hl-var">CELERY_RESULT_BACKEND</span>: <span class="hl-string">redis://redis:6379/0</span>
-    <span class="hl-keyword">depends_on</span>:
-      <span class="hl-var">db</span>:
-        <span class="hl-keyword">condition</span>: <span class="hl-string">service_healthy</span>
-      <span class="hl-var">redis</span>:
-        <span class="hl-keyword">condition</span>: <span class="hl-string">service_healthy</span>
-
-  <span class="hl-var">celery-beat</span>:
-    <span class="hl-keyword">image</span>: <span class="hl-string">susquehannasyntax/vigil:latest</span>
-    <span class="hl-keyword">restart</span>: <span class="hl-string">unless-stopped</span>
-    <span class="hl-keyword">command</span>: <span class="hl-string">celery -A vigil beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler</span>
-    <span class="hl-keyword">environment</span>:
-      <span class="hl-var">DJANGO_SECRET_KEY</span>: <span class="hl-string">${DJANGO_SECRET_KEY:-insecure-change-me}</span>
-      <span class="hl-var">VIGIL_SIGNING_KEY_SEED</span>: <span class="hl-string">${VIGIL_SIGNING_KEY_SEED:-}</span>
-      <span class="hl-var">POSTGRES_DB</span>: <span class="hl-string">${POSTGRES_DB:-vigil}</span>
-      <span class="hl-var">POSTGRES_USER</span>: <span class="hl-string">${POSTGRES_USER:-vigil}</span>
-      <span class="hl-var">POSTGRES_PASSWORD</span>: <span class="hl-string">${POSTGRES_PASSWORD:-vigil}</span>
-      <span class="hl-var">POSTGRES_HOST</span>: <span class="hl-string">db</span>
-      <span class="hl-var">CELERY_BROKER_URL</span>: <span class="hl-string">redis://redis:6379/0</span>
-      <span class="hl-var">CELERY_RESULT_BACKEND</span>: <span class="hl-string">redis://redis:6379/0</span>
-    <span class="hl-keyword">depends_on</span>:
-      <span class="hl-var">db</span>:
-        <span class="hl-keyword">condition</span>: <span class="hl-string">service_healthy</span>
-      <span class="hl-var">redis</span>:
-        <span class="hl-keyword">condition</span>: <span class="hl-string">service_healthy</span>
-
-<span class="hl-keyword">volumes</span>:
-  <span class="hl-var">pgdata</span>:
-  <span class="hl-var">media</span>:</pre>
-      </div>
-
-      <h3>Required Environment Variables</h3>
+      <h3>Environment variables</h3>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Variable</th><th>Required</th><th>Description</th></tr></thead>
+          <thead><tr><th>Variable</th><th></th><th>What it is</th></tr></thead>
           <tbody>
-            <tr><td><code>DJANGO_SECRET_KEY</code></td><td><span class="risk risk-high">required</span></td><td>Random secret for Django session signing. Use <code>openssl rand -hex 32</code>.</td></tr>
-            <tr><td><code>VIGIL_SIGNING_KEY_SEED</code></td><td><span class="risk risk-high">required</span></td><td>Base64-encoded 32-byte Ed25519 seed for task signing. Exactly 44 chars ending in <code>=</code>. <strong>Quote the value if you inline it into YAML.</strong> the trailing <code>=</code> is padding and gets stripped otherwise, which 500s every agent checkin.</td></tr>
-            <tr><td><code>POSTGRES_PASSWORD</code></td><td><span class="risk risk-high">required</span></td><td>Database password. Do not use the default in production.</td></tr>
+            <tr><td><code>DJANGO_SECRET_KEY</code></td><td><span class="risk risk-high">required</span></td><td>A random secret: <code>openssl rand -hex 32</code>.</td></tr>
+            <tr><td><code>VIGIL_SIGNING_KEY_SEED</code></td><td><span class="risk risk-high">required</span></td><td>The key every task is signed with: 44 characters ending in <code>=</code>. See the warning below.</td></tr>
+            <tr><td><code>POSTGRES_PASSWORD</code></td><td><span class="risk risk-high">required</span></td><td>The database password. Unset, it is <code>vigil</code> on every install.</td></tr>
+            <tr><td><code>VIGIL_TIMEZONE</code></td><td>optional</td><td>IANA name for display, e.g. <code>America/New_York</code>. Default <code>UTC</code>.</td></tr>
+            <tr><td><code>VIGIL_PUBLIC_URL</code></td><td>optional</td><td>The address agents and browsers use from outside. See <a href="#remote-access" style="color:var(--sky-ink)">Remote access</a>.</td></tr>
           </tbody>
         </table>
       </div>
-
-      <h3>Optional Environment Variables</h3>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
-          <tbody>
-            <tr><td><code>POSTGRES_DB</code></td><td><code>vigil</code></td><td>Database name</td></tr>
-            <tr><td><code>POSTGRES_USER</code></td><td><code>vigil</code></td><td>Database user</td></tr>
-            <tr><td><code>VIGIL_TIMEZONE</code></td><td><code>UTC</code></td><td>IANA timezone for display (e.g. <code>America/New_York</code>)</td></tr>
-            <tr><td><code>VIGIL_AGENT_VERSION</code></td><td><em>ignored</em></td><td>No longer used. The expected agent version is detected from the agent bundled in the image, so there is nothing to keep in lockstep. Leaving it set is harmless. The server logs a note at startup and carries on.</td></tr>
-            <tr><td><code>VIGIL_PUBLIC_URL</code></td><td><em>empty</em></td><td>External URL for off-LAN access; auto-populates <code>ALLOWED_HOSTS</code> and <code>CSRF_TRUSTED_ORIGINS</code></td></tr>
-            <tr><td><code>DJANGO_CSRF_TRUSTED_ORIGINS</code></td><td><em>empty</em></td><td>Comma-separated trusted POST origins, scheme included. Needed behind a proxy on an external hostname.</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="prose" style="margin-top:8px;color:var(--text-3);font-size:12px;">These are the ones that matter for a first deploy. See <a href="#env" style="color:var(--sky-ink)">Environment Variables</a> for the complete reference.</p>
+      <p class="prose" style="margin-top:8px;color:var(--text-3);font-size:12px;">Every other variable is in <a href="#env" style="color:var(--sky-ink)">Environment Variables</a>.</p>
 
       <div class="callout callout-warn">
         <div class="callout-icon">!</div>
-        <div>Never run the compose file with the insecure default values in production. <code>DJANGO_SECRET_KEY=insecure-change-me</code> exists only as a local dev fallback.</div>
-      </div>
-
-      <h3>Portainer Stack</h3>
-      <div class="prose">
-        <p>Paste the <code>docker-compose.yml</code> directly into <strong>Portainer → Stacks → Add Stack → Web editor</strong>. Add the three required variables in the <strong>Environment variables</strong> tab (not inside the YAML), then click Deploy. No extra files needed.</p>
-        <p>After deploy, sanity-check that the seed survived the round trip:</p>
-        <div class="code-block">
-          <div class="code-label">Shell (on the Docker host)</div>
-          <pre><span class="hl-cmd">docker exec <span class="hl-string">&lt;vigil-web-container&gt;</span> python -c <span class="hl-string">"import os,base64; s=os.environ['VIGIL_SIGNING_KEY_SEED']; print(len(s), len(base64.b64decode(s)))"</span></span>
-<span class="hl-comment"># Expect: 44 32  (any other output means the seed was mangled: fix it in Environment variables and redeploy)</span></pre>
+        <div><strong>Set the signing seed in Portainer's Environment variables tab or <code>.env</code>, not inside the YAML.</strong> YAML can drop the trailing <code>=</code>, and then every agent check-in fails. Check it after deploying:
+          <div class="code-block" style="margin-top:10px;"><pre><span class="hl-cmd">docker exec <span class="hl-string">&lt;web-container&gt;</span> python -c <span class="hl-string">"import os,base64; s=os.environ['VIGIL_SIGNING_KEY_SEED']; print(len(s), len(base64.b64decode(s)))"</span></span>
+<span class="hl-comment"># Expect: 44 32</span></pre></div>
         </div>
       </div>
 
-      <div class="callout callout-warn" style="margin-top:14px;">
-        <div class="callout-icon">!</div>
-        <div>
-          <strong>Don't inline the signing seed in the YAML.</strong> The trailing <code>=</code> base64 padding can be silently stripped on save, producing <code>binascii.Error: Incorrect padding</code> in <code>vigil/signing.py</code> and turning every <code>POST /api/v1/checkin</code> into a 500. Agents will retry indefinitely with no tasks dispatching and no error surfaced in the UI. If you absolutely need to inline it, wrap the value in double quotes.
-        </div>
-      </div>
-
-      <h3>Volume Persistence</h3>
+      <h3>Volumes</h3>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Named Volume</th><th>Contents</th></tr></thead>
+          <thead><tr><th>Volume</th><th>Holds</th></tr></thead>
           <tbody>
-            <tr><td><code>pgdata</code></td><td>All database data: metrics, hosts, tasks, alerts</td></tr>
-            <tr><td><code>media</code></td><td>Manually uploaded agent binaries (overrides baked-in binaries)</td></tr>
+            <tr><td><code>pgdata</code></td><td>The database. Back this up.</td></tr>
+            <tr><td><code>media</code></td><td>Uploaded agent builds and, on Business, session recordings.</td></tr>
+            <tr><td><code>images</code></td><td>The OS image library for reprovisioning.</td></tr>
           </tbody>
         </table>
       </div>
@@ -757,43 +626,33 @@
     <!-- REMOTE ACCESS -->
     <section class="section" id="remote-access">
       <p class="section-label">Getting Started</p>
-      <h2 class="section-title" style="color:var(--sky-ink)">Remote Access: checking in from outside the LAN</h2>
-      <p class="section-desc">Getting a laptop to keep reporting after it leaves the building. The short version: <strong>agents are outbound-only</strong>, so this is entirely about exposing the <em>server</em>. You never open a port on a monitored host.</p>
+      <h2 class="section-title" style="color:var(--sky-ink)">Remote Access: agents outside the LAN</h2>
+      <p class="section-desc">Agents only ever connect <em>out</em>, so you never open a port on a monitored host. To reach agents off the LAN, give them an address they can reach: a <a href="#relays" style="color:var(--sky-ink)">relay</a> (the dashboard stays private), a tunnel or proxy in front of the dashboard, or a VPN.</p>
 
-      <div class="callout callout-info">
-        <div class="callout-icon">i</div>
-        <div>Vigil agents open HTTPS connections <strong>to</strong> the server and never listen for inbound traffic. So "remote access" means putting the server at an address the agent can reach: a public hostname or a VPN/overlay address. The agent protocol doesn't change; you point it at a new URL.</div>
-      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Option</th><th>Dashboard on the internet?</th><th>Good for</th></tr></thead>
+        <tbody>
+          <tr><td><a href="#relays" style="color:var(--sky-ink)">Relay</a></td><td>No. It dials out to the relay.</td><td>Branch offices, laptops, keeping the dashboard at home</td></tr>
+          <tr><td>Cloudflare Tunnel</td><td>Yes, behind Cloudflare</td><td>Reaching the dashboard itself from anywhere</td></tr>
+          <tr><td>Tailscale</td><td>No, tailnet only</td><td>Every machine is already on your tailnet</td></tr>
+          <tr><td>Reverse proxy</td><td>Yes</td><td>You already run nginx or Caddy with TLS</td></tr>
+        </tbody>
+      </table></div>
 
-      <h3>The one knob</h3>
-      <p class="prose">Set <code>VIGIL_PUBLIC_URL</code> to the URL Vigil is reached at from outside. Its host is appended to <code>ALLOWED_HOSTS</code> and its origin to <code>CSRF_TRUSTED_ORIGINS</code> automatically, so you set <strong>one</strong> variable instead of three.</p>
+      <h3>The one setting</h3>
+      <p class="prose">For a tunnel, proxy or VPN, set <code>VIGIL_PUBLIC_URL</code> to the outside address. Vigil trusts that host for logins and puts it in the agent install command.</p>
       <div class="code-block">
         <div class="code-label">.env</div>
-<pre><span class="hl-comment"># The external URL. Scheme included, no trailing slash.</span>
-<span class="hl-var">VIGIL_PUBLIC_URL</span>=https://vigil.example.com
-
-<span class="hl-comment"># Set when a proxy/tunnel terminates TLS in front of Vigil.</span>
-<span class="hl-var">VIGIL_TRUST_PROXY</span>=true
-<span class="hl-var">VIGIL_SECURE_COOKIES</span>=true</pre>
+<pre><span class="hl-var">VIGIL_PUBLIC_URL</span>=https://vigil.example.com   <span class="hl-comment"># scheme + host, no trailing slash</span>
+<span class="hl-var">VIGIL_TRUST_PROXY</span>=true                        <span class="hl-comment"># when a proxy or tunnel handles TLS</span>
+<span class="hl-var">VIGIL_SECURE_COOKIES</span>=true                     <span class="hl-comment"># once you serve HTTPS</span></pre>
       </div>
-
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Variable</th><th>What it does</th></tr></thead>
-          <tbody>
-            <tr><td><code>VIGIL_PUBLIC_URL</code></td><td>The external URL. Auto-populates <code>ALLOWED_HOSTS</code> + <code>CSRF_TRUSTED_ORIGINS</code>, and is handed out in the agent install one-liner so new enrollments don't bake in a LAN address.</td></tr>
-            <tr><td><code>VIGIL_TRUST_PROXY</code></td><td>Honors <code>X-Forwarded-Proto</code>/<code>Host</code>, so <code>request.is_secure()</code>, secure cookies, and the login redirect allow-list all see the real public scheme and host.</td></tr>
-            <tr><td><code>VIGIL_SECURE_COOKIES</code></td><td>Marks session and CSRF cookies <code>Secure</code>. Turn on once you're serving HTTPS.</td></tr>
-          </tbody>
-        </table>
-      </div>
-
       <div class="callout callout-warn">
         <div class="callout-icon">!</div>
-        <div><strong>Only enable <code>VIGIL_TRUST_PROXY</code> when the proxy is the ONLY route to Vigil.</strong> The shipped <code>docker-compose.yml</code> still publishes <code>9200:8000</code> for LAN use. If you rely on a tunnel exclusively, remove that <code>ports:</code> mapping (or firewall it) before turning this on. Otherwise a client reaching the container directly can spoof <code>X-Forwarded-Proto</code> and be treated as HTTPS.</div>
+        <div>Turn on <code>VIGIL_TRUST_PROXY</code> only when the proxy is the <em>only</em> way in. Otherwise remove or firewall the <code>9200:8000</code> port mapping first, or a client reaching port 9200 directly can pretend to be on HTTPS.</div>
       </div>
 
-      <h3>Option A: Cloudflare Tunnel</h3>
+      <h3>Cloudflare Tunnel</h3>
       <p class="prose">A real <code>https://vigil.example.com</code> on a domain you control, TLS handled by Cloudflare, and <strong>no inbound ports</strong> opened on your network. Best when you want the dashboard reachable from anywhere.</p>
       <div class="steps">
         <div class="step">
@@ -838,7 +697,7 @@
         </div>
       </div>
 
-      <h3>Option B: Tailscale</h3>
+      <h3>Tailscale</h3>
       <p class="prose">A private overlay: only your own devices and agent hosts on the tailnet can reach Vigil, and <strong>nothing is published to the public internet</strong>. Best when you don't need outside access.</p>
       <div class="code-block">
         <div class="code-label">.env</div>
@@ -851,7 +710,7 @@
 <span class="hl-var">VIGIL_SECURE_COOKIES</span>=true</pre>
       </div>
 
-      <h3>Option C: Reverse proxy (nginx / Caddy)</h3>
+      <h3>Reverse proxy (nginx / Caddy)</h3>
       <p class="prose">You already terminate TLS somewhere. Point the proxy at <code>web:8000</code>, make sure it sets the forwarded headers, and set the same three variables.</p>
       <div class="code-block">
         <div class="code-label">nginx</div>
@@ -861,25 +720,11 @@
 <span class="hl-var">proxy_pass</span> http://web:8000;</pre>
       </div>
 
-      <h3>Pointing agents at it</h3>
-      <p class="prose">Once <code>VIGIL_PUBLIC_URL</code> is set, the install one-liner under <strong>Settings → Agent Binary</strong> hands out that URL rather than whatever address you happen to be browsing from. So an agent enrolled while you're on the LAN still checks in after it leaves.</p>
-      <div class="callout callout-warn">
-        <div class="callout-icon">!</div>
-        <div><strong>Agents enrolled <em>before</em> you set <code>VIGIL_PUBLIC_URL</code> keep the old address.</strong> They'll work on the LAN and go silent off it. Fix each one by editing the server URL in its <code>agent.yml</code> and restarting the service, or re-running the install one-liner from the public URL. The pinned signing key survives the move, because it is tied to the server's identity rather than its address, so no re-enrollment ceremony is needed.</div>
-      </div>
+      <h3>Agents enrolled before the change</h3>
+      <p class="prose">They keep the old address. Edit <code>server_url</code> in the agent's <code>agent.yml</code> and restart it, or rerun the install command. No re-approval is needed.</p>
       <div class="code-block">
-        <div class="code-label">agent.yml (on the monitored host)</div>
+        <div class="code-label">agent.yml</div>
 <pre><span class="hl-var">server_url</span>: <span class="hl-string">https://vigil.example.com</span></pre>
-      </div>
-
-      <h3>Verifying it works</h3>
-      <div class="code-block">
-        <div class="code-label">Shell (from off the LAN)</div>
-<pre><span class="hl-comment"># Should return {"status": "ok"}. No auth required.</span>
-<span class="hl-cmd">curl -fsSL https://vigil.example.com/api/v1/health/</span>
-
-<span class="hl-comment"># Confirm Django agrees about the public host (no DisallowedHost error).</span>
-<span class="hl-cmd">docker compose exec web python -c <span class="hl-string">"from django.conf import settings; print(settings.ALLOWED_HOSTS, settings.CSRF_TRUSTED_ORIGINS)"</span></span></pre>
       </div>
 
       <h3>Troubleshooting</h3>
@@ -890,7 +735,7 @@
             <tr><td><code>DisallowedHost</code> / <em>Invalid HTTP_HOST header</em></td><td><code>VIGIL_PUBLIC_URL</code> isn't set, or has a typo/trailing path. It must be scheme + host only.</td></tr>
             <tr><td><em>Origin checking failed</em> / CSRF failure on login</td><td>The browser's origin isn't trusted. <code>VIGIL_PUBLIC_URL</code> covers one hostname; if you reach Vigil at several, add the rest to <code>DJANGO_CSRF_TRUSTED_ORIGINS</code> (comma-separated, <strong>scheme included</strong>).</td></tr>
             <tr><td>Redirected to <code>http://</code> after login, or session drops</td><td>The proxy terminates TLS but Django doesn't know. Set <code>VIGIL_TRUST_PROXY=true</code>, then confirm the proxy actually sets <code>X-Forwarded-Proto</code>.</td></tr>
-            <tr><td>Agents online on the LAN, offline elsewhere</td><td>They were enrolled with a LAN address baked in. Update <code>server_url</code> in <code>agent.yml</code>. See the warning above.</td></tr>
+            <tr><td>Agents online on the LAN, offline elsewhere</td><td>They were enrolled with a LAN address baked in. Update <code>server_url</code> in <code>agent.yml</code> (see above).</td></tr>
             <tr><td>Browser works, agents still fail</td><td>Usually TLS: the agent verifies certificates unconditionally and offers no way to disable it. A self-signed cert on the proxy will fail. Use a real cert (Cloudflare/Let's Encrypt) or the tailnet.</td></tr>
           </tbody>
         </table>
@@ -900,6 +745,96 @@
         <div class="callout-icon">✓</div>
         <div>Full recipes with per-provider detail live in <code>docs/REMOTE-ACCESS.md</code> in the repo.</div>
       </div>
+    </section>
+    <div class="divider"></div>
+
+    <section class="section" id="relays">
+      <p class="section-label">Getting Started</p>
+      <h2 class="section-title" style="color:var(--mint-ink)">Relays</h2>
+      <p class="section-desc">A relay is a small container that agents connect to instead of the dashboard. Run one in an office, or on a cheap VPS. The dashboard dials <em>out</em> to it, so the dashboard never needs a public address or an open port.</p>
+
+      <div class="code-block">
+        <div class="code-label">How it connects</div>
+<pre>agents ──https──▶ relay (public)  ◀──outbound link── Vigil (your LAN)</pre>
+      </div>
+
+      <ul class="prose">
+        <li>The relay only passes agent traffic. The dashboard, the API and the login page are never reachable through it.</li>
+        <li>If the dashboard is down, the relay keeps agents' check-ins (up to 50 MB) and hands them over when it comes back.</li>
+        <li>Agents learn every relay you add and try the next one if theirs is unreachable.</li>
+        <li>Tasks stay signed end to end, so a relay cannot make an agent do anything.</li>
+      </ul>
+
+      <h3>How many</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th></th><th>Community</th><th>Business</th></tr></thead>
+        <tbody>
+          <tr><td>Relays</td><td>1: the built-in one (agents talk to the dashboard directly, the default) <em>or</em> one remote relay</td><td>Seats + 2</td></tr>
+        </tbody>
+      </table></div>
+      <p class="prose">The built-in relay counts. On Community, turn it off to add a remote one.</p>
+
+      <h3>Add a relay</h3>
+      <ol class="prose">
+        <li><strong>Settings → Relays → Add relay.</strong> Give it a name and the address agents will use, e.g. <code>https://relay.example.com</code>. Confirm with your two-factor code.</li>
+        <li>Copy the compose snippet it shows. The key in it is shown <strong>once</strong>.</li>
+        <li>Run it on the relay machine. Give it TLS: either mount a certificate (<code>RELAY_TLS_CERT</code>, <code>RELAY_TLS_KEY</code>) or put it behind Caddy, nginx or a tunnel.</li>
+        <li>The relay shows <em>Connected</em> in Settings within a few seconds.</li>
+        <li>Enroll new hosts through it: pick the relay in <strong>Add Host</strong>. Move existing agents by changing <code>server_url</code> in their <code>agent.yml</code>.</li>
+      </ol>
+      <div class="code-block">
+        <div class="code-label">docker-compose.yml (on the relay machine)</div>
+<pre><span class="hl-keyword">services</span>:
+  <span class="hl-var">relay</span>:
+    <span class="hl-keyword">image</span>: <span class="hl-string">susquehannasyntax/vigil-relay:latest</span>
+    <span class="hl-keyword">restart</span>: <span class="hl-string">unless-stopped</span>
+    <span class="hl-keyword">environment</span>:
+      <span class="hl-var">RELAY_KEY_SHA256</span>: <span class="hl-string">"&lt;from Settings → Relays&gt;"</span>
+    <span class="hl-keyword">ports</span>:
+      - <span class="hl-string">"8443:8443"</span>
+    <span class="hl-keyword">volumes</span>:
+      - <span class="hl-string">relay-queue:/var/lib/vigil-relay</span>
+<span class="hl-keyword">volumes</span>:
+  <span class="hl-var">relay-queue</span>:</pre>
+      </div>
+
+      <h3>Keep the dashboard private</h3>
+      <p class="prose">Once a remote relay has connected, you can turn off the <strong>Built-in</strong> relay. From then on the dashboard refuses any agent that did not come through a relay. Vigil won't let you turn it off before a relay has connected, so you can't lock every agent out.</p>
+
+      <h3>Relay settings</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Variable</th><th>Default</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>RELAY_KEY_SHA256</code></td><td><em>required</em></td><td>The hash of the relay key from Settings. The relay never holds the key itself.</td></tr>
+          <tr><td><code>RELAY_PORT</code></td><td><code>8443</code></td><td>The port it listens on.</td></tr>
+          <tr><td><code>RELAY_TLS_CERT</code>, <code>RELAY_TLS_KEY</code></td><td><em>empty</em></td><td>Certificate and key files. Without them it serves plain HTTP for a proxy in front.</td></tr>
+          <tr><td><code>RELAY_TRUST_PROXY</code></td><td><code>false</code></td><td>Read the agent's address from <code>X-Forwarded-For</code>. Only behind your own proxy.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+    <div class="divider"></div>
+
+    <section class="section" id="remote-sessions">
+      <p class="section-label">Operations</p>
+      <h2 class="section-title" style="color:var(--mint-ink)">Web shell, container shell and Web RDP</h2>
+      <p class="section-desc">Open a terminal on a host, a shell inside one of its containers, or a Windows desktop, in the browser. It works through relays too. Press <strong>Connect</strong> on a host card, the Monitor page or a container row. The same menu still offers the SSH command and the <code>.rdp</code> download.</p>
+
+      <h3>Before it works</h3>
+      <ol class="prose">
+        <li><strong>The host opts in, on the host.</strong> Add <code>allow_remote_shell: true</code> (and for Windows desktops <code>allow_remote_desktop: true</code>) to its <code>agent.yml</code>, or pass <code>--allow-remote-shell</code> / <code>-AllowRemoteShell</code> to the installer. Vigil can never switch this on from the dashboard. Monitor-mode agents never allow it.</li>
+        <li><strong>You have two-factor set up.</strong> Every session asks for a fresh code.</li>
+        <li><strong>You may open shells there.</strong> Admins can. Operators need the <em>Open shells</em> permission for that site on Business.</li>
+        <li><strong>For Web RDP</strong>, start the <code>guacd</code> service: <code>docker compose --profile rdp up -d</code>. Remote Desktop must be on in Windows; the desktop is reached through the agent, so port 3389 never has to be open to the network.</li>
+      </ol>
+      <p class="prose">If something is missing, the menu item is greyed out and says why.</p>
+
+      <h3>What keeps it safe</h3>
+      <ul class="prose">
+        <li>The dashboard signs each session request. The agent checks the signature, that it is for this host, and that it is under a minute old, so a relay or anyone in between cannot open a shell.</li>
+        <li>A session ends after 15 minutes without input, after 8 hours, or when you sign out.</li>
+        <li>Windows sign-in details for Web RDP go straight to the desktop and are never stored.</li>
+        <li>Every session is logged: who, which host, when, for how long. <strong>Business</strong> also records the whole session and plays it back from the audit log.</li>
+      </ul>
     </section>
     <div class="divider"></div>
 
@@ -921,10 +856,14 @@
             <tr><td>AI task suggestions: bring-your-own endpoint &amp; key</td><td>✓</td><td>✓</td></tr>
             <tr><td>Public status page (token URL, "Powered by Vigil" badge)</td><td>✓</td><td>✓</td></tr>
             <tr><td>Jackil integration (alert → ticket)</td><td>✓</td><td>✓</td></tr>
-            <tr><td>Seats</td><td>1 admin + 1 viewer</td><td>Per-seat pricing</td></tr>
+            <tr><td>Reports over playbook and automation runs</td><td>✓</td><td>✓</td></tr>
+            <tr><td>Web shell, container shell, Web RDP</td><td>✓</td><td>✓</td></tr>
+            <tr><td>Relays (connection points for agents)</td><td>1: built-in or one remote</td><td>Seats + 2</td></tr>
+            <tr><td>Seats</td><td>2 admins; viewers unlimited</td><td>Per-seat pricing; viewers unlimited</td></tr>
             <tr><td>Roles</td><td>Admin, Viewer</td><td>+ Operator, custom roles</td></tr>
             <tr><td>Sites (administrative boundaries, per-site scoping)</td><td>1 (default)</td><td>Unlimited</td></tr>
             <tr><td>Audit log viewer + CSV export (recording is always on)</td><td>No</td><td>✓</td></tr>
+            <tr><td>Full recording of shell and RDP sessions</td><td>No</td><td>✓</td></tr>
             <tr><td>Status page branding: logo, no badge, per-site client pages</td><td>No</td><td>✓</td></tr>
             <tr><td>Branding (reports, portal)</td><td>No</td><td>✓</td></tr>
             <tr><td>SSO / SAML</td><td>No</td><td>Talk to us</td></tr>
@@ -1003,7 +942,7 @@
     <section class="section" id="agent">
       <p class="section-label">Agent</p>
       <h2 class="section-title" style="color:var(--mint-ink)">The Agent</h2>
-      <p class="section-desc">The Vigil agent is a single PyInstaller binary that runs as a system service on every monitored host. It has no inbound ports and no listening sockets.</p>
+      <p class="section-desc">One small program that runs as a service on each machine. It only ever connects out, to Vigil or a relay, and never listens on a port.</p>
 
       <h3>Supported Platforms</h3>
       <div class="prose">
@@ -1014,7 +953,7 @@
           <span class="plat plat-mac">macOS Apple Silicon</span>
           <span class="plat plat-win">Windows x86-64</span>
         </p>
-        <p style="margin-top:12px;">Linux binaries are baked into the Docker image at build time. macOS and Windows binaries are compiled on native runners in CI and baked into the same image, so the install script always serves the correct binary for the connecting host's architecture.</p>
+        <p style="margin-top:12px;">Every build ships inside the Vigil image, and the installer picks the right one for the machine.</p>
       </div>
 
       <h3>What the Agent Does</h3>
@@ -1047,7 +986,12 @@
 <span class="hl-var">allowlist</span>:           <span class="hl-comment"># only for "managed" mode</span>
   - <span class="hl-string">restart_service</span>
   - <span class="hl-string">run_script</span>
-  - <span class="hl-string">update_agent</span></pre>
+  - <span class="hl-string">update_agent</span>
+
+<span class="hl-comment"># Live sessions (2026.15): off unless this file turns them on</span>
+<span class="hl-var">allow_remote_shell</span>: <span class="hl-num">false</span>     <span class="hl-comment"># web shell and container shells</span>
+<span class="hl-var">allow_remote_desktop</span>: <span class="hl-num">false</span>   <span class="hl-comment"># Web RDP (Windows)</span>
+<span class="hl-var">remote_shell_user</span>: <span class="hl-string">root</span>     <span class="hl-comment"># the account a web shell runs as</span></pre>
       </div>
     </section>
     <div class="divider"></div>
@@ -1092,35 +1036,11 @@
     <!-- ENROLLMENT -->
     <section class="section" id="enrollment">
       <p class="section-label">Enrollment</p>
-      <h2 class="section-title" style="color:var(--peach-ink)">Enrollment Wizard</h2>
-      <p class="section-desc">Adding a new host is a four-step guided process. No manual config editing required.</p>
-
-      <div class="steps">
-        <div class="step">
-          <div class="step-content">
-            <strong>Generate token.</strong> Click <em>Add Host</em> in the dashboard. The wizard generates a UUID token client-side and shows a one-liner install command with the token embedded.
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-content">
-            <strong>Install the agent.</strong> Copy and run the install command on the target host. The script downloads the correct binary for the host's OS and architecture, writes <code>agent.yml</code> with the token, and starts the service.
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-content">
-            <strong>Wait for check-in.</strong> The wizard polls <code>/api/v1/hosts/check-pending/</code> every 3 seconds. When the agent's first check-in arrives, the wizard advances automatically.
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-content">
-            <strong>Approve the host.</strong> Review the hostname and OS shown by the wizard. Click <em>Approve</em>. The host transitions from <code>pending</code> to <code>online</code> and immediately appears in the dashboard.
-          </div>
-        </div>
-      </div>
-
+      <h2 class="section-title" style="color:var(--peach-ink)">Adding a host</h2>
+      <p class="section-desc">Press <strong>Add Host</strong> on the dashboard, pick the operating system, and run the command it shows on the machine. The dialog waits for the agent's first check-in, then you approve it.</p>
       <div class="callout callout-info">
         <div class="callout-icon">i</div>
-        <div>Hosts remain in <strong>pending</strong> status until explicitly approved. A pending agent submits metrics but receives no tasks and no public key until the admin approves it.</div>
+        <div>A new host stays <strong>pending</strong> until you approve it. A pending agent can report metrics but gets no tasks. Pending hosts also wait under <strong>Settings → Agents</strong>.</div>
       </div>
     </section>
     <div class="divider"></div>
@@ -1128,98 +1048,32 @@
     <!-- INSTALL -->
     <section class="section" id="install">
       <p class="section-label">Agent Distribution</p>
-      <h2 class="section-title" style="color:var(--lemon-ink)">Agent Install</h2>
-      <p class="section-desc">Vigil serves platform-specific install scripts and binaries from its own web server. No external registry needed.</p>
+      <h2 class="section-title" style="color:var(--lemon-ink)">Agent install and uninstall</h2>
+      <p class="section-desc">Vigil serves the installers and agent builds itself. The Add Host dialog fills in the address and a one-time token for you; these are the same commands written out.</p>
 
-      <h3>Linux</h3>
       <div class="code-block">
-        <div class="code-label">Bash</div>
-        <pre><span class="hl-comment"># Zero-touch: token embedded</span>
-<span class="hl-var">VIGIL_TOKEN</span>=<span class="hl-string">your-uuid</span> <span class="hl-cmd">curl</span> <span class="hl-flag">-fsSL</span> http://vigil:9200/agent/install.sh | <span class="hl-cmd">sudo bash</span>
-
-<span class="hl-comment"># Prompt for token interactively</span>
-<span class="hl-cmd">curl</span> <span class="hl-flag">-fsSL</span> http://vigil:9200/agent/install.sh | <span class="hl-cmd">sudo bash</span></pre>
+        <div class="code-label">Linux and macOS</div>
+        <pre><span class="hl-cmd">curl</span> <span class="hl-flag">-fsSL</span> https://vigil.example.com/agent/install.sh | <span class="hl-cmd">sudo env</span> <span class="hl-var">VIGIL_TOKEN</span>=<span class="hl-string">&lt;token&gt;</span> <span class="hl-cmd">bash</span></pre>
       </div>
-      <p class="prose">The script auto-detects <code>x86_64</code> or <code>aarch64</code>, downloads the matching binary, installs to <code>/usr/local/bin/vigil-agent</code>, writes config, and registers a systemd service.</p>
-
-      <h3>macOS</h3>
       <div class="code-block">
-        <div class="code-label">Bash</div>
-        <pre><span class="hl-var">VIGIL_TOKEN</span>=<span class="hl-string">your-uuid</span> <span class="hl-cmd">curl</span> <span class="hl-flag">-fsSL</span> http://vigil:9200/agent/install.sh | <span class="hl-cmd">sudo bash</span></pre>
+        <div class="code-label">Windows (PowerShell as Administrator)</div>
+        <pre><span class="hl-var">$env:VIGIL_TOKEN</span> = <span class="hl-string">"&lt;token&gt;"</span>; <span class="hl-cmd">irm</span> https://vigil.example.com/agent/install.ps1 | <span class="hl-cmd">iex</span></pre>
       </div>
-      <p class="prose">Same script. It detects Darwin, selects <code>darwin-amd64</code> or <code>darwin-arm64</code>, installs to <code>/usr/local/bin/</code>, writes a launchd plist, and loads with <code>launchctl</code>.</p>
+      <p class="prose">Linux gets a systemd service, macOS a launchd daemon and Windows a service. The config lives in <code>/etc/vigil/agent.yml</code> or <code>C:\ProgramData\Vigil\agent.yml</code>. To enroll through a <a href="#relays">relay</a>, use the commands under <strong>Settings → Relays → Install commands</strong>.</p>
 
-      <h3>Windows</h3>
+      <h3>Uninstall</h3>
       <div class="code-block">
-        <div class="code-label">PowerShell (run as Administrator)</div>
-        <pre><span class="hl-var">$env:VIGIL_TOKEN</span>=<span class="hl-string">"your-uuid"</span>
-<span class="hl-cmd">irm</span> http://vigil:9200/agent/install.ps1 | <span class="hl-cmd">iex</span></pre>
+        <div class="code-label">Linux and macOS</div>
+        <pre><span class="hl-cmd">curl</span> <span class="hl-flag">-fsSL</span> https://vigil.example.com/agent/uninstall.sh | <span class="hl-cmd">sudo bash</span></pre>
       </div>
-      <p class="prose">Installs to <code>C:\Program Files\Vigil\</code>, writes config to <code>C:\ProgramData\Vigil\agent.yml</code>, and registers a Windows service via <code>sc.exe</code>.</p>
-
-      <h3>Manual Download</h3>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Platform</th><th>Download Path</th></tr></thead>
-          <tbody>
-            <tr><td><span class="plat plat-linux">Linux x86-64</span></td><td><code>/agent/download/linux-amd64/</code></td></tr>
-            <tr><td><span class="plat plat-linux">Linux ARM64</span></td><td><code>/agent/download/linux-arm64/</code></td></tr>
-            <tr><td><span class="plat plat-mac">macOS Intel</span></td><td><code>/agent/download/darwin-amd64/</code></td></tr>
-            <tr><td><span class="plat plat-mac">macOS Apple Silicon</span></td><td><code>/agent/download/darwin-arm64/</code></td></tr>
-            <tr><td><span class="plat plat-win">Windows x64</span></td><td><code>/agent/download/windows-amd64/</code></td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="callout callout-tip">
-        <div class="callout-icon">T</div>
-        <div>Binaries baked into the Docker image take precedence. Admins can upload manually-built binaries under <strong>Settings → Agent Distribution</strong>, which are served from the <code>media</code> volume and override the baked-in files.</div>
-      </div>
-
-      <h3>Uninstall on Linux</h3>
       <div class="code-block">
-        <div class="code-label">Bash (run as root)</div>
-        <pre><span class="hl-comment"># Stop and disable the service</span>
-<span class="hl-cmd">systemctl</span> stop vigil-agent
-<span class="hl-cmd">systemctl</span> disable vigil-agent
-
-<span class="hl-comment"># Remove the unit file and reload systemd</span>
-<span class="hl-cmd">rm</span> <span class="hl-flag">-f</span> /etc/systemd/system/vigil-agent.service
-<span class="hl-cmd">systemctl</span> daemon-reload
-
-<span class="hl-comment"># Remove binary and config</span>
-<span class="hl-cmd">rm</span> <span class="hl-flag">-f</span> /usr/local/bin/vigil-agent
-<span class="hl-cmd">rm</span> <span class="hl-flag">-rf</span> /etc/vigil</pre>
+        <div class="code-label">Windows (PowerShell as Administrator)</div>
+        <pre><span class="hl-cmd">irm</span> https://vigil.example.com/agent/uninstall.ps1 | <span class="hl-cmd">iex</span></pre>
       </div>
+      <p class="prose">Then remove the host in the dashboard to drop its history.</p>
 
-      <h3>Uninstall on macOS</h3>
-      <div class="code-block">
-        <div class="code-label">Bash (run as root)</div>
-        <pre><span class="hl-comment"># Unload and remove the launchd plist</span>
-<span class="hl-cmd">launchctl</span> unload /Library/LaunchDaemons/com.sqsy.vigil-agent.plist
-<span class="hl-cmd">rm</span> <span class="hl-flag">-f</span> /Library/LaunchDaemons/com.sqsy.vigil-agent.plist
-
-<span class="hl-comment"># Remove binary and config</span>
-<span class="hl-cmd">rm</span> <span class="hl-flag">-f</span> /usr/local/bin/vigil-agent
-<span class="hl-cmd">rm</span> <span class="hl-flag">-rf</span> /etc/vigil</pre>
-      </div>
-
-      <h3>Uninstall on Windows</h3>
-      <div class="code-block">
-        <div class="code-label">PowerShell (run as Administrator)</div>
-        <pre><span class="hl-comment"># Stop and delete the Windows service</span>
-<span class="hl-cmd">sc.exe</span> stop  VigilAgent
-<span class="hl-cmd">sc.exe</span> delete VigilAgent
-
-<span class="hl-comment"># Remove program files and config</span>
-<span class="hl-cmd">Remove-Item</span> <span class="hl-flag">-Recurse -Force</span> <span class="hl-string">"C:\Program Files\Vigil"</span>
-<span class="hl-cmd">Remove-Item</span> <span class="hl-flag">-Recurse -Force</span> <span class="hl-string">"C:\ProgramData\Vigil"</span></pre>
-      </div>
-
-      <div class="callout callout-info">
-        <div class="callout-icon">i</div>
-        <div>After uninstalling the agent, remove the host record from the Vigil dashboard under <strong>Hosts → &hellip; → Remove Host</strong>. This clears all stored metrics and alerts for that host from the database.</div>
-      </div>
+      <h3>Agent builds</h3>
+      <p class="prose">Builds for Linux (x86-64, ARM64), macOS (Intel, Apple Silicon) and Windows x64 ship inside the image at <code>/agent/download/&lt;platform&gt;/</code>. A build uploaded under <strong>Settings → Agent Binary</strong> takes their place.</p>
     </section>
     <div class="divider"></div>
 
@@ -1563,27 +1417,6 @@
       <p class="prose">An automation normally sends its work to every matching host at once. Set <strong>How</strong> to <em>Wave by wave</em> and it hands the work to the rollout machinery instead, so "when a critical alert fires, patch, but canary first" is expressible.</p>
       <p class="prose">In wave mode the automation's own target selection is ignored. The waves decide which machines get it, by tag. Two competing host-selection rules would be worse than one, so the waves win and the editor says so.</p>
 
-      <h3 id="reports">Reports</h3>
-      <p class="prose"><strong>Reports</strong>, in the sidebar, keeps saved reports. A report names some playbooks and automations, a range (7, 14, 30, 90, 180 or 365 days) and up to 12 charts. <em>New report</em> opens the builder; a new report starts with <em>Success rate</em>, <em>Runs per day</em> and <em>Failures by step</em>. Operators and admins create and edit reports. You can open a report you made, or one that names a playbook or automation you can open; a report built only from another site's sources stays out of your list.</p>
-      <p class="prose">Every number is worked out from run history when the report is opened, per host-run: one host's go at one run. A host-run is ok, failed or still pending exactly as the run's own detail page says. A failure the playbook handles with <code>on_failure: continue</code> is not a failure, and go tos are left out.</p>
-      <p class="prose">A run from an automation that runs a playbook counts once, under the automation when the report names it. A report never shows a playbook or automation the viewer could not open: those drop out of the numbers.</p>
-      <p class="prose">Past four sources, the rest are drawn as one grey <em>Other</em> line or bar (for the success rate it is their average, labelled <em>Other (average)</em>). A chart with nothing in range says <em>Nothing ran in this range.</em></p>
-      <p class="prose">Each chart has a <em>CSV</em> button. Days are UTC. Very large reports stop at 200,000 task rows, newest first, and say so.</p>
-
-      <h3 id="report-charts">The charts</h3>
-      <div class="table-wrap"><table>
-        <thead><tr><th>Chart</th><th>What it shows</th></tr></thead>
-        <tbody>
-          <tr><td><strong>Success rate</strong></td><td>Per day and per source, the share of finished host-runs that ended ok (pending ones are left out).</td></tr>
-          <tr><td><strong>Runs per day</strong></td><td>Host-runs per day, stacked as ok, failed and pending.</td></tr>
-          <tr><td><strong>Failures by step</strong></td><td>The 15 steps that failed most often across the range.</td></tr>
-          <tr><td><strong>Branch paths</strong></td><td>How many host-runs went down each branch of a playbook.</td></tr>
-          <tr><td><strong>Duration</strong></td><td>The median and 95th-percentile length of a host-run, per day.</td></tr>
-          <tr><td><strong>Host outcomes</strong></td><td>Each host's newest host-run per source, and how it ended.</td></tr>
-          <tr><td><strong>Automation fires</strong></td><td>How often each selected automation ran, per day.</td></tr>
-        </tbody>
-      </table></div>
-
       <h3>Operator actions</h3>
       <p class="prose">Click any rollout to open it. Which actions appear depends on what the rollout is doing:</p>
       <div class="table-wrap"><table>
@@ -1596,6 +1429,44 @@
         </tbody>
       </table></div>
       <p class="prose">Halting, resuming, skipping validation and starting a rollout all need an admin and a TOTP code, the same as deploying a task by hand. They change what happens to the whole fleet.</p>
+    </section>
+
+    <section class="section" id="reports">
+      <p class="section-label">Automation</p>
+      <h2 class="section-title" style="color:var(--lavender-ink)">Reports</h2>
+      <p class="section-desc">Charts over your playbook and automation runs, saved as a report you can come back to. Open <strong>Reports</strong> in the sidebar.</p>
+
+      <h3>Make one</h3>
+      <ol class="prose">
+        <li>Press <em>New report</em>. Name it and pick a range: 7, 14, 30, 90, 180 or 365 days.</li>
+        <li>Pick the playbooks and automations it covers (its <em>sources</em>).</li>
+        <li>Add charts, up to 12. Each chart is a card: choose what it measures, the chart type, its title, axis titles, the legend, and whether it covers every source or only some. The preview beside the card redraws from real run history as you type.</li>
+        <li>Save. Open the report, press <em>Edit layout</em>, then drag and resize the cards. <em>Done</em> saves where they sit.</li>
+      </ol>
+      <p class="prose">Admins and operators make and edit reports. You see a report if you made it, or if it covers a playbook or automation you can open. Sources you can't open drop out of the numbers.</p>
+
+      <h3 id="report-charts">What a chart can show</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Chart</th><th>What it shows</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Success rate</strong></td><td>Per day and source, the share of finished host-runs that ended ok.</td></tr>
+          <tr><td><strong>Runs per day</strong></td><td>Host-runs per day, split into ok, failed and pending.</td></tr>
+          <tr><td><strong>Failures by step</strong></td><td>The 15 steps that failed most often.</td></tr>
+          <tr><td><strong>Branch paths</strong></td><td>How many host-runs took each branch.</td></tr>
+          <tr><td><strong>Duration</strong></td><td>Median and 95th-percentile time per host-run, per day.</td></tr>
+          <tr><td><strong>Host outcomes</strong></td><td>Each host's latest result per source.</td></tr>
+          <tr><td><strong>Automation fires</strong></td><td>How often each automation ran, per day.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>How the numbers are counted</h3>
+      <ul class="prose">
+        <li>A <em>host-run</em> is one host's go at one run. It is ok, failed or pending exactly as the run's detail page says.</li>
+        <li>A failure the playbook handles with <code>on_failure: continue</code> is not a failure. Go-to steps are left out.</li>
+        <li>A run started by an automation that runs a playbook counts once, under the automation when the report names it.</li>
+        <li>Past four sources, the rest are drawn as one grey <em>Other</em> series.</li>
+        <li>Days are UTC. Every chart has a <em>CSV</em> button. A report stops at 200,000 task rows, newest first, and says so.</li>
+      </ul>
     </section>
 
     <section class="section" id="hunts">
