@@ -342,10 +342,17 @@ class ForwardableTests(unittest.TestCase):
         for method, path in (("POST", "/login/"), ("GET", "/api/v1/hosts/"), ("GET", "/admin/"),
                              ("DELETE", "/api/v1/checkin"), ("GET", "@evil.example/api/v1/checkin"),
                              ("GET", "//evil.example/api/v1/checkin"),
-                             ("GET", "/api/v1/agent/../../login/"), ("GET", "")):
+                             ("GET", "/api/v1/agent/../../login/"), ("GET", ""),
+                             ("GET", "/api/v1/agent/%2e%2e/%2e%2e/login/"),
+                             ("GET", "/api/v1/agent/%2E%2E%2Flogin/"),
+                             ("GET", "/api/v1/agent/..%5c..%5clogin/"),
+                             ("GET", "/api/v1/agent\\..\\login/"),
+                             ("GET", "/api/v1/agent/./x/"), ("GET", "/api/v1/agent//x/"),
+                             ("GET", "/api/v1/checkin?next=/login/")):
             self.assertFalse(forwardable(method, path), (method, path))
         self.assertTrue(pipeable("/ws/agent/session/abc/"))
-        for path in ("/ws/session/abc/", "/ws/agent/../session/x/", "@x/ws/agent/"):
+        for path in ("/ws/session/abc/", "/ws/agent/../session/x/", "@x/ws/agent/",
+                     "/ws/agent/%2e%2e/session/x/", "/ws/agent/session/x/%2F"):
             self.assertFalse(pipeable(path), path)
 
 
@@ -367,3 +374,11 @@ class RefusedFrameTests(unittest.IsolatedAsyncioTestCase):
         await up._forward({"id": "1", "method": "POST", "path": "/login/", "query": "",
                            "headers": {}, "body": "", "ip": "1.2.3.4"})
         self.assertEqual(sent[0]["status"], 404)
+
+
+class LinkOnlyCarriesAgentPathsTests(TestCase):
+    def test_a_link_stamped_request_for_a_non_agent_path_is_refused(self):
+        resp = self.client.post("/login/", {"username": "x", "password": "y"},
+                                HTTP_X_VIGIL_LINK=link_token())
+        self.assertEqual(resp.status_code, 403)
+        self.assertNotEqual(self.client.get("/login/").status_code, 403)

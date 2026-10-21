@@ -27,6 +27,11 @@ class RelayGateMiddleware:
 
     def __call__(self, request):
         if not is_agent_path(request.path):
+            # The link only ever carries agent paths. One that arrives through it
+            # anyway means the link was bypassed or fooled: refuse it rather than
+            # serve the dashboard to a relay.
+            if from_link(request):
+                return JsonResponse({"error": "Not an agent path"}, status=403)
             return self.get_response(request)
 
         if from_link(request):

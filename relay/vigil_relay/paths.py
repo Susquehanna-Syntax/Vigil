@@ -20,7 +20,9 @@ def allowed(method: str, path: str) -> bool:
     which keeps the dashboard UI unreachable through the relay."""
     if method.upper() not in _METHODS:
         return False
-    if ".." in path:
+    # aiohttp hands us the decoded path, so "%2e%2e" is already ".." here; a
+    # "%" left over means double encoding, which nothing an agent sends needs.
+    if ".." in path or any(c in path for c in "%\\@"):
         return False
     return path in AGENT_PATHS or path.startswith(AGENT_PREFIXES)
 

@@ -51,6 +51,8 @@ class PathsTest(unittest.TestCase):
             ("GET", "/"),
             ("GET", "/admin/"),
             ("GET", "/login/"),
+            ("GET", "/api/v1/agent/%2e%2e/login/"),
+            ("GET", "/api/v1/agent/x\\..\\y/"),
             ("GET", "/agent/download/../x"),
             ("DELETE", "/api/v1/checkin"),
             ("PUT", "/api/v1/checkin"),

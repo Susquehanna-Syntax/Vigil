@@ -19,6 +19,7 @@ import os
 from dataclasses import dataclass
 
 import aiohttp
+from yarl import URL
 from django.utils.timezone import now
 
 from apps.hosts.crypto import decrypt_secret
@@ -98,20 +99,36 @@ def record_status(relay_id: str, *, connected: bool, error: str = "") -> None:
 _METHODS = ("GET", "POST", "HEAD")
 
 
+def _plain_path(path: str) -> bool:
+    """A path whose meaning cannot change between this check and the web
+    service: absolute, no percent-escapes or backslashes for a later parser to
+    decode into "..", no "@", and no empty, "." or ".." segments (a trailing
+    "/" is fine)."""
+    if not path.startswith("/") or any(c in path for c in "%\\@#?"):
+        return False
+    inner = path[1:].split("/")
+    if inner and inner[-1] == "":
+        inner = inner[:-1]
+    return all(seg not in ("", ".", "..") for seg in inner)
+
+
 def forwardable(method: str, path: str) -> bool:
     """Only agent paths cross the link, checked here as well as at the relay.
 
     The relay is a separate machine, possibly hosted by someone else: if it is
     compromised it must still not be able to reach the login page or the API
-    through us. The path is also concatenated onto UPSTREAM, so it has to be a
-    plain absolute path — "@evil.example/..." would otherwise change the host.
+    through us. The URL is built from exactly the string checked here
+    (``encoded=True``), so nothing downstream re-reads it into something else.
     """
-    return (method.upper() in _METHODS and path.startswith("/") and not path.startswith("//")
-            and ".." not in path and "@" not in path and is_agent_path(path))
+    return method.upper() in _METHODS and _plain_path(path) and is_agent_path(path)
 
 
 def pipeable(path: str) -> bool:
-    return path.startswith("/ws/agent/") and ".." not in path and "@" not in path
+    return _plain_path(path) and path.startswith("/ws/agent/")
+
+
+def _query_ok(query: str) -> bool:
+    return "#" not in query and "\\" not in query
 
 
 def forward_headers(frame_headers: dict, relay_id: str, ip: str) -> dict:
@@ -282,14 +299,14 @@ class Uplink:
         rid = frame.get("id")
         path = str(frame.get("path", ""))
         query = str(frame.get("query", ""))
-        if not forwardable(str(frame.get("method", "GET")), path) or "#" in query:
+        if not forwardable(str(frame.get("method", "GET")), path) or not _query_ok(query):
             await self._send({"t": "res", "id": rid, "status": 404, "headers": {},
                               "body": _b64encode(b'{"error": "not found"}')})
             return
         try:
             resp = await self.session.request(
                 str(frame.get("method", "GET")),
-                self.upstream + path + (("?" + query) if query else ""),
+                URL(self.upstream + path + (("?" + query) if query else ""), encoded=True),
                 headers=forward_headers(frame.get("headers") or {}, self.target.id,
                                         str(frame.get("ip", ""))),
                 data=_b64decode(frame.get("body")),
@@ -318,12 +335,12 @@ class Uplink:
         """Connect upstream and register the pipe. Returns as soon as the pipe can
         carry data; reading it is left to a task."""
         pid = str(frame.get("id", ""))
-        if not pipeable(str(frame.get("path", ""))) or "#" in str(frame.get("query", "")):
+        if not pipeable(str(frame.get("path", ""))) or not _query_ok(str(frame.get("query", ""))):
             await self._send({"t": "ws_close", "id": pid})
             return
         try:
             upstream = await self.session.ws_connect(
-                self._pipe_url(frame),
+                URL(self._pipe_url(frame), encoded=True),
                 headers=forward_headers(frame.get("headers") or {}, self.target.id,
                                         str(frame.get("ip", ""))),
                 heartbeat=None,
