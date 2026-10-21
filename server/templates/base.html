@@ -697,6 +697,15 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
       <button class="tab t-sky active" id="enroll-os-unix" data-act="enrollSetOs" data-a1="unix">Linux &amp; macOS</button>
       <button class="tab t-sky" id="enroll-os-windows" data-act="enrollSetOs" data-a1="windows">Windows</button>
     </div>
+    <div style="margin-bottom:14px;">
+      <label class="deploy-input-label">Agent mode</label>
+      <div class="tab-bar" style="margin-bottom:6px;">
+        <button class="tab t-sky active" id="enroll-mode-monitor" data-act="enrollSetMode" data-a1="monitor">Monitor</button>
+        <button class="tab t-sky" id="enroll-mode-managed" data-act="enrollSetMode" data-a1="managed">Managed</button>
+        <button class="tab t-sky" id="enroll-mode-full_control" data-act="enrollSetMode" data-a1="full_control">Full control</button>
+      </div>
+      <div class="confirm-hint" id="enroll-mode-hint"></div>
+    </div>
     <div style="margin-bottom:12px;">
       <label class="deploy-input-label">One-liner install command</label>
       <div class="code-block mono" id="enroll-cmd" style="cursor:pointer;user-select:all;word-break:break-all;" data-act="copyEnrollCmd" title="Click to copy">Generating…</div>

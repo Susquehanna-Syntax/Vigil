@@ -3,6 +3,9 @@
 # Linux / macOS
 # Usage: curl -fsSL {{ base_url }}/agent/install.sh | sudo bash
 #   or:  curl -fsSL {{ base_url }}/agent/install.sh | sudo env VIGIL_TOKEN=<token> bash
+#   mode: add VIGIL_MODE=monitor|managed|full_control to the env (default monitor)
+#   profile: add VIGIL_CONFIG_TOKEN=<one-time token> to write the whole agent.yml
+#            from an agent profile chosen in the Add Host wizard
 set -e
 
 VIGIL_SERVER="{{ base_url }}"
@@ -119,8 +122,48 @@ if [ -f /etc/vigil/agent.yml ]; then
   fi
 fi
 
+# ── Agent profile (2026.15) ─────────────────────────────────────────────────
+# VIGIL_CONFIG_TOKEN comes from the Add Host wizard or a rebuild. It is redeemed
+# once for a complete agent.yml the dashboard rendered from an agent profile:
+# mode, allowed actions, relays, live-session switches, tags and intervals.
+# It replaces any existing config, carrying over only the agent token. From
+# then on this file is the authority; the dashboard cannot change it later.
+PROFILE_FILE=""
+if [ -n "${VIGIL_CONFIG_TOKEN:-}" ]; then
+  if ! printf '%s' "$VIGIL_CONFIG_TOKEN" | grep -Eq '^[A-Za-z0-9_-]{16,128}$'; then
+    echo "ERROR: VIGIL_CONFIG_TOKEN is not a valid token" >&2
+    exit 1
+  fi
+  PROFILE_FILE="$(mktemp)"
+  if ! curl -fsS "${VIGIL_SERVER}/agent/enroll-config/${VIGIL_CONFIG_TOKEN}/" -o "$PROFILE_FILE" \
+     || ! head -1 "$PROFILE_FILE" | grep -q '^# Vigil agent config' \
+     || ! grep -q '^agent_token: "REPLACE_WITH_TOKEN"$' "$PROFILE_FILE"; then
+    rm -f "$PROFILE_FILE"
+    echo "ERROR: ${VIGIL_SERVER} rejected the config token." >&2
+    echo "It may have expired (24 hours) or already been used; make a new one in Add Host." >&2
+    exit 1
+  fi
+  chmod 600 "$PROFILE_FILE"
+  if [ -f /etc/vigil/agent.yml ]; then
+    if [ -z "${VIGIL_TOKEN:-}" ] && [ -z "${VIGIL_ENROLL_TOKEN:-}" ]; then
+      KEPT_TOKEN="$(sed -n 's/^agent_token:[[:space:]]*//p' /etc/vigil/agent.yml | head -1 | tr -d '"'"'"' ')"
+      if printf '%s' "$KEPT_TOKEN" | grep -Eq '^[A-Za-z0-9_-]{16,128}$'; then
+        VIGIL_TOKEN="$KEPT_TOKEN"
+      fi
+    fi
+    mv -f /etc/vigil/agent.yml "/etc/vigil/agent.yml.before-profile.$(date +%s)"
+    chmod 600 /etc/vigil/agent.yml.before-profile.* 2>/dev/null || true
+  fi
+fi
+
 if [ ! -f /etc/vigil/agent.yml ]; then
-  cat > /etc/vigil/agent.yml << 'EOF'
+  if [ -n "$PROFILE_FILE" ]; then
+    # The profile's file is the template: it already names its server and
+    # carries the REPLACE_WITH_TOKEN placeholder the token steps below fill.
+    mv -f "$PROFILE_FILE" /etc/vigil/agent.yml
+    echo "Config written from the agent profile."
+  else
+    cat > /etc/vigil/agent.yml << 'EOF'
 server_url: "REPLACE_WITH_SERVER_URL"
 agent_token: "REPLACE_WITH_TOKEN"
 mode: monitor
@@ -139,7 +182,8 @@ allowlist:
   - hunt_registry
   - hunt_service
 EOF
-  sed -i.bak "s|REPLACE_WITH_SERVER_URL|${VIGIL_SERVER}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+    sed -i.bak "s|REPLACE_WITH_SERVER_URL|${VIGIL_SERVER}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
+  fi
 
   if [ -n "${VIGIL_TOKEN:-}" ]; then
     sed -i.bak "s|REPLACE_WITH_TOKEN|${VIGIL_TOKEN}|" /etc/vigil/agent.yml && rm -f /etc/vigil/agent.yml.bak
@@ -219,6 +263,11 @@ fi
 # Root owns the config in every mode; monitor mode gets group read below.
 chown root /etc/vigil/agent.yml
 chmod 600 /etc/vigil/agent.yml
+if [ -n "${VIGIL_CONFIG_TOKEN:-}" ]; then
+  P_SERVER="$(sed -n 's/^server_url:[[:space:]]*//p' /etc/vigil/agent.yml | head -1 | tr -d '"'"'"' ')"
+  P_FALLBACKS="$(awk '/^fallback_urls:/{f=1;next} /^[^ -]/{f=0} f&&/^[ ]*- /{n++} END{print n+0}' /etc/vigil/agent.yml)"
+  echo "Profile applied: mode ${CFG_MODE}, checks in with ${P_SERVER}, ${P_FALLBACKS} fallback address(es)."
+fi
 
 # ── Service installation ────────────────────────────────────────────────────
 

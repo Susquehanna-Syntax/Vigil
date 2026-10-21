@@ -9,6 +9,13 @@ let _enrollToken = null;
 let _enrollPollTimer = null;
 let _enrollDetectedHost = null;
 let _enrollOs = 'unix';  // 'unix' (Linux/macOS, any arch) or 'windows'
+let _enrollMode = 'monitor';  // 'monitor' | 'managed' | 'full_control'
+
+const _ENROLL_MODE_HINTS = {
+  monitor: 'Read-only metrics. Runs unprivileged and executes no tasks.',
+  managed: 'Runs allowlisted tasks. The agent runs as root / SYSTEM.',
+  full_control: 'Runs any signed task, including package installs. The agent runs as root / SYSTEM.',
+};
 
 /* ── helpers ── */
 
@@ -29,11 +36,40 @@ function _enrollSetStep(n) {
 
 /* ── public API ── */
 
+/* The two commands are each ONE template literal, alone on its line, with no
+   second backtick anywhere near it and no line break inside it.
+   test_enroll_command reads this file as text: it lifts the install.sh command
+   out by its backticks, substitutes the ${_enrollToken} and ${origin}
+   placeholders, and runs the result under bash, because short of installing a
+   real host that is the only way to know the token reaches the installer. That
+   regex spans neither a second backtick nor a newline, so a nested template
+   literal — or either command wrapped in a function call or a conditional —
+   quietly hands it a fragment of the other one. Both commands therefore keep
+   their parameters as named placeholders that are substituted afterwards, and
+   the optional mode is spliced in afterwards too. */
+
+const _ENROLL_WIN_CMD = '$env:VIGIL_TOKEN = "${_enrollToken}"; irm ${origin}/agent/install.ps1 | iex';
+
+function _enrollWindowsCmd(mode) {
+  // monitor is the installer's default, so the command names a mode only when it differs.
+  const command = _ENROLL_WIN_CMD.replace('${_enrollToken}', _enrollToken).replace('${origin}', window.location.origin);
+  return mode === 'monitor' ? command
+    : command.replace('; irm', `; $env:VIGIL_MODE = "${mode}"; irm`);
+}
+
+const _ENROLL_LINUX_CMD = `curl -fsSL ${origin}/agent/install.sh | sudo env VIGIL_TOKEN=${_enrollToken} bash`;
+
+function _enrollLinuxCmd(mode) {
+  const command = _ENROLL_LINUX_CMD.replace('${_enrollToken}', _enrollToken).replace('${origin}', window.location.origin);
+  return mode === 'monitor' ? command
+    : command.replace(' bash', ` VIGIL_MODE=${mode} bash`);
+}
+
 function _enrollRenderCmd() {
-  const origin = window.location.origin;
-  const cmd = _enrollOs === 'windows'
-    ? `$env:VIGIL_TOKEN = "${_enrollToken}"; irm ${origin}/agent/install.ps1 | iex`
-    : `curl -fsSL ${origin}/agent/install.sh | sudo env VIGIL_TOKEN=${_enrollToken} bash`;
+  const cmd = _enrollOs === 'windows' ? _enrollWindowsCmd(_enrollMode)
+    : _enrollLinuxCmd(_enrollMode);
+  const modeHint = document.getElementById('enroll-mode-hint');
+  if (modeHint) modeHint.textContent = _ENROLL_MODE_HINTS[_enrollMode];
   document.getElementById('enroll-cmd').textContent = cmd;
   const hint = document.getElementById('enroll-cmd-hint');
   if (hint) {
@@ -47,6 +83,14 @@ function enrollSetOs(os) {
   _enrollOs = os;
   document.getElementById('enroll-os-unix').classList.toggle('active', os === 'unix');
   document.getElementById('enroll-os-windows').classList.toggle('active', os === 'windows');
+  _enrollRenderCmd();
+}
+
+function enrollSetMode(mode) {
+  if (!_ENROLL_MODE_HINTS[mode]) return;
+  _enrollMode = mode;
+  Object.keys(_ENROLL_MODE_HINTS).forEach(m =>
+    document.getElementById('enroll-mode-' + m).classList.toggle('active', m === mode));
   _enrollRenderCmd();
 }
 
