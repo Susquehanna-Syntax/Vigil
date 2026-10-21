@@ -4667,3 +4667,37 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .topo-zoom-btn.topo-zoom-fit { font-size: 11px; }
 .topo-zoom-btn:hover { background: var(--s2); }
 .topo-zoom-btn:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
+
+/* ── QA-64: agent profiles — the settings form, its action picker, and the
+   Reimage tab. Appended; nothing above this line changed. ─────────────── */
+
+.apf { display: flex; flex-direction: column; gap: 16px; }
+.apf-section { border: 1px solid var(--border); border-radius: var(--r-md); padding: 14px; background: var(--s1); }
+.apf-advanced summary { cursor: pointer; }
+.apf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.apf-field { display: flex; flex-direction: column; gap: 4px; }
+.apf-field-label { font-size: 12px; color: var(--text-2); }
+.apf-narrow { max-width: 180px; }
+.apf-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+
+/* The allowlist picker is the widest part of the form and needs its own scroll
+   box: an agent's full action list is longer than any dialog holding it. */
+.apf-action-tools { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.apf-action-search { flex: 1; }
+.apf-actions { max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px; background: var(--s2); }
+.apf-actions details { margin-bottom: 6px; }
+.apf-actions summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.apf-action { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 4px; border-radius: var(--r-sm); }
+.apf-action:hover { background: var(--s3); }
+.apf-action-name { color: var(--text-3); font-size: 11px; }
+
+.apf-fallbacks { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.apf-fallback-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.apf-fallback-name { flex: 1; }
+
+/* Validation text sits under the field it refuses, in the colour every other
+   refusal in the app uses. */
+.apf-error { color: var(--rose-ink); font-size: 12px; margin-top: 6px; }
+/* Checkbox rows and the narrow fields under them get room to breathe. */
+.apf-section > .apf-check, .apf-section > .apf-narrow { margin-top: 10px; }
+.apf-section > .deploy-input-label + .apf-check { margin-top: 6px; }

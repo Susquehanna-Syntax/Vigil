@@ -364,6 +364,8 @@ function _reproStatusSpan(rawValue, classifyAs) {
 async function loadReprovisionPage() {
   _reproLoadImages();
   _reproLoadProfiles();
+  if (typeof loadAgentProfiles === 'function') loadAgentProfiles();
+  _reproLoadAgentProfiles();
   _reproLoadJobs();
   if (!_reproCatalogLoaded) {
     _reproCatalogLoaded = true;
@@ -781,6 +783,37 @@ async function _reproSubmitUpload() {
 
 /* ── Install profiles ────────────────────────────────────────────────── */
 
+// Agent profiles for the install-profile form's picker. The Reimage page loads
+// it with the rest of its data; the "none" option is what an install profile
+// without one means to the API (null).
+let _reproAgentProfiles = [];
+
+async function _reproLoadAgentProfiles() {
+  try {
+    const rows = await apiJson('/api/v1/agent-profiles/');
+    _reproAgentProfiles = Array.isArray(rows) ? rows : [];
+  } catch (e) {
+    _reproAgentProfiles = [];   // non-admin, or the endpoint is off
+  }
+  _reproFillProfileAgentProfiles();
+}
+
+function _reproFillProfileAgentProfiles() {
+  const sel = document.getElementById('repro-prof-agentprofile');
+  if (!sel) return;
+  sel.replaceChildren();
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = 'none';
+  sel.appendChild(none);
+  for (const ap of _reproAgentProfiles) {
+    const opt = document.createElement('option');
+    opt.value = String(ap.id);
+    opt.textContent = ap.name;
+    sel.appendChild(opt);
+  }
+}
+
 async function _reproLoadProfiles() {
   const list = document.getElementById('repro-profiles-list');
   if (!list) return;
@@ -954,6 +987,9 @@ function _reproOpenProfile(prof) {
   }
 
   _reproFillProfileImages(prof?.image);
+  _reproFillProfileAgentProfiles();
+  const agentProfile = document.getElementById('repro-prof-agentprofile');
+  if (agentProfile) agentProfile.value = prof?.agent_profile ? String(prof.agent_profile) : '';
   _reproSyncProfileNetwork();
   _reproSetProfileOpen(true);
 }
@@ -985,6 +1021,8 @@ async function _reproSaveProfile() {
     completion_tags: val('repro-prof-tags').split(',')
       .map(t => t.trim()).filter(Boolean),
     deadline_minutes: parseInt(val('repro-prof-deadline'), 10) || 60,
+    // null clears it: the serializer's allow_null reads "" as a bad id.
+    agent_profile: val('repro-prof-agentprofile') || null,
   };
   const password = val('repro-prof-password');
   // Omitted rather than sent blank on an edit: the serializer reads a blank

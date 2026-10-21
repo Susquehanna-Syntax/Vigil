@@ -13,6 +13,7 @@
         <div class="tab t-mint active" data-tab="repro-tab-library">Image library</div>
         <div class="tab t-sky" data-tab="repro-tab-add">Add an image</div>
         <div class="tab t-lav" data-tab="repro-tab-profiles">Install profiles</div>
+        <div class="tab t-peach" data-tab="repro-tab-agentprofiles">Agent profiles</div>
         <div class="tab t-rose" data-tab="repro-tab-jobs">Rebuild jobs</div>
       </div>
 
@@ -197,6 +198,22 @@
 
       </div>{# /repro-tab-profiles #}
 
+      <div id="repro-tab-agentprofiles" class="tab-content">
+      <div class="repro-profiles-head">
+        <div class="section-label" style="margin-top:0;margin-bottom:0;">Agent profiles</div>
+        <button class="btn btn-peach btn-sm" id="ap-new-btn" type="button" data-act="openAgentProfileEditor">+ New agent profile</button>
+      </div>
+      <p class="muted-note repro-add-lede">
+        How an agent behaves once it is installed: its mode, the tasks it may
+        run, where it checks in, and whether anyone may open a session on it.
+        Applied at install and at rebuild — never to a running agent.
+      </p>
+      <div style="background:var(--s1);border-radius:var(--r-lg);padding:20px;margin-bottom:8px;">
+        <div id="agent-profiles-list"></div>
+      </div>
+
+      </div>{# /repro-tab-agentprofiles #}
+
       <div id="repro-tab-jobs" class="tab-content">
       <div class="repro-profiles-head">
         <div class="section-label" style="margin-top:0;margin-bottom:0;">Rebuild jobs</div>
@@ -347,6 +364,15 @@
   </div>
 
   <div class="repro-prof-step">After the rebuild</div>
+  <div class="form-group">
+    <label class="form-label" for="repro-prof-agentprofile">Agent profile</label>
+    <select class="form-control" id="repro-prof-agentprofile"></select>
+    <div class="muted-note repro-prof-hint">
+      How the reinstalled agent should behave — its mode, the tasks it may run,
+      where it checks in. Applied by the installer; a running agent is never
+      changed by it.
+    </div>
+  </div>
   <div class="form-group">
     <label class="form-label" for="repro-prof-tags">Tag the host with</label>
     <input type="text" class="form-control" id="repro-prof-tags" placeholder="role:web, env:lab">

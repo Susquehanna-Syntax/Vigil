@@ -80,7 +80,12 @@ async function apiJson(url, opts) {
         && typeof _sessionLeave === 'function') {
       _sessionLeave(body.reason === 'session_max' ? 'max' : 'idle');
     }
-    throw new Error(body.detail || body.error || 'Request failed');
+    // The body rides along for callers that place per-field errors
+    // ({errors: {field: message}}) next to their fields.
+    const err = new Error(body.detail || body.error || 'Request failed');
+    err.status = resp.status;
+    err.body = body;
+    throw err;
   }
   return body;
 }
