@@ -60,6 +60,7 @@ class Endpoints:
         self.primary = config.primary_url or config.server_url
         self.configured = list(config.fallback_urls)
         self.learned: list[str] = []
+        self.learned_issued = 0
         self.active = self.primary
         self._last_failover: float | None = None
         self._queued = 0
@@ -82,6 +83,9 @@ class Endpoints:
         learned = raw.get("learned")
         if isinstance(learned, list):
             self.learned = [u for u in learned if isinstance(u, str) and _is_http(u)]
+        issued = raw.get("learned_issued")
+        if isinstance(issued, int) and not isinstance(issued, bool):
+            self.learned_issued = issued
         active = raw.get("active")
         # An address removed from agent.yml since it was saved must not keep
         # the agent pointed somewhere its operator took away.
@@ -89,7 +93,8 @@ class Endpoints:
             self.active = active
 
     def _save(self) -> None:
-        state = {"active": self.active, "learned": self.learned}
+        state = {"active": self.active, "learned": self.learned,
+                 "learned_issued": self.learned_issued}
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._path.parent / (self._path.name + ".tmp")
@@ -140,13 +145,17 @@ class Endpoints:
             return
         relays, direct, signature = (response["relays"], response["direct"],
                                      response["relays_sig"])
+        issued = response.get("relays_issued")
         if not isinstance(relays, list) or not isinstance(direct, bool) \
-                or not isinstance(signature, str):
+                or not isinstance(signature, str) \
+                or not isinstance(issued, int) or isinstance(issued, bool):
             self._ignored()
             return
         payload = {
             "v": 1,
+            "type": "relay-list",
             "agent": verify.agent_fingerprint(self._config.agent_token),
+            "issued": issued,
             "relays": relays,
             "direct": direct,
         }
@@ -154,6 +163,11 @@ class Endpoints:
             verify_key.verify(_canonical(payload), base64.b64decode(signature))
         except (BadSignatureError, ValueError, TypeError):
             self._ignored()
+            return
+        # A genuine list that is older than one already accepted is a replay:
+        # a relay that was removed could otherwise bring itself back.
+        if issued < self.learned_issued:
+            logger.warning("ignored a relay list older than the one in use")
             return
         # A valid signature is still not a licence to name a non-HTTP address
         # the agent would POST its token to.
@@ -165,6 +179,7 @@ class Endpoints:
         if self.primary.startswith("https://"):
             relays = [u for u in relays if u.startswith("https://")]
         self.learned = list(relays[:_MAX_LEARNED])
+        self.learned_issued = issued
         self._save()
 
     def failback_due(self) -> bool:

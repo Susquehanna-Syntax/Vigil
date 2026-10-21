@@ -63,10 +63,11 @@ class _Key:
         return self.signing.verify_key
 
 
-def _response(relays, direct=True, agent=None, key=None):
-    payload = {"v": 1, "agent": agent if agent is not None else agent_fingerprint(TOKEN),
+def _response(relays, direct=True, agent=None, key=None, issued=1_800_000_000):
+    payload = {"v": 1, "type": "relay-list", "issued": issued,
+               "agent": agent if agent is not None else agent_fingerprint(TOKEN),
                "relays": relays, "direct": direct}
-    body = {"relays": relays, "direct": direct}
+    body = {"relays": relays, "direct": direct, "relays_issued": issued}
     if key is not None:
         body["relays_sig"] = key.sign(payload)
     return body
@@ -372,6 +373,34 @@ class LearnTests(_Base):
         body = _response(["http://plain.example.com", LEARNED], key=self.key)
         endpoints.learn(body, self.key.verify_key)
         self.assertEqual(endpoints.learned, [LEARNED])
+
+    def test_an_older_list_is_a_replay_and_is_ignored(self):
+        endpoints, _ = self.endpoints()
+        endpoints.learn(_response([LEARNED], key=self.key, issued=200), self.key.verify_key)
+        old = _response(["https://removed.example.com"], key=self.key, issued=100)
+        endpoints.learn(old, self.key.verify_key)
+        self.assertEqual(endpoints.learned, [LEARNED])
+
+    def test_the_newest_issue_time_survives_a_restart(self):
+        endpoints, _ = self.endpoints()
+        endpoints.learn(_response([LEARNED], key=self.key, issued=200), self.key.verify_key)
+        restarted, _ = self.endpoints()
+        old = _response(["https://removed.example.com"], key=self.key, issued=100)
+        restarted.learn(old, self.key.verify_key)
+        self.assertEqual(restarted.learned, [LEARNED])
+
+    def test_a_newer_list_replaces_the_old_one(self):
+        endpoints, _ = self.endpoints()
+        endpoints.learn(_response([LEARNED], key=self.key, issued=100), self.key.verify_key)
+        endpoints.learn(_response([FALLBACK_2], key=self.key, issued=200), self.key.verify_key)
+        self.assertEqual(endpoints.learned, [FALLBACK_2])
+
+    def test_an_issue_time_changed_after_signing_is_ignored(self):
+        endpoints, _ = self.endpoints()
+        body = _response([LEARNED], key=self.key, issued=100)
+        body["relays_issued"] = 999
+        endpoints.learn(body, self.key.verify_key)
+        self.assertEqual(endpoints.learned, [])
 
     def test_nothing_happens_without_a_pinned_key_or_a_list(self):
         endpoints, _ = self.endpoints()

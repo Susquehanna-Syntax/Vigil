@@ -15,6 +15,7 @@ import base64
 import hashlib
 import json
 import secrets
+import time
 import uuid
 
 from django.db import models
@@ -96,10 +97,15 @@ def signed_relay_list(agent_token_fingerprint: str) -> dict:
     this list unsigned could point every agent on the deployment at an address
     it controls. So the payload carries the agent's token fingerprint and is
     signed with the task key; the agent verifies both before storing a URL.
+    "type" keeps this signature from being mistaken for anything else the task
+    key signs, and "issued" lets the agent refuse a list older than the newest
+    it has accepted, so a relay cannot replay one from before it was removed.
     """
     payload = {
         "v": 1,
+        "type": "relay-list",
         "agent": agent_token_fingerprint,
+        "issued": int(time.time()),
         "relays": relay_urls(),
         "direct": direct_allowed(),
     }
@@ -109,5 +115,6 @@ def signed_relay_list(agent_token_fingerprint: str) -> dict:
     return {
         "relays": payload["relays"],
         "direct": payload["direct"],
+        "relays_issued": payload["issued"],
         "relays_sig": signature,
     }

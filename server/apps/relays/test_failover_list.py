@@ -54,7 +54,7 @@ class SignedRelayListTests(TestCase):
         self.assertEqual(body["relays"], ["https://edge.example.com"])
         self.assertFalse(body["direct"])
 
-        payload = {"v": 1, "agent": "f" * 64, "relays": body["relays"],
+        payload = {"v": 1, "type": "relay-list", "issued": body["relays_issued"], "agent": "f" * 64, "relays": body["relays"],
                    "direct": body["direct"]}
         get_signing_key().verify_key.verify(
             json.dumps(payload, sort_keys=True).encode(),
@@ -62,7 +62,7 @@ class SignedRelayListTests(TestCase):
 
     def test_a_signature_cannot_be_moved_to_another_agent(self):
         body = signed_relay_list("f" * 64)
-        other = {"v": 1, "agent": "e" * 64, "relays": body["relays"],
+        other = {"v": 1, "type": "relay-list", "issued": body["relays_issued"], "agent": "e" * 64, "relays": body["relays"],
                  "direct": body["direct"]}
         with self.assertRaises(BadSignatureError):
             get_signing_key().verify_key.verify(
@@ -93,7 +93,7 @@ class CheckinRelayListTests(TestCase):
                          ["https://a.example.com", "https://z.example.com"])
         self.assertTrue(body["direct"])
 
-        payload = {"v": 1, "agent": self.host.token_fingerprint,
+        payload = {"v": 1, "type": "relay-list", "issued": body["relays_issued"], "agent": self.host.token_fingerprint,
                    "relays": body["relays"], "direct": body["direct"]}
         get_signing_key().verify_key.verify(
             json.dumps(payload, sort_keys=True).encode(),
@@ -105,7 +105,7 @@ class CheckinRelayListTests(TestCase):
             status=Host.Status.ONLINE, mode=Host.Mode.MANAGED)
         body = self._checkin().json()
 
-        payload = {"v": 1, "agent": other.token_fingerprint,
+        payload = {"v": 1, "type": "relay-list", "issued": body["relays_issued"], "agent": other.token_fingerprint,
                    "relays": body["relays"], "direct": body["direct"]}
         with self.assertRaises(BadSignatureError):
             get_signing_key().verify_key.verify(
@@ -153,3 +153,17 @@ class RelayPriorityApiTests(TestCase):
                                      "priority": 12}, format="json")
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.json()["priority"], 12)
+
+
+class RelayListFreshnessTests(TestCase):
+    def test_the_list_carries_a_signed_issue_time(self):
+        with patch("apps.relays.models.time.time", return_value=1_800_000_000.7):
+            body = signed_relay_list("f" * 64)
+        self.assertEqual(body["relays_issued"], 1_800_000_000)
+        stale = {"v": 1, "type": "relay-list", "issued": 1_700_000_000,
+                 "agent": "f" * 64, "relays": body["relays"], "direct": body["direct"]}
+        with self.assertRaises(BadSignatureError):
+            get_signing_key().verify_key.verify(
+                json.dumps(stale, sort_keys=True).encode(),
+                base64.b64decode(body["relays_sig"]))
+
