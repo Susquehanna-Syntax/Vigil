@@ -265,6 +265,13 @@ if ($IsZip) {
     Write-Host "with error 1053. Publish a --onedir zip to install the service."
 }
 
+# VIGIL_TOKEN goes into agent.yml and a -replace below, so only a plain token
+# shape is accepted, as install.sh does.
+if ($env:VIGIL_TOKEN -and $env:VIGIL_TOKEN -notmatch '^[A-Za-z0-9_-]{16,128}$') {
+    Write-Host "ERROR: VIGIL_TOKEN must be 16-128 letters, digits, '-' or '_'."
+    exit 1
+}
+
 # ── Agent profile (2026.15) ─────────────────────────────────────────────────
 # VIGIL_CONFIG_TOKEN comes from the Add Host wizard or a rebuild. It is redeemed
 # once for a complete agent.yml the dashboard rendered from an agent profile,
