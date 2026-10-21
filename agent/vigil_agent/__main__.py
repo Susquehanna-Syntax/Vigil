@@ -16,7 +16,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import client, collector, netmap, software, verify, windows_update
+from . import client, collector, failover, netmap, software, verify, windows_update
 from .config import load_config
 from .executor import execute_action
 from .nonce_store import NonceStore
@@ -739,6 +739,7 @@ def run_agent() -> None:
     config.data_dir.mkdir(parents=True, exist_ok=True)
 
     nonce_store = NonceStore(config.data_dir)
+    endpoints = failover.Endpoints(config)
 
     # Register with the server
     try:
@@ -848,17 +849,28 @@ def run_agent() -> None:
                 except Exception:
                     logger.exception("Network map collection failed")
                 network_refresh_after = time.monotonic() + 300
+            # Bound as defaults so each attempt sends this iteration's
+            # payloads. A plain closure would also do — failover.checkin calls
+            # it before the loop re-binds — but defaults say it out loud.
             try:
-                response = client.checkin(
-                    config, metrics, inventory=inventory_payload,
-                    docker_containers=docker_containers,
-                    docker_resources=docker_resources,
-                    reboot_required=collector.reboot_required(),
-                    windows_updates=windows_updates,
-                    software=software_payload,
-                    windows_update_list=update_list,
-                    container_engines=engines,
-                    network=network_payload,
+                response = failover.checkin(
+                    endpoints,
+                    lambda metrics=metrics, inventory=inventory_payload,
+                           containers=docker_containers, resources=docker_resources,
+                           updates=windows_updates, software=software_payload,
+                           update_list=update_list, engines=engines,
+                           network=network_payload: client.checkin(
+                        config, metrics,
+                        inventory=inventory,
+                        docker_containers=containers,
+                        docker_resources=resources,
+                        reboot_required=collector.reboot_required(),
+                        windows_updates=updates,
+                        software=software,
+                        windows_update_list=update_list,
+                        container_engines=engines,
+                        network=network,
+                    ),
                 )
             except Exception:
                 windows_update.restore_update_list(update_list)
@@ -889,6 +901,9 @@ def run_agent() -> None:
                         config.data_dir,
                     )
                     verify_key = None  # Reject all tasks from now on
+
+            # Fallback addresses, accepted only if signed for this agent
+            endpoints.learn(response, verify_key)
 
             # Process tasks
             tasks = response.get("tasks", [])

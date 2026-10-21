@@ -13,6 +13,12 @@
 # URL of the Vigil server (no trailing slash).
 server_url: https://vigil.example.com
 
+# Fallback addresses (2026.15). If server_url stops answering, the agent tries
+# these in order, and every 10 minutes it tries server_url again. The dashboard
+# also sends a signed list of its relays, so this is optional.
+# fallback_urls:
+#   - https://relay-2.example.com
+
 # Agent token — generated automatically on first run and saved here.
 # Copy the token from the Vigil console to pre-authorize this host.
 # Leave empty to auto-register (host will appear as "Pending" until approved).

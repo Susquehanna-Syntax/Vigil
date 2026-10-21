@@ -11,13 +11,16 @@ carries its key (encrypted at rest, hashed for constant-time comparison by the
 relay) and the connection bookkeeping the UI shows.
 """
 
+import base64
 import hashlib
+import json
 import secrets
 import uuid
 
 from django.db import models
 
 from apps.hosts.crypto import encrypt_secret
+from vigil.signing import get_signing_key
 
 
 def generate_key() -> str:
@@ -42,6 +45,10 @@ class Relay(models.Model):
     #: https://relay.example.com/t/acme. "" for the built-in relay.
     url = models.CharField(max_length=300, blank=True, default="")
     kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.REMOTE)
+    #: Position in the fallback list handed to agents (QA-54b). Low first, ties
+    #: break on name. Reordering moves agents between relays the admin already
+    #: enabled, so — unlike url or enabled — it is not a TOTP-gated edit.
+    priority = models.PositiveSmallIntegerField(default=100)
     enabled = models.BooleanField(default=True)
     key_encrypted = models.BinaryField(blank=True, default=b"")
     key_sha256 = models.CharField(max_length=64, blank=True, default="")
@@ -78,5 +85,29 @@ def relay_urls() -> list[str]:
     return [
         relay.url
         for relay in Relay.objects.filter(
-            kind=Relay.Kind.REMOTE, enabled=True).order_by("name").exclude(url="")
+            kind=Relay.Kind.REMOTE, enabled=True).order_by("priority", "name").exclude(url="")
     ]
+
+
+def signed_relay_list(agent_token_fingerprint: str) -> dict:
+    """The fallback list, signed for one agent.
+
+    A check-in response travels through a relay, and a relay that could hand
+    this list unsigned could point every agent on the deployment at an address
+    it controls. So the payload carries the agent's token fingerprint and is
+    signed with the task key; the agent verifies both before storing a URL.
+    """
+    payload = {
+        "v": 1,
+        "agent": agent_token_fingerprint,
+        "relays": relay_urls(),
+        "direct": direct_allowed(),
+    }
+    signature = base64.b64encode(
+        get_signing_key().sign(json.dumps(payload, sort_keys=True).encode()).signature
+    ).decode()
+    return {
+        "relays": payload["relays"],
+        "direct": payload["direct"],
+        "relays_sig": signature,
+    }

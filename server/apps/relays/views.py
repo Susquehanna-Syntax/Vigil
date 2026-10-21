@@ -26,6 +26,7 @@ def _row(relay: Relay) -> dict:
         "location": relay.location,
         "url": relay.url,
         "kind": relay.kind,
+        "priority": relay.priority,
         "enabled": relay.enabled,
         "connected": relay.connected,
         "last_seen_at": relay.last_seen_at.isoformat() if relay.last_seen_at else None,
@@ -87,8 +88,17 @@ def relay_index(request):
     if enabled and enabled_count() + 1 > relays_allowed():
         return _over_limit()
 
+    try:
+        priority = int(payload.get("priority", 100))
+    except (TypeError, ValueError):
+        return Response({"detail": "priority must be an integer between 0 and 1000"},
+                        status=400)
+    if not 0 <= priority <= 1000:
+        return Response({"detail": "priority must be an integer between 0 and 1000"},
+                        status=400)
+
     relay = Relay(name=name, location=str(payload.get("location") or "").strip()[:120],
-                  url=url, kind=Relay.Kind.REMOTE, enabled=enabled)
+                  url=url, kind=Relay.Kind.REMOTE, enabled=enabled, priority=priority)
     key = generate_key()
     set_key(relay, key)
     relay.save()
@@ -134,6 +144,19 @@ def relay_detail(request, relay_id):
         if problem:
             return Response({"detail": problem}, status=400)
         changes["url"] = url
+
+    if "priority" in payload:
+        # Deliberately outside the TOTP gate: reordering only moves agents
+        # between relays the admin already enabled.
+        try:
+            priority = int(payload["priority"])
+        except (TypeError, ValueError):
+            return Response({"detail": "priority must be an integer between 0 and 1000"},
+                            status=400)
+        if not 0 <= priority <= 1000:
+            return Response({"detail": "priority must be an integer between 0 and 1000"},
+                            status=400)
+        changes["priority"] = priority
 
     if "enabled" in payload:
         want = bool(payload.get("enabled"))

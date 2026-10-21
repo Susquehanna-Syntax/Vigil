@@ -743,7 +743,7 @@ def checkin(request):
 
     from apps.software.models import SoftwareSnapshot
 
-    from apps.relays.models import direct_allowed, relay_urls
+    from apps.relays.models import signed_relay_list
 
     snapshot = SoftwareSnapshot.objects.filter(host=host).first()
     return Response(
@@ -751,10 +751,11 @@ def checkin(request):
             "status": "ok",
             "public_key": get_public_key_b64(),
             "tasks": tasks_payload,
-            # Fallback connection points (QA-52): the agent keeps this list and tries it in order when its
-            # server_url is unreachable. "direct" says whether the dashboard itself still accepts agents.
-            "relays": relay_urls(),
-            "direct": direct_allowed(),
+            # Fallback connection points (QA-52), signed for this agent (QA-54b)
+            # because a relay carries this response too: "relays" is the ordered
+            # list, "direct" whether the dashboard itself still accepts agents,
+            # and "relays_sig" what proves neither was written by the relay.
+            **signed_relay_list(host.token_fingerprint),
             # The agent resends its software list when this differs from its
             # own digest. "" when the server holds nothing for this host.
             "software_digest": snapshot.digest if snapshot else "",

@@ -168,6 +168,13 @@ DEFAULT_CONFIG_PATHS = _default_config_paths()
 class AgentConfig:
     server_url: str
     agent_token: str
+    # Addresses to move to when server_url stops answering (QA-54b), in the
+    # order the agent should try them. The dashboard's own list arrives signed
+    # at check-in and is appended after these; see vigil_agent.failover.
+    fallback_urls: list[str] = field(default_factory=list)
+    # server_url as it was loaded. The failover object rewrites server_url on
+    # every switch, so without this copy nothing would know what to fail back to.
+    primary_url: str = ""
     mode: str = "managed"
     # Permit this machine to be remotely wiped and reinstalled. NOT implied
     # by full_control — see REPROVISION_ACTIONS above.
@@ -314,6 +321,37 @@ def _warn_permissions(path: Path) -> None:
         pass
 
 
+def _fallback_urls(value, server_url: str) -> list[str]:
+    """Validate ``fallback_urls`` from agent.yml.
+
+    An address the agent would send its token to is a security-relevant line in
+    a file, so a typo is a hard error at startup rather than a silent no-op:
+    same-scheme only (http fallbacks belong to an http deployment), at most 10
+    entries, and an entry naming the primary is dropped as the no-op it is.
+    """
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("fallback_urls must be a list of URLs")
+    if len(value) > 10:
+        raise ValueError("fallback_urls accepts at most 10 addresses")
+    insecure = server_url.startswith("http://")
+    out: list[str] = []
+    for entry in value:
+        url = str(entry).strip().rstrip("/")
+        if url.startswith("https://") or (insecure and url.startswith("http://")):
+            pass
+        elif url.startswith("http://"):
+            raise ValueError(
+                f"fallback {url!r} is plain http but server_url is https — "
+                f"an agent sends its token to every address it tries")
+        else:
+            raise ValueError(f"fallback {url!r} must start with https://")
+        if url != server_url and url not in out:
+            out.append(url)
+    return out
+
+
 def load_config(path: Path | None = None) -> AgentConfig:
     """Load and validate agent configuration from YAML.
 
@@ -354,6 +392,8 @@ def load_config(path: Path | None = None) -> AgentConfig:
     server_url = raw.get("server_url", "").rstrip("/")
     if not server_url:
         raise ValueError("server_url is required in config")
+
+    fallback_urls = _fallback_urls(raw.get("fallback_urls"), server_url)
 
     agent_token = raw.get("agent_token", "").strip()
     token_generated = False
@@ -403,6 +443,8 @@ def load_config(path: Path | None = None) -> AgentConfig:
 
     config = AgentConfig(
         server_url=server_url,
+        fallback_urls=fallback_urls,
+        primary_url=server_url,
         agent_token=agent_token,
         mode=mode,
         allow_reprovision=allow_reprovision,
