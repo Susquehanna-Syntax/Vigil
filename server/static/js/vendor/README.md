@@ -37,3 +37,19 @@ Drives every time-series chart: the monitor page, the host detail drawer, and
 the dashboard's metric-chart widget. Was loaded from jsdelivr at a floating
 major version, which meant an air-gapped install had no charts at all and a
 CDN-side release could change the dashboard with no change here.
+
+## xterm.js
+
+| | |
+|---|---|
+| Version | 5.5.0 (`@xterm/xterm`), fit addon 0.10.0 (`@xterm/addon-fit`) |
+| Licence | MIT (`xterm.LICENSE`) |
+| Upstream | https://github.com/xtermjs/xterm.js |
+| Fetched from | https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/ and `@xterm/addon-fit@0.10.0/` |
+| `xterm.js` | sha256 `1f991ac3b4b283ebf96e60ae23a00a52765dd3a2e46fa6fdda9f1aab032f7495` |
+| `xterm-addon-fit.js` | sha256 `bdaefa370b1bfc42ee88d46fe6072400902a4d4b2d45cd93438dda9b23c97089` |
+| `../css/vendor/xterm.css` | sha256 `ba8e6985669488981ccf40c0cefe3aba80722cb6c92de7ad628b0bd717faf2b6` |
+
+The UMD builds, which define the `Terminal` and `FitAddon` globals. Draw the
+web shell and container shell (2026.15.0). Loaded only on the pages that open
+a session, not on every page.

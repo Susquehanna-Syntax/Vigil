@@ -14,8 +14,12 @@
 # The Dockerfile installs from requirements.txt and applies this as a
 # constraints file, so the ranges still express intent and the build still
 # gets one answer.
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.5
+aiosignal==1.4.0
 amqp==5.3.1
 asgiref==3.11.1
+attrs==26.1.0
 billiard==4.2.4
 celery==5.6.3
 certifi==2026.2.25
@@ -29,15 +33,19 @@ cron-descriptor==1.4.5
 cryptography==50.0.0
 Django==5.2.17
 django-celery-beat==2.9.0
-djangorestframework==3.18.0
 django-timezone-field==7.2.1
+djangorestframework==3.18.0
+frozenlist==1.8.0
 greenlet==3.5.4
 gunicorn==26.0.0
+h11==0.16.0
 idna==3.11
 kombu==5.6.2
+multidict==7.1.0
 packaging==26.1
 playwright==1.61.0
 prompt_toolkit==3.0.52
+propcache==0.5.4
 psycopg==3.3.3
 psycopg-binary==3.3.3
 pycdlib==1.16.0
@@ -58,6 +66,9 @@ typing_extensions==4.15.0
 tzdata==2026.1
 tzlocal==5.3.1
 urllib3==2.6.3
+uvicorn==0.54.0
+uvicorn-worker==0.4.0
 vine==5.1.0
 wcwidth==0.6.0
 whitenoise==6.12.0
+yarl==1.25.1
