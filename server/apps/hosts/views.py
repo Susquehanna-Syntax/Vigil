@@ -395,6 +395,7 @@ def checkin(request):
 
     # Update host metadata from the payload
     host.last_checkin = now()
+    host.last_relay_id = getattr(request, "vigil_relay_id", None)
     # IP is taken from the connection, never the agent-supplied body: a rogue
     # agent must not be able to steer Nessus scans or .rdp targets at hosts it
     # does not own. Matches register() above.
@@ -742,12 +743,18 @@ def checkin(request):
 
     from apps.software.models import SoftwareSnapshot
 
+    from apps.relays.models import direct_allowed, relay_urls
+
     snapshot = SoftwareSnapshot.objects.filter(host=host).first()
     return Response(
         {
             "status": "ok",
             "public_key": get_public_key_b64(),
             "tasks": tasks_payload,
+            # Fallback connection points (QA-52): the agent keeps this list and tries it in order when its
+            # server_url is unreachable. "direct" says whether the dashboard itself still accepts agents.
+            "relays": relay_urls(),
+            "direct": direct_allowed(),
             # The agent resends its software list when this differs from its
             # own digest. "" when the server holds nothing for this host.
             "software_digest": snapshot.digest if snapshot else "",

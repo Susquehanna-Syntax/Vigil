@@ -402,6 +402,15 @@ def seats_allowed() -> int:
     return FREE_SEATS
 
 
+def relays_allowed() -> int:
+    """Community gets one connection point: the built-in relay or one remote relay.
+    Business gets seats + 2. Enabled relays, the built-in one included, count."""
+    state = current_state()
+    if state.business_active and state.claims:
+        return state.claims.seats + 2
+    return 1
+
+
 FREE_ADMINS = 2
 
 

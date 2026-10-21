@@ -144,6 +144,7 @@ urlpatterns = [
     path("api/v1/status-pages/", include("apps.statuspage.urls")),
     path("api/v1/automations/", include("apps.automations.urls")),
     path("api/v1/reports/", include("apps.reports.urls")),
+    path("api/v1/relays/", include("apps.relays.urls")),
     path("api/v1/reprovision/", include("apps.reprovision.urls")),
     # Unauthenticated by necessity — the installer and the freshly-installed
     # agent hold no credentials. Security is the unguessable one-time token;
