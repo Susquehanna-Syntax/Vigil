@@ -104,6 +104,11 @@ class InstallProfile(TagRowSyncMixin, models.Model):
     #: Row-backed mirror of ``completion_tags`` — see Host.tag_rows.
     completion_tag_rows = models.ManyToManyField("hosts.Tag", blank=True,
                                                  related_name="install_profiles")
+    #: The agent settings a rebuilt machine installs with (QA-62). Null means
+    #: the installer's own defaults, exactly as before this existed.
+    agent_profile = models.ForeignKey("agentprofiles.AgentProfile", null=True,
+                                      blank=True, on_delete=models.SET_NULL,
+                                      related_name="install_profiles")
     deadline_minutes = models.IntegerField(default=60)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True,
                                    on_delete=models.SET_NULL,

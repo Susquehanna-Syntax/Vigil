@@ -109,6 +109,7 @@ INSTALLED_APPS = [
     "apps.stacks",
     "apps.reports",
     "apps.relays",
+    "apps.agentprofiles",
     # Business features (apps_business/LICENSE) — installed always, unlocked by license
     "apps_business.sites",
     "apps_business.audits",

@@ -5,6 +5,7 @@ in 2026.5.0, so an id probe cannot confirm a resource exists.
 """
 import hashlib
 import logging
+import secrets
 import shutil
 from datetime import timedelta
 
@@ -547,6 +548,46 @@ def job_list(request):
     return _create_job(request)
 
 
+def _stash_config_token(request, job, profile) -> None:
+    """Offer the install profile's agent settings to the installer (QA-62).
+
+    The token outlives the deadline by an hour on purpose: a rebuild that
+    reaches its deadline while the installer is mid-run must not have the
+    config it is about to fetch expire under it.
+    """
+    from datetime import timedelta
+
+    from apps.agentprofiles import render as profile_render
+    from apps.agentprofiles.models import EnrollConfig
+    from apps.agentprofiles.views import dashboard_url
+
+    if profile.agent_profile is None:
+        return
+    clean, errors = profile_render.validate({
+        "name": profile.agent_profile.name,
+        "description": profile.agent_profile.description,
+        **{field: getattr(profile.agent_profile, field)
+           for field in profile_render.FIELDS
+           if field not in ("name", "description")},
+    })
+    if errors:
+        # A profile an admin cannot mint a token from is one the API should
+        # have refused; a rebuild must not be the place that surfaces.
+        logger.warning("rebuild %s: agent profile %s does not validate: %s",
+                       job.id, profile.agent_profile.name, errors)
+        return
+
+    settings_out = profile_render.agent_settings(clean, dashboard_url(request))
+    token = secrets.token_urlsafe(32)
+    EnrollConfig.objects.create(
+        token_hash=jobs.hash_token(token),
+        profile=profile.agent_profile,
+        settings=settings_out,
+        created_by=request.user if getattr(request.user, "is_authenticated", False) else None,
+        expires_at=job.deadline + timedelta(hours=1))
+    jobs.stash_config_token(job, token)
+
+
 def _create_job(request):
     from apps.hosts.models import Host
 
@@ -602,6 +643,7 @@ def _create_job(request):
     )
     _answer, enroll = jobs.mint_tokens(job)
     jobs.stash_enroll_token(job, enroll)
+    _stash_config_token(request, job, profile)
     hooks.emit("rebuild_requested", job=job, actor=request.user,
                ip=job.confirmed_ip)
     logger.info("rebuild %s requested for %s by %s", job.id, host.hostname,

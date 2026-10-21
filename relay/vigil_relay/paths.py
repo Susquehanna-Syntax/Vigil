@@ -8,7 +8,7 @@ dashboard's agent-path check.
 
 AGENT_PATHS = ("/api/v1/register", "/api/v1/checkin", "/api/v1/tasks/result/", "/api/v1/reprovision/enroll",
                "/agent/install.sh", "/agent/install.ps1", "/agent/uninstall.sh", "/agent/uninstall.ps1", "/agent/info/")
-AGENT_PREFIXES = ("/api/v1/agent/", "/agent/download/")
+AGENT_PREFIXES = ("/api/v1/agent/", "/agent/download/", "/agent/enroll-config/")
 
 WS_PREFIXES = ("/ws/agent/",)
 

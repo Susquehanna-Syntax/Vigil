@@ -7,12 +7,14 @@ class UbuntuRenderer(Renderer):
 
     family = "ubuntu"
 
-    def render(self, job, base_url: str, enroll_token: str) -> dict[str, str]:
+    def render(self, job, base_url: str, enroll_token: str,
+               config_token: str = "") -> dict[str, str]:
         p = job.profile
         # late-commands run in the live installer, not the installed system.
         # curtin in-target chroots into /target so the agent lands on the
         # machine rather than in a ramdisk that is discarded at reboot.
-        script = enrolment_script(base_url, enroll_token).replace('"', r'\"')
+        script = enrolment_script(base_url, enroll_token,
+                                  config_token).replace('"', r'\"')
         late = f'    - curtin in-target --target=/target -- sh -c "{script}"'
         packages = "\n".join(
             f"    - {pkg}" for pkg in merged_packages(p, "openssh-server", "curl"))

@@ -32,7 +32,7 @@ AGENT_PATHS = (
     "/agent/uninstall.ps1",
     "/agent/info/",
 )
-AGENT_PREFIXES = ("/api/v1/agent/", "/agent/download/")
+AGENT_PREFIXES = ("/api/v1/agent/", "/agent/download/", "/agent/enroll-config/")
 
 
 def is_agent_path(path: str) -> bool:

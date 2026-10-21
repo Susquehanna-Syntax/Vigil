@@ -83,6 +83,16 @@ def pop_enroll_token(job) -> str:
     return cache.get(f"reprovision:enroll:{job.id}", "")
 
 
+def stash_config_token(job, raw: str) -> None:
+    """Hold the plaintext agent-config token alongside the enrolment one."""
+    ttl = int((job.deadline - now()).total_seconds())
+    cache.set(f"reprovision:config:{job.id}", raw, timeout=max(ttl, 60))
+
+
+def pop_config_token(job) -> str:
+    return cache.get(f"reprovision:config:{job.id}", "")
+
+
 def advance(job, to_state: str, *, reason: str = "") -> RebuildJob:
     """Move *job* to *to_state*, or raise InvalidTransition."""
     permitted = ALLOWED_TRANSITIONS.get(job.state, frozenset())

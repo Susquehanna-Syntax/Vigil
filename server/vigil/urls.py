@@ -145,6 +145,7 @@ urlpatterns = [
     path("api/v1/automations/", include("apps.automations.urls")),
     path("api/v1/reports/", include("apps.reports.urls")),
     path("api/v1/relays/", include("apps.relays.urls")),
+    path("api/v1/agent-profiles/", include("apps.agentprofiles.urls")),
     path("api/v1/reprovision/", include("apps.reprovision.urls")),
     # Unauthenticated by necessity — the installer and the freshly-installed
     # agent hold no credentials. Security is the unguessable one-time token;
@@ -152,6 +153,10 @@ urlpatterns = [
     path("api/v1/reprovision/enroll", reprovision_enroll, name="reprovision-enroll"),
     path("reprovision/", include("apps.reprovision.installer_urls")),
     path("", include("apps.civilsso.urls")),
+    # The installer redeems a one-time config token here for its agent.yml.
+    # Unauthenticated by necessity, and it must be mounted before /agent/ so
+    # the agent_dist catch-all cannot claim the path first.
+    path("agent/enroll-config/", include("apps.agentprofiles.agent_urls")),
     path("agent/", include("apps.agent_dist.urls")),
     path("status/<str:token>/", status_public_view, name="status-public"),
     path("status/<str:token>/data/", status_public_data_view, name="status-public-data"),

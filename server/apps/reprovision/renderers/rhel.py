@@ -6,11 +6,12 @@ class RhelRenderer(Renderer):
 
     family = "rhel"
 
-    def render(self, job, base_url: str, enroll_token: str) -> dict[str, str]:
+    def render(self, job, base_url: str, enroll_token: str,
+               config_token: str = "") -> dict[str, str]:
         p = job.profile
         # %post is already chrooted into the installed system, so the script
         # runs as-is — no in-target wrapper needed, unlike the other two.
-        post = enrolment_script(base_url, enroll_token)
+        post = enrolment_script(base_url, enroll_token, config_token)
         packages = "\n".join(
             merged_packages(p, "@^minimal-environment", "openssh-server", "curl"))
         keys = "\n".join(
