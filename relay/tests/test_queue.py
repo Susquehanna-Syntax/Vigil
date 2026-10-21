@@ -61,3 +61,17 @@ class DiskQueueTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PerOwnerQuotaTests(unittest.TestCase):
+    def test_one_sender_cannot_fill_the_queue(self):
+        import tempfile
+        from vigil_relay.queue import DiskQueue
+        with tempfile.TemporaryDirectory() as d:
+            q = DiskQueue(d, 10**9, 10**6)
+            q.PER_OWNER = 3
+            for _ in range(3):
+                self.assertTrue(q.put({"t": "req"}, owner="198.51.100.1"))
+            self.assertFalse(q.put({"t": "req"}, owner="198.51.100.1"))
+            self.assertTrue(q.put({"t": "req"}, owner="198.51.100.2"))
+            self.assertEqual(len(q.items()), 4)

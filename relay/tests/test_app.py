@@ -254,7 +254,11 @@ class TimeoutTest(RelayAppTest):
 
     @unittest_run_loop
     async def test_offline_checkin_is_queued_then_replayed(self) -> None:
+        # Without a well-formed agent token there is nothing worth queueing.
         resp = await self.client.post("/api/v1/checkin", json={"host": "h1"})
+        self.assertEqual(resp.status, 503)
+        resp = await self.client.post("/api/v1/checkin", json={"host": "h1"},
+                                      headers={"Authorization": "Bearer " + "a" * 32})
         self.assertEqual(resp.status, 200)
         self.assertEqual(await resp.json(), {"status": "queued", "tasks": []})
 

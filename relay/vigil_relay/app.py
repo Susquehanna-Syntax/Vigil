@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import re
 import time
 import uuid
 
@@ -240,11 +241,26 @@ async def _replay(app: web.Application, uplink: Uplink) -> None:
             queue.drop(path)
 
 
+_AGENT_TOKEN = re.compile(r"^Bearer [A-Za-z0-9_-]{16,128}$")
+
+
+def _has_agent_token(headers: dict) -> bool:
+    """A check-in worth queueing carries a well-formed agent token. The relay
+    cannot check it is a real one; the dashboard does that on replay."""
+    for name, value in headers.items():
+        if name.lower() == "authorization":
+            return bool(_AGENT_TOKEN.match(value))
+    return False
+
+
 def _unreachable(app: web.Application, tenant: str, frame: dict, path: str) -> web.Response:
     """An agent's checkin is the one request worth buffering: it carries no answer the
     agent needs right now, and replaying it is what makes an offline host show up."""
-    buffered = frame["method"] == "POST" and path == "/api/v1/checkin"
-    if buffered and app[QUEUES][tenant].put(frame):
+    buffered = (frame["method"] == "POST" and path == "/api/v1/checkin"
+                and _has_agent_token(frame["headers"]))
+    # Each sender gets a share of the queue, so one address cannot push every
+    # other agent's check-ins out of it.
+    if buffered and app[QUEUES][tenant].put(frame, owner=frame.get("ip", "")):
         return web.json_response({"status": "queued", "tasks": []})
     return web.json_response({"error": "Vigil is unreachable from this relay"}, status=503)
 
@@ -280,7 +296,8 @@ def _client_ip(request: web.Request) -> str:
     if cfg.trust_proxy:
         # The rightmost entry is the one the proxy in front of us appended; every
         # entry left of it came from the client and proves nothing.
-        parts = [p.strip() for p in request.headers.get("X-Forwarded-For", "").split(",") if p.strip()]
+        joined = ",".join(request.headers.getall("X-Forwarded-For", []))
+        parts = [p.strip() for p in joined.split(",") if p.strip()]
         if parts:
             try:
                 return str(ipaddress.ip_address(parts[-1]))
@@ -305,7 +322,9 @@ def _bad_key(request: web.Request) -> web.Response:
 
 @web.middleware
 async def _gate_middleware(request: web.Request, handler) -> web.Response:
-    if request.path.endswith("/relay/uplink"):
+    # Only the two uplink routes skip the gate — matched by handler, not by a
+    # path suffix an agent could append to anything.
+    if request.match_info.handler is _uplink_handler:
         return await handler(request)
     gate: asyncio.Semaphore = request.app[GATE]
     if gate.locked():

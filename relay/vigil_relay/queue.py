@@ -5,6 +5,7 @@ reconnect sends exactly what the agent asked. Nothing but the frame lives on dis
 file permissions are 0o600 inside a 0o700 directory.
 """
 
+import hashlib
 import json
 import os
 import time
@@ -12,21 +13,27 @@ import uuid
 
 
 class DiskQueue:
+    #: How many queued frames one sender may hold.
+    PER_OWNER = 500
+
     def __init__(self, dirpath: str, max_bytes: int, max_items: int) -> None:
         self.dirpath = dirpath
         self.max_bytes = max_bytes
         self.max_items = max_items
         os.makedirs(dirpath, mode=0o700, exist_ok=True)
 
-    def put(self, frame: dict) -> bool:
+    def put(self, frame: dict, owner: str = "") -> bool:
         """Persist a frame, then trim the oldest entries until both limits hold.
         Returns False (writing nothing) when the frame alone exceeds ``max_bytes``."""
         data = json.dumps(frame).encode()
         if len(data) > self.max_bytes:
             return False
+        tag = hashlib.sha256(owner.encode()).hexdigest()[:12]
+        if sum(1 for p in self.items() if os.path.basename(p).split("-")[1:2] == [tag]) >= self.PER_OWNER:
+            return False
         # Wall-clock, not monotonic: the monotonic clock restarts at boot, and
         # the queue has to keep its order across a relay restart.
-        path = os.path.join(self.dirpath, f"{time.time_ns():020d}-{uuid.uuid4().hex}.json")
+        path = os.path.join(self.dirpath, f"{time.time_ns():020d}-{tag}-{uuid.uuid4().hex}.json")
         tmp = path + ".tmp"
         with open(tmp, "wb") as fh:
             fh.write(data)
