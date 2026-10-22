@@ -19,9 +19,17 @@ patch release fixes things. Business-only items say so; everything else is in ev
 - Off until the host opts in, in its own `agent.yml`. Each session needs a fresh two-factor code and is logged.
 - Business records the whole session.
 
+**Agent profiles and Add Host**
+- Add Host shows every agent setting before the install command exists: mode, allowed actions, relays and fallbacks,
+  sessions, tags and intervals. The command carries a one-time token, so the agent installs already configured.
+- Save those settings as an agent profile (Reimage → Agent profiles). An install profile can name one, so a rebuilt
+  machine comes back the same way. Profiles apply at install and rebuild only.
+- Settings → Relays: add, order and turn relays on and off, and get install commands that go through a relay.
+
 **Also**
 - Power and sleep task actions: sleep and display timeouts, hibernation, power plans, lid actions, sleep and hibernate now.
 - Report charts name branches in words ("or if upgrade failed") instead of lane ids.
+- macOS agents are Apple Silicon only. Intel Macs are no longer built or offered.
 
 ## 2026.14.6
 

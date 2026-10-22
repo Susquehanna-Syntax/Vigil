@@ -863,10 +863,17 @@
         <li>Off until the host opts in, in its own <code>agent.yml</code>. Each session needs a fresh two-factor code and is logged.</li>
         <li>Business records the whole session.</li>
       </ul>
+      <p class="prose"><strong>Agent profiles and Add Host</strong></p>
+      <ul class="prose">
+        <li>Add Host shows every agent setting before the install command exists: mode, allowed actions, relays and fallbacks, sessions, tags and intervals. The command carries a one-time token, so the agent installs already configured.</li>
+        <li>Save those settings as an agent profile (Reimage → Agent profiles). An install profile can name one, so a rebuilt machine comes back the same way. Profiles apply at install and rebuild only.</li>
+        <li>Settings → Relays: add, order and turn relays on and off, and get install commands that go through a relay.</li>
+      </ul>
       <p class="prose"><strong>Also</strong></p>
       <ul class="prose">
         <li>Power and sleep task actions: sleep and display timeouts, hibernation, power plans, lid actions, sleep and hibernate now.</li>
         <li>Report charts name branches in words ("or if upgrade failed") instead of lane ids.</li>
+        <li>macOS agents are Apple Silicon only. Intel Macs are no longer built or offered.</li>
       </ul>
       <h3 id="changelog-2026-14-6">2026.14.6</h3>
       <ul class="prose">
@@ -1097,7 +1104,6 @@
         <p>
           <span class="plat plat-linux">Linux x86-64</span>
           <span class="plat plat-linux">Linux ARM64</span>
-          <span class="plat plat-mac">macOS Intel</span>
           <span class="plat plat-mac">macOS Apple Silicon</span>
           <span class="plat plat-win">Windows x86-64</span>
         </p>
@@ -1221,7 +1227,7 @@
       <p class="prose">Then remove the host in the dashboard to drop its history.</p>
 
       <h3>Agent builds</h3>
-      <p class="prose">Builds for Linux (x86-64, ARM64), macOS (Intel, Apple Silicon) and Windows x64 ship inside the image at <code>/agent/download/&lt;platform&gt;/</code>. A build uploaded under <strong>Settings → Agent Binary</strong> takes their place.</p>
+      <p class="prose">Builds for Linux (x86-64, ARM64), macOS (Apple Silicon only; Intel Macs are not supported from 2026.15) and Windows x64 ship inside the image at <code>/agent/download/&lt;platform&gt;/</code>. A build uploaded under <strong>Settings → Agent Binary</strong> takes their place.</p>
     </section>
     <div class="divider"></div>
 

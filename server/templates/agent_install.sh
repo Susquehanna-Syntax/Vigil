@@ -22,11 +22,14 @@ case "$OS" in
     esac
     ;;
   darwin)
-    case "$ARCH" in
-      x86_64|amd64) PLATFORM="darwin-amd64" ;;
-      arm64) PLATFORM="darwin-arm64" ;;
-      *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
-    esac
+    # Apple Silicon only. Ask the hardware, not uname: a Terminal running under
+    # Rosetta reports x86_64 on an Apple Silicon Mac.
+    if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; then
+      PLATFORM="darwin-arm64"
+    else
+      echo "This Mac has an Intel processor. The Vigil agent supports Apple Silicon Macs only (macOS no longer supports Intel Macs)." >&2
+      exit 1
+    fi
     ;;
   *)
     echo "Unsupported OS: $OS" >&2

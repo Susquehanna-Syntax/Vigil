@@ -81,8 +81,8 @@ jobs:
         run: python -m unittest discover -s tests -t . -v
 
   # ── Build agent binaries (parallel) ─────────────────────────────────────────
-  # Both macOS targets run on macos-latest (Apple Silicon). PyInstaller's
-  # --target-arch flag cross-compiles darwin-amd64 without needing macos-13.
+  # macOS is Apple Silicon only (2026.15): macos-latest is arm64, so the agent
+  # builds natively there. Intel Macs are no longer a target.
   # Linux binaries build natively on amd64 and arm64 runners — PyInstaller
   # cannot cross-compile between Linux architectures.
   build-agent:
@@ -98,9 +98,6 @@ jobs:
             platform: linux-arm64
             out: vigil-agent-linux-arm64
           - os: macos-latest
-            platform: darwin-amd64
-            out: vigil-agent-darwin-amd64
-          - os: macos-latest
             platform: darwin-arm64
             out: vigil-agent-darwin-arm64
           - os: windows-latest
@@ -115,59 +112,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        if: runner.os != 'macOS'
         with:
           python-version: "3.12"
       # No pip cache: actions/setup-python@v5's internal cache step has been
       # failing on windows-latest after the Windows Server 2025 rollout, and
       # it marks the whole step failed even when Python installs cleanly.
       # The agent has 4 small deps — fresh install takes seconds.
-      - name: Install universal2 Python (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          curl -fsSL "https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg" -o /tmp/python.pkg
-          sudo installer -pkg /tmp/python.pkg -target /
-          echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
-        run: |
-          pip3.12 install --upgrade pip delocate
-          mkdir -p /tmp/arm64 /tmp/x86 /tmp/u2
-          # Download a specific wheel from PyPI by version + filename regex
-          grab() {
-            python3.12 -c "
-          import json, re, sys, urllib.request
-          pkg, ver, pat, dest = sys.argv[1:]
-          data = json.load(urllib.request.urlopen(f'https://pypi.org/pypi/{pkg}/{ver}/json'))
-          p = re.compile(pat)
-          for u in data['urls']:
-              if p.search(u['filename']):
-                  with urllib.request.urlopen(u['url']) as r, open(dest + '/' + u['filename'], 'wb') as f:
-                      f.write(r.read())
-                  print('downloaded:', u['filename']); sys.exit(0)
-          sys.exit('no match for ' + pkg + ' ' + pat)
-          " "$1" "$2" "$3" "$4"
-          }
-          # cffi and psutil don't ship universal2 wheels — fuse arm64 + x86_64
-          grab cffi   2.0.0 'cp312-cp312-macosx_.*_arm64\.whl$'  /tmp/arm64
-          grab cffi   2.0.0 'cp312-cp312-macosx_.*_x86_64\.whl$' /tmp/x86
-          grab psutil 6.1.1 'cp36-abi3-macosx_.*_arm64\.whl$'    /tmp/arm64
-          grab psutil 6.1.1 'cp36-abi3-macosx_.*_x86_64\.whl$'   /tmp/x86
-          delocate-merge /tmp/arm64/cffi-*.whl   /tmp/x86/cffi-*.whl   -w /tmp/u2
-          delocate-merge /tmp/arm64/psutil-*.whl /tmp/x86/psutil-*.whl -w /tmp/u2
-          # PyNaCl 1.6.2 ships a real universal2 wheel
-          grab PyNaCl 1.6.2 'cp38-abi3-macosx_.*_universal2\.whl$' /tmp/u2
-          pip3.12 install --upgrade --force-reinstall --no-deps /tmp/u2/*.whl
-          # PyYAML has no universal2 wheel — build pure-Python (no _yaml.so)
-          PYYAML_FORCE_LIBYAML=0 pip3.12 install --no-binary PyYAML --force-reinstall 'PyYAML>=6.0,<7.0'
-          # Remaining pure-Python deps + PyInstaller (ships universal2 wheel)
-          pip3.12 install 'requests>=2.32,<3.0' pyinstaller
+        # requirements.txt, like the other platforms: a hand-picked list here
+        # once left out websocket-client, which live sessions need.
+        run: pip install -r requirements.txt pyinstaller
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: pip install -r requirements.txt pyinstaller
       - name: Build binary (macOS)
         if: runner.os == 'macOS'
-        run: pyinstaller --onefile --target-arch universal2 --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
+        run: pyinstaller --onefile --target-arch arm64 --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
       # --onedir, not --onefile, and this is not a preference. A --onefile
       # build cannot host a Windows service: its bootloader extracts and
       # re-executes, so the process the SCM is watching never calls
@@ -442,7 +403,6 @@ jobs:
         run: |
           chmod +x server/agent_dist/vigil-agent-linux-amd64 || true
           chmod +x server/agent_dist/vigil-agent-linux-arm64 || true
-          chmod +x server/agent_dist/vigil-agent-darwin-amd64 || true
           chmod +x server/agent_dist/vigil-agent-darwin-arm64 || true
 
       - name: Set up Docker Buildx

@@ -1268,11 +1268,16 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
         if sys.platform == "win32":
             platform = "windows-amd64"
         elif sys.platform == "darwin":
-            machine = os.uname().machine
-            platform = "darwin-arm64" if machine == "arm64" else "darwin-amd64"
+            # Apple Silicon only since 2026.15: no Intel build is published.
+            platform = "darwin-arm64" if os.uname().machine == "arm64" else "darwin-amd64"
         else:
             machine = os.uname().machine
             platform = "linux-arm64" if machine in ("aarch64", "arm64") else "linux-amd64"
+    if platform == "darwin-amd64":
+        raise RuntimeError(
+            "This Mac has an Intel processor. Vigil agents are built for Apple "
+            "Silicon only (macOS no longer supports Intel Macs), so there is no "
+            "update to install.")
 
     # The replacement binary is verified against a SHA-256 the server placed
     # inside this Ed25519-signed task. A TLS-only download is not a strong

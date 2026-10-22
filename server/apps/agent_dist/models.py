@@ -8,6 +8,8 @@ class AgentBinary(models.Model):
         LINUX_AMD64 = "linux-amd64", "Linux (x86-64)"
         LINUX_ARM64 = "linux-arm64", "Linux (ARM64)"
         WINDOWS_AMD64 = "windows-amd64", "Windows (x86-64)"
+        # Kept so rows uploaded before 2026.15 still load; Intel Macs are no
+        # longer built or offered (Apple Silicon only).
         DARWIN_AMD64 = "darwin-amd64", "macOS (Intel)"
         DARWIN_ARM64 = "darwin-arm64", "macOS (Apple Silicon)"
 
