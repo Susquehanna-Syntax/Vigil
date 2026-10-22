@@ -411,6 +411,26 @@ CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/
 # Where live-session sockets hand bytes to each other: "redis" (any number of
 # workers) or "memory" (single process — tests and runserver only).
 VIGIL_SESSION_BUS = os.environ.get("VIGIL_SESSION_BUS", "redis")
+# The shared cache. Several web workers serve one dashboard, and things one
+# request stores for another (a rebuild's enrolment and config tokens, a
+# security key's one-time confirmation) must be visible to every worker, so it
+# is Redis whenever a deployment names one. VIGIL_CACHE_URL wins; otherwise
+# the broker's Redis on database 1. Tests and a bare runserver keep the
+# default in-process cache.
+def _cache_url() -> str:
+    explicit = os.environ.get("VIGIL_CACHE_URL", "")
+    if explicit:
+        return explicit
+    broker = os.environ.get("CELERY_BROKER_URL", "")
+    if not broker.startswith(("redis://", "rediss://")):
+        return ""
+    base, _, db = broker.rpartition("/")
+    return f"{base}/1" if db.isdigit() else broker
+
+
+if _cache_url():
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.redis.RedisCache",
+                          "LOCATION": _cache_url()}}
 # Web RDP (QA-59). Empty address means the feature is off and the Connect menu
 # says so; it is set to the compose service's name when the rdp profile runs.
 VIGIL_GUACD_ADDR = os.environ.get("VIGIL_GUACD_ADDR", "")
