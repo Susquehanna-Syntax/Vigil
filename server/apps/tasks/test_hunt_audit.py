@@ -11,6 +11,8 @@ from apps.tasks.models import TaskDefinition
 from apps.tasks.spec import parse_and_validate
 from vigil import hooks
 
+from vigil.testsupport import requires_business
+
 User = get_user_model()
 
 
@@ -61,6 +63,7 @@ class HuntTextHookTests(TestCase):
         self.assertEqual(texts[0]["actor"], self.user)
         self.assertEqual(texts[0]["step_ids"], ["token"])
 
+    @requires_business
     def test_business_audit_records_text_request(self):
         from apps_business.audits.apps import wire
         from apps_business.audits.models import AuditEvent

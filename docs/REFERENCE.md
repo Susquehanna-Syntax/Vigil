@@ -1232,6 +1232,7 @@ on untouched. See `docs/EDITIONS.md`.
 
 ## License
 
-AGPLv3 for everything except `server/apps_business/`, which is source-visible
-under a commercial license (`server/apps_business/LICENSE`) and requires a
-Vigil Business subscription for production use
+AGPLv3. The Business features are a separate package under a commercial
+license: official images include it compiled, it requires a Vigil Business
+subscription for production use, and its source is available to customers for
+audit on request

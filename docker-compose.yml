@@ -26,6 +26,7 @@
 #   POSTGRES_DB            — default: vigil
 #   POSTGRES_USER          — default: vigil
 #   VIGIL_TIMEZONE         — IANA tz name, e.g. America/New_York (default: UTC)
+#   VIGIL_GUACD_ADDR=guacd:4822  — set with --profile rdp to turn on Web RDP
 #
 # No longer used:
 #   VIGIL_AGENT_VERSION    — ignored. The expected agent version is detected
@@ -90,6 +91,13 @@ services:
       POSTGRES_HOST: db
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
+      # Web RDP (QA-59). An empty address keeps the feature off and the Connect
+      # menu says so; run with --profile rdp and set VIGIL_GUACD_ADDR=guacd:4822
+      # to turn a Windows host's desktop into a browser tab.
+      VIGIL_GUACD_ADDR: ${VIGIL_GUACD_ADDR:-}
+      # The name guacd uses to reach this container for its RDP connection back.
+      # Never the target's address: that stays on the agent's side of the bus.
+      VIGIL_RDP_BRIDGE_HOST: web
     ports:
       - "9200:8000"
     # Without this Docker can only see whether the process exited, never
@@ -109,9 +117,22 @@ services:
         condition: service_healthy
     volumes:
       - media:/app/media
+      # guacd writes an RDP recording here and Vigil reads it back; the same
+      # named volume is mounted in both containers, on different paths.
+      - rdp-recordings:/app/media/recordings/rdp
       # Extracted OS install trees for reprovisioning. Shared with the
       # worker: the worker imports, the web container serves to installers.
       - images:/var/lib/vigil/images
+
+  guacd:
+    # Apache Guacamole's RDP speaker. Vigil hands it a one-shot port back to
+    # the agent and relays its instructions to the browser; nothing here
+    # publishes a port, because only this container's peer is the web one.
+    image: guacamole/guacd:1.5.5
+    restart: unless-stopped
+    profiles: ["rdp"]
+    volumes:
+      - rdp-recordings:/recordings
 
   celery-worker:
     image: susquehannasyntax/vigil:latest
@@ -179,6 +200,28 @@ services:
       redis:
         condition: service_healthy
 
+  # Keeps the outbound link to each relay (Settings → Relays). Idle with none.
+  link:
+    image: susquehannasyntax/vigil:latest
+    restart: unless-stopped
+    command: python manage.py relay_link
+    environment:
+      DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is not set — see the header of this file for how to generate one}"
+      VIGIL_SIGNING_KEY_SEED: ${VIGIL_SIGNING_KEY_SEED:-}
+      POSTGRES_DB: ${POSTGRES_DB:-vigil}
+      POSTGRES_USER: ${POSTGRES_USER:-vigil}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
+      POSTGRES_HOST: db
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      VIGIL_PUBLIC_URL: ${VIGIL_PUBLIC_URL:-}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      VIGIL_LINK_UPSTREAM: http://web:8000
+      VIGIL_LINK_HOST: localhost
+    depends_on:
+      web:
+        condition: service_healthy
+
   # Cloudflare Tunnel sidecar — opt-in. Publishes Vigil to a public hostname
   # without opening any inbound port on your network. Enable with:
   #   docker compose --profile tunnel up -d
@@ -199,3 +242,6 @@ volumes:
   pgdata:
   media:
   images:
+  # guacd writes there and the web container serves from it, so a recorded
+  # desktop is downloadable without either container owning the file.
+  rdp-recordings:

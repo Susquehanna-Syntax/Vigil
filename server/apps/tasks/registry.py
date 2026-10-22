@@ -390,6 +390,56 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "optional": [],
         "outputs": {"hostname": "str"},
     },
+    # ── Power ───────────────────────────────────────────────────────────────
+    "set_sleep_timeout": {
+        "label": "Set sleep timeout",
+        "risk": "standard",
+        "required": ["ac_minutes"],
+        "optional": ["dc_minutes"],
+        "outputs": {"ac_minutes": "int", "dc_minutes": "int"},
+    },
+    "set_display_timeout": {
+        "label": "Set display timeout",
+        "risk": "standard",
+        "required": ["ac_minutes"],
+        "optional": ["dc_minutes"],
+        "outputs": {"ac_minutes": "int", "dc_minutes": "int"},
+    },
+    "set_hibernate": {
+        "label": "Turn hibernation on or off",
+        "risk": "standard",
+        "required": ["enabled"],
+        "optional": [],
+        "outputs": {"enabled": "bool"},
+    },
+    "set_power_plan": {
+        "label": "Set power plan",
+        "risk": "standard",
+        "required": ["plan"],
+        "optional": [],
+        "outputs": {"plan": "str"},
+    },
+    "set_lid_action": {
+        "label": "Set lid close action",
+        "risk": "standard",
+        "required": ["ac"],
+        "optional": ["dc"],
+        "outputs": {"ac": "str", "dc": "str"},
+    },
+    "sleep_now": {
+        "label": "Sleep now",
+        "risk": "high",
+        "required": [],
+        "optional": ["delay_seconds"],
+        "outputs": {"delay_seconds": "int"},
+    },
+    "hibernate_now": {
+        "label": "Hibernate now",
+        "risk": "high",
+        "required": [],
+        "optional": ["delay_seconds"],
+        "outputs": {"delay_seconds": "int"},
+    },
     # ── Networking ──────────────────────────────────────────────────────────
     "add_firewall_rule": {
         "label": "Add firewall rule",

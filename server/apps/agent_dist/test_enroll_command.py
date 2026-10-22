@@ -27,7 +27,7 @@ class EnrollCommandDeliversToken(SimpleTestCase):
         cls.js = (
             Path(settings.BASE_DIR) / "static" / "js" / "vigil-enroll.js"
         ).read_text()
-        m = re.search(r"`([^`]*install\.sh[^`]*)`", cls.js)
+        m = re.search(r"_ENROLL_LINUX_CMD = '([^']*install\.sh[^']*)';", cls.js)
         assert m, "no install.sh command template in vigil-enroll.js"
         cls.template = m.group(1)
 

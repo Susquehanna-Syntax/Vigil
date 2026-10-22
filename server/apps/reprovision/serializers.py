@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from apps.agentprofiles.models import AgentProfile
+
 from .models import InstallProfile, OSImage, RebuildJob
 
 
@@ -20,6 +22,8 @@ class InstallProfileSerializer(serializers.ModelSerializer):
     admin_password = serializers.CharField(
         write_only=True, required=False, allow_blank=True,
         help_text="Crypt hash (e.g. from mkpasswd -m sha-512), never plaintext.")
+    agent_profile = serializers.PrimaryKeyRelatedField(
+        queryset=AgentProfile.objects.all(), allow_null=True, required=False)
 
     class Meta:
         model = InstallProfile

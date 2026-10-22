@@ -24,8 +24,10 @@ CAPABILITIES = {
     # agent's own allowlist, and firewall rules decide what can reach a machine
     # at all — both are worth delegating deliberately rather than as a side
     # effect of being allowed to rename a host.
+    # shell is its own verb too: a root shell on the machine is delegated
+    # deliberately, never as a side effect of being allowed to edit a host.
     "hosts": frozenset({"view", "edit", "approve", "delete",
-                        "update_agent", "firewall"}),
+                        "update_agent", "firewall", "shell"}),
     "tasks": frozenset({"view", "run"}),
     "playbooks": frozenset({"view", "run", "edit"}),
     "automations": frozenset({"view", "edit", "toggle"}),

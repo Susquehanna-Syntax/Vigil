@@ -108,26 +108,36 @@ INSTALLED_APPS = [
     "apps.policies",
     "apps.stacks",
     "apps.reports",
-    # Business features (apps_business/LICENSE) — installed always, unlocked by license
-    "apps_business.sites",
-    "apps_business.audits",
-    "apps_business.branding",
+    "apps.relays",
+    "apps.remote",
+    "apps.agentprofiles",
 ]
+
+# Business features: the vigil-business package (commercial license, its own
+# private repo). Official images install it compiled and a license unlocks it;
+# a source checkout of this repo runs without it, as the AGPL core.
+from importlib.util import find_spec as _find_spec  # noqa: E402
+
+BUSINESS_INSTALLED = _find_spec("apps_business") is not None
+if BUSINESS_INSTALLED:
+    INSTALLED_APPS += ["apps_business.sites", "apps_business.audits", "apps_business.branding"]
 
 # ---------------------------------------------------------------------------
 # Licensing (SQSY-LICENSING.md)
 # ---------------------------------------------------------------------------
-# Base64 Ed25519 public key that license blobs must verify against. Dev and
-# prod keys never mix (SQSY-LICENSING.md §7a): the DEV key (pairs with
-# Mercantil's gitignored dev-signing.key) is the default only when DEBUG, so
-# local development can mint test licenses out of the box. Everywhere else the
-# operator sets VIGIL_LICENSE_PUBLIC_KEY — to the production key once it is
-# born in KMS, or explicitly to the dev key on internal dogfood installs. An
-# empty key simply means no license verifies: free tier, monitoring untouched.
-_DEV_LICENSE_PUBLIC_KEY = "HDIgm72yEkIopWgvsv0Q6Gp695l4ecOZMYnP2by7+IQ="
-VIGIL_LICENSE_PUBLIC_KEY = os.environ.get(
-    "VIGIL_LICENSE_PUBLIC_KEY", _DEV_LICENSE_PUBLIC_KEY if DEBUG else ""
-)
+# The key licenses must be signed with. A release image trusts only the keys
+# built into vigil/license_keys.py and ignores VIGIL_LICENSE_PUBLIC_KEY; a
+# source checkout honours it, defaulting to the dev key when DEBUG.
+from vigil.license_keys import trusted_public_key  # noqa: E402
+
+VIGIL_LICENSE_PUBLIC_KEY = trusted_public_key(BASE_DIR, debug=DEBUG, environ=os.environ)
+# Where Business installs refresh their license (Mercantil). Pointing it
+# elsewhere gains nothing: whatever comes back must still verify against the
+# key above. Off for air-gapped installs, which renew by pasting.
+VIGIL_LICENSE_SERVER = os.environ.get(
+    "VIGIL_LICENSE_SERVER", "https://license.susquehannasyntax.com").rstrip("/")
+VIGIL_LICENSE_REFRESH = os.environ.get("VIGIL_LICENSE_REFRESH", "true").strip().lower() in (
+    "1", "true", "yes", "on")
 
 # ---------------------------------------------------------------------------
 # Civil SSO (opt-in shared identity for the SQSY family). Unset = off.
@@ -149,8 +159,8 @@ VIGIL_AI_TIMEOUT_SECONDS = int(os.environ.get("VIGIL_AI_TIMEOUT_SECONDS", "300")
 # Each extra app may register features (vigil.editions), subscribe to events
 # (vigil.hooks), and expose a urls.py (auto-mounted in vigil/urls.py). Core
 # never imports extension code. See docs/pro-extension-points.md for the
-# contract. (Business features no longer load this way — they ship in this
-# repo under apps_business/ and are unlocked by the license.)
+# contract. (Business features do not load this way — they are the
+# vigil-business package, added above when installed, and unlocked by the license.)
 VIGIL_EXTRA_APPS = [
     a.strip() for a in os.environ.get("VIGIL_EXTRA_APPS", "").split(",") if a.strip()
 ]
@@ -160,6 +170,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "apps.relays.middleware.RelayGateMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -404,6 +415,38 @@ REST_FRAMEWORK = {
 # Celery — Redis broker
 # ---------------------------------------------------------------------------
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
+# Where live-session sockets hand bytes to each other: "redis" (any number of
+# workers) or "memory" (single process — tests and runserver only).
+VIGIL_SESSION_BUS = os.environ.get("VIGIL_SESSION_BUS", "redis")
+# The shared cache. Several web workers serve one dashboard, and things one
+# request stores for another (a rebuild's enrolment and config tokens, a
+# security key's one-time confirmation) must be visible to every worker, so it
+# is Redis whenever a deployment names one. VIGIL_CACHE_URL wins; otherwise
+# the broker's Redis on database 1. Tests and a bare runserver keep the
+# default in-process cache.
+def _cache_url() -> str:
+    explicit = os.environ.get("VIGIL_CACHE_URL", "")
+    if explicit:
+        return explicit
+    broker = os.environ.get("CELERY_BROKER_URL", "")
+    if not broker.startswith(("redis://", "rediss://")):
+        return ""
+    base, _, db = broker.rpartition("/")
+    return f"{base}/1" if db.isdigit() else broker
+
+
+if _cache_url():
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.redis.RedisCache",
+                          "LOCATION": _cache_url(),
+                          # JSON, never pickle: a value read back can only be data.
+                          "OPTIONS": {"serializer": "vigil.cache_json.JSONSerializer"}}}
+# Web RDP (QA-59). Empty address means the feature is off and the Connect menu
+# says so; it is set to the compose service's name when the rdp profile runs.
+VIGIL_GUACD_ADDR = os.environ.get("VIGIL_GUACD_ADDR", "")
+# The name guacd uses to reach *this* container for its RDP connection back.
+VIGIL_RDP_BRIDGE_HOST = os.environ.get("VIGIL_RDP_BRIDGE_HOST", "web")
+# Where guacd writes recordings, as seen inside the guacd container.
+VIGIL_RDP_RECORDING_PATH = os.environ.get("VIGIL_RDP_RECORDING_PATH", "/recordings")
 CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
@@ -413,6 +456,12 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 # Vigil's beat tasks are fire-and-forget — don't accumulate results in Redis.
 CELERY_TASK_IGNORE_RESULT = True
 CELERY_BEAT_SCHEDULE = {
+    "refresh-license": {
+        "task": "licensing.refresh",
+        # Every six hours. It only calls out when a license is new, not yet
+        # held by this install, or within three weeks of expiry.
+        "schedule": 6 * 3600.0,
+    },
     "reconcile-playbooks": {
         "task": "playbooks.reconcile",
         # Every 5 minutes. A host that gains a targeted tag should pick the
@@ -538,7 +587,7 @@ VIGIL_DB_SIZE_CRIT_GB = float(os.environ.get("VIGIL_DB_SIZE_CRIT_GB", "40"))
 # Server build version — surfaced on the About page and the /api/v1/about/
 # endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
 # this constant should stay in lockstep.
-VIGIL_VERSION = "2026.14.6"
+VIGIL_VERSION = "2026.15.0"
 
 # Opt-in daily refresh of the CISA KEV catalogue. Off by default: a self-hosted
 # install makes no outbound call unless its operator asks for one, and the

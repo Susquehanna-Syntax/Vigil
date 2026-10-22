@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import io
 import math
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -133,7 +134,7 @@ _OK_STATES = ("ok", "not_applicable", "skipped")
 #: Fallback headers for an empty `rows` widget, so the CSV is still readable.
 _ROWS_KEYS: dict[str, tuple[str, ...]] = {
     "failures_by_step": ("failed", "source", "step"),
-    "branch_paths": ("branch", "hosts", "source"),
+    "branch_paths": ("branch", "hosts", "label", "source"),
     "host_outcomes": ("at", "host", "outcome", "source"),
 }
 
@@ -178,6 +179,9 @@ def compute_for(playbooks_qs, automations_qs, range_days, widget_specs, user,
 
     host_runs = _host_runs(runs, run_source, tasks)
     context = {
+        # source name → the playbook flow its runs followed, so a branch path
+        # like "b1.elif1" can be shown as "or if upgrade not applicable".
+        "source_flow": _source_flows(runs, run_source),
         "runs": runs,
         "days": days,
         "day_index": {d: i for i, d in enumerate(days)},
@@ -340,6 +344,69 @@ def _failures_by_step(ctx):
     return {"rows": rows[:15]}
 
 
+
+_STATUS_COND = re.compile(r'^\(?\s*steps\.([A-Za-z0-9_-]+)\.status\s*==\s*"([a-z_]+)"\s*\)?$')
+
+
+def _condition_text(expr: str) -> str:
+    """A flow condition as a short phrase: ``steps.upgrade.status == "ok"``
+    reads "upgrade ok"; anything else keeps its own words, minus ``steps.``."""
+    expr = (expr or "").strip()
+    match = _STATUS_COND.match(expr)
+    if match:
+        return f"{match.group(1)} {match.group(2).replace('_', ' ')}"
+    text = expr.replace("steps.", "")
+    return text if len(text) <= 48 else text[:47] + "…"
+
+
+def _find_if(items, node_id):
+    for item in items or ():
+        if not isinstance(item, dict):
+            continue
+        if item.get("id") == node_id and "if" in item:
+            return item
+        for lane in ("then", "else"):
+            found = _find_if(item.get(lane), node_id)
+            if found:
+                return found
+        for arm in item.get("elif") or ():
+            found = _find_if(arm.get("then") if isinstance(arm, dict) else None, node_id)
+            if found:
+                return found
+    return None
+
+
+def branch_label(flow, path: str) -> str:
+    """A lane path like ``b1.elif1`` or ``b1.else.b2.then`` in words, from the
+    playbook's flow: "if upgrade ok", "or if upgrade not applicable",
+    "otherwise". Falls back to the path itself when the flow no longer has it."""
+    parts = (path or "").split(".")
+    if len(parts) < 2 or len(parts) % 2:
+        return path
+    words = []
+    lane_items = flow
+    for node_id, arm in zip(parts[::2], parts[1::2]):
+        node = _find_if(lane_items, node_id)
+        if node is None:
+            return path
+        if arm == "then":
+            words.append(f"if {_condition_text(node.get('if'))}")
+            lane_items = node.get("then")
+        elif arm == "else":
+            words.append("otherwise")
+            lane_items = node.get("else")
+        elif arm.startswith("elif") and arm[4:].isdigit():
+            arms = node.get("elif") or []
+            index = int(arm[4:]) - 1
+            if not 0 <= index < len(arms):
+                return path
+            words.append(f"or if {_condition_text(arms[index].get('if'))}")
+            lane_items = arms[index].get("then")
+        else:
+            return path
+    return " › ".join(words)
+
+
 def _branch_paths(ctx):
     seen: dict = {}
     for task in ctx["tasks"]:
@@ -352,7 +419,9 @@ def _branch_paths(ctx):
     for source, branch, _run, _host in seen:
         key = (source, branch)
         counts[key] = counts.get(key, 0) + 1
-    rows = [{"source": source, "branch": branch, "hosts": n}
+    flow_of = ctx.get("source_flow", {})
+    rows = [{"source": source, "branch": branch, "hosts": n,
+             "label": branch_label(flow_of.get(source), branch)}
             for (source, branch), n in counts.items()]
     rows.sort(key=lambda r: (r["source"], r["branch"]))
     return {"rows": rows}
@@ -449,6 +518,18 @@ def _sources_by_name(context: dict) -> dict:
     for pk, name in {**context["playbooks"], **context["automations"]}.items():
         by_name[name].add(str(pk))
     return by_name
+
+
+def _source_flows(runs, run_source) -> dict:
+    from apps.playbooks.models import Playbook
+
+    playbook_of = {}
+    for run in runs:
+        if run["playbook"] and run_source[run["pk"]] not in playbook_of:
+            playbook_of[run_source[run["pk"]]] = run["playbook"]
+    flows = dict(Playbook.objects.filter(pk__in=set(playbook_of.values()))
+                 .values_list("pk", "flow"))
+    return {source: flows.get(pk) for source, pk in playbook_of.items()}
 
 
 def _runs_in_scope(start, playbook_names, automation_names):

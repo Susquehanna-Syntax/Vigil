@@ -14,7 +14,7 @@ lose machines.
 import re
 
 from django.template.loader import render_to_string
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 BASE_URL = "https://vigil.example.com"
@@ -79,7 +79,9 @@ class UninstallersRemoveWhatInstallersCreate(SimpleTestCase):
         self.assertIn("DataDir", self.ps1)
 
 
-class UninstallEndpoints(SimpleTestCase):
+class UninstallEndpoints(TestCase):
+    # A TestCase since 2026.15.0: the relay gate reads the built-in relay row
+    # before any agent path, the uninstallers included.
     def test_shell_uninstaller_is_served(self):
         resp = self.client.get(reverse("agent-uninstall-script"))
         self.assertEqual(resp.status_code, 200)

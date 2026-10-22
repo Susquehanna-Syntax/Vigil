@@ -13,6 +13,12 @@
 # URL of the Vigil server (no trailing slash).
 server_url: https://vigil.example.com
 
+# Fallback addresses (2026.15). If server_url stops answering, the agent tries
+# these in order, and every 10 minutes it tries server_url again. The dashboard
+# also sends a signed list of its relays, so this is optional.
+# fallback_urls:
+#   - https://relay-2.example.com
+
 # Agent token — generated automatically on first run and saved here.
 # Copy the token from the Vigil console to pre-authorize this host.
 # Leave empty to auto-register (host will appear as "Pending" until approved).
@@ -61,6 +67,27 @@ mode: managed
 # arming anything.
 
 allow_reprovision: false
+
+
+# ── Live sessions (2026.15) ──────────────────────────────────────────────────
+#
+# Live sessions (2026.15). Off by default, and only this file can turn them on —
+# the dashboard never can. Monitor-mode agents ignore these.
+#
+# A web shell is a door into this machine for as long as a browser tab is open,
+# so both kinds start closed and each is armed here, on the host, never from
+# the console. Tickets are signed and bound to this agent's token either way;
+# this section is what decides whether one is ever acted on.
+allow_remote_shell: false     # web shell and container shells
+allow_remote_desktop: false   # Web RDP to this machine's own Remote Desktop
+
+# The account a web shell runs as (Linux/macOS). Container shells run as
+# whoever the container itself says.
+remote_shell_user: root
+
+# The local RDP port. Only 127.0.0.1 is ever dialled — this host's own Remote
+# Desktop, never another machine's.
+remote_desktop_port: 3389
 
 
 # ── Allowlist (managed mode only) ────────────────────────────────────────────

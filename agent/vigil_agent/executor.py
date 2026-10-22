@@ -1268,11 +1268,16 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
         if sys.platform == "win32":
             platform = "windows-amd64"
         elif sys.platform == "darwin":
-            machine = os.uname().machine
-            platform = "darwin-arm64" if machine == "arm64" else "darwin-amd64"
+            # Apple Silicon only since 2026.15: no Intel build is published.
+            platform = "darwin-arm64" if os.uname().machine == "arm64" else "darwin-amd64"
         else:
             machine = os.uname().machine
             platform = "linux-arm64" if machine in ("aarch64", "arm64") else "linux-amd64"
+    if platform == "darwin-amd64":
+        raise RuntimeError(
+            "This Mac has an Intel processor. Vigil agents are built for Apple "
+            "Silicon only (macOS no longer supports Intel Macs), so there is no "
+            "update to install.")
 
     # The replacement binary is verified against a SHA-256 the server placed
     # inside this Ed25519-signed task. A TLS-only download is not a strong
@@ -1469,6 +1474,15 @@ from .actions.tags_scans import (  # noqa: E402,F401
 from .actions.hunts import _hunt_content, _hunt_file, _hunt_package, _hunt_port, _hunt_process, _hunt_registry, _hunt_service
 from .actions.apps import (_app_ensure, _app_install, _app_install_custom, _app_pin,
                            _app_uninstall, _app_upgrade)
+from .actions.power import (  # noqa: E402,F401
+    _set_sleep_timeout,
+    _set_display_timeout,
+    _set_hibernate,
+    _set_power_plan,
+    _set_lid_action,
+    _sleep_now,
+    _hibernate_now,
+)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1547,6 +1561,14 @@ _HANDLERS: dict[str, callable] = {
     "reboot": _reboot,
     "run_command": _run_command,
     "set_hostname": _set_hostname,
+    # Power
+    "set_sleep_timeout": _set_sleep_timeout,
+    "set_display_timeout": _set_display_timeout,
+    "set_hibernate": _set_hibernate,
+    "set_power_plan": _set_power_plan,
+    "set_lid_action": _set_lid_action,
+    "sleep_now": _sleep_now,
+    "hibernate_now": _hibernate_now,
     # Networking
     "add_firewall_rule": _add_firewall_rule,
     "remove_firewall_rule": _remove_firewall_rule,

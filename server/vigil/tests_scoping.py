@@ -4,8 +4,13 @@ from unittest import mock
 from django.test import TestCase
 
 from apps.playbooks.models import Playbook
-from apps_business.sites.models import PlaybookSiteAssignment, Site
 from vigil import scoping
+
+from vigil.testsupport import require_business_module
+
+# Exercises core with the Business apps; a source checkout has none.
+require_business_module()
+from apps_business.sites.models import PlaybookSiteAssignment, Site  # noqa: E402
 
 
 class ResourcesForTests(TestCase):

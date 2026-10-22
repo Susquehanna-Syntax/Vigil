@@ -6,7 +6,7 @@ registration rather than a branch in shared code — see docs/reprovisioning.md
 """
 
 
-def enrolment_script(base_url: str, enroll_token: str) -> str:
+def enrolment_script(base_url: str, enroll_token: str, config_token: str = "") -> str:
     """One shell command line that installs the agent and enrols it.
 
     Returned as a single `sh -c`-able string rather than a list of commands
@@ -27,10 +27,15 @@ def enrolment_script(base_url: str, enroll_token: str) -> str:
     The server URL is not passed: install.sh is rendered per-request with its
     own origin baked in as VIGIL_SERVER, so telling it again would only
     create a second source of truth that can disagree.
+
+    ``config_token``, when the install profile named an agent profile (QA-62),
+    rides in front of it: one more thing the installer exchanges once, for the
+    ``agent.yml`` the admin configured rather than the packaged default.
     """
+    config_prefix = f"VIGIL_CONFIG_TOKEN={config_token} " if config_token else ""
     return (
         f"curl -fsSL {base_url}/agent/install.sh -o /tmp/vigil-install.sh && "
-        f"VIGIL_ENROLL_TOKEN={enroll_token} sh /tmp/vigil-install.sh && "
+        f"{config_prefix}VIGIL_ENROLL_TOKEN={enroll_token} sh /tmp/vigil-install.sh && "
         "rm -f /tmp/vigil-install.sh"
     )
 
@@ -63,7 +68,8 @@ class Renderer:
 
     family: str = ""
 
-    def render(self, job, base_url: str, enroll_token: str) -> dict[str, str]:
+    def render(self, job, base_url: str, enroll_token: str,
+               config_token: str = "") -> dict[str, str]:
         """Return {filename: content}. Ubuntu emits two files; the others one."""
         raise NotImplementedError
 

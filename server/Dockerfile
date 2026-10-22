@@ -58,6 +58,19 @@ COPY server/requirements.txt server/requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.txt -c requirements.lock
 
 COPY server/ .
+# A release image trusts only the license keys built into vigil/license_keys.py;
+# VIGIL_LICENSE_PUBLIC_KEY is for source checkouts (see that file).
+RUN touch /app/RELEASE_BUILD
+
+# The Business apps (vigil-business, commercial license, a private repo). The
+# official build drops its compiled wheels for both architectures into
+# business-wheels/ first; pip takes the one for this platform, at the version
+# business.lock names. A build from source has no wheels: the AGPL core.
+COPY business.lock business-wheels/ /tmp/business-wheels/
+RUN if ls /tmp/business-wheels/*.whl >/dev/null 2>&1; then \
+        pip install --no-cache-dir --no-deps --no-index --find-links /tmp/business-wheels \
+            "vigil-business==$(cat /tmp/business-wheels/business.lock)"; \
+    fi && rm -rf /tmp/business-wheels
 
 # Bundle the agent binaries — served via /agent/download/<platform>/.
 # CI drops cross-platform binaries (linux-amd64/arm64, darwin, windows) into
@@ -105,4 +118,6 @@ ENTRYPOINT ["/app/entrypoint.sh"]
 # run past 30s, and the default kills the worker mid-upload — the arbiter
 # has no idea a legitimate transfer is still in progress. Do not trim this
 # back without an alternative (e.g. a background upload endpoint) in place.
-CMD ["gunicorn", "vigil.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "1800"]
+# ASGI, not WSGI: live sessions (QA-56) need WebSocket upgrades, and the agent's
+# wake long-poll holds a socket open for 25s — which would tie up a sync worker.
+CMD ["gunicorn", "vigil.asgi:application", "-k", "uvicorn_worker.UvicornWorker", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "1800"]

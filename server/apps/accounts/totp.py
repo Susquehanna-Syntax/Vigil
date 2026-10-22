@@ -109,8 +109,20 @@ def consume_totp(user, code: str) -> tuple[bool, str | None]:
     Rejects codes that were used within the validity window so an
     intercepted code cannot be replayed for a second sensitive action.
     Returns ``(ok, error_message)``.
+
+    A ``wa_`` value is a one-time key token from a WebAuthn assertion (QA-65)
+    and stands in for the six digits, so everything below it — enrolment
+    included — is skipped: a key-only user has no TOTP secret.
     """
     from django.utils.timezone import now
+
+    from .webauthn_keys import KEY_TOKEN_PREFIX, consume_key_token
+
+    code = (code or "").strip().replace(" ", "")
+    if code.startswith(KEY_TOKEN_PREFIX):
+        if consume_key_token(user, code):
+            return True, None
+        return False, "That security key confirmation has expired. Try again."
 
     profile = getattr(user, "profile", None)
     if profile is None:
@@ -119,7 +131,6 @@ def consume_totp(user, code: str) -> tuple[bool, str | None]:
     if not (profile.totp_confirmed_at and secret):
         return False, "TOTP enrollment required — enroll in Settings before continuing"
 
-    code = (code or "").strip().replace(" ", "")
     if not code:
         return False, "TOTP code required"
     # A six-digit code falls to guessing without a limit, and the gate exists
@@ -139,6 +150,20 @@ def consume_totp(user, code: str) -> tuple[bool, str | None]:
     profile.last_totp_used_at = now()
     profile.save(update_fields=["last_totp_code", "last_totp_used_at"])
     return True, None
+
+
+def has_second_factor(user) -> bool:
+    """Whether this user can answer a confirmation prompt at all.
+
+    Either factor counts: the settings UI says how many keys to offer only
+    after checking, and the remote-session gate refuses anyone with neither —
+    a key-only user is as verified as a TOTP one.
+    """
+    profile = getattr(user, "profile", None)
+    if profile is not None and profile.totp_confirmed_at and profile.totp_secret:
+        return True
+    return bool(getattr(user, "security_keys", None) is not None
+                and user.security_keys.exists())
 
 
 def require_totp_confirmation(user, payload) -> str | None:

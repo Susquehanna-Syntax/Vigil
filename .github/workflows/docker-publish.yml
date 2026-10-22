@@ -10,6 +10,7 @@ on:
 
 env:
   SERVER_IMAGE: susquehannasyntax/vigil
+  RELAY_IMAGE: susquehannasyntax/vigil-relay
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -67,16 +68,42 @@ jobs:
           cache-dependency-path: server/requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
+      # The Business apps (private Vigil_Business repo), compiled, at the
+      # version business.lock names, so the suite covers core with Business.
+      # Pull requests from forks get no secrets and test the AGPL core alone;
+      # its Business-dependent tests skip themselves.
+      # Only these two steps ever see the token: never the job's environment,
+      # where every dependency's install scripts and the test run could read it.
+      - name: Is the Business token available
+        id: business
+        env:
+          TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
+        run: echo "available=$([ -n "$TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Install the Business apps
+        if: steps.business.outputs.available == 'true'
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
+        run: |
+          version="$(cat business.lock)"
+          gh release download "v${version}" -R Susquehanna-Syntax/Vigil_Business \
+            -p '*.whl' -D business-wheels
+          pip install --no-deps --no-index --find-links business-wheels "vigil-business==${version}"
       - name: Django system check
         run: python manage.py check
       - name: Run migrations
         run: python manage.py migrate --noinput
       - name: Run tests
         run: python manage.py test --verbosity=2
+      # The relay container (2026.15.0) is its own package; aiohttp is already
+      # in the server requirements because the dashboard's link uses it too.
+      - name: Run relay tests
+        working-directory: relay
+        run: python -m unittest discover -s tests -t . -v
 
   # ── Build agent binaries (parallel) ─────────────────────────────────────────
-  # Both macOS targets run on macos-latest (Apple Silicon). PyInstaller's
-  # --target-arch flag cross-compiles darwin-amd64 without needing macos-13.
+  # macOS is Apple Silicon only (2026.15): macos-latest is arm64, so the agent
+  # builds natively there. Intel Macs are no longer a target.
   # Linux binaries build natively on amd64 and arm64 runners — PyInstaller
   # cannot cross-compile between Linux architectures.
   build-agent:
@@ -92,9 +119,6 @@ jobs:
             platform: linux-arm64
             out: vigil-agent-linux-arm64
           - os: macos-latest
-            platform: darwin-amd64
-            out: vigil-agent-darwin-amd64
-          - os: macos-latest
             platform: darwin-arm64
             out: vigil-agent-darwin-arm64
           - os: windows-latest
@@ -109,59 +133,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        if: runner.os != 'macOS'
         with:
           python-version: "3.12"
       # No pip cache: actions/setup-python@v5's internal cache step has been
       # failing on windows-latest after the Windows Server 2025 rollout, and
       # it marks the whole step failed even when Python installs cleanly.
       # The agent has 4 small deps — fresh install takes seconds.
-      - name: Install universal2 Python (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          curl -fsSL "https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg" -o /tmp/python.pkg
-          sudo installer -pkg /tmp/python.pkg -target /
-          echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
-        run: |
-          pip3.12 install --upgrade pip delocate
-          mkdir -p /tmp/arm64 /tmp/x86 /tmp/u2
-          # Download a specific wheel from PyPI by version + filename regex
-          grab() {
-            python3.12 -c "
-          import json, re, sys, urllib.request
-          pkg, ver, pat, dest = sys.argv[1:]
-          data = json.load(urllib.request.urlopen(f'https://pypi.org/pypi/{pkg}/{ver}/json'))
-          p = re.compile(pat)
-          for u in data['urls']:
-              if p.search(u['filename']):
-                  with urllib.request.urlopen(u['url']) as r, open(dest + '/' + u['filename'], 'wb') as f:
-                      f.write(r.read())
-                  print('downloaded:', u['filename']); sys.exit(0)
-          sys.exit('no match for ' + pkg + ' ' + pat)
-          " "$1" "$2" "$3" "$4"
-          }
-          # cffi and psutil don't ship universal2 wheels — fuse arm64 + x86_64
-          grab cffi   2.0.0 'cp312-cp312-macosx_.*_arm64\.whl$'  /tmp/arm64
-          grab cffi   2.0.0 'cp312-cp312-macosx_.*_x86_64\.whl$' /tmp/x86
-          grab psutil 6.1.1 'cp36-abi3-macosx_.*_arm64\.whl$'    /tmp/arm64
-          grab psutil 6.1.1 'cp36-abi3-macosx_.*_x86_64\.whl$'   /tmp/x86
-          delocate-merge /tmp/arm64/cffi-*.whl   /tmp/x86/cffi-*.whl   -w /tmp/u2
-          delocate-merge /tmp/arm64/psutil-*.whl /tmp/x86/psutil-*.whl -w /tmp/u2
-          # PyNaCl 1.6.2 ships a real universal2 wheel
-          grab PyNaCl 1.6.2 'cp38-abi3-macosx_.*_universal2\.whl$' /tmp/u2
-          pip3.12 install --upgrade --force-reinstall --no-deps /tmp/u2/*.whl
-          # PyYAML has no universal2 wheel — build pure-Python (no _yaml.so)
-          PYYAML_FORCE_LIBYAML=0 pip3.12 install --no-binary PyYAML --force-reinstall 'PyYAML>=6.0,<7.0'
-          # Remaining pure-Python deps + PyInstaller (ships universal2 wheel)
-          pip3.12 install 'requests>=2.32,<3.0' pyinstaller
+        # requirements.txt, like the other platforms: a hand-picked list here
+        # once left out websocket-client, which live sessions need.
+        run: pip install -r requirements.txt pyinstaller
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: pip install -r requirements.txt pyinstaller
       - name: Build binary (macOS)
         if: runner.os == 'macOS'
-        run: pyinstaller --onefile --target-arch universal2 --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
+        run: pyinstaller --onefile --target-arch arm64 --name ${{ matrix.out }} --collect-all cffi --collect-all nacl vigil_agent_main.py
       # --onedir, not --onefile, and this is not a preference. A --onefile
       # build cannot host a Windows service: its bootloader extracts and
       # re-executes, so the process the SCM is watching never calls
@@ -420,6 +408,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, build-agent, smoke-macos-install]
     if: github.event_name == 'push'
+    # Third-party actions in this job are pinned to commits, not tags: it holds
+    # the Docker Hub token and can mint signing identities, so a moved tag
+    # must not be able to change what runs here. Bump the hash with the tag.
+    permissions:
+      contents: read
+      # Keyless cosign signing: the signature is tied to this workflow run
+      # through GitHub's OIDC token, so there is no signing key to keep.
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -432,25 +428,35 @@ jobs:
           path: server/agent_dist/
           merge-multiple: true
 
+      # The compiled Business apps go into the image (server/Dockerfile).
+      # Never publish an image without them: a missing release fails here.
+      - name: Download the Business apps
+        env:
+          GH_TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
+        run: |
+          version="$(cat business.lock)"
+          gh release download "v${version}" -R Susquehanna-Syntax/Vigil_Business \
+            -p '*.whl' -D business-wheels
+          ls business-wheels/*.whl
+
       - name: Mark Unix binaries executable
         run: |
           chmod +x server/agent_dist/vigil-agent-linux-amd64 || true
           chmod +x server/agent_dist/vigil-agent-linux-arm64 || true
-          chmod +x server/agent_dist/vigil-agent-darwin-amd64 || true
           chmod +x server/agent_dist/vigil-agent-darwin-arm64 || true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Log in to DockerHub
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.SERVER_IMAGE }}
           tags: |
@@ -458,7 +464,8 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        id: build
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: .
           file: server/Dockerfile
@@ -468,3 +475,43 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
+
+      # The relay is small and has no agent builds in it: one more image from
+      # the same commit, so a relay and the dashboard it links to match.
+      - name: Extract relay metadata
+        id: relaymeta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ${{ env.RELAY_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+
+      - name: Build and push relay
+        id: buildrelay
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
+        with:
+          context: relay
+          file: relay/Dockerfile
+          push: true
+          tags: ${{ steps.relaymeta.outputs.tags }}
+          labels: ${{ steps.relaymeta.outputs.labels }}
+          cache-from: type=gha,scope=relay
+          cache-to: type=gha,mode=max,scope=relay
+          platforms: linux/amd64,linux/arm64
+
+      # Sign both images by digest, so anyone can check that what they pulled
+      # is what this workflow built (wiki: Deployment → Verify the image):
+      #   cosign verify susquehannasyntax/vigil:<version> \
+      #     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+      #     --certificate-identity-regexp '^https://github.com/Susquehanna-Syntax/Vigil/'
+      - name: Install cosign
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+
+      - name: Sign images
+        env:
+          SERVER_DIGEST: ${{ steps.build.outputs.digest }}
+          RELAY_DIGEST: ${{ steps.buildrelay.outputs.digest }}
+        run: |
+          cosign sign --yes "${SERVER_IMAGE}@${SERVER_DIGEST}"
+          cosign sign --yes "${RELAY_IMAGE}@${RELAY_DIGEST}"

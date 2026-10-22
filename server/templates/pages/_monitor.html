@@ -1,3 +1,4 @@
+{% load static %}
 {# Monitor page section — pin bar + host dropdown + gauges + charts + processes #}
 {# Logic: static/js/vigil-monitor.js (charts) + vigil-host-cards.js (pin bar / dropdown) | Styles: vigil.css .monitor-*, .gauge-*, .chart-*, .pin-*, .proc-* | Data: client-side fetch /api/v1/metrics/{host}/{cat}/{metric}/ #}
     <section id="page-monitor" class="page">
@@ -69,14 +70,20 @@
             <div class="mhb-name" id="mon-hostname">—</div>
             <div class="mhb-meta" id="mon-meta">—</div>
           </div>
-          <button class="btn btn-outline btn-sm" id="mon-ssh-btn" data-act="openSshForCurrentMonitor" title="Get an SSH command for your terminal">
+          <button class="btn btn-outline btn-sm" id="mon-connect-btn" data-act="openConnectMenuForMonitor" data-a1="$el" title="Open a shell, get an SSH command, or download a .rdp file">
             <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-            SSH
+            Connect
           </button>
-          <button class="btn btn-outline btn-sm" id="mon-rdp-btn" data-act="launchRdpForCurrentMonitor" title="Download a .rdp file for this host">
-            <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="18" x2="12" y2="20"/></svg>
-            RDP
-          </button>
+          {% comment %}The web terminal's vendored assets, loaded on first use by
+          loadTerminalAssets() in vigil-host-cards.js rather than on every page
+          view. Paths only — nothing here runs.{% endcomment %}
+          <span id="vigil-term-assets" hidden
+                data-js="{% static 'js/vigil-terminal.js' %}"
+                data-xterm="{% static 'js/vendor/xterm.js' %}"
+                data-fit="{% static 'js/vendor/xterm-addon-fit.js' %}"
+                data-guac="{% static 'js/vendor/guacamole-common.js' %}"
+                data-rdp="{% static 'js/vigil-rdp.js' %}"
+                data-css="{% static 'css/vendor/xterm.css' %}"></span>
           <button class="btn btn-outline btn-sm" id="mon-containers-btn" data-act="openContainersForCurrentMonitor" title="Containers and compose stacks on this host">
             <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="13" rx="2"/><line x1="7" y1="7" x2="7" y2="20"/><line x1="12" y1="7" x2="12" y2="20"/><line x1="17" y1="7" x2="17" y2="20"/><path d="M6 7V4h12v3"/></svg>
             Containers

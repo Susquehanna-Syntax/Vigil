@@ -395,6 +395,7 @@ def checkin(request):
 
     # Update host metadata from the payload
     host.last_checkin = now()
+    host.last_relay_id = getattr(request, "vigil_relay_id", None)
     # IP is taken from the connection, never the agent-supplied body: a rogue
     # agent must not be able to steer Nessus scans or .rdp targets at hosts it
     # does not own. Matches register() above.
@@ -441,6 +442,13 @@ def checkin(request):
         host.agent_allowlist = sorted(set(raw_allow))
     if isinstance(data.get("allow_reprovision"), bool):
         host.agent_allow_reprovision = data["allow_reprovision"]
+    # QA-56: the same local opt-in for live sessions. Written only here, by the
+    # agent's own check-in — never by an admin pressing a button in the UI.
+    # Booleans only, as allow_reprovision: the string "false" is not consent.
+    if isinstance(data.get("allow_remote_shell"), bool):
+        host.agent_allow_remote_shell = data["allow_remote_shell"]
+    if isinstance(data.get("allow_remote_desktop"), bool):
+        host.agent_allow_remote_desktop = data["allow_remote_desktop"]
     # Absent means an agent too old to report it (or Windows) — keep what we knew.
     if isinstance(data.get("runs_as_root"), bool):
         host.agent_runs_as_root = data["runs_as_root"]
@@ -742,12 +750,19 @@ def checkin(request):
 
     from apps.software.models import SoftwareSnapshot
 
+    from apps.relays.models import signed_relay_list
+
     snapshot = SoftwareSnapshot.objects.filter(host=host).first()
     return Response(
         {
             "status": "ok",
             "public_key": get_public_key_b64(),
             "tasks": tasks_payload,
+            # Fallback connection points (QA-52), signed for this agent (QA-54b)
+            # because a relay carries this response too: "relays" is the ordered
+            # list, "direct" whether the dashboard itself still accepts agents,
+            # and "relays_sig" what proves neither was written by the relay.
+            **signed_relay_list(host.token_fingerprint),
             # The agent resends its software list when this differs from its
             # own digest. "" when the server holds nothing for this host.
             "software_digest": snapshot.digest if snapshot else "",

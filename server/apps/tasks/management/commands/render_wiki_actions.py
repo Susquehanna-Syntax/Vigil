@@ -68,6 +68,10 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "clear_temp_files", "execute_script", "reboot", "run_command",
         "set_hostname",
     ]),
+    ("power", "Power", [
+        "set_sleep_timeout", "set_display_timeout", "set_hibernate",
+        "set_power_plan", "set_lid_action", "sleep_now", "hibernate_now",
+    ]),
     ("network", "Networking", [
         "add_firewall_rule", "remove_firewall_rule", "list_firewall_rules",
         "set_firewall_policy", "enable_firewall", "disable_firewall",
@@ -122,6 +126,9 @@ GROUP_NOTES: dict[str, str] = {
     "winupdate": "Windows only. These drive the Windows Update COM API "
                  "directly rather than shelling out to a module.",
     "system": "The broadest actions, and most of the high-risk ones.",
+    "power": "powercfg on Windows, logind on Linux, pmset on macOS. Where a "
+             "platform has no equivalent the step fails with 'not supported' "
+             "rather than reporting a change it did not make.",
     "network": "ufw, firewalld, nftables, or Windows Firewall, whichever the "
                "host runs. Ports 22 and 3389 cannot be closed by these "
                "actions.",
@@ -165,6 +172,12 @@ PARAM_EXAMPLES: dict[str, str] = {
     "tail": "200",
     "container_name": "nextcloud",
     "content": '"# managed by Vigil\\nmax_connections = 200\\n"',
+    "enabled": "true",
+    "plan": "high_performance",
+    "ac_minutes": "30",
+    "dc_minutes": "10",
+    "ac": "sleep",
+    "dc": "hibernate",
     "defer_limit": "3",
     "defer_minutes": "60",
     "delay_seconds": "60",
@@ -349,6 +362,13 @@ EXAMPLE_TITLES: dict[str, tuple[str, str]] = {
                         "inline body only after its owner approves its hash.")),
     "reboot": ("Reboot after patching",
                "Warns the logged-in user, then reboots after a delay."),
+    "set_sleep_timeout": ("Stop lab laptops sleeping on battery",
+                          ("Minutes before an idle machine sleeps; 0 means "
+                           "never. Gives batteries some credit and desktops a "
+                           "blank afternoon.")),
+    "sleep_now": ("Sleep the test bench when the run finishes",
+                  ("Suspends after a short delay so the result reaches Vigil "
+                   "before the machine goes down.")),
     "run_command": ("Run a one-off command",
                     "Highest-risk action. Managed-mode agents refuse it."),
     "add_firewall_rule": ("Open a port to one subnet",
@@ -514,6 +534,17 @@ ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
     ("jackil_resolve", "key"): "The key whose open ticket to resolve. Does nothing when none is open.",
     ("jackil_resolve", "note"): "A closing note added before the status change — what fixed it. Cut at 4,000 characters.",
     ("jackil_resolve", "status"): "resolved (default) or closed. Taken from the task the server signed, not from the agent's report.",
+
+    ("set_sleep_timeout", "ac_minutes"): "Minutes on AC power before the machine sleeps. 0 means never.",
+    ("set_sleep_timeout", "dc_minutes"): "Minutes on battery. Defaults to the AC value.",
+    ("set_display_timeout", "ac_minutes"): "Minutes on AC power before the display sleeps. 0 means never.",
+    ("set_display_timeout", "dc_minutes"): "Minutes on battery. Defaults to the AC value.",
+    ("set_hibernate", "enabled"): "true to turn hibernation on, false to turn it off.",
+    ("set_power_plan", "plan"): "balanced, high_performance or power_saver.",
+    ("set_lid_action", "ac"): "What closing the lid does on AC power: sleep, hibernate, shutdown or nothing.",
+    ("set_lid_action", "dc"): "What closing the lid does on battery. Defaults to the AC value.",
+    ("sleep_now", "delay_seconds"): "Seconds to wait before suspending (default 15, at most 3600), so the result reaches Vigil first.",
+    ("hibernate_now", "delay_seconds"): "Seconds to wait before hibernating (default 15, at most 3600), so the result reaches Vigil first.",
 }
 
 
@@ -675,6 +706,16 @@ OUTPUT_NOTES: dict[str, dict[str, str]] = {
     "clear_temp_files": {"removed": "Files deleted.", "skipped": "Files left because they were in use or not permitted."},
     "reboot": {"delay_seconds": "Seconds until the reboot.", "deferral_active": "True when a logged-in user may still defer it."},
     "set_hostname": {"hostname": "The hostname now set."},
+    "set_sleep_timeout": {"ac_minutes": "Minutes on AC power; 0 means never.",
+                          "dc_minutes": "Minutes on battery."},
+    "set_display_timeout": {"ac_minutes": "Minutes on AC power; 0 means never.",
+                            "dc_minutes": "Minutes on battery."},
+    "set_hibernate": {"enabled": "True when hibernation is now on."},
+    "set_power_plan": {"plan": "The plan now active."},
+    "set_lid_action": {"ac": "The lid action on AC power.",
+                       "dc": "The lid action on battery."},
+    "sleep_now": {"delay_seconds": "Seconds the machine waits before suspending."},
+    "hibernate_now": {"delay_seconds": "Seconds the machine waits before hibernating."},
     "add_firewall_rule": {"port": "The rule's port.", "protocol": "The rule's protocol.", "action": "allow or deny."},
     "remove_firewall_rule": {"port": "The rule's port.", "protocol": "The rule's protocol.", "action": "allow or deny."},
     "list_firewall_rules": {

@@ -140,30 +140,48 @@ def download_agent(request, platform):
     return response
 
 
+def _base_url(request) -> str:
+    """The address an installer fetched through should tell the agent to use.
+
+    Through a relay the request reaches Vigil over the link with the link's own
+    Host header, so the request's host names the dashboard's inside, not the
+    relay the machine can actually see. That relay's url is the right answer:
+    it is where this script was downloaded from.
+    """
+    relay_id = getattr(request, "vigil_relay_id", None)
+    if relay_id is not None:
+        from apps.relays.models import Relay
+
+        url = Relay.objects.filter(pk=relay_id).values_list("url", flat=True).first()
+        if url:
+            return url.rstrip("/")
+    return f"{request.scheme}://{request.get_host()}"
+
+
 def uninstall_script(request):
     """Return the bash uninstaller for Linux and macOS."""
-    base_url = f"{request.scheme}://{request.get_host()}"
+    base_url = _base_url(request)
     content = render_to_string("agent_uninstall.sh", {"base_url": base_url})
     return HttpResponse(content, content_type="text/x-shellscript")
 
 
 def uninstall_ps1(request):
     """Return the PowerShell uninstaller for Windows."""
-    base_url = f"{request.scheme}://{request.get_host()}"
+    base_url = _base_url(request)
     content = render_to_string("agent_uninstall.ps1", {"base_url": base_url})
     return HttpResponse(content, content_type="text/plain")
 
 
 def install_script(request):
     """Return the bash installer for Linux and macOS."""
-    base_url = f"{request.scheme}://{request.get_host()}"
+    base_url = _base_url(request)
     content = render_to_string("agent_install.sh", {"base_url": base_url, "public_key": get_public_key_b64()})
     return HttpResponse(content, content_type="text/plain; charset=utf-8")
 
 
 def install_ps1(request):
     """Return the PowerShell installer for Windows."""
-    base_url = f"{request.scheme}://{request.get_host()}"
+    base_url = _base_url(request)
     content = render_to_string("agent_install.ps1", {"base_url": base_url, "public_key": get_public_key_b64()})
     return HttpResponse(content, content_type="text/plain; charset=utf-8")
 

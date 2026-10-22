@@ -1,9 +1,9 @@
 """In-process event bus — the extension seam for Business code.
 
-Vigil core (Free) is self-contained. Business code ships in this repo under
-``server/apps_business/`` (commercial licence, runtime ``has_feature()`` gates)
-and subscribes to lifecycle events here, in its ``AppConfig.ready()``, instead
-of patching core code.
+Vigil core (Free) is self-contained. Business code (the ``vigil-business``
+package, commercial licence, runtime ``has_feature()`` gates) subscribes to
+lifecycle events here, in its ``AppConfig.ready()``, instead of patching core
+code.
 
 Core emits; ``apps_business`` listens. Core never imports it, so an event
 nobody has subscribed to is simply a no-op.

@@ -28,10 +28,16 @@ services:
     volumes:
       - ./server:/app
 
+  link:
+    volumes:
+      - ./server:/app
+
   db:
     ports:
       - "5432:5432"
 
   redis:
     ports:
-      - "6379:6379"
+      # Loopback only: this Redis has no password, and it carries the task
+      # queue and the shared cache.
+      - "127.0.0.1:6379:6379"

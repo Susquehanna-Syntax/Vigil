@@ -248,7 +248,7 @@ class CheckinFeaturesTests(unittest.TestCase):
         with patch.object(client.requests, "post", return_value=resp) as post:
             client.checkin(self.config, {})
         payload = post.call_args.kwargs["json"]
-        self.assertEqual(payload["features"], ["relevant", "branches", "boost", "signed_v2", "stack_source"])
+        self.assertEqual(payload["features"], ["relevant", "branches", "boost", "signed_v2", "stack_source", "remote_sessions"])
 
 if __name__ == "__main__":
     unittest.main()

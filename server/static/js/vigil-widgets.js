@@ -216,7 +216,7 @@ function _dashHostCard(h) {
     </div>
     <div class="host-card-actions">
       <div class="host-checkin">${escHtml(h.last_checkin ? timeAgo(h.last_checkin) : 'Never')}</div>
-      <button type="button" class="btn btn-ghost" data-host-act="rdp">RDP</button>
+      <button type="button" class="btn btn-ghost" data-host-act="connect">Connect</button>
       <button type="button" class="btn btn-sky" data-host-act="deploy">Deploy</button>
       <button type="button" class="btn btn-ghost btn-rose-ghost" data-host-act="remove"
               title="Remove agent">Remove</button>
@@ -243,7 +243,7 @@ document.addEventListener('click', (ev) => {
   const card = btn.closest('.host-card');
   const { id, hostname } = card.dataset;
   const act = btn.dataset.hostAct;
-  if (act === 'rdp' && typeof downloadHostRdp === 'function') downloadHostRdp(id, hostname);
+  if (act === 'connect' && typeof openConnectMenu === 'function') openConnectMenu(id, hostname, btn);
   if (act === 'deploy' && typeof openDeployForHost === 'function') openDeployForHost(id);
   if (act === 'remove' && typeof deleteHost === 'function') deleteHost(id, hostname, btn);
 });

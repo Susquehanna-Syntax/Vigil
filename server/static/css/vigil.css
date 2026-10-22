@@ -4667,3 +4667,155 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .topo-zoom-btn.topo-zoom-fit { font-size: 11px; }
 .topo-zoom-btn:hover { background: var(--s2); }
 .topo-zoom-btn:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
+
+/* ── QA-64: agent profiles — the settings form, its action picker, and the
+   Reimage tab. Appended; nothing above this line changed. ─────────────── */
+
+.apf { display: flex; flex-direction: column; gap: 16px; }
+.apf-section { border: 1px solid var(--border); border-radius: var(--r-md); padding: 14px; background: var(--s1); }
+.apf-advanced summary { cursor: pointer; }
+.apf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.apf-field { display: flex; flex-direction: column; gap: 4px; }
+.apf-field-label { font-size: 12px; color: var(--text-2); }
+.apf-narrow { max-width: 180px; }
+.apf-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+
+/* The allowlist picker is the widest part of the form and needs its own scroll
+   box: an agent's full action list is longer than any dialog holding it. */
+.apf-action-tools { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.apf-action-search { flex: 1; }
+.apf-actions { max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px; background: var(--s2); }
+.apf-actions details { margin-bottom: 6px; }
+.apf-actions summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.apf-action { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 4px; border-radius: var(--r-sm); }
+.apf-action:hover { background: var(--s3); }
+.apf-action-name { color: var(--text-3); font-size: 11px; }
+
+.apf-fallbacks { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.apf-fallback-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.apf-fallback-name { flex: 1; }
+
+/* Validation text sits under the field it refuses, in the colour every other
+   refusal in the app uses. */
+.apf-error { color: var(--rose-ink); font-size: 12px; margin-top: 6px; }
+/* Checkbox rows and the narrow fields under them get room to breathe. */
+.apf-section > .apf-check, .apf-section > .apf-narrow { margin-top: 10px; }
+.apf-section > .deploy-input-label + .apf-check { margin-top: 6px; }
+
+/* ═══════════════════════════════════════════
+   QA-58: THE CONNECT MENU AND THE WEB TERMINAL
+   ═══════════════════════════════════════════ */
+
+/* One popover per host, anchored to the button that opened it. Fixed rather
+   than absolute: host cards clip their overflow, and a menu inside one is a
+   menu with its bottom cut off. The reason line wraps rather than ellipsis —
+   "Turn on allow_remote_shell in this host's agent.yml." is the thing the
+   operator came here to read. */
+.connect-menu { position: fixed; z-index: 500; min-width: 240px; max-width: 300px;
+  background: var(--s1); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); padding: 4px; opacity: 0; pointer-events: none;
+  visibility: hidden; transition: opacity calc(var(--m-dur) * 0.6) var(--ease-out-expo); }
+.connect-menu.open { opacity: 1; pointer-events: auto; visibility: visible; }
+.connect-item { display: block; width: 100%; text-align: left; background: none;
+  border: 0; border-radius: var(--r-sm); padding: 7px 9px; color: var(--text-1);
+  font: inherit; font-size: 13px; cursor: pointer; }
+.connect-item:hover { background: var(--s2); }
+.connect-item-label { display: block; }
+/* aria-disabled, not [disabled]: the hover that reveals the reason needs a
+   button that still receives events. */
+.connect-item-off { cursor: default; }
+.connect-item-off .connect-item-label { color: var(--text-3); }
+.connect-item-off:hover { background: none; }
+.connect-item-reason { display: block; margin-top: 2px; font-size: 11px; line-height: 1.35;
+  color: var(--text-3); white-space: normal; }
+.connect-note { padding: 7px 9px 4px; font-size: 11px; color: var(--text-3);
+  border-top: 1px solid var(--border); margin-top: 4px; }
+
+/* The terminal dialog. Same resize: both + is-resized contract as the container
+   logs dialog (QA-40/QA-49): it is a column and the terminal takes what is left,
+   so dragging the grip grows the screen rather than the space under it. */
+.modal.term-modal { display: flex; flex-direction: column; height: 70vh; overflow: hidden;
+  width: min(1000px, calc(100vw - 32px)); }
+.term-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+/* Left, because .run-state is right-aligned where it heads a run table. */
+.term-bar .run-state { flex: 1; min-width: 0; text-align: left; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.term-bar #term-end { margin-left: auto; }
+.modal.term-modal.is-resized .term-host { height: auto; }
+/* xterm paints its own background from the theme we hand it, so this padding is
+   the only frame around it and --bg keeps that frame on-theme. */
+.term-modal .term-host { flex: 1 1 auto; min-height: 120px; height: auto; overflow: hidden;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md); padding: 6px; }
+.term-modal .xterm { height: 100%; }
+/* Relays: rows and the one-time key dialog's code blocks. Padding/border-bottom
+   match .enroll-card so the list reads as the same kind of row it sits next to
+   in Settings; the pills are tinted whole, never a coloured side border. */
+.settings-section-later { margin-top: 32px; }
+
+.relay-row {
+  display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+  padding: 14px 0; border-bottom: 1px solid var(--border);
+}
+.relay-row:last-child { border-bottom: none; }
+.relay-main { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 2px; }
+.relay-name { font-weight: 600; font-size: 0.9rem; }
+.relay-badge {
+  display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+  background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink);
+  font-size: 0.68rem; font-weight: 600; letter-spacing: 0.02em; vertical-align: middle;
+}
+.relay-meta { font-size: 0.76rem; color: var(--text-3); }
+.relay-url { font-size: 0.8rem; color: var(--text-2); word-break: break-all; }
+.relay-status-cell { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.relay-status-col { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.relay-status {
+  display: inline-block; padding: 2px 9px; border-radius: 999px;
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap;
+}
+.relay-status.ok { background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink); }
+.relay-status.bad { background: rgba(var(--rgb-rose), var(--tint-a)); color: var(--rose-ink); }
+.relay-status.off { background: var(--s2); color: var(--text-3); }
+.relay-err { font-size: 0.72rem; color: var(--text-3); max-width: 260px; }
+.relay-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Commands and the compose snippet are set with textContent, so they keep the
+   server's line breaks. */
+.relay-code {
+  background: var(--s2); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 12px 14px; margin: 6px 0 8px;
+  font-size: 12px; line-height: 1.6; color: var(--text-1);
+  white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow-y: auto;
+}
+.relay-key-sub { margin-top: 14px; }
+:root[data-density="compact"] .relay-row { padding: 9px 0; }
+
+/* The plan note under the relay count links to License: in the app's accent, not browser blue. */
+#relays-usage a { color: var(--sky-ink); text-decoration: none; }
+#relays-usage a:hover { text-decoration: underline; }
+
+/* The remote desktop dialog (QA-59). Same resize: both + is-resized contract as
+   the terminal's: it is a column and the display takes what is left, so dragging
+   the grip grows the desktop instead of the space under it. 80vh rather than the
+   terminal's 70vh because a Windows desktop is the thing being looked at. */
+.modal.rdp-modal { display: flex; flex-direction: column; height: 80vh; overflow: hidden;
+  width: min(1200px, calc(100vw - 32px)); resize: both; }
+.modal.rdp-modal.is-resized .rdp-display { height: auto; }
+.rdp-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.rdp-bar .run-state { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.rdp-bar #rdp-end { margin-left: auto; }
+/* Guacamole paints the desktop into a canvas of its own sizing, so this box only
+   frames it: flex 1 to take the dialog's height and never scroll, black because a
+   desktop mid-draw shows whatever it has drawn so far. */
+.rdp-display { flex: 1 1 auto; min-height: 120px; height: auto; overflow: hidden;
+  background: #000; border: 1px solid var(--border); border-radius: var(--r-md); }
+
+/* Security keys (QA-65): the "Use security key" button is the primary answer
+   to a confirmation prompt, so it sits above the code field at full width and
+   the code becomes the fallback the sub-line names. Rows reuse .relay-row from
+   Settings — a key row and a relay row are the same kind of row. */
+.totp-key-slot { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.totp-key-btn { width: 100%; justify-content: center; }
+.totp-key-error { font-size: 0.76rem; color: var(--rose-ink); }
+#security-keys-list .relay-actions .btn { min-width: 76px; }
+:root[data-density="compact"] #security-keys-add-btn { margin-top: 2px; }

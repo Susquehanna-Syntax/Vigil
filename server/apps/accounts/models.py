@@ -51,6 +51,32 @@ class UserProfile(models.Model):
         return f"profile<{self.user_id}>"
 
 
+class SecurityKey(models.Model):
+    """A registered WebAuthn authenticator — security key or platform passkey.
+
+    The credential id and public key are the raw CBOR/COSE bytes the library
+    hands back; both are opaque to us and only ever passed back into it.
+    ``sign_count`` is what makes a cloned authenticator detectable: the library
+    refuses an assertion whose count has not advanced past what we stored.
+    """
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="security_keys")
+    name = models.CharField(max_length=60)
+    credential_id = models.BinaryField(unique=True)
+    public_key = models.BinaryField()
+    sign_count = models.PositiveBigIntegerField(default=0)
+    aaguid = models.CharField(max_length=36, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"key {self.name!r} <user {self.user_id}>"
+
+
 class TotpAttempt(models.Model):
     """One TOTP code tried for a user, kept briefly to rate-limit guessing.
 

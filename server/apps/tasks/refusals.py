@@ -14,6 +14,10 @@ from __future__ import annotations
 #: the never-allowlistable ones. ``test_refusals`` checks the two stay equal.
 #: Pseudo-actions the server expands or the agent handles itself (``playbook``,
 #: ``_script`` …) are not here, so they are never reported as refused.
+#: ``run_command``, ``sleep_now`` and ``hibernate_now`` are real actions the
+#: agent has too, but deliberately absent: a managed host refuses them whatever
+#: its allowlist says, so counting them here would make every task that names
+#: one look refused on hosts that will happily run it.
 AGENT_ACTIONS = frozenset({
     "volume_remove",
     "volume_prune",
@@ -84,8 +88,15 @@ AGENT_ACTIONS = frozenset({
     "raise_alert",
     "send_notification",
     "set_firewall_policy",
+    "set_hibernate",
     "set_hostname",
+    "set_lid_action",
     "set_permissions",
+    "set_power_plan",
+    "sleep_now",
+    "hibernate_now",
+    "set_display_timeout",
+    "set_sleep_timeout",
     "start_container",
     "stack_deploy",
     "stack_read",

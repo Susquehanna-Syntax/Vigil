@@ -52,3 +52,45 @@ class StoredLicense(models.Model):
 
     def __str__(self) -> str:
         return f"license added {self.added_at:%Y-%m-%d %H:%M}"
+
+
+class InstallKey(models.Model):
+    """The key this install signs license refreshes with — one row, ever.
+
+    Kept apart from InstanceIdentity on purpose. Copying the instance id into
+    another database (to reuse one license on two installs) does not copy
+    this, so Mercantil sees a second install and refuses it (SQSY-LICENSING.md;
+    Mercantil licenses/views.py). Stored as is rather than encrypted with
+    DJANGO_SECRET_KEY: rotating that secret would otherwise mint a new key and
+    lock the customer's own install out of its renewals, and anyone who can
+    read this table can copy the whole install anyway.
+    """
+
+    seed = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+    # The last refresh, for the license screen and for deciding whether the
+    # next one is due (vigil.licensing.refresh_license). ``refreshed_lid`` is
+    # the license that refresh was about: a newly applied one is claimed at once.
+    refreshed_at = models.DateTimeField(null=True, blank=True)
+    refresh_result = models.CharField(max_length=20, blank=True, default="")
+    refresh_detail = models.CharField(max_length=300, blank=True, default="")
+    refreshed_lid = models.CharField(max_length=64, blank=True, default="")
+
+    @classmethod
+    def get(cls) -> "InstallKey":
+        row = cls.objects.order_by("created_at").first()
+        if row is None:
+            import base64
+
+            from nacl.signing import SigningKey
+            row = cls.objects.create(seed=base64.b64encode(bytes(SigningKey.generate())).decode())
+        return row
+
+    def signing_key(self):
+        import base64
+
+        from nacl.signing import SigningKey
+        return SigningKey(base64.b64decode(self.seed))
+
+    def __str__(self) -> str:
+        return f"install key from {self.created_at:%Y-%m-%d}"

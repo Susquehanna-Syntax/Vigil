@@ -14,11 +14,12 @@ class Migration(migrations.Migration):
     # Every migration that still names the old model has to have run before the
     # rename lands, or Django schedules one of them afterwards and it fails
     # resolving "baselines.baseline" against a model that no longer exists.
+    # (The Business sites app used to be one; its migration now runs after this
+    # one instead, so the core migrates without the Business package.)
     dependencies = [
         ("baselines", "0007_baseline_community_uid"),
         ("hosts", "0001_initial"),
         ("automations", "0004_automation_baseline_fk"),
-        ("business_sites", "0004_scope_assignments"),
         ("reprovision", "0001_initial"),
         ("tasks", "0015_patchrollout_action_kind_patchrollout_baseline_and_more"),
     ]

@@ -13,7 +13,7 @@ import secrets
 from urllib.parse import urlencode
 
 from django.conf import settings as dj_settings
-from django.contrib.auth import get_user_model, login
+from django.contrib.auth import get_user_model
 from django.http import Http404
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -70,9 +70,10 @@ def callback(request):
     if not user.is_active:
         return fail(f"local user {user.pk} is inactive")
 
-    login(request, user)
+    # Civil vouches for the password; the second factor is still Vigil's own.
+    from apps.accounts.login_mfa import begin
     nxt = request.session.pop(_NEXT_SESSION_KEY, "") or "/"
-    return redirect(nxt)
+    return begin(request, user, nxt, backend="django.contrib.auth.backends.ModelBackend")
 
 
 def _provision_user(claims: dict):

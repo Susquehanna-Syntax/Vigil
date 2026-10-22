@@ -11,12 +11,14 @@ class DebianRenderer(Renderer):
 
     family = "debian"
 
-    def render(self, job, base_url: str, enroll_token: str) -> dict[str, str]:
+    def render(self, job, base_url: str, enroll_token: str,
+               config_token: str = "") -> dict[str, str]:
         p = job.profile
         # in-target execs its argument directly, so `in-target FOO=1 sh ...`
         # would look for a binary literally named "FOO=1". The whole script
         # goes through one shell inside the target instead.
-        script = enrolment_script(base_url, enroll_token).replace("'", r"'\''")
+        script = enrolment_script(base_url, enroll_token,
+                                  config_token).replace("'", r"'\''")
         late = f"in-target sh -c '{script}'"
         packages = " ".join(merged_packages(p, "openssh-server", "curl"))
 

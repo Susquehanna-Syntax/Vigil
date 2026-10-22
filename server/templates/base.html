@@ -697,9 +697,22 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
       <button class="tab t-sky active" id="enroll-os-unix" data-act="enrollSetOs" data-a1="unix">Linux &amp; macOS</button>
       <button class="tab t-sky" id="enroll-os-windows" data-act="enrollSetOs" data-a1="windows">Windows</button>
     </div>
-    <div style="margin-bottom:12px;">
+    <div style="margin-bottom:14px;">
+      <label class="deploy-input-label" for="enroll-profile">Agent profile</label>
+      <select class="form-control" id="enroll-profile" data-change="enrollUseProfile"></select>
+      <div class="confirm-hint" style="margin-top:4px;">Start from a saved profile, adjust anything below, then create the command.</div>
+    </div>
+    <div id="enroll-config"></div>
+    <div style="display:flex;gap:8px;margin:14px 0;">
+      <button class="btn btn-sky btn-sm" data-act="enrollCreateCommand">Create install command</button>
+      <button class="btn btn-ghost btn-sm" data-act="enrollSaveProfile">Save as profile</button>
+    </div>
+    <div class="confirm-hint apf-error" id="enroll-stale" hidden></div>
+    <div class="confirm-hint" id="enroll-notes" hidden></div>
+    <div style="margin-bottom:12px;" id="enroll-cmd-block" hidden>
       <label class="deploy-input-label">One-liner install command</label>
-      <div class="code-block mono" id="enroll-cmd" style="cursor:pointer;user-select:all;word-break:break-all;" data-act="copyEnrollCmd" title="Click to copy">Generating…</div>
+      <div class="code-block mono" id="enroll-cmd" style="cursor:pointer;user-select:all;word-break:break-all;" data-act="copyEnrollCmd" title="Click to copy"></div>
+      <div class="confirm-hint" style="margin-top:4px;">Valid for 24 hours, once.</div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:20px;">
       <button class="btn btn-ghost btn-sm" data-act="copyEnrollCmd">Copy command</button>
@@ -847,6 +860,10 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-branding.js' %}"></script>
 <!-- vigil-enroll.js — enrollment wizard modal -->
 <script src="{% static 'js/vigil-enroll.js' %}"></script>
+<!-- vigil-agentprofile-form.js — the agent settings form the wizard and the Agent profiles tab share -->
+<script src="{% static 'js/vigil-agentprofile-form.js' %}"></script>
+<!-- vigil-agentprofiles.js — Reprovision → Agent profiles (list, editor, delete) -->
+<script src="{% static 'js/vigil-agentprofiles.js' %}"></script>
 <!-- vigil-about.js — server / agent / scanner version surface -->
 <script src="{% static 'js/vigil-about.js' %}"></script>
 

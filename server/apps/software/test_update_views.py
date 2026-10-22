@@ -1,7 +1,6 @@
 """The fleet view by update: grouping, ages, scoping and decisions."""
 from datetime import timedelta
 
-from apps_business.sites.models import HostSiteAssignment, Site, UserSiteRole
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils.timezone import now
@@ -11,6 +10,12 @@ from apps.accounts.models import Role, UserProfile
 from apps.hosts.models import Host
 
 from .models import PendingUpdate, UpdateDecision
+
+from vigil.testsupport import require_business_module
+
+# Exercises core with the Business apps; a source checkout has none.
+require_business_module()
+from apps_business.sites.models import HostSiteAssignment, Site, UserSiteRole  # noqa: E402
 
 
 def _client(username, role=Role.ADMIN):

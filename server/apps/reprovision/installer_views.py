@@ -74,7 +74,8 @@ def answer_file(request, token: str, filename: str = ""):
         raise Http404
 
     rendered = get_renderer(job.image.os_family).render(
-        job, _base_url(request), enroll_plain)
+        job, _base_url(request), enroll_plain,
+        config_token=jobs.pop_config_token(job))
 
     key = filename or next(iter(rendered))
     if key not in rendered:

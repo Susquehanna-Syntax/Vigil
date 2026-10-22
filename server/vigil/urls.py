@@ -9,6 +9,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from apps.accounts import login_mfa
 from apps.accounts.views import login_view, logout_view, setup_view
 from apps.instance.config import setting
 from apps.alerts.models import Alert
@@ -23,6 +24,7 @@ from apps.stacks.views import agent_stack_adopt, agent_stack_env
 from apps.hosts.views import checkin, register
 from apps.playbooks.urls import legacy_urlpatterns as _legacy_playbook_urls
 from apps.reprovision.installer_views import enroll as reprovision_enroll
+from apps.remote.views import agent_wake
 from apps.statuspage.views import public_status as status_public_view
 from apps.statuspage.views import public_status_data as status_public_data_view
 
@@ -60,9 +62,17 @@ def about(request):
             configured = False
         scanners.append({"name": name, "configured": configured})
 
+    from vigil import licensing
     from vigil.editions import active_edition, enabled_features
 
+    # Who this copy is licensed to, on a page every user can open: a license
+    # copied to someone else's install names the buyer, not them.
+    state = licensing.current_state()
+    licensed = state.claims if state.business_active else None
+
     return Response({
+        "licensed_to": licensed.org if licensed else None,
+        "license_id": licensed.lid if licensed else None,
         "vigil_version": getattr(django_settings, "VIGIL_VERSION", "unknown"),
         "expected_agent_version": getattr(django_settings, "VIGIL_AGENT_VERSION", ""),
         "python_version": "%d.%d.%d" % sys.version_info[:3],
@@ -98,10 +108,25 @@ def dashboard(request):
     })
 
 
+def _admin_login(request, extra_context=None):
+    """The admin's own login form signs in with a password alone. Send it to
+    Vigil's sign-in instead, so staff take the second factor like everyone."""
+    from django.shortcuts import redirect
+    from django.utils.http import urlencode
+
+    target = request.GET.get("next") or "/admin/"
+    return redirect("/login/?" + urlencode({"next": target}))
+
+
+admin.site.login = _admin_login
+
 urlpatterns = [
     path("", dashboard, name="dashboard"),
     path("setup/", setup_view, name="setup"),
     path("login/", login_view, name="login"),
+    path("login/verify/", login_mfa.verify_view, name="login-verify"),
+    path("login/verify/key/options/", login_mfa.key_options_view, name="login-verify-key-options"),
+    path("login/verify/key/", login_mfa.key_view, name="login-verify-key"),
     path("logout/", logout_view, name="logout"),
     path("admin/", admin.site.urls),
     path("api/v1/health/", health_check),
@@ -113,6 +138,7 @@ urlpatterns = [
     path("api/v1/agent/stack-source/<uuid:ticket_id>/", agent_stack_source, name="agent-stack-source"),
     path("api/v1/agent/stack-adopt/<uuid:ticket_id>/", agent_stack_adopt, name="agent-stack-adopt"),
     path("api/v1/agent/registry-auth/", agent_registry_auth, name="agent-registry-auth"),
+    path("api/v1/agent/wake", agent_wake, name="agent-wake"),
     path("api/v1/hosts/", include("apps.hosts.urls")),
     path("api/v1/metrics/", include("apps.metrics.urls")),
     path("api/v1/alerts/", include("apps.alerts.urls")),
@@ -122,10 +148,6 @@ urlpatterns = [
     path("api/v1/tags/<int:tag_id>/", hosts_views.tag_detail, name="tag-detail"),
     path("api/v1/vulns/", include("apps.vulns.urls")),
     path("api/v1/accounts/", include("apps.accounts.urls")),
-    path("api/v1/sites/", include("apps_business.sites.urls")),
-    path("api/v1/branding/", include("apps_business.branding.urls")),
-    path("api/v1/audits/", include("apps_business.audits.urls")),
-    path("api/v1/compliance/", include("apps_business.compliance.urls")),
     path("api/v1/instance-settings/", include("apps.instance.urls")),
     path("api/v1/jackil/", include("apps.jackil.urls")),
     path("api/v1/license/", include("apps.licensing.urls")),
@@ -144,6 +166,9 @@ urlpatterns = [
     path("api/v1/status-pages/", include("apps.statuspage.urls")),
     path("api/v1/automations/", include("apps.automations.urls")),
     path("api/v1/reports/", include("apps.reports.urls")),
+    path("api/v1/relays/", include("apps.relays.urls")),
+    path("api/v1/sessions/", include("apps.remote.urls")),
+    path("api/v1/agent-profiles/", include("apps.agentprofiles.urls")),
     path("api/v1/reprovision/", include("apps.reprovision.urls")),
     # Unauthenticated by necessity — the installer and the freshly-installed
     # agent hold no credentials. Security is the unguessable one-time token;
@@ -151,6 +176,10 @@ urlpatterns = [
     path("api/v1/reprovision/enroll", reprovision_enroll, name="reprovision-enroll"),
     path("reprovision/", include("apps.reprovision.installer_urls")),
     path("", include("apps.civilsso.urls")),
+    # The installer redeems a one-time config token here for its agent.yml.
+    # Unauthenticated by necessity, and it must be mounted before /agent/ so
+    # the agent_dist catch-all cannot claim the path first.
+    path("agent/enroll-config/", include("apps.agentprofiles.agent_urls")),
     path("agent/", include("apps.agent_dist.urls")),
     path("status/<str:token>/", status_public_view, name="status-public"),
     path("status/<str:token>/data/", status_public_data_view, name="status-public-data"),
@@ -181,3 +210,13 @@ def _edition_url_patterns():
 
 
 urlpatterns += _edition_url_patterns()
+
+# The Business apps' endpoints, where the vigil-business package is installed
+# (official images). A source checkout serves the AGPL core alone.
+if settings.BUSINESS_INSTALLED:
+    urlpatterns += [
+        path("api/v1/sites/", include("apps_business.sites.urls")),
+        path("api/v1/branding/", include("apps_business.branding.urls")),
+        path("api/v1/audits/", include("apps_business.audits.urls")),
+        path("api/v1/compliance/", include("apps_business.compliance.urls")),
+    ]

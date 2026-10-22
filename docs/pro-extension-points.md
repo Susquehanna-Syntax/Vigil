@@ -1,14 +1,16 @@
 # Extension contract
 
-Vigil is one repo, two tiers (see `docs/EDITIONS.md`). Business features ship
-IN this repo under `server/apps_business/` (commercial license, runtime
-`has_feature()` gates) — the separate Vigil-Pro / Vigil-Enterprise repos were
-retired in 2026.4.0 before ever shipping.
+Vigil has two tiers (see `docs/EDITIONS.md`). Business features are the
+`vigil-business` package (private repo, commercial license, runtime
+`has_feature()` gates), installed compiled in official images — the separate
+Vigil-Pro / Vigil-Enterprise repos were retired in 2026.4.0 before ever
+shipping.
 
 The seams below remain the contract for **community/operator extensions**
 (`VIGIL_EXTRA_APPS`): extra Django apps that subscribe to lifecycle events,
 register capabilities, and mount routes without forking core. Business apps
-use the same hooks bus but are wired explicitly in `INSTALLED_APPS`.
+use the same hooks bus and are added to `INSTALLED_APPS` when the package is
+installed (`settings.BUSINESS_INSTALLED`).
 
 ## 1. App loading — `VIGIL_EXTRA_APPS`
 

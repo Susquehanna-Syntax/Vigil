@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class TotpPromptTests(SimpleTestCase):
     def test_no_page_has_its_own_code_field(self):
-        allowed = {"setup.html"}
+        # Pre-auth pages: nobody is signed in yet, so the dashboard prompt is not there.
+        allowed = {"setup.html", "login_verify.html"}
         found = [str(p.relative_to(ROOT)) for p in (ROOT / "templates").rglob("*.html")
                  if p.name not in allowed and "one-time-code" in p.read_text(encoding="utf-8")]
         found += [str(p.relative_to(ROOT)) for p in (ROOT / "static/js").glob("*.js")

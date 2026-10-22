@@ -7,6 +7,8 @@
     irm {{ base_url }}/agent/install.ps1 | iex
 .EXAMPLE
     $env:VIGIL_TOKEN = "<token>"; irm {{ base_url }}/agent/install.ps1 | iex
+.EXAMPLE
+    $env:VIGIL_TOKEN = "<token>"; $env:VIGIL_CONFIG_TOKEN = "<one-time profile token>"; irm {{ base_url }}/agent/install.ps1 | iex
 #>
 
 #Requires -RunAsAdministrator
@@ -263,6 +265,47 @@ if ($IsZip) {
     Write-Host "with error 1053. Publish a --onedir zip to install the service."
 }
 
+# VIGIL_TOKEN goes into agent.yml and a -replace below, so only a plain token
+# shape is accepted, as install.sh does.
+if ($env:VIGIL_TOKEN -and $env:VIGIL_TOKEN -notmatch '^[A-Za-z0-9_-]{16,128}$') {
+    Write-Host "ERROR: VIGIL_TOKEN must be 16-128 letters, digits, '-' or '_'."
+    exit 1
+}
+
+# ── Agent profile (2026.15) ─────────────────────────────────────────────────
+# VIGIL_CONFIG_TOKEN comes from the Add Host wizard or a rebuild. It is redeemed
+# once for a complete agent.yml the dashboard rendered from an agent profile,
+# which replaces any existing config; only the agent token is carried over.
+# From then on this file is the authority: the dashboard cannot change it.
+$ProfileText = $null
+if ($env:VIGIL_CONFIG_TOKEN) {
+    if ($env:VIGIL_CONFIG_TOKEN -notmatch '^[A-Za-z0-9_-]{16,128}$') {
+        Write-Host "ERROR: VIGIL_CONFIG_TOKEN is not a valid token."
+        exit 1
+    }
+    try {
+        $ProfileText = (Invoke-WebRequest -UseBasicParsing -Uri "$VigilServer/agent/enroll-config/$($env:VIGIL_CONFIG_TOKEN)/").Content
+    } catch {
+        $ProfileText = $null
+    }
+    if (-not ($ProfileText -is [string]) -or $ProfileText -notmatch '^# Vigil agent config' -or
+            $ProfileText -notmatch '(?m)^agent_token: "REPLACE_WITH_TOKEN"\r?$') {
+        Write-Host "ERROR: $VigilServer rejected the config token."
+        Write-Host "It may have expired (24 hours) or already been used; make a new one in Add Host."
+        exit 1
+    }
+    if (Test-Path $ConfigPath) {
+        if (-not $env:VIGIL_TOKEN) {
+            $keptLine = Select-String -Path $ConfigPath -Pattern '^\s*agent_token:\s*(\S+)' -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($keptLine) {
+                $kept = $keptLine.Matches[0].Groups[1].Value.Trim('"').Trim("'")
+                if ($kept -match '^[A-Za-z0-9_-]{16,128}$') { $env:VIGIL_TOKEN = $kept }
+            }
+        }
+        Move-Item -Force -Path $ConfigPath -Destination "$ConfigPath.before-profile.$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
+    }
+}
+
 # Write config if not present
 if (-not (Test-Path $ConfigPath)) {
     # Generate the token rather than leaving a placeholder. The server stores
@@ -285,7 +328,13 @@ if (-not (Test-Path $ConfigPath)) {
     # "C:\ProgramData\Vigil\data" fails to parse on \P and \V and the agent
     # dies at startup with a ScannerError. Single-quoted YAML takes
     # backslashes literally.
-    @"
+    if ($ProfileText) {
+        # The profile's file is the template; Windows adds its own data_dir, in
+        # single quotes for the same reason as below.
+        $ConfigText = $ProfileText -replace 'REPLACE_WITH_TOKEN', $token
+        if ($ConfigText -notmatch '(?m)^data_dir:') { $ConfigText = $ConfigText.TrimEnd() + "`ndata_dir: '$DataDir'`n" }
+    } else {
+    $ConfigText = @"
 server_url: "$VigilServer"
 agent_token: "$token"
 mode: monitor
@@ -304,7 +353,9 @@ allowlist:
   - hunt_process
   - hunt_registry
   - hunt_service
-"@ | ForEach-Object {
+"@
+    }
+    $ConfigText | ForEach-Object {
         # Not Set-Content -Encoding UTF8: on PowerShell 5.1 — which is what
         # ships with Windows — that writes a UTF-8 BOM. The BOM becomes part
         # of the first YAML key, so the agent reads no server_url and exits
@@ -378,6 +429,23 @@ $AgentMode = "monitor"
 if (Test-Path $ConfigPath) {
     $modeLine = Select-String -Path $ConfigPath -Pattern '^\s*mode:\s*(\S+)' -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($modeLine) { $AgentMode = $modeLine.Matches[0].Groups[1].Value.Trim('"').Trim("'") }
+}
+# VIGIL_MODE (set by the enroll wizard) overrides the config, as in install.sh.
+if ($env:VIGIL_MODE) {
+    if (@("monitor", "managed", "full_control") -notcontains $env:VIGIL_MODE) {
+        # Write-Host, not Write-Error: this script runs under `iex`, where
+        # Write-Error's CategoryInfo block reads as a crash. Same reason as the
+        # download failure's message above.
+        Write-Host "ERROR: VIGIL_MODE must be monitor, managed or full_control."
+        exit 1
+    }
+    $AgentMode = $env:VIGIL_MODE
+    if (Test-Path $ConfigPath) {
+        $cfg = [System.IO.File]::ReadAllText($ConfigPath)
+        if ($cfg -match '(?m)^mode:') { $cfg = $cfg -replace '(?m)^mode:[^\r\n]*', "mode: $AgentMode" }
+        else { $cfg = $cfg.TrimEnd() + "`r`nmode: $AgentMode`r`n" }
+        [System.IO.File]::WriteAllText($ConfigPath, $cfg, (New-Object System.Text.UTF8Encoding($false)))
+    }
 }
 
 if ($AgentMode -eq "monitor") {

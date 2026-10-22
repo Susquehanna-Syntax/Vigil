@@ -45,7 +45,7 @@
     </form>
     {% if civil_enabled %}
     {% if request.GET.civil == "failed" %}<div class="auth-error">Civil sign-in didn't complete — use your local account or try again.</div>{% endif %}
-    <a class="btn" style="width:100%;margin-top:10px;display:inline-block;text-align:center;box-sizing:border-box;" href="{% url 'civil-login' %}{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% endif %}">Sign in with Civil</a>
+    <a class="btn btn-outline" style="width:100%;margin-top:10px;justify-content:center;box-sizing:border-box;" href="{% url 'civil-login' %}{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% endif %}">Sign in with Civil</a>
     {% endif %}
   </div>
   <div class="auth-footer">{% if branding.footer_text %}{{ branding.footer_text }}{% else %}Vigil &mdash; A Susquehanna Syntax product{% endif %}</div>

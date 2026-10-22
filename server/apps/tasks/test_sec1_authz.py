@@ -13,7 +13,12 @@ from apps.accounts.models import Role, UserProfile
 from apps.hosts.models import Host
 from apps.tasks.models import Task, TaskDefinition
 from apps.tasks.spec import parse_and_validate
-from apps_business.sites.models import HostSiteAssignment, Site, UserSiteRole
+
+from vigil.testsupport import require_business_module
+
+# Exercises core with the Business apps; a source checkout has none.
+require_business_module()
+from apps_business.sites.models import HostSiteAssignment, Site, UserSiteRole  # noqa: E402
 
 CHECK = ("name: Check cron\nactions:\n  - id: c\n    type: check_service\n"
          "    params:\n      service_name: cron\n")

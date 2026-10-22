@@ -15,6 +15,7 @@
           <button class="settings-nav-item" data-pane="identity"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg>Shared Identity</button>
           <button class="settings-nav-item" data-pane="directory"><svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg>Directory Import</button>
           <button class="settings-nav-item" data-pane="agents"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3v4M8 3v4"/></svg>Agents</button>
+          <button class="settings-nav-item" data-pane="relays"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 010 8.49M7.76 16.24a6 6 0 010-8.49"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 19.07a10 10 0 010-14.14"/></svg>Relays</button>
           <button class="settings-nav-item" data-pane="users"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>Users &amp; Roles</button>
           <button class="settings-nav-item" data-pane="sites"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>Sites</button>
           <button class="settings-nav-item" data-pane="branding"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>Branding</button>
@@ -42,8 +43,10 @@
           <input type="text" class="form-control" id="license-paste" placeholder="Paste a license key (SQSY-LICENSE-V1.…)" style="flex:1; min-width:280px;">
           <button type="submit" class="btn btn-mint btn-sm">Apply</button>
           <a class="btn btn-sky btn-sm" id="license-get" target="_blank" rel="noopener">Get a license</a>
+          <button type="button" class="btn btn-outline btn-sm" id="license-refresh" style="display:none;">Refresh now</button>
         </form>
         <p id="license-paste-result" class="muted"></p>
+        <p id="license-refresh-status" class="muted"></p>
       </div>
       <script nonce="{{ request.csp_nonce }}">
       (function () {
@@ -57,12 +60,31 @@
             "Seats: " + d.seats.used + " / " + d.seats.allowed;
           document.getElementById("license-get").href =
             d.subscribe_url + "?instance=" + encodeURIComponent(d.instance);
+          var refresh = d.refresh || {};
+          var licensed = d.org && d.status !== "none";
+          document.getElementById("license-refresh").style.display = licensed && refresh.enabled ? "" : "none";
+          document.getElementById("license-refresh-status").textContent = !licensed ? ""
+            : !refresh.enabled ? "Renews by pasting: automatic refresh is off (VIGIL_LICENSE_REFRESH)."
+            : refresh.at ? "Last refresh " + new Date(refresh.at).toLocaleString() + ": " + refresh.detail
+            : "Renews automatically.";
           document.getElementById("license-features").innerHTML = d.features.map(function (f) {
             return '<span class="license-chip license-chip--' + (f.active ? "on" : "off") + '">' +
               f.name + (f.active ? "" : " · " + f.tier) + "</span>";
           }).join(" ");
         }
         fetch("/api/v1/license/").then(function (r) { return r.json(); }).then(render);
+        document.getElementById("license-refresh").addEventListener("click", function () {
+          var btn = this;
+          btn.disabled = true;
+          fetch("/api/v1/license/refresh/", {
+            method: "POST",
+            headers: {"X-CSRFToken": (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ""},
+          }).then(function (r) { return r.json(); }).then(function (d) {
+            btn.disabled = false;
+            if (d.tier) render(d);
+            if (d.detail && !d.tier) document.getElementById("license-refresh-status").textContent = d.detail;
+          }, function () { btn.disabled = false; });
+        });
         document.getElementById("license-paste-form").addEventListener("submit", function (e) {
           e.preventDefault();
           fetch("/api/v1/license/", {
@@ -160,6 +182,19 @@
         <div class="totp-actions" id="totp-actions" style="margin-top:16px;">
           <button class="btn btn-sky btn-sm" id="totp-start-btn" data-act="totpStart">Enroll TOTP</button>
           <button class="btn btn-rose btn-sm" id="totp-disable-btn" style="display:none;" data-act="totpDisablePrompt">Disable…</button>
+        </div>
+      </div>
+
+      {# Logic: static/js/vigil-settings.js (loadSecurityKeys / addSecurityKey) #}
+      <div class="section-label" style="margin-top:32px;">Security keys</div>
+      <div class="totp-card" id="security-keys-card">
+        <div class="totp-sub">Tap a security key or use your device's passkey instead of typing a code.
+          Works with YubiKey, Touch ID, Windows Hello and phones.</div>
+        {# Shown when the browser will not run WebAuthn: vigil-settings.js puts "Security keys need HTTPS." here. #}
+        <div class="totp-key-error" id="security-keys-note" style="display:none;"></div>
+        <div id="security-keys-list"></div>
+        <div class="totp-actions" style="margin-top:16px;">
+          <button class="btn btn-sky btn-sm" id="security-keys-add-btn" data-act="addSecurityKey">Add a security key</button>
         </div>
       </div>
 
@@ -277,6 +312,27 @@
         No agents registered yet.
       </div>
       {% endif %}
+
+        </div>
+        <div class="settings-pane" data-pane="relays">
+      <div class="section-label">Relays</div>
+      <div class="totp-card">
+        <p class="totp-sub">A relay is a small container agents connect to instead of this dashboard, so the dashboard can stay off the internet. The built-in relay is this dashboard itself. See the wiki for setup.</p>
+        <div id="relays-usage" class="muted" style="margin-top:10px;"></div>
+        <div id="relays-list"></div>
+      </div>
+
+      <div class="section-label settings-section-later">Add a relay</div>
+      <div class="totp-card">
+        <div class="setting-row"><label for="relay-name">Name</label><input type="text" class="form-control" id="relay-name" maxlength="80" autocomplete="off" placeholder="Edge relay"></div>
+        <div class="setting-row"><label for="relay-location">Location (optional)</label><input type="text" class="form-control" id="relay-location" maxlength="120" autocomplete="off" placeholder="Frankfurt DC"></div>
+        <div class="setting-row"><label for="relay-url">Address agents use</label><input type="url" class="form-control" id="relay-url" autocomplete="off" placeholder="https://relay.example.com"></div>
+        <div class="setting-row"><label for="relay-priority">Order</label>
+          <input type="number" class="form-control" id="relay-priority" value="100" min="0" max="1000" style="max-width:120px;">
+          <div class="totp-sub">Agents try lower numbers first when their own address stops answering.</div>
+        </div>
+        <button class="btn btn-mint btn-sm" data-act="addRelay">Add relay</button>
+      </div>
 
         </div>
         <div class="settings-pane" data-pane="users">
@@ -455,10 +511,6 @@
         </div>
         <div style="margin-bottom:6px;font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;">macOS</div>
         <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-          <a href="/agent/download/darwin-amd64/" class="btn btn-outline btn-sm">
-            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Intel
-          </a>
           <a href="/agent/download/darwin-arm64/" class="btn btn-outline btn-sm">
             <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Apple Silicon
@@ -488,7 +540,6 @@
               <select class="form-control" id="upload-platform" style="width:180px;">
                 <option value="linux-amd64">Linux (x86-64)</option>
                 <option value="linux-arm64">Linux (ARM64)</option>
-                <option value="darwin-amd64">macOS (Intel)</option>
                 <option value="darwin-arm64">macOS (Apple Silicon)</option>
                 <option value="windows-amd64">Windows (x86-64)</option>
               </select>
