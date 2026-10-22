@@ -21,6 +21,7 @@ amqp==5.3.1
 asgiref==3.11.1
 attrs==26.1.0
 billiard==4.2.4
+cbor2==6.1.5
 celery==5.6.3
 certifi==2026.2.25
 cffi==2.0.0
@@ -48,11 +49,14 @@ prompt_toolkit==3.0.52
 propcache==0.5.4
 psycopg==3.3.3
 psycopg-binary==3.3.3
+pyasn1==0.6.4
+pyasn1_modules==0.4.2
 pycdlib==1.16.0
 pycparser==3.0
 pyee==13.0.1
 PyJWT==2.13.0
 PyNaCl==1.6.2
+pyOpenSSL==26.4.0
 python-crontab==3.3.0
 python-dateutil==2.9.0.post0
 PyYAML==6.0.3
@@ -70,6 +74,7 @@ uvicorn==0.54.0
 uvicorn-worker==0.4.0
 vine==5.1.0
 wcwidth==0.6.0
-whitenoise==6.12.0
+webauthn==3.0.1
 websockets==15.0.1
+whitenoise==6.12.0
 yarl==1.25.1
