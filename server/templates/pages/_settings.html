@@ -15,6 +15,7 @@
           <button class="settings-nav-item" data-pane="identity"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg>Shared Identity</button>
           <button class="settings-nav-item" data-pane="directory"><svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg>Directory Import</button>
           <button class="settings-nav-item" data-pane="agents"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3v4M8 3v4"/></svg>Agents</button>
+          <button class="settings-nav-item" data-pane="relays"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 010 8.49M7.76 16.24a6 6 0 010-8.49"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 19.07a10 10 0 010-14.14"/></svg>Relays</button>
           <button class="settings-nav-item" data-pane="users"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>Users &amp; Roles</button>
           <button class="settings-nav-item" data-pane="sites"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>Sites</button>
           <button class="settings-nav-item" data-pane="branding"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>Branding</button>
@@ -277,6 +278,27 @@
         No agents registered yet.
       </div>
       {% endif %}
+
+        </div>
+        <div class="settings-pane" data-pane="relays">
+      <div class="section-label">Relays</div>
+      <div class="totp-card">
+        <p class="totp-sub">A relay is a small container agents connect to instead of this dashboard, so the dashboard can stay off the internet. The built-in relay is this dashboard itself. See the wiki for setup.</p>
+        <div id="relays-usage" class="muted" style="margin-top:10px;"></div>
+        <div id="relays-list"></div>
+      </div>
+
+      <div class="section-label settings-section-later">Add a relay</div>
+      <div class="totp-card">
+        <div class="setting-row"><label for="relay-name">Name</label><input type="text" class="form-control" id="relay-name" maxlength="80" autocomplete="off" placeholder="Edge relay"></div>
+        <div class="setting-row"><label for="relay-location">Location (optional)</label><input type="text" class="form-control" id="relay-location" maxlength="120" autocomplete="off" placeholder="Frankfurt DC"></div>
+        <div class="setting-row"><label for="relay-url">Address agents use</label><input type="url" class="form-control" id="relay-url" autocomplete="off" placeholder="https://relay.example.com"></div>
+        <div class="setting-row"><label for="relay-priority">Order</label>
+          <input type="number" class="form-control" id="relay-priority" value="100" min="0" max="1000" style="max-width:120px;">
+          <div class="totp-sub">Agents try lower numbers first when their own address stops answering.</div>
+        </div>
+        <button class="btn btn-mint btn-sm" data-act="addRelay">Add relay</button>
+      </div>
 
         </div>
         <div class="settings-pane" data-pane="users">

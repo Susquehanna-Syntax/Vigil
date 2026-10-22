@@ -1,0 +1,124 @@
+"""Settings → Relays, wired the way the rest of Settings is.
+
+No JS runner here, same as the other *_ui / *_page suites in this repo: the
+pane's markup, the handlers it names, and the strings an admin is shown are
+pinned from source and from a rendered page. The buttons stay inert without the
+dispatcher finding them on window, which apps.hosts.test_inline_handlers checks
+for every ``data-act`` name in every template — a name with no function behind
+it is a button that silently does nothing.
+"""
+
+import re
+from pathlib import Path
+
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+
+from apps.accounts.models import Role, UserProfile
+
+REPO = Path(__file__).resolve().parents[3]
+TEMPLATE = REPO / "server" / "templates" / "pages" / "_settings.html"
+SETTINGS_JS = REPO / "server" / "static" / "js" / "vigil-settings.js"
+CSS = REPO / "server" / "static" / "css" / "vigil.css"
+
+#: Everything the pane's buttons name.
+HANDLERS = ("loadRelays", "addRelay", "toggleRelay", "editRelay", "rotateRelayKey",
+            "deleteRelay", "relayInstall")
+
+
+class RelaysPaneMarkupTests(TestCase):
+    """Rendered, not just read: the nav button and the pane both sit inside the
+    dashboard view's context, and a broken tag there is invisible to a scan."""
+
+    def setUp(self):
+        admin = get_user_model().objects.create_user(username="relay-admin")
+        UserProfile.objects.create(user=admin, role=Role.ADMIN)
+        self.client.force_login(admin)
+
+    def test_rendered_settings_page_carries_the_relays_pane(self):
+        html = self.client.get("/").content.decode()
+        self.assertIn('data-pane="relays"', html)
+        self.assertIn('id="relays-list"', html)
+        self.assertIn('data-act="addRelay"', html)
+
+    def test_the_pane_is_a_sibling_of_the_agents_and_users_panes(self):
+        body = TEMPLATE.read_text(encoding="utf-8")
+        navs = re.findall(r'<button class="settings-nav-item[^"]*" data-pane="(\w+)"', body)
+        self.assertEqual(navs[navs.index("agents") + 1], "relays")
+
+        panes = re.findall(r'<div class="settings-pane[^"]*" data-pane="(\w+)"', body)
+        self.assertEqual(panes[panes.index("agents") + 1], "relays")
+        self.assertIn("users", panes[panes.index("relays"):])
+
+    def test_the_add_form_fields_exist(self):
+        body = TEMPLATE.read_text(encoding="utf-8")
+        for element_id in ("relays-usage", "relays-list", "relay-name", "relay-location",
+                           "relay-url", "relay-priority"):
+            self.assertIn(f'id="{element_id}"', body)
+
+
+class RelaysJsWiringTests(TestCase):
+    def setUp(self):
+        self.js = SETTINGS_JS.read_text(encoding="utf-8")
+
+    def test_every_named_handler_is_defined(self):
+        for name in HANDLERS:
+            self.assertRegex(
+                self.js, rf'(?:async )?function {name}\(',
+                f"{name} is named by a data-act attribute but never defined")
+
+    def test_the_nav_handler_loads_the_pane_on_reveal(self):
+        """Mutation guard: drop the loadRelays() call from the settings-nav
+        click handler and this is the test that goes red.
+
+        The slice ends at the listener's own closing `});`, so it holds the
+        pane switches and nothing written after them — otherwise a later
+        `loadRelays()` anywhere in the file would hide the missing call.
+        """
+        start = self.js.index("#settings-nav .settings-nav-item")
+        nav = self.js[start:self.js.index("\n    });", start)]
+        self.assertRegex(nav, r"dataset\.pane === 'relays'.*loadRelays\(\)")
+
+    def test_the_compose_snippet_is_the_one_the_relay_container_needs(self):
+        self.assertIn("susquehannasyntax/vigil-relay", self.js)
+        self.assertIn("RELAY_KEY_SHA256", self.js)
+
+    def test_no_inline_handlers_and_no_unescaped_interpolation(self):
+        """An ``onclick="…"`` attribute in generated markup puts
+        'unsafe-inline' back in the CSP. `.onclick =` property assignment (what
+        vigil-sites.js and these dialogs do) is not one of them."""
+        code = SETTINGS_JS.read_text(encoding="utf-8")
+        for bad in ('onclick="', 'onchange="'):
+            self.assertNotIn(bad, code, f"{bad} in vigil-settings.js")
+        self.assertNotIn("${{", code)
+
+    def test_server_values_reach_markup_escaped(self):
+        """A relay's name, url and location are typed by whoever has admin and
+        drawn into every row on this dashboard."""
+        for field in ("name", "url", "location"):
+            bare = re.compile(r"\$\{r\." + field + r"[?) ]")
+            self.assertIsNone(bare.search(self.js),
+                              f"`${{r.{field}}}` reaches markup without escHtml/escAttr")
+        self.assertIn("escHtml(r.name)", self.js)
+        self.assertIn("escHtml(r.url)", self.js)
+        self.assertIn("escHtml(r.location)", self.js)
+        self.assertIn("escAttr(r.id)", self.js)
+
+    def test_the_install_commands_point_at_the_relay(self):
+        self.assertIn("{origin}/agent/install.sh", self.js)
+        self.assertIn("{origin}/agent/install.ps1", self.js)
+        self.assertIn("/api/v1/agent-profiles/enroll-config/", self.js)
+
+
+class RelaysCssTests(TestCase):
+    def test_the_pane_has_styles_and_they_are_appended(self):
+        css = CSS.read_text(encoding="utf-8")
+        for selector in (".relay-row", ".relay-status", ".relay-code"):
+            self.assertIn(selector, css)
+        self.assertGreater(len(css.splitlines()), 4400)
+
+    def test_no_coloured_side_border_on_relay_rows(self):
+        css = CSS.read_text(encoding="utf-8")
+        for block in re.findall(r"\.relay-[a-z-]+[^{]*\{[^}]*\}", css):
+            self.assertNotIn("border-left", block, block)
+            self.assertNotIn("border-right", block, block)

@@ -4747,3 +4747,45 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .term-modal .term-host { flex: 1 1 auto; min-height: 120px; height: auto; overflow: hidden;
   background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md); padding: 6px; }
 .term-modal .xterm { height: 100%; }
+/* Relays: rows and the one-time key dialog's code blocks. Padding/border-bottom
+   match .enroll-card so the list reads as the same kind of row it sits next to
+   in Settings; the pills are tinted whole, never a coloured side border. */
+.settings-section-later { margin-top: 32px; }
+
+.relay-row {
+  display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+  padding: 14px 0; border-bottom: 1px solid var(--border);
+}
+.relay-row:last-child { border-bottom: none; }
+.relay-main { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 2px; }
+.relay-name { font-weight: 600; font-size: 0.9rem; }
+.relay-badge {
+  display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+  background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink);
+  font-size: 0.68rem; font-weight: 600; letter-spacing: 0.02em; vertical-align: middle;
+}
+.relay-meta { font-size: 0.76rem; color: var(--text-3); }
+.relay-url { font-size: 0.8rem; color: var(--text-2); word-break: break-all; }
+.relay-status-cell { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.relay-status-col { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.relay-status {
+  display: inline-block; padding: 2px 9px; border-radius: 999px;
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap;
+}
+.relay-status.ok { background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink); }
+.relay-status.bad { background: rgba(var(--rgb-rose), var(--tint-a)); color: var(--rose-ink); }
+.relay-status.off { background: var(--s2); color: var(--text-3); }
+.relay-err { font-size: 0.72rem; color: var(--text-3); max-width: 260px; }
+.relay-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Commands and the compose snippet are set with textContent, so they keep the
+   server's line breaks. */
+.relay-code {
+  background: var(--s2); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 12px 14px; margin: 6px 0 8px;
+  font-size: 12px; line-height: 1.6; color: var(--text-1);
+  white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow-y: auto;
+}
+.relay-key-sub { margin-top: 14px; }
+:root[data-density="compact"] .relay-row { padding: 9px 0; }
+
