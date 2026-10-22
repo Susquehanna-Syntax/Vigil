@@ -4789,3 +4789,6 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .relay-key-sub { margin-top: 14px; }
 :root[data-density="compact"] .relay-row { padding: 9px 0; }
 
+/* The plan note under the relay count links to License: in the app's accent, not browser blue. */
+#relays-usage a { color: var(--sky-ink); text-decoration: none; }
+#relays-usage a:hover { text-decoration: underline; }
