@@ -45,8 +45,6 @@ jobs:
           --health-retries=10
 
     env:
-      # Only for the "is it there" check below; the step passes it to gh itself.
-      BUSINESS_TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
       DJANGO_SECRET_KEY: ci-test-secret-key
       DJANGO_DEBUG: "true"
       # Django's test runner forces DEBUG=False, so signing.py's
@@ -74,8 +72,15 @@ jobs:
       # version business.lock names, so the suite covers core with Business.
       # Pull requests from forks get no secrets and test the AGPL core alone;
       # its Business-dependent tests skip themselves.
+      # Only these two steps ever see the token: never the job's environment,
+      # where every dependency's install scripts and the test run could read it.
+      - name: Is the Business token available
+        id: business
+        env:
+          TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
+        run: echo "available=$([ -n "$TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - name: Install the Business apps
-        if: env.BUSINESS_TOKEN != ''
+        if: steps.business.outputs.available == 'true'
         working-directory: .
         env:
           GH_TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
