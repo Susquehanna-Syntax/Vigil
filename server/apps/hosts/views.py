@@ -442,6 +442,13 @@ def checkin(request):
         host.agent_allowlist = sorted(set(raw_allow))
     if isinstance(data.get("allow_reprovision"), bool):
         host.agent_allow_reprovision = data["allow_reprovision"]
+    # QA-56: the same local opt-in for live sessions. Written only here, by the
+    # agent's own check-in — never by an admin pressing a button in the UI.
+    # Booleans only, as allow_reprovision: the string "false" is not consent.
+    if isinstance(data.get("allow_remote_shell"), bool):
+        host.agent_allow_remote_shell = data["allow_remote_shell"]
+    if isinstance(data.get("allow_remote_desktop"), bool):
+        host.agent_allow_remote_desktop = data["allow_remote_desktop"]
     # Absent means an agent too old to report it (or Windows) — keep what we knew.
     if isinstance(data.get("runs_as_root"), bool):
         host.agent_runs_as_root = data["runs_as_root"]

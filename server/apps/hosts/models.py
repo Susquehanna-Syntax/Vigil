@@ -90,6 +90,11 @@ class Host(models.Model):
     # agent new enough to report it checks in — unknown, which is not "refuses".
     agent_allowlist = models.JSONField(null=True, blank=True)
     agent_allow_reprovision = models.BooleanField(default=False)
+    # QA-56: what the agent opted into on its own machine. Only the agent's
+    # check-in writes these, so the dashboard can never open a shell on a host
+    # whose operator did not turn the feature on locally.
+    agent_allow_remote_shell = models.BooleanField(default=False)
+    agent_allow_remote_desktop = models.BooleanField(default=False)
     # Whether the agent's process runs as root, as it last reported it (QA-08):
     # None until an agent new enough to report it checks in.
     agent_runs_as_root = models.BooleanField(null=True, blank=True)

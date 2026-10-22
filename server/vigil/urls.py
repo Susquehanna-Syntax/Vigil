@@ -23,6 +23,7 @@ from apps.stacks.views import agent_stack_adopt, agent_stack_env
 from apps.hosts.views import checkin, register
 from apps.playbooks.urls import legacy_urlpatterns as _legacy_playbook_urls
 from apps.reprovision.installer_views import enroll as reprovision_enroll
+from apps.remote.views import agent_wake
 from apps.statuspage.views import public_status as status_public_view
 from apps.statuspage.views import public_status_data as status_public_data_view
 
@@ -113,6 +114,7 @@ urlpatterns = [
     path("api/v1/agent/stack-source/<uuid:ticket_id>/", agent_stack_source, name="agent-stack-source"),
     path("api/v1/agent/stack-adopt/<uuid:ticket_id>/", agent_stack_adopt, name="agent-stack-adopt"),
     path("api/v1/agent/registry-auth/", agent_registry_auth, name="agent-registry-auth"),
+    path("api/v1/agent/wake", agent_wake, name="agent-wake"),
     path("api/v1/hosts/", include("apps.hosts.urls")),
     path("api/v1/metrics/", include("apps.metrics.urls")),
     path("api/v1/alerts/", include("apps.alerts.urls")),
@@ -145,6 +147,7 @@ urlpatterns = [
     path("api/v1/automations/", include("apps.automations.urls")),
     path("api/v1/reports/", include("apps.reports.urls")),
     path("api/v1/relays/", include("apps.relays.urls")),
+    path("api/v1/sessions/", include("apps.remote.urls")),
     path("api/v1/agent-profiles/", include("apps.agentprofiles.urls")),
     path("api/v1/reprovision/", include("apps.reprovision.urls")),
     # Unauthenticated by necessity — the installer and the freshly-installed

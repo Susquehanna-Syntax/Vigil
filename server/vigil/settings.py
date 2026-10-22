@@ -109,6 +109,7 @@ INSTALLED_APPS = [
     "apps.stacks",
     "apps.reports",
     "apps.relays",
+    "apps.remote",
     "apps.agentprofiles",
     # Business features (apps_business/LICENSE) — installed always, unlocked by license
     "apps_business.sites",
@@ -407,6 +408,9 @@ REST_FRAMEWORK = {
 # Celery — Redis broker
 # ---------------------------------------------------------------------------
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
+# Where live-session sockets hand bytes to each other: "redis" (any number of
+# workers) or "memory" (single process — tests and runserver only).
+VIGIL_SESSION_BUS = os.environ.get("VIGIL_SESSION_BUS", "redis")
 CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"

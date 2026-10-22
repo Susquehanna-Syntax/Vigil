@@ -26,6 +26,7 @@ AGENT_PATHS = (
     "/api/v1/checkin",
     "/api/v1/tasks/result/",
     "/api/v1/reprovision/enroll",
+    "/api/v1/agent/wake",
     "/agent/install.sh",
     "/agent/install.ps1",
     "/agent/uninstall.sh",
