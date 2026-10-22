@@ -430,7 +430,9 @@ def _cache_url() -> str:
 
 if _cache_url():
     CACHES = {"default": {"BACKEND": "django.core.cache.backends.redis.RedisCache",
-                          "LOCATION": _cache_url()}}
+                          "LOCATION": _cache_url(),
+                          # JSON, never pickle: a value read back can only be data.
+                          "OPTIONS": {"serializer": "vigil.cache_json.JSONSerializer"}}}
 # Web RDP (QA-59). Empty address means the feature is off and the Connect menu
 # says so; it is set to the compose service's name when the rdp profile runs.
 VIGIL_GUACD_ADDR = os.environ.get("VIGIL_GUACD_ADDR", "")
