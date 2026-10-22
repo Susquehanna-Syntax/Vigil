@@ -3,7 +3,7 @@
 What changed in each Vigil release, newest first. Versions are `year.minor.patch`: a minor release can be any size, a
 patch release fixes things. Business-only items say so; everything else is in every edition.
 
-## 2026.15.0 (in progress)
+## 2026.15.0
 
 **Relays**
 - A relay is a small container agents connect to instead of the dashboard. Run one in an office or on a VPS. The dashboard
@@ -16,8 +16,15 @@ patch release fixes things. Business-only items say so; everything else is in ev
 **Web shell, container shell and Web RDP**
 - A **Connect** menu on every host: web shell, Web RDP for Windows, the SSH command and the `.rdp` download.
 - Container rows get a **Shell** button.
-- Off until the host opts in, in its own `agent.yml`. Each session needs a fresh two-factor code and is logged.
+- Off until the host opts in, in its own `agent.yml`. Each session needs a fresh two-factor code or key tap and is logged.
 - Business records the whole session.
+
+**Two-factor sign-in for every account**
+- A password alone no longer signs anyone in. The next step asks for a passkey or security key tap, or a six-digit code.
+- An account with no second factor sets up TOTP on that step before the dashboard opens. Civil SSO sign-ins take the
+  same step.
+- Lost a phone or key? On the server, `python manage.py reset_2fa <username>` clears that user's factors; they set up
+  a new code at their next sign-in.
 
 **Agent profiles and Add Host**
 - Add Host shows every agent setting before the install command exists: mode, allowed actions, relays and fallbacks,

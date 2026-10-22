@@ -847,7 +847,7 @@
       <h2 class="section-title" style="color:var(--lavender-ink)">Changelog</h2>
       <p class="section-desc">What changed in each Vigil release, newest first. Versions are <code>year.minor.patch</code>: a minor release can be any size, a patch release fixes things. Business-only items say so; everything else is in every edition.</p>
 
-      <h3 id="changelog-2026-15-0-in-progress">2026.15.0 (in progress)</h3>
+      <h3 id="changelog-2026-15-0">2026.15.0</h3>
       <p class="prose"><strong>Relays</strong></p>
       <ul class="prose">
         <li>A relay is a small container agents connect to instead of the dashboard. Run one in an office or on a VPS. The dashboard dials out to it, so the dashboard never needs a public address.</li>
@@ -860,8 +860,14 @@
       <ul class="prose">
         <li>A <strong>Connect</strong> menu on every host: web shell, Web RDP for Windows, the SSH command and the <code>.rdp</code> download.</li>
         <li>Container rows get a <strong>Shell</strong> button.</li>
-        <li>Off until the host opts in, in its own <code>agent.yml</code>. Each session needs a fresh two-factor code and is logged.</li>
+        <li>Off until the host opts in, in its own <code>agent.yml</code>. Each session needs a fresh two-factor code or key tap and is logged.</li>
         <li>Business records the whole session.</li>
+      </ul>
+      <p class="prose"><strong>Two-factor sign-in for every account</strong></p>
+      <ul class="prose">
+        <li>A password alone no longer signs anyone in. The next step asks for a passkey or security key tap, or a six-digit code.</li>
+        <li>An account with no second factor sets up TOTP on that step before the dashboard opens. Civil SSO sign-ins take the same step.</li>
+        <li>Lost a phone or key? On the server, <code>python manage.py reset_2fa &lt;username&gt;</code> clears that user's factors; they set up a new code at their next sign-in. See <a href="#totp">TOTP / 2FA</a>.</li>
       </ul>
       <p class="prose"><strong>Agent profiles and Add Host</strong></p>
       <ul class="prose">
@@ -2345,7 +2351,16 @@ actions:
     <section class="section" id="totp">
       <p class="section-label">Authentication</p>
       <h2 class="section-title" style="color:var(--lemon-ink)">TOTP / 2FA</h2>
-      <p class="section-desc">Task execution beyond read-only views requires TOTP (Time-based One-Time Password). Enroll once per account via Settings.</p>
+      <p class="section-desc">Every account signs in with a second factor: a six-digit TOTP code, or a tap on a security key or passkey. The same factor confirms risky actions such as deploying a task.</p>
+
+      <h3>Signing in</h3>
+      <p class="prose">After the password, Vigil asks for the second factor. Nobody is signed in until it checks out, and the step expires after five minutes. Five wrong tries lock the account's codes for ten minutes.</p>
+      <p class="prose">An account with no second factor yet (a new user, or one signing in through Civil for the first time) sees a QR code on that step and sets up TOTP before the dashboard opens. The steps below are for adding it from Settings instead.</p>
+
+      <h3>Lost a phone or key</h3>
+      <p class="prose">An admin with shell access to the server clears that user's factors:</p>
+      <div class="code-block"><pre>docker compose exec web python manage.py reset_2fa &lt;username&gt;</pre></div>
+      <p class="prose">The user sets up a new code at their next sign-in. There is no way to do this from the browser, on purpose: a stolen session must not be able to remove a factor.</p>
 
       <h3>Enrollment</h3>
       <div class="steps">
@@ -2356,13 +2371,8 @@ actions:
           <div class="step-content">Copy the secret or scan the displayed <code>otpauth://</code> URI with an authenticator app (e.g., Bitwarden, Aegis, Google Authenticator).</div>
         </div>
         <div class="step">
-          <div class="step-content">Enter a current 6-digit code to confirm enrollment. TOTP is now required for all task deploys.</div>
+          <div class="step-content">Enter a current 6-digit code to confirm enrollment.</div>
         </div>
-      </div>
-
-      <div class="callout callout-warn">
-        <div class="callout-icon">!</div>
-        <div>TOTP enrollment is <strong>per-account</strong>. In a single-user homelab install, the one admin account must enroll before deploying standard or high-risk tasks. Password-only fallback is a temporary dev convenience and will be removed in a future release.</div>
       </div>
 
       <h3>Security keys and passkeys</h3>
