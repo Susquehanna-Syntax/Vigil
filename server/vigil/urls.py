@@ -62,9 +62,17 @@ def about(request):
             configured = False
         scanners.append({"name": name, "configured": configured})
 
+    from vigil import licensing
     from vigil.editions import active_edition, enabled_features
 
+    # Who this copy is licensed to, on a page every user can open: a license
+    # copied to someone else's install names the buyer, not them.
+    state = licensing.current_state()
+    licensed = state.claims if state.business_active else None
+
     return Response({
+        "licensed_to": licensed.org if licensed else None,
+        "license_id": licensed.lid if licensed else None,
         "vigil_version": getattr(django_settings, "VIGIL_VERSION", "unknown"),
         "expected_agent_version": getattr(django_settings, "VIGIL_AGENT_VERSION", ""),
         "python_version": "%d.%d.%d" % sys.version_info[:3],

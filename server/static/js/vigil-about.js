@@ -15,6 +15,9 @@ async function refreshAbout() {
     _setText('about-python', d.python_version || '—');
     _setText('about-database', d.database || '—');
     _setText('about-timezone', d.timezone || 'UTC');
+    _setText('about-licensed-to', d.licensed_to
+      ? `${d.licensed_to}${d.license_id ? ` (license ${d.license_id})` : ''}`
+      : 'Free edition');
     _renderScanners(d.scanners || []);
   } catch (e) {
     // 401 only happens if a logged-out client somehow hits this; show a hint.

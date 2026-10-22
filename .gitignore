@@ -55,3 +55,5 @@ server/vigil/settings_local_secret.py
 
 # rexymcp executor scratch
 .scratch/
+# Written by the Dockerfile into release images only (vigil/license_keys.py).
+server/RELEASE_BUILD

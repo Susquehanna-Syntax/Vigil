@@ -9,3 +9,7 @@ class LicensingConfig(AppConfig):
     # (vigil.licensing.current_state) because touching the DB during app
     # startup breaks migrations and management commands. The instance UUID
     # is likewise created on first read, not at boot.
+
+    def ready(self):
+        # Registers system checks only; touches no database.
+        from . import checks  # noqa: F401

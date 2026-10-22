@@ -43,8 +43,10 @@
           <input type="text" class="form-control" id="license-paste" placeholder="Paste a license key (SQSY-LICENSE-V1.…)" style="flex:1; min-width:280px;">
           <button type="submit" class="btn btn-mint btn-sm">Apply</button>
           <a class="btn btn-sky btn-sm" id="license-get" target="_blank" rel="noopener">Get a license</a>
+          <button type="button" class="btn btn-outline btn-sm" id="license-refresh" style="display:none;">Refresh now</button>
         </form>
         <p id="license-paste-result" class="muted"></p>
+        <p id="license-refresh-status" class="muted"></p>
       </div>
       <script nonce="{{ request.csp_nonce }}">
       (function () {
@@ -58,12 +60,31 @@
             "Seats: " + d.seats.used + " / " + d.seats.allowed;
           document.getElementById("license-get").href =
             d.subscribe_url + "?instance=" + encodeURIComponent(d.instance);
+          var refresh = d.refresh || {};
+          var licensed = d.org && d.status !== "none";
+          document.getElementById("license-refresh").style.display = licensed && refresh.enabled ? "" : "none";
+          document.getElementById("license-refresh-status").textContent = !licensed ? ""
+            : !refresh.enabled ? "Renews by pasting: automatic refresh is off (VIGIL_LICENSE_REFRESH)."
+            : refresh.at ? "Last refresh " + new Date(refresh.at).toLocaleString() + ": " + refresh.detail
+            : "Renews automatically.";
           document.getElementById("license-features").innerHTML = d.features.map(function (f) {
             return '<span class="license-chip license-chip--' + (f.active ? "on" : "off") + '">' +
               f.name + (f.active ? "" : " · " + f.tier) + "</span>";
           }).join(" ");
         }
         fetch("/api/v1/license/").then(function (r) { return r.json(); }).then(render);
+        document.getElementById("license-refresh").addEventListener("click", function () {
+          var btn = this;
+          btn.disabled = true;
+          fetch("/api/v1/license/refresh/", {
+            method: "POST",
+            headers: {"X-CSRFToken": (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ""},
+          }).then(function (r) { return r.json(); }).then(function (d) {
+            btn.disabled = false;
+            if (d.tier) render(d);
+            if (d.detail && !d.tier) document.getElementById("license-refresh-status").textContent = d.detail;
+          }, function () { btn.disabled = false; });
+        });
         document.getElementById("license-paste-form").addEventListener("submit", function (e) {
           e.preventDefault();
           fetch("/api/v1/license/", {

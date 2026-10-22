@@ -120,17 +120,19 @@ INSTALLED_APPS = [
 # ---------------------------------------------------------------------------
 # Licensing (SQSY-LICENSING.md)
 # ---------------------------------------------------------------------------
-# Base64 Ed25519 public key that license blobs must verify against. Dev and
-# prod keys never mix (SQSY-LICENSING.md §7a): the DEV key (pairs with
-# Mercantil's gitignored dev-signing.key) is the default only when DEBUG, so
-# local development can mint test licenses out of the box. Everywhere else the
-# operator sets VIGIL_LICENSE_PUBLIC_KEY — to the production key once it is
-# born in KMS, or explicitly to the dev key on internal dogfood installs. An
-# empty key simply means no license verifies: free tier, monitoring untouched.
-_DEV_LICENSE_PUBLIC_KEY = "HDIgm72yEkIopWgvsv0Q6Gp695l4ecOZMYnP2by7+IQ="
-VIGIL_LICENSE_PUBLIC_KEY = os.environ.get(
-    "VIGIL_LICENSE_PUBLIC_KEY", _DEV_LICENSE_PUBLIC_KEY if DEBUG else ""
-)
+# The key licenses must be signed with. A release image trusts only the keys
+# built into vigil/license_keys.py and ignores VIGIL_LICENSE_PUBLIC_KEY; a
+# source checkout honours it, defaulting to the dev key when DEBUG.
+from vigil.license_keys import trusted_public_key  # noqa: E402
+
+VIGIL_LICENSE_PUBLIC_KEY = trusted_public_key(BASE_DIR, debug=DEBUG, environ=os.environ)
+# Where Business installs refresh their license (Mercantil). Pointing it
+# elsewhere gains nothing: whatever comes back must still verify against the
+# key above. Off for air-gapped installs, which renew by pasting.
+VIGIL_LICENSE_SERVER = os.environ.get(
+    "VIGIL_LICENSE_SERVER", "https://license.susquehannasyntax.com").rstrip("/")
+VIGIL_LICENSE_REFRESH = os.environ.get("VIGIL_LICENSE_REFRESH", "true").strip().lower() in (
+    "1", "true", "yes", "on")
 
 # ---------------------------------------------------------------------------
 # Civil SSO (opt-in shared identity for the SQSY family). Unset = off.
@@ -449,6 +451,12 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 # Vigil's beat tasks are fire-and-forget — don't accumulate results in Redis.
 CELERY_TASK_IGNORE_RESULT = True
 CELERY_BEAT_SCHEDULE = {
+    "refresh-license": {
+        "task": "licensing.refresh",
+        # Every six hours. It only calls out when a license is new, not yet
+        # held by this install, or within three weeks of expiry.
+        "schedule": 6 * 3600.0,
+    },
     "reconcile-playbooks": {
         "task": "playbooks.reconcile",
         # Every 5 minutes. A host that gains a targeted tag should pick the

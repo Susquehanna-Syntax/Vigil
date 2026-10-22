@@ -58,6 +58,9 @@ COPY server/requirements.txt server/requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.txt -c requirements.lock
 
 COPY server/ .
+# A release image trusts only the license keys built into vigil/license_keys.py;
+# VIGIL_LICENSE_PUBLIC_KEY is for source checkouts (see that file).
+RUN touch /app/RELEASE_BUILD
 
 # Bundle the agent binaries — served via /agent/download/<platform>/.
 # CI drops cross-platform binaries (linux-amd64/arm64, darwin, windows) into

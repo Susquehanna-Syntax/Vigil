@@ -624,6 +624,13 @@
           </tbody>
         </table>
       </div>
+
+      <h3>Verify the image</h3>
+      <p class="prose">Release images of Vigil and the relay are signed in CI with <a href="https://docs.sigstore.dev/cosign/" target="_blank" rel="noopener">cosign</a>. To check that what you pulled is what we built:</p>
+      <div class="code-block"><pre>cosign verify susquehannasyntax/vigil:2026.15.0 \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github.com/Susquehanna-Syntax/Vigil/'</pre></div>
+      <p class="prose">Use <code>susquehannasyntax/vigil-relay</code> for the relay. A modified image fails this check, and gets no support.</p>
     </section>
     <div class="divider"></div>
 
@@ -883,6 +890,14 @@
         <li>Security keys and passkeys (YubiKey, Touch ID, Windows Hello, a phone) answer every confirmation prompt with one tap instead of a six-digit code. Add them under Settings → Shared Identity. They need the dashboard on HTTPS.</li>
         <li>macOS agents are Apple Silicon only. Intel Macs are no longer built or offered.</li>
       </ul>
+      <p class="prose"><strong>Licensing</strong></p>
+      <ul class="prose">
+        <li>Business licenses renew by themselves. A license for a connected install runs about five weeks; there is nothing to paste at renewal. Air-gapped installs set <code>VIGIL_LICENSE_REFRESH=false</code> and paste a full-term license.</li>
+        <li>A license belongs to the install that first refreshes it. Another install using a copy, even of the whole database, is refused.</li>
+        <li>Release images verify licenses against their built-in key and ignore <code>VIGIL_LICENSE_PUBLIC_KEY</code>.</li>
+        <li>The About page names who the license belongs to.</li>
+        <li>Release images are signed with cosign. See <a href="#deployment">Deployment → Verify the image</a>.</li>
+      </ul>
       <h3 id="changelog-2026-14-6">2026.14.6</h3>
       <ul class="prose">
         <li><strong>Reports</strong>, a page of their own: pick playbooks and automations, then lay out charts on a grid you drag and resize. There are seven chart types, an editor with a live preview, and CSV export.</li>
@@ -1037,7 +1052,9 @@
       <p class="prose"><strong>Seats are the only meter.</strong> Sites are unlimited on Business, and nothing is ever priced per host or per agent. A <em>site</em> is an administrative boundary: a campus, a department, or a client org. It is not a physical location; put whatever you want inside one.</p>
 
       <h3>How licensing works</h3>
-      <p class="prose">A Business license is an Ed25519-signed blob verified <strong>locally and offline</strong> against a public key baked into the build. Air-gapped installs are first-class: there is no phone-home, no revocation list, and no kill switch. The license is bound to your instance UUID (shown on Settings → License): a key pasted into someone else's Vigil does nothing. Input paths, in priority order: the <code>VIGIL_LICENSE_KEY</code> env var, <code>manage.py license set</code>, or the paste box on the license screen. All three apply at runtime, with no restart.</p>
+      <p class="prose">A Business license is an Ed25519-signed blob verified <strong>locally</strong> against a public key built into the release image. Air-gapped installs are first-class: there is no revocation list and no kill switch. The license is bound to your instance UUID (shown on Settings → License): a key pasted into someone else's Vigil does nothing.</p>
+      <p class="prose">A license for a connected install runs about five weeks, and Vigil renews it by itself: you never paste a renewal. Each refresh is signed with a key your install keeps apart from its instance UUID, and the first install to refresh holds the license; a copy elsewhere, even of the whole database, is refused. If Vigil says another install holds your license, move it to this install at <code>susquehannasyntax.com/license</code>. Air-gapped installs set <code>VIGIL_LICENSE_REFRESH=false</code> and get a full-term license to paste.</p>
+      <p class="prose"> Input paths, in priority order: the <code>VIGIL_LICENSE_KEY</code> env var, <code>manage.py license set</code>, or the paste box on the license screen. All three apply at runtime, with no restart.</p>
 
       <div class="callout callout-tip">
         <div class="callout-icon">✓</div>
@@ -1046,7 +1063,7 @@
 
       <div class="callout callout-tip">
         <div class="callout-icon">✓</div>
-        <div><strong>Telemetry, in full:</strong> the optional monthly license refresh sends your instance UUID, Vigil version, and seat count. That is the complete list. Free installs send nothing, ever.</div>
+        <div><strong>Telemetry, in full:</strong> only an install with a Business license calls out, to renew it, usually about once a week. It sends your instance UUID, Vigil version, seats in use, this install's public key and a signature over those. That is the complete list. Free installs send nothing, ever.</div>
       </div>
 
       <h3>Cross-app sign-in</h3>
@@ -4800,7 +4817,10 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
           <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
           <tbody>
             <tr><td><code>VIGIL_LICENSE_KEY</code></td><td><em>empty</em></td><td>Business license blob. Can also be stored in the database via the UI; the env var seeds it at boot. An unset key simply means Free tier. Monitoring is never affected.</td></tr>
-            <tr><td><code>VIGIL_LICENSE_PUBLIC_KEY</code></td><td>dev key when <code>DEBUG</code>, else <em>empty</em></td><td>Ed25519 public key licenses are verified against. Empty means no license verifies.</td></tr>
+            <tr><td><code>VIGIL_LICENSE_REFRESH</code></td><td><code>true</code></td><td>Renew a Business license from the license server. Set <code>false</code> on air-gapped installs, which paste a full-term license instead.</td></tr>
+            <tr><td><code>VIGIL_LICENSE_SERVER</code></td><td><code>https://license.susquehannasyntax.com</code></td><td>Where renewals come from. Whatever it sends must still verify against the built-in key.</td></tr>
+            <tr><td><code>VIGIL_ACCEPT_DEV_LICENSES</code></td><td><code>false</code></td><td>Internal installs only: verify against the built-in dev key instead of the production one.</td></tr>
+            <tr><td><code>VIGIL_LICENSE_PUBLIC_KEY</code></td><td>dev key when <code>DEBUG</code></td><td>Source checkouts only. Release images ignore it and verify against their built-in key.</td></tr>
             <tr><td><code>CIVIL_URL</code></td><td><em>empty</em></td><td>Civil SSO base URL. Unset = Civil sign-in is off.</td></tr>
             <tr><td><code>CIVIL_APP_SLUG</code></td><td><code>vigil</code></td><td>This app's slug when registering with Civil.</td></tr>
             <tr><td><code>VIGIL_EXTRA_APPS</code></td><td><em>empty</em></td><td>Comma-separated extra Django apps to install. The community extension seam.</td></tr>

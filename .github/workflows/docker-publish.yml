@@ -387,6 +387,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, build-agent, smoke-macos-install]
     if: github.event_name == 'push'
+    permissions:
+      contents: read
+      # Keyless cosign signing: the signature is tied to this workflow run
+      # through GitHub's OIDC token, so there is no signing key to keep.
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -424,6 +429,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -447,6 +453,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push relay
+        id: buildrelay
         uses: docker/build-push-action@v5
         with:
           context: relay
@@ -457,3 +464,19 @@ jobs:
           cache-from: type=gha,scope=relay
           cache-to: type=gha,mode=max,scope=relay
           platforms: linux/amd64,linux/arm64
+
+      # Sign both images by digest, so anyone can check that what they pulled
+      # is what this workflow built (wiki: Deployment → Verify the image):
+      #   cosign verify susquehannasyntax/vigil:<version> \
+      #     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+      #     --certificate-identity-regexp '^https://github.com/Susquehanna-Syntax/Vigil/'
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign images
+        env:
+          SERVER_DIGEST: ${{ steps.build.outputs.digest }}
+          RELAY_DIGEST: ${{ steps.buildrelay.outputs.digest }}
+        run: |
+          cosign sign --yes "${SERVER_IMAGE}@${SERVER_DIGEST}"
+          cosign sign --yes "${RELAY_IMAGE}@${RELAY_DIGEST}"

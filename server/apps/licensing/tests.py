@@ -201,7 +201,8 @@ class LicensingTests(TestCase):
         self.assertTrue(perm.has_permission(None, None))
 
 
-@override_settings(VIGIL_LICENSE_PUBLIC_KEY=PUB)
+# Refresh off: a paste would otherwise start one, and tests never call out.
+@override_settings(VIGIL_LICENSE_PUBLIC_KEY=PUB, VIGIL_LICENSE_REFRESH=False)
 class LicenseApiTests(TestCase):
     def setUp(self):
         self.admin = get_user_model().objects.create_user(

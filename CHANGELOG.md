@@ -40,6 +40,15 @@ patch release fixes things. Business-only items say so; everything else is in ev
   of a six-digit code. Add them under Settings → Shared Identity. They need the dashboard on HTTPS.
 - macOS agents are Apple Silicon only. Intel Macs are no longer built or offered.
 
+**Licensing**
+- Business licenses renew by themselves. A license for a connected install runs about five weeks; there is nothing to
+  paste at renewal. Air-gapped installs set `VIGIL_LICENSE_REFRESH=false` and paste a full-term license.
+- A license belongs to the install that first refreshes it. Another install using a copy, even of the whole database,
+  is refused.
+- Release images verify licenses against their built-in key and ignore `VIGIL_LICENSE_PUBLIC_KEY`.
+- The About page names who the license belongs to.
+- Release images are signed with cosign (wiki: Deployment → Verify the image).
+
 ## 2026.14.6
 
 - **Reports**, a page of their own: pick playbooks and automations, then lay out charts on a grid you drag and resize.

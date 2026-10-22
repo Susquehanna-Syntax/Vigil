@@ -62,13 +62,27 @@ config trick solves — org charts don't consolidate.
 
 ## How the gate works (and doesn't)
 
-- One repo, one image (`sqsy/vigil:<version>`). Business code lives in
+- One repo, one image (`susquehannasyntax/vigil:<version>`). Business code lives in
   `server/apps_business/` under a commercial license
   (`server/apps_business/LICENSE`); everything else is AGPLv3. All
   migrations run on every install; features unlock at runtime.
 - A **Business license** is an Ed25519-signed blob verified locally against
-  a public key baked into the build. Offline. No phone-home, no CRL, no
-  kill switch — air-gapped deploys are first-class.
+  a public key built into the release image (`VIGIL_LICENSE_PUBLIC_KEY` is
+  for source checkouts only, so nobody can point Vigil at a key of their
+  own). Offline verification. No CRL, no kill switch — air-gapped deploys
+  are first-class.
+- A license for a connected install runs about **five weeks** and Vigil
+  **renews it on its own**, so a copied key stops working within a month.
+  Each refresh is signed with a key this install keeps apart from its
+  instance UUID; the first install to refresh holds the license and any
+  other install is refused (a copied database included). Air-gapped
+  installs set `VIGIL_LICENSE_REFRESH=false` and get a full-term license
+  they paste by hand.
+- Every license carries a random **license id** and the buyer's org, shown
+  on Settings → License and the About page, so a key posted publicly traces
+  back to who bought it.
+- Release images are **signed with cosign**, so you can check what you
+  pulled is what we built.
 - Licenses are **instance-bound**: your license carries the instance UUID
   shown on your license screen and does nothing anywhere else. That closes
   casual key-sharing (a key on Reddit licenses nobody). Someone determined
@@ -102,7 +116,9 @@ never accepted from a model; nothing is auto-executed.
 
 ## Telemetry, in full
 
-The optional monthly license refresh (`GET /license?instance=`) sends: your
-instance UUID, Vigil version, and seat count. That is the complete list.
-Air-gapped installs turn refresh off and re-paste annually. Free installs
-send nothing, ever.
+Only an install with a Business license calls out, and only to renew it
+(`GET /license` on the license server, at most every six hours and usually
+about once a week). It sends: your instance UUID, Vigil version, seats in
+use, this install's public key, and a signature over those. That is the
+complete list. Air-gapped installs set `VIGIL_LICENSE_REFRESH=false` and
+re-paste a full-term license. Free installs send nothing, ever.

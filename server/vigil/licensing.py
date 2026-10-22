@@ -280,6 +280,124 @@ def set_license(blob: str) -> LicenseState:
 
 
 # --------------------------------------------------------------------------
+# Refresh from Mercantil
+#
+# A Business license for a connected install runs about five weeks and is
+# renewed here, so a copy of it stops working within a month. Only an install
+# with a license ever calls out: free installs send nothing. Each request is
+# signed with this install's key (apps.licensing.models.InstallKey), which
+# Mercantil binds to the license on the first refresh and refuses for any
+# other install. Every failure leaves the current license exactly as it was.
+
+#: Renew once the license is this close to expiry.
+REFRESH_WITHIN_DAYS = 21
+REFRESH_TIMEOUT = 15
+
+#: refresh_license results. "renewed"/"current" mean this install holds the
+#: license; anything else is retried on the next run.
+SETTLED = ("renewed", "current")
+
+
+def refresh_message(instance: str, ts: int, version: str, seats: str) -> bytes:
+    """What Mercantil verifies (its licenses.views.refresh_message)."""
+    return f"vigil-license-refresh\n{instance}\n{ts}\n{version}\n{seats}".encode()
+
+
+def _record(row, result: str, detail: str, lid: str) -> dict:
+    from django.utils.timezone import now
+
+    row.refreshed_at = now()
+    row.refresh_result = result
+    row.refresh_detail = detail[:300]
+    row.refreshed_lid = lid
+    row.save(update_fields=["refreshed_at", "refresh_result", "refresh_detail", "refreshed_lid"])
+    return {"result": result, "detail": detail}
+
+
+def refresh_enabled() -> bool:
+    return bool(getattr(settings, "VIGIL_LICENSE_REFRESH", False))
+
+
+def refresh_due(state: LicenseState, row, *, now: int | None = None) -> bool:
+    now = int(time.time()) if now is None else now
+    claims = state.claims
+    if claims is None:
+        return False
+    return (row.refreshed_lid != claims.lid            # a newly applied license: claim it
+            or row.refresh_result not in SETTLED        # not held yet, or it failed
+            or claims.exp - now < REFRESH_WITHIN_DAYS * 86400)
+
+
+def refresh_license(*, force: bool = False) -> dict:
+    """Ask Mercantil for a newer license and apply it if it verifies.
+
+    Returns {"result", "detail"}. Never raises and never weakens the license
+    in place: a refusal, an outage or a bad answer is recorded and the
+    current license stays until it expires as it always would have.
+    """
+    try:
+        return _refresh_license(force=force)
+    except Exception:  # noqa: BLE001 — licensing must never take anything down
+        logger.exception("license refresh failed")
+        return {"result": "error", "detail": "Refresh failed; see the logs."}
+
+
+def _refresh_license(*, force: bool) -> dict:
+    import requests
+
+    from apps.licensing.models import InstallKey
+
+    if not refresh_enabled():
+        return {"result": "off", "detail": "Refresh is off (VIGIL_LICENSE_REFRESH)."}
+    state = current_state()
+    if state.claims is None or state.status in (Status.MISMATCH, Status.INVALID):
+        return {"result": "no-license", "detail": "There is no license to refresh."}
+    if state.source == "env":
+        return {"result": "env", "detail": ("The license comes from VIGIL_LICENSE_KEY, which a "
+                                            "refresh cannot replace. Paste it in Settings instead.")}
+    row = InstallKey.get()
+    lid = state.claims.lid
+    if not force and not refresh_due(state, row):
+        return {"result": row.refresh_result, "detail": row.refresh_detail}
+
+    instance, ts = instance_id(), int(time.time())
+    version, seats = str(getattr(settings, "VIGIL_VERSION", "")), str(seats_used())
+    signer = row.signing_key()
+    b64 = lambda raw: base64.urlsafe_b64encode(raw).decode().rstrip("=")  # noqa: E731
+    try:
+        resp = requests.get(
+            f"{settings.VIGIL_LICENSE_SERVER}/license",
+            params={"instance": instance, "version": version, "seats": seats, "ts": ts,
+                    "key": b64(bytes(signer.verify_key)),
+                    "sig": b64(signer.sign(refresh_message(instance, ts, version, seats)).signature)},
+            timeout=REFRESH_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        return _record(row, "unreachable", f"Could not reach the license server: {exc.__class__.__name__}.", lid)
+
+    if resp.status_code == 409:
+        return _record(row, "refused", (
+            "Another install holds this license, so it is not renewing here. If this is "
+            "your install, move the license to it at susquehannasyntax.com/license."), lid)
+    if resp.status_code != 200:
+        return _record(row, "unreachable", f"The license server answered {resp.status_code}.", lid)
+    try:
+        blob = str(resp.json()["license"])
+    except (ValueError, KeyError, TypeError):
+        return _record(row, "unreachable", "The license server sent something unreadable.", lid)
+
+    new = _classify(blob, "db")
+    if new.status not in (Status.VALID, Status.GRACE) or new.claims is None:
+        # A license that does not verify here, or is for another instance,
+        # never replaces one that does.
+        return _record(row, "rejected", f"The license server's answer did not verify: {new.detail}", lid)
+    if new.claims.exp <= state.claims.exp:
+        return _record(row, "current", "This install holds the license; nothing newer yet.", lid)
+    set_license(blob)
+    return _record(row, "renewed", "Renewed.", new.claims.lid)
+
+
+# --------------------------------------------------------------------------
 # The gate
 
 def has_feature(name: str) -> bool:
