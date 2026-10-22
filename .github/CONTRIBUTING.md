@@ -7,7 +7,7 @@ repos. The templates in `.github/` enforce most of this — this is the why.
 
 - **Vigil** (this repo) — AGPLv3, public. The core: everything Free, and every
   seam the Business features plug into. It runs on its own.
-- **Vigil-Business** — private, commercial licence. The Business apps
+- **Vigil_Business** — private, commercial licence. The Business apps
   (`apps_business`: sites, audits, branding, compliance). Official images
   install it compiled; a license unlocks it at runtime behind `has_feature()`
   gates. Source is available to customers for audit on request. Still one

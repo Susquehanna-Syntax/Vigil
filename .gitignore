@@ -57,7 +57,7 @@ server/vigil/settings_local_secret.py
 .scratch/
 # Written by the Dockerfile into release images only (vigil/license_keys.py).
 server/RELEASE_BUILD
-# The Business apps live in the private Vigil-Business repo; install it
-# (pip install -e ../Vigil-Business) rather than copying it here.
+# The Business apps live in the private Vigil_Business repo; install it
+# (pip install -e ../Vigil_Business) rather than copying it here.
 server/apps_business/
 business-wheels/*.whl
