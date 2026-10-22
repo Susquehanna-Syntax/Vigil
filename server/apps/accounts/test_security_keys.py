@@ -525,12 +525,24 @@ class SecureContextTests(TestCase):
         self.assertIn("challenge", resp.json())
         self.assertEqual(self.client.post(ASSERT_OPTIONS_URL, {}, format="json").status_code, 200)
 
-    @override_settings(VIGIL_PUBLIC_URL="")
+    @override_settings(VIGIL_PUBLIC_URL="http://localhost:8000")
     def test_localhost_over_http_offers_them(self):
         resp = self.client.post(REGISTER_OPTIONS_URL, {"totp": self._factor()},
                                 format="json", HTTP_HOST="localhost:8000")
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertIn("challenge", resp.json())
+
+    @override_settings(VIGIL_PUBLIC_URL="", ALLOWED_HOSTS=["*"])
+    def test_without_a_public_url_keys_are_off_whatever_the_host_header_says(self):
+        # The identity a key is bound to comes from configuration only: a
+        # request claiming to be localhost does not make WebAuthn available.
+        resp = self.client.post(REGISTER_OPTIONS_URL, {"totp": self._factor()},
+                                format="json", HTTP_HOST="localhost:8000")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("VIGIL_PUBLIC_URL", resp.json()["error"])
+        body = self.client.get("/api/v1/accounts/totp/", HTTP_HOST="evil.example").json()
+        self.assertFalse(body["keys_possible"])
+        self.assertIn("VIGIL_PUBLIC_URL", body["keys_reason"])
 
     @override_settings(VIGIL_PUBLIC_URL="http://vigil.example.com")
     def test_the_status_endpoint_reports_it_so_the_ui_can_say_so(self):
@@ -659,6 +671,7 @@ class TokenShapeTests(TestCase):
         with patch.object(default_cache, "get", return_value=None):   # past the TTL
             self.assertFalse(webauthn_keys.consume_key_token(user, key.split(":", 1)[1]))
 
+    @override_settings(VIGIL_PUBLIC_URL="https://vigil.example.com")
     def test_the_issued_token_carries_the_users_own_id_as_owner(self):
         """The assertion binds the token to the asserting user's id."""
         from django.core.cache import cache as default_cache
@@ -687,14 +700,14 @@ class RelyingPartyTests(SimpleTestCase):
         self.assertEqual(origin, "https://vigil.example.com:8443")
         self.assertTrue(secure_context(origin))
 
-    def test_without_a_public_url_the_request_is_the_relying_party(self):
+    def test_without_a_public_url_there_is_no_relying_party(self):
         from apps.accounts.webauthn_keys import relying_party, secure_context
 
         with self.settings(VIGIL_PUBLIC_URL=""):
             rp_id, origin = relying_party(_FakeRequest("http://127.0.0.1:8000"))
-        self.assertEqual(rp_id, "127.0.0.1")
-        self.assertEqual(origin, "http://127.0.0.1:8000")
-        self.assertTrue(secure_context(origin))
+        self.assertEqual((rp_id, origin), ("", ""))
+        self.assertFalse(secure_context(origin))
+        self.assertTrue(secure_context("http://127.0.0.1:8000"))
         self.assertFalse(secure_context("http://192.168.1.10:8000"))
 
 

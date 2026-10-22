@@ -786,7 +786,7 @@ async function loadSecurityKeys() {
   const addBtn = document.getElementById('security-keys-add-btn');
   const insecure = !!status && !status.keys_possible;
   if (note) {
-    note.textContent = insecure ? 'Security keys need HTTPS.' : '';
+    note.textContent = insecure ? (status.keys_reason || 'Security keys need HTTPS.') : '';
     note.style.display = insecure ? '' : 'none';
   }
   if (addBtn) addBtn.disabled = insecure;
@@ -895,7 +895,7 @@ async function addSecurityKey() {
     status = await apiJson('/api/v1/accounts/totp/');   // current, not cached
   } catch (e) { /* the server still checks both rules */ }
   if (status.keys_possible === false) {
-    showToast('Security keys need HTTPS.', 'error');
+    showToast(status.keys_reason || 'Security keys need HTTPS.', 'error');
     return;
   }
   // The server enforces this gate too; the prompt is here so the user has a

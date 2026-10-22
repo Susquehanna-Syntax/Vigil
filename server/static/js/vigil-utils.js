@@ -404,7 +404,8 @@ function _securityKeyOffer() {
     .then((data) => {
       _keyFactor = {
         offer: !!(data.keys > 0 && data.keys_possible && window.PublicKeyCredential),
-        reason: data.keys > 0 && !data.keys_possible ? 'Security keys need HTTPS.' : '',
+        reason: data.keys > 0 && !data.keys_possible
+          ? (data.keys_reason || 'Security keys need HTTPS.') : '',
       };
       return _keyFactor;
     })

@@ -51,29 +51,50 @@ CHALLENGE_SECONDS = 120
 RP_NAME = "Vigil"
 
 
+def _required_party(request) -> tuple[str, str]:
+    """The relying party, or a ValueError saying why keys are unavailable."""
+    rp_id, origin = relying_party(request)
+    reason = unavailable_reason(origin)
+    if reason:
+        raise ValueError(reason)
+    return rp_id, origin
+
+
 def relying_party(request) -> tuple[str, str]:
     """(rp id, origin) — the two values the browser and we must agree on.
 
-    ``VIGIL_PUBLIC_URL`` wins because that is the address the browser actually
-    holds in its WebAuthn allowlist; a proxied ``Host`` header would otherwise
-    make every registered credential unusable behind a reverse proxy.
+    Only ever ``VIGIL_PUBLIC_URL``: the identity a key is bound to comes from
+    configuration, never from a request header. Without it this returns
+    ``("", "")`` and security keys are unavailable (see ``unavailable_reason``).
+    ``request`` is accepted for the callers' convenience and not read.
     """
     public = (getattr(settings, "VIGIL_PUBLIC_URL", "") or "").strip().rstrip("/")
-    if public:
-        split = urlsplit(public if "//" in public else f"https://{public}")
-        host = split.hostname or ""
-        scheme = split.scheme or "https"
-        port = f":{split.port}" if split.port else ""
-        return host, f"{scheme}://{host}{port}"
-    host = request.get_host().split(":")[0].split("/")[0]
-    return host, f"{request.scheme}://{request.get_host()}"
+    if not public:
+        return "", ""
+    split = urlsplit(public if "//" in public else f"https://{public}")
+    host = split.hostname or ""
+    scheme = split.scheme or "https"
+    port = f":{split.port}" if split.port else ""
+    return host, f"{scheme}://{host}{port}"
 
 
 def secure_context(origin: str) -> bool:
     """WebAuthn only runs where the browser will run it: https, or localhost."""
+    if not origin:
+        return False
     split = urlsplit(origin)
     host = split.hostname or ""
     return split.scheme == "https" or host in ("localhost", "127.0.0.1")
+
+
+def unavailable_reason(origin: str) -> str:
+    """Why security keys cannot be used here, or "" when they can."""
+    if not origin:
+        return ("Set VIGIL_PUBLIC_URL to the address you open Vigil at to use "
+                "security keys.")
+    if not secure_context(origin):
+        return "Security keys need HTTPS."
+    return ""
 
 
 def _store_challenge(session, key: str, challenge: bytes) -> None:
@@ -102,7 +123,7 @@ def registration_options(request) -> dict:
     """
     from .models import SecurityKey
 
-    rp_id, origin = relying_party(request)
+    rp_id, origin = _required_party(request)
     # The same bytes go to the browser and into the session: verification
     # compares what the authenticator signed against exactly this.
     challenge = secrets.token_bytes(32)
@@ -152,7 +173,7 @@ def register(request, name, credential):
     """Verify a registration response against the session challenge and save."""
     from .models import SecurityKey
 
-    rp_id, origin = relying_party(request)
+    rp_id, origin = _required_party(request)
     expected = _take_challenge(request.session, "webauthn_reg")
     verified = verify_registration_response(
         credential=credential,
@@ -178,7 +199,7 @@ def authentication_options(request) -> dict:
     keys = list(SecurityKey.objects.filter(user=request.user))
     if not keys:
         raise ValueError("No security keys enrolled")
-    rp_id, _origin = relying_party(request)
+    rp_id, _origin = _required_party(request)
     challenge = secrets.token_bytes(32)
     _store_challenge(request.session, "webauthn_auth", challenge)
     options = generate_authentication_options(
@@ -200,7 +221,7 @@ def authenticate(request, credential) -> str:
     """
     from .models import SecurityKey
 
-    rp_id, origin = relying_party(request)
+    rp_id, origin = _required_party(request)
     expected = _take_challenge(request.session, "webauthn_auth")
     raw_id = _credential_id(credential)
     key = SecurityKey.objects.filter(user=request.user, credential_id=raw_id).first()

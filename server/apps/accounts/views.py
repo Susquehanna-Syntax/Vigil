@@ -31,6 +31,7 @@ from .webauthn_keys import (
     registration_options,
     relying_party,
     secure_context,
+    unavailable_reason,
 )
 
 # ---------------------------------------------------------------------------
@@ -82,6 +83,7 @@ def totp_status(request):
         "keys": request.user.security_keys.count(),
         # The dialog offers a key only where the browser will run WebAuthn.
         "keys_possible": secure_context(origin),
+        "keys_reason": unavailable_reason(origin),
     })
 
 
@@ -130,7 +132,7 @@ def security_key_register_options(request):
             return Response({"error": error}, status=401)
     _rp_id, origin = relying_party(request)
     if not secure_context(origin):
-        return Response({"error": "Security keys need HTTPS."}, status=400)
+        return Response({"error": unavailable_reason(origin)}, status=400)
     return Response(registration_options(request))
 
 
@@ -182,7 +184,7 @@ def security_key_detail(request, key_id):
 def security_key_assert_options(request):
     _rp_id, origin = relying_party(request)
     if not secure_context(origin):
-        return Response({"error": "Security keys need HTTPS."}, status=400)
+        return Response({"error": unavailable_reason(origin)}, status=400)
     try:
         return Response(authentication_options(request))
     except ValueError as exc:
