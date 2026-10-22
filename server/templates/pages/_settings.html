@@ -164,6 +164,19 @@
         </div>
       </div>
 
+      {# Logic: static/js/vigil-settings.js (loadSecurityKeys / addSecurityKey) #}
+      <div class="section-label" style="margin-top:32px;">Security keys</div>
+      <div class="totp-card" id="security-keys-card">
+        <div class="totp-sub">Tap a security key or use your device's passkey instead of typing a code.
+          Works with YubiKey, Touch ID, Windows Hello and phones.</div>
+        {# Shown when the browser will not run WebAuthn: vigil-settings.js puts "Security keys need HTTPS." here. #}
+        <div class="totp-key-error" id="security-keys-note" style="display:none;"></div>
+        <div id="security-keys-list"></div>
+        <div class="totp-actions" style="margin-top:16px;">
+          <button class="btn btn-sky btn-sm" id="security-keys-add-btn" data-act="addSecurityKey">Add a security key</button>
+        </div>
+      </div>
+
       {# Logic: static/js/vigil-settings.js (transportAckLoad / transportAckSet) #}
       <div class="section-label" style="margin-top:32px;">Transport Security</div>
       <div class="totp-card">

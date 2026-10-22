@@ -9,9 +9,29 @@ from django.utils.timezone import now
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from webauthn.helpers.exceptions import (
+    InvalidAuthenticationResponse,
+    InvalidRegistrationResponse,
+)
 
 from .models import LoginAttempt, UserProfile
-from .totp import generate_secret, generate_totp, otpauth_uri, verify_totp
+from .totp import (
+    _clear_totp_attempts,
+    _totp_attempt_allowed,
+    generate_secret,
+    generate_totp,
+    has_second_factor,
+    otpauth_uri,
+    require_totp_confirmation,
+    verify_totp,
+)
+from .webauthn_keys import (
+    _clean_name,
+    authentication_options,
+    registration_options,
+    relying_party,
+    secure_context,
+)
 
 # ---------------------------------------------------------------------------
 # Login rate limiting
@@ -55,10 +75,139 @@ def _get_or_create_profile(user) -> UserProfile:
 @permission_classes([IsAuthenticated])
 def totp_status(request):
     profile = _get_or_create_profile(request.user)
+    _rp_id, origin = relying_party(request)
     return Response({
         "enrolled": bool(profile.totp_confirmed_at and profile.totp_secret),
         "pending": bool(profile.totp_secret and not profile.totp_confirmed_at),
+        "keys": request.user.security_keys.count(),
+        # The dialog offers a key only where the browser will run WebAuthn.
+        "keys_possible": secure_context(origin),
     })
+
+
+# ---------------------------------------------------------------------------
+# Security keys and passkeys (QA-65)
+# ---------------------------------------------------------------------------
+
+def _key_audit(request, action: str, target: str) -> None:
+    """Audit a mutation. Core must not hard-depend on apps_business."""
+    try:
+        from apps_business.audits.models import record
+    except ImportError:
+        return
+    record(action, user=request.user, target=target)
+
+
+def _key_row(key) -> dict:
+    # Never the credential id or the public key: they are the authenticator's
+    # identity, and nothing in the UI needs them.
+    return {
+        "id": key.id,
+        "name": key.name,
+        "created_at": key.created_at.isoformat() if key.created_at else None,
+        "last_used_at": key.last_used_at.isoformat() if key.last_used_at else None,
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def security_keys_list(request):
+    return Response([_key_row(key) for key in request.user.security_keys.all()])
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def security_key_register_options(request):
+    """Creation options — gated on the second factor the user already has.
+
+    A stolen session must not be able to enroll the attacker's key and pass
+    every gate after that, so adding a factor costs the existing one. The
+    token a key hands back passes ``consume_totp``, which is what this reads.
+    """
+    if has_second_factor(request.user):
+        error = require_totp_confirmation(request.user, request.data)
+        if error is not None:
+            return Response({"error": error}, status=401)
+    _rp_id, origin = relying_party(request)
+    if not secure_context(origin):
+        return Response({"error": "Security keys need HTTPS."}, status=400)
+    return Response(registration_options(request))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def security_key_register(request):
+    from .webauthn_keys import register as webauthn_register
+
+    try:
+        key = webauthn_register(request, request.data.get("name"),
+                                request.data.get("credential"))
+    except (ValueError, InvalidRegistrationResponse) as exc:
+        return Response({"error": str(exc) or "That key could not be verified."}, status=400)
+    _key_audit(request, "account.security_key_added", key.name)
+    return Response({"id": key.id, "name": key.name}, status=201)
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
+def security_key_detail(request, key_id):
+    """Rename or remove one of the user's own keys; anybody else's is a 404.
+
+    Removing a factor costs a factor, so that a stolen session cannot strip
+    the user's keys and leave only the attacker's behind.
+    """
+    key = request.user.security_keys.filter(pk=key_id).first()
+    if key is None:
+        return Response({"error": "No such security key"}, status=404)
+
+    if request.method == "PATCH":
+        try:
+            key.name = _clean_name(request.data.get("name"))
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        key.save(update_fields=["name"])
+        return Response(_key_row(key))
+
+    error = require_totp_confirmation(request.user, request.data)
+    if error is not None:
+        return Response({"error": error}, status=401)
+    name = key.name
+    key.delete()
+    _key_audit(request, "account.security_key_removed", name)
+    return Response(status=204)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def security_key_assert_options(request):
+    _rp_id, origin = relying_party(request)
+    if not secure_context(origin):
+        return Response({"error": "Security keys need HTTPS."}, status=400)
+    try:
+        return Response(authentication_options(request))
+    except ValueError as exc:
+        return Response({"error": str(exc)}, status=400)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def security_key_assert(request):
+    """Verify an assertion and hand back the one-time token the prompt sends
+    on as ``totp``. Guesses are recorded in TOTP's own counter, so a key and a
+    code together get the same five tries before both are locked out."""
+    from .webauthn_keys import authenticate as webauthn_authenticate
+
+    if not _totp_attempt_allowed(request.user):
+        return Response({"error": "Too many wrong confirmations — wait a few minutes and try again"},
+                        status=429)
+    try:
+        token = webauthn_authenticate(request, request.data.get("credential"))
+    except (ValueError, TypeError, InvalidAuthenticationResponse) as exc:
+        # The failed guess is already recorded above; a verification failure is
+        # an expected outcome here, not a server error.
+        return Response({"error": str(exc) or "That key could not be verified."}, status=400)
+    _clear_totp_attempts(request.user)
+    return Response({"token": token})
 
 
 @api_view(["POST"])

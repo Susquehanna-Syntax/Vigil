@@ -18,7 +18,7 @@ from rest_framework.response import Response
 
 from apps.accounts.models import Role
 from apps.accounts.permissions import OWNER, IsAdmin, can, role_of
-from apps.accounts.totp import require_totp_confirmation
+from apps.accounts.totp import has_second_factor, require_totp_confirmation
 from apps.hosts.authentication import authenticate_agent
 from apps.hosts.models import Host
 from vigil import scoping
@@ -73,8 +73,8 @@ def _refused(request, host, status: int, reason: str, body: dict,
 
 
 def _has_totp(user) -> bool:
-    profile = getattr(user, "profile", None)
-    return bool(profile and profile.totp_confirmed_at and profile.totp_secret)
+    # Either factor counts: a key-only user is as verified as a TOTP one (QA-65).
+    return has_second_factor(user)
 
 
 @api_view(["GET", "POST"])

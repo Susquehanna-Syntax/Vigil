@@ -375,8 +375,77 @@ function promptModal(message, opts) {
 //: `reason` argument as plain text via textContent, so callers interpolate
 //: freely without escaping. opts: title, confirmText. Every confirm-with-a-code
 //: goes through here, so a second factor (a hardware key) has one place to land.
+//: With an enrolled security key the dialog offers the ceremony first and
+//: resolves with the one-time token the server hands back (`wa_…`), which
+//: `consume_totp` accepts in place of six digits — so no caller changes.
+
+/* ── base64url, both ways (WebAuthn speaks it, the browser speaks bytes) ── */
+function b64urlToBytes(value) {
+  const s = String(value).replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(s + '='.repeat((4 - (s.length % 4)) % 4));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function bytesToB64url(buf) {
+  const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : new Uint8Array(buf.buffer ?? buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+//: Cached so the 42 call sites do not each fetch the status before they ask.
+let _keyFactor = null;
+
+function _securityKeyOffer() {
+  if (_keyFactor) return Promise.resolve(_keyFactor);
+  return apiJson('/api/v1/accounts/totp/')
+    .then((data) => {
+      _keyFactor = {
+        offer: !!(data.keys > 0 && data.keys_possible && window.PublicKeyCredential),
+        reason: data.keys > 0 && !data.keys_possible ? 'Security keys need HTTPS.' : '',
+      };
+      return _keyFactor;
+    })
+    .catch(() => ({ offer: false, reason: '' }));
+}
+
+//: The assert ceremony: options → the browser → the server → the token.
+async function _runSecurityKeyCeremony() {
+  const opts = await apiJson('/api/v1/accounts/security-keys/assert/options/', { method: 'POST' });
+  const publicKey = {
+    challenge: b64urlToBytes(opts.challenge).buffer,
+    timeout: opts.timeout || 60000,
+    rpId: opts.rpId,
+    userVerification: opts.userVerification || 'preferred',
+    allowCredentials: (opts.allowCredentials || []).map((c) => ({
+      type: c.type || 'public-key', id: b64urlToBytes(c.id).buffer,
+    })),
+  };
+  const cred = await navigator.credentials.get({ publicKey });
+  const r = cred.response;
+  const credential = {
+    id: cred.id || bytesToB64url(cred.rawId),
+    rawId: bytesToB64url(cred.rawId),
+    type: cred.type || 'public-key',
+    response: {
+      clientDataJSON: bytesToB64url(r.clientDataJSON),
+      authenticatorData: bytesToB64url(r.authenticatorData),
+      signature: bytesToB64url(r.signature),
+      userHandle: r.userHandle ? bytesToB64url(r.userHandle) : null,
+    },
+  };
+  const body = await apiJson('/api/v1/accounts/security-keys/assert/', {
+    method: 'POST', body: JSON.stringify({ credential }),
+  });
+  if (!body || !body.token) throw new Error('The server did not accept the key.');
+  return body.token;
+}
+
 function totpPrompt(reason, opts) {
   opts = opts || {};
+  let closed = false;
   return new Promise((resolve) => {
     const m = mountModal('totp', { variant: 'm-pop' });
     m.setBody(`
@@ -387,6 +456,11 @@ function totpPrompt(reason, opts) {
         </button>
       </div>
       <div class="confirm-msg" id="totp-reason"></div>
+      <div id="totp-key-slot" class="totp-key-slot" style="display:none;">
+        <button class="btn btn-mint btn-sm totp-key-btn" id="totp-key-btn">Use security key</button>
+        <div class="totp-sub" id="totp-key-hint">or enter the 6-digit code</div>
+        <div class="totp-key-error" id="totp-key-error" style="display:none;"></div>
+      </div>
       <div class="form-group">
         <input type="text" class="form-control totp-input" id="totp-input" inputmode="numeric"
                autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}"
@@ -410,7 +484,11 @@ function totpPrompt(reason, opts) {
       okBtn.disabled = input.value.length !== 6;
     };
 
-    const done = (val) => { m.close(); setTimeout(() => resolve(val), 200); };
+    const done = (val) => {
+      if (closed) return;
+      closed = true;
+      m.close(); setTimeout(() => resolve(val), 200);
+    };
     const submit = () => { if (/^\d{6}$/.test(input.value)) done(input.value); };
     okBtn.onclick = submit;
     m.modal.querySelector('#totp-cancel').onclick = () => done(null);
@@ -421,7 +499,36 @@ function totpPrompt(reason, opts) {
       // Escape closes this prompt only, not the modal it was opened over.
       if (ev.key === 'Escape') { ev.stopPropagation(); done(null); }
     };
-    requestAnimationFrame(() => { m.open(); input.focus(); });
+
+    const keyBtn = m.modal.querySelector('#totp-key-btn');
+    const keyErr = m.modal.querySelector('#totp-key-error');
+    keyBtn.onclick = () => {
+      keyErr.style.display = 'none';
+      keyBtn.disabled = true;
+      _runSecurityKeyCeremony()
+        .then((token) => { if (!closed) done(token); })
+        .catch((err) => {
+          // A cancelled or refused ceremony is the ordinary case: say so under
+          // the button and leave the code field exactly as usable as it was.
+          if (closed) return;
+          keyBtn.disabled = false;
+          keyErr.textContent = (err && err.name === 'NotAllowedError')
+            ? 'Key request cancelled.'
+            : ((err && err.message) || 'The key was not accepted.');
+          keyErr.style.display = '';
+        });
+    };
+
+    _securityKeyOffer().then((offer) => {
+      if (closed || !offer.offer) return;
+      m.modal.querySelector('#totp-key-slot').style.display = '';
+      requestAnimationFrame(() => keyBtn.focus());
+    });
+    requestAnimationFrame(() => {
+      m.open();
+      if (m.modal.querySelector('#totp-key-slot').style.display !== 'none') return;
+      input.focus();
+    });
   });
 }
 

@@ -10,6 +10,8 @@
 async function refreshTotpStatus() {
   const status = document.getElementById('totp-status-line');
   if (!status) return;
+  // The security keys card sits right under this one and opens with it.
+  loadSecurityKeys();
   try {
     const data = await apiJson('/api/v1/accounts/totp/');
     const sub = document.getElementById('totp-sub-line');
@@ -305,6 +307,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       // Relays too: the list is admin-only, and it polls while you look at it.
       if (item.dataset.pane === 'relays' && typeof loadRelays === 'function') loadRelays();
+      // The account pane holds the security-keys card (QA-65); it is also what
+      // refreshTotpStatus() loads, and that runs on page load from the monitor.
+      if (item.dataset.pane === 'identity') loadSecurityKeys();
     });
   });
 
@@ -750,3 +755,165 @@ async function relayInstall(id) {
 
 /* Choosing any other pane means the relays list is off-screen. */
 delegateClick('#settings-nav .settings-nav-item', () => _relayStopPolling());
+
+/* ── Security keys and passkeys (QA-65) ───────────────────────────────────
+   Enrol, name and remove the authenticators that can answer a confirmation
+   prompt with a tap. The ceremony itself lives in vigil-utils.js (totpPrompt);
+   this card only manages the list. HTML: templates/pages/_settings.html.
+   API: GET/POST/PATCH/DELETE /api/v1/accounts/security-keys/{,…} */
+
+//: Whether this browser will run WebAuthn at all — refreshed by every load of
+//: the card, so a cert arriving between page loads stops being invisible.
+let _keysPossible = true;
+
+const KEYS_API = '/api/v1/accounts/security-keys/';
+
+async function loadSecurityKeys() {
+  // The confirmation prompt caches whether to offer a key; the list just
+  // changed (or is being shown fresh), so let it ask again next time.
+  if (typeof _keyFactor !== 'undefined') _keyFactor = null;
+  const list = document.getElementById('security-keys-list');
+  if (!list) return;
+  let status = null;
+  let keys = [];
+  try {
+    [status, keys] = await Promise.all([apiJson('/api/v1/accounts/totp/'), apiJson(KEYS_API)]);
+  } catch (e) {
+    list.textContent = 'Could not load your security keys.';
+    return;
+  }
+  const note = document.getElementById('security-keys-note');
+  const addBtn = document.getElementById('security-keys-add-btn');
+  const insecure = !!status && !status.keys_possible;
+  if (note) {
+    note.textContent = insecure ? 'Security keys need HTTPS.' : '';
+    note.style.display = insecure ? '' : 'none';
+  }
+  if (addBtn) addBtn.disabled = insecure;
+
+  list.textContent = '';
+  if (!keys.length) {
+    const empty = document.createElement('div');
+    empty.className = 'totp-sub';
+    empty.textContent = 'No security keys enrolled yet.';
+    list.appendChild(empty);
+    return;
+  }
+  keys.forEach((key) => list.appendChild(_securityKeyRow(key)));
+}
+
+//: A key row is a Settings row, so it takes the class the settings rows take —
+//: .user-row (display:grid) with its two children being the text block and the
+//: buttons; the markup mirrors renderUsers() in vigil-users.js. The name is
+//: escaped here because it lands in markup (data-a2 too).
+function _securityKeyRow(key) {
+  const added = key.created_at ? new Date(key.created_at).toLocaleDateString() : '?';
+  const lastUsed = key.last_used_at ? `last used ${timeAgo(key.last_used_at)}` : 'never used';
+  const row = document.createElement('div');
+  row.className = 'user-row';
+  row.innerHTML = `<div>
+      <div class="user-name">${escHtml(key.name)}</div>
+      <div class="user-meta">added ${escHtml(added)} &middot; ${escHtml(lastUsed)}</div>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-outline btn-sm" data-act="renameSecurityKey" data-a1="${key.id}"
+              data-a2="${escAttr(key.name)}">Rename</button>
+      <button class="btn btn-rose btn-sm" data-act="removeSecurityKey" data-a1="${key.id}"
+              data-a2="${escAttr(key.name)}">Remove</button>
+    </div>`;
+  return row;
+}
+async function renameSecurityKey(id, current) {
+  const name = await promptModal('Rename this key', { title: 'Rename key', value: current });
+  if (name === null || !name.trim() || name.trim() === current) return;
+  try {
+    await apiJson(`${KEYS_API}${id}/`, { method: 'PATCH', body: JSON.stringify({ name: name.trim() }) });
+    showToast('Key renamed', 'success');
+    loadSecurityKeys();
+  } catch (e) {
+    showToast(`Rename failed: ${e.message}`, 'error');
+  }
+}
+async function removeSecurityKey(id, name) {
+  if (!await confirmModal(`Remove the security key "${name}"? You will not be able to tap it at a confirmation prompt any more.`,
+                          { title: 'Remove security key', confirmText: 'Remove', danger: true })) return;
+  const totp = await totpPrompt('Removing a second factor needs the one you still have.',
+                                { title: 'Confirm removal', confirmText: 'Remove' });
+  if (!totp) return;
+  try {
+    await apiJson(`${KEYS_API}${id}/`, { method: 'DELETE', body: JSON.stringify({ totp }) });
+    showToast('Security key removed', 'success');
+    loadSecurityKeys();
+  } catch (e) {
+    showToast(`Remove failed: ${e.message}`, 'error');
+  }
+}
+
+//: Registration needs the two values the browser will not tell us itself.
+async function _createSecurityKey(name, totp) {
+  // The second factor the user already has, which the server requires before
+  // it hands out creation options (empty only for a user with none yet).
+  const opts = await apiJson(`${KEYS_API}register/options/`,
+                             { method: 'POST', body: JSON.stringify({ totp: totp || '' }) });
+  const publicKey = {
+    challenge: b64urlToBytes(opts.challenge).buffer,
+    timeout: opts.timeout || 60000,
+    rp: { name: (opts.rp && opts.rp.name) || 'Vigil', id: opts.rpId },
+    user: {
+      id: b64urlToBytes(opts.user.id).buffer,
+      name: opts.user.name,
+      displayName: opts.user.displayName || opts.user.name,
+    },
+    pubKeyCredParams: opts.pubKeyCredParams || [],
+    excludeCredentials: (opts.excludeCredentials || []).map((c) => ({
+      type: c.type || 'public-key', id: b64urlToBytes(c.id).buffer,
+    })),
+    authenticatorSelection: opts.authenticatorSelection || { userVerification: 'preferred' },
+    attestation: opts.attestation || 'none',
+  };
+  const cred = await navigator.credentials.create({ publicKey });
+  const r = cred.response;
+  const credential = {
+    id: cred.id || bytesToB64url(cred.rawId),
+    rawId: bytesToB64url(cred.rawId),
+    type: cred.type || 'public-key',
+    response: {
+      clientDataJSON: bytesToB64url(r.clientDataJSON),
+      attestationObject: bytesToB64url(r.attestationObject),
+      transports: (typeof r.getTransports === 'function' && r.getTransports().length)
+        ? r.getTransports() : undefined,
+    },
+  };
+  return apiJson(`${KEYS_API}register/`, { method: 'POST', body: JSON.stringify({ name, credential }) });
+}
+
+async function addSecurityKey() {
+  // Adding a factor costs the factor you already have, so that a stolen
+  // session cannot enrol the attacker's key and pass every gate after it.
+  let status = {};
+  try {
+    status = await apiJson('/api/v1/accounts/totp/');   // current, not cached
+  } catch (e) { /* the server still checks both rules */ }
+  if (status.keys_possible === false) {
+    showToast('Security keys need HTTPS.', 'error');
+    return;
+  }
+  // The server enforces this gate too; the prompt is here so the user has a
+  // way to answer it at all.
+  let totp = '';
+  if (status.enrolled || (status.keys || 0) > 0) {
+    totp = await totpPrompt('Confirm to add a security key',
+                            { title: 'Add a security key', confirmText: 'Confirm' });
+    if (!totp) return;
+  }
+  const name = await promptModal('Name this key', { title: 'Add a security key', placeholder: 'YubiKey 5' });
+  if (name === null || !name.trim()) return;
+  try {
+    await _createSecurityKey(name.trim(), totp);
+    showToast('Security key added', 'success');
+    loadSecurityKeys();
+  } catch (e) {
+    // A cancelled ceremony, or a browser that refused the origin, is ordinary.
+    showToast(`Add failed: ${(e && e.name === 'NotAllowedError') ? 'cancelled' : e.message}`, 'error');
+  }
+}

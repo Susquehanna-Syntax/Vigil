@@ -4809,3 +4809,13 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
    desktop mid-draw shows whatever it has drawn so far. */
 .rdp-display { flex: 1 1 auto; min-height: 120px; height: auto; overflow: hidden;
   background: #000; border: 1px solid var(--border); border-radius: var(--r-md); }
+
+/* Security keys (QA-65): the "Use security key" button is the primary answer
+   to a confirmation prompt, so it sits above the code field at full width and
+   the code becomes the fallback the sub-line names. Rows reuse .relay-row from
+   Settings — a key row and a relay row are the same kind of row. */
+.totp-key-slot { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.totp-key-btn { width: 100%; justify-content: center; }
+.totp-key-error { font-size: 0.76rem; color: var(--rose-ink); }
+#security-keys-list .relay-actions .btn { min-width: 76px; }
+:root[data-density="compact"] #security-keys-add-btn { margin-top: 2px; }
