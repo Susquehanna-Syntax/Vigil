@@ -9,6 +9,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from apps.accounts import login_mfa
 from apps.accounts.views import login_view, logout_view, setup_view
 from apps.instance.config import setting
 from apps.alerts.models import Alert
@@ -103,6 +104,9 @@ urlpatterns = [
     path("", dashboard, name="dashboard"),
     path("setup/", setup_view, name="setup"),
     path("login/", login_view, name="login"),
+    path("login/verify/", login_mfa.verify_view, name="login-verify"),
+    path("login/verify/key/options/", login_mfa.key_options_view, name="login-verify-key-options"),
+    path("login/verify/key/", login_mfa.key_view, name="login-verify-key"),
     path("logout/", logout_view, name="logout"),
     path("admin/", admin.site.urls),
     path("api/v1/health/", health_check),

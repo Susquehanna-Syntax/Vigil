@@ -1,0 +1,79 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vigil — Verify it's you</title>
+{# SQSY typefaces, self-hosted — see static/css/fonts.css #}
+<link rel="stylesheet" href="{% static 'css/fonts.css' %}">
+<link rel="stylesheet" href="{% static 'css/vigil.css' %}">
+<link rel="icon" type="image/png" href="{% static 'img/vigil-logo.png' %}">
+<link rel="apple-touch-icon" href="{% static 'img/vigil-logo.png' %}">
+</head>
+<body class="auth-page">
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-wordmark">Vigil<span style="color:var(--mint-ink);">.</span></div>
+
+    {% if enrol %}
+    {# ── No second factor yet: enrol TOTP before the dashboard opens ──── #}
+    <div class="auth-headline">Set up two-factor sign-in</div>
+    <div class="auth-sub">Every Vigil account signs in with a second factor. Scan this with your authenticator app (Aegis, Bitwarden, 1Password, Google Authenticator), then enter the code it shows. You can add a security key or passkey in Settings afterwards.</div>
+
+    {% if error %}<div class="auth-error">{{ error }}</div>{% endif %}
+
+    {% comment %}
+      Rendered by accounts.views._totp_qr_svg. Safe to mark: the SVG is built
+      from the otpauth URI by qrcode, never from anything a user typed.
+    {% endcomment %}
+    <div class="auth-qr-wrap">{{ totp_qr_svg|safe }}</div>
+    <div class="auth-secret-label">Or enter the key manually</div>
+    <div class="auth-secret-value">{{ totp_secret }}</div>
+
+    <form method="post" action="{% url 'login-verify' %}">
+      {% csrf_token %}
+      <div class="form-group" style="margin-top:20px;">
+        <label class="form-label" for="code">Verification code</label>
+        <input type="text" id="code" name="code" class="form-control mono" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code" autofocus required>
+      </div>
+      <button type="submit" class="btn btn-mint" style="width:100%;margin-top:8px;justify-content:center;">Verify and sign in</button>
+    </form>
+
+    {% else %}
+    {# ── Second factor: a key tap or a code ──────────────────────────── #}
+    <div class="auth-headline">Verify it's you</div>
+    <div class="auth-sub">Signing in as <strong>{{ username }}</strong>.</div>
+
+    {% if error %}<div class="auth-error">{{ error }}</div>{% endif %}
+
+    {% if keys %}
+    <div class="totp-key-slot" id="login-key-slot">
+      <button type="button" class="btn btn-mint totp-key-btn" id="login-key-btn"
+              data-options="{% url 'login-verify-key-options' %}" data-verify="{% url 'login-verify-key' %}">Use a passkey or security key</button>
+      <div class="totp-key-error" id="login-key-error" style="display:none;"></div>
+    </div>
+    {% endif %}
+
+    {% if has_totp %}
+    <form method="post" action="{% url 'login-verify' %}">
+      {% csrf_token %}
+      <div class="form-group"{% if keys %} style="margin-top:12px;"{% endif %}>
+        <label class="form-label" for="code">{% if keys %}Or enter the 6-digit code{% else %}6-digit code from your authenticator{% endif %}</label>
+        <input type="text" id="code" name="code" class="form-control mono" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code" {% if not keys %}autofocus {% endif %}required>
+      </div>
+      <button type="submit" class="btn {% if keys %}btn-outline{% else %}btn-mint{% endif %}" style="width:100%;margin-top:8px;justify-content:center;">Verify and sign in</button>
+    </form>
+    {% elif not keys %}
+    <div class="auth-error">Your security keys need this page on HTTPS at the address in VIGIL_PUBLIC_URL. Open Vigil there, or ask an admin to run <code>manage.py reset_2fa {{ username }}</code> so you can set up a code instead.</div>
+    {% else %}
+    {% csrf_token %}
+    {% endif %}
+    {% endif %}
+
+    <a class="btn btn-ghost" style="width:100%;margin-top:10px;justify-content:center;box-sizing:border-box;" href="{% url 'login' %}">Start over</a>
+  </div>
+  <div class="auth-footer">Vigil &mdash; A Susquehanna Syntax product</div>
+</div>
+{% if keys %}<script src="{% static 'js/vigil-login-verify.js' %}"></script>{% endif %}
+</body>
+</html>

@@ -191,12 +191,17 @@ def register(request, name, credential):
     )
 
 
-def authentication_options(request) -> dict:
+def authentication_options(request, user=None) -> dict:
     """Request options listing this user's keys, so the browser can offer
-    exactly the authenticators that can satisfy them."""
+    exactly the authenticators that can satisfy them.
+
+    ``user`` is the signed-in user unless given: the sign-in page passes the
+    account whose password was just accepted, before anyone is signed in.
+    """
     from .models import SecurityKey
 
-    keys = list(SecurityKey.objects.filter(user=request.user))
+    user = user or request.user
+    keys = list(SecurityKey.objects.filter(user=user))
     if not keys:
         raise ValueError("No security keys enrolled")
     rp_id, _origin = _required_party(request)
@@ -213,7 +218,7 @@ def authentication_options(request) -> dict:
     return json.loads(options_to_json(options))
 
 
-def authenticate(request, credential) -> str:
+def authenticate(request, credential, user=None) -> str:
     """Verify an assertion and issue a one-time key token for it.
 
     The credential is looked up among *this* user's keys only: a token must
@@ -221,10 +226,11 @@ def authenticate(request, credential) -> str:
     """
     from .models import SecurityKey
 
+    user = user or request.user
     rp_id, origin = _required_party(request)
     expected = _take_challenge(request.session, "webauthn_auth")
     raw_id = _credential_id(credential)
-    key = SecurityKey.objects.filter(user=request.user, credential_id=raw_id).first()
+    key = SecurityKey.objects.filter(user=user, credential_id=raw_id).first()
     if key is None:
         raise ValueError("That security key is not enrolled for this account.")
     verified = verify_authentication_response(
@@ -240,7 +246,7 @@ def authenticate(request, credential) -> str:
     key.save(update_fields=["sign_count", "last_used_at"])
 
     token = KEY_TOKEN_PREFIX + secrets.token_urlsafe(32)
-    cache.set(f"webauthn:token:{token}", request.user.id, KEY_TOKEN_SECONDS)
+    cache.set(f"webauthn:token:{token}", user.id, KEY_TOKEN_SECONDS)
     return token
 
 

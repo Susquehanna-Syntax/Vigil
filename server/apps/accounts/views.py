@@ -4,7 +4,6 @@ from django.contrib import auth
 from django.contrib.auth import authenticate, get_user_model
 from django.db import DatabaseError
 from django.shortcuts import redirect, render
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timezone import now
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -430,13 +429,10 @@ def login_view(request):
         user = authenticate(request, username=username, password=password)
         if user is not None:
             _clear_login_failures(username)
-            auth.login(request, user)
-            # Same-host relative targets only — anything else is an open
-            # redirect a phisher could ride out of a legitimate login link.
-            next_url = request.GET.get("next", "/")
-            if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
-                next_url = "/"
-            return redirect(next_url)
+            # Not signed in yet: the password is one factor, and every account
+            # proves a second on /login/verify/ (see login_mfa).
+            from .login_mfa import begin
+            return begin(request, user, request.GET.get("next", "/"))
 
         _record_login_failure(username, ip)
         error = "Invalid username or password"

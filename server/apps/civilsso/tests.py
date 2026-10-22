@@ -52,13 +52,14 @@ class CallbackTests(TestCase):
         sub = str(uuid.uuid4())
         resp = self.client.get("/accounts/civil/callback",
                                {"token": forge(sub=sub), "state": "st4te"})
+        # Civil vouches for the password; Vigil's own second factor follows.
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(resp["Location"], "/")
+        self.assertEqual(resp["Location"], "/login/verify/")
         identity = CivilIdentity.objects.get(civil_id=sub)
         self.assertEqual(identity.user.username, "alice")
         self.assertFalse(identity.user.has_usable_password())
-        self.assertEqual(int(self.client.session["_auth_user_id"]),
-                         identity.user.pk)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertEqual(self.client.session["login_pending"]["uid"], identity.user.pk)
 
     def test_second_login_reuses_mapping(self):
         sub = str(uuid.uuid4())

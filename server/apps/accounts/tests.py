@@ -137,7 +137,9 @@ class LoginRateLimitTests(TestCase):
             {"username": "alice", "password": "correct-horse1"},
         )
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(resp.headers["Location"], "/")
+        self.assertEqual(resp.headers["Location"], "/login/verify/")
+        # The offsite target was dropped before it was parked for later.
+        self.assertEqual(self.client.session["login_pending"]["next"], "/")
 
 
 class AdminGateTests(TestCase):
