@@ -31,7 +31,6 @@ AGENT_PATHS = (
     "/agent/install.ps1",
     "/agent/uninstall.sh",
     "/agent/uninstall.ps1",
-    "/agent/info/",
 )
 AGENT_PREFIXES = ("/api/v1/agent/", "/agent/download/", "/agent/enroll-config/")
 

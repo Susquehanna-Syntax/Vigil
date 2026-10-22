@@ -163,3 +163,17 @@ class RelayInstallCommandTests(TestCase):
     def test_the_config_names_this_relay_as_the_primary(self):
         js = (Path(__file__).resolve().parents[2] / "static" / "js" / "vigil-settings.js").read_text()
         self.assertIn("overrides: { primary_relay: String(relay.id) }", js)
+
+
+class DashboardEndpointsSurviveTheGateTests(TestCase):
+    """Turning the built-in relay off refuses agents that come direct; it must
+    not refuse the admin's own browser on dashboard endpoints."""
+
+    def test_agent_binaries_list_loads_with_the_builtin_relay_off(self):
+        from apps.relays.models import Relay
+
+        Relay.objects.filter(kind=Relay.Kind.BUILTIN).update(enabled=False)
+        admin = get_user_model().objects.create_user("gate-admin", password="pw")
+        UserProfile.objects.create(user=admin, role=Role.ADMIN)
+        self.client.force_login(admin)
+        self.assertEqual(self.client.get("/agent/info/").status_code, 200)

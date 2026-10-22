@@ -37,7 +37,6 @@ class PathsTest(unittest.TestCase):
             ("POST", "/api/v1/checkin"),
             ("POST", "/api/v1/register"),
             ("GET", "/agent/install.sh"),
-            ("GET", "/agent/info/"),
             ("GET", "/api/v1/tasks/result/"),
             ("GET", "/api/v1/agent/metrics"),
             ("GET", "/agent/download/payload.exe"),
@@ -45,6 +44,11 @@ class PathsTest(unittest.TestCase):
         ]
         for method, path in yes:
             self.assertTrue(paths.allowed(method, path), (method, path))
+
+    def test_dashboard_user_endpoints_are_not_relayed(self):
+        # /agent/info/ lists agent binaries for a logged-in admin; no agent
+        # calls it, so a relay has no business forwarding it.
+        self.assertFalse(paths.allowed("GET", "/agent/info/"))
 
         no = [
             ("GET", "/api/v1/hosts/"),
