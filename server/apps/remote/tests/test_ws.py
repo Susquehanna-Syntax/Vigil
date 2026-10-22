@@ -103,6 +103,19 @@ class HappyPathTests(_SocketCase):
         self.assertEqual((session.bytes_in, session.bytes_out), (3, 9))
         self.assertTrue(await _get(lambda: self.audits("remote.session_ended").exists()))
 
+    async def test_the_agents_terminal_mode_reaches_the_browser_and_nothing_else_does(self):
+        browser = await self.browser()
+        await browser.receive_json()
+        agent = await self.agent()
+        await browser.receive_json()
+        await agent.send_json({"t": "mode", "pty": False, "extra": "dropped"})
+        await agent.send_json({"t": "status", "state": "closed"})   # not the agent's to say
+        await agent.send_json({"t": "out", "d": _b64("x")})
+        self.assertEqual(await browser.receive_json(), {"t": "mode", "pty": False})
+        self.assertEqual(await browser.receive_json(), {"t": "out", "d": _b64("x")})
+        await browser.close()
+        await agent.close()
+
     async def test_an_open_session_outlives_the_agent_answer_limit(self):
         # The pending limit is for a session no agent ever joined; one that
         # opened must not be torn down by it.

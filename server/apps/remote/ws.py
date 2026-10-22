@@ -206,6 +206,8 @@ async def _browser_writer(send, session, state, recording):
             state.opened = True
             await sync_to_async(_mark_open, thread_sensitive=True)(session)
             await _send_json(send, {"t": "status", "state": "open"})
+        elif t == "mode":
+            await _send_json(send, {"t": "mode", "pty": bool(item.get("pty"))})
         elif t == "resize" and recording is not None:
             await recording.resize(item.get("cols"), item.get("rows"))
         elif t == "close":
@@ -288,7 +290,14 @@ async def _agent_reader(receive, a2b):
         if kind != "websocket.receive":
             continue
         frame = _decode_frame(message.get("text"))
-        if frame is None or frame.get("t") != "out":
+        if frame is None:
+            continue
+        if frame.get("t") == "mode" and isinstance(frame.get("pty"), bool):
+            # Whether the agent has a terminal: without one (Windows pipes) the
+            # browser echoes locally. Rebuilt, so nothing else rides along.
+            await bus.push(a2b, {"t": "mode", "pty": frame["pty"]})
+            continue
+        if frame.get("t") != "out":
             continue
         data = _decode_b64(frame.get("d"))
         if data is None or len(data) > MAX_FRAME_BYTES:
