@@ -328,15 +328,21 @@ let _relaysById = {};
 /* The installer URLs, as text with braces rather than a template literal: the
    token only exists once the admin opens the dialog, and a backtick string
    would substitute it at load time (see vigil-enroll.js for the same trap). */
-const _RELAY_LINUX_CMD = 'curl -fsSL {origin}/agent/install.sh | sudo env VIGIL_TOKEN={token} bash';
-const _RELAY_WIN_CMD = '$env:VIGIL_TOKEN = "{token}"; irm {origin}/agent/install.ps1 | iex';
+// {token} is the new agent's own token, made here as the Add Host wizard makes
+// one; {config} is the one-time config token, whose agent.yml names this relay
+// as the place to check in. Keep them apart: the config token is redeemed once
+// and is never an agent credential.
+const _RELAY_LINUX_CMD = 'curl -fsSL {origin}/agent/install.sh | sudo env VIGIL_TOKEN={token} VIGIL_CONFIG_TOKEN={config} bash';
+const _RELAY_WIN_CMD = '$env:VIGIL_TOKEN = "{token}"; $env:VIGIL_CONFIG_TOKEN = "{config}"; irm {origin}/agent/install.ps1 | iex';
 
-function _relayLinuxCmd(origin, token) {
-  return _RELAY_LINUX_CMD.replace('{origin}', origin).replace('{token}', token);
+function _relayLinuxCmd(origin, token, config) {
+  return _RELAY_LINUX_CMD.replace('{origin}', origin).replace('{token}', token)
+    .replace('{config}', config);
 }
 
-function _relayWindowsCmd(origin, token) {
-  return _RELAY_WIN_CMD.replace('{token}', token).replace('{origin}', origin);
+function _relayWindowsCmd(origin, token, config) {
+  return _RELAY_WIN_CMD.replace('{token}', token).replace('{config}', config)
+    .replace('{origin}', origin);
 }
 
 function _relayField(id) {
@@ -699,12 +705,15 @@ async function relayInstall(id) {
   m.modal.querySelector('#ri-x').onclick = () => m.close();
   requestAnimationFrame(m.open);
 
-  let token;
+  let config;
   try {
+    // The relay is the primary, so the installed agent.yml checks in through it
+    // (with this dashboard as the last fallback), not at this page's address.
     const cfg = await apiJson('/api/v1/agent-profiles/enroll-config/', {
-      method: 'POST', body: JSON.stringify({ profile: null, overrides: {} }),
+      method: 'POST',
+      body: JSON.stringify({ profile: null, overrides: { primary_relay: String(relay.id) } }),
     });
-    token = cfg.token;
+    config = cfg.token;
   } catch (e) {
     m.close();
     showToast(e.message, 'error');
@@ -712,8 +721,9 @@ async function relayInstall(id) {
   }
 
   const origin = relay.url.replace(/\/+$/, '');
-  const linux = _relayLinuxCmd(origin, token);
-  const windows = _relayWindowsCmd(origin, token);
+  const token = typeof _uuidv4 === 'function' ? _uuidv4() : crypto.randomUUID();
+  const linux = _relayLinuxCmd(origin, token, config);
+  const windows = _relayWindowsCmd(origin, token, config);
   m.setBody(`
     <div class="modal-title"><span></span>
       <button class="modal-close" id="ri-x" aria-label="Close">
@@ -726,7 +736,7 @@ async function relayInstall(id) {
     <div class="deploy-input-label relay-key-sub">Windows (PowerShell, run as Administrator)</div>
     <div class="relay-code mono" id="ri-windows"></div>
     ${_relayCopyBtn('ri-copy-windows')}
-    <p class="muted relay-key-sub">New hosts installed with these commands check in through this relay.</p>
+    <p class="muted relay-key-sub">New hosts installed with these commands check in through this relay and appear under Pending for approval. The commands work once, for 24 hours.</p>
     <div class="confirm-actions"><button class="btn btn-mint btn-sm" id="ri-close">Done</button></div>`);
   m.modal.querySelector('.modal-title span').textContent = title;
   m.modal.querySelector('#ri-linux').textContent = linux;

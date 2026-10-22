@@ -122,3 +122,44 @@ class RelaysCssTests(TestCase):
         for block in re.findall(r"\.relay-[a-z-]+[^{]*\{[^}]*\}", css):
             self.assertNotIn("border-left", block, block)
             self.assertNotIn("border-right", block, block)
+
+
+class RelayInstallCommandTests(TestCase):
+    """The per-relay install command, run the way a host runs it.
+
+    The one-time config token must reach the installer as VIGIL_CONFIG_TOKEN
+    and the agent token as VIGIL_TOKEN: swapping them made the config token
+    every new host's credential and left its agent.yml unredeemed.
+    """
+
+    def _command(self):
+        import shutil
+        import subprocess
+
+        if not shutil.which("node"):
+            self.skipTest("node is unavailable")
+        js = (Path(__file__).resolve().parents[2] / "static" / "js" / "vigil-settings.js").read_text()
+        constant = re.search(r"^const _RELAY_LINUX_CMD = .*$", js, re.M).group(0)
+        builder = re.search(r"^function _relayLinuxCmd\(.*?^\}$", js, re.M | re.S).group(0)
+        out = subprocess.run(
+            ["node", "-e", f"{constant}\n{builder}\n"
+             "process.stdout.write(_relayLinuxCmd('https://relay.test', 'tok123', 'cfg456'));"],
+            capture_output=True, text=True, timeout=30, check=True)
+        return out.stdout
+
+    def test_the_installer_gets_the_agent_token_and_the_config_token_apart(self):
+        import subprocess
+
+        command = self._command()
+        self.assertIn("curl -fsSL https://relay.test/agent/install.sh", command)
+        run = command.replace(
+            "curl -fsSL https://relay.test/agent/install.sh",
+            "printf %s 'printf \"%s %s\" \"$VIGIL_TOKEN\" \"$VIGIL_CONFIG_TOKEN\"'",
+        ).replace("sudo ", "")
+        result = subprocess.run(["bash", "-c", run], capture_output=True, text=True,
+                                timeout=30, check=False)
+        self.assertEqual(result.stdout, "tok123 cfg456", result.stderr)
+
+    def test_the_config_names_this_relay_as_the_primary(self):
+        js = (Path(__file__).resolve().parents[2] / "static" / "js" / "vigil-settings.js").read_text()
+        self.assertIn("overrides: { primary_relay: String(relay.id) }", js)
