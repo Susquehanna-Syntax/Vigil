@@ -200,12 +200,6 @@ services:
       redis:
         condition: service_healthy
 
-  # Cloudflare Tunnel sidecar — opt-in. Publishes Vigil to a public hostname
-  # without opening any inbound port on your network. Enable with:
-  #   docker compose --profile tunnel up -d
-  # after creating a tunnel in the Cloudflare Zero Trust dashboard and setting
-  # TUNNEL_TOKEN (and VIGIL_PUBLIC_URL + VIGIL_TRUST_PROXY=true). Point the
-  # tunnel's public hostname at http://web:8000. See docs/REMOTE-ACCESS.md.
   # Keeps the outbound link to each relay (Settings → Relays). Idle with none.
   link:
     image: susquehannasyntax/vigil:latest
@@ -217,11 +211,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-vigil}
       POSTGRES_USER: ${POSTGRES_USER:-vigil}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
-      # The pruning beats run here, so these must reach the worker
-      # and not only the web container — documented settings that
-      # were never passed through are settings that do nothing.
-      VIGIL_METRIC_RETENTION_DAYS: ${VIGIL_METRIC_RETENTION_DAYS:-30}
-      VIGIL_ALERT_RETENTION_DAYS: ${VIGIL_ALERT_RETENTION_DAYS:-90}
       POSTGRES_HOST: db
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -233,6 +222,12 @@ services:
       web:
         condition: service_healthy
 
+  # Cloudflare Tunnel sidecar — opt-in. Publishes Vigil to a public hostname
+  # without opening any inbound port on your network. Enable with:
+  #   docker compose --profile tunnel up -d
+  # after creating a tunnel in the Cloudflare Zero Trust dashboard and setting
+  # TUNNEL_TOKEN (and VIGIL_PUBLIC_URL + VIGIL_TRUST_PROXY=true). Point the
+  # tunnel's public hostname at http://web:8000. See docs/REMOTE-ACCESS.md.
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
