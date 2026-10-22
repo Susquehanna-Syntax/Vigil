@@ -175,6 +175,25 @@ def _opt_in_name(kind: str) -> str:
             else "allow_remote_shell")
 
 
+def _visible_session(request, session_id):
+    """The session, if it is on a host this user can see; else None.
+
+    Every per-session view starts here, so a site-scoped user can neither read
+    nor end a session in a site they are not part of, and cannot tell one
+    exists there.
+    """
+    from apps.hosts.models import Host
+
+    hosts = scoping.filter_by_site(Host.objects.all(), request.user)
+    return (RemoteSession.objects.filter(pk=session_id, host__in=hosts)
+            .select_related("host").first())
+
+
+def _admin_for(user, session) -> bool:
+    """Admin (or owner) in the site of the session's host, not just anywhere."""
+    return role_of(user, scoping.scope_of(session.host)) in (Role.ADMIN, OWNER)
+
+
 @api_view(["GET"])
 @permission_classes([IsAdmin])
 def session_recording(request, session_id):
@@ -184,8 +203,8 @@ def session_recording(request, session_id):
     from django.conf import settings
     from django.http import FileResponse
 
-    session = RemoteSession.objects.filter(pk=session_id).first()
-    if session is None or not session.recording:
+    session = _visible_session(request, session_id)
+    if session is None or not _admin_for(request.user, session) or not session.recording:
         return Response({"error": "No recording"}, status=404)
     root = (Path(settings.MEDIA_ROOT) / "recordings").resolve()
     path = (Path(settings.MEDIA_ROOT) / session.recording).resolve()
@@ -199,10 +218,10 @@ def session_recording(request, session_id):
 def session_close(request, session_id):
     """Close a session from the dashboard. Its owner or an admin — nobody else
     can interrupt a colleague's live shell."""
-    session = RemoteSession.objects.filter(pk=session_id).first()
+    session = _visible_session(request, session_id)
     if session is None:
         return Response({"error": "Not found"}, status=404)
-    if session.user_id != request.user.id and role_of(request.user) not in (Role.ADMIN, OWNER):
+    if session.user_id != request.user.id and not _admin_for(request.user, session):
         return Response({"error": "Not permitted"}, status=403)
     reason = f"closed by {request.user.username}"
     item = {"t": "close", "reason": reason}

@@ -426,3 +426,32 @@ class WakeViewTests(TestCase):
     def test_a_post_is_not_how_an_agent_asks_for_work(self):
         resp = self.client.post("/api/v1/agent/wake", {}, format="json")
         self.assertEqual(resp.status_code, 405)
+
+
+class CrossSiteSessionTests(TestCase):
+    """An admin of one site has no reach into another site's sessions."""
+
+    def setUp(self):
+        self.client = APIClient()
+        owner = make_user("owner", Role.ADMIN)
+        self.host = Host.objects.create(hostname="east-box", agent_token=AGENT_TOKEN)
+        east = Site.objects.create(name="East", slug="east")
+        HostSiteAssignment.objects.create(host=self.host, site=east)
+        self.session = RemoteSession.objects.create(
+            host=self.host, user=owner, username="owner", kind="shell", nonce="n",
+            recording="recordings/x.cast")
+        west = Site.objects.create(name="West", slug="west")
+        self.west_admin = make_user("west-admin", Role.VIEWER)
+        UserSiteRole.objects.create(user=self.west_admin, site=west, role=Role.ADMIN)
+        self.client.force_authenticate(self.west_admin)
+
+    def test_cannot_close_a_session_in_another_site(self):
+        resp = self.client.post(f"/api/v1/sessions/{self.session.id}/close/")
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(peek(f"vigil:sess:{self.session.id}:b2a"), [])
+
+    def test_cannot_download_a_recording_from_another_site(self):
+        with patch("apps.remote.views.has_feature", return_value=True), \
+                patch("apps.remote.views.IsAdmin.has_permission", return_value=True):
+            resp = self.client.get(f"/api/v1/sessions/{self.session.id}/recording/")
+        self.assertEqual(resp.status_code, 404)
