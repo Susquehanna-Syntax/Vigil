@@ -4701,3 +4701,49 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 /* Checkbox rows and the narrow fields under them get room to breathe. */
 .apf-section > .apf-check, .apf-section > .apf-narrow { margin-top: 10px; }
 .apf-section > .deploy-input-label + .apf-check { margin-top: 6px; }
+
+/* ═══════════════════════════════════════════
+   QA-58: THE CONNECT MENU AND THE WEB TERMINAL
+   ═══════════════════════════════════════════ */
+
+/* One popover per host, anchored to the button that opened it. Fixed rather
+   than absolute: host cards clip their overflow, and a menu inside one is a
+   menu with its bottom cut off. The reason line wraps rather than ellipsis —
+   "Turn on allow_remote_shell in this host's agent.yml." is the thing the
+   operator came here to read. */
+.connect-menu { position: fixed; z-index: 500; min-width: 240px; max-width: 300px;
+  background: var(--s1); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); padding: 4px; opacity: 0; pointer-events: none;
+  visibility: hidden; transition: opacity calc(var(--m-dur) * 0.6) var(--ease-out-expo); }
+.connect-menu.open { opacity: 1; pointer-events: auto; visibility: visible; }
+.connect-item { display: block; width: 100%; text-align: left; background: none;
+  border: 0; border-radius: var(--r-sm); padding: 7px 9px; color: var(--text-1);
+  font: inherit; font-size: 13px; cursor: pointer; }
+.connect-item:hover { background: var(--s2); }
+.connect-item-label { display: block; }
+/* aria-disabled, not [disabled]: the hover that reveals the reason needs a
+   button that still receives events. */
+.connect-item-off { cursor: default; }
+.connect-item-off .connect-item-label { color: var(--text-3); }
+.connect-item-off:hover { background: none; }
+.connect-item-reason { display: block; margin-top: 2px; font-size: 11px; line-height: 1.35;
+  color: var(--text-3); white-space: normal; }
+.connect-note { padding: 7px 9px 4px; font-size: 11px; color: var(--text-3);
+  border-top: 1px solid var(--border); margin-top: 4px; }
+
+/* The terminal dialog. Same resize: both + is-resized contract as the container
+   logs dialog (QA-40/QA-49): it is a column and the terminal takes what is left,
+   so dragging the grip grows the screen rather than the space under it. */
+.modal.term-modal { display: flex; flex-direction: column; height: 70vh; overflow: hidden;
+  width: min(1000px, calc(100vw - 32px)); }
+.term-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+/* Left, because .run-state is right-aligned where it heads a run table. */
+.term-bar .run-state { flex: 1; min-width: 0; text-align: left; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.term-bar #term-end { margin-left: auto; }
+.modal.term-modal.is-resized .term-host { height: auto; }
+/* xterm paints its own background from the theme we hand it, so this padding is
+   the only frame around it and --bg keeps that frame on-theme. */
+.term-modal .term-host { flex: 1 1 auto; min-height: 120px; height: auto; overflow: hidden;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md); padding: 6px; }
+.term-modal .xterm { height: 100%; }

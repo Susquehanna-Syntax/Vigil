@@ -95,15 +95,21 @@ function launchRdpForCurrentMonitor() {
 }
 
 // ── SSH command (client-side only; opens in the operator's own terminal) ──
-function openSshForCurrentMonitor() {
-  if (!monitorHostId) { showToast('No host selected', 'error'); return; }
-  const target = monitorHostIp || monitorHostName;
+function openSshFor(hostname, ip) {
+  monitorHostName = hostname || monitorHostName;
+  monitorHostIp = ip || '';
+  const target = _sshTarget();
   if (!target) { showToast('No address known for this host', 'error'); return; }
   document.getElementById('ssh-modal-title').textContent = `SSH to ${monitorHostName || target}`;
   document.getElementById('ssh-user').value = '';
   updateSshCommand();
   document.getElementById('ssh-overlay').classList.add('open');
   document.getElementById('ssh-modal').classList.add('open');
+}
+
+function openSshForCurrentMonitor() {
+  if (!monitorHostId) { showToast('No host selected', 'error'); return; }
+  openSshFor(monitorHostName, monitorHostIp);
 }
 
 function closeSshModal() {
@@ -519,3 +525,10 @@ navigateTo = function(pageName) {
   if (pageName === 'vulns') refreshVulns();
   if (pageName === 'settings') refreshTotpStatus();
 };
+
+/* ── The monitor header's Connect button (QA-58) ───────────────────────────
+   Same menu the host cards open; only where the host id comes from differs. */
+function openConnectMenuForMonitor(el) {
+  if (!monitorHostId) { showToast('No host selected', 'error'); return; }
+  openConnectMenu(monitorHostId, monitorHostName, el);
+}

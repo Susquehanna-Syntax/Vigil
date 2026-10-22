@@ -10,6 +10,7 @@ import secrets
 from pathlib import Path
 
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.http import HttpResponseNotAllowed, JsonResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -19,6 +20,7 @@ from apps.accounts.models import Role
 from apps.accounts.permissions import OWNER, IsAdmin, can, role_of
 from apps.accounts.totp import require_totp_confirmation
 from apps.hosts.authentication import authenticate_agent
+from apps.hosts.models import Host
 from vigil import scoping
 from vigil.licensing import has_feature, upgrade_body
 
@@ -31,6 +33,19 @@ from .tickets import make_ticket
 WAKE_SECONDS = 25.0
 
 NO_TOTP = "Set up two-factor authentication before opening a session."
+#: What the Connect menu says when an item cannot be used. Each names the one
+#: thing that would make it usable, in the same order _start() checks — so a
+#: greyed item never blames the wrong cause.
+PERM_DENIED = "You don't have permission to open shells here."
+MONITORED = "This host is in monitor mode."
+OPT_IN_REASON = {
+    RemoteSession.Kind.RDP: "Turn on allow_remote_desktop in this host's agent.yml.",
+    "container": "Turn on allow_remote_shell in this host's agent.yml.",
+    "shell": "Turn on allow_remote_shell in this host's agent.yml.",
+}
+CONTAINER_NOT_LINUX = "Container shells need a Linux host."
+RDP_NOT_WINDOWS = "Web RDP is for Windows hosts."
+RDP_NO_GUACD = "Start the guacd service to use Web RDP (see the wiki)."
 #: A container name goes into the agent's argv, never a shell — but anything
 #: that still reads as option syntax there would be a flag, so it starts with a
 #: letter or digit and holds only characters no shell, path or flag can abuse.
@@ -132,7 +147,13 @@ def _start(request):
     _audit(request.user, "remote.session_started", host.hostname,
            kind=kind, container=session.container, session=str(session.id))
     return Response({"id": str(session.id), "ws": f"/ws/session/{session.id}/",
-                     "kind": kind, "host": host.hostname}, status=201)
+                     "kind": kind, "host": host.hostname,
+                     # The dialog shows a "Recorded" pill from this, and it has
+                     # to agree with what Recorder.open() decided to create:
+                     # rdp is guacd's to record, not ours.
+                     "recorded": bool(has_feature("audit_log")
+                                      and kind != RemoteSession.Kind.RDP)},
+                    status=201)
 
 
 def _list(request):
@@ -168,6 +189,73 @@ def _row(s: RemoteSession, may_see_recording: bool) -> dict:
 def _opt_in_field(kind: str) -> str:
     return ("agent_allow_remote_desktop" if kind == RemoteSession.Kind.RDP
             else "agent_allow_remote_shell")
+
+
+def _host_scope(request, host_id):
+    """(host, None) when the caller may see the host, else (None, a 404
+    Response). A malformed id answers the same way as one that does not exist:
+    neither says anything about what is installed here.
+    """
+    from django.core.exceptions import ValidationError
+
+    try:
+        return scoping.host_or_404(request, host_id)
+    except (ValidationError, ValueError):
+        return None, Response({"error": "Not found"}, status=404)
+
+
+def _blocker(user, site, host, kind, is_windows) -> str:
+    """The first reason this user cannot start this kind of session on this
+    host, in _start()'s order; "" when nothing stops them. The OS checks come
+    just after monitor mode: on a Windows box there is no container shell to
+    opt in, and reporting a missing agent switch that would not help would send
+    the operator to the wrong file.
+    """
+    if not can(user, site, "hosts", "shell"):
+        return PERM_DENIED
+    if host.mode == Host.Mode.MONITOR:
+        return MONITORED
+    if kind == RemoteSession.Kind.RDP and not is_windows:
+        return RDP_NOT_WINDOWS
+    if kind == RemoteSession.Kind.CONTAINER and is_windows:
+        return CONTAINER_NOT_LINUX
+    if not getattr(host, _opt_in_field(kind), False):
+        return OPT_IN_REASON[kind]
+    if not _has_totp(user):
+        return NO_TOTP
+    if kind == RemoteSession.Kind.RDP and not getattr(settings, "VIGIL_GUACD_ADDR", ""):
+        return RDP_NO_GUACD
+    return ""
+
+
+def _item(user, site, host, kind, is_windows) -> dict:
+    reason = _blocker(user, site, host, kind, is_windows)
+    return {"available": not reason, "reason": reason}
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def session_options(request):
+    """What the Connect menu may offer for one host, and why not otherwise.
+
+    The same checks _start() runs, in the same order: a menu item that lies
+    about being usable costs the operator a TOTP code to find out.
+    """
+    host, denied = _host_scope(request, request.query_params.get("host"))
+    if denied is not None:
+        return denied
+    site = scoping.scope_of(host)
+    is_windows = "windows" in (host.os or "").lower()
+    return Response({
+        "host": host.hostname,
+        "is_windows": is_windows,
+        "ssh_target": host.ip_address or host.hostname,
+        "recorded": has_feature("audit_log"),
+        "shell": _item(request.user, site, host, RemoteSession.Kind.SHELL, is_windows),
+        "container": _item(request.user, site, host,
+                           RemoteSession.Kind.CONTAINER, is_windows),
+        "rdp": _item(request.user, site, host, RemoteSession.Kind.RDP, is_windows),
+    })
 
 
 def _opt_in_name(kind: str) -> str:

@@ -706,6 +706,149 @@ function downloadHostRdp(hostId, hostname) {
 // Initial render of pinned-hosts bar.
 renderPinBar();
 
+/* ── The Connect menu (QA-58) ──────────────────────────────────────────────
+   One button per host, and a server-side answer to "which of these can I
+   actually use?" Every greyed item carries its reason: an operator left to
+   guess why an item is dead files the bug against the wrong subsystem. Nothing
+   here decides availability locally — _start()'s checks are the authority and
+   /sessions/options/ repeats them, so the menu cannot promise a shell the API
+   would refuse. */
+
+let _termAssets = null;
+
+//: The vendored terminal, on demand. base.html does not carry it: xterm is
+//: ~260 KB that only someone about to open a session needs. Resolved once, in
+//: the order the scripts require (xterm, its fit addon, then ours).
+function loadTerminalAssets() {
+  if (_termAssets) return _termAssets;
+  _termAssets = (async () => {
+    const src = document.getElementById('vigil-term-assets');
+    if (!src) throw new Error('terminal assets not found');
+    _appendStylesheet(src.dataset.css);
+    await _appendScript(src.dataset.xterm);
+    await _appendScript(src.dataset.fit);
+    await _appendScript(src.dataset.js);
+    return true;
+  })().catch((err) => { _termAssets = null; throw err; });
+  return _termAssets;
+}
+
+function _appendStylesheet(href) {
+  if (!href || document.querySelector('link[data-term-css]')) return;
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = href;
+  link.setAttribute('data-term-css', '');
+  document.head.appendChild(link);
+}
+
+//: Resolved on load rather than error, so one unreadable vendor file fails with
+//: a named toast instead of "Terminal is not defined" three steps later.
+function _appendScript(src) {
+  return new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = src;
+    el.onload = () => resolve(src);
+    el.onerror = () => reject(new Error(`could not load ${src}`));
+    document.body.appendChild(el);
+  });
+}
+
+function _closeConnectMenu() {
+  const open = document.querySelector('.connect-menu');
+  if (open) open.remove();
+}
+
+async function openConnectMenu(hostId, hostname, anchorEl) {
+  _closeConnectMenu();
+  let opts;
+  try {
+    opts = await apiJson(`/api/v1/sessions/options/?host=${encodeURIComponent(hostId)}`);
+  } catch (err) {
+    showToast(err.message, 'error');
+    return;
+  }
+
+  const menu = document.createElement('div');
+  menu.className = 'connect-menu';
+  menu.setAttribute('role', 'menu');
+
+  const always = { available: true, reason: '' };
+  const addRow = (label, item, run) => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'connect-item' + (item.available ? '' : ' connect-item-off');
+    row.setAttribute('role', 'menuitem');
+    row.innerHTML = `<span class="connect-item-label">${escHtml(label)}</span>`
+      + (item.available ? ''
+        : `<span class="connect-item-reason">${escAttr(item.reason || '')}</span>`);
+    if (item.available) {
+      row.addEventListener('click', () => { _closeConnectMenu(); run(); });
+    } else {
+      // aria-disabled rather than [disabled]: a disabled button swallows the
+      // hover that reveals why, and "why is this grey" is the whole question.
+      row.setAttribute('aria-disabled', 'true');
+      row.title = item.reason || '';
+    }
+    menu.appendChild(row);
+  };
+
+  addRow('Web shell', opts.shell, () => {
+    loadTerminalAssets()
+      .then(() => openSession(hostId, 'shell'))
+      .catch((err) => showToast(err.message, 'error'));
+  });
+  if (opts.is_windows) {
+    addRow('Web RDP', opts.rdp, () => {
+      // QA-59 lands the Guacamole side. Until it ships this says so plainly
+      // rather than opening a dialog that could never connect.
+      if (typeof openRdpSession === 'function') openRdpSession(hostId);
+      else showToast('Web RDP arrives in the next update.', 'info');
+    });
+    addRow('Download .rdp file', always,
+      () => downloadHostRdp(hostId, hostname || opts.host));
+  } else {
+    addRow('SSH command', always,
+      () => openSshFor(hostname || opts.host, opts.ssh_target));
+  }
+  if (opts.recorded) {
+    const note = document.createElement('div');
+    note.className = 'connect-note';
+    note.textContent = 'Sessions on this install are recorded.';
+    menu.appendChild(note);
+  }
+
+  // Two frames before measuring: setting .open is what makes the dialog
+  // display:block, so a rect taken any earlier has no width to place by.
+  document.body.appendChild(menu);
+  menu.classList.add('open');
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const at = anchorEl.getBoundingClientRect();
+  const box = menu.getBoundingClientRect();
+  // Fixed, so it outlives any overflow:hidden ancestor — host cards clip.
+  let left = Math.max(8, Math.min(at.left, window.innerWidth - box.width - 8));
+  let top = at.bottom + 4;
+  if (top + box.height > window.innerHeight - 8) {
+    top = Math.max(8, at.top - box.height - 4);
+  }
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+
+  const dismiss = () => {
+    _closeConnectMenu();
+    document.removeEventListener('mousedown', onDown, true);
+    document.removeEventListener('keydown', onKey, true);
+  };
+  const onDown = (ev) => { if (!menu.contains(ev.target)) dismiss(); };
+  const onKey = (ev) => { if (ev.key === 'Escape') dismiss(); };
+  // Capture phase, registered after this click has opened the menu: the
+  // pointerdown that got us here would otherwise close it again immediately.
+  setTimeout(() => {
+    document.addEventListener('mousedown', onDown, true);
+    document.addEventListener('keydown', onKey, true);
+  }, 0);
+}
+
 
 /* The detail-panel delete button used to reach into the DOM from inside its
    own onclick attribute. Named here so the attribute is just a name. */
