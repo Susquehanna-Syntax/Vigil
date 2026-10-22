@@ -4792,3 +4792,20 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 /* The plan note under the relay count links to License: in the app's accent, not browser blue. */
 #relays-usage a { color: var(--sky-ink); text-decoration: none; }
 #relays-usage a:hover { text-decoration: underline; }
+
+/* The remote desktop dialog (QA-59). Same resize: both + is-resized contract as
+   the terminal's: it is a column and the display takes what is left, so dragging
+   the grip grows the desktop instead of the space under it. 80vh rather than the
+   terminal's 70vh because a Windows desktop is the thing being looked at. */
+.modal.rdp-modal { display: flex; flex-direction: column; height: 80vh; overflow: hidden;
+  width: min(1200px, calc(100vw - 32px)); resize: both; }
+.modal.rdp-modal.is-resized .rdp-display { height: auto; }
+.rdp-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.rdp-bar .run-state { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.rdp-bar #rdp-end { margin-left: auto; }
+/* Guacamole paints the desktop into a canvas of its own sizing, so this box only
+   frames it: flex 1 to take the dialog's height and never scroll, black because a
+   desktop mid-draw shows whatever it has drawn so far. */
+.rdp-display { flex: 1 1 auto; min-height: 120px; height: auto; overflow: hidden;
+  background: #000; border: 1px solid var(--border); border-radius: var(--r-md); }

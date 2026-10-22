@@ -36,6 +36,11 @@ class Conn:
                                      "text": json.dumps(payload)})
 
     async def receive_json(self, timeout: float = 5.0) -> dict | None:
+        """The next text frame, parsed as JSON."""
+        text = await self.receive_text(timeout)
+        return None if text is None else json.loads(text or "{}")
+
+    async def receive_text(self, timeout: float = 5.0) -> str | None:
         """The next text frame the app sends after the one we last read."""
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
@@ -43,7 +48,7 @@ class Conn:
             index = self._next_text()
             if index is not None:
                 self._read = index + 1
-                return json.loads(self._wire.sent[index].get("text") or "{}")
+                return self._wire.sent[index].get("text") or ""
             if self._closed_at() is not None:
                 # It refused us, or it was already closing: no frame is coming.
                 return None
@@ -127,7 +132,8 @@ class Conn:
 class Wire:
     """The two queues an ASGI app sees, as the peer behind them."""
 
-    def __init__(self, path: str, headers: list[tuple[bytes, bytes]]):
+    def __init__(self, path: str, headers: list[tuple[bytes, bytes]],
+                 subprotocols: list[str] | None = None):
         self.scope = {
             "type": "websocket",
             "asgi": {"version": "3.0", "spec_version": "2.3"},
@@ -140,7 +146,7 @@ class Wire:
             "headers": list(headers),
             "client": ("203.0.113.7", 51000),
             "server": ("vigil.test", 8000),
-            "subprotocols": [],
+            "subprotocols": list(subprotocols or []),
         }
         #: What we hand the app when it calls ``receive``.
         self.to_app: asyncio.Queue = asyncio.Queue()
@@ -159,14 +165,15 @@ class Wire:
 
 async def connect(app, path: str, cookie: str = "",
                   origin: str = "http://testserver",
-                  headers: list[tuple[bytes, bytes]] | None = None) -> Conn:
+                  headers: list[tuple[bytes, bytes]] | None = None,
+                  subprotocols: list[str] | None = None) -> Conn:
     """Open a session socket to *app* and hand back its peer.
 
     ``cookie`` and ``origin`` are the two headers that decide whose session this
     is and whether the browser asking for it counts as one of ours, so they are
     parameters rather than something each caller assembles by hand.
     """
-    wire = Wire(path, list(headers or []) + _default_headers(cookie, origin))
+    wire = Wire(path, list(headers or []) + _default_headers(cookie, origin), subprotocols)
     await wire.to_app.put({"type": "websocket.connect"})
     task = asyncio.create_task(app(wire.scope, wire.receive, wire.send))
     return Conn(path, wire.scope["headers"], task, wire)

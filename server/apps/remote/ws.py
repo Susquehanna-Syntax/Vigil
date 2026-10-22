@@ -29,7 +29,7 @@ from apps.hosts.models import Host
 from apps.relays.models import direct_allowed
 from apps.relays.trust import link_token
 
-from . import bus
+from . import bus, rdp
 from .models import RemoteSession
 from .recording import CastWriter, recording_allowed
 
@@ -93,19 +93,38 @@ async def browser_socket(scope, receive, send, sid):
         await _close_quietly(send, exc.code)
         return
 
-    await send({"type": "websocket.accept"})
-    await _send_json(send, {"t": "status", "state": "waiting"})
+    if session.kind == RemoteSession.Kind.RDP:
+        # A desktop is guacd's protocol, not this file's terminal loop. Every
+        # check above still decided who is here; run_browser accepts (with the
+        # guacamole subprotocol) and gets this file's watchdog and open marker.
+        state = _SessionState(cookie=_cookie_from_scope(scope))
 
-    state = _SessionState(cookie=_cookie_from_scope(scope))
-    recording = await sync_to_async(_open_recording, thread_sensitive=True)(session)
-    reason = "closed"
-    try:
-        await _run_browser(receive, send, session, user, state, recording)
-    except Ending as end:
-        reason = end.reason
-    finally:
-        if recording is not None:
-            await recording.aclose()
+        async def opened() -> None:
+            state.opened = True
+            await sync_to_async(_mark_open, thread_sensitive=True)(session)
+
+        def touched() -> None:
+            state.last_input = time.monotonic()
+
+        reason = await rdp.run_browser(
+            scope, receive, send, session,
+            accept=_accept_for(send), close=_close_for(send),
+            watchdog=lambda: _watchdog(session, user, state, _Limits()),
+            on_open=opened, on_input=touched)
+    else:
+        await send({"type": "websocket.accept"})
+        await _send_json(send, {"t": "status", "state": "waiting"})
+
+        state = _SessionState(cookie=_cookie_from_scope(scope))
+        recording = await sync_to_async(_open_recording, thread_sensitive=True)(session)
+        reason = "closed"
+        try:
+            await _run_browser(receive, send, session, user, state, recording)
+        except Ending as end:
+            reason = end.reason
+        finally:
+            if recording is not None:
+                await recording.aclose()
 
     await bus.push(bus.B2A_KEY.format(sid=str(session.id)),
                    {"t": "close", "reason": reason})
@@ -113,11 +132,14 @@ async def browser_socket(scope, receive, send, sid):
     await sync_to_async(_finish, thread_sensitive=True)(
         session, "expired" if expired else "closed", reason)
     await sync_to_async(_audit_end, thread_sensitive=True)(session, reason)
-    try:
-        await _send_json(send, {"t": "status", "state": "closed", "reason": reason})
-    except RuntimeError:
-        # The browser went away first; the row and the audit are what matter.
-        logger.debug("browser already gone for session %s", sid)
+    # A desktop socket speaks Guacamole, and a JSON frame on it would break the
+    # browser's parser: the close code and the session row carry the reason.
+    if session.kind != RemoteSession.Kind.RDP:
+        try:
+            await _send_json(send, {"t": "status", "state": "closed", "reason": reason})
+        except RuntimeError:
+            # The browser went away first; the row and the audit are what matter.
+            logger.debug("browser already gone for session %s", sid)
     await _close_quietly(send, 1000)
 
 
@@ -157,6 +179,27 @@ async def _run_browser(receive, send, session, user, state, recording):
         for other in tasks:
             other.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+
+
+def _accept_for(send):
+    """The accept, with the subprotocol echoed only when the client offered it:
+    a browser that never asked for ``guacamole`` must not be handed a protocol
+    it did not negotiate."""
+
+    async def accept(subprotocol) -> None:
+        event = {"type": "websocket.accept"}
+        if subprotocol:
+            event["subprotocol"] = subprotocol
+        await send(event)
+
+    return accept
+
+
+def _close_for(send):
+    async def close(code: int) -> None:
+        await _close_quietly(send, code)
+
+    return close
 
 
 async def _browser_reader(receive, session, state):

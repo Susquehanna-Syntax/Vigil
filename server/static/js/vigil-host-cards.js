@@ -715,6 +715,7 @@ renderPinBar();
    would refuse. */
 
 let _termAssets = null;
+let _rdpAssets = null;
 
 //: The vendored terminal, on demand. base.html does not carry it: xterm is
 //: ~260 KB that only someone about to open a session needs. Resolved once, in
@@ -731,6 +732,21 @@ function loadTerminalAssets() {
     return true;
   })().catch((err) => { _termAssets = null; throw err; });
   return _termAssets;
+}
+
+//: The desktop's vendored Guacamole, on demand, exactly like the terminal's:
+//: one script here and ours, in that order — vigil-rdp.js needs Guacamole to
+//: exist when its tunnel reaches for a state constant.
+function loadRdpAssets() {
+  if (_rdpAssets) return _rdpAssets;
+  _rdpAssets = (async () => {
+    const src = document.getElementById('vigil-term-assets');
+    if (!src) throw new Error('remote desktop assets not found');
+    await _appendScript(src.dataset.guac);
+    await _appendScript(src.dataset.rdp);
+    return true;
+  })().catch((err) => { _rdpAssets = null; throw err; });
+  return _rdpAssets;
 }
 
 function _appendStylesheet(href) {
@@ -800,10 +816,14 @@ async function openConnectMenu(hostId, hostname, anchorEl) {
   });
   if (opts.is_windows) {
     addRow('Web RDP', opts.rdp, () => {
-      // QA-59 lands the Guacamole side. Until it ships this says so plainly
-      // rather than opening a dialog that could never connect.
-      if (typeof openRdpSession === 'function') openRdpSession(hostId);
-      else showToast('Web RDP arrives in the next update.', 'info');
+      // vigil-host-cards.js is loaded by base.html; guacamole-common.js and
+      // vigil-rdp.js only when a desktop is first opened, so the reference to
+      // openRdpSession has to stay dynamic. The item is offered only when
+      // /sessions/options/ reported rdp available — Windows host, agent switch
+      // on, guacd configured — which is the one path that can reach it.
+      loadRdpAssets()
+        .then(() => { if (typeof openRdpSession === 'function') openRdpSession(hostId); })
+        .catch((err) => showToast(err.message, 'error'));
     });
     addRow('Download .rdp file', always,
       () => downloadHostRdp(hostId, hostname || opts.host));

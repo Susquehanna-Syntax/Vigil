@@ -411,6 +411,13 @@ CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/
 # Where live-session sockets hand bytes to each other: "redis" (any number of
 # workers) or "memory" (single process — tests and runserver only).
 VIGIL_SESSION_BUS = os.environ.get("VIGIL_SESSION_BUS", "redis")
+# Web RDP (QA-59). Empty address means the feature is off and the Connect menu
+# says so; it is set to the compose service's name when the rdp profile runs.
+VIGIL_GUACD_ADDR = os.environ.get("VIGIL_GUACD_ADDR", "")
+# The name guacd uses to reach *this* container for its RDP connection back.
+VIGIL_RDP_BRIDGE_HOST = os.environ.get("VIGIL_RDP_BRIDGE_HOST", "web")
+# Where guacd writes recordings, as seen inside the guacd container.
+VIGIL_RDP_RECORDING_PATH = os.environ.get("VIGIL_RDP_RECORDING_PATH", "/recordings")
 CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
