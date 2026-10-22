@@ -10,4 +10,8 @@ it is told to).
 # and this agent refuses any task that is not signed that way.
 # stack_source (2026.14.1): stack_deploy places a Git stack's source folder
 # from a ticketed, sha256-checked archive.
-FEATURES = ("relevant", "branches", "boost", "signed_v2", "stack_source")
+# remote_sessions (2026.15.0): this agent knows how to open a live shell,
+# container shell or RDP pipe when asked. Whether it *will* is its own config's
+# business — the feature only says it understands being asked at all.
+FEATURES = ("relevant", "branches", "boost", "signed_v2", "stack_source",
+            "remote_sessions")

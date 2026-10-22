@@ -12,6 +12,11 @@ import yaml
 
 logger = logging.getLogger("vigil.config")
 
+#: A live shell runs as this account, and the name goes to pwd and to initgroups
+#: unmodified — so it is checked here, where a typo fails loudly at startup,
+#: rather than in the forked child where it would only end one session.
+_REMOTE_USER_RE = re.compile(r"[a-z_][a-z0-9_-]{0,31}")
+
 _VALID_MODES = {"monitor", "managed", "full_control"}
 
 #: Actions that destroy the machine. Deliberately outside the mode system:
@@ -179,6 +184,14 @@ class AgentConfig:
     # Permit this machine to be remotely wiped and reinstalled. NOT implied
     # by full_control — see REPROVISION_ACTIONS above.
     allow_reprovision: bool = False
+    # Live sessions (QA-57). Off unless *this file* says otherwise; the server
+    # can ask for a session but can never make one possible. Monitor mode is
+    # monitoring only, and ignores both flags whatever they are set to.
+    allow_remote_shell: bool = False
+    allow_remote_desktop: bool = False
+    remote_shell_user: str = "root"
+    # Only 127.0.0.1 is ever dialled; this says which port to knock on there.
+    remote_desktop_port: int = 3389
     checkin_interval: int = 60
     # Seconds between Docker Hub image-update checks. The check uses
     # unmetered HEAD requests, but the floor keeps misconfigured agents
@@ -284,6 +297,21 @@ class AgentConfig:
             seen_procs.add(n)
             watched.append(n)
         self.process_watch = watched
+        if not (1 <= int(self.remote_desktop_port) <= 65535):
+            raise ValueError("remote_desktop_port must be between 1 and 65535")
+        if not _REMOTE_USER_RE.fullmatch(self.remote_shell_user or ""):
+            raise ValueError(
+                f"remote_shell_user {self.remote_shell_user!r} is not a valid account name")
+
+    @property
+    def remote_shell_allowed(self) -> bool:
+        """Web shells and container shells, as this host configured them. A
+        monitor-mode agent executes nothing at all, sessions included."""
+        return self.allow_remote_shell and self.mode != "monitor"
+
+    @property
+    def remote_desktop_allowed(self) -> bool:
+        return self.allow_remote_desktop and self.mode != "monitor"
 
     def task_allowed(self, action: str) -> bool:
         if action in REPROVISION_ACTIONS:
@@ -404,6 +432,12 @@ def load_config(path: Path | None = None) -> AgentConfig:
 
     mode = raw.get("mode", "managed")
     allow_reprovision = bool(raw.get("allow_reprovision", False))
+    # Only a real `true` turns a session kind on: a quoted "false" is a string,
+    # and a truthy string must not open a shell on this machine.
+    allow_remote_shell = raw.get("allow_remote_shell") is True
+    allow_remote_desktop = raw.get("allow_remote_desktop") is True
+    remote_shell_user = str(raw.get("remote_shell_user") or "root")
+    remote_desktop_port = int(raw.get("remote_desktop_port", 3389))
     allowlist_raw = raw.get("allowlist", [])
     allowlist = set(allowlist_raw) if isinstance(allowlist_raw, list) else set()
 
@@ -448,6 +482,10 @@ def load_config(path: Path | None = None) -> AgentConfig:
         agent_token=agent_token,
         mode=mode,
         allow_reprovision=allow_reprovision,
+        allow_remote_shell=allow_remote_shell,
+        allow_remote_desktop=allow_remote_desktop,
+        remote_shell_user=remote_shell_user,
+        remote_desktop_port=remote_desktop_port,
         checkin_interval=int(raw.get("checkin_interval", 60)),
         docker_check_interval=int(raw.get("docker_check_interval", 21600)),
         software_interval=int(raw.get("software_interval", 21600)),

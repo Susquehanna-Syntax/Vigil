@@ -16,7 +16,16 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import client, collector, failover, netmap, software, verify, windows_update
+from . import (
+    client,
+    collector,
+    failover,
+    netmap,
+    sessions,
+    software,
+    verify,
+    windows_update,
+)
 from .config import load_config
 from .executor import execute_action
 from .nonce_store import NonceStore
@@ -755,6 +764,12 @@ def run_agent() -> None:
         signal.signal(signal.SIGINT, _handle_signal)
 
     verify_key = verify.get_pinned_key(config.data_dir, config.server_public_key)
+
+    # Live sessions (QA-57). The thread itself does nothing until this host's
+    # own agent.yml enables one, so starting it unconditionally is safe.
+    sessions.start(config,
+                   lambda: verify.get_pinned_key(config.data_dir, config.server_public_key),
+                   lambda: _shutdown)
 
     # ── Main checkin loop ────────────────────────────────────────────────
     # Hardware inventory shifts at human timescales — refresh once per hour

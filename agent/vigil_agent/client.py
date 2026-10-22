@@ -74,6 +74,11 @@ def checkin(
         # a host whose allowlist refuses the task (M7). Empty is meaningful.
         "allowlist": sorted(config.allowlist),
         "allow_reprovision": bool(config.allow_reprovision),
+        # What this host will open for a human, per its own config (QA-57).
+        # Reported so the dashboard can hide the buttons a host refuses; the
+        # agent re-checks every ticket locally regardless of what it said here.
+        "allow_remote_shell": bool(config.remote_shell_allowed),
+        "allow_remote_desktop": bool(config.remote_desktop_allowed),
     }
     # A managed agent left on the monitor-mode unit runs unprivileged and fails
     # every task; the server marks such a host as refusing them (QA-08).
