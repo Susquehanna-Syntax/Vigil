@@ -10,7 +10,7 @@ import asyncio
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, UserProfile
@@ -30,6 +30,9 @@ from apps_business.sites.models import (  # noqa: E402
     SiteCapability,
     UserSiteRole,
 )
+
+# Every class runs on the memory bus: enqueue/peek/drain here only see that
+# one, and Redis is not something a unit test should need.
 
 #: Not a real host: the wake queue is keyed by id and nothing here dials it.
 AGENT_TOKEN = "a" * 64
@@ -69,6 +72,7 @@ class _Audited(TestCase):
         return AuditEvent.objects.all()
 
 
+@override_settings(VIGIL_SESSION_BUS="memory")
 class StartApiTests(_Audited):
     def setUp(self):
         self.client = APIClient()
@@ -233,6 +237,7 @@ def _global_site():
     return Site.objects.global_site()
 
 
+@override_settings(VIGIL_SESSION_BUS="memory")
 class CheckinOptInTests(TestCase):
     """The two opt-in fields are written only by the agent's own check-in."""
 
@@ -271,6 +276,7 @@ class CheckinOptInTests(TestCase):
         self.assertFalse(self.host.agent_allow_remote_shell)
 
 
+@override_settings(VIGIL_SESSION_BUS="memory")
 class SessionListTests(_Audited):
     def setUp(self):
         self.client = APIClient()
@@ -307,6 +313,7 @@ class SessionListTests(_Audited):
         self.assertIn(self.client.get("/api/v1/sessions/").status_code, (401, 403))
 
 
+@override_settings(VIGIL_SESSION_BUS="memory")
 class RecordingDownloadTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -333,6 +340,7 @@ class RecordingDownloadTests(TestCase):
         self.assertEqual(resp.status_code, 403)
 
 
+@override_settings(VIGIL_SESSION_BUS="memory")
 class CloseEndpointTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -359,6 +367,7 @@ class CloseEndpointTests(TestCase):
         self.assertEqual(self._close().status_code, 403)
 
 
+@override_settings(VIGIL_SESSION_BUS="memory")
 class WakeViewTests(TestCase):
     """The agent's long-poll. The timeout is patched so the suite never sleeps."""
 
@@ -433,6 +442,7 @@ class WakeViewTests(TestCase):
         self.assertEqual(resp.status_code, 405)
 
 
+@override_settings(VIGIL_SESSION_BUS="memory")
 class CrossSiteSessionTests(TestCase):
     """An admin of one site has no reach into another site's sessions."""
 

@@ -50,6 +50,7 @@ def enroll_totp(user, secret: str = "JBSWY3DPEHPK3PXP") -> None:
     profile.save(update_fields=["totp_secret_encrypted", "totp_confirmed_at"])
 
 
+@override_settings(VIGIL_SESSION_BUS="memory")
 class OptionsTests(TestCase):
     """What the menu is told. Asking never writes a session row."""
 
@@ -194,6 +195,7 @@ class OptionsTests(TestCase):
         self.assertEqual(resp.status_code, 404)
 
 
+@override_settings(VIGIL_SESSION_BUS="memory")
 class StartResponseRecordedTests(TestCase):
     def setUp(self):
         from unittest.mock import patch as _patch

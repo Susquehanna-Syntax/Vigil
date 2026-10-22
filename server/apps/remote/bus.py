@@ -103,15 +103,20 @@ class RedisBus:
 
     def __init__(self) -> None:
         self._async = None
+        self._async_loop = None
         self._sync = None
 
     def _client(self):
-        # One client per worker. Each Uvicorn worker runs a single event loop,
-        # so the async pool never crosses loops.
-        if self._async is None:
+        # One client per event loop. A Uvicorn worker runs a single loop, so in
+        # a deployment this is one client per worker; but an async view reached
+        # through async_to_sync gets a fresh loop per call, and a pool made on a
+        # loop that has since closed fails with "Event loop is closed".
+        loop = asyncio.get_running_loop()
+        if self._async is None or self._async_loop is not loop:
             import redis.asyncio
 
             self._async = redis.asyncio.from_url(settings.CELERY_BROKER_URL)
+            self._async_loop = loop
         return self._async
 
     def _sync_client(self):
