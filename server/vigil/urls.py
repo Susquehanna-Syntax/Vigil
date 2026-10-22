@@ -100,6 +100,18 @@ def dashboard(request):
     })
 
 
+def _admin_login(request, extra_context=None):
+    """The admin's own login form signs in with a password alone. Send it to
+    Vigil's sign-in instead, so staff take the second factor like everyone."""
+    from django.shortcuts import redirect
+    from django.utils.http import urlencode
+
+    target = request.GET.get("next") or "/admin/"
+    return redirect("/login/?" + urlencode({"next": target}))
+
+
+admin.site.login = _admin_login
+
 urlpatterns = [
     path("", dashboard, name="dashboard"),
     path("setup/", setup_view, name="setup"),

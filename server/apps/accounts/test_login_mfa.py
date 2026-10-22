@@ -274,3 +274,26 @@ class ResetCommandTests(TestCase):
         call_command("reset_2fa", "alice", stdout=StringIO())
         self.client.post("/login/", {"username": "alice", "password": PASSWORD})
         self.assertContains(self.client.get("/login/verify/"), "Set up two-factor sign-in")
+
+
+class AdminLoginTests(TestCase):
+    """The Django admin's own login form must not be a way round the second step."""
+
+    def setUp(self):
+        _with_totp(get_user_model().objects.create_superuser("root", password=PASSWORD))
+
+    def test_the_admin_login_page_sends_you_to_vigils(self):
+        resp = self.client.get("/admin/login/?next=/admin/")
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp["Location"], "/login/?next=%2Fadmin%2F")
+
+    def test_posting_a_password_to_it_signs_nobody_in(self):
+        self.client.post("/admin/login/", {"username": "root", "password": PASSWORD})
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertNotEqual(self.client.get("/admin/").status_code, 200)
+
+    def test_after_the_second_step_the_admin_opens(self):
+        self.client.post("/login/?next=/admin/", {"username": "root", "password": PASSWORD})
+        resp = self.client.post("/login/verify/", {"code": generate_totp(SECRET)})
+        self.assertEqual(resp["Location"], "/admin/")
+        self.assertEqual(self.client.get("/admin/").status_code, 200)
