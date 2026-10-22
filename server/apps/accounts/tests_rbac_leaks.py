@@ -17,7 +17,12 @@ from apps.playbooks.models import Playbook
 from apps.hosts.models import Host
 from apps.tasks.models import TaskDefinition
 from apps.jackil.models import JackilTicket
-from apps_business.sites.models import (
+
+from vigil.testsupport import require_business_module
+
+# Exercises core with the Business apps; a source checkout has none.
+require_business_module()
+from apps_business.sites.models import (  # noqa: E402
     AutomationSiteAssignment, PlaybookSiteAssignment, HostSiteAssignment, Site,
     UserSiteRole,
 )

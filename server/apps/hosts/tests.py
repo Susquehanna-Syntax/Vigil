@@ -6,6 +6,8 @@ from rest_framework.test import APIClient
 from apps.hosts.models import Host
 from apps.metrics.models import MetricPoint
 
+from vigil.testsupport import requires_business
+
 
 class RegisterTests(TestCase):
     def setUp(self):
@@ -238,12 +240,14 @@ class HostSitePayloadTests(TestCase):
             "sp", password="x", is_staff=True)
         self.client.force_login(self.user)
 
+    @requires_business
     def test_every_host_reports_a_site(self):
         Host.objects.create(hostname="loose", agent_token="tok-loose")
         row = self.client.get("/api/v1/hosts/").json()[0]
         self.assertEqual(row["site_name"], "Global")
         self.assertIsNotNone(row["site"])
 
+    @requires_business
     def test_assigned_host_reports_its_own_site(self):
         from apps_business.sites.models import HostSiteAssignment, Site
         h = Host.objects.create(hostname="west-01", agent_token="tok-w")

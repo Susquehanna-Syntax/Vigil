@@ -11,6 +11,8 @@ from apps.hosts.models import Host
 from .models import ManagedStack, StackRevision
 from .validation import NAME_RE, StackError, parse_env, validate_compose
 
+from vigil.testsupport import requires_business
+
 COMPOSE = """services:
   jellyfin:
     image: jellyfin/jellyfin:10.9
@@ -212,6 +214,7 @@ class StackSpecTests(SimpleTestCase):
 
 
 class StackAuditTests(TestCase):
+    @requires_business
     def test_saving_revealing_and_deploying_are_audited_without_values(self):
         from apps_business.audits.apps import wire
         from apps_business.audits.models import AuditEvent

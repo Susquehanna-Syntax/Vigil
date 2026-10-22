@@ -19,6 +19,8 @@ from nacl.signing import SigningKey
 from apps.licensing.models import InstanceIdentity, StoredLicense
 from vigil import licensing
 
+from vigil.testsupport import requires_business
+
 
 def _sign(claims: dict, sk: SigningKey) -> str:
     payload = json.dumps(claims, separators=(",", ":"), sort_keys=True).encode()
@@ -259,6 +261,7 @@ class UpgradeBodyShapeTests(TestCase):
             username="gate", password="pw", is_staff=True, is_superuser=True)
         self.client.force_login(self.user)
 
+    @requires_business
     def test_a_gated_endpoint_reports_licensed_as_a_real_boolean(self):
         resp = self.client.post("/api/v1/sites/", {"name": "X"},
                                 content_type="application/json")
@@ -267,6 +270,7 @@ class UpgradeBodyShapeTests(TestCase):
         self.assertIs(body["licensed"], False)
         self.assertEqual(body["feature"], "sites")
 
+    @requires_business
     def test_the_permission_class_path_agrees_with_the_helper_path(self):
         """audits gates through the permission class, sites through _gate."""
         gated = self.client.get("/api/v1/audits/")

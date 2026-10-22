@@ -15,7 +15,12 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, UserProfile
 from apps.hosts.models import Host
-from apps_business.sites.models import (
+
+from vigil.testsupport import require_business_module
+
+# Exercises core with the Business apps; a source checkout has none.
+require_business_module()
+from apps_business.sites.models import (  # noqa: E402
     HostSiteAssignment,
     Site,
     SiteCapability,

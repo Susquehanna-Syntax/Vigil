@@ -111,11 +111,16 @@ INSTALLED_APPS = [
     "apps.relays",
     "apps.remote",
     "apps.agentprofiles",
-    # Business features (apps_business/LICENSE) — installed always, unlocked by license
-    "apps_business.sites",
-    "apps_business.audits",
-    "apps_business.branding",
 ]
+
+# Business features: the vigil-business package (commercial license, its own
+# private repo). Official images install it compiled and a license unlocks it;
+# a source checkout of this repo runs without it, as the AGPL core.
+from importlib.util import find_spec as _find_spec  # noqa: E402
+
+BUSINESS_INSTALLED = _find_spec("apps_business") is not None
+if BUSINESS_INSTALLED:
+    INSTALLED_APPS += ["apps_business.sites", "apps_business.audits", "apps_business.branding"]
 
 # ---------------------------------------------------------------------------
 # Licensing (SQSY-LICENSING.md)
@@ -154,8 +159,8 @@ VIGIL_AI_TIMEOUT_SECONDS = int(os.environ.get("VIGIL_AI_TIMEOUT_SECONDS", "300")
 # Each extra app may register features (vigil.editions), subscribe to events
 # (vigil.hooks), and expose a urls.py (auto-mounted in vigil/urls.py). Core
 # never imports extension code. See docs/pro-extension-points.md for the
-# contract. (Business features no longer load this way — they ship in this
-# repo under apps_business/ and are unlocked by the license.)
+# contract. (Business features do not load this way — they are the
+# vigil-business package, added above when installed, and unlocked by the license.)
 VIGIL_EXTRA_APPS = [
     a.strip() for a in os.environ.get("VIGIL_EXTRA_APPS", "").split(",") if a.strip()
 ]

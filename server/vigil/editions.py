@@ -4,8 +4,9 @@
 never-shipped Pro edition into Free; the only paid tier is **Business**,
 unlocked by a signed license (see ``vigil/licensing.py`` and
 ``SQSY-LICENSING.md``). The old separate-repo edition model
-(``Vigil-Pro`` / ``Vigil-Enterprise``) is gone — Business code ships in this
-repo under ``server/apps_business/`` and lights up at runtime.
+(``Vigil-Pro`` / ``Vigil-Enterprise``) is gone — Business code is the
+``vigil-business`` package, installed in official images, and lights up at
+runtime.
 
 This module keeps the two names core templates and extensions already use:
 

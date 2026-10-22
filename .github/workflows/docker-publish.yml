@@ -45,6 +45,8 @@ jobs:
           --health-retries=10
 
     env:
+      # Only for the "is it there" check below; the step passes it to gh itself.
+      BUSINESS_TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
       DJANGO_SECRET_KEY: ci-test-secret-key
       DJANGO_DEBUG: "true"
       # Django's test runner forces DEBUG=False, so signing.py's
@@ -68,6 +70,20 @@ jobs:
           cache-dependency-path: server/requirements.txt
       - name: Install dependencies
         run: pip install -r requirements.txt
+      # The Business apps (private Vigil-Business repo), compiled, at the
+      # version business.lock names, so the suite covers core with Business.
+      # Pull requests from forks get no secrets and test the AGPL core alone;
+      # its Business-dependent tests skip themselves.
+      - name: Install the Business apps
+        if: env.BUSINESS_TOKEN != ''
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
+        run: |
+          version="$(cat business.lock)"
+          gh release download "v${version}" -R Susquehanna-Syntax/Vigil-Business \
+            -p '*.whl' -D business-wheels
+          pip install --no-deps --no-index --find-links business-wheels "vigil-business==${version}"
       - name: Django system check
         run: python manage.py check
       - name: Run migrations
@@ -406,6 +422,17 @@ jobs:
         with:
           path: server/agent_dist/
           merge-multiple: true
+
+      # The compiled Business apps go into the image (server/Dockerfile).
+      # Never publish an image without them: a missing release fails here.
+      - name: Download the Business apps
+        env:
+          GH_TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
+        run: |
+          version="$(cat business.lock)"
+          gh release download "v${version}" -R Susquehanna-Syntax/Vigil-Business \
+            -p '*.whl' -D business-wheels
+          ls business-wheels/*.whl
 
       - name: Mark Unix binaries executable
         run: |

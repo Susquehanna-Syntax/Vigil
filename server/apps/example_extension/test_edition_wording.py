@@ -1,9 +1,9 @@
 """Wording contract: the retired separate-repo edition model stays gone.
 
 These tests pin the prose in the contributing docs, the core modules and the
-reference app to the current model (one repo, Business code in
-``server/apps_business/``), so a rewrite describing the retired separate-repo
-model fails the suite.
+reference app to the current model (one Business tier, its code in the
+vigil-business package), so a rewrite describing the retired Pro/Enterprise
+edition model fails the suite.
 """
 
 from __future__ import annotations

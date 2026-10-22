@@ -24,7 +24,12 @@ from apps.hosts.models import (
     UnmanagedDevice,
 )
 from apps.hosts.topology import build_topology, topology
-from apps_business.sites.models import HostSiteAssignment, Site
+
+from vigil.testsupport import require_business_module
+
+# Exercises core with the Business apps; a source checkout has none.
+require_business_module()
+from apps_business.sites.models import HostSiteAssignment, Site  # noqa: E402
 
 ETH0 = {"name": "eth0", "up": True, "mac": "aa:bb:cc:dd:ee:ff",
         "addrs": [{"family": "ipv4", "address": "10.0.0.5", "prefix": 24}]}

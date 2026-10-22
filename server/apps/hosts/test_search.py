@@ -16,6 +16,8 @@ from apps.stacks.models import ManagedStack
 from apps.tasks.models import TaskDefinition
 from apps.vulns.models import VulnFinding
 
+from vigil.testsupport import requires_business
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -105,6 +107,7 @@ class SearchApiTests(TestCase):
         self.assertEqual(len(self._search("fleet")["host"]), 8)
 
 
+@requires_business
 class SearchCrossSiteTests(TestCase):
     """An admin of one site finds nothing that lives in another."""
 

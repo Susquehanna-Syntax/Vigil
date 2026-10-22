@@ -62,10 +62,12 @@ config trick solves — org charts don't consolidate.
 
 ## How the gate works (and doesn't)
 
-- One repo, one image (`susquehannasyntax/vigil:<version>`). Business code lives in
-  `server/apps_business/` under a commercial license
-  (`server/apps_business/LICENSE`); everything else is AGPLv3. All
-  migrations run on every install; features unlock at runtime.
+- One image (`susquehannasyntax/vigil:<version>`). The core is AGPLv3 and
+  public; the Business apps are a separate package (`vigil-business`, a
+  private repo, commercial license) that official images install compiled.
+  Its source is available to customers for audit on request. All migrations
+  run on every install; features unlock at runtime. A build from the public
+  repo is the AGPL core, without the Business apps.
 - A **Business license** is an Ed25519-signed blob verified locally against
   a public key built into the release image (`VIGIL_LICENSE_PUBLIC_KEY` is
   for source checkouts only, so nobody can point Vigil at a key of their

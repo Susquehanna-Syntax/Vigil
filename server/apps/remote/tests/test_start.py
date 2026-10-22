@@ -15,16 +15,21 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, UserProfile
 from apps.hosts.models import Host
-from apps_business.sites.models import (
+
+from ..bus import WAKE_KEY, drain, enqueue, peek
+from ..models import RemoteSession
+from ..tickets import make_ticket, verify_ticket
+
+from vigil.testsupport import require_business_module
+
+# Exercises core with the Business apps; a source checkout has none.
+require_business_module()
+from apps_business.sites.models import (  # noqa: E402
     HostSiteAssignment,
     Site,
     SiteCapability,
     UserSiteRole,
 )
-
-from ..bus import WAKE_KEY, drain, enqueue, peek
-from ..models import RemoteSession
-from ..tickets import make_ticket, verify_ticket
 
 #: Not a real host: the wake queue is keyed by id and nothing here dials it.
 AGENT_TOKEN = "a" * 64

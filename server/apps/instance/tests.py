@@ -18,6 +18,8 @@ from apps.accounts.models import Role, UserProfile
 from apps.instance import config
 from apps.instance.models import InstanceSetting
 
+from vigil.testsupport import requires_business
+
 URL = "/api/v1/instance-settings/"
 
 
@@ -229,6 +231,7 @@ class ApiTests(TestCase):
         self.assertFalse(resp.json()["ok"])
 
 
+@requires_business
 class AuditTests(TestCase):
     def setUp(self):
         from apps_business.audits.apps import wire

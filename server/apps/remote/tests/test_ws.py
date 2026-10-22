@@ -24,6 +24,8 @@ from .. import bus, ws
 from ..models import RemoteSession
 from .asgi_harness import connect
 
+from vigil.testsupport import requires_business
+
 HOST_TOKEN = "h" * 64
 OTHER_TOKEN = "o" * 64
 
@@ -79,6 +81,7 @@ class _SocketCase(TransactionTestCase):
 
 
 class HappyPathTests(_SocketCase):
+    @requires_business
     async def test_a_session_pipes_both_ways_and_is_written_down(self):
         browser = await self.browser()
         self.assertEqual(await browser.receive_json(), {"t": "status", "state": "waiting"})

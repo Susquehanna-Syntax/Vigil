@@ -62,6 +62,16 @@ COPY server/ .
 # VIGIL_LICENSE_PUBLIC_KEY is for source checkouts (see that file).
 RUN touch /app/RELEASE_BUILD
 
+# The Business apps (vigil-business, commercial license, a private repo). The
+# official build drops its compiled wheels for both architectures into
+# business-wheels/ first; pip takes the one for this platform, at the version
+# business.lock names. A build from source has no wheels: the AGPL core.
+COPY business.lock business-wheels/ /tmp/business-wheels/
+RUN if ls /tmp/business-wheels/*.whl >/dev/null 2>&1; then \
+        pip install --no-cache-dir --no-deps --no-index --find-links /tmp/business-wheels \
+            "vigil-business==$(cat /tmp/business-wheels/business.lock)"; \
+    fi && rm -rf /tmp/business-wheels
+
 # Bundle the agent binaries — served via /agent/download/<platform>/.
 # CI drops cross-platform binaries (linux-amd64/arm64, darwin, windows) into
 # server/agent_dist/ before the image build, so they arrive via COPY server/ .

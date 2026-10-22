@@ -1,7 +1,6 @@
 """Policy drift: the decision table, host selection, and unknown hosts."""
 import uuid
 
-from apps_business.sites.models import HostSiteAssignment, Site
 from django.test import TestCase
 from django.utils.timezone import now
 
@@ -11,6 +10,12 @@ from apps.software.models import SoftwareItem, SoftwareSnapshot
 from .drift import policy_drift, policy_hosts, rule_change
 from .models import AppRule, UpdatePolicy
 from .test_policy_api import admin_client
+
+from vigil.testsupport import require_business_module
+
+# Exercises core with the Business apps; a source checkout has none.
+require_business_module()
+from apps_business.sites.models import HostSiteAssignment, Site  # noqa: E402
 
 
 def make_host(name, tags=None, mode=Host.Mode.MANAGED, status=Host.Status.ONLINE,

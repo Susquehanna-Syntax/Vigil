@@ -10,7 +10,12 @@ from apps.accounts.models import Role, UserProfile
 from apps.accounts.permissions import (
     CAPABILITIES, NONE, OWNER, Capability, can, role_of,
 )
-from apps_business.sites.models import Site, UserSiteRole
+
+from vigil.testsupport import require_business_module
+
+# Exercises core with the Business apps; a source checkout has none.
+require_business_module()
+from apps_business.sites.models import Site, UserSiteRole  # noqa: E402
 
 
 def mkuser(name, **kw):
