@@ -29,6 +29,8 @@ patch release fixes things. Business-only items say so; everything else is in ev
 **Also**
 - Power and sleep task actions: sleep and display timeouts, hibernation, power plans, lid actions, sleep and hibernate now.
 - Report charts name branches in words ("or if upgrade failed") instead of lane ids.
+- Security keys and passkeys (YubiKey, Touch ID, Windows Hello, a phone) answer every confirmation prompt with one tap instead
+  of a six-digit code. Add them under Settings → Shared Identity. They need the dashboard on HTTPS.
 - macOS agents are Apple Silicon only. Intel Macs are no longer built or offered.
 
 ## 2026.14.6
