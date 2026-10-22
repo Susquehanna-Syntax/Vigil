@@ -7,7 +7,6 @@ generated action reference must survive untouched: prose edits around it are
 fine, edits inside it are hand-edits the generator would wipe.
 """
 import re
-import subprocess
 from pathlib import Path
 
 from django.test import SimpleTestCase
@@ -105,14 +104,9 @@ class Wiki146Tests(SimpleTestCase):
             self.assertFalse(stray, f"non-text character added: {stray}")
 
     def test_generated_block_untouched(self):
-        try:
-            head = subprocess.run(
-                ["git", "show", "HEAD:wiki/vigil-wiki.html"],
-                capture_output=True, text=True, cwd=REPO_ROOT, check=True,
-            ).stdout
-        except (OSError, subprocess.CalledProcessError):
-            self.skipTest("git is not available")
-        begin = "<!-- BEGIN GENERATED"
-        end = "<!-- END GENERATED"
-        self.assertEqual(_slice(_wiki(), begin, end), _slice(head, begin, end),
-                         "the generated action reference was hand-edited")
+        # A hand edit makes the block differ from what the generator writes.
+        # Comparing with the generator, not with the last commit, lets a new
+        # action regenerate it and still catches an edit by hand.
+        from django.core.management import call_command
+
+        call_command("render_wiki_actions", "--check")

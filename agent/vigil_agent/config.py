@@ -68,6 +68,10 @@ _ALL_ACTIONS = {
     "run_package_updates",
     # System
     "clear_temp_files", "execute_script", "reboot", "set_hostname",
+    # Power. Allowlistable like reboot: a managed agent runs them only when its
+    # allowlist names them, and full_control runs them all.
+    "set_sleep_timeout", "set_display_timeout", "set_hibernate",
+    "set_power_plan", "set_lid_action", "sleep_now", "hibernate_now",
     # run_command intentionally excluded — full_control only, enforced in
     # the executor handler itself as defense-in-depth.
     # Networking

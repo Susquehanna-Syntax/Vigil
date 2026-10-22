@@ -3176,6 +3176,7 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
     <option value="apps">Apps</option>
     <option value="winupdate">Windows Update</option>
     <option value="system">System</option>
+    <option value="power">Power</option>
     <option value="network">Networking</option>
     <option value="users">User management</option>
     <option value="cron">Cron</option>
@@ -3913,6 +3914,92 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
     <span class="hl-key">type</span>: <span class="hl-string">set_hostname</span>
     <span class="hl-key">params</span>:
       <span class="hl-key">hostname</span>: <span class="hl-string">web-01</span></pre></div>
+</div></details>
+</div>
+<div class="action-group" data-group="power">
+<h4 class="action-group-title">Power</h4>
+<p class="action-group-note">powercfg on Windows, logind on Linux, pmset on macOS. Where a platform has no equivalent the step fails with &#x27;not supported&#x27; rather than reporting a change it did not make.</p>
+<details class="action" id="action-set_sleep_timeout" data-group="power" data-risk="standard" data-keywords="set_sleep_timeout ac_minutes dc_minutes"><summary><code class="action-name">set_sleep_timeout</code><span class="risk risk-std">standard</span><span class="action-label">Set sleep timeout</span><span class="action-required">ac_minutes</span></summary><div class="action-body">
+<p class="prose">Minutes before an idle machine sleeps; 0 means never. Gives batteries some credit and desktops a blank afternoon.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>ac_minutes</code></td><td><span class="param-req">required</span></td><td>Minutes on AC power before the machine sleeps. 0 means never.</td></tr><tr><td><code>dc_minutes</code></td><td><span class="param-opt">optional</span></td><td>Minutes on battery. Defaults to the AC value.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>ac_minutes</code></td><td>int</td><td>Minutes on AC power; 0 means never.</td></tr><tr><td><code>dc_minutes</code></td><td>int</td><td>Minutes on battery.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Stop lab laptops sleeping on battery</span>
+<span class="hl-key">description</span>: <span class="hl-string">Set sleep timeout on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">set-sleep-timeout</span>
+    <span class="hl-key">type</span>: <span class="hl-string">set_sleep_timeout</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">ac_minutes</span>: <span class="hl-string">30</span></pre></div>
+</div></details>
+<details class="action" id="action-set_display_timeout" data-group="power" data-risk="standard" data-keywords="set_display_timeout ac_minutes dc_minutes"><summary><code class="action-name">set_display_timeout</code><span class="risk risk-std">standard</span><span class="action-label">Set display timeout</span><span class="action-required">ac_minutes</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>ac_minutes</code></td><td><span class="param-req">required</span></td><td>Minutes on AC power before the display sleeps. 0 means never.</td></tr><tr><td><code>dc_minutes</code></td><td><span class="param-opt">optional</span></td><td>Minutes on battery. Defaults to the AC value.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>ac_minutes</code></td><td>int</td><td>Minutes on AC power; 0 means never.</td></tr><tr><td><code>dc_minutes</code></td><td>int</td><td>Minutes on battery.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Set display timeout</span>
+<span class="hl-key">description</span>: <span class="hl-string">Set display timeout on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">set-display-timeout</span>
+    <span class="hl-key">type</span>: <span class="hl-string">set_display_timeout</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">ac_minutes</span>: <span class="hl-string">30</span></pre></div>
+</div></details>
+<details class="action" id="action-set_hibernate" data-group="power" data-risk="standard" data-keywords="set_hibernate enabled"><summary><code class="action-name">set_hibernate</code><span class="risk risk-std">standard</span><span class="action-label">Turn hibernation on or off</span><span class="action-required">enabled</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>enabled</code></td><td><span class="param-req">required</span></td><td>true to turn hibernation on, false to turn it off.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>enabled</code></td><td>bool</td><td>True when hibernation is now on.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Turn hibernation on or off</span>
+<span class="hl-key">description</span>: <span class="hl-string">Turn hibernation on or off on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">set-hibernate</span>
+    <span class="hl-key">type</span>: <span class="hl-string">set_hibernate</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">enabled</span>: <span class="hl-string">true</span></pre></div>
+</div></details>
+<details class="action" id="action-set_power_plan" data-group="power" data-risk="standard" data-keywords="set_power_plan plan"><summary><code class="action-name">set_power_plan</code><span class="risk risk-std">standard</span><span class="action-label">Set power plan</span><span class="action-required">plan</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>plan</code></td><td><span class="param-req">required</span></td><td>balanced, high_performance or power_saver.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>plan</code></td><td>str</td><td>The plan now active.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Set power plan</span>
+<span class="hl-key">description</span>: <span class="hl-string">Set power plan on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">set-power-plan</span>
+    <span class="hl-key">type</span>: <span class="hl-string">set_power_plan</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">plan</span>: <span class="hl-string">high_performance</span></pre></div>
+</div></details>
+<details class="action" id="action-set_lid_action" data-group="power" data-risk="standard" data-keywords="set_lid_action ac dc"><summary><code class="action-name">set_lid_action</code><span class="risk risk-std">standard</span><span class="action-label">Set lid close action</span><span class="action-required">ac</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>ac</code></td><td><span class="param-req">required</span></td><td>What closing the lid does on AC power: sleep, hibernate, shutdown or nothing.</td></tr><tr><td><code>dc</code></td><td><span class="param-opt">optional</span></td><td>What closing the lid does on battery. Defaults to the AC value.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>ac</code></td><td>str</td><td>The lid action on AC power.</td></tr><tr><td><code>dc</code></td><td>str</td><td>The lid action on battery.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Set lid close action</span>
+<span class="hl-key">description</span>: <span class="hl-string">Set lid close action on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">standard</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">set-lid-action</span>
+    <span class="hl-key">type</span>: <span class="hl-string">set_lid_action</span>
+    <span class="hl-key">params</span>:
+      <span class="hl-key">ac</span>: <span class="hl-string">sleep</span></pre></div>
+</div></details>
+<details class="action" id="action-sleep_now" data-group="power" data-risk="high" data-keywords="sleep_now delay_seconds"><summary><code class="action-name">sleep_now</code><span class="risk risk-high">high</span><span class="action-label">Sleep now</span><span class="action-required">none</span></summary><div class="action-body">
+<p class="prose">Suspends after a short delay so the result reaches Vigil before the machine goes down.</p>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>delay_seconds</code></td><td><span class="param-opt">optional</span></td><td>Seconds to wait before suspending (default 15, at most 3600), so the result reaches Vigil first.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>delay_seconds</code></td><td>int</td><td>Seconds the machine waits before suspending.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Sleep the test bench when the run finishes</span>
+<span class="hl-key">description</span>: <span class="hl-string">Sleep now on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">high</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">sleep-now</span>
+    <span class="hl-key">type</span>: <span class="hl-string">sleep_now</span></pre></div>
+</div></details>
+<details class="action" id="action-hibernate_now" data-group="power" data-risk="high" data-keywords="hibernate_now delay_seconds"><summary><code class="action-name">hibernate_now</code><span class="risk risk-high">high</span><span class="action-label">Hibernate now</span><span class="action-required">none</span></summary><div class="action-body">
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Param</th><th></th><th>Meaning</th></tr></thead><tbody><tr><td><code>delay_seconds</code></td><td><span class="param-opt">optional</span></td><td>Seconds to wait before hibernating (default 15, at most 3600), so the result reaches Vigil first.</td></tr></tbody></table></div>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Output</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>status</code></td><td>str</td><td>ok or skipped, as a later step sees it (a failed step stops the task).</td></tr><tr><td><code>delay_seconds</code></td><td>int</td><td>Seconds the machine waits before hibernating.</td></tr></tbody></table></div><p class="prose">Read one later as <code>${{ steps.&lt;id&gt;.result.&lt;field&gt; }}</code>.</p>
+<div class="code-block"><div class="code-label">YAML</div><button class="copy-btn" type="button">Copy</button><pre><span class="hl-key">name</span>: <span class="hl-string">Hibernate now</span>
+<span class="hl-key">description</span>: <span class="hl-string">Hibernate now on the hosts you dispatch this to.</span>
+<span class="hl-key">risk</span>: <span class="hl-string">high</span>
+<span class="hl-key">actions</span>:
+  - <span class="hl-key">id</span>: <span class="hl-string">hibernate-now</span>
+    <span class="hl-key">type</span>: <span class="hl-string">hibernate_now</span></pre></div>
 </div></details>
 </div>
 <div class="action-group" data-group="network">
