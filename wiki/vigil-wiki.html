@@ -2350,7 +2350,7 @@ actions:
       <h3>Enrollment</h3>
       <div class="steps">
         <div class="step">
-          <div class="step-content">Open <strong>Settings → Security → TOTP</strong> and click <em>Enable TOTP</em>.</div>
+          <div class="step-content">Open <strong>Settings → Shared Identity</strong> and click <em>Enable TOTP</em> under Two-factor authentication.</div>
         </div>
         <div class="step">
           <div class="step-content">Copy the secret or scan the displayed <code>otpauth://</code> URI with an authenticator app (e.g., Bitwarden, Aegis, Google Authenticator).</div>
@@ -2365,8 +2365,16 @@ actions:
         <div>TOTP enrollment is <strong>per-account</strong>. In a single-user homelab install, the one admin account must enroll before deploying standard or high-risk tasks. Password-only fallback is a temporary dev convenience and will be removed in a future release.</div>
       </div>
 
+      <h3>Security keys and passkeys</h3>
+      <p class="prose">A security key (YubiKey or any FIDO2 key) or a passkey (Touch ID, Windows Hello, a phone) can answer every two-factor prompt with one tap instead of a code. Keys are an addition to TOTP, not a replacement: enroll TOTP first, then add keys under <strong>Settings → Shared Identity → Security keys</strong>.</p>
+      <ul class="prose">
+        <li><strong>Set <code>VIGIL_PUBLIC_URL</code></strong> to the address you open Vigil at. A key is bound to that address, so it only works there.</li>
+        <li><strong>Use HTTPS</strong> (or <code>localhost</code>). Browsers refuse security keys on plain HTTP.</li>
+        <li>Each tap is good for one action, for 60 seconds. The six-digit code keeps working as a fallback.</li>
+      </ul>
+
       <h3>Disabling TOTP</h3>
-      <p class="prose">Under <strong>Settings → Security</strong>, click <em>Disable TOTP</em> and confirm with a current 6-digit code. You will be unable to deploy tasks until TOTP is re-enrolled.</p>
+      <p class="prose">Under <strong>Settings → Shared Identity</strong>, click <em>Disable TOTP</em> and confirm with a current 6-digit code. You will be unable to deploy tasks until TOTP is re-enrolled.</p>
 
       <h3>2FA-gated endpoints</h3>
       <p class="prose">The following actions all require a fresh single-use TOTP code:</p>
@@ -2376,8 +2384,10 @@ actions:
         <li><strong>Launch Nessus scan.</strong> <code>POST /api/v1/vulns/scans/{host_id}/</code></li>
         <li><strong>Allowing high-risk steps in a playbook.</strong> <code>POST</code>/<code>PATCH /api/v1/playbooks/</code> when <code>allow_high_risk</code> is being turned on</li>
         <li><strong>Requesting a rebuild.</strong> <code>POST /api/v1/reprovision/jobs/</code>, plus password and the typed hostname</li>
+        <li><strong>Starting a live session.</strong> <code>POST /api/v1/sessions/</code> (web shell, container shell or Web RDP)</li>
+        <li><strong>Adding a relay, changing its address, turning it on or off, deleting it, or giving it a new key.</strong> Renaming needs no code. <code>/api/v1/relays/</code></li>
       </ul>
-      <p class="prose">Codes are <strong>single-use</strong>: once a code has been consumed for a sensitive action, it can't be replayed within its 90-second validity window. An intercepted code is therefore worthless after one use.</p>
+      <p class="prose">Codes and key taps are <strong>single-use</strong>: once used, they cannot be replayed, so an intercepted one is worthless.</p>
 
       <h3>Rebuilding over plain HTTP</h3>
       <p class="prose">A rebuild's answer file carries the new machine's admin password hash, its SSH keys, and an enrolment token, all in clear text. Over the open internet that is worth refusing to send without a deliberate acknowledgement, and Vigil does refuse it.</p>
