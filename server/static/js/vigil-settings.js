@@ -373,8 +373,15 @@ function _relayStatusPill(r) {
     return r.enabled ? '<span class="relay-status ok">Direct</span>'
                      : '<span class="relay-status off">Off</span>';
   }
-  if (r.connected) return '<span class="relay-status ok">Connected</span>';
   if (!r.enabled) return '<span class="relay-status off">Off</span>';
+  // Enabled, but past what the license covers: the dashboard neither links to
+  // it nor accepts its traffic, whatever it reported last.
+  if (r.over_limit) {
+    const pill = r.connected ? 'Linked, not in use' : 'Over your limit';
+    return `<div class="relay-status-col"><span class="relay-status off">${pill}</span>`
+      + '<div class="relay-err">Past your relay limit, so agents cannot use it. Turn the built-in relay or another relay off, or add seats.</div></div>';
+  }
+  if (r.connected) return '<span class="relay-status ok">Connected</span>';
   // The last failure is the whole reason the row exists — a relay that has
   // never linked is otherwise indistinguishable from one still booting.
   const err = r.last_error ? `<div class="relay-err">${escHtml(r.last_error)}</div>` : '';

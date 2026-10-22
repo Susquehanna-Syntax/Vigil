@@ -14,8 +14,18 @@ from apps.hosts.models import Host
 from vigil import licensing
 
 from .middleware import RelayGateMiddleware
-from .models import Relay, direct_allowed, enabled_count, generate_key, relay_urls
+from .models import (
+    Relay, direct_allowed, enabled_count, generate_key, in_service, relay_urls,
+)
 from .trust import link_token
+
+
+def plenty_of_relays(test):
+    """Lift the relay limit for tests about order, signing and the gate, not
+    the limit itself (that is test_limits)."""
+    patcher = patch("vigil.licensing.relays_allowed", return_value=10)
+    patcher.start()
+    test.addCleanup(patcher.stop)
 
 
 def make_relay(name="r1", url="https://relay.example.com/", kind=Relay.Kind.REMOTE,
@@ -35,6 +45,9 @@ def checkin(client, host, **environ):
 
 
 class RelayModelTests(TestCase):
+    def setUp(self):
+        plenty_of_relays(self)
+
     def test_builtin_row_exists(self):
         relays = Relay.objects.filter(kind=Relay.Kind.BUILTIN)
         self.assertEqual(relays.count(), 1)
@@ -81,31 +94,40 @@ class RelayApiTests(TestCase):
 
     def test_community_limit_is_one(self):
         self.assertEqual(licensing.relays_allowed(), 1)
-        over = self._create()
+        # One remote may be added while the built-in relay is on; it waits idle.
+        first = self._create()
+        self.assertEqual(first.status_code, 201)
+        self.assertTrue(first.json()["key"].startswith("vrk_"))
+        self.assertEqual([r.kind for r in in_service()], ["builtin"])
+        # A second remote is past the limit outright.
+        over = self._create(name="second")
         self.assertEqual(over.status_code, 402)
         self.assertEqual(over.json()["allowed"], 1)
-        self.assertEqual(over.json()["used"], 1)
 
-        created = self._create(enabled=False)
+        created = self._create(name="spare", enabled=False)
         self.assertEqual(created.status_code, 201)
-        self.assertTrue(created.json()["key"].startswith("vrk_"))
-        self.assertEqual(Relay.objects.count(), 2)
+        self.assertEqual(Relay.objects.count(), 3)
 
         listing = self.client.get("/api/v1/relays/").json()
         body = str(listing)
         self.assertNotIn("key", body)
         self.assertNotIn("key_sha256", body)
         self.assertEqual([r["kind"] for r in listing["relays"]],
-                         ["builtin", "remote"])
+                         ["builtin", "remote", "remote"])
+        self.assertEqual([r["over_limit"] for r in listing["relays"]],
+                         [False, True, False])
 
     def test_business_limit_is_seats_plus_two(self):
         with patch("apps.relays.views.relays_allowed", return_value=6):
-            for i in range(5):
+            for i in range(6):
                 resp = self._create(name=f"r{i}")
                 self.assertEqual(resp.status_code, 201, resp.json())
-            sixth = self._create(name="one-too-many")
-        self.assertEqual(sixth.status_code, 402)
-        self.assertEqual(enabled_count(), 6)
+            seventh = self._create(name="one-too-many")
+        self.assertEqual(seventh.status_code, 402)
+        # Built-in plus six remotes are enabled; six of them are in service.
+        self.assertEqual(enabled_count(), 7)
+        with patch("vigil.licensing.relays_allowed", return_value=6):
+            self.assertEqual(len(in_service()), 6)
 
     def test_licensing_relays_allowed_is_seats_plus_two_when_business(self):
         state = licensing.LicenseState(status=licensing.Status.VALID,
@@ -191,6 +213,7 @@ class RelayApiTests(TestCase):
 
 class RelayGateTests(TestCase):
     def setUp(self):
+        plenty_of_relays(self)
         self.client = APIClient()
         self.host = Host.objects.create(
             hostname="h1", agent_token="a" * 64,

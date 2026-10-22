@@ -80,14 +80,42 @@ def enabled_count() -> int:
     return Relay.objects.filter(enabled=True).count()
 
 
+def enabled_remote_count() -> int:
+    return Relay.objects.filter(kind=Relay.Kind.REMOTE, enabled=True).count()
+
+
+def in_service() -> list["Relay"]:
+    """The enabled relays the license covers, in the order they count.
+
+    The limit is checked when a relay is added or turned on, but it can also
+    drop under relays that already exist: a Business license lapses, or its
+    seat count falls. Then only the first ``relays_allowed()`` carry traffic —
+    the built-in relay first if it is on, then remote relays in fallback
+    order — and the rest stay configured but idle until the limit rises.
+    Free therefore gets exactly one: the built-in relay or one remote relay.
+
+    "Idle" means no agent traffic: the gate refuses it and agents are not
+    handed it as a fallback. The dashboard's link still connects to it, so a
+    remote relay added on Free can prove it works while the built-in relay
+    holds the one slot, and the built-in relay can then be switched off.
+    """
+    from vigil.licensing import relays_allowed
+
+    enabled = sorted(
+        Relay.objects.filter(enabled=True),
+        key=lambda r: (r.kind != Relay.Kind.BUILTIN, r.priority, r.name, str(r.id)),
+    )
+    return enabled[:max(relays_allowed(), 0)]
+
+
+def in_service_remotes() -> list["Relay"]:
+    return [r for r in in_service() if r.kind == Relay.Kind.REMOTE]
+
+
 def relay_urls() -> list[str]:
     """Fallback base URLs the agent tries, in order, when its server_url is
     unreachable. Enabled remote relays only; the built-in one is the server_url."""
-    return [
-        relay.url
-        for relay in Relay.objects.filter(
-            kind=Relay.Kind.REMOTE, enabled=True).order_by("priority", "name").exclude(url="")
-    ]
+    return [relay.url for relay in in_service_remotes() if relay.url]
 
 
 def signed_relay_list(agent_token_fingerprint: str) -> dict:

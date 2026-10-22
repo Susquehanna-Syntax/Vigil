@@ -19,6 +19,7 @@ from apps.hosts.models import Host
 from vigil.signing import get_signing_key
 
 from .models import Relay, relay_urls, signed_relay_list
+from .tests import plenty_of_relays
 
 
 def make_relay(name, url, priority=100, kind=Relay.Kind.REMOTE, enabled=True):
@@ -27,6 +28,9 @@ def make_relay(name, url, priority=100, kind=Relay.Kind.REMOTE, enabled=True):
 
 
 class RelayUrlOrderTests(TestCase):
+    def setUp(self):
+        plenty_of_relays(self)
+
     def test_priority_orders_the_list_and_name_breaks_ties(self):
         make_relay("charlie", "https://c.example.com")          # default 100
         make_relay("delta", "https://d.example.com", priority=1)
@@ -47,6 +51,9 @@ class RelayUrlOrderTests(TestCase):
 
 
 class SignedRelayListTests(TestCase):
+    def setUp(self):
+        plenty_of_relays(self)
+
     def test_payload_is_the_list_with_a_signature_that_verifies(self):
         make_relay("edge", "https://edge.example.com", priority=5)
         with patch("apps.relays.models.direct_allowed", return_value=False):
@@ -72,6 +79,7 @@ class SignedRelayListTests(TestCase):
 
 class CheckinRelayListTests(TestCase):
     def setUp(self):
+        plenty_of_relays(self)
         self.client = APIClient()
         self.host = Host.objects.create(
             hostname="h1", agent_token="a" * 64,

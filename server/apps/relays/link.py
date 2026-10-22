@@ -65,7 +65,12 @@ class Target:
 
 
 def load_targets() -> list[Target]:
-    """Every enabled remote relay the link can actually speak to."""
+    """Every enabled remote relay the link can actually speak to.
+
+    Including ones past the license's limit: linking lets such a relay show it
+    works before the admin switches to it, and it carries no agent traffic
+    meanwhile, because the gate only accepts relays in service (models.in_service).
+    """
     targets = []
     for relay in Relay.objects.filter(kind=Relay.Kind.REMOTE, enabled=True).exclude(url=""):
         key = decrypt_secret(relay.key_encrypted)

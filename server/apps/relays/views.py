@@ -16,10 +16,12 @@ from apps.accounts.permissions import IsAdmin
 from apps.accounts.totp import require_totp_confirmation
 from vigil.licensing import relays_allowed, upgrade_body
 
-from .models import Relay, enabled_count, generate_key, set_key
+from .models import (
+    Relay, enabled_remote_count, generate_key, in_service, set_key,
+)
 
 
-def _row(relay: Relay) -> dict:
+def _row(relay: Relay, serving: set | None = None) -> dict:
     return {
         "id": str(relay.id),
         "name": relay.name,
@@ -28,6 +30,8 @@ def _row(relay: Relay) -> dict:
         "kind": relay.kind,
         "priority": relay.priority,
         "enabled": relay.enabled,
+        # Enabled but beyond the license's limit: configured, carrying nothing.
+        "over_limit": bool(relay.enabled and serving is not None and relay.id not in serving),
         "connected": relay.connected,
         "last_seen_at": relay.last_seen_at.isoformat() if relay.last_seen_at else None,
         "last_error": relay.last_error,
@@ -60,7 +64,7 @@ def _clean_url(raw) -> tuple[str | None, str | None]:
 def _over_limit() -> Response:
     body = upgrade_body("relays")
     body["allowed"] = relays_allowed()
-    body["used"] = enabled_count()
+    body["used"] = len(in_service())
     return Response(body, status=402)
 
 
@@ -68,10 +72,11 @@ def _over_limit() -> Response:
 @permission_classes([IsAuthenticated, IsAdmin])
 def relay_index(request):
     if request.method == "GET":
+        serving = {relay.id for relay in in_service()}
         return Response({
             "allowed": relays_allowed(),
-            "used": enabled_count(),
-            "relays": [_row(relay) for relay in Relay.objects.all()],
+            "used": len(in_service()),
+            "relays": [_row(relay, serving) for relay in Relay.objects.all()],
         })
 
     payload = request.data or {}
@@ -85,7 +90,10 @@ def relay_index(request):
     if problem:
         return Response({"detail": problem}, status=400)
     enabled = bool(payload.get("enabled", True))
-    if enabled and enabled_count() + 1 > relays_allowed():
+    # Remote relays count against the limit among themselves here: with the
+    # built-in relay on, a new one waits idle (models.in_service) until the
+    # built-in relay is switched off, which is how Free moves to its one remote.
+    if enabled and enabled_remote_count() + 1 > relays_allowed():
         return _over_limit()
 
     try:
@@ -160,7 +168,11 @@ def relay_detail(request, relay_id):
 
     if "enabled" in payload:
         want = bool(payload.get("enabled"))
-        if want and not relay.enabled and enabled_count() + 1 > relays_allowed():
+        # Only enabled remotes count here. For a remote, that is the rule at
+        # creation; for the built-in relay (off, or it would not be turning
+        # on) it is every enabled relay, so it can never push a remote that
+        # agents are using out of service.
+        if want and not relay.enabled and enabled_remote_count() + 1 > relays_allowed():
             return _over_limit()
         if not want and relay.kind == Relay.Kind.BUILTIN:
             # Turning off direct connections is only safe once a relay has

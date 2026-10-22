@@ -776,7 +776,8 @@
           <tr><td>Relays</td><td>1: the built-in one (agents talk to the dashboard directly, the default) <em>or</em> one remote relay</td><td>Seats + 2</td></tr>
         </tbody>
       </table></div>
-      <p class="prose">The built-in relay counts. On Community, turn it off to add a remote one.</p>
+      <p class="prose">The built-in relay counts, and it counts first. To move Community to a remote relay: add it, wait until it shows <strong>Linked, not in use</strong>, then turn the built-in relay off. Until then the remote relay is connected but carries no agents.</p>
+      <p class="prose">If the limit drops below what you have (a Business license lapses, or seats go down), the relays past it stay configured but carry nothing: the built-in relay first if it is on, then remote relays in fallback order, are the ones kept in service. Agents are not handed the others as fallbacks.</p>
 
       <h3>Add a relay</h3>
       <ol class="prose">

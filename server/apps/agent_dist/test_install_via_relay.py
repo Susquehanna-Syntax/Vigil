@@ -16,6 +16,9 @@ class InstallScriptThroughARelayTests(TestCase):
         self.relay = Relay.objects.create(
             name="edge", url="https://edge.example.com/t/acme",
             kind=Relay.Kind.REMOTE, enabled=True)
+        # Free has switched to its one relay: with the built-in relay on too,
+        # this one would be past the limit and the gate would refuse it.
+        Relay.objects.filter(kind=Relay.Kind.BUILTIN).update(enabled=False)
 
     def _get(self, path, **extra):
         return self.client.get(path, HTTP_HOST="localhost", **extra)
@@ -34,5 +37,6 @@ class InstallScriptThroughARelayTests(TestCase):
                 self.assertNotIn("http://localhost", body)
 
     def test_a_direct_fetch_still_names_the_request_host(self):
+        Relay.objects.filter(kind=Relay.Kind.BUILTIN).update(enabled=True)
         body = self._get("/agent/install.sh").content.decode()
         self.assertIn('VIGIL_SERVER="http://localhost"', body)

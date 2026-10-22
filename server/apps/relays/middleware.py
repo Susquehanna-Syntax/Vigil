@@ -56,14 +56,13 @@ class RelayGateMiddleware:
 
     @staticmethod
     def _relay_id(raw: str):
-        """The uuid of an enabled remote relay, or None."""
+        """The uuid of an enabled remote relay the license covers, or None."""
         try:
             relay_id = uuid.UUID(raw)
         except (ValueError, AttributeError, TypeError):
             return None
-        from .models import Relay
+        from .models import in_service_remotes
 
-        if Relay.objects.filter(pk=relay_id, kind=Relay.Kind.REMOTE,
-                                enabled=True).exists():
+        if any(relay.id == relay_id for relay in in_service_remotes()):
             return relay_id
         return None
