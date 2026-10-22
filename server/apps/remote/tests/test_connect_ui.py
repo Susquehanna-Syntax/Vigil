@@ -239,3 +239,15 @@ class TerminalTeardownTests(SimpleTestCase):
     def test_close_reasons_lose_every_control_character(self):
         js = (Path(__file__).resolve().parents[3] / "static" / "js" / "vigil-terminal.js").read_text()
         self.assertIn(r"replace(/[\x00-\x1f\x7f-\x9f]/g, '')", js)
+
+
+class WebSocketServerDependencyTests(SimpleTestCase):
+    """Uvicorn answers every WebSocket upgrade with 404 unless a WebSocket
+    library is installed. The unit tests drive the ASGI app directly and never
+    notice; a deployed image would serve the dashboard and no session."""
+
+    def test_the_image_installs_a_websocket_library_for_uvicorn(self):
+        root = Path(__file__).resolve().parents[3]
+        for name in ("requirements.txt", "requirements.lock"):
+            text = (root / name).read_text()
+            self.assertRegex(text, r"(?m)^websockets[=>]", name)

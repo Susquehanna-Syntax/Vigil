@@ -31,3 +31,6 @@ qrcode>=8.0,<9
 aiohttp>=3.12,<4
 uvicorn>=0.35,<1
 uvicorn-worker>=0.3,<1
+# Uvicorn only speaks WebSocket with one of these installed; without it every
+# session upgrade is answered 404.
+websockets>=15,<16
