@@ -512,7 +512,10 @@ function renderPinBar() {
   const pins = getPins();
   pins.forEach(pin => {
     const chip = document.createElement('div');
-    chip.className = 'pin-chip' + (pin.id === monitorHostId ? ' selected' : '');
+    // vigil-monitor.js declares monitorHostId and loads after this file, so it
+    // does not exist yet on the initial render below.
+    const selected = typeof monitorHostId !== 'undefined' ? monitorHostId : null;
+    chip.className = 'pin-chip' + (pin.id === selected ? ' selected' : '');
     const dotColor = pin.status === 'online' ? 'var(--mint)' : pin.status === 'pending' ? 'var(--peach)' : 'var(--rose)';
 
     // Built element by element rather than as an HTML string. A hostname is
@@ -703,6 +706,12 @@ function downloadHostRdp(hostId, hostname) {
   a.remove();
 }
 
+// The Connect menu's lazily loaded session assets (below). Declared ahead of
+// the initial render so nothing that render throws can leave them in the
+// temporal dead zone, which breaks every Connect click until a reload.
+let _termAssets = null;
+let _rdpAssets = null;
+
 // Initial render of pinned-hosts bar.
 renderPinBar();
 
@@ -713,9 +722,6 @@ renderPinBar();
    here decides availability locally — _start()'s checks are the authority and
    /sessions/options/ repeats them, so the menu cannot promise a shell the API
    would refuse. */
-
-let _termAssets = null;
-let _rdpAssets = null;
 
 //: The vendored terminal, on demand. base.html does not carry it: xterm is
 //: ~260 KB that only someone about to open a session needs. Resolved once, in

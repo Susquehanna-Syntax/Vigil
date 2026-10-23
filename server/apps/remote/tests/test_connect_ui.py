@@ -251,3 +251,27 @@ class WebSocketServerDependencyTests(SimpleTestCase):
         for name in ("requirements.txt", "requirements.lock"):
             text = (root / name).read_text()
             self.assertRegex(text, r"(?m)^websockets[=>]", name)
+
+
+class HostCardsLoadOrderTests(SimpleTestCase):
+    """vigil-host-cards.js renders the pin bar while it is still loading.
+
+    Anything that render throws stops the rest of the file, and a ``let`` it
+    never reached stays in the temporal dead zone: with a pinned host, a bare
+    ``monitorHostId`` (declared in vigil-monitor.js, which loads later) did
+    exactly that to ``_termAssets``, and every Connect click failed.
+    """
+
+    def setUp(self):
+        self.src = _strip_js(read(JS / "vigil-host-cards.js"))
+
+    def test_the_pin_bar_never_names_monitor_state_bare(self):
+        body = self.src.split("function renderPinBar()", 1)[1].split("\nfunction ", 1)[0]
+        for use in re.finditer(r"\bmonitorHostId\b", body):
+            line = body[body.rfind("\n", 0, use.start()) + 1:body.find("\n", use.start())]
+            self.assertIn("typeof monitorHostId", line)
+
+    def test_the_session_assets_exist_before_the_initial_render(self):
+        first_render = re.search(r"(?m)^renderPinBar\(\);", self.src).start()
+        for name in ("_termAssets", "_rdpAssets"):
+            self.assertLess(self.src.index(f"let {name} = null;"), first_render, name)
