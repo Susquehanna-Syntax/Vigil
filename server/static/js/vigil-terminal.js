@@ -55,7 +55,7 @@ function _mountTermDialog(started, kind, container) {
       ${started.recorded ? '<span class="chip chip-muted" title="What you type here is written to the session recording">Recorded</span>' : ''}
       <button class="btn btn-outline btn-rose-ghost btn-xs" type="button" id="term-end">End session</button>
     </div>
-    <div class="term-host" id="term-host"></div>`);
+    <div class="term-host" id="term-host" data-keeps-tab></div>`);
   m.modal.querySelector('#term-title').textContent =
     _termTitle(kind, started.host, container);
 

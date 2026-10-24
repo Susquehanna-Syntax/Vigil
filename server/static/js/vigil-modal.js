@@ -161,6 +161,9 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.key !== 'Tab') return;
+  // A terminal or a remote desktop needs Tab itself (completion, Alt+Tab on
+  // the far side), so a dialog or region marked data-keeps-tab is left alone.
+  if (top.el.hasAttribute('data-keeps-tab') || e.target.closest?.('[data-keeps-tab]')) return;
   const items = [...top.el.querySelectorAll(_FOCUSABLE)].filter(_visible);
   if (!items.length) { e.preventDefault(); return; }
   const first = items[0];

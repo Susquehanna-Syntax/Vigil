@@ -275,3 +275,20 @@ class HostCardsLoadOrderTests(SimpleTestCase):
         first_render = re.search(r"(?m)^renderPinBar\(\);", self.src).start()
         for name in ("_termAssets", "_rdpAssets"):
             self.assertLess(self.src.index(f"let {name} = null;"), first_render, name)
+
+
+class TabKeyTests(SimpleTestCase):
+    """Every dialog traps Tab, and a terminal or remote desktop needs it.
+
+    xterm's input is the dialog's last focusable element, so the trap took Tab
+    and moved focus to the close button instead of completing a command.
+    """
+
+    def test_the_focus_trap_leaves_marked_dialogs_alone(self):
+        src = _strip_js(read(JS / "vigil-modal.js"))
+        tab = src.index("if (e.key !== 'Tab') return;")
+        self.assertIn("data-keeps-tab", src[tab:src.index("querySelectorAll(_FOCUSABLE)", tab)])
+
+    def test_the_terminal_and_the_desktop_keep_tab(self):
+        self.assertIn('id="term-host" data-keeps-tab', read(JS / "vigil-terminal.js"))
+        self.assertIn("m.modal.setAttribute('data-keeps-tab', '')", read(JS / "vigil-rdp.js"))

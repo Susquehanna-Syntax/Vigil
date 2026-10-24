@@ -102,6 +102,9 @@ function _connectRdp(started, login) {
       <button class="btn btn-outline btn-rose-ghost btn-xs" type="button" id="rdp-end">End session</button>
     </div>
     <div class="rdp-display" id="rdp-display"></div>`);
+  // The keyboard below is document-wide, so Tab belongs to Windows wherever
+  // focus sits in this dialog: the focus trap must not move it as well.
+  m.modal.setAttribute('data-keeps-tab', '');
   m.modal.querySelector('#rdp-title').textContent = `Desktop — ${started.host || 'the host'}`;
 
   const stateEl = m.modal.querySelector('#rdp-state');
