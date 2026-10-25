@@ -148,14 +148,16 @@ class InstructionText:
 # Handshake with guacd
 # ---------------------------------------------------------------------------
 
-async def handshake(reader, writer, params: dict, *, recording: bool) -> None:
-    """Select rdp, describe this client, then connect.
+async def handshake(reader, writer, params: dict, *, recording: bool,
+                    protocol: str = "rdp") -> None:
+    """Select the protocol (rdp, or vnc for a Mac), describe this client, then
+    connect.
 
     ``params`` carries the values the phase doc's table names. A parameter guacd
     asks for that ``params`` does not hold goes over empty, which is guacd's own
     "not specified" — that is how one handshake serves every guacd build.
     """
-    args = await _exchange(reader, writer, _wire("select", "rdp"))
+    args = await _exchange(reader, writer, _wire("select", protocol))
     if args[0] != "args":
         raise RdpError("guacd did not answer the protocol selection")
 
@@ -247,6 +249,17 @@ def _guac_message(parts: list[str]) -> str:
     one guacd sentence a browser gets to see."""
     text = parts[1] if len(parts) > 1 else "rejected"
     return "".join(ch for ch in text if ch.isprintable())[:120]
+
+
+def desktop_protocol(session) -> str:
+    """guacd's protocol for this session's host: a Mac's Screen Sharing is VNC.
+
+    ws.py loads the session with its host, so this reads no database here.
+    """
+    from .models import os_family
+
+    host = getattr(session, "host", None)
+    return "vnc" if os_family(getattr(host, "os", "")) == "macos" else "rdp"
 
 
 def _param(name: str, params: dict, recording: bool) -> str:
@@ -475,7 +488,7 @@ async def run_browser(scope, receive, send, session, *, accept, close,
         try:
             await handshake(guacd_reader, guacd_writer,
                             _handshake_params(params, session, str(port), recording),
-                            recording=bool(recording))
+                            recording=bool(recording), protocol=desktop_protocol(session))
         finally:
             # The credentials have done their one job. Holding them past the
             # connect instruction is how they reach a log, or a traceback.

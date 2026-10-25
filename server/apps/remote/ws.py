@@ -416,7 +416,8 @@ async def _authorize_agent(headers, sid):
 
 
 def _load_session(sid):
-    return RemoteSession.objects.filter(pk=sid).first()
+    # With its host: rdp.desktop_protocol reads the OS from an async context.
+    return RemoteSession.objects.select_related("host").filter(pk=sid).first()
 
 
 def _host_by_token(token: str):

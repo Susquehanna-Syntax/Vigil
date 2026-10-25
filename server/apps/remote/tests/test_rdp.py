@@ -273,18 +273,35 @@ class HandshakeTests(TransactionTestCase):
             "create-recording-path": "true",
         }
 
-    async def _handshake(self, guacd: _FakeGuacd, recording: bool, params=None):
+    async def _handshake(self, guacd: _FakeGuacd, recording: bool, params=None, **kw):
         port = await guacd.start()
         reader, writer = await asyncio.open_connection("127.0.0.1", port)
         self.addCleanup(_close_writer, writer)
         try:
             await rdp.handshake(reader, writer, params or dict(self.params),
-                                recording=recording)
+                                recording=recording, **kw)
         finally:
             # Client first: since Python 3.12 Server.wait_closed() waits for
             # every connection, so stopping the fake with ours open never ends.
             _close_writer(writer)
             await _quietly_sync(guacd)
+
+    async def test_rdp_is_selected_unless_told_otherwise(self):
+        guacd = _FakeGuacd()
+        await self._handshake(guacd, recording=False)
+        self.assertEqual(guacd.received[0], ["select", "rdp"])
+
+    async def test_a_mac_session_selects_vnc(self):
+        guacd = _FakeGuacd()
+        await self._handshake(guacd, recording=False, protocol="vnc")
+        self.assertEqual(guacd.received[0], ["select", "vnc"])
+
+    def test_the_protocol_follows_the_hosts_os(self):
+        from types import SimpleNamespace as NS
+
+        for os_name, want in (("macOS 15.1", "vnc"), ("Darwin 24.1.0", "vnc"),
+                              ("Windows 11", "rdp"), ("Ubuntu 24.04", "rdp"), ("", "rdp")):
+            self.assertEqual(rdp.desktop_protocol(NS(host=NS(os=os_name))), want, os_name)
 
     async def test_the_connect_carries_one_value_per_name_in_guacds_own_order(self):
         guacd = _FakeGuacd()

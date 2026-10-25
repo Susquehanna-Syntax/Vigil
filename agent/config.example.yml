@@ -79,7 +79,10 @@ allow_reprovision: false
 # the console. Tickets are signed and bound to this agent's token either way;
 # this section is what decides whether one is ever acted on.
 allow_remote_shell: false     # web shell and container shells
-allow_remote_desktop: false   # Web RDP to this machine's own Remote Desktop
+allow_remote_desktop: false   # Web RDP: Windows Remote Desktop, xrdp on Linux,
+                              # Screen Sharing (VNC) on a Mac
+# remote_desktop_port: 3389   # where the desktop listens on 127.0.0.1
+                              # (default 3389; 5900 on a Mac)
 
 # The account a web shell runs as (Linux/macOS). Container shells run as
 # whoever the container itself says.

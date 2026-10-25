@@ -25,7 +25,7 @@ from vigil import scoping
 from vigil.licensing import has_feature, upgrade_body
 
 from . import bus
-from .models import RemoteSession
+from .models import RemoteSession, os_family
 from .tickets import make_ticket
 
 #: The agent's long-poll. Short enough that an agent which dies mid-wake frees
@@ -44,7 +44,12 @@ OPT_IN_REASON = {
     "shell": "Turn on allow_remote_shell in this host's agent.yml.",
 }
 CONTAINER_NOT_LINUX = "Container shells need a Linux host."
-RDP_NOT_WINDOWS = "Web RDP is for Windows hosts."
+#: Windows serves its own desktop. A Linux one needs xrdp, and a Mac's is
+#: Screen Sharing (VNC); the agent reaches either on 127.0.0.1 as it does RDP.
+DESKTOP_OPT_IN = {
+    "linux": "Install xrdp, then turn on allow_remote_desktop in this host's agent.yml.",
+    "macos": "Turn on Screen Sharing, then allow_remote_desktop in this host's agent.yml.",
+}
 RDP_NO_GUACD = "Start the guacd service to use Web RDP (see the wiki)."
 #: A container name goes into the agent's argv, never a shell — but anything
 #: that still reads as option syntax there would be a flag, so it starts with a
@@ -204,7 +209,7 @@ def _host_scope(request, host_id):
         return None, Response({"error": "Not found"}, status=404)
 
 
-def _blocker(user, site, host, kind, is_windows) -> str:
+def _blocker(user, site, host, kind, family) -> str:
     """The first reason this user cannot start this kind of session on this
     host, in _start()'s order; "" when nothing stops them. The OS checks come
     just after monitor mode: on a Windows box there is no container shell to
@@ -215,11 +220,11 @@ def _blocker(user, site, host, kind, is_windows) -> str:
         return PERM_DENIED
     if host.mode == Host.Mode.MONITOR:
         return MONITORED
-    if kind == RemoteSession.Kind.RDP and not is_windows:
-        return RDP_NOT_WINDOWS
-    if kind == RemoteSession.Kind.CONTAINER and is_windows:
+    if kind == RemoteSession.Kind.CONTAINER and family == "windows":
         return CONTAINER_NOT_LINUX
     if not getattr(host, _opt_in_field(kind), False):
+        if kind == RemoteSession.Kind.RDP and family in DESKTOP_OPT_IN:
+            return DESKTOP_OPT_IN[family]
         return OPT_IN_REASON[kind]
     if not _has_totp(user):
         return NO_TOTP
@@ -228,8 +233,8 @@ def _blocker(user, site, host, kind, is_windows) -> str:
     return ""
 
 
-def _item(user, site, host, kind, is_windows) -> dict:
-    reason = _blocker(user, site, host, kind, is_windows)
+def _item(user, site, host, kind, family) -> dict:
+    reason = _blocker(user, site, host, kind, family)
     return {"available": not reason, "reason": reason}
 
 
@@ -245,16 +250,17 @@ def session_options(request):
     if denied is not None:
         return denied
     site = scoping.scope_of(host)
-    is_windows = "windows" in (host.os or "").lower()
+    family = os_family(host.os)
     return Response({
         "host": host.hostname,
-        "is_windows": is_windows,
+        "is_windows": family == "windows",
+        "os_family": family,
         "ssh_target": host.ip_address or host.hostname,
         "recorded": has_feature("audit_log"),
-        "shell": _item(request.user, site, host, RemoteSession.Kind.SHELL, is_windows),
+        "shell": _item(request.user, site, host, RemoteSession.Kind.SHELL, family),
         "container": _item(request.user, site, host,
-                           RemoteSession.Kind.CONTAINER, is_windows),
-        "rdp": _item(request.user, site, host, RemoteSession.Kind.RDP, is_windows),
+                           RemoteSession.Kind.CONTAINER, family),
+        "rdp": _item(request.user, site, host, RemoteSession.Kind.RDP, family),
     })
 
 

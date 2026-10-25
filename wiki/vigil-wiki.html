@@ -833,10 +833,10 @@
 
       <h3>Before it works</h3>
       <ol class="prose">
-        <li><strong>The host opts in, on the host.</strong> Add <code>allow_remote_shell: true</code> (and for Windows desktops <code>allow_remote_desktop: true</code>) to its <code>agent.yml</code>, or pass <code>--allow-remote-shell</code> / <code>-AllowRemoteShell</code> to the installer. Vigil can never switch this on from the dashboard. Monitor-mode agents never allow it.</li>
+        <li><strong>The host opts in, on the host.</strong> Add <code>allow_remote_shell: true</code> (and for a desktop <code>allow_remote_desktop: true</code>) to its <code>agent.yml</code>, or pass <code>--allow-remote-shell</code> / <code>-AllowRemoteShell</code> to the installer. Vigil can never switch this on from the dashboard. Monitor-mode agents never allow it.</li>
         <li><strong>You have two-factor set up.</strong> Every session asks for a fresh code.</li>
         <li><strong>You may open shells there.</strong> Admins can. Operators need the <em>Open shells</em> permission for that site on Business.</li>
-        <li><strong>For Web RDP</strong>, start the <code>guacd</code> service: <code>docker compose --profile rdp up -d</code>. Remote Desktop must be on in Windows; the desktop is reached through the agent, so port 3389 never has to be open to the network.</li>
+        <li><strong>For Web RDP</strong>, start the <code>guacd</code> service: <code>docker compose --profile rdp up -d</code>, with <code>VIGIL_GUACD_ADDR=guacd:4822</code>. Then the desktop itself: on <strong>Windows</strong>, turn on Remote Desktop. On <strong>Linux</strong>, install xrdp (<code>sudo apt install xrdp</code> and <code>sudo systemctl enable --now xrdp</code>) and sign in with a local account. On a <strong>Mac</strong>, turn on System Settings &gt; General &gt; Sharing &gt; Screen Sharing and sign in with a Mac account; the menu calls it <em>Screen sharing</em>. The desktop is reached through the agent on 127.0.0.1, so ports 3389 and 5900 never have to be open to the network.</li>
       </ol>
       <p class="prose">If something is missing, the menu item is greyed out and says why.</p>
 
@@ -844,7 +844,7 @@
       <ul class="prose">
         <li>The dashboard signs each session request. The agent checks the signature, that it is for this host, and that it is under a minute old, so a relay or anyone in between cannot open a shell.</li>
         <li>A session ends after 15 minutes without input, after 8 hours, or when you sign out.</li>
-        <li>Windows sign-in details for Web RDP go straight to the desktop and are never stored.</li>
+        <li>Sign-in details for Web RDP go straight to the desktop and are never stored.</li>
         <li>Every session is logged: who, which host, when, for how long. <strong>Business</strong> also records the whole session and plays it back from the audit log.</li>
       </ul>
     </section>
@@ -866,7 +866,7 @@
       </ul>
       <p class="prose"><strong>Web shell, container shell and Web RDP</strong></p>
       <ul class="prose">
-        <li>A <strong>Connect</strong> menu on every host: web shell, Web RDP for Windows, the SSH command and the <code>.rdp</code> download.</li>
+        <li>A <strong>Connect</strong> menu on every host: web shell, Web RDP (Windows, Linux with xrdp, and Mac Screen Sharing), the SSH command and the <code>.rdp</code> download.</li>
         <li>Container rows get a <strong>Shell</strong> button.</li>
         <li>Off until the host opts in, in its own <code>agent.yml</code>. Each session needs a fresh two-factor code or key tap and is logged.</li>
         <li>Business records the whole session.</li>
@@ -1169,7 +1169,7 @@
 
 <span class="hl-comment"># Live sessions (2026.15): off unless this file turns them on</span>
 <span class="hl-var">allow_remote_shell</span>: <span class="hl-num">false</span>     <span class="hl-comment"># web shell and container shells</span>
-<span class="hl-var">allow_remote_desktop</span>: <span class="hl-num">false</span>   <span class="hl-comment"># Web RDP (Windows)</span>
+<span class="hl-var">allow_remote_desktop</span>: <span class="hl-num">false</span>   <span class="hl-comment"># Web RDP (Windows, xrdp, Mac Screen Sharing)</span>
 <span class="hl-var">remote_shell_user</span>: <span class="hl-string">root</span>     <span class="hl-comment"># the account a web shell runs as</span></pre>
       </div>
     </section>

@@ -4,6 +4,20 @@ from django.conf import settings
 from django.db import models
 
 
+def os_family(os_name: str) -> str:
+    """"windows", "macos" or "linux", from the OS string an agent reported.
+
+    It decides which desktop protocol a session speaks: Windows and Linux (via
+    xrdp) are RDP, a Mac's built-in Screen Sharing is VNC.
+    """
+    name = (os_name or "").lower()
+    if "windows" in name:
+        return "windows"
+    if "darwin" in name or "macos" in name or "mac os" in name:
+        return "macos"
+    return "linux"
+
+
 class RemoteSession(models.Model):
     """One live session: a browser and an agent, piped together by Vigil.
 

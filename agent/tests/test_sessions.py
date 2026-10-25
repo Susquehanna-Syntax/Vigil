@@ -284,13 +284,23 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(cfg.remote_desktop_port, 3390)
 
     def test_keys_absent_from_yaml_mean_off(self):
-        with _TempDir() as tmp:
+        with _TempDir() as tmp, patch.object(sys, "platform", "linux"):
             path = tmp / "agent.yml"
             path.write_text("server_url: https://vigil.example.com\nagent_token: t\n")
             cfg = load_config(path)
         self.assertIs(cfg.allow_remote_shell, False)
         self.assertIs(cfg.allow_remote_desktop, False)
         self.assertEqual(cfg.remote_desktop_port, 3389)
+
+    def test_a_mac_defaults_to_screen_sharings_port(self):
+        # Screen Sharing is VNC on 5900; RDP's 3389 has nothing behind it there.
+        with _TempDir() as tmp, patch.object(sys, "platform", "darwin"):
+            path = tmp / "agent.yml"
+            path.write_text("server_url: https://vigil.example.com\nagent_token: t\n")
+            self.assertEqual(load_config(path).remote_desktop_port, 5900)
+            path.write_text("server_url: https://vigil.example.com\nagent_token: t\n"
+                            "remote_desktop_port: 5901\n")
+            self.assertEqual(load_config(path).remote_desktop_port, 5901)
 
     def test_a_port_that_is_not_a_port_is_refused(self):
         for port in (0, -1, 70000):

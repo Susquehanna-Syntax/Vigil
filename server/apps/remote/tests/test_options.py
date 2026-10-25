@@ -80,8 +80,10 @@ class OptionsTests(TestCase):
         self.assertEqual(body["ssh_target"], "10.0.0.7")
         self.assertEqual(body["shell"], {"available": True, "reason": ""})
         self.assertEqual(body["container"]["available"], True)
-        self.assertFalse(body["rdp"]["available"])
-        self.assertEqual(body["rdp"]["reason"], "Web RDP is for Windows hosts.")
+        self.assertEqual(body["os_family"], "linux")
+        self.assertEqual(body["rdp"], {
+            "available": False,
+            "reason": "Install xrdp, then turn on allow_remote_desktop in this host's agent.yml."})
 
     def test_the_hostname_is_the_fallback_when_no_address_was_reported(self):
         Host.objects.filter(pk=self.host.pk).update(ip_address=None)
@@ -136,6 +138,23 @@ class OptionsTests(TestCase):
         self.assertEqual(body["container"],
                          {"available": False, "reason": "Container shells need a Linux host."})
         self.assertEqual(body["rdp"], {"available": True, "reason": ""})
+
+    def test_an_opted_in_linux_host_offers_the_desktop_through_xrdp(self):
+        Host.objects.filter(pk=self.host.pk).update(agent_allow_remote_desktop=True)
+        with override_settings(VIGIL_GUACD_ADDR="guacd:4822"):
+            self.assertEqual(self.options()["rdp"], {"available": True, "reason": ""})
+
+    def test_a_mac_offers_screen_sharing_and_names_it(self):
+        mac = Host.objects.create(
+            hostname="mac-mini", agent_token=_token(4), os="macOS 15.1",
+            mode=Host.Mode.MANAGED, agent_allow_remote_shell=True)
+        with override_settings(VIGIL_GUACD_ADDR="guacd:4822"):
+            body = self.options(mac)
+            self.assertEqual(body["os_family"], "macos")
+            self.assertEqual(body["rdp"]["reason"],
+                             "Turn on Screen Sharing, then allow_remote_desktop in this host's agent.yml.")
+            Host.objects.filter(pk=mac.pk).update(agent_allow_remote_desktop=True)
+            self.assertEqual(self.options(mac)["rdp"], {"available": True, "reason": ""})
 
     def test_the_desktop_needs_guacd_running_and_says_so_in_plain_words(self):
         windows = Host.objects.create(

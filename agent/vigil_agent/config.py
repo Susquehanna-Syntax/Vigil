@@ -5,6 +5,7 @@ import os
 import re
 import secrets
 import stat
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -441,7 +442,10 @@ def load_config(path: Path | None = None) -> AgentConfig:
     allow_remote_shell = raw.get("allow_remote_shell") is True
     allow_remote_desktop = raw.get("allow_remote_desktop") is True
     remote_shell_user = str(raw.get("remote_shell_user") or "root")
-    remote_desktop_port = int(raw.get("remote_desktop_port", 3389))
+    # RDP listens on 3389 (Windows, and xrdp on Linux); a Mac's Screen Sharing
+    # is VNC on 5900.
+    default_desktop_port = 5900 if sys.platform == "darwin" else 3389
+    remote_desktop_port = int(raw.get("remote_desktop_port", default_desktop_port))
     allowlist_raw = raw.get("allowlist", [])
     allowlist = set(allowlist_raw) if isinstance(allowlist_raw, list) else set()
 

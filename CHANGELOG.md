@@ -14,7 +14,7 @@ patch release fixes things. Business-only items say so; everything else is in ev
 - Community: one relay (the built-in one or one remote). Business: seats + 2. Hosted relays are coming.
 
 **Web shell, container shell and Web RDP**
-- A **Connect** menu on every host: web shell, Web RDP for Windows, the SSH command and the `.rdp` download.
+- A **Connect** menu on every host: web shell, Web RDP (Windows, Linux with xrdp, and Mac Screen Sharing), the SSH command and the `.rdp` download.
 - Container rows get a **Shell** button.
 - Off until the host opts in, in its own `agent.yml`. Each session needs a fresh two-factor code or key tap and is logged.
 - Business records the whole session.

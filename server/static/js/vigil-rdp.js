@@ -1,5 +1,6 @@
 /* ── Web RDP (QA-59) ────────────────────────────────────────────────────────
-   A Windows desktop in the browser. Not loaded by base.html: loadRdpAssets() in
+   A Windows desktop, a Linux one through xrdp, or a Mac's Screen Sharing (VNC)
+   in the browser. Not loaded by base.html: loadRdpAssets() in
    vigil-host-cards.js appends guacamole-common.js and this file the first time
    an operator picks Web RDP, so nobody pays for a megabyte of vendor JS they
    never use.
@@ -46,7 +47,7 @@ function _signInThenConnect(started) {
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button></div>
     <form id="rdp-login-form" autocomplete="off">
-      <div class="setting-row"><label for="rdp-user">Windows username</label>
+      <div class="setting-row"><label for="rdp-user">Username</label>
         <input class="form-control" id="rdp-user" name="username" type="text"
                autocomplete="username" required></div>
       <div class="setting-row"><label for="rdp-pass">Password</label>
@@ -79,7 +80,7 @@ function _signInThenConnect(started) {
       domain: m.modal.querySelector('#rdp-domain').value,
     };
     drop();
-    if (!login.username) { showToast('A Windows username is required.', 'error'); return; }
+    if (!login.username) { showToast('A username is required.', 'error'); return; }
     _connectRdp(started, login);
   });
   m.modal.querySelector('#rdp-login-cancel').addEventListener('click', drop);
@@ -102,7 +103,7 @@ function _connectRdp(started, login) {
       <button class="btn btn-outline btn-rose-ghost btn-xs" type="button" id="rdp-end">End session</button>
     </div>
     <div class="rdp-display" id="rdp-display"></div>`);
-  // The keyboard below is document-wide, so Tab belongs to Windows wherever
+  // The keyboard below is document-wide, so Tab belongs to the far desktop wherever
   // focus sits in this dialog: the focus trap must not move it as well.
   m.modal.setAttribute('data-keeps-tab', '');
   m.modal.querySelector('#rdp-title').textContent = `Desktop — ${started.host || 'the host'}`;

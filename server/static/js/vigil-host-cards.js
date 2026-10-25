@@ -820,17 +820,19 @@ async function openConnectMenu(hostId, hostname, anchorEl) {
       .then(() => openSession(hostId, 'shell'))
       .catch((err) => showToast(err.message, 'error'));
   });
+  // Windows serves RDP itself, Linux through xrdp, and a Mac's desktop is its
+  // own Screen Sharing (VNC): the same session either way, named for what it is.
+  addRow(opts.os_family === 'macos' ? 'Screen sharing' : 'Web RDP', opts.rdp, () => {
+    // vigil-host-cards.js is loaded by base.html; guacamole-common.js and
+    // vigil-rdp.js only when a desktop is first opened, so the reference to
+    // openRdpSession has to stay dynamic. The item is offered only when
+    // /sessions/options/ reported rdp available — agent switch on, guacd
+    // configured — the one path that can reach it.
+    loadRdpAssets()
+      .then(() => { if (typeof openRdpSession === 'function') openRdpSession(hostId); })
+      .catch((err) => showToast(err.message, 'error'));
+  });
   if (opts.is_windows) {
-    addRow('Web RDP', opts.rdp, () => {
-      // vigil-host-cards.js is loaded by base.html; guacamole-common.js and
-      // vigil-rdp.js only when a desktop is first opened, so the reference to
-      // openRdpSession has to stay dynamic. The item is offered only when
-      // /sessions/options/ reported rdp available — Windows host, agent switch
-      // on, guacd configured — which is the one path that can reach it.
-      loadRdpAssets()
-        .then(() => { if (typeof openRdpSession === 'function') openRdpSession(hostId); })
-        .catch((err) => showToast(err.message, 'error'));
-    });
     addRow('Download .rdp file', always,
       () => downloadHostRdp(hostId, hostname || opts.host));
   } else {
