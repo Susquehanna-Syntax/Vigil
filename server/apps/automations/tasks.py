@@ -18,7 +18,10 @@ def run_scheduled_automation(automation_id):
                                      trigger=Automation.Trigger.SCHEDULE).first()
     if auto is None:
         return "skipped"
-    n = run_automation(auto)
+    why: list[str] = []
+    n = run_automation(auto, why=why)
+    if why:
+        logger.warning("automation %s dispatched nothing: %s", auto.name, why[0])
     return f"dispatched:{n}"
 
 

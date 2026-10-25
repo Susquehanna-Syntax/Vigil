@@ -645,3 +645,52 @@ class AutomationHighRiskGateTests(TestCase):
         self.assertEqual(automation.name, "renamed")
         self.assertFalse(automation.allow_high_risk,
                          "_apply set the 2FA-guarded flag")
+
+
+class NothingDispatchedReasonTests(TestCase):
+    """Run now used to report "Dispatched to 0 hosts" whatever the cause. Each
+    way an automation can come to nothing now says which it was."""
+
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user(
+            "root", password="x", is_staff=True, is_superuser=True)
+        self.client.force_login(self.admin)
+        make_host(name="box")
+
+    def _automation(self, definition=None, **over):
+        kwargs = dict(name="nightly", trigger="schedule", cron_hour="2",
+                      action_kind="task", task_definition=definition or make_def(),
+                      target="all", created_by=self.admin)
+        kwargs.update(over)
+        return Automation.objects.create(**kwargs)
+
+    def _why(self, automation):
+        why = []
+        self.assertEqual(run_automation(automation, why=why), 0)
+        self.assertEqual(len(why), 1, why)
+        return why[0]
+
+    def test_a_high_risk_step_without_the_automations_own_flag(self):
+        high = make_def(name="reboot", risk="high", actions=[{"type": "reboot", "params": {}}])
+        reason = self._why(self._automation(high))
+        self.assertIn("Allow high-risk in the automation", reason)
+
+    def test_the_event_host_target_on_a_schedule(self):
+        self.assertIn("host that fired the event",
+                      self._why(self._automation(target="event_host")))
+
+    def test_tags_that_match_no_host(self):
+        reason = self._why(self._automation(target="tags", target_tags=["role:nowhere"]))
+        self.assertIn("target tags", reason)
+
+    def test_run_now_puts_the_reason_in_its_answer(self):
+        a = self._automation(target="event_host")
+        resp = self.client.post(f"/api/v1/automations/{a.id}/run/", {}, content_type="application/json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()["dispatched"], 0)
+        self.assertIn("host that fired the event", resp.json()["reason"])
+
+    def test_a_dispatch_has_no_reason(self):
+        a = self._automation()
+        resp = self.client.post(f"/api/v1/automations/{a.id}/run/", {}, content_type="application/json")
+        self.assertEqual(resp.json(), {"dispatched": 1, "reason": ""})

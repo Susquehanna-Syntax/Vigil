@@ -112,7 +112,9 @@ function _wireAutoCards(autos) {
   }));
   list.querySelectorAll('[data-au-run]').forEach(b => b.addEventListener('click', async () => {
     try { const r = await apiJson(`/api/v1/automations/${b.dataset.auRun}/run/`, { method: 'POST', body: '{}' });
-      showToast(`Dispatched to ${r.dispatched} host${r.dispatched === 1 ? '' : 's'}`, 'success'); loadAutomations();
+      if (!r.dispatched && r.reason) showToast(`Nothing dispatched. ${r.reason}`, 'error');
+      else showToast(`Dispatched to ${r.dispatched} host${r.dispatched === 1 ? '' : 's'}`, 'success');
+      loadAutomations();
     } catch (e) { showToast('Run failed: ' + e.message, 'error'); }
   }));
   list.querySelectorAll('[data-au-edit]').forEach(b => b.addEventListener('click', () =>

@@ -282,8 +282,9 @@ def automation_run_now(request, automation_id):
     from .engine import run_automation
 
     a = get_object_or_404(Automation, pk=automation_id)
-    n = run_automation(a)
-    return Response({"dispatched": n})
+    why: list[str] = []
+    n = run_automation(a, why=why)
+    return Response({"dispatched": n, "reason": why[0] if why else ""})
 
 
 # ── Community YAML ───────────────────────────────────────────────────────────

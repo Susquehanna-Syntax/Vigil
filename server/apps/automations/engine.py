@@ -18,7 +18,7 @@ logger = logging.getLogger("vigil.automations")
 _SEVERITY_RANK = {"info": 0, "warning": 1, "critical": 2}
 
 
-def _build_for(automation):
+def _build_for(automation, why: list | None = None):
     """What the automation dispatches, built the one way every path builds
     tasks (apps/tasks/dispatch.py), or None if it cannot be built (deleted
     definition, unknown playbook, a step that no longer validates).
@@ -27,8 +27,13 @@ def _build_for(automation):
     ``(params, risk, expires_at)`` — one signed task per host; for a playbook
     automation it is the list from ``build_playbook_steps`` — one chain per
     host. Either way each task keeps its own branches, relevant: block and
-    step ids.
+    step ids. When it returns None, the reason is appended to *why*.
     """
+    def nothing(reason: str):
+        if why is not None:
+            why.append(reason)
+        return None
+
     from apps.playbooks.models import Playbook
     from apps.tasks.dispatch import (build_playbook_steps, highest_risk,
                                      resolve_task_spec, task_params)
@@ -37,22 +42,22 @@ def _build_for(automation):
         if automation.action_kind == automation.ActionKind.PLAYBOOK:
             if automation.playbook_id is None:
                 logger.warning("automation %s: playbook missing or deleted", automation.pk)
-                return None
+                return nothing("Its playbook was deleted.")
             playbook = (Playbook.objects.filter(pk=automation.playbook_id)
                         .prefetch_related("steps__definition").first())
             if playbook is None:
                 logger.warning("automation %s: playbook %s no longer exists",
                                automation.pk, automation.playbook_id)
-                return None
+                return nothing("Its playbook no longer exists.")
             built = build_playbook_steps(playbook, user=automation.created_by,
                                          inputs=automation.inputs)
             if not built:
-                return None
+                return nothing("Its playbook has no steps to run.")
             return "playbook", built, highest_risk(built)
 
         definition = automation.task_definition
         if definition is None:
-            return None
+            return nothing("Its task was deleted.")
         spec = resolve_task_spec(definition, user=automation.created_by,
                                  inputs=automation.inputs or {},
                                  params_override=automation.params_override or {})
@@ -60,7 +65,7 @@ def _build_for(automation):
         return "task", (params, risk, expires_at), risk
     except Exception as exc:  # noqa: BLE001 — a broken target must not break the trigger
         logger.warning("automation %s: could not build its task: %s", automation.pk, exc)
-        return None
+        return nothing(f"It could not be built: {exc}")
 
 
 def _resolve_hosts(automation, event_host):
@@ -84,10 +89,16 @@ def _resolve_hosts(automation, event_host):
     return list(qs)  # ALL
 
 
-def run_automation(automation, *, event_host=None) -> int:
+def run_automation(automation, *, event_host=None, why: list | None = None) -> int:
     """Execute *automation*, returning the number of hosts it dispatched to.
     Never raises — an automation failure must not break the event that fired
-    it or the beat loop."""
+    it or the beat loop. When it dispatches nothing, the reason is appended to
+    *why*, so Run now can say it instead of "Dispatched to 0 hosts"."""
+    def nothing(reason: str) -> int:
+        if why is not None:
+            why.append(reason)
+        return 0
+
     from django.utils.timezone import now
 
     from apps.tasks.models import Task, TaskRun
@@ -97,9 +108,11 @@ def run_automation(automation, *, event_host=None) -> int:
         # it does its own host selection from wave tags, its own gating and
         # its own history, so none of the direct path below applies.
         if automation.dispatch_mode == automation.DispatchMode.ROLLOUT:
-            return _start_rollout_for(automation)
+            started = _start_rollout_for(automation)
+            return started or nothing("The rollout could not start: no wave matched a host, "
+                                      "or the playbook could not be built.")
 
-        target = _build_for(automation)
+        target = _build_for(automation, why)
         if not target:
             return 0
         kind, built, risk = target
@@ -114,12 +127,16 @@ def run_automation(automation, *, event_host=None) -> int:
                 "automation %s wants a high-risk step but allow_high_risk is "
                 "off — refusing to dispatch. Turn it on in the automation's "
                 "settings, which asks for a TOTP code.", automation.name)
-            return 0
+            return nothing("It runs a high-risk step, and this automation does not allow "
+                           "high-risk steps. Turn on Allow high-risk in the automation "
+                           "itself (the playbook's own setting does not carry over).")
         hosts = _resolve_hosts(automation, event_host)
+        if not hosts:
+            return nothing(_no_hosts_reason(automation, event_host))
         # A monitor-mode host can't execute; skip it silently.
         hosts = [h for h in hosts if getattr(h, "mode", None) != "monitor"]
         if not hosts:
-            return 0
+            return nothing("Every host it targets is in monitor mode, which runs no tasks.")
         created = 0
         label = (automation.playbook.name if automation.action_kind == "playbook"
                  and automation.playbook
@@ -161,9 +178,22 @@ def run_automation(automation, *, event_host=None) -> int:
             automation.run_count = (automation.run_count or 0) + created
             automation.save(update_fields=["last_run", "run_count"])
         return created
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         logger.exception("automation %s failed to run", automation.pk)
-        return 0
+        return nothing(f"It failed: {exc}")
+
+
+def _no_hosts_reason(automation, event_host) -> str:
+    T = automation.Target
+    if automation.target == T.EVENT_HOST:
+        return ("It targets the host that fired the event, and a schedule or "
+                "Run now has none. Pick a host, tags or all hosts instead.")
+    if automation.target == T.HOST:
+        return "Its target host was deleted."
+    if automation.target == T.TAGS:
+        return ("No approved host carries its target tags. Monitor-mode hosts "
+                "are never targeted.")
+    return "There are no approved hosts outside monitor mode."
 
 
 def severity_ok(automation, alert) -> bool:
