@@ -13,5 +13,7 @@ it is told to).
 # remote_sessions (2026.15.0): this agent knows how to open a live shell,
 # container shell or RDP pipe when asked. Whether it *will* is its own config's
 # business — the feature only says it understands being asked at all.
+# stack_build (2026.15.1): stack_deploy and docker_compose_up take build: true
+# and run ``up --build``, so a Git stack's new commit is rebuilt, not reused.
 FEATURES = ("relevant", "branches", "boost", "signed_v2", "stack_source",
-            "remote_sessions")
+            "remote_sessions", "stack_build")

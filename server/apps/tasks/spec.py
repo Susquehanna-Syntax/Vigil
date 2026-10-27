@@ -540,6 +540,8 @@ def _validate_stack_params(params: dict[str, Any], position: int, action_type: s
                 raise SpecError(f"{where}: 'source_sha256' must be 64 hex characters")
             if not (isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit)):
                 raise SpecError(f"{where}: 'source_commit' must be a commit id")
+        if params.get("build") not in (None, True, False):
+            raise SpecError(f"{where}: 'build' must be true or false")
     else:
         delete = params.get("delete_files")
         if delete is not None and not isinstance(delete, bool):
@@ -548,10 +550,15 @@ def _validate_stack_params(params: dict[str, Any], position: int, action_type: s
 
 def _validate_prune_params(params: dict[str, Any], position: int) -> None:
     """``image_prune`` / ``volume_prune``: ``all`` is a true/false."""
-    flag = params.get("all")
+    _validate_flag_param(params, "all", position)
+
+
+def _validate_flag_param(params: dict[str, Any], key: str, position: int) -> None:
+    """A true/false param: a bool, the string "true"/"false", or an input reference."""
+    flag = params.get(key)
     if (flag is not None and not isinstance(flag, bool) and flag not in ("true", "false")
             and not (isinstance(flag, str) and "${{" in flag)):
-        raise SpecError(f"action #{position}: 'all' must be true or false")
+        raise SpecError(f"action #{position}: '{key}' must be true or false")
 
 
 _APP_ENSURE_STATES = frozenset({"present", "latest", "pinned", "absent"})
@@ -1523,6 +1530,8 @@ def parse_and_validate(yaml_source: str) -> dict[str, Any]:
             _validate_app_ensure_params(params, index + 1)
         elif action_type in ("image_prune", "volume_prune"):
             _validate_prune_params(params, index + 1)
+        elif action_type == "docker_compose_up":
+            _validate_flag_param(params, "build", index + 1)
         elif action_type == "app_install_custom":
             _validate_custom_install_params(params, index + 1)
         elif action_type == "execute_script":

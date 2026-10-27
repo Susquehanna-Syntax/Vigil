@@ -38,3 +38,37 @@ class LifecycleButtonsWiringTests(TestCase):
             self.assertIn(f'"{name}"', mon)
         self.assertIn("/stacks/", mon)
         self.assertIn("async function openBuiltinTask(name, hostId, inputs)", dep)
+
+
+class ComposeBuildParamTests(TestCase):
+    """2026.15.1: `build` is a true/false on docker_compose_up and stack_deploy."""
+
+    def test_compose_up_takes_build(self):
+        base = "name: t\nactions:\n  - type: docker_compose_up\n    params:\n      compose_file: /srv/a/compose.yaml\n"
+        for ok in ("true", "false", '"true"', '"${{ inputs.rebuild }}"'):
+            with self.subTest(ok=ok):
+                spec = base + f"      build: {ok}\n"
+                if "inputs" in ok:
+                    spec = spec.replace("actions:", "inputs:\n  - id: rebuild\n    type: boolean\nactions:")
+                parse_and_validate(spec)
+        with self.assertRaises(SpecError):
+            parse_and_validate(base + "      build: sometimes\n")
+
+    def test_stack_deploy_build_is_a_bool(self):
+        from apps.tasks.spec import _validate_stack_params
+        params = {"project": "web", "working_dir": "/opt/vigil/stacks/web",
+                  "compose": "services:\n  a:\n    image: nginx\n"}
+        _validate_stack_params({**params, "build": True}, 1, "stack_deploy")
+        with self.assertRaises(SpecError):
+            _validate_stack_params({**params, "build": "yes"}, 1, "stack_deploy")
+
+    def test_a_git_stacks_update_button_redeploys(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[2]
+        ctr = (root / "static/js/vigil-containers.js").read_text(encoding="utf-8")
+        stk = (root / "static/js/vigil-stacks.js").read_text(encoding="utf-8")
+        self.assertIn("managedGitStack(stack)", ctr)
+        self.assertIn("updateGitStack(btn.dataset.stackGitUpdate)", ctr)
+        body = stk[stk.index("async function updateGitStack"):]
+        self.assertIn("/deploy/", body[:body.index("\n}\n")])
+

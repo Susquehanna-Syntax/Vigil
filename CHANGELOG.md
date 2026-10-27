@@ -3,6 +3,23 @@
 What changed in each Vigil release, newest first. Versions are `year.minor.patch`: a minor release can be any size, a
 patch release fixes things. Business-only items say so; everything else is in every edition.
 
+## 2026.15.1
+
+**Stacks from Git**
+- A deploy now rebuilds the stack's images from the new commit (`compose up --build`). Before, compose built an image
+  only when none existed, so a new commit kept running the image from the first deploy.
+- **Update** on a stack from Git fetches the branch's latest commit, rebuilds and redeploys it. Update on any other
+  stack still pulls its images and brings up what changed.
+- The host's agent must be 2026.15.1 or newer to rebuild; an older one still deploys, and Vigil says it kept the old
+  image.
+
+**Tasks**
+- `docker_compose_up` and `stack_deploy` take `build: true`.
+
+**Fixes since 2026.15.0**
+- An automation that dispatches to no hosts says why: a high-risk step the automation doesn't allow, a target with no
+  hosts, every host in monitor mode, or a playbook that can't be built.
+
 ## 2026.15.0
 
 **Relays**

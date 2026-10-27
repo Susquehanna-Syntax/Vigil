@@ -85,10 +85,25 @@ class StackDeployTests(unittest.TestCase):
 
     def test_param_refusals(self):
         for bad in ({"project": "Media"}, {"working_dir": "relative/dir"},
-                    {"working_dir": "/opt/../etc"}, {"env_ticket": "x; rm -rf /"}, {"compose": " "}):
+                    {"working_dir": "/opt/../etc"}, {"env_ticket": "x; rm -rf /"}, {"compose": " "},
+                    {"build": "maybe"}):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 stacks._stack_deploy(self._params(**bad), _CFG)
         self.assertEqual(self.calls, [])
+
+    def test_build_rebuilds_on_up(self):
+        """A Git stack's new commit must be rebuilt: plain ``up`` reuses the old image."""
+        for build, tail in ((True, ["up", "-d", "--remove-orphans", "--build"]),
+                            ("true", ["up", "-d", "--remove-orphans", "--build"]),
+                            (False, ["up", "-d", "--remove-orphans"])):
+            self.calls.clear()
+            with self.subTest(build=build), \
+                    patch.object(client, "fetch_stack_env", return_value=""), \
+                    patch.object(stacks, "_safe_workdir"), \
+                    patch.object(stacks, "_check_resolved", return_value={"services": {}}):
+                stacks._stack_deploy(self._params(build=build),
+                                     dataclasses.replace(_CFG, data_dir=self.root / "agent-data"))
+                self.assertEqual(self.calls[0][-len(tail):], tail)
 
     def test_remove_downs_and_only_deletes_vigils_own_folder(self):
         workdir = self.root / "media"

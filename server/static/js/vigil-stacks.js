@@ -696,7 +696,39 @@ async function revealStackEnv() {
 
 async function deployStack() {
   const body = await _stackTotpAction(`/api/v1/stacks/${stackEd.stack.id}/deploy/`, {});
-  if (body) showToast(`Deploying ${stackEd.stack.name} r${stackEd.stack.revision} — the agent picks it up at its next check-in`, 'success');
+  if (body) _deployedToast(stackEd.stack.name, body);
+}
+
+// rebuilds is false only for a Git stack on an agent too old to run up --build:
+// the new source lands on the host, but the old image keeps running.
+function _deployedToast(name, body) {
+  if (body.rebuilds === false) {
+    showToast(`Deploying ${name}, but its host's agent predates 2026.15.1 and will keep running the old image — update the agent to rebuild`, 'warn');
+  } else {
+    showToast(`Deploying ${name} — the agent picks it up at its next check-in`, 'success');
+  }
+}
+
+/** A stack Vigil manages from Git, by name, or null. */
+function managedGitStack(name) {
+  const s = (stackEd.stacks || []).find(m => m.name === name);
+  return s && s.git ? s : null;
+}
+
+/** Update for a stack from Git: a deploy, which fetches the branch's latest
+ *  commit and rebuilds the images from it. Pulling images alone would leave
+ *  an image built from the old source running. */
+async function updateGitStack(stackId) {
+  const s = (stackEd.stacks || []).find(m => m.id === stackId);
+  if (!s) return;
+  const code = await totpPrompt(`Fetching ${s.name}'s latest commit, rebuilding its images and redeploying it.`);
+  if (!code) return;
+  try {
+    const body = await apiJson(`/api/v1/stacks/${s.id}/deploy/`,
+      { method: 'POST', body: JSON.stringify({ totp: code.trim() }) });
+    _deployedToast(s.name, body);
+    renderManagedStacks(s.host_id);   // a new commit is a new revision
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 async function removeStack() {

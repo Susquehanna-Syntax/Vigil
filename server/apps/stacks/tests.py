@@ -156,6 +156,8 @@ class StackDeployTests(TestCase):
         self.assertEqual((params["project"], params["working_dir"], params["revision"]),
                          ("media", "/opt/vigil/stacks/media", 1))
         self.assertNotIn("hunter2", str(task.params))
+        self.assertNotIn("build", params, "a stack edited in Vigil has no source to rebuild")
+        self.assertNotIn("rebuilds", resp.json())
         ticket = params["env_ticket"]
         self.assertEqual(self._redeem(ticket).json(), {"env": "API_KEY=hunter2\n"})
         self.assertEqual(self._redeem(ticket).status_code, 404, "one time only")

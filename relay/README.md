@@ -33,7 +33,7 @@ authenticates with `Authorization: Bearer <key>` and the relay compares its
 ```yaml
 services:
   relay:
-    image: susquehannasyntax/vigil-relay:2026.15.0
+    image: susquehannasyntax/vigil-relay:2026.15.1
     restart: unless-stopped
     ports: ["8443:8443"]
     environment:

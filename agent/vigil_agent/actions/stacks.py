@@ -19,6 +19,7 @@ from .. import collector
 from .. import executor as ex
 from ..config import AgentConfig
 from ..executor import ActionOutput
+from .docker_resources import _flag
 
 log = logging.getLogger(__name__)
 
@@ -314,11 +315,14 @@ def _check_resolved(workdir: Path, project: str, compose_file: str, data_dir: Pa
     return resolved
 
 
-def _up(workdir: Path, project: str, resolved: dict, data_dir: Path) -> str:
+def _up(workdir: Path, project: str, resolved: dict, data_dir: Path, *, build: bool = False) -> str:
     """``up`` on the checked configuration, kept in the agent's own data dir:
     outside the stack folder (a container bound there could swap a file) and a
     path no stack may bind. It stays, because compose records it in the
-    containers' config_files label and stack_update re-runs ``up`` from it."""
+    containers' config_files label and stack_update re-runs ``up`` from it.
+
+    ``build`` adds ``--build``: without it compose builds an image only when
+    none exists, so a Git stack's new commit would keep running the old one."""
     import json
 
     resolved_dir = Path(data_dir) / "stacks"
@@ -329,8 +333,8 @@ def _up(workdir: Path, project: str, resolved: dict, data_dir: Path) -> str:
     path = resolved_dir / f"{project}.json"
     _write_private(path, json.dumps(resolved))
     return ex._run([*ex._compose_cmd(), "-p", project, "--project-directory", str(workdir),
-                    "-f", str(path), "up", "-d", "--remove-orphans"],
-                   timeout=600, extra_env=ex._compose_env())
+                    "-f", str(path), "up", "-d", "--remove-orphans", *(["--build"] if build else [])],
+                   timeout=1800 if build else 600, extra_env=ex._compose_env())
 
 
 def _stack_deploy(params: dict, config: AgentConfig) -> str:
@@ -345,6 +349,7 @@ def _stack_deploy(params: dict, config: AgentConfig) -> str:
     if ticket and not _TICKET.match(ticket):
         raise ValueError("env_ticket must be a ticket id")
     compose_file = _compose_file(params)
+    build = _flag(params, "build")
     source = _source_params(params)
     # Redeemed first: a deploy that cannot have its secrets (or its source)
     # must not start half-configured containers.
@@ -361,7 +366,7 @@ def _stack_deploy(params: dict, config: AgentConfig) -> str:
     if env_text is not None:
         _write_private(workdir / ".env", env_text)
     resolved = _check_resolved(workdir, project, compose_file, config.data_dir)
-    output = _up(workdir, project, resolved, config.data_dir)
+    output = _up(workdir, project, resolved, config.data_dir, build=build)
     collector.request_docker_recheck()
     revision = params.get("revision")
     return ActionOutput(output or f"deployed {project}",

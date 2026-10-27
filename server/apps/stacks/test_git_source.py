@@ -356,6 +356,21 @@ class GitStackApiTests(TestCase):
         self.assertEqual(self.client.get(url, HTTP_AUTHORIZATION="Bearer nastok").status_code, 404,
                          "a ticket is good once")
 
+    def test_deploy_rebuilds_on_an_agent_that_can(self):
+        """Plain `up` reuses the image built from the last commit: a Git stack
+        deploys with build: true wherever the agent understands it."""
+        from apps.tasks.models import Task
+        sid = self._create().json()["id"]
+        for features, rebuilds in ((["stack_source", "stack_build"], True), (["stack_source"], False)):
+            self.host.agent_features = features
+            self.host.save(update_fields=["agent_features"])
+            with self.subTest(features=features), mock.patch(_TOTP, return_value=None):
+                resp = self.api.post(f"/api/v1/stacks/{sid}/deploy/", {"totp": "1"}, format="json")
+                self.assertEqual(resp.status_code, 201, resp.content)
+                self.assertIs(resp.json()["rebuilds"], rebuilds)
+                params = Task.objects.get(pk=resp.json()["task"]).params["steps"][0]["params"]
+                self.assertEqual(params.get("build"), True if rebuilds else None)
+
     def test_an_agent_without_stack_source_is_refused(self):
         sid = self._create().json()["id"]
         self.host.agent_features = []

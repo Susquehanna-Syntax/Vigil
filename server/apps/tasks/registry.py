@@ -139,7 +139,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "label": "Docker Compose up",
         "risk": "standard",
         "required": ["compose_file"],
-        "optional": ["services"],  # comma-separated service names
+        "optional": ["services", "build"],  # comma-separated service names; build: true adds --build
         "outputs": {"compose_file": "str"},
     },
     "docker_compose_down": {
@@ -175,7 +175,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "risk": "high",
         "required": ["project", "compose", "working_dir"],
         "optional": ["env_ticket", "revision", "compose_file",
-                     "source_ticket", "source_sha256", "source_commit"],
+                     "source_ticket", "source_sha256", "source_commit", "build"],
         "outputs": {"project": "str", "revision": "int"},
     },
     "stack_remove": {

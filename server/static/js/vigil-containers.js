@@ -250,9 +250,12 @@ async function renderDockerContainers(hostId, fromCache) {
     const noun = rows.length === 1 ? 'container' : 'containers';
     const info = stackInfo[stack];
     const stackMeta = info ? `<span class="chip chip-muted apps-src" title="${escAttr((info.config_files || []).join(', '))}">${escHtml(info.ownership)}</span>${info.engine ? `<span class="chip chip-muted apps-src">${escHtml(info.engine)}</span>` : ''}` : '';
+    // A stack from Git updates by redeploying: its images are built from the repo, not pulled.
+    const gitStack = stack && typeof managedGitStack === 'function' ? managedGitStack(stack) : null;
     const stackActs = stack ? `<span class="docker-stack-acts">
         <button class="btn btn-xs btn-outline" data-stack-act="Restart stack" data-host="${escAttr(hostId)}" data-project="${escAttr(stack)}">Restart</button>
-        <button class="btn btn-xs btn-outline" data-stack-act="Update stack" data-host="${escAttr(hostId)}" data-project="${escAttr(stack)}">Update</button>
+        ${gitStack ? `<button class="btn btn-xs btn-outline" data-stack-git-update="${escAttr(gitStack.id)}" title="Fetch the latest commit, rebuild and redeploy">Update</button>`
+          : `<button class="btn btn-xs btn-outline" data-stack-act="Update stack" data-host="${escAttr(hostId)}" data-project="${escAttr(stack)}">Update</button>`}
         ${info && info.ownership === 'external' ? `<button class="btn btn-xs btn-lav" data-stack-adopt data-host="${escAttr(hostId)}" data-project="${escAttr(stack)}" title="Let Vigil manage this stack where it stands — nothing is recreated">Adopt</button>` : ''}
       </span>` : '';
     html += `<div class="docker-stack">
@@ -348,6 +351,9 @@ async function renderDockerContainers(hostId, fromCache) {
   }));
   wrap.querySelectorAll('[data-stack-act]').forEach(btn => btn.addEventListener('click', () => {
     openBuiltinTask(btn.dataset.stackAct, btn.dataset.host, { project: btn.dataset.project });
+  }));
+  wrap.querySelectorAll('[data-stack-git-update]').forEach(btn => btn.addEventListener('click', () => {
+    updateGitStack(btn.dataset.stackGitUpdate);
   }));
 }
 

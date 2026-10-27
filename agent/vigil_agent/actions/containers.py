@@ -21,6 +21,7 @@ from .. import collector
 from .. import executor as ex
 from ..config import AgentConfig
 from ..executor import ActionOutput, _SAFE_IMAGE, _container_running, _validate_name
+from .docker_resources import _flag
 
 
 def _engine():
@@ -447,6 +448,8 @@ def _docker_compose_up(params: dict, _config: AgentConfig) -> str:
         raise ValueError(f"Compose file not found: {compose_file}")
 
     cmd = [*ex._compose_cmd(), "-f", str(path), "up", "-d"]
+    if _flag(params, "build"):
+        cmd.append("--build")   # rebuild images whose source changed; plain up builds only missing ones
 
     services = params.get("services", "")
     if services:

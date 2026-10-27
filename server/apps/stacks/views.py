@@ -370,6 +370,11 @@ def stack_deploy(request, stack_id):
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     params = {"project": stack.name, "compose": stack.compose_yaml,
               "working_dir": stack.working_dir, "revision": stack.revision, **source}
+    # A Git stack builds its images from the source it ships, and plain `up`
+    # only builds an image that is missing: the new commit would never run.
+    rebuilds = bool(stack.git_url) and "stack_build" in set(stack.host.agent_features or [])
+    if rebuilds:
+        params["build"] = True
     if stack.compose_file != "compose.yaml":
         params["compose_file"] = stack.compose_file
     if bytes(stack.env_encrypted or b""):
@@ -389,7 +394,12 @@ def stack_deploy(request, stack_id):
         defaults={"ownership": (ContainerStack.Ownership.ADOPTED if stack.adopted
                                 else ContainerStack.Ownership.MANAGED)})
     hooks.emit("stack_deployed", stack=stack, user=request.user, task=task)
-    return Response({"task": str(task.id), "run": str(task.run_id)}, status=status.HTTP_201_CREATED)
+    body = {"task": str(task.id), "run": str(task.run_id)}
+    if stack.git_url:
+        # An agent from before 2026.15.1 cannot rebuild: the deploy still
+        # places the new source, but the old image keeps running.
+        body["rebuilds"] = rebuilds
+    return Response(body, status=status.HTTP_201_CREATED)
 
 
 @api_view(["POST"])

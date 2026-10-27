@@ -118,6 +118,21 @@ class ContainerOutputTests(unittest.TestCase):
                 self.assertEqual(executor._docker_compose_down({"compose_file": f.name}, _config()).data,
                                  {"compose_file": f.name})
 
+    def test_compose_up_builds_only_when_asked(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".yml") as f:
+            for params, tail in (({}, ["up", "-d"]), ({"build": True}, ["up", "-d", "--build"]),
+                                 ({"build": "true", "services": "web"}, ["up", "-d", "--build", "web"])):
+                with self.subTest(params=params), \
+                        patch.object(executor, "_run", return_value="") as run, \
+                        patch.object(executor, "_compose_cmd", return_value=["docker", "compose"]), \
+                        patch.object(executor, "_validate_path", return_value=Path(f.name)):
+                    executor._docker_compose_up({"compose_file": f.name, **params}, _config())
+                    self.assertEqual(run.call_args[0][0][-len(tail):], tail)
+            with self.assertRaises(ValueError), \
+                    patch.object(executor, "_validate_path", return_value=Path(f.name)):
+                executor._docker_compose_up({"compose_file": f.name, "build": "maybe"}, _config())
+
     def test_compose_env_points_at_the_engine_socket(self):
         self.assertEqual(executor._compose_env(), {"DOCKER_HOST": f"unix://{self.fake.path}"})
 

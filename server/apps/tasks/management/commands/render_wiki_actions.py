@@ -164,6 +164,7 @@ GROUP_NOTES: dict[str, str] = {
 #: surprising success.
 PARAM_EXAMPLES: dict[str, str] = {
     "action": "allow",
+    "build": "true",
     "classifications": '"Critical Updates, Security Updates"',
     "cmdline": '"auto=true priority=critical"',
     "command": '"systemctl is-active nginx"',
@@ -254,6 +255,8 @@ PARAM_NOTES: dict[str, str] = {
     "cmdline": "Kernel command line handed to the installer.",
     "command": "The command line to run. Quoted exactly as the shell sees it.",
     "compose_file": "Absolute path to the compose file on the host.",
+    "build": "true adds --build: images with a build: section are rebuilt from their source. "
+             "Without it, compose builds only an image that does not exist yet.",
     "container_name": "Container name as Docker reports it, not the image.",
     "volume": "The volume's name as the engine lists it. A volume a container uses (even a stopped one) is refused.",
     "network": "The network's name or id. The engine's own bridge, host and none networks are refused.",
@@ -495,6 +498,8 @@ ACTION_PARAM_NOTES: dict[tuple[str, str], str] = {
     ("stack_deploy", "source_ticket"): "Set by Vigil for a stack from Git: a one-time id the agent redeems for the revision's packed source folder. The repository credential never leaves the server.",
     ("stack_deploy", "source_sha256"): "Set by Vigil for a stack from Git: the sha256 the source archive must have. The agent refuses any other archive before placing a file.",
     ("stack_deploy", "source_commit"): "Set by Vigil for a stack from Git: the commit the source folder was taken from, for the record.",
+    ("stack_deploy", "build"): "Set by Vigil for a stack from Git: rebuild its images from the new source "
+                               "(up --build). Without it the old image keeps running.",
     ("stack_deploy", "compose_file"): "The compose file's name in working_dir — compose.yaml unless the stack was adopted with its own.",
     ("container_rollback", "container_name"): "The container to roll back.",
     ("container_rollback", "image"): "The image to go back to — a repo digest (repo@sha256:…) or an image id. A container's page offers the one it ran before its last update.",
