@@ -100,11 +100,14 @@ function openHostDetail(card) {
 /* ── "Related in Jackil" (the drawer) ─────────────────────────────────── */
 
 // A helpdesk outage, a missing key or an old Jackil are all normal states of
-// this section: the drawer shows the reason or gets out of the way, and never
+// this section: the view shows the reason or gets out of the way, and never
 // fails because another server did.
-async function loadJackilRelated(kind, id) {
-  const section = document.getElementById('detail-jackil-section');
-  if (!section) return;
+//
+// `stillCurrent()` is the caller's staleness check — it returns true while the
+// view still shows `id`, since in flight the drawer, the Monitor page or the
+// run modal may have moved on to something else.
+async function renderJackilRelated(section, body, kind, id, stillCurrent) {
+  if (!section || !body) return;
   let data = null;
   try {
     const resp = await fetch(`/api/v1/jackil/related/?type=${encodeURIComponent(kind)}&id=${encodeURIComponent(id)}`,
@@ -112,12 +115,10 @@ async function loadJackilRelated(kind, id) {
     if (resp.ok) data = await resp.json();
   } catch { /* unreachable Vigil — same as no answer at all */ }
 
-  // The drawer may have moved to another host while this was in flight.
-  if (panel.dataset.hostId !== String(id)) return;
+  if (!stillCurrent()) return;
   if (!data || data.configured === false) { section.style.display = 'none'; return; }
 
   section.style.display = '';
-  const body = document.getElementById('detail-jackil-body');
   if (!data.available) {
     body.innerHTML = `<div style="color: var(--text-3);">${escHtml(data.message || '')}</div>`;
     return;
@@ -126,7 +127,7 @@ async function loadJackilRelated(kind, id) {
   const links = data.links || [];
   const items = data.items || [];
   if (!links.length && !items.length) {
-    body.innerHTML = '<div style="color: var(--text-3);">Nothing in Jackil is linked to this host yet.</div>';
+    body.innerHTML = `<div style="color: var(--text-3);">Nothing in Jackil is linked to this ${escHtml(kind)} yet.</div>`;
     return;
   }
 
@@ -145,6 +146,12 @@ async function loadJackilRelated(kind, id) {
     }
   }
   body.innerHTML = html;
+}
+
+// Two-line wrapper for the host drawer.
+function loadJackilRelated(kind, id) {
+  renderJackilRelated(document.getElementById('detail-jackil-section'), document.getElementById('detail-jackil-body'),
+    kind, id, () => panel.dataset.hostId === String(id));
 }
 
 function _jackilToneColor(tone) {
