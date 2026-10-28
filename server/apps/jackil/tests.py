@@ -356,3 +356,29 @@ class RefireTests(JackilTestCase):
                 mock.patch.object(client, "set_status"):
             hooks.emit("alert_refired", alert=alert)
         note.assert_called_once()
+
+    def test_a_throttled_refire_still_reopens_and_rearms_the_clear(self):
+        alert = self._ticketed_alert()
+        with mock.patch.object(client, "add_note"), \
+                mock.patch.object(client, "set_status"):
+            service.on_alert_resolved(alert)
+            service.on_alert_refired(alert)       # noted, reopened
+            service.on_alert_resolved(alert)      # cleared again
+        with mock.patch.object(client, "add_note") as note, \
+                mock.patch.object(client, "set_status") as status:
+            service.on_alert_refired(alert)       # inside the hour
+        note.assert_not_called()
+        status.assert_called_once_with(42, "open")
+        self.assertIsNone(JackilTicket.objects.get(alert=alert).cleared_at)
+
+    def test_clears_inside_a_flap_change_state_without_a_note(self):
+        alert = self._ticketed_alert()
+        with mock.patch.object(client, "add_note"), \
+                mock.patch.object(client, "set_status"):
+            service.on_alert_resolved(alert)
+            service.on_alert_refired(alert)
+        with mock.patch.object(client, "add_note") as note, \
+                mock.patch.object(client, "set_status") as status:
+            service.on_alert_resolved(alert)
+        note.assert_not_called()
+        status.assert_called_once_with(42, "resolved")
