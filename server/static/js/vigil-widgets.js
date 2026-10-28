@@ -1139,6 +1139,12 @@ async function _renderReportChart(body, settings, widget) {
   }
   const computedWidget = ((computed && computed.widgets) || [])[index];
   if (!computedWidget) { _wEmpty(body, 'This report was removed'); return; }
+  // Three cards all headed "Report chart" name none of them; with no title of
+  // its own the card takes the chart's, which follows the report's edits.
+  if (!String(settings.title || '').trim()) {
+    const head = body.closest('.dash-widget')?.querySelector('.dash-widget-title');
+    if (head) head.textContent = computedWidget.title || _wReportKindName(computedWidget.kind);
+  }
   // The drawer pushes its instance onto the list it is handed. The dashboard
   // repaints this body every poll, so the previous instance is destroyed here
   // rather than by the drawer's own teardown — which only knows the ids drawn
