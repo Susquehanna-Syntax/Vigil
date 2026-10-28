@@ -161,7 +161,7 @@ function _jackilToneColor(tone) {
 function _jackilLink(url, label) {
   const text = escHtml(label || '');
   return url
-    ? `<a href="${escAttr(url)}" target="_blank" rel="noopener">${text}</a>`
+    ? `<a href="${escAttr(url)}" target="_blank" rel="noopener" style="color: var(--text-1); text-decoration: none; font-weight: 500;">${text}</a>`
     : text;
 }
 
