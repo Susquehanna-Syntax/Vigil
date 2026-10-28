@@ -148,7 +148,7 @@ class RelatedTests(TestCase):
         body = resp.json()
         self.assertTrue(body["configured"])
         self.assertFalse(body["available"])
-        self.assertIn("help.example.com", body["message"])
+        self.assertEqual(body["message"], "Jackil is not answering right now.")
         self.assertEqual(body["links"], [])
         self.assertEqual(body["items"], [])
 

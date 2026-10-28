@@ -29,6 +29,10 @@ class JackilError(RuntimeError):
     """A Jackil call failed. The message is written to be shown to a human."""
 
 
+class JackilUnreachable(JackilError):
+    """No answer at all: refused, timed out, or the name did not resolve."""
+
+
 class JackilNotFound(JackilError):
     """Jackil answered 404: a wrong URL, or a ticket that no longer exists."""
 
@@ -61,7 +65,7 @@ def _request(method: str, path: str, payload: dict | None = None,
             verify=setting("JACKIL_VERIFY_SSL"), timeout=timeout,
         )
     except requests.RequestException as exc:
-        raise JackilError(f"Could not reach {_base()} — {exc}") from exc
+        raise JackilUnreachable(f"Could not reach {_base()} — {exc}") from exc
 
     if resp.status_code == 401:
         raise JackilError("Jackil rejected the API key.")
@@ -143,6 +147,10 @@ def related(kind: str, obj_id: str) -> dict:
             "Jackil does not offer related links yet. "
             "Update Jackil to 2026.3 or later."
         ) from exc
+    except JackilUnreachable as exc:
+        # Shown to anyone who opens a host, not just the admin who set the
+        # link up, so it says what happened rather than quoting urllib3.
+        raise JackilError("Jackil is not answering right now.") from exc
 
 
 def ticket_url(ticket_id: int) -> str:
