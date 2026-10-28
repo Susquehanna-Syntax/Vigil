@@ -1352,7 +1352,9 @@ function _settingsField(name, field, value, options) {
   }
   if (t === 'choice' || options.length) {
     const list = t === 'choice'
-      ? (field.options || []).map(o => [o, o])
+      // A choice may carry display labels for its option values (Jackil's
+      // catalog names a unit by id but shows the operator a word).
+      ? (field.options || []).map(o => [o, (field.labels && field.labels[o]) || o])
       : options;
     const blank = t === 'choice' ? '' : `<option value="">— none —</option>`;
     return `<div class="form-group">${label}

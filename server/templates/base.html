@@ -797,6 +797,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-session.js' %}"></script>
 <!-- vigil-nav.js — navigateTo(), tab-bar switching -->
 <script src="{% static 'js/vigil-nav.js' %}"></script>
+<!-- vigil-jackil-shapes.js — Jackil's widget renderers (stat/list/table/gauge/series) drawn in Vigil's look. Load before vigil-widgets.js. -->
+<script src="{% static 'js/vigil-jackil-shapes.js' %}"></script>
 <!-- vigil-widgets.js — one renderer per widget kind. Load before vigil-dashboards.js, which calls into WIDGET_RENDERERS. -->
 <script src="{% static 'js/vigil-widgets.js' %}"></script>
 <!-- vigil-dashboards.js — the Gridstack widget grid on the Dashboard page. -->

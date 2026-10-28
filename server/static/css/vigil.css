@@ -4819,3 +4819,71 @@ button.fcn:focus-visible { outline: 2px solid var(--sky); outline-offset: 3px; }
 .totp-key-error { font-size: 0.76rem; color: var(--rose-ink); }
 #security-keys-list .relay-actions .btn { min-width: 76px; }
 :root[data-density="compact"] #security-keys-add-btn { margin-top: 2px; }
+
+/* ── Jackil widgets (J1 p03d) ── */
+.jk-empty { display: flex; align-items: center; justify-content: center; height: 100%; }
+.jk-stat { display: flex; flex-direction: column; justify-content: center; height: 100%;
+           text-decoration: none; color: inherit; border-radius: var(--r-md); padding: 4px 2px; }
+.jk-stat-value { font-size: 34px; font-weight: 700; line-height: 1.1; font-family: var(--font-mono); }
+.jk-stat-label { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+.jk-stat-sub { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+
+.jk-cards { display: flex; flex-direction: column; gap: 6px; }
+.jk-card {
+  --edge-rgb: var(--rgb-grey);
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 11px;
+  background: rgba(var(--edge-rgb), var(--tint-a));
+  border: 1px solid rgba(var(--edge-rgb), var(--tint-a-line));
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  transition: background .18s, border-color .18s, transform .18s var(--ease-out-expo);
+}
+a.jk-card { text-decoration: none; }
+.jk-card:hover {
+  background: rgba(var(--edge-rgb), var(--tint-a-hover));
+  border-color: rgba(var(--edge-rgb), 0.55);
+  transform: translateX(2px);
+}
+.jk-card-main { flex: 1; min-width: 0; }
+.jk-card-title {
+  font-weight: 600; color: var(--text-1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.jk-card-sub {
+  margin-top: 2px; font-size: 11px; color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.jk-card-right {
+  flex-shrink: 0; text-align: right;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-2);
+}
+.jk-card.edge-rose  { --edge-rgb: var(--rgb-rose); }
+.jk-card.edge-peach { --edge-rgb: var(--rgb-peach); }
+.jk-card.edge-lemon { --edge-rgb: var(--rgb-lemon); }
+.jk-card.edge-mint  { --edge-rgb: var(--rgb-mint); }
+.jk-card.edge-sky   { --edge-rgb: var(--rgb-sky); }
+.jk-card.edge-lav   { --edge-rgb: var(--rgb-lavender); }
+.jk-card.edge-grey  { --edge-rgb: var(--rgb-grey); }
+
+.jk-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.jk-table th { text-align: left; font-size: 10px; font-weight: 700; letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--text-3); padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.jk-table td { padding: 6px; border-bottom: 1px solid var(--border); }
+.jk-table td.num { font-family: var(--font-mono); text-align: right; }
+
+.jk-gauge { display: flex; flex-direction: column; align-items: center;
+            justify-content: center; height: 100%; position: relative; }
+.jk-gauge-ring { width: 78px; height: 78px; transform: rotate(-90deg); }
+.jk-gauge .gauge-bg { fill: none; stroke: var(--s3); stroke-width: 7; }
+.jk-gauge .gauge-fill { fill: none; stroke-width: 7; stroke-linecap: round;
+                        transition: stroke-dashoffset .5s var(--ease-out-expo); }
+.jk-gauge-text { font-family: var(--font-mono); font-size: 17px; font-weight: 700;
+                 margin-top: -50px; margin-bottom: 26px; }
+
+.jk-series { width: 100%; height: 100%; display: flex; flex-direction: column; }
+.jk-series-plot { flex: 1; min-height: 0; position: relative; }
+.jk-series-plot svg { position: absolute; inset: 0; display: block; }
+.jk-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-2); margin-top: 6px; }
+.jk-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.axis-text { font-size: 10px; fill: var(--text-3); font-family: var(--font-mono); }
