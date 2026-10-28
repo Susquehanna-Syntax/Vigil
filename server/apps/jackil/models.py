@@ -8,7 +8,63 @@ ticket and posts to it instead.
 
 from __future__ import annotations
 
+import hashlib
+import secrets
+
+from django.conf import settings
 from django.db import models
+
+#: Integration keys are kept as a SHA-256, never in the clear: the rule that
+#: governs agent tokens (apps/hosts/models.py) applies with more force here,
+#: because a helpdesk key is a standing read grant over the whole inventory
+#: and a database dump must not hand one out.
+KEY_PREFIX = "vjk_"
+#: The stored form's marker, matching ``hosts.models.TOKEN_PREFIX``.
+KEY_HASH_PREFIX = "sha256$"
+
+
+def hash_integration_key(raw: str) -> str:
+    """The stored form of a plaintext key. Always hashes, so a caller holding
+    a stored value cannot present it as if it were the key."""
+    return KEY_HASH_PREFIX + hashlib.sha256(str(raw).encode()).hexdigest()
+
+
+class IntegrationKey(models.Model):
+    """A bearer credential a Jackil deployment presents to read Vigil.
+
+    The row is what a request resolves to and the plaintext exists only in the
+    mint response. ``created_by`` is the whole authorization story: a key sees
+    exactly what its creator can see and nothing else, so revoking a person
+    revokes the helpdesk with them — which is why an inactive creator stops a
+    key that was never itself revoked.
+    """
+
+    name = models.CharField(max_length=80)
+    #: The first 8 characters after "vjk_", shown in lists so an admin can
+    #: tell keys apart. Never enough to use.
+    prefix = models.CharField(max_length=8)
+    key_hash = models.CharField(max_length=80, unique=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE, related_name="jackil_integration_keys")
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    @classmethod
+    def mint(cls, *, name: str, user) -> tuple[IntegrationKey, str]:
+        """Create a key; return (row, plaintext). The plaintext exists only here."""
+        raw = KEY_PREFIX + secrets.token_urlsafe(32)
+        row = cls.objects.create(
+            name=name, prefix=raw[len(KEY_PREFIX):len(KEY_PREFIX) + 8],
+            key_hash=hash_integration_key(raw), created_by=user)
+        return row, raw
+
+    @property
+    def is_active(self) -> bool:
+        return self.revoked_at is None
+
+    def __str__(self) -> str:
+        return f"{self.name} (vjk_{self.prefix}…)"
 
 
 class JackilTicket(models.Model):

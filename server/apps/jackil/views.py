@@ -6,13 +6,14 @@ Vigil actually opened are, which is why this exists at all.
 
 from __future__ import annotations
 
+from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from apps.accounts.permissions import IsAdmin
+from apps.accounts.permissions import IsAdmin, visible_site_ids
 from vigil import scoping
 
-from .models import JackilTicket
+from .models import IntegrationKey, JackilTicket
 
 
 @api_view(["GET"])
@@ -43,3 +44,57 @@ def recent_tickets(request):
             "cleared_at": row.cleared_at,
         } for row in rows],
     })
+
+
+def _key_row(row) -> dict:
+    """A key as the admin list shows it. Deliberately no ``key_hash``, and the
+    plaintext is never in a row at all — this is the shape that can be sent."""
+    return {
+        "id": row.pk,
+        "name": row.name,
+        "prefix": row.prefix,
+        "created_by": row.created_by.username,
+        "created_at": row.created_at,
+        "last_used_at": row.last_used_at,
+        "revoked_at": row.revoked_at,
+    }
+
+
+def _visible_keys(user):
+    """Keys *user* may see. Every key is the unscoped admin's business — they
+    are the ones who notice an abandoned one and revoke it — while a
+    site-scoped admin is not told that another site has integrations at all."""
+    keys = IntegrationKey.objects.select_related("created_by").order_by("-created_at")
+    if visible_site_ids(user) is None:
+        return keys
+    return keys.filter(created_by=user)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAdmin])
+def integration_keys(request):
+    """List the visible keys, or mint one. The mint response is the only
+    place the plaintext ever appears; a list never carries a ``key``."""
+    if request.method == "GET":
+        return Response({"keys": [_key_row(k) for k in _visible_keys(request.user)]})
+
+    name = str(request.data.get("name", "")).strip()
+    if not 1 <= len(name) <= 80:
+        return Response({"error": "Name must be between 1 and 80 characters"}, status=400)
+    key, raw = IntegrationKey.mint(name=name, user=request.user)
+    return Response({**_key_row(key), "key": raw}, status=201)
+
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+def revoke_integration_key(request, pk: int):
+    """Revoke a key: 404 for one the caller cannot see, so the answer to
+    "does that id exist somewhere else" is the same as the answer to "no".
+    Idempotent — revoking twice is what a double-click does."""
+    key = _visible_keys(request.user).filter(pk=pk).first()
+    if key is None:
+        return Response({"error": "Not found"}, status=404)
+    if key.revoked_at is None:
+        key.revoked_at = timezone.now()
+        key.save(update_fields=["revoked_at"])
+    return Response(_key_row(key))
