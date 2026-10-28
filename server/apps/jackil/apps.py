@@ -17,6 +17,7 @@ def wire():
 
     hooks.subscribe("alert_sent", _on_alert_sent)
     hooks.subscribe("alert_resolved", _on_alert_resolved)
+    hooks.subscribe("alert_refired", _on_alert_refired)
 
 
 def _on_alert_sent(alert=None, **_):
@@ -31,3 +32,10 @@ def _on_alert_resolved(alert=None, **_):
         return
     from .service import on_alert_resolved
     on_alert_resolved(alert)
+
+
+def _on_alert_refired(alert=None, **_):
+    if alert is None:
+        return
+    from .service import on_alert_refired
+    on_alert_refired(alert)

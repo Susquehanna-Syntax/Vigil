@@ -302,3 +302,57 @@ class ApiTests(JackilTestCase):
         config.write("JACKIL_API_KEY", "key-123")
         body = self.client_api.get("/api/v1/instance-settings/").json()
         self.assertNotIn("key-123", str(body))
+
+
+class RefireTests(JackilTestCase):
+    """A cleared alert that comes back says so on its ticket, once an hour."""
+
+    def setUp(self):
+        super().setUp()
+        from django.core.cache import cache
+        cache.clear()
+
+    def _ticketed_alert(self):
+        _turn_on()
+        alert = self._alert()
+        with mock.patch.object(client, "create_ticket", return_value={"id": 42}):
+            service.on_alert_sent(alert)
+        return alert
+
+    def test_refire_after_a_clear_notes_and_reopens(self):
+        alert = self._ticketed_alert()
+        with mock.patch.object(client, "add_note"), \
+                mock.patch.object(client, "set_status"):
+            service.on_alert_resolved(alert)
+        alert.flap_count = 2
+        with mock.patch.object(client, "add_note") as note, \
+                mock.patch.object(client, "set_status") as status:
+            service.on_alert_refired(alert)
+        note.assert_called_once()
+        self.assertIn("fired again", note.call_args.args[1])
+        self.assertIn("2 times", note.call_args.args[1])
+        status.assert_called_once_with(42, "open")
+        self.assertIsNone(JackilTicket.objects.get(alert=alert).cleared_at)
+
+    def test_refire_notes_at_most_once_an_hour(self):
+        alert = self._ticketed_alert()
+        with mock.patch.object(client, "add_note") as note, \
+                mock.patch.object(client, "set_status"):
+            service.on_alert_refired(alert)
+            service.on_alert_refired(alert)
+            service.on_alert_refired(alert)
+        self.assertEqual(note.call_count, 1)
+
+    def test_refire_with_no_ticket_is_a_no_op(self):
+        _turn_on()
+        with mock.patch.object(client, "add_note") as note:
+            service.on_alert_refired(self._alert())
+        note.assert_not_called()
+
+    def test_refire_hook_is_wired(self):
+        from vigil import hooks
+        alert = self._ticketed_alert()
+        with mock.patch.object(client, "add_note") as note, \
+                mock.patch.object(client, "set_status"):
+            hooks.emit("alert_refired", alert=alert)
+        note.assert_called_once()
