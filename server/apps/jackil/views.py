@@ -8,12 +8,83 @@ from __future__ import annotations
 
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.permissions import IsAdmin, visible_site_ids
 from vigil import scoping
 
+from . import client
+from .integration_views import TYPES, _owned
 from .models import IntegrationKey, JackilTicket
+
+
+#: Every tone's colour is in the drawer's own stylesheet, so one outside this
+#: set draws default text rather than whatever the string names.
+_TONES = ("ok", "warn", "bad", "info", "muted")
+
+#: A link list longer than this is noise; the drawer cannot show it anyway.
+MAX_ITEMS = 50
+
+
+def _safe_url(value) -> str:
+    """The URL as an anchor's ``href`` may carry it, or "" — a bare string
+    from the helpdesk has no business being a javascript: scheme."""
+    url = value if isinstance(value, str) else ""
+    return url if url.startswith(("http://", "https://")) else ""
+
+
+def _link_row(entry) -> dict:
+    entry = entry if isinstance(entry, dict) else {}
+    tone = entry.get("tone", "")
+    return {
+        "relation": str(entry.get("relation", "")),
+        "label": str(entry.get("label", "")),
+        "url": _safe_url(entry.get("url")),
+        "status": str(entry.get("status", "")),
+        "tone": tone if tone in _TONES else "",
+    }
+
+
+def _item_row(entry) -> dict:
+    entry = entry if isinstance(entry, dict) else {}
+    return {"name": str(entry.get("name", "")), "url": _safe_url(entry.get("url"))}
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def related(request):
+    """What Jackil has linked to one of Vigil's objects — the drawer's
+    "Related in Jackil" section, and any panel a later phase hangs on it.
+
+    Two rules make this safe to put in front of every signed-in user. The
+    visibility check runs *before* Jackil is asked, so nothing about a host
+    someone cannot see is ever put to another server, and a missing row and a
+    hidden one answer identically. And a helpdesk that is down, unconfigured
+    or too old is a 200 with the reason in it: a drawer must not break.
+    """
+    obj_type = request.query_params.get("type", "")
+    obj_id = request.query_params.get("id", "")
+    if obj_type not in TYPES:
+        return Response({"error": "Unknown type"}, status=400)
+    if not obj_id:
+        return Response({"error": "Missing id"}, status=400)
+    if not _owned(obj_type, request.user, [obj_id]).exists():
+        return Response({"error": "Not found"}, status=404)
+
+    if not client.enabled():
+        return Response({"configured": False, "links": [], "items": []})
+    try:
+        payload = client.related(obj_type, obj_id)
+    except client.JackilError as exc:
+        return Response({"configured": True, "available": False,
+                         "message": str(exc), "links": [], "items": []})
+
+    links = payload.get("links") if isinstance(payload.get("links"), list) else []
+    items = payload.get("items") if isinstance(payload.get("items"), list) else []
+    return Response({"configured": True, "available": True,
+                     "links": [_link_row(e) for e in links[:MAX_ITEMS]],
+                     "items": [_item_row(e) for e in items[:MAX_ITEMS]]})
 
 
 @api_view(["GET"])

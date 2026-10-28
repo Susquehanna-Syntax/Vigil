@@ -7,6 +7,9 @@ urlpatterns = [
     path("integration-keys/", views.integration_keys, name="jackil-integration-keys"),
     path("integration-keys/<int:pk>/revoke/", views.revoke_integration_key,
          name="jackil-integration-key-revoke"),
+    # A session endpoint for any signed-in user, unlike the key-only routes
+    # below it; listed ahead of "integration/" so the two surfaces stay legible.
+    path("related/", views.related, name="jackil-related"),
     # The read-only surface a key presents itself with. Deliberately a
     # separate namespace from the admin's own session endpoints above.
     path("integration/ping/", integration_views.ping, name="jackil-integration-ping"),

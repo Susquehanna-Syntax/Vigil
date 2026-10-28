@@ -10,6 +10,7 @@ someone guess at a bare status code.
 from __future__ import annotations
 
 import logging
+from urllib.parse import urlencode
 
 import requests
 
@@ -18,6 +19,10 @@ from apps.instance.config import setting
 logger = logging.getLogger(__name__)
 
 TIMEOUT = 15
+
+#: A drawer must not sit waiting on a helpdesk that is down. Writes keep the
+#: long timeout; this read is decorative and four seconds is its whole budget.
+RELATED_TIMEOUT = 4
 
 
 class JackilError(RuntimeError):
@@ -47,12 +52,13 @@ def _headers() -> dict:
     }
 
 
-def _request(method: str, path: str, payload: dict | None = None):
+def _request(method: str, path: str, payload: dict | None = None,
+             timeout: int = TIMEOUT):
     url = f"{_base()}/api/v1{path}"
     try:
         resp = requests.request(
             method, url, json=payload, headers=_headers(),
-            verify=setting("JACKIL_VERIFY_SSL"), timeout=TIMEOUT,
+            verify=setting("JACKIL_VERIFY_SSL"), timeout=timeout,
         )
     except requests.RequestException as exc:
         raise JackilError(f"Could not reach {_base()} — {exc}") from exc
@@ -118,6 +124,25 @@ def get_ticket(ticket_id: int) -> dict:
 
 def set_status(ticket_id: int, status: str) -> dict:
     return _request("PATCH", f"/tickets/{ticket_id}/", {"status": status})
+
+
+def related(kind: str, obj_id: str) -> dict:
+    """What Jackil has linked to one of Vigil's objects.
+
+    A 404 here means the far end predates ``/api/v1/vigil/links/`` — Jackil
+    2026.3 or later is what offers it — which is a sentence worth more than
+    "Not found": the remedy is to update Jackil, not to re-check keys.
+    """
+    try:
+        return _request(
+            "GET", "/vigil/links/?" + urlencode({"type": kind, "id": obj_id}),
+            timeout=RELATED_TIMEOUT,
+        )
+    except JackilNotFound as exc:
+        raise JackilError(
+            "Jackil does not offer related links yet. "
+            "Update Jackil to 2026.3 or later."
+        ) from exc
 
 
 def ticket_url(ticket_id: int) -> str:
