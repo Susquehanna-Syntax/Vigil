@@ -10,6 +10,10 @@ urlpatterns = [
     # A session endpoint for any signed-in user, unlike the key-only routes
     # below it; listed ahead of "integration/" so the two surfaces stay legible.
     path("related/", views.related, name="jackil-related"),
+    # Jackil's own widgets on a Vigil dashboard. Distinct from the
+    # "integration/widgets/" routes below, which are Vigil's widget catalogue
+    # presented to a key: this one is /api/v1/jackil/widgets/jackil:<kind>/.
+    path("widgets/<str:kind>/", views.jackil_widget, name="jackil-widget-data"),
     # The read-only surface a key presents itself with. Deliberately a
     # separate namespace from the admin's own session endpoints above.
     path("integration/ping/", integration_views.ping, name="jackil-integration-ping"),

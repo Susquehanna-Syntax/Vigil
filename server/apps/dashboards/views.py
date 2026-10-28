@@ -135,7 +135,12 @@ def layout_update(request, dashboard_id):
     Takes ``{"widgets": [{"kind", "x", "y", "w", "h", "settings"}, …]}``.
     An unknown ``kind`` is a 400 naming it; ``w``/``h`` are clamped to the
     registry's minimums and to the grid width.
+
+    A ``jackil:`` tile is accepted while Jackil is down, at its smallest, so
+    the dashboard the user built comes back when the helpdesk does.
     """
+    from apps.jackil.remote_widgets import is_remote
+
     board = Dashboard.objects.filter(id=dashboard_id).first()
     if board is None or (board.owner_id != request.user.id and not board.shared):
         return Response({"error": "not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -156,8 +161,13 @@ def layout_update(request, dashboard_id):
         kind = entry.get("kind")
         spec = WIDGET_REGISTRY.get(kind)
         if spec is None:
-            return Response({"error": f"unknown widget kind: {kind!r}"},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # A Jackil tile whose helpdesk is not answering is in no registry
+            # right now, and a layout that dropped it on every save would
+            # quietly eat someone's dashboard while Jackil was restarting.
+            if not is_remote(kind):
+                return Response({"error": f"unknown widget kind: {kind!r}"},
+                                status=status.HTTP_400_BAD_REQUEST)
+            spec = {"min_w": 2, "min_h": 2}
         try:
             x = int(entry.get("x", 0))
             y = int(entry.get("y", 0))
@@ -248,11 +258,21 @@ def dashboard_share(request, dashboard_id):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def catalog(request):
-    """The widget registry, plus the grid width layouts are expressed against."""
-    from .widgets import settings_for
+    """The widget registry, plus the grid width layouts are expressed against.
+
+    Jackil's own widgets ride along in a group of their own when it is
+    answering. Its settings get the universal ones too — a dashboard may hold
+    two ticket lists and "Stat tile" twice names neither of them.
+    """
+    from apps.jackil.remote_widgets import remote_catalog
+
+    from .widgets import UNIVERSAL_SETTINGS, settings_for
 
     widgets = {
         kind: {**spec, "settings": settings_for(kind)}
         for kind, spec in WIDGET_REGISTRY.items()
     }
+    for kind, spec in remote_catalog().items():
+        widgets[kind] = {**spec,
+                         "settings": {**UNIVERSAL_SETTINGS, **spec["settings"]}}
     return Response({"widgets": widgets, "grid_columns": GRID_COLUMNS})

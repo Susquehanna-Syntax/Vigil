@@ -88,6 +88,23 @@ def related(request):
 
 
 @api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def jackil_widget(request, kind):
+    """One of Jackil's own widgets, for a tile on a Vigil dashboard.
+
+    The browser cannot hold the API key, so the fetch goes through here. A
+    kind that is not a ``jackil:<kind>`` is refused before anything is asked
+    of Jackil; every other answer comes back 200 with an envelope in it,
+    because a tile whose helpdesk is down should say so and not throw.
+    """
+    from .remote_widgets import is_remote, remote_widget
+
+    if not is_remote(kind):
+        return Response({"error": "Not found"}, status=404)
+    return Response(remote_widget(kind, request.query_params.dict()))
+
+
+@api_view(["GET"])
 @permission_classes([IsAdmin])
 def recent_tickets(request):
     # Scoped by site, like the alert list these rows came from. IsAdmin asks
