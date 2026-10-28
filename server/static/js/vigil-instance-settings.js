@@ -229,3 +229,119 @@ async function loadJackilTickets() {
   host.innerHTML = `<div class="dash-cards">${rows}</div>`
     + `<p class="muted" style="margin-top:12px;">${data.count} ticket${data.count === 1 ? '' : 's'} opened in total.</p>`;
 }
+
+/* ── Jackil: integration keys ──────────────────────────────────────────────
+   A key is a standing read grant as its creator, so the card says that in
+   words before the button that makes one. The plaintext comes back exactly
+   once, from the mint response; it is written into the modal's box and into
+   nothing else — not a variable that outlives it, not storage. */
+const JK_KEYS_API = '/api/v1/jackil/integration-keys/';
+
+async function loadJackilKeys() {
+  const host = document.getElementById('jackil-keys');
+  if (!host) return;
+  let data;
+  try {
+    data = await apiJson(JK_KEYS_API);
+  } catch (e) {
+    // A scoped non-admin reaches the pane and gets 403 from the API. Saying
+    // "Only an admin" is truer than echoing the server's machinery words.
+    host.innerHTML = /admin/i.test(e.message || '')
+      ? '<p class="muted">Only an admin can manage integration keys.</p>'
+      : `<p class="muted">${escHtml(e.message || 'Could not load keys')}</p>`;
+    return;
+  }
+  const form = `<p class="totp-sub" style="margin-bottom:14px;">A key lets Jackil `
+    + `look up hosts, tasks, playbooks, runs and automations as you, and read `
+    + `dashboard widgets. It cannot change anything in Vigil.</p>`
+    + `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">`
+      + `<input type="text" class="form-control" id="jackil-key-name" maxlength="80"`
+        + ` placeholder="Key name, e.g. Helpdesk" style="flex:1;min-width:180px;">`
+      + `<button type="button" class="btn btn-primary btn-sm" data-jk-create>Create key</button>`
+    + `</div>`;
+  const rows = (data.keys || []).map(_jkRow).join('');
+  host.innerHTML = form
+    + (rows ? `<div class="dash-cards" style="margin-top:16px;">${rows}</div>`
+            : '<p class="muted" style="margin-top:14px;">No keys yet.</p>');
+}
+
+function _jkRow(k) {
+  const created = k.created_at ? new Date(k.created_at).toLocaleDateString() : '—';
+  // "Last used" is the one line that tells an admin a key is load-bearing
+  // before they revoke it, so a revoked key keeps showing its last use.
+  const used = k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'never';
+  const sub = `vjk_${escHtml(k.prefix)}… · created by ${escHtml(k.created_by)}`
+    + ` · ${escHtml(created)} · last used ${escHtml(used)}`;
+  const right = k.revoked_at ? '<span class="muted">Revoked</span>'
+    : `<button type="button" class="btn btn-rose btn-sm" data-jk-revoke="${escAttr(String(k.id))}">Revoke</button>`;
+  // Dimmed rather than flagged with a coloured edge: a revoked key is not an
+  // alert, it is history.
+  return `<div class="dash-card"${k.revoked_at ? ' style="opacity:.6"' : ''}>`
+    + `<div class="dash-card-main">`
+      + `<div class="dash-card-title">${escHtml(k.name)}</div>`
+      + `<div class="dash-card-sub">${sub}</div>`
+    + `</div>`
+    + `<div class="dash-card-right">${right}</div>`
+  + `</div>`;
+}
+
+delegateClick('[data-jk-create]', async () => {
+  const input = document.getElementById('jackil-key-name');
+  const name = (input?.value || '').trim();
+  if (!name) { showToast('Give the key a name', 'error'); return; }
+  let created;
+  try {
+    created = await apiJson(JK_KEYS_API, { method: 'POST', body: JSON.stringify({ name }) });
+  } catch (e) {
+    showToast(e.message || 'Could not create the key', 'error');
+    return;
+  }
+  if (input) input.value = '';
+  _jkShowPlainKey(created.key);
+});
+
+function _jkShowPlainKey(raw) {
+  const m = mountModal('jackil-key', { variant: 'm-pop' });
+  m.setBody(
+    `<div class="modal-title">Copy your key now</div>`
+    + `<p class="muted" style="margin-bottom:14px;">Vigil keeps only a hash of it `
+      + `and cannot show it again.</p>`
+    + `<input type="text" class="form-control totp-input" id="jackil-key-plain" readonly`
+      + ` value="${escAttr(raw)}" style="font-size:13px;letter-spacing:normal;text-align:left;">`
+    + `<div class="is-actions">`
+      + `<button type="button" class="btn btn-mint btn-sm" data-jk-copy>Copy</button>`
+      + `<button type="button" class="btn btn-outline btn-sm" data-jk-done>Done</button>`
+    + `</div>`);
+  // The key is read back out of the box when it is copied rather than kept in
+  // a closure: the modal is the only place it exists.
+  m.modal.querySelector('[data-jk-copy]').onclick = async () => {
+    const field = document.getElementById('jackil-key-plain');
+    try {
+      await navigator.clipboard.writeText(field ? field.value : '');
+      showToast('Key copied', 'success');
+    } catch (e) {
+      showToast('Copy failed — select it and copy manually', 'error');
+    }
+  };
+  m.modal.querySelector('[data-jk-done]').onclick = () => {
+    m.close();
+    loadJackilKeys();
+  };
+  m.open();
+}
+
+delegateClick('[data-jk-revoke]', async (el) => {
+  const yes = await confirmModal(
+    'Revoke this key? Jackil stops reading Vigil with it straight away.',
+    { title: 'Revoke key', confirmText: 'Revoke', danger: true });
+  if (!yes) return;
+  try {
+    await apiJson(`${JK_KEYS_API}${encodeURIComponent(el.dataset.jkRevoke)}/revoke/`,
+      { method: 'POST', body: '{}' });
+  } catch (e) {
+    showToast(e.message || 'Could not revoke the key', 'error');
+    return;
+  }
+  showToast('Key revoked', 'success');
+  loadJackilKeys();
+});

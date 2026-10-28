@@ -37,6 +37,9 @@ async function loadAutomations() {
     _fillEditorOptions();
     _allAutomations = data.automations;
     _renderAutomations(_filterAutomations());
+    // The #open/automation/<id> deep link needs the row it is named after,
+    // and this is the fetch that has it.
+    return _allAutomations;
   } catch (e) {
     list.innerHTML = `<div class="empty-block"><h4>Couldn't load automations</h4><p>${escHtml(e.message)}</p></div>`;
   }

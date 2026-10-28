@@ -121,6 +121,13 @@ def _owned(kind: str, user, ids):
 
 # ── presentation ──────────────────────────────────────────────────────────────
 
+def deep_link(request, kind: str, pk) -> str:
+    """The URL that opens a row in the SPA (`vigil-deeplink.js` honours it).
+    Minted from the request so it carries whatever host the key is talking
+    to; a relative link would be useless to a helpdesk agent."""
+    return request.build_absolute_uri("/") + f"#open/{kind}/{pk}"
+
+
 def _item(kind: str, obj, request) -> dict:
     """The row as the search page draws it: what to call it, what sits under
     that, and how loudly. ``url`` is the deep link phase 02 makes the SPA
@@ -133,7 +140,7 @@ def _item(kind: str, obj, request) -> dict:
         "sub": sub,
         "status": status,
         "tone": tone,
-        "url": request.build_absolute_uri("/") + f"#open/{kind}/{obj.pk}",
+        "url": deep_link(request, kind, obj.pk),
     }
 
 

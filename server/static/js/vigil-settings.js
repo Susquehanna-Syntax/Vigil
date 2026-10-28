@@ -305,6 +305,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (item.dataset.pane === 'jackil' && typeof loadJackilTickets === 'function') {
         loadJackilTickets();
       }
+      if (item.dataset.pane === 'jackil' && typeof loadJackilKeys === 'function') {
+        loadJackilKeys();
+      }
       // Relays too: the list is admin-only, and it polls while you look at it.
       if (item.dataset.pane === 'relays' && typeof loadRelays === 'function') loadRelays();
       // The account pane holds the security-keys card (QA-65); it is also what
