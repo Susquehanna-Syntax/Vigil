@@ -323,10 +323,17 @@ function _jkShowPlainKey(raw) {
       showToast('Copy failed — select it and copy manually', 'error');
     }
   };
-  m.modal.querySelector('[data-jk-done]').onclick = () => {
-    m.close();
+  m.modal.querySelector('[data-jk-done]').onclick = () => m.close();
+  // Done, a scrim click and Esc all close it by dropping `.open`; whichever
+  // it was, the key leaves the page with the modal instead of sitting hidden
+  // in the DOM for the rest of the session, and the list picks up the new row.
+  const forget = new MutationObserver(() => {
+    if (m.modal.classList.contains('open')) return;
+    forget.disconnect();
+    m.setBody('');
     loadJackilKeys();
-  };
+  });
+  forget.observe(m.modal, { attributes: true, attributeFilter: ['class'] });
   m.open();
 }
 
