@@ -8,9 +8,8 @@ hid. Each finder copies the filter its own page uses (see apps/hosts/search.py).
 
 from __future__ import annotations
 
-from uuid import UUID
-
 from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from rest_framework.decorators import (
     api_view,
@@ -104,13 +103,20 @@ def _owned(kind: str, user, ids):
     helpdesk typo into a 500, and an error naming which id failed would be a
     hint about what exists.
     """
+    qs = _FINDERS[kind][0](user)
+    pk = qs.model._meta.pk
     wanted = []
     for candidate in ids:
+        # The kind's own primary key decides what an id may be: a long run of
+        # digits is not a UUID's int and must not reach a lookup that would
+        # raise on it.
         try:
-            wanted.append(int(candidate) if candidate.isdigit() else UUID(candidate))
-        except ValueError:
+            value = pk.to_python(candidate)
+            pk.get_prep_value(value)
+        except (DjangoValidationError, TypeError, ValueError, OverflowError):
             continue
-    return _FINDERS[kind][0](user).filter(pk__in=wanted)
+        wanted.append(value)
+    return qs.filter(pk__in=wanted)
 
 
 # ── presentation ──────────────────────────────────────────────────────────────

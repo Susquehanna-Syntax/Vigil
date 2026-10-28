@@ -294,6 +294,11 @@ class ResolveTests(TestCase):
                          {"items": {}})
         self.assertEqual(self.client.get(RESOLVE, {"type": "host", "ids": "7"}).json(),
                          {"items": {}})
+        # Too long for any key, UUID or bigint: still absent, never a 500.
+        for kind in ("host", "automation", "run"):
+            self.assertEqual(self.client.get(RESOLVE, {"type": kind, "ids": "9" * 60}).json(),
+                             {"items": {}})
+        self.assertEqual(self.client.get(_detail("host", "9" * 60)).status_code, 404)
 
     def test_more_than_a_hundred_ids_is_400(self):
         response = self.client.get(RESOLVE, {"type": "host",
