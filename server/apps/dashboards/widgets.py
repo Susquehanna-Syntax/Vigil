@@ -242,6 +242,18 @@ WIDGET_REGISTRY: dict[str, dict] = {
             "limit": {"type": "int", "label": "How many", "min": 1, "max": 25, "default": 8},
         },
     },
+    "report_chart": {
+        "group": "work",
+        "label": "Report chart",
+        "description": "One chart from a saved report, with the report's own sources and range.",
+        "w": 6, "h": 4, "min_w": 3, "min_h": 3,
+        "settings": {
+            # "<report uuid>:<index into report.widgets>". One value rather
+            # than two settings, because which charts exist depends on the
+            # report and the settings form has no dependent selects.
+            "chart": {"type": "report_chart", "label": "Chart", "default": ""},
+        },
+    },
     # ── Security and compliance ──────────────────────────────────────────
     "vuln_findings": {
         "group": "security",

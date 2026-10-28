@@ -1104,6 +1104,52 @@ async function _renderAuditTail(body, settings) {
     </div>`).join('') + `</div>`;
 }
 
+/* A saved report's chart, live on the dashboard. The report itself stays the
+   source of truth: the card fetches the same computed payload the report page
+   draws and hands it to the same drawer, so editing the report updates the
+   card without anything here knowing the report's shape. */
+async function _renderReportChart(body, settings, widget) {
+  const chart = settings.chart || '';
+  const at = chart.lastIndexOf(':');
+  if (!chart || at < 0) {
+    _wEmpty(body, 'Pick a report chart in this widget\u2019s settings');
+    return;
+  }
+  // Split on the LAST colon: report ids are UUIDs, so the index is the only
+  // thing after it, but the setting is a free string and a stray colon in the
+  // id must not silently retarget a different chart.
+  const id = chart.slice(0, at);
+  const index = Number(chart.slice(at + 1));
+  if (!Number.isInteger(index) || index < 0) {
+    _wEmpty(body, 'This report was removed');
+    return;
+  }
+  if (typeof _drawRptWidget !== 'function') {
+    _wEmpty(body, 'Reports are not loaded on this page');
+    return;
+  }
+  let computed;
+  try {
+    computed = await _wCached(`/api/v1/reports/${encodeURIComponent(id)}/data/`, 30000);
+  } catch (e) {
+    // _wCached never caches a failure and apiJson stamps the status, so 404 is
+    // the report having been deleted (or never being ours) rather than a blip.
+    if (e && e.status === 404) { _wEmpty(body, 'This report was removed'); return; }
+    throw e;
+  }
+  const computedWidget = ((computed && computed.widgets) || [])[index];
+  if (!computedWidget) { _wEmpty(body, 'This report was removed'); return; }
+  // The drawer pushes its instance onto the list it is handed. The dashboard
+  // repaints this body every poll, so the previous instance is destroyed here
+  // rather than by the drawer's own teardown — which only knows the ids drawn
+  // this cycle, and would leak one instance per repaint for a single card.
+  const previous = _WCHARTS.get(widget.id);
+  if (previous) { previous.destroy(); _WCHARTS.delete(widget.id); }
+  const charts = [];
+  _drawRptWidget(body, computedWidget, index, charts);
+  if (charts[0]) _WCHARTS.set(widget.id, charts[0]);
+}
+
 /* Kinds whose renderers land in the next phase. Named rather than missing, so
    the widget says what it is instead of looking broken. */
 function _renderPending(body, _settings, widget) {
@@ -1124,6 +1170,7 @@ const WIDGET_RENDERERS = {
   wave_status: _renderWaveStatus,
   playbook_coverage: _renderPlaybookCoverage,
   automation_activity: _renderAutomationActivity,
+  report_chart: _renderReportChart,
   vuln_findings: _renderVulnFindings,
   firewall_status: _renderFirewallStatus,
   windows_patches: _renderWindowsPatches,
@@ -1152,6 +1199,13 @@ const WIDGET_RENDERERS = {
    The form is generated from the registry's typed settings schema, so adding a
    setting to a widget means editing one dict rather than a dict and a form. */
 
+//: A report widget with no explicit title is named by its kind. Report kinds
+//: are snake_case identifiers the drawer already keys off; this is only a label.
+function _wReportKindName(kind) {
+  const words = String(kind || '').replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 //: Option lists for the picker field types, fetched once per settings open.
 async function _settingsOptions(type) {
   if (type === 'host') {
@@ -1165,6 +1219,18 @@ async function _settingsOptions(type) {
   if (type === 'definition') {
     const rows = _wRows(await _wCached('/api/v1/tasks/definitions/?scope=mine', 30000));
     return rows.map(d => [d.id, d.name]);
+  }
+  if (type === 'report_chart') {
+    // "<uuid>:<index>" rather than two settings: which charts exist depends on
+    // the report, and the generated form has no dependent selects.
+    const reports = _wRows(await _wCached('/api/v1/reports/', 30000));
+    const out = [];
+    for (const r of reports) {
+      (r.widgets || []).forEach((w, i) => {
+        out.push([`${r.id}:${i}`, `${r.name} \u2014 ${w.title || _wReportKindName(w.kind)}`]);
+      });
+    }
+    return out;
   }
   if (type === 'metric') {
     // Only what the fleet is actually reporting — a picker offering a metric
