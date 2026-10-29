@@ -3335,6 +3335,11 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
   margin-top: 2px; font-size: 11px; color: var(--text-3);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* A webhook row carries five buttons — the widest right-hand side any card
+   takes. Inline children of .dash-card-right would sit flush against each
+   other, and a class beats repeating an inline margin five times. */
+.wh-act { margin-left: 6px; }
+
 .dash-card-right {
   flex-shrink: 0; text-align: right;
   font-family: var(--font-mono); font-size: 11px; color: var(--text-2);
