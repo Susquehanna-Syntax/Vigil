@@ -42,6 +42,8 @@ with `seats: 9999`). SSO/SAML is "available — talk to us," not a tier.
 | **Audit log** viewer + CSV export (recording is always on) | — | Yes |
 | **Status page branding** (logo, no badge, per-site client pages) | — | Yes |
 | **Branding** (reports, portal) | — | Yes |
+| **Scoped API keys** (bearer keys on the general API, limited to sites, read-only or read-write) | — | Yes |
+| **Webhooks** (signed JSON on alert, task and host events) | — | Yes |
 | SSO/SAML | — | talk to us |
 
 **Seats are the only meter.** Sites are unlimited on Business because seats

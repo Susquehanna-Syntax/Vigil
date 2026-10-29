@@ -74,6 +74,8 @@ BUSINESS_FEATURES = frozenset({
     "dashboard_sharing",  # read-only sharing of a dashboard; the flag lives in core
     "compliance_reports",  # per-site patch compliance, CSV export, branded report
     "jackil",             # bundled ticketing; the Jackil side verifies this same blob
+    "api_keys",           # scoped API keys on the general API (apps_business.apikeys)
+    "webhooks",           # signed event webhooks (apps_business.webhooks)
 })
 
 #: Free-tier limits (soft — exceeded means a banner, never a block).

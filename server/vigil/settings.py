@@ -121,6 +121,14 @@ from importlib.util import find_spec as _find_spec  # noqa: E402
 BUSINESS_INSTALLED = _find_spec("apps_business") is not None
 if BUSINESS_INSTALLED:
     INSTALLED_APPS += ["apps_business.sites", "apps_business.audits", "apps_business.branding"]
+#: Added in 2026.16.0. Checked one by one so a Business package from before
+#: then still loads against this core.
+BUSINESS_API_KEYS = BUSINESS_INSTALLED and _find_spec("apps_business.apikeys") is not None
+BUSINESS_WEBHOOKS = BUSINESS_INSTALLED and _find_spec("apps_business.webhooks") is not None
+if BUSINESS_API_KEYS:
+    INSTALLED_APPS += ["apps_business.apikeys"]
+if BUSINESS_WEBHOOKS:
+    INSTALLED_APPS += ["apps_business.webhooks"]
 
 # ---------------------------------------------------------------------------
 # Licensing (SQSY-LICENSING.md)
@@ -403,6 +411,11 @@ REST_FRAMEWORK = {
     # DRF tokens.
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.SessionAuthentication",
+        # A Business scoped API key ("Bearer vsk_…") on the general API. It
+        # answers only for its own prefix, so agent tokens and the Jackil
+        # integration key still never reach a session endpoint.
+        *(["apps_business.apikeys.auth.ScopedKeyAuthentication"]
+          if BUSINESS_API_KEYS else []),
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",

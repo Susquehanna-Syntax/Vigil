@@ -239,14 +239,24 @@ def _facts(kind: str, obj) -> list[dict]:
             for label, value in _FACTS[kind](obj) if str(value)]
 
 
+def _scoped_key_auth():
+    if not settings.BUSINESS_API_KEYS:
+        return []
+    from django.utils.module_loading import import_string
+    return [import_string("apps_business.apikeys.auth.ScopedKeyAuthentication")]
+
+
 # ── views ─────────────────────────────────────────────────────────────────────
 
 def integration(view):
     """What every integration endpoint shares, in one place: GET only, and
     the key as the only credential — a session gets 401 here just as a key
     gets 401 everywhere else, so the two cannot be confused for each other.
-    The policy decorators must sit inside ``api_view``, hence this order."""
-    authentication_classes([IntegrationKeyAuthentication])(view)
+    The policy decorators must sit inside ``api_view``, hence this order.
+
+    A Business scoped API key is accepted too: it is how an admin limits
+    what Jackil can see to some sites."""
+    authentication_classes([IntegrationKeyAuthentication, *_scoped_key_auth()])(view)
     permission_classes([IsAuthenticated])(view)
     return api_view(["GET"])(view)
 
