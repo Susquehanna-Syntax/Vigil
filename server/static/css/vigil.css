@@ -2471,6 +2471,9 @@ select.form-control:hover { border-color: var(--s4); }
 #picker-overlay { z-index: 319; }
 #taskedit-overlay, #taskedit-modal { z-index: 340; }
 #taskedit-overlay { z-index: 339; }
+/* Edit as YAML opens from the playbook and automation editors, so it sits above both. */
+#content-yaml-overlay, #content-yaml-modal { z-index: 330; }
+#content-yaml-overlay { z-index: 329; }
 
 /* Picker launch buttons (look like a select, act like a button) */
 .picker-btn { justify-content: space-between; background: var(--s2); border: 1.5px solid var(--border);
