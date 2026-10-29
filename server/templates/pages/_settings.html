@@ -53,7 +53,7 @@
         function render(d) {
           document.getElementById("license-summary").textContent =
             d.tier === "business"
-              ? "Vigil Business — licensed to " + d.org + " (" + d.status + ")"
+              ? "SQSY Business — licensed to " + d.org + " (" + d.status + ")"
               : "Vigil Free — every monitoring feature, forever. Business adds sites, audits, seats and branding." + (d.detail ? " (" + d.detail + ")" : "");
           document.getElementById("license-instance").textContent = d.instance;
           document.getElementById("license-seats").textContent =

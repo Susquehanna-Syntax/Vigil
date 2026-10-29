@@ -1070,7 +1070,7 @@ function _wLicensed(body, payload) {
   // open elsewhere, so this is the widget greying itself rather than erroring.
   if (payload && payload.upgrade_url) {
     body.innerHTML = `<div class="dash-empty muted-note">
-      ${escHtml(payload.detail || 'Requires a Business licence')}</div>`;
+      ${escHtml(payload.detail || 'Requires an SQSY Business licence')}</div>`;
     return false;
   }
   return true;
@@ -1079,7 +1079,7 @@ function _wLicensed(body, payload) {
 async function _renderSiteSummary(body) {
   let payload;
   try { payload = await _wCached('/api/v1/sites/'); }
-  catch (e) { _wEmpty(body, 'Sites requires a Business licence'); return; }
+  catch (e) { _wEmpty(body, 'Sites needs SQSY Business'); return; }
   if (!_wLicensed(body, payload)) return;
   const rows = _wRows(payload);
   if (!rows.length) { _wEmpty(body, 'No sites yet'); return; }
@@ -1093,7 +1093,7 @@ async function _renderSiteSummary(body) {
 async function _renderAuditTail(body, settings) {
   let payload;
   try { payload = await _wCached('/api/v1/audits/'); }
-  catch (e) { _wEmpty(body, 'The audit log requires a Business licence'); return; }
+  catch (e) { _wEmpty(body, 'The audit log needs SQSY Business'); return; }
   if (!_wLicensed(body, payload)) return;
   const rows = _wRows(payload).slice(0, Number(settings.limit) || 10);
   if (!rows.length) { _wEmpty(body, 'Nothing audited yet'); return; }

@@ -425,7 +425,7 @@ def upgrade_body(name: str) -> dict:
     return {
         "feature": name,
         "licensed": False,
-        "detail": f"'{name}' requires a Vigil Business license.",
+        "detail": f"'{name}' requires a SQSY Business license.",
         "upgrade_url": "https://susquehannasyntax.com/subscribe",
     }
 
@@ -565,30 +565,30 @@ def banners(*, now: int | None = None) -> list[dict]:
     elif state.status is Status.GRACE:
         days_over = (now - state.claims.exp) // 86400
         out.append({"severity": "critical", "message":
-                    f"Business license expired {days_over}d ago — features stay on "
+                    f"SQSY Business license expired {days_over}d ago — features stay on "
                     f"for {GRACE_DAYS - days_over} more day(s). Renew at "
                     "susquehannasyntax.com."})
     elif state.status is Status.LAPSED:
         out.append({"severity": "warning", "message":
-                    "Business license expired; Business features are off. "
+                    "SQSY Business license expired; Business features are off. "
                     "Monitoring, alerting, and agents are unaffected — forever."})
     elif state.status is Status.VALID:
         days_left = (state.claims.exp - now) // 86400
         if days_left <= 7:
             out.append({"severity": "critical",
-                        "message": f"Business license expires in {days_left}d."})
+                        "message": f"SQSY Business license expires in {days_left}d."})
         elif days_left <= 14:
             out.append({"severity": "warning",
-                        "message": f"Business license expires in {days_left}d."})
+                        "message": f"SQSY Business license expires in {days_left}d."})
         elif days_left <= 30:
             out.append({"severity": "info",
-                        "message": f"Business license expires in {days_left}d."})
+                        "message": f"SQSY Business license expires in {days_left}d."})
 
     used, allowed = seats_used(), seats_allowed()
     if used > allowed:
         # Seat #N over the licensed count WORKS (§6) — this is the whole response.
         target = ("update your subscription at susquehannasyntax.com"
-                  if state.business_active else "Vigil Business")
+                  if state.business_active else "SQSY Business")
         out.append({"severity": "info", "message":
                     f"{used}/{allowed} seats in use — {target}."})
     return out

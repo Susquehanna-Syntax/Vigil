@@ -1224,7 +1224,7 @@ Vigil/
 ## Tiers
 
 Vigil is free — full monitoring, alerting, unlimited agents, hosts, and
-retention, forever. **Vigil Business** adds the accountability features
+retention, forever. **SQSY Business** adds the accountability features
 (unlimited Sites, audit-log viewer/export, seats + Operator role, branding)
 via a signed, instance-bound, offline-verified license. Nothing ever blocks:
 an expired license means Business features switch off and monitoring carries
@@ -1233,6 +1233,6 @@ on untouched. See `docs/EDITIONS.md`.
 ## License
 
 AGPLv3. The Business features are a separate package under a commercial
-license: official images include it compiled, it requires a Vigil Business
+license: official images include it compiled, it requires a SQSY Business
 subscription for production use, and its source is available to customers for
 audit on request

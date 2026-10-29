@@ -220,7 +220,7 @@ function _dashBindChrome(host) {
       showToast(turningOn ? 'Shared' : 'No longer shared', 'success');
     } catch (e) {
       // A 402 here is the Business gate, and its body explains itself.
-      showToast(e.message || 'Sharing needs a Business licence', 'error');
+      showToast(e.message || 'Sharing needs SQSY Business', 'error');
     }
   });
 
