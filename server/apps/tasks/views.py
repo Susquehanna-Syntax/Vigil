@@ -338,6 +338,14 @@ def task_result(request):
             # every reconcile pass redispatches the playbook.
             _maybe_apply_playbook_completion_tag(task)
 
+    # Every state accepted here is terminal. After the block commits, so a
+    # listener never sees a result that then rolls back. task_finished, not
+    # task_completed: automations subscribe to the latter and have never been
+    # sent it, so emitting it here would start firing them, with nothing to
+    # stop a task-runs-a-task loop.
+    from vigil import hooks
+    hooks.emit("task_finished", task=task, host=host)
+
     return Response(TaskSerializer(task).data)
 
 
