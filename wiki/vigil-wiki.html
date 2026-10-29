@@ -855,6 +855,26 @@
       <h2 class="section-title" style="color:var(--lavender-ink)">Changelog</h2>
       <p class="section-desc">What changed in each Vigil release, newest first. Versions are <code>year.minor.patch</code>: a minor release can be any size, a patch release fixes things. Business-only items say so; everything else is in every edition.</p>
 
+      <h3 id="changelog-2026-16-0">2026.16.0 (in progress)</h3>
+      <p class="prose"><strong>Jackil integration</strong> (every edition)</p>
+      <ul class="prose">
+        <li>Settings → Jackil Tickets mints <strong>integration keys</strong> (<code>vjk_</code>). Jackil uses one to read hosts, tasks, playbooks, runs and automations, server to server. A key sees what the admin who made it can see, is stored only as a hash, and cannot change anything in Vigil.</li>
+        <li>A host's drawer, the Monitor page and a run's details show <strong>Related in Jackil</strong>: the tickets, issues, pages and items that link to it.</li>
+        <li>Dashboards can hold Jackil's widgets (open tickets, SLA, ticket volume, my issues and more), drawn the same way Jackil draws them.</li>
+        <li>A new <strong>report chart</strong> widget puts a card from a saved report on a dashboard.</li>
+        <li>An alert that clears and fires again notes its Jackil ticket and reopens it, at most once an hour.</li>
+        <li>Jackil reads Vigil's signed licence and verifies it itself, so one SQSY Business licence covers both.</li>
+      </ul>
+      <p class="prose"><strong>Scoped API keys and webhooks</strong> (Business)</p>
+      <ul class="prose">
+        <li>Settings → API &amp; Webhooks mints <strong>scoped API keys</strong> (<code>vsk_</code>) for Vigil's API. A key acts as the admin who made it, limited to the sites you pick, and is read-only unless you choose read and write. Keys work on hosts, metrics, alerts, tasks, playbooks, software, policies, automations, reports and dashboards; never on accounts, settings, licences, keys, stacks or remote sessions. Jackil accepts one in place of an integration key, which is how you limit Jackil to some sites.</li>
+        <li><strong>Webhooks</strong> post signed JSON when an alert fires or clears, a task finishes, or a host is approved. Each request carries an <code>X-Vigil-Signature</code> header (an HMAC-SHA256 of the body with the webhook's secret), and the last 50 deliveries are kept with their status.</li>
+      </ul>
+      <p class="prose"><strong>Also</strong></p>
+      <ul class="prose">
+        <li>The paid edition is called <strong>SQSY Business</strong> everywhere Vigil shows it.</li>
+      </ul>
+
       <h3 id="changelog-2026-15-1">2026.15.1</h3>
       <p class="prose"><strong>Stacks from Git</strong></p>
       <ul class="prose">
