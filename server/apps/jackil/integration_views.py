@@ -20,7 +20,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.tasks.authz import visible_runs
-from vigil import scoping
+from vigil import licensing, scoping
 
 from .integration_auth import IntegrationKeyAuthentication
 
@@ -255,6 +255,23 @@ def integration(view):
 def ping(request):
     return Response({"ok": True, "version": settings.VIGIL_VERSION,
                      "acting_as": request.user.username})
+
+
+@integration
+def licence(request):
+    """The signed licence and this instance's id, for Jackil to verify itself.
+
+    Only the blob is handed over, never a verdict: Jackil checks the SQSY
+    signature with its own copy of the public key, so a Vigil cannot grant
+    Business by saying so.
+    """
+    try:
+        return Response({"blob": licensing.load_blob()[0],
+                         "instance": licensing.instance_id(),
+                         "status": licensing.current_state().status.value})
+    except Exception:  # noqa: BLE001 — licensing never takes anything down, not even this endpoint
+        return Response({"blob": "", "instance": licensing.instance_id(),
+                         "status": "none"})
 
 
 @integration

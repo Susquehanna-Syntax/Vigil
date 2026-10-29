@@ -19,6 +19,9 @@ urlpatterns = [
     path("integration/ping/", integration_views.ping, name="jackil-integration-ping"),
     path("integration/search/", integration_views.search, name="jackil-integration-search"),
     path("integration/resolve/", integration_views.resolve, name="jackil-integration-resolve"),
+    # Ahead of the `<str:kind>` detail route: without it "licence" would be
+    # read as a type and answered with "Unknown type".
+    path("integration/licence/", integration_views.licence, name="jackil-integration-licence"),
     # Ahead of the `<str:kind>` detail route: without it "widgets" would be
     # read as a type and answered with "Unknown type".
     path("integration/widgets/", integration_widgets.widgets,
