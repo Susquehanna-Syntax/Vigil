@@ -21,6 +21,13 @@ function _jkInk(pastel) {
 /* ── Renderers ─────────────────────────────────────────────────────────── */
 
 function _jkStat(body, data) {
+  // A muted 0 is a placeholder ("Pick a project…", "Cost hidden"), not a
+  // count: say the words, don't draw a big zero.
+  if (data.tone === 'muted' && !data.value && !data.sub) {
+    body.innerHTML = `<div class="jk-empty"><span class="muted-note">`
+      + `${escHtml(data.label || 'Nothing to show')}</span></div>`;
+    return;
+  }
   const inner =
     `<div class="jk-stat-value" style="color: ${_jkInk(_jkPastel(data.tone))}">${escHtml(data.value)}</div>`
     + `<div class="jk-stat-label">${escHtml(data.label)}</div>`
@@ -68,7 +75,7 @@ function _jkTable(body, data) {
     if (typeof cell === 'number') numeric[j] = true;
   }));
   const head = `<thead><tr>${(data.columns || [])
-    .map((c) => `<th>${escHtml(c)}</th>`).join('')}</tr></thead>`;
+    .map((c, j) => `<th${numeric[j] ? ' class="num"' : ''}>${escHtml(c)}</th>`).join('')}</tr></thead>`;
   const tbody = `<tbody>${rows.map((row) => `<tr>${row
     .map((cell, j) => `<td${numeric[j] ? ' class="num"' : ''}>${escHtml(cell)}</td>`)
     .join('')}</tr>`).join('')}</tbody>`;
@@ -87,6 +94,7 @@ function _jkGauge(body, data) {
   // the only channel.
   body.innerHTML = `
     <div class="jk-gauge">
+      <div class="jk-gauge-dial">
       <svg viewBox="0 0 78 78" class="jk-gauge-ring" aria-hidden="true">
         <circle cx="39" cy="39" r="${r}" class="gauge-bg"/>
         <circle cx="39" cy="39" r="${r}" stroke="var(--${pastel}-ink)"
@@ -94,6 +102,7 @@ function _jkGauge(body, data) {
                 stroke-dashoffset="${offset.toFixed(1)}" class="gauge-fill"/>
       </svg>
       <div class="jk-gauge-text">${escHtml(text)}</div>
+      </div>
       <div class="jk-stat-label">${escHtml(data.label)}</div>
       ${data.sub ? `<div class="jk-stat-sub">${escHtml(data.sub)}</div>` : ''}
     </div>`;
@@ -135,9 +144,10 @@ function _jkSeriesSvg(data, W, H) {
   }
 
   let xOf;
-  if (data.kind === 'bar' || data.kind === 'stacked-bar') {
+  const isBar = data.kind === 'bar' || data.kind === 'stacked-bar';
+  const groupW = plotW / Math.max(1, labels.length);
+  if (isBar) {
     const stacked = data.kind === 'stacked-bar';
-    const groupW = plotW / Math.max(1, labels.length);
     const barW = stacked
       ? Math.max(1, groupW * 0.72)
       : Math.max(1, (groupW * 0.72) / Math.max(1, series.length));
@@ -185,18 +195,35 @@ function _jkSeriesSvg(data, W, H) {
     });
   }
 
-  // As many x labels as fit, evenly spaced, first and last always shown.
-  // A label's width follows its length (an ISO date needs ~70px), and a label
+  // Bars: every category keeps a label, cut to its slot with the full name on
+  // hover, as long as a slot fits a few characters. Otherwise (and for lines)
+  // as many labels as fit, evenly spaced, first and last always shown; a
+  // label's width follows its length (an ISO date needs ~70px), and a label
   // too close to the always-shown last one gives way to it.
-  const longest = labels.reduce((n, l) => Math.max(n, String(l).length), 0);
-  const fit = Math.max(2, Math.floor(plotW / Math.max(56, longest * 6.5 + 12)) - 1);
-  const every = Math.max(1, Math.ceil(labels.length / fit));
   const last = labels.length - 1;
-  labels.forEach((label, i) => {
-    if (i !== last && (i % every !== 0 || last - i < every)) return;
-    const anchor = (data.kind === 'bar' || data.kind === 'stacked-bar') ? 'middle' : (i === 0 ? 'start' : (i === last ? 'end' : 'middle'));
-    parts.push(`<text class="axis-text" x="${xOf(i).toFixed(1)}" y="${H - 4}" text-anchor="${anchor}">${escHtml(label)}</text>`);
-  });
+  const slotChars = Math.floor((groupW - 6) / 6.5);
+  if (isBar && slotChars >= 4) {
+    labels.forEach((label, i) => {
+      const full = String(label);
+      const shown = full.length > slotChars ? full.slice(0, slotChars - 1) + '…' : full;
+      parts.push(`<text class="axis-text" x="${xOf(i).toFixed(1)}" y="${H - 4}" text-anchor="middle">`
+        + `<title>${escHtml(full)}</title>${escHtml(shown)}</text>`);
+    });
+  } else {
+    const longest = labels.reduce((n, l) => Math.max(n, String(l).length), 0);
+    const fit = Math.max(2, Math.floor(plotW / Math.max(56, longest * 6.5 + 12)) - 1);
+    const every = Math.max(1, Math.ceil(labels.length / fit));
+    labels.forEach((label, i) => {
+      if (i !== last && (i % every !== 0 || last - i < every)) return;
+      // The ends anchor inward so a long first or last label is never cut by
+      // the plot's edge.
+      const anchor = i === 0 ? 'start' : (i === last ? 'end' : 'middle');
+      let x = xOf(i);
+      if (isBar && i === 0) x = padL;
+      if (isBar && i === last) x = W - padR;
+      parts.push(`<text class="axis-text" x="${x.toFixed(1)}" y="${H - 4}" text-anchor="${anchor}">${escHtml(label)}</text>`);
+    });
+  }
 
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img">${parts.join('')}</svg>`;
 }

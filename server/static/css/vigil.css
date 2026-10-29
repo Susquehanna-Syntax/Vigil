@@ -4865,21 +4865,26 @@ a.jk-card { text-decoration: none; }
 .jk-card.edge-sky   { --edge-rgb: var(--rgb-sky); }
 .jk-card.edge-lav   { --edge-rgb: var(--rgb-lavender); }
 .jk-card.edge-grey  { --edge-rgb: var(--rgb-grey); }
+/* A neutral row sits on the surface instead of a grey-brown tint, which read
+   as a heavy block on Paper (Jackil M8b). */
+.jk-card.edge-grey  { background: transparent; border-color: var(--border); }
 
 .jk-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .jk-table th { text-align: left; font-size: 10px; font-weight: 700; letter-spacing: 0.4px;
   text-transform: uppercase; color: var(--text-3); padding: 4px 6px; border-bottom: 1px solid var(--border); }
 .jk-table td { padding: 6px; border-bottom: 1px solid var(--border); }
 .jk-table td.num { font-family: var(--font-mono); text-align: right; }
+.jk-table th.num { text-align: right; }
 
 .jk-gauge { display: flex; flex-direction: column; align-items: center;
             justify-content: center; height: 100%; position: relative; }
-.jk-gauge-ring { width: 78px; height: 78px; transform: rotate(-90deg); }
+.jk-gauge-dial { position: relative; flex-shrink: 0; margin-bottom: 4px; }
+.jk-gauge-ring { display: block; width: 62px; height: 62px; transform: rotate(-90deg); }
 .jk-gauge .gauge-bg { fill: none; stroke: var(--s3); stroke-width: 7; }
 .jk-gauge .gauge-fill { fill: none; stroke-width: 7; stroke-linecap: round;
                         transition: stroke-dashoffset .5s var(--ease-out-expo); }
-.jk-gauge-text { font-family: var(--font-mono); font-size: 17px; font-weight: 700;
-                 margin-top: -50px; margin-bottom: 26px; }
+.jk-gauge-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+                 font-family: var(--font-mono); font-size: 13px; font-weight: 700; }
 
 .jk-series { width: 100%; height: 100%; display: flex; flex-direction: column; }
 .jk-series-plot { flex: 1; min-height: 0; position: relative; }
