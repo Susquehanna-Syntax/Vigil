@@ -319,6 +319,17 @@ function _autoRefreshHostLabel() {
   document.getElementById('auto-target-host-label').textContent = h ? h.hostname : 'Choose a host…';
 }
 
+// Whether the automation was already allowed high-risk steps when the editor
+// opened: a TOTP code is asked only when the box is newly ticked.
+let _autoHighRiskWasOn = false;
+
+// The warning shows while the box is ticked and the authorization is new.
+function _autoSyncHighRiskWarning() {
+  const box = document.getElementById('auto-allow-high-risk');
+  const warn = document.getElementById('auto-highrisk-warn');
+  if (box && warn) warn.style.display = box.checked && !_autoHighRiskWasOn ? '' : 'none';
+}
+
 function _closeAutoEditor() {
   document.getElementById('auto-editor-overlay').classList.remove('open');
   document.getElementById('auto-editor-modal').classList.remove('open');
@@ -353,6 +364,9 @@ function _openAutoEditor(a) {
   _autoDefCache = {};
   _autoPlaybookCache = {};
   document.getElementById('auto-enabled').checked = a ? a.enabled : true;
+  _autoHighRiskWasOn = !!(a && a.id && a.allow_high_risk);
+  document.getElementById('auto-allow-high-risk').checked = _autoHighRiskWasOn;
+  _autoSyncHighRiskWarning();
   _autoSyncVisibility();
   _autoRefreshActionLabel();
   _autoRefreshHostLabel();
@@ -410,8 +424,17 @@ async function _saveAutomation() {
     params_override: _autoParamsOverride,
     inputs: _autoInputs,
     enabled: document.getElementById('auto-enabled').checked,
+    allow_high_risk: document.getElementById('auto-allow-high-risk').checked,
   };
   if (!body.name) return showToast('Name the automation', 'error');
+  // Only asked when the flag is being turned on: codes are single-use, so
+  // one spent on a no-op change is burned for nothing.
+  if (body.allow_high_risk && !_autoHighRiskWasOn) {
+    const totp = await totpPrompt('High-risk steps will run unattended every time this automation fires.',
+      { title: 'Allow high-risk steps', confirmText: 'Authorize and save' });
+    if (!totp) return;
+    body.totp = totp;
+  }
   const editing = document.getElementById('auto-editor-modal').dataset.editing;
   try {
     if (editing) await apiJson(`/api/v1/automations/${editing}/`, { method: 'PATCH', body: JSON.stringify(body) });
@@ -446,6 +469,7 @@ document.addEventListener('DOMContentLoaded', () => {
     _autoRefreshActionLabel();
   });
   document.getElementById('auto-inputs-btn')?.addEventListener('click', _openAutoInputs);
+  document.getElementById('auto-allow-high-risk')?.addEventListener('change', _autoSyncHighRiskWarning);
 });
 
 
