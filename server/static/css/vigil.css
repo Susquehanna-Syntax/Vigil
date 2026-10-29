@@ -2378,7 +2378,9 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .bl-toolbar { margin-bottom: 26px; }
 
 /* ── Settings: Jackil-style nav + content panes ──────────────────────── */
-.settings-layout { display: grid; grid-template-columns: 220px 1fr; gap: 32px; align-items: start; }
+/* minmax(0, …): a plain 1fr never shrinks below its widest line, so one long
+   row pushed every pane past a phone's edge. */
+.settings-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 32px; align-items: start; }
 .settings-nav { display: flex; flex-direction: column; gap: 4px; position: sticky; top: 8px; }
 .settings-nav-item { display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
   padding: 11px 14px; border: none; background: none; color: var(--text-2); font-family: inherit;
@@ -2394,7 +2396,7 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .settings-pane .section-label:first-child { margin-top: 0; }
 @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (max-width: 900px) {
-  .settings-layout { grid-template-columns: 1fr; }
+  .settings-layout { grid-template-columns: minmax(0, 1fr); }
   .settings-nav { flex-direction: row; flex-wrap: wrap; position: static; }
 }
 
@@ -3339,12 +3341,25 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
    takes. Inline children of .dash-card-right would sit flush against each
    other, and a class beats repeating an inline margin five times. */
 .wh-act { margin-left: 6px; }
+/* On a phone a key or webhook row stacks: the details wrap instead of
+   running off the edge, and the buttons drop below them. */
+@media (max-width: 700px) {
+  #api-keys .dash-card, #webhooks .dash-card { flex-wrap: wrap; }
+  #api-keys .dash-card-sub, #webhooks .dash-card-sub { white-space: normal; }
+  #webhooks .dash-card-right { display: flex; flex-wrap: wrap; gap: 6px; text-align: left;
+                               flex: 1 1 100%; min-width: 0; }
+  #webhooks .dash-card-right .wh-act { margin-left: 0; }
+  /* The form inputs carry an inline min-width for the desktop row. */
+  #api-keys input.form-control, #webhooks input.form-control { min-width: 0 !important; flex: 1 1 100%; }
+}
 
 .dash-card-right {
   flex-shrink: 0; text-align: right;
   font-family: var(--font-mono); font-size: 11px; color: var(--text-2);
 }
 .dash-card-right .dash-card-sub { text-align: right; }
+/* .btn inherits its font, and this column is monospace for counts. */
+.dash-card-right .btn { font-family: 'DM Sans', sans-serif; }
 .dash-card-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--text-3); }
 
 /* The edge colour is the row's meaning: severity for alerts and findings,
