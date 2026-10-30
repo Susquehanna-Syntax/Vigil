@@ -858,7 +858,8 @@
       <h3 id="changelog-2026-16-0">2026.16.0 (in progress)</h3>
       <p class="prose"><strong>Jackil integration</strong> (every edition)</p>
       <ul class="prose">
-        <li>Settings → Jackil Tickets mints <strong>integration keys</strong> (<code>vjk_</code>). Jackil uses one to read hosts, tasks, playbooks, runs and automations, server to server. A key sees what the admin who made it can see, is stored only as a hash, and cannot change anything in Vigil.</li>
+        <li>Settings → Jackil Tickets mints <strong>integration keys</strong> (<code>vjk_</code>). Jackil uses one to read hosts, devices, tasks, playbooks, runs and automations, server to server, including a host's CPU, memory and open alerts for its link previews. A key sees what the admin who made it can see and is stored only as a hash.</li>
+        <li>A key changes nothing in Vigil unless an admin ticks <strong>Can change devices</strong> on it. Then, if the admin who made the key is still an admin, Jackil can create, edit and delete unmanaged devices: Vigil keeps the only copy of every device, and Jackil moves its own device items into Vigil with their links.</li>
         <li>A host's drawer, the Monitor page and a run's details show <strong>Related in Jackil</strong>: the tickets, issues, pages and items that link to it.</li>
         <li>Dashboards can hold Jackil's widgets (open tickets, SLA, ticket volume, my issues and more), drawn the same way Jackil draws them.</li>
         <li>A new <strong>report chart</strong> widget puts a card from a saved report on a dashboard.</li>
@@ -870,9 +871,22 @@
         <li>Settings → API &amp; Webhooks mints <strong>scoped API keys</strong> (<code>vsk_</code>) for Vigil's API. A key acts as the admin who made it, limited to the sites you pick, and is read-only unless you choose read and write. Keys work on hosts, metrics, alerts, tasks, playbooks, software, policies, automations, reports and dashboards; never on accounts, settings, licences, keys, stacks or remote sessions. Jackil accepts one in place of an integration key, which is how you limit Jackil to some sites.</li>
         <li><strong>Webhooks</strong> post signed JSON when an alert fires or clears, a task finishes, or a host is approved. Each request carries an <code>X-Vigil-Signature</code> header (an HMAC-SHA256 of the body with the webhook's secret), and the last 50 deliveries are kept with their status.</li>
       </ul>
+      <p class="prose"><strong>Devices</strong></p>
+      <ul class="prose">
+        <li>Unmanaged devices have a <strong>serial</strong>, a <strong>warranty end</strong>, an <strong>owner</strong> (a name or an email) and free-form <strong>extra facts</strong> (up to 50, such as Rack: B4), on the Inventory page and in the API.</li>
+        <li>Editing or deleting a device is admin-only, as adding one already was. Before, any signed-in user could change or delete a device.</li>
+      </ul>
+      <p class="prose"><strong>Relays</strong></p>
+      <ul class="prose">
+        <li>A relay no longer forwards headers that ask a server to treat a request as another method, URL or host (<code>X-HTTP-Method-Override</code>, <code>X-Original-URL</code>, <code>X-Forwarded-Host</code> and similar), and never passes a cookie set by Vigil back to whoever called the relay.</li>
+        <li>An agent's live-session socket path is checked with the same rules as every other agent path.</li>
+        <li>The Add Host wizard lists a relay as soon as it is added in Settings, without reloading the page.</li>
+      </ul>
       <p class="prose"><strong>Also</strong></p>
       <ul class="prose">
         <li>The paid edition is called <strong>SQSY Business</strong> everywhere Vigil shows it.</li>
+        <li>An automation can allow high-risk steps: a box in its editor, a warning that they will run unattended, and a 2FA code to turn it on.</li>
+        <li>Edit as YAML opens above the playbook and automation editors.</li>
       </ul>
 
       <h3 id="changelog-2026-15-1">2026.15.1</h3>
