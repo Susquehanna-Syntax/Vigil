@@ -50,6 +50,11 @@ class IntegrationKey(models.Model):
     last_used_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
 
+    #: Off by default: a key is a read grant, and writing is a separate
+    #: decision an admin makes per key. Two admins must agree — the creator's
+    #: role and this flag — before a helpdesk may change the inventory.
+    can_write_devices = models.BooleanField(default=False)
+
     @classmethod
     def mint(cls, *, name: str, user) -> tuple[IntegrationKey, str]:
         """Create a key; return (row, plaintext). The plaintext exists only here."""

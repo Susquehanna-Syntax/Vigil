@@ -252,8 +252,9 @@ async function loadJackilKeys() {
     return;
   }
   const form = `<p class="totp-sub" style="margin-bottom:14px;">A key lets Jackil `
-    + `look up hosts, tasks, playbooks, runs and automations as you, and read `
-    + `dashboard widgets. It cannot change anything in Vigil.</p>`
+    + `look up hosts, tasks, playbooks, runs, automations and devices as you, and `
+    + `read dashboard widgets. It cannot change anything until you tick a key's `
+    + `box below.</p>`
     + `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">`
       + `<input type="text" class="form-control" id="jackil-key-name" maxlength="80"`
         + ` placeholder="Key name, e.g. Helpdesk" style="flex:1;min-width:180px;">`
@@ -272,8 +273,16 @@ function _jkRow(k) {
   const used = k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'never';
   const sub = `vjk_${escHtml(k.prefix)}… · created by ${escHtml(k.created_by)}`
     + ` · ${escHtml(created)} · last used ${escHtml(used)}`;
+  // The write grant is a checkbox rather than a button: it is a state an admin
+  // sets, and seeing it ticked is what stops them wondering why Jackil can add
+  // a printer. A revoked key shows its last state, disabled.
+  const write = `<label style="display:inline-flex;align-items:center;gap:5px;`
+    + `font-size:11px;white-space:nowrap;">`
+    + `<input type="checkbox" data-jk-write="${escAttr(String(k.id))}"`
+      + `${k.can_write_devices ? ' checked' : ''}${k.revoked_at ? ' disabled' : ''}>`
+    + `Can change devices</label>`;
   const right = k.revoked_at ? '<span class="muted">Revoked</span>'
-    : `<button type="button" class="btn btn-rose btn-sm" data-jk-revoke="${escAttr(String(k.id))}">Revoke</button>`;
+    : `<button type="button" class="btn btn-rose btn-sm wh-act" data-jk-revoke="${escAttr(String(k.id))}">Revoke</button>`;
   // Dimmed rather than flagged with a coloured edge: a revoked key is not an
   // alert, it is history.
   return `<div class="dash-card"${k.revoked_at ? ' style="opacity:.6"' : ''}>`
@@ -281,7 +290,7 @@ function _jkRow(k) {
       + `<div class="dash-card-title">${escHtml(k.name)}</div>`
       + `<div class="dash-card-sub">${sub}</div>`
     + `</div>`
-    + `<div class="dash-card-right">${right}</div>`
+    + `<div class="dash-card-right">${write}${right}</div>`
   + `</div>`;
 }
 
@@ -351,4 +360,23 @@ delegateClick('[data-jk-revoke]', async (el) => {
   }
   showToast('Key revoked', 'success');
   loadJackilKeys();
+});
+
+// A checkbox, not a delegated click: the click would fire on a disabled box
+// too and the server would answer 403 for a revoked key the row already says
+// is revoked.
+document.addEventListener('change', async (ev) => {
+  const box = ev.target.closest && ev.target.closest('[data-jk-write]');
+  if (!box) return;
+  const enabled = box.checked;
+  try {
+    await apiJson(`${JK_KEYS_API}${encodeURIComponent(box.dataset.jkWrite)}/devices/`,
+      { method: 'POST', body: JSON.stringify({ enabled }) });
+  } catch (e) {
+    box.checked = !enabled;
+    showToast(e.message || 'Could not change what the key may do', 'error');
+    return;
+  }
+  showToast(enabled ? 'The key can now change devices' : 'The key can no longer change devices',
+    'success');
 });

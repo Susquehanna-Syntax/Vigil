@@ -7,6 +7,8 @@ urlpatterns = [
     path("integration-keys/", views.integration_keys, name="jackil-integration-keys"),
     path("integration-keys/<int:pk>/revoke/", views.revoke_integration_key,
          name="jackil-integration-key-revoke"),
+    path("integration-keys/<int:pk>/devices/", views.set_key_device_write,
+         name="jackil-integration-key-devices"),
     # A session endpoint for any signed-in user, unlike the key-only routes
     # below it; listed ahead of "integration/" so the two surfaces stay legible.
     path("related/", views.related, name="jackil-related"),
@@ -28,6 +30,17 @@ urlpatterns = [
          name="jackil-integration-widgets"),
     path("integration/widgets/<str:kind>/", integration_widgets.widget,
          name="jackil-integration-widget"),
+    # The device writes, listed ahead of the catch-all detail route: that one
+    # is GET only, so a POST reaching it would be a 405 rather than a create.
+    # The uuid-bound pair answers a well-formed id; the `<str:id>` one catches
+    # a malformed uuid and answers 404 like every other kind, instead of the
+    # catch-all's 400 "Unknown type".
+    path("integration/devices/", integration_views.create_device,
+         name="jackil-integration-device-create"),
+    path("integration/devices/<uuid:id>/", integration_views.device_detail_write,
+         name="jackil-integration-device-write"),
+    path("integration/devices/<str:id>/", integration_views.device_detail_write,
+         name="jackil-integration-device-write-malformed"),
     path("integration/<str:kind>/<str:id>/", integration_views.detail,
          name="jackil-integration-detail"),
 ]

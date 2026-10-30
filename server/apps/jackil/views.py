@@ -6,6 +6,8 @@ Vigil actually opened are, which is why this exists at all.
 
 from __future__ import annotations
 
+import logging
+
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -25,6 +27,10 @@ _TONES = ("ok", "warn", "bad", "info", "muted")
 
 #: A link list longer than this is noise; the drawer cannot show it anyway.
 MAX_ITEMS = 50
+
+#: What a key records about itself turning write-capable on or off: the
+#: prefix identifies it, and the plaintext never appears in a log line.
+_log = logging.getLogger(__name__)
 
 
 def _safe_url(value) -> str:
@@ -145,6 +151,7 @@ def _key_row(row) -> dict:
         "created_at": row.created_at,
         "last_used_at": row.last_used_at,
         "revoked_at": row.revoked_at,
+        "can_write_devices": row.can_write_devices,
     }
 
 
@@ -185,4 +192,27 @@ def revoke_integration_key(request, pk: int):
     if key.revoked_at is None:
         key.revoked_at = timezone.now()
         key.save(update_fields=["revoked_at"])
+    return Response(_key_row(key))
+
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+def set_key_device_write(request, pk: int):
+    """The one setting a key has, toggled by an admin, never by the key.
+
+    Free and off by default: the flag is what lets Jackil's inventory
+    assistant write unmanaged devices, and the creator's own admin role is the
+    second lock (integration_views). A key invisible to the caller is 404 for
+    the same reason revoke is."""
+    key = _visible_keys(request.user).filter(pk=pk).first()
+    if key is None:
+        return Response({"error": "Not found"}, status=404)
+    enabled = request.data.get("enabled") if isinstance(request.data, dict) else None
+    if not isinstance(enabled, bool):
+        return Response({"error": "\"enabled\" must be true or false"}, status=400)
+    key.can_write_devices = enabled
+    key.save(update_fields=["can_write_devices"])
+    # The prefix names the key; the plaintext never appears anywhere.
+    _log.info("jackil key %s device writes %s by %s", key.prefix,
+              "enabled" if enabled else "disabled", request.user.username)
     return Response(_key_row(key))

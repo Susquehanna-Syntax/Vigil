@@ -8,6 +8,7 @@ hid. Each finder copies the filter its own page uses (see apps/hosts/search.py).
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 from django.conf import settings
@@ -22,10 +23,14 @@ from rest_framework.decorators import (
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.accounts.permissions import IsAdmin
+from apps.hosts.models import UnmanagedDevice
+from apps.hosts.serializers import UnmanagedDeviceSerializer
 from apps.tasks.authz import visible_runs
 from vigil import licensing, scoping
 
 from .integration_auth import IntegrationKeyAuthentication
+from .models import IntegrationKey
 
 #: The six kinds a key may read, in the order ``search`` returns them.
 TYPES = ("host", "task", "playbook", "automation", "run", "device")
@@ -33,6 +38,8 @@ TYPES = ("host", "task", "playbook", "automation", "run", "device")
 LIMIT_PER_TYPE = 8
 MAX_QUERY = 100
 MAX_IDS = 100
+
+_log = logging.getLogger(__name__)
 
 #: Freshness window for a host's headline CPU/memory numbers, and how far back
 #: detail's short CPU series reaches. A check-in older than the window is not
@@ -351,6 +358,27 @@ def integration(view):
     return api_view(["GET"])(view)
 
 
+def integration_write(methods):
+    """The write sibling of ``integration``, kept beside it rather than
+    widening it.
+
+    Only ``IntegrationKeyAuthentication`` is listed: a session may not write
+    devices through a key-shaped door, and a Business scoped key is a site
+    grant for reading, never a device-write grant."""
+    from rest_framework.decorators import (
+        api_view,
+        authentication_classes,
+        permission_classes,
+    )
+
+    def wrap(view):
+        authentication_classes([IntegrationKeyAuthentication])(view)
+        permission_classes([IsAuthenticated])(view)
+        return api_view(list(methods))(view)
+
+    return wrap
+
+
 @integration
 def ping(request):
     return Response({"ok": True, "version": settings.VIGIL_VERSION,
@@ -358,8 +386,19 @@ def ping(request):
                      # Jackil checks these before it offers a feature, rather
                      # than 404ing against an older Vigil; phase 02 appends
                      # "device_write" for a key that may write devices.
-                     "capabilities": ["devices", "host_facts"],
+                     "capabilities": _capabilities(request),
                      "acting_as": request.user.username})
+
+
+def _capabilities(request) -> list[str]:
+    """What *this* caller may do, so Jackil offers the buttons that work.
+
+    ``device_write`` is the calling key's own grant rather than a property of
+    the instance, so a second key on the same Vigil still reports reads only."""
+    caps = ["devices", "host_facts"]
+    if may_write_devices(request):
+        caps.append("device_write")
+    return caps
 
 
 @integration
@@ -423,3 +462,80 @@ def detail(request, kind: str, id: str):
         item["cpu_series"] = _cpu_series(obj)
     item["facts"] = _facts(kind, obj)
     return Response(item)
+
+
+DENIED = {"error": "This key may not change devices"}
+
+
+def may_write_devices(request) -> bool:
+    """Both admins' say-so, or nothing: the flag on the key *and* an admin as
+    its creator.
+
+    ``request.auth`` is the ``IntegrationKey`` for a key and a scoped Business
+    key object for one of those, so the ``isinstance`` test is what refuses
+    scoped keys — a site grant is a way of reading less, never a way of
+    writing."""
+    auth = getattr(request, "auth", None)
+    if not isinstance(auth, IntegrationKey) or not auth.can_write_devices:
+        return False
+    return IsAdmin().has_permission(request, None)
+
+
+@integration_write(["POST"])
+def create_device(request):
+    """Add a device to Vigil's inventory. Jackil keeps no copy of its own."""
+    if not may_write_devices(request):
+        return Response(DENIED, status=403)
+    serializer = UnmanagedDeviceSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+    device = serializer.save()
+    _log.info("jackil key %s created device %s", request.auth.prefix, device.pk)
+    return _device_response(request, device, status=201)
+
+
+@integration_write(["PATCH", "DELETE"])
+def device_detail_write(request, id: str):
+    """Partially update or delete one device, on the key's say-so.
+
+    One view for both methods because the route that reaches it is the same
+    one, and a device does not have a partial-update door and a separate
+    removal door."""
+    if not may_write_devices(request):
+        return Response(DENIED, status=403)
+    device = _device_or_404(id)
+    if isinstance(device, Response):
+        return device
+    if request.method == "DELETE":
+        device.delete()
+        _log.info("jackil key %s deleted device %s", request.auth.prefix, id)
+        return Response(status=204)
+    serializer = UnmanagedDeviceSerializer(device, data=request.data, partial=True)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+    device = serializer.save()
+    _log.info("jackil key %s updated device %s", request.auth.prefix, device.pk)
+    return _device_response(request, device)
+
+
+def _device_or_404(id: str):
+    """The device, or the 404. A malformed uuid and an unknown one are the
+    same answer, as they are on the read side."""
+    pk = UnmanagedDevice._meta.pk
+    try:
+        value = pk.to_python(id)
+        pk.get_prep_value(value)
+    except (DjangoValidationError, TypeError, ValueError, OverflowError):
+        return Response(_NOT_FOUND, status=404)
+    try:
+        return UnmanagedDevice.objects.get(pk=value)
+    except UnmanagedDevice.DoesNotExist:
+        return Response(_NOT_FOUND, status=404)
+
+
+def _device_response(request, device, status: int = 200) -> Response:
+    """A device as Jackil's inventory page wants it: the row and its facts, so
+    the write response and the detail response say the same thing."""
+    item = _item("device", device, request)
+    item["facts"] = _facts("device", device)
+    return Response(item, status=status)
