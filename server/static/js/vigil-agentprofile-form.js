@@ -41,16 +41,20 @@ const APF_DEFAULTS = {
 /* ── context ───────────────────────────────────────────────────────────── */
 
 let _apfCtx = null;
+let _apfActions = null;
 
 async function apfLoadContext() {
-  if (_apfCtx) return _apfCtx;
+  // The action catalogue is fixed for the life of the page, so it is fetched
+  // once. Relays are not: one added or switched on in Settings must show up
+  // the next time the enrol wizard or a profile opens, without a reload.
   const [actions, relayBody] = await Promise.all([
-    apiJson('/api/v1/agent-profiles/actions/'),
+    _apfActions || apiJson('/api/v1/agent-profiles/actions/'),
     apiJson('/api/v1/relays/'),
   ]);
+  _apfActions = actions || [];
   const relays = (Array.isArray(relayBody) ? relayBody : (relayBody.relays || []))
     .filter(r => r && r.kind === 'REMOTE' && r.enabled);
-  _apfCtx = { actions: actions || [], relays };
+  _apfCtx = { actions: _apfActions, relays };
   return _apfCtx;
 }
 
