@@ -1,7 +1,7 @@
 """The key's own tests: what it can open, what it cannot, and what it must never see.
 
 The security-relevant assertions here are the negative ones — a key refused
-outside its five endpoints, a session refused inside them, and a cross-site
+outside its six endpoints, a session refused inside them, and a cross-site
 row that none of them will hand over.
 """
 
@@ -19,10 +19,6 @@ from apps.jackil.models import KEY_PREFIX, IntegrationKey, JackilTicket
 from apps.playbooks.models import Playbook
 from apps.tasks.models import Task, TaskDefinition, TaskRun
 from apps.tasks.spec import parse_and_validate
-
-
-CHECK = ("name: Check cron\nactions:\n  - id: c\n    type: check_service\n"
-         "    params:\n      service_name: cron\n")
 
 PING = "/api/v1/jackil/integration/ping/"
 SEARCH = "/api/v1/jackil/integration/search/"
@@ -54,6 +50,10 @@ def _authed(raw=None, user=None):
 
 def _detail(kind, pk):
     return DETAIL.format(f"{kind}/{pk}/")
+
+
+CHECK = ("name: Check cron\nactions:\n  - id: c\n    type: check_service\n"
+         "    params:\n      service_name: cron\n")
 
 
 class MintTests(TestCase):
@@ -359,7 +359,10 @@ class DetailTests(TestCase):
     def test_empty_facts_are_omitted_not_blank(self):
         facts, _ = self._facts(_detail("host", self.host.id))
         self.assertNotIn("Last seen", facts)
-        self.assertEqual(sorted(facts), ["IP", "OS", "Status"])
+        # "Open alerts" is a count and a count of none is still a fact. Site
+        # appears only where the Business sites app gives the host one.
+        self.assertTrue({"IP", "OS", "Open alerts", "Status"} <= set(facts))
+        self.assertTrue(set(facts) <= {"IP", "OS", "Open alerts", "Status", "Site"})
 
     def test_missing_and_malformed_answer_identically(self):
         missing = self.client.get(_detail("host", UNKNOWN_HOST))

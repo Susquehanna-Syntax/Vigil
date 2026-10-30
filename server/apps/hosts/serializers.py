@@ -158,6 +158,10 @@ class UnmanagedDeviceSerializer(serializers.ModelSerializer):
             "mac_address",
             "vendor",
             "location",
+            "serial",
+            "warranty_end",
+            "owner",
+            "extra",
             "notes",
             "created_at",
             "updated_at",
@@ -168,4 +172,23 @@ class UnmanagedDeviceSerializer(serializers.ModelSerializer):
         value = (value or "").strip()
         if not value:
             raise serializers.ValidationError("Name is required.")
+        return value
+
+    def validate_extra(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                "Extra facts must be a set of named facts, like \"Rack\": \"B4\".")
+        if len(value) > 50:
+            raise serializers.ValidationError(
+                "Extra facts are limited to 50 — keep the important ones.")
+        for key, val in value.items():
+            if not isinstance(key, str) or not isinstance(val, str):
+                raise serializers.ValidationError(
+                    "Extra facts must be names and values written as text.")
+            if len(key) > 60:
+                raise serializers.ValidationError(
+                    "An extra fact name must be 60 characters or fewer.")
+            if len(val) > 300:
+                raise serializers.ValidationError(
+                    "An extra fact value must be 300 characters or fewer.")
         return value

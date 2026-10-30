@@ -27,8 +27,8 @@ function renderDevices() {
 
   let html = `<div class="dev-card"><table class="ctr-table dev-table">
     <thead><tr>
-      <th>Name</th><th>Type</th><th>IP Address</th><th>MAC</th>
-      <th>Vendor</th><th>Location</th><th class="num"></th>
+      <th>Name</th><th>Type</th><th>IP Address</th><th>MAC</th><th>Serial</th>
+      <th>Vendor</th><th>Location</th><th>Owner</th><th class="num"></th>
     </tr></thead><tbody>`;
   for (const d of _devices) {
     html += `<tr>
@@ -36,8 +36,10 @@ function renderDevices() {
       <td>${escHtml(d.device_type_label || '')}</td>
       <td class="dev-mono">${escHtml(d.ip_address || '—')}</td>
       <td class="dev-mono">${escHtml(d.mac_address || '—')}</td>
+      <td class="dev-mono">${escHtml(d.serial || '—')}</td>
       <td>${escHtml(d.vendor || '—')}</td>
       <td>${escHtml(d.location || '—')}</td>
+      <td>${escHtml(d.owner || '—')}</td>
       <td class="num"><button class="btn btn-ghost btn-sm" data-device-edit="${escAttr(d.id)}">Edit</button></td>
     </tr>`;
   }
@@ -55,6 +57,10 @@ function openDeviceModal(id) {
   document.getElementById('device-mac').value = d ? (d.mac_address || '') : '';
   document.getElementById('device-vendor').value = d ? (d.vendor || '') : '';
   document.getElementById('device-location').value = d ? (d.location || '') : '';
+  document.getElementById('device-serial').value = d ? (d.serial || '') : '';
+  document.getElementById('device-warranty').value = d ? (d.warranty_end || '') : '';
+  document.getElementById('device-owner').value = d ? (d.owner || '') : '';
+  document.getElementById('device-extra').value = d ? _extraToLines(d.extra) : '';
   document.getElementById('device-notes').value = d ? (d.notes || '') : '';
   document.getElementById('device-delete-btn').style.display = d ? 'inline-flex' : 'none';
   document.getElementById('device-overlay').classList.add('open');
@@ -75,8 +81,30 @@ function _deviceFormBody() {
     mac_address: document.getElementById('device-mac').value.trim(),
     vendor: document.getElementById('device-vendor').value.trim(),
     location: document.getElementById('device-location').value.trim(),
+    serial: document.getElementById('device-serial').value.trim(),
+    warranty_end: document.getElementById('device-warranty').value || null,
+    owner: document.getElementById('device-owner').value.trim(),
+    extra: _extraFromBody(document.getElementById('device-extra').value),
     notes: document.getElementById('device-notes').value.trim(),
   };
+}
+
+/** The extra-facts object as the textarea shows it: "Key: value" per line. */
+function _extraToLines(extra) {
+  return Object.entries(extra || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
+}
+
+/** And back: split on the first colon so a value may carry its own colons. */
+function _extraFromBody(text) {
+  const extra = {};
+  for (const line of (text || '').split('\n')) {
+    const colon = line.indexOf(':');
+    if (colon < 0) continue;
+    const key = line.slice(0, colon).trim();
+    if (!key) continue;
+    extra[key] = line.slice(colon + 1).trim();
+  }
+  return extra;
 }
 
 async function saveDevice() {

@@ -1,4 +1,4 @@
-"""What a Jackil integration key may read: five kinds, read-only.
+"""What a Jackil integration key may read: six kinds, read-only.
 
 Search, resolve and detail all run a type through the same queryset function
 below, so the three can never disagree about what the key's creator may see —
@@ -8,9 +8,12 @@ hid. Each finder copies the filter its own page uses (see apps/hosts/search.py).
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Q
+from django.db.models import Max, Q
+from django.utils import timezone
 from rest_framework.decorators import (
     api_view,
     authentication_classes,
@@ -24,12 +27,19 @@ from vigil import licensing, scoping
 
 from .integration_auth import IntegrationKeyAuthentication
 
-#: The five kinds a key may read, in the order ``search`` returns them.
-TYPES = ("host", "task", "playbook", "automation", "run")
+#: The six kinds a key may read, in the order ``search`` returns them.
+TYPES = ("host", "task", "playbook", "automation", "run", "device")
 
 LIMIT_PER_TYPE = 8
 MAX_QUERY = 100
 MAX_IDS = 100
+
+#: Freshness window for a host's headline CPU/memory numbers, and how far back
+#: detail's short CPU series reaches. A check-in older than the window is not
+#: a "current" number no matter which row happens to be latest.
+LIVE_METRIC_WINDOW = timedelta(minutes=15)
+CPU_SERIES_WINDOW = timedelta(hours=1)
+CPU_SERIES_POINTS = 60
 
 _NOT_FOUND = {"error": "Not found"}
 
@@ -77,6 +87,14 @@ def _runs(user):
     return visible_runs(TaskRun.objects.all(), user).order_by("-created_at")
 
 
+def _devices(user):
+    from apps.hosts.models import UnmanagedDevice
+
+    # Devices are not site-scoped in Vigil today: every signed-in user reads
+    # them, only admins write (phase 02 adds the per-key write flag).
+    return UnmanagedDevice.objects.order_by("name")
+
+
 #: type -> (queryset for a user, the fields search looks in).
 _FINDERS = {
     "host": (_hosts, ("hostname", "os", "tags")),
@@ -84,6 +102,8 @@ _FINDERS = {
     "playbook": (_playbooks, ("name", "description")),
     "automation": (_automations, ("name",)),
     "run": (_runs, ("name_snapshot",)),
+    "device": (_devices, ("name", "vendor", "location", "serial", "owner",
+                          "mac_address")),
 }
 
 
@@ -179,12 +199,18 @@ def _run_item(r):
     return name, sub, r.get_state_display(), tone
 
 
+def _device_item(d):
+    sub = " · ".join(x for x in (d.get_device_type_display(), d.ip_address or "") if x)
+    return d.name, sub, d.get_device_type_display(), ""
+
+
 _HEADERS = {
     "host": _host_item,
     "task": _task_item,
     "playbook": _playbook_item,
     "automation": _automation_item,
     "run": _run_item,
+    "device": _device_item,
 }
 
 
@@ -193,8 +219,71 @@ def _dt(value) -> str:
 
 
 def _host_facts(h):
-    return [("OS", h.os), ("IP", h.ip_address or ""),
-            ("Status", h.get_status_display()), ("Last seen", _dt(h.last_checkin))]
+    from apps.alerts.models import Alert
+
+    facts = [("OS", h.os), ("IP", h.ip_address or ""),
+             ("Status", h.get_status_display()), ("Last seen", _dt(h.last_checkin))]
+    live = _latest_metrics([h.id], timezone.now() - LIVE_METRIC_WINDOW)
+    for label, category in (("CPU", "cpu"), ("Memory", "memory")):
+        value = (live.get(category) or {}).get(h.id)
+        if value is not None:
+            facts.append((label, f"{round(value)}%"))
+    open_alerts = h.alerts.filter(
+        state__in=[Alert.State.FIRING, Alert.State.ACKNOWLEDGED]).count()
+    facts.append(("Open alerts", str(open_alerts)))
+    site = scoping.scope_of(h)
+    if site is not None:
+        facts.append(("Site", str(site)))
+    return facts
+
+
+def _cpu_series(h) -> list[dict]:
+    """The host's CPU usage over the last hour, oldest first, at most
+    CPU_SERIES_POINTS points — a busier series is thinned to evenly spaced
+    points, first and last kept, rather than dropping its tail. Jackil draws
+    this as its link preview."""
+    points = list(h.metric_points
+                  .filter(category="cpu", metric="usage_percent",
+                          time__gte=timezone.now() - CPU_SERIES_WINDOW)
+                  .order_by("time").values_list("time", "value"))
+    if len(points) > CPU_SERIES_POINTS:
+        last = len(points) - 1
+        picks = sorted({round(i * last / (CPU_SERIES_POINTS - 1)) for i in range(CPU_SERIES_POINTS)})
+        points = [points[i] for i in picks]
+    return [{"t": moment.isoformat(), "v": round(value, 1)} for moment, value in points]
+
+
+def _latest_metrics(host_ids, since) -> dict:
+    """{"cpu": {host_id: value}, "memory": {...}} — the newest usage_percent
+    point of each category at or after ``since``. Two aggregate queries plus
+    two fill queries however many hosts are asked about; one query per host
+    would put a list endpoint's budget on a slider."""
+    from apps.metrics.models import MetricPoint
+
+    out: dict[str, dict] = {}
+    for category in ("cpu", "memory"):
+        base = MetricPoint.objects.filter(category=category, metric="usage_percent")
+        latest = (base.filter(host_id__in=list(host_ids), time__gte=since)
+                  .values("host_id").annotate(time=Max("time")))
+        times = {row["host_id"]: row["time"] for row in latest}
+        values: dict = {}
+        if times:
+            for point in base.filter(host_id__in=list(times), time__gte=since).values(
+                    "host_id", "time", "value"):
+                if point["time"] == times.get(point["host_id"]):
+                    values[point["host_id"]] = point["value"]
+        out[category] = values
+    return out
+
+
+def _device_facts(d):
+    facts = [("Type", d.get_device_type_display()), ("IP", d.ip_address or ""),
+             ("MAC", d.mac_address), ("Vendor", d.vendor), ("Serial", d.serial),
+             ("Location", d.location), ("Owner", d.owner),
+             ("Warranty ends", d.warranty_end.isoformat() if d.warranty_end else "")]
+    extra = d.extra if isinstance(d.extra, dict) else {}
+    facts += [(key, extra[key]) for key in sorted(extra)]
+    return facts
 
 
 def _task_facts(d):
@@ -229,6 +318,7 @@ _FACTS = {
     "playbook": _playbook_facts,
     "automation": _automation_facts,
     "run": _run_facts,
+    "device": _device_facts,
 }
 
 
@@ -264,6 +354,11 @@ def integration(view):
 @integration
 def ping(request):
     return Response({"ok": True, "version": settings.VIGIL_VERSION,
+                     # What this Vigil's integration surface actually offers.
+                     # Jackil checks these before it offers a feature, rather
+                     # than 404ing against an older Vigil; phase 02 appends
+                     # "device_write" for a key that may write devices.
+                     "capabilities": ["devices", "host_facts"],
                      "acting_as": request.user.username})
 
 
@@ -322,5 +417,9 @@ def detail(request, kind: str, id: str):
         # through a key cannot confirm a row the creator's site excludes.
         return Response(_NOT_FOUND, status=404)
     item = _item(kind, obj, request)
+    if kind == "host":
+        # Jackil draws a sparkline under the facts; the list responses stay
+        # as lean as they were.
+        item["cpu_series"] = _cpu_series(obj)
     item["facts"] = _facts(kind, obj)
     return Response(item)

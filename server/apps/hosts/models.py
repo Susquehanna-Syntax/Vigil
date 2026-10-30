@@ -384,6 +384,13 @@ class UnmanagedDevice(models.Model):
     mac_address = models.CharField(max_length=17, blank=True)
     vendor = models.CharField(max_length=120, blank=True)
     location = models.CharField(max_length=160, blank=True)
+    serial = models.CharField(max_length=120, blank=True)
+    warranty_end = models.DateField(null=True, blank=True)
+    owner = models.CharField(max_length=200, blank=True,
+                             help_text="A name or an email address.")
+    #: Free-form facts as {"Rack": "B4"} — the field Jackil items carry, so a
+    #: device shared with Jackil keeps whatever an operator typed on either side.
+    extra = models.JSONField(default=dict, blank=True)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

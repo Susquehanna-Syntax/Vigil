@@ -134,11 +134,15 @@ class IntegrationLeakTests(TestCase):
         existed."""
         for kind in TYPES:
             with self.subTest(kind=kind):
-                ids = self._lab_ids(kind)
                 if kind == "task":
                     # Definitions are the library's own visibility rule, not a
                     # site membership: this asserts that, not a leak.
                     continue
+                if kind == "device":
+                    # Devices have no site to be scoped by — deliberate (see
+                    # _FINDERS["device"]) — so there is no Lab row to withhold.
+                    continue
+                ids = self._lab_ids(kind)
                 self.assertTrue(ids, f"no Lab {kind} was found by the unscoped key")
                 body = self.dana_key.get(RESOLVE, {"type": kind,
                                                    "ids": ",".join(ids)}).json()

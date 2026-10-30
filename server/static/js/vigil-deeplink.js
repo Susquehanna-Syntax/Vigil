@@ -10,7 +10,7 @@
 // openTaskDetail, loadAutomations, _openAutoEditor), each guarded with a
 // typeof test because script order in base.html is not a contract.
 
-const DEEP_LINK = /^#open\/(host|task|playbook|run|automation)\/([0-9A-Za-z-]{1,64})$/;
+const DEEP_LINK = /^#open\/(host|device|task|playbook|run|automation)\/([0-9A-Za-z-]{1,64})$/;
 
 /** Parses '#open/<type>/<id>'; returns {type, id} or null. */
 function parseDeepLink(hash) {
@@ -24,6 +24,15 @@ async function openVigilItem(type, id) {
       if (typeof navigateTo === 'function') navigateTo('monitor');
       if (typeof selectMonitorHost === 'function') selectMonitorHost(id);
       break;
+    case 'device': {
+      // The Inventory page's device modal holds a whole row, and finds the
+      // one it needs in the fetched list — so load the devices first.
+      if (typeof navigateTo === 'function') navigateTo('inventory');
+      if (typeof openDeviceModal !== 'function') break;
+      if (typeof loadDevices === 'function') await loadDevices();
+      openDeviceModal(id);
+      break;
+    }
     case 'task':
       if (typeof openDefinitionEditor === 'function') openDefinitionEditor(id);
       break;
