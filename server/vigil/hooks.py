@@ -47,6 +47,10 @@ KNOWN_EVENTS = frozenset({
     "alert_refired",     # payload: alert
     "alert_resolved",    # payload: alert
     "task_completed",    # payload: task
+    # A task reached a terminal state (completed, failed, rejected, skipped,
+    # not applicable) from an agent's result. Business webhooks subscribe. Kept apart from
+    # task_completed, which automations listen for and which is not emitted.
+    "task_finished",     # payload: task, host
     # Managed stacks (M11). Business audit subscribes; Free has no listener.
     "stack_saved",          # payload: stack, user, revision
     "git_credential_added", # payload: credential, user

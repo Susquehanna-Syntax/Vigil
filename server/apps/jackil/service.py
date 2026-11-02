@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 
+from django.core.cache import cache
 from django.db import IntegrityError
 from django.utils.timezone import now
 
@@ -108,8 +109,13 @@ def on_alert_resolved(alert) -> None:
         return
 
     resolved_at = alert.resolved_at.isoformat() if alert.resolved_at else now().isoformat()
+    # Inside a flap (a re-fire was noted this hour) the clear changes the
+    # ticket's state but adds no note: one "fired again" line already says
+    # the alert is bouncing.
+    flapping = bool(cache.get(f"jackil:refire-noted:{link.pk}"))
     try:
-        client.add_note(link.ticket_id, f"Vigil: this alert cleared at {resolved_at}.")
+        if not flapping:
+            client.add_note(link.ticket_id, f"Vigil: this alert cleared at {resolved_at}.")
         if setting("JACKIL_RESOLVE_ON_CLEAR"):
             client.set_status(link.ticket_id, "resolved")
     except client.JackilError as exc:
@@ -118,3 +124,50 @@ def on_alert_resolved(alert) -> None:
 
     link.cleared_at = now()
     link.save(update_fields=["cleared_at"])
+
+
+#: A flapping alert can re-fire every few minutes; the ticket hears about it
+#: at most once in this window rather than once per flap.
+REFIRE_NOTE_SECONDS = 3600
+
+
+def on_alert_refired(alert) -> None:
+    """Note on the ticket that a cleared alert came back, and reopen it.
+
+    Throttled per ticket: the flap window exists so a noisy metric does not
+    page anyone, and the helpdesk deserves the same courtesy.
+    """
+    if not client.enabled():
+        return
+    link = JackilTicket.objects.filter(alert=alert).first()
+    if link is None:
+        return
+    throttle_key = f"jackil:refire-noted:{link.pk}"
+    noting = not cache.get(throttle_key)
+    reopening = bool(link.cleared_at) and bool(setting("JACKIL_RESOLVE_ON_CLEAR"))
+
+    flaps = alert.flap_count or 0
+    times = "1 time" if flaps == 1 else f"{flaps} times"
+    try:
+        # The throttle only quietens the note. The ticket's state follows the
+        # alert every time, or a flap inside the hour would leave it resolved
+        # while the alert fires and swallow the next clear.
+        if noting:
+            client.add_note(
+                link.ticket_id,
+                f"Vigil: this alert fired again at {now().isoformat()} "
+                f"({times} in the flap window).")
+        if reopening:
+            client.set_status(link.ticket_id, "open")
+    except client.JackilError as exc:
+        logger.error("Jackil: could not note the re-fire on ticket %s: %s",
+                     link.ticket_id, exc)
+        return
+
+    if noting:
+        cache.set(throttle_key, True, REFIRE_NOTE_SECONDS)
+    if link.cleared_at:
+        # Back to firing, so the next clear is news again.
+        link.cleared_at = None
+        link.save(update_fields=["cleared_at"])
+

@@ -81,7 +81,7 @@ async function fetchCompliance() {
 async function openComplianceReport() {
   const resp = await fetch('/api/v1/compliance/report/', { credentials: 'same-origin' });
   if (resp.status === 402) {
-    showToast('The per-site compliance report, its export and branding need Vigil Business.', 'error');
+    showToast('The per-site compliance report, its export and branding need SQSY Business.', 'error');
     return;
   }
   window.open('/api/v1/compliance/report.html', '_blank', 'noopener');

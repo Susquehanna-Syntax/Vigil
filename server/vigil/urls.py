@@ -220,3 +220,7 @@ if settings.BUSINESS_INSTALLED:
         path("api/v1/audits/", include("apps_business.audits.urls")),
         path("api/v1/compliance/", include("apps_business.compliance.urls")),
     ]
+if settings.BUSINESS_API_KEYS:
+    urlpatterns += [path("api/v1/api-keys/", include("apps_business.apikeys.urls"))]
+if settings.BUSINESS_WEBHOOKS:
+    urlpatterns += [path("api/v1/webhooks/", include("apps_business.webhooks.urls"))]

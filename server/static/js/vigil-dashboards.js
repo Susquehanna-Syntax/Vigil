@@ -220,7 +220,7 @@ function _dashBindChrome(host) {
       showToast(turningOn ? 'Shared' : 'No longer shared', 'success');
     } catch (e) {
       // A 402 here is the Business gate, and its body explains itself.
-      showToast(e.message || 'Sharing needs a Business licence', 'error');
+      showToast(e.message || 'Sharing needs SQSY Business', 'error');
     }
   });
 
@@ -341,7 +341,9 @@ function _dashPaintAll() {
   for (const w of DASH.current.widgets) {
     const body = document.querySelector(`[data-widget-body="${CSS.escape(String(w.id))}"]`);
     if (!body) continue;
-    const render = WIDGET_RENDERERS[w.kind];
+    const render = (String(w.kind).startsWith('jackil:') && typeof _renderJackilWidget === 'function')
+      ? _renderJackilWidget
+      : WIDGET_RENDERERS[w.kind];
     if (!render) {
       body.innerHTML = '<span class="muted-note">No renderer for this widget yet.</span>';
       continue;
@@ -386,13 +388,13 @@ async function loadDashboards() {
 //: one that costs money.
 const GROUP_ACCENT = {
   fleet: 'sky', health: 'mint', work: 'lav',
-  security: 'peach', utility: 'lemon', business: 'rose',
+  security: 'peach', utility: 'lemon', business: 'rose', jackil: 'lav',
 };
 const GROUP_LABEL = {
   fleet: 'Fleet', health: 'Health', work: 'Work in flight',
-  security: 'Security', utility: 'Utility', business: 'Business',
+  security: 'Security', utility: 'Utility', business: 'Business', jackil: 'Jackil',
 };
-const GROUP_ORDER = ['fleet', 'health', 'work', 'security', 'utility', 'business'];
+const GROUP_ORDER = ['fleet', 'health', 'work', 'security', 'utility', 'business', 'jackil'];
 
 function _railHtml() {
   const widgets = DASH.catalog.widgets || {};

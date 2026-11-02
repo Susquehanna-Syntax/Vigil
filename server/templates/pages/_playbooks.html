@@ -295,6 +295,19 @@
       Waves decide which hosts get this &mdash; the target above is ignored.
     </div>
   </div>
+  <label class="setting-check"><input type="checkbox" id="auto-allow-high-risk"> Allow high-risk steps in this automation</label>
+  {% comment %}
+    The same opt-in a playbook has, for the same reason: the automation runs
+    unattended, so ticking it costs a TOTP code on save, once, for every
+    future run. Without it the engine dispatches nothing and says why.
+  {% endcomment %}
+  <div class="bl-highrisk-warn" id="auto-highrisk-warn" style="display:none;">
+    <div class="bl-highrisk-lede">
+      High-risk steps will run <strong>unattended</strong> every time this
+      automation fires, with nobody at the keyboard to approve or stop them.
+      Saving asks for your TOTP code to authorize that.
+    </div>
+  </div>
   <label class="setting-check"><input type="checkbox" id="auto-enabled" checked> Enabled</label>
   <div class="modal-actions">
     <button class="btn btn-ghost" id="auto-cancel-btn-2" type="button">Cancel</button>

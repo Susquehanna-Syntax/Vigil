@@ -979,6 +979,12 @@ def unmanaged_device_detail(request, device_id):
     if request.method == "GET":
         return Response(UnmanagedDeviceSerializer(device).data)
 
+    # Same rule as the list endpoint above (SEC-1): reads are open to every
+    # signed-in user, writes are admin-only.
+    from apps.accounts.permissions import IsAdmin
+    if not IsAdmin().has_permission(request, None):
+        return Response({"error": "Administrator access required."}, status=status.HTTP_403_FORBIDDEN)
+
     if request.method == "DELETE":
         device.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

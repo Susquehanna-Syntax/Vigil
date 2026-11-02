@@ -69,3 +69,56 @@ class UnmanagedDeviceApiTests(TestCase):
             anon.post("/api/v1/hosts/devices/", {"name": "x"}, format="json").status_code,
             403,
         )
+
+    def test_non_admin_cannot_edit_or_delete_a_device(self):
+        viewer = get_user_model().objects.create_user("watcher", password="pw")
+        UserProfile.objects.create(user=viewer, role=Role.VIEWER)
+        viewer_client = APIClient()
+        viewer_client.force_authenticate(viewer)
+        dev = UnmanagedDevice.objects.create(name="Core Switch", location="Rack 1")
+
+        patch = viewer_client.patch(f"/api/v1/hosts/devices/{dev.id}/",
+                                    {"location": "Stolen"}, format="json")
+        self.assertEqual(patch.status_code, 403, patch.data)
+        self.assertEqual(viewer_client.delete(f"/api/v1/hosts/devices/{dev.id}/").status_code,
+                         403)
+
+        dev.refresh_from_db()
+        self.assertEqual(dev.location, "Rack 1")
+        self.assertTrue(UnmanagedDevice.objects.filter(pk=dev.id).exists())
+
+    def test_a_viewer_may_still_read_a_device(self):
+        viewer = get_user_model().objects.create_user("reader", password="pw")
+        UserProfile.objects.create(user=viewer, role=Role.VIEWER)
+        viewer_client = APIClient()
+        viewer_client.force_authenticate(viewer)
+        dev = UnmanagedDevice.objects.create(name="NAS", device_type="nas")
+
+        self.assertEqual(viewer_client.get("/api/v1/hosts/devices/").status_code, 200)
+        detail = viewer_client.get(f"/api/v1/hosts/devices/{dev.id}/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.data["name"], "NAS")
+
+    def test_new_fields_round_trip(self):
+        resp = self.client.post("/api/v1/hosts/devices/", {
+            "name": "Edge router", "device_type": "router", "serial": "ER-0042",
+            "warranty_end": "2027-04-30", "owner": "dana@example.com",
+            "extra": {"Rack": "B4"},
+        }, format="json")
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+        got = self.client.get(f"/api/v1/hosts/devices/{resp.data['id']}/")
+        self.assertEqual(got.status_code, 200)
+        self.assertEqual(got.data["serial"], "ER-0042")
+        self.assertEqual(got.data["warranty_end"], "2027-04-30")
+        self.assertEqual(got.data["owner"], "dana@example.com")
+        self.assertEqual(got.data["extra"], {"Rack": "B4"})
+
+    def test_extra_must_be_a_small_dict_of_strings(self):
+        dev = UnmanagedDevice.objects.create(name="NAS", device_type="nas")
+        for extra in (["Rack"], {str(n): "v" for n in range(51)}, {"Rack": 4}):
+            with self.subTest(extra=str(extra)[:24]):
+                resp = self.client.patch(f"/api/v1/hosts/devices/{dev.id}/",
+                                         {"extra": extra}, format="json")
+                self.assertEqual(resp.status_code, 400)
+                self.assertIn("extra", resp.data)

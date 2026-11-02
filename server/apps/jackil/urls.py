@@ -1,7 +1,46 @@
 from django.urls import path
 
-from . import views
+from . import integration_views, integration_widgets, views
 
 urlpatterns = [
     path("tickets/", views.recent_tickets, name="jackil-tickets"),
+    path("integration-keys/", views.integration_keys, name="jackil-integration-keys"),
+    path("integration-keys/<int:pk>/revoke/", views.revoke_integration_key,
+         name="jackil-integration-key-revoke"),
+    path("integration-keys/<int:pk>/devices/", views.set_key_device_write,
+         name="jackil-integration-key-devices"),
+    # A session endpoint for any signed-in user, unlike the key-only routes
+    # below it; listed ahead of "integration/" so the two surfaces stay legible.
+    path("related/", views.related, name="jackil-related"),
+    # Jackil's own widgets on a Vigil dashboard. Distinct from the
+    # "integration/widgets/" routes below, which are Vigil's widget catalogue
+    # presented to a key: this one is /api/v1/jackil/widgets/jackil:<kind>/.
+    path("widgets/<str:kind>/", views.jackil_widget, name="jackil-widget-data"),
+    # The read-only surface a key presents itself with. Deliberately a
+    # separate namespace from the admin's own session endpoints above.
+    path("integration/ping/", integration_views.ping, name="jackil-integration-ping"),
+    path("integration/search/", integration_views.search, name="jackil-integration-search"),
+    path("integration/resolve/", integration_views.resolve, name="jackil-integration-resolve"),
+    # Ahead of the `<str:kind>` detail route: without it "licence" would be
+    # read as a type and answered with "Unknown type".
+    path("integration/licence/", integration_views.licence, name="jackil-integration-licence"),
+    # Ahead of the `<str:kind>` detail route: without it "widgets" would be
+    # read as a type and answered with "Unknown type".
+    path("integration/widgets/", integration_widgets.widgets,
+         name="jackil-integration-widgets"),
+    path("integration/widgets/<str:kind>/", integration_widgets.widget,
+         name="jackil-integration-widget"),
+    # The device writes, listed ahead of the catch-all detail route: that one
+    # is GET only, so a POST reaching it would be a 405 rather than a create.
+    # The uuid-bound pair answers a well-formed id; the `<str:id>` one catches
+    # a malformed uuid and answers 404 like every other kind, instead of the
+    # catch-all's 400 "Unknown type".
+    path("integration/devices/", integration_views.create_device,
+         name="jackil-integration-device-create"),
+    path("integration/devices/<uuid:id>/", integration_views.device_detail_write,
+         name="jackil-integration-device-write"),
+    path("integration/devices/<str:id>/", integration_views.device_detail_write,
+         name="jackil-integration-device-write-malformed"),
+    path("integration/<str:kind>/<str:id>/", integration_views.detail,
+         name="jackil-integration-detail"),
 ]

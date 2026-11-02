@@ -177,6 +177,11 @@
     </div>
   </div>
 
+  <div class="detail-section" id="detail-jackil-section" style="display:none;">
+    <div class="detail-section-title">Related in Jackil</div>
+    <div id="detail-jackil-body" style="font-size: 13px;"></div>
+  </div>
+
   <div class="detail-section" id="detail-score-section" style="display:none;">
     <div class="detail-section-title">Security score</div>
     <div style="display:flex;align-items:playbook;gap:12px;">
@@ -642,6 +647,24 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
     <label class="form-label" for="device-location">Location</label>
     <input type="text" class="form-control" id="device-location" placeholder="Rack 1 / Office" maxlength="160">
   </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+    <div class="form-group">
+      <label class="form-label" for="device-serial">Serial</label>
+      <input type="text" class="form-control" id="device-serial" placeholder="SN-0001" maxlength="120">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="device-warranty">Warranty ends</label>
+      <input type="date" class="form-control" id="device-warranty">
+    </div>
+  </div>
+  <div class="form-group">
+    <label class="form-label" for="device-owner">Owner</label>
+    <input type="text" class="form-control" id="device-owner" placeholder="A name or an email address" maxlength="200">
+  </div>
+  <div class="form-group">
+    <label class="form-label" for="device-extra">Extra facts</label>
+    <textarea class="form-control" id="device-extra" rows="3" placeholder="One fact per line, as Key: value"></textarea>
+  </div>
   <div class="form-group">
     <label class="form-label" for="device-notes">Notes</label>
     <textarea class="form-control" id="device-notes" placeholder="Anything worth remembering about this device"></textarea>
@@ -665,6 +688,10 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
     </button>
   </div>
   <div id="task-detail-meta" style="font-size:12px;color:var(--text-3);margin-bottom:16px;flex-shrink:0;display:flex;gap:12px;flex-wrap:wrap;"></div>
+  <div id="task-detail-jackil" style="display:none; flex-shrink:0; margin-bottom: 12px; font-size: 13px;">
+    <div class="detail-section-title">Related in Jackil</div>
+    <div id="task-detail-jackil-body"></div>
+  </div>
   <div id="task-detail-steps" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px;"></div>
   <div class="confirm-actions" id="task-detail-actions" hidden>
     <button class="btn btn-outline btn-sm" id="task-detail-hunt" type="button">Open hunt results</button>
@@ -788,6 +815,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-session.js' %}"></script>
 <!-- vigil-nav.js — navigateTo(), tab-bar switching -->
 <script src="{% static 'js/vigil-nav.js' %}"></script>
+<!-- vigil-jackil-shapes.js — Jackil's widget renderers (stat/list/table/gauge/series) drawn in Vigil's look. Load before vigil-widgets.js. -->
+<script src="{% static 'js/vigil-jackil-shapes.js' %}"></script>
 <!-- vigil-widgets.js — one renderer per widget kind. Load before vigil-dashboards.js, which calls into WIDGET_RENDERERS. -->
 <script src="{% static 'js/vigil-widgets.js' %}"></script>
 <!-- vigil-dashboards.js — the Gridstack widget grid on the Dashboard page. -->
@@ -836,6 +865,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-stacks.js' %}"></script>
 <!-- vigil-search.js — Search everything: the sidebar page, Ctrl+K, one API over every kind (QA-25) -->
 <script src="{% static 'js/vigil-search.js' %}"></script>
+<!-- vigil-deeplink.js — opens '#open/<type>/<id>': the link Vigil mints for itself, and the one a Jackil ticket hands an agent (J1-02) -->
+<script src="{% static 'js/vigil-deeplink.js' %}"></script>
 <!-- vigil-store.js — the Store: browse the package catalog, install an app or add it to a policy (QA-26) -->
 <script src="{% static 'js/vigil-store.js' %}"></script>
 <!-- vigil-containers.js — Containers page: containers by stack, lifecycle buttons, live logs, host picker (wraps navigateTo) -->
@@ -846,6 +877,8 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-devices.js' %}"></script>
 <!-- vigil-instance-settings.js — Settings panes backed by /api/v1/instance-settings/ (scanners, email, retention, timezone) -->
 <script src="{% static 'js/vigil-instance-settings.js' %}"></script>
+<!-- vigil-api-keys.js — Settings → API & Webhooks pane (scoped keys, webhooks) -->
+<script src="{% static 'js/vigil-api-keys.js' %}"></script>
 <!-- vigil-settings.js — TOTP enroll / confirm / disable -->
 <script src="{% static 'js/vigil-settings.js' %}"></script>
 <!-- vigil-users.js — Users & Roles pane (list/create/role/delete) -->

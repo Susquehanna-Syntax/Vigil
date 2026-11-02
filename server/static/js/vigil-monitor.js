@@ -83,6 +83,10 @@ function selectMonitorHost(hostId) {
 
   renderPinBar();
   refreshMonitor();
+  if (typeof renderJackilRelated === 'function') {
+    renderJackilRelated(document.getElementById('mon-jackil-section'), document.getElementById('mon-jackil-body'),
+      'host', hostId, () => monitorHostId === hostId);
+  }
 }
 
 // ── RDP launch ──

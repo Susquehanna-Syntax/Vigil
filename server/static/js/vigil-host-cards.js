@@ -92,6 +92,84 @@ function openHostDetail(card) {
 
   // Security score — hidden until we know the host has a summary.
   _loadDetailScore(d.id);
+
+  // What Jackil links to this host — its own section, hidden until asked.
+  loadJackilRelated('host', d.id);
+}
+
+/* ── "Related in Jackil" (the drawer) ─────────────────────────────────── */
+
+// A helpdesk outage, a missing key or an old Jackil are all normal states of
+// this section: the view shows the reason or gets out of the way, and never
+// fails because another server did.
+//
+// `stillCurrent()` is the caller's staleness check — it returns true while the
+// view still shows `id`, since in flight the drawer, the Monitor page or the
+// run modal may have moved on to something else.
+async function renderJackilRelated(section, body, kind, id, stillCurrent) {
+  if (!section || !body) return;
+  let data = null;
+  try {
+    const resp = await fetch(`/api/v1/jackil/related/?type=${encodeURIComponent(kind)}&id=${encodeURIComponent(id)}`,
+      { credentials: 'same-origin' });
+    if (resp.ok) data = await resp.json();
+  } catch { /* unreachable Vigil — same as no answer at all */ }
+
+  if (!stillCurrent()) return;
+  if (!data || data.configured === false) { section.style.display = 'none'; return; }
+
+  section.style.display = '';
+  if (!data.available) {
+    body.innerHTML = `<div style="color: var(--text-3);">${escHtml(data.message || '')}</div>`;
+    return;
+  }
+
+  const links = data.links || [];
+  const items = data.items || [];
+  if (!links.length && !items.length) {
+    body.innerHTML = `<div style="color: var(--text-3);">Nothing in Jackil is linked to this ${escHtml(kind)} yet.</div>`;
+    return;
+  }
+
+  let html = '';
+  for (const link of links) {
+    const status = link.status
+      ? `<div style="font-size: 11px; color: ${_jackilToneColor(link.tone)};">${escHtml(link.status)}</div>`
+      : '';
+    html += `<div>${escHtml(link.relation)} · ${_jackilLink(link.url, link.label)}</div>${status}`;
+  }
+  if (items.length) {
+    html += '<div style="color: var(--text-3); font-size: 11px; text-transform: uppercase;'
+          + ' letter-spacing: .08em; margin-top: 8px;">Jackil Items</div>';
+    for (const item of items) {
+      html += `<div>${_jackilLink(item.url, item.name)}</div>`;
+    }
+  }
+  body.innerHTML = html;
+}
+
+// Two-line wrapper for the host drawer.
+function loadJackilRelated(kind, id) {
+  renderJackilRelated(document.getElementById('detail-jackil-section'), document.getElementById('detail-jackil-body'),
+    kind, id, () => panel.dataset.hostId === String(id));
+}
+
+function _jackilToneColor(tone) {
+  return {
+    ok: 'var(--mint-ink)',
+    bad: 'var(--rose-ink)',
+    warn: 'var(--peach-ink)',
+    info: 'var(--sky-ink)',
+  }[tone] || 'var(--text-3)';
+}
+
+// An empty url is the endpoint's way of saying "this one is not a link" —
+// Jackil sends whatever its agents pasted, and only http(s) may be an href.
+function _jackilLink(url, label) {
+  const text = escHtml(label || '');
+  return url
+    ? `<a href="${escAttr(url)}" target="_blank" rel="noopener" style="color: var(--text-1); text-decoration: none; font-weight: 500;">${text}</a>`
+    : text;
 }
 
 async function forceUpdateAgent() {

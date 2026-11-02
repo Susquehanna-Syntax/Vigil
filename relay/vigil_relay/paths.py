@@ -28,6 +28,14 @@ def allowed(method: str, path: str) -> bool:
     return path in AGENT_PATHS or path.startswith(AGENT_PREFIXES)
 
 
+def ws_allowed(path: str) -> bool:
+    """True for an agent WebSocket path, under the same character rules as
+    ``allowed``: an upgrade is no reason to accept a path HTTP would refuse."""
+    if ".." in path or any(c in path for c in "%\\@"):
+        return False
+    return path.startswith(WS_PREFIXES)
+
+
 def split_tenant(path: str, tenants):
     """Strip a ``/t/<slug>`` prefix. Returns ``(tenant, path)``; tenant is None
     when no tenant owns the request."""

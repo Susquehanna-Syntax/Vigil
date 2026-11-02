@@ -318,7 +318,7 @@ feature matrix.
 ## License
 
 AGPLv3. The Business features are a separate package under a commercial
-license: official images include it compiled, it needs a Vigil Business
+license: official images include it compiled, it needs a SQSY Business
 subscription for production use, and its source is available to customers for
 audit on request. A build from this repo is the AGPL core. See [LICENSE](LICENSE)
 and [docs/EDITIONS.md](docs/EDITIONS.md).

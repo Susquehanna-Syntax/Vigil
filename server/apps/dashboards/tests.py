@@ -527,7 +527,7 @@ class RegistryShapeTests(TestCase):
 
     GROUPS = {"fleet", "health", "work", "security", "utility", "business"}
     SETTING_TYPES = {"text", "longtext", "int", "bool", "choice",
-                     "host", "metric", "playbook", "definition"}
+                     "host", "metric", "playbook", "definition", "report_chart"}
 
     def test_every_widget_declares_the_fields_the_ui_reads(self):
         for kind, spec in WIDGET_REGISTRY.items():

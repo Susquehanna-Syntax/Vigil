@@ -548,6 +548,7 @@ async function openTaskDetail(runId) {
 
   titleEl.textContent = 'Loading…';
   metaEl.replaceChildren();
+  document.getElementById('task-detail-jackil').style.display = 'none';
   stepsEl.replaceChildren();
   actionsEl.hidden = true;
   overlay.classList.add('open');
@@ -571,6 +572,13 @@ async function openTaskDetail(runId) {
       metaEl.appendChild(_tdEl('span', null, p));
       if (i < metaParts.length - 1) metaEl.appendChild(sep());
     });
+
+    const modal = document.getElementById('task-detail-modal');
+    modal.dataset.runId = String(runId);
+    if (typeof renderJackilRelated === 'function') {
+      renderJackilRelated(document.getElementById('task-detail-jackil'), document.getElementById('task-detail-jackil-body'),
+        'run', runId, () => modal.dataset.runId === String(runId));
+    }
 
     if (!run.tasks || run.tasks.length === 0) {
       stepsEl.appendChild(_tdEl('div', 'color:var(--text-3);text-align:center;padding:24px;', 'No step records found.'));

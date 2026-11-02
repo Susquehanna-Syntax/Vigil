@@ -23,6 +23,17 @@ HOP_BY_HOP = frozenset((
     "transfer-encoding", "upgrade", "host", "content-length",
 ))
 CLIENT_IP_HEADERS = frozenset(("x-forwarded-for", "forwarded", "x-real-ip"))
+#: Headers some frameworks read to change the method, the URL or the host a
+#: request is treated as. Nothing an agent sends needs them, and forwarding
+#: them would let a caller of the relay try to reshape its request.
+REWRITE_HEADERS = frozenset((
+    "x-http-method-override", "x-method-override", "x-http-method", "x-original-url",
+    "x-rewrite-url", "x-forwarded-host", "x-forwarded-proto", "x-forwarded-prefix",
+    "x-forwarded-port", "x-forwarded-server",
+))
+#: Response headers that belong to the dashboard's own domain, never to the
+#: relay's: a cookie set here would be handed to anyone who asks the relay.
+RESPONSE_DROP = frozenset(("set-cookie", "set-cookie2"))
 
 UPBEAT = 20.0
 PONG_TIMEOUT = 60.0
@@ -77,7 +88,7 @@ async def _agent_handler(request: web.Request) -> web.Response | web.WebSocketRe
     if request.method in ("GET", "HEAD") and path == "/api/v1/health/":
         return web.json_response({"status": "ok", "relay": True})
 
-    if _is_upgrade(request) and path.startswith(paths.WS_PREFIXES) and ".." not in path:
+    if _is_upgrade(request) and paths.ws_allowed(path):
         return await _pipe(request, uplink, path)
 
     if not paths.allowed(request.method, path):
@@ -273,7 +284,7 @@ def _response_from(res: dict) -> web.Response:
         body = b""
     headers = {}
     for name, value in (res.get("headers") or {}).items():
-        if name.lower() in HOP_BY_HOP:
+        if name.lower() in HOP_BY_HOP or name.lower() in RESPONSE_DROP:
             continue
         headers[name] = str(value)
     return web.Response(status=int(res.get("status", 502)), body=body, headers=headers)
@@ -285,7 +296,8 @@ def _filtered_headers(request: web.Request) -> dict[str, str]:
     out = {}
     for name, value in request.headers.items():
         low = name.lower()
-        if low in HOP_BY_HOP or low.startswith("x-vigil-") or low in CLIENT_IP_HEADERS:
+        if (low in HOP_BY_HOP or low.startswith("x-vigil-") or low in CLIENT_IP_HEADERS
+                or low in REWRITE_HEADERS):
             continue
         out[name] = value
     return out

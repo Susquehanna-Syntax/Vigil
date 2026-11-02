@@ -191,7 +191,22 @@ def visible_site_ids(user):
     None and the empty set are different answers: None is an unscoped user,
     who sees everything exactly as they did before per-site roles existed;
     the empty set is a user scoped to nothing.
+
+    A request made with a Business scoped API key carries that key's sites
+    on the user as ``key_site_ids``; the answer is then whatever the creator
+    may see *within* those sites, so a key can narrow its creator and never
+    widen them. The attribute lives on the per-request user object the key
+    authentication returns, never on a stored row.
     """
+    ids = _role_site_ids(user)
+    key_ids = getattr(user, "key_site_ids", None)
+    if key_ids is None:
+        return ids
+    key_ids = set(key_ids)
+    return key_ids if ids is None else ids & key_ids
+
+
+def _role_site_ids(user):
     if not (user and user.is_authenticated):
         return set()
     if user.is_superuser:
