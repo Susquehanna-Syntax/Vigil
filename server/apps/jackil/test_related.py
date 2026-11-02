@@ -61,9 +61,10 @@ class RelatedTests(TestCase):
                 site=self.sites.Site.objects.create(name="Lab", slug="lab"),
                 role=Role.VIEWER)
         else:
-            self.addCleanup(mock.patch("vigil.scoping.filter_by_site",
-                                       side_effect=lambda qs, *a, **kw: qs.none()
-                                       ).start())
+            patcher = mock.patch("vigil.scoping.filter_by_site",
+                                 side_effect=lambda qs, *a, **kw: qs.none())
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
         self.user = get_user_model().objects.create_user("dana", password="pw")
         UserProfile.objects.create(user=self.user, role=Role.ADMIN)

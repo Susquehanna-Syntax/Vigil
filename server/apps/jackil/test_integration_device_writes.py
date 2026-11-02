@@ -244,9 +244,10 @@ class KeyFlagEndpointTests(TestCase):
         mine, _ = _key(name="mine", user=self.admin)
         theirs, _ = _key(name="theirs", user=_admin("peer-admin"))
         self._login(self.admin)
-        self.addCleanup(mock.patch("apps.jackil.views._visible_keys",
-                                   return_value=IntegrationKey.objects.filter(pk=mine.pk)
-                                   ).start())
+        patcher = mock.patch("apps.jackil.views._visible_keys",
+                             return_value=IntegrationKey.objects.filter(pk=mine.pk))
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
         listed = self.client.get(KEYS).json()["keys"]
         self.assertEqual([row["id"] for row in listed], [mine.pk])
