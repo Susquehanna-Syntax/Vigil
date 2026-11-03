@@ -32,6 +32,9 @@ class Playbook(TagRowSyncMixin, models.Model):
 
     tag_sync_fields = [("target_tags", "target_tag_rows")]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    #: Steps follow edits to their tasks; off, each runs the version it was
+    #: given until someone syncs it (apps/tasks/pinning.py).
+    tasks_auto_sync = models.BooleanField(default=False)
     # The callable identity: `type: playbook, params: {name: ...}` resolves
     # case-insensitively against this.
     #
@@ -160,6 +163,9 @@ class PlaybookStep(models.Model):
     definition = models.ForeignKey("tasks.TaskDefinition",
                                    on_delete=models.CASCADE,
                                    related_name="playbook_steps")
+    #: The task version this step was given (apps/tasks/pinning.py). Dispatch
+    #: runs it unless the playbook auto-syncs to the latest version.
+    definition_snapshot = models.JSONField(null=True, blank=True)
     order = models.PositiveIntegerField(default=0)
     # Per-step input overrides: {"<action_index>": {"<param>": value}} merged
     # over the definition's action params at dispatch, so one shared task can
@@ -205,6 +211,17 @@ class PlaybookStep(models.Model):
             models.UniqueConstraint(fields=("playbook", "order"),
                                     name="uniq_playbook_step_order"),
         ]
+
+    @property
+    def effective_definition(self):
+        """The task version dispatch runs (pinned unless the playbook auto-syncs)."""
+        from apps.tasks.pinning import effective
+        return effective(self.definition, self.definition_snapshot, self.playbook.tasks_auto_sync)
+
+    @property
+    def definition_stale(self) -> bool:
+        from apps.tasks.pinning import is_stale
+        return not self.playbook.tasks_auto_sync and is_stale(self.definition, self.definition_snapshot)
 
     def __str__(self) -> str:
         return f"{self.playbook.name}[{self.order}] = {self.definition.name}"

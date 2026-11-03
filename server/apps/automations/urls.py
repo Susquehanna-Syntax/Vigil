@@ -8,4 +8,5 @@ urlpatterns = [
     path("<uuid:automation_id>/", views.automation_detail, name="automation-detail"),
     path("<uuid:automation_id>/yaml/", views.automation_yaml, name="automation-yaml"),
     path("<uuid:automation_id>/run/", views.automation_run_now, name="automation-run"),
+    path("<uuid:automation_id>/sync-task/", views.automation_sync_task, name="automation-sync-task"),
 ]

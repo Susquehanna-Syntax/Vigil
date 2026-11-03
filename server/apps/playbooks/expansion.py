@@ -154,12 +154,14 @@ def expand_actions(actions: list[dict], *, _seen: frozenset = frozenset(),
         except (PlaybookInputError, SpecError) as exc:
             raise PlaybookExpandError(str(exc)) from exc
 
-        for step in playbook.steps.select_related("definition").order_by("order"):
-            spec = step.definition.parsed_spec or {}
+        for step in playbook.steps.select_related("definition", "playbook").order_by("order"):
+            # The version this step was given, unless the playbook auto-syncs.
+            definition = step.effective_definition
+            spec = definition.parsed_spec or {}
             blocked = unsupported_in_playbooks(spec)
             if blocked:
                 raise PlaybookExpandError(
-                    f"task {step.definition.name!r} in playbook {name!r} uses "
+                    f"task {definition.name!r} in playbook {name!r} uses "
                     f"{', '.join(blocked)}, which playbooks cannot run yet")
             override = step.params_override or {}
             actions_with_override = [

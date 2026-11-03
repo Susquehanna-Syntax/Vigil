@@ -55,7 +55,8 @@ def _build_for(automation, why: list | None = None):
                 return nothing("Its playbook has no steps to run.")
             return "playbook", built, highest_risk(built)
 
-        definition = automation.task_definition
+        # The version this automation was given, unless it auto-syncs.
+        definition = automation.effective_task_definition
         if definition is None:
             return nothing("Its task was deleted.")
         spec = resolve_task_spec(definition, user=automation.created_by,
@@ -500,7 +501,7 @@ def _start_rollout_for(automation, narrow_to=None) -> int:
                 logger.warning("automation %s: definition missing, cannot roll out",
                                automation.pk)
                 return 0
-            start_rollout(automation.task_definition, user=automation.created_by,
+            start_rollout(automation.effective_task_definition, user=automation.created_by,
                           inputs=automation.inputs, host_ids=host_ids,
                           site_id=site)
     except ValueError as exc:

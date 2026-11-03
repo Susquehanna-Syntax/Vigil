@@ -159,6 +159,10 @@ class Automation(TagRowSyncMixin, models.Model):
     task_definition = models.ForeignKey(
         "tasks.TaskDefinition", null=True, blank=True,
         on_delete=models.CASCADE, related_name="automations")
+    #: The task version this automation was given (apps/tasks/pinning.py);
+    #: dispatch runs it unless task_auto_sync follows edits instead.
+    task_snapshot = models.JSONField(null=True, blank=True)
+    task_auto_sync = models.BooleanField(default=False)
     # The playbook to run when action_kind == PLAYBOOK. A real FK, not a name:
     # once playbooks are site-scoped, two sites may hold same-named playbooks
     # and a name lookup could execute the wrong site's steps.
@@ -208,6 +212,17 @@ class Automation(TagRowSyncMixin, models.Model):
 
     class Meta:
         ordering = ("-created_at",)
+
+    @property
+    def effective_task_definition(self):
+        """The task version dispatch runs (pinned unless task_auto_sync)."""
+        from apps.tasks.pinning import effective
+        return effective(self.task_definition, self.task_snapshot, self.task_auto_sync)
+
+    @property
+    def task_stale(self) -> bool:
+        from apps.tasks.pinning import is_stale
+        return not self.task_auto_sync and is_stale(self.task_definition, self.task_snapshot)
 
     def __str__(self) -> str:
         return f"automation:{self.name}"

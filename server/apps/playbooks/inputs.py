@@ -57,7 +57,7 @@ def playbook_values(playbook, supplied: dict | None) -> dict[str, Any]:
 
 def step_inputs(step, values: dict[str, Any]) -> dict[str, Any]:
     """The step's task-input values, built from the playbook's *values*."""
-    declared = [i["id"] for i in (step.definition.parsed_spec or {}).get("inputs") or []]
+    declared = [i["id"] for i in (step.effective_definition.parsed_spec or {}).get("inputs") or []]
     mapping = step.inputs or {}
     out: dict[str, Any] = {}
     for iid in declared:

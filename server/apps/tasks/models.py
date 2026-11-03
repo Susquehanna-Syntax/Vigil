@@ -87,6 +87,14 @@ class TaskDefinition(models.Model):
             models.Index(fields=["visibility", "-updated_at"]),
         ]
 
+    def save(self, *args, **kwargs):
+        # apps/tasks/pinning.effective hands out unsaved copies carrying an
+        # older version under this row's id; saving one would roll the task
+        # back for everyone.
+        if getattr(self, "_pinned", False):
+            raise RuntimeError("a pinned task version cannot be saved over the task")
+        return super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name
 
@@ -407,6 +415,9 @@ class PatchRollout(models.Model):
     #: re-applies it, so a host moved to another site mid-rollout drops out
     #: rather than riding the allow-list captured at the start. Null = global.
     site_id = models.UUIDField(null=True, blank=True)
+    #: The task version the rollout started with: every wave runs it, so an
+    #: edit mid-rollout never changes what later waves get (pinning.py).
+    definition_snapshot = models.JSONField(null=True, blank=True)
     #: Rollouts started together by one request share this id — a parallel
     #: batch, one rollout per wave group. Null = a rollout on its own.
     batch = models.UUIDField(null=True, blank=True, db_index=True)

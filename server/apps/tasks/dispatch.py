@@ -144,8 +144,9 @@ def build_playbook_steps(playbook, *, user, inputs: dict | None = None) -> list[
     built = []
     # A playbook's steps may include only global playbooks or its own site's.
     with including_from(site_id_of(playbook)):
-        for step in playbook.steps.select_related("definition").order_by("order"):
-            spec = resolve_task_spec(step.definition, user=user,
+        for step in playbook.steps.select_related("definition", "playbook").order_by("order"):
+            # The version this step was given, unless the playbook auto-syncs.
+            spec = resolve_task_spec(step.effective_definition, user=user,
                                      inputs=step_inputs(step, values),
                                      params_override=step.params_override)
             params, risk, expires_at = task_params(spec)

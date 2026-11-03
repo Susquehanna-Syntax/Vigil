@@ -48,6 +48,9 @@ def _row(a: Automation) -> dict:
         "action_kind": a.action_kind,
         "dispatch_mode": a.dispatch_mode,
         "task_definition": str(a.task_definition_id) if a.task_definition_id else None,
+        "task_auto_sync": a.task_auto_sync,
+        # The task changed since this automation was given it (item 16).
+        "task_stale": a.task_stale,
         "task_name": a.task_definition.name if a.task_definition_id else None,
         # Still a name in the JSON: the UI works in names, and the FK is an
         # internal correctness concern.
@@ -190,8 +193,15 @@ def _apply(a: Automation, data) -> str | None:
             return "invalid action_kind"
         a.action_kind = data["action_kind"]
     if "task_definition" in data:
-        a.task_definition = (TaskDefinition.objects.filter(pk=data["task_definition"]).first()
-                             if data["task_definition"] else None)
+        chosen = (TaskDefinition.objects.filter(pk=data["task_definition"]).first()
+                  if data["task_definition"] else None)
+        if chosen is None or chosen.pk != a.task_definition_id or a.task_snapshot is None:
+            # Given a task (or a different one): keep that version (item 16).
+            from apps.tasks.pinning import snapshot
+            a.task_snapshot = snapshot(chosen)
+        a.task_definition = chosen
+    if "task_auto_sync" in data:
+        a.task_auto_sync = bool(data["task_auto_sync"])
     wanted_playbook = None
     if "playbook_name" in data:
         wanted_playbook = (data["playbook_name"] or "").strip()
@@ -305,6 +315,31 @@ def automation_run_now(request, automation_id):
     why: list[str] = []
     n = run_automation(a, why=why, narrow_to=request.user)
     return Response({"dispatched": n, "reason": why[0] if why else ""})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def automation_sync_task(request, automation_id):
+    """Sync latest: run the current version of the automation's task from now on.
+
+    A task that has grown a high-risk step goes through the same TOTP gate as
+    turning on Allow high-risk, so syncing is never the way around it.
+    """
+    from apps.tasks.pinning import snapshot
+
+    a = get_object_or_404(
+        scoping.filter_by_site(Automation.objects.all(), request.user, cascade_global=True),
+        pk=automation_id)
+    if denied := scoping.write_denied(request.user, a):
+        return denied
+    if a.task_definition is None:
+        return Response({"detail": "this automation runs no task"}, status=400)
+    if a.task_definition.risk_level == "high" and not a.allow_high_risk:
+        return Response({"detail": f"The latest {a.task_definition.name} is high risk: turn on "
+                                   "Allow high-risk in this automation first"}, status=400)
+    a.task_snapshot = snapshot(a.task_definition)
+    a.save(update_fields=["task_snapshot"])
+    return Response(_row(a))
 
 
 # ── Community YAML ───────────────────────────────────────────────────────────

@@ -28,6 +28,10 @@ def _row(b: Playbook, *, failing: int | None = None) -> dict:
         "allow_high_risk": b.allow_high_risk,
         "inputs": b.inputs or [],
         "site_id": str(sid) if (sid := scoping.row_site_id(b)) else None,
+        "tasks_auto_sync": b.tasks_auto_sync,
+        # Steps whose task changed since the step was given it: the editor
+        # warns and offers Sync latest (decisions-06 item 16).
+        "stale_steps": [s.definition.name for s in b.steps.all() if s.definition_stale],
         "created_at": b.created_at.isoformat(),
         # How many hosts auto-enrolment has stopped trying, because the last
         # run failed there. Zero is the ordinary answer and the card says
@@ -177,8 +181,11 @@ def _validate_and_set_steps(playbook: Playbook, definition_ids) -> Response | No
     except FlowError as exc:
         return Response({"detail": str(exc)}, status=400)
     playbook.steps.all().delete()
+    from apps.tasks.pinning import snapshot
     PlaybookStep.objects.bulk_create([
+        # Each step keeps the task version it was given (decisions-06 item 16).
         PlaybookStep(playbook=playbook, definition=st["definition"], order=i,
+                     definition_snapshot=snapshot(st["definition"]),
                      params_override=st["params_override"], inputs=st["inputs"],
                      on_not_applicable=st["on_not_applicable"],
                      on_failure=st["on_failure"], color=st["color"], outcome=st["outcome"],
@@ -315,6 +322,8 @@ def playbook_detail(request, playbook_id):
         playbook.name = name
     if "description" in data:
         playbook.description = (data["description"] or "").strip()
+    if "tasks_auto_sync" in data:
+        playbook.tasks_auto_sync = bool(data["tasks_auto_sync"])
     if "completion_tag" in data:
         playbook.completion_tag = (data["completion_tag"] or "").strip()
     if "auto_enroll" in data:
@@ -357,6 +366,39 @@ def playbook_detail(request, playbook_id):
                 transaction.set_rollback(True)
                 return err
     return Response(_row(playbook))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsAdmin])
+def playbook_sync_tasks(request, playbook_id):
+    """Sync latest: give every step the current version of its task.
+
+    The same checks a save runs (eligibility, overrides, inputs), so a task
+    that grew a high-risk step cannot slip in by syncing.
+    """
+    from apps.tasks.pinning import snapshot
+    from apps.tasks.spec import validate_params_override
+
+    from .inputs import validate_step_inputs
+
+    playbook = get_object_or_404(
+        scoping.filter_by_site(Playbook.objects.all(), request.user, cascade_global=True),
+        pk=playbook_id)
+    if denied := scoping.write_denied(request.user, playbook):
+        return denied
+    steps = list(playbook.steps.select_related("definition"))
+    for step in steps:
+        d = step.definition
+        ok, why = eligible(d, allow_high_risk=playbook.allow_high_risk)
+        err = (None if ok else why) or validate_params_override(d.parsed_spec or {}, step.params_override or {}) \
+            or validate_step_inputs(d, step.inputs or {}, playbook.inputs)
+        if err:
+            return Response({"detail": f"Cannot sync {d.name}: {err}"}, status=400)
+    with transaction.atomic():
+        for step in steps:
+            step.definition_snapshot = snapshot(step.definition)
+            step.save(update_fields=["definition_snapshot"])
+    return Response(_row(Playbook.objects.prefetch_related("steps__definition").get(pk=playbook.pk)))
 
 
 # ── Community YAML ───────────────────────────────────────────────────────────

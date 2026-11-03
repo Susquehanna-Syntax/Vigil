@@ -147,7 +147,10 @@ def rollout_spec(rollout, inputs=None) -> dict:
             return _playbook_spec(rollout.playbook, inputs)
         if rollout.definition is None:
             raise ValueError("rollout's task definition no longer exists")
-        return _validate_definition(rollout.definition, inputs)
+        # Every wave runs the version the rollout started with (pinning.py).
+        from .pinning import effective
+        return _validate_definition(
+            effective(rollout.definition, rollout.definition_snapshot, False), inputs)
 
 
 def start_rollout(
@@ -214,8 +217,11 @@ def _start_rollout(definition, user, failure_threshold_pct, min_results_before_h
         spec = _validate_definition(definition, inputs)
 
     ts = _now()
+    from .pinning import snapshot
     rollout = PatchRollout.objects.create(
         definition=definition,
+        # Pinned for the rollout's life: later waves run what wave 1 ran.
+        definition_snapshot=snapshot(definition),
         playbook=playbook,
         action_kind=(PatchRollout.ActionKind.PLAYBOOK if playbook is not None
                      else PatchRollout.ActionKind.TASK),
