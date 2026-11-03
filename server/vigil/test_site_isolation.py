@@ -84,7 +84,9 @@ FILLERS = {
     "job_id": lambda o: o["job"].id,
     "page_id": lambda o: o["page"].id,
     "finding_id": lambda o: o["finding"].id,
-    "name_key": lambda o: o["name_key"],
+    # Both sites' SoftwareItem rows share this name_key (Spec 4): the two
+    # requests are then identical, so the body can differ only if a site-B row leaks.
+    "name_key": "shared-app",
     # A container, a file, a package: filler with no site marker in it, so the
     # only difference between the two requests is the object id.
     "name": "nginx",
@@ -238,9 +240,6 @@ NOT_YET_COVERED = {
 #: "<METHOD> <route>" -> what was observed. Pinned exactly. Later phases fix
 #: these and delete the line; an empty dict is the milestone's finish line.
 KNOWN_LEAKS: dict[str, str] = {
-    # The server-rendered dashboard ("/"): its host dropdown, pending-enrolment
-    # list and host table list every host.
-    "GET ": "zzlab in body",
     # automations
     "DELETE api/v1/automations/<uuid:automation_id>/": "204 vs 404",
     "PATCH api/v1/automations/<uuid:automation_id>/": "200 vs 404",
@@ -252,8 +251,6 @@ KNOWN_LEAKS: dict[str, str] = {
     "POST api/v1/baselines/<uuid:playbook_id>/archive/": "200 vs 404",
     "GET api/v1/baselines/<uuid:playbook_id>/failures/": "200 vs 404",
     "POST api/v1/baselines/<uuid:playbook_id>/retry/": "200 vs 404",
-    # hosts
-    "GET api/v1/hosts/inventory/": "zzlab in body",
     # playbooks
     "DELETE api/v1/playbooks/<uuid:playbook_id>/": "204 vs 404",
     "GET api/v1/playbooks/<uuid:playbook_id>/": "200 vs 404",
@@ -261,10 +258,6 @@ KNOWN_LEAKS: dict[str, str] = {
     "POST api/v1/playbooks/<uuid:playbook_id>/archive/": "200 vs 404",
     "GET api/v1/playbooks/<uuid:playbook_id>/failures/": "200 vs 404",
     "POST api/v1/playbooks/<uuid:playbook_id>/retry/": "200 vs 404",
-    # software
-    "GET api/v1/software/apps/<str:name_key>/": "zzlab in body",
-    # vulns
-    "GET api/v1/vulns/findings/": "zzlab in body",
 }
 
 _KWARG = re.compile(r"<(?:(\w+):)?(\w+)>")
@@ -574,16 +567,15 @@ class SiteIsolationTests(TestCase):
 
             o["wave"] = PatchWave.objects.create(name=f"shared-{shared}-wave", order=1)
 
-            item = SoftwareItem.objects.create(
+            SoftwareItem.objects.create(
                 host=o["host"],
                 source=SoftwareItem.Source.DPKG,
                 package_id=f"{tag}-pkg",
                 name=f"{tag}-app",
-                name_key=f"{tag}-app",
+                name_key="shared-app",
                 version="1.0",
                 first_seen=timezone.now(),
             )
-            o["name_key"] = item.name_key
 
             o["tag"] = Tag.objects.create(name=f"shared-{shared}-tag")
             o["host"].tags = [o["tag"].name]

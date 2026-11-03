@@ -830,7 +830,7 @@ def inventory_list(request):
     the UI can show "no agent data yet" alongside actual entries.
     """
     hosts = (
-        Host.objects.exclude(status=Host.Status.REJECTED)
+        scoping.filter_by_site(Host.objects.exclude(status=Host.Status.REJECTED), request.user)
         .select_related("inventory")
         .order_by("hostname")
     )
