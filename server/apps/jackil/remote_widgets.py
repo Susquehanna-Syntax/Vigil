@@ -240,4 +240,28 @@ def remote_widget(kind: str, raw: dict) -> dict:
     if shape not in SHAPES or not isinstance(data, dict):
         logger.info("Jackil widget %s sent shape %r Vigil cannot draw", short, shape)
         return _stat(UNDRAWABLE)
-    return {"version": 1, "shape": shape, "data": data}
+    return {"version": 1, "shape": shape, "data": _safe_links(data)}
+
+
+def _safe_href(value) -> str:
+    """An anchor's href, or "" when it is not a plain web link. Jackil is a
+    separate service; a javascript: or data: href from it must never reach a
+    Vigil page as something a user can click."""
+    url = value.strip() if isinstance(value, str) else ""
+    return url if url.lower().startswith(("http://", "https://")) else ""
+
+
+def _safe_links(data: dict) -> dict:
+    """``data`` with every href the shapes draw (the stat's own, each list
+    item's) reduced to a web link or dropped."""
+    data = dict(data)
+    if "href" in data:
+        data["href"] = _safe_href(data["href"])
+    items = data.get("items")
+    if isinstance(items, list):
+        data["items"] = [
+            {**item, "href": _safe_href(item.get("href"))}
+            if isinstance(item, dict) and "href" in item else item
+            for item in items
+        ]
+    return data

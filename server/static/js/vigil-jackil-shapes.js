@@ -20,6 +20,12 @@ function _jkInk(pastel) {
 
 /* ── Renderers ─────────────────────────────────────────────────────────── */
 
+// Only a plain web link becomes an href; the server already drops anything
+// else, and this keeps a javascript: URI out even if that check is bypassed.
+function _jkHref(u) {
+  return (typeof u === 'string' && /^https?:\/\//i.test(u.trim())) ? u.trim() : '';
+}
+
 function _jkStat(body, data) {
   // A muted 0 is a placeholder ("Pick a project…", "Cost hidden"), not a
   // count: say the words, don't draw a big zero.
@@ -32,9 +38,10 @@ function _jkStat(body, data) {
     `<div class="jk-stat-value" style="color: ${_jkInk(_jkPastel(data.tone))}">${escHtml(data.value)}</div>`
     + `<div class="jk-stat-label">${escHtml(data.label)}</div>`
     + (data.sub ? `<div class="jk-stat-sub">${escHtml(data.sub)}</div>` : '');
-  body.innerHTML = data.href
+  const href = _jkHref(data.href);
+  body.innerHTML = href
     // The hrefs are Jackil's own pages; open them beside Vigil's tab.
-    ? `<a class="jk-stat" href="${escAttr(data.href)}" target="_blank" rel="noopener">${inner}</a>`
+    ? `<a class="jk-stat" href="${escAttr(href)}" target="_blank" rel="noopener">${inner}</a>`
     : `<div class="jk-stat">${inner}</div>`;
 }
 
@@ -59,8 +66,9 @@ function _jkList(body, data) {
       : '';
     const inner = main + right;
     const attrs = ` class="jk-card ${edge}" title="${escAttr(item.title || '')}"`;
-    return item.href
-      ? `<a href="${escAttr(item.href)}" target="_blank" rel="noopener"${attrs}>${inner}</a>`
+    const href = _jkHref(item.href);
+    return href
+      ? `<a href="${escAttr(href)}" target="_blank" rel="noopener"${attrs}>${inner}</a>`
       : `<div${attrs}>${inner}</div>`;
   }).join('');
   body.innerHTML = `<div class="jk-cards">${cards}</div>`;

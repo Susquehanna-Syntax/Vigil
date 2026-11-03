@@ -253,6 +253,25 @@ class RemoteWidgetTests(TestCase):
             self.assertEqual(body["data"]["label"],
                              "Jackil sent a widget Vigil could not draw.")
 
+    def test_only_web_links_survive_as_hrefs(self):
+        """Jackil is a separate service: a javascript: or data: href it sends
+        must never reach the browser as a clickable link."""
+        _turn_on()
+        answer = {"version": 1, "shape": "list", "data": {
+            "href": "javascript:alert(1)",
+            "items": [
+                {"title": "ok", "href": "https://help.example.com/t/1/"},
+                {"title": "evil", "href": " JavaScript:alert(document.cookie)"},
+                {"title": "data", "href": "data:text/html,<script>x</script>"},
+                {"title": "none"},
+            ]}}
+        with _jackil(answer=answer):
+            body = self.api.get(WIDGET_URL).json()
+        self.assertEqual(body["shape"], "list")
+        self.assertEqual(body["data"]["href"], "")
+        hrefs = [i.get("href") for i in body["data"]["items"]]
+        self.assertEqual(hrefs, ["https://help.example.com/t/1/", "", "", None])
+
     def test_jackil_widget_endpoint_needs_a_login(self):
         anon = APIClient()
         resp = anon.get(WIDGET_URL)
