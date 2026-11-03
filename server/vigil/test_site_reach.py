@@ -149,3 +149,40 @@ class RolloutSiteRecheckTests(TestCase):
         self.assertEqual(PatchRollout.objects.get(pk=rollout.pk).site_id, lab.pk)
         self.assertEqual(sorted(Task.objects.values_list("host__hostname", flat=True)),
                          ["lab-stays"])
+
+
+class PlaybookBoundsAutomationTests(TestCase):
+    """A global automation that runs West's playbook reaches West only: West's
+    admins edit those steps, so it must not carry them to Lab. A Lab
+    automation running West's playbook reaches nothing."""
+
+    def setUp(self):
+        from apps.automations.models import Automation
+        from apps.hosts.models import Host
+        from apps.playbooks.models import Playbook
+        from apps_business.sites.models import HostSiteAssignment, Site
+        self.west = Site.objects.create(name="West", slug="west")
+        self.lab = Site.objects.create(name="Lab", slug="lab")
+        for name, site in (("west-1", self.west), ("lab-1", self.lab)):
+            h = Host.objects.create(hostname=name, agent_token=f"t-{name}",
+                                    status=Host.Status.ONLINE, mode="managed")
+            HostSiteAssignment.objects.create(host=h, site=site)
+        self.west_pb = Playbook.objects.create(name="West pb")
+        scoping.place(self.west_pb, self.west.pk)
+        self.auto = Automation.objects.create(name="a", trigger="schedule", target="all",
+                                              action_kind="playbook", playbook=self.west_pb)
+
+    def names(self):
+        from apps.automations.engine import _resolve_hosts
+        from apps.automations.models import Automation
+        return sorted(h.hostname for h in _resolve_hosts(Automation.objects.get(pk=self.auto.pk), None))
+
+    def test_global_automation_with_a_sites_playbook_reaches_that_site(self):
+        self.assertEqual(self.names(), ["west-1"])
+
+    def test_another_sites_automation_with_it_reaches_nothing(self):
+        scoping.place(self.auto, self.lab.pk)
+        self.assertEqual(self.names(), [])
+        from apps.automations.engine import _rollout_host_ids
+        from apps.automations.models import Automation
+        self.assertEqual(_rollout_host_ids(Automation.objects.get(pk=self.auto.pk)), [])

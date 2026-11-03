@@ -68,6 +68,37 @@ def _build_for(automation, why: list | None = None):
         return nothing(f"It could not be built: {exc}")
 
 
+_NOWHERE = object()
+
+
+def reach_site(automation):
+    """The site *automation* may act in: None for everywhere, a site id, or
+    _NOWHERE. A playbook action is bounded by the playbook's site too: a
+    global automation running West's playbook reaches West only, because
+    West's admins edit those steps; a Lab automation running West's playbook
+    reaches nothing."""
+    from vigil import scoping
+
+    own = scoping.site_id_of(automation)
+    if automation.action_kind != automation.ActionKind.PLAYBOOK or automation.playbook is None:
+        return own
+    theirs = scoping.site_id_of(automation.playbook)
+    if theirs is None:
+        return own
+    if own is None or own == theirs:
+        return theirs
+    return _NOWHERE
+
+
+def reaches(automation, host) -> bool:
+    from vigil import scoping
+
+    site = reach_site(automation)
+    if site is _NOWHERE:
+        return False
+    return site is None or scoping.site_id_of(host) == site
+
+
 def _resolve_hosts(automation, event_host):
     """The hosts *automation* dispatches to, never outside its own site: a
     site's automation reaches only that site's hosts, a global one every
@@ -81,12 +112,15 @@ def _resolve_hosts(automation, event_host):
             one = event_host
         else:
             one = automation.target_host if automation.target_host_id else None
-        return [one] if one is not None and scoping.within_site(automation, one) else []
+        return [one] if one is not None and reaches(automation, one) else []
 
+    site = reach_site(automation)
+    if site is _NOWHERE:
+        return []
     qs = scoping.hosts_in_site(
         Host.objects.exclude(status=Host.Status.PENDING).exclude(
             status=Host.Status.REJECTED).exclude(mode=Host.Mode.MONITOR),
-        scoping.site_id_of(automation))
+        site)
     if automation.target == T.TAGS:
         # Row ids, not strings — same comparison, encoded once in the row key
         # rather than re-derived at each call site.
@@ -201,6 +235,9 @@ def run_automation(automation, *, event_host=None, why: list | None = None,
 
 
 def _no_hosts_reason(automation, event_host) -> str:
+    if reach_site(automation) is _NOWHERE:
+        return ("Its playbook belongs to another site, so it reaches no hosts. Use a global "
+                "playbook or one from the automation's own site.")
     T = automation.Target
     if automation.target == T.EVENT_HOST:
         return ("It targets the host that fired the event, and a schedule or "
@@ -389,7 +426,7 @@ def _handle_event(event_name: str, payload: dict) -> None:
         if not host_ok(auto, host):
             continue
         # A site's automation reacts only to its own site's hosts.
-        if host is not None and not scoping.within_site(auto, host):
+        if host is not None and not reaches(auto, host):
             continue
         if not text_ok(auto, alert, payload):
             continue
@@ -407,7 +444,9 @@ def _rollout_host_ids(automation, narrow_to=None):
     from apps.hosts.models import Host
     from vigil import scoping
 
-    sid = scoping.site_id_of(automation)
+    sid = reach_site(automation)
+    if sid is _NOWHERE:
+        return []
     if sid is None and narrow_to is None:
         return None
     hosts = scoping.hosts_in_site(Host.objects.all(), sid)
@@ -431,8 +470,9 @@ def _start_rollout_for(automation, narrow_to=None) -> int:
     from vigil import scoping
 
     host_ids = _rollout_host_ids(automation, narrow_to)
-    if host_ids == [] and narrow_to is not None:
+    if host_ids == []:
         return 0
+    site = reach_site(automation)
     try:
         if automation.action_kind == automation.ActionKind.PLAYBOOK:
             if automation.playbook is None:
@@ -441,7 +481,7 @@ def _start_rollout_for(automation, narrow_to=None) -> int:
                 return 0
             start_rollout(playbook=automation.playbook, user=automation.created_by,
                           inputs=automation.inputs, host_ids=host_ids,
-                          site_id=scoping.site_id_of(automation))
+                          site_id=site)
         else:
             if automation.task_definition is None:
                 logger.warning("automation %s: definition missing, cannot roll out",
@@ -449,7 +489,7 @@ def _start_rollout_for(automation, narrow_to=None) -> int:
                 return 0
             start_rollout(automation.task_definition, user=automation.created_by,
                           inputs=automation.inputs, host_ids=host_ids,
-                          site_id=scoping.site_id_of(automation))
+                          site_id=site)
     except ValueError as exc:
         logger.warning("automation %s: rollout refused: %s", automation.pk, exc)
         return 0
