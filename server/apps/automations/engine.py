@@ -391,6 +391,19 @@ def _handle_event(event_name: str, payload: dict) -> None:
         run_automation(auto, event_host=host)
 
 
+def _rollout_host_ids(automation):
+    """None for a global automation (every host its waves select); for a
+    site's automation, the ids of that site's hosts the active scope allows."""
+    from apps.hosts.models import Host
+    from vigil import scoping
+
+    sid = scoping.site_id_of(automation)
+    if sid is None:
+        return None
+    return [str(pk) for pk in scoping.hosts_in_site(Host.objects.all(), sid)
+            .values_list("pk", flat=True)]
+
+
 def _start_rollout_for(automation) -> int:
     """Start a staged rollout of the automation's task or playbook.
 
@@ -400,6 +413,9 @@ def _start_rollout_for(automation) -> int:
     """
     from apps.tasks.rollout import start_rollout
 
+    # A site's automation rolls out to its own site's hosts only. The rollout
+    # stores this allow-list, so every later wave honours it too.
+    host_ids = _rollout_host_ids(automation)
     try:
         if automation.action_kind == automation.ActionKind.PLAYBOOK:
             if automation.playbook is None:
@@ -407,14 +423,14 @@ def _start_rollout_for(automation) -> int:
                                automation.pk)
                 return 0
             start_rollout(playbook=automation.playbook, user=automation.created_by,
-                          inputs=automation.inputs)
+                          inputs=automation.inputs, host_ids=host_ids)
         else:
             if automation.task_definition is None:
                 logger.warning("automation %s: definition missing, cannot roll out",
                                automation.pk)
                 return 0
             start_rollout(automation.task_definition, user=automation.created_by,
-                          inputs=automation.inputs)
+                          inputs=automation.inputs, host_ids=host_ids)
     except ValueError as exc:
         logger.warning("automation %s: rollout refused: %s", automation.pk, exc)
         return 0

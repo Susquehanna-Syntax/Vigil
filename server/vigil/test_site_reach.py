@@ -106,3 +106,18 @@ class SiteReachTests(TestCase):
         scoping.site_id_of(lab_pb)
         with self.assertNumQueries(0):
             [scoping.within_site(lab_pb, h) for h in hosts]
+
+    def test_site_automation_rollout_is_limited_to_its_site(self):
+        from apps.tasks.models import TaskDefinition
+        definition = TaskDefinition.objects.create(
+            name="noop", risk_level="standard", yaml_source="",
+            parsed_spec={"risk": "standard", "actions": []})
+        lab_auto = self.automation(self.lab, dispatch_mode=Automation.DispatchMode.ROLLOUT,
+                                   task_definition=definition)
+        glob_auto = self.automation(dispatch_mode=Automation.DispatchMode.ROLLOUT,
+                                    task_definition=definition)
+        with mock.patch("apps.tasks.rollout.start_rollout") as start:
+            engine._start_rollout_for(lab_auto)
+            self.assertEqual(start.call_args.kwargs["host_ids"], [str(self.hosts["lab-1"].pk)])
+            engine._start_rollout_for(glob_auto)
+            self.assertIsNone(start.call_args.kwargs["host_ids"])
