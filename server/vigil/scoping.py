@@ -504,6 +504,26 @@ def row_site_id(obj):
     return None if row.site.is_global else row.site_id
 
 
+def writable_sites(user, app=None, verb=None) -> dict:
+    """Where *user* may create things, for a form's site picker: the same
+    rules as site_for_write. ``global`` says whether "no site" is allowed;
+    ``enabled`` is False when there are no sites to choose between."""
+    from apps.accounts.permissions import visible_site_ids
+
+    mods = _sites_models()
+    if mods is None:
+        return {"enabled": False, "global": True, "sites": []}
+    ids = visible_site_ids(user)
+    qs = mods.Site.objects.filter(is_global=False).order_by("name")
+    if ids is not None:
+        qs = qs.filter(pk__in=ids)
+    sites = [{"id": str(site.pk), "name": site.name} for site in qs
+             if _allowed(user, site.pk, app, verb)]
+    glob = _write_site(user, None)
+    may_global = glob is not False and _allowed(user, glob, app, verb)
+    return {"enabled": bool(sites), "global": may_global, "sites": sites}
+
+
 def host_in_scope(user, host) -> bool:
     """May `user` reach this host at all? False means the caller should 404
     rather than 403 — a scoped user should not learn that a host exists in a

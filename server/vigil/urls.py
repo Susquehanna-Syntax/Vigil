@@ -27,7 +27,7 @@ from apps.reprovision.installer_views import enroll as reprovision_enroll
 from apps.remote.views import agent_wake
 from apps.statuspage.views import public_status as status_public_view
 from apps.statuspage.views import public_status_data as status_public_data_view
-from vigil import scoping
+from vigil import scoping, views_scope
 
 
 @api_view(["GET"])
@@ -170,6 +170,7 @@ urlpatterns = [
     # emits it any more.
     path("api/v1/baselines/", include(_legacy_playbook_urls)),
     path("api/v1/ai/", include("apps.aisuggest.urls")),
+    path("api/v1/scope/writable-sites/", views_scope.writable_sites, name="writable-sites"),
     path("api/v1/status-pages/", include("apps.statuspage.urls")),
     path("api/v1/automations/", include("apps.automations.urls")),
     path("api/v1/reports/", include("apps.reports.urls")),

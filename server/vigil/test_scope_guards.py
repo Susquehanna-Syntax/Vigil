@@ -449,3 +449,30 @@ class SiteOwnedConfigTests(TestCase):
         west_stack = ManagedStack.objects.create(host=self.hosts["west-1"], name="s", compose_yaml="services: {}\n")
         apply_git_settings(west_stack, body)
         self.assertEqual(west_stack.git_credential, cred)
+
+
+class WritableSitesTests(TestCase):
+    """The create forms' site picker offers exactly what site_for_write allows."""
+
+    def test_offers(self):
+        from apps.accounts.models import UserProfile
+        glob = Site.objects.get(is_global=True)
+        west = Site.objects.create(name="West", slug="west")
+        Site.objects.create(name="Lab", slug="lab")
+        User = get_user_model()
+        dana = User.objects.create_user("dana", password="x")
+        UserSiteRole.objects.create(user=dana, site=west, role=Role.ADMIN)
+        gwen = User.objects.create_user("gwen", password="x")
+        UserSiteRole.objects.create(user=gwen, site=west, role=Role.ADMIN)
+        UserSiteRole.objects.create(user=gwen, site=glob, role=Role.VIEWER)
+        ida = User.objects.create_user("ida", password="x")
+        UserProfile.objects.create(user=ida, role=Role.ADMIN)
+
+        def offer(user):
+            self.client.force_login(user)
+            body = self.client.get("/api/v1/scope/writable-sites/").json()
+            return body["global"], [s["name"] for s in body["sites"]]
+
+        self.assertEqual(offer(dana), (False, ["West"]))
+        self.assertEqual(offer(gwen), (False, ["West"]))
+        self.assertEqual(offer(ida), (True, ["Lab", "West"]))

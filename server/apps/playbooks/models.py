@@ -288,7 +288,7 @@ def dispatch_to_host(host, *, playbooks=None) -> int:
             if not playbook.matches(host):
                 continue
             bad = [s.definition.name for s in playbook.steps.all()
-                   if not eligible(s.definition,
+                   if not eligible(s.effective_definition,
                                    allow_high_risk=playbook.allow_high_risk)[0]]
             if bad:
                 logger.warning("skipping playbook %s: ineligible definitions %s",
