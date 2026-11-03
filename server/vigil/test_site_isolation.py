@@ -33,7 +33,7 @@ from apps.agentprofiles.models import AgentProfile
 from apps.alerts.models import Alert, AlertRule
 from apps.automations.models import Automation
 from apps.dashboards.models import Dashboard
-from apps.hosts.models import Host, Tag
+from apps.hosts.models import Host, LogTailSession, Tag
 from apps.jackil.models import IntegrationKey
 from apps.playbooks.models import Playbook
 from apps.policies.models import PolicyChange, UpdatePolicy
@@ -42,7 +42,12 @@ from apps.remote.models import RemoteSession
 from apps.reports.models import Report
 from apps.reprovision.models import InstallProfile, OSImage, RebuildJob
 from apps.software.models import SoftwareItem
-from apps.stacks.models import GitCredential, ManagedStack, RegistryCredential
+from apps.stacks.models import (
+    GitCredential,
+    ManagedStack,
+    RegistryCredential,
+    StackRevision,
+)
 from apps.statuspage.models import StatusPage
 from apps.tasks.models import PatchWave, Task, TaskDefinition, TaskRun
 from apps.vulns.models import VulnFinding
@@ -57,6 +62,7 @@ from apps_business.sites.models import (
     Site,
     UserSiteRole,
 )
+from apps_business.webhooks.models import Webhook
 
 #: The site the fixture logs in as, and the one that must stay invisible.
 MINE, THEIRS = "west", "zzlab"
@@ -85,6 +91,7 @@ FILLERS = {
     "page_id": lambda o: o["page"].id,
     "finding_id": lambda o: o["finding"].id,
     "name_key": lambda o: o["name_key"],
+    "pk": lambda o: o["webhook"].pk,
     # A container, a file, a package: filler with no site marker in it, so the
     # only difference between the two requests is the object id.
     "name": "nginx",
@@ -199,13 +206,17 @@ ALLOWLIST = {
     "api/v1/reprovision/profiles/<uuid:profile_id>/": "instance-wide; an install profile carries no site",
 }
 
+#: Route -> {kwarg: filler} for routes whose kwarg name means a different
+#: model than FILLERS assumes.
+ROUTE_FILLERS = {
+    "api/v1/hosts/log-tails/<uuid:session_id>/": {"session_id": lambda o: o["logtail"].id},
+}
+
 #: Routes whose kwargs have no filler yet (phase 02b covers them). Pinned exactly:
 #: a stale entry fails, so does a new route that is in neither table.
 NOT_YET_COVERED = {
     "api/v1/agent-profiles/<uuid:profile_id>/",
     "api/v1/hosts/devices/<uuid:device_id>/",
-    # The log-tail routes name hosts.LogTailSession, not remote.RemoteSession.
-    "api/v1/hosts/log-tails/<uuid:session_id>/",
     "api/v1/jackil/integration-keys/<int:pk>/devices/",
     "api/v1/jackil/integration-keys/<int:pk>/revoke/",
     "api/v1/jackil/integration/<str:kind>/<str:id>/",
@@ -219,20 +230,14 @@ NOT_YET_COVERED = {
     "api/v1/rollouts/<uuid:rollout_id>/skip-validation/",
     "api/v1/rollouts/<uuid:rollout_id>/waves/<int:wave_id>/hosts/",
     "api/v1/rollouts/batch/<uuid:batch>/halt/",
-    "api/v1/sessions/<uuid:session_id>/recording/",
     "api/v1/stacks/git-credentials/<uuid:cred_id>/",
     "api/v1/stacks/registries/<uuid:cred_id>/",
-    "api/v1/stacks/<uuid:stack_id>/revisions/<int:number>/",
     "api/v1/tasks/runs/<uuid:run_id>/hunt/",
     "api/v1/waves/<int:wave_id>/",
     # Deploy names its target hosts in the body, not the URL.
     "api/v1/tasks/definitions/<uuid:definition_id>/deploy/",
     # A run spans hosts; it is visible when one of its hosts is.
     "api/v1/tasks/runs/<uuid:run_id>/",
-    "api/v1/webhooks/<int:pk>/",
-    "api/v1/webhooks/<int:pk>/rotate-secret/",
-    "api/v1/webhooks/<int:pk>/test/",
-    "api/v1/webhooks/<int:pk>/deliveries/",
 }
 
 #: "<METHOD> <route>" -> what was observed. Pinned exactly. Later phases fix
@@ -289,7 +294,8 @@ def routes_to_probe():
         and "^" not in route
         and route not in ALLOWLIST
         and route not in NOT_YET_COVERED
-        and all(name in FILLERS for _, name in _KWARG.findall(route))
+        and all(name in FILLERS or name in ROUTE_FILLERS.get(route, {})
+                for _, name in _KWARG.findall(route))
     ]
 
 
@@ -301,7 +307,8 @@ def unfillable(routes):
             continue
         if route in ALLOWLIST or route in NOT_YET_COVERED:
             continue
-        missing = [name for _, name in _KWARG.findall(route) if name not in FILLERS]
+        missing = [name for _, name in _KWARG.findall(route)
+                   if name not in FILLERS and name not in ROUTE_FILLERS.get(route, {})]
         if missing:
             out.append((route, missing))
     return out
@@ -341,9 +348,9 @@ def _fill(route, objs, absent=False):
     responses comparable at all."""
     def repl(match):
         name = match.group(2)
-        if name not in FILLERS:
+        filler = ROUTE_FILLERS.get(route, {}).get(name, FILLERS.get(name))
+        if filler is None:
             raise LookupError(name)
-        filler = FILLERS[name]
         if not callable(filler):
             return str(filler)
         value = filler(objs)
@@ -495,6 +502,11 @@ class SiteIsolationTests(TestCase):
             o["git_cred"] = GitCredential.objects.create(
                 name=f"shared-{shared}-git", kind=GitCredential.Kind.TOKEN, secret_encrypted=b""
             )
+            o["logtail"] = LogTailSession.objects.create(
+                host=o["host"], container_name=f"{tag}-container", requested_by=member)
+            StackRevision.objects.create(
+                stack=o["stack"], number=1, compose_yaml="services: {}\n",
+                note=f"{tag} revision")
 
             o["session"] = RemoteSession.objects.create(
                 host=o["host"],
@@ -576,6 +588,11 @@ class SiteIsolationTests(TestCase):
             o["role"] = UserSiteRole.objects.create(
                 user=member, site=site, role=Role.OPERATOR
             )
+
+            o["webhook"] = Webhook.objects.create(
+                name=f"{tag}-hook", url=f"https://hooks.example.com/{tag}",
+                events=["alert.sent"], created_by=member)
+            o["webhook"].sites.set([site])
 
             cls.objs[tag] = o
 
