@@ -27,6 +27,7 @@ from apps.reprovision.installer_views import enroll as reprovision_enroll
 from apps.remote.views import agent_wake
 from apps.statuspage.views import public_status as status_public_view
 from apps.statuspage.views import public_status_data as status_public_data_view
+from vigil import scoping
 
 
 @api_view(["GET"])
@@ -89,7 +90,11 @@ def dashboard(request):
     # The dashboard page itself is the widget grid; these feed the pages that
     # still render host lists server-side (the Monitor host dropdown and the
     # Settings "All Agents" table) plus the header sub-line counts.
-    hosts = Host.objects.exclude(status=Host.Status.REJECTED).select_related("inventory").order_by("hostname")
+    hosts = (
+        scoping.filter_by_site(Host.objects.exclude(status=Host.Status.REJECTED), request.user)
+        .select_related("inventory")
+        .order_by("hostname")
+    )
     pending_hosts = list(hosts.filter(status=Host.Status.PENDING))
     for _h in pending_hosts:
         _h.replaces = replacement_candidate(_h)
@@ -99,7 +104,9 @@ def dashboard(request):
         "host_count": hosts.count(),
         "online_count": hosts.filter(status=Host.Status.ONLINE).count(),
         "pending_count": len(pending_hosts),
-        "alert_count": Alert.objects.filter(state=Alert.State.FIRING).count(),
+        "alert_count": scoping.filter_by_site(
+            Alert.objects.filter(state=Alert.State.FIRING), request.user, path="host__"
+        ).count(),
         "pending_hosts": pending_hosts,
         "vigil_timezone": setting("VIGIL_TIMEZONE"),
         "vigil_time_format": setting("VIGIL_TIME_FORMAT"),
