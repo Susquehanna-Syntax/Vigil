@@ -1066,27 +1066,9 @@ def _finalize_run_if_done(run: TaskRun) -> None:
     if Task.objects.filter(run=run, state__in=active_states).exists():
         return
 
-    # A failure the playbook handles (on_failure: continue) counts as done,
-    # not failed — the recovery branch is what the run is judged on.
-    states = {
-        Task.State.COMPLETED if (on_failure == "continue" and state in _FAILURE_LIKE) else state
-        for state, on_failure in Task.objects.filter(run=run).values_list("state", "on_failure")
-    }
-    # A not-applicable host is neither a pass nor a failure, so it is
-    # excluded from the outcome. If every host was not applicable the run
-    # itself is not applicable; otherwise the remaining states decide as
-    # usual.
-    remaining = states - {Task.State.NOT_APPLICABLE}
-    if not remaining:
-        run.state = TaskRun.State.NOT_APPLICABLE
-    elif remaining <= {Task.State.COMPLETED, Task.State.SKIPPED}:
-        # Skipped steps are happy outcomes — only-skipped or
-        # completed-and-skipped runs are COMPLETED, not PARTIAL.
-        run.state = TaskRun.State.COMPLETED
-    elif Task.State.COMPLETED in remaining or Task.State.SKIPPED in remaining:
-        run.state = TaskRun.State.PARTIAL
-    else:
-        run.state = TaskRun.State.FAILED
+    from .summary import run_outcome
+
+    run.state = run_outcome(Task.objects.filter(run=run).values_list("state", "on_failure"))
     run.finished_at = now()
     run.save(update_fields=["state", "finished_at"])
 
@@ -1792,7 +1774,7 @@ def run_history(request):
         page = 1
     page_size = 25
 
-    from .authz import visible_runs
+    from .authz import trim_runs, visible_runs
     qs = visible_runs(TaskRun.objects.select_related(
         "automation", "playbook", "requested_by").order_by("-created_at"), request.user)
 
@@ -1814,7 +1796,8 @@ def run_history(request):
         "page": page,
         "pages": pages,
         "page_size": page_size,
-        "results": TaskRunSummarySerializer(qs[start:start + page_size], many=True).data,
+        "results": TaskRunSummarySerializer(
+            trim_runs(qs[start:start + page_size], request.user), many=True).data,
     })
 
 
@@ -1827,10 +1810,10 @@ def run_detail(request, run_id):
         ),
         pk=run_id,
     )
-    from .authz import run_visible
+    from .authz import run_visible, trim_run
     if not run_visible(request.user, run):
         return Response({"error": "Not found"}, status=404)
-    data = TaskRunSerializer(run).data
+    data = TaskRunSerializer(trim_run(run, request.user)).data
     from .summary import run_summary
     data["summary"] = run_summary(run)
     return Response(data)

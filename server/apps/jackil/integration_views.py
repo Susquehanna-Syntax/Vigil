@@ -26,7 +26,7 @@ from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin
 from apps.hosts.models import UnmanagedDevice
 from apps.hosts.serializers import UnmanagedDeviceSerializer
-from apps.tasks.authz import visible_runs
+from apps.tasks.authz import trim_run, visible_runs
 from vigil import licensing, scoping
 
 from .integration_auth import IntegrationKeyAuthentication
@@ -89,16 +89,17 @@ def _automations(user):
 def _runs(user):
     from apps.tasks.models import TaskRun
 
-    # A run that touched a site the creator cannot see is hidden whole: its
-    # summary covers every host it ran on (apps/tasks/authz.py).
+    # A run is visible when any of its hosts is; one that also touched hosts
+    # the key's user cannot see is trimmed in _item (apps/tasks/authz.py).
     return visible_runs(TaskRun.objects.all(), user).order_by("-created_at")
 
 
 def _devices(user):
     from apps.hosts.models import UnmanagedDevice
 
-    # Devices are not site-scoped in Vigil today: every signed-in user reads
-    # them, only admins write (phase 02 adds the per-key write flag).
+    # Devices carry a site since S1 04d-1: the manager narrows this to the
+    # caller's sites plus global (no site) devices. Only admins write (phase
+    # 02 adds the per-key write flag).
     return UnmanagedDevice.objects.order_by("name")
 
 
@@ -159,6 +160,9 @@ def _item(kind: str, obj, request) -> dict:
     """The row as the search page draws it: what to call it, what sits under
     that, and how loudly. ``url`` is the deep link phase 02 makes the SPA
     honour, so it is minted here rather than guessed at by the caller."""
+    if kind == "run":
+        # In place, so the detail's facts built from the same object agree.
+        obj = trim_run(obj, request.user)
     label, sub, status, tone = _HEADERS[kind](obj)
     return {
         "type": kind,

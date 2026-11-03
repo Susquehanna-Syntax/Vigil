@@ -132,8 +132,7 @@ _METRICS = {
     },
     "runs_failed_24h": {
         "label": "Failed runs (24h)",
-        "count": lambda user: _runs(user).filter(
-            state="failed", created_at__gte=timezone.now() - FAILURE_WINDOW).count(),
+        "count": lambda user: _failed_runs(user),
         "tone": lambda value: _ok_when_zero(value, bad=True),
     },
     "pending_enrollments": {
@@ -234,6 +233,18 @@ def _alert_list(user, request, limit: int) -> dict:
         "href": deep_link(request, "host", alert.host_id),
     } for alert in _open_alerts(user).order_by("-fired_at")[:limit]]
     return {"items": items, "empty": "No open alerts."}
+
+
+def _failed_runs(user) -> int:
+    """Runs that failed in the window, as this user sees them: a run that
+    failed only on another site's hosts is not a failure here (trim_run)."""
+    from apps.accounts.permissions import visible_site_ids
+    from apps.tasks.authz import trim_run
+
+    recent = _runs(user).filter(created_at__gte=timezone.now() - FAILURE_WINDOW)
+    if visible_site_ids(user) is None:
+        return recent.filter(state="failed").count()
+    return sum(1 for run in recent if trim_run(run, user).state == "failed")
 
 
 def _recent_runs(user, request, limit: int) -> dict:

@@ -165,6 +165,13 @@ class TaskRun(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
+    def save(self, *args, **kwargs):
+        # apps/tasks/authz.trim_run cuts a run down to one caller's view in
+        # memory; those numbers must never reach the database.
+        if getattr(self, "_trimmed", False):
+            raise RuntimeError("a run trimmed for one caller's view cannot be saved")
+        return super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.name_snapshot or 'run'} ({self.state})"
 

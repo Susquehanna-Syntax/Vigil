@@ -13,6 +13,32 @@ _ACTIVE = {"blocked", "pending", "dispatched", "executing"}
 _FAILED = {"failed", "rejected", "expired"}
 
 
+def run_outcome(rows) -> str:
+    """A run's state from ``(state, on_failure)`` for each of its tasks.
+
+    "running" while any task is still active. Otherwise a failure the
+    playbook handles (on_failure: continue) counts as done, not failed — the
+    recovery branch is what the run is judged on — and a not-applicable host
+    is neither a pass nor a failure: only when every host was not applicable
+    is the run itself not applicable. Skipped steps are happy outcomes.
+    """
+    rows = list(rows)
+    if any(state in _ACTIVE for state, _ in rows):
+        return "running"
+    states = {
+        "completed" if (on_failure == "continue" and state in _FAILED) else state
+        for state, on_failure in rows
+    }
+    remaining = states - {"not_applicable"}
+    if not remaining:
+        return "not_applicable"
+    if remaining <= {"completed", "skipped"}:
+        return "completed"
+    if "completed" in remaining or "skipped" in remaining:
+        return "partial"
+    return "failed"
+
+
 def _host_state(tasks) -> str:
     states = {t.state for t in tasks}
     if states & _ACTIVE:

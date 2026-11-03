@@ -101,7 +101,11 @@ def fleet_runner_denied(user) -> Response | None:
 
 # ── Reads ─────────────────────────────────────────────────────────────────────
 # A task's output is whatever its host printed, so history and run detail are
-# scoped by site like the hosts they ran on (SEC-1).
+# scoped by site like the hosts they ran on (SEC-1). A run is visible when any
+# of its tasks is (decisions-06 item 5); a run that also touched hosts the
+# caller cannot see is *trimmed*: its tasks are only the caller's (the Task
+# manager narrows run.tasks), and its host count and state are recomputed
+# from those tasks, so nothing about the other site's hosts shows through.
 
 def visible_tasks(qs, user):
     """Tasks on hosts *user* may see."""
@@ -110,23 +114,50 @@ def visible_tasks(qs, user):
 
 
 def visible_runs(qs, user):
-    """Runs whose every task is on a host *user* may see. A run that touched a
-    site the user cannot see is hidden whole: its summary and outputs cover
-    every host it ran on."""
+    """Runs with at least one task on a host *user* may see."""
     from apps.accounts.permissions import visible_site_ids
 
     from .models import Task
 
     if visible_site_ids(user) is None:
         return qs
-    # Every task, whatever the scope: a hidden task is one on a site the
-    # caller cannot see, so the set to subtract from must include those.
-    every = Task.objects.unscoped(
-        reason="run visibility: a run is hidden when any of its tasks is on a site the caller cannot see")
-    hidden = every.exclude(pk__in=visible_tasks(every, user).values("pk"))
-    return qs.exclude(pk__in=hidden.values("run_id"))
+    return qs.filter(pk__in=visible_tasks(Task.objects.all(), user).values("run_id"))
 
 
 def run_visible(user, run) -> bool:
     from .models import TaskRun
     return visible_runs(TaskRun.objects.filter(pk=run.pk), user).exists()
+
+
+def trim_run(run, user):
+    """Cut *run* down to what *user* may see, in memory, and return it.
+
+    A run fully in view comes back untouched. One that also touched hosts the
+    caller cannot see gets ``host_count`` and ``state`` recomputed from the
+    caller's own tasks and is marked trimmed: ``TaskRun.save`` refuses it, so a
+    view can never write the cut-down numbers back.
+    """
+    from apps.accounts.permissions import visible_site_ids
+
+    from .models import Task
+    from .summary import run_outcome
+
+    if visible_site_ids(user) is None:
+        return run
+    every = Task.objects.unscoped(
+        reason="run trimming: a run is trimmed when any of its tasks is on a site the caller cannot see"
+    ).filter(run=run)
+    seen = visible_tasks(every, user)
+    if not every.exclude(pk__in=seen.values("pk")).exists():
+        return run
+    run.host_count = seen.values("host_id").distinct().count()
+    if run.host_count:
+        # With none of its tasks in view the run is not visible at all
+        # (visible_runs), so there is nothing to recompute.
+        run.state = run_outcome(seen.values_list("state", "on_failure"))
+    run._trimmed = True
+    return run
+
+
+def trim_runs(runs, user):
+    return [trim_run(run, user) for run in runs]

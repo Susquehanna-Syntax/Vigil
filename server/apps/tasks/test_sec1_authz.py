@@ -240,3 +240,81 @@ class SweepTests(Sec1Base):
         resp = self._post(_user("viewer", Role.VIEWER), "/api/v1/hosts/devices/",
                           {"name": "printer", "ip_address": "10.0.0.9"})
         self.assertEqual(resp.status_code, 403, resp.content)
+
+
+class MixedRunTrimTests(Sec1Base):
+    """decisions-06 item 5: a run that touched West and Lab is visible to a West
+    admin, cut down to West. Lab's task, its output, its host and its failure
+    never show; the run's state is what it was on West."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.tasks.models import TaskRun
+        admin = _user("adm", Role.ADMIN)
+        self.run = TaskRun.objects.create(name_snapshot="mixed run", requested_by=admin,
+                                          host_count=2, step_count=1, state=TaskRun.State.PARTIAL)
+        Task.objects.create(host=self.west_host, run=self.run, action="check_service", nonce="m-west",
+                            params={}, requested_by=admin, state=Task.State.COMPLETED,
+                            result_output="west output")
+        Task.objects.create(host=self.lab_host, run=self.run, action="check_service", nonce="m-lab",
+                            params={}, requested_by=admin, state=Task.State.FAILED,
+                            result_output="lab secret")
+        self.dana = _user("dana")
+        UserSiteRole.objects.create(user=self.dana, site=self.west, role=Role.ADMIN)
+        self.client.force_login(self.dana)
+
+    def test_detail_shows_only_west(self):
+        resp = self.client.get(f"/api/v1/tasks/runs/{self.run.id}/")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["host_count"], 1)
+        self.assertEqual(body["state"], "completed")
+        self.assertEqual([t["result_output"] for t in body["tasks"]], ["west output"])
+        for marker in (b"lab secret", b"lab-1", str(self.lab_host.id).encode()):
+            self.assertNotIn(marker, resp.content)
+
+    def test_history_row_is_trimmed(self):
+        rows = self.client.get("/api/v1/tasks/runs/").json()["results"]
+        row = next(r for r in rows if r["name_snapshot"] == "mixed run")
+        self.assertEqual((row["host_count"], row["state"]), (1, "completed"))
+
+    def test_fleet_admin_sees_the_whole_run(self):
+        self.client.force_login(_user("root2", Role.ADMIN))
+        body = self.client.get(f"/api/v1/tasks/runs/{self.run.id}/").json()
+        self.assertEqual((body["host_count"], body["state"], len(body["tasks"])), (2, "partial", 2))
+
+    def test_a_trimmed_run_cannot_be_saved(self):
+        from apps.tasks.authz import trim_run
+        from apps.tasks.models import TaskRun
+        run = trim_run(TaskRun.objects.get(pk=self.run.pk), self.dana)
+        with self.assertRaises(RuntimeError):
+            run.save()
+        self.run.refresh_from_db()
+        self.assertEqual((self.run.host_count, self.run.state), (2, "partial"))
+
+    def test_jackil_failed_runs_tile_counts_only_west_failures(self):
+        from apps.jackil.integration_widgets import _failed_runs
+        from apps.tasks.models import TaskRun
+        TaskRun.objects.filter(pk=self.run.pk).update(state=TaskRun.State.FAILED)
+        Task.objects.filter(nonce="m-west").update(state=Task.State.COMPLETED)
+        self.assertEqual(_failed_runs(self.dana), 0)
+        Task.objects.filter(nonce="m-west").update(state=Task.State.FAILED)
+        self.assertEqual(_failed_runs(self.dana), 1)
+
+
+class RunOutcomeTests(TestCase):
+    """run_outcome is the rule _finalize_run_if_done applied inline before."""
+
+    def test_rules(self):
+        from apps.tasks.summary import run_outcome
+        cases = [
+            ([("pending", "abort")], "running"),
+            ([("completed", "abort"), ("skipped", "abort")], "completed"),
+            ([("not_applicable", "abort")], "not_applicable"),
+            ([("completed", "abort"), ("failed", "abort")], "partial"),
+            ([("failed", "abort"), ("expired", "abort")], "failed"),
+            ([("failed", "continue"), ("completed", "abort")], "completed"),
+            ([("not_applicable", "abort"), ("failed", "abort")], "failed"),
+        ]
+        for rows, want in cases:
+            self.assertEqual(run_outcome(rows), want, rows)
