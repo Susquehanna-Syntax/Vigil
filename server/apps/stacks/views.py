@@ -421,6 +421,7 @@ def stack_remove(request, stack_id):
     return Response({"task": str(task.id), "run": str(task.run_id)}, status=status.HTTP_201_CREATED)
 
 
+@scoping.system_view(reason="agent API: the caller is a host, authenticated by its agent token")
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def agent_stack_env(request, ticket_id):
@@ -482,6 +483,7 @@ def stack_adopt(request):
     return Response({"ticket": str(ticket.id), "task": str(task.id)}, status=status.HTTP_201_CREATED)
 
 
+@scoping.system_view(reason="agent API: the caller is a host, authenticated by its agent token")
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def agent_stack_adopt(request, ticket_id):

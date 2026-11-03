@@ -99,6 +99,7 @@ def _page_hosts(page):
     return hosts
 
 
+@scoping.system_view(reason="public status page: the page token is the access control")
 def public_status(request, token):
     """The public page. No auth — the token IS the access control. Branding
     fields only render when the license carries status_branding, so a lapsed
@@ -118,6 +119,7 @@ def public_status(request, token):
     })
 
 
+@scoping.system_view(reason="public status page: the page token is the access control")
 def public_status_data(request, token):
     """JSON snapshot of a page's current status — polled by the live page so it
     refreshes in place without a full reload (which would replay animations).

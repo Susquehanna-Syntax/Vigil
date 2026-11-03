@@ -20,7 +20,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 
 from apps.hosts.models import Host
-from vigil import hooks
+from vigil import hooks, scoping
 
 from . import jobs
 from .models import OSImage, RebuildJob
@@ -44,6 +44,7 @@ def _client_ip(request) -> str | None:
     return request.META.get("REMOTE_ADDR")
 
 
+@scoping.system_view(reason="reprovision installer: the rebuild token is the access control")
 @csrf_exempt
 def answer_file(request, token: str, filename: str = ""):
     """Serve the rendered answer file.
@@ -111,6 +112,7 @@ def _revoke_old_agent_token(job) -> None:
     host.save(update_fields=["agent_token"])
 
 
+@scoping.system_view(reason="reprovision installer: the rebuild token is the access control")
 @csrf_exempt
 def install_tree(request, image_id, path: str = ""):
     """Serve the extracted ISO tree as the installer's package source."""
@@ -137,6 +139,7 @@ def install_tree(request, image_id, path: str = ""):
     return FileResponse(real.open("rb"))
 
 
+@scoping.system_view(reason="reprovision installer: the rebuild token is the access control")
 @api_view(["POST"])
 @permission_classes([AllowAny])
 @throttle_classes([_EnrolThrottle])

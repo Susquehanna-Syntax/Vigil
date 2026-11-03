@@ -324,6 +324,7 @@ def session_close(request, session_id):
     return Response({"status": reason}, status=202)
 
 
+@scoping.system_view(reason="agent API: the caller is a host, authenticated by its agent token")
 async def agent_wake(request):
     """The agent's long-poll for session tickets.
 

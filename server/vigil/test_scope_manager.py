@@ -86,6 +86,17 @@ class ScopedManagerTests(_TwoSites):
                 self.hosts.unscoped(reason="")
             self.assertEqual(self.names(self.hosts.unscoped(reason="test")), ["lab-1", "west-1"])
 
+    def test_site_roles_are_looked_up_once_per_scope(self):
+        with scoping.as_user(self.dana):
+            list(self.hosts.all())
+            with self.assertNumQueries(1):  # the host query only, no roles query
+                list(self.hosts.all())
+        # A new scope looks them up afresh (roles, the global site, then the
+        # hosts), so a changed grant is seen.
+        with scoping.as_user(self.dana):
+            with self.assertNumQueries(3):
+                list(self.hosts.all())
+
     def test_scope_is_reset_after_an_exception(self):
         with self.assertRaises(RuntimeError):
             with scoping.as_user(self.dana):

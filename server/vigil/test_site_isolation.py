@@ -419,7 +419,9 @@ def leaks_for(client, objs, route, callback):
 def leaky_host(request, host_id):
     """Deliberately unscoped, for test_the_oracle_catches_a_leak: a view that
     hands back any host by id, which is exactly the bug this module hunts."""
-    return Response({"hostname": Host.objects.get(pk=host_id).hostname})
+    # Deliberately unscoped: since 04b the default manager would hide it.
+    host = Host.objects.unscoped(reason="the oracle needs a real leak").get(pk=host_id)
+    return Response({"hostname": host.hostname})
 
 
 #: Just the one route, for override_settings(ROOT_URLCONF=__name__).

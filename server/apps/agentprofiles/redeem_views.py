@@ -17,6 +17,7 @@ from rest_framework.throttling import AnonRateThrottle
 
 from .models import EnrollConfig
 from .render import to_yaml
+from vigil import scoping
 
 #: A token is 32 url-safe random bytes. Anything longer or with other
 #: characters is not one we minted, so it never reaches the database.
@@ -34,6 +35,7 @@ def _miss() -> Http404:
     return Http404("Unknown or used config token.")
 
 
+@scoping.system_view(reason="agent install: a one-time profile token is the access control")
 @api_view(["GET"])
 @permission_classes([AllowAny])
 @throttle_classes([_ConfigThrottle])

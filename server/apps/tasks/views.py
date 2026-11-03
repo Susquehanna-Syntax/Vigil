@@ -27,6 +27,7 @@ HIGH_RISK_HOLD_SECONDS = 60
 from apps.accounts.permissions import IsAdmin
 from apps.hosts.authentication import authenticate_agent
 from apps.hosts.models import Host
+from vigil import scoping
 
 from .models import HuntMatch, PatchRollout, Task, TaskDefinition, TaskRun
 from .rollout import (
@@ -270,6 +271,7 @@ def _ingest_hunt_matches(task, raw_steps):
 # ── Agent-facing: task result ────────────────────────────────────────────────
 
 
+@scoping.system_view(reason="agent API: the caller is a host, authenticated by its agent token")
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def task_result(request):

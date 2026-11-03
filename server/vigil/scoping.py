@@ -7,10 +7,12 @@ the same way apps/accounts/views.py:_branding() degrades.
 Nothing in this module may sit in a path that could stop monitoring, alerting,
 or agent ingest (SQSY-LICENSING §6).
 """
+import asyncio
 import contextvars
+import functools
 import logging
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from django.db import models as _dj_models
 from django.db.models import Q
@@ -178,6 +180,11 @@ def site_roles_for(user):
     if mods is None or not getattr(user, "pk", None):
         return {}
 
+    scope = _scope.get()
+    key = ("site_roles", user.pk)
+    if scope is not None and key in scope.cache:
+        return dict(scope.cache[key])
+
     out = {}
     rows = (mods.UserSiteRole.objects
             .filter(user=user).select_related("site"))
@@ -185,6 +192,8 @@ def site_roles_for(user):
         out[row.site_id] = row.role
         if row.site.is_global:
             out["__global__"] = row.role
+    if scope is not None:
+        scope.cache[key] = dict(out)
     return out
 
 
@@ -211,6 +220,17 @@ def capabilities_for(user, site):
     if row is None:
         return None
     return {(c.app, c.verb) for c in row.capabilities.all()}
+
+
+def _global_site_id(mods):
+    """The global site's id, looked up once per scope."""
+    scope = _scope.get()
+    if scope is not None and "global_site_id" in scope.cache:
+        return scope.cache["global_site_id"]
+    glob = mods.Site.objects.filter(is_global=True).values_list("id", flat=True).first()
+    if scope is not None:
+        scope.cache["global_site_id"] = glob
+    return glob
 
 
 def filter_by_site(qs, user, path="", cascade_global=False):
@@ -248,8 +268,7 @@ def filter_by_site(qs, user, path="", cascade_global=False):
         q |= Q(**{f"{path}site_assignment__isnull": True})
         q |= Q(**{f"{path}site_assignment__site__is_global": True})
     else:
-        glob = mods.Site.objects.filter(
-            is_global=True).values_list("id", flat=True).first()
+        glob = _global_site_id(mods)
         if glob in ids:
             q |= Q(**{f"{path}site_assignment__isnull": True})
     return qs.filter(q).distinct()
@@ -275,8 +294,7 @@ def filter_by_site_field(qs, user, field="site_id"):
     if mods is None:
         return qs
 
-    glob = mods.Site.objects.filter(
-        is_global=True).values_list("id", flat=True).first()
+    glob = _global_site_id(mods)
     q = (Q(**{f"{field}__in": ids})
          | Q(**{f"{field}__isnull": True})
          | Q(**{f"{field}": glob}))
@@ -375,6 +393,9 @@ class Scope:
     kind: str
     user: object = None
     reason: str = ""
+    #: Per-scope memo (a user's site roles), so a request that runs many
+    #: scoped queries looks the roles up once. It dies with the scope.
+    cache: dict = field(default_factory=dict, compare=False, repr=False)
 
 
 _scope: contextvars.ContextVar = contextvars.ContextVar("vigil_site_scope", default=None)
@@ -416,6 +437,31 @@ def system(*, reason):
     pinned by vigil/test_scope_crossings.py."""
     _require_reason(reason)
     return _entered(Scope("system", reason=reason))
+
+
+def system_view(*, reason):
+    """Decorate a view that no person is behind (an agent authenticated by
+    its host token, a public status page whose token is the access control).
+    The whole view runs in a system scope. Put it outermost, above
+    ``@api_view``, so the URL guard test can see ``_vigil_scope_reason`` on
+    the callback. Works on async views too."""
+    _require_reason(reason)
+
+    def deco(fn):
+        if asyncio.iscoroutinefunction(fn):
+            @functools.wraps(fn)
+            async def wrapper(*args, **kwargs):
+                with system(reason=reason):
+                    return await fn(*args, **kwargs)
+        else:
+            @functools.wraps(fn)
+            def wrapper(*args, **kwargs):
+                with system(reason=reason):
+                    return fn(*args, **kwargs)
+        wrapper._vigil_scope_reason = reason
+        return wrapper
+
+    return deco
 
 
 def scoped_user():

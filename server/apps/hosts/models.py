@@ -5,6 +5,8 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from vigil.scoping import SiteScopedManager
+
 #: Agent tokens are kept as a SHA-256, never in the clear: a database dump must
 #: not hand out a working credential for every machine (architect review,
 #: 2026-10-08). The hex part doubles as the agent fingerprint that v2 task
@@ -20,7 +22,9 @@ def hash_agent_token(raw: str) -> str:
     return TOKEN_PREFIX + hashlib.sha256(str(raw).encode()).hexdigest()
 
 
-class HostManager(models.Manager):
+class HostManager(SiteScopedManager):
+    """Hosts, narrowed to the active site scope (vigil/scoping.py)."""
+
     def by_token(self, raw: str):
         """Hosts whose token is *raw* (the plaintext an agent presents)."""
         return self.filter(agent_token=hash_agent_token(raw))

@@ -20,7 +20,7 @@ from rest_framework.response import Response
 
 from apps.accounts.permissions import IsAdmin
 from apps.hosts.crypto import decrypt_secret, encrypt_secret
-from vigil import hooks
+from vigil import hooks, scoping
 
 from . import gitsource
 from .models import GitCredential, ManagedStack, SourceSnapshot, SourceTicket, StackRevision
@@ -192,6 +192,7 @@ def deploy_source_params(stack: ManagedStack) -> dict:
 # ── The agent's download ─────────────────────────────────────────────────
 
 
+@scoping.system_view(reason="agent API: the caller is a host, authenticated by its agent token")
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def agent_stack_source(request, ticket_id):

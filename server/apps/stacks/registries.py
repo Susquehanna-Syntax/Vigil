@@ -13,6 +13,7 @@ from apps.accounts.permissions import IsAdmin
 from apps.hosts.crypto import decrypt_secret, encrypt_secret
 
 from .models import RegistryCredential
+from vigil import scoping
 
 _REGISTRY = re.compile(r"^[a-z0-9]([a-z0-9.-]{0,252})(:[0-9]{1,5})?$")
 
@@ -57,6 +58,7 @@ def registry_detail(request, cred_id):
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@scoping.system_view(reason="agent API: the caller is a host, authenticated by its agent token")
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def agent_registry_auth(request):

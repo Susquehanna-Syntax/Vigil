@@ -14,7 +14,25 @@ from django.test import SimpleTestCase
 SERVER = Path(__file__).resolve().parent.parent
 
 #: "relative/path.py" -> sorted reasons of the crossings in that file.
-CROSSINGS: dict[str, list[str]] = {}
+CROSSINGS: dict[str, list[str]] = {
+    'apps/agentprofiles/redeem_views.py': ['agent install: a one-time profile token is the access control'],
+    'apps/hosts/enrollment.py': ['re-enrolment: the same machine is matched across every site'],
+    'apps/hosts/logtail.py': ['agent API: the caller is a host, authenticated by its agent token'],
+    'apps/hosts/views.py': ['agent API: the caller is a host, authenticated by its agent token',
+                            'agent enrolment: a new host registers with no user',
+                            'tag rename: tags are install-wide'],
+    'apps/remote/views.py': ['agent API: the caller is a host, authenticated by its agent token'],
+    'apps/reprovision/installer_views.py': ['reprovision installer: the rebuild token is the access control',
+                                            'reprovision installer: the rebuild token is the access control',
+                                            'reprovision installer: the rebuild token is the access control'],
+    'apps/stacks/git_views.py': ['agent API: the caller is a host, authenticated by its agent token'],
+    'apps/stacks/registries.py': ['agent API: the caller is a host, authenticated by its agent token'],
+    'apps/stacks/views.py': ['agent API: the caller is a host, authenticated by its agent token',
+                             'agent API: the caller is a host, authenticated by its agent token'],
+    'apps/statuspage/views.py': ['public status page: the page token is the access control',
+                                 'public status page: the page token is the access control'],
+    'apps/tasks/views.py': ['agent API: the caller is a host, authenticated by its agent token'],
+}
 
 
 def _is_test(path):
@@ -26,7 +44,8 @@ def _system_names(tree):
     names = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "vigil.scoping":
-            names |= {a.asname or a.name for a in node.names if a.name == "system"}
+            names |= {a.asname or a.name for a in node.names
+                      if a.name in ("system", "system_view")}
     return names
 
 
@@ -34,7 +53,7 @@ def _is_crossing(call, system_names):
     f = call.func
     if isinstance(f, ast.Attribute) and f.attr == "unscoped":
         return True
-    if isinstance(f, ast.Attribute) and f.attr == "system":
+    if isinstance(f, ast.Attribute) and f.attr in ("system", "system_view"):
         return isinstance(f.value, ast.Name) and f.value.id == "scoping"
     return isinstance(f, ast.Name) and f.id in system_names
 
@@ -80,10 +99,45 @@ class ScopeCrossingsTests(SimpleTestCase):
                 "from vigil import scoping\n"
                 "a = Host.objects.unscoped(reason=\"agent ingest\")\n"
                 "with scoping.system(reason='nightly purge'):\n    pass\n"
+                "@scoping.system_view(reason='agent check-in')\ndef v(r):\n    pass\n"
                 "b = Host.objects.unscoped(reason=why)\n"
                 "import platform\nplatform.system()\n",
                 encoding="utf-8")
             found, bad = find_crossings(root)
-        self.assertEqual(found, {"apps/views.py": ["agent ingest", "nightly purge"]})
+        self.assertEqual(found, {"apps/views.py": ["agent check-in", "agent ingest", "nightly purge"]})
         self.assertEqual(len(bad), 1)
-        self.assertIn("apps/views.py:5", bad[0])
+        self.assertIn("apps/views.py:8", bad[0])
+
+
+class AnonymousViewsAreDeclaredTests(SimpleTestCase):
+    """Every DRF view open to anonymous callers (AllowAny) either runs in a
+    system scope, with its reason on the callback, or is listed here as
+    touching no site-owned rows. Once models are scoped, an anonymous request
+    sees none of their rows, so an undeclared agent endpoint would quietly
+    stop ingest; this test makes that a test failure instead."""
+
+    #: Route -> why it reads no site-owned rows.
+    NO_SITE_DATA = {
+        "api/v1/health/": "liveness probe; reads nothing",
+        "agent/download/<str:platform>/": "serves the agent binary; no host rows",
+    }
+
+    def test_every_allow_any_view_is_declared(self):
+        from rest_framework.permissions import AllowAny
+
+        from vigil.test_site_isolation import all_routes
+
+        undeclared, stale = [], set(self.NO_SITE_DATA)
+        for route, callback in all_routes():
+            cls = getattr(callback, "cls", None)
+            if cls is None or AllowAny not in getattr(cls, "permission_classes", ()):
+                continue
+            stale.discard(route)
+            if getattr(callback, "_vigil_scope_reason", None):
+                continue
+            if route in self.NO_SITE_DATA:
+                continue
+            undeclared.append(route)
+        self.assertEqual(sorted(undeclared), [],
+                         "AllowAny views with no @scoping.system_view and no NO_SITE_DATA entry")
+        self.assertEqual(sorted(stale), [], "stale NO_SITE_DATA entries")

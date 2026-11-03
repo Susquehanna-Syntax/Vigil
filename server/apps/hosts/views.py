@@ -194,6 +194,7 @@ class _RegisterRateThrottle(AnonRateThrottle):
     rate = "60/hour"
 
 
+@scoping.system_view(reason="agent enrolment: a new host registers with no user")
 @api_view(["POST"])
 @permission_classes([AllowAny])
 @throttle_classes([_RegisterRateThrottle])
@@ -376,6 +377,7 @@ def _refuse_unsupported_features(host: Host) -> None:
             _advance_run_sequence(task)
 
 
+@scoping.system_view(reason="agent API: the caller is a host, authenticated by its agent token")
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def checkin(request):
@@ -1647,7 +1649,7 @@ def _rename_in_string_mirrors(old_key: str, new_name: str) -> None:
                 setattr(row, field, values)
                 row.save()
 
-    rewrite(Host.objects.all(), "tags")
+    rewrite(Host.objects.unscoped(reason="tag rename: tags are install-wide"), "tags")
     rewrite(PatchWave.objects.all(), "tags")
     rewrite(Playbook.objects.all(), "target_tags")
     rewrite(Automation.objects.all(), "event_tags")

@@ -24,7 +24,9 @@ def replacement_candidate(pending):
     if not pending.machine_id:
         return None
     return (
-        Host.objects.filter(
+        Host.objects.unscoped(
+            reason="re-enrolment: the same machine is matched across every site",
+        ).filter(
             machine_id=pending.machine_id,
             status__in=[Host.Status.ONLINE, Host.Status.OFFLINE],
         )

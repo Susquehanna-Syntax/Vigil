@@ -96,6 +96,7 @@ def poll_logs(request, session_id):
     })
 
 
+@scoping.system_view(reason="agent API: the caller is a host, authenticated by its agent token")
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def agent_log_lines(request, session_id):
