@@ -261,20 +261,8 @@ KNOWN_LEAKS: dict[str, str] = {
     "POST api/v1/playbooks/<uuid:playbook_id>/archive/": "200 vs 404",
     "GET api/v1/playbooks/<uuid:playbook_id>/failures/": "200 vs 404",
     "POST api/v1/playbooks/<uuid:playbook_id>/retry/": "200 vs 404",
-    # policies
-    "GET api/v1/policies/": "zzlab in body",
-    "DELETE api/v1/policies/<uuid:policy_id>/": "204 vs 404",
-    "GET api/v1/policies/<uuid:policy_id>/": "200 vs 404",
-    "PUT api/v1/policies/<uuid:policy_id>/": "200 vs 404",
-    "GET api/v1/policies/<uuid:policy_id>/drift/": "200 vs 404",
-    "POST api/v1/policies/<uuid:policy_id>/run/": "401 vs 404",
-    "GET api/v1/policies/changes/": "zzlab in body",
     # software
     "GET api/v1/software/apps/<str:name_key>/": "zzlab in body",
-    # status-pages
-    "GET api/v1/status-pages/": "zzlab in body",
-    "DELETE api/v1/status-pages/<uuid:page_id>/": "204 vs 404",
-    "PATCH api/v1/status-pages/<uuid:page_id>/": "200 vs 404",
     # vulns
     "GET api/v1/vulns/findings/": "zzlab in body",
 }

@@ -167,7 +167,8 @@ def selectable_hosts(request):
 @permission_classes([IsAuthenticated, IsAdmin])
 def page_index(request):
     if request.method == "GET":
-        return Response([_row(p) for p in StatusPage.objects.order_by("created_at")])
+        return Response([_row(p) for p in scoping.filter_by_site_field(
+            StatusPage.objects.all(), request.user).order_by("created_at")])
     # The FIRST page is free. Additional pages (per-site/client) are Business.
     if StatusPage.objects.exists() and not has_feature("status_branding"):
         return Response(upgrade_body("status_branding"), status=402)
@@ -179,7 +180,9 @@ def page_index(request):
 @api_view(["PATCH", "DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def page_detail(request, page_id):
-    page = get_object_or_404(StatusPage, pk=page_id)
+    page = get_object_or_404(
+        scoping.filter_by_site_field(StatusPage.objects.all(), request.user),
+        pk=page_id)
     if request.method == "DELETE":
         page.delete()
         return Response(status=http.HTTP_204_NO_CONTENT)

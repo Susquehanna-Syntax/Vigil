@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.permissions import IsAdmin
+from vigil import scoping
 
 from .compile import compile_policy
 from .drift import policy_drift
@@ -84,7 +85,8 @@ def _save(request, policy: UpdatePolicy, data: dict) -> Response | None:
 @permission_classes([IsAuthenticated, IsAdmin])
 def policy_index(request):
     if request.method == "GET":
-        qs = UpdatePolicy.objects.prefetch_related("app_rules")
+        qs = scoping.filter_by_site_field(
+            UpdatePolicy.objects.prefetch_related("app_rules"), request.user)
         return Response({"results": [_row(p) for p in qs]})
     policy = UpdatePolicy()
     if error := _save(request, policy, request.data):
@@ -95,7 +97,9 @@ def policy_index(request):
 @api_view(["GET", "PUT", "DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def policy_detail(request, policy_id):
-    policy = get_object_or_404(UpdatePolicy, pk=policy_id)
+    policy = get_object_or_404(
+        scoping.filter_by_site_field(UpdatePolicy.objects.all(), request.user),
+        pk=policy_id)
     if request.method == "GET":
         return Response(_row(policy))
     if request.method == "DELETE":
@@ -116,7 +120,9 @@ def policy_detail(request, policy_id):
 @permission_classes([IsAuthenticated, IsAdmin])
 def policy_drift_view(request, policy_id):
     """What a run would change right now, host by host."""
-    policy = get_object_or_404(UpdatePolicy, pk=policy_id)
+    policy = get_object_or_404(
+        scoping.filter_by_site_field(UpdatePolicy.objects.all(), request.user),
+        pk=policy_id)
     return Response(policy_drift(policy))
 
 
@@ -128,7 +134,9 @@ def policy_run_now(request, policy_id):
 
     from .run import run_policy
 
-    policy = get_object_or_404(UpdatePolicy, pk=policy_id)
+    policy = get_object_or_404(
+        scoping.filter_by_site_field(UpdatePolicy.objects.all(), request.user),
+        pk=policy_id)
     if error := require_totp_confirmation(request.user, request.data):
         return Response({"detail": f"Running a policy needs confirmation: {error}",
                          "needs_totp": True}, status=status.HTTP_401_UNAUTHORIZED)
@@ -138,7 +146,9 @@ def policy_run_now(request, policy_id):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def change_list(request):
-    qs = PolicyChange.objects.select_related("policy", "host", "decided_by")
+    qs = scoping.filter_by_site(
+        PolicyChange.objects.select_related("policy", "host", "decided_by"),
+        request.user, path="host__")
     state = request.query_params.get("state")
     if state:
         qs = qs.filter(state=state)
@@ -161,6 +171,14 @@ def _ids(request):
     return [str(i) for i in ids]
 
 
+def _visible_ids(request, ids):
+    """`ids` narrowed to the changes this user can see. A non-uuid id raises
+    here, in the caller's existing try/except."""
+    visible = scoping.filter_by_site(
+        PolicyChange.objects.filter(pk__in=ids), request.user, path="host__")
+    return [str(i) for i in visible.values_list("pk", flat=True)]
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def change_approve(request):
@@ -177,7 +195,8 @@ def change_approve(request):
         return Response({"detail": f"Approving changes needs confirmation: {error}",
                          "needs_totp": True}, status=status.HTTP_401_UNAUTHORIZED)
     try:
-        return Response(decide(ids, approve=True, user=request.user))
+        return Response(decide(_visible_ids(request, ids), approve=True,
+                               user=request.user))
     except (ValueError, ValidationError):
         return Response({"detail": "ids must be change ids"},
                         status=status.HTTP_400_BAD_REQUEST)
@@ -193,7 +212,8 @@ def change_reject(request):
         return Response({"detail": "ids must be a non-empty list"},
                         status=status.HTTP_400_BAD_REQUEST)
     try:
-        return Response(decide(ids, approve=False, user=request.user))
+        return Response(decide(_visible_ids(request, ids), approve=False,
+                               user=request.user))
     except (ValueError, ValidationError):
         return Response({"detail": "ids must be change ids"},
                         status=status.HTTP_400_BAD_REQUEST)
