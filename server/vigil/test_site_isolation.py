@@ -55,7 +55,7 @@ from apps.stacks.models import (
     StackRevision,
 )
 from apps.statuspage.models import HostUptimeSample, StatusPage
-from apps.tasks.models import PatchWave, Task, TaskDefinition, TaskRun
+from apps.tasks.models import PatchRollout, PatchWave, Task, TaskDefinition, TaskRun
 from apps.vulns.models import VulnFinding, VulnScoreHistory
 from vigil import licensing
 from vigil.testsupport import require_business_module
@@ -85,6 +85,12 @@ FILLERS = {
     "host_id": lambda o: o["host"].id,
     "alert_id": lambda o: o["alert"].id,
     "task_id": lambda o: o["task"].id,
+    "run_id": lambda o: o["run"].id,
+    "rollout_id": lambda o: o["rollout"].id,
+    "batch": lambda o: o["rollout"].batch,
+    "wave_id": lambda o: o["wave"].id,
+    "device_id": lambda o: o["device"].id,
+    "definition_id": lambda o: o["definition"].id,
     "stack_id": lambda o: o["stack"].id,
     "session_id": lambda o: o["session"].id,
     "site_id": lambda o: o["site"].id,
@@ -115,6 +121,12 @@ FILLERS = {
 #: Routes deliberately not probed, each with a one-line reason.
 ALLOWLIST = {
     "api/v1/health/": "unauthenticated liveness probe; carries no rows",
+    "api/v1/playbooks/library/<str:template_id>/use/": "a bundled template, identical for every site",
+    # Instance-wide like tags: a wave ladder or an integration key belongs to no
+    # site. Who may change them is the settings split (S1 04h).
+    "api/v1/waves/<int:wave_id>/": "instance-wide; a wave ladder belongs to no site",
+    "api/v1/jackil/integration-keys/<int:pk>/devices/": "instance-wide; an integration key belongs to no site",
+    "api/v1/jackil/integration-keys/<int:pk>/revoke/": "instance-wide; an integration key belongs to no site",
     "api/v1/about/": "build and edition metadata, identical for every site",
     "setup/": "first-run bootstrap, before any site exists",
     "login/": "public sign-in page",
@@ -219,35 +231,19 @@ ALLOWLIST = {
 #: model than FILLERS assumes.
 ROUTE_FILLERS = {
     "api/v1/hosts/log-tails/<uuid:session_id>/": {"session_id": lambda o: o["logtail"].id},
+    "api/v1/agent-profiles/<uuid:profile_id>/": {"profile_id": lambda o: o["profile"].id},
+    "api/v1/reprovision/profiles/<uuid:profile_id>/preview/": {
+        "profile_id": lambda o: o["install_profile"].id},
+    "api/v1/stacks/git-credentials/<uuid:cred_id>/": {"cred_id": lambda o: o["git_cred"].id},
+    "api/v1/stacks/registries/<uuid:cred_id>/": {"cred_id": lambda o: o["registry_cred"].id},
+    "api/v1/jackil/integration/<str:kind>/<str:id>/": {"kind": "host", "id": lambda o: o["host"].id},
+    "api/v1/jackil/integration/devices/<str:id>/": {"id": lambda o: o["device"].id},
+    "api/v1/jackil/integration/devices/<uuid:id>/": {"id": lambda o: o["device"].id},
 }
 
 #: Routes whose kwargs have no filler yet (phase 02b covers them). Pinned exactly:
 #: a stale entry fails, so does a new route that is in neither table.
-NOT_YET_COVERED = {
-    "api/v1/agent-profiles/<uuid:profile_id>/",
-    "api/v1/hosts/devices/<uuid:device_id>/",
-    "api/v1/jackil/integration-keys/<int:pk>/devices/",
-    "api/v1/jackil/integration-keys/<int:pk>/revoke/",
-    "api/v1/jackil/integration/<str:kind>/<str:id>/",
-    "api/v1/jackil/integration/devices/<str:id>/",
-    "api/v1/jackil/integration/devices/<uuid:id>/",
-    "api/v1/playbooks/library/<str:template_id>/use/",
-    "api/v1/reprovision/profiles/<uuid:profile_id>/preview/",
-    "api/v1/rollouts/<uuid:rollout_id>/",
-    "api/v1/rollouts/<uuid:rollout_id>/halt/",
-    "api/v1/rollouts/<uuid:rollout_id>/resume/",
-    "api/v1/rollouts/<uuid:rollout_id>/skip-validation/",
-    "api/v1/rollouts/<uuid:rollout_id>/waves/<int:wave_id>/hosts/",
-    "api/v1/rollouts/batch/<uuid:batch>/halt/",
-    "api/v1/stacks/git-credentials/<uuid:cred_id>/",
-    "api/v1/stacks/registries/<uuid:cred_id>/",
-    "api/v1/tasks/runs/<uuid:run_id>/hunt/",
-    "api/v1/waves/<int:wave_id>/",
-    # Deploy names its target hosts in the body, not the URL.
-    "api/v1/tasks/definitions/<uuid:definition_id>/deploy/",
-    # A run spans hosts; it is visible when one of its hosts is.
-    "api/v1/tasks/runs/<uuid:run_id>/",
-}
+NOT_YET_COVERED: set[str] = set()
 
 #: "<METHOD> <route>" -> what was observed. Pinned exactly. Later phases fix
 #: these and delete the line; an empty dict is the milestone's finish line.
@@ -517,9 +513,8 @@ class SiteIsolationTests(TestCase):
                 risk_level=Task.RiskLevel.STANDARD,
                 state=Task.State.PENDING,
             )
-            o["run"] = TaskRun.objects.create(
-                name_snapshot=f"shared-{shared} run", requested_by=cls.dana
-            )
+            o["run"] = TaskRun.objects.create(name_snapshot=f"{tag} run", requested_by=member)
+            Task.objects.filter(pk=o["task"].pk).update(run=o["run"])
 
             o["stack"] = ManagedStack.objects.create(
                 host=o["host"], name=f"{tag}-stack", compose_yaml="services: {}\n"
@@ -600,6 +595,12 @@ class SiteIsolationTests(TestCase):
             )
 
             o["wave"] = PatchWave.objects.create(name=f"shared-{shared}-wave", order=1)
+            o["rollout"] = PatchRollout.objects.create(
+                definition=o["definition"], host_ids=[str(o["host"].id)], site_id=site.pk,
+                batch=uuid.uuid4(), current_wave=o["wave"], state=PatchRollout.State.HALTED,
+                halted_reason=f"{tag} rollout halted", created_by=member,
+            )
+            TaskRun.objects.filter(pk=o["run"].pk).update(rollout=o["rollout"], wave=o["wave"])
 
             SoftwareItem.objects.create(
                 host=o["host"],

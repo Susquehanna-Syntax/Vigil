@@ -1961,7 +1961,7 @@ def action_registry(request):
 # heavier decision).
 
 
-def _rollout_wave_progress(rollout: PatchRollout) -> list:
+def _rollout_wave_progress(rollout: PatchRollout, user=None) -> list:
     """Per-wave counts for the serializer: every wave in order, annotated with
     this rollout's dispatched tasks for that wave.
 
@@ -1982,12 +1982,18 @@ def _rollout_wave_progress(rollout: PatchRollout) -> list:
         waves = waves.filter(group_tag_rows__key=rollout.wave_group_tag.strip().lower()).distinct()
     waves = list(waves)
     per_wave: dict = {}
-    for run in rollout.runs.all():
+    from .authz import trim_run, visible_runs, visible_tasks
+
+    runs = rollout.runs.all()
+    if user is not None:
+        runs = [trim_run(run, user) for run in visible_runs(runs, user)]
+    for run in runs:
         if run.wave is None:
             continue
-        total = run.tasks.count()
-        done = run.tasks.filter(state__in=SUCCESS_STATES).count()
-        failed = run.tasks.filter(state__in=FAILURE_STATES).count()
+        tasks = run.tasks.all() if user is None else visible_tasks(run.tasks.all(), user)
+        total = tasks.count()
+        done = tasks.filter(state__in=SUCCESS_STATES).count()
+        failed = tasks.filter(state__in=FAILURE_STATES).count()
         prev = per_wave.setdefault(
             run.wave.id, {"hosts": 0, "tasks_total": 0, "tasks_done": 0, "tasks_failed": 0}
         )
@@ -2033,17 +2039,21 @@ def _rollout_wave_progress(rollout: PatchRollout) -> list:
 
 
 class _RolloutDetailSerializer(PatchRolloutSerializer):
+    """Pass ``context={"user": ...}``: the wave counts are then the caller's
+    hosts only (apps/tasks/authz.py, Rollouts)."""
+
     def to_representation(self, obj):
         data = super().to_representation(obj)
-        data["waves"] = _rollout_wave_progress(obj)
+        data["waves"] = _rollout_wave_progress(obj, user=self.context.get("user"))
         return data
 
 
-def _rollout_response(rollout: PatchRollout):
+def _rollout_response(rollout: PatchRollout, user):
     return _RolloutDetailSerializer(
         PatchRollout.objects.select_related(
             "definition", "current_wave", "created_by", "halted_by", "resumed_by",
-        ).get(pk=rollout.pk)
+        ).get(pk=rollout.pk),
+        context={"user": user},
     ).data
 
 
@@ -2113,7 +2123,7 @@ def rollout_collection(request):
                 return Response({"detail": str(exc)}, status=400)
             return Response({
                 "batch": str(rollouts[0].batch),
-                "rollouts": [_rollout_response(r) for r in rollouts],
+                "rollouts": [_rollout_response(r, request.user) for r in rollouts],
             }, status=201)
 
         try:
@@ -2128,7 +2138,7 @@ def rollout_collection(request):
             )
         except (ValueError, TypeError) as exc:
             return Response({"detail": str(exc)}, status=400)
-        return Response(_rollout_response(rollout), status=201)
+        return Response(_rollout_response(rollout, request.user), status=201)
 
     rollouts = PatchRollout.objects.select_related(
         "definition", "current_wave", "created_by", "halted_by", "resumed_by",
@@ -2140,10 +2150,9 @@ def rollout_collection(request):
         if not valid:
             return Response({"detail": f"unknown state {raw!r}"}, status=400)
         rollouts = rollouts.filter(state__in=valid)
-    data = []
-    for r in rollouts:
-        data.append(_RolloutDetailSerializer(r).data)
-    return Response(data)
+    from .authz import visible_rollouts
+    return Response([_RolloutDetailSerializer(r, context={"user": request.user}).data
+                     for r in visible_rollouts(rollouts, request.user)])
 
 
 @api_view(["GET"])
@@ -2155,7 +2164,10 @@ def rollout_detail(request, rollout_id):
         ),
         pk=rollout_id,
     )
-    return Response(_RolloutDetailSerializer(rollout).data)
+    from .authz import rollout_visible
+    if not rollout_visible(request.user, rollout):
+        return Response({"detail": "Not found"}, status=404)
+    return Response(_RolloutDetailSerializer(rollout, context={"user": request.user}).data)
 
 
 @api_view(["POST"])
@@ -2163,7 +2175,10 @@ def rollout_detail(request, rollout_id):
 def rollout_halt(request, rollout_id):
     """Stop the rollout now. Admin + TOTP: halting a fleet-wide patch
     mid-flight is the heavier of the two operator calls."""
+    from .authz import rollout_write_denied
     rollout = get_object_or_404(PatchRollout, pk=rollout_id)
+    if denied := rollout_write_denied(request.user, rollout):
+        return denied
     error = _verify_confirmation(request.user, request.data)
     if error:
         return Response({"detail": error}, status=401)
@@ -2172,7 +2187,7 @@ def rollout_halt(request, rollout_id):
         halt_rollout(rollout, user=request.user, reason=reason)
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=400)
-    return Response(_rollout_response(rollout))
+    return Response(_rollout_response(rollout, request.user))
 
 
 @api_view(["POST"])
@@ -2180,8 +2195,15 @@ def rollout_halt(request, rollout_id):
 def rollout_batch_halt(request, batch):
     """Halt every running rollout in one batch. One request because one TOTP
     code is single-use — three rollouts would otherwise need three codes."""
-    if not PatchRollout.objects.filter(batch=batch).exists():
+    from .authz import rollout_write_denied, visible_rollouts
+    members = list(PatchRollout.objects.filter(batch=batch))
+    if not visible_rollouts(members, request.user):
         return Response({"detail": "Not found"}, status=404)
+    # One call halts the whole batch, so the caller must be allowed to act on
+    # every rollout in it, including any they cannot see.
+    for member in members:
+        if rollout_write_denied(request.user, member):
+            return Response({"detail": "This batch includes rollouts you may not halt"}, status=403)
     error = _verify_confirmation(request.user, request.data)
     if error:
         return Response({"detail": error}, status=401)
@@ -2199,11 +2221,10 @@ def rollout_resume(request, rollout_id):
     """Clear a halt and continue from the same wave. TOTP-gated; records who
     did it. Failed tasks on the wave are re-queued so the gate re-evaluates
     over the whole wave."""
-    from .authz import fleet_runner_denied
-    denied = fleet_runner_denied(request.user)
-    if denied:
-        return denied
+    from .authz import rollout_write_denied
     rollout = get_object_or_404(PatchRollout, pk=rollout_id)
+    if denied := rollout_write_denied(request.user, rollout):
+        return denied
     error = _verify_confirmation(request.user, request.data)
     if error:
         return Response({"detail": error}, status=401)
@@ -2211,7 +2232,7 @@ def rollout_resume(request, rollout_id):
         resume_rollout(rollout, user=request.user)
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=400)
-    return Response(_rollout_response(rollout))
+    return Response(_rollout_response(rollout, request.user))
 
 
 # ── Wave management ─────────────────────────────────────────────────────────
@@ -2330,9 +2351,12 @@ def rollout_skip_validation(request, rollout_id):
     Admin + TOTP, same as halting: it shortens the safety margin on a
     fleet-wide patch, which is an operator decision worth authenticating.
     """
+    from .authz import rollout_write_denied
     from .rollout import skip_validation
 
     rollout = get_object_or_404(PatchRollout, pk=rollout_id)
+    if denied := rollout_write_denied(request.user, rollout):
+        return denied
     error = _verify_confirmation(request.user, request.data)
     if error:
         return Response({"detail": error}, status=401)
@@ -2341,7 +2365,7 @@ def rollout_skip_validation(request, rollout_id):
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=400)
     rollout.refresh_from_db()
-    return Response(_rollout_response(rollout))
+    return Response(_rollout_response(rollout, request.user))
 
 
 # ---------------------------------------------------------------------------
@@ -2679,13 +2703,16 @@ def rollout_wave_hosts(request, rollout_id, wave_id):
     machines, and why, meant going to the run history and matching up hosts by
     hand — so a halted rollout was hard to act on at the moment it mattered.
     """
+    from .authz import rollout_visible, visible_tasks
     from .models import PatchRollout, Task
 
     rollout = get_object_or_404(PatchRollout, pk=rollout_id)
-    tasks = (Task.objects
+    if not rollout_visible(request.user, rollout):
+        return Response({"detail": "Not found"}, status=404)
+    tasks = visible_tasks(Task.objects
              .filter(run__rollout=rollout, run__wave_id=wave_id, step_order=0)
              .select_related("host", "run")
-             .order_by("host__hostname"))
+             .order_by("host__hostname"), request.user)
 
     rows = []
     for task in tasks:

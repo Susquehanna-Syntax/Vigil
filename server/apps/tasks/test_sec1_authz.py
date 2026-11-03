@@ -331,3 +331,87 @@ class RunOutcomeTests(TestCase):
         ]
         for rows, want in cases:
             self.assertEqual(run_outcome(rows), want, rows)
+
+
+class RolloutScopeTests(Sec1Base):
+    """decisions-06 items 1, 4, 5 for rollouts: a site's rollout is its site's;
+    a fleet-wide one is seen trimmed and acted on only by a fleet-wide runner,
+    or by someone who may run tasks on every host it names."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.tasks.models import PatchRollout
+        self.definition = self._definition(None)
+        self.dana = _user("dana")
+        UserSiteRole.objects.create(user=self.dana, site=self.west, role=Role.ADMIN)
+
+        def rollout(**kw):
+            return PatchRollout.objects.create(definition=self.definition,
+                                               state=PatchRollout.State.RUNNING, **kw)
+        self.west_rollout = rollout(site_id=self.west.id, host_ids=[str(self.west_host.id)])
+        self.lab_rollout = rollout(site_id=self.lab.id, host_ids=[str(self.lab_host.id)])
+        self.fleet_rollout = rollout()
+        self.west_named = rollout(host_ids=[str(self.west_host.id)])
+        self.lab_named = rollout(host_ids=[str(self.lab_host.id)])
+        self.mixed = rollout(host_ids=[str(self.west_host.id), str(self.lab_host.id)])
+
+    def _halt(self, rollout):
+        self.client.force_login(self.dana)
+        with patch("apps.accounts.totp.require_totp_confirmation", return_value=None):
+            return self.client.post(f"/api/v1/rollouts/{rollout.id}/halt/", {"totp": "123456"},
+                                    content_type="application/json")
+
+    def test_list_shows_only_what_dana_may_see(self):
+        self.client.force_login(self.dana)
+        ids = {r["id"] for r in self.client.get("/api/v1/rollouts/").json()}
+        self.assertEqual(ids, {str(r.id) for r in (self.west_rollout, self.fleet_rollout,
+                                                    self.west_named, self.mixed)})
+
+    def test_write_rules(self):
+        self.assertEqual(self._halt(self.lab_rollout).status_code, 404)
+        self.assertEqual(self._halt(self.lab_named).status_code, 404)
+        self.assertEqual(self._halt(self.fleet_rollout).status_code, 403)
+        self.assertEqual(self._halt(self.mixed).status_code, 403)
+        self.assertEqual(self._halt(self.west_rollout).status_code, 200)
+        self.assertEqual(self._halt(self.west_named).status_code, 200)
+
+    def test_batch_halt_needs_every_member(self):
+        import uuid
+
+        from apps.tasks.models import PatchRollout
+        def halt_batch(*members):
+            batch = uuid.uuid4()
+            PatchRollout.objects.filter(pk__in=[m.pk for m in members]).update(batch=batch)
+            self.client.force_login(self.dana)
+            with patch("apps.accounts.totp.require_totp_confirmation", return_value=None):
+                return self.client.post(f"/api/v1/rollouts/batch/{batch}/halt/", {"totp": "123456"},
+                                        content_type="application/json").status_code
+
+        self.assertEqual(halt_batch(self.lab_rollout), 404)
+        # Seen but not dana's to act on (fleet-wide), and not seen at all (Lab).
+        self.assertEqual(halt_batch(self.west_rollout, self.fleet_rollout), 403)
+        self.assertEqual(halt_batch(self.west_named, self.lab_named), 403)
+        for rollout in (self.west_rollout, self.fleet_rollout, self.west_named, self.lab_named):
+            rollout.refresh_from_db()
+            self.assertEqual(rollout.state, "running")
+
+    def test_a_mixed_rollout_is_trimmed_to_west(self):
+        from apps.tasks.models import PatchWave, TaskRun
+        wave = PatchWave.objects.create(name="all", order=1)
+        admin = _user("adm", Role.ADMIN)
+        run = TaskRun.objects.create(name_snapshot="wave 1", requested_by=admin, rollout=self.mixed,
+                                     wave=wave, host_count=2, state=TaskRun.State.PARTIAL)
+        Task.objects.create(host=self.west_host, run=run, action="check_service", nonce="r-west",
+                            params={}, requested_by=admin, state=Task.State.COMPLETED,
+                            result_output="west output")
+        Task.objects.create(host=self.lab_host, run=run, action="check_service", nonce="r-lab",
+                            params={}, requested_by=admin, state=Task.State.FAILED,
+                            result_output="lab secret")
+        self.client.force_login(self.dana)
+        detail = self.client.get(f"/api/v1/rollouts/{self.mixed.id}/").json()
+        progress = next(w for w in detail["waves"] if w["id"] == str(wave.id))
+        self.assertEqual(progress["hosts"], 1)
+        self.assertEqual(progress["tasks_failed"], 0)
+        resp = self.client.get(f"/api/v1/rollouts/{self.mixed.id}/waves/{wave.id}/hosts/")
+        self.assertEqual([h["hostname"] for h in resp.json()["hosts"]], ["west-1"])
+        self.assertNotIn(b"lab secret", resp.content)

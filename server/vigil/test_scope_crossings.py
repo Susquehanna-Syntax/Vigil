@@ -41,7 +41,8 @@ CROSSINGS: dict[str, list[str]] = {
     'apps/statuspage/views.py': ['free status page limit is per install',
                                  'public status page: the page token is the access control',
                                  'public status page: the page token is the access control'],
-    'apps/tasks/authz.py': ['run trimming: a run is trimmed when any of its tasks is on a site the caller cannot see'],
+    'apps/tasks/authz.py': ['rollout writes: every host a rollout names must be runnable by the caller',
+                            'run trimming: a run is trimmed when any of its tasks is on a site the caller cannot see'],
     'apps/tasks/views.py': ['agent API: the caller is a host, authenticated by its agent token'],
 }
 

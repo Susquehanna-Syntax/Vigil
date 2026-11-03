@@ -169,3 +169,74 @@ def trim_run(run, user):
 
 def trim_runs(runs, user):
     return [trim_run(run, user) for run in runs]
+
+
+# ── Rollouts ─────────────────────────────────────────────────────────────────
+# A rollout started for a site (an automation or update policy of that site)
+# carries its ``site_id`` and only ever touches that site's hosts. One without
+# a site is fleet-wide: it was started by a fleet-wide runner, or by a global
+# automation or policy. decisions-06 item 5: visible when any of its hosts is,
+# trimmed to them (wave hosts and counts read tasks through the scoped Task
+# manager, and trim_run cuts each run). Item 1: only fleet-wide runners act on
+# a fleet-wide rollout; a site's rollout is acted on by who may run tasks there.
+
+def _visible_host_ids(user) -> set[str]:
+    from apps.hosts.models import Host
+    from vigil import scoping
+    return {str(pk) for pk in scoping.filter_by_site(Host.objects.all(), user).values_list("id", flat=True)}
+
+
+def visible_rollouts(rollouts, user) -> list:
+    """The rollouts in *rollouts* that *user* may see, order kept."""
+    from apps.accounts.permissions import visible_site_ids
+
+    ids = visible_site_ids(user)
+    rollouts = list(rollouts)
+    if ids is None:
+        return rollouts
+    hosts = None
+    out = []
+    for rollout in rollouts:
+        if rollout.site_id is not None:
+            if rollout.site_id in ids:
+                out.append(rollout)
+            continue
+        if rollout.host_ids is None:
+            # Every host at the time it ran: the caller's are among them.
+            out.append(rollout)
+            continue
+        if hosts is None:
+            hosts = _visible_host_ids(user)
+        if hosts & {str(h) for h in rollout.host_ids}:
+            out.append(rollout)
+    return out
+
+
+def rollout_visible(user, rollout) -> bool:
+    return bool(visible_rollouts([rollout], user))
+
+
+def rollout_write_denied(user, rollout) -> Response | None:
+    """None when *user* may halt, resume or skip *rollout*, else the response.
+
+    Out of view answers 404 like an unknown id. A site's rollout needs
+    ``tasks:run`` in that site. One without a site needs a fleet-wide runner,
+    unless it names its hosts and the caller may run tasks on every one of
+    them (a global policy a site admin ran on their own hosts, decisions-06
+    item 4)."""
+    from apps.accounts.permissions import can
+
+    if not rollout_visible(user, rollout):
+        return Response({"detail": "Not found"}, status=404)
+    if rollout.site_id is None:
+        if rollout.host_ids:
+            from apps.hosts.models import Host
+            targets = list(Host.objects.unscoped(
+                reason="rollout writes: every host a rollout names must be runnable by the caller"
+            ).filter(pk__in=rollout.host_ids))
+            if targets and all(_can_run(user, h) for h in targets):
+                return None
+        return fleet_runner_denied(user)
+    if not can(user, rollout.site_id, "tasks", "run"):
+        return Response({"detail": "You may not act on this site's rollouts"}, status=403)
+    return None
