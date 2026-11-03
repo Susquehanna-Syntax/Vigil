@@ -14,6 +14,8 @@ import uuid
 
 from django.db import models
 
+from vigil.scoping import SiteScopedManager
+
 
 def _token() -> str:
     return secrets.token_urlsafe(16)
@@ -48,6 +50,8 @@ class HostUptimeSample(models.Model):
 
 
 class StatusPage(models.Model):
+    objects = SiteScopedManager(field="site_id")
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     # The unguessable URL slug. Rotatable by saving a new one.
     token = models.CharField(max_length=64, unique=True, default=_token)

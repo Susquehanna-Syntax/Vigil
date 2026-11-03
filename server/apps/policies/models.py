@@ -23,6 +23,8 @@ WINDOWS_CLASSIFICATIONS = (
 
 
 class UpdatePolicy(models.Model):
+    objects = SiteScopedManager(field="site_id")
+
     class ApprovalMode(models.TextChoices):
         AUTOMATIC = "automatic", "Automatic"
         APPROVE = "approve", "Approve each change"

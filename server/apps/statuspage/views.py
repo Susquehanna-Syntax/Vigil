@@ -172,7 +172,9 @@ def page_index(request):
         return Response([_row(p) for p in scoping.filter_by_site_field(
             StatusPage.objects.all(), request.user).order_by("created_at")])
     # The FIRST page is free. Additional pages (per-site/client) are Business.
-    if StatusPage.objects.exists() and not has_feature("status_branding"):
+    # Counted across every site: the free-page limit is the install's.
+    every = StatusPage.objects.unscoped(reason="free status page limit is per install")
+    if every.exists() and not has_feature("status_branding"):
         return Response(upgrade_body("status_branding"), status=402)
     page = StatusPage.objects.create()
     return Response(_apply(page, request) or _row(page),

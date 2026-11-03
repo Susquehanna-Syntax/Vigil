@@ -79,7 +79,11 @@ def apply_fields(policy: UpdatePolicy, data: dict) -> None:
             raise PolicyError("name is required")
         if len(name) > 120:
             raise PolicyError("name is longer than 120 characters")
-        clash = UpdatePolicy.objects.filter(name=name)
+        # Every site's policies: names are unique across the install (a
+        # database constraint), so a scoped check would miss another site's
+        # and the save would fail with an IntegrityError.
+        clash = UpdatePolicy.objects.unscoped(
+            reason="policy names are unique across the install").filter(name=name)
         if policy.pk:
             clash = clash.exclude(pk=policy.pk)
         if clash.exists():

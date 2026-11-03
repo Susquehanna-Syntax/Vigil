@@ -23,9 +23,12 @@ from django.db import models
 
 from apps.hosts.models import TagRowSyncMixin
 from vigil.locks import advisory_lock
+from vigil.scoping import SiteScopedManager
 
 
 class Playbook(TagRowSyncMixin, models.Model):
+
+    objects = SiteScopedManager(cascade_global=True)
 
     tag_sync_fields = [("target_tags", "target_tag_rows")]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

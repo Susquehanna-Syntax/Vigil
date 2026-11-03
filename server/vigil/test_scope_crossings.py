@@ -22,6 +22,7 @@ CROSSINGS: dict[str, list[str]] = {
                             'agent enrolment: a new host registers with no user',
                             'tag delete guard: a tag is install-wide',
                             'tag rename: tags are install-wide'],
+    'apps/policies/validation.py': ['policy names are unique across the install'],
     'apps/remote/views.py': ['agent API: the caller is a host, authenticated by its agent token'],
     'apps/reprovision/installer_views.py': ['reprovision installer: the rebuild token is the access control',
                                             'reprovision installer: the rebuild token is the access control',
@@ -30,7 +31,8 @@ CROSSINGS: dict[str, list[str]] = {
     'apps/stacks/registries.py': ['agent API: the caller is a host, authenticated by its agent token'],
     'apps/stacks/views.py': ['agent API: the caller is a host, authenticated by its agent token',
                              'agent API: the caller is a host, authenticated by its agent token'],
-    'apps/statuspage/views.py': ['public status page: the page token is the access control',
+    'apps/statuspage/views.py': ['free status page limit is per install',
+                                 'public status page: the page token is the access control',
                                  'public status page: the page token is the access control'],
     'apps/tasks/authz.py': ['run visibility: a run is hidden when any of its tasks is on a site the caller '
                             'cannot see'],

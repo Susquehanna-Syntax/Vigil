@@ -22,9 +22,12 @@ from django.conf import settings
 from django.db import models
 
 from apps.hosts.models import TagRowSyncMixin
+from vigil.scoping import SiteScopedManager
 
 
 class Automation(TagRowSyncMixin, models.Model):
+
+    objects = SiteScopedManager(cascade_global=True)
 
     tag_sync_fields = [("event_tags", "event_tag_rows"), ("target_tags", "target_tag_rows")]
     class Trigger(models.TextChoices):
