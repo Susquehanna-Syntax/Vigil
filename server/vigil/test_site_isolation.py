@@ -13,9 +13,14 @@ fails the run, and an empty table is the milestone's finish line.
 """
 
 import re
+import base64
+import json
+import time
 import uuid
 from datetime import timedelta
 from unittest import mock
+
+from nacl.signing import SigningKey
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -51,6 +56,7 @@ from apps.stacks.models import (
 from apps.statuspage.models import StatusPage
 from apps.tasks.models import PatchWave, Task, TaskDefinition, TaskRun
 from apps.vulns.models import VulnFinding
+from vigil import licensing
 from vigil.testsupport import require_business_module
 
 # Exercises core with the Business apps; a source checkout has none.
@@ -420,6 +426,25 @@ def leaky_host(request, host_id):
 urlpatterns = [django_path("leaky/<uuid:host_id>/", leaky_host)]
 
 
+#: A throwaway signing key, so the walk runs with every Business feature on.
+#: Unlicensed, each Business write answers 402 for site B and for a missing
+#: object alike, and the walk cannot tell a leak from a paywall.
+_LICENSE_KEY = SigningKey.generate()
+
+
+def _business_license():
+    claims = {"instance": licensing.instance_id(), "org": "isolation-test", "seats": 50,
+              "sites": None, "exp": int(time.time()) + 86400, "iat": int(time.time())}
+    payload = json.dumps(claims, separators=(",", ":"), sort_keys=True).encode()
+
+    def b64u(b):
+        return base64.urlsafe_b64encode(b).decode().rstrip("=")
+
+    return f"{licensing.PREFIX}.{b64u(payload)}.{b64u(_LICENSE_KEY.sign(payload).signature)}"
+
+
+@override_settings(VIGIL_LICENSE_PUBLIC_KEY=base64.b64encode(
+    _LICENSE_KEY.verify_key.encode()).decode())
 class SiteIsolationTests(TestCase):
     """Dana administers West Campus only. For every route she can reach, a Lab
     object must be indistinguishable from an object that does not exist."""
@@ -591,6 +616,14 @@ class SiteIsolationTests(TestCase):
     def setUp(self):
         self.client.raise_request_exception = False
         self.client.force_login(self.dana)
+        licensing.reload()
+        licensing.set_license(_business_license())
+        self.assertTrue(licensing.has_feature("sites"), "the walk must run licensed")
+
+    def tearDown(self):
+        from apps.licensing.models import StoredLicense
+        StoredLicense.replace("")
+        licensing.reload()
 
     # -- the four tests ----------------------------------------------------
 
