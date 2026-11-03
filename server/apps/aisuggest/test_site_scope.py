@@ -58,6 +58,10 @@ class AiSuggestSiteScopeTests(TestCase):
                 vendor_status="affected", cvss_score=10.0, title="Log4Shell",
                 description="Set log4j2.formatMsgNoLookups=true or remove JndiLookup.class.")
 
+        # The group assertions below are only meaningful if both findings are
+        # one group; a fixture that silently split them would pass by accident.
+        self.assertEqual(self.findings["west"].fix_key, self.findings["zzlab"].fix_key)
+
         self.client.force_login(self.dana)
 
     def provider(self, name="local"):
@@ -95,6 +99,9 @@ class AiSuggestSiteScopeTests(TestCase):
         self.assertEqual(resp.status_code, 404, resp.content)
         mocked.complete.assert_not_called()
         self.assertEqual(captured, {})
+        self.assertTrue(
+            Alert.objects.filter(pk=self.alerts['zzlab'].pk).exists(),
+            "a 404 must not touch the other site's row")
 
     def test_out_of_site_finding_is_404(self):
         provider = self.provider("off-finding")
@@ -105,6 +112,9 @@ class AiSuggestSiteScopeTests(TestCase):
         self.assertEqual(resp.status_code, 404, resp.content)
         mocked.complete.assert_not_called()
         self.assertEqual(captured, {})
+        self.assertTrue(
+            VulnFinding.objects.filter(pk=self.findings['zzlab'].pk).exists(),
+            "a 404 must not touch the other site's row")
 
     def test_fix_group_only_names_own_hosts(self):
         resp, captured = self._post_fix_group(self.provider("group"))
