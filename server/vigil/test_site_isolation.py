@@ -40,6 +40,7 @@ from apps.automations.models import Automation
 from apps.dashboards.models import Dashboard
 from apps.hosts.models import Host, LogTailSession, Tag
 from apps.jackil.models import IntegrationKey
+from apps.metrics.models import MetricPoint
 from apps.playbooks.models import Playbook
 from apps.policies.models import PolicyChange, UpdatePolicy
 from apps.relays.models import Relay
@@ -53,9 +54,9 @@ from apps.stacks.models import (
     RegistryCredential,
     StackRevision,
 )
-from apps.statuspage.models import StatusPage
+from apps.statuspage.models import HostUptimeSample, StatusPage
 from apps.tasks.models import PatchWave, Task, TaskDefinition, TaskRun
-from apps.vulns.models import VulnFinding
+from apps.vulns.models import VulnFinding, VulnScoreHistory
 from vigil import licensing
 from vigil.testsupport import require_business_module
 
@@ -495,6 +496,13 @@ class SiteIsolationTests(TestCase):
                 severity="high",
                 package_name=f"{tag}-pkg",
             )
+
+            # Time series. The category carries the marker so the fleet-wide
+            # metric catalog shows a leak if it ever lists another site's.
+            MetricPoint.objects.create(host=o["host"], time=timezone.now(),
+                                       category=f"{tag}-cat", metric="usage_percent", value=1)
+            HostUptimeSample.objects.create(host=o["host"], time=timezone.now(), up=True)
+            VulnScoreHistory.objects.create(host=o["host"], date=timezone.localdate(), score=7)
 
             o["definition"] = TaskDefinition.objects.create(
                 name=f"shared-{shared}-definition",

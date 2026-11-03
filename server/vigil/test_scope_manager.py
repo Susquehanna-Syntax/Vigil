@@ -164,3 +164,71 @@ class SiteScopeMiddlewareTests(_TwoSites):
         self.assertIn("vigil.scoping.SiteScopeMiddleware", mw)
         self.assertGreater(mw.index("vigil.scoping.SiteScopeMiddleware"),
                            mw.index("django.contrib.auth.middleware.AuthenticationMiddleware"))
+
+
+class ScopedValuesKeepDuplicatesTests(_TwoSites):
+    """The site filter joins one-to-one assignments, so it never repeats a row and
+    must not add DISTINCT: inside a request that would collapse equal values in
+    values_list() (two warnings counted as one) and make delete() refuse."""
+
+    def test_values_list_keeps_equal_values(self):
+        west = Host.objects.get(hostname="west-1")
+        Alert.objects.create(host=west, rule=Alert.objects.first().rule, severity="warning", message="again")
+        with scoping.as_user(self.dana):
+            # order_by() drops the default ordering, as grouping code does and as
+            # models without Meta.ordering (MetricPoint) always are.
+            self.assertEqual(list(self.alerts.order_by().values_list("severity", flat=True)),
+                             ["warning", "warning"])
+            self.assertEqual(self.alerts.filter(severity="warning").count(), 2)
+
+    def test_scoped_delete_works_and_stays_in_scope(self):
+        with scoping.as_user(self.dana):
+            self.alerts.all().delete()
+        self.assertEqual(list(Alert.objects.values_list("message", flat=True)), ["lab-1"])
+
+
+class ScopedPathsAreSingleValuedTests(TestCase):
+    """filter_by_site adds no DISTINCT, which is only correct while every scoped
+    path is single-valued: a path through a reverse FK or many-to-many would
+    repeat rows. This pins that for every model that declares the manager."""
+
+    def test_every_declared_path_is_single_valued(self):
+        from django.apps import apps
+
+        checked = 0
+        for model in apps.get_models():
+            mgr = model._meta.managers_map.get("objects")
+            if not isinstance(mgr, scoping.SiteScopedManager) or mgr.site_field:
+                continue
+            current = model
+            for name in [p for p in mgr.site_path.split("__") if p] + ["site_assignment"]:
+                field = current._meta.get_field(name)
+                self.assertTrue(
+                    field.many_to_one or field.one_to_one,
+                    f"{model.__name__}: '{name}' in path '{mgr.site_path}' is not single-valued")
+                current = field.related_model
+            checked += 1
+        self.assertGreater(checked, 30)
+
+
+class ReEnrolmentKeepsHistoryTests(_TwoSites):
+    """Approving a re-enrolment moves the pending row's history onto the
+    surviving host. The approver may not see the pending row's site (it is
+    unassigned until approved), and that must not leave the history behind."""
+
+    def test_west_admin_approval_moves_metrics_and_inventory(self):
+        from django.utils import timezone
+
+        from apps.hosts.enrollment import adopt_enrolment
+        from apps.hosts.models import HostInventory
+        from apps.metrics.models import MetricPoint
+
+        existing = Host.objects.get(hostname="west-1")
+        pending = Host.objects.create(hostname="west-1", agent_token="tok-new", status="pending")
+        MetricPoint.objects.create(host=pending, time=timezone.now(), category="cpu",
+                                   metric="usage_percent", value=5)
+        HostInventory.objects.create(host=pending)
+        with scoping.as_user(self.dana):
+            adopt_enrolment(pending, existing)
+        self.assertEqual(MetricPoint.objects.filter(host=existing).count(), 1)
+        self.assertTrue(HostInventory.objects.filter(host=existing).exists())

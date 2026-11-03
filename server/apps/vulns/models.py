@@ -327,6 +327,7 @@ class VulnScoreHistory(models.Model):
     which is more trend than anyone reads and still bounded.
     """
 
+    objects = SiteScopedManager(path="host__")
     host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="vuln_score_history")
     date = models.DateField()
     score = models.IntegerField()

@@ -29,6 +29,7 @@ class HostUptimeSample(models.Model):
     time. Kept in the status-page app so core ``hosts`` gains no columns.
     """
 
+    objects = SiteScopedManager(path="host__")
     host = models.ForeignKey(
         "hosts.Host", on_delete=models.CASCADE, related_name="uptime_samples")
     time = models.DateTimeField(db_index=True)

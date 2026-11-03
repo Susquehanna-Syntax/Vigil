@@ -9,6 +9,8 @@ approval can now move the machine onto its existing record instead.
 
 from django.db import transaction
 
+from vigil import scoping
+
 from .models import Host
 
 
@@ -50,7 +52,11 @@ def adopt_enrolment(pending, existing):
 
     from .models import HostInventory
 
-    with transaction.atomic():
+    # The approving view has already decided this approval is allowed. What
+    # follows moves one machine's own rows, and the approver may not see the
+    # pending row's site (unassigned until approved): the move must be whole.
+    with scoping.system(reason="re-enrolment moves the machine's own history onto its surviving row"), \
+            transaction.atomic():
         # Snapshot the live identity and the pending row's pk before the row
         # goes away; the cascade would otherwise drop its history with it.
         pending_pk = pending.pk

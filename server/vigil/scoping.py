@@ -325,7 +325,11 @@ def filter_by_site(qs, user, path="", cascade_global=False):
         glob = _global_site_id(mods)
         if glob in ids:
             q |= Q(**{f"{path}site_assignment__isnull": True})
-    return qs.filter(q).distinct()
+    # No DISTINCT: every path is forward foreign keys ending at a one-to-one
+    # site assignment, so the join never repeats a row. DISTINCT would change
+    # meaning now the filter applies by default: values_list() without an
+    # ordering would collapse equal values.
+    return qs.filter(q)
 
 
 def filter_by_site_field(qs, user, field="site_id"):

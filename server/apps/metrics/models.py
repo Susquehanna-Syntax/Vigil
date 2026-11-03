@@ -1,6 +1,7 @@
 from django.db import models
 
 from apps.hosts.models import Host
+from vigil.scoping import SiteScopedManager
 
 
 class MetricPoint(models.Model):
@@ -9,6 +10,7 @@ class MetricPoint(models.Model):
     Designed for TimescaleDB hypertable conversion on the `time` column.
     """
 
+    objects = SiteScopedManager(path="host__")
     host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="metric_points")
     time = models.DateTimeField(db_index=True)
     category = models.CharField(max_length=50, db_index=True)  # cpu, memory, disk, network, etc.

@@ -17,7 +17,8 @@ SERVER = Path(__file__).resolve().parent.parent
 CROSSINGS: dict[str, list[str]] = {
     'apps/agentprofiles/redeem_views.py': ['agent install: a one-time profile token is the access control'],
     'apps/automations/engine.py': ['automation events fire install-wide, whoever raised them'],
-    'apps/hosts/enrollment.py': ['re-enrolment: the same machine is matched across every site'],
+    'apps/hosts/enrollment.py': ["re-enrolment moves the machine's own history onto its surviving row",
+                                 're-enrolment: the same machine is matched across every site'],
     'apps/hosts/logtail.py': ['agent API: the caller is a host, authenticated by its agent token'],
     'apps/hosts/views.py': ['agent API: the caller is a host, authenticated by its agent token',
                             'agent enrolment: a new host registers with no user',
