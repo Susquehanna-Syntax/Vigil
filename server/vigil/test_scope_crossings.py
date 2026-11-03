@@ -20,6 +20,7 @@ CROSSINGS: dict[str, list[str]] = {
     'apps/hosts/logtail.py': ['agent API: the caller is a host, authenticated by its agent token'],
     'apps/hosts/views.py': ['agent API: the caller is a host, authenticated by its agent token',
                             'agent enrolment: a new host registers with no user',
+                            'tag delete guard: a tag is install-wide',
                             'tag rename: tags are install-wide'],
     'apps/remote/views.py': ['agent API: the caller is a host, authenticated by its agent token'],
     'apps/reprovision/installer_views.py': ['reprovision installer: the rebuild token is the access control',

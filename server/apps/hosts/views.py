@@ -1548,6 +1548,16 @@ def tag_collection(request):
     return Response(_tag_payload(tag), status=201)
 
 
+def _count_everywhere(related_manager) -> int:
+    """How many rows a reverse relation names, whatever the site scope."""
+    objects = related_manager.model.objects
+    if hasattr(objects, "unscoped"):
+        qs = objects.unscoped(reason="tag delete guard: a tag is install-wide")
+    else:
+        qs = objects.all()
+    return qs.filter(**related_manager.core_filters).count()
+
+
 def _tag_payload(tag) -> dict:
     return {
         "id": tag.id,
@@ -1583,15 +1593,17 @@ def tag_detail(request, tag_id):
     if request.method == "DELETE":
         # Refuse while anything still selects on it, rather than silently
         # emptying a wave. The message names what is using it.
+        # Counted across every site: a tag is install-wide, so rows the caller
+        # cannot see still use it. A scoped count would let a site admin
+        # delete a tag that another site's hosts or playbooks select on.
         users = []
-        if tag.hosts.exists():
-            users.append(f"{tag.hosts.count()} host(s)")
-        for rel, label in (("waves", "wave"), ("playbooks", "playbook"),
+        for rel, label in (("hosts", "host"), ("waves", "wave"), ("playbooks", "playbook"),
                            ("automations_by_event", "automation (event)"),
                            ("automations_by_target", "automation (target)")):
             manager = getattr(tag, rel, None)
-            if manager is not None and manager.exists():
-                users.append(f"{manager.count()} {label}(s)")
+            count = _count_everywhere(manager) if manager is not None else 0
+            if count:
+                users.append(f"{count} {label}(s)")
         if users:
             return Response(
                 {"detail": f"{tag.name!r} is still used by " + ", ".join(users)
