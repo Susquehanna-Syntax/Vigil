@@ -10,13 +10,20 @@ import uuid
 from django.conf import settings as django_settings
 from django.db import models
 
+from vigil.scoping import SiteScopedManager
+
 
 class AgentProfile(models.Model):
     """One named set of agent settings."""
 
+    objects = SiteScopedManager(field="site_id")
+
     MODES = ("monitor", "managed", "full_control")
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    #: business_sites.Site id as a plain UUID — Free never joins a Business
+    #: table (see apps/statuspage/models.py). Null = global, every site sees it.
+    site_id = models.UUIDField(null=True, blank=True)
     name = models.CharField(max_length=80, unique=True)
     description = models.CharField(max_length=300, blank=True, default="")
     #: Seeded by migration. Editable — an admin who wants "Managed server" to

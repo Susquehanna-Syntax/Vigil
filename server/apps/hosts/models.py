@@ -379,6 +379,8 @@ class UnmanagedDevice(models.Model):
     discovery / SNMP polling is out of scope for Community.
     """
 
+    objects = SiteScopedManager(field="site_id")
+
     class DeviceType(models.TextChoices):
         ROUTER = "router", "Router"
         SWITCH = "switch", "Switch"
@@ -394,6 +396,9 @@ class UnmanagedDevice(models.Model):
         OTHER = "other", "Other"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    #: business_sites.Site id as a plain UUID — Free never joins a Business
+    #: table (see apps/statuspage/models.py). Null = global, every site sees it.
+    site_id = models.UUIDField(null=True, blank=True)
     name = models.CharField(max_length=200)
     device_type = models.CharField(
         max_length=20, choices=DeviceType.choices, default=DeviceType.OTHER,

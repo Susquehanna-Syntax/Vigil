@@ -140,7 +140,12 @@ class RegistryCredential(models.Model):
     every registry password in the fleet.
     """
 
+    objects = SiteScopedManager(field="site_id")
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    #: business_sites.Site id as a plain UUID — Free never joins a Business
+    #: table (see apps/statuspage/models.py). Null = global, every site sees it.
+    site_id = models.UUIDField(null=True, blank=True)
     #: The registry host as an image names it: ghcr.io, registry.example.com:5000.
     #: docker.io for Docker Hub.
     registry = models.CharField(max_length=255)
@@ -166,11 +171,16 @@ class GitCredential(models.Model):
     refused, not trusted on first use.
     """
 
+    objects = SiteScopedManager(field="site_id")
+
     class Kind(models.TextChoices):
         TOKEN = "token", "HTTPS token"
         SSH_KEY = "ssh_key", "SSH deploy key"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    #: business_sites.Site id as a plain UUID — Free never joins a Business
+    #: table (see apps/statuspage/models.py). Null = global, every site sees it.
+    site_id = models.UUIDField(null=True, blank=True)
     name = models.CharField(max_length=120)
     kind = models.CharField(max_length=10, choices=Kind.choices)
     #: The one Git server this credential may be used with (github.com,

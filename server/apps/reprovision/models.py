@@ -64,14 +64,19 @@ class OSImage(models.Model):
 
 class InstallProfile(TagRowSyncMixin, models.Model):
     """Typed settings for an image, plus a verbatim escape hatch (§6)."""
-    tag_sync_fields = [("completion_tags", "completion_tag_rows")]
 
+    objects = SiteScopedManager(field="site_id")
+
+    tag_sync_fields = [("completion_tags", "completion_tag_rows")]
 
     class NetworkMode(models.TextChoices):
         DHCP = "dhcp", "DHCP"
         STATIC = "static", "Static"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    #: business_sites.Site id as a plain UUID — Free never joins a Business
+    #: table (see apps/statuspage/models.py). Null = global, every site sees it.
+    site_id = models.UUIDField(null=True, blank=True)
     name = models.CharField(max_length=120)
     image = models.ForeignKey(OSImage, on_delete=models.CASCADE,
                               related_name="profiles")
