@@ -28,6 +28,8 @@ class InstallProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = InstallProfile
         exclude = ["admin_password_encrypted", "created_by"]
+        # Set by the view through scoping.site_for_write, never from the body.
+        extra_kwargs = {"site_id": {"read_only": True}}
 
     def validate(self, attrs):
         """A profile with neither a password hash nor an SSH key produces a

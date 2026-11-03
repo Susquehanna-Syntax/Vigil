@@ -132,9 +132,9 @@ def _visible_hosts(user):
 def _devices():
     """Every registered device with an address.
 
-    The registry is global — UnmanagedDevice has no site assignment, so there
-    is nothing to scope here — and a device nobody has given an address yet is
-    the only one that cannot be placed on the map.
+    Devices carry a site since S1 04d-1, and the manager narrows this to the
+    caller's sites plus global devices. A device nobody has given an address
+    yet is the only one that cannot be placed on the map.
 
     Not ``exclude(ip_address="")``: on SQLite a GenericIPAddressField compares
     that empty string to ``None``, which would filter out every row.

@@ -490,10 +490,13 @@ def create_device(request):
     """Add a device to Vigil's inventory. Jackil keeps no copy of its own."""
     if not may_write_devices(request):
         return Response(DENIED, status=403)
+    site_id, denied = scoping.site_for_write(request.user, request.data.get("site_id"))
+    if denied:
+        return denied
     serializer = UnmanagedDeviceSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(serializer.errors, status=400)
-    device = serializer.save()
+    device = serializer.save(site_id=site_id)
     _log.info("jackil key %s created device %s", request.auth.prefix, device.pk)
     return _device_response(request, device, status=201)
 
@@ -510,6 +513,8 @@ def device_detail_write(request, id: str):
     device = _device_or_404(id)
     if isinstance(device, Response):
         return device
+    if denied := scoping.write_denied(request.user, device):
+        return denied
     if request.method == "DELETE":
         device.delete()
         _log.info("jackil key %s deleted device %s", request.auth.prefix, id)

@@ -440,10 +440,27 @@ def profile_list(request):
 
     if not IsAdmin().has_permission(request, None):
         return Response({"error": "Admin required"}, status=403)
+    site_id, denied = scoping.site_for_write(request.user, request.data.get("site_id"))
+    if denied:
+        return denied
     serializer = InstallProfileSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    profile = serializer.save(created_by=request.user)
+    if err := _agent_profile_site_error(serializer.validated_data.get("agent_profile"), site_id):
+        return err
+    profile = serializer.save(created_by=request.user, site_id=site_id)
     return Response(InstallProfileSerializer(profile).data, status=201)
+
+
+def _agent_profile_site_error(agent_profile, site_id):
+    """An install profile may use a global agent profile or one of its own
+    site's, never another site's: that site's admins would then decide what
+    this site's rebuilt machines run."""
+    if agent_profile is None:
+        return None
+    theirs = scoping.owning_site_id(agent_profile)
+    if theirs is not None and theirs != site_id:
+        return Response({"error": "That agent profile belongs to another site"}, status=400)
+    return None
 
 
 @api_view(["GET", "PATCH", "DELETE"])
@@ -456,13 +473,24 @@ def profile_detail(request, profile_id):
         return Response(InstallProfileSerializer(profile).data)
     if not IsAdmin().has_permission(request, None):
         return Response({"error": "Admin required"}, status=403)
+    if denied := scoping.write_denied(request.user, profile):
+        return denied
     if request.method == "DELETE":
         profile.delete()
         return Response(status=204)
+    site_id = profile.site_id
+    if "site_id" in request.data:
+        site_id, denied = scoping.site_for_write(request.user, request.data["site_id"])
+        if denied:
+            return denied
     serializer = InstallProfileSerializer(profile, data=request.data,
                                           partial=True)
     serializer.is_valid(raise_exception=True)
-    return Response(InstallProfileSerializer(serializer.save()).data)
+    agent_profile = serializer.validated_data.get("agent_profile", profile.agent_profile)
+    if err := _agent_profile_site_error(agent_profile, scoping.owning_site_id(
+            InstallProfile(site_id=site_id))):
+        return err
+    return Response(InstallProfileSerializer(serializer.save(site_id=site_id)).data)
 
 
 @api_view(["POST"])
@@ -599,6 +627,9 @@ def _create_job(request):
 
     image = get_object_or_404(OSImage, pk=request.data.get("image"))
     profile = get_object_or_404(InstallProfile, pk=request.data.get("profile"))
+    # A site's install profile rebuilds that site's machines only.
+    if (theirs := scoping.owning_site_id(profile)) is not None and scoping.site_id_of(host) != theirs:
+        return Response({"error": "That install profile belongs to another site"}, status=400)
 
     if image.status != OSImage.Status.READY:
         return Response(

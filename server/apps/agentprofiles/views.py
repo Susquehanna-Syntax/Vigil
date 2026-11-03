@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin
 from apps.tasks.refusals import AGENT_ACTIONS
 from apps.tasks.registry import ACTION_REGISTRY
+from vigil import scoping
 
 from . import render
 from .models import AgentProfile, EnrollConfig
@@ -56,6 +57,7 @@ def _row(profile: AgentProfile) -> dict:
         "name": profile.name,
         "description": profile.description,
         "builtin": profile.builtin,
+        "site_id": str(profile.site_id) if profile.site_id else None,
         **_fields(profile),
         "install_profiles": [p.name for p in profile.install_profiles.all()],
         "created_at": profile.created_at.isoformat() if profile.created_at else None,
@@ -78,7 +80,18 @@ def _apply(profile: AgentProfile | None, data: dict) -> tuple[dict, dict]:
     for key in list(data or {}):
         if key in render.FIELDS:
             base[key] = data[key]
-    return render.validate(base)
+    clean, errors = render.validate(base)
+    if "name" not in errors:
+        # Unique in the database across every site; a site admin cannot see
+        # another site's names, so the clash is a 400 here, not a 500 there.
+        clash = AgentProfile.objects.unscoped(
+            reason="agent profile names are unique across the install"
+        ).filter(name=clean["name"])
+        if profile is not None:
+            clash = clash.exclude(pk=profile.pk)
+        if clash.exists():
+            errors["name"] = "is already used by another profile"
+    return clean, errors
 
 
 @api_view(["GET", "POST"])
@@ -88,10 +101,14 @@ def profile_index(request):
         qs = AgentProfile.objects.prefetch_related("install_profiles")
         return Response([_row(p) for p in qs])
 
+    site_id, denied = scoping.site_for_write(request.user, request.data.get("site_id"))
+    if denied:
+        return denied
     clean, errors = _apply(None, request.data)
     if errors:
         return Response({"errors": errors}, status=400)
     profile = AgentProfile(
+        site_id=site_id,
         name=clean["name"], description=clean["description"],
         mode=clean["mode"], builtin=False,
         primary_relay_id=clean["primary_relay"],
@@ -119,6 +136,14 @@ def profile_detail(request, profile_id):
 
     if request.method == "GET":
         return Response(_row(profile))
+
+    if denied := scoping.write_denied(request.user, profile):
+        return denied
+    if "site_id" in request.data:
+        new_site, denied = scoping.site_for_write(request.user, request.data["site_id"])
+        if denied:
+            return denied
+        profile.site_id = new_site
 
     if request.method == "DELETE":
         # Builtin profiles are the wizard's starting points. Edit them freely;

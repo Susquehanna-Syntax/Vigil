@@ -358,3 +358,94 @@ class PlaybookAutomationWriteRuleTests(TestCase):
         self.assertEqual(resp.json()["dispatched"], 1, resp.content)
         from apps.tasks.models import Task
         self.assertEqual(list(Task.objects.values_list("host__hostname", flat=True)), ["west-1"])
+
+
+class SiteOwnedConfigTests(TestCase):
+    """04e-3: credentials, profiles and devices take a site on create, follow
+    the write rules after, and a site's credential or profile serves only that
+    site's machines, also on the unscoped agent and rebuild paths."""
+
+    def setUp(self):
+        from apps.hosts.crypto import encrypt_secret
+        from apps.hosts.models import Host
+        from apps.stacks.models import RegistryCredential
+        from apps_business.sites.models import HostSiteAssignment
+        self.west = Site.objects.create(name="West", slug="west")
+        self.lab = Site.objects.create(name="Lab", slug="lab")
+        self.dana = get_user_model().objects.create_user("dana", password="x")
+        UserSiteRole.objects.create(user=self.dana, site=self.west, role=Role.ADMIN)
+        self.hosts = {}
+        for name, site in (("west-1", self.west), ("lab-1", self.lab)):
+            self.hosts[name] = Host.objects.create(hostname=name, agent_token=f"tok-{name}",
+                                                   status=Host.Status.ONLINE)
+            HostSiteAssignment.objects.create(host=self.hosts[name], site=site)
+        self.west_cred = RegistryCredential.objects.create(
+            registry="ghcr.io", username="west-bot", password_encrypted=encrypt_secret("west-secret"),
+            site_id=self.west.pk)
+
+    def _send(self, method, url, body=None):
+        self.client.force_login(self.dana)
+        return getattr(self.client, method)(url, data=json.dumps(body or {}), content_type="application/json")
+
+    def test_a_sites_registry_login_never_reaches_another_sites_host(self):
+        auth = lambda token: self.client.get("/api/v1/agent/registry-auth/?registry=ghcr.io",
+                                             HTTP_AUTHORIZATION=f"Bearer {token}")
+        self.assertEqual(auth("tok-west-1").json()["username"], "west-bot")
+        resp = auth("tok-lab-1")
+        self.assertEqual(resp.status_code, 404)
+        self.assertNotIn(b"west-secret", resp.content)
+
+    def test_registry_and_device_write_rules(self):
+        from apps.hosts.models import UnmanagedDevice
+        from apps.stacks.models import RegistryCredential
+        body = {"registry": "docker.io", "username": "u", "password": "p"}
+        self.assertEqual(self._send("post", "/api/v1/stacks/registries/", body).status_code, 403)
+        self.assertEqual(self._send("post", "/api/v1/stacks/registries/",
+                                    {**body, "site_id": str(self.lab.pk)}).status_code, 404)
+        self.assertEqual(self._send("post", "/api/v1/stacks/registries/",
+                                    {**body, "site_id": str(self.west.pk)}).status_code, 201)
+        shared = RegistryCredential.objects.create(registry="quay.io", username="g", password_encrypted=b"")
+        self.assertEqual(self._send("delete", f"/api/v1/stacks/registries/{shared.pk}/").status_code, 403)
+
+        self.assertEqual(self._send("post", "/api/v1/hosts/devices/", {"name": "printer"}).status_code, 403)
+        resp = self._send("post", "/api/v1/hosts/devices/", {"name": "printer", "site_id": str(self.west.pk)})
+        self.assertEqual((resp.status_code, resp.json()["site_id"]), (201, str(self.west.pk)))
+        global_dev = UnmanagedDevice.objects.create(name="core switch")
+        self.assertEqual(self._send("patch", f"/api/v1/hosts/devices/{global_dev.pk}/",
+                                    {"notes": "x"}).status_code, 403)
+
+    def test_agent_profile_rules_and_name_clash(self):
+        from apps.agentprofiles.models import AgentProfile
+        AgentProfile.objects.create(name="Lab servers", site_id=self.lab.pk)
+        resp = self._send("post", "/api/v1/agent-profiles/", {"name": "Lab servers", "site_id": str(self.west.pk)})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn("name", resp.json()["errors"])
+        self.assertEqual(self._send("post", "/api/v1/agent-profiles/", {"name": "W"}).status_code, 403)
+        builtin = AgentProfile.objects.create(name="Builtin", builtin=True)
+        self.assertEqual(self._send("patch", f"/api/v1/agent-profiles/{builtin.pk}/",
+                                    {"description": "x"}).status_code, 403)
+
+    def test_install_profile_site_comes_from_the_rules_not_the_body(self):
+        from apps.reprovision.models import InstallProfile, OSImage
+        image = OSImage.objects.create(name="deb", os_family="debian", version="13", sha256="0" * 64)
+        mine = InstallProfile.objects.create(name="west-install", image=image, disk_target="/dev/sda",
+                                             admin_username="a", admin_password_encrypted=b"",
+                                             site_id=self.west.pk)
+        resp = self._send("patch", f"/api/v1/reprovision/profiles/{mine.pk}/", {"site_id": str(self.lab.pk)})
+        self.assertEqual(resp.status_code, 404, resp.content)
+        mine.refresh_from_db()
+        self.assertEqual(mine.site_id, self.west.pk)
+
+    def test_a_sites_git_credential_serves_only_its_sites_stacks(self):
+        from apps.stacks import gitsource
+        from apps.stacks.git_views import apply_git_settings
+        from apps.stacks.models import GitCredential, ManagedStack
+        cred = GitCredential.objects.create(name="west-git", kind="token", git_host="github.com",
+                                            secret_encrypted=b"", site_id=self.west.pk)
+        lab_stack = ManagedStack.objects.create(host=self.hosts["lab-1"], name="s", compose_yaml="services: {}\n")
+        body = {"git": {"url": "https://github.com/o/r.git", "credential_id": str(cred.pk)}}
+        with self.assertRaises(gitsource.GitSourceError):
+            apply_git_settings(lab_stack, body)
+        west_stack = ManagedStack.objects.create(host=self.hosts["west-1"], name="s", compose_yaml="services: {}\n")
+        apply_git_settings(west_stack, body)
+        self.assertEqual(west_stack.git_credential, cred)

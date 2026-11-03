@@ -36,6 +36,7 @@ KEEP_SNAPSHOTS = 5
 def _cred_row(c: GitCredential) -> dict:
     return {"id": str(c.id), "name": c.name, "kind": c.kind, "git_host": c.git_host, "username": c.username,
             "has_known_hosts": bool(c.known_hosts.strip()),
+            "site_id": str(c.site_id) if c.site_id else None,
             "created_at": c.created_at.isoformat()}
 
 
@@ -46,6 +47,9 @@ def git_credential_index(request):
     TOTP: it is a key to a repository whose contents run as root on hosts."""
     if request.method == "GET":
         return Response({"results": [_cred_row(c) for c in GitCredential.objects.all()]})
+    site_id, denied = scoping.site_for_write(request.user, request.data.get("site_id"))
+    if denied:
+        return denied
     from apps.accounts.totp import require_totp_confirmation
     if error := require_totp_confirmation(request.user, request.data):
         return Response({"detail": error, "needs_totp": True}, status=status.HTTP_401_UNAUTHORIZED)
@@ -75,7 +79,7 @@ def git_credential_index(request):
     cred = GitCredential.objects.create(
         name=name, kind=kind, git_host=git_host, username=str(request.data.get("username") or "").strip()[:255],
         secret_encrypted=encrypt_secret(secret), known_hosts=known_hosts.strip(),
-        created_by=request.user)
+        created_by=request.user, site_id=site_id)
     hooks.emit("git_credential_added", credential=cred, user=request.user)
     return Response(_cred_row(cred), status=status.HTTP_201_CREATED)
 
@@ -83,7 +87,10 @@ def git_credential_index(request):
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def git_credential_detail(request, cred_id):
-    get_object_or_404(GitCredential, pk=cred_id).delete()
+    cred = get_object_or_404(GitCredential, pk=cred_id)
+    if denied := scoping.write_denied(request.user, cred):
+        return denied
+    cred.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -121,6 +128,12 @@ def apply_git_settings(stack: ManagedStack, data) -> None:
         cred = GitCredential.objects.filter(pk=cred_id).first()
         if cred is None:
             raise gitsource.GitSourceError("that Git credential does not exist")
+        # A site's credential serves that site's stacks only (S1 04e): someone
+        # who can see several sites must not pull one site's repo with
+        # another site's secret.
+        cred_site = scoping.owning_site_id(cred)
+        if cred_site is not None and scoping.site_id_of(stack.host) != cred_site:
+            raise gitsource.GitSourceError("that Git credential belongs to another site")
         _kind, host = gitsource.parse_url(url)
         if cred.git_host != host:
             raise gitsource.GitSourceError(f"the credential {cred.name!r} is for {cred.git_host}, not {host}")

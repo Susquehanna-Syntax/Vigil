@@ -962,10 +962,13 @@ def unmanaged_devices(request):
     from apps.accounts.permissions import IsAdmin
     if not IsAdmin().has_permission(request, None):
         return Response({"error": "Administrator access required."}, status=status.HTTP_403_FORBIDDEN)
+    site_id, denied = scoping.site_for_write(request.user, request.data.get("site_id"))
+    if denied:
+        return denied
     serializer = UnmanagedDeviceSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    serializer.save()
+    serializer.save(site_id=site_id)
     return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -986,15 +989,22 @@ def unmanaged_device_detail(request, device_id):
     from apps.accounts.permissions import IsAdmin
     if not IsAdmin().has_permission(request, None):
         return Response({"error": "Administrator access required."}, status=status.HTTP_403_FORBIDDEN)
+    if denied := scoping.write_denied(request.user, device):
+        return denied
 
     if request.method == "DELETE":
         device.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    extra = {}
+    if "site_id" in request.data:
+        extra["site_id"], denied = scoping.site_for_write(request.user, request.data["site_id"])
+        if denied:
+            return denied
     serializer = UnmanagedDeviceSerializer(device, data=request.data, partial=True)
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    serializer.save()
+    serializer.save(**extra)
     return Response(serializer.data)
 
 

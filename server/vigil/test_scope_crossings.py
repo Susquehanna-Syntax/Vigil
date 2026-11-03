@@ -15,6 +15,7 @@ SERVER = Path(__file__).resolve().parent.parent
 
 #: "relative/path.py" -> sorted reasons of the crossings in that file.
 CROSSINGS: dict[str, list[str]] = {
+    'apps/agentprofiles/views.py': ['agent profile names are unique across the install'],
     'apps/agentprofiles/redeem_views.py': ['agent install: a one-time profile token is the access control'],
     'apps/automations/engine.py': ['automation events fire install-wide, whoever raised them'],
     'apps/hosts/enrollment.py': ["re-enrolment moves the machine's own history onto its surviving row",

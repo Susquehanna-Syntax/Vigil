@@ -163,10 +163,12 @@ class UnmanagedDeviceSerializer(serializers.ModelSerializer):
             "owner",
             "extra",
             "notes",
+            "site_id",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "device_type_label", "created_at", "updated_at"]
+        # site_id is set by the view through scoping.site_for_write.
+        read_only_fields = ["id", "device_type_label", "site_id", "created_at", "updated_at"]
 
     def validate_name(self, value):
         value = (value or "").strip()
