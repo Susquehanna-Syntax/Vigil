@@ -7,8 +7,12 @@ the same way apps/accounts/views.py:_branding() degrades.
 Nothing in this module may sit in a path that could stop monitoring, alerting,
 or agent ingest (SQSY-LICENSING §6).
 """
+import contextvars
 import logging
+from contextlib import contextmanager
+from dataclasses import dataclass
 
+from django.db import models as _dj_models
 from django.db.models import Q
 
 logger = logging.getLogger("vigil.scoping")
@@ -338,3 +342,156 @@ def host_or_404(request, host_id):
     if host is None:
         return None, Response({"error": "Not found"}, status=404)
     return host, None
+
+
+# ---------------------------------------------------------------------------
+# Scoped by default (S1 phase 04a)
+#
+# Every request runs inside a *scope*: the user whose sites bound what the
+# data layer returns. A model whose manager is a SiteScopedManager filters by
+# that scope on every query, so a view that forgets filter_by_site still
+# cannot read another site's rows. Code that must cross sites says so with
+# ``Model.objects.unscoped(reason="...")`` or ``with scoping.system(reason=...)``,
+# and vigil/test_scope_crossings.py pins every such call site.
+#
+# Outside a request (Celery, management commands, migrations, test bodies)
+# there is no scope, and a scoped manager returns rows unfiltered: §6 forbids
+# a scoping gap from stopping monitoring, alerting or agent ingest. Jobs whose
+# output reaches a person (reports, exports, alert mail) enter
+# ``as_user(...)`` explicitly; that is S1 phase 05.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Scope:
+    """What the data layer may return right now.
+
+    ``kind`` is "user" (filter by ``user()``) or "system" (no filter, with a
+    stated ``reason``). ``user`` is a callable so a request scope reads
+    ``request.user`` at query time: DRF authenticates (API keys, tokens) inside
+    the view, after middleware has run, and writes the result back onto the
+    Django request.
+    """
+    kind: str
+    user: object = None
+    reason: str = ""
+
+
+_scope: contextvars.ContextVar = contextvars.ContextVar("vigil_site_scope", default=None)
+
+
+def current_scope():
+    """The active Scope, or None outside any request or ``as_user`` block."""
+    return _scope.get()
+
+
+@contextmanager
+def _entered(scope):
+    token = _scope.set(scope)
+    try:
+        yield scope
+    finally:
+        _scope.reset(token)
+
+
+def request_scope(request):
+    """The scope for one HTTP request: whoever ``request.user`` is when the
+    query runs. An anonymous request sees no site-owned rows at all."""
+    return _entered(Scope("user", user=lambda: getattr(request, "user", None)))
+
+
+def as_user(user):
+    """Run the block as `user`: scoped managers return what they may see."""
+    return _entered(Scope("user", user=lambda: user))
+
+
+def _require_reason(reason):
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError("crossing site scope needs a non-empty reason")
+
+
+def system(*, reason):
+    """Run the block with no site filter, for work no person is behind
+    (agent check-ins, maintenance). `reason` is required; every call site is
+    pinned by vigil/test_scope_crossings.py."""
+    _require_reason(reason)
+    return _entered(Scope("system", reason=reason))
+
+
+def scoped_user():
+    """The user the active scope filters by, or None when nothing filters
+    (no scope, or a system scope)."""
+    scope = _scope.get()
+    if scope is None or scope.kind != "user":
+        return None
+    return scope.user()
+
+
+class SiteScopedManager(_dj_models.Manager):
+    """A default manager that narrows every query to the active scope.
+
+    ``path``/``cascade_global`` mean what they mean in filter_by_site;
+    ``field`` switches to filter_by_site_field for models with a plain
+    site-id column. Forward FK reads (``alert.host``) go through the model's
+    base manager, which Django keeps as a plain Manager, so they are never
+    filtered; only queries started from this manager are.
+    """
+
+    def __init__(self, *, path="", cascade_global=False, field=None):
+        super().__init__()
+        self.site_path = path
+        self.site_cascade_global = cascade_global
+        self.site_field = field
+
+    def deconstruct(self):
+        # Managers are not used in migrations (use_in_migrations is False),
+        # but deconstruct must still describe the constructor arguments.
+        ret = list(super().deconstruct())
+        ret[3] = {"path": self.site_path, "cascade_global": self.site_cascade_global,
+                  "field": self.site_field}
+        return tuple(ret)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        scope = _scope.get()
+        if scope is None or scope.kind == "system":
+            return qs
+        user = scope.user()
+        if user is None or not getattr(user, "is_authenticated", False):
+            return qs.none()
+        if self.site_field:
+            return filter_by_site_field(qs, user, field=self.site_field)
+        return filter_by_site(qs, user, path=self.site_path,
+                              cascade_global=self.site_cascade_global)
+
+    def unscoped(self, *, reason):
+        """Every row, whatever the scope. Say why: the reason is pinned with
+        the call site in vigil/test_scope_crossings.py."""
+        _require_reason(reason)
+        return super().get_queryset()
+
+
+class SiteScopeMiddleware:
+    """Enter a request scope for the whole request, including the body of a
+    streaming response, which Django iterates after this middleware returns."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        with request_scope(request):
+            response = self.get_response(request)
+        if getattr(response, "streaming", False):
+            response.streaming_content = _rescoped(request, response.streaming_content)
+        return response
+
+
+def _rescoped(request, chunks):
+    it = iter(chunks)
+    while True:
+        with request_scope(request):
+            try:
+                chunk = next(it)
+            except StopIteration:
+                return
+        yield chunk

@@ -1,0 +1,140 @@
+"""S1 phase 04a: the scope context and SiteScopedManager.
+
+No model uses the manager yet (04b switches them), so these tests attach one
+to Host and Alert by hand.
+"""
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
+from django.http import HttpResponse, StreamingHttpResponse
+from django.test import RequestFactory, TestCase
+
+from apps.accounts.models import Role
+from apps.alerts.models import Alert, AlertRule
+from apps.hosts.models import Host
+from vigil import scoping
+from vigil.testsupport import require_business_module
+
+require_business_module()
+
+from apps_business.sites.models import HostSiteAssignment, Site, UserSiteRole  # noqa: E402
+
+
+def _manager(model, **kw):
+    m = scoping.SiteScopedManager(**kw)
+    m.model = model
+    return m
+
+
+class _TwoSites(TestCase):
+    """West (dana administers it) and Lab, one host and one alert each."""
+
+    @classmethod
+    def setUpTestData(cls):
+        west = Site.objects.create(name="West", slug="west")
+        lab = Site.objects.create(name="Lab", slug="lab")
+        cls.dana = get_user_model().objects.create_user("dana", password="x")
+        UserSiteRole.objects.create(user=cls.dana, site=west, role=Role.ADMIN)
+        cls.owner = get_user_model().objects.create_superuser("root", "r@example.com", "x")
+        rule = AlertRule.objects.create(name="cpu", category="cpu", metric="cpu",
+                                        operator="gt", threshold=90, severity="warning")
+        for name, site in (("west-1", west), ("lab-1", lab)):
+            h = Host.objects.create(hostname=name, agent_token=f"tok-{name}")
+            HostSiteAssignment.objects.create(host=h, site=site)
+            Alert.objects.create(host=h, rule=rule, severity="warning", message=name)
+        cls.hosts = _manager(Host)
+        cls.alerts = _manager(Alert, path="host__")
+
+    def names(self, qs):
+        return sorted(qs.values_list("hostname", flat=True))
+
+
+class ScopedManagerTests(_TwoSites):
+
+    def test_no_scope_is_unfiltered(self):
+        # Outside a request nothing filters: §6, monitoring must never stop.
+        self.assertIsNone(scoping.current_scope())
+        self.assertEqual(self.names(self.hosts.all()), ["lab-1", "west-1"])
+
+    def test_user_scope_filters(self):
+        with scoping.as_user(self.dana):
+            self.assertEqual(self.names(self.hosts.all()), ["west-1"])
+            self.assertEqual(list(self.alerts.values_list("message", flat=True)), ["west-1"])
+            self.assertFalse(self.hosts.filter(hostname="lab-1").exists())
+        with scoping.as_user(self.owner):
+            self.assertEqual(self.names(self.hosts.all()), ["lab-1", "west-1"])
+
+    def test_anonymous_and_missing_user_see_nothing(self):
+        with scoping.as_user(AnonymousUser()):
+            self.assertEqual(list(self.hosts.all()), [])
+        with scoping.as_user(None):
+            self.assertEqual(list(self.hosts.all()), [])
+
+    def test_system_scope_needs_a_reason(self):
+        for bad in ("", "   ", None):
+            with self.assertRaises(ValueError):
+                scoping.system(reason=bad)
+        with scoping.as_user(self.dana):
+            with scoping.system(reason="agent check-in"):
+                self.assertEqual(self.names(self.hosts.all()), ["lab-1", "west-1"])
+            # Leaving the block restores the user scope.
+            self.assertEqual(self.names(self.hosts.all()), ["west-1"])
+        self.assertIsNone(scoping.current_scope())
+
+    def test_unscoped_needs_a_reason(self):
+        with scoping.as_user(self.dana):
+            with self.assertRaises(ValueError):
+                self.hosts.unscoped(reason="")
+            self.assertEqual(self.names(self.hosts.unscoped(reason="test")), ["lab-1", "west-1"])
+
+    def test_scope_is_reset_after_an_exception(self):
+        with self.assertRaises(RuntimeError):
+            with scoping.as_user(self.dana):
+                raise RuntimeError
+        self.assertIsNone(scoping.current_scope())
+
+
+class SiteScopeMiddlewareTests(_TwoSites):
+    """The middleware scopes by whoever request.user is when the query runs."""
+
+    def run_request(self, user, view):
+        request = RequestFactory().get("/")
+        request.user = user
+        response = scoping.SiteScopeMiddleware(view)(request)
+        self.assertIsNone(scoping.current_scope())
+        return response
+
+    def listing(self, request):
+        return HttpResponse(",".join(self.names(self.hosts.all())))
+
+    def test_request_is_scoped_to_its_user(self):
+        self.assertEqual(self.run_request(self.dana, self.listing).content, b"west-1")
+        self.assertEqual(self.run_request(AnonymousUser(), self.listing).content, b"")
+        self.assertEqual(self.run_request(self.owner, self.listing).content, b"lab-1,west-1")
+
+    def test_user_set_during_the_view_is_used(self):
+        # DRF authenticates API keys inside the view and writes the user back
+        # onto the Django request; the scope must follow it.
+        def view(request):
+            request.user = self.dana
+            return self.listing(request)
+        self.assertEqual(self.run_request(AnonymousUser(), view).content, b"west-1")
+
+    def test_streaming_body_stays_scoped(self):
+        def rows():
+            # The query runs only when Django iterates the body, after the
+            # middleware has returned.
+            for h in self.hosts.all():
+                yield f"{h.hostname}\n"
+
+        def view(request):
+            return StreamingHttpResponse(rows())
+        response = self.run_request(self.dana, view)
+        self.assertIsNone(scoping.current_scope())
+        self.assertEqual(b"".join(response.streaming_content), b"west-1\n")
+
+    def test_installed(self):
+        from django.conf import settings
+        mw = settings.MIDDLEWARE
+        self.assertIn("vigil.scoping.SiteScopeMiddleware", mw)
+        self.assertGreater(mw.index("vigil.scoping.SiteScopeMiddleware"),
+                           mw.index("django.contrib.auth.middleware.AuthenticationMiddleware"))
