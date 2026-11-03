@@ -65,3 +65,36 @@ class InstallWideGuardTests(TestCase):
         resp = self.client.post("/api/v1/status-pages/", data="{}", content_type="application/json")
         self.assertEqual(resp.status_code, 402, resp.content)
         self.assertEqual(StatusPage.objects.unscoped(reason="test").count(), 1)
+
+
+class PlaybookAndTagGuardTests(TestCase):
+    """Playbook names are referenced by name (playbook includes), so they
+    stay unique across sites; a tag rename rewrites every site's copies."""
+
+    def setUp(self):
+        from apps.hosts.models import Tag
+        from apps.playbooks.models import Playbook
+        from apps_business.sites.models import PlaybookSiteAssignment
+
+        self.west = Site.objects.create(name="West", slug="west")
+        self.lab = Site.objects.create(name="Lab", slug="lab")
+        root = get_user_model().objects.create_user("root", password="x", is_staff=True)
+        self.lab_pb = Playbook.objects.create(name="Harden", created_by=root, target_tags=["web"])
+        PlaybookSiteAssignment.objects.create(playbook=self.lab_pb, site=self.lab)
+        self.tag, _ = Tag.objects.get_or_create(key="web", defaults={"name": "web"})
+        self.dana = get_user_model().objects.create_user("dana", password="x", is_staff=True)
+        UserSiteRole.objects.create(user=self.dana, site=self.west, role=Role.ADMIN)
+        self.client.force_login(self.dana)
+
+    def test_a_playbook_name_another_site_uses_is_taken(self):
+        resp = self.client.post("/api/v1/playbooks/", data=json.dumps({"name": "harden"}),
+                                content_type="application/json")
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn("already exists", resp.json()["detail"])
+
+    def test_tag_rename_rewrites_every_sites_playbooks(self):
+        resp = self.client.patch(f"/api/v1/tags/{self.tag.id}/", data=json.dumps({"name": "frontend"}),
+                                 content_type="application/json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.lab_pb.refresh_from_db()
+        self.assertEqual(self.lab_pb.target_tags, ["frontend"])

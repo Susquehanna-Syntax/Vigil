@@ -240,7 +240,7 @@ def playbook_index(request):
     name = (request.data.get("name") or "").strip()
     if not name:
         return Response({"detail": "name is required"}, status=400)
-    if Playbook.objects.filter(name__iexact=name).exists():
+    if Playbook.objects.unscoped(reason="playbook names are unique across the install").filter(name__iexact=name).exists():
         return Response({"detail": f"a playbook named {name!r} already exists"},
                         status=400)
     tags = request.data.get("target_tags") or []
@@ -297,7 +297,7 @@ def playbook_detail(request, playbook_id):
         name = (data["name"] or "").strip()
         if not name:
             return Response({"detail": "name cannot be empty"}, status=400)
-        clash = Playbook.objects.filter(name__iexact=name).exclude(pk=playbook.pk)
+        clash = Playbook.objects.unscoped(reason="playbook names are unique across the install").filter(name__iexact=name).exclude(pk=playbook.pk)
         if clash.exists():
             return Response({"detail": f"a playbook named {name!r} already exists"},
                             status=400)
@@ -403,7 +403,7 @@ def _create_playbook_from_parsed(request, parsed, resolved, existing=None,
             pk=playbook_id)
 
     wanted = name or parsed["name"]
-    clash = Playbook.objects.filter(name__iexact=wanted)
+    clash = Playbook.objects.unscoped(reason="playbook names are unique across the install").filter(name__iexact=wanted)
     if existing is not None:
         clash = clash.exclude(pk=existing.pk)
     if clash.exists():

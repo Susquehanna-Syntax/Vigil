@@ -122,6 +122,10 @@ class Playbook(TagRowSyncMixin, models.Model):
         and a rebuild's post-playbook all dispatch a playbook whose
         auto-enrolment is off, and that is the normal case now.
         """
+        # A site's playbook never reaches another site's host.
+        from vigil import scoping
+        if not scoping.within_site(self, host):
+            return False
         if self.has_completed_on(host):
             return False
         # No target tags means every host, which is the opposite of a wave
@@ -384,7 +388,9 @@ def _candidate_hosts():
     """Every host a playbook may be dispatched to at all."""
     from apps.hosts.models import Host
 
-    return list(Host.objects.exclude(
+    from vigil import scoping
+
+    return scoping.prime_site_ids(Host.objects.exclude(
         status__in=[Host.Status.PENDING, Host.Status.REJECTED],
     ).exclude(mode="monitor").prefetch_related("tag_rows"))
 

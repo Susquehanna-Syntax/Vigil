@@ -106,6 +106,60 @@ def scope_of(obj):
     return mods.Site.objects.global_site()
 
 
+_UNSET = object()
+
+
+def site_id_of(obj):
+    """The id of the site `obj` belongs to, or None when it is global (no
+    assignment, or assigned to the global site). Cached on the instance."""
+    cached = getattr(obj, "_vigil_site_id", _UNSET)
+    if cached is not _UNSET:
+        return cached
+    site = scope_of(obj)
+    sid = None if site is None or site.is_global else site.id
+    obj._vigil_site_id = sid
+    return sid
+
+
+def within_site(resource, host) -> bool:
+    """May `resource` (a playbook or automation) act on `host`?
+
+    A global resource reaches every host. A site's resource reaches only that
+    site's hosts: a Lab automation targeting "all hosts" means all of Lab's,
+    never West's. Without this, a site admin's playbook or automation ran on
+    every site's machines."""
+    sid = site_id_of(resource)
+    if sid is None:
+        return True
+    return site_id_of(host) == sid
+
+
+def prime_site_ids(hosts):
+    """Set every host's cached site id in one query, so within_site() over a
+    fleet costs one query rather than one per host."""
+    hosts = list(hosts)
+    mods = _sites_models()
+    if mods is None:
+        for h in hosts:
+            h._vigil_site_id = None
+        return hosts
+    glob = mods.Site.objects.filter(is_global=True).values_list("id", flat=True).first()
+    rows = dict(mods.HostSiteAssignment.objects.filter(
+        host_id__in=[h.pk for h in hosts]).values_list("host_id", "site_id"))
+    for h in hosts:
+        sid = rows.get(h.pk)
+        h._vigil_site_id = None if sid is None or sid == glob else sid
+    return hosts
+
+
+def hosts_in_site(qs, site_id):
+    """`qs` (of Host) narrowed to one site's hosts; untouched for None (a
+    global resource reaches every host)."""
+    if site_id is None or _sites_models() is None:
+        return qs
+    return qs.filter(site_assignment__site_id=site_id)
+
+
 def suppress(site, obj):
     """Hide a global resource from one site. Idempotent."""
     mods = _sites_models()

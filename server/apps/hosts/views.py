@@ -1663,9 +1663,10 @@ def _rename_in_string_mirrors(old_key: str, new_name: str) -> None:
 
     rewrite(Host.objects.unscoped(reason="tag rename: tags are install-wide"), "tags")
     rewrite(PatchWave.objects.all(), "tags")
-    rewrite(Playbook.objects.all(), "target_tags")
-    rewrite(Automation.objects.all(), "event_tags")
-    rewrite(Automation.objects.all(), "target_tags")
+    rewrite(Playbook.objects.unscoped(reason="tag rename: tags are install-wide"), "target_tags")
+    every_automation = Automation.objects.unscoped(reason="tag rename: tags are install-wide")
+    rewrite(every_automation, "event_tags")
+    rewrite(every_automation, "target_tags")
     rewrite(InstallProfile.objects.all(), "completion_tags")
 
 

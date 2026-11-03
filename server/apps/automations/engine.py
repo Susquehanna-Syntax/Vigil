@@ -69,16 +69,24 @@ def _build_for(automation, why: list | None = None):
 
 
 def _resolve_hosts(automation, event_host):
+    """The hosts *automation* dispatches to, never outside its own site: a
+    site's automation reaches only that site's hosts, a global one every
+    host (scoping.within_site)."""
     from apps.hosts.models import Host
+    from vigil import scoping
 
     T = automation.Target
-    if automation.target == T.EVENT_HOST:
-        return [event_host] if event_host is not None else []
-    if automation.target == T.HOST:
-        return [automation.target_host] if automation.target_host_id else []
+    if automation.target in (T.EVENT_HOST, T.HOST):
+        if automation.target == T.EVENT_HOST:
+            one = event_host
+        else:
+            one = automation.target_host if automation.target_host_id else None
+        return [one] if one is not None and scoping.within_site(automation, one) else []
 
-    qs = Host.objects.exclude(status=Host.Status.PENDING).exclude(
-        status=Host.Status.REJECTED).exclude(mode=Host.Mode.MONITOR)
+    qs = scoping.hosts_in_site(
+        Host.objects.exclude(status=Host.Status.PENDING).exclude(
+            status=Host.Status.REJECTED).exclude(mode=Host.Mode.MONITOR),
+        scoping.site_id_of(automation))
     if automation.target == T.TAGS:
         # Row ids, not strings — same comparison, encoded once in the row key
         # rather than re-derived at each call site.
@@ -336,7 +344,20 @@ def tags_ok(automation, host) -> bool:
 
 def handle_event(event_name: str, payload: dict) -> None:
     """Called by the hook subscriptions. Fan every enabled event-automation
-    for this event through its filters, then dispatch."""
+    for this event through its filters, then dispatch.
+
+    Runs in a system scope: an event is raised inside whichever request
+    caused it, and an automation on a site that user cannot see must still
+    fire. Each automation's own site rules still bound what it targets."""
+    from vigil import scoping
+
+    with scoping.system(reason="automation events fire install-wide, whoever raised them"):
+        _handle_event(event_name, payload)
+
+
+def _handle_event(event_name: str, payload: dict) -> None:
+    from vigil import scoping
+
     from .models import Automation
 
     host = payload.get("host")
@@ -357,6 +378,9 @@ def handle_event(event_name: str, payload: dict) -> None:
         if auto.event_rule_id and getattr(alert, "rule_id", None) != auto.event_rule_id:
             continue
         if not host_ok(auto, host):
+            continue
+        # A site's automation reacts only to its own site's hosts.
+        if host is not None and not scoping.within_site(auto, host):
             continue
         if not text_ok(auto, alert, payload):
             continue
