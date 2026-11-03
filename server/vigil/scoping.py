@@ -251,6 +251,34 @@ def filter_by_site(qs, user, path="", cascade_global=False):
     return qs.filter(q).distinct()
 
 
+def filter_by_site_field(qs, user, field="site_id"):
+    """Narrow `qs` by a plain site-id column (UpdatePolicy, StatusPage).
+
+    Null in `field` means "no site restriction": the row applies everywhere,
+    so every user with access to any site sees it, the same as
+    filter_by_site(..., cascade_global=True). A row whose `field` is the
+    global site's id counts as null. Unscoped users get `qs` untouched.
+    """
+    from apps.accounts.permissions import visible_site_ids
+
+    ids = visible_site_ids(user)
+    if ids is None:
+        return qs
+    if not ids:
+        return qs.none()
+
+    mods = _sites_models()
+    if mods is None:
+        return qs
+
+    glob = mods.Site.objects.filter(
+        is_global=True).values_list("id", flat=True).first()
+    q = (Q(**{f"{field}__in": ids})
+         | Q(**{f"{field}__isnull": True})
+         | Q(**{f"{field}": glob}))
+    return qs.filter(q)
+
+
 def host_in_scope(user, host) -> bool:
     """May `user` reach this host at all? False means the caller should 404
     rather than 403 — a scoped user should not learn that a host exists in a
