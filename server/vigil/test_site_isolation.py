@@ -241,26 +241,8 @@ KNOWN_LEAKS: dict[str, str] = {
     # The server-rendered dashboard ("/"): its host dropdown, pending-enrolment
     # list and host table list every host.
     "GET ": "zzlab in body",
-    # automations
-    "DELETE api/v1/automations/<uuid:automation_id>/": "204 vs 404",
-    "PATCH api/v1/automations/<uuid:automation_id>/": "200 vs 404",
-    "POST api/v1/automations/<uuid:automation_id>/run/": "200 vs 404",
-    # baselines
-    "DELETE api/v1/baselines/<uuid:playbook_id>/": "204 vs 404",
-    "GET api/v1/baselines/<uuid:playbook_id>/": "200 vs 404",
-    "PATCH api/v1/baselines/<uuid:playbook_id>/": "200 vs 404",
-    "POST api/v1/baselines/<uuid:playbook_id>/archive/": "200 vs 404",
-    "GET api/v1/baselines/<uuid:playbook_id>/failures/": "200 vs 404",
-    "POST api/v1/baselines/<uuid:playbook_id>/retry/": "200 vs 404",
     # hosts
     "GET api/v1/hosts/inventory/": "zzlab in body",
-    # playbooks
-    "DELETE api/v1/playbooks/<uuid:playbook_id>/": "204 vs 404",
-    "GET api/v1/playbooks/<uuid:playbook_id>/": "200 vs 404",
-    "PATCH api/v1/playbooks/<uuid:playbook_id>/": "200 vs 404",
-    "POST api/v1/playbooks/<uuid:playbook_id>/archive/": "200 vs 404",
-    "GET api/v1/playbooks/<uuid:playbook_id>/failures/": "200 vs 404",
-    "POST api/v1/playbooks/<uuid:playbook_id>/retry/": "200 vs 404",
     # policies
     "GET api/v1/policies/": "zzlab in body",
     "DELETE api/v1/policies/<uuid:policy_id>/": "204 vs 404",

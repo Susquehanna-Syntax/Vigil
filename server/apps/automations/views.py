@@ -259,7 +259,10 @@ def automation_index(request):
 @api_view(["PATCH", "DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def automation_detail(request, automation_id):
-    a = get_object_or_404(Automation, pk=automation_id)
+    a = get_object_or_404(
+        scoping.filter_by_site(Automation.objects.all(), request.user,
+                               cascade_global=True),
+        pk=automation_id)
     if request.method == "DELETE":
         from .tasks import _disable_task
         _disable_task(a)
@@ -281,7 +284,10 @@ def automation_run_now(request, automation_id):
     """Fire a scheduled/event automation on demand (test button)."""
     from .engine import run_automation
 
-    a = get_object_or_404(Automation, pk=automation_id)
+    a = get_object_or_404(
+        scoping.filter_by_site(Automation.objects.all(), request.user,
+                               cascade_global=True),
+        pk=automation_id)
     why: list[str] = []
     n = run_automation(a, why=why)
     return Response({"dispatched": n, "reason": why[0] if why else ""})

@@ -282,7 +282,10 @@ def playbook_index(request):
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def playbook_detail(request, playbook_id):
-    playbook = get_object_or_404(Playbook, pk=playbook_id)
+    playbook = get_object_or_404(
+        scoping.filter_by_site(Playbook.objects.all(), request.user,
+                               cascade_global=True),
+        pk=playbook_id)
     if request.method == "GET":
         return Response(_row(playbook))
     if request.method == "DELETE":
@@ -595,7 +598,10 @@ def playbook_archive(request, playbook_id):
     pickers, but anything already referencing it keeps working and its run
     history stays intact.
     """
-    playbook = get_object_or_404(Playbook, pk=playbook_id)
+    playbook = get_object_or_404(
+        scoping.filter_by_site(Playbook.objects.all(), request.user,
+                               cascade_global=True),
+        pk=playbook_id)
     restore = bool(request.data.get("restore"))
     playbook.archived_at = None if restore else now()
     if not restore:
@@ -637,7 +643,10 @@ def playbook_failures(request, playbook_id):
     A quarantine nobody can see is just a playbook that silently stopped
     working, which is the failure mode this replaced.
     """
-    playbook = get_object_or_404(Playbook, pk=playbook_id)
+    playbook = get_object_or_404(
+        scoping.filter_by_site(Playbook.objects.all(), request.user,
+                               cascade_global=True),
+        pk=playbook_id)
     return Response([
         {"host_id": str(host.id), "hostname": host.hostname,
          "status": host.status, **_last_failure(playbook, host)}
@@ -659,7 +668,10 @@ def playbook_retry(request, playbook_id):
     The new run is what clears the quarantine — nothing is erased, the newer
     attempt simply outranks the older one.
     """
-    playbook = get_object_or_404(Playbook, pk=playbook_id)
+    playbook = get_object_or_404(
+        scoping.filter_by_site(Playbook.objects.all(), request.user,
+                               cascade_global=True),
+        pk=playbook_id)
     if playbook.archived_at is not None:
         return Response({"detail": "an archived playbook does not dispatch"},
                         status=400)
