@@ -136,16 +136,20 @@ def build_playbook_steps(playbook, *, user, inputs: dict | None = None) -> list[
     Raises (``SpecError`` / ``PlaybookExpandError`` / ``PlaybookInputError``)
     if any step cannot be built, so a caller never writes half a chain.
     """
+    from apps.playbooks.expansion import including_from
     from apps.playbooks.inputs import playbook_values, step_inputs
+    from vigil.scoping import site_id_of
 
     values = playbook_values(playbook, inputs)
     built = []
-    for step in playbook.steps.select_related("definition").order_by("order"):
-        spec = resolve_task_spec(step.definition, user=user,
-                                 inputs=step_inputs(step, values),
-                                 params_override=step.params_override)
-        params, risk, expires_at = task_params(spec)
-        built.append((step, params, risk, expires_at))
+    # A playbook's steps may include only global playbooks or its own site's.
+    with including_from(site_id_of(playbook)):
+        for step in playbook.steps.select_related("definition").order_by("order"):
+            spec = resolve_task_spec(step.definition, user=user,
+                                     inputs=step_inputs(step, values),
+                                     params_override=step.params_override)
+            params, risk, expires_at = task_params(spec)
+            built.append((step, params, risk, expires_at))
     return built
 
 

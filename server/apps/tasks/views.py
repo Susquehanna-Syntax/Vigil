@@ -1574,10 +1574,19 @@ def definition_deploy(request, definition_id):
         return Response({"error": "inputs must be an object"}, status=400)
     # The one way a definition becomes a signed task (apps/tasks/dispatch.py):
     # use: copied in, inputs resolved, inline playbooks expanded.
-    from apps.playbooks.expansion import PlaybookExpandError
+    from apps.playbooks.expansion import PlaybookExpandError, including_from
     from .dispatch import resolve_task_spec, task_params
+    # Includes may pull in a site's playbook only when every target is in that
+    # site: its admins edit those steps (S1 04e).
+    from django.core.exceptions import ValidationError as _BadId
     try:
-        spec = resolve_task_spec(definition, user=request.user, inputs=raw_inputs)
+        target_sites = {None if site.is_global else site.id
+                        for site in scoping.sites_for_hosts(host_ids).values()}
+    except (_BadId, ValueError, TypeError):
+        target_sites = set()  # the host checks below answer malformed ids
+    try:
+        with including_from(target_sites.pop() if len(target_sites) == 1 else None):
+            spec = resolve_task_spec(definition, user=request.user, inputs=raw_inputs)
     except (SpecError, PlaybookExpandError) as exc:
         return Response({"error": str(exc)}, status=400)
 

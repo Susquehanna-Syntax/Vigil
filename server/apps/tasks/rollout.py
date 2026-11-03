@@ -136,15 +136,18 @@ def rollout_spec(rollout, inputs=None) -> dict:
     ``inputs`` (the expansion resolves the playbook's inputs with them), for a
     task as the values ``resolve_task_spec`` substitutes.
     """
+    from apps.playbooks.expansion import including_from
+
     if inputs is None:
         inputs = rollout.inputs or {}
-    if rollout.action_kind == PatchRollout.ActionKind.PLAYBOOK:
-        if rollout.playbook is None:
-            raise ValueError("rollout's playbook no longer exists")
-        return _playbook_spec(rollout.playbook, inputs)
-    if rollout.definition is None:
-        raise ValueError("rollout's task definition no longer exists")
-    return _validate_definition(rollout.definition, inputs)
+    with including_from(rollout.site_id):
+        if rollout.action_kind == PatchRollout.ActionKind.PLAYBOOK:
+            if rollout.playbook is None:
+                raise ValueError("rollout's playbook no longer exists")
+            return _playbook_spec(rollout.playbook, inputs)
+        if rollout.definition is None:
+            raise ValueError("rollout's task definition no longer exists")
+        return _validate_definition(rollout.definition, inputs)
 
 
 def start_rollout(
@@ -182,6 +185,21 @@ def start_rollout(
         raise ValueError("inputs must be a mapping of input id to value")
     inputs = inputs or {}
 
+    from apps.playbooks.expansion import including_from
+    from vigil.scoping import site_id_of
+    if playbook is not None and (theirs := site_id_of(playbook)) is not None:
+        # A site's playbook rolls out to that site's hosts only: its admins
+        # edit its steps (S1 04e).
+        if site_id is not None and site_id != theirs:
+            raise ValueError("that playbook belongs to another site")
+        site_id = theirs
+    with including_from(site_id):
+        return _start_rollout(definition, user, failure_threshold_pct, min_results_before_halt,
+                              playbook, wave_group_tag, host_ids, inputs, site_id)
+
+
+def _start_rollout(definition, user, failure_threshold_pct, min_results_before_halt,
+                   playbook, wave_group_tag, host_ids, inputs, site_id) -> PatchRollout:
     if playbook is not None:
         # Deliberately no auto_enroll check. That flag governs unattended
         # enrolment; a rollout is the opposite — someone chose this playbook

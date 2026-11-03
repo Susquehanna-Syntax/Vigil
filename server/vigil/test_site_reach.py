@@ -186,3 +186,50 @@ class PlaybookBoundsAutomationTests(TestCase):
         from apps.automations.engine import _rollout_host_ids
         from apps.automations.models import Automation
         self.assertEqual(_rollout_host_ids(Automation.objects.get(pk=self.auto.pk)), [])
+
+
+class IncludeByNameBoundTests(TestCase):
+    """A task's `type: playbook` include resolves global playbooks, plus the
+    one site the dispatch is bounded to; another site's playbook reads as
+    missing, so its admins never decide what runs elsewhere."""
+
+    def setUp(self):
+        from apps_business.sites.models import Site
+        self.west = Site.objects.create(name="West", slug="west")
+        self.lab = Site.objects.create(name="Lab", slug="lab")
+        Playbook.objects.create(name="Shared")
+        scoping.place(Playbook.objects.create(name="West only"), self.west.pk)
+
+    def _expand(self, name, site):
+        from apps.playbooks.expansion import PlaybookExpandError, expand_actions, including_from
+        with including_from(site):
+            try:
+                expand_actions([{"type": "playbook", "params": {"name": name}}])
+                return True
+            except PlaybookExpandError as exc:
+                return str(exc)
+
+    def test_bounds(self):
+        self.assertIs(self._expand("Shared", None), True)
+        self.assertIs(self._expand("Shared", self.lab.pk), True)
+        self.assertIs(self._expand("West only", self.west.pk), True)
+        self.assertEqual(self._expand("West only", self.lab.pk), "no playbook named 'West only'")
+        self.assertEqual(self._expand("West only", None), "no playbook named 'West only'")
+
+    def test_a_rollout_of_a_sites_playbook_is_that_sites(self):
+        from apps.tasks.models import PatchWave
+        from apps.tasks.rollout import start_rollout
+        from apps.playbooks.models import PlaybookStep
+        from apps.tasks.models import TaskDefinition
+        from apps.tasks.spec import parse_and_validate
+        check = ("name: Check cron\nactions:\n  - id: c\n    type: check_service\n"
+                 "    params:\n      service_name: cron\n")
+        definition = TaskDefinition.objects.create(owner=None, name="Check cron", yaml_source=check,
+                                                   parsed_spec=parse_and_validate(check))
+        PatchWave.objects.create(name="all", order=1, enabled=True)
+        pb = Playbook.objects.get(name="West only")
+        PlaybookStep.objects.create(playbook=pb, definition=definition, order=0)
+        rollout = start_rollout(playbook=pb)
+        self.assertEqual(rollout.site_id, self.west.pk)
+        with self.assertRaises(ValueError):
+            start_rollout(playbook=pb, site_id=self.lab.pk)

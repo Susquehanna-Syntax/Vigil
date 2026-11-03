@@ -145,6 +145,19 @@ def run_automation(automation, *, event_host=None, why: list | None = None,
             why.append(reason)
         return 0
 
+    from apps.playbooks.expansion import including_from
+
+    try:
+        site = reach_site(automation)
+    except Exception as exc:  # noqa: BLE001 — never raises, like the rest
+        logger.exception("automation %s failed to run", automation.pk)
+        return nothing(f"It failed: {exc}")
+    # Includes in its task may pull in global playbooks or its own reach's.
+    with including_from(None if site is _NOWHERE else site):
+        return _run_automation(automation, event_host, nothing, narrow_to, why)
+
+
+def _run_automation(automation, event_host, nothing, narrow_to, why) -> int:
     from django.utils.timezone import now
 
     from apps.tasks.models import Task, TaskRun

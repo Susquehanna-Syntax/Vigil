@@ -34,7 +34,10 @@ def dispatch_to_hosts(policy, definition, hosts, *, user, started=None) -> TaskR
 
     if not hosts:
         return None
-    spec = resolve_task_spec(definition, user=user)
+    from apps.playbooks.expansion import including_from
+    from vigil.scoping import owning_site_id
+    with including_from(owning_site_id(policy)):
+        spec = resolve_task_spec(definition, user=user)
     params, risk, expires_at = task_params(spec)
     closes = window_end(policy, started)
     expires_at = min(expires_at, closes) if expires_at else closes

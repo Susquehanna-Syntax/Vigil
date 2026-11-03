@@ -26,6 +26,26 @@ from __future__ import annotations
 
 MAX_DEPTH = 5
 
+import contextvars as _contextvars
+from contextlib import contextmanager as _contextmanager
+
+#: The one site whose playbooks an include-by-name may pull in, besides the
+#: global ones. A site's playbook carries steps that site's admins edit, so it
+#: may run only where that site's admins already rule (S1 04e). Unset means
+#: global playbooks only, which is how every include worked before playbooks
+#: could belong to a site.
+_include_site = _contextvars.ContextVar("vigil_include_site", default=None)
+
+
+@_contextmanager
+def including_from(site_id):
+    """Resolve includes as dispatching into *site_id* (None: global only)."""
+    token = _include_site.set(site_id)
+    try:
+        yield
+    finally:
+        _include_site.reset(token)
+
 _RISK_ORDER = {"low": 0, "standard": 1, "high": 2}
 
 
@@ -102,7 +122,15 @@ def expand_actions(actions: list[dict], *, _seen: frozenset = frozenset(),
             raise PlaybookExpandError("playbook action missing params.name")
         if key in _seen:
             raise PlaybookExpandError(f"playbook cycle via {name!r}")
-        playbook = Playbook.objects.filter(name__iexact=name).first()
+        playbook = Playbook.objects.unscoped(
+            reason="playbook include: resolved by name on every site, then bounded by including_from"
+        ).filter(name__iexact=name).first()
+        if playbook is not None:
+            from vigil.scoping import site_id_of
+            owner = site_id_of(playbook)
+            if owner is not None and owner != _include_site.get():
+                # Another site's playbook reads as no playbook at all.
+                playbook = None
         if playbook is None:
             raise PlaybookExpandError(f"no playbook named {name!r}")
         # Inline expansion flattens a playbook into one task's actions, where
