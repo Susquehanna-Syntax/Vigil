@@ -49,7 +49,8 @@ class AiSuggestSiteScopeTests(TestCase):
             HostSiteAssignment.objects.create(host=host, site=site)
             self.hosts[tag] = host
             self.alerts[tag] = Alert.objects.create(
-                host=host, rule=rule, severity="critical", message=f"{tag} disk 97% full")
+                host=host, rule=rule, severity="critical",
+                message=f"{tag} disk 97% full on {host.hostname}")
             # Same package and scanner on both hosts, so both share one fix_key.
             self.findings[tag] = VulnFinding.objects.create(
                 host=host, scanner="trivy", plugin_id_or_oid="log4j:CVE-2021-44228",
@@ -130,6 +131,10 @@ class AiSuggestSiteScopeTests(TestCase):
         self.assertEqual(captured, {}, "the model is never asked")
 
     def test_own_site_still_works(self):
+        """Dana's own alert and finding still answer. The positive assertion —
+        her host in the prompt, which the test is named for — and the negative
+        one, the other site's host absent, are what pin what the prompt is
+        built from."""
         provider = self.provider("own")
         for name, url in (("alert", f"/api/v1/ai/suggest/alert/{self.alerts['west'].id}/"),
                           ("finding", f"/api/v1/ai/suggest/vuln/{self.findings['west'].id}/")):
@@ -138,8 +143,12 @@ class AiSuggestSiteScopeTests(TestCase):
                 with patcher:
                     resp = self.client.post(url, {"provider_id": provider.id})
                 self.assertEqual(resp.status_code, 200, resp.content)
-                self.assertIn("west-host", captured["prompt"])
-                self.assertNotIn("zzlab-host", captured["prompt"])
+                prompt = captured["prompt"]
+                self.assertIn("west-host", prompt,
+                              "the operator's own host is missing from the prompt")
+                self.assertNotIn(
+                    "zzlab-host", prompt,
+                    "the prompt named a host outside the user's sites")
 
     def test_unscoped_staff_sees_every_site(self):
         boss = get_user_model().objects.create_user("boss", password="x", is_staff=True)
