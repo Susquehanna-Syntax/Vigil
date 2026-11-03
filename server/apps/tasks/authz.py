@@ -139,6 +139,8 @@ def trim_run(run, user):
     """
     from apps.accounts.permissions import visible_site_ids
 
+    from django.db.models import Max
+
     from .models import Task
     from .summary import run_outcome
 
@@ -155,6 +157,12 @@ def trim_run(run, user):
         # With none of its tasks in view the run is not visible at all
         # (visible_runs), so there is nothing to recompute.
         run.state = run_outcome(seen.values_list("state", "on_failure"))
+        # When the run as a whole finished says when *other* sites' hosts did,
+        # or that they are still going: the caller's part finished when its
+        # last task did. step_count and flow_snapshot describe the definition,
+        # the same for every host, so they stay.
+        run.finished_at = (None if run.state == run.State.RUNNING
+                           else seen.aggregate(last=Max("completed_at"))["last"])
     run._trimmed = True
     return run
 

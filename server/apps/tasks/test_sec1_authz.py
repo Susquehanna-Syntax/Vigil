@@ -273,6 +273,19 @@ class MixedRunTrimTests(Sec1Base):
         for marker in (b"lab secret", b"lab-1", str(self.lab_host.id).encode()):
             self.assertNotIn(marker, resp.content)
 
+    def test_finished_at_is_the_callers_part(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+        west_done = timezone.now() - timedelta(hours=1)
+        Task.objects.filter(nonce="m-west").update(completed_at=west_done)
+        Task.objects.filter(nonce="m-lab").update(state=Task.State.EXECUTING)
+        type(self.run).objects.filter(pk=self.run.pk).update(state="running", finished_at=None)
+        body = self.client.get(f"/api/v1/tasks/runs/{self.run.id}/").json()
+        self.assertEqual(body["state"], "completed")
+        self.assertIsNotNone(body["finished_at"])
+        self.assertTrue(body["finished_at"].startswith(west_done.strftime("%Y-%m-%dT%H:%M")))
+
     def test_history_row_is_trimmed(self):
         rows = self.client.get("/api/v1/tasks/runs/").json()["results"]
         row = next(r for r in rows if r["name_snapshot"] == "mixed run")
