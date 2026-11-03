@@ -97,6 +97,21 @@ class ScopedManagerTests(_TwoSites):
             with self.assertNumQueries(3):
                 list(self.hosts.all())
 
+    def test_related_managers_keep_the_declared_path(self):
+        # Django builds a reverse manager (rule -> alerts) by calling the
+        # model's manager class with no arguments; the declared path must
+        # still apply, not a default "" that filters Alert as if it were Host.
+        rule = AlertRule.objects.get(name="cpu")
+        accessor = Alert._meta.get_field("rule").remote_field.get_accessor_name()
+        with scoping.as_user(self.dana):
+            messages = list(getattr(rule, accessor).values_list("message", flat=True))
+            self.assertEqual(messages, ["west-1"])
+            # unscoped() on a related manager lifts only the site filter.
+            every = getattr(rule, accessor).unscoped(reason="test")
+            self.assertEqual(sorted(every.values_list("message", flat=True)), ["lab-1", "west-1"])
+            self.assertIsNotNone(scoping.current_scope())
+            self.assertEqual(scoping.current_scope().kind, "user")
+
     def test_scope_is_reset_after_an_exception(self):
         with self.assertRaises(RuntimeError):
             with scoping.as_user(self.dana):

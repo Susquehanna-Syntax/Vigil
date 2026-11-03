@@ -32,6 +32,8 @@ CROSSINGS: dict[str, list[str]] = {
                              'agent API: the caller is a host, authenticated by its agent token'],
     'apps/statuspage/views.py': ['public status page: the page token is the access control',
                                  'public status page: the page token is the access control'],
+    'apps/tasks/authz.py': ['run visibility: a run is hidden when any of its tasks is on a site the caller '
+                            'cannot see'],
     'apps/tasks/views.py': ['agent API: the caller is a host, authenticated by its agent token'],
 }
 

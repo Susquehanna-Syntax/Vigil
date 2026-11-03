@@ -11,6 +11,8 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from vigil.scoping import SiteScopedManager
+
 #: Windows Update classifications a policy may install. The names are the
 #: ones the Windows Update Agent reports, so the agent compares them as-is.
 WINDOWS_CLASSIFICATIONS = (
@@ -123,6 +125,8 @@ class PolicyChange(models.Model):
     sends the policy's compiled task to that host; one pending row per
     (policy, host) — a later run refreshes it rather than adding another.
     """
+
+    objects = SiteScopedManager(path="host__")
 
     class State(models.TextChoices):
         PENDING = "pending", "Pending"

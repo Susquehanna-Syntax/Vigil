@@ -3,6 +3,8 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from vigil.scoping import SiteScopedManager
+
 
 def os_family(os_name: str) -> str:
     """"windows", "macos" or "linux", from the OS string an agent reported.
@@ -25,6 +27,8 @@ class RemoteSession(models.Model):
     closed, only the server does, so a compromised agent cannot mark its own
     session closed to stop the audit.
     """
+
+    objects = SiteScopedManager(path="host__")
 
     class Kind(models.TextChoices):
         SHELL = "shell", "Shell"

@@ -210,6 +210,8 @@ class HostInventory(models.Model):
     appear as additional columns on the Inventory page.
     """
 
+    objects = SiteScopedManager(path="host__")
+
     host = models.OneToOneField(Host, on_delete=models.CASCADE, related_name="inventory")
     mac_addresses = models.JSONField(default=dict, blank=True)
     ram_total_bytes = models.BigIntegerField(null=True, blank=True)
@@ -242,6 +244,8 @@ class DockerContainer(models.Model):
     payload: the host's existing rows are replaced, so this table always
     reflects the latest snapshot rather than history.
     """
+
+    objects = SiteScopedManager(path="host__")
 
     host = models.ForeignKey(
         Host, on_delete=models.CASCADE, related_name="docker_containers"
@@ -284,6 +288,8 @@ class DockerImage(models.Model):
     """One image on a host, from the check-in (14.3). Replaced wholesale on
     each check-in that carries ``docker_resources``, like DockerContainer."""
 
+    objects = SiteScopedManager(path="host__")
+
     host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="docker_images")
     image_id = models.CharField(max_length=80)
     tags = models.JSONField(default=list, blank=True)
@@ -301,6 +307,8 @@ class HostNetwork(models.Model):
     host, since a topology view wants what is true now, not history.
     """
 
+    objects = SiteScopedManager(path="host__")
+
     host = models.OneToOneField(Host, on_delete=models.CASCADE, related_name="network")
     #: [{name, up, mac, addrs: [{family, address, prefix}]}]
     interfaces = models.JSONField(default=list, blank=True)
@@ -317,6 +325,8 @@ class HostNetwork(models.Model):
 
 
 class DockerVolume(models.Model):
+    objects = SiteScopedManager(path="host__")
+
     host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="docker_volumes")
     name = models.CharField(max_length=255)
     driver = models.CharField(max_length=64, blank=True)
@@ -327,6 +337,8 @@ class DockerVolume(models.Model):
 
 
 class DockerNetwork(models.Model):
+    objects = SiteScopedManager(path="host__")
+
     host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="docker_networks")
     network_id = models.CharField(max_length=64)
     name = models.CharField(max_length=255)
@@ -340,6 +352,8 @@ class DockerNetwork(models.Model):
 class HostDockerUsage(models.Model):
     """The last ``docker_disk_usage`` reading for a host: totals, and each
     image's and volume's size (the check-in lists carry no volume sizes)."""
+
+    objects = SiteScopedManager(path="host__")
 
     host = models.OneToOneField(Host, on_delete=models.CASCADE, related_name="docker_usage")
     read_at = models.DateTimeField()
@@ -422,6 +436,8 @@ class HostFirewall(models.Model):
     whole-payload read failure) so a firewall view can admit what it did not
     understand rather than silently showing fewer rules than the host has.
     """
+
+    objects = SiteScopedManager(path="host__")
 
     host = models.OneToOneField(Host, on_delete=models.CASCADE,
                                 related_name="firewall")
@@ -574,6 +590,8 @@ class ContainerStack(models.Model):
     taken over where it stands; ``external`` — merely seen running.
     """
 
+    objects = SiteScopedManager(path="host__")
+
     class Ownership(models.TextChoices):
         MANAGED = "managed", "Managed by Vigil"
         ADOPTED = "adopted", "Adopted"
@@ -606,6 +624,8 @@ class LogTailSession(models.Model):
     watched. The agent stops when ``viewer_seen_at`` goes stale or the
     session is closed; nothing here is kept once the view is gone."""
 
+    objects = SiteScopedManager(path="host__")
+
     #: The viewer is gone when it has not polled for this long.
     VIEWER_TIMEOUT_SECONDS = 15
     #: A tail never outlives this, watched or not.
@@ -635,6 +655,8 @@ class ContainerImageHistory(models.Model):
     """The image a container ran before an update (M11) — what one-click
     rollback goes back to. Recorded from each completed update_container."""
 
+    objects = SiteScopedManager(path="host__")
+
     host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="container_image_history")
     container_name = models.CharField(max_length=200)
     image_ref = models.CharField(max_length=255, blank=True)
@@ -651,6 +673,8 @@ class ContainerImageHistory(models.Model):
 
 class ContainerRollback(models.Model):
     """A container currently rolled back (M11); cleared by its next update."""
+
+    objects = SiteScopedManager(path="host__")
 
     host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="container_rollbacks")
     container_name = models.CharField(max_length=200)

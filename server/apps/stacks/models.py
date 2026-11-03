@@ -12,8 +12,12 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from vigil.scoping import SiteScopedManager
+
 
 class ManagedStack(models.Model):
+    objects = SiteScopedManager(path="host__")
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     host = models.ForeignKey("hosts.Host", on_delete=models.CASCADE, related_name="managed_stacks")
     #: The compose project name — also the folder under /opt/vigil/stacks/.
@@ -95,6 +99,8 @@ class EnvTicket(models.Model):
 
     TTL_HOURS = 24
 
+    objects = SiteScopedManager(path="host__")
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     stack = models.ForeignKey(ManagedStack, on_delete=models.CASCADE, related_name="env_tickets")
     revision = models.PositiveIntegerField()
@@ -107,6 +113,8 @@ class EnvTicket(models.Model):
 class AdoptTicket(models.Model):
     """A one-time slot for an agent to hand over an existing stack's files
     (M11) — over its own connection, because the .env holds secrets."""
+
+    objects = SiteScopedManager(path="host__")
 
     TTL_HOURS = 24
 
@@ -209,6 +217,8 @@ class SourceSnapshot(models.Model):
 class SourceTicket(models.Model):
     """A one-time reference to a SourceSnapshot for one deploy, like EnvTicket:
     redeemable once, by the stack's own host, before it expires."""
+
+    objects = SiteScopedManager(path="host__")
 
     TTL_HOURS = 24
 

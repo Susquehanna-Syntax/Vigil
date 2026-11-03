@@ -14,6 +14,8 @@ import secrets
 from django.conf import settings
 from django.db import models
 
+from vigil.scoping import SiteScopedManager
+
 #: Integration keys are kept as a SHA-256, never in the clear: the rule that
 #: governs agent tokens (apps/hosts/models.py) applies with more force here,
 #: because a helpdesk key is a standing read grant over the whole inventory
@@ -110,6 +112,8 @@ class JackilWorkTicket(models.Model):
     opening another. A closed link stays as history; a new failure after it
     opens a fresh ticket.
     """
+
+    objects = SiteScopedManager(path="host__")
 
     host = models.ForeignKey("hosts.Host", on_delete=models.CASCADE,
                              related_name="jackil_work_tickets")

@@ -3,6 +3,7 @@ import uuid
 from django.db import models
 
 from apps.hosts.models import Host
+from vigil.scoping import SiteScopedManager
 
 
 class NotificationChannel(models.Model):
@@ -53,6 +54,8 @@ class AlertRule(models.Model):
 
 class Alert(models.Model):
     """An instance of a fired alert."""
+
+    objects = SiteScopedManager(path="host__")
 
     class State(models.TextChoices):
         FIRING = "firing", "Firing"

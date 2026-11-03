@@ -6,6 +6,8 @@ from django.db import models
 from django.db.models.constraints import BaseConstraint
 from django.db.models.indexes import Index
 
+from vigil.scoping import SiteScopedManager
+
 #: Trailing architecture tag, alone or leading a parenthesised group
 #: (``(x64 en-US)``, ``x64``). Stripped only from the end of the name.
 _ARCH_TAG = re.compile(
@@ -45,6 +47,8 @@ _INDEXES: Sequence[Index] = (
 
 
 class SoftwareItem(models.Model):
+    objects = SiteScopedManager(path="host__")
+
     class Source(models.TextChoices):
         DPKG = "dpkg", "dpkg"
         RPM = "rpm", "rpm"
@@ -93,6 +97,8 @@ class SoftwareItem(models.Model):
 
 
 class SoftwareSnapshot(models.Model):
+    objects = SiteScopedManager(path="host__")
+
     host = models.OneToOneField(
         "hosts.Host", on_delete=models.CASCADE, related_name="software_snapshot"
     )
@@ -114,6 +120,8 @@ class PendingUpdate(models.Model):
     outdated primary-manager packages (key = the package id). Replaced per
     report; ``first_seen`` survives, so the age of a missing update is real.
     """
+
+    objects = SiteScopedManager(path="host__")
 
     class Kind(models.TextChoices):
         WINDOWS = "windows", "Windows Update"

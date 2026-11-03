@@ -4,6 +4,7 @@ from django.conf import settings
 from django.db import models
 
 from apps.hosts.models import Host
+from vigil.scoping import SiteScopedManager
 
 
 class VulnSummary(models.Model):
@@ -17,6 +18,8 @@ class VulnSummary(models.Model):
     well below ``0`` — the negativity is part of the message and the face
     badge keeps escalating with it.
     """
+
+    objects = SiteScopedManager(path="host__")
 
     host = models.OneToOneField(Host, on_delete=models.CASCADE, related_name="vuln_summary")
     last_scan_at = models.DateTimeField(null=True, blank=True)
@@ -67,6 +70,8 @@ class VulnScan(models.Model):
     (Nessus's integer scan id, Greenbone's task UUID, etc.) as a string
     so it's engine-agnostic.
     """
+
+    objects = SiteScopedManager(path="host__")
 
     class Scanner(models.TextChoices):
         NESSUS = "nessus", "Nessus"
@@ -150,6 +155,8 @@ class VulnFinding(models.Model):
     mark them ``FIXED`` rather than deleting, so trend lines and
     "first seen" dates survive across the lifetime of the install.
     """
+
+    objects = SiteScopedManager(path="host__")
 
     class State(models.TextChoices):
         OPEN = "open", "Open"

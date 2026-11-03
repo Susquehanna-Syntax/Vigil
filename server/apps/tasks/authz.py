@@ -119,7 +119,11 @@ def visible_runs(qs, user):
 
     if visible_site_ids(user) is None:
         return qs
-    hidden = Task.objects.exclude(pk__in=visible_tasks(Task.objects.all(), user).values("pk"))
+    # Every task, whatever the scope: a hidden task is one on a site the
+    # caller cannot see, so the set to subtract from must include those.
+    every = Task.objects.unscoped(
+        reason="run visibility: a run is hidden when any of its tasks is on a site the caller cannot see")
+    hidden = every.exclude(pk__in=visible_tasks(every, user).values("pk"))
     return qs.exclude(pk__in=hidden.values("run_id"))
 
 

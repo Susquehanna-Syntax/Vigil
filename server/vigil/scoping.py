@@ -497,6 +497,14 @@ class SiteScopedManager(_dj_models.Manager):
                   "field": self.site_field}
         return tuple(ret)
 
+    def _config(self):
+        """The manager declared on the model. Django builds related managers
+        (``run.tasks``, prefetches) by subclassing the default manager's class
+        and calling it with no arguments, which would reset path/field to
+        their defaults; the declared instance keeps the real ones."""
+        declared = getattr(self.model, "_default_manager", None)
+        return declared if isinstance(declared, SiteScopedManager) else self
+
     def get_queryset(self):
         qs = super().get_queryset()
         scope = _scope.get()
@@ -505,16 +513,24 @@ class SiteScopedManager(_dj_models.Manager):
         user = scope.user()
         if user is None or not getattr(user, "is_authenticated", False):
             return qs.none()
-        if self.site_field:
-            return filter_by_site_field(qs, user, field=self.site_field)
-        return filter_by_site(qs, user, path=self.site_path,
-                              cascade_global=self.site_cascade_global)
+        cfg = self._config()
+        if cfg.site_field:
+            return filter_by_site_field(qs, user, field=cfg.site_field)
+        return filter_by_site(qs, user, path=cfg.site_path,
+                              cascade_global=cfg.site_cascade_global)
 
     def unscoped(self, *, reason):
         """Every row, whatever the scope. Say why: the reason is pinned with
-        the call site in vigil/test_scope_crossings.py."""
+        the call site in vigil/test_scope_crossings.py.
+
+        On a related manager (``run.tasks.unscoped(...)``) the relation's own
+        filter still applies: only the site filter is lifted."""
         _require_reason(reason)
-        return super().get_queryset()
+        token = _scope.set(Scope("system", reason=reason))
+        try:
+            return self.get_queryset()
+        finally:
+            _scope.reset(token)
 
 
 class SiteScopeMiddleware:

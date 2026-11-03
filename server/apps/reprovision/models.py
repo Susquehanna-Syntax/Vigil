@@ -10,6 +10,7 @@ from django.conf import settings
 from django.db import models
 
 from apps.hosts.models import Host, TagRowSyncMixin
+from vigil.scoping import SiteScopedManager
 
 
 class OSImage(models.Model):
@@ -124,6 +125,8 @@ class InstallProfile(TagRowSyncMixin, models.Model):
 
 class RebuildJob(models.Model):
     """One host, one rebuild. See §3.3 for the state machine."""
+
+    objects = SiteScopedManager(path="host__")
 
     class State(models.TextChoices):
         PENDING = "pending", "Pending"

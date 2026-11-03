@@ -4,6 +4,7 @@ from django.conf import settings
 from django.db import models
 
 from apps.hosts.models import Host, TagRowSyncMixin
+from vigil.scoping import SiteScopedManager
 
 
 class TaskDefinition(models.Model):
@@ -177,6 +178,8 @@ class Task(models.Model):
     the same host reaches ``COMPLETED``.
     """
 
+    objects = SiteScopedManager(path="host__")
+
     class State(models.TextChoices):
         BLOCKED = "blocked", "Blocked"
         PENDING = "pending", "Pending"
@@ -279,6 +282,8 @@ class HuntMatch(models.Model):
     looked up from the task's own signed params at ingest time, and these rows
     only feed the read-only hunt results view.
     """
+
+    objects = SiteScopedManager(path="host__")
 
     task = models.ForeignKey(
         Task, on_delete=models.CASCADE, related_name="hunt_matches"
