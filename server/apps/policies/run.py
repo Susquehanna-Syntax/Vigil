@@ -87,8 +87,13 @@ def _site_scope(policy):
     return None if is_global else policy.site_id
 
 
-def run_policy(policy, *, user=None) -> dict:
+def run_policy(policy, *, user=None, narrow_to=None) -> dict:
     """Compile, find the drifted hosts, and dispatch (or queue for approval).
+
+    *narrow_to* is a person running it by hand: only hosts they may run tasks
+    on are touched (decisions-06 item 4), so a site admin running a global
+    policy reaches their own site's hosts. When none of the drifted hosts is
+    theirs the result carries ``unreachable`` rather than doing nothing quietly.
 
     Returns ``{"dispatched": n, "mode": ..., "run_id" | "rollout_id"}``.
     """
@@ -96,6 +101,16 @@ def run_policy(policy, *, user=None) -> dict:
 
     definition = compile_policy(policy)
     drift = policy_drift(policy)
+    if narrow_to is not None and drift["hosts"]:
+        from apps.tasks.authz import runnable
+        drifted = Host.objects.unscoped(
+            reason="policy run: narrowing is by run permission, checked per host below"
+        ).filter(pk__in=[row["host_id"] for row in drift["hosts"]])
+        mine = {str(h.pk) for h in runnable(narrow_to, drifted)}
+        drift["hosts"] = [row for row in drift["hosts"] if str(row["host_id"]) in mine]
+        if not drift["hosts"]:
+            return {"dispatched": 0, "mode": "none", "compliant": drift["compliant"],
+                    "unknown": len(drift["unknown"]), "unreachable": True}
     host_ids = [row["host_id"] for row in drift["hosts"]]
     result = {"dispatched": 0, "mode": "none", "compliant": drift["compliant"],
               "unknown": len(drift["unknown"])}

@@ -85,8 +85,12 @@ class StatusPage(models.Model):
 
         qs = Host.objects.exclude(status=Host.Status.PENDING).exclude(
             status=Host.Status.REJECTED)
+        # A site's page shows that site's hosts only, whatever host_ids holds:
+        # the page is public, so a stale or forged id must not publish another
+        # site's machine (S1 04e).
+        from vigil.scoping import owning_site_id
+        if site := owning_site_id(self):
+            qs = qs.filter(site_assignment__site_id=site)
         if self.host_ids:
             qs = qs.filter(id__in=self.host_ids)
-        elif self.site_id:
-            qs = qs.filter(site_assignment__site_id=self.site_id)
         return qs.order_by("hostname")

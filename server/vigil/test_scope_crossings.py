@@ -29,6 +29,7 @@ CROSSINGS: dict[str, list[str]] = {
     'apps/playbooks/views.py': ['playbook names are unique across the install',
                                 'playbook names are unique across the install',
                                 'playbook names are unique across the install'],
+    'apps/policies/run.py': ['policy run: narrowing is by run permission, checked per host below'],
     'apps/policies/validation.py': ['policy names are unique across the install'],
     'apps/remote/views.py': ['agent API: the caller is a host, authenticated by its agent token'],
     'apps/reprovision/installer_views.py': ['reprovision installer: the rebuild token is the access control',

@@ -176,9 +176,9 @@ def page_index(request):
     every = StatusPage.objects.unscoped(reason="free status page limit is per install")
     if every.exists() and not has_feature("status_branding"):
         return Response(upgrade_body("status_branding"), status=402)
-    page = StatusPage.objects.create()
-    return Response(_apply(page, request) or _row(page),
-                    status=http.HTTP_201_CREATED)
+    page = StatusPage()
+    err = _apply(page, request)
+    return err if err is not None else Response(_row(page), status=http.HTTP_201_CREATED)
 
 
 @api_view(["PATCH", "DELETE"])
@@ -187,6 +187,8 @@ def page_detail(request, page_id):
     page = get_object_or_404(
         scoping.filter_by_site_field(StatusPage.objects.all(), request.user),
         pk=page_id)
+    if denied := scoping.write_denied(request.user, page):
+        return denied
     if request.method == "DELETE":
         page.delete()
         return Response(status=http.HTTP_204_NO_CONTENT)
@@ -194,12 +196,45 @@ def page_detail(request, page_id):
     return err if err is not None else Response(_row(page))
 
 
+def _host_ids_error(user, raw, site_id):
+    """A 400 unless every id is a host *user* can see and, on a site's page,
+    a host in that site. The page is public: listing a host publishes it."""
+    if raw in (None, ""):
+        return None
+    if not isinstance(raw, list):
+        return Response({"detail": "host_ids must be a list"}, status=400)
+    import uuid as _uuid
+    try:
+        wanted = {_uuid.UUID(str(h)) for h in raw}
+    except ValueError:
+        return Response({"detail": "host_ids must be host ids"}, status=400)
+    qs = scoping.filter_by_site(Host.objects.filter(pk__in=wanted), user)
+    if site_id:
+        qs = qs.filter(site_assignment__site_id=site_id)
+    if set(qs.values_list("pk", flat=True)) != wanted:
+        return Response({"detail": "host_ids may only name hosts you can see"
+                                   + (" in this page's site" if site_id else "")}, status=400)
+    return None
+
+
 def _apply(page, request):
     """Apply editable fields; branding fields need the license. Returns an
     error Response or None."""
-    data = request.data
+    data = dict(request.data)
     if any(f in data for f in BRANDING_FIELDS) and not has_feature("status_branding"):
         return Response(upgrade_body("status_branding"), status=402)
+    # Sites (S1 04e): a new page goes in a site the caller may write in (only
+    # an administrator of the whole install makes a global one), and moving a
+    # page is a create in the new site.
+    if page._state.adding or "site_id" in data:
+        sid, denied = scoping.site_for_write(request.user, data.get("site_id"))
+        if denied:
+            return denied
+        data["site_id"] = sid
+    if "host_ids" in data:
+        if err := _host_ids_error(request.user, data["host_ids"],
+                                  data.get("site_id", page.site_id)):
+            return err
     for field in ("title", "enabled", "host_ids", "host_labels", *BRANDING_FIELDS):
         if field in data:
             setattr(page, field, data[field] if data[field] != "" else

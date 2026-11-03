@@ -359,6 +359,119 @@ def filter_by_site_field(qs, user, field="site_id"):
     return qs.filter(q)
 
 
+# ── Write rules (S1 04e, decisions-06 items 1-3) ──────────────────────────────
+# Reads are the managers' job; writes are decided here, by the object's own
+# site. A global object (no site, or the Global site) is changed only with the
+# authority of the Global scope: a Global row, or no site rows at all (legacy
+# installs, decision 10). A per-site role never reaches it, not even beside a
+# Global viewer row, and a site-scoped API key never does. A site's object is
+# changed with the role the user holds in that site.
+
+def owning_site_id(obj):
+    """The id of the site that owns *obj*, or None when it is global."""
+    try:
+        obj._meta.get_field("site_id")
+    except Exception:  # noqa: BLE001 — FieldDoesNotExist: an assignment model
+        return site_id_of(obj)
+    sid = obj.site_id
+    mods = _sites_models()
+    if sid is None or mods is None:
+        return None
+    return None if sid == _global_site_id(mods) else sid
+
+
+def _write_site(user, site_id):
+    """The site to ask ``can()`` about for a write in *site_id* (None =
+    global), or False when the write is refused outright."""
+    mods = _sites_models()
+    if site_id is not None:
+        return site_id
+    if getattr(user, "key_site_ids", None) is not None:
+        return False
+    glob = _global_site_id(mods)
+    if glob is not None:
+        return glob
+    # No Global site row exists: only a user without site rows holds global
+    # authority (role_of(user, None) would otherwise be their strongest role).
+    return None if not site_roles_for(user) else False
+
+
+def _allowed(user, site, app, verb) -> bool:
+    from apps.accounts.models import Role
+    from apps.accounts.permissions import OWNER, can, role_of
+
+    if app is None:
+        return role_of(user, site) in (OWNER, Role.ADMIN)
+    return can(user, site, app, verb)
+
+
+def write_denied(user, obj, app=None, verb=None):
+    """None when *user* may change *obj*, else the response to send.
+
+    Without *app*/*verb* the write needs the admin role in the object's site,
+    the per-site form of IsAdmin. Another site's object answers 404, as if it
+    did not exist; a visible object the user may not change answers 403.
+    """
+    from rest_framework.response import Response
+
+    from apps.accounts.permissions import visible_site_ids
+
+    if _sites_models() is None:
+        return None
+    sid = owning_site_id(obj)
+    ids = visible_site_ids(user)
+    if sid is not None and ids is not None and sid not in ids:
+        return Response({"detail": "Not found"}, status=404)
+    site = _write_site(user, sid)
+    if site is False or not _allowed(user, site, app, verb):
+        if sid is None:
+            return Response({"detail": "Global items can be changed only by an administrator "
+                                       "of the whole install."}, status=403)
+        return Response({"detail": "Your role in this site may not change it."}, status=403)
+    return None
+
+
+def site_for_write(user, raw, app=None, verb=None):
+    """``(site_id, None)`` for the site *user* asked to put an object in, or
+    ``(None, response)`` when they may not.
+
+    *raw* is the request's ``site_id`` (None or "" = global). A site the user
+    cannot see answers 404; global, or a site where their role does not allow
+    the write, answers 403. Community installs have no sites: always global.
+    """
+    import uuid as _uuid
+
+    from rest_framework.response import Response
+
+    from apps.accounts.permissions import visible_site_ids
+
+    mods = _sites_models()
+    if mods is None:
+        return None, None
+    sid = None
+    if raw not in (None, ""):
+        try:
+            sid = _uuid.UUID(str(raw))
+        except ValueError:
+            return None, Response({"detail": f"unknown site {raw!r}"}, status=400)
+        if sid == _global_site_id(mods):
+            sid = None
+    if sid is not None:
+        ids = visible_site_ids(user)
+        if ids is not None and sid not in ids:
+            # Unknown and out of reach look the same to a scoped user.
+            return None, Response({"detail": "Not found"}, status=404)
+        if not mods.Site.objects.filter(pk=sid).exists():
+            return None, Response({"detail": f"unknown site {raw!r}"}, status=400)
+    site = _write_site(user, sid)
+    if site is False or not _allowed(user, site, app, verb):
+        if sid is None:
+            return None, Response({"detail": "Choose one of your sites: only an administrator of "
+                                             "the whole install creates global items."}, status=403)
+        return None, Response({"detail": "Your role in this site may not create this."}, status=403)
+    return sid, None
+
+
 def host_in_scope(user, host) -> bool:
     """May `user` reach this host at all? False means the caller should 404
     rather than 403 — a scoped user should not learn that a host exists in a

@@ -61,7 +61,21 @@ def _high_risk_gate(request, policy: UpdatePolicy, requested) -> Response | None
 
 
 def _save(request, policy: UpdatePolicy, data: dict) -> Response | None:
-    """Validate and write *data* onto *policy*; rules are replaced as a whole."""
+    """Validate and write *data* onto *policy*; rules are replaced as a whole.
+
+    Sites (S1 04e): a new policy goes in a site the caller may write in, and
+    only an administrator of the whole install makes a global one; an existing
+    one is changed with the caller's role in its own site, and moving it is a
+    create in the new site.
+    """
+    if not policy._state.adding:
+        if denied := scoping.write_denied(request.user, policy):
+            return denied
+    if policy._state.adding or "site_id" in data:
+        sid, denied = scoping.site_for_write(request.user, data.get("site_id"))
+        if denied:
+            return denied
+        data = {**data, "site_id": str(sid) if sid else None}
     if error := _high_risk_gate(request, policy, data.get("allow_high_risk")):
         return error
     try:
@@ -103,6 +117,8 @@ def policy_detail(request, policy_id):
     if request.method == "GET":
         return Response(_row(policy))
     if request.method == "DELETE":
+        if denied := scoping.write_denied(request.user, policy):
+            return denied
         delete_periodic_task(policy)
         if policy.task_definition_id:
             # Archived, not deleted: run history still points at it.
@@ -140,7 +156,11 @@ def policy_run_now(request, policy_id):
     if error := require_totp_confirmation(request.user, request.data):
         return Response({"detail": f"Running a policy needs confirmation: {error}",
                          "needs_totp": True}, status=status.HTTP_401_UNAUTHORIZED)
-    return Response(run_policy(policy, user=request.user))
+    result = run_policy(policy, user=request.user, narrow_to=request.user)
+    if result.get("unreachable"):
+        return Response({**result, "detail": "None of the hosts this policy would change are "
+                                             "ones you may run tasks on."}, status=400)
+    return Response(result)
 
 
 @api_view(["GET"])
