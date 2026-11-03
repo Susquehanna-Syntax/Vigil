@@ -38,7 +38,7 @@ from apps.agentprofiles.models import AgentProfile
 from apps.alerts.models import Alert, AlertRule
 from apps.automations.models import Automation
 from apps.dashboards.models import Dashboard
-from apps.hosts.models import Host, LogTailSession, Tag
+from apps.hosts.models import Host, LogTailSession, Tag, UnmanagedDevice
 from apps.jackil.models import IntegrationKey
 from apps.metrics.models import MetricPoint
 from apps.playbooks.models import Playbook
@@ -462,8 +462,8 @@ class SiteIsolationTests(TestCase):
         cls.objs = {}
         for tag, site in ((MINE, cls.west), (THEIRS, cls.lab)):
             o = {"site": site}
-            # Instance-wide rows (rules, tags, relays, profiles, credentials,
-            # images) belong to no site, so they are named without the marker:
+            # Instance-wide rows (rules, tags, relays, images, definitions,
+            # waves) belong to no site, so they are named without the marker:
             # a listing that shows them to every site is correct, not a leak.
             shared = "one" if tag == MINE else "two"
             # Site-owned rows that a *user* owns (dashboards, reports) belong to
@@ -525,10 +525,12 @@ class SiteIsolationTests(TestCase):
                 host=o["host"], name=f"{tag}-stack", compose_yaml="services: {}\n"
             )
             o["registry_cred"] = RegistryCredential.objects.create(
-                registry=f"registry.{shared}.example", username=shared, password_encrypted=b""
+                registry=f"registry.{tag}.example", username=tag, password_encrypted=b"",
+                site_id=site.pk,
             )
             o["git_cred"] = GitCredential.objects.create(
-                name=f"shared-{shared}-git", kind=GitCredential.Kind.TOKEN, secret_encrypted=b""
+                name=f"{tag}-git", kind=GitCredential.Kind.TOKEN, secret_encrypted=b"",
+                site_id=site.pk,
             )
             o["logtail"] = LogTailSession.objects.create(
                 host=o["host"], container_name=f"{tag}-container", requested_by=member)
@@ -558,7 +560,9 @@ class SiteIsolationTests(TestCase):
             o["dashboard"] = Dashboard.objects.create(owner=member, name=f"{tag}-dash")
             o["report"] = Report.objects.create(name=f"{tag}-report", owner=member)
             o["relay"] = Relay.objects.create(name=f"shared-{shared}-relay")
-            o["profile"] = AgentProfile.objects.create(name=f"shared-{shared}-profile")
+            # Per site since 04d-1 (decisions-06 item 5).
+            o["profile"] = AgentProfile.objects.create(name=f"{tag}-profile", site_id=site.pk)
+            o["device"] = UnmanagedDevice.objects.create(name=f"{tag}-device", site_id=site.pk)
             o["page"] = StatusPage.objects.create(title=f"{tag}-page", site_id=site.pk)
             o["key"] = IntegrationKey.objects.create(
                 name=f"shared-{shared}-key",
@@ -581,10 +585,11 @@ class SiteIsolationTests(TestCase):
                 sha256="0" * 64,
             )
             o["install_profile"] = InstallProfile.objects.create(
-                name=f"shared-{shared}-install",
+                name=f"{tag}-install",
                 image=o["image"],
                 disk_target="/dev/sda",
-                admin_username=shared,
+                admin_username=tag,
+                site_id=site.pk,
                 admin_password_encrypted=b"",
             )
             o["job"] = RebuildJob.objects.create(
