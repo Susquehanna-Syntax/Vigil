@@ -27,6 +27,7 @@ def _row(b: Playbook, *, failing: int | None = None) -> dict:
         "completion_tag": b.completion_tag,
         "allow_high_risk": b.allow_high_risk,
         "inputs": b.inputs or [],
+        "site_id": str(sid) if (sid := scoping.row_site_id(b)) else None,
         "created_at": b.created_at.isoformat(),
         # How many hosts auto-enrolment has stopped trying, because the last
         # run failed there. Zero is the ordinary answer and the card says
@@ -232,14 +233,17 @@ def playbook_index(request):
             qs = qs.filter(archived_at__isnull=False)
         else:
             qs = qs.filter(archived_at__isnull=True)
-        rows = list(scoping.filter_by_site(
-            qs, request.user, cascade_global=True).order_by("created_at"))
+        rows = list(scoping.with_sites(scoping.filter_by_site(
+            qs, request.user, cascade_global=True)).order_by("created_at"))
         counts = failing_counts(rows)
         return Response([_row(b, failing=counts.get(b.id, 0)) for b in rows])
 
     name = (request.data.get("name") or "").strip()
     if not name:
         return Response({"detail": "name is required"}, status=400)
+    site_id, denied = scoping.site_for_write(request.user, request.data.get("site_id"))
+    if denied:
+        return denied
     if Playbook.objects.unscoped(reason="playbook names are unique across the install").filter(name__iexact=name).exists():
         return Response({"detail": f"a playbook named {name!r} already exists"},
                         status=400)
@@ -259,6 +263,7 @@ def playbook_index(request):
             auto_enroll=False,
             created_by=request.user,
         )
+        scoping.place(playbook, site_id)
         # Before the steps are validated: eligibility is judged against this
         # flag, so a playbook created with high-risk steps and the box ticked
         # would otherwise reject its own steps.
@@ -288,11 +293,17 @@ def playbook_detail(request, playbook_id):
         pk=playbook_id)
     if request.method == "GET":
         return Response(_row(playbook))
+    if denied := scoping.write_denied(request.user, playbook):
+        return denied
     if request.method == "DELETE":
         playbook.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     data = request.data
+    if "site_id" in data:
+        new_site, denied = scoping.site_for_write(request.user, data["site_id"])
+        if denied:
+            return denied
     if "name" in data:
         name = (data["name"] or "").strip()
         if not name:
@@ -337,6 +348,8 @@ def playbook_detail(request, playbook_id):
         return err_inputs
     with transaction.atomic():
         playbook.save()
+        if "site_id" in data:
+            scoping.place(playbook, new_site)
         if "flow_steps" in data or "definition_ids" in data:
             err = _validate_and_set_steps(
                 playbook, data.get("flow_steps") or data.get("definition_ids"))
@@ -401,6 +414,14 @@ def _create_playbook_from_parsed(request, parsed, resolved, existing=None,
             scoping.filter_by_site(Playbook.objects.all(), request.user,
                                    cascade_global=True),
             pk=playbook_id)
+    if existing is not None:
+        if denied := scoping.write_denied(request.user, existing):
+            return denied
+        new_site = None
+    else:
+        new_site, denied = scoping.site_for_write(request.user, request.data.get("site_id"))
+        if denied:
+            return denied
 
     wanted = name or parsed["name"]
     clash = Playbook.objects.unscoped(reason="playbook names are unique across the install").filter(name__iexact=wanted)
@@ -414,6 +435,7 @@ def _create_playbook_from_parsed(request, parsed, resolved, existing=None,
     steps = sorted(resolved, key=lambda s: s["order"])
 
     with transaction.atomic():
+        created = existing is None
         playbook = existing or Playbook(created_by=request.user)
         playbook.name = wanted
         playbook.description = parsed["description"]
@@ -426,6 +448,8 @@ def _create_playbook_from_parsed(request, parsed, resolved, existing=None,
             playbook.community_uid = parsed["uid"]
         if existing is None:
             playbook.save()
+        if created:
+            scoping.place(playbook, new_site)
         # The flag is a 2FA-guarded act whichever door it comes through. A
         # YAML file asking for high-risk steps has to pass the same gate a
         # checkbox does, or importing would be the way around it.
@@ -577,7 +601,9 @@ def playbook_library_use(request, template_id):
         return Response({"detail": str(exc)}, status=400)
 
     base = parsed["name"]
-    taken = {n.lower() for n in Playbook.objects.values_list("name", flat=True)}
+    # Names are unique across the install, so every site's count as taken.
+    taken = {n.lower() for n in Playbook.objects.unscoped(
+        reason="playbook names are unique across the install").values_list("name", flat=True)}
     wanted = base
     n = 1
     while wanted.lower() in taken:
@@ -602,6 +628,8 @@ def playbook_archive(request, playbook_id):
         scoping.filter_by_site(Playbook.objects.all(), request.user,
                                cascade_global=True),
         pk=playbook_id)
+    if denied := scoping.write_denied(request.user, playbook):
+        return denied
     restore = bool(request.data.get("restore"))
     playbook.archived_at = None if restore else now()
     if not restore:
@@ -677,7 +705,10 @@ def playbook_retry(request, playbook_id):
                         status=400)
 
     wanted = request.data.get("host")
-    targets = hosts_failing(playbook)
+    # Only hosts the caller may run tasks on (decisions-06 item 4): a global
+    # playbook retried by a site admin reaches their own site's hosts.
+    from apps.tasks.authz import runnable
+    targets = runnable(request.user, hosts_failing(playbook))
     if wanted:
         targets = [h for h in targets if str(h.id) == str(wanted)]
         if not targets:

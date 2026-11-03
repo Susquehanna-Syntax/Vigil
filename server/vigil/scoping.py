@@ -472,6 +472,38 @@ def site_for_write(user, raw, app=None, verb=None):
     return sid, None
 
 
+def place(obj, site_id):
+    """Put an assignment-placed object (playbook, automation, channel) in
+    *site_id*, or make it global with None. Callers check site_for_write first."""
+    assignment, field = _assignment_for(type(obj))
+    if assignment is None:
+        return
+    if site_id is None:
+        assignment.objects.filter(**{field: obj}).delete()
+    else:
+        assignment.objects.update_or_create(**{field: obj}, defaults={"site_id": site_id})
+    obj.__dict__.pop("_vigil_site_id", None)
+
+
+def with_sites(qs):
+    """*qs* with each row's site assignment joined in, so row_site_id costs no
+    query per row. Untouched on Community installs."""
+    if _assignment_for(qs.model)[0] is None:
+        return qs
+    return qs.select_related("site_assignment__site")
+
+
+def row_site_id(obj):
+    """*obj*'s site id for an API row, None when global."""
+    if _assignment_for(type(obj))[0] is None:
+        return None
+    try:
+        row = obj.site_assignment
+    except Exception:  # noqa: BLE001 — RelatedObjectDoesNotExist: no row, global
+        return None
+    return None if row.site.is_global else row.site_id
+
+
 def host_in_scope(user, host) -> bool:
     """May `user` reach this host at all? False means the caller should 404
     rather than 403 — a scoped user should not learn that a host exists in a

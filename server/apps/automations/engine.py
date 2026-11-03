@@ -97,11 +97,15 @@ def _resolve_hosts(automation, event_host):
     return list(qs)  # ALL
 
 
-def run_automation(automation, *, event_host=None, why: list | None = None) -> int:
+def run_automation(automation, *, event_host=None, why: list | None = None,
+                   narrow_to=None) -> int:
     """Execute *automation*, returning the number of hosts it dispatched to.
     Never raises — an automation failure must not break the event that fired
     it or the beat loop. When it dispatches nothing, the reason is appended to
-    *why*, so Run now can say it instead of "Dispatched to 0 hosts"."""
+    *why*, so Run now can say it instead of "Dispatched to 0 hosts".
+
+    *narrow_to* is a person running it by hand: only hosts they may run tasks
+    on are touched (decisions-06 item 4)."""
     def nothing(reason: str) -> int:
         if why is not None:
             why.append(reason)
@@ -116,7 +120,7 @@ def run_automation(automation, *, event_host=None, why: list | None = None) -> i
         # it does its own host selection from wave tags, its own gating and
         # its own history, so none of the direct path below applies.
         if automation.dispatch_mode == automation.DispatchMode.ROLLOUT:
-            started = _start_rollout_for(automation)
+            started = _start_rollout_for(automation, narrow_to=narrow_to)
             return started or nothing("The rollout could not start: no wave matched a host, "
                                       "or the playbook could not be built.")
 
@@ -141,6 +145,11 @@ def run_automation(automation, *, event_host=None, why: list | None = None) -> i
         hosts = _resolve_hosts(automation, event_host)
         if not hosts:
             return nothing(_no_hosts_reason(automation, event_host))
+        if narrow_to is not None:
+            from apps.tasks.authz import runnable
+            hosts = runnable(narrow_to, hosts)
+            if not hosts:
+                return nothing("None of the hosts it targets are ones you may run tasks on.")
         # A monitor-mode host can't execute; skip it silently.
         hosts = [h for h in hosts if getattr(h, "mode", None) != "monitor"]
         if not hosts:
@@ -391,20 +400,24 @@ def _handle_event(event_name: str, payload: dict) -> None:
         run_automation(auto, event_host=host)
 
 
-def _rollout_host_ids(automation):
+def _rollout_host_ids(automation, narrow_to=None):
     """None for a global automation (every host its waves select); for a
-    site's automation, the ids of that site's hosts the active scope allows."""
+    site's automation, the ids of that site's hosts the active scope allows.
+    Run by hand (*narrow_to*), only the hosts that person may run tasks on."""
     from apps.hosts.models import Host
     from vigil import scoping
 
     sid = scoping.site_id_of(automation)
-    if sid is None:
+    if sid is None and narrow_to is None:
         return None
-    return [str(pk) for pk in scoping.hosts_in_site(Host.objects.all(), sid)
-            .values_list("pk", flat=True)]
+    hosts = scoping.hosts_in_site(Host.objects.all(), sid)
+    if narrow_to is not None:
+        from apps.tasks.authz import runnable
+        return [str(h.pk) for h in runnable(narrow_to, hosts)]
+    return [str(pk) for pk in hosts.values_list("pk", flat=True)]
 
 
-def _start_rollout_for(automation) -> int:
+def _start_rollout_for(automation, narrow_to=None) -> int:
     """Start a staged rollout of the automation's task or playbook.
 
     Returns 1 when a rollout started, 0 otherwise. Never raises into the
@@ -417,7 +430,9 @@ def _start_rollout_for(automation) -> int:
     # stores this allow-list, so every later wave honours it too.
     from vigil import scoping
 
-    host_ids = _rollout_host_ids(automation)
+    host_ids = _rollout_host_ids(automation, narrow_to)
+    if host_ids == [] and narrow_to is not None:
+        return 0
     try:
         if automation.action_kind == automation.ActionKind.PLAYBOOK:
             if automation.playbook is None:

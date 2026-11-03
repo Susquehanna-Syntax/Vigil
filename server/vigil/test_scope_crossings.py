@@ -28,6 +28,7 @@ CROSSINGS: dict[str, list[str]] = {
                             'tag rename: tags are install-wide'],
     'apps/playbooks/views.py': ['playbook names are unique across the install',
                                 'playbook names are unique across the install',
+                                'playbook names are unique across the install',
                                 'playbook names are unique across the install'],
     'apps/policies/run.py': ['policy run: narrowing is by run permission, checked per host below'],
     'apps/policies/validation.py': ['policy names are unique across the install'],

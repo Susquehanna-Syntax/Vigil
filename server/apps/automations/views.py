@@ -29,6 +29,7 @@ EVENT_LABELS = {
 def _row(a: Automation) -> dict:
     return {
         "id": str(a.id), "name": a.name, "enabled": a.enabled,
+        "site_id": str(sid) if (sid := scoping.row_site_id(a)) else None,
         "allow_high_risk": a.allow_high_risk,
         "trigger": a.trigger,
         "event": a.event, "min_severity": a.min_severity, "event_tags": a.event_tags,
@@ -238,12 +239,15 @@ def _apply(a: Automation, data) -> str | None:
 def automation_index(request):
     if request.method == "GET":
         return Response({
-            "automations": [_row(a) for a in scoping.filter_by_site(
+            "automations": [_row(a) for a in scoping.with_sites(scoping.filter_by_site(
                 Automation.objects.select_related("task_definition", "target_host"),
-                request.user, cascade_global=True)],
+                request.user, cascade_global=True))],
             "events": EVENT_LABELS,
             "condition_meta": conditions.meta(),
         })
+    site_id, denied = scoping.site_for_write(request.user, request.data.get("site_id"))
+    if denied:
+        return denied
     a = Automation(created_by=request.user, trigger=request.data.get("trigger", "event"),
                    action_kind=request.data.get("action_kind", "task"))
     err = _apply(a, request.data)
@@ -252,6 +256,7 @@ def automation_index(request):
     if denied := _high_risk_gate(request, a, request.data.get("allow_high_risk")):
         return denied
     a.save()
+    scoping.place(a, site_id)
     sync_periodic_task(a)
     return Response(_row(a), status=status.HTTP_201_CREATED)
 
@@ -263,6 +268,13 @@ def automation_detail(request, automation_id):
         scoping.filter_by_site(Automation.objects.all(), request.user,
                                cascade_global=True),
         pk=automation_id)
+    if denied := scoping.write_denied(request.user, a):
+        return denied
+    new_site = None
+    if "site_id" in request.data:
+        new_site, denied = scoping.site_for_write(request.user, request.data["site_id"])
+        if denied:
+            return denied
     if request.method == "DELETE":
         from .tasks import _disable_task
         _disable_task(a)
@@ -274,6 +286,8 @@ def automation_detail(request, automation_id):
     if denied := _high_risk_gate(request, a, request.data.get("allow_high_risk")):
         return denied
     a.save()
+    if "site_id" in request.data:
+        scoping.place(a, new_site)
     sync_periodic_task(a)
     return Response(_row(a))
 
@@ -289,7 +303,7 @@ def automation_run_now(request, automation_id):
                                cascade_global=True),
         pk=automation_id)
     why: list[str] = []
-    n = run_automation(a, why=why)
+    n = run_automation(a, why=why, narrow_to=request.user)
     return Response({"dispatched": n, "reason": why[0] if why else ""})
 
 
@@ -364,7 +378,13 @@ def automation_from_yaml(request):
             scoping.filter_by_site(Automation.objects.all(), request.user,
                                    cascade_global=True),
             pk=automation_id)
+        if denied := scoping.write_denied(request.user, automation):
+            return denied
+        new_site = None
     if automation is None:
+        new_site, denied = scoping.site_for_write(request.user, request.data.get("site_id"))
+        if denied:
+            return denied
         automation = Automation(created_by=request.user)
 
     data = {
@@ -413,6 +433,8 @@ def automation_from_yaml(request):
     if parsed.get("uid"):
         automation.community_uid = parsed["uid"]
     automation.save()
+    if created:
+        scoping.place(automation, new_site)
     sync_periodic_task(automation)
     return Response(_row(automation),
                     status=status.HTTP_201_CREATED if created

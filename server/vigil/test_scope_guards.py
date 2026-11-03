@@ -88,7 +88,8 @@ class PlaybookAndTagGuardTests(TestCase):
         self.client.force_login(self.dana)
 
     def test_a_playbook_name_another_site_uses_is_taken(self):
-        resp = self.client.post("/api/v1/playbooks/", data=json.dumps({"name": "harden"}),
+        resp = self.client.post("/api/v1/playbooks/",
+                                data=json.dumps({"name": "harden", "site_id": str(self.west.pk)}),
                                 content_type="application/json")
         self.assertEqual(resp.status_code, 400, resp.content)
         self.assertIn("already exists", resp.json()["detail"])
@@ -259,3 +260,101 @@ def _license_with(features):
         return base64.urlsafe_b64encode(b).decode().rstrip("=")
 
     return f"{licensing.PREFIX}.{b64u(payload)}.{b64u(_KEY.sign(payload).signature)}"
+
+
+class PlaybookAutomationWriteRuleTests(TestCase):
+    """decisions-06 items 1-4 for playbooks and automations. dana administers
+    West; gwen administers West and views Global; ida administers the install."""
+
+    def setUp(self):
+        from apps.accounts.models import UserProfile
+        from apps.automations.models import Automation
+        from apps.playbooks.models import Playbook
+        from vigil import scoping
+        User = get_user_model()
+        self.glob = Site.objects.get(is_global=True)
+        self.west = Site.objects.create(name="West", slug="west")
+        self.lab = Site.objects.create(name="Lab", slug="lab")
+        self.dana = User.objects.create_user("dana", password="x")
+        UserSiteRole.objects.create(user=self.dana, site=self.west, role=Role.ADMIN)
+        self.gwen = User.objects.create_user("gwen", password="x")
+        UserSiteRole.objects.create(user=self.gwen, site=self.west, role=Role.ADMIN)
+        UserSiteRole.objects.create(user=self.gwen, site=self.glob, role=Role.VIEWER)
+        self.ida = User.objects.create_user("ida", password="x")
+        UserProfile.objects.create(user=self.ida, role=Role.ADMIN)
+        from apps.tasks.models import TaskDefinition
+        from apps.tasks.spec import parse_and_validate
+        check = ("name: Check cron\nactions:\n  - id: c\n    type: check_service\n"
+                 "    params:\n      service_name: cron\n")
+        self.definition = TaskDefinition.objects.create(
+            owner=None, name="Check cron", yaml_source=check, parsed_spec=parse_and_validate(check))
+        self.global_pb = Playbook.objects.create(name="Global pb")
+        self.west_pb = Playbook.objects.create(name="West pb")
+        scoping.place(self.west_pb, self.west.pk)
+        self.global_auto = Automation.objects.create(name="Global auto", trigger="schedule", cron_hour="3", target="all", task_definition=self.definition)
+        self.west_auto = Automation.objects.create(name="West auto", trigger="schedule", cron_hour="3", target="all", task_definition=self.definition)
+        scoping.place(self.west_auto, self.west.pk)
+
+    def _send(self, user, method, url, body=None):
+        self.client.force_login(user)
+        return getattr(self.client, method)(url, data=json.dumps(body or {}),
+                                            content_type="application/json")
+
+    def test_playbook_create(self):
+        steps = [str(self.definition.pk)]
+        post = lambda user, n, **kw: self._send(user, "post", "/api/v1/playbooks/",
+                                                {"name": n, "definition_ids": steps, **kw}).status_code
+        self.assertEqual(post(self.dana, "a"), 403)
+        self.assertEqual(post(self.gwen, "b"), 403)
+        self.assertEqual(post(self.dana, "c", site_id=str(self.lab.pk)), 404)
+        resp = self._send(self.dana, "post", "/api/v1/playbooks/",
+                          {"name": "d", "definition_ids": steps, "site_id": str(self.west.pk)})
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()["site_id"], str(self.west.pk))
+        self.assertEqual(post(self.ida, "e"), 201)
+
+    def test_playbook_edit_archive_delete(self):
+        url = lambda pb: f"/api/v1/playbooks/{pb.pk}/"
+        for user in (self.dana, self.gwen):
+            self.assertEqual(self._send(user, "patch", url(self.global_pb), {"description": "x"}).status_code, 403)
+            self.assertEqual(self._send(user, "delete", url(self.global_pb)).status_code, 403)
+            self.assertEqual(self._send(user, "post", url(self.global_pb) + "archive/").status_code, 403)
+        self.assertEqual(self._send(self.dana, "patch", url(self.west_pb), {"site_id": None}).status_code, 403)
+        self.assertEqual(self._send(self.dana, "patch", url(self.west_pb),
+                                    {"site_id": str(self.lab.pk)}).status_code, 404)
+        self.assertEqual(self._send(self.dana, "patch", url(self.west_pb), {"description": "ok"}).status_code, 200)
+        self.assertEqual(self._send(self.ida, "patch", url(self.global_pb), {"description": "ok"}).status_code, 200)
+
+    def test_automation_rules(self):
+        post = lambda user, **kw: self._send(user, "post", "/api/v1/automations/",
+                                             {"name": "n", "trigger": "schedule", "cron": {"minute": "0", "hour": "4"},
+                                              "target": "all", "task_definition": str(self.definition.pk),
+                                              **kw}).status_code
+        self.assertEqual(post(self.dana), 403)
+        self.assertEqual(post(self.dana, site_id=str(self.lab.pk)), 404)
+        self.assertEqual(post(self.dana, site_id=str(self.west.pk)), 201)
+        url = lambda a: f"/api/v1/automations/{a.pk}/"
+        for user in (self.dana, self.gwen):
+            self.assertEqual(self._send(user, "patch", url(self.global_auto), {"enabled": False}).status_code, 403)
+            self.assertEqual(self._send(user, "delete", url(self.global_auto)).status_code, 403)
+        self.assertEqual(self._send(self.dana, "patch", url(self.west_auto), {"enabled": False}).status_code, 200)
+        self.assertEqual(self._send(self.ida, "patch", url(self.global_auto), {"enabled": False}).status_code, 200)
+
+    def test_run_now_of_a_global_automation_reaches_only_the_runners_hosts(self):
+        from unittest import mock
+
+        from apps.automations import engine
+        from apps.hosts.models import Host
+        from apps_business.sites.models import HostSiteAssignment
+        hosts = []
+        for name, site in (("west-1", self.west), ("lab-1", self.lab)):
+            h = Host.objects.create(hostname=name, agent_token=f"t-{name}",
+                                    status=Host.Status.ONLINE, mode="managed")
+            HostSiteAssignment.objects.create(host=h, site=site)
+            hosts.append(h)
+        with mock.patch.object(engine, "_build_for", return_value=("task", ({"steps": []}, "low", None), "low")):
+            self.client.force_login(self.gwen)
+            resp = self.client.post(f"/api/v1/automations/{self.global_auto.pk}/run/")
+        self.assertEqual(resp.json()["dispatched"], 1, resp.content)
+        from apps.tasks.models import Task
+        self.assertEqual(list(Task.objects.values_list("host__hostname", flat=True)), ["west-1"])
