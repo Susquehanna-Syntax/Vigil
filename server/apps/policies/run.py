@@ -73,6 +73,20 @@ def high_risk_refusal(policy, definition) -> str | None:
     return None
 
 
+def _site_scope(policy):
+    """The policy's site id for its rollout, None when it is global (no site
+    or the global site)."""
+    from vigil.scoping import _sites_models
+
+    if not policy.site_id:
+        return None
+    mods = _sites_models()
+    if mods is None:
+        return None
+    is_global = mods.Site.objects.filter(pk=policy.site_id, is_global=True).exists()
+    return None if is_global else policy.site_id
+
+
 def run_policy(policy, *, user=None) -> dict:
     """Compile, find the drifted hosts, and dispatch (or queue for approval).
 
@@ -101,7 +115,7 @@ def run_policy(policy, *, user=None) -> dict:
         try:
             rollout = start_rollout(definition, user=user,
                                     wave_group_tag=policy.wave_group_tag,
-                                    host_ids=host_ids)
+                                    host_ids=host_ids, site_id=_site_scope(policy))
         except ValueError as exc:
             logger.warning("policy %s: rollout refused: %s", policy.name, exc)
             result.update(mode="rollout", error=str(exc))

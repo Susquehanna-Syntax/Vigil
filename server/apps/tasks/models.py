@@ -396,6 +396,10 @@ class PatchRollout(models.Model):
     #: the hosts that drifted, not every host its waves carry. Null = no
     #: restriction, which is what every other rollout is.
     host_ids = models.JSONField(null=True, blank=True)
+    #: The site a site's automation or policy started this from. Every wave
+    #: re-applies it, so a host moved to another site mid-rollout drops out
+    #: rather than riding the allow-list captured at the start. Null = global.
+    site_id = models.UUIDField(null=True, blank=True)
     #: Rollouts started together by one request share this id — a parallel
     #: batch, one rollout per wave group. Null = a rollout on its own.
     batch = models.UUIDField(null=True, blank=True, db_index=True)

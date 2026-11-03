@@ -121,3 +121,31 @@ class SiteReachTests(TestCase):
             self.assertEqual(start.call_args.kwargs["host_ids"], [str(self.hosts["lab-1"].pk)])
             engine._start_rollout_for(glob_auto)
             self.assertIsNone(start.call_args.kwargs["host_ids"])
+
+
+class RolloutSiteRecheckTests(TestCase):
+    """A host moved to another site mid-rollout drops out of the next wave:
+    the rollout's site is re-applied at every wave, not only the allow-list
+    captured when it started."""
+
+    def test_moved_host_is_not_dispatched(self):
+        from apps.tasks.models import PatchRollout, Task
+        from apps.tasks.rollout import start_rollout
+        from apps.tasks.test_rollout import make_definition, make_host, make_wave
+
+        west = Site.objects.create(name="West", slug="west")
+        lab = Site.objects.create(name="Lab", slug="lab")
+        user = get_user_model().objects.create_user("op", password="pw")
+        definition = make_definition(user)
+        make_wave("Only", 1, ["role:web"], validation_hours=0)
+        stays = make_host("lab-stays", ["role:web"])
+        moves = make_host("lab-moves", ["role:web"])
+        for h in (stays, moves):
+            HostSiteAssignment.objects.create(host=h, site=lab)
+        # The allow-list was captured while both were Lab's; one has since moved.
+        HostSiteAssignment.objects.filter(host=moves).update(site=west)
+        rollout = start_rollout(definition, user=user, host_ids=[stays.pk, moves.pk],
+                                site_id=lab.pk)
+        self.assertEqual(PatchRollout.objects.get(pk=rollout.pk).site_id, lab.pk)
+        self.assertEqual(sorted(Task.objects.values_list("host__hostname", flat=True)),
+                         ["lab-stays"])

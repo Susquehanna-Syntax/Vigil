@@ -156,6 +156,7 @@ def start_rollout(
     wave_group_tag="",
     host_ids=None,
     inputs=None,
+    site_id=None,
 ) -> PatchRollout:
     """Create a rollout and dispatch its first wave.
 
@@ -204,6 +205,7 @@ def start_rollout(
         wave_group_tag=wave_group_tag,
         inputs=inputs or {},
         host_ids=[str(h) for h in host_ids] if host_ids is not None else None,
+        site_id=site_id,
         current_wave=_first_enabled_wave(wave_group_tag),
         failure_threshold_pct=failure_threshold_pct,
         min_results_before_halt=min_results_before_halt,
@@ -334,7 +336,8 @@ def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
     if rollout.host_ids is not None:
         allowed = set(rollout.host_ids)
         host_ids = [h for h in host_ids if str(h) in allowed]
-    hosts = list(Host.objects.filter(id__in=host_ids))
+    from vigil import scoping
+    hosts = list(scoping.hosts_in_site(Host.objects.filter(id__in=host_ids), rollout.site_id))
 
     from .dispatch import build_playbook_steps, create_chain, task_params
 

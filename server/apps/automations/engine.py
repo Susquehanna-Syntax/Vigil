@@ -415,6 +415,8 @@ def _start_rollout_for(automation) -> int:
 
     # A site's automation rolls out to its own site's hosts only. The rollout
     # stores this allow-list, so every later wave honours it too.
+    from vigil import scoping
+
     host_ids = _rollout_host_ids(automation)
     try:
         if automation.action_kind == automation.ActionKind.PLAYBOOK:
@@ -423,14 +425,16 @@ def _start_rollout_for(automation) -> int:
                                automation.pk)
                 return 0
             start_rollout(playbook=automation.playbook, user=automation.created_by,
-                          inputs=automation.inputs, host_ids=host_ids)
+                          inputs=automation.inputs, host_ids=host_ids,
+                          site_id=scoping.site_id_of(automation))
         else:
             if automation.task_definition is None:
                 logger.warning("automation %s: definition missing, cannot roll out",
                                automation.pk)
                 return 0
             start_rollout(automation.task_definition, user=automation.created_by,
-                          inputs=automation.inputs, host_ids=host_ids)
+                          inputs=automation.inputs, host_ids=host_ids,
+                          site_id=scoping.site_id_of(automation))
     except ValueError as exc:
         logger.warning("automation %s: rollout refused: %s", automation.pk, exc)
         return 0
