@@ -10,6 +10,7 @@ from datetime import timedelta
 
 from celery import shared_task
 from django.utils.timezone import now
+from vigil import scoping
 
 logger = logging.getLogger("vigil.statuspage")
 
@@ -19,6 +20,7 @@ RETENTION_DAYS = 95
 
 
 @shared_task(name="statuspage.sample_uptime")
+@scoping.system_job(reason="background job: uptime is sampled for every site's hosts")
 def sample_uptime():
     """Record the current up/down state of every non-pending host."""
     from apps.hosts.models import Host
@@ -41,6 +43,7 @@ def sample_uptime():
 
 
 @shared_task(name="statuspage.prune_old_uptime_samples")
+@scoping.system_job(reason="background job: retention prunes every site's uptime samples")
 def prune_old_uptime_samples():
     """Drop uptime samples older than the rendered window."""
     from .models import HostUptimeSample

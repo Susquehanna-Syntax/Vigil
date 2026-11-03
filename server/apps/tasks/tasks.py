@@ -23,11 +23,13 @@ from apps.instance.config import setting
 from django.utils.timezone import now
 
 from .models import PatchRollout, Task
+from vigil import scoping
 
 logger = logging.getLogger(__name__)
 
 
 @shared_task(name="tasks.expire_stale_tasks")
+@scoping.system_job(reason="background job: stale tasks expire on every site")
 def expire_stale_tasks() -> str:
     """Flip overdue DISPATCHED/EXECUTING tasks to EXPIRED and finalize runs."""
     from .views import _finalize_run_if_done
@@ -118,6 +120,7 @@ def expire_stale_tasks() -> str:
 
 
 @shared_task(name="tasks.advance_rollouts")
+@scoping.system_job(reason="background job: every rollout advances, each re-applying its own site")
 def advance_rollouts() -> str:
     """Evaluate every active rollout once per beat tick.
 

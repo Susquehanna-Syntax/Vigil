@@ -12,6 +12,9 @@ class HostsConfig(AppConfig):
     verbose_name = "Hosts"
 
     def ready(self):
+        # Before anything that might query: commands run in a system scope.
+        from vigil import scoping
+        scoping.install_command_scope()
         self._warn_if_agent_version_pinned()
         # Validate VIGIL_SIGNING_KEY_SEED at startup. Without this, a malformed
         # seed silently 500s every /api/v1/checkin response — agents retry

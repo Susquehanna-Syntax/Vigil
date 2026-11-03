@@ -4,11 +4,13 @@ import json
 import logging
 
 from celery import shared_task
+from vigil import scoping
 
 logger = logging.getLogger("vigil.automations")
 
 
 @shared_task
+@scoping.system_job(reason="background job: a scheduled automation fires, bounded by its own reach")
 def run_scheduled_automation(automation_id):
     """Beat fires this per scheduled Automation via its PeriodicTask."""
     from .engine import run_automation

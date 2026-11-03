@@ -137,6 +137,9 @@
   </nav>
 
   <main class="main">
+    {% for b in scope_banners %}
+    <div class="license-banner license-banner--{{ b.severity }}" role="alert">{{ b.message }}</div>
+    {% endfor %}
     {% for b in license_banners %}
     <div class="license-banner license-banner--{{ b.severity }}">{{ b.message }}</div>
     {% endfor %}

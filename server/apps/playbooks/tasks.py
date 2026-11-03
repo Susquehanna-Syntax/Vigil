@@ -3,6 +3,7 @@
 import logging
 
 from celery import shared_task
+from vigil import scoping
 
 logger = logging.getLogger("vigil.playbooks")
 
@@ -14,6 +15,7 @@ RECONCILE_LIMIT = 25
 
 
 @shared_task(name="playbooks.reconcile")
+@scoping.system_job(reason="background job: auto-enrolment reconciles every playbook, each bounded by its own site")
 def reconcile_playbooks():
     from .models import reconcile
 

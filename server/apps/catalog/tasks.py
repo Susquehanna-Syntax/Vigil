@@ -1,7 +1,9 @@
 from celery import shared_task
+from vigil import scoping
 
 
 @shared_task(name="catalog.sync")
+@scoping.system_job(reason="background job: the package catalog is install-wide")
 def sync_catalog() -> str:
     """Daily: refresh the Store's package catalog — only when an admin has
     turned it on (VIGIL_CATALOG_SYNC); Vigil never reaches out on its own."""

@@ -15,39 +15,66 @@ SERVER = Path(__file__).resolve().parent.parent
 
 #: "relative/path.py" -> sorted reasons of the crossings in that file.
 CROSSINGS: dict[str, list[str]] = {
-    'apps/agentprofiles/views.py': ['agent profile names are unique across the install'],
     'apps/agentprofiles/redeem_views.py': ['agent install: a one-time profile token is the access control'],
+    'apps/agentprofiles/views.py': ['agent profile names are unique across the install'],
+    'apps/alerts/tasks.py': ['background job: acknowledgements expire on every site',
+                             "background job: agent versions are checked for every site's hosts",
+                             "background job: alert rules are evaluated for every site's hosts",
+                             "background job: every site's silent hosts are marked offline",
+                             "background job: image updates are checked for every site's hosts",
+                             "background job: retention prunes every site's alerts",
+                             "background job: retention prunes every site's metrics"],
     'apps/automations/engine.py': ['automation events fire install-wide, whoever raised them'],
+    'apps/automations/tasks.py': ['background job: a scheduled automation fires, bounded by its own reach'],
+    'apps/catalog/tasks.py': ['background job: the package catalog is install-wide'],
     'apps/hosts/enrollment.py': ["re-enrolment moves the machine's own history onto its surviving row",
                                  're-enrolment: the same machine is matched across every site'],
     'apps/hosts/logtail.py': ['agent API: the caller is a host, authenticated by its agent token'],
+    'apps/hosts/tasks.py': ['background job: directory import is install-wide'],
     'apps/hosts/views.py': ['agent API: the caller is a host, authenticated by its agent token',
                             'agent enrolment: a new host registers with no user',
                             'tag delete guard: a tag is install-wide',
                             'tag rename: tags are install-wide',
                             'tag rename: tags are install-wide',
                             'tag rename: tags are install-wide'],
+    'apps/licensing/tasks.py': ['background job: the licence is install-wide'],
+    'apps/metrics/tasks.py': ['background job: database size is install-wide'],
     'apps/playbooks/expansion.py': ['playbook include: resolved by name on every site, then bounded by including_from'],
+    'apps/playbooks/tasks.py': ['background job: auto-enrolment reconciles every playbook, each bounded by its own site'],
     'apps/playbooks/views.py': ['playbook names are unique across the install',
                                 'playbook names are unique across the install',
                                 'playbook names are unique across the install',
                                 'playbook names are unique across the install'],
     'apps/policies/run.py': ['policy run: narrowing is by run permission, checked per host below'],
+    'apps/policies/tasks.py': ['background job: a scheduled policy runs, bounded by its own site'],
     'apps/policies/validation.py': ['policy names are unique across the install'],
     'apps/remote/views.py': ['agent API: the caller is a host, authenticated by its agent token'],
+    'apps/remote/ws.py': ["remote session socket: the session's own user, or its host's agent token, is the access control"],
     'apps/reprovision/installer_views.py': ['reprovision installer: the rebuild token is the access control',
                                             'reprovision installer: the rebuild token is the access control',
                                             'reprovision installer: the rebuild token is the access control'],
+    'apps/reprovision/tasks.py': ['background job: downloading an OS image, which belongs to no site',
+                                  'background job: importing an OS image, which belongs to no site',
+                                  'background job: rebuild deadlines are swept on every site'],
     'apps/stacks/git_views.py': ['agent API: the caller is a host, authenticated by its agent token'],
     'apps/stacks/registries.py': ['agent API: the caller is a host, authenticated by its agent token'],
     'apps/stacks/views.py': ['agent API: the caller is a host, authenticated by its agent token',
                              'agent API: the caller is a host, authenticated by its agent token'],
+    'apps/statuspage/tasks.py': ["background job: retention prunes every site's uptime samples",
+                                 "background job: uptime is sampled for every site's hosts"],
     'apps/statuspage/views.py': ['free status page limit is per install',
                                  'public status page: the page token is the access control',
                                  'public status page: the page token is the access control'],
     'apps/tasks/authz.py': ['rollout writes: every host a rollout names must be runnable by the caller',
                             'run trimming: a run is trimmed when any of its tasks is on a site the caller cannot see'],
+    'apps/tasks/tasks.py': ['background job: every rollout advances, each re-applying its own site',
+                            'background job: stale tasks expire on every site'],
     'apps/tasks/views.py': ['agent API: the caller is a host, authenticated by its agent token'],
+    'apps/vulns/tasks.py': ["background job: daily vulnerability scores for every site's hosts",
+                            "background job: retention prunes every site's score history",
+                            "background job: scanner results are imported for every site's hosts",
+                            'background job: the KEV list is install-wide',
+                            "background job: vulnerability data is matched for every site's hosts"],
 }
 
 
@@ -61,7 +88,7 @@ def _system_names(tree):
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "vigil.scoping":
             names |= {a.asname or a.name for a in node.names
-                      if a.name in ("system", "system_view")}
+                      if a.name in ("system", "system_view", "system_job")}
     return names
 
 
@@ -69,7 +96,7 @@ def _is_crossing(call, system_names):
     f = call.func
     if isinstance(f, ast.Attribute) and f.attr == "unscoped":
         return True
-    if isinstance(f, ast.Attribute) and f.attr in ("system", "system_view"):
+    if isinstance(f, ast.Attribute) and f.attr in ("system", "system_view", "system_job"):
         return isinstance(f.value, ast.Name) and f.value.id == "scoping"
     return isinstance(f, ast.Name) and f.id in system_names
 

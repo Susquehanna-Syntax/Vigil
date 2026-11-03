@@ -204,11 +204,17 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "apps.licensing.context_processors.license_banners",
+                "vigil.context_processors.scope_banners",
                 "apps.civilsso.context_processors.civil",
             ],
         },
     },
 ]
+
+# Strict site scoping raises on a scoped query with no scope (the test runner
+# turns it on); production returns nothing, logs and raises a banner.
+VIGIL_SCOPE_STRICT = False
+TEST_RUNNER = "vigil.testrunner.ScopedTestRunner"
 
 WSGI_APPLICATION = "vigil.wsgi.application"
 

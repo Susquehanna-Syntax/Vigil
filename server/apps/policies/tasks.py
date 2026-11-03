@@ -4,11 +4,13 @@ import json
 import logging
 
 from celery import shared_task
+from vigil import scoping
 
 logger = logging.getLogger("vigil.policies")
 
 
 @shared_task
+@scoping.system_job(reason="background job: a scheduled policy runs, bounded by its own site")
 def run_scheduled_policy(policy_id):
     """Beat fires this when a policy's window opens."""
     from .models import UpdatePolicy

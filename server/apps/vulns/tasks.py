@@ -14,11 +14,13 @@ from django.utils.timezone import localdate
 
 from .models import VulnScoreHistory, VulnSummary
 from .scanners import SCANNER_REGISTRY
+from vigil import scoping
 
 logger = logging.getLogger(__name__)
 
 
 @shared_task(name="vulns.sync_vulns")
+@scoping.system_job(reason="background job: vulnerability data is matched for every site's hosts")
 def sync_vulns() -> str:
     """Run one sync cycle across every configured scanner.
 
@@ -48,6 +50,7 @@ def sync_vulns() -> str:
 
 
 @shared_task(name="vulns.sync_nessus_vulns")
+@scoping.system_job(reason="background job: scanner results are imported for every site's hosts")
 def sync_nessus_vulns() -> str:
     """Deprecated alias for :func:`sync_vulns`.
 
@@ -58,6 +61,7 @@ def sync_nessus_vulns() -> str:
 
 
 @shared_task(name="vulns.snapshot_scores")
+@scoping.system_job(reason="background job: daily vulnerability scores for every site's hosts")
 def snapshot_scores() -> str:
     """Write one :class:`VulnScoreHistory` row per host for today.
 
@@ -82,6 +86,7 @@ def snapshot_scores() -> str:
 
 
 @shared_task(name="vulns.refresh_kev")
+@scoping.system_job(reason="background job: the KEV list is install-wide")
 def refresh_kev() -> str:
     """Pull a fresh CISA KEV catalogue, if the operator enabled it.
 
@@ -96,6 +101,7 @@ def refresh_kev() -> str:
 
 
 @shared_task(name="vulns.prune_old_score_history")
+@scoping.system_job(reason="background job: retention prunes every site's score history")
 def prune_old_score_history() -> str:
     """Drop score snapshots past their retention window.
 

@@ -236,7 +236,7 @@ def site_roles_for(user):
 
     scope = _scope.get()
     key = ("site_roles", user.pk)
-    if scope is not None and key in scope.cache:
+    if scope is not None and scope.kind == "user" and key in scope.cache:
         return dict(scope.cache[key])
 
     out = {}
@@ -246,7 +246,7 @@ def site_roles_for(user):
         out[row.site_id] = row.role
         if row.site.is_global:
             out["__global__"] = row.role
-    if scope is not None:
+    if scope is not None and scope.kind == "user":
         scope.cache[key] = dict(out)
     return out
 
@@ -279,10 +279,10 @@ def capabilities_for(user, site):
 def _global_site_id(mods):
     """The global site's id, looked up once per scope."""
     scope = _scope.get()
-    if scope is not None and "global_site_id" in scope.cache:
+    if scope is not None and scope.kind == "user" and "global_site_id" in scope.cache:
         return scope.cache["global_site_id"]
     glob = mods.Site.objects.filter(is_global=True).values_list("id", flat=True).first()
-    if scope is not None:
+    if scope is not None and scope.kind == "user":
         scope.cache["global_site_id"] = glob
     return glob
 
@@ -609,6 +609,89 @@ def current_scope():
     return _scope.get()
 
 
+# ── No scope fails closed (decisions-06 item 17) ──────────────────────────────
+# A scoped query with no scope set is a path nobody declared: a background job,
+# a thread, a startup hook. It gets nothing back rather than every site's rows.
+# In strict mode (the test runner) it raises, so CI names the path; in
+# production it logs, and leaves a record the instance admins' banner shows.
+
+class ScopeMissing(RuntimeError):
+    """A site-scoped query ran with no scope."""
+
+
+SCOPE_ALERT_KEY = "vigil:scope-missing"
+_log = logging.getLogger("vigil.scoping")
+
+
+def _caller():
+    """Where the unscoped query came from: the first frame in Vigil code
+    outside this module, as ``path:line in func``."""
+    import traceback
+    for frame in reversed(traceback.extract_stack()[:-3]):
+        name = frame.filename.replace("\\", "/")
+        if ("/apps/" in name or "/apps_business/" in name or "/vigil/" in name) \
+                and not name.endswith("vigil/scoping.py"):
+            short = name.split("/server/")[-1].split("/Vigil_Business/")[-1]
+            return f"{short}:{frame.lineno} in {frame.name}"
+    return "unknown"
+
+
+def _no_scope(qs):
+    from django.conf import settings
+    where = _caller()
+    message = f"{qs.model.__name__} was queried with no site scope ({where})"
+    if getattr(settings, "VIGIL_SCOPE_STRICT", False):
+        raise ScopeMissing(message + ": wrap the entry point in scoping.system(reason=...) "
+                                     "or scoping.as_user(...)")
+    _log.error("%s; it got no rows back", message)
+    try:
+        from django.core.cache import cache
+        from django.utils.timezone import now
+        cache.set(SCOPE_ALERT_KEY, {"model": qs.model.__name__, "where": where,
+                                    "at": now().isoformat()}, 24 * 3600)
+    except Exception:  # noqa: BLE001 — the alert must never break the caller
+        pass
+    return qs.none()
+
+
+def scope_alert():
+    """The last unscoped-query record, or None."""
+    try:
+        from django.core.cache import cache
+        return cache.get(SCOPE_ALERT_KEY)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+@contextmanager
+def no_scope_for_tests():
+    """Clear the scope inside a test, to exercise what an undeclared path gets."""
+    token = _scope.set(None)
+    try:
+        yield
+    finally:
+        _scope.reset(token)
+
+
+def is_instance_admin(user) -> bool:
+    """An administrator of the whole install (mirrors the Business sites
+    app): a superuser, an admin profile with no site rows, or a Global admin
+    row. A per-site row never counts, and a site-scoped API key never does."""
+    from apps.accounts.models import Role
+    from apps.accounts.permissions import OWNER, _unscoped_role
+
+    if not (user and user.is_authenticated):
+        return False
+    if getattr(user, "key_site_ids", None) is not None:
+        return False
+    if user.is_superuser:
+        return True
+    rows = site_roles_for(user)
+    if not rows:
+        return _unscoped_role(user) in (OWNER, Role.ADMIN)
+    return rows.get("__global__") in (OWNER, Role.ADMIN)
+
+
 @contextmanager
 def _entered(scope):
     token = _scope.set(scope)
@@ -667,6 +750,42 @@ def system_view(*, reason):
     return deco
 
 
+def system_job(*, reason):
+    """Decorate a background job (a Celery task body, a thread target) that
+    no person is behind: it runs in a system scope. Put it under
+    ``@shared_task`` so the task's ``run`` carries ``_vigil_scope_reason``;
+    vigil/test_scope_jobs.py fails for any task without one."""
+    _require_reason(reason)
+
+    def deco(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            with system(reason=reason):
+                return fn(*args, **kwargs)
+        wrapper._vigil_scope_reason = reason
+        return wrapper
+
+    return deco
+
+
+def install_command_scope():
+    """Management commands run in a system scope: whoever runs one has the
+    shell, and with it every row already. Called once from an AppConfig."""
+    from django.core.management.base import BaseCommand
+
+    if getattr(BaseCommand.execute, "_vigil_scoped", False):
+        return
+    plain = BaseCommand.execute
+
+    @functools.wraps(plain)
+    def execute(self, *args, **options):
+        with system(reason="management command: run by an operator at the shell"):
+            return plain(self, *args, **options)
+
+    execute._vigil_scoped = True
+    BaseCommand.execute = execute
+
+
 def scoped_user():
     """The user the active scope filters by, or None when nothing filters
     (no scope, or a system scope)."""
@@ -711,7 +830,11 @@ class SiteScopedManager(_dj_models.Manager):
     def get_queryset(self):
         qs = super().get_queryset()
         scope = _scope.get()
-        if scope is None or scope.kind == "system":
+        if scope is None:
+            # Community installs have no sites, so there is no boundary to
+            # hold and nothing to fail closed for.
+            return qs if _sites_models() is None else _no_scope(qs)
+        if scope.kind == "system":
             return qs
         user = scope.user()
         if user is None or not getattr(user, "is_authenticated", False):

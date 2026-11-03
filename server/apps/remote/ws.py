@@ -28,6 +28,7 @@ from django.utils.timezone import now
 from apps.hosts.models import Host
 from apps.relays.models import direct_allowed
 from apps.relays.trust import link_token
+from vigil import scoping
 
 from . import bus, rdp
 from .models import RemoteSession
@@ -67,6 +68,8 @@ class Ending(Exception):
         self.reason = reason
 
 
+@scoping.system_view(reason="remote session socket: the session's own user, or its host's agent token, "
+                            "is the access control")
 async def websocket_app(scope, receive, send):
     path = scope.get("path", "")
     for pattern, handler in ((BROWSER_ROUTE, browser_socket), (AGENT_ROUTE, agent_socket)):

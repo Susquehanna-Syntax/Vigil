@@ -48,12 +48,36 @@ class _TwoSites(TestCase):
         return sorted(qs.values_list("hostname", flat=True))
 
 
-class ScopedManagerTests(_TwoSites):
+class _FromNoScope:
+    """Start each test from no scope at all; the runner otherwise gives test
+    bodies a system scope (vigil/testrunner.py)."""
 
-    def test_no_scope_is_unfiltered(self):
-        # Outside a request nothing filters: §6, monitoring must never stop.
+    def setUp(self):
+        super().setUp()
+        ctx = scoping.no_scope_for_tests()
+        ctx.__enter__()
+        self.addCleanup(ctx.__exit__, None, None, None)
+
+
+class ScopedManagerTests(_FromNoScope, _TwoSites):
+
+    def test_no_scope_fails_closed(self):
+        # decisions-06 item 17: an undeclared path gets nothing, never every
+        # site's rows. Strict (CI) raises and names the caller.
         self.assertIsNone(scoping.current_scope())
-        self.assertEqual(self.names(self.hosts.all()), ["lab-1", "west-1"])
+        with self.assertRaises(scoping.ScopeMissing) as caught:
+            list(self.hosts.all())
+        self.assertIn("test_scope_manager.py", str(caught.exception))
+
+    def test_no_scope_in_production_is_empty_logged_and_flagged(self):
+        from django.core.cache import cache
+        from django.test import override_settings
+        cache.delete(scoping.SCOPE_ALERT_KEY)
+        with override_settings(VIGIL_SCOPE_STRICT=False), self.assertLogs("vigil.scoping", "ERROR"):
+            self.assertEqual(list(self.hosts.all()), [])
+        alert = scoping.scope_alert()
+        self.assertEqual(alert["model"], "Host")
+        self.assertIn("test_scope_manager.py", alert["where"])
 
     def test_user_scope_filters(self):
         with scoping.as_user(self.dana):
@@ -119,7 +143,7 @@ class ScopedManagerTests(_TwoSites):
         self.assertIsNone(scoping.current_scope())
 
 
-class SiteScopeMiddlewareTests(_TwoSites):
+class SiteScopeMiddlewareTests(_FromNoScope, _TwoSites):
     """The middleware scopes by whoever request.user is when the query runs."""
 
     def run_request(self, user, view):

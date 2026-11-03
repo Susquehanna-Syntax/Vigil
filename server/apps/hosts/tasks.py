@@ -18,11 +18,13 @@ from django.utils.timezone import now
 from .auto_tags import derive_auto_tags, merge_auto_tags
 from .crypto import decrypt_secret
 from .models import ADConfig, Host
+from vigil import scoping
 
 logger = logging.getLogger(__name__)
 
 
 @shared_task(name="hosts.import_ad_computers")
+@scoping.system_job(reason="background job: directory import is install-wide")
 def import_ad_computers() -> dict:
     """Sync computer objects from Active Directory into the Host table.
 

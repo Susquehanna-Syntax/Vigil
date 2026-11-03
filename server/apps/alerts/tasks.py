@@ -7,7 +7,7 @@ from django.conf import settings
 from django.db.models import Avg
 from django.utils.timezone import now
 
-from vigil import hooks
+from vigil import hooks, scoping
 from vigil.locks import advisory_lock
 
 #: A breach that returns within this many seconds of resolving is treated as
@@ -86,6 +86,7 @@ def _check_rule(rule, host, current_time):
 
 
 @shared_task(name="alerts.evaluate_alert_rules")
+@scoping.system_job(reason="background job: alert rules are evaluated for every site's hosts")
 def evaluate_alert_rules():
     """Periodic task: evaluate all enabled AlertRules against online hosts.
 
@@ -196,6 +197,7 @@ def _evaluate_alert_rules():
 
 
 @shared_task(name="alerts.expire_acknowledgements")
+@scoping.system_job(reason="background job: acknowledgements expire on every site")
 def expire_acknowledgements():
     """Re-fire acknowledged alerts whose timed acknowledgement has lapsed.
 
@@ -226,6 +228,7 @@ def expire_acknowledgements():
 
 
 @shared_task(name="alerts.mark_stale_hosts_offline")
+@scoping.system_job(reason="background job: every site's silent hosts are marked offline")
 def mark_stale_hosts_offline():
     """Mark hosts that haven't checked in for 5 minutes as offline."""
     with advisory_lock("alerts.mark_stale_hosts_offline") as acquired:
@@ -289,6 +292,7 @@ def _metricpoint_is_hypertable() -> bool:
 
 
 @shared_task(name="metrics.prune_old_metric_points")
+@scoping.system_job(reason="background job: retention prunes every site's metrics")
 def prune_old_metric_points():
     """Delete MetricPoints older than VIGIL_METRIC_RETENTION_DAYS (default: 30).
 
@@ -332,6 +336,7 @@ def _get_or_create_docker_rule() -> AlertRule:
 
 
 @shared_task(name="alerts.check_docker_image_updates")
+@scoping.system_job(reason="background job: image updates are checked for every site's hosts")
 def check_docker_image_updates():
     """Evaluate docker/image_outdated metrics and fire or resolve per-container alerts."""
     with advisory_lock("alerts.check_docker_image_updates") as acquired:
@@ -495,6 +500,7 @@ def _is_older(reported: str, expected: str) -> bool:
 
 
 @shared_task(name="alerts.check_outdated_agents")
+@scoping.system_job(reason="background job: agent versions are checked for every site's hosts")
 def check_outdated_agents():
     """Fire an alert for any online host running an older agent version."""
     with advisory_lock("alerts.check_outdated_agents") as acquired:
@@ -554,6 +560,7 @@ def _check_outdated_agents():
 
 
 @shared_task(name="alerts.prune_old_alerts")
+@scoping.system_job(reason="background job: retention prunes every site's alerts")
 def prune_old_alerts() -> str:
     """Delete resolved alerts past their retention window.
 

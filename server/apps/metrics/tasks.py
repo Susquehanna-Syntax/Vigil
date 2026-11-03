@@ -19,6 +19,7 @@ from django.conf import settings
 from django.db import connection
 
 from apps.instance.config import setting
+from vigil import scoping
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ _GB = 1024 ** 3
 
 
 @shared_task(name="metrics.check_db_disk_usage")
+@scoping.system_job(reason="background job: database size is install-wide")
 def check_db_disk_usage():
     """Warn when the database is trending toward the disk limit."""
     if connection.vendor != "postgresql":
