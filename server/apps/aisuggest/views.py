@@ -17,6 +17,7 @@ from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin, IsOperator
 from apps.alerts.models import Alert
 from apps.tasks.spec import SpecError, parse_and_validate
+from vigil import scoping
 
 from .models import AiProvider, ProviderKind, ReasoningEffort
 from .prompt import repair_prompt, system_prompt
@@ -197,7 +198,10 @@ def _run_provider(provider_id: int, prompt: str) -> Response:
 def suggest_for_alert(request, alert_id):
     if not AiProvider.objects.filter(enabled=True).exists():
         return _no_providers()
-    alert = get_object_or_404(Alert, pk=alert_id)
+    alert = get_object_or_404(
+        scoping.filter_by_site(Alert.objects.all(), request.user, path="host__"),
+        pk=alert_id,
+    )
     provider_id = request.data.get("provider_id")
     if not provider_id:
         return Response({"detail": "provider_id required"}, status=400)
@@ -219,7 +223,9 @@ def suggest_for_vuln(request, finding_id):
     if not AiProvider.objects.filter(enabled=True).exists():
         return _no_providers()
     finding = get_object_or_404(
-        VulnFinding.objects.select_related("host"), pk=finding_id
+        scoping.filter_by_site(
+            VulnFinding.objects.select_related("host"), request.user, path="host__"),
+        pk=finding_id,
     )
     provider_id = request.data.get("provider_id")
     if not provider_id:
@@ -247,8 +253,10 @@ def suggest_for_fix_group(request):
     if not AiProvider.objects.filter(enabled=True).exists():
         return _no_providers()
     fix_key = str(request.data.get("fix_key") or "")
-    findings = list(VulnFinding.objects.filter(fix_key=fix_key, state=VulnFinding.State.OPEN)
-                    .select_related("host").prefetch_related("evidence")[:200])
+    findings = list(scoping.filter_by_site(
+        VulnFinding.objects.filter(fix_key=fix_key, state=VulnFinding.State.OPEN),
+        request.user, path="host__")
+        .select_related("host").prefetch_related("evidence")[:200])
     if not findings:
         return Response({"detail": "no open findings in that group"}, status=404)
     if _fix_for(findings[0])["kind"] != "none":
