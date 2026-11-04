@@ -132,6 +132,8 @@ async function openAgentProfileEditor(profile) {
     </div>
     <div class="setting-row"><label>Name</label>
       <input type="text" class="form-control" id="ap-name" maxlength="80" value=""></div>
+    <div class="setting-row" id="ap-site-field" hidden><label for="ap-site">Site</label>
+      <select class="form-control" id="ap-site"></select></div>
     <div class="setting-row"><label>Description</label>
       <input type="text" class="form-control" id="ap-description" maxlength="300" value=""></div>
     <div class="apf-error" id="ap-name-error" hidden></div>
@@ -148,6 +150,8 @@ async function openAgentProfileEditor(profile) {
     + '<div class="sk-line"></div><div class="sk-line sk-w80"></div></div>';
   m.modal.querySelector('#ap-name').value = (profile && profile.name) || '';
   m.modal.querySelector('#ap-description').value = (profile && profile.description) || '';
+  sitePickFill(m.modal.querySelector('#ap-site'), m.modal.querySelector('#ap-site-field'),
+    profile ? profile.site_id : null, { editing: !!editing });
   requestAnimationFrame(m.open);
 
   let ctx;
@@ -183,6 +187,8 @@ async function openAgentProfileEditor(profile) {
       description: m.modal.querySelector('#ap-description').value.trim(),
       ...apfRead(form),
     };
+    const siteId = sitePickValue(m.modal.querySelector('#ap-site'), m.modal.querySelector('#ap-site-field'));
+    if (siteId !== undefined) body.site_id = siteId;
     const btn = m.modal.querySelector('#ap-save');
     btn.disabled = true;
     try {

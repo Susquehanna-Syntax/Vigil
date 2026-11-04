@@ -504,13 +504,15 @@ function addGitCredential() {
       showToast('An SSH deploy key needs the host key', 'warn');
       return;
     }
+    const siteId = sitePickValue(m.modal.querySelector('#git-cred-site'), m.modal.querySelector('#git-cred-site-field'));
     const code = await totpPrompt('Adding a Git credential');
     if (!code) { close(); return; }
+    const body = { name, kind, git_host: gitHost, username, secret: pass, known_hosts: hosts, totp: code.trim() };
+    if (siteId !== undefined) body.site_id = siteId;
     try {
       const created = await apiJson('/api/v1/stacks/git-credentials/', {
         method: 'POST',
-        body: JSON.stringify({ name, kind, git_host: gitHost, username, secret: pass, known_hosts: hosts,
-                               totp: code.trim() }),
+        body: JSON.stringify(body),
       });
       stackEd.gitCreds.push(created);
       _renderGitCredentials();
@@ -535,6 +537,7 @@ function addGitCredential() {
     // Switching kind re-renders: keep the name and server already typed.
     const keep = (id, fallback) => { const el = m.modal.querySelector(id); return el ? el.value : fallback; };
     const keptName = keep('#git-cred-name', ''), keptHost = keep('#git-cred-host', urlHost);
+    const keptSite = keep('#git-cred-site', null);
     // The fields a kind needs, then the one that holds its key. Field ids in
     // markup strings; only the kind buttons interpolate.
     const extra = ssh ? `
@@ -569,6 +572,11 @@ function addGitCredential() {
         <label class="form-label" for="git-cred-name">Name</label>
         <input class="form-control" id="git-cred-name" maxlength="120" placeholder="GitHub deploy token">
       </div>
+      <div class="form-group" id="git-cred-site-field" hidden>
+        <label class="form-label" for="git-cred-site">Site</label>
+        <select class="form-control" id="git-cred-site"></select>
+        <div class="bl-hint">Who may see and use it. A site's credential serves that site's stacks only.</div>
+      </div>
       <div class="form-group">
         <label class="form-label" for="git-cred-host">Git server</label>
         <input class="form-control" id="git-cred-host" maxlength="253" placeholder="github.com"
@@ -593,6 +601,7 @@ function addGitCredential() {
     m.modal.querySelector('[data-cred-save]').onclick = save;
     m.modal.querySelector('#git-cred-name').value = keptName;
     m.modal.querySelector('#git-cred-host').value = keptHost;
+    sitePickFill(m.modal.querySelector('#git-cred-site'), m.modal.querySelector('#git-cred-site-field'), keptSite);
   };
 
   render();

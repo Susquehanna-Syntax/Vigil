@@ -986,6 +986,8 @@ function _reproOpenProfile(prof) {
       : 'A crypt hash, never a plaintext password — the answer file carries it verbatim. Generate one with mkpasswd -m sha-512.';
   }
 
+  sitePickFill(document.getElementById('repro-prof-site'), document.getElementById('repro-prof-site-field'),
+    prof ? prof.site_id : null, { editing: !!editing });
   _reproFillProfileImages(prof?.image);
   _reproFillProfileAgentProfiles();
   const agentProfile = document.getElementById('repro-prof-agentprofile');
@@ -1029,6 +1031,9 @@ async function _reproSaveProfile() {
   // as "no password given" and would fail its own can-anyone-log-in check
   // for a profile that already has one stored.
   if (password) body.admin_password = password;
+  const siteId = sitePickValue(document.getElementById('repro-prof-site'),
+                               document.getElementById('repro-prof-site-field'));
+  if (siteId !== undefined) body.site_id = siteId;
 
   if (!body.name) return showToast('Give the profile a name', 'error');
   if (!body.image) return showToast('Pick an image', 'error');

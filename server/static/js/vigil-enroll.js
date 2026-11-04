@@ -275,11 +275,15 @@ async function enrollSaveProfile() {
   if (!form) return;
   const name = await promptModal('Name for this profile');
   if (!name) return;
+  const site = await sitePickChoose('Site for this profile');
+  if (site === false) return;
+  const body = { ...apfRead(form), name };
+  if (site !== undefined) body.site_id = site;
   apfShowErrors(form, null);
   try {
     const created = await apiJson('/api/v1/agent-profiles/', {
       method: 'POST',
-      body: JSON.stringify({ ...apfRead(form), name }),
+      body: JSON.stringify(body),
     });
     _enrollProfiles = await apiJson('/api/v1/agent-profiles/');
     _enrollFillProfiles();
