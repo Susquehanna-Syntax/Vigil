@@ -787,6 +787,17 @@ function _openEditor(data, editingId) {
   document.getElementById('bl-desc').value = data ? (data.description || '') : '';
   document.getElementById('bl-tags').value = data ? (data.target_tags || []).join(', ') : '';
   document.getElementById('bl-completion-tag').value = data ? (data.completion_tag || '') : '';
+  // Where it lives (S1 04e-5): editing shows its site; a new or duplicated
+  // playbook picks one the user may create in.
+  sitePickFill(document.getElementById('bl-site'), document.getElementById('bl-site-field'),
+    editingId && data ? data.site_id : null, { editing: !!editingId });
+  // Pinned task versions (S1 decisions-06 item 16).
+  document.getElementById('bl-auto-sync').checked = !!(editingId && data && data.tasks_auto_sync);
+  const stale = (editingId && data && data.stale_steps) || [];
+  document.getElementById('bl-stale-note').hidden = !stale.length;
+  document.getElementById('bl-stale-text').textContent = stale.length
+    ? `Changed since this playbook was given ${stale.length === 1 ? 'it' : 'them'}: ${stale.join(', ')}. Steps still run the earlier version.`
+    : '';
   // Duplicating a playbook does not inherit the authorization: editingId is
   // null there, so the flag starts off and has to be re-confirmed. The
   // original's TOTP authorized that playbook, not a copy of it.
@@ -823,7 +834,10 @@ async function _savePlaybook() {
     allow_high_risk: allowHighRisk,
     inputs: _blInputs,
     flow_steps: flowSerialize(_editingTree),
+    tasks_auto_sync: document.getElementById('bl-auto-sync').checked,
   };
+  const siteId = sitePickValue(document.getElementById('bl-site'), document.getElementById('bl-site-field'));
+  if (siteId !== undefined) body.site_id = siteId;
   if (!body.name) return showToast('Give the playbook a name', 'error');
   const allSteps = flowSteps(_editingTree);
   if (!allSteps.length) return showToast('Add at least one task', 'error');
@@ -970,3 +984,16 @@ async function _confirmAutoEnroll(data) {
     { title: 'Run this on every matching host?',
       confirmText: 'Yes, turn auto-enroll on', danger: true, html: true });
 }
+
+/* Sync latest (S1 decisions-06 item 16): every step takes its task's
+ * current version, after the same checks a save runs. */
+document.addEventListener('click', async (e) => {
+  if (!e.target.closest('#bl-sync-latest')) return;
+  const id = document.getElementById('bl-editor-modal').dataset.editing;
+  if (!id) return;
+  try {
+    const row = await apiJson(`/api/v1/playbooks/${id}/sync-tasks/`, { method: 'POST', body: '{}' });
+    document.getElementById('bl-stale-note').hidden = !(row.stale_steps || []).length;
+    showToast('Steps now run the latest version of their tasks', 'success');
+  } catch (err) { showToast('Sync failed: ' + err.message, 'error'); }
+});

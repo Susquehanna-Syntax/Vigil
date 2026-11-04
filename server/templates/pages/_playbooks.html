@@ -92,6 +92,11 @@
     <input type="text" class="form-control" id="bl-name" placeholder="e.g. Linux bootstrap" maxlength="120">
     <div class="bl-hint">Tasks call it by this name: <code class="inline">- type: playbook / params: { name: "…" }</code></div>
   </div>
+  <div class="bl-field" id="bl-site-field" hidden>
+    <label for="bl-site">Site</label>
+    <select class="form-control" id="bl-site"></select>
+    <div class="bl-hint">Who may see and change it. A site's playbook runs on that site's hosts only.</div>
+  </div>
   <div class="bl-field">
     <label>Description <span style="color:var(--text-3);font-weight:400;">(optional)</span></label>
     <textarea class="form-control bl-desc" id="bl-desc" rows="3" placeholder="What this playbook does" maxlength="2000"></textarea>
@@ -103,6 +108,14 @@
       <aside class="bl-inspector" id="bl-inspector" aria-label="Selected step"></aside>
     </div>
     <div id="bl-flow-analysis"></div>
+  </div>
+  <div class="bl-field">
+    <label class="bl-check"><input type="checkbox" id="bl-auto-sync"> Use each task's latest version automatically</label>
+    <div class="bl-hint">Off, each step keeps the version of its task it was given, so an edit to a task by its owner does not change what this playbook runs until you sync it.</div>
+    <div class="muted-note" id="bl-stale-note" hidden style="margin-top:6px;">
+      <span id="bl-stale-text"></span>
+      <button class="btn btn-outline btn-xs" type="button" id="bl-sync-latest">Sync latest</button>
+    </div>
   </div>
   <div class="bl-field">
     <label>Runs on hosts tagged <span style="color:var(--text-3);font-weight:400;">(comma-separated; blank = every approved host)</span></label>
