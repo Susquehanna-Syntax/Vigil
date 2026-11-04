@@ -28,7 +28,15 @@ async function loadInstanceSettings(force) {
 function _isRenderAll() {
   document.querySelectorAll('.is-group').forEach((host) => {
     const group = (_isGroups || []).find((g) => g.id === host.dataset.group);
-    if (group) host.innerHTML = _isRenderGroup(group);
+    if (!group) return;
+    host.innerHTML = _isRenderGroup(group);
+    // A site admin reads install-wide groups and changes nothing (S1 04h).
+    // The Account pane is theirs, so only this group is greyed there.
+    if (group.read_only) {
+      host.querySelectorAll('input, select, textarea, button').forEach((el) => { el.disabled = true; });
+      host.querySelector('.is-actions').innerHTML =
+        '<span class="muted">Only an administrator of the whole install can change these.</span>';
+    }
   });
 }
 

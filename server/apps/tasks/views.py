@@ -1987,10 +1987,18 @@ def _rollout_wave_progress(rollout: PatchRollout, user=None) -> list:
     from .models import PatchWave
 
     SUCCESS_STATES = (Task.State.COMPLETED, Task.State.SKIPPED)
+    from .rollout import _waves_in_group
+
+    # A rollout walks one ladder, its site's or the global one (S1 04h): show
+    # those waves, not every ladder's. Disabled rungs stay listed.
     waves = PatchWave.objects.order_by("order", "id")
     if (rollout.wave_group_tag or "").strip():
-        # A rollout walks one ladder: show its waves, not every ladder's.
         waves = waves.filter(group_tag_rows__key=rollout.wave_group_tag.strip().lower()).distinct()
+    walked = _waves_in_group(rollout.wave_group_tag, rollout.site_id)
+    if walked.filter(site_id__isnull=False).exists():
+        waves = waves.filter(site_id=rollout.site_id)
+    else:
+        waves = waves.filter(site_id__isnull=True)
     waves = list(waves)
     per_wave: dict = {}
     from .authz import trim_run, visible_runs, visible_tasks
@@ -2254,7 +2262,7 @@ def rollout_resume(request, rollout_id):
 # the next rollout touches.
 
 
-def _wave_order_conflict(order, group_tags, exclude_pk=None):
+def _wave_order_conflict(order, group_tags, exclude_pk=None, site_id=None):
     """The wave already sitting at *order* on any of these ladders, or None.
 
     Order used to be unique in the database. It cannot be any more: two ladders
@@ -2265,7 +2273,8 @@ def _wave_order_conflict(order, group_tags, exclude_pk=None):
     from .models import PatchWave
 
     wanted = {str(t).strip().lower() for t in (group_tags or []) if str(t).strip()}
-    candidates = PatchWave.objects.filter(order=order)
+    # Ladders are per site (S1 04h): West's wave 1 and Lab's do not collide.
+    candidates = PatchWave.objects.filter(order=order, site_id=site_id)
     if exclude_pk is not None:
         candidates = candidates.exclude(pk=exclude_pk)
     for other in candidates.prefetch_related("group_tag_rows"):
@@ -2284,7 +2293,7 @@ def wave_collection(request):
     from .rollout_serializers import PatchWaveSerializer
 
     if request.method == "GET":
-        waves = PatchWave.objects.prefetch_related("group_tag_rows")
+        waves = _visible_waves(request.user).prefetch_related("group_tag_rows")
         if group_tag := (request.query_params.get("group") or "").strip():
             waves = waves.filter(group_tag_rows__key=group_tag.lower())
         return Response(
@@ -2292,12 +2301,17 @@ def wave_collection(request):
 
     if not IsAdmin().has_permission(request, None):
         return Response({"detail": "Admin role required."}, status=403)
+    # S1 04h: a site admin builds their own site's ladder; global waves are
+    # an instance admin's.
+    site_id, denied = scoping.site_for_write(request.user, request.data.get("site_id"))
+    if denied:
+        return denied
     serializer = PatchWaveSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(serializer.errors, status=400)
     clash = _wave_order_conflict(
         serializer.validated_data.get("order"),
-        serializer.validated_data.get("group_tags") or [])
+        serializer.validated_data.get("group_tags") or [], site_id=site_id)
     if clash is not None:
         where = (f"the {clash.group_tag_rows.first().name} group"
                  if clash.group_tag_rows.exists() else "the ungrouped waves")
@@ -2306,8 +2320,14 @@ def wave_collection(request):
                        f"already exists in {where} ({clash.name})."]},
             status=400,
         )
-    serializer.save()
+    serializer.save(site_id=site_id)
     return Response(serializer.data, status=201)
+
+
+def _visible_waves(user):
+    """Global waves and those of the sites *user* can see (S1 04h)."""
+    from .models import PatchWave
+    return scoping.filter_by_site_field(PatchWave.objects.all(), user, field="site_id")
 
 
 @api_view(["GET", "PATCH", "DELETE"])
@@ -2317,13 +2337,16 @@ def wave_detail(request, wave_id):
     from .models import PatchRollout, PatchWave
     from .rollout_serializers import PatchWaveSerializer
 
-    wave = get_object_or_404(PatchWave, pk=wave_id)
+    wave = get_object_or_404(_visible_waves(request.user), pk=wave_id)
 
     if request.method == "GET":
         return Response(PatchWaveSerializer(wave).data)
 
     if not IsAdmin().has_permission(request, None):
         return Response({"detail": "Admin role required."}, status=403)
+    denied = scoping.write_denied(request.user, wave)
+    if denied:
+        return denied
 
     if request.method == "DELETE":
         # Refuse while a rollout is standing on this wave. Deleting it would
@@ -2690,7 +2713,8 @@ def wave_group_collection(request):
     from .models import PatchWave
 
     counts = {}
-    for wave in PatchWave.objects.prefetch_related("group_tag_rows"):
+    waves = _visible_waves(request.user)
+    for wave in waves.prefetch_related("group_tag_rows"):
         for tag in wave.group_tag_rows.all():
             entry = counts.setdefault(
                 tag.key, {"tag": tag.name, "waves": 0, "enabled_waves": 0})
@@ -2698,7 +2722,7 @@ def wave_group_collection(request):
             if wave.enabled:
                 entry["enabled_waves"] += 1
 
-    ungrouped = PatchWave.objects.filter(group_tag_rows__isnull=True).count()
+    ungrouped = waves.filter(group_tag_rows__isnull=True).count()
     return Response({
         "groups": sorted(counts.values(), key=lambda g: g["tag"].lower()),
         "ungrouped_waves": ungrouped,

@@ -33,8 +33,10 @@ SCOPED_LIST_ENDPOINTS = {
     "/api/v1/alerts/": lambda r: r["host_hostname"],
     "/api/v1/playbooks/": lambda r: r["name"],
     "/api/v1/automations/": lambda r: r["name"],
-    "/api/v1/jackil/tickets/": lambda r: r["host"],
 }
+# /api/v1/jackil/tickets/ left this list in S1 04h: the Jackil pane is hidden
+# from site admins (it sits with the integration keys), so a site admin gets a
+# 403 there, not a scoped list. vigil/test_settings_split.py pins that.
 
 
 class CrossSiteLeakTests(TestCase):
@@ -123,7 +125,8 @@ class CrossSiteLeakTests(TestCase):
         registry still matches it, so the leak test above cannot quietly stop
         covering something.
         """
-        expected = {"hosts", "alerts", "playbooks", "automations", "tickets"}
+        # tickets left in S1 04h: the Jackil pane is hidden from site admins.
+        expected = {"hosts", "alerts", "playbooks", "automations"}
         covered = {u.strip("/").split("/")[-1] for u in SCOPED_LIST_ENDPOINTS}
         self.assertEqual(covered, expected)
 

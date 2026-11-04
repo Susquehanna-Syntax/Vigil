@@ -10,7 +10,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from apps.accounts.permissions import IsAdmin
+from apps.accounts.permissions import IsAdmin, SettingsPage
 
 from .models import AgentBinary
 
@@ -187,7 +187,7 @@ def install_ps1(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAdmin])
+@permission_classes([IsAdmin, SettingsPage("distribution")])
 @parser_classes([MultiPartParser])
 def upload_agent(request, platform):
     """Upload a new agent binary for the given platform (manual override).

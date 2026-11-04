@@ -55,8 +55,11 @@ class PatchWaveSerializer(serializers.ModelSerializer):
         model = PatchWave
         fields = [
             "id", "name", "order", "tags", "group_tags", "validation_hours",
-            "enabled", "host_count", "exclusive_host_count",
+            "enabled", "host_count", "exclusive_host_count", "site_id",
         ]
+        # Set on create by the view (site_for_write); moving a wave between
+        # ladders of different sites is delete and re-create.
+        read_only_fields = ["site_id"]
 
     def get_host_count(self, obj) -> int:
         from .models import wave_host_ids
@@ -69,7 +72,7 @@ class PatchWaveSerializer(serializers.ModelSerializer):
         # wave of an unrelated ladder is not claimed from this one. A wave on
         # no ladder competes with the other ungrouped waves.
         keys = list(obj.group_tag_rows.values_list("id", flat=True)) if obj.pk else []
-        siblings = PatchWave.objects.filter(enabled=True)
+        siblings = PatchWave.objects.filter(enabled=True, site_id=obj.site_id)
         siblings = (siblings.filter(group_tag_rows__in=keys).distinct()
                     if keys else siblings.filter(group_tag_rows__isnull=True))
         plan = rollout_wave_plan(list(siblings.order_by("order", "id")))

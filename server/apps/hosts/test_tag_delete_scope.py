@@ -22,7 +22,9 @@ class TagDeleteCountsEverySiteTests(TestCase):
         lab = Site.objects.create(name="Lab", slug="lab")
         self.dana = get_user_model().objects.create_user("dana", password="x")
         UserSiteRole.objects.create(user=self.dana, site=west, role=Role.ADMIN)
-        self.tag = Tag.objects.create(name="gpu", key="gpu")
+        # West's own tag (S1 04h), still on a Lab host from before tags were
+        # per site: the guard must count that use too.
+        self.tag = Tag.objects.create(name="gpu", key="gpu", site_id=west.pk)
         host = Host.objects.create(hostname="lab-1", agent_token="tok-lab-1")
         HostSiteAssignment.objects.create(host=host, site=lab)
         host.tag_rows.add(self.tag)

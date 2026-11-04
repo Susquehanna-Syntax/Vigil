@@ -95,6 +95,9 @@ class PlaybookAndTagGuardTests(TestCase):
         self.assertIn("already exists", resp.json()["detail"])
 
     def test_tag_rename_rewrites_every_sites_playbooks(self):
+        # West's own tag (S1 04h: a global one is an instance admin's), which a
+        # Lab playbook named before tags were per site: the rename reaches it.
+        type(self.tag).objects.filter(pk=self.tag.pk).update(site_id=self.west.pk)
         resp = self.client.patch(f"/api/v1/tags/{self.tag.id}/", data=json.dumps({"name": "frontend"}),
                                  content_type="application/json")
         self.assertEqual(resp.status_code, 200, resp.content)

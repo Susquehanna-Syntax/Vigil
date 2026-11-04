@@ -14,7 +14,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.accounts.permissions import IsAdmin
+from apps.accounts.permissions import IsAdmin, IsInstanceAdmin
 from apps.instance import config
 from vigil import scoping
 
@@ -299,7 +299,7 @@ def _sync_in_background():
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated, IsAdmin])
+@permission_classes([IsAuthenticated, IsAdmin, IsInstanceAdmin])  # install-wide (S1 04h)
 def enable(request):
     """Turn the catalog on (or off with {"enabled": false}) and start a sync."""
     on = request.data.get("enabled", True) is not False
@@ -313,7 +313,7 @@ def enable(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated, IsAdmin])
+@permission_classes([IsAuthenticated, IsAdmin, IsInstanceAdmin])  # install-wide (S1 04h)
 def sync_now(request):
     """Re-fetch the package lists now. An index whose last run failed would
     otherwise wait for tomorrow's, and the Store page shows that failure."""

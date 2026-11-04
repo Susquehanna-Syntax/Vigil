@@ -7,7 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from vigil import scoping
-from apps.accounts.permissions import IsAdmin
+from apps.accounts.permissions import IsAdmin, SettingsPage
 from apps.hosts.models import Host
 
 from .models import VulnFinding, VulnScan, VulnScoreHistory, VulnSummary
@@ -282,7 +282,7 @@ def scan_create(request, host_id):
 
 
 @api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated, IsAdmin])
+@permission_classes([IsAuthenticated, IsAdmin, SettingsPage("retention")])
 def vuln_data(request):
     """GET: what the local OSV / KEV / EPSS store holds. POST (multipart
     ``bundle``): load an offline bundle — how an air-gapped install updates."""

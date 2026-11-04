@@ -143,12 +143,17 @@ def civil_settings_api(request):
     # site-scoped Viewer carrying is_staff was refused by IsAdmin everywhere in
     # Vigil and accepted right here, on the endpoint that can replace the key
     # every SSO login is verified against.
-    from apps.accounts.permissions import OWNER, Role, role_of
+    from apps.accounts.permissions import OWNER, Role, role_of, settings_allows
 
     user = getattr(request, "user", None)
     if not (user and user.is_authenticated
             and role_of(user) in (Role.ADMIN, OWNER)):
         return JsonResponse({"detail": "Administrator access required."}, status=403)
+    # S1 04h: Shared Identity holds the SSO tenant secret, so a site admin
+    # neither reads nor changes it; only an instance admin does.
+    if not settings_allows(user, "identity", request.method):
+        return JsonResponse({"detail": "Only an administrator of the whole install can see this."},
+                            status=403)
 
     cfg = CivilConfig.current()
     data = {}

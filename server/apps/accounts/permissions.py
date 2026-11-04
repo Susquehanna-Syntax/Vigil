@@ -8,7 +8,7 @@ Core never imports apps_business directly; per-site rows are read through
 vigil.scoping, so an AGPL-only build resolves exactly as Vigil did before
 sites existed.
 """
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 from .models import Role
 
@@ -175,6 +175,88 @@ class IsAdmin(BasePermission):
 
     def has_permission(self, request, view):
         return role_of(request.user) in (Role.ADMIN, OWNER)
+
+
+#: What a *site* admin may do on each install-wide settings page (S1 04h,
+#: decisions-06 item 11, spec section 7). "full": as an instance admin would;
+#: "greyed": read it (secrets redacted), change nothing; "hidden": not even
+#: read it, because it holds secrets. Instance admins (a Global admin row, or
+#: an admin profile with no site rows) are full everywhere. The settings UI
+#: draws the same map, served by /api/v1/accounts/settings-access/.
+SETTINGS_ACCESS = {
+    "account": "full",
+    "agents": "full",
+    "api": "full",
+    "users": "greyed",
+    "sites": "greyed",
+    "branding": "greyed",
+    "display": "greyed",
+    "retention": "greyed",
+    "relays": "greyed",
+    "distribution": "greyed",
+    "images": "greyed",
+    "license": "greyed",
+    "email": "hidden",
+    "ai": "hidden",
+    "identity": "hidden",
+    "directory": "hidden",
+    "scanners": "hidden",
+    "jackil": "hidden",
+}
+
+
+def settings_access(user, page) -> str:
+    """How *user* may use settings page *page*: "full", "greyed" or "hidden".
+
+    Only a site admin is narrowed by the map. Everyone else answers "full"
+    here and is gated by the page's own checks (IsAdmin and the like), so
+    this never opens a page to a viewer and never closes one to an instance
+    admin."""
+    from vigil import scoping
+
+    if page not in SETTINGS_ACCESS:
+        raise KeyError(f"unknown settings page {page!r}")
+    if role_of(user) not in (Role.ADMIN, OWNER) or scoping.is_instance_admin(user):
+        return "full"
+    return SETTINGS_ACCESS[page]
+
+
+def SettingsPage(page):
+    """A DRF permission for an endpoint behind settings page *page*: greyed
+    lets a site admin read, hidden refuses them outright. Use alongside the
+    endpoint's own role check, which still decides everyone else."""
+    if page not in SETTINGS_ACCESS:
+        raise KeyError(f"unknown settings page {page!r}")
+
+    class _SettingsPage(BasePermission):
+        message = "Only an administrator of the whole install can change this."
+        settings_page = page
+
+        def has_permission(self, request, view):
+            return settings_allows(request.user, page, request.method)
+
+    _SettingsPage.__name__ = f"SettingsPage_{page}"
+    return _SettingsPage
+
+
+def settings_allows(user, page, method) -> bool:
+    """The check behind SettingsPage, for views that gate by hand."""
+    access = settings_access(user, page)
+    if access == "full":
+        return True
+    return access == "greyed" and method in SAFE_METHODS
+
+
+class IsInstanceAdmin(BasePermission):
+    """An administrator of the whole install (scoping.is_instance_admin): for
+    install-wide pages outside the settings table, such as the audit log,
+    which records every site's activity."""
+
+    message = "Only an administrator of the whole install can see this."
+
+    def has_permission(self, request, view):
+        from vigil import scoping
+        return scoping.is_instance_admin(request.user)
 
 
 class IsOperator(BasePermission):

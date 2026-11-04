@@ -495,6 +495,12 @@ class Tag(models.Model):
     kind = models.CharField(max_length=8, choices=Kind.choices, default=Kind.MANUAL)
     description = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
+    #: The site that owns this tag (S1 04h, decisions-06 item 18), or None for
+    #: a global tag. Names stay unique across the install (``key``), so the
+    #: manager is deliberately not site-scoped: a lookup by name must find a
+    #: clash whatever site holds it. Who may see, apply and change a tag is
+    #: enforced in the tag views (apps/hosts/views.py, tag_visible).
+    site_id = models.UUIDField(null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["key"]

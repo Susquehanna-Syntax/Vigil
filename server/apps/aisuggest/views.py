@@ -14,7 +14,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.accounts.permissions import IsAdmin, IsOperator
+from apps.accounts.permissions import IsAdmin, IsOperator, SettingsPage
 from apps.alerts.models import Alert
 from apps.tasks.spec import SpecError, parse_and_validate
 from vigil import scoping
@@ -49,7 +49,7 @@ def _provider_dict(p: "AiProvider", *, with_key_state=False) -> dict:
 
 
 @api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated, IsAdmin])
+@permission_classes([IsAuthenticated, IsAdmin, SettingsPage("ai")])
 def providers(request):
     if request.method == "GET":
         return Response(
@@ -74,7 +74,7 @@ def providers(request):
 
 
 @api_view(["PATCH", "DELETE"])
-@permission_classes([IsAuthenticated, IsAdmin])
+@permission_classes([IsAuthenticated, IsAdmin, SettingsPage("ai")])
 def provider_detail(request, provider_id):
     p = get_object_or_404(AiProvider, pk=provider_id)
     if request.method == "DELETE":
@@ -122,7 +122,7 @@ _TEST_PROMPT = (
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated, IsAdmin])
+@permission_classes([IsAuthenticated, IsAdmin, SettingsPage("ai")])
 def provider_test(request, provider_id):
     """Ask the provider for one real suggestion and report what came back:
     how long it took, whether Vigil accepted the task, and why not."""

@@ -13,7 +13,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 
-from apps.accounts.permissions import IsAdmin, can
+from apps.accounts.permissions import IsAdmin, can, SettingsPage
 from apps.metrics.models import MetricPoint
 
 logger = logging.getLogger(__name__)
@@ -1043,7 +1043,7 @@ def transport_ack(request):
 
 
 @api_view(["GET", "POST"])
-@permission_classes([IsAdmin])
+@permission_classes([IsAdmin, SettingsPage("directory")])
 def ad_config(request):
     """Read or update the AD import settings. Admin-only — the config holds
     directory bind credentials and controls what gets imported.
@@ -1089,7 +1089,7 @@ def ad_config(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAdmin])
+@permission_classes([IsAdmin, SettingsPage("directory")])
 def ad_sync_now(request):
     """Trigger an AD import synchronously (small fleets) or via Celery."""
     from .tasks import import_ad_computers
@@ -1120,8 +1120,24 @@ def host_tags(request, host_id):
     raw = request.data.get("tags")
     if not isinstance(raw, list):
         return Response({"error": "tags must be a list"}, status=status.HTTP_400_BAD_REQUEST)
-    host.tags = _normalize_tags(raw)
+    from .models import Tag
+    wanted = _normalize_tags(raw)
+    keys = {Tag.canonical_key(t) for t in wanted if isinstance(t, str)}
+    existing = {t.key: t for t in Tag.objects.filter(key__in=keys)}
+    # S1 04h: a host carries global tags and its own site's, never another
+    # site's. The message names the tag (the caller typed it) but not the
+    # site that owns it.
+    unfit = sorted(t.name for t in existing.values() if not _tag_fits_host(t, host))
+    if unfit:
+        return Response({"error": f"Not available to this host: {', '.join(unfit)}"},
+                        status=status.HTTP_400_BAD_REQUEST)
+    host.tags = wanted
     host.save(update_fields=["tags", "updated_at"])
+    # A tag first typed here by a site admin belongs to the host's site; an
+    # instance admin's stays global, as every tag was before.
+    host_site = scoping.site_id_of(host)
+    if host_site is not None and not scoping.is_instance_admin(request.user):
+        Tag.objects.filter(key__in=keys - set(existing), site_id__isnull=True).update(site_id=host_site)
     return Response(HostSerializer(host).data)
 
 
@@ -1533,11 +1549,16 @@ def tag_collection(request):
     from .models import Tag
 
     if request.method == "GET":
-        tags = Tag.objects.all().prefetch_related("hosts")
+        tags = _visible_tags(request.user).prefetch_related("hosts")
         return Response([_tag_payload(t) for t in tags])
 
     if not IsAdmin().has_permission(request, None):
         return Response({"detail": "Admin role required."}, status=403)
+    # S1 04h: a site admin makes tags in one of their sites; a global tag is
+    # an instance admin's.
+    site_id, denied = scoping.site_for_write(request.user, request.data.get("site_id"))
+    if denied:
+        return denied
 
     name = str(request.data.get("name") or "")
     if not name.strip():
@@ -1555,10 +1576,25 @@ def tag_collection(request):
         return Response({"name": [f"A tag matching {name!r} already exists."]},
                         status=400)
     tag, _ = Tag.get_or_create_by_name(name)
+    tag.site_id = site_id
     if request.data.get("description"):
         tag.description = str(request.data["description"])[:255]
-        tag.save(update_fields=["description"])
+    tag.save(update_fields=["site_id", "description"])
     return Response(_tag_payload(tag), status=201)
+
+
+def _visible_tags(user):
+    """Global tags and the tags of the sites *user* can see (S1 04h). The
+    Tag manager is not site-scoped (names are unique install-wide), so the
+    views filter by hand."""
+    from .models import Tag
+    return scoping.filter_by_site_field(Tag.objects.all(), user, field="site_id")
+
+
+def _tag_fits_host(tag, host) -> bool:
+    """May *tag* go on *host*: a global tag, or one of the host's own site."""
+    owner = scoping.owning_site_id(tag)
+    return owner is None or owner == scoping.site_id_of(host)
 
 
 def _count_everywhere(related_manager) -> int:
@@ -1580,6 +1616,7 @@ def _tag_payload(tag) -> dict:
         "description": tag.description,
         "host_count": tag.hosts.count(),
         "editable": tag.kind == tag.Kind.MANUAL,
+        "site_id": str(tag.site_id) if scoping.owning_site_id(tag) else None,
     }
 
 
@@ -1589,12 +1626,17 @@ def tag_detail(request, tag_id):
     """Read, rename, or delete a tag."""
     from .models import Tag
 
-    tag = get_object_or_404(Tag, pk=tag_id)
+    # Another site's tag answers 404, as if it did not exist (S1 04h).
+    tag = get_object_or_404(_visible_tags(request.user), pk=tag_id)
     if request.method == "GET":
         return Response(_tag_payload(tag))
 
     if not IsAdmin().has_permission(request, None):
         return Response({"detail": "Admin role required."}, status=403)
+    # A site's tag is its admins' to change; a global one an instance admin's.
+    denied = scoping.write_denied(request.user, tag)
+    if denied:
+        return denied
 
     if tag.kind != Tag.Kind.MANUAL:
         return Response(

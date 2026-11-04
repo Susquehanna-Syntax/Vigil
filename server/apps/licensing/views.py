@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.accounts.permissions import IsAdmin
+from apps.accounts.permissions import IsAdmin, SettingsPage, settings_allows
 from vigil import licensing
 from vigil.editions import FEATURE_TIERS
 
@@ -19,6 +19,9 @@ def license_view(request):
     if request.method == "POST":
         if not IsAdmin().has_permission(request, None):
             return Response({"detail": IsAdmin.message}, status=403)
+        # S1 04h: a site admin reads this page and changes nothing (license).
+        if not settings_allows(request.user, "license", request.method):
+            return Response({"detail": "Only an administrator of the whole install can change this."}, status=403)
         state = licensing.set_license(request.data.get("license", ""))
         if state.status is licensing.Status.INVALID:
             return Response(
@@ -34,7 +37,7 @@ def license_view(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated, IsAdmin])
+@permission_classes([IsAuthenticated, IsAdmin, SettingsPage("license")])
 def license_refresh(request):
     """Refresh now: after a renewal, or to see why the last one failed."""
     outcome = licensing.refresh_license(force=True)

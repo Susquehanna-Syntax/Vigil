@@ -363,6 +363,12 @@ class PatchWave(TagRowSyncMixin, models.Model):
     validation_hours = models.PositiveIntegerField(default=24)
     enabled = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    #: The site whose ladder this wave is on (S1 04h, decisions-06 item 18),
+    #: or None for a global wave. A site's rollout walks its own site's waves
+    #: when the ladder has any there, else the global ones (rollout.py,
+    #: _waves_in_group). The manager is not site-scoped: the beat and the
+    #: order checks see every ladder; the wave views filter by hand.
+    site_id = models.UUIDField(null=True, blank=True, db_index=True)
 
     def __str__(self):
         return f"wave:{self.name} ({self.order})"

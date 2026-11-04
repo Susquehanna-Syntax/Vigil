@@ -89,6 +89,7 @@ FILLERS = {
     "rollout_id": lambda o: o["rollout"].id,
     "batch": lambda o: o["rollout"].batch,
     "wave_id": lambda o: o["wave"].id,
+    "tag_id": lambda o: o["tag"].id,
     "device_id": lambda o: o["device"].id,
     "definition_id": lambda o: o["definition"].id,
     "stack_id": lambda o: o["stack"].id,
@@ -125,7 +126,6 @@ ALLOWLIST = {
     "api/v1/sites/grants/<int:grant_id>/": "instance admins only; a module grant belongs to no site",
     # Instance-wide like tags: a wave ladder or an integration key belongs to no
     # site. Who may change them is the settings split (S1 04h).
-    "api/v1/waves/<int:wave_id>/": "instance-wide; a wave ladder belongs to no site",
     "api/v1/jackil/integration-keys/<int:pk>/devices/": "instance-wide; an integration key belongs to no site",
     "api/v1/jackil/integration-keys/<int:pk>/revoke/": "instance-wide; an integration key belongs to no site",
     "api/v1/about/": "build and edition metadata, identical for every site",
@@ -222,7 +222,6 @@ ALLOWLIST = {
     "api/v1/tasks/definitions/<uuid:definition_id>/archive/": "instance-wide; a task definition carries no site",
     "api/v1/tasks/definitions/<uuid:definition_id>/fork/": "instance-wide; a task definition carries no site",
     "api/v1/tasks/definitions/<uuid:definition_id>/refusals/": "instance-wide; a task definition carries no site",
-    "api/v1/tags/<int:tag_id>/": "instance-wide; a tag carries no site",
     "api/v1/relays/<uuid:relay_id>/": "instance-wide; a relay carries no site",
     "api/v1/relays/<uuid:relay_id>/rotate-key/": "instance-wide; a relay carries no site",
     "api/v1/reprovision/profiles/<uuid:profile_id>/": "instance-wide; an install profile carries no site",
@@ -595,7 +594,8 @@ class SiteIsolationTests(TestCase):
                 deadline=timezone.now() + timedelta(hours=1),
             )
 
-            o["wave"] = PatchWave.objects.create(name=f"shared-{shared}-wave", order=1)
+            # Per site since S1 04h: each site's ladder and tags are its own.
+            o["wave"] = PatchWave.objects.create(name=f"{tag}-wave", order=1, site_id=site.pk)
             o["rollout"] = PatchRollout.objects.create(
                 definition=o["definition"], host_ids=[str(o["host"].id)], site_id=site.pk,
                 batch=uuid.uuid4(), current_wave=o["wave"], state=PatchRollout.State.HALTED,
@@ -613,7 +613,7 @@ class SiteIsolationTests(TestCase):
                 first_seen=timezone.now(),
             )
 
-            o["tag"] = Tag.objects.create(name=f"shared-{shared}-tag")
+            o["tag"] = Tag.objects.create(name=f"{tag}-tag", site_id=site.pk)
             o["host"].tags = [o["tag"].name]
             o["host"].save()
 

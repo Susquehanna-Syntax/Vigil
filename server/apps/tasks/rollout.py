@@ -41,25 +41,34 @@ def _now():
     return now()
 
 
-def _waves_in_group(group_tag):
+def _waves_in_group(group_tag, site_id=None):
     """Enabled waves on one ladder, or all of them when no ladder is named.
 
     Matched against the tag rows rather than the strings, so it folds case the
     same way every other tag comparison in Vigil does.
+
+    Per site (S1 04h): a site's rollout (*site_id*) walks that site's waves on
+    the ladder when it has any, else the global ones; a fleet-wide rollout
+    walks the global waves only. One ladder is never a mix of the two, so its
+    order stays the one its owners set.
     """
     qs = PatchWave.objects.filter(enabled=True)
     tag = (group_tag or "").strip()
     if tag:
         qs = qs.filter(group_tag_rows__key=tag.lower()).distinct()
-    return qs
+    if site_id is not None:
+        own = qs.filter(site_id=site_id)
+        if own.exists():
+            return own
+    return qs.filter(site_id__isnull=True)
 
 
-def _first_enabled_wave(group_tag=""):
-    return _waves_in_group(group_tag).order_by("order", "id").first()
+def _first_enabled_wave(group_tag="", site_id=None):
+    return _waves_in_group(group_tag, site_id).order_by("order", "id").first()
 
 
-def _next_enabled_wave(after_order, group_tag=""):
-    return (_waves_in_group(group_tag)
+def _next_enabled_wave(after_order, group_tag="", site_id=None):
+    return (_waves_in_group(group_tag, site_id)
             .filter(order__gt=after_order)
             .order_by("order", "id")
             .first())
@@ -178,10 +187,6 @@ def start_rollout(
     if min_results_before_halt < 1:
         raise ValueError("min_results_before_halt must be at least 1")
     wave_group_tag = (wave_group_tag or "").strip()
-    if _first_enabled_wave(wave_group_tag) is None:
-        raise ValueError(
-            f"no enabled patch waves tagged {wave_group_tag!r}"
-            if wave_group_tag else "no enabled patch waves")
     if (definition is None) == (playbook is None):
         raise ValueError("a rollout needs exactly one of a definition or a playbook")
     if inputs is not None and not isinstance(inputs, dict):
@@ -196,6 +201,10 @@ def start_rollout(
         if site_id is not None and site_id != theirs:
             raise ValueError("that playbook belongs to another site")
         site_id = theirs
+    if _first_enabled_wave(wave_group_tag, site_id) is None:
+        raise ValueError(
+            f"no enabled patch waves tagged {wave_group_tag!r}"
+            if wave_group_tag else "no enabled patch waves")
     with including_from(site_id):
         return _start_rollout(definition, user, failure_threshold_pct, min_results_before_halt,
                               playbook, wave_group_tag, host_ids, inputs, site_id)
@@ -230,7 +239,7 @@ def _start_rollout(definition, user, failure_threshold_pct, min_results_before_h
         inputs=inputs or {},
         host_ids=[str(h) for h in host_ids] if host_ids is not None else None,
         site_id=site_id,
-        current_wave=_first_enabled_wave(wave_group_tag),
+        current_wave=_first_enabled_wave(wave_group_tag, site_id),
         failure_threshold_pct=failure_threshold_pct,
         min_results_before_halt=min_results_before_halt,
         started_at=ts,
@@ -354,7 +363,7 @@ def _dispatch_wave(rollout: PatchRollout, spec: dict) -> int:
 
     # The ladder's own plan: a wave of another ladder claims no host from it.
     plan = rollout_wave_plan(
-        list(_waves_in_group(rollout.wave_group_tag).order_by("order", "id"))
+        list(_waves_in_group(rollout.wave_group_tag, rollout.site_id).order_by("order", "id"))
     )
     host_ids = plan.get(rollout.current_wave.id, [])
     if rollout.host_ids is not None:
@@ -514,7 +523,7 @@ def _evaluate_locked(rollout: PatchRollout) -> None:
             return
 
     # 7. Soaked — find the next enabled wave, dispatch, keep running.
-    nxt = _next_enabled_wave(wave.order, rollout.wave_group_tag)
+    nxt = _next_enabled_wave(wave.order, rollout.wave_group_tag, rollout.site_id)
     if nxt is None:
         rollout.state = PatchRollout.State.COMPLETED
         rollout.finished_at = _now()

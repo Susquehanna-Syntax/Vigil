@@ -81,9 +81,14 @@ async function loadTags() {
 async function createTag() {
   const name = prompt('Name for the new tag:');
   if (!name || !name.trim()) return;
+  // Tags belong to a site or are global (S1 04h).
+  const site = await sitePickChoose('Site for the new tag');
+  if (site === false) return;
+  const body = { name: name.trim() };
+  if (site !== undefined) body.site_id = site;
   try {
     await apiJson('/api/v1/tags/', {
-      method: 'POST', body: JSON.stringify({ name: name.trim() }),
+      method: 'POST', body: JSON.stringify(body),
     });
     showToast('Tag created', 'success');
     await loadTags();

@@ -4936,3 +4936,9 @@ a.jk-card { text-decoration: none; }
 .ss-site:hover { background: var(--wash); }
 .ss-site[hidden] { display: none; }
 .ss-site input:disabled + span { color: var(--text-2); }
+
+/* Settings a site admin may read but not change (S1 04h, vigil-settings-access.js). */
+.settings-nav-item[hidden] { display: none; }
+.settings-greyed-note { font-size: 13px; color: var(--text-2); background: var(--wash);
+  border-radius: var(--r-sm); padding: 10px 14px; margin: 0 0 18px; }
+.settings-greyed :is(input, select, textarea, button):disabled { opacity: 0.55; cursor: not-allowed; }

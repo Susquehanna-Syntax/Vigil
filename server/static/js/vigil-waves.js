@@ -104,6 +104,9 @@ function openWaveEditor(waveId) {
   document.getElementById('wave-enabled').checked = w ? w.enabled : true;
   const groupInput = document.getElementById('wave-group-tags');
   if (groupInput) groupInput.value = w ? (w.group_tags || []).join(', ') : '';
+  const siteSel = document.getElementById('wave-site');
+  sitePickFill(siteSel, document.getElementById('wave-site-field'), w ? w.site_id : null,
+    { editing: !!w }).then(() => { siteSel.disabled = !!w; });
   _updateWaveMatchPreview();
   document.getElementById('wave-editor-overlay').classList.add('open');
   document.getElementById('wave-editor-modal').classList.add('open');
@@ -149,6 +152,10 @@ async function saveWave() {
   };
   payload.group_tags = ((document.getElementById('wave-group-tags') || {}).value || '')
     .split(',').map(t => t.trim()).filter(Boolean);
+  if (!_editingWaveId) {
+    const siteId = sitePickValue(document.getElementById('wave-site'), document.getElementById('wave-site-field'));
+    if (siteId !== undefined) payload.site_id = siteId;
+  }
   if (!payload.name) { showToast('Give the wave a name', 'error'); return; }
   if (!payload.tags.length) { showToast('A wave needs at least one tag', 'error'); return; }
 

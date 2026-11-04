@@ -12,7 +12,7 @@ from django.conf import settings as django_settings
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from apps.accounts.permissions import IsAdmin
+from apps.accounts.permissions import IsAdmin, SettingsPage, settings_access
 from vigil import hooks
 
 from . import config, registry
@@ -42,6 +42,24 @@ def _field(key: registry.Key) -> dict:
     return out
 
 
+#: The settings page each group is drawn on, for the site-admin split (S1
+#: 04h). Session limits sit on the Account pane but are install-wide, so a
+#: site admin gets them the way Retention & Limits reads: greyed.
+GROUP_PAGE = {
+    "greenbone": "scanners",
+    "nessus": "scanners",
+    "jackil": "jackil",
+    "email": "email",
+    "retention": "retention",
+    "locale": "display",
+    "sessions": "retention",
+}
+
+
+def _group_access(user, gid):
+    return settings_access(user, GROUP_PAGE[gid])
+
+
 @api_view(["GET", "POST"])
 @permission_classes([IsAdmin])
 def instance_settings(request):
@@ -55,10 +73,14 @@ def instance_settings(request):
     if request.method == "GET":
         groups = []
         for gid, label, blurb in registry.GROUPS:
+            access = _group_access(request.user, gid)
+            if access == "hidden":
+                continue  # a site admin is not told what a secret-holding page holds
             groups.append({
                 "id": gid,
                 "label": label,
                 "help": blurb,
+                "read_only": access == "greyed",
                 "fields": [_field(k) for k in registry.KEYS if k.group == gid],
             })
         return Response({"groups": groups})
@@ -73,6 +95,11 @@ def instance_settings(request):
     if unknown:
         return Response({"detail": f"unknown settings: {', '.join(sorted(unknown))}"},
                         status=400)
+    # S1 04h: only an instance admin changes install-wide settings.
+    if any(_group_access(request.user, registry.BY_NAME[n].group) != "full"
+           for n in list(values) + list(to_clear)):
+        return Response({"detail": "Only an administrator of the whole install can change this."},
+                        status=403)
 
     errors = {}
     for name, raw in values.items():
@@ -111,7 +138,7 @@ def instance_settings(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAdmin])
+@permission_classes([IsAdmin, SettingsPage("email")])
 def test_integration(request):
     """Prove the saved credentials actually work, before a scan needs them.
 

@@ -18,7 +18,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.accounts.permissions import IsAdmin, can
+from apps.accounts.permissions import IsAdmin, can, settings_allows
 from vigil import hooks, scoping
 
 from . import jobs
@@ -127,6 +127,9 @@ def image_pull(request):
     """
     if not IsAdmin().has_permission(request, None):
         return Response({"error": "Admin required"}, status=403)
+    # S1 04h: a site admin reads this page and changes nothing (images).
+    if not settings_allows(request.user, "images", request.method):
+        return Response({"detail": "Only an administrator of the whole install can change this."}, status=403)
 
     catalog_id = request.data.get("catalog_id")
     if catalog_id:
@@ -270,6 +273,9 @@ def image_upload(request):
     """
     if not IsAdmin().has_permission(request, None):
         return Response({"error": "Admin required"}, status=403)
+    # S1 04h: a site admin reads this page and changes nothing (images).
+    if not settings_allows(request.user, "images", request.method):
+        return Response({"detail": "Only an administrator of the whole install can change this."}, status=403)
 
     # Cheap enough to check before a single byte of the (possibly
     # multi-gigabyte) file is streamed anywhere.
@@ -394,6 +400,9 @@ def image_list(request):
     # matrix — same reasoning as agent_dist.upload_agent.
     if not IsAdmin().has_permission(request, None):
         return Response({"error": "Admin required"}, status=403)
+    # S1 04h: a site admin reads this page and changes nothing (images).
+    if not settings_allows(request.user, "images", request.method):
+        return Response({"detail": "Only an administrator of the whole install can change this."}, status=403)
     serializer = OSImageSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     image = serializer.save(created_by=request.user)
@@ -410,6 +419,9 @@ def image_detail(request, image_id):
         return Response(OSImageSerializer(image).data)
     if not IsAdmin().has_permission(request, None):
         return Response({"error": "Admin required"}, status=403)
+    # S1 04h: a site admin reads this page and changes nothing (images).
+    if not settings_allows(request.user, "images", request.method):
+        return Response({"detail": "Only an administrator of the whole install can change this."}, status=403)
     tree_dir = image_root() / str(image.id)
     try:
         image.delete()

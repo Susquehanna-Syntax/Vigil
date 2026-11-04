@@ -520,13 +520,26 @@ def capabilities_index(request):
                      sorted(CAPABILITIES.items())})
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def settings_access_index(request):
+    """Each settings page and how this user may use it (S1 04h): the
+    settings UI hides and greys panes from this, and the server enforces the
+    same map (permissions.SETTINGS_ACCESS)."""
+    from .permissions import SETTINGS_ACCESS, settings_access
+    return Response({page: settings_access(request.user, page) for page in SETTINGS_ACCESS})
+
+
 @api_view(["GET", "POST"])
 def users_index(request):
     from vigil import licensing
 
-    from .permissions import IsAdmin
+    from .permissions import IsAdmin, settings_allows
     if not IsAdmin().has_permission(request, None):
         return Response({"detail": IsAdmin.message}, status=403)
+    # S1 04h: a site admin reads this page and changes nothing (users).
+    if not settings_allows(request.user, "users", request.method):
+        return Response({"detail": "Only an administrator of the whole install can change this."}, status=403)
 
     User = get_user_model()
     if request.method == "GET":
@@ -559,9 +572,12 @@ def users_index(request):
 
 @api_view(["PATCH"])
 def user_role(request, user_id):
-    from .permissions import IsAdmin
+    from .permissions import IsAdmin, settings_allows
     if not IsAdmin().has_permission(request, None):
         return Response({"detail": IsAdmin.message}, status=403)
+    # S1 04h: a site admin reads this page and changes nothing (users).
+    if not settings_allows(request.user, "users", request.method):
+        return Response({"detail": "Only an administrator of the whole install can change this."}, status=403)
     User = get_user_model()
     try:
         user = User.objects.get(pk=user_id)
@@ -577,10 +593,13 @@ def user_detail(request, user_id):
     account (that is what makes you an admin), and you cannot delete the last
     administrator (it would lock the install out of settings and enrollment)."""
     from .models import Role
-    from .permissions import IsAdmin, role_of
+    from .permissions import IsAdmin, role_of, settings_allows
 
     if not IsAdmin().has_permission(request, None):
         return Response({"detail": IsAdmin.message}, status=403)
+    # S1 04h: a site admin reads this page and changes nothing (users).
+    if not settings_allows(request.user, "users", request.method):
+        return Response({"detail": "Only an administrator of the whole install can change this."}, status=403)
     User = get_user_model()
     try:
         target = User.objects.get(pk=user_id)

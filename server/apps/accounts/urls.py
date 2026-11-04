@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("capabilities/", views.capabilities_index, name="capabilities-index"),
+    path("settings-access/", views.settings_access_index, name="settings-access"),
     path("users/", views.users_index, name="users-index"),
     path("users/<int:user_id>/", views.user_detail, name="user-detail"),
     path("users/<int:user_id>/role/", views.user_role, name="user-role"),

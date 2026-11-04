@@ -13,7 +13,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.accounts.permissions import IsAdmin, visible_site_ids
+from apps.accounts.permissions import IsAdmin, visible_site_ids, SettingsPage
 from vigil import scoping
 
 from . import client
@@ -111,7 +111,7 @@ def jackil_widget(request, kind):
 
 
 @api_view(["GET"])
-@permission_classes([IsAdmin])
+@permission_classes([IsAdmin, SettingsPage("jackil")])
 def recent_tickets(request):
     # Scoped by site, like the alert list these rows came from. IsAdmin asks
     # the unscoped question — role_of(user) answers with a scoped user's
@@ -166,7 +166,7 @@ def _visible_keys(user):
 
 
 @api_view(["GET", "POST"])
-@permission_classes([IsAdmin])
+@permission_classes([IsAdmin, SettingsPage("jackil")])
 def integration_keys(request):
     """List the visible keys, or mint one. The mint response is the only
     place the plaintext ever appears; a list never carries a ``key``."""
@@ -181,7 +181,7 @@ def integration_keys(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAdmin])
+@permission_classes([IsAdmin, SettingsPage("jackil")])
 def revoke_integration_key(request, pk: int):
     """Revoke a key: 404 for one the caller cannot see, so the answer to
     "does that id exist somewhere else" is the same as the answer to "no".
@@ -196,7 +196,7 @@ def revoke_integration_key(request, pk: int):
 
 
 @api_view(["POST"])
-@permission_classes([IsAdmin])
+@permission_classes([IsAdmin, SettingsPage("jackil")])
 def set_key_device_write(request, pk: int):
     """The one setting a key has, toggled by an admin, never by the key.
 

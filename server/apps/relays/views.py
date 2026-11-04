@@ -12,7 +12,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.accounts.permissions import IsAdmin
+from apps.accounts.permissions import IsAdmin, SettingsPage
 from apps.accounts.totp import require_totp_confirmation
 from vigil.licensing import relays_allowed, upgrade_body
 
@@ -69,7 +69,7 @@ def _over_limit() -> Response:
 
 
 @api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated, IsAdmin])
+@permission_classes([IsAuthenticated, IsAdmin, SettingsPage("relays")])
 def relay_index(request):
     if request.method == "GET":
         serving = {relay.id for relay in in_service()}
@@ -118,7 +118,7 @@ def relay_index(request):
 
 
 @api_view(["PATCH", "DELETE"])
-@permission_classes([IsAuthenticated, IsAdmin])
+@permission_classes([IsAuthenticated, IsAdmin, SettingsPage("relays")])
 def relay_detail(request, relay_id):
     relay = get_object_or_404(Relay, pk=relay_id)
     payload = request.data or {}
@@ -196,7 +196,7 @@ def relay_detail(request, relay_id):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated, IsAdmin])
+@permission_classes([IsAuthenticated, IsAdmin, SettingsPage("relays")])
 def relay_rotate_key(request, relay_id):
     relay = get_object_or_404(Relay, pk=relay_id)
     if relay.kind == Relay.Kind.BUILTIN:
