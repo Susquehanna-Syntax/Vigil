@@ -152,13 +152,13 @@ jobs:
     env:
       DJANGO_SECRET_KEY: ci-e2e-secret-key-not-a-real-one-0123456789
       DJANGO_DEBUG: "false"
-      VIGIL_PUBLIC_URL: http://127.0.0.1:8010
+      VIGIL_PUBLIC_URL: http://localhost:8010
       VIGIL_SIGNING_KEY_SEED: "rVVG5N5frRQYzPFzKradn0wIPW6+elhaDwPLUafvCNA="
       POSTGRES_DB: vigil_e2e
       POSTGRES_USER: vigil
       POSTGRES_PASSWORD: vigil
       POSTGRES_HOST: localhost
-      E2E_BASE: http://127.0.0.1:8010
+      E2E_BASE: http://localhost:8010
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -197,7 +197,7 @@ jobs:
       - name: Start the server
         working-directory: server
         run: |
-          python manage.py runserver 127.0.0.1:8010 --insecure --noreload > ../e2e-server.log 2>&1 &
+          python manage.py runserver localhost:8010 --insecure --noreload > ../e2e-server.log 2>&1 &
           for _ in $(seq 1 30); do curl -sf "$E2E_BASE/api/v1/health/" && break; sleep 2; done
           curl -sf "$E2E_BASE/api/v1/health/" || { cat ../e2e-server.log; exit 1; }
       - name: Run the browser suite

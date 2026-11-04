@@ -26,7 +26,9 @@ import traceback
 
 from playwright.sync_api import sync_playwright
 
-BASE = os.environ.get("E2E_BASE", "http://127.0.0.1:8010")
+# localhost, not 127.0.0.1: WebAuthn refuses an IP address as the relying
+# party, so the security-key flow needs a name.
+BASE = os.environ.get("E2E_BASE", "http://localhost:8010")
 OUT = sys.argv[1] if len(sys.argv) > 1 else "/tmp/e2e"
 TOTP = "JBSWY3DPEHPK3PXP"          # matches seed.py
 PASSWORD = "e2e-pass-123"
@@ -80,9 +82,13 @@ class Session:
         pg.fill("input[name=password]", PASSWORD)
         pg.click("button[type=submit]")
         pg.wait_for_load_state("networkidle")
-        if "verify" in pg.url or pg.locator("input[name=code]").count():
+        # A code another process spent in this window is refused as a replay,
+        # so one more valid code is tried before calling it a failure.
+        for _ in range(2):
+            if "verify" not in pg.url:
+                break
             pg.fill("input[name=code]", totp_code(self.user))
-            pg.click("form button[type=submit]")
+            pg.locator("form button[type=submit]").last.click()
             pg.wait_for_load_state("networkidle")
         assert "/login" not in pg.url and "verify" not in pg.url, f"still at {pg.url}"
         pg.add_style_tag(content="*{transition:none!important;animation:none!important}")
@@ -184,6 +190,58 @@ def deploy_task(s: Session):
     assert not problems, problems
 
 
+def virtual_authenticator(session):
+    """A software security key in this browser context (Chrome DevTools
+    WebAuthn domain): it answers every ceremony with user presence and
+    verification, the way a tapped key does."""
+    cdp = session.ctx.new_cdp_session(session.page)
+    cdp.send("WebAuthn.enable")
+    found = cdp.send("WebAuthn.addVirtualAuthenticator", {"options": {
+        "protocol": "ctap2", "transport": "usb", "hasResidentKey": True,
+        "hasUserVerification": True, "isUserVerified": True}})
+    return cdp, found["authenticatorId"]
+
+
+@flow("add a security key, then sign in with it instead of a code")
+def security_key(s: Session, browser):
+    cdp, auth = virtual_authenticator(s)
+    s.go("settings")
+    s.page.click('.settings-nav-item[data-pane="identity"]')
+    s.page.click("#security-keys-add-btn")
+    s.answer_totp()                                   # adding a factor costs the one you have
+    s.page.wait_for_selector("#prompt-modal.open")
+    s.page.fill("#prompt-input", "e2e virtual key")
+    s.page.click("#prompt-ok")
+    s.page.wait_for_timeout(2500)
+    keys = cdp.send("WebAuthn.getCredentials", {"authenticatorId": auth})["credentials"]
+    assert keys, "the ceremony left no credential on the authenticator"
+    s.shot("security-key-added")
+    assert "e2e virtual key" in s.page.inner_text("body"), "the new key is not listed"
+
+    # A fresh browser holding the same key signs in with a tap, no code.
+    fresh = Session(browser, s.user)
+    fresh_cdp, fresh_auth = virtual_authenticator(fresh)
+    for cred in keys:
+        fresh_cdp.send("WebAuthn.addCredential", {"authenticatorId": fresh_auth, "credential": cred})
+    pg = fresh.page
+    pg.goto(BASE + "/login/", wait_until="networkidle")
+    pg.fill("input[name=username]", s.user)
+    pg.fill("input[name=password]", PASSWORD)
+    pg.click("button[type=submit]")
+    pg.wait_for_selector("#login-key-btn")
+    pg.click("#login-key-btn")
+    deadline = time.time() + 15
+    while "/login" in pg.url and time.time() < deadline:
+        pg.wait_for_timeout(250)
+    assert "/login" not in pg.url, f"the key did not sign in: {pg.url}"
+    pg.wait_for_load_state("networkidle")
+    fresh.shot("signed-in-with-key")
+    assert fresh.api("/api/v1/hosts/") is not None
+    problems = fresh.drain() + s.drain()
+    assert not problems, problems
+    fresh.ctx.close()
+
+
 @flow("a site admin sees only their own site")
 def site_view(s: Session):
     s.go("inventory")
@@ -208,6 +266,7 @@ def main():
         every_page(admin)
         approve_host(admin)
         deploy_task(admin)
+        security_key(admin, browser)
         try:
             dana = Session(browser, "e2e-dana").login()
         except AssertionError:
