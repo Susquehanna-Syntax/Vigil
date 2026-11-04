@@ -127,6 +127,91 @@ jobs:
         working-directory: server
         run: node --test jstests/
 
+  # ── Browser end-to-end ─────────────────────────────────────────────────────
+  # A real browser against a server started the way production starts
+  # (DEBUG=false: the real CSP header, the cached template loader), on
+  # Postgres. scripts/e2e/seed.py builds the fixture, scripts/e2e/run.py drives
+  # sign-in with TOTP, every page under the CSP, host approval, a task deploy
+  # and the site-scoped view. Screenshots are kept as an artifact either way.
+  e2e:
+    name: Browser end-to-end
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_DB: vigil_e2e
+          POSTGRES_USER: vigil
+          POSTGRES_PASSWORD: vigil
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U vigil"
+          --health-interval=5s
+          --health-retries=10
+    env:
+      DJANGO_SECRET_KEY: ci-e2e-secret-key-not-a-real-one-0123456789
+      DJANGO_DEBUG: "false"
+      VIGIL_PUBLIC_URL: http://127.0.0.1:8010
+      VIGIL_SIGNING_KEY_SEED: "rVVG5N5frRQYzPFzKradn0wIPW6+elhaDwPLUafvCNA="
+      POSTGRES_DB: vigil_e2e
+      POSTGRES_USER: vigil
+      POSTGRES_PASSWORD: vigil
+      POSTGRES_HOST: localhost
+      E2E_BASE: http://127.0.0.1:8010
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: server/requirements.txt
+      - name: Is the Business token available
+        id: business
+        env:
+          TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
+        run: echo "available=$([ -n "$TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      # The token is given to this download step only, never to a step that
+      # runs pip, the server or the browser.
+      - name: Download the Business wheel
+        if: steps.business.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
+        run: |
+          gh release download "v$(cat business.lock)" -R Susquehanna-Syntax/Vigil_Business \
+            -p '*.whl' -D business-wheels
+      - name: Install
+        env:
+          BUSINESS: ${{ steps.business.outputs.available }}
+        run: |
+          pip install -q -r server/requirements.txt playwright==1.63.0
+          if [ "$BUSINESS" = true ]; then
+            pip install -q --no-deps --no-index --find-links business-wheels "vigil-business==$(cat business.lock)"
+          fi
+          python -m playwright install --with-deps chromium
+      - name: Build and seed the database
+        working-directory: server
+        run: |
+          python manage.py migrate --noinput
+          python manage.py shell < ../scripts/e2e/seed.py
+      - name: Start the server
+        working-directory: server
+        run: |
+          python manage.py runserver 127.0.0.1:8010 --insecure --noreload > ../e2e-server.log 2>&1 &
+          for _ in $(seq 1 30); do curl -sf "$E2E_BASE/api/v1/health/" && break; sleep 2; done
+          curl -sf "$E2E_BASE/api/v1/health/" || { cat ../e2e-server.log; exit 1; }
+      - name: Run the browser suite
+        run: python scripts/e2e/run.py e2e-screens
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screens
+          path: |
+            e2e-screens
+            e2e-server.log
+          retention-days: 14
+
   # ── Upgrade from the previous release ─────────────────────────────────────
   # Migrations that only ever ran on an empty database are how upgrades break.
   # This job builds the previous release's schema with that release's own code
@@ -539,7 +624,7 @@ jobs:
   publish:
     name: Publish Docker Image
     runs-on: ubuntu-latest
-    needs: [test, js-tests, upgrade, build-agent, smoke-macos-install]
+    needs: [test, js-tests, e2e, upgrade, build-agent, smoke-macos-install]
     if: github.event_name == 'push'
     # Third-party actions in this job are pinned to commits, not tags: it holds
     # the Docker Hub token and can mint signing identities, so a moved tag
