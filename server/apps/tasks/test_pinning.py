@@ -112,3 +112,36 @@ class PinnedVersionTests(TestCase):
         self.assertFalse(resp.json()["task_auto_sync"])
         self.edit_task("nginx")
         self.assertTrue(Automation.objects.get(pk=resp.json()["id"]).task_stale)
+
+
+class AutoSyncNeedsTheSyncChecksTests(TestCase):
+    """Turning auto-sync on runs whatever the task becomes, so it must pass the
+    checks Sync latest applies; otherwise it is the way around them."""
+
+    def setUp(self):
+        self.admin = get_user_model().objects.create_user("ida", password="x")
+        UserProfile.objects.create(user=self.admin, role=Role.ADMIN)
+        self.task = TaskDefinition.objects.create(owner=self.admin, name="Check", yaml_source=_yaml("cron"),
+                                                  parsed_spec=parse_and_validate(_yaml("cron")))
+        self.client.force_login(self.admin)
+
+    def _patch(self, url, body):
+        return self.client.patch(url, data=json.dumps(body), content_type="application/json")
+
+    def test_a_playbook_cannot_follow_a_task_that_became_high_risk(self):
+        from apps.playbooks.views import _validate_and_set_steps
+        pb = Playbook.objects.create(name="pb")
+        self.assertIsNone(_validate_and_set_steps(pb, [str(self.task.pk)]))
+        TaskDefinition.objects.filter(pk=self.task.pk).update(risk_level="high")
+        resp = self._patch(f"/api/v1/playbooks/{pb.pk}/", {"tasks_auto_sync": True})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertFalse(Playbook.objects.get(pk=pb.pk).tasks_auto_sync)
+        self.assertEqual(self.client.post(f"/api/v1/playbooks/{pb.pk}/sync-tasks/").status_code, 400)
+
+    def test_an_automation_cannot_follow_a_high_risk_task_without_allow(self):
+        auto = Automation.objects.create(name="a", trigger="schedule", target="all", task_definition=self.task,
+                                         task_snapshot=pinning.snapshot(self.task))
+        TaskDefinition.objects.filter(pk=self.task.pk).update(risk_level="high")
+        resp = self._patch(f"/api/v1/automations/{auto.pk}/", {"task_auto_sync": True})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertFalse(Automation.objects.get(pk=auto.pk).task_auto_sync)

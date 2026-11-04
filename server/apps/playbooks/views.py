@@ -323,7 +323,11 @@ def playbook_detail(request, playbook_id):
     if "description" in data:
         playbook.description = (data["description"] or "").strip()
     if "tasks_auto_sync" in data:
-        playbook.tasks_auto_sync = bool(data["tasks_auto_sync"])
+        want = bool(data["tasks_auto_sync"])
+        if want and not playbook.tasks_auto_sync:
+            if refused := _latest_refusal(playbook, "follow the latest version of"):
+                return refused
+        playbook.tasks_auto_sync = want
     if "completion_tag" in data:
         playbook.completion_tag = (data["completion_tag"] or "").strip()
     if "auto_enroll" in data:
@@ -368,6 +372,25 @@ def playbook_detail(request, playbook_id):
     return Response(_row(playbook))
 
 
+def _latest_refusal(playbook, verb: str) -> Response | None:
+    """A 400 when some step's *current* task version could not be saved into
+    this playbook (eligibility, overrides, inputs): checked before syncing and
+    before auto-sync starts following edits, so neither is a way around the
+    rules a save enforces (decisions-06 item 16)."""
+    from apps.tasks.spec import validate_params_override
+
+    from .inputs import validate_step_inputs
+
+    for step in playbook.steps.select_related("definition"):
+        d = step.definition
+        ok, why = eligible(d, allow_high_risk=playbook.allow_high_risk)
+        err = (None if ok else why) or validate_params_override(d.parsed_spec or {}, step.params_override or {}) \
+            or validate_step_inputs(d, step.inputs or {}, playbook.inputs)
+        if err:
+            return Response({"detail": f"Cannot {verb} {d.name}: {err}"}, status=400)
+    return None
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def playbook_sync_tasks(request, playbook_id):
@@ -386,14 +409,9 @@ def playbook_sync_tasks(request, playbook_id):
         pk=playbook_id)
     if denied := scoping.write_denied(request.user, playbook):
         return denied
+    if refused := _latest_refusal(playbook, "sync"):
+        return refused
     steps = list(playbook.steps.select_related("definition"))
-    for step in steps:
-        d = step.definition
-        ok, why = eligible(d, allow_high_risk=playbook.allow_high_risk)
-        err = (None if ok else why) or validate_params_override(d.parsed_spec or {}, step.params_override or {}) \
-            or validate_step_inputs(d, step.inputs or {}, playbook.inputs)
-        if err:
-            return Response({"detail": f"Cannot sync {d.name}: {err}"}, status=400)
     with transaction.atomic():
         for step in steps:
             step.definition_snapshot = snapshot(step.definition)

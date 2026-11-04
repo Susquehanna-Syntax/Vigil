@@ -201,7 +201,14 @@ def _apply(a: Automation, data) -> str | None:
             a.task_snapshot = snapshot(chosen)
         a.task_definition = chosen
     if "task_auto_sync" in data:
-        a.task_auto_sync = bool(data["task_auto_sync"])
+        want = bool(data["task_auto_sync"])
+        # Following edits runs whatever the task becomes, so it needs what a
+        # sync needs: a high-risk task only with Allow high-risk (item 16).
+        if want and not a.task_auto_sync and a.task_definition is not None \
+                and a.task_definition.risk_level == "high" and not a.allow_high_risk:
+            return (f"The latest {a.task_definition.name} is high risk: turn on Allow "
+                    "high-risk in this automation before following its edits")
+        a.task_auto_sync = want
     wanted_playbook = None
     if "playbook_name" in data:
         wanted_playbook = (data["playbook_name"] or "").strip()
