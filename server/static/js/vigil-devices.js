@@ -52,6 +52,8 @@ function openDeviceModal(id) {
   document.getElementById('device-modal-title').textContent = d ? 'Edit Device' : 'Add Device';
   document.getElementById('device-id').value = d ? d.id : '';
   document.getElementById('device-name').value = d ? (d.name || '') : '';
+  sitePickFill(document.getElementById('device-site'), document.getElementById('device-site-field'),
+    d ? d.site_id : null, { editing: !!d });
   document.getElementById('device-type').value = d ? (d.device_type || 'other') : 'other';
   document.getElementById('device-ip').value = d ? (d.ip_address || '') : '';
   document.getElementById('device-mac').value = d ? (d.mac_address || '') : '';
@@ -111,6 +113,8 @@ async function saveDevice() {
   const id = document.getElementById('device-id').value;
   const body = _deviceFormBody();
   if (!body.name) { showToast('Name is required', 'error'); return; }
+  const siteId = sitePickValue(document.getElementById('device-site'), document.getElementById('device-site-field'));
+  if (siteId !== undefined) body.site_id = siteId;
   try {
     if (id) {
       await apiJson(`/api/v1/hosts/devices/${id}/`, { method: 'PATCH', body: JSON.stringify(body) });

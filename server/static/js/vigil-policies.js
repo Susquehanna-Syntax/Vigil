@@ -191,6 +191,8 @@ async function openPolicyEditor(policyId) {
   polState.rules = p ? p.app_rules.map(r => ({ ...r })) : [];
   _polEl('pol-title').textContent = p ? p.name : 'New policy';
   _polEl('pol-name').value = p ? p.name : '';
+  sitePickFill(_polEl('pol-site'), _polEl('pol-site-field'),
+    p ? p.site_id : null, { editing: !!p });
   _polEl('pol-tags').value = p ? p.target_tags.join(', ') : '';
   _polEl('pol-hour').value = p ? p.cron_hour : '2';
   _polEl('pol-minute').value = p ? p.cron_minute : '0';
@@ -308,6 +310,8 @@ function _policyPayload() {
 
 async function savePolicy() {
   const body = _policyPayload();
+  const siteId = sitePickValue(_polEl('pol-site'), _polEl('pol-site-field'));
+  if (siteId !== undefined) body.site_id = siteId;
   const current = polState.rows.find(r => r.id === polState.editing);
   const wantHighRisk = _polEl('pol-high-risk').checked;
   if (wantHighRisk !== (current ? current.allow_high_risk : false)) {

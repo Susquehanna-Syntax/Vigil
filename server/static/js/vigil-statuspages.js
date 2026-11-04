@@ -110,7 +110,10 @@ function _wireCard(p) {
 document.addEventListener('DOMContentLoaded', () => {
   const nb = document.getElementById('sp-new-btn');
   if (nb) nb.addEventListener('click', async () => {
-    try { await apiJson('/api/v1/status-pages/', { method: 'POST', body: '{}' }); loadStatusPages(); }
+    const site = await sitePickChoose('New status page');
+    if (site === false) return;
+    const body = site === undefined ? {} : { site_id: site };
+    try { await apiJson('/api/v1/status-pages/', { method: 'POST', body: JSON.stringify(body) }); loadStatusPages(); }
     catch (e) { showToast(e.message.includes('402') ? 'Additional pages are a Business feature' : e.message, 'error'); }
   });
 });

@@ -341,6 +341,8 @@ function _openAutoEditor(a) {
   document.getElementById('auto-editor-title').textContent = a ? 'Edit automation' : 'New automation';
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
   set('auto-name', a ? a.name : '');
+  sitePickFill(document.getElementById('auto-site'), document.getElementById('auto-site-field'),
+    a ? a.site_id : null, { editing: !!a });
   set('auto-trigger', a
     ? (a.trigger === 'schedule' ? 'schedule' : a.event)
     : (Object.keys(_autoEvents)[0] || 'schedule'));
@@ -426,6 +428,8 @@ async function _saveAutomation() {
     enabled: document.getElementById('auto-enabled').checked,
     allow_high_risk: document.getElementById('auto-allow-high-risk').checked,
   };
+  const siteId = sitePickValue(document.getElementById('auto-site'), document.getElementById('auto-site-field'));
+  if (siteId !== undefined) body.site_id = siteId;
   if (!body.name) return showToast('Name the automation', 'error');
   // Only asked when the flag is being turned on: codes are single-use, so
   // one spent on a no-op change is burned for nothing.

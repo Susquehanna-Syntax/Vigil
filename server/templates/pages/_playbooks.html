@@ -208,6 +208,11 @@
     <label>Name</label>
     <input type="text" class="form-control" id="auto-name" placeholder="e.g. Clean disk when critical" maxlength="120">
   </div>
+  <div class="bl-field" id="auto-site-field" hidden>
+    <label for="auto-site">Site</label>
+    <select class="form-control" id="auto-site"></select>
+    <div class="bl-hint">Who may see and change it.</div>
+  </div>
   <div class="bl-field">
     <label>When</label><span class="field-hint" tabindex="0" aria-label="About this field" data-hint="What starts this automation. Pick the thing that happens, or a schedule to run it on a clock.">?</span>
     {% comment %}
