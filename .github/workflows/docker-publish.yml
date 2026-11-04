@@ -101,6 +101,22 @@ jobs:
         working-directory: relay
         run: python -m unittest discover -s tests -t . -v
 
+  # ── JavaScript unit tests ──────────────────────────────────────────────────
+  # The dashboard's scripts are plain globals with no bundler, so the tests load
+  # them into a Node vm context (server/jstests/harness.mjs) and run on the
+  # built-in node:test runner: no npm install, no dependency to pin.
+  js-tests:
+    name: JavaScript unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run node:test
+        working-directory: server
+        run: node --test jstests/
+
   # ── Build agent binaries (parallel) ─────────────────────────────────────────
   # macOS is Apple Silicon only (2026.15): macos-latest is arm64, so the agent
   # builds natively there. Intel Macs are no longer a target.
@@ -406,7 +422,7 @@ jobs:
   publish:
     name: Publish Docker Image
     runs-on: ubuntu-latest
-    needs: [test, build-agent, smoke-macos-install]
+    needs: [test, js-tests, build-agent, smoke-macos-install]
     if: github.event_name == 'push'
     # Third-party actions in this job are pinned to commits, not tags: it holds
     # the Docker Hub token and can mint signing identities, so a moved tag
