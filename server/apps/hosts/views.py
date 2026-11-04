@@ -1131,13 +1131,25 @@ def host_tags(request, host_id):
     if unfit:
         return Response({"error": f"Not available to this host: {', '.join(unfit)}"},
                         status=status.HTTP_400_BAD_REQUEST)
-    host.tags = wanted
-    host.save(update_fields=["tags", "updated_at"])
     # A tag first typed here by a site admin belongs to the host's site; an
-    # instance admin's stays global, as every tag was before.
+    # instance admin's stays global, as every tag was before. The new rows
+    # are made here, with their site, before the save's tag sync looks them
+    # up: claiming them afterwards could claim a global tag someone else made
+    # in between (security review of 5c04a28).
     host_site = scoping.site_id_of(host)
-    if host_site is not None and not scoping.is_instance_admin(request.user):
-        Tag.objects.filter(key__in=keys - set(existing), site_id__isnull=True).update(site_id=host_site)
+    claim = host_site if host_site is not None and not scoping.is_instance_admin(request.user) else None
+    with transaction.atomic():
+        for name in wanted:
+            if not isinstance(name, str) or Tag.canonical_key(name) in existing or not name.strip():
+                continue
+            tag, created = Tag.objects.get_or_create(
+                key=Tag.canonical_key(name), defaults={"name": name, "site_id": claim})
+            if not created and not _tag_fits_host(tag, host):
+                transaction.set_rollback(True)
+                return Response({"error": f"Not available to this host: {tag.name}"},
+                                status=status.HTTP_400_BAD_REQUEST)
+        host.tags = wanted
+        host.save(update_fields=["tags", "updated_at"])
     return Response(HostSerializer(host).data)
 
 

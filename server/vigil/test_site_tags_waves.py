@@ -92,6 +92,26 @@ class SiteTagTests(_Sites):
         self.assertEqual(Tag.objects.get(key="brand-new").site_id, self.west.pk)
         self.assertIsNone(Tag.objects.get(key="prod").site_id)
 
+    def test_a_global_tag_made_in_between_is_not_claimed(self):
+        # Security review of 5c04a28: a global tag created after the view
+        # looked its names up must stay global, not become West's.
+        from unittest import mock
+
+        real = Tag.objects.filter
+
+        def racing_filter(*args, **kwargs):
+            if "key__in" in kwargs and not Tag.objects.all().filter(key="raced").exists():
+                result = real(*args, **kwargs)
+                list(result)                        # the view's lookup sees no "raced" row...
+                Tag.objects.create(name="raced")    # ...then an instance admin makes it, global
+                return result
+            return real(*args, **kwargs)
+
+        url = f"/api/v1/hosts/{self.hosts['west-1'].pk}/tags/"
+        with mock.patch.object(Tag.objects, "filter", side_effect=racing_filter):
+            self.assertEqual(self.send(self.dana, "patch", url, {"tags": ["raced"]}).status_code, 200)
+        self.assertIsNone(Tag.objects.get(key="raced").site_id)
+
     def test_an_instance_admins_new_tag_stays_global(self):
         url = f"/api/v1/hosts/{self.hosts['west-1'].pk}/tags/"
         self.assertEqual(self.send(self.ida, "patch", url, {"tags": ["fleet-new"]}).status_code, 200)
