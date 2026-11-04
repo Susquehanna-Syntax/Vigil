@@ -155,10 +155,16 @@ def _notify(task, signed: dict, result: dict) -> None:
         return
     channel_name = str(signed_params.get("channel", "")).strip()
 
+    from .notifications import _channels_for_host
+
     channels = NotificationChannel.objects.filter(enabled=True)
     if channel_name:
         channels = channels.filter(name=channel_name)
-        if not channels.exists():
+    # A task on a Lab host speaks only to global and Lab channels (S1 05b):
+    # naming a West channel must not carry a Lab machine's message there.
+    channels = _channels_for_host(channels, task.host)
+    if channel_name:
+        if not channels:
             logger.warning("send_notification on task %s: no enabled channel named %r",
                            task.pk, channel_name)
             return

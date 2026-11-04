@@ -87,6 +87,19 @@ _DISPATCHERS = {
 }
 
 
+def _channels_for_host(channels, host):
+    """The channels that may hear about *host* (S1 05b, decisions-06 item
+    18): global channels, and channels of the host's own site. A Lab alert
+    never reaches a West channel. Without a host only global channels hear."""
+    from vigil import scoping
+
+    channels = list(channels)
+    if host is None:
+        return [c for c in channels if scoping.site_id_of(c) is None]
+    scoping.prime_site_ids([host])
+    return [c for c in channels if scoping.within_site(c, host)]
+
+
 def dispatch_alert_notification(alert, event="firing"):
     """Send notification to all enabled channels for an alert event.
 
@@ -100,7 +113,7 @@ def dispatch_alert_notification(alert, event="firing"):
 
     payload = _build_payload(alert, event)
 
-    for channel in channels:
+    for channel in _channels_for_host(channels, alert.host):
         dispatcher = _DISPATCHERS.get(channel.kind)
         if dispatcher:
             dispatcher(channel, payload)
