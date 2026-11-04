@@ -170,31 +170,42 @@ jobs:
         env:
           TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
         run: echo "available=$([ -n "$TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-      - name: Build the previous release's database
+      # Only the two download steps ever see the token, as in the test job:
+      # never a step that runs pip, migrations or the app.
+      - name: Download the previous release's Business wheel
+        if: steps.business.outputs.available == 'true'
         env:
           GH_TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
+        run: |
+          version="$(cat ../previous/business.lock)"
+          gh release download "v${version}" -R Susquehanna-Syntax/Vigil_Business -p '*.whl' -D ../old-wheels
+      - name: Download this commit's Business wheel
+        if: steps.business.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
+        run: |
+          version="$(cat business.lock)"
+          gh release download "v${version}" -R Susquehanna-Syntax/Vigil_Business -p '*.whl' -D business-wheels
+      - name: Build the previous release's database
+        env:
           BUSINESS: ${{ steps.business.outputs.available }}
         run: |
           python -m venv ../old-venv
           ../old-venv/bin/pip install -q -r ../previous/server/requirements.txt
           if [ "$BUSINESS" = true ]; then
-            version="$(cat ../previous/business.lock)"
-            gh release download "v${version}" -R Susquehanna-Syntax/Vigil_Business -p '*.whl' -D ../old-wheels
-            ../old-venv/bin/pip install -q --no-deps --no-index --find-links ../old-wheels "vigil-business==${version}"
+            ../old-venv/bin/pip install -q --no-deps --no-index --find-links ../old-wheels \
+              "vigil-business==$(cat ../previous/business.lock)"
           fi
           cd ../previous/server
           ../../old-venv/bin/python manage.py migrate --noinput
           ../../old-venv/bin/python manage.py shell < "$GITHUB_WORKSPACE/scripts/upgrade-seed.py"
       - name: Migrate with this commit
         env:
-          GH_TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
           BUSINESS: ${{ steps.business.outputs.available }}
         run: |
           pip install -q -r server/requirements.txt
           if [ "$BUSINESS" = true ]; then
-            version="$(cat business.lock)"
-            gh release download "v${version}" -R Susquehanna-Syntax/Vigil_Business -p '*.whl' -D business-wheels
-            pip install -q --no-deps --no-index --find-links business-wheels "vigil-business==${version}"
+            pip install -q --no-deps --no-index --find-links business-wheels "vigil-business==$(cat business.lock)"
           fi
           cd server
           python manage.py migrate --noinput
