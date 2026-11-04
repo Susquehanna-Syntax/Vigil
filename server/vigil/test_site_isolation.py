@@ -122,6 +122,7 @@ FILLERS = {
 ALLOWLIST = {
     "api/v1/health/": "unauthenticated liveness probe; carries no rows",
     "api/v1/playbooks/library/<str:template_id>/use/": "a bundled template, identical for every site",
+    "api/v1/sites/grants/<int:grant_id>/": "instance admins only; a module grant belongs to no site",
     # Instance-wide like tags: a wave ladder or an integration key belongs to no
     # site. Who may change them is the settings split (S1 04h).
     "api/v1/waves/<int:wave_id>/": "instance-wide; a wave ladder belongs to no site",

@@ -251,6 +251,33 @@ def site_roles_for(user):
     return out
 
 
+def _reading_app():
+    """The module the active view reads as (reading_as), or None."""
+    scope = _scope.get()
+    return scope.app if scope is not None else None
+
+
+def global_site_id():
+    mods = _sites_models()
+    return _global_site_id(mods) if mods is not None else None
+
+
+def grants_for(user) -> set:
+    """The (app, verb) company-wide grants *user* holds (S1 04f). Memoised per
+    user scope, like site roles."""
+    mods = _sites_models()
+    if mods is None or not getattr(user, "pk", None) or not hasattr(mods, "ModuleGrant"):
+        return set()
+    scope = _scope.get()
+    key = ("grants", user.pk)
+    if scope is not None and scope.kind == "user" and key in scope.cache:
+        return scope.cache[key]
+    out = set(mods.ModuleGrant.objects.filter(user=user).values_list("app", "verb"))
+    if scope is not None and scope.kind == "user":
+        scope.cache[key] = out
+    return out
+
+
 def capabilities_for(user, site):
     """The set of (app, verb) pairs granted to `user` in `site`, or None when
     no UserSiteRole row backs them there.
@@ -287,7 +314,7 @@ def _global_site_id(mods):
     return glob
 
 
-def filter_by_site(qs, user, path="", cascade_global=False):
+def filter_by_site(qs, user, path="", cascade_global=False, app=None):
     """Narrow `qs` to what `user` may see, by site.
 
     `path` is the ORM path from the queryset's model to whatever carries the
@@ -307,7 +334,7 @@ def filter_by_site(qs, user, path="", cascade_global=False):
     """
     from apps.accounts.permissions import visible_site_ids
 
-    ids = visible_site_ids(user)
+    ids = visible_site_ids(user, app=app or _reading_app())
     if ids is None:
         return qs
     if not ids:
@@ -332,7 +359,7 @@ def filter_by_site(qs, user, path="", cascade_global=False):
     return qs.filter(q)
 
 
-def filter_by_site_field(qs, user, field="site_id"):
+def filter_by_site_field(qs, user, field="site_id", app=None):
     """Narrow `qs` by a plain site-id column (UpdatePolicy, StatusPage).
 
     Null in `field` means "no site restriction": the row applies everywhere,
@@ -342,7 +369,7 @@ def filter_by_site_field(qs, user, field="site_id"):
     """
     from apps.accounts.permissions import visible_site_ids
 
-    ids = visible_site_ids(user)
+    ids = visible_site_ids(user, app=app or _reading_app())
     if ids is None:
         return qs
     if not ids:
@@ -524,13 +551,13 @@ def writable_sites(user, app=None, verb=None) -> dict:
     return {"enabled": bool(sites), "global": may_global, "sites": sites}
 
 
-def host_in_scope(user, host) -> bool:
+def host_in_scope(user, host, app=None) -> bool:
     """May `user` reach this host at all? False means the caller should 404
     rather than 403 — a scoped user should not learn that a host exists in a
-    site they cannot see."""
+    site they cannot see. *app* lets a company-wide grant on that module count."""
     from apps.accounts.permissions import visible_site_ids
 
-    ids = visible_site_ids(user)
+    ids = visible_site_ids(user, app=app)
     if ids is None:
         return True
     if not ids:
@@ -616,6 +643,9 @@ class Scope:
     kind: str
     user: object = None
     reason: str = ""
+    #: The module a view reads as (S1 04f): a company-wide grant on it widens
+    #: that view's scoped queries, e.g. the inventory list reading hosts.
+    app: str | None = None
     #: Per-scope memo (a user's site roles), so a request that runs many
     #: scoped queries looks the roles up once. It dies with the scope.
     cache: dict = field(default_factory=dict, compare=False, repr=False)
@@ -732,6 +762,37 @@ def as_user(user):
     return _entered(Scope("user", user=lambda: user))
 
 
+@contextmanager
+def reading_as(app):
+    """Inside a user scope, read as module *app*: a company-wide grant on it
+    widens every scoped query in the block (S1 04f). Elsewhere a no-op."""
+    scope = _scope.get()
+    if scope is None or scope.kind != "user":
+        yield
+        return
+    with _entered(Scope("user", user=scope.user, app=app, cache=scope.cache)):
+        yield
+
+
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def module_view(app):
+    """Decorate a list view that belongs to module *app* (see reading_as).
+    Reads only: a grant is never a way to write, so a POST to the same view
+    keeps the user's own sites for every lookup it makes."""
+    def deco(fn):
+        @functools.wraps(fn)
+        def wrapper(request, *args, **kwargs):
+            if getattr(request, "method", "GET") not in _SAFE_METHODS:
+                return fn(request, *args, **kwargs)
+            with reading_as(app):
+                return fn(request, *args, **kwargs)
+        wrapper._vigil_module = app
+        return wrapper
+    return deco
+
+
 def _require_reason(reason):
     if not isinstance(reason, str) or not reason.strip():
         raise ValueError("crossing site scope needs a non-empty reason")
@@ -825,18 +886,21 @@ class SiteScopedManager(_dj_models.Manager):
     filtered; only queries started from this manager are.
     """
 
-    def __init__(self, *, path="", cascade_global=False, field=None):
+    def __init__(self, *, path="", cascade_global=False, field=None, app=None):
         super().__init__()
         self.site_path = path
         self.site_cascade_global = cascade_global
         self.site_field = field
+        #: The module these rows belong to: a company-wide grant on it (S1
+        #: 04f) widens reads. A view reading as another module overrides it.
+        self.site_app = app
 
     def deconstruct(self):
         # Managers are not used in migrations (use_in_migrations is False),
         # but deconstruct must still describe the constructor arguments.
         ret = list(super().deconstruct())
         ret[3] = {"path": self.site_path, "cascade_global": self.site_cascade_global,
-                  "field": self.site_field}
+                  "field": self.site_field, "app": self.site_app}
         return tuple(ret)
 
     def _config(self):
@@ -860,10 +924,11 @@ class SiteScopedManager(_dj_models.Manager):
         if user is None or not getattr(user, "is_authenticated", False):
             return qs.none()
         cfg = self._config()
+        app = scope.app or cfg.site_app
         if cfg.site_field:
-            return filter_by_site_field(qs, user, field=cfg.site_field)
+            return filter_by_site_field(qs, user, field=cfg.site_field, app=app)
         return filter_by_site(qs, user, path=cfg.site_path,
-                              cascade_global=cfg.site_cascade_global)
+                              cascade_global=cfg.site_cascade_global, app=app)
 
     def unscoped(self, *, reason):
         """Every row, whatever the scope. Say why: the reason is pinned with

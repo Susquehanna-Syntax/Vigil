@@ -22,6 +22,7 @@ from .serializers import (
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@scoping.module_view("vulns")
 def vuln_list(request):
     """Return vulnerability summaries, optionally filtered by host."""
     # Worst-first: ascending score puts negatives before positives.
@@ -58,6 +59,7 @@ def fleet_score(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@scoping.module_view("vulns")
 def finding_list(request):
     """List vulnerability findings, filterable by host / scanner / severity / state.
 
@@ -175,6 +177,7 @@ def score_history(request, host_id):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@scoping.module_view("vulns")
 def scan_list(request):
     """Return recent scan requests / runs, newest first.
 
@@ -309,6 +312,7 @@ def vuln_data(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@scoping.module_view("vulns")
 def fix_group_list(request):
     """Open findings grouped by the fix that resolves them, worst first."""
     from .fixview import fix_groups

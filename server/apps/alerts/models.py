@@ -55,7 +55,7 @@ class AlertRule(models.Model):
 class Alert(models.Model):
     """An instance of a fired alert."""
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="alerts")
 
     class State(models.TextChoices):
         FIRING = "firing", "Firing"

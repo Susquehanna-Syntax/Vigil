@@ -104,6 +104,7 @@ def _save(request, stack: ManagedStack, data, *, note: str) -> Response | None:
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
+@scoping.module_view("stacks")
 def stack_index(request):
     if request.method == "GET":
         qs = scoping.filter_by_site(ManagedStack.objects.select_related("host"), request.user,

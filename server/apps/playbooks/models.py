@@ -28,7 +28,7 @@ from vigil.scoping import SiteScopedManager
 
 class Playbook(TagRowSyncMixin, models.Model):
 
-    objects = SiteScopedManager(cascade_global=True)
+    objects = SiteScopedManager(cascade_global=True, app="playbooks")
 
     tag_sync_fields = [("target_tags", "target_tag_rows")]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

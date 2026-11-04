@@ -774,6 +774,7 @@ def checkin(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@scoping.module_view("hosts")
 def host_list(request):
     hosts = list(scoping.filter_by_site(
         Host.objects.exclude(status=Host.Status.REJECTED), request.user))
@@ -825,6 +826,7 @@ def tag_index(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@scoping.module_view("inventory")
 def inventory_list(request):
     """Inventory rows for every non-rejected host.
 
@@ -951,6 +953,7 @@ def docker_overview(request):
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
+@scoping.module_view("devices")
 def unmanaged_devices(request):
     """List every unmanaged device, or add one (manual network inventory)."""
     if request.method == "GET":

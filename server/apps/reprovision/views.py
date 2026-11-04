@@ -567,6 +567,7 @@ def preflight_check(request):
 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
+@scoping.module_view("reprovision")
 def job_list(request):
     if request.method == "GET":
         qs = scoping.filter_by_site(

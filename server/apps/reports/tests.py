@@ -495,10 +495,10 @@ class ScopingTests(ReportTestBase):
 
         real = widgets.scoping.filter_by_site
 
-        def only_playbooks(qs, user, path="", cascade_global=False):
+        def only_playbooks(qs, user, path="", cascade_global=False, app=None):
             if qs.model is Automation:
                 return qs.none()
-            return real(qs, user, path=path, cascade_global=cascade_global)
+            return real(qs, user, path=path, cascade_global=cascade_global, app=app)
 
         self.addsetattr(widgets.scoping, "filter_by_site", only_playbooks)
         data = widgets.compute(report, self.viewer, now=NOW)
@@ -517,10 +517,10 @@ class ScopingTests(ReportTestBase):
         hidden = self.hosts["hidden"]
         real = widgets.scoping.filter_by_site
 
-        def hide_one_host(qs, user, path="", cascade_global=False):
+        def hide_one_host(qs, user, path="", cascade_global=False, app=None):
             if qs.model is Task:
                 return qs.exclude(host=hidden)
-            return real(qs, user, path=path, cascade_global=cascade_global)
+            return real(qs, user, path=path, cascade_global=cascade_global, app=app)
 
         self.addsetattr(widgets.scoping, "filter_by_site", hide_one_host)
         per_day, outcomes, fires = (w["data"] for w in
@@ -532,7 +532,7 @@ class ScopingTests(ReportTestBase):
     def test_invisible_source_cannot_be_selected(self):
         pb = self.playbook("Patch web")
 
-        def nothing(qs, user, path="", cascade_global=False):
+        def nothing(qs, user, path="", cascade_global=False, app=None):
             return qs.none()
 
         self.addsetattr(scoping, "filter_by_site", nothing)
@@ -552,13 +552,13 @@ class ReportAccessTests(ReportTestBase):
 
         real = views.scoping.filter_by_site
 
-        def hide(qs, user, path="", cascade_global=False):
-            return real(qs, user, path=path, cascade_global=cascade_global).exclude(
+        def hide(qs, user, path="", cascade_global=False, app=None):
+            return real(qs, user, path=path, cascade_global=cascade_global, app=app).exclude(
                 pk__in=[h.pk for h in hidden if h._meta.model is qs.model])
 
         self.addsetattr(views.scoping, "filter_by_site", hide)
         self.addsetattr(__import__("apps.accounts.permissions", fromlist=["x"]),
-                        "visible_site_ids", lambda user: [1])
+                        "visible_site_ids", lambda user, app=None: [1])
 
     def test_another_sites_report_is_a_404(self):
         theirs = self.playbook("Their patch")

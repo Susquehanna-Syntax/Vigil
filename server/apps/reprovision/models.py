@@ -131,7 +131,7 @@ class InstallProfile(TagRowSyncMixin, models.Model):
 class RebuildJob(models.Model):
     """One host, one rebuild. See §3.3 for the state machine."""
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="reprovision")
 
     class State(models.TextChoices):
         PENDING = "pending", "Pending"

@@ -27,7 +27,7 @@ from vigil.scoping import SiteScopedManager
 
 class Automation(TagRowSyncMixin, models.Model):
 
-    objects = SiteScopedManager(cascade_global=True)
+    objects = SiteScopedManager(cascade_global=True, app="automations")
 
     tag_sync_fields = [("event_tags", "event_tag_rows"), ("target_tags", "target_tag_rows")]
     class Trigger(models.TextChoices):

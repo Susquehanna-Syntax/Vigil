@@ -31,7 +31,7 @@ class HostManager(SiteScopedManager):
 
 
 class Host(models.Model):
-    objects = HostManager()
+    objects = HostManager(app="hosts")
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending Enrollment"
@@ -210,7 +210,7 @@ class HostInventory(models.Model):
     appear as additional columns on the Inventory page.
     """
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="inventory")
 
     host = models.OneToOneField(Host, on_delete=models.CASCADE, related_name="inventory")
     mac_addresses = models.JSONField(default=dict, blank=True)
@@ -245,7 +245,7 @@ class DockerContainer(models.Model):
     reflects the latest snapshot rather than history.
     """
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="inventory")
 
     host = models.ForeignKey(
         Host, on_delete=models.CASCADE, related_name="docker_containers"
@@ -288,7 +288,7 @@ class DockerImage(models.Model):
     """One image on a host, from the check-in (14.3). Replaced wholesale on
     each check-in that carries ``docker_resources``, like DockerContainer."""
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="inventory")
 
     host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="docker_images")
     image_id = models.CharField(max_length=80)
@@ -307,7 +307,7 @@ class HostNetwork(models.Model):
     host, since a topology view wants what is true now, not history.
     """
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="inventory")
 
     host = models.OneToOneField(Host, on_delete=models.CASCADE, related_name="network")
     #: [{name, up, mac, addrs: [{family, address, prefix}]}]
@@ -325,7 +325,7 @@ class HostNetwork(models.Model):
 
 
 class DockerVolume(models.Model):
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="inventory")
 
     host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="docker_volumes")
     name = models.CharField(max_length=255)
@@ -337,7 +337,7 @@ class DockerVolume(models.Model):
 
 
 class DockerNetwork(models.Model):
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="inventory")
 
     host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="docker_networks")
     network_id = models.CharField(max_length=64)
@@ -353,7 +353,7 @@ class HostDockerUsage(models.Model):
     """The last ``docker_disk_usage`` reading for a host: totals, and each
     image's and volume's size (the check-in lists carry no volume sizes)."""
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="inventory")
 
     host = models.OneToOneField(Host, on_delete=models.CASCADE, related_name="docker_usage")
     read_at = models.DateTimeField()
@@ -379,7 +379,7 @@ class UnmanagedDevice(models.Model):
     discovery / SNMP polling is out of scope for Community.
     """
 
-    objects = SiteScopedManager(field="site_id")
+    objects = SiteScopedManager(field="site_id", app="devices")
 
     class DeviceType(models.TextChoices):
         ROUTER = "router", "Router"
@@ -442,7 +442,7 @@ class HostFirewall(models.Model):
     understand rather than silently showing fewer rules than the host has.
     """
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="inventory")
 
     host = models.OneToOneField(Host, on_delete=models.CASCADE,
                                 related_name="firewall")
@@ -595,7 +595,7 @@ class ContainerStack(models.Model):
     taken over where it stands; ``external`` — merely seen running.
     """
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="stacks")
 
     class Ownership(models.TextChoices):
         MANAGED = "managed", "Managed by Vigil"
@@ -629,7 +629,7 @@ class LogTailSession(models.Model):
     watched. The agent stops when ``viewer_seen_at`` goes stale or the
     session is closed; nothing here is kept once the view is gone."""
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="stacks")
 
     #: The viewer is gone when it has not polled for this long.
     VIEWER_TIMEOUT_SECONDS = 15
@@ -660,7 +660,7 @@ class ContainerImageHistory(models.Model):
     """The image a container ran before an update (M11) — what one-click
     rollback goes back to. Recorded from each completed update_container."""
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="stacks")
 
     host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="container_image_history")
     container_name = models.CharField(max_length=200)
@@ -679,7 +679,7 @@ class ContainerImageHistory(models.Model):
 class ContainerRollback(models.Model):
     """A container currently rolled back (M11); cleared by its next update."""
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="stacks")
 
     host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="container_rollbacks")
     container_name = models.CharField(max_length=200)

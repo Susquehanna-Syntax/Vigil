@@ -41,6 +41,7 @@ MAX_ALERT_PAGE = 500
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@scoping.module_view("alerts")
 def alert_list(request):
     state = request.query_params.get("state", Alert.State.FIRING)
     alerts = scoping.filter_by_site(

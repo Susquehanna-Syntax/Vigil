@@ -19,7 +19,7 @@ class VulnSummary(models.Model):
     badge keeps escalating with it.
     """
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="vulns")
 
     host = models.OneToOneField(Host, on_delete=models.CASCADE, related_name="vuln_summary")
     last_scan_at = models.DateTimeField(null=True, blank=True)
@@ -71,7 +71,7 @@ class VulnScan(models.Model):
     so it's engine-agnostic.
     """
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="vulns")
 
     class Scanner(models.TextChoices):
         NESSUS = "nessus", "Nessus"
@@ -156,7 +156,7 @@ class VulnFinding(models.Model):
     "first seen" dates survive across the lifetime of the install.
     """
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="vulns")
 
     class State(models.TextChoices):
         OPEN = "open", "Open"
@@ -327,7 +327,7 @@ class VulnScoreHistory(models.Model):
     which is more trend than anyone reads and still bounded.
     """
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="vulns")
     host = models.ForeignKey(Host, on_delete=models.CASCADE, related_name="vuln_score_history")
     date = models.DateField()
     score = models.IntegerField()

@@ -47,7 +47,7 @@ _INDEXES: Sequence[Index] = (
 
 
 class SoftwareItem(models.Model):
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="software")
 
     class Source(models.TextChoices):
         DPKG = "dpkg", "dpkg"
@@ -97,7 +97,7 @@ class SoftwareItem(models.Model):
 
 
 class SoftwareSnapshot(models.Model):
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="software")
 
     host = models.OneToOneField(
         "hosts.Host", on_delete=models.CASCADE, related_name="software_snapshot"
@@ -121,7 +121,7 @@ class PendingUpdate(models.Model):
     report; ``first_seen`` survives, so the age of a missing update is real.
     """
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="software")
 
     class Kind(models.TextChoices):
         WINDOWS = "windows", "Windows Update"

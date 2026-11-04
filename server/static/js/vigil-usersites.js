@@ -37,11 +37,15 @@ async function openUserSites(user) {
 
   let sites = [];
   let grants = [];
+  // Company-wide module grants (S1 04f): only instance admins may read them,
+  // so for anyone else this stays null and the section is not drawn.
+  let companyWide = null;
   try {
-    [sites, grants, CAPABILITY_MATRIX] = await Promise.all([
+    [sites, grants, CAPABILITY_MATRIX, companyWide] = await Promise.all([
       apiJson('/api/v1/sites/'),
       apiJson(`/api/v1/sites/roles/?user=${encodeURIComponent(user.id)}`),
       apiJson('/api/v1/accounts/capabilities/'),
+      apiJson('/api/v1/sites/grants/').catch(() => null),
     ]);
   } catch (e) {
     m.close();
@@ -99,11 +103,54 @@ async function openUserSites(user) {
           </select>
           <button class="btn btn-mint btn-sm" id="us-add">Grant</button>
         </div>` : ''}
+      ${companyWideSection()}
       <p class="muted" id="us-note"></p>
       <div class="confirm-actions">
         <button class="btn btn-mint btn-sm" id="us-close">Done</button>
       </div>`);
     wire();
+  }
+
+  function companyWideSection() {
+    if (!companyWide) return '';
+    const held = new Set(companyWide.results.filter((g) => String(g.user_id) === String(user.id))
+      .map((g) => `${g.app}:${g.verb}`));
+    return `<div class="us-grant">
+        <div class="us-grant-head"><span class="us-site">Company-wide access</span></div>
+        <p class="muted us-note">Lets ${escHtml(user.username)} use these modules across every site, beyond their
+          own sites. View widens what they can read there; the other verbs let them act on other sites' items in
+          that module only. Global items stay with administrators of the whole install.</p>
+        <div class="us-matrix">` +
+      Object.entries(companyWide.grantable).map(([app, verbs]) => `
+          <div class="us-matrix-row">
+            <span class="us-app">${escHtml(app)}</span>
+            <span class="us-verbs">${verbs.map((v) => `
+              <label class="us-verb">
+                <input type="checkbox" data-cw-app="${escAttr(app)}" data-cw-verb="${escAttr(v)}"${held.has(`${app}:${v}`) ? ' checked' : ''}>
+                ${escHtml(v)}
+              </label>`).join('')}</span>
+          </div>`).join('') +
+      `</div></div>`;
+  }
+
+  async function toggleCompanyWide(box) {
+    const { cwApp: app, cwVerb: verb } = box.dataset;
+    try {
+      if (box.checked) {
+        const row = await apiJson('/api/v1/sites/grants/', { method: 'POST',
+          body: JSON.stringify({ user_id: user.id, app, verb }) });
+        companyWide.results.push(row);
+      } else {
+        const row = companyWide.results.find((g) => String(g.user_id) === String(user.id)
+          && g.app === app && g.verb === verb);
+        if (row) await apiJson(`/api/v1/sites/grants/${row.id}/`, { method: 'DELETE' });
+        companyWide.results = companyWide.results.filter((g) => g !== row);
+      }
+      note(`${app}: ${verb} everywhere is ${box.checked ? 'on' : 'off'}`);
+    } catch (e) {
+      box.checked = !box.checked;
+      note('Could not change company-wide access: ' + e.message, true);
+    }
   }
 
   function capabilityGrid(g) {
@@ -149,6 +196,8 @@ async function openUserSites(user) {
   function wire() {
     m.modal.querySelector('#us-x').onclick = () => m.close();
     m.modal.querySelector('#us-close').onclick = () => m.close();
+    m.modal.querySelectorAll('[data-cw-app]').forEach((box) =>
+      box.addEventListener('change', () => toggleCompanyWide(box)));
 
     m.modal.querySelectorAll('.us-role').forEach((sel) => {
       sel.addEventListener('change', async () => {

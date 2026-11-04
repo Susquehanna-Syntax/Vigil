@@ -61,6 +61,7 @@ def _row(base: dict, *, host_id=None, hostname=None, name_field="name",
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@scoping.module_view("software")
 def app_list(request):
     """One row per app (name_key) across the hosts the user may see."""
     qs = _scoped_items(request.user).values(

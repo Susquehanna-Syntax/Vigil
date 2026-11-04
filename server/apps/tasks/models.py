@@ -193,7 +193,7 @@ class Task(models.Model):
     the same host reaches ``COMPLETED``.
     """
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="tasks")
 
     class State(models.TextChoices):
         BLOCKED = "blocked", "Blocked"
@@ -298,7 +298,7 @@ class HuntMatch(models.Model):
     only feed the read-only hunt results view.
     """
 
-    objects = SiteScopedManager(path="host__")
+    objects = SiteScopedManager(path="host__", app="tasks")
 
     task = models.ForeignKey(
         Task, on_delete=models.CASCADE, related_name="hunt_matches"

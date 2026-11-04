@@ -144,9 +144,9 @@ class WidgetSpecTests(ReportTestBase):
         for module in (views, widgets):
             real = module.scoping.filter_by_site
 
-            def hide(qs, user, path="", cascade_global=False, _real=real):
+            def hide(qs, user, path="", cascade_global=False, app=None, _real=real):
                 return _real(qs, user, path=path,
-                             cascade_global=cascade_global).exclude(pk__in=pks)
+                             cascade_global=cascade_global, app=app).exclude(pk__in=pks)
 
             self.addsetattr(module.scoping, "filter_by_site", hide)
 

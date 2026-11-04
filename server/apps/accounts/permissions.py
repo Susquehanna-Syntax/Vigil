@@ -137,6 +137,12 @@ def can(user, site, app: str, verb: str) -> bool:
     _validate(app, verb)
     if not (user and user.is_authenticated):
         return False
+    if site is not None and has_grant(user, app, verb):
+        # Company-wide (S1 04f) for this app and verb, on any site's objects but
+        # never the Global site's: global items need the Global scope's authority.
+        from vigil import scoping
+        if getattr(site, "id", site) != scoping.global_site_id():
+            return True
 
     role = role_of(user, site)
     if role == OWNER or role == Role.ADMIN:
@@ -185,7 +191,39 @@ class IsOperator(BasePermission):
         return role_of(request.user) in (Role.ADMIN, Role.OPERATOR, OWNER)
 
 
-def visible_site_ids(user):
+#: What an instance admin may grant company-wide (S1 04f, decisions-06 item 6):
+#: module -> verbs. ``view`` widens reads in that module only; ``run`` / ``ack``
+#: let the user act on other sites' objects in it. Never a settings verb, and
+#: never anything that reaches global items' writes.
+GRANTABLE = {
+    "hosts": frozenset({"view"}),
+    "inventory": frozenset({"view"}),
+    "software": frozenset({"view"}),
+    "vulns": frozenset({"view"}),
+    "alerts": frozenset({"view", "ack"}),
+    "tasks": frozenset({"view", "run"}),
+    "playbooks": frozenset({"view", "run"}),
+    "automations": frozenset({"view"}),
+    "stacks": frozenset({"view"}),
+    "devices": frozenset({"view"}),
+    "reprovision": frozenset({"view"}),
+}
+
+
+def has_grant(user, app, verb="view") -> bool:
+    """Does *user* hold a company-wide grant on *app*? For ``view``, any verb on
+    the app counts: someone who may act on another site's objects must see them.
+    A site-scoped API key never carries a grant."""
+    if not app or getattr(user, "key_site_ids", None) is not None:
+        return False
+    from vigil import scoping
+    grants = scoping.grants_for(user)
+    if verb == "view":
+        return any(a == app for a, _ in grants)
+    return (app, verb) in grants
+
+
+def visible_site_ids(user, app=None):
     """The site ids `user` may act in, or ``None`` meaning "every site".
 
     None and the empty set are different answers: None is an unscoped user,
@@ -199,6 +237,9 @@ def visible_site_ids(user):
     authentication returns, never on a stored row.
     """
     ids = _role_site_ids(user)
+    if app is not None and ids is not None and has_grant(user, app):
+        # A company-wide grant opens this one module (S1 04f).
+        ids = None
     key_ids = getattr(user, "key_site_ids", None)
     if key_ids is None:
         return ids

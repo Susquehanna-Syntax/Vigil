@@ -1736,6 +1736,7 @@ def definition_deploy(request, definition_id):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@scoping.module_view("tasks")
 def task_history(request):
     """Paginated task history feed for the History tab (polled by the UI).
 
@@ -1771,6 +1772,7 @@ def task_history(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+@scoping.module_view("tasks")
 def run_history(request):
     """Paginated run history, newest first.
 

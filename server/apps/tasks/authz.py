@@ -21,7 +21,9 @@ def _can_run(user, host) -> bool:
     from apps.accounts.permissions import can
     from vigil import scoping
 
-    return scoping.host_in_scope(user, host) and can(user, scoping.scope_of(host), "tasks", "run")
+    # A company-wide tasks grant (S1 04f) lets the user reach other sites' hosts
+    # for tasks; can() then decides tasks:run there.
+    return scoping.host_in_scope(user, host, app="tasks") and can(user, scoping.scope_of(host), "tasks", "run")
 
 
 def runnable(user, hosts):
@@ -38,7 +40,7 @@ def run_denied(user, hosts) -> Response | None:
     """
     from vigil import scoping
 
-    hidden = [h for h in hosts if not scoping.host_in_scope(user, h)]
+    hidden = [h for h in hosts if not scoping.host_in_scope(user, h, app="tasks")]
     if hidden:
         return Response({"error": "One or more hosts were not found"}, status=404)
     refused = [h for h in hosts if not _can_run(user, h)]
