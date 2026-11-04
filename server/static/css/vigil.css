@@ -4915,3 +4915,24 @@ a.jk-card { text-decoration: none; }
 .jk-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-2); margin-top: 6px; }
 .jk-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
 .axis-text { font-size: 10px; fill: var(--text-3); font-family: var(--font-mono); }
+
+/* Header site switcher (S1 04g, vigil-siteswitch.js). */
+.site-switch[hidden] { display: none; }
+.site-switch { margin-top: -16px; margin-bottom: 12px; }
+.site-switch.site-switch-narrowed { color: var(--mint-ink); }
+.site-switch-count {
+  position: absolute; bottom: 3px; right: 3px;
+  min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px;
+  background: var(--mint); color: var(--on-accent);
+  font-size: 10px; font-weight: 600; line-height: 15px; text-align: center;
+}
+.site-switch-count[hidden] { display: none; }
+:root[data-sidebar="expanded"] .site-switch-count { left: 24px; right: auto; }
+.ss-note { font-size: 13px; margin: -12px 0 14px; }
+.ss-search { margin-bottom: 10px; }
+.ss-list { display: flex; flex-direction: column; gap: 2px; max-height: 50vh; overflow-y: auto; margin-bottom: 18px; }
+.ss-site { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--r-sm);
+  font-size: 14px; color: var(--text-1); cursor: pointer; }
+.ss-site:hover { background: var(--wash); }
+.ss-site[hidden] { display: none; }
+.ss-site input:disabled + span { color: var(--text-2); }

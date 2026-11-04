@@ -57,6 +57,13 @@
   {# Sidebar — left rail with page icons. Logic: vigil-nav.js wires data-page → navigateTo() #}
   <nav class="sidebar">
     <div class="sidebar-logo"><img src="{% static 'img/vigil-logo.png' %}" alt="Vigil" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;"></div>
+    {# Header site switcher (S1 04g). Logic: vigil-siteswitch.js; hidden unless the user sees more than one site. #}
+    <div class="sidebar-icon site-switch" id="site-switch" data-act="openSiteSwitch" data-tip="Sites"
+      role="button" tabindex="0" aria-label="Choose the sites to show" hidden>
+      <svg viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+      <span class="site-switch-count" id="site-switch-count" hidden></span>
+      <span class="sidebar-label" id="site-switch-label">Sites</span>
+    </div>
 
     <div class="sidebar-icon active" data-page="dashboard" data-tip="Dashboard">
       <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
@@ -846,6 +853,7 @@ own terminal. Vigil never opens a connection to the host.{% endcomment %}
 <script src="{% static 'js/vigil-tags.js' %}"></script>
 <script src="{% static 'js/vigil-pickers.js' %}"></script>
 <script src="{% static 'js/vigil-sitepick.js' %}"></script>
+<script src="{% static 'js/vigil-siteswitch.js' %}"></script>
 <script src="{% static 'js/vigil-ai.js' %}"></script>
 <script src="{% static 'js/vigil-playbook-flow.js' %}"></script>
 <script src="{% static 'js/vigil-playbooks.js' %}"></script>

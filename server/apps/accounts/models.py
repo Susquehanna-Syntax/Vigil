@@ -37,6 +37,10 @@ class UserProfile(models.Model):
     # rejected to prevent an intercepted code from being replayed.
     last_totp_code = models.CharField(max_length=12, blank=True, default="")
     last_totp_used_at = models.DateTimeField(null=True, blank=True)
+    # The header site switcher (S1 04g): the site ids this user has ticked,
+    # as strings. Empty means every site they can see. It narrows what their
+    # browser session shows and never widens it; API keys ignore it.
+    site_selection = models.JSONField(default=list, blank=True)
 
     @property
     def totp_secret(self) -> str:

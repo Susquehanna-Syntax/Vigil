@@ -251,6 +251,63 @@ def site_roles_for(user):
     return out
 
 
+def viewing_site_ids(user, app=None):
+    """The site ids a scoped *read* shows (filter_by_site and friends): what
+    *user* may see (visible_site_ids), narrowed to the sites they ticked in
+    the header switcher (S1 04g). Authority checks keep visible_site_ids, so
+    ticking one site never takes away what an instance admin may do; it only
+    changes what the pages list. The selection can only narrow, and when it
+    and the visible sites share nothing it is ignored."""
+    from apps.accounts.permissions import visible_site_ids
+
+    ids = visible_site_ids(user, app=app)
+    if ids == set():
+        return ids
+    chosen = site_selection_for(user)
+    if not chosen:
+        return ids
+    return (chosen if ids is None else (ids & chosen)) or ids
+
+
+def site_selection_for(user):
+    """The sites *user* ticked in the header switcher (S1 04g), as a set of
+    existing site ids, or None when the selection does not apply: outside a
+    browser request, for a site-scoped API key, on Community, or when nothing
+    is ticked. Ids of deleted sites drop out, so a stale selection never
+    narrows to nothing."""
+    scope = _scope.get()
+    if scope is None or scope.kind != "user" or not scope.ui:
+        return None
+    if getattr(user, "key_site_ids", None) is not None or not getattr(user, "pk", None):
+        return None
+    mods = _sites_models()
+    if mods is None:
+        return None
+    key = ("site_selection", user.pk)
+    if key not in scope.cache:
+        # user.profile is usually loaded already (role checks read it), so
+        # this costs no query on most requests.
+        try:
+            raw = user.profile.site_selection
+        except Exception:  # no profile row (RelatedObjectDoesNotExist)
+            raw = []
+        wanted = _as_uuids(raw)
+        scope.cache[key] = (set(mods.Site.objects.filter(pk__in=wanted).values_list("pk", flat=True))
+                            if wanted else set())
+    return set(scope.cache[key]) or None
+
+
+def _as_uuids(raw):
+    import uuid
+    out = set()
+    for value in raw if isinstance(raw, list) else []:
+        try:
+            out.add(uuid.UUID(str(value)))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def _reading_app():
     """The module the active view reads as (reading_as), or None."""
     scope = _scope.get()
@@ -334,7 +391,7 @@ def filter_by_site(qs, user, path="", cascade_global=False, app=None):
     """
     from apps.accounts.permissions import visible_site_ids
 
-    ids = visible_site_ids(user, app=_reading_app() if app is None else (app or None))
+    ids = viewing_site_ids(user, app=_reading_app() if app is None else (app or None))
     if ids is None:
         return qs
     if not ids:
@@ -369,7 +426,7 @@ def filter_by_site_field(qs, user, field="site_id", app=None):
     """
     from apps.accounts.permissions import visible_site_ids
 
-    ids = visible_site_ids(user, app=_reading_app() if app is None else (app or None))
+    ids = viewing_site_ids(user, app=_reading_app() if app is None else (app or None))
     if ids is None:
         return qs
     if not ids:
@@ -546,6 +603,10 @@ def writable_sites(user, app=None, verb=None) -> dict:
         qs = qs.filter(pk__in=ids)
     sites = [{"id": str(site.pk), "name": site.name} for site in qs
              if _allowed(user, site.pk, app, verb)]
+    # The sites ticked in the header switcher come first (S1 04g), so a
+    # form's default is a site the user is looking at.
+    chosen = {str(pk) for pk in (site_selection_for(user) or ())}
+    sites.sort(key=lambda s: s["id"] not in chosen)
     glob = _write_site(user, None)
     may_global = glob is not False and _allowed(user, glob, app, verb)
     return {"enabled": bool(sites), "global": may_global, "sites": sites}
@@ -646,6 +707,9 @@ class Scope:
     #: The module a view reads as (S1 04f): a company-wide grant on it widens
     #: that view's scoped queries, e.g. the inventory list reading hosts.
     app: str | None = None
+    #: True for a browser request (S1 04g): only there does the user's header
+    #: site selection narrow what they see. Jobs and as_user never set it.
+    ui: bool = False
     #: Per-scope memo (a user's site roles), so a request that runs many
     #: scoped queries looks the roles up once. It dies with the scope.
     cache: dict = field(default_factory=dict, compare=False, repr=False)
@@ -754,7 +818,7 @@ def _entered(scope):
 def request_scope(request):
     """The scope for one HTTP request: whoever ``request.user`` is when the
     query runs. An anonymous request sees no site-owned rows at all."""
-    return _entered(Scope("user", user=lambda: getattr(request, "user", None)))
+    return _entered(Scope("user", user=lambda: getattr(request, "user", None), ui=True))
 
 
 def as_user(user):
@@ -770,7 +834,7 @@ def reading_as(app):
     if scope is None or scope.kind != "user":
         yield
         return
-    with _entered(Scope("user", user=scope.user, app=app, cache=scope.cache)):
+    with _entered(Scope("user", user=scope.user, app=app, ui=scope.ui, cache=scope.cache)):
         yield
 
 

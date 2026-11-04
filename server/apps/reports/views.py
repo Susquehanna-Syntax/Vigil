@@ -133,10 +133,8 @@ def _visible_reports(user):
     """The reports *user* may open: ones they own, or that name at least one
     playbook or automation they can see. A report built from another site's
     sources is not theirs to read, rename or delete — it 404s."""
-    from apps.accounts.permissions import visible_site_ids
-
     qs = Report.objects.all()
-    if visible_site_ids(user) is None:
+    if scoping.viewing_site_ids(user) is None:  # the header switcher narrows it too
         return qs
     return qs.filter(
         Q(owner=user)

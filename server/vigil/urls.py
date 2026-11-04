@@ -171,6 +171,7 @@ urlpatterns = [
     path("api/v1/baselines/", include(_legacy_playbook_urls)),
     path("api/v1/ai/", include("apps.aisuggest.urls")),
     path("api/v1/scope/writable-sites/", views_scope.writable_sites, name="writable-sites"),
+    path("api/v1/scope/selection/", views_scope.site_selection, name="site-selection"),
     path("api/v1/status-pages/", include("apps.statuspage.urls")),
     path("api/v1/automations/", include("apps.automations.urls")),
     path("api/v1/reports/", include("apps.reports.urls")),

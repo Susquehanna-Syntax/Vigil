@@ -117,11 +117,12 @@ def visible_tasks(qs, user):
 
 def visible_runs(qs, user):
     """Runs with at least one task on a host *user* may see."""
-    from apps.accounts.permissions import visible_site_ids
+    from vigil import scoping
 
     from .models import Task
 
-    if visible_site_ids(user) is None:
+    # What the pages show, so the header switcher (S1 04g) narrows it too.
+    if scoping.viewing_site_ids(user) is None:
         return qs
     return qs.filter(pk__in=visible_tasks(Task.objects.all(), user).values("run_id"))
 
@@ -139,14 +140,14 @@ def trim_run(run, user):
     caller's own tasks and is marked trimmed: ``TaskRun.save`` refuses it, so a
     view can never write the cut-down numbers back.
     """
-    from apps.accounts.permissions import visible_site_ids
-
     from django.db.models import Max
+
+    from vigil import scoping
 
     from .models import Task
     from .summary import run_outcome
 
-    if visible_site_ids(user) is None:
+    if scoping.viewing_site_ids(user) is None:
         return run
     every = Task.objects.unscoped(
         reason="run trimming: a run is trimmed when any of its tasks is on a site the caller cannot see"
@@ -190,9 +191,9 @@ def _visible_host_ids(user) -> set[str]:
 
 def visible_rollouts(rollouts, user) -> list:
     """The rollouts in *rollouts* that *user* may see, order kept."""
-    from apps.accounts.permissions import visible_site_ids
+    from vigil import scoping
 
-    ids = visible_site_ids(user)
+    ids = scoping.viewing_site_ids(user)
     rollouts = list(rollouts)
     if ids is None:
         return rollouts
