@@ -25,6 +25,8 @@ from aiohttp.test_utils import TestServer
 from django.test import TestCase
 from django.utils.timezone import now
 
+from vigil.testsupport import PicklableAsyncioTestCase
+
 from vigil_relay.app import make_app
 from vigil_relay.config import Config
 
@@ -143,7 +145,7 @@ class _FakeUplink:
             raise
 
 
-class LinkManagerTests(unittest.IsolatedAsyncioTestCase):
+class LinkManagerTests(PicklableAsyncioTestCase):
     async def test_manager_restarts_on_key_change(self):
         first = Target(id="r1", url="https://a.example.com", key="k1", key_sha256="a" * 64)
         rotated = Target(id="r1", url="https://a.example.com", key="k2", key_sha256="b" * 64)
@@ -200,7 +202,7 @@ class Recorder(list):
         self.append({"relay_id": relay_id, "connected": connected, "error": error})
 
 
-class LinkEndToEndTests(unittest.IsolatedAsyncioTestCase):
+class LinkEndToEndTests(PicklableAsyncioTestCase):
     async def asyncSetUp(self):
         self.queue_dir = tempfile.mkdtemp(prefix="vigil-link-test-")
         self.addCleanup(shutil.rmtree, self.queue_dir, True)
@@ -356,7 +358,7 @@ class ForwardableTests(unittest.TestCase):
             self.assertFalse(pipeable(path), path)
 
 
-class RefusedFrameTests(unittest.IsolatedAsyncioTestCase):
+class RefusedFrameTests(PicklableAsyncioTestCase):
     async def test_a_non_agent_path_is_answered_404_without_a_request(self):
         from apps.relays.link import Uplink, Target
         sent = []
