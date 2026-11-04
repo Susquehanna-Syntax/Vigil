@@ -46,3 +46,41 @@ function sitePickValue(select, field) {
   if (!select || (field && field.hidden)) return undefined;
   return select.value || null;
 }
+
+/* For buttons that create straight away (a new status page): which site?
+ * Resolves the site id, null for global, undefined when there is nothing to
+ * choose (send no site_id), or false when the user cancels. Asks only when
+ * there is a real choice. */
+async function sitePickChoose(title) {
+  const info = await sitePickLoad();
+  if (!info.enabled) return undefined;
+  const choices = (info.global ? [{ id: '', name: 'Global (every site)' }] : []).concat(info.sites);
+  if (choices.length === 1) return choices[0].id || null;
+  return new Promise((resolve) => {
+    const m = mountModal('sitepick', { variant: 'm-pop' });
+    m.setBody(`
+      <div class="modal-title">
+        <span id="sitepick-title"></span>
+        <button class="modal-close" id="sitepick-x" aria-label="Close">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="sitepick-select">Site</label>
+        <select class="form-control" id="sitepick-select">${choices.map((s) =>
+          `<option value="${escHtml(s.id)}">${escHtml(s.name)}</option>`).join('')}</select>
+      </div>
+      <div class="confirm-actions">
+        <button class="btn btn-outline btn-sm" id="sitepick-cancel">Cancel</button>
+        <button class="btn btn-mint btn-sm" id="sitepick-ok">Create</button>
+      </div>`);
+    m.modal.querySelector('#sitepick-title').textContent = title;
+    const select = m.modal.querySelector('#sitepick-select');
+    const done = (val) => { m.close(); setTimeout(() => resolve(val), 200); };
+    m.modal.querySelector('#sitepick-ok').onclick = () => done(select.value || null);
+    m.modal.querySelector('#sitepick-cancel').onclick = () => done(false);
+    m.modal.querySelector('#sitepick-x').onclick = () => done(false);
+    m.overlay.onclick = () => done(false);
+    requestAnimationFrame(() => { m.open(); select.focus(); });
+  });
+}
