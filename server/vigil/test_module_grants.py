@@ -130,6 +130,24 @@ class ModuleGrantTests(TestCase):
             self.assertEqual(view(SimpleNamespace(method="GET")), ["lab-1", "west-1"])
             self.assertEqual(view(SimpleNamespace(method="POST")), ["west-1"])
 
+    def test_a_grant_never_widens_outside_a_module_view(self):
+        # Security review of 04f: the model's own module must not widen every
+        # query, or a POST handler (or any helper) would see other sites' rows.
+        self.grant("hosts", "view")
+        with scoping.as_user(self.dana):
+            self.assertEqual(sorted(Host.objects.values_list("hostname", flat=True)), ["west-1"])
+
+    def test_secret_bearing_rows_never_widen(self):
+        from apps.stacks.models import EnvTicket
+        self.grant("stacks", "view")
+
+        @scoping.module_view("stacks")
+        def view(request):
+            return EnvTicket.objects.all().query
+
+        with scoping.as_user(self.dana):
+            self.assertIn("siteassignment", str(view(SimpleNamespace(method="GET"))))
+
     def test_the_walk_stays_clean_without_grants(self):
         # A grant on another module widens nothing here.
         self.grant("vulns", "view")

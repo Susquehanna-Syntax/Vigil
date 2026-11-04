@@ -629,7 +629,7 @@ class LogTailSession(models.Model):
     watched. The agent stops when ``viewer_seen_at`` goes stale or the
     session is closed; nothing here is kept once the view is gone."""
 
-    objects = SiteScopedManager(path="host__", app="stacks")
+    objects = SiteScopedManager(path="host__")
 
     #: The viewer is gone when it has not polled for this long.
     VIEWER_TIMEOUT_SECONDS = 15

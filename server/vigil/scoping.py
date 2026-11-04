@@ -334,7 +334,7 @@ def filter_by_site(qs, user, path="", cascade_global=False, app=None):
     """
     from apps.accounts.permissions import visible_site_ids
 
-    ids = visible_site_ids(user, app=app or _reading_app())
+    ids = visible_site_ids(user, app=_reading_app() if app is None else (app or None))
     if ids is None:
         return qs
     if not ids:
@@ -369,7 +369,7 @@ def filter_by_site_field(qs, user, field="site_id", app=None):
     """
     from apps.accounts.permissions import visible_site_ids
 
-    ids = visible_site_ids(user, app=app or _reading_app())
+    ids = visible_site_ids(user, app=_reading_app() if app is None else (app or None))
     if ids is None:
         return qs
     if not ids:
@@ -891,8 +891,11 @@ class SiteScopedManager(_dj_models.Manager):
         self.site_path = path
         self.site_cascade_global = cascade_global
         self.site_field = field
-        #: The module these rows belong to: a company-wide grant on it (S1
-        #: 04f) widens reads. A view reading as another module overrides it.
+        #: Whether a company-wide grant (S1 04f) may widen these rows at all.
+        #: It never widens by itself: only a read-only module_view, which
+        #: names the module it reads as, widens, and only models that carry
+        #: an app here. Rows holding secrets (one-time tickets, sessions)
+        #: carry none, so no grant ever reaches another site's.
         self.site_app = app
 
     def deconstruct(self):
@@ -924,7 +927,9 @@ class SiteScopedManager(_dj_models.Manager):
         if user is None or not getattr(user, "is_authenticated", False):
             return qs.none()
         cfg = self._config()
-        app = scope.app or cfg.site_app
+        # scope.app is set only inside module_view on a safe method.
+        # False, not None: None would let the filter fall back to the reading app.
+        app = scope.app if (scope.app and cfg.site_app) else False
         if cfg.site_field:
             return filter_by_site_field(qs, user, field=cfg.site_field, app=app)
         return filter_by_site(qs, user, path=cfg.site_path,

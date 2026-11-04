@@ -115,10 +115,11 @@ class ScopedManagerTests(_FromNoScope, _TwoSites):
             list(self.hosts.all())
             with self.assertNumQueries(1):  # the host query only, no roles query
                 list(self.hosts.all())
-        # A new scope looks them up afresh (roles, company-wide grants, the
-        # global site, then the hosts), so a changed role or grant is seen.
+        # A new scope looks them up afresh (roles, the global site, then the
+        # hosts), so a changed role is seen. No grant lookup: outside a
+        # module_view a grant never widens anything.
         with scoping.as_user(self.dana):
-            with self.assertNumQueries(4):
+            with self.assertNumQueries(3):
                 list(self.hosts.all())
 
     def test_related_managers_keep_the_declared_path(self):

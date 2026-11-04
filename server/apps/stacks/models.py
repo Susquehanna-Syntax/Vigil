@@ -16,7 +16,7 @@ from vigil.scoping import SiteScopedManager
 
 
 class ManagedStack(models.Model):
-    objects = SiteScopedManager(path="host__", app="stacks")
+    objects = SiteScopedManager(path="host__")
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     host = models.ForeignKey("hosts.Host", on_delete=models.CASCADE, related_name="managed_stacks")
@@ -99,7 +99,7 @@ class EnvTicket(models.Model):
 
     TTL_HOURS = 24
 
-    objects = SiteScopedManager(path="host__", app="stacks")
+    objects = SiteScopedManager(path="host__")
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     stack = models.ForeignKey(ManagedStack, on_delete=models.CASCADE, related_name="env_tickets")
@@ -114,7 +114,7 @@ class AdoptTicket(models.Model):
     """A one-time slot for an agent to hand over an existing stack's files
     (M11) — over its own connection, because the .env holds secrets."""
 
-    objects = SiteScopedManager(path="host__", app="stacks")
+    objects = SiteScopedManager(path="host__")
 
     TTL_HOURS = 24
 
