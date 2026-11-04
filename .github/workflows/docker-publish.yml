@@ -93,8 +93,18 @@ jobs:
         run: python manage.py check
       - name: Run migrations
         run: python manage.py migrate --noinput
+      # Coverage is a CI-only tool, pinned here rather than in requirements.txt:
+      # the app never imports it. The per-app table lands on the run's summary
+      # page (sprint M2 phase 6); it is visible, never a gate.
+      - name: Install coverage
+        run: pip install coverage==7.6.1
       - name: Run tests
-        run: python manage.py test --verbosity=2
+        run: python -m coverage run --source=apps,vigil manage.py test --verbosity=2
+      - name: Coverage by app
+        if: always()
+        run: |
+          python -m coverage json -q -o coverage.json || exit 0
+          python ../scripts/coverage-by-app.py coverage.json >> "$GITHUB_STEP_SUMMARY"
       # The relay container (2026.15.0) is its own package; aiohttp is already
       # in the server requirements because the dashboard's link uses it too.
       - name: Run relay tests
