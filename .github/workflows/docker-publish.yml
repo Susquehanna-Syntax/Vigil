@@ -117,6 +117,102 @@ jobs:
         working-directory: server
         run: node --test jstests/
 
+  # ── Upgrade from the previous release ─────────────────────────────────────
+  # Migrations that only ever ran on an empty database are how upgrades break.
+  # This job builds the previous release's schema with that release's own code
+  # (and its own Business version), seeds it the way an install looks
+  # (scripts/upgrade-seed.py), migrates with this commit, checks that every
+  # row came through and reads the way the upgrade notes say
+  # (scripts/upgrade-verify.py), then starts the app.
+  upgrade:
+    name: Upgrade from the previous release
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_DB: vigil_upgrade
+          POSTGRES_USER: vigil
+          POSTGRES_PASSWORD: vigil
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U vigil"
+          --health-interval=5s
+          --health-retries=10
+    env:
+      DJANGO_SECRET_KEY: ci-upgrade-secret-key
+      DJANGO_DEBUG: "true"
+      VIGIL_SIGNING_KEY_SEED: "rVVG5N5frRQYzPFzKradn0wIPW6+elhaDwPLUafvCNA="
+      POSTGRES_DB: vigil_upgrade
+      POSTGRES_USER: vigil
+      POSTGRES_PASSWORD: vigil
+      POSTGRES_HOST: localhost
+      VIGIL_SKIP_STARTUP_CHECKS: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Find the previous release
+        id: prev
+        run: |
+          # The newest release tag before this commit (a release's own tag
+          # build compares against the one before it).
+          tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^)"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Upgrading from ${tag}"
+          git worktree add ../previous "${tag}"
+      - name: Is the Business token available
+        id: business
+        env:
+          TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
+        run: echo "available=$([ -n "$TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Build the previous release's database
+        env:
+          GH_TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
+          BUSINESS: ${{ steps.business.outputs.available }}
+        run: |
+          python -m venv ../old-venv
+          ../old-venv/bin/pip install -q -r ../previous/server/requirements.txt
+          if [ "$BUSINESS" = true ]; then
+            version="$(cat ../previous/business.lock)"
+            gh release download "v${version}" -R Susquehanna-Syntax/Vigil_Business -p '*.whl' -D ../old-wheels
+            ../old-venv/bin/pip install -q --no-deps --no-index --find-links ../old-wheels "vigil-business==${version}"
+          fi
+          cd ../previous/server
+          ../../old-venv/bin/python manage.py migrate --noinput
+          ../../old-venv/bin/python manage.py shell < "$GITHUB_WORKSPACE/scripts/upgrade-seed.py"
+      - name: Migrate with this commit
+        env:
+          GH_TOKEN: ${{ secrets.BUSINESS_REPO_TOKEN }}
+          BUSINESS: ${{ steps.business.outputs.available }}
+        run: |
+          pip install -q -r server/requirements.txt
+          if [ "$BUSINESS" = true ]; then
+            version="$(cat business.lock)"
+            gh release download "v${version}" -R Susquehanna-Syntax/Vigil_Business -p '*.whl' -D business-wheels
+            pip install -q --no-deps --no-index --find-links business-wheels "vigil-business==${version}"
+          fi
+          cd server
+          python manage.py migrate --noinput
+          python manage.py check
+      - name: Every row came through
+        working-directory: server
+        run: python manage.py shell < ../scripts/upgrade-verify.py
+      - name: The upgraded app starts and answers
+        working-directory: server
+        run: |
+          python manage.py runserver 127.0.0.1:8000 --noreload > ../runserver.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/api/v1/health/ && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:8000/api/v1/health/ || { cat ../runserver.log; exit 1; }
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/login/)" = 200
+
   # ── Build agent binaries (parallel) ─────────────────────────────────────────
   # macOS is Apple Silicon only (2026.15): macos-latest is arm64, so the agent
   # builds natively there. Intel Macs are no longer a target.
@@ -422,7 +518,7 @@ jobs:
   publish:
     name: Publish Docker Image
     runs-on: ubuntu-latest
-    needs: [test, js-tests, build-agent, smoke-macos-install]
+    needs: [test, js-tests, upgrade, build-agent, smoke-macos-install]
     if: github.event_name == 'push'
     # Third-party actions in this job are pinned to commits, not tags: it holds
     # the Docker Hub token and can mint signing identities, so a moved tag
