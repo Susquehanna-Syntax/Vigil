@@ -212,6 +212,76 @@ jobs:
             e2e-server.log
           retention-days: 14
 
+  # ── Real agents on real operating systems ─────────────────────────────────
+  # scripts/agent-e2e.py starts an agent, then acts as an operator through the
+  # API (password + TOTP): the agent registers, is approved, checks in, is
+  # sent a signed task, verifies it and reports the result. On Linux the agent
+  # runs as root in stock Debian, Rocky and Ubuntu images on the runner's
+  # network (scripts/agent-in-container.sh); on macOS and Windows it runs on
+  # the runner itself, as root / Administrator. The server is this commit on
+  # SQLite: these jobs test the agent's path, the test job tests Postgres.
+  # New in sprint M2 and not yet required by publish: they become required
+  # once they have been green on a pull request.
+  agents:
+    name: Agent end-to-end — ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: debian-12, os: ubuntu-latest, image: "debian:12" }
+          - { name: rocky-9, os: ubuntu-latest, image: "rockylinux:9" }
+          - { name: ubuntu-24.04, os: ubuntu-latest, image: "ubuntu:24.04" }
+          - { name: macos, os: macos-latest }
+          - { name: windows, os: windows-latest }
+    env:
+      USE_SQLITE: "1"
+      DJANGO_SECRET_KEY: ci-agent-e2e-secret-key-not-a-real-one-0123
+      DJANGO_DEBUG: "false"
+      VIGIL_PUBLIC_URL: http://127.0.0.1:8010
+      VIGIL_SIGNING_KEY_SEED: "rVVG5N5frRQYzPFzKradn0wIPW6+elhaDwPLUafvCNA="
+      VIGIL_SKIP_STARTUP_CHECKS: "1"
+      PYTHONUTF8: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Start a seeded server
+        working-directory: server
+        run: |
+          pip install -q -r requirements.txt
+          python manage.py migrate --noinput
+          python manage.py shell < ../scripts/e2e/seed.py
+          python manage.py runserver 127.0.0.1:8010 --insecure --noreload > ../server.log 2>&1 &
+          for _ in $(seq 1 30); do curl -sf http://127.0.0.1:8010/api/v1/health/ && break; sleep 2; done
+          curl -sf http://127.0.0.1:8010/api/v1/health/ || { cat ../server.log; exit 1; }
+      - name: Agent in a ${{ matrix.image }} container, as root
+        if: matrix.image
+        env:
+          AGENT_E2E_WORK: ${{ runner.temp }}/agent-e2e
+        run: |
+          python scripts/agent-e2e.py --server http://127.0.0.1:8010 --workdir "$AGENT_E2E_WORK" \
+            --timeout 240 --agent "scripts/agent-in-container.sh ${{ matrix.image }}"
+      - name: Agent on macOS, as root
+        if: runner.os == 'macOS'
+        run: |
+          python -m venv agent-venv && agent-venv/bin/pip install -q -r agent/requirements.txt
+          cd agent && sudo -E ../agent-venv/bin/python ../scripts/agent-e2e.py --server http://127.0.0.1:8010 \
+            --workdir "${{ runner.temp }}/agent-e2e" --agent "../agent-venv/bin/python -m vigil_agent"
+      - name: Agent on Windows, as Administrator
+        if: runner.os == 'Windows'
+        run: |
+          python -m venv agent-venv && agent-venv/Scripts/pip install -q -r agent/requirements.txt
+          cd agent && ../agent-venv/Scripts/python ../scripts/agent-e2e.py --server http://127.0.0.1:8010 \
+            --workdir "${{ runner.temp }}/agent-e2e" --agent "../agent-venv/Scripts/python -m vigil_agent"
+      - name: Server log
+        if: failure()
+        run: tail -200 server.log
+
   # ── Upgrade from the previous release ─────────────────────────────────────
   # Migrations that only ever ran on an empty database are how upgrades break.
   # This job builds the previous release's schema with that release's own code
