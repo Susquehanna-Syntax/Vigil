@@ -46,6 +46,9 @@ with scoping.system(reason="e2e seed: building fixtures for every site"):
         name="e2e check nginx", owner=admin, yaml_source=source, parsed_spec=parse_and_validate(source))
     playbook = Playbook.objects.create(name="e2e baseline", created_by=admin, target_tags=["e2e"])
     PlaybookStep.objects.create(playbook=playbook, definition=definition, order=0)
+    # One global wave, no ladder: a rollout that names no group walks it.
+    from apps.tasks.models import PatchWave
+    PatchWave.objects.create(name="e2e canary", order=1, tags=["e2e"], validation_hours=0)
 
     try:
         from apps_business.sites.models import HostSiteAssignment, Site, UserSiteRole

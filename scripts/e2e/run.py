@@ -242,6 +242,31 @@ def security_key(s: Session, browser):
     fresh.ctx.close()
 
 
+@flow("roll a playbook out in waves with a TOTP code")
+def rollout_playbook(s: Session):
+    before = len(s.api("/api/v1/rollouts/"))
+    s.go("playbooks")
+    s.page.click('.sub-tab[data-subtab="rollout-panel"]')
+    s.page.click('[data-act="openRolloutStart"]')
+    s.page.wait_for_selector("#rollout-start-modal.open")
+    s.page.click("#rollout-start-def-btn")
+    s.page.locator(".picker-row", has_text="e2e baseline").first.locator("[data-pick-sel]").click()
+    s.page.wait_for_function(
+        "() => document.getElementById('rollout-start-def').value.startsWith('playbook:')")
+    s.shot("rollout-start")
+    s.page.click("#rollout-start-submit")
+    s.answer_totp()
+    s.page.wait_for_load_state("networkidle")
+    s.page.wait_for_timeout(1500)
+    rollouts = s.api("/api/v1/rollouts/")
+    assert len(rollouts) == before + 1, f"{before} rollouts before, {len(rollouts)} after"
+    newest = rollouts[0]
+    assert newest["state"] in ("running", "validating"), newest["state"]
+    s.shot("rollout-started")
+    problems = s.drain()
+    assert not problems, problems
+
+
 @flow("a site admin sees only their own site")
 def site_view(s: Session):
     s.go("inventory")
@@ -266,6 +291,7 @@ def main():
         every_page(admin)
         approve_host(admin)
         deploy_task(admin)
+        rollout_playbook(admin)
         security_key(admin, browser)
         try:
             dana = Session(browser, "e2e-dana").login()
