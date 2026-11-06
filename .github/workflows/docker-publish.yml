@@ -24,7 +24,7 @@ jobs:
 
     services:
       postgres:
-        image: timescale/timescaledb:latest-pg16
+        image: timescale/timescaledb:2.31.0-pg16
         env:
           POSTGRES_DB: vigil_test
           POSTGRES_USER: vigil
@@ -36,7 +36,7 @@ jobs:
           --health-interval=5s
           --health-retries=10
       redis:
-        image: redis:7-alpine
+        image: redis:7.4.12-alpine
         ports:
           - 6379:6379
         options: >-
@@ -178,7 +178,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: timescale/timescaledb:latest-pg16
+        image: timescale/timescaledb:2.31.0-pg16
         env:
           POSTGRES_DB: vigil_e2e
           POSTGRES_USER: vigil
@@ -386,7 +386,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: timescale/timescaledb:latest-pg16
+        image: timescale/timescaledb:2.31.0-pg16
         env:
           POSTGRES_DB: vigil_upgrade
           POSTGRES_USER: vigil

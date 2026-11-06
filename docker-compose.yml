@@ -23,12 +23,17 @@
 #                            .env is harmless; the server logs a note at
 #                            startup if it is still set.
 
+# Every image is pinned to an exact version, so two installs from this file run
+# the same software and a restart never pulls a new database. Dependabot opens
+# the bump pull requests; the Vigil image follows this release
+# (server/vigil/test_compose_pins.py keeps it equal to VIGIL_VERSION).
+
 services:
   # Makes DJANGO_SECRET_KEY, VIGIL_SIGNING_KEY_SEED and the database password
   # on first boot and keeps them in the secrets volume. A value set in .env
   # wins, and is kept there too, so removing it later changes nothing.
   secrets:
-    image: susquehannasyntax/vigil:latest
+    image: susquehannasyntax/vigil:2026.16.0
     restart: "no"
     entrypoint: ["python", "-m", "vigil.bootsecrets", "/app/secrets"]
     environment:
@@ -41,7 +46,7 @@ services:
       - pgdata:/pgdata:ro
 
   db:
-    image: timescale/timescaledb:latest-pg16
+    image: timescale/timescaledb:2.31.0-pg16
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-vigil}
@@ -60,7 +65,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.12-alpine
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -69,7 +74,7 @@ services:
       retries: 5
 
   web:
-    image: susquehannasyntax/vigil:latest
+    image: susquehannasyntax/vigil:2026.16.0
     restart: unless-stopped
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
@@ -144,7 +149,7 @@ services:
       - rdp-recordings:/recordings
 
   celery-worker:
-    image: susquehannasyntax/vigil:latest
+    image: susquehannasyntax/vigil:2026.16.0
     restart: unless-stopped
     command: celery -A vigil worker -l info
     healthcheck:
@@ -183,7 +188,7 @@ services:
       - secrets:/app/secrets:ro
 
   celery-beat:
-    image: susquehannasyntax/vigil:latest
+    image: susquehannasyntax/vigil:2026.16.0
     restart: unless-stopped
     command: celery -A vigil beat -l info --pidfile=/tmp/celerybeat.pid --scheduler django_celery_beat.schedulers:DatabaseScheduler
     # beat has no inspect interface — it schedules, it does not consume. The
@@ -222,7 +227,7 @@ services:
 
   # Keeps the outbound link to each relay (Settings → Relays). Idle with none.
   link:
-    image: susquehannasyntax/vigil:latest
+    image: susquehannasyntax/vigil:2026.16.0
     restart: unless-stopped
     command: python manage.py relay_link
     environment:
@@ -255,7 +260,7 @@ services:
   # TUNNEL_TOKEN (and VIGIL_PUBLIC_URL + VIGIL_TRUST_PROXY=true). Point the
   # tunnel's public hostname at http://web:8000. See docs/REMOTE-ACCESS.md.
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.10.7
     restart: unless-stopped
     profiles: ["tunnel"]
     command: tunnel --no-autoupdate run
