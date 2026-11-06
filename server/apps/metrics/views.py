@@ -285,19 +285,24 @@ def metrics_recent(request):
                 .values("host_id", "time", "value", "labels"))
         kept: dict = {}
         for row in rows.iterator(chunk_size=1000):
-            per_host = kept.setdefault(str(row["host_id"]), {})
+            host_key = str(row["host_id"])
+            per_host = kept.get(host_key)
             label_key = _label_key(row["labels"])
-            seen = per_host.get(label_key)
-            if seen is None:
-                if len(per_host) >= max_sets:
-                    continue
-                seen = per_host[label_key] = deque(maxlen=count)
-            if len(seen) < count:
+            seen = per_host.get(label_key) if per_host is not None else None
+            if seen is None or len(seen) < count:
                 # A point that grows the answer, rather than replacing an older
-                # one in a full deque, counts against the request's budget.
+                # one in a full deque, counts against the request's budget, and
+                # is refused before anything is allocated for it. (Label size
+                # is bounded at ingest, _bounded_labels, so points are.)
                 if total >= MAX_RECENT_POINTS_TOTAL:
                     truncated = True
                     continue
+                if seen is None:
+                    if per_host is None:
+                        per_host = kept[host_key] = {}
+                    elif len(per_host) >= max_sets:
+                        continue
+                    seen = per_host[label_key] = deque(maxlen=count)
                 total += 1
             seen.append({"time": row["time"].isoformat(),
                          "value": row["value"],

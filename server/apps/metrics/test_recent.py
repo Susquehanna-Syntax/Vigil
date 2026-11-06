@@ -140,6 +140,9 @@ class RecentMetricsTests(TestCase):
             held = sum(len(s) for h in resp.json().values() for s in h.values())
             self.assertEqual(held, 7)
             self.assertEqual(resp["X-Vigil-Truncated"], "1")
+        with mock.patch.object(views, "MAX_RECENT_POINTS_TOTAL", 0):
+            # An exhausted budget allocates nothing: no empty hosts or series.
+            self.assertEqual(self.get().json(), {})
 
     def test_a_host_that_is_not_an_id_is_400(self):
         resp = self.get({"host": "not-a-uuid"})
