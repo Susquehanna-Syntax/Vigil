@@ -2231,6 +2231,12 @@ textarea.form-control { min-height: 110px; resize: vertical; font-family: 'IBM P
 .bl-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; vertical-align: middle; }
 .bl-badge.on { background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink); }
 .bl-badge.off { background: var(--s3); color: var(--text-3); }
+/* License screen feature chips: they were never styled, so the list ran
+   together as one line of text. */
+#license-features { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.license-chip { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+.license-chip--on { background: rgba(var(--rgb-mint), var(--tint-a)); color: var(--mint-ink); }
+.license-chip--off { background: var(--s3); color: var(--text-3); }
 .bl-seq { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .bl-seq-step { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-1);
   background: var(--s2); border-radius: var(--r-sm); padding: 8px 12px; }

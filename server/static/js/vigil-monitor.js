@@ -527,7 +527,12 @@ navigateTo = function(pageName) {
     if (pins.length) selectMonitorHost(pins[0].id);
   }
   if (pageName === 'vulns') refreshVulns();
-  if (pageName === 'settings') refreshTotpStatus();
+  if (pageName === 'settings') {
+    refreshTotpStatus();
+    // The Account pane opens first and holds the Sign-in sessions group,
+    // which only loaded when another settings pane was clicked.
+    if (typeof loadInstanceSettings === 'function') loadInstanceSettings(false, true);
+  }
 };
 
 /* ── The monitor header's Connect button (QA-58) ───────────────────────────
