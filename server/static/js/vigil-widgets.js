@@ -776,13 +776,17 @@ async function _renderDiskPressure(body, settings) {
   const hosts = _wRows(await _wCached('/api/v1/hosts/'));
   const floor = Number(settings.threshold) || 0;
   const limit = Number(settings.limit) || 8;
-  const readings = await Promise.all(hosts.map(async (h) => {
-    try {
-      const points = _wRows(await _wCached(
-        `/api/v1/metrics/${h.id}/disk/usage_percent/?limit=1`, 30000));
-      return points.length ? { host: h, value: Number(points[0].value) } : null;
-    } catch (e) { return null; }
-  }));
+  const from = new Date(Date.now() - 30 * 60000).toISOString();
+  let all = {};
+  try {
+    all = await _wCached(`/api/v1/metrics/recent/?series=disk/usage_percent:10&from=${encodeURIComponent(from)}`, 30000);
+  } catch (e) { all = {}; }
+  const readings = hosts.map((h) => {
+    const pts = ((all[h.id] || {})['disk/usage_percent']) || [];
+    if (!pts.length) return null;
+    // Every mount reports; the widget shows the fullest one, as the host cards do.
+    return { host: h, value: Math.max(...pts.map(p => Number(p.value) || 0)) };
+  });
   const rows = readings.filter(r => r && r.value >= floor)
     .sort((a, b) => b.value - a.value).slice(0, limit);
   if (!rows.length) { _wEmpty(body, 'No disk readings'); return; }

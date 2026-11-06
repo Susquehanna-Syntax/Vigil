@@ -652,88 +652,105 @@ document.querySelectorAll('.host-dropdown-item').forEach(item => {
 /* ── Live host card metrics + filter ─────────────────────────────────── */
 // `root` scopes the refresh to one subtree — the dashboard's host widget
 // renders the same cards, and refreshing the whole document from there would
-// re-fetch five metric series for every card on the hosts page as well.
+// re-fetch every metric series for every card on the hosts page as well.
+const _CARD_SERIES = 'cpu/usage_percent:5,memory/usage_percent:5,disk/usage_percent:5,'
+                   + 'network/bytes_recv:20,network/bytes_sent:20';
+
+// One request carries the five series for up to this many hosts; beyond it the
+// URL would grow past what a proxy will accept, so ask in chunks.
+const _CARD_CHUNK = 500;
+
+async function _fetchCardMetrics(ids) {
+  const from = new Date(Date.now() - 5 * 60000).toISOString();
+  const all = {};
+  for (let i = 0; i < ids.length; i += _CARD_CHUNK) {
+    const chunk = ids.slice(i, i + _CARD_CHUNK);
+    const resp = await fetch(`/api/v1/metrics/recent/?series=${_CARD_SERIES}`
+      + `&from=${encodeURIComponent(from)}` + chunk.map(id => `&host=${encodeURIComponent(id)}`).join(''),
+      { credentials: 'same-origin' });
+    if (!resp.ok) throw new Error(`metrics/recent failed: HTTP ${resp.status}`);
+    Object.assign(all, await resp.json());
+  }
+  return all;
+}
+
 async function refreshHostCards(root) {
   // Skip cards inside the collapsed inactive section — no live data needed.
-  const cards = (root || document).querySelectorAll('.host-card:not([data-inactive="1"])');
+  const cards = [...(root || document).querySelectorAll('.host-card:not([data-inactive="1"])')];
+  const ids = cards.filter(c => c.dataset.id && c.dataset.status === 'online').map(c => c.dataset.id);
+  if (!ids.length) return;
+  let all = {};
+  try {
+    all = await _fetchCardMetrics(ids);
+  } catch { return; }
+
   for (const card of cards) {
     const hostId = card.dataset.id;
     if (!hostId || card.dataset.status !== 'online') continue;
-    const from = new Date(Date.now() - 5 * 60000).toISOString();
-    try {
-      const [cpuResp, memResp, diskResp, netInResp, netOutResp] = await Promise.all([
-        fetch(`/api/v1/metrics/${hostId}/cpu/usage_percent/?from=${from}&limit=5`, { credentials: 'same-origin' }),
-        fetch(`/api/v1/metrics/${hostId}/memory/usage_percent/?from=${from}&limit=5`, { credentials: 'same-origin' }),
-        fetch(`/api/v1/metrics/${hostId}/disk/usage_percent/?from=${from}&limit=5`, { credentials: 'same-origin' }),
-        fetch(`/api/v1/metrics/${hostId}/network/bytes_recv/?from=${from}&limit=20`, { credentials: 'same-origin' }),
-        fetch(`/api/v1/metrics/${hostId}/network/bytes_sent/?from=${from}&limit=20`, { credentials: 'same-origin' }),
-      ]);
-      const [cpuData, memData, diskData, netInData, netOutData] = await Promise.all([
-        cpuResp.ok    ? cpuResp.json()    : [],
-        memResp.ok    ? memResp.json()    : [],
-        diskResp.ok   ? diskResp.json()   : [],
-        netInResp.ok  ? netInResp.json()  : [],
-        netOutResp.ok ? netOutResp.json() : [],
-      ]);
-      const cpuEl = card.querySelector('[data-metric="cpu"]');
-      const memEl = card.querySelector('[data-metric="memory"]');
-      const diskEl = card.querySelector('[data-metric="disk"]');
-      const netInEl = card.querySelector('[data-metric="net-in"]');
-      const netOutEl = card.querySelector('[data-metric="net-out"]');
+    const s = all[hostId] || {};
+    const cpuData = s['cpu/usage_percent'] || [];
+    const memData = s['memory/usage_percent'] || [];
+    const diskData = s['disk/usage_percent'] || [];
+    const netInData = s['network/bytes_recv'] || [];
+    const netOutData = s['network/bytes_sent'] || [];
+    const cpuEl = card.querySelector('[data-metric="cpu"]');
+    const memEl = card.querySelector('[data-metric="memory"]');
+    const diskEl = card.querySelector('[data-metric="disk"]');
+    const netInEl = card.querySelector('[data-metric="net-in"]');
+    const netOutEl = card.querySelector('[data-metric="net-out"]');
 
-      const cpuPts = cpuData.filter(p => (p.labels || {}).core === 'total');
-      if (cpuPts.length && cpuEl) {
-        const v = Math.round(cpuPts[0].value);
-        cpuEl.querySelector('.host-metric-value').textContent = v + '%';
-        cpuEl.querySelector('.host-metric-fill').style.width = v + '%';
-      }
-      if (memData.length && memEl) {
-        const v = Math.round(memData[0].value);
-        memEl.querySelector('.host-metric-value').textContent = v + '%';
-        memEl.querySelector('.host-metric-fill').style.width = v + '%';
-      }
-      if (diskData.length && diskEl) {
-        // Aggregate latest disk usage across mounts — show the highest %.
-        const max = diskData.reduce((m, p) => Math.max(m, p.value || 0), 0);
-        const v = Math.round(max);
-        diskEl.querySelector('.host-metric-value').textContent = v + '%';
-        diskEl.querySelector('.host-metric-fill').style.width = v + '%';
-      }
+    const cpuPts = cpuData.filter(p => (p.labels || {}).core === 'total');
+    if (cpuPts.length && cpuEl) {
+      const v = Math.round(cpuPts[0].value);
+      cpuEl.querySelector('.host-metric-value').textContent = v + '%';
+      cpuEl.querySelector('.host-metric-fill').style.width = v + '%';
+    }
+    if (memData.length && memEl) {
+      const v = Math.round(memData[0].value);
+      memEl.querySelector('.host-metric-value').textContent = v + '%';
+      memEl.querySelector('.host-metric-fill').style.width = v + '%';
+    }
+    if (diskData.length && diskEl) {
+      // Aggregate latest disk usage across mounts — show the highest %.
+      const max = diskData.reduce((m, p) => Math.max(m, p.value || 0), 0);
+      const v = Math.round(max);
+      diskEl.querySelector('.host-metric-value').textContent = v + '%';
+      diskEl.querySelector('.host-metric-fill').style.width = v + '%';
+    }
 
-      // Network rates require two adjacent samples. Sum across interfaces
-      // (excluding loopback) to give a top-level fleet view.
-      function _rate(points) {
-        if (!points || points.length < 2) return 0;
-        const byIface = {};
-        for (const p of points) {
-          const iface = (p.labels || {}).interface || '_';
-          if (!byIface[iface]) byIface[iface] = [];
-          byIface[iface].push(p);
-        }
-        let total = 0;
-        for (const samples of Object.values(byIface)) {
-          samples.sort((a,b) => new Date(a.time) - new Date(b.time));
-          if (samples.length < 2) continue;
-          const a = samples[samples.length - 2];
-          const b = samples[samples.length - 1];
-          const dt = (new Date(b.time) - new Date(a.time)) / 1000;
-          if (dt > 0) total += Math.max(0, (b.value - a.value) / dt);
-        }
-        return total;
+    // Network rates require two adjacent samples. Sum across interfaces
+    // (excluding loopback) to give a top-level fleet view.
+    function _rate(points) {
+      if (!points || points.length < 2) return 0;
+      const byIface = {};
+      for (const p of points) {
+        const iface = (p.labels || {}).interface || '_';
+        if (!byIface[iface]) byIface[iface] = [];
+        byIface[iface].push(p);
       }
-      const inRate = _rate(netInData);
-      const outRate = _rate(netOutData);
-      if (netInEl) {
-        netInEl.querySelector('.host-metric-value').textContent = _formatBytesPerSec(inRate);
-        const pct = Math.min(100, Math.round((inRate / (1024*1024)) * 100));
-        netInEl.querySelector('.host-metric-fill').style.width = pct + '%';
+      let total = 0;
+      for (const samples of Object.values(byIface)) {
+        samples.sort((a,b) => new Date(a.time) - new Date(b.time));
+        if (samples.length < 2) continue;
+        const a = samples[samples.length - 2];
+        const b = samples[samples.length - 1];
+        const dt = (new Date(b.time) - new Date(a.time)) / 1000;
+        if (dt > 0) total += Math.max(0, (b.value - a.value) / dt);
       }
-      if (netOutEl) {
-        netOutEl.querySelector('.host-metric-value').textContent = _formatBytesPerSec(outRate);
-        const pct = Math.min(100, Math.round((outRate / (1024*1024)) * 100));
-        netOutEl.querySelector('.host-metric-fill').style.width = pct + '%';
-      }
-    } catch {}
+      return total;
+    }
+    const inRate = _rate(netInData);
+    const outRate = _rate(netOutData);
+    if (netInEl) {
+      netInEl.querySelector('.host-metric-value').textContent = _formatBytesPerSec(inRate);
+      const pct = Math.min(100, Math.round((inRate / (1024*1024)) * 100));
+      netInEl.querySelector('.host-metric-fill').style.width = pct + '%';
+    }
+    if (netOutEl) {
+      netOutEl.querySelector('.host-metric-value').textContent = _formatBytesPerSec(outRate);
+      const pct = Math.min(100, Math.round((outRate / (1024*1024)) * 100));
+      netOutEl.querySelector('.host-metric-fill').style.width = pct + '%';
+    }
   }
 }
 

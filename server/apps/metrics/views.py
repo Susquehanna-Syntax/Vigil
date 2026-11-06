@@ -1,3 +1,7 @@
+import re
+from datetime import timedelta
+
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -8,7 +12,6 @@ from apps.hosts.models import Host
 
 from .models import MetricPoint
 from .serializers import MetricPointSerializer
-
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -151,3 +154,104 @@ def metric_catalog(request):
         {"category": category, "metric": metric, "label": f"{category} / {metric}"}
         for category, metric in rows
     ])
+
+
+#: Batched-recent limits. The endpoint exists to replace a per-host fan-out, so
+#: it is bounded: eight series, fifty points each, one day back, a thousand
+#: hosts. Beyond that the caller wants a chart, which is the per-host endpoint's
+#: job.
+MAX_RECENT_SERIES = 8
+MAX_RECENT_POINTS = 50
+MAX_RECENT_HOSTS = 1000
+MAX_RECENT_WINDOW = timedelta(hours=24)
+
+_RECENT_SERIES_PART = re.compile(r"^[a-z0-9_]{1,50}$")
+
+
+def _parse_recent_series(raw):
+    """([("cpu", "usage_percent", 5), ...], None) or (None, "<what is wrong>")."""
+    if not raw:
+        return None, "series is required: comma-separated category/metric:N"
+    entries = []
+    for piece in raw.split(","):
+        category, slash, rest = piece.partition("/")
+        metric, colon, count = rest.partition(":")
+        if not slash or not colon:
+            return None, (
+                f"each series must be category/metric:N with N between 1 and "
+                f"{MAX_RECENT_POINTS}; got {piece!r}"
+            )
+        if not count.isdigit() or not 1 <= int(count) <= MAX_RECENT_POINTS:
+            return None, (
+                f"the point count in series {piece!r} must be an integer between "
+                f"1 and {MAX_RECENT_POINTS}"
+            )
+        if not _RECENT_SERIES_PART.match(category) or not _RECENT_SERIES_PART.match(metric):
+            return None, (
+                f"the category and metric in series {piece!r} must each match "
+                f"[a-z0-9_]{{1,50}}"
+            )
+        entries.append((category, metric, int(count)))
+    if len(entries) > MAX_RECENT_SERIES:
+        return None, f"at most {MAX_RECENT_SERIES} series per request"
+    return entries, None
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def metrics_recent(request):
+    """The recent points of several series for every visible host at once.
+
+    Replaces the hosts page's five-requests-per-card and the Disk Pressure
+    widget's one-per-host: the whole fleet in one query per requested series.
+    """
+    entries, problem = _parse_recent_series(request.query_params.get("series"))
+    if problem:
+        return Response({"error": problem}, status=400)
+
+    raw_from = request.query_params.get("from")
+    from_ts = parse_datetime(raw_from) if raw_from else None
+    if from_ts is None:
+        return Response({"error": "from is required and must be an ISO-8601 datetime"},
+                        status=400)
+
+    now = timezone.now()
+    if from_ts < now - MAX_RECENT_WINDOW:
+        return Response(
+            {"error": f"from may not be older than "
+                      f"{int(MAX_RECENT_WINDOW.total_seconds() // 3600)} hours; "
+                      "this endpoint is for recent points"},
+            status=400,
+        )
+
+    # The request's own scope: a site admin gets their sites' hosts, and a host
+    # they named but cannot see stays silently absent rather than confirming it.
+    ids = list(Host.objects.values_list("id", flat=True))[:MAX_RECENT_HOSTS]
+    wanted = request.query_params.getlist("host")
+    if wanted:
+        asked = {str(i) for i in ids} & {str(h) for h in wanted}
+        ids = [i for i in ids if str(i) in asked]
+
+    out: dict = {}
+    for category, metric, count in entries:
+        key = f"{category}/{metric}"
+        # "oldest N then reverse" rather than "-time then keep the first": the
+        # window is bounded, so the row count stays reasonable, and it keeps a
+        # per-host cap without one query per host.
+        rows = (MetricPoint.objects
+                .filter(host_id__in=ids, category=category, metric=metric,
+                        time__gte=from_ts)
+                .order_by("host_id", "time")
+                .values("host_id", "time", "value", "labels"))
+        kept: dict = {}
+        for row in rows.iterator(chunk_size=1000):
+            host_key = str(row["host_id"])
+            seen = kept.setdefault(host_key, [])
+            if len(seen) >= count:
+                seen.pop(0)
+            seen.append({"time": row["time"].isoformat(),
+                         "value": row["value"],
+                         "labels": row["labels"]})
+        for host_key, points in kept.items():
+            out.setdefault(host_key, {})[key] = list(reversed(points))
+    return Response(out)
