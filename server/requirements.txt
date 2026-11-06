@@ -1,3 +1,8 @@
+# The lock pins every package this file pulls in, its dependencies included.
+# Naming it here makes every install use it (the image, CI, make), and
+# lets Dependabot see and bump it. scripts/check-lock.py fails CI when an
+# installed package is missing from it.
+-c requirements-lock.txt
 # Django 5.2 is the current LTS — security support to April 2028. Vigil is
 # installed and left running, so the LTS line is the right default: 6.x
 # reaches end of life well before 5.2 does, and every dependency below

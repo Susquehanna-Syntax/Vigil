@@ -9,7 +9,7 @@
 # This file is that diff. requirements.txt remains the place to change what
 # Vigil depends on; regenerate here afterwards:
 #
-#     cd server && .venv/bin/pip freeze > requirements.lock
+#     cd server && .venv/bin/pip freeze > requirements-lock.txt
 #
 # The Dockerfile installs from requirements.txt and applies this as a
 # constraints file, so the ranges still express intent and the build still

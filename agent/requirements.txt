@@ -1,3 +1,8 @@
+# The lock pins every package this file pulls in, its dependencies included.
+# Naming it here makes every install use it (the image, CI, make), and
+# lets Dependabot see and bump it. scripts/check-lock.py fails CI when an
+# installed package is missing from it.
+-c requirements-lock.txt
 requests>=2.32,<3.0
 PyNaCl>=1.5,<2.0
 psutil>=6.0,<7.0

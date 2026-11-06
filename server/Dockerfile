@@ -5,11 +5,10 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends binutils && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir pyinstaller psutil requests PyNaCl PyYAML
-
 WORKDIR /build
-COPY agent/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# The agent's own lock pins PyInstaller too: requirements.txt names it.
+COPY agent/requirements.txt agent/requirements-lock.txt ./
+RUN pip install --no-cache-dir -r requirements.txt pyinstaller
 COPY agent/vigil_agent/ vigil_agent/
 COPY agent/vigil_agent_main.py vigil_agent_main.py
 RUN pyinstaller --onefile --name vigil-agent \
@@ -50,12 +49,12 @@ RUN apt-get update && \
 RUN groupadd --system --gid 1000 vigil && \
     useradd --system --uid 1000 --gid vigil --home-dir /app --shell /usr/sbin/nologin vigil
 
-COPY server/requirements.txt server/requirements.lock ./
-# Ranges express intent; the lock decides the build. Applying the lock as a
-# constraints file rather than installing it directly keeps requirements.txt
-# as the single place dependencies are declared — the lock can never add a
-# package, only pin the version of one already asked for.
-RUN pip install --no-cache-dir -r requirements.txt -c requirements.lock
+COPY server/requirements.txt server/requirements-lock.txt ./
+# Ranges express intent; the lock decides the build. requirements.txt applies
+# the lock as a constraints file (-c) rather than installing it, which keeps
+# requirements.txt the single place dependencies are declared — the lock can
+# never add a package, only pin the version of one already asked for.
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY server/ .
 # A release image trusts only the license keys built into vigil/license_keys.py;

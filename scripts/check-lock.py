@@ -6,8 +6,8 @@ package the lock does not name (a new dependency, or one of its own) is
 installed unpinned: it escapes reproducible builds and the dependency audit.
 Run inside a virtualenv made from exactly those two files:
 
-    pip install -r server/requirements.txt -c server/requirements.lock
-    python scripts/check-lock.py server/requirements.lock
+    pip install -r server/requirements.txt
+    python scripts/check-lock.py server/requirements-lock.txt
 """
 import re
 import subprocess

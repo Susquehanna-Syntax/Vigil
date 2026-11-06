@@ -1,1 +1,6 @@
+# The lock pins every package this file pulls in, its dependencies included.
+# Naming it here makes every install use it (the image, CI, make), and
+# lets Dependabot see and bump it. scripts/check-lock.py fails CI when an
+# installed package is missing from it.
+-c requirements-lock.txt
 aiohttp==3.14.5

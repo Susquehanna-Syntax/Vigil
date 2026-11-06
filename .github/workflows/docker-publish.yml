@@ -128,7 +128,7 @@ jobs:
         run: node --test jstests/
 
   # ── Known-vulnerable dependencies ──────────────────────────────────────────
-  # Every pinned Python dependency the image and the agent ship, checked against
+  # Every pinned Python dependency the images and the agent binaries ship, checked against
   # the PyPA and OSV advisory databases. The locks are exact pins, so nothing is
   # resolved: --no-deps --disable-pip audits exactly what a build installs. An
   # advisory with no fix yet fails the run too; ignore one only with
@@ -138,22 +138,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The images and the agent build run 3.12; resolve on the same Python, so
+      # the lock is checked against what they actually install.
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
-      # The image installs requirements.txt constrained by the lock, so a
-      # package the lock does not name is installed unpinned and never audited.
-      - name: The server lock names every installed package
+          python-version: "3.12"
+      # Each requirements.txt applies its lock (-c requirements-lock.txt), so a
+      # package the lock does not name would be installed unpinned and never
+      # audited. Install each component the way its build does and check.
+      - name: Every installed package is in its lock
         run: |
-          python -m venv /tmp/lockcheck
-          /tmp/lockcheck/bin/pip install -q -r server/requirements.txt -c server/requirements.lock
-          /tmp/lockcheck/bin/python scripts/check-lock.py server/requirements.lock
+          check() {  # <component> <extra packages its build installs>
+            python -m venv "/tmp/lock-$1"
+            "/tmp/lock-$1/bin/pip" install -q -r "$1/requirements.txt" $2
+            "/tmp/lock-$1/bin/python" scripts/check-lock.py "$1/requirements-lock.txt"
+          }
+          check server ""
+          check agent pyinstaller
+          check relay ""
       - name: Install pip-audit
         run: python -m pip install pip-audit==2.9.0
       - name: Audit
         run: |
           status=0
-          for f in server/requirements.lock agent/requirements.lock relay/requirements.txt; do
+          for f in server/requirements-lock.txt agent/requirements-lock.txt relay/requirements-lock.txt; do
             echo "== $f"
             pip-audit -r "$f" --no-deps --disable-pip --progress-spinner off || status=1
           done

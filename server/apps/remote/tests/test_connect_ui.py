@@ -248,7 +248,7 @@ class WebSocketServerDependencyTests(SimpleTestCase):
 
     def test_the_image_installs_a_websocket_library_for_uvicorn(self):
         root = Path(__file__).resolve().parents[3]
-        for name in ("requirements.txt", "requirements.lock"):
+        for name in ("requirements.txt", "requirements-lock.txt"):
             text = (root / name).read_text()
             self.assertRegex(text, r"(?m)^websockets[=>]", name)
 

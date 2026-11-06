@@ -9,8 +9,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt requirements.lock ./
-RUN pip install --no-cache-dir -r requirements.txt -c requirements.lock
+COPY requirements.txt requirements-lock.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
 # No USER directive, deliberately. The agent's whole job is systemctl,
 # apt-get/dnf, ufw/firewall-cmd and useradd on the machine it manages — it
