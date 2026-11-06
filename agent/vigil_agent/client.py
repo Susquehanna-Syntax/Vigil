@@ -104,6 +104,15 @@ def checkin(
     # the server keeps what it had.
     if container_engines is not None:
         payload["container_engines"] = container_engines
+    # The next signing key this agent holds, so the server knows it may
+    # switch (sprint M3 phase 3). Absent while there is none.
+    from . import verify
+    try:
+        ack = verify.pending_next_key(config.data_dir, config.server_public_key)
+    except Exception:  # noqa: BLE001 - a broken key file must not stop check-ins
+        ack = None
+    if ack:
+        payload["key_ack"] = ack
     if config.tags:
         payload["tags"] = list(config.tags)
     if inventory:

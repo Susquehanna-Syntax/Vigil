@@ -917,6 +917,13 @@ def run_agent() -> None:
                     )
                     verify_key = None  # Reject all tasks from now on
 
+            # A next signing key on offer (sprint M3 phase 3): held only when
+            # the key trusted above signed it, then acknowledged next check-in.
+            if response.get("key_rotation") and verify_key is not None:
+                if verify.learn_rotation(config.data_dir, response["key_rotation"],
+                                         config.server_public_key):
+                    verify_key = verify.get_pinned_key(config.data_dir, config.server_public_key)
+
             # Fallback addresses, accepted only if signed for this agent
             endpoints.learn(response, verify_key)
 
