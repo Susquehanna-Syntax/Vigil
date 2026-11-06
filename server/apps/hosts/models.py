@@ -103,6 +103,12 @@ class Host(models.Model):
     # None until an agent new enough to report it checks in.
     agent_runs_as_root = models.BooleanField(null=True, blank=True)
     last_checkin = models.DateTimeField(null=True, blank=True)
+    #: The next task-signing key this agent holds (sprint M3 phase 3): the
+    #: public key it reported as ``key_ack``, which it accepts only after
+    #: checking the server's rotation statement with the key it already
+    #: trusts. ``manage.py signing_key rotate`` waits until every recently
+    #: seen approved host has acknowledged. Blank until it has one.
+    signing_key_ack = models.CharField(max_length=64, blank=True, default="")
     #: Which relay this host last checked in through (QA-52). Null means the
     #: dashboard itself — the built-in relay.
     last_relay = models.ForeignKey("relays.Relay", null=True, blank=True,
@@ -695,3 +701,26 @@ class ContainerRollback(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=("host", "container_name"),
                                                name="uniq_container_rollback")]
+
+
+class SigningKeyEpoch(models.Model):
+    """One switch of the task-signing key (sprint M3 phase 3), kept forever.
+
+    The active key is the newest epoch whose ``effective_at`` has passed; with
+    no epoch at all it is ``VIGIL_SIGNING_KEY_SEED``, as before rotation
+    existed. A key is identified by its public half, never by which variable
+    holds its seed, so an operator can tidy ``.env`` after a switch. A key
+    that was ever active is never offered to agents as a next key again.
+    Install-wide, like the key itself: no site.
+    """
+
+    public_key = models.CharField(max_length=64)
+    effective_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    note = models.CharField(max_length=200, blank=True, default="")
+
+    class Meta:
+        ordering = ["-effective_at", "-id"]
+
+    def __str__(self):
+        return f"{self.public_key[:12]}... from {self.effective_at:%Y-%m-%d %H:%M}"

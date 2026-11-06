@@ -385,6 +385,10 @@ SECURE_HSTS_PRELOAD = os.environ.get(
 # Generate with: python -c "import base64; from nacl.signing import SigningKey; print(base64.b64encode(bytes(SigningKey.generate())).decode())"
 # ---------------------------------------------------------------------------
 VIGIL_SIGNING_KEY_SEED = os.environ.get("VIGIL_SIGNING_KEY_SEED", "")
+#: A second seed, set while rotating the signing key (sprint M3 phase 3):
+#: agents learn its public key, signed by the active one, and
+#: `manage.py signing_key rotate` switches to it once they all have.
+VIGIL_SIGNING_KEY_NEXT_SEED = os.environ.get("VIGIL_SIGNING_KEY_NEXT_SEED", "")
 
 # ---------------------------------------------------------------------------
 # Request body size

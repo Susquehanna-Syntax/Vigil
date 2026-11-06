@@ -29,8 +29,10 @@ class HostsConfig(AppConfig):
         # their compose file one restart at a time.
         from vigil.startup_checks import validate_or_die
         validate_or_die()
-        from vigil.signing import get_signing_key
-        get_signing_key()
+        # Parses both seeds without reading the database: which of them is
+        # active is a database question, and apps are not ready for queries.
+        from vigil.signing import configured_keys
+        configured_keys()
 
     @staticmethod
     def _warn_if_agent_version_pinned():

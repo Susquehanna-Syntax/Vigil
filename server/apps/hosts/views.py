@@ -44,7 +44,7 @@ def _bounded_labels(raw):
 from apps.tasks.models import Task
 from apps.tasks.spec import schedule_window_active
 from vigil import scoping
-from vigil.signing import get_public_key_b64, sign_task, sign_task_v2
+from vigil.signing import get_public_key_b64, rotation_statement, sign_task, sign_task_v2
 
 from .auto_tags import merge_auto_tags
 from .authentication import authenticate_agent
@@ -436,6 +436,13 @@ def checkin(request):
     if agent_ver := data.get("vigil_version"):
         host.agent_version = str(agent_ver)[:50]
 
+    # The next signing key this agent says it holds (sprint M3 phase 3). Only
+    # a well-formed public key is stored; it decides nothing on its own, it
+    # only tells `signing_key rotate` who is ready.
+    ack = data.get("key_ack")
+    if isinstance(ack, str) and len(ack) == 44 and ack.endswith("="):
+        host.signing_key_ack = ack
+
     # The allowlist the agent will enforce. Anything malformed leaves the stored
     # value alone rather than wiping what a good check-in said.
     raw_allow = data.get("allowlist")
@@ -759,6 +766,9 @@ def checkin(request):
         {
             "status": "ok",
             "public_key": get_public_key_b64(),
+            # While a rotation is under way: the next key, signed by the
+            # active one, which the agent checks before it holds the key.
+            **({"key_rotation": statement} if (statement := rotation_statement()) else {}),
             "tasks": tasks_payload,
             # Fallback connection points (QA-52), signed for this agent (QA-54b)
             # because a relay carries this response too: "relays" is the ordered
