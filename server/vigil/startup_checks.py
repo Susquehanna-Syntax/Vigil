@@ -27,6 +27,8 @@ import sys
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
+from vigil import bootsecrets
+
 #: The value ``settings.py`` falls back to, and the one the shipped compose
 #: file substitutes. Either means nobody set a key.
 INSECURE_SECRET_KEYS = frozenset({
@@ -64,6 +66,19 @@ def _is_non_serving_command() -> bool:
     return len(sys.argv) > 1 and sys.argv[1] in NON_SERVING_COMMANDS
 
 
+def _signing_seed() -> str:
+    """The configured signing seed.
+
+    Not ``settings.VIGIL_SIGNING_KEY_SEED``: that is the runtime read, frozen
+    when settings load, so neither ``override_settings`` nor an environment
+    the settings module has already consumed can show this gate an unset seed
+    — and an unset seed is exactly what this gate exists to catch. Re-reading
+    it here (env first, then the generated secret file) checks the deployment,
+    not the settings module that was imported to check it.
+    """
+    return bootsecrets.value("signing_key_seed")
+
+
 def collect_problems() -> list[str]:
     """Every configuration problem that should stop this instance starting.
 
@@ -84,7 +99,7 @@ def collect_problems() -> list[str]:
             "password-reset token on this instance is forgeable by anyone who "
             "has read it. " + _GENERATE_SECRET)
 
-    if not os.environ.get("VIGIL_SIGNING_KEY_SEED", "").strip():
+    if not _signing_seed().strip():
         problems.append(
             "VIGIL_SIGNING_KEY_SEED is unset. It signs every task Vigil sends "
             "to an agent, and agents refuse unsigned tasks, so nothing will "

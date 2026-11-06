@@ -2,10 +2,12 @@ import logging
 import os
 from pathlib import Path
 
+from vigil import bootsecrets
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get(
-    "DJANGO_SECRET_KEY",
+SECRET_KEY = bootsecrets.value(
+    "django_secret_key",
     "insecure-dev-key-change-me-in-production",
 )
 
@@ -236,7 +238,7 @@ else:
             "ENGINE": "django.db.backends.postgresql",
             "NAME": os.environ.get("POSTGRES_DB", "vigil"),
             "USER": os.environ.get("POSTGRES_USER", "vigil"),
-            "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "vigil"),
+            "PASSWORD": bootsecrets.value("postgres_password", "vigil"),
             "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
             "PORT": os.environ.get("POSTGRES_PORT", "5432"),
         }
@@ -385,10 +387,12 @@ SECURE_HSTS_PRELOAD = os.environ.get(
 # Task signing — Ed25519
 # Generate with: python -c "import base64; from nacl.signing import SigningKey; print(base64.b64encode(bytes(SigningKey.generate())).decode())"
 # ---------------------------------------------------------------------------
-VIGIL_SIGNING_KEY_SEED = os.environ.get("VIGIL_SIGNING_KEY_SEED", "")
+VIGIL_SIGNING_KEY_SEED = bootsecrets.value("signing_key_seed", "")
 #: A second seed, set while rotating the signing key (sprint M3 phase 3):
 #: agents learn its public key, signed by the active one, and
 #: `manage.py signing_key rotate` switches to it once they all have.
+#: Environment only, never generated: a seed made on boot would put every
+#: install permanently mid-rotation.
 VIGIL_SIGNING_KEY_NEXT_SEED = os.environ.get("VIGIL_SIGNING_KEY_NEXT_SEED", "")
 
 # ---------------------------------------------------------------------------

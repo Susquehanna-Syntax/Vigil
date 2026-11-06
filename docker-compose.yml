@@ -4,23 +4,12 @@
 # Paste this into Portainer → Stacks → Add Stack, or run:
 #   docker compose up -d
 #
-# Required environment variables (set in Portainer's "Environment variables" tab
-# or in a .env file alongside this compose — NOT inline in this YAML):
-#
-#   DJANGO_SECRET_KEY      — random secret, e.g. openssl rand -hex 32
-#   VIGIL_SIGNING_KEY_SEED — Ed25519 seed for task signing
-#                            generate: python3 -c "import os,base64; print(base64.b64encode(os.urandom(32)).decode())"
-#                            value MUST be exactly 44 chars ending in '=' (32-byte base64)
-#                            PORTAINER/YAML TRAP: the trailing '=' is base64 padding and gets
-#                            stripped by some YAML parsers — keep it in env vars or quote it
-#                            ("Hk3...P0c="). A malformed seed throws binascii.Error and 500s
-#                            every agent checkin.
-#   POSTGRES_PASSWORD      — database password. If you do not set it, it is
-#                            literally 'vigil' — the same guess as the user
-#                            and the database name, on every Vigil install
-#                            in existence. Postgres is not published to the
-#                            host here, but every other container on this
-#                            Docker host can reach db:5432. Set it.
+# Secrets: none are required. On first boot the `secrets` service generates
+# DJANGO_SECRET_KEY, VIGIL_SIGNING_KEY_SEED and the database password and
+# keeps them in the `secrets` volume. To use your own, set them in .env
+# before the first boot (an install from before this change keeps working:
+# the values in its .env are adopted, and an existing database made with
+# the old default password keeps it, with a warning in the secrets log).
 #
 # Optional:
 #   POSTGRES_DB            — default: vigil
@@ -33,22 +22,37 @@
 #                            from the agent bundled in the image. Leaving it in
 #                            .env is harmless; the server logs a note at
 #                            startup if it is still set.
-#
-# Verify after deploy:
-#   docker exec <web-container> python -c \
-#     "import os,base64; s=os.environ['VIGIL_SIGNING_KEY_SEED']; print(len(s), len(base64.b64decode(s)))"
-#   # Expect: 44 32
 
 services:
+  # Makes DJANGO_SECRET_KEY, VIGIL_SIGNING_KEY_SEED and the database password
+  # on first boot and keeps them in the secrets volume. A value set in .env
+  # wins, and is kept there too, so removing it later changes nothing.
+  secrets:
+    image: susquehannasyntax/vigil:latest
+    restart: "no"
+    entrypoint: ["python", "-m", "vigil.bootsecrets", "/app/secrets"]
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
+      VIGIL_SIGNING_KEY_SEED: ${VIGIL_SIGNING_KEY_SEED:-}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      VIGIL_PGDATA: /pgdata
+    volumes:
+      - secrets:/app/secrets
+      - pgdata:/pgdata:ro
+
   db:
     image: timescale/timescaledb:latest-pg16
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-vigil}
       POSTGRES_USER: ${POSTGRES_USER:-vigil}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
+      POSTGRES_PASSWORD_FILE: /run/vigil-secrets/postgres_password
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - secrets:/run/vigil-secrets:ro
+    depends_on:
+      secrets:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vigil}"]
       interval: 5s
@@ -68,7 +72,7 @@ services:
     image: susquehannasyntax/vigil:latest
     restart: unless-stopped
     environment:
-      DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is not set — see the header of this file for how to generate one}"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
       VIGIL_SIGNING_KEY_SEED: ${VIGIL_SIGNING_KEY_SEED:-}
       VIGIL_TIMEZONE: ${VIGIL_TIMEZONE:-UTC}
       VIGIL_METRIC_RETENTION_DAYS: ${VIGIL_METRIC_RETENTION_DAYS:-30}
@@ -87,7 +91,7 @@ services:
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
       POSTGRES_DB: ${POSTGRES_DB:-vigil}
       POSTGRES_USER: ${POSTGRES_USER:-vigil}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
       POSTGRES_HOST: db
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -117,6 +121,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      secrets:
+        condition: service_completed_successfully
     volumes:
       - media:/app/media
       # guacd writes an RDP recording here and Vigil reads it back; the same
@@ -125,6 +131,7 @@ services:
       # Extracted OS install trees for reprovisioning. Shared with the
       # worker: the worker imports, the web container serves to installers.
       - images:/var/lib/vigil/images
+      - secrets:/app/secrets:ro
 
   guacd:
     # Apache Guacamole's RDP speaker. Vigil hands it a one-shot port back to
@@ -147,11 +154,11 @@ services:
       retries: 3
       start_period: 60s
     environment:
-      DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is not set — see the header of this file for how to generate one}"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
       VIGIL_SIGNING_KEY_SEED: ${VIGIL_SIGNING_KEY_SEED:-}
       POSTGRES_DB: ${POSTGRES_DB:-vigil}
       POSTGRES_USER: ${POSTGRES_USER:-vigil}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
       # The pruning beats run here, so these must reach the worker
       # and not only the web container — documented settings that
       # were never passed through are settings that do nothing.
@@ -167,10 +174,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      secrets:
+        condition: service_completed_successfully
     volumes:
       # The worker runs the ISO import that writes these trees; the web
       # container serves them to installers. Both need the same volume.
       - images:/var/lib/vigil/images
+      - secrets:/app/secrets:ro
 
   celery-beat:
     image: susquehannasyntax/vigil:latest
@@ -185,11 +195,11 @@ services:
       retries: 3
       start_period: 45s
     environment:
-      DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is not set — see the header of this file for how to generate one}"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
       VIGIL_SIGNING_KEY_SEED: ${VIGIL_SIGNING_KEY_SEED:-}
       POSTGRES_DB: ${POSTGRES_DB:-vigil}
       POSTGRES_USER: ${POSTGRES_USER:-vigil}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
       # The pruning beats run here, so these must reach the worker
       # and not only the web container — documented settings that
       # were never passed through are settings that do nothing.
@@ -205,6 +215,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      secrets:
+        condition: service_completed_successfully
+    volumes:
+      - secrets:/app/secrets:ro
 
   # Keeps the outbound link to each relay (Settings → Relays). Idle with none.
   link:
@@ -212,11 +226,11 @@ services:
     restart: unless-stopped
     command: python manage.py relay_link
     environment:
-      DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is not set — see the header of this file for how to generate one}"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
       VIGIL_SIGNING_KEY_SEED: ${VIGIL_SIGNING_KEY_SEED:-}
       POSTGRES_DB: ${POSTGRES_DB:-vigil}
       POSTGRES_USER: ${POSTGRES_USER:-vigil}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vigil}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
       POSTGRES_HOST: db
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -229,6 +243,10 @@ services:
     depends_on:
       web:
         condition: service_healthy
+      secrets:
+        condition: service_completed_successfully
+    volumes:
+      - secrets:/app/secrets:ro
 
   # Cloudflare Tunnel sidecar — opt-in. Publishes Vigil to a public hostname
   # without opening any inbound port on your network. Enable with:
@@ -253,3 +271,6 @@ volumes:
   # guacd writes there and the web container serves from it, so a recorded
   # desktop is downloadable without either container owning the file.
   rdp-recordings:
+  # The generated secrets. Back this up with the database: without it, agents
+  # stop trusting the server.
+  secrets:
