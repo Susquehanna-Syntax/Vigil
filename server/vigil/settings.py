@@ -175,6 +175,7 @@ VIGIL_EXTRA_APPS = [
 INSTALLED_APPS += VIGIL_EXTRA_APPS
 
 MIDDLEWARE = [
+    "vigil.requestid.RequestIdMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -745,16 +746,25 @@ EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {
+        "request_id": {"()": "vigil.requestid.RequestIdFilter"},
+    },
     "formatters": {
         "verbose": {
-            "format": "[{asctime}] {levelname} {name} {message}",
+            "format": "[{asctime}] {levelname} {name} [{request_id}] {message}",
             "style": "{",
         },
+        "json": {"()": "vigil.jsonlog.JsonFormatter"},
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
-            "formatter": "verbose",
+            "filters": ["request_id"],
+            "formatter": (
+                "json"
+                if os.environ.get("VIGIL_LOG_FORMAT", "text").lower() == "json"
+                else "verbose"
+            ),
         },
     },
     "root": {

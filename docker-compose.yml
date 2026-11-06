@@ -98,6 +98,8 @@ services:
       # The name guacd uses to reach this container for its RDP connection back.
       # Never the target's address: that stays on the agent's side of the bus.
       VIGIL_RDP_BRIDGE_HOST: web
+      # One JSON object per log line, with the request id. "text" for the old format.
+      VIGIL_LOG_FORMAT: ${VIGIL_LOG_FORMAT:-json}
     ports:
       - "9200:8000"
     # Without this Docker can only see whether the process exited, never
@@ -155,6 +157,8 @@ services:
       # were never passed through are settings that do nothing.
       VIGIL_METRIC_RETENTION_DAYS: ${VIGIL_METRIC_RETENTION_DAYS:-30}
       VIGIL_ALERT_RETENTION_DAYS: ${VIGIL_ALERT_RETENTION_DAYS:-90}
+      # One JSON object per log line, with the request id. "text" for the old format.
+      VIGIL_LOG_FORMAT: ${VIGIL_LOG_FORMAT:-json}
       POSTGRES_HOST: db
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -191,6 +195,8 @@ services:
       # were never passed through are settings that do nothing.
       VIGIL_METRIC_RETENTION_DAYS: ${VIGIL_METRIC_RETENTION_DAYS:-30}
       VIGIL_ALERT_RETENTION_DAYS: ${VIGIL_ALERT_RETENTION_DAYS:-90}
+      # One JSON object per log line, with the request id. "text" for the old format.
+      VIGIL_LOG_FORMAT: ${VIGIL_LOG_FORMAT:-json}
       POSTGRES_HOST: db
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -214,6 +220,8 @@ services:
       POSTGRES_HOST: db
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
+      # One JSON object per log line, with the request id. "text" for the old format.
+      VIGIL_LOG_FORMAT: ${VIGIL_LOG_FORMAT:-json}
       VIGIL_PUBLIC_URL: ${VIGIL_PUBLIC_URL:-}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
       VIGIL_LINK_UPSTREAM: http://web:8000
