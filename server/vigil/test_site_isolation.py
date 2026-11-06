@@ -181,6 +181,7 @@ ALLOWLIST = {
     "api/v1/accounts/security-keys/assert/": "the caller's own second factor",
     "api/v1/instance-settings/": "instance-wide; one value shared by every site",
     "api/v1/instance-settings/test/": "instance-wide; one value shared by every site",
+    "api/v1/instance-settings/backups/": "instance-wide; one backup of the whole install",
     "api/v1/license/": "instance-wide; one license for the whole install",
     "api/v1/license/refresh/": "instance-wide; one license for the whole install",
     "api/v1/civil/settings/": "instance-wide; one SSO tenant for the whole install",

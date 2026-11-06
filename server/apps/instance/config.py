@@ -127,7 +127,8 @@ def source(name: str) -> str:
 #: Per-key bounds that mean something beyond "not negative". A session idle
 #: window below five minutes is a usability trap, and an absolute cap above a
 #: week isn't a cap.
-_RANGES = {"VIGIL_SESSION_IDLE_MINUTES": (5, 720), "VIGIL_SESSION_MAX_HOURS": (1, 168)}
+_RANGES = {"VIGIL_SESSION_IDLE_MINUTES": (5, 720), "VIGIL_SESSION_MAX_HOURS": (1, 168),
+           "VIGIL_BACKUP_HOUR": (0, 23), "VIGIL_BACKUP_KEEP": (1, 365)}
 
 
 def validate(name: str, raw) -> tuple[bool, str]:

@@ -83,6 +83,11 @@ GROUPS: tuple[tuple[str, str, str], ...] = (
         "database. Metric retention stays in .env — it is enforced by a "
         "TimescaleDB policy, not by a task."
     )),
+    ("backups", "Backups", (
+        "A nightly copy of the database, uploaded files and the generated "
+        "secrets, made by the worker. Without the secrets a restored "
+        "install cannot sign tasks its agents will accept."
+    )),
     ("locale", "Timezone & time format", (
         "Used to evaluate schedule windows and to render times in the UI."
     )),
@@ -159,6 +164,13 @@ KEYS: tuple[Key, ...] = (
         "Off by default. Daily, Vigil downloads the public package lists your "
         "fleet uses (winget, Flathub, the Ubuntu/Debian releases you run) so "
         "the Store can show what is available."),
+
+    # ── Backups ──────────────────────────────────────────────────────────
+    Key("VIGIL_BACKUP_ENABLED", "backups", BOOL, "Nightly backup",
+        "Off by default: turn on once the backups volume is somewhere you trust."),
+    Key("VIGIL_BACKUP_HOUR", "backups", INT, "Hour of day (0-23, server time zone)", "", "2"),
+    Key("VIGIL_BACKUP_KEEP", "backups", INT, "Backups to keep",
+        "Older ones are deleted after each run.", "14"),
 
     # ── Locale ───────────────────────────────────────────────────────────
     Key("VIGIL_TIMEZONE", "locale", TIMEZONE, "Server timezone",

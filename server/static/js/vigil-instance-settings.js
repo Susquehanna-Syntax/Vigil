@@ -1,7 +1,8 @@
 // vigil-instance-settings.js
 // Owns: the Settings panes backed by /api/v1/instance-settings/ — Scanners,
-//   Email, Retention, and the Timezone card inside Display. One renderer
-//   drives all of them; the server's field registry decides what appears.
+//   Email, Retention (including the backup history under it), and the
+//   Timezone card inside Display. One renderer drives all of them; the
+//   server's field registry decides what appears.
 // HTML: templates/pages/_settings.html — any <div class="is-group" data-group="...">
 // Depends on: vigil-utils.js (apiJson, showToast, escHtml)
 //
@@ -23,6 +24,7 @@ async function loadInstanceSettings(force) {
     return;
   }
   _isRenderAll();
+  loadBackupRuns();
 }
 
 function _isRenderAll() {
@@ -197,6 +199,32 @@ async function testInstanceIntegration(target) {
   } catch (e) {
     _isSetResult(target, e.message || 'Test failed', 'bad');
   }
+}
+
+
+/* ── Backup history ────────────────────────────────────────────────────────
+   The settings say what should run; this is the evidence it did. A failed
+   run says so with its error, which is the whole point of the card. */
+async function loadBackupRuns() {
+  const box = document.getElementById('backup-runs');
+  if (!box) return;
+  let runs;
+  try {
+    runs = await apiJson('/api/v1/instance-settings/backups/');
+  } catch (e) {
+    return; // not an instance admin: the card stays hidden
+  }
+  box.hidden = false;
+  const list = document.getElementById('backup-runs-list');
+  if (!runs.length) { list.textContent = 'No backup has run yet.'; return; }
+  list.innerHTML = runs.map((r) => {
+    const when = new Date(r.started_at).toLocaleString();
+    const size = r.size_bytes == null ? '' : ` · ${(r.size_bytes / 1048576).toFixed(1)} MB`;
+    const state = { ok: 'Succeeded', failed: 'Failed', running: 'Running' }[r.state] || r.state;
+    const err = r.error ? `<div class="muted">${escHtml(r.error)}</div>` : '';
+    return `<div class="backup-run"><strong>${escHtml(state)}</strong> ${escHtml(when)}${escHtml(size)}`
+      + ` <span class="muted">${escHtml(r.name)}</span>${err}</div>`;
+  }).join('');
 }
 
 

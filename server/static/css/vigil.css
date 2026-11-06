@@ -3577,6 +3577,15 @@ input[type="checkbox"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .is-result.is-ok { color: var(--mint-ink); }
 .is-result.is-bad { color: var(--rose-ink); }
 
+/* Backup history rows (Settings → Retention & Limits). Each row is one run;
+   a failed one carries its error on its own line under it, which is why the
+   muted spans are blocks and the row needs the gap. */
+.backup-run { padding: 6px 0 4px; border-top: 1px solid var(--border); font-size: 13px; }
+.backup-run:first-child { border-top: 0; padding-top: 0; }
+.backup-run .muted { font-size: 12px; }
+.backup-run .muted:not(:last-child) { display: block; margin-top: 2px; }
+#backup-runs .totp-label { margin-bottom: 10px; }
+
 /* Jackil ticket list — the link is the point of each row, so it reads as a
    control rather than as default browser blue. */
 #jackil-tickets a { color: var(--sky-ink); text-decoration: none; font-weight: 600; }

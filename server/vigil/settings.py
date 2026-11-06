@@ -597,6 +597,12 @@ VIGIL_METRIC_RETENTION_DAYS = int(os.environ.get("VIGIL_METRIC_RETENTION_DAYS", 
 #: wants the whole history and has the disk for it.
 VIGIL_ALERT_RETENTION_DAYS = int(os.environ.get("VIGIL_ALERT_RETENTION_DAYS", "90"))
 
+#: Nightly backup schedule. The phase 04b task reads these; Settings →
+#: Retention & Limits writes them. Off until an operator turns it on.
+VIGIL_BACKUP_ENABLED = os.environ.get("VIGIL_BACKUP_ENABLED", "false").lower() in ("1", "true", "yes")
+VIGIL_BACKUP_HOUR = int(os.environ.get("VIGIL_BACKUP_HOUR", "2"))
+VIGIL_BACKUP_KEEP = int(os.environ.get("VIGIL_BACKUP_KEEP", "14"))
+
 # Sign-in sessions (QA-14). Read at request time through apps.instance.config,
 # so Settings → Account & Security can change them without a restart.
 VIGIL_SESSION_IDLE_MINUTES = int(os.environ.get("VIGIL_SESSION_IDLE_MINUTES", "15"))

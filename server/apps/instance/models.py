@@ -36,3 +36,24 @@ class InstanceSetting(models.Model):
         from .registry import SECRET_NAMES
         shown = "(secret)" if self.key in SECRET_NAMES else self.value
         return f"{self.key}={shown}"
+
+
+class BackupRun(models.Model):
+    """One backup run (the phase 04b task writes these rows; the
+    Settings page reads them). Install-wide: no site."""
+
+    class State(models.TextChoices):
+        RUNNING = "running", "Running"
+        OK = "ok", "Succeeded"
+        FAILED = "failed", "Failed"
+
+    started_at = models.DateTimeField()
+    finished_at = models.DateTimeField(null=True, blank=True)
+    state = models.CharField(max_length=10, choices=State.choices, default=State.RUNNING)
+    #: The archive's file name inside the backups volume, never a full path.
+    name = models.CharField(max_length=200, blank=True, default="")
+    size_bytes = models.BigIntegerField(null=True, blank=True)
+    error = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ("-started_at", "-id")

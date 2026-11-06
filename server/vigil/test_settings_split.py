@@ -120,7 +120,8 @@ class SettingsSplitTests(TestCase):
     def test_a_greyed_read_shows_no_secret_holding_group(self):
         self.client.force_login(self.dana)
         groups = self.client.get("/api/v1/instance-settings/").json()["groups"]
-        self.assertEqual(sorted(g["id"] for g in groups), ["locale", "retention", "sessions"])
+        self.assertEqual(sorted(g["id"] for g in groups),
+                         ["backups", "locale", "retention", "sessions"])
         self.assertTrue(all(g["read_only"] for g in groups))
         body = json.dumps(groups)
         for name in ("EMAIL_HOST_PASSWORD", "NESSUS_SECRET_KEY", "GREENBONE_PASSWORD", "JACKIL_API_KEY"):

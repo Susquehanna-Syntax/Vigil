@@ -3,16 +3,24 @@
 Admin-only, both ways. These fields hold scanner credentials and an SMTP
 password; being able to read back which of them are configured is already more
 than a viewer should have, and being able to change where alert mail goes is a
-way to redirect a security signal.
+way to redirect a security signal. The one exception is the backup history,
+which is narrower still: instance admins only, because one archive holds every
+site's data and the install's secrets.
 """
 
 from __future__ import annotations
 
 from django.conf import settings as django_settings
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.accounts.permissions import IsAdmin, SettingsPage, settings_access
+from apps.accounts.permissions import (
+    IsAdmin,
+    IsInstanceAdmin,
+    SettingsPage,
+    settings_access,
+)
 from vigil import hooks
 
 from . import config, registry
@@ -51,6 +59,7 @@ GROUP_PAGE = {
     "jackil": "jackil",
     "email": "email",
     "retention": "retention",
+    "backups": "retention",
     "locale": "display",
     "sessions": "retention",
 }
@@ -238,3 +247,22 @@ def _test_email(request) -> dict:
     except Exception as exc:
         return {"ok": False, "detail": str(exc)}
     return {"ok": True, "detail": f"Connected to {config.setting('EMAIL_HOST')}."}
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsInstanceAdmin])
+def backup_runs(request):
+    """The last 20 backup runs. Instance admins only: a backup holds every
+    site's data and the install's secrets."""
+    from .models import BackupRun
+
+    rows = BackupRun.objects.all()[:20]
+    return Response([{
+        "id": r.id,
+        "started_at": r.started_at.isoformat(),
+        "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+        "state": r.state,
+        "name": r.name,
+        "size_bytes": r.size_bytes,
+        "error": r.error[:2000],
+    } for r in rows])
