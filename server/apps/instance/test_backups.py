@@ -64,7 +64,12 @@ class BackupSettingsTests(TestCase):
         backups = next(g for g in groups if g["id"] == "backups")
         self.assertEqual(
             sorted(f["name"] for f in backups["fields"]),
-            ["VIGIL_BACKUP_ENABLED", "VIGIL_BACKUP_HOUR", "VIGIL_BACKUP_KEEP"])
+            ["VIGIL_BACKUP_ENABLED", "VIGIL_BACKUP_HOUR", "VIGIL_BACKUP_KEEP",
+             "VIGIL_BACKUP_PASSPHRASE", "VIGIL_BACKUP_S3_ACCESS_KEY", "VIGIL_BACKUP_S3_BUCKET",
+             "VIGIL_BACKUP_S3_REGION", "VIGIL_BACKUP_S3_SECRET_KEY", "VIGIL_BACKUP_S3_URL"])
+        secrets = {f["name"]: f for f in backups["fields"]
+                   if f["name"] in ("VIGIL_BACKUP_PASSPHRASE", "VIGIL_BACKUP_S3_SECRET_KEY")}
+        self.assertTrue(all(f["kind"] == "secret" for f in secrets.values()), secrets)
 
     def test_saving_the_hour(self):
         self.client.force_authenticate(_admin())

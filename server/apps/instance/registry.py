@@ -171,6 +171,16 @@ KEYS: tuple[Key, ...] = (
     Key("VIGIL_BACKUP_HOUR", "backups", INT, "Hour of day (0-23, server time zone)", "", "2"),
     Key("VIGIL_BACKUP_KEEP", "backups", INT, "Backups to keep",
         "Older ones are deleted after each run.", "14"),
+    Key("VIGIL_BACKUP_S3_URL", "backups", STR, "Off-site copy: S3 endpoint",
+        "Any S3-compatible store (AWS, R2, B2, MinIO). Leave empty to keep backups on this machine only.",
+        "https://s3.eu-west-1.amazonaws.com"),
+    Key("VIGIL_BACKUP_S3_BUCKET", "backups", STR, "Bucket", "", "vigil-backups"),
+    Key("VIGIL_BACKUP_S3_REGION", "backups", STR, "Region", "", "us-east-1"),
+    Key("VIGIL_BACKUP_S3_ACCESS_KEY", "backups", STR, "Access key ID"),
+    Key("VIGIL_BACKUP_S3_SECRET_KEY", "backups", SECRET, "Secret access key"),
+    Key("VIGIL_BACKUP_PASSPHRASE", "backups", SECRET, "Encryption passphrase",
+        "Each off-site copy is encrypted with this before it leaves the machine, and is never uploaded "
+        "without it. Keep it somewhere other than this server: a restore needs it."),
 
     # ── Locale ───────────────────────────────────────────────────────────
     Key("VIGIL_TIMEZONE", "locale", TIMEZONE, "Server timezone",

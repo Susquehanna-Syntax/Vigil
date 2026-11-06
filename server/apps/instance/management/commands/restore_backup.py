@@ -50,11 +50,33 @@ class Command(BaseCommand):
         parser.add_argument("--yes", action="store_true", help="do not ask before replacing the database")
         parser.add_argument("--skip-secrets", action="store_true",
                             help="leave the secrets volume alone (it already holds this install's keys)")
+        parser.add_argument("--passphrase-file",
+                            help="for an encrypted off-site copy (.enc): a file holding the passphrase. "
+                                 "Without it, VIGIL_BACKUP_PASSPHRASE is used. Never on the command line.")
 
-    def handle(self, archive, yes=False, skip_secrets=False, **opts):
+    def handle(self, archive, yes=False, skip_secrets=False, passphrase_file=None, **opts):
         path = Path(archive)
         if not path.is_file():
             raise CommandError(f"No archive at {path}")
+        from apps.instance import sealing
+        if sealing.is_sealed(path):
+            if passphrase_file:
+                passphrase = Path(passphrase_file).read_text().strip()
+            else:
+                passphrase = os.environ.get("VIGIL_BACKUP_PASSPHRASE", "")
+            if not passphrase:
+                raise CommandError("This is an encrypted off-site copy: give --passphrase-file, or set "
+                                   "VIGIL_BACKUP_PASSPHRASE.")
+            plain = Path(tempfile.mkdtemp(prefix="vigil-unseal-")) / "backup.tar.gz"
+            try:
+                sealing.unseal(path, plain, passphrase)
+            except sealing.SealError as exc:
+                shutil.rmtree(plain.parent, ignore_errors=True)
+                raise CommandError(f"Cannot decrypt {path.name}: {exc}") from None
+            try:
+                return self.handle(str(plain), yes=yes, skip_secrets=skip_secrets)
+            finally:
+                shutil.rmtree(plain.parent, ignore_errors=True)
         if not yes:
             db_name = settings.DATABASES["default"]["NAME"]
             answer = input(f"This REPLACES database {db_name!r}. Type its name to go on: ")

@@ -222,8 +222,11 @@ async function loadBackupRuns() {
     const size = r.size_bytes == null ? '' : ` · ${(r.size_bytes / 1048576).toFixed(1)} MB`;
     const state = { ok: 'Succeeded', failed: 'Failed', running: 'Running' }[r.state] || r.state;
     const err = r.error ? `<div class="muted">${escHtml(r.error)}</div>` : '';
+    const off = r.offsite === 'copied' ? ' · copied off-site, encrypted'
+      : r.offsite === 'failed' ? ' · off-site copy failed' : '';
+    const offErr = r.offsite_error ? `<div class="muted">${escHtml(r.offsite_error)}</div>` : '';
     return `<div class="backup-run"><strong>${escHtml(state)}</strong> ${escHtml(when)}${escHtml(size)}`
-      + ` <span class="muted">${escHtml(r.name)}</span>${err}</div>`;
+      + `${escHtml(off)} <span class="muted">${escHtml(r.name)}</span>${err}${offErr}</div>`;
   }).join('');
 }
 
