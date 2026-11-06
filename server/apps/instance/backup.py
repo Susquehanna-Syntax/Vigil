@@ -156,7 +156,26 @@ def run_backup(now=None):
         run.save()
     if run.state == BackupRun.State.OK:
         prune(_setting("VIGIL_BACKUP_KEEP"))
+        _copy_offsite(run)
     return run
+
+
+def _copy_offsite(run):
+    """The sealed off-site copy, when one is configured. A failure here is
+    recorded beside the run, which still succeeded: the archive on this
+    machine is intact."""
+    from . import offsite
+
+    if not offsite.configured():
+        return
+    try:
+        offsite.copy_offsite(backup_dir() / run.name, _setting("VIGIL_BACKUP_KEEP"))
+        run.offsite = "copied"
+    except Exception as exc:  # noqa: BLE001 - recorded, and the page shows it
+        logger.exception("off-site copy of %s failed", run.name)
+        run.offsite = "failed"
+        run.offsite_error = str(exc)[:5000]
+    run.save(update_fields=["offsite", "offsite_error"])
 
 
 def prune(keep) -> list[str]:

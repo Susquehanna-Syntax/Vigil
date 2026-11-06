@@ -265,4 +265,6 @@ def backup_runs(request):
         "name": r.name,
         "size_bytes": r.size_bytes,
         "error": r.error[:2000],
+        "offsite": r.offsite,
+        "offsite_error": r.offsite_error[:2000],
     } for r in rows])

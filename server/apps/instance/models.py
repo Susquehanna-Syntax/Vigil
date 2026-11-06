@@ -54,6 +54,10 @@ class BackupRun(models.Model):
     name = models.CharField(max_length=200, blank=True, default="")
     size_bytes = models.BigIntegerField(null=True, blank=True)
     error = models.TextField(blank=True, default="")
+    #: The sealed off-site copy: "" when none is configured, "copied" or
+    #: "failed" (the archive on this machine is still good when it failed).
+    offsite = models.CharField(max_length=10, blank=True, default="")
+    offsite_error = models.TextField(blank=True, default="")
 
     class Meta:
         ordering = ("-started_at", "-id")

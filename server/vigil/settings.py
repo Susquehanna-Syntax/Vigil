@@ -612,6 +612,14 @@ VIGIL_ALERT_RETENTION_DAYS = int(os.environ.get("VIGIL_ALERT_RETENTION_DAYS", "9
 VIGIL_BACKUP_ENABLED = os.environ.get("VIGIL_BACKUP_ENABLED", "false").lower() in ("1", "true", "yes")
 VIGIL_BACKUP_HOUR = int(os.environ.get("VIGIL_BACKUP_HOUR", "2"))
 VIGIL_BACKUP_KEEP = int(os.environ.get("VIGIL_BACKUP_KEEP", "14"))
+#: The off-site copy (apps/instance/offsite.py): any S3-compatible store; each
+#: copy is sealed with the passphrase first (apps/instance/sealing.py).
+VIGIL_BACKUP_S3_URL = os.environ.get("VIGIL_BACKUP_S3_URL", "")
+VIGIL_BACKUP_S3_BUCKET = os.environ.get("VIGIL_BACKUP_S3_BUCKET", "")
+VIGIL_BACKUP_S3_REGION = os.environ.get("VIGIL_BACKUP_S3_REGION", "us-east-1")
+VIGIL_BACKUP_S3_ACCESS_KEY = os.environ.get("VIGIL_BACKUP_S3_ACCESS_KEY", "")
+VIGIL_BACKUP_S3_SECRET_KEY = os.environ.get("VIGIL_BACKUP_S3_SECRET_KEY", "")
+VIGIL_BACKUP_PASSPHRASE = os.environ.get("VIGIL_BACKUP_PASSPHRASE", "")
 
 # Sign-in sessions (QA-14). Read at request time through apps.instance.config,
 # so Settings → Account & Security can change them without a restart.
