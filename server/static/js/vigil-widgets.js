@@ -779,7 +779,7 @@ async function _renderDiskPressure(body, settings) {
   const from = new Date(Date.now() - 30 * 60000).toISOString();
   let all = {};
   try {
-    all = await _wCached(`/api/v1/metrics/recent/?series=disk/usage_percent:10&from=${encodeURIComponent(from)}`, 30000);
+    all = await _wCached(`/api/v1/metrics/recent/?series=disk/usage_percent:1&from=${encodeURIComponent(from)}`, 30000);
   } catch (e) { all = {}; }
   const readings = hosts.map((h) => {
     const pts = ((all[h.id] || {})['disk/usage_percent']) || [];

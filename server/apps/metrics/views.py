@@ -1,4 +1,6 @@
 import re
+import uuid
+from collections import deque
 from datetime import timedelta
 
 from django.utils import timezone
@@ -12,6 +14,7 @@ from apps.hosts.models import Host
 
 from .models import MetricPoint
 from .serializers import MetricPointSerializer
+
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -157,12 +160,13 @@ def metric_catalog(request):
 
 
 #: Batched-recent limits. The endpoint exists to replace a per-host fan-out, so
-#: it is bounded: eight series, fifty points each, one day back, a thousand
-#: hosts. Beyond that the caller wants a chart, which is the per-host endpoint's
-#: job.
+#: it is bounded: eight series, fifty points per label set, one day back, a
+#: thousand hosts per request. Beyond that the caller wants a chart, which is
+#: the per-host endpoint's job.
 MAX_RECENT_SERIES = 8
 MAX_RECENT_POINTS = 50
 MAX_RECENT_HOSTS = 1000
+MAX_RECENT_LABEL_SETS = 128
 MAX_RECENT_WINDOW = timedelta(hours=24)
 
 _RECENT_SERIES_PART = re.compile(r"^[a-z0-9_]{1,50}$")
@@ -197,6 +201,10 @@ def _parse_recent_series(raw):
     return entries, None
 
 
+def _label_key(labels):
+    return tuple(sorted((labels or {}).items())) if isinstance(labels, dict) else (str(labels),)
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def metrics_recent(request):
@@ -204,6 +212,14 @@ def metrics_recent(request):
 
     Replaces the hosts page's five-requests-per-card and the Disk Pressure
     widget's one-per-host: the whole fleet in one query per requested series.
+
+    `category/metric:N` keeps the newest N points of each label set (each CPU
+    core, each mount, each interface), not N points in all: a card wants the
+    latest reading of every mount and the last two of every interface, and a
+    plain newest-N would hand a 16-core host sixteen per-core points and no
+    total. Hosts are named with `host=` (at most a thousand); without it the
+    answer covers the first thousand visible hosts by name, and says so with
+    an `X-Vigil-Truncated: 1` header when there are more.
     """
     entries, problem = _parse_recent_series(request.query_params.get("series"))
     if problem:
@@ -226,18 +242,33 @@ def metrics_recent(request):
 
     # The request's own scope: a site admin gets their sites' hosts, and a host
     # they named but cannot see stays silently absent rather than confirming it.
-    ids = list(Host.objects.values_list("id", flat=True))[:MAX_RECENT_HOSTS]
+    # The cap applies to what was asked for, never before it: capping the whole
+    # fleet first would silently drop named hosts past the thousandth.
     wanted = request.query_params.getlist("host")
+    truncated = False
     if wanted:
-        asked = {str(i) for i in ids} & {str(h) for h in wanted}
-        ids = [i for i in ids if str(i) in asked]
+        if len(wanted) > MAX_RECENT_HOSTS:
+            return Response({"error": f"at most {MAX_RECENT_HOSTS} host= per request"},
+                            status=400)
+        valid = set()
+        for raw in wanted:
+            try:
+                valid.add(uuid.UUID(raw))
+            except ValueError:
+                return Response({"error": f"host must be a host id; got {raw[:40]!r}"},
+                                status=400)
+        ids = list(Host.objects.filter(id__in=valid).values_list("id", flat=True))
+    else:
+        ids = list(Host.objects.order_by("hostname")
+                   .values_list("id", flat=True)[:MAX_RECENT_HOSTS + 1])
+        truncated = len(ids) > MAX_RECENT_HOSTS
+        ids = ids[:MAX_RECENT_HOSTS]
 
     out: dict = {}
     for category, metric, count in entries:
         key = f"{category}/{metric}"
-        # "oldest N then reverse" rather than "-time then keep the first": the
-        # window is bounded, so the row count stays reasonable, and it keeps a
-        # per-host cap without one query per host.
+        # One ordered scan over the bounded window, keeping the newest `count`
+        # of each label set per host, rather than a query per host.
         rows = (MetricPoint.objects
                 .filter(host_id__in=ids, category=category, metric=metric,
                         time__gte=from_ts)
@@ -245,13 +276,21 @@ def metrics_recent(request):
                 .values("host_id", "time", "value", "labels"))
         kept: dict = {}
         for row in rows.iterator(chunk_size=1000):
-            host_key = str(row["host_id"])
-            seen = kept.setdefault(host_key, [])
-            if len(seen) >= count:
-                seen.pop(0)
+            per_host = kept.setdefault(str(row["host_id"]), {})
+            label_key = _label_key(row["labels"])
+            seen = per_host.get(label_key)
+            if seen is None:
+                if len(per_host) >= MAX_RECENT_LABEL_SETS:
+                    continue
+                seen = per_host[label_key] = deque(maxlen=count)
             seen.append({"time": row["time"].isoformat(),
                          "value": row["value"],
                          "labels": row["labels"]})
-        for host_key, points in kept.items():
-            out.setdefault(host_key, {})[key] = list(reversed(points))
-    return Response(out)
+        for host_key, by_label in kept.items():
+            points = [p for dq in by_label.values() for p in dq]
+            points.sort(key=lambda p: p["time"], reverse=True)
+            out.setdefault(host_key, {})[key] = points
+    response = Response(out)
+    if truncated:
+        response["X-Vigil-Truncated"] = "1"
+    return response

@@ -6,6 +6,7 @@ matters here is that it stays bounded (series, points, window), scoped to the
 requester, and flat in query count as the fleet grows.
 """
 from datetime import timedelta
+from unittest import mock
 
 from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
@@ -86,6 +87,47 @@ class RecentMetricsTests(TestCase):
 
         body = self.get({"host": str(first.id)}).json()
         self.assertEqual(list(body), [str(first.id)])
+
+    def test_the_count_is_per_label_set(self):
+        # A 16-core host writes the per-core points before the total, all at one
+        # time: a plain newest-N would keep cores and lose the total the card shows.
+        host = _make_host("cores-1")
+        for ago in (60, 30):
+            for core in [str(i) for i in range(16)] + ["total"]:
+                _point(host, "cpu", "usage_percent", ago, float(ago), {"core": core})
+            for iface in ("eth0", "eth1", "docker0"):
+                _point(host, "network", "bytes_recv", ago, float(ago), {"interface": iface})
+        self.series = "cpu/usage_percent:1,network/bytes_recv:2"
+        body = self.get().json()[str(host.id)]
+        cpu = body["cpu/usage_percent"]
+        self.assertEqual(len(cpu), 17)
+        self.assertEqual({p["value"] for p in cpu}, {30.0})
+        self.assertEqual([p for p in cpu if p["labels"]["core"] == "total"][0]["value"], 30.0)
+        net = body["network/bytes_recv"]
+        for iface in ("eth0", "eth1", "docker0"):
+            self.assertEqual([p["value"] for p in net if p["labels"]["interface"] == iface],
+                             [30.0, 60.0])
+
+    def test_named_hosts_are_never_cut_by_the_fleet_cap(self):
+        from apps.metrics import views
+        hosts = [_make_host(f"cap-{i}") for i in range(4)]
+        for host in hosts:
+            _point(host, "cpu", "usage_percent", 60, 1.0)
+        with mock.patch.object(views, "MAX_RECENT_HOSTS", 2):
+            # Named: the last two by name are what was asked for, and come back.
+            body = self.get({"host": [str(h.id) for h in hosts[2:]]}).json()
+            self.assertEqual(sorted(body), sorted(str(h.id) for h in hosts[2:]))
+            self.assertEqual(self.get({"host": [str(h.id) for h in hosts[:3]]}).status_code, 400)
+            # Unnamed: the first two by name, and a header saying there were more.
+            resp = self.get()
+            self.assertEqual(sorted(resp.json()), sorted(str(h.id) for h in hosts[:2]))
+            self.assertEqual(resp["X-Vigil-Truncated"], "1")
+        self.assertNotIn("X-Vigil-Truncated", self.get())
+
+    def test_a_host_that_is_not_an_id_is_400(self):
+        resp = self.get({"host": "not-a-uuid"})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("host", resp.json()["error"])
 
     def test_bad_input_is_400(self):
         recent = now() - timedelta(minutes=5)

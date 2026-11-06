@@ -653,8 +653,10 @@ document.querySelectorAll('.host-dropdown-item').forEach(item => {
 // `root` scopes the refresh to one subtree — the dashboard's host widget
 // renders the same cards, and refreshing the whole document from there would
 // re-fetch every metric series for every card on the hosts page as well.
-const _CARD_SERIES = 'cpu/usage_percent:5,memory/usage_percent:5,disk/usage_percent:5,'
-                   + 'network/bytes_recv:20,network/bytes_sent:20';
+// N is per label set: the newest reading of each core and mount, and the last
+// two of each interface (a rate needs two samples).
+const _CARD_SERIES = 'cpu/usage_percent:1,memory/usage_percent:1,disk/usage_percent:1,'
+                   + 'network/bytes_recv:2,network/bytes_sent:2';
 
 // One request carries the five series for up to this many hosts; beyond it the
 // URL would grow past what a proxy will accept, so ask in chunks.
