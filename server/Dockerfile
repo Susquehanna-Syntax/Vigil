@@ -32,8 +32,16 @@ WORKDIR /app
 
 # git + openssh-client (+ util-linux for prlimit): stacks from Git (2026.14.1) are fetched by the server,
 # never by a host, so a repository credential stays in Vigil.
+# postgresql-client-16 (sprint M3 phase 4): the nightly backup runs pg_dump in
+# the worker, and pg_dump refuses a server newer than itself, so it comes from
+# the PostgreSQL project's own repository at the server's major version (the
+# compose file pins timescaledb ...-pg16). postgresql-common's script adds that
+# repository with its signing key; Debian's own client would be too old.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libpq-dev gosu git openssh-client util-linux && \
+    apt-get install -y --no-install-recommends libpq-dev gosu git openssh-client util-linux \
+        postgresql-common ca-certificates && \
+    /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y && \
+    apt-get install -y --no-install-recommends postgresql-client-16 && \
     rm -rf /var/lib/apt/lists/*
 
 # Gunicorn and every request it serves ran as UID 0, so a code-execution bug in

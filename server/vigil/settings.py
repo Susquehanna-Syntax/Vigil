@@ -290,6 +290,9 @@ MEDIA_ROOT = BASE_DIR / "media"
 # rather than browsers, and should sit on a volume an operator can size
 # independently of the rest of the app's uploads.
 VIGIL_IMAGE_ROOT = os.environ.get("VIGIL_IMAGE_ROOT", "/var/lib/vigil/images")
+#: Where the nightly backup writes its archives (apps/instance/backup.py): a
+#: volume of its own, mounted only into the worker.
+VIGIL_BACKUP_DIR = os.environ.get("VIGIL_BACKUP_DIR", "/var/lib/vigil/backups")
 
 #: Largest ISO an operator may upload. 0 disables the ceiling. Generous by
 #: default — a Windows Server ISO is comfortably over 5 GB — because the point
@@ -485,6 +488,13 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 # Vigil's beat tasks are fire-and-forget — don't accumulate results in Redis.
 CELERY_TASK_IGNORE_RESULT = True
 CELERY_BEAT_SCHEDULE = {
+    "nightly-backup": {
+        "task": "instance.backup_tick",
+        # Hourly: the task itself checks whether backups are on and whether
+        # this is the hour Settings names, so changing the hour needs no
+        # restart.
+        "schedule": 3600.0,
+    },
     "refresh-license": {
         "task": "licensing.refresh",
         # Every six hours. It only calls out when a license is new, not yet

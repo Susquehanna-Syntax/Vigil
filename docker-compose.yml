@@ -188,6 +188,10 @@ services:
       # The worker runs the ISO import that writes these trees; the web
       # container serves them to installers. Both need the same volume.
       - images:/var/lib/vigil/images
+      # The nightly backup (Settings -> Retention & Limits) runs here: it
+      # reads the uploaded media and writes its archives to their own volume.
+      - media:/app/media:ro
+      - backups:/var/lib/vigil/backups
       - secrets:/app/secrets:ro
 
   celery-beat:
@@ -279,6 +283,9 @@ volumes:
   # guacd writes there and the web container serves from it, so a recorded
   # desktop is downloadable without either container owning the file.
   rdp-recordings:
+  # The nightly backups. Each archive holds the secrets: copy them somewhere
+  # only you can read.
+  backups:
   # The generated secrets. Back this up with the database: without it, agents
   # stop trusting the server.
   secrets:

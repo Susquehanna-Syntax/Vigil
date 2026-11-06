@@ -28,7 +28,7 @@ fi
 if command -v gosu >/dev/null 2>&1; then
     # Only the paths the app actually writes. Chowning /app wholesale would
     # rewrite the entire image layer on every boot for no reason.
-    for path in /app/media /var/lib/vigil/images /app/staticfiles; do
+    for path in /app/media /var/lib/vigil/images /var/lib/vigil/backups /app/staticfiles; do
         [ -d "$path" ] && chown -R vigil:vigil "$path" 2>/dev/null || true
     done
     echo "Dropping privileges to 'vigil'."
