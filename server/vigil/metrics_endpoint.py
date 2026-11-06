@@ -41,8 +41,9 @@ def _celery_queue_depth():
         return None
 
 
-@scoping.system_view(reason="Prometheus scrape: no person is behind it; the bearer token is the access control")
-def metrics(request):
+def collect() -> dict:
+    """Every number /metrics serves, as data. Read now, from the database and
+    the broker. Callers run in a system scope (the counts are install-wide)."""
     from datetime import timedelta
 
     from django.db.models import Count
@@ -52,6 +53,25 @@ def metrics(request):
     from apps.remote.models import RemoteSession
     from apps.tasks.models import Task
 
+    now = timezone.now()
+    depth = _celery_queue_depth()
+    return {
+        "hosts": {status.value: Host.objects.filter(status=status).count()
+                  for status in Host.Status},
+        "checked_in": {label: Host.objects.filter(
+                           last_checkin__gte=now - timedelta(seconds=seconds)).count()
+                       for label, seconds in _CHECKIN_WINDOWS},
+        "remote_sessions_open": RemoteSession.objects.filter(
+            state=RemoteSession.State.OPEN).count(),
+        "tasks": {row["state"]: row["n"]
+                  for row in Task.objects.values("state").annotate(n=Count("id"))},
+        "celery_broker_up": depth is not None,
+        "celery_queue_depth": depth,
+    }
+
+
+@scoping.system_view(reason="Prometheus scrape: no person is behind it; the bearer token is the access control")
+def metrics(request):
     token = (os.environ.get("VIGIL_METRICS_TOKEN") or "").strip()
     if not token:
         return HttpResponseNotFound()
@@ -64,27 +84,23 @@ def metrics(request):
         return HttpResponse(status=401, headers={"WWW-Authenticate": "Bearer"})
 
     started = time.monotonic()
-    now = timezone.now()
+    data = collect()
     lines: list[str] = []
 
     _metric(lines, "vigil_hosts", "gauge", "Hosts by enrolment status.",
-            [({"status": status.value}, Host.objects.filter(status=status).count())
-             for status in Host.Status])
+            [({"status": status}, count) for status, count in data["hosts"].items()])
 
-    checked_in = [({"window": label},
-                   Host.objects.filter(last_checkin__gte=now - timedelta(seconds=seconds)).count())
-                  for label, seconds in _CHECKIN_WINDOWS]
     _metric(lines, "vigil_hosts_checked_in", "gauge",
-            "Hosts whose last check-in is within the window.", checked_in)
+            "Hosts whose last check-in is within the window.",
+            [({"window": window}, count) for window, count in data["checked_in"].items()])
 
     _metric(lines, "vigil_remote_sessions_open", "gauge", "Remote sessions currently open.",
-            [({}, RemoteSession.objects.filter(state=RemoteSession.State.OPEN).count())])
+            [({}, data["remote_sessions_open"])])
 
-    states = Task.objects.values("state").annotate(n=Count("id"))
     _metric(lines, "vigil_tasks", "gauge", "Tasks by state.",
-            [({"state": row["state"]}, row["n"]) for row in states])
+            [({"state": state}, n) for state, n in data["tasks"].items()])
 
-    depth = _celery_queue_depth()
+    depth = data["celery_queue_depth"]
     _metric(lines, "vigil_celery_broker_up", "gauge", "1 when the Celery broker answered.",
             [({}, 0 if depth is None else 1)])
     if depth is not None:

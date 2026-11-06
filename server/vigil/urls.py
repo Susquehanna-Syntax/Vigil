@@ -27,7 +27,7 @@ from apps.reprovision.installer_views import enroll as reprovision_enroll
 from apps.remote.views import agent_wake
 from apps.statuspage.views import public_status as status_public_view
 from apps.statuspage.views import public_status_data as status_public_data_view
-from vigil import metrics_endpoint, scoping, views_scope
+from vigil import health_view, metrics_endpoint, scoping, views_scope
 
 
 @api_view(["GET"])
@@ -139,6 +139,7 @@ urlpatterns = [
     path("api/v1/health/", health_check),
     path("metrics", metrics_endpoint.metrics),
     path("api/v1/about/", about, name="about-api"),
+    path("api/v1/instance-health/", health_view.instance_health, name="instance-health"),
     path("api/v1/register", register, name="register"),
     path("api/v1/checkin", checkin, name="checkin"),
     path("api/v1/agent/log-tail/<uuid:session_id>/", agent_log_lines, name="agent-log-tail"),

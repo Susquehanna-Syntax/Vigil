@@ -28,6 +28,7 @@ CROSSINGS: dict[str, list[str]] = {
     'apps/automations/tasks.py': ['background job: a scheduled automation fires, bounded by its own reach'],
     'apps/catalog/tasks.py': ['background job: the package catalog is install-wide'],
     'vigil/metrics_endpoint.py': ['Prometheus scrape: no person is behind it; the bearer token is the access control'],
+    'vigil/health_view.py': ['instance health: the counts are install-wide'],
     'apps/hosts/enrollment.py': ["re-enrolment moves the machine's own history onto its surviving row",
                                  're-enrolment: the same machine is matched across every site'],
     'apps/hosts/logtail.py': ['agent API: the caller is a host, authenticated by its agent token'],

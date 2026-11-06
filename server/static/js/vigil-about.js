@@ -19,6 +19,7 @@ async function refreshAbout() {
       ? `${d.licensed_to}${d.license_id ? ` (license ${d.license_id})` : ''}`
       : 'Free edition');
     _renderScanners(d.scanners || []);
+    _renderHealth();
   } catch (e) {
     // 401 only happens if a logged-out client somehow hits this; show a hint.
     const wrap = document.getElementById('about-scanners');
@@ -86,10 +87,46 @@ function _renderScanners(scanners) {
   }
 }
 
+async function _renderHealth() {
+  const box = document.getElementById('about-health');
+  const body = document.getElementById('about-health-body');
+  if (!box || !body) return;
+  let h;
+  try {
+    h = await apiJson('/api/v1/instance-health/');
+  } catch (e) {
+    box.hidden = true; // not an instance admin
+    return;
+  }
+  const rows = [];
+  const hosts = h.hosts || {};
+  rows.push(['Hosts', `${hosts.online || 0} online, ${hosts.offline || 0} offline, ${hosts.pending || 0} waiting for approval`]);
+  rows.push(['Checked in, last 5 minutes', String((h.checked_in || {})['5m'] || 0)]);
+  rows.push(['Remote sessions open', String(h.remote_sessions_open || 0)]);
+  const tasks = h.tasks || {};
+  rows.push(['Tasks waiting', String((tasks.pending || 0) + (tasks.dispatched || 0))]);
+  rows.push(['Job queue', h.celery_broker_up ? `${h.celery_queue_depth || 0} waiting` : 'broker not answering']);
+  if (h.database_bytes != null) rows.push(['Database size', `${(h.database_bytes / 1073741824).toFixed(2)} GB`]);
+  const sk = h.signing_key || {};
+  rows.push(['Signing key', (sk.active || '').slice(0, 16) + '...']);
+  if (sk.next) rows.push(['Key rotation', `next key acknowledged by ${sk.acknowledged} of ${sk.hosts} hosts`]);
+  body.replaceChildren();
+  rows.forEach(([label, value]) => {
+    const l = document.createElement('div');
+    l.style.color = 'var(--text-3)';
+    l.textContent = label;
+    const v = document.createElement('div');
+    v.textContent = value;
+    body.append(l, v);
+  });
+  box.hidden = false;
+}
+
 // Wire the sidebar nav click → load when the page becomes active.
 document.querySelectorAll('[data-page="about"]').forEach(el => {
   el.addEventListener('click', refreshAbout);
 });
+
 
 // Also load if the About page is the initial active page on cold load.
 if (document.getElementById('page-about')?.classList.contains('active')) {
