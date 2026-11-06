@@ -327,6 +327,53 @@ jobs:
         if: failure()
         run: tail -200 server.log
 
+  # ── The published compose file, from an empty .env ────────────────────────
+  # Sprint M3's finish line: `docker compose up` with nothing configured gives
+  # a working, secure instance. The image is built from this commit (Community:
+  # no Business token is needed) and tagged as the compose file expects, then
+  # the stack comes up with no .env at all. It must: generate all three secrets,
+  # pass every healthcheck, serve the sign-in page, refuse the old default
+  # database password, and on a second boot keep the secrets it made.
+  # New in sprint M3 and not yet required by publish.
+  compose-smoke:
+    name: Compose from an empty .env
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image the compose file names
+        run: |
+          version="$(sed -n 's/^VIGIL_VERSION = "\(.*\)"$/\1/p' server/vigil/settings.py)"
+          docker build -f server/Dockerfile -t susquehannasyntax/vigil:latest \
+            -t "susquehannasyntax/vigil:${version}" .
+      - name: First boot, nothing configured
+        run: |
+          test ! -e .env
+          docker compose up -d
+          scripts/compose-wait-healthy.sh 300
+          docker compose logs secrets | tee secrets-first.log
+          for name in django_secret_key signing_key_seed postgres_password; do
+            grep -q "${name}: generated" secrets-first.log
+          done
+      - name: It serves, and the old default password is gone
+        run: |
+          curl -sf http://localhost:9200/api/v1/health/
+          curl -sf -o /dev/null http://localhost:9200/login/
+          if docker compose exec -T db env PGPASSWORD=vigil \
+              psql -h 127.0.0.1 -U vigil -d vigil -c 'select 1' >/dev/null 2>&1; then
+            echo "the database still accepts the password 'vigil'"; exit 1
+          fi
+      - name: Second boot keeps the secrets
+        run: |
+          docker compose down
+          docker compose up -d
+          scripts/compose-wait-healthy.sh 300
+          docker compose logs secrets | tail -3 | tee secrets-second.log
+          test "$(grep -c ': kept' secrets-second.log)" = 3
+          curl -sf http://localhost:9200/api/v1/health/
+      - name: Logs
+        if: failure()
+        run: docker compose logs --tail 200
+
   # ── Upgrade from the previous release ─────────────────────────────────────
   # Migrations that only ever ran on an empty database are how upgrades break.
   # This job builds the previous release's schema with that release's own code
