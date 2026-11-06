@@ -34,7 +34,7 @@
       <div class="section-label">License</div>
 
       {# ---- License (all tiers, always visible — SQSY-LICENSING.md §5) ---- #}
-      <div class="totp-card" id="license-card">
+      <div class="totp-card" id="license-card" data-settings-page="license">
         <h3>License</h3>
         <p id="license-summary" class="muted">Loading…</p>
         <p>Instance ID: <span class="license-instance" id="license-instance"></span></p>
@@ -70,8 +70,8 @@
             : "Renews automatically.";
           document.getElementById("license-features").innerHTML = d.features.map(function (f) {
             return '<span class="license-chip license-chip--' + (f.active ? "on" : "off") + '">' +
-              f.name + (f.active ? "" : " · " + f.tier) + "</span>";
-          }).join(" ");
+              f.name.replace(/_/g, " ") + (f.active ? "" : " · " + f.tier) + "</span>";
+          }).join("");
         }
         fetch("/api/v1/license/").then(function (r) { return r.json(); }).then(render);
         document.getElementById("license-refresh").addEventListener("click", function () {

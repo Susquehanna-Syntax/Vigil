@@ -32,10 +32,11 @@ function _tagCard(t) {
   const used = t.host_count === 0
     ? '<span style="color:var(--text-3);">on no machines</span>'
     : `on ${t.host_count} machine${t.host_count === 1 ? '' : 's'}`;
-  const actions = t.editable
+  const actions = t.editable && t.can_change !== false
     ? `<button class="btn btn-sky btn-sm" data-tag-rename="${escAttr(t.id)}">Rename</button>
        <button class="btn btn-ghost btn-sm" style="color:var(--rose-ink);" data-tag-del="${escAttr(t.id)}">Delete</button>`
-    : '<span class="confirm-hint" style="margin:0;">maintained by Vigil</span>';
+    : '<span class="confirm-hint" style="margin:0;">' +
+      (!t.editable ? 'maintained by Vigil' : t.site_id ? 'you can use it, not change it' : 'global: changed by an administrator of the whole install') + '</span>';
   return `<div class="bl-card">
     <div class="bl-card-head">
       <div>

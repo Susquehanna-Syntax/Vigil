@@ -1562,7 +1562,7 @@ def tag_collection(request):
 
     if request.method == "GET":
         tags = _visible_tags(request.user).prefetch_related("hosts")
-        return Response([_tag_payload(t) for t in tags])
+        return Response([_tag_payload(t, request) for t in tags])
 
     if not IsAdmin().has_permission(request, None):
         return Response({"detail": "Admin role required."}, status=403)
@@ -1592,7 +1592,7 @@ def tag_collection(request):
     if request.data.get("description"):
         tag.description = str(request.data["description"])[:255]
     tag.save(update_fields=["site_id", "description"])
-    return Response(_tag_payload(tag), status=201)
+    return Response(_tag_payload(tag, request), status=201)
 
 
 def _visible_tags(user):
@@ -1619,8 +1619,8 @@ def _count_everywhere(related_manager) -> int:
     return qs.filter(**related_manager.core_filters).count()
 
 
-def _tag_payload(tag) -> dict:
-    return {
+def _tag_payload(tag, request=None) -> dict:
+    out = {
         "id": tag.id,
         "name": tag.name,
         "key": tag.key,
@@ -1630,6 +1630,13 @@ def _tag_payload(tag) -> dict:
         "editable": tag.kind == tag.Kind.MANUAL,
         "site_id": str(tag.site_id) if scoping.owning_site_id(tag) else None,
     }
+    if request is not None:
+        # Whether this user may rename or delete it, so the page offers only
+        # what the server will allow: a site admin sees global tags read-only.
+        out["can_change"] = bool(
+            out["editable"] and IsAdmin().has_permission(request, None)
+            and scoping.write_denied(request.user, tag) is None)
+    return out
 
 
 @api_view(["GET", "PATCH", "DELETE"])
@@ -1641,7 +1648,7 @@ def tag_detail(request, tag_id):
     # Another site's tag answers 404, as if it did not exist (S1 04h).
     tag = get_object_or_404(_visible_tags(request.user), pk=tag_id)
     if request.method == "GET":
-        return Response(_tag_payload(tag))
+        return Response(_tag_payload(tag, request))
 
     if not IsAdmin().has_permission(request, None):
         return Response({"detail": "Admin role required."}, status=403)
@@ -1699,7 +1706,7 @@ def tag_detail(request, tag_id):
     if "description" in request.data:
         tag.description = str(request.data.get("description") or "")[:255]
         tag.save(update_fields=["description"])
-    return Response(_tag_payload(tag))
+    return Response(_tag_payload(tag, request))
 
 
 def _rename_in_string_mirrors(old_key: str, new_name: str) -> None:

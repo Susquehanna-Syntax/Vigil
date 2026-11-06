@@ -502,11 +502,21 @@ def seats_used() -> int:
 
         from apps.accounts.models import Role
 
+        technician = (Q(is_superuser=True) | Q(is_staff=True)
+                      | Q(profile__role__in=[Role.ADMIN, Role.OPERATOR]))
+        # An admin or operator of one site is a technician too: per-site roles
+        # replace the install-wide one, so a seat counted only from the profile
+        # missed everyone given their role on the Sites button.
+        from vigil import scoping
+        mods = scoping._sites_models()
+        if mods is not None:
+            technician |= Q(pk__in=mods.UserSiteRole.objects
+                            .filter(role__in=[Role.ADMIN, Role.OPERATOR])
+                            .values("user_id"))
         return (
             get_user_model().objects
             .filter(is_active=True)
-            .filter(Q(is_superuser=True) | Q(is_staff=True)
-                    | Q(profile__role__in=[Role.ADMIN, Role.OPERATOR]))
+            .filter(technician)
             .distinct()
             .count()
         )
