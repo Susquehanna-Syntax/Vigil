@@ -124,6 +124,23 @@ class RecentMetricsTests(TestCase):
             self.assertEqual(resp["X-Vigil-Truncated"], "1")
         self.assertNotIn("X-Vigil-Truncated", self.get())
 
+    def test_label_cardinality_cannot_outgrow_the_budgets(self):
+        from apps.metrics import views
+        host, other = _make_host("many-1"), _make_host("many-2")
+        for i in range(12):
+            _point(host, "disk", "usage_percent", 60, 1.0, {"mount": f"/m{i}"})
+            _point(host, "disk", "usage_percent", 30, 2.0, {"mount": f"/m{i}"})
+        _point(other, "disk", "usage_percent", 60, 1.0, {"mount": "/"})
+        self.series = "disk/usage_percent:2"
+        with mock.patch.object(views, "MAX_RECENT_POINTS_PER_HOST_SERIES", 10):
+            pts = self.get({"host": str(host.id)}).json()[str(host.id)]["disk/usage_percent"]
+            self.assertEqual(len(pts), 10)               # five mounts x two
+        with mock.patch.object(views, "MAX_RECENT_POINTS_TOTAL", 7):
+            resp = self.get()
+            held = sum(len(s) for h in resp.json().values() for s in h.values())
+            self.assertEqual(held, 7)
+            self.assertEqual(resp["X-Vigil-Truncated"], "1")
+
     def test_a_host_that_is_not_an_id_is_400(self):
         resp = self.get({"host": "not-a-uuid"})
         self.assertEqual(resp.status_code, 400)

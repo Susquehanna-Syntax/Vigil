@@ -167,6 +167,10 @@ MAX_RECENT_SERIES = 8
 MAX_RECENT_POINTS = 50
 MAX_RECENT_HOSTS = 1000
 MAX_RECENT_LABEL_SETS = 128
+#: What one answer may hold, whatever an agent chose to label its points with:
+#: points per host per series (label sets x N), and points in all.
+MAX_RECENT_POINTS_PER_HOST_SERIES = 200
+MAX_RECENT_POINTS_TOTAL = 100_000
 MAX_RECENT_WINDOW = timedelta(hours=24)
 
 _RECENT_SERIES_PART = re.compile(r"^[a-z0-9_]{1,50}$")
@@ -219,7 +223,8 @@ def metrics_recent(request):
     plain newest-N would hand a 16-core host sixteen per-core points and no
     total. Hosts are named with `host=` (at most a thousand); without it the
     answer covers the first thousand visible hosts by name, and says so with
-    an `X-Vigil-Truncated: 1` header when there are more.
+    an `X-Vigil-Truncated: 1` header when there are more, or when the
+    request's point budget cut the answer short.
     """
     entries, problem = _parse_recent_series(request.query_params.get("series"))
     if problem:
@@ -265,7 +270,11 @@ def metrics_recent(request):
         ids = ids[:MAX_RECENT_HOSTS]
 
     out: dict = {}
+    total = 0
     for category, metric, count in entries:
+        # Label sets x N stays within the per-host budget: a host reporting
+        # 128 mounts gets 200 points at N=1, but only 100 interfaces at N=2.
+        max_sets = max(1, min(MAX_RECENT_LABEL_SETS, MAX_RECENT_POINTS_PER_HOST_SERIES // count))
         key = f"{category}/{metric}"
         # One ordered scan over the bounded window, keeping the newest `count`
         # of each label set per host, rather than a query per host.
@@ -280,9 +289,16 @@ def metrics_recent(request):
             label_key = _label_key(row["labels"])
             seen = per_host.get(label_key)
             if seen is None:
-                if len(per_host) >= MAX_RECENT_LABEL_SETS:
+                if len(per_host) >= max_sets:
                     continue
                 seen = per_host[label_key] = deque(maxlen=count)
+            if len(seen) < count:
+                # A point that grows the answer, rather than replacing an older
+                # one in a full deque, counts against the request's budget.
+                if total >= MAX_RECENT_POINTS_TOTAL:
+                    truncated = True
+                    continue
+                total += 1
             seen.append({"time": row["time"].isoformat(),
                          "value": row["value"],
                          "labels": row["labels"]})
