@@ -47,7 +47,7 @@ class BootSecretsTests(unittest.TestCase):
             self.assertEqual(self._mode(os.path.join(d, "django_secret_key")), "0o600")
             self.assertEqual(self._mode(os.path.join(d, "signing_key_seed")), "0o600")
             self.assertEqual(self._mode(os.path.join(d, "postgres_password")), "0o644")
-            self.assertEqual(self._mode(d), "0o700")
+            self.assertEqual(self._mode(d), "0o711")
 
     def test_second_boot_keeps_them(self):
         self._clean_env()

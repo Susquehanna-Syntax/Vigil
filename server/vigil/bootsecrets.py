@@ -106,7 +106,12 @@ def ensure(directory: str, pgdata=None, owner=None) -> dict[str, str]:
     one line per name. A secret value is never printed.
     """
     os.makedirs(directory, exist_ok=True)
-    os.chmod(directory, 0o700)
+    # 0711, not 0700: the volume root is this directory, and the database
+    # (as ``postgres``) and the application (as ``vigil``, after dropping
+    # root) must reach their files through it. Execute-only lets them open a
+    # file they name without listing the directory; each secret's own mode
+    # decides who may read it.
+    os.chmod(directory, 0o711)
     existing_pgdata = _has_existing_database(pgdata)
     outcomes: dict[str, str] = {}
 
