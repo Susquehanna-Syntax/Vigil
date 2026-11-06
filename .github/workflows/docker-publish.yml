@@ -333,7 +333,8 @@ jobs:
   # no Business token is needed) and tagged as the compose file expects, then
   # the stack comes up with no .env at all. It must: generate all three secrets,
   # pass every healthcheck, serve the sign-in page, refuse the old default
-  # database password, and on a second boot keep the secrets it made.
+  # database password, on a second boot keep the secrets it made, and restore
+  # a backup into a brand-new install.
   # New in sprint M3 and not yet required by publish.
   compose-smoke:
     name: Compose from an empty .env
@@ -358,6 +359,8 @@ jobs:
         run: |
           curl -sf http://localhost:9200/api/v1/health/
           curl -sf -o /dev/null http://localhost:9200/login/
+          # The nightly backup's pg_dump must match the pinned pg16 server.
+          docker compose exec -T celery-worker pg_dump --version | grep -E ' 16\.'
           if docker compose exec -T db env PGPASSWORD=vigil \
               psql -h 127.0.0.1 -U vigil -d vigil -c 'select 1' >/dev/null 2>&1; then
             echo "the database still accepts the password 'vigil'"; exit 1
@@ -369,6 +372,37 @@ jobs:
           scripts/compose-wait-healthy.sh 300
           docker compose logs secrets | tail -3 | tee secrets-second.log
           test "$(grep -c ': kept' secrets-second.log)" = 3
+          curl -sf http://localhost:9200/api/v1/health/
+      # Sprint M3's other finish line: a restore of a backup passes. Back up,
+      # destroy every volume, start a brand-new install (new secrets), restore
+      # into it, and the data and the signing key are the old ones again.
+      - name: Back up, wipe everything, restore into a new install
+        run: |
+          shell() { docker compose exec -T "$1" python manage.py shell -c "$2" | tail -1; }
+          shell web "from django.contrib.auth import get_user_model; get_user_model().objects.create_user('restore-marker', password='x'); print('made')"
+          key_before=$(shell web "from vigil.signing import get_public_key_b64; print(get_public_key_b64())")
+          shell celery-worker "from apps.instance.backup import run_backup; r = run_backup(); print(r.state, r.error)" | tee backup.out
+          grep -q '^ok' backup.out
+          archive=$(docker compose exec -T celery-worker sh -c 'ls /var/lib/vigil/backups/vigil-*.tar.gz' | tail -1 | tr -d '\r')
+          docker compose cp "celery-worker:${archive}" ./backup.tar.gz
+
+          docker compose down -v
+          docker compose up -d
+          scripts/compose-wait-healthy.sh 300
+          key_fresh=$(shell web "from vigil.signing import get_public_key_b64; print(get_public_key_b64())")
+          test "$key_fresh" != "$key_before"
+
+          docker compose stop web celery-worker celery-beat link
+          project=$(docker compose config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])')
+          docker compose run --rm --no-deps --entrypoint "" \
+            -e VIGIL_SECRETS_DIR=/restore-secrets -v "${project}_secrets:/restore-secrets" \
+            -v "$PWD/backup.tar.gz:/tmp/backup.tar.gz:ro" \
+            web python manage.py restore_backup /tmp/backup.tar.gz --yes
+          docker compose up -d
+          scripts/compose-wait-healthy.sh 300
+
+          test "$(shell web "from django.contrib.auth import get_user_model; print(get_user_model().objects.filter(username='restore-marker').count())")" = 1
+          test "$(shell web "from vigil.signing import get_public_key_b64; print(get_public_key_b64())")" = "$key_before"
           curl -sf http://localhost:9200/api/v1/health/
       - name: Logs
         if: failure()
