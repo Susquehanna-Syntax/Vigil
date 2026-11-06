@@ -1,0 +1,28 @@
+# Weekly dependency bumps as pull requests. Minor and patch bumps of each
+# ecosystem arrive as one grouped PR; a major bump gets its own. Security
+# updates come as soon as an advisory lands, whatever the schedule.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directories: ["/server", "/agent", "/relay"]
+    schedule: { interval: weekly, day: monday }
+    groups:
+      python-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directories: ["/server", "/relay"]
+    schedule: { interval: weekly, day: monday }
+
+  # The published compose pins every image to an exact tag (sprint M3 phase 2),
+  # so a new TimescaleDB, Redis, guacd or cloudflared release arrives here.
+  - package-ecosystem: docker-compose
+    directory: "/"
+    schedule: { interval: weekly, day: monday }
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule: { interval: weekly, day: monday }
+    groups:
+      actions:
+        patterns: ["*"]
