@@ -13,6 +13,13 @@ signing path too.
 
 The server must be seeded by scripts/e2e/seed.py. Exits non-zero, with the
 agent's log, when any step fails or times out.
+
+With --rotate-cmd (the server started with VIGIL_SIGNING_KEY_NEXT_SEED set),
+it then rotates the signing key (sprint M3 phase 3): waits for the agent to
+acknowledge the next key, runs `signing_key rotate`, and deploys the task
+again, which the agent runs only if it trusts the new key.
+
+    --rotate-cmd "python server/manage.py"
 """
 import argparse
 import base64
@@ -91,12 +98,23 @@ def wait(what, fn, timeout):
     raise TimeoutError(f"timed out waiting for {what}")
 
 
+def check_report(detail):
+    states = [t.get("state") for t in detail["tasks"]]
+    print("reported:", states)
+    assert all(s in ("completed", "failed") for s in states), states
+    rejected = [t for t in detail["tasks"] if re.search(r"signature", json.dumps(t), re.I)
+                and t.get("state") == "failed"]
+    assert not rejected, f"the agent refused the signature: {rejected}"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--server", required=True)
     ap.add_argument("--agent", required=True, help="command that runs the agent; -c <config> is appended")
     ap.add_argument("--workdir", required=True)
     ap.add_argument("--timeout", type=int, default=180)
+    ap.add_argument("--rotate-cmd", default="",
+                    help="manage.py command prefix; rotate the signing key and deploy again")
     args = ap.parse_args()
 
     work = Path(args.workdir)
@@ -160,13 +178,29 @@ def main():
             tasks = detail.get("tasks") or []
             done = [t for t in tasks if t.get("state") in ("completed", "failed", "skipped")]
             return detail if tasks and len(done) == len(tasks) else None
-        detail = wait("the agent to run the task and report", reported, args.timeout)
-        states = [t.get("state") for t in detail["tasks"]]
-        print("reported:", states)
-        assert all(s in ("completed", "failed") for s in states), states
-        rejected = [t for t in detail["tasks"] if re.search(r"signature", json.dumps(t), re.I)
-                    and t.get("state") == "failed"]
-        assert not rejected, f"the agent refused the signature: {rejected}"
+        check_report(wait("the agent to run the task and report", reported, args.timeout))
+
+        if args.rotate_cmd:
+            def manage(*a):
+                done = subprocess.run(shlex.split(args.rotate_cmd) + ["signing_key", *a],
+                                      capture_output=True, text=True)
+                return done.stdout + done.stderr
+            status = manage("status")
+            nxt = re.search(r"Next key:\s+(\S{44})", status)
+            assert nxt, f"no next key on offer:\n{status}"
+            nxt = nxt.group(1)
+            wait("the agent to acknowledge the next key",
+                 lambda: "waiting:" not in (st := manage("status")) and "Acknowledged by" in st, 90)
+            print("rotating:", manage("rotate", "--note", "agent e2e").strip().splitlines()[-1])
+            wait("the switch", lambda: f"Active key: {nxt}" in manage("status"), 90)
+            switched = (registered() or {}).get("last_checkin")
+            wait("a check-in after the switch",
+                 lambda: (registered() or {}).get("last_checkin") not in (None, switched), 60)
+            run = op.post(f"/api/v1/tasks/definitions/{definition['id']}/deploy/",
+                          {"host_ids": [host["id"]], "totp": code()})
+            run_id = run.get("run_id") or run.get("id")
+            print("deployed under the new key, run", run_id)
+            check_report(wait("the agent to run a task signed by the new key", reported, args.timeout))
         print("agent end-to-end: ok")
         return 0
     except Exception as exc:  # noqa: BLE001 - print the agent's side before failing
