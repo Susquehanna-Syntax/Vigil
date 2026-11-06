@@ -82,6 +82,9 @@ services:
       VIGIL_TIMEZONE: ${VIGIL_TIMEZONE:-UTC}
       VIGIL_METRIC_RETENTION_DAYS: ${VIGIL_METRIC_RETENTION_DAYS:-30}
       VIGIL_ALERT_RETENTION_DAYS: ${VIGIL_ALERT_RETENTION_DAYS:-90}
+      # Prometheus GET /metrics. Empty keeps the endpoint a 404 — nothing is
+      # exposed until an operator names a token.
+      VIGIL_METRICS_TOKEN: ${VIGIL_METRICS_TOKEN:-}
       # Remote access (see docs/REMOTE-ACCESS.md). Set VIGIL_PUBLIC_URL to your
       # external URL and VIGIL_TRUST_PROXY=true when serving through Cloudflare
       # Tunnel / Tailscale / a reverse proxy. Both default to off (LAN-only).
