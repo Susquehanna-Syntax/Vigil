@@ -2599,6 +2599,12 @@ def community_fork(request, kind: str, filename: str):
     from apps.automations.views import automation_from_yaml
     from apps.playbooks.views import playbook_from_yaml
 
+    from .authz import author_denied
+    # Forking creates tasks, playbooks and automations: the same role gate as
+    # every other way of creating them, and as community_fork_plan.
+    denied = author_denied(request.user)
+    if denied:
+        return denied
     if kind not in COMMUNITY_KINDS:
         return Response({"error": f"unknown content kind {kind!r}"}, status=404)
     try:

@@ -83,6 +83,14 @@ class ViewerCannotRunTests(Sec1Base):
         self.assertIn(resp.status_code, (403, 405))
         self.assertFalse(TaskDefinition.objects.filter(owner=viewer).exists())
 
+    def test_viewer_cannot_fork_from_the_community_catalog(self):
+        from unittest import mock
+        self.client.force_login(_user("viewer2", Role.VIEWER))
+        with mock.patch("apps.tasks.views._plan_fork", side_effect=AssertionError("reached the fork")):
+            for kind in ("tasks", "playbooks", "automations"):
+                resp = self.client.post(f"/api/v1/tasks/community/{kind}/x.yaml/fork/")
+                self.assertEqual(resp.status_code, 403, (kind, resp.content[:200]))
+
 
 class SiteScopeTests(Sec1Base):
     def setUp(self):
