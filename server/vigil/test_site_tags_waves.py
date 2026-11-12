@@ -69,6 +69,16 @@ class SiteTagTests(_Sites):
         names = {t["name"] for t in self.client.get("/api/v1/tags/").json()}
         self.assertEqual(names, {"prod", "west-web"})
 
+    def test_the_list_says_which_tags_this_user_may_change(self):
+        # UI check 2026-11-05: a site admin was offered Rename and Delete on a
+        # global tag, which the server then refused.
+        self.client.force_login(self.dana)
+        mine = {t["name"]: t["can_change"] for t in self.client.get("/api/v1/tags/").json()}
+        self.assertEqual(mine, {"prod": False, "west-web": True})
+        self.client.force_login(self.ida)
+        theirs = {t["name"]: t["can_change"] for t in self.client.get("/api/v1/tags/").json()}
+        self.assertTrue(theirs["prod"] and theirs["lab-gpu"])
+
     def test_change_rules(self):
         self.assertEqual(self.send(self.dana, "get", f"/api/v1/tags/{self.lab_tag.pk}/").status_code, 404)
         self.assertEqual(self.send(self.dana, "patch", f"/api/v1/tags/{self.lab_tag.pk}/",

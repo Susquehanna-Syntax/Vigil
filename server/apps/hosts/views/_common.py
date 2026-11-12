@@ -393,8 +393,8 @@ def _count_everywhere(related_manager) -> int:
     return qs.filter(**related_manager.core_filters).count()
 
 
-def _tag_payload(tag) -> dict:
-    return {
+def _tag_payload(tag, request=None) -> dict:
+    out = {
         "id": tag.id,
         "name": tag.name,
         "key": tag.key,
@@ -404,6 +404,13 @@ def _tag_payload(tag) -> dict:
         "editable": tag.kind == tag.Kind.MANUAL,
         "site_id": str(tag.site_id) if scoping.owning_site_id(tag) else None,
     }
+    if request is not None:
+        # Whether this user may rename or delete it, so the page offers only
+        # what the server will allow: a site admin sees global tags read-only.
+        out["can_change"] = bool(
+            out["editable"] and IsAdmin().has_permission(request, None)
+            and scoping.write_denied(request.user, tag) is None)
+    return out
 
 
 def _rename_in_string_mirrors(old_key: str, new_name: str) -> None:

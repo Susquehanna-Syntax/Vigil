@@ -127,6 +127,22 @@ class SettingsSplitTests(TestCase):
         for name in ("EMAIL_HOST_PASSWORD", "NESSUS_SECRET_KEY", "GREENBONE_PASSWORD", "JACKIL_API_KEY"):
             self.assertNotIn(name, body)
 
+    def test_the_users_list_says_who_has_roles_by_site(self):
+        # UI check 2026-11-05: Dana showed as an install-wide Admin, the role
+        # her site rows had replaced.
+        self.client.force_login(self.ida)
+        rows = {u["username"]: u["by_site"] for u in self.client.get("/api/v1/accounts/users/").json()["users"]}
+        self.assertEqual(rows, {"dana": True, "ida": False, "otto": False})
+
+    def test_a_site_admin_takes_a_seat(self):
+        # Seats count technicians; an admin of one site is one, though her
+        # install-wide profile says viewer.
+        before = licensing.seats_used()
+        UserSiteRole.objects.filter(user=self.dana).delete()
+        self.assertEqual(licensing.seats_used(), before - 1)
+        UserSiteRole.objects.create(user=self.other, site=self.west, role=Role.VIEWER)
+        self.assertEqual(licensing.seats_used(), before - 1)   # a viewer is free
+
     def test_the_audit_log_is_instance_admin_only(self):
         self.client.force_login(self.dana)
         self.assertEqual(self.client.get("/api/v1/audits/").status_code, 403)

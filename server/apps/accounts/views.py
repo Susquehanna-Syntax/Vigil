@@ -488,12 +488,17 @@ def totp_debug_code(request):
 # ---------------------------------------------------------------------------
 
 def _user_row(u):
+    from vigil import scoping
+
     from .permissions import role_of
     return {
         "id": u.pk,
         "username": u.username,
         "email": u.email,
         "role": role_of(u),
+        # Roles held per site (Sites button) replace the install-wide role, so
+        # the page shows "By site" rather than a role that does not apply.
+        "by_site": bool(scoping.site_roles_for(u)),
         "is_active": u.is_active,
         "date_joined": u.date_joined.isoformat(),
     }

@@ -33,7 +33,9 @@ async function loadUsers() {
           `<span class="user-row-email muted">${escHtml(u.email || '')}</span>` +
         `</div>` +
         `<div class="user-row-actions">` +
-          `<select class="form-control user-role-select" data-uid="${u.id}"${isMe ? ' disabled' : ''}>${opts}</select>` +
+          (u.by_site
+            ? `<span class="muted user-role-bysite" data-tip="Set with the Sites button">By site</span>`
+            : `<select class="form-control user-role-select" data-uid="${u.id}"${isMe ? ' disabled' : ''}>${opts}</select>`) +
           `<button class="btn btn-sky btn-sm user-sites" data-uid="${u.id}">Sites</button>` +
           (isMe ? '' : `<button class="btn btn-rose btn-sm user-del" data-uid="${u.id}">Delete</button>`) +
         `</div>`;

@@ -26,6 +26,12 @@ async function applySettingsAccess() {
     } else if (how === 'greyed' && pane) {
       _greySettingsPane(pane);
     }
+    // A part of another pane that belongs to this page (the License card sits
+    // in the Account pane): the same rule, on that part alone.
+    document.querySelectorAll(`#page-settings [data-settings-page="${page}"]`).forEach((part) => {
+      if (how === 'hidden') part.hidden = true;
+      else if (how === 'greyed') _greySettingsPane(part);
+    });
   });
 }
 

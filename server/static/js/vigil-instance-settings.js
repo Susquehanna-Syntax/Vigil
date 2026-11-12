@@ -13,13 +13,16 @@
 let _isGroups = null;
 const _isCleared = new Set();
 
-async function loadInstanceSettings(force) {
+async function loadInstanceSettings(force, quiet) {
   if (!document.querySelector('.is-group')) return;
   if (_isGroups && !force) { _isRenderAll(); return; }
   try {
     const data = await apiJson('/api/v1/instance-settings/');
     _isGroups = data.groups || [];
   } catch (e) {
+    // Opening Settings loads this for the Account pane; someone who may not
+    // read install settings gets no error for a request they did not make.
+    if (quiet) { _isGroups = []; _isRenderAll(); _isGroups = null; return; }
     showToast(e.message || 'Could not load settings', 'error');
     return;
   }
@@ -30,7 +33,17 @@ async function loadInstanceSettings(force) {
 function _isRenderAll() {
   document.querySelectorAll('.is-group').forEach((host) => {
     const group = (_isGroups || []).find((g) => g.id === host.dataset.group);
-    if (!group) return;
+    if (!group) {
+      // A group this user may not see is left out by the server; its heading
+      // goes with it rather than standing over nothing.
+      host.hidden = true;
+      const label = host.previousElementSibling;
+      if (label && label.classList.contains('section-label')) label.hidden = true;
+      return;
+    }
+    host.hidden = false;
+    const label = host.previousElementSibling;
+    if (label && label.classList.contains('section-label')) label.hidden = false;
     host.innerHTML = _isRenderGroup(group);
     // A site admin reads install-wide groups and changes nothing (S1 04h).
     // The Account pane is theirs, so only this group is greyed there.

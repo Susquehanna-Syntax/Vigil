@@ -10,7 +10,7 @@ def tag_collection(request):
 
     if request.method == "GET":
         tags = _visible_tags(request.user).prefetch_related("hosts")
-        return Response([_tag_payload(t) for t in tags])
+        return Response([_tag_payload(t, request) for t in tags])
 
     if not IsAdmin().has_permission(request, None):
         return Response({"detail": "Admin role required."}, status=403)
@@ -40,7 +40,7 @@ def tag_collection(request):
     if request.data.get("description"):
         tag.description = str(request.data["description"])[:255]
     tag.save(update_fields=["site_id", "description"])
-    return Response(_tag_payload(tag), status=201)
+    return Response(_tag_payload(tag, request), status=201)
 
 
 @api_view(["GET", "PATCH", "DELETE"])
@@ -52,7 +52,7 @@ def tag_detail(request, tag_id):
     # Another site's tag answers 404, as if it did not exist (S1 04h).
     tag = get_object_or_404(_visible_tags(request.user), pk=tag_id)
     if request.method == "GET":
-        return Response(_tag_payload(tag))
+        return Response(_tag_payload(tag, request))
 
     if not IsAdmin().has_permission(request, None):
         return Response({"detail": "Admin role required."}, status=403)
@@ -110,4 +110,4 @@ def tag_detail(request, tag_id):
     if "description" in request.data:
         tag.description = str(request.data.get("description") or "")[:255]
         tag.save(update_fields=["description"])
-    return Response(_tag_payload(tag))
+    return Response(_tag_payload(tag, request))
