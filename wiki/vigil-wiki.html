@@ -5029,11 +5029,17 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
 
       <h3>CI / GitHub Actions</h3>
       <div class="prose">
-        <p>The <code>.github/workflows/docker-publish.yml</code> workflow runs on every push to <code>main</code> and on version tags (<code>v*.*.*</code>).</p>
+        <p>The <code>.github/workflows/docker-publish.yml</code> workflow tests every push to <code>main</code>, every pull request and every version tag (<code>v*.*.*</code>); only a version tag publishes images.</p>
         <ul>
           <li><strong>test</strong> runs the Django system check, migrations, and test suite against a real Postgres + Redis</li>
           <li><strong>build-agent</strong> is a matrix job on <code>macos-13</code>, <code>macos-latest</code>, and <code>windows-latest</code>; produces native PyInstaller binaries and uploads them as artifacts</li>
-          <li><strong>publish</strong> downloads all three platform artifacts into <code>server/agent_dist/</code>, builds a multi-arch Docker image (<code>linux/amd64</code> + <code>linux/arm64</code>), and pushes to DockerHub with <code>:latest</code> and the semver tag</li>
+          <li><strong>publish</strong> runs only for a version tag, never for a push to <code>main</code>. It downloads the agent binaries into <code>server/agent_dist/</code>, builds multi-arch images (<code>linux/amd64</code> + <code>linux/arm64</code>) of Vigil and the relay, and pushes them to Docker Hub. The tag picks the channel:
+            <table class="table"><thead><tr><th>Git tag</th><th>Image tags</th><th>For</th></tr></thead><tbody>
+              <tr><td><code>v2026.17.0</code></td><td><code>2026.17.0</code>, <code>latest</code></td><td>Production</td></tr>
+              <tr><td><code>v2026.17.0-rc1</code></td><td><code>2026.17.0-rc1</code>, <code>rc-latest</code></td><td>Release candidates: test here before the real release</td></tr>
+              <tr><td><code>v2026.17.0-ex1</code></td><td><code>2026.17.0-ex1</code>, <code>ex-latest</code></td><td>Experimental builds</td></tr>
+            </tbody></table>
+            The version in the tag must match <code>VIGIL_VERSION</code> in <code>server/vigil/settings.py</code>, and any other tag shape is refused, so a typo never reaches <code>latest</code>.</li>
         </ul>
         <p>Required GitHub secrets: <code>DOCKERHUB_USERNAME</code> and <code>DOCKERHUB_TOKEN</code>.</p>
       </div>

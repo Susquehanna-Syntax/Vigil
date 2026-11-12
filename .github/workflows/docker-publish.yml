@@ -821,7 +821,11 @@ jobs:
     name: Publish Docker Image
     runs-on: ubuntu-latest
     needs: [test, js-tests, e2e, upgrade, pip-audit, build-agent, smoke-macos-install]
-    if: github.event_name == 'push'
+    # Images are published from version tags only, never from a branch push:
+    #   v2026.17.0       -> 2026.17.0 and latest      (production)
+    #   v2026.17.0-rc1   -> 2026.17.0-rc1 and rc-latest (release candidate)
+    #   v2026.17.0-ex1   -> 2026.17.0-ex1 and ex-latest (experimental)
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     # Third-party actions in this job are pinned to commits, not tags: it holds
     # the Docker Hub token and can mint signing identities, so a moved tag
     # must not be able to change what runs here. Bump the hash with the tag.
@@ -833,6 +837,21 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # The tag names the release: its version must be the one the code says it
+      # is, and anything after it must be a release candidate or experimental
+      # build, so a mistyped tag can never reach latest or a channel by accident.
+      - name: Check the tag
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="$(sed -n 's/^VIGIL_VERSION = "\(.*\)"$/\1/p' server/vigil/settings.py)"
+          if ! echo "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-(rc|ex)[0-9]+)?$'; then
+            echo "::error::Tag $tag is not vX.Y.Z, vX.Y.Z-rcN or vX.Y.Z-exN"; exit 1
+          fi
+          base="${tag#v}"; base="${base%%-*}"
+          if [ "$base" != "$version" ]; then
+            echo "::error::Tag $tag does not match VIGIL_VERSION $version in server/vigil/settings.py"; exit 1
+          fi
 
       # Download all agent binaries into server/agent_dist/.
       # COPY server/ . in the Dockerfile picks them up automatically.
@@ -873,9 +892,12 @@ jobs:
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.SERVER_IMAGE }}
+          flavor: latest=false
           tags: |
             type=semver,pattern={{version}}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+            type=raw,value=rc-latest,enable=${{ contains(github.ref_name, '-rc') }}
+            type=raw,value=ex-latest,enable=${{ contains(github.ref_name, '-ex') }}
 
       - name: Build and push
         id: build
@@ -902,9 +924,12 @@ jobs:
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.RELAY_IMAGE }}
+          flavor: latest=false
           tags: |
             type=semver,pattern={{version}}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+            type=raw,value=rc-latest,enable=${{ contains(github.ref_name, '-rc') }}
+            type=raw,value=ex-latest,enable=${{ contains(github.ref_name, '-ex') }}
 
       - name: Build and push relay
         id: buildrelay
