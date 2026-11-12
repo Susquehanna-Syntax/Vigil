@@ -3,7 +3,8 @@ name: Build & Publish
 on:
   push:
     # Every branch push builds an experimental image (ex-latest); see publish.
-    branches: ["**"]
+    # Dependabot's branches are tested through their pull requests instead.
+    branches: ["**", "!dependabot/**"]
     tags:
       - "v*.*.*"
   pull_request:
