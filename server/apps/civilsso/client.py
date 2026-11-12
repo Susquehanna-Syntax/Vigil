@@ -86,5 +86,6 @@ def verify_sso_token(token: str) -> dict | None:
             options={"require": ["exp"]},
         )
     except jwt.PyJWTError as exc:
+        # nosemgrep: python-logger-credential-disclosure -- PyJWT errors name the failed check, never the token
         logger.warning("Civil SSO token rejected: %s", exc)
         return None

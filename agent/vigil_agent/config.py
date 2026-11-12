@@ -536,6 +536,6 @@ def load_config(path: Path | None = None) -> AgentConfig:
             os.chmod(path, 0o600)
         except OSError:
             logger.warning("Could not set 0600 on %s — check it by hand", path)
-        logger.info("Saved generated token to %s (mode 0600)", path)
+        logger.info("Saved generated token to %s (mode 0600)", path)  # nosemgrep: python-logger-credential-disclosure -- logs the path only
 
     return config

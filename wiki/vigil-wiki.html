@@ -648,6 +648,14 @@
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/Susquehanna-Syntax/Vigil/'</pre></div>
       <p class="prose">Use <code>susquehannasyntax/vigil-relay</code> for the relay. A modified image fails this check, and gets no support.</p>
+
+      <h3>Verify an agent download</h3>
+      <p class="prose">Every release on GitHub carries the agent binaries, a <code>SHA256SUMS</code> list and a Sigstore bundle for each file, signed by the same CI workflow. The agent is not yet signed with a paid Windows or Apple certificate, so Windows SmartScreen may warn on an interactive download; installs through the dashboard's install command are not affected. To check a file you downloaded:</p>
+      <div class="code-block"><pre>sha256sum -c SHA256SUMS --ignore-missing
+cosign verify-blob vigil-agent-linux-amd64 \
+  --bundle vigil-agent-linux-amd64.sigstore.json \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github.com/Susquehanna-Syntax/Vigil/'</pre></div>
     </section>
     <div class="divider"></div>
 

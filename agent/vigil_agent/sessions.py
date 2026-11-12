@@ -743,6 +743,7 @@ def _child_setup(argv: list, drop_user: bool, user: str) -> None:
             "SHELL": argv[0],
             "PATH": _TERM_PATH,
         }
+        # nosemgrep: dangerous-os-exec-tainted-env-args -- the shell of a signed session, with an environment built above
         os.execvpe(argv[0], argv, env)
     except BaseException:  # noqa: BLE001 — a child must never return into the agent
         pass
