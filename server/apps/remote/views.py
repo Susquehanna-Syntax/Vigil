@@ -321,14 +321,18 @@ def session_close(request, session_id):
     item = {"t": "close", "reason": reason}
     bus.push_sync(bus.B2A_KEY.format(sid=session.id), item)
     bus.push_sync(bus.A2B_KEY.format(sid=session.id), item)
-    # The bus message only reaches a socket that is still alive. A row left
-    # PENDING/OPEN by a dead one would hold one of the user's three slots for
-    # ever, so the close has to land in the database too. Imported here rather
-    # than at module scope: ws.py is the channels consumer and would otherwise
-    # import this view back.
-    from .ws import _close_now
+    # The bus message only reaches a socket that is still alive, and that
+    # socket closes the row itself with the byte totals only it has counted.
+    # A row whose socket is gone would hold one of the user's three slots for
+    # ever, so that one is closed here. Imported here rather than at module
+    # scope: ws.py is the channels consumer and would otherwise import this
+    # view back.
+    from django.utils.timezone import now
 
-    _close_now(session, "closed", reason)
+    from .ws import _close_now, _socket_gone
+
+    if _socket_gone(session, now()):
+        _close_now(session, "closed", reason)
     return Response({"status": reason}, status=202)
 
 

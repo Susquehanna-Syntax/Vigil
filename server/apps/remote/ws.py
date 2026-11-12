@@ -17,6 +17,7 @@ import logging
 import re
 import time
 import types
+from datetime import timedelta
 from urllib.parse import urlsplit
 
 from asgiref.sync import sync_to_async
@@ -518,6 +519,24 @@ def _finish(session, new_state: str, reason: str) -> bool:
     session.closed_at = RemoteSession.objects.values_list(
         "closed_at", flat=True).get(pk=session.pk)
     return True
+
+
+#: A socket's watchdog writes ``last_seen`` every SIGNIN_CHECK_SECONDS; half
+#: a beat more than that without one means nothing is attached any more.
+SOCKET_GONE_SECONDS = SIGNIN_CHECK_SECONDS * 3 // 2
+
+
+def _socket_gone(session, moment) -> bool:
+    """Whether no browser socket can still be holding *session*. A live socket
+    must be left to close its own row: only it knows the byte totals the end
+    audit records."""
+    if session.state == RemoteSession.State.OPEN:
+        return (session.last_seen is None
+                or session.last_seen < moment - timedelta(seconds=SOCKET_GONE_SECONDS))
+    if session.state == RemoteSession.State.PENDING:
+        return session.created_at < moment - timedelta(
+            seconds=AGENT_ANSWER_SECONDS + SIGNIN_CHECK_SECONDS)
+    return False
 
 
 def _close_now(session, new_state: str, reason: str) -> bool:

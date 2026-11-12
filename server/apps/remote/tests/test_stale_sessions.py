@@ -74,8 +74,12 @@ class CloseWithoutASocketTests(TestCase):
         self.host = make_host("no-socket")
         self.client.force_authenticate(self.user)
 
+    def _dead(self):
+        return make_session(self.user, self.host, RemoteSession.State.OPEN,
+                            opened=timedelta(minutes=10), seen=timedelta(minutes=5))
+
     def test_closing_from_the_dashboard_ends_a_row_nobody_is_attached_to(self):
-        session = make_session(self.user, self.host, RemoteSession.State.OPEN)
+        session = self._dead()
 
         resp = self.client.post(f"/api/v1/sessions/{session.id}/close/")
 
@@ -86,20 +90,43 @@ class CloseWithoutASocketTests(TestCase):
         self.assertEqual(session.close_reason, "closed by owner")
 
     def test_a_closed_row_is_closed_once_and_the_end_audit_does_not_double(self):
-        session = make_session(self.user, self.host, RemoteSession.State.OPEN)
-
-        self.client.post(f"/api/v1/sessions/{session.id}/close/")
-        self.client.post(f"/api/v1/sessions/{session.id}/close/")
+        session = self._dead()
 
         # patch() on the module attribute: _audit_end imports `record` at call
         # time, and a swallowed write must not turn this into a false pass.
         with mock.patch("apps_business.audits.models.record") as written:
-            self.client.post(f"/api/v1/sessions/{session.id}/close/")
+            for _ in range(3):
+                self.client.post(f"/api/v1/sessions/{session.id}/close/")
+        self.assertEqual(written.call_count, 1)
+
+    def test_a_live_socket_is_left_to_close_its_own_row_and_write_the_audit(self):
+        live = [
+            make_session(self.user, self.host, RemoteSession.State.OPEN,
+                         opened=timedelta(minutes=10), seen=timedelta(seconds=30)),
+            make_session(self.user, self.host, RemoteSession.State.PENDING,
+                         created=timedelta(seconds=20), opened=None, seen=None),
+        ]
+        with mock.patch("apps_business.audits.models.record") as written:
+            for session in live:
+                resp = self.client.post(f"/api/v1/sessions/{session.id}/close/")
+                self.assertEqual(resp.status_code, 202, resp.content)
+                session.refresh_from_db()
+                # The bus tells the socket; the socket closes the row with its
+                # real byte totals. An audit here would record zeros.
+                self.assertIn(session.state, [RemoteSession.State.OPEN,
+                                              RemoteSession.State.PENDING])
         self.assertEqual(written.call_count, 0)
 
+    def test_a_pending_row_the_agent_never_answered_closes_from_the_dashboard(self):
+        session = make_session(self.user, self.host, RemoteSession.State.PENDING,
+                               created=timedelta(minutes=5), opened=None, seen=None)
+
+        self.client.post(f"/api/v1/sessions/{session.id}/close/")
+        session.refresh_from_db()
+        self.assertEqual(session.state, RemoteSession.State.CLOSED)
+
     def test_three_dead_rows_stop_a_fourth_session_until_one_is_closed(self):
-        sessions = [make_session(self.user, self.host, RemoteSession.State.OPEN)
-                    for _ in range(3)]
+        sessions = [self._dead() for _ in range(3)]
 
         self.assertEqual(active_count(self.user), 3)
         resp = self.client.post(f"/api/v1/sessions/{sessions[0].id}/close/")
