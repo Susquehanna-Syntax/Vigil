@@ -512,6 +512,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "alerts.evaluate_alert_rules",
         "schedule": 60.0,  # every 60 seconds
     },
+    "sweep-remote-sessions": {
+        "task": "remote.sweep_stale",
+        # Every 60 seconds: a dead session row holds one of the user's three slots.
+        "schedule": 60.0,
+    },
     "reprovision-deadline-sweep": {
         "task": "reprovision.sweep_deadlines",
         "schedule": 60.0,  # every 60s — a stuck rebuild should surface fast

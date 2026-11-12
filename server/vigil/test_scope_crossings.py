@@ -51,6 +51,7 @@ CROSSINGS: dict[str, list[str]] = {
     'apps/policies/run.py': ['policy run: narrowing is by run permission, checked per host below'],
     'apps/policies/tasks.py': ['background job: a scheduled policy runs, bounded by its own site'],
     'apps/policies/validation.py': ['policy names are unique across the install'],
+    'apps/remote/tasks.py': ['remote session sweep: closes stale sessions on every host'],
     'apps/remote/views.py': ['agent API: the caller is a host, authenticated by its agent token'],
     'apps/remote/ws.py': ["remote session socket: the session's own user, or its host's agent token, is the access control"],
     'apps/reprovision/installer_views.py': ['reprovision installer: the rebuild token is the access control',

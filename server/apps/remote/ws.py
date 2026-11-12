@@ -132,9 +132,11 @@ async def browser_socket(scope, receive, send, sid):
     await bus.push(bus.B2A_KEY.format(sid=str(session.id)),
                    {"t": "close", "reason": reason})
     expired = reason == "the agent did not answer"
-    await sync_to_async(_finish, thread_sensitive=True)(
-        session, "expired" if expired else "closed", reason)
-    await sync_to_async(_audit_end, thread_sensitive=True)(session, reason)
+    if await sync_to_async(_finish, thread_sensitive=True)(
+            session, "expired" if expired else "closed", reason):
+        await sync_to_async(_audit_end, thread_sensitive=True)(session, reason)
+    # Only this socket counted the bytes, whoever closed the row.
+    await sync_to_async(_persist_bytes, thread_sensitive=True)(session)
     # A desktop socket speaks Guacamole, and a JSON frame on it would break the
     # browser's parser: the close code and the session row carry the reason.
     if session.kind != RemoteSession.Kind.RDP:
@@ -224,7 +226,7 @@ async def _browser_reader(receive, session, state):
                 continue
             state.last_input = time.monotonic()
             await bus.push(b2a, {"t": "in", "d": frame["d"]})
-            # Counted in memory; _finish writes the totals once.
+            # Counted in memory; the socket's teardown writes the totals once.
             session.bytes_in += len(data)
         elif t == "resize":
             cols, rows = frame.get("cols"), frame.get("rows")
@@ -288,6 +290,7 @@ async def _watchdog(session, user, state, limits):
             return "the agent did not answer"
         if elapsed - checked_at >= limits.signin_check:
             checked_at = elapsed
+            await sync_to_async(_touch, thread_sensitive=True)(session)
             if not await _still_signed_in(user, state.cookie):
                 return "signed out"
 
@@ -490,18 +493,46 @@ def _mark_open(session) -> None:
     if session.state == RemoteSession.State.PENDING:
         session.state = RemoteSession.State.OPEN
         session.opened_at = now()
+        session.last_seen = session.opened_at
         RemoteSession.objects.filter(pk=session.pk).update(
-            state=session.state, opened_at=session.opened_at)
+            state=session.state, opened_at=session.opened_at,
+            last_seen=session.last_seen)
 
 
-def _finish(session, new_state: str, reason: str) -> None:
+def _touch(session) -> None:
+    RemoteSession.objects.filter(pk=session.pk).update(last_seen=now())
+
+
+def _finish(session, new_state: str, reason: str) -> bool:
+    """Close the row, once. True if this call is the one that closed it — a
+    dashboard close and the socket's own teardown both run here, and only the
+    first may write the end audit."""
+    closed = bool(RemoteSession.objects.filter(
+        pk=session.pk,
+        state__in=[RemoteSession.State.PENDING, RemoteSession.State.OPEN],
+    ).update(state=new_state, closed_at=now(), close_reason=reason[:120]))
+    if not closed:
+        return False
     session.state = new_state
     session.close_reason = reason[:120]
-    session.closed_at = now()
+    session.closed_at = RemoteSession.objects.values_list(
+        "closed_at", flat=True).get(pk=session.pk)
+    return True
+
+
+def _close_now(session, new_state: str, reason: str) -> bool:
+    """Close the row from a context with no live browser socket — an API view
+    or a beat sweep. The socket's own teardown does the same and checks
+    ``_finish``'s verdict itself, because it has more to send afterwards."""
+    if not _finish(session, new_state, reason):
+        return False
+    _audit_end(session, reason)
+    return True
+
+
+def _persist_bytes(session) -> None:
     RemoteSession.objects.filter(pk=session.pk).update(
-        state=new_state, closed_at=session.closed_at,
-        close_reason=session.close_reason, bytes_in=session.bytes_in,
-        bytes_out=session.bytes_out)
+        bytes_in=session.bytes_in, bytes_out=session.bytes_out)
 
 
 def _open_recording(session):

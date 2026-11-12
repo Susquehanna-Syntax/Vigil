@@ -60,6 +60,8 @@ class RemoteSession(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     opened_at = models.DateTimeField(null=True, blank=True)
     closed_at = models.DateTimeField(null=True, blank=True)
+    #: the live socket's heartbeat; a stale one means nobody is attached
+    last_seen = models.DateTimeField(null=True, blank=True)
     close_reason = models.CharField(max_length=120, blank=True, default="")
     #: browser → agent
     bytes_in = models.BigIntegerField(default=0)
