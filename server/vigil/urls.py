@@ -27,6 +27,8 @@ from apps.reprovision.installer_views import enroll as reprovision_enroll
 from apps.remote.views import agent_wake
 from apps.statuspage.views import public_status as status_public_view
 from apps.statuspage.views import public_status_data as status_public_data_view
+from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView
+
 from vigil import health_view, metrics_endpoint, scoping, views_scope
 
 
@@ -136,6 +138,8 @@ urlpatterns = [
     path("login/verify/key/", login_mfa.key_view, name="login-verify-key"),
     path("logout/", logout_view, name="logout"),
     path("admin/", admin.site.urls),
+    path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),
+    path("api/docs/", SpectacularRedocView.as_view(url_name="api-schema"), name="api-docs"),
     path("api/v1/health/", health_check),
     path("metrics", metrics_endpoint.metrics),
     path("api/v1/about/", about, name="about-api"),

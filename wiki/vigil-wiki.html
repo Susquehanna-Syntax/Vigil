@@ -3093,7 +3093,8 @@ docker compose exec web python manage.py import_vuln_data /data/vuln-bundle.zip<
     <section class="section" id="api">
       <p class="section-label">Reference</p>
       <h2 class="section-title" style="color:var(--sky-ink)">API Reference</h2>
-      <p class="section-desc">All API endpoints are under <code>/api/v1/</code>. Authentication is session-based (cookie) for browser clients; token auth is planned for external integrations.</p>
+      <p class="section-desc">All API endpoints are under <code>/api/v1/</code>. Browsers authenticate with the session cookie; integrations use a scoped API key (<code>Authorization: Bearer vsk_...</code>, Business edition), so they never need a user's password.</p>
+      <p class="prose">An admin can read the full OpenAPI schema at <code>/api/schema/</code> (YAML, for code generators and API clients) and browse it at <code>/api/docs/</code>. Both are admin-only, because the schema maps every endpoint. The tables below cover the endpoints most integrations need.</p>
 
       <h3>Hosts</h3>
       <div class="table-wrap">

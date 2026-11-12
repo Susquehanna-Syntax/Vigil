@@ -1,0 +1,16 @@
+{% comment %}
+The API reference for admins (sprint M5). Overrides drf-spectacular's page,
+which links Google Fonts and an inline style: Vigil's CSP allows neither, and
+Redoc's own script comes from the sidecar package's static files.
+{% endcomment %}<!DOCTYPE html>
+<html>
+  <head>
+    <title>{{ title|default:"Vigil API" }}</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+  </head>
+  <body>
+    <redoc spec-url="{{ schema_url }}"></redoc>
+    <script src="{{ redoc_standalone }}"></script>
+  </body>
+</html>

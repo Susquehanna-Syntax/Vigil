@@ -86,6 +86,8 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # Third-party
     "rest_framework",
+    "drf_spectacular",
+    "drf_spectacular_sidecar",
     "django_celery_beat",
     # Vigil apps
     "apps.hosts",
@@ -441,6 +443,20 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 50,
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# The OpenAPI schema of /api/v1/ (sprint M5). Served to admins only, at
+# /api/schema/ (YAML) and /api/docs/ (Redoc): it maps every endpoint, which is
+# reconnaissance an anonymous visitor should not get for free.
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Vigil API",
+    "DESCRIPTION": "The /api/v1/ endpoints of a Vigil instance.",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SCHEMA_PATH_PREFIX": r"/api/v1",
+    "SERVE_PERMISSIONS": ["apps.accounts.permissions.IsAdmin"],
+    "COMPONENT_SPLIT_REQUEST": True,
+    "REDOC_DIST": "SIDECAR",
 }
 
 # ---------------------------------------------------------------------------
@@ -646,6 +662,7 @@ VIGIL_DB_SIZE_CRIT_GB = float(os.environ.get("VIGIL_DB_SIZE_CRIT_GB", "40"))
 # endpoint. Bump this on every release; the Git tag (v2026.2.3, etc.) and
 # this constant should stay in lockstep.
 VIGIL_VERSION = "2026.16.0"
+SPECTACULAR_SETTINGS["VERSION"] = VIGIL_VERSION
 
 # Opt-in daily refresh of the CISA KEV catalogue. Off by default: a self-hosted
 # install makes no outbound call unless its operator asks for one, and the

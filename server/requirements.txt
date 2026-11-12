@@ -9,6 +9,10 @@
 # supports 5.2 today. Move to the next LTS, not to the next release.
 Django>=5.2,<6.0
 djangorestframework>=3.18,<4.0
+# The OpenAPI schema of /api/v1/ (sprint M5), served to admins at /api/docs/.
+drf-spectacular>=0.28,<0.29
+# Redoc's script served from Vigil's own static files: the CSP allows no CDN.
+drf-spectacular-sidecar>=2026.10
 django-celery-beat>=2.9,<3.0
 celery[redis]>=5.4,<6.0
 psycopg[binary]>=3.2,<4.0
