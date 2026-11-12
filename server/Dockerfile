@@ -1,5 +1,5 @@
 # Stage 1: Build agent binary with PyInstaller
-FROM python:3.12-slim AS agent-builder
+FROM python:3.15-slim AS agent-builder
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends binutils && \
@@ -23,7 +23,7 @@ RUN python -c "exec(open('vigil_agent/__version__.py').read()); print(__version_
     > /build/AGENT_VERSION
 
 # Stage 2: Server image
-FROM python:3.12-slim AS base
+FROM python:3.15-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
