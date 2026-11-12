@@ -23,7 +23,7 @@ from apps.hosts.models import Host
 
 #: Modules holding endpoints that take a host id.
 PER_HOST_VIEW_MODULES = (
-    "apps/hosts/views.py",
+    "apps/hosts/views",  # a package: every module in it
     "apps/metrics/views.py",
     "apps/vulns/views.py",
     "apps/aisuggest/views.py",
@@ -36,11 +36,14 @@ class PerHostLookupsAreScopedTests(TestCase):
         """A direct Host.objects.get(pk=host_id) skips the scope check."""
         offenders = []
         for rel in PER_HOST_VIEW_MODULES:
-            path = Path(settings.BASE_DIR) / rel
-            for n, line in enumerate(path.read_text().splitlines(), 1):
+            base = Path(settings.BASE_DIR) / rel
+            paths = sorted(base.glob("*.py")) if base.is_dir() else [base]
+            lines = [(path, n, line) for path in paths
+                     for n, line in enumerate(path.read_text().splitlines(), 1)]
+            for path, n, line in lines:
                 if re.search(r"Host\.objects\.get\(\s*(pk|id)\s*=\s*host_id", line) or \
                    re.search(r"get_object_or_404\(\s*Host\s*,\s*(pk|id)\s*=\s*host_id", line):
-                    offenders.append(f"{rel}:{n}: {line.strip()}")
+                    offenders.append(f"{path.relative_to(settings.BASE_DIR)}:{n}: {line.strip()}")
         self.assertEqual(
             offenders, [],
             "look the host up with scoping.visible_host(request.user, host_id) "

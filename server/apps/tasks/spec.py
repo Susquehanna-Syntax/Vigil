@@ -781,7 +781,7 @@ def schedule_window_active(
 ) -> bool:
     """Return True if *schedule* allows dispatch at the given weekday/time.
 
-    Used by the dispatch path (hosts/views.py) to decide whether a pending
+    Used by the dispatch path (hosts/views/agent.py) to decide whether a pending
     task is eligible for immediate handoff. ``weekday`` follows the Python
     convention (0 = Monday). ``hour`` is 0..23, ``minute`` is 0..59.
 

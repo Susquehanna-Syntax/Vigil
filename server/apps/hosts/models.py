@@ -491,7 +491,7 @@ class Tag(models.Model):
     #: these, because the next check-in would overwrite it — and because
     #: ``agent:*`` exists so a compromised agent cannot impersonate an
     #: operator-set tag. Mirrors _AUTO_TAG_PREFIXES / _AGENT_TAG_PREFIX in
-    #: apps/hosts/views.py; keep the two in step.
+    #: apps/hosts/views/; keep the two in step.
     RESERVED_PREFIXES = ("os:", "os_family:", "pkg:", "arch:", "agent:")
 
     name = models.CharField(max_length=120)
@@ -505,7 +505,7 @@ class Tag(models.Model):
     #: a global tag. Names stay unique across the install (``key``), so the
     #: manager is deliberately not site-scoped: a lookup by name must find a
     #: clash whatever site holds it. Who may see, apply and change a tag is
-    #: enforced in the tag views (apps/hosts/views.py, tag_visible).
+    #: enforced in the tag views (apps/hosts/views/, tag_visible).
     site_id = models.UUIDField(null=True, blank=True, db_index=True)
 
     class Meta:
