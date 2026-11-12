@@ -260,7 +260,7 @@ class TrivyScanner(Scanner):
     def ingest_report(self, host, raw_output: str) -> str:
         """Parse one Trivy JSON report and reconcile :class:`VulnFinding` rows.
 
-        Called from the task-completion handler in apps/tasks/views.py
+        Called from the task-completion handler in apps/tasks/views/ (_ingest)
         when a ``run_trivy_scan`` action lands. Same reconciliation
         rules as the Nessus path:
 

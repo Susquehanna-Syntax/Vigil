@@ -72,7 +72,7 @@ CROSSINGS: dict[str, list[str]] = {
                             'run trimming: a run is trimmed when any of its tasks is on a site the caller cannot see'],
     'apps/tasks/tasks.py': ['background job: every rollout advances, each re-applying its own site',
                             'background job: stale tasks expire on every site'],
-    'apps/tasks/views.py': ['agent API: the caller is a host, authenticated by its agent token'],
+    'apps/tasks/views/agent.py': ['agent API: the caller is a host, authenticated by its agent token'],
     'apps/vulns/tasks.py': ["background job: daily vulnerability scores for every site's hosts",
                             "background job: retention prunes every site's score history",
                             "background job: scanner results are imported for every site's hosts",

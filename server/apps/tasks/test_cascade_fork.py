@@ -74,10 +74,13 @@ class CascadeForkTests(TestCase):
         self.user = get_user_model().objects.create_superuser(
             "cf", "cf@example.com", "x")
         self.client.force_login(self.user)
-        self.patcher = patch("apps.tasks.views._fetch_community_templates",
-                             side_effect=_fake_catalog)
-        self.patcher.start()
-        self.addCleanup(self.patcher.stop)
+        # The catalog views and the fork planner each look the fetcher up in
+        # their own module, so both are patched.
+        for target in ("apps.tasks.views.catalog._fetch_community_templates",
+                       "apps.tasks.views._catalog._fetch_community_templates"):
+            patcher = patch(target, side_effect=_fake_catalog)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         from django.core.cache import cache
         cache.clear()
         # A migration seeds built-in templates, so counts are measured as
