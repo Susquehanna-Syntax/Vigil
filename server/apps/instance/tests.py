@@ -220,6 +220,62 @@ class ApiTests(TestCase):
         self.assertTrue(field["env_locked"])
         self.assertEqual(field["source"], "env")
 
+    def test_responses_match_the_api_schema(self):
+        """Every documented key is one the served body has, at every level.
+
+        The page's JSON is assembled by hand from the settings registry, so a
+        renamed field would leave this schema quietly wrong and the Settings
+        page rendering blanks. A secret is written first: it is the field whose
+        documented value ("", plus ``is_set``) differs most from what an
+        integrator might expect, and it only gets checked when one is stored.
+        """
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.instance.models import BackupRun
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            BackupRunSerializer,
+            InstanceDetailErrorsSerializer,
+            InstanceSettingsChangedSerializer,
+            InstanceSettingsSerializer,
+            IntegrationTestResultSerializer,
+        )
+
+        self.client.force_authenticate(_admin("schema-admin"))
+        config.write("GREENBONE_PASSWORD", "hunter2")
+        started = timezone.now()
+        BackupRun.objects.create(
+            started_at=started, finished_at=started + timedelta(seconds=45),
+            state=BackupRun.State.FAILED, name="vigil-2026-11-12.tar.gz",
+            size_bytes=4096, error="pg_dump exited 1")
+
+        assert_shape(self, self.client.get(URL).json(), InstanceSettingsSerializer)
+        assert_shape(self,
+                     self.client.post(URL, {"values": {"EMAIL_HOST": "smtp.example.com"}},
+                                      format="json").json(),
+                     InstanceSettingsChangedSerializer)
+        # A refusal names the setting it rejected: an integrator branches on
+        # ``errors`` to put the message under the right field.
+        bad = self.client.post(URL, {"values": {"VIGIL_TIMEZONE": "Mars/Olympus"}},
+                               format="json")
+        self.assertEqual(bad.status_code, 400)
+        assert_shape(self, bad.json(), InstanceDetailErrorsSerializer)
+        # A connection test answers with ok plus one sentence either way. Jackil
+        # is the branch that cannot reach the network from a test: it checks its
+        # own configuration before it calls out, so with nothing set the answer
+        # is "set the URL and a key" rather than a five-second timeout. Greenbone
+        # stops on the same missing-settings check; Nessus would have dialed.
+        assert_shape(self,
+                     self.client.post(URL + "test/", {"target": "jackil"},
+                                      format="json").json(),
+                     IntegrationTestResultSerializer)
+        runs = self.client.get(URL + "backups/").json()
+        self.assertEqual(len(runs), 1, "an empty list checks no item shape")
+        assert_shape(self, runs, BackupRunSerializer(many=True))
+
     def test_test_endpoint_rejects_unknown_target(self):
         self.client.force_authenticate(_admin())
         resp = self.client.post(URL + "test/", {"target": "ldap"}, format="json")
