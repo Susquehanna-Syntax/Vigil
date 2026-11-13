@@ -139,6 +139,33 @@ class SiteSwitcherTests(TestCase):
         sites = self.client.get("/api/v1/scope/writable-sites/").json()["sites"]
         self.assertEqual([s["name"] for s in sites], ["West", "Lab"])
 
+    def test_52_responses_match_the_api_schema(self):
+        from vigil.api_schema import (
+            VigilSiteSelectionSerializer,
+            VigilWritableSitesSerializer,
+        )
+        from vigil.schema_check import assert_shape
+
+        self.tick(self.dana, self.lab)
+        self.client.force_login(self.dana)
+        chosen = self.client.get(URL)
+        self.assertEqual(chosen.status_code, 200, chosen.content)
+        assert_shape(self, chosen.json(), VigilSiteSelectionSerializer)
+        # The list is never empty for a user with sites: an empty one would
+        # leave the item shape unchecked.
+        self.assertTrue(chosen.json()["sites"])
+
+        cleared = self.client.put(URL, {"all": True}, content_type="application/json")
+        self.assertEqual(cleared.status_code, 200, cleared.content)
+        assert_shape(self, cleared.json(), VigilSiteSelectionSerializer)
+
+        # Ida is an instance admin: "no site" is one of her choices.
+        self.client.force_login(self.ida)
+        offered = self.client.get("/api/v1/scope/writable-sites/")
+        self.assertEqual(offered.status_code, 200, offered.content)
+        assert_shape(self, offered.json(), VigilWritableSitesSerializer)
+        self.assertTrue(offered.json()["sites"])
+
 
 class SelectionIsolationWalkTests(walk.SiteIsolationTests):
     """The isolation walk, with dana an admin of both sites who ticked only

@@ -1,10 +1,12 @@
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from vigil import scoping
+from vigil import api_schema, scoping
 
 
+@extend_schema(responses=api_schema.VigilWritableSitesSerializer)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def writable_sites(request):
@@ -28,6 +30,8 @@ def _switchable_sites(user):
     return [{"id": str(s.pk), "name": s.name, "is_global": s.is_global} for s in qs]
 
 
+@extend_schema(request=api_schema.VigilSiteSelectionPutSerializer,
+               responses=api_schema.VigilSiteSelectionSerializer)
 @api_view(["GET", "PUT"])
 @permission_classes([IsAuthenticated])
 def site_selection(request):

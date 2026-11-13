@@ -4,15 +4,17 @@ Instance admins only: the counts cover every site, so the view runs its reads
 in a system scope and refuses anyone who is not an administrator of the whole
 install. The numbers are ``/metrics``' numbers, from the same ``collect()``.
 """
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.permissions import IsInstanceAdmin
-from vigil import scoping, signing
+from vigil import api_schema, scoping, signing
 from vigil.metrics_endpoint import collect
 
 
+@extend_schema(responses=api_schema.VigilInstanceHealthSerializer)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsInstanceAdmin])
 def instance_health(request):
