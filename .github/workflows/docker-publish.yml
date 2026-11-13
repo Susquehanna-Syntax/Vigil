@@ -509,6 +509,19 @@ jobs:
           docker run --rm --network host -v "$PWD/zap:/zap/wrk" \
             zaproxy/zaproxy:2.16.1 zap-baseline.py \
             -t http://localhost:9200/login/ -r zap-report.html -J zap-report.json -I
+      - name: Summarise the ZAP findings
+        if: always()
+        run: |
+          python3 - <<'PY' > zap-summary.log || true
+          import json
+          report = json.load(open("zap/zap-report.json"))
+          for site in report.get("site", []):
+              for a in site.get("alerts", []):
+                  urls = sorted({i.get("uri", "") for i in a.get("instances", [])})[:3]
+                  print(f"{a.get('riskdesc')} | {a.get('pluginid')} {a.get('name')} | "
+                        f"{a.get('count')} x | {' '.join(urls)}")
+          PY
+          scripts/ci-annotate.sh "ZAP" 60 zap-summary.log
       - name: Keep the ZAP report
         if: always()
         uses: actions/upload-artifact@v4
