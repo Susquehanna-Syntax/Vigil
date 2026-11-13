@@ -5,6 +5,7 @@ from django.contrib.auth import authenticate, get_user_model
 from django.db import DatabaseError
 from django.shortcuts import redirect, render
 from django.utils.timezone import now
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -13,6 +14,21 @@ from webauthn.helpers.exceptions import (
     InvalidRegistrationResponse,
 )
 
+from .api_schema import (
+    AccountsAssertOptionsSerializer,
+    AccountsAssertRequestSerializer,
+    AccountsCapabilitiesSerializer,
+    AccountsErrorSerializer,
+    AccountsKeyCreatedSerializer,
+    AccountsKeyRowSerializer,
+    AccountsKeyTokenSerializer,
+    AccountsRegisterOptionsRequestSerializer,
+    AccountsRegisterOptionsSerializer,
+    AccountsRegisterRequestSerializer,
+    AccountsRemoveKeyRequestSerializer,
+    AccountsRenameKeyRequestSerializer,
+    AccountsSessionRemainingSerializer,
+)
 from .models import LoginAttempt, UserProfile
 from .totp import (
     _clear_totp_attempts,
@@ -110,12 +126,17 @@ def _key_row(key) -> dict:
     }
 
 
+@extend_schema(responses={200: AccountsKeyRowSerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def security_keys_list(request):
     return Response([_key_row(key) for key in request.user.security_keys.all()])
 
 
+@extend_schema(request=AccountsRegisterOptionsRequestSerializer,
+               responses={200: AccountsRegisterOptionsSerializer,
+                          400: AccountsErrorSerializer,
+                          401: AccountsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def security_key_register_options(request):
@@ -135,6 +156,9 @@ def security_key_register_options(request):
     return Response(registration_options(request))
 
 
+@extend_schema(request=AccountsRegisterRequestSerializer,
+               responses={201: AccountsKeyCreatedSerializer,
+                          400: AccountsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def security_key_register(request):
@@ -149,6 +173,14 @@ def security_key_register(request):
     return Response({"id": key.id, "name": key.name}, status=201)
 
 
+@extend_schema(methods=["PATCH"], request=AccountsRenameKeyRequestSerializer,
+               responses={200: AccountsKeyRowSerializer,
+                          400: AccountsErrorSerializer,
+                          404: AccountsErrorSerializer})
+@extend_schema(methods=["DELETE"], request=AccountsRemoveKeyRequestSerializer,
+               responses={(204, "application/json"): None,
+                          401: AccountsErrorSerializer,
+                          404: AccountsErrorSerializer})
 @api_view(["PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def security_key_detail(request, key_id):
@@ -178,6 +210,9 @@ def security_key_detail(request, key_id):
     return Response(status=204)
 
 
+@extend_schema(request=None,
+               responses={200: AccountsAssertOptionsSerializer,
+                          400: AccountsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def security_key_assert_options(request):
@@ -190,6 +225,10 @@ def security_key_assert_options(request):
         return Response({"error": str(exc)}, status=400)
 
 
+@extend_schema(request=AccountsAssertRequestSerializer,
+               responses={200: AccountsKeyTokenSerializer,
+                          400: AccountsErrorSerializer,
+                          429: AccountsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def security_key_assert(request):
@@ -445,6 +484,7 @@ def logout_view(request):
     return redirect("login")
 
 
+@extend_schema(request=None, responses={200: AccountsSessionRemainingSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def session_activity(request):
@@ -457,6 +497,7 @@ def session_activity(request):
     return Response(remaining(request.session))
 
 
+@extend_schema(responses={200: AccountsSessionRemainingSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def session_status(request):
@@ -504,6 +545,7 @@ def _user_row(u):
     }
 
 
+@extend_schema(responses={200: AccountsCapabilitiesSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def capabilities_index(request):
