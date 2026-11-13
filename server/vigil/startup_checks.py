@@ -66,6 +66,16 @@ def _is_non_serving_command() -> bool:
     return len(sys.argv) > 1 and sys.argv[1] in NON_SERVING_COMMANDS
 
 
+def _serves_http() -> bool:
+    """False for a Celery worker or beat. Allowed hosts only matter to a
+    process that answers requests, and the shipped compose file gives the
+    Celery services no public URL, so checking it there crash-looped them
+    on every install from an empty .env. The secret checks still apply: the
+    worker signs the tasks it sends."""
+    argv0 = os.path.basename(sys.argv[0]) if sys.argv else ""
+    return not (argv0 == "celery" or (argv0 == "__main__.py" and "celery" in sys.argv[0]))
+
+
 def _signing_seed() -> str:
     """The configured signing seed.
 
@@ -105,8 +115,8 @@ def collect_problems() -> list[str]:
             "to an agent, and agents refuse unsigned tasks, so nothing will "
             "execute anywhere. " + _GENERATE_SEED)
 
-    if not (os.environ.get("VIGIL_PUBLIC_URL", "").strip()
-            or os.environ.get("DJANGO_ALLOWED_HOSTS", "").strip()):
+    if _serves_http() and not (os.environ.get("VIGIL_PUBLIC_URL", "").strip()
+                               or os.environ.get("DJANGO_ALLOWED_HOSTS", "").strip()):
         problems.append(
             "Neither VIGIL_PUBLIC_URL nor DJANGO_ALLOWED_HOSTS is set, so "
             "Vigil will answer only to 'localhost' and reject every other "
