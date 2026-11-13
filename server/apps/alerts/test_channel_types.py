@@ -311,3 +311,51 @@ class NtfyTests(_Net, TestCase):
         self.transport.return_value = 500
         with self.assertRaises(channels.ChannelError):
             channels.get("ntfy").send({"server": self.SERVER, "topic": "vigil-ops"}, message())
+
+
+class GotifyTests(_Net, TestCase):
+    SERVER = "https://gotify.test"
+
+    def _send(self, **extra):
+        """Send through the channel and return what left for the server: the
+        body as a dict, plus the headers."""
+        config = {"server": self.SERVER, "token": "At_appsecret"}
+        config.update(extra.pop("config", {}))
+        channels.get("gotify").send(config, message(**extra))
+        return json.loads(self.transport.call_args.args[6]), self.transport.call_args.args[7]
+
+    def test_a_firing_critical_alert_posts_to_message_with_priority_8(self):
+        sent, _headers = self._send()
+        self.assertEqual(sent["title"], "[FIRING] [CRITICAL] Alert: web-1")
+        self.assertEqual(sent["message"],
+                         "CPU 97% > 90% <b>&\nHost: web-1\nSite: Leeds\nValue: 97.0\n"
+                         "Rule: High CPU")
+        self.assertEqual(sent["priority"], 8)
+        self.assertEqual(sent["extras"], {"client::notification": {
+            "click": {"url": "https://vigil.test/hosts/7/"}}})
+        method, scheme, address, port, hostname, path = self.transport.call_args.args[:6]
+        self.assertEqual((method, scheme, address, port, hostname, path),
+                         ("POST", "https", PUBLIC, 443, "gotify.test", "/message"))
+
+    def test_the_token_is_a_header_and_never_part_of_the_path(self):
+        _sent, headers = self._send()
+        self.assertEqual(headers["X-Gotify-Key"], "At_appsecret")
+        self.assertNotIn("At_appsecret", self.transport.call_args.args[5])
+
+    def test_a_resolved_alert_has_priority_2(self):
+        sent, _headers = self._send(event="resolved")
+        self.assertEqual(sent["priority"], 2)
+
+    def test_a_server_behind_a_path_prefix_posts_to_that_prefix(self):
+        self._send(config={"server": "https://h.test/gotify/"})
+        self.assertEqual(self.transport.call_args.args[5], "/gotify/message")
+
+    def test_without_a_link_there_is_no_extras_key(self):
+        sent, _headers = self._send(link="")
+        self.assertNotIn("extras", sent)
+
+    def test_a_refusal_is_a_channel_error(self):
+        self.transport.return_value = 500
+        with self.assertRaises(channels.ChannelError):
+            channels.get("gotify").send({"server": self.SERVER, "token": "At_appsecret"},
+                                        message())

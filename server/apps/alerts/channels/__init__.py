@@ -387,4 +387,4 @@ def post(url: str, *, json=None, data=None, headers=None) -> None:
 
 
 # Channel modules register themselves on import.
-from . import discord, email, ntfy, slack, teams, webhook  # noqa: E402,F401
+from . import discord, email, gotify, ntfy, slack, teams, webhook  # noqa: E402,F401
