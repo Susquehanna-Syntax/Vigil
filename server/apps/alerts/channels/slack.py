@@ -5,30 +5,12 @@ so it is a ``secret_url`` and never leaves the server once saved. Mattermost
 and Rocket.Chat accept the same body, so their incoming webhooks work here too.
 """
 from . import ChannelType, Field, Message, post, register
+from .text import facts, headline
 
 
 def escape(text: str) -> str:
     """Slack mrkdwn treats &, < and > as markup (links, mentions)."""
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-
-def facts(message: Message) -> list[str]:
-    """Host, site and value as short "Name: value" strings, skipping blanks."""
-    out = []
-    if message.host:
-        out.append(f"Host: {message.host}")
-    if message.site:
-        out.append(f"Site: {message.site}")
-    if message.value is not None:
-        out.append(f"Value: {message.value}")
-    if message.rule:
-        out.append(f"Rule: {message.rule}")
-    return out
-
-
-def headline(message: Message) -> str:
-    """One line every chat type leads with, and the phone notification shows."""
-    return f"[{message.event.upper()}] [{message.severity.upper()}] {message.title}"
 
 
 @register

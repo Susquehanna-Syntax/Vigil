@@ -170,11 +170,11 @@ def clean_config(channel_type: ChannelType, raw, existing: dict | None = None):
     config, errors = {}, {}
     for f in channel_type.fields:
         value = raw.get(f.name, None)
-        if f.kind == "secret_url" and value not in (None, ""):
-            if not isinstance(value, str) or not value.strip().lower().startswith(
-                    ("http://", "https://")):
-                errors[f.name] = "must start with http:// or https://"
-                continue
+        if f.kind == "secret_url" and value not in (None, "") and (
+                not isinstance(value, str)
+                or not value.strip().lower().startswith(("http://", "https://"))):
+            errors[f.name] = "must start with http:// or https://"
+            continue
         if f.kind in SECRET_KINDS:
             if value in (None, ""):
                 if existing.get(f.name) and urls_unchanged:
