@@ -9,7 +9,7 @@ from rest_framework import serializers
 class AlertChannelFieldSerializer(serializers.Serializer):
     name = serializers.CharField()
     label = serializers.CharField()
-    kind = serializers.ChoiceField(choices=["text", "url", "secret", "list", "choice"])
+    kind = serializers.ChoiceField(choices=["text", "url", "secret", "secret_url", "list", "choice"])
     required = serializers.BooleanField()
     help = serializers.CharField(allow_blank=True)
     choices = serializers.ListField(child=serializers.CharField())

@@ -85,7 +85,7 @@ function _channelFieldHtml(f, value, secretSet) {
   const help = f.help ? `<div class="totp-sub">${escHtml(f.help)}</div>` : '';
   const attrs = `id="${id}" data-field="${escAttr(f.name)}" data-kind="${escAttr(f.kind)}" autocomplete="off"`;
   let input;
-  if (f.kind === 'secret') {
+  if (f.kind === 'secret' || f.kind === 'secret_url') {
     const ph = secretSet ? 'Saved. Leave blank to keep it.' : '';
     input = `<input type="password" class="form-control" ${attrs} placeholder="${escAttr(ph)}">`;
   } else if (f.kind === 'list') {

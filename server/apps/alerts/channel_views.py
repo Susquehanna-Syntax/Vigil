@@ -102,7 +102,7 @@ def _check_addresses(kind, config, user):
     private_ok = scoping.is_instance_admin(user)
     plain = channels.plain_config(kind, config)
     for f in kind.fields:
-        if f.kind == "url" and plain.get(f.name):
+        if f.kind in ("url", "secret_url") and plain.get(f.name):
             try:
                 channels.check_destination(plain[f.name], private_ok=private_ok)
             except channels.ChannelError as exc:

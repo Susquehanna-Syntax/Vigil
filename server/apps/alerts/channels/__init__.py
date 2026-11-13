@@ -29,6 +29,8 @@ import urllib3
 
 #: Prefix of an encrypted setting inside NotificationChannel.config.
 ENCRYPTED_PREFIX = "enc:"
+#: Field kinds stored encrypted and never returned by the API.
+SECRET_KINDS = ("secret", "secret_url")
 #: Seconds any channel waits for a remote server.
 TIMEOUT_SECONDS = 10
 
@@ -42,8 +44,10 @@ class Field:
     """One setting of a channel type, as the API and the form present it.
 
     ``kind`` is ``text``, ``url``, ``secret`` (encrypted at rest, never read
-    back), ``list`` (strings; a comma or newline separated string is split),
-    or ``choice`` (one of ``choices``).
+    back), ``secret_url`` (a URL that carries its own token, as chat webhooks
+    do: checked like a ``url``, stored like a ``secret``, and shown only as
+    its scheme and host), ``list`` (strings; a comma or newline separated
+    string is split), or ``choice`` (one of ``choices``).
     """
 
     name: str
@@ -139,6 +143,14 @@ def _decrypt(value: str) -> str:
         raise ChannelError("a stored secret could not be decrypted") from exc
 
 
+def _stored_plain(value) -> str:
+    """A stored secret's plaintext, or "" when there is none or it is unreadable."""
+    try:
+        return _decrypt(value) if value else ""
+    except ChannelError:
+        return ""
+
+
 def clean_config(channel_type: ChannelType, raw, existing: dict | None = None):
     """``(config, errors)``: *raw* checked against the type's fields, secrets
     encrypted, unknown keys dropped. A secret sent blank keeps the stored one,
@@ -151,11 +163,19 @@ def clean_config(channel_type: ChannelType, raw, existing: dict | None = None):
     # point the URL at their own server and have Vigil send the token there.
     urls_unchanged = all(
         str(raw.get(f.name) or "").strip() == str(existing.get(f.name) or "")
-        for f in channel_type.fields if f.kind == "url")
+        for f in channel_type.fields if f.kind == "url") and not any(
+        isinstance(raw.get(f.name), str) and raw[f.name].strip()
+        and raw[f.name].strip() != _stored_plain(existing.get(f.name))
+        for f in channel_type.fields if f.kind == "secret_url")
     config, errors = {}, {}
     for f in channel_type.fields:
         value = raw.get(f.name, None)
-        if f.kind == "secret":
+        if f.kind == "secret_url" and value not in (None, ""):
+            if not isinstance(value, str) or not value.strip().lower().startswith(
+                    ("http://", "https://")):
+                errors[f.name] = "must start with http:// or https://"
+                continue
+        if f.kind in SECRET_KINDS:
             if value in (None, ""):
                 if existing.get(f.name) and urls_unchanged:
                     config[f.name] = existing[f.name]
@@ -206,7 +226,7 @@ def plain_config(channel_type: ChannelType, config: dict) -> dict:
     """The config with secrets decrypted, for ``send`` only."""
     out = dict(config or {})
     for f in channel_type.fields:
-        if f.kind == "secret" and out.get(f.name):
+        if f.kind in SECRET_KINDS and out.get(f.name):
             out[f.name] = _decrypt(out[f.name])
     return out
 
@@ -222,9 +242,17 @@ def public_config(channel_type: ChannelType | None, config: dict,
     """
     if channel_type is None:
         return {}, []
-    secret_names = {f.name for f in channel_type.fields if f.kind == "secret"}
+    secret_names = {f.name for f in channel_type.fields if f.kind in SECRET_KINDS}
     url_names = {f.name for f in channel_type.fields if f.kind == "url"}
     shown = {}
+    for f in channel_type.fields:
+        # Scheme and host only, so the list can say where a chat channel posts.
+        if f.kind == "secret_url" and (config or {}).get(f.name):
+            try:
+                parts = urllib.parse.urlsplit(_decrypt(config[f.name]))
+                shown[f.name] = f"{parts.scheme}://{parts.hostname or ''}/..."
+            except (ChannelError, ValueError):
+                pass
     for key, value in (config or {}).items():
         if key in secret_names:
             continue
@@ -359,4 +387,4 @@ def post(url: str, *, json=None, data=None, headers=None) -> None:
 
 
 # Channel modules register themselves on import.
-from . import email, webhook  # noqa: E402,F401
+from . import email, slack, webhook  # noqa: E402,F401
