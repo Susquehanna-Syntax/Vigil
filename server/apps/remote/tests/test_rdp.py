@@ -622,7 +622,9 @@ class DesktopSessionTests(_DesktopCase):
 
         bus.push_sync(bus.A2B_KEY.format(sid=str(self.session.id)),
                       {"t": "out", "d": base64.b64encode(wanted).decode()})
-        self.assertTrue(await _wait_for(lambda: b"".join(guacd.from_bridge) == wanted),
+        # Four hops (bus, relay, bridge, fake guacd); CI under coverage on a
+        # shared runner has taken longer than the default five seconds.
+        self.assertTrue(await _wait_for(lambda: b"".join(guacd.from_bridge) == wanted, 20.0),
                         f"guacd read {guacd.from_bridge}")
         # ...and whatever guacd answers for it still gets to the browser.
         self.assertEqual(await browser.receive_text(), encode("sync", "answered", "0"))
