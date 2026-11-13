@@ -107,7 +107,15 @@ jobs:
       - name: Install coverage
         run: pip install coverage==7.6.1
       - name: Run tests
-        run: python -m coverage run --source=apps,vigil manage.py test --verbosity=2
+        run: |
+          set -o pipefail
+          python -m coverage run --source=apps,vigil manage.py test --verbosity=2 2>&1 | tee ../test-output.log
+      - name: Name the failing tests
+        if: failure()
+        working-directory: .
+        run: |
+          grep -E -A 30 '^(FAIL|ERROR):' test-output.log | head -400 > test-failures.log || true
+          scripts/ci-annotate.sh "Failing tests" 400 test-failures.log
       - name: Coverage by app
         if: always()
         run: |
@@ -249,7 +257,12 @@ jobs:
           for _ in $(seq 1 30); do curl -sf "$E2E_BASE/api/v1/health/" && break; sleep 2; done
           curl -sf "$E2E_BASE/api/v1/health/" || { cat ../e2e-server.log; exit 1; }
       - name: Run the browser suite
-        run: python scripts/e2e/run.py e2e-screens
+        run: |
+          set -o pipefail
+          python scripts/e2e/run.py e2e-screens 2>&1 | tee e2e-run.log
+      - name: Say why the browser suite failed
+        if: failure()
+        run: scripts/ci-annotate.sh "Browser end-to-end" 80 e2e-run.log e2e-server.log
       - name: Keep the screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -329,11 +342,15 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           python -m venv agent-venv && agent-venv/Scripts/pip install -q -r agent/requirements.txt
+          set -o pipefail
           cd agent && ../agent-venv/Scripts/python ../scripts/agent-e2e.py --server http://127.0.0.1:8010 \
-            --workdir "${{ runner.temp }}/agent-e2e" --agent "../agent-venv/Scripts/python -m vigil_agent"
+            --workdir "${{ runner.temp }}/agent-e2e" --agent "../agent-venv/Scripts/python -m vigil_agent" \
+            2>&1 | tee ../agent-e2e.log
       - name: Server log
         if: failure()
-        run: tail -200 server.log
+        run: |
+          tail -200 server.log
+          scripts/ci-annotate.sh "Agent end-to-end" 80 agent-e2e.log server.log
 
   # ── The published compose file, from an empty .env ────────────────────────
   # Sprint M3's finish line: `docker compose up` with nothing configured gives
@@ -415,6 +432,12 @@ jobs:
       - name: Logs
         if: failure()
         run: docker compose logs --tail 200
+      - name: Say why the stack did not come up
+        if: failure()
+        run: |
+          docker compose ps -a > compose-ps.log 2>&1 || true
+          docker compose logs --no-color --tail 40 > compose-logs.log 2>&1 || true
+          scripts/ci-annotate.sh "Compose" 200 compose-ps.log compose-logs.log
 
   # ── Free security scans ────────────────────────────────────────────────────
   # The stand-in for a paid penetration test until there is budget for one
@@ -469,6 +492,12 @@ jobs:
           name: zap-report
           path: zap/
           retention-days: 30
+      - name: Say why the stack did not come up
+        if: failure()
+        run: |
+          docker compose ps -a > compose-ps.log 2>&1 || true
+          docker compose logs --no-color --tail 40 > compose-logs.log 2>&1 || true
+          scripts/ci-annotate.sh "Compose" 200 compose-ps.log compose-logs.log
 
   # ── Upgrade from the previous release ─────────────────────────────────────
   # Migrations that only ever ran on an empty database are how upgrades break.
