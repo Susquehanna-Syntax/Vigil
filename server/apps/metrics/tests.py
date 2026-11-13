@@ -152,8 +152,15 @@ class MetricHistoryCostTests(TestCase):
         with CaptureQueriesContext(connection) as large:
             self.client.get(self._url(limit=1))
 
-        self.assertEqual(len(small), len(large),
+        # Only the series' own queries: a request can also write session or
+        # activity rows when enough time has passed, which the 2000-row insert
+        # above gives it on a slow runner, and that has nothing to do with size.
+        def series(ctx):
+            return [q["sql"] for q in ctx.captured_queries if "metrics_metricpoint" in q["sql"]]
+
+        self.assertEqual(len(series(small)), len(series(large)),
                          "the latest-reading path scales with series size")
+        self.assertTrue(series(small), "no metric query was captured")
 
     def test_a_sampled_window_returns_the_requested_number_of_points(self):
         resp = self.client.get(self._url(limit=50))
