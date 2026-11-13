@@ -18,9 +18,14 @@ def facts(message: Message) -> list[str]:
     return out
 
 
-def headline(message: Message) -> str:
-    """One line every chat type leads with, and the phone notification shows."""
-    return f"[{message.event.upper()}] [{message.severity.upper()}] {message.title}"
+def headline(message: Message, clean=str) -> str:
+    """One line every chat type leads with, and the phone notification shows.
+
+    *clean* (``defang``, or a chat's own escaping) is applied to the title only,
+    the part that comes from the alert; the bracketed event and severity are
+    Vigil's own and stay as they are.
+    """
+    return f"[{message.event.upper()}] [{message.severity.upper()}] {clean(message.title)}"
 
 
 #: Mentions that notify a whole room on Slack-compatible chats and Discord.
@@ -33,8 +38,11 @@ def defang(text: str) -> str:
 
     Host names, rule names and messages come from agents and admins, so a host
     called ``@channel`` or a message holding ``[login](https://evil)`` must
-    reach the chat as plain text. An invisible zero-width space after the @ and
-    between ``]`` and ``(`` breaks both without changing what people read.
+    reach the chat as plain text. An invisible zero-width space after the @
+    breaks a mention, and one after every ``]`` breaks every Markdown link form:
+    inline ``[a](b)``, reference ``[a][b]`` and ``[a][]``, and the ``[b]: url``
+    definition a shortcut ``[b]`` needs, since each relies on the character
+    straight after a ``]``. People read the same text.
     """
     text = _MASS_MENTIONS.sub(lambda m: "@" + _ZWSP + m.group(1), text)
-    return text.replace("](", "]" + _ZWSP + "(")
+    return text.replace("]", "]" + _ZWSP)

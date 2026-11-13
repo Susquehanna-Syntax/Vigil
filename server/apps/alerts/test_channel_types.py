@@ -90,6 +90,8 @@ class DefangTests(TestCase):
         self.assertEqual(defang("@channel @HERE @all @everyone"),
                          "@\u200bchannel @\u200bHERE @\u200ball @\u200beveryone")
         self.assertEqual(defang("[x](https://e.test)"), "[x]\u200b(https://e.test)")
+        self.assertEqual(defang("[x][1]\n[1]: https://e.test"),
+                         "[x]\u200b[1]\u200b\n[1]\u200b: https://e.test")
         self.assertEqual(defang("mail ops@example.com about @alice"),
                          "mail ops@example.com about @alice")
 

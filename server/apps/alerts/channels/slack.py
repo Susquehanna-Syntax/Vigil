@@ -26,7 +26,7 @@ class Slack(ChannelType):
     )
 
     def send(self, config: dict, message: Message) -> None:
-        lines = [f"*{escape(headline(message))}*"]
+        lines = [f"*{headline(message, escape)}*"]
         if message.text:
             lines.append(escape(message.text))
         blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(lines)}}]
@@ -37,4 +37,4 @@ class Slack(ChannelType):
             blocks.append({"type": "actions", "elements": [
                 {"type": "button", "text": {"type": "plain_text", "text": "Open in Vigil"},
                  "url": message.link}]})
-        post(config["webhook_url"], json={"text": escape(headline(message)), "blocks": blocks})
+        post(config["webhook_url"], json={"text": headline(message, escape), "blocks": blocks})
