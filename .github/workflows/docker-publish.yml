@@ -397,8 +397,12 @@ jobs:
           # The nightly backup's pg_dump must match the pinned pg16 server.
           v="$(docker compose exec -T celery-worker pg_dump --version 2>&1)"
           echo "$v" | grep -E ' 16\.' || { echo "::error title=Compose::pg_dump is: $v"; exit 1; }
-          if docker compose exec -T db env PGPASSWORD=vigil \
-              psql -h 127.0.0.1 -U vigil -d vigil -c 'select 1' >/dev/null 2>&1; then
+          # A missing psql would make the refusal below look like a pass.
+          docker compose exec -T celery-worker psql --version
+          # Over the compose network, as the app connects: inside the db
+          # container the image trusts 127.0.0.1, so any password works there.
+          if docker compose exec -T celery-worker env PGPASSWORD=vigil \
+              psql -h db -U vigil -d vigil -c 'select 1' >/dev/null 2>&1; then
             echo "::error title=Compose::the database still accepts the password 'vigil'"; exit 1
           fi
       - name: Second boot keeps the secrets
