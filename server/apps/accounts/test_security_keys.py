@@ -26,6 +26,8 @@ from django.utils.timezone import now
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, SecurityKey, UserProfile
+from apps.accounts.permissions import CAPABILITIES
+from apps.accounts.session_timeout import limits
 from apps.accounts.totp import (
     consume_totp,
     generate_secret,
@@ -40,6 +42,9 @@ REGISTER_OPTIONS_URL = "/api/v1/accounts/security-keys/register/options/"
 ASSERT_URL = "/api/v1/accounts/security-keys/assert/"
 ASSERT_OPTIONS_URL = "/api/v1/accounts/security-keys/assert/options/"
 LIST_URL = "/api/v1/accounts/security-keys/"
+HEARTBEAT_URL = "/api/v1/accounts/session/activity/"
+SESSION_URL = "/api/v1/accounts/session/"
+CAPABILITIES_URL = "/api/v1/accounts/capabilities/"
 
 #: What the fake "authenticator" produces. The library never sees these bytes:
 #: the verify functions are patched, so only their documented shape matters.
@@ -810,3 +815,71 @@ class ChallengeIsTheOneSentTests(TestCase):
                                     {}, format="json").json()
         stored = self.client.session["webauthn_auth"]["challenge"]
         self.assertEqual(opts["challenge"], stored)
+
+
+@SECURE
+class ApiSchemaTests(TestCase):
+    """The real bodies of these endpoints and the OpenAPI types that document
+    them. The library's verification is patched, as everywhere in this file:
+    what a schema can get wrong here is the JSON, not the ceremony."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = get_user_model().objects.create_user("schema", password="pw")
+        UserProfile.objects.create(user=self.user, role=Role.ADMIN)
+        self.client.force_login(self.user)
+        add_key(self.user)  # so the key list and its options carry one item
+        enroll_totp(self.user)
+
+    def test_40_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            AccountsAssertOptionsSerializer,
+            AccountsCapabilitiesSerializer,
+            AccountsKeyCreatedSerializer,
+            AccountsKeyRowSerializer,
+            AccountsRegisterOptionsSerializer,
+            AccountsSessionRemainingSerializer,
+        )
+
+        def check(method, url, serializer, body=None):
+            resp = getattr(self.client, method)(url, body or {}, format="json")
+            self.assertEqual(resp.status_code, 200, (url, resp.content))
+            assert_shape(self, resp.json(), serializer)
+            return resp
+
+        def factor():
+            """Adding a key costs the factor you already have."""
+            return {"totp": generate_totp(self.user.profile.totp_secret)}
+
+        check("get", LIST_URL, AccountsKeyRowSerializer(many=True))
+        check("post", ASSERT_OPTIONS_URL, AccountsAssertOptionsSerializer)
+        check("post", REGISTER_OPTIONS_URL, AccountsRegisterOptionsSerializer,
+              factor())
+        check("post", HEARTBEAT_URL, AccountsSessionRemainingSerializer)
+        check("get", SESSION_URL, AccountsSessionRemainingSerializer)
+
+        # The verbs are not a fixed set of properties — assert_shape checks the
+        # values it names, so the keys and their order go against the
+        # vocabulary itself.
+        verbs = check("get", CAPABILITIES_URL, AccountsCapabilitiesSerializer).json()
+        self.assertEqual(set(verbs), set(CAPABILITIES))
+        for app, name in verbs.items():
+            self.assertEqual(name[0], "view", app)
+
+        # The heartbeat's numbers are the middleware's own limits.
+        idle, cap = limits()
+        session = self.client.get(SESSION_URL).json()
+        self.assertEqual((session["idle_seconds"], session["max_seconds"]),
+                         (idle, cap))
+
+        with patch("apps.accounts.webauthn_keys.verify_registration_response",
+                   return_value=FakeRegistration(credential_id=b"\x09fresh")):
+            # A distinct credential id: setUp's key already holds the default.
+            created = self.client.post(REGISTER_URL,
+                                       {"name": "schema key",
+                                        "credential": credential_payload(b"\x09fresh")},
+                                       format="json")
+        self.assertEqual(created.status_code, 201, created.content)
+        assert_shape(self, created.json(), AccountsKeyCreatedSerializer)

@@ -367,6 +367,104 @@ class UserDeleteTests(TestCase):
         self.assertEqual(self.client.delete(self._url(self.viewer)).status_code, 400)
 
 
+def _profile(user) -> UserProfile:
+    """The user's profile row, created on first ask — as the views' own
+    ``_get_or_create_profile`` does. No signal creates it."""
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    return profile
+
+
+class ApiSchemaShapeTests(TestCase):
+    """Phase 41: the responses of the TOTP and user-management endpoints still
+    have the keys ``apps/accounts/api_schema.py`` documents. The serializers
+    render nothing, so a renamed key would leave the schema quietly wrong."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = get_user_model().objects.create_user(
+            "root", password="pw", is_staff=True)
+        self.client.force_login(self.admin)
+
+    def test_41_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            AccountsDetailSerializer,
+            AccountsSettingsAccessSerializer,
+            AccountsTotpEnrolledSerializer,
+            AccountsTotpEnrollStartSerializer,
+            AccountsTotpStatusSerializer,
+            AccountsUserRowSerializer,
+            AccountsUsersIndexSerializer,
+        )
+
+        assert_shape(self, self.client.get("/api/v1/accounts/settings-access/").json(),
+                     AccountsSettingsAccessSerializer)
+        assert_shape(self, self.client.get("/api/v1/accounts/totp/").json(),
+                     AccountsTotpStatusSerializer)
+        assert_shape(self, self.client.post("/api/v1/accounts/totp/enroll/", {}).json(),
+                     AccountsTotpEnrollStartSerializer)
+
+        secret = self.client.post("/api/v1/accounts/totp/enroll/", {}).json()["secret"]
+        assert_shape(self, self.client.post(
+            "/api/v1/accounts/totp/enroll/confirm/",
+            {"code": generate_totp(secret)}, content_type="application/json").json(),
+            AccountsTotpEnrolledSerializer)
+
+        created = self.client.post("/api/v1/accounts/users/",
+                                   {"username": "sch", "password": "pw12345!",
+                                    "role": "viewer"})
+        self.assertEqual(created.status_code, 201, created.content)
+        # With the new user present, GET lists at least one row: an empty list
+        # would check no item shape at all.
+        assert_shape(self, self.client.get("/api/v1/accounts/users/").json(),
+                     AccountsUsersIndexSerializer)
+        assert_shape(self, self.client.patch(
+            f"/api/v1/accounts/users/{created.json()['id']}/role/",
+            {"role": "admin"}, content_type="application/json").json(),
+            AccountsUserRowSerializer)
+
+        # A user-management refusal is {"detail": ...}, not the TOTP views'
+        # {"error": ...}: both shapes are documented, so check the pair here.
+        assert_shape(self, self.client.patch(
+            f"/api/v1/accounts/users/{created.json()['id']}/role/",
+            {"role": "wizard"}, content_type="application/json").json(),
+            AccountsDetailSerializer)
+
+    def test_41_the_totp_disable_and_debug_code_responses_match(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            AccountsErrorSerializer,
+            AccountsTotpCodeSerializer,
+            AccountsTotpEnrolledSerializer,
+        )
+
+        secret = generate_secret()
+        profile = _profile(self.admin)
+        profile.totp_secret = secret
+        profile.totp_confirmed_at = now()
+        profile.save()
+
+        # In this suite DEBUG is off, which is what the endpoint refuses with;
+        # the code it hands out on a debug build is {"code": ...}.
+        assert_shape(self, self.client.post(
+            "/api/v1/accounts/totp/debug-code/", {}).json(),
+            AccountsErrorSerializer)
+        assert_shape(self, {"code": generate_totp(secret)},
+                     AccountsTotpCodeSerializer)
+
+        # Re-enrolling over a confirmed secret is the documented refusal...
+        assert_shape(self, self.client.post("/api/v1/accounts/totp/enroll/", {}).json(),
+                     AccountsErrorSerializer)
+        # ...and disabling with a current code answers with the new state.
+        resp = self.client.post("/api/v1/accounts/totp/disable/",
+                                {"code": generate_totp(secret)},
+                                content_type="application/json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        assert_shape(self, resp.json(), AccountsTotpEnrolledSerializer)
+
+
 class ContentSecurityPolicyTests(TestCase):
     """The policy is only worth having if it actually forbids inline script.
 

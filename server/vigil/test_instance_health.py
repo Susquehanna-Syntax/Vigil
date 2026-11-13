@@ -59,6 +59,23 @@ class InstanceHealthTests(TestCase):
         self.assertEqual(len(body["signing_key"]["active"]), 44)
         self.assertIsNone(body["signing_key"]["next"])
 
+    def test_the_responses_match_the_api_schema(self):
+        from vigil.api_schema import (
+            VigilAboutSerializer,
+            VigilHealthSerializer,
+            VigilInstanceHealthSerializer,
+        )
+        from vigil.schema_check import assert_shape
+
+        _host("on-1", Host.Status.ONLINE, 0)
+        self.client.force_login(self.admin)
+        body = self.client.get(URL).json()
+        # The window keys start with a digit: the schema must name them as sent.
+        self.assertEqual(set(body["checked_in"]), {"1m", "5m", "1h"})
+        assert_shape(self, body, VigilInstanceHealthSerializer)
+        assert_shape(self, self.client.get("/api/v1/about/").json(), VigilAboutSerializer)
+        assert_shape(self, self.client.get("/api/v1/health/").json(), VigilHealthSerializer)
+
     def test_a_viewer_is_refused(self):
         self.client.force_login(self.viewer)
         self.assertEqual(self.client.get(URL).status_code, 403)

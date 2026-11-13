@@ -5,6 +5,7 @@ from django.contrib import admin
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.urls import include, path
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -29,15 +30,17 @@ from apps.statuspage.views import public_status as status_public_view
 from apps.statuspage.views import public_status_data as status_public_data_view
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView
 
-from vigil import health_view, metrics_endpoint, scoping, views_scope
+from vigil import api_schema, health_view, metrics_endpoint, scoping, views_scope
 
 
+@extend_schema(responses=api_schema.VigilHealthSerializer)
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health_check(request):
     return Response({"status": "ok"})
 
 
+@extend_schema(responses=api_schema.VigilAboutSerializer)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def about(request):

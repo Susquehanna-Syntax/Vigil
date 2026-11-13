@@ -1,8 +1,18 @@
 """apps.hosts.views: agent views (split from the old single module, unchanged)."""
+from drf_spectacular.utils import extend_schema
+
+from ..api_schema import (HostsCheckinBodySerializer, HostsCheckinSerializer,
+                          HostsCheckPendingSerializer, HostsCheckPendingTokenSerializer,
+                          HostsErrorSerializer, HostsHostSerializer,
+                          HostsRegisterResponseSerializer, HostsRegisterSerializer,
+                          HostsTransportAckBodySerializer, HostsTransportAckSerializer)
 from ._common import *  # noqa: F401,F403
 
 
 @scoping.system_view(reason="agent enrolment: a new host registers with no user")
+@extend_schema(request=HostsRegisterSerializer, responses={
+    201: HostsRegisterResponseSerializer, 200: HostsRegisterResponseSerializer,
+    400: HostsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([AllowAny])
 @throttle_classes([_RegisterRateThrottle])
@@ -91,6 +101,9 @@ def register(request):
 
 
 @scoping.system_view(reason="agent API: the caller is a host, authenticated by its agent token")
+@extend_schema(methods=["POST"], request=HostsCheckinBodySerializer,
+               responses={200: HostsCheckinSerializer, 401: HostsErrorSerializer,
+                          403: HostsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def checkin(request):
@@ -495,6 +508,9 @@ def checkin(request):
     )
 
 
+@extend_schema(methods=["GET"], responses=HostsTransportAckSerializer)
+@extend_schema(methods=["POST"], request=HostsTransportAckBodySerializer,
+               responses=HostsTransportAckSerializer)
 @api_view(["GET", "POST"])
 @permission_classes([IsAdmin])
 def transport_ack(request):
@@ -526,6 +542,7 @@ def transport_ack(request):
     })
 
 
+@extend_schema(request=None, responses={200: HostsHostSerializer, 404: HostsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def host_poll(request, host_id):
@@ -541,6 +558,9 @@ def host_poll(request, host_id):
     return Response(HostSerializer(host).data)
 
 
+@extend_schema(request=HostsCheckPendingTokenSerializer, responses={
+    200: HostsCheckPendingSerializer, 400: HostsErrorSerializer,
+    403: HostsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def check_pending(request):

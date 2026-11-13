@@ -2,12 +2,18 @@
 Images / Volumes / Networks tabs. Which containers use each object comes
 from the containers' own edges (DockerContainer.networks / .mounts /
 .image_id), so "unused" is computed, not guessed."""
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from vigil import scoping
 
+from .api_schema import (
+    HostsDockerHostSummarySerializer,
+    HostsDockerSnapshotSerializer,
+    HostsErrorSerializer,
+)
 from .models import DockerContainer, DockerImage, DockerNetwork, DockerVolume, HostDockerUsage
 
 _BUILTIN_NETWORKS = {"bridge", "host", "none", "podman"}
@@ -25,6 +31,7 @@ def _short(image_id: str) -> str:
     return image_id.split(":", 1)[-1][:12]
 
 
+@extend_schema(responses={200: HostsDockerSnapshotSerializer, 404: HostsErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def host_docker(request, host_id):
@@ -74,6 +81,7 @@ def host_docker(request, host_id):
     })
 
 
+@extend_schema(responses={200: HostsDockerHostSummarySerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def host_docker_summary(request):

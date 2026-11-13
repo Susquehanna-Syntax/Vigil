@@ -8,6 +8,7 @@ user's own plus community ones (what the task library lists).
 import re
 
 from django.db.models import Count, Q
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -15,6 +16,8 @@ from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin
 
 from vigil import scoping
+
+from .api_schema import HostsSearchSerializer
 
 LIMIT = 8
 MAX_QUERY = 100
@@ -141,6 +144,7 @@ _KINDS = (
 )
 
 
+@extend_schema(responses=HostsSearchSerializer)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def search(request):

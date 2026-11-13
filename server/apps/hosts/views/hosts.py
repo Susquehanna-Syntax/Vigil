@@ -1,7 +1,27 @@
 """apps.hosts.views: hosts views (split from the old single module, unchanged)."""
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
+
+from ..api_schema import (
+    HostsAdConfigSavedSerializer,
+    HostsAdConfigSerializer,
+    HostsAdConfigWriteSerializer,
+    HostsAdSyncInlineSerializer,
+    HostsAdSyncQueuedSerializer,
+    HostsDeletedSerializer,
+    HostsDeviceSerializer,
+    HostsDeviceWriteSerializer,
+    HostsErrorSerializer,
+    HostsHostSerializer,
+    HostsTagsWriteSerializer,
+    HostsTaskQueuedSerializer,
+    HostsTotpSerializer,
+    HostsValidationErrorSerializer,
+)
 from ._common import *  # noqa: F401,F403
 
 
+@extend_schema(methods=["GET"], responses=HostsHostSerializer(many=True))
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("hosts")
@@ -12,6 +32,10 @@ def host_list(request):
     return Response(HostSerializer(hosts, many=True, context=ctx).data)
 
 
+@extend_schema(methods=["GET"], responses=HostsHostSerializer)
+@extend_schema(methods=["DELETE"], responses={200: HostsDeletedSerializer,
+                                              403: HostsErrorSerializer,
+                                              404: HostsErrorSerializer})
 @api_view(["GET", "DELETE"])
 @permission_classes([IsAuthenticated])
 def host_detail(request, host_id):
@@ -34,6 +58,11 @@ def host_detail(request, host_id):
         host, context={"host_sites": scoping.sites_for_hosts([host.id])}).data)
 
 
+@extend_schema(methods=["GET"], responses=HostsDeviceSerializer(many=True))
+@extend_schema(methods=["POST"], request=HostsDeviceWriteSerializer,
+               responses={201: HostsDeviceSerializer,
+                          400: HostsValidationErrorSerializer,
+                          403: HostsErrorSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("devices")
@@ -58,6 +87,16 @@ def unmanaged_devices(request):
     return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(methods=["GET"], responses={200: HostsDeviceSerializer,
+                                           404: HostsErrorSerializer})
+@extend_schema(methods=["PATCH"], request=HostsDeviceWriteSerializer,
+               responses={200: HostsDeviceSerializer,
+                          400: HostsValidationErrorSerializer,
+                          403: HostsErrorSerializer,
+                          404: HostsErrorSerializer})
+@extend_schema(methods=["DELETE"], responses={204: None,
+                                              403: HostsErrorSerializer,
+                                              404: HostsErrorSerializer})
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def unmanaged_device_detail(request, device_id):
@@ -94,6 +133,9 @@ def unmanaged_device_detail(request, device_id):
     return Response(serializer.data)
 
 
+@extend_schema(methods=["GET"], responses=HostsAdConfigSerializer)
+@extend_schema(methods=["POST"], request=HostsAdConfigWriteSerializer,
+               responses={200: HostsAdConfigSavedSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAdmin, SettingsPage("directory")])
 def ad_config(request):
@@ -140,6 +182,9 @@ def ad_config(request):
     return Response({"ok": True})
 
 
+@extend_schema(request=None,
+               responses={200: HostsAdSyncInlineSerializer,
+                          201: HostsAdSyncQueuedSerializer})
 @api_view(["POST"])
 @permission_classes([IsAdmin, SettingsPage("directory")])
 def ad_sync_now(request):
@@ -156,6 +201,11 @@ def ad_sync_now(request):
         return Response({"queued": False, "result": result})
 
 
+@extend_schema(request=HostsTagsWriteSerializer,
+               responses={200: HostsHostSerializer,
+                          400: HostsErrorSerializer,
+                          403: HostsErrorSerializer,
+                          404: HostsErrorSerializer})
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
 def host_tags(request, host_id):
@@ -205,6 +255,14 @@ def host_tags(request, host_id):
     return Response(HostSerializer(host).data)
 
 
+@extend_schema(request=HostsTotpSerializer,
+               responses={201: HostsTaskQueuedSerializer,
+                          409: HostsTaskQueuedSerializer,
+                          400: HostsErrorSerializer,
+                          401: HostsErrorSerializer,
+                          403: HostsErrorSerializer,
+                          404: HostsErrorSerializer,
+                          503: HostsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def host_update_agent(request, host_id):
@@ -274,6 +332,11 @@ def host_update_agent(request, host_id):
     return Response({"status": "queued", "task_id": str(task.id)}, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(request=HostsTotpSerializer,
+               responses={200: HostsHostSerializer,
+                          401: HostsErrorSerializer,
+                          403: HostsErrorSerializer,
+                          404: HostsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAdmin])
 def host_approve(request, host_id):
@@ -318,6 +381,10 @@ def host_approve(request, host_id):
     return Response(HostSerializer(host).data)
 
 
+@extend_schema(request=None,
+               responses={200: HostsHostSerializer,
+                          403: HostsErrorSerializer,
+                          404: HostsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAdmin])
 def host_reject(request, host_id):
@@ -340,6 +407,10 @@ def host_reject(request, host_id):
     return Response(HostSerializer(host).data)
 
 
+@extend_schema(methods=["GET"],
+               responses={(200, "application/x-rdp"): OpenApiTypes.BINARY,
+                          (400, "application/json"): HostsErrorSerializer,
+                          (404, "application/json"): HostsErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def host_rdp(request, host_id):
