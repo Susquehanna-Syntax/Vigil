@@ -13,6 +13,7 @@ from django.db import transaction
 from django.http import FileResponse, Http404, HttpResponse
 from django.utils.timezone import now
 from django.views.decorators.csrf import csrf_exempt
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import (api_view, permission_classes,
                                        throttle_classes)
 from rest_framework.permissions import AllowAny
@@ -23,6 +24,11 @@ from apps.hosts.models import Host
 from vigil import hooks, scoping
 
 from . import jobs
+from .api_schema import (
+    ReprovisionEnrollRequestSerializer,
+    ReprovisionEnrollSerializer,
+    ReprovisionErrorSerializer,
+)
 from .models import OSImage, RebuildJob
 from .renderers import get_renderer
 
@@ -140,6 +146,9 @@ def install_tree(request, image_id, path: str = ""):
 
 
 @scoping.system_view(reason="reprovision installer: the rebuild token is the access control")
+@extend_schema(request=ReprovisionEnrollRequestSerializer, responses={
+    200: ReprovisionEnrollSerializer, 400: ReprovisionErrorSerializer,
+    403: ReprovisionErrorSerializer})
 @api_view(["POST"])
 @permission_classes([AllowAny])
 @throttle_classes([_EnrolThrottle])

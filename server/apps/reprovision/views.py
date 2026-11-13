@@ -13,6 +13,8 @@ from django.conf import settings as django_settings
 from django.db.models import ProtectedError
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -22,6 +24,24 @@ from apps.accounts.permissions import IsAdmin, can, settings_allows
 from vigil import hooks, scoping
 
 from . import jobs
+from .api_schema import (
+    ReprovisionCatalogEntrySerializer,
+    ReprovisionErrorSerializer,
+    ReprovisionFieldErrorsSerializer,
+    ReprovisionImagePullSerializer,
+    ReprovisionImageSerializer,
+    ReprovisionImageUploadSerializer,
+    ReprovisionImageWriteSerializer,
+    ReprovisionJobCreateSerializer,
+    ReprovisionJobSerializer,
+    ReprovisionPreflightRequestSerializer,
+    ReprovisionPreflightSerializer,
+    ReprovisionPreviewSerializer,
+    ReprovisionProfileCreateSerializer,
+    ReprovisionProfilePatchSerializer,
+    ReprovisionProfilePreviewSerializer,
+    ReprovisionProfileSerializer,
+)
 from .catalog import CATALOG, get_entry
 from .ceremony import verify_rebuild_confirmation
 from .fetch_guard import check_url
@@ -92,6 +112,7 @@ def _served_on_a_private_network(request) -> bool:
     return is_private_hostname(peer)
 
 
+@extend_schema(responses=ReprovisionCatalogEntrySerializer(many=True))
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def catalog_list(request):
@@ -103,6 +124,9 @@ def catalog_list(request):
     return Response(CATALOG)
 
 
+@extend_schema(request=ReprovisionImagePullSerializer, responses={
+    202: ReprovisionImageSerializer, 400: ReprovisionErrorSerializer,
+    403: ReprovisionErrorSerializer, 409: ReprovisionErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def image_pull(request):
@@ -240,6 +264,13 @@ def _free_bytes_for_images():
         return None
 
 
+@extend_schema(request=ReprovisionImageUploadSerializer,
+               responses={201: ReprovisionImageSerializer,
+                          400: ReprovisionErrorSerializer,
+                          403: ReprovisionErrorSerializer,
+                          409: ReprovisionErrorSerializer,
+                          413: ReprovisionErrorSerializer,
+                          507: ReprovisionErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 @parser_classes([MultiPartParser])
@@ -386,6 +417,10 @@ def image_upload(request):
     return Response(OSImageSerializer(image).data, status=201)
 
 
+@extend_schema(methods=["GET"], responses=ReprovisionImageSerializer(many=True))
+@extend_schema(methods=["POST"], request=ReprovisionImageWriteSerializer,
+               responses={201: ReprovisionImageSerializer,
+                          400: ReprovisionFieldErrorsSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def image_list(request):
@@ -409,6 +444,9 @@ def image_list(request):
     return Response(OSImageSerializer(image).data, status=201)
 
 
+@extend_schema(methods=["GET"], responses=ReprovisionImageSerializer)
+@extend_schema(methods=["DELETE"], responses={(204, "application/json"): None,
+                                              409: ReprovisionErrorSerializer})
 @api_view(["GET", "DELETE"])
 @permission_classes([IsAuthenticated])
 def image_detail(request, image_id):
@@ -441,6 +479,11 @@ def image_detail(request, image_id):
 
 # ── Install profiles ─────────────────────────────────────────────────────────
 
+@extend_schema(methods=["GET"], responses=ReprovisionProfileSerializer(many=True))
+@extend_schema(methods=["POST"], request=ReprovisionProfileCreateSerializer,
+               responses={201: ReprovisionProfileSerializer,
+                          400: ReprovisionErrorSerializer,
+                          403: ReprovisionErrorSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def profile_list(request):
@@ -475,6 +518,13 @@ def _agent_profile_site_error(agent_profile, site_id):
     return None
 
 
+@extend_schema(methods=["GET"], responses=ReprovisionProfileSerializer)
+@extend_schema(methods=["PATCH"], request=ReprovisionProfilePatchSerializer,
+               responses={200: ReprovisionProfileSerializer,
+                          400: ReprovisionErrorSerializer,
+                          403: ReprovisionErrorSerializer})
+@extend_schema(methods=["DELETE"], responses={(204, "application/json"): None,
+                                              403: ReprovisionErrorSerializer})
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def profile_detail(request, profile_id):
@@ -505,6 +555,10 @@ def profile_detail(request, profile_id):
     return Response(InstallProfileSerializer(serializer.save(site_id=site_id)).data)
 
 
+@extend_schema(request=ReprovisionProfilePreviewSerializer,
+               responses={200: ReprovisionPreviewSerializer,
+                          403: ReprovisionErrorSerializer,
+                          404: ReprovisionErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def profile_preview(request, profile_id):
@@ -530,6 +584,11 @@ def profile_preview(request, profile_id):
     return Response({"files": rendered})
 
 
+@extend_schema(request=ReprovisionPreflightRequestSerializer, responses={
+    (200, "application/json"): OpenApiTypes.OBJECT,
+    202: ReprovisionPreflightSerializer,
+    403: ReprovisionErrorSerializer,
+    404: ReprovisionErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def preflight_check(request):
@@ -577,6 +636,11 @@ def preflight_check(request):
 
 # ── Rebuild jobs ─────────────────────────────────────────────────────────────
 
+@extend_schema(methods=["GET"], responses=ReprovisionJobSerializer(many=True))
+@extend_schema(methods=["POST"], request=ReprovisionJobCreateSerializer,
+               responses={201: ReprovisionJobSerializer,
+                          400: ReprovisionErrorSerializer,
+                          401: ReprovisionErrorSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("reprovision")
@@ -695,6 +759,9 @@ def _create_job(request):
     return Response(RebuildJobSerializer(job).data, status=201)
 
 
+@extend_schema(responses={200: ReprovisionJobSerializer,
+                          403: ReprovisionErrorSerializer,
+                          404: ReprovisionErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def job_detail(request, job_id):
@@ -704,6 +771,10 @@ def job_detail(request, job_id):
     return Response(RebuildJobSerializer(job).data)
 
 
+@extend_schema(request=None, responses={200: ReprovisionJobSerializer,
+                                        403: ReprovisionErrorSerializer,
+                                        404: ReprovisionErrorSerializer,
+                                        409: ReprovisionErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def job_abort(request, job_id):
