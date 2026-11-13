@@ -21,14 +21,15 @@ from drf_spectacular.drainage import GENERATOR_STATS
 from drf_spectacular.generators import SchemaGenerator
 
 #: Apps whose every /api/v1/ view comes out typed.
-TYPED: set[str] = {"licensing"}
+TYPED: set[str] = {"aisuggest", "licensing", "reports"}
 
 #: Apps still to type, each one phase of the work.
 PENDING: set[str] = {
-    "accounts", "agent_dist", "agentprofiles", "aisuggest", "alerts",
+    "accounts", "agent_dist", "agentprofiles",
+    "alerts",
     "automations", "catalog", "dashboards", "hosts", "instance", "jackil",
     "metrics", "playbooks", "policies", "relays", "remote",
-    "reports", "reprovision", "software", "stacks", "statuspage", "tasks",
+    "reprovision", "software", "stacks", "statuspage", "tasks",
     "vulns",
     # Views in vigil/ itself (about, health), and the Business apps, which
     # live in the private Vigil_Business repository.

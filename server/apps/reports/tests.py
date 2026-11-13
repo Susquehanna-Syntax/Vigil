@@ -127,17 +127,20 @@ class ReportTestBase(TestCase):
                 report.automations.add(source)
         return report
 
-    def csv(self, report, index, now=NOW):
-        """GET a widget's CSV with the clock held at *now*, so the day window
-        the endpoint computes is the one the fixture rows were written for."""
-        original = widgets.datetime
+    def freeze_today(self, now=NOW):
+        """Hold the clock at *now*, so a computed report's day window is the one
+        the fixture rows were written for."""
 
-        class Frozen(original):  # type: ignore[misc]
+        class Frozen(widgets.datetime):  # type: ignore[misc]
             @classmethod
             def now(cls, tz=None):
                 return now
 
         self.addsetattr(widgets, "datetime", Frozen)
+
+    def csv(self, report, index, now=NOW):
+        """GET a widget's CSV with the clock held at *now*."""
+        self.freeze_today(now)
         return self.client.get(f"/api/v1/reports/{report.id}/data/{index}.csv")
 
     def data(self, report, kind=None, user=None, now=NOW):
@@ -242,6 +245,62 @@ class CrudTests(ReportTestBase):
         self.assertEqual(self.client.delete(url).status_code, 204)
         self.assertEqual(Report.objects.count(), 0)
         self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            ReportDataSerializer,
+            ReportDetailSerializer,
+            ReportRowSerializer,
+            WidgetCatalogEntrySerializer,
+        )
+
+        pb = self.playbook("Patch web")
+        auto = self.automation("Nightly scan", playbook=pb)
+        # One host-run per source: every source gets a series in the days
+        # widget, and the rows widget's item shape needs an outcome to name —
+        # one host with nothing reported would leave that list empty.
+        self.host_run(playbook=pb, day=TODAY, host="web", steps=(("patch", "failed"),))
+        self.host_run(automation=auto, day=TODAY, host="db", steps=(("scan", "completed"),))
+        created = self.client.post("/api/v1/reports/", {
+            "name": "Nightly", "description": "how patching goes", "range_days": 7,
+            # The days shape (success_rate) and the rows one (host_outcomes).
+            "widgets": [{"kind": "success_rate"}, {"kind": "host_outcomes"}],
+            "playbooks": [str(pb.id)], "automations": [str(auto.id)]}, format="json")
+        self.assertEqual(created.status_code, 201, created.content)
+        assert_shape(self, created.json(), ReportRowSerializer)
+
+        listed = self.client.get("/api/v1/reports/")
+        self.assertTrue(listed.json(), "an empty list checks no item shape")
+        assert_shape(self, listed.json(), ReportRowSerializer(many=True))
+
+        url = f"/api/v1/reports/{created.json()['id']}/"
+        assert_shape(self, self.client.get(url).json(), ReportRowSerializer)
+        patched = self.client.patch(url, {"range_days": 14}, format="json")
+        assert_shape(self, patched.json(), ReportRowSerializer)
+
+        catalog = self.client.get("/api/v1/reports/widgets/")
+        self.assertTrue(catalog.json(), "an empty list checks no item shape")
+        assert_shape(self, catalog.json(), WidgetCatalogEntrySerializer(many=True))
+
+        # A days widget and a rows widget: the two shapes one widget data can take.
+        self.freeze_today()
+        data = self.client.get(f"{url}data/")
+        self.assertTrue(any(w["data"].get("series") for w in data.json()["widgets"]),
+                        "a widget with no series checks no item shape")
+        self.assertTrue(any(w["data"].get("rows") for w in data.json()["widgets"]),
+                        "a widget with no rows checks no item shape")
+        assert_shape(self, data.json(), ReportDataSerializer)
+
+        preview = self.client.post("/api/v1/reports/preview/", {
+            "range_days": 7, "widgets": [{"kind": "runs_per_day"}],
+            "playbooks": [str(pb.id)], "automations": []}, format="json")
+        assert_shape(self, preview.json(), ReportDataSerializer)
+
+        refused = self.client.post("/api/v1/reports/", {"name": ""}, format="json")
+        self.assertEqual(refused.status_code, 400, refused.content)
+        assert_shape(self, refused.json(), ReportDetailSerializer)
 
 
 class CatalogTests(ReportTestBase):
