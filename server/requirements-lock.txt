@@ -66,7 +66,7 @@ python-crontab==3.3.0
 python-dateutil==2.9.0.post0
 PyYAML==6.0.3
 qrcode==8.2
-redis==6.4.0
+redis==8.1.0
 referencing==0.37.0
 requests==2.33.1
 rpds-py==2026.9.1
