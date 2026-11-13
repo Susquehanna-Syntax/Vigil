@@ -1,15 +1,28 @@
 from datetime import timedelta
 
 from django.db.models import Avg, Case, F, IntegerField, Value, When
-from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from vigil import scoping
 from apps.accounts.permissions import IsAdmin, SettingsPage
-from apps.hosts.models import Host
+from vigil import scoping
 
+from .api_schema import (
+    VulnAnvilImportResultSerializer,
+    VulnAnvilImportSerializer,
+    VulnDataLoadSerializer,
+    VulnDataSerializer,
+    VulnDetailResponse,
+    VulnErrorActiveScanSerializer,
+    VulnErrorResponse,
+    VulnFixGroupDeployResultSerializer,
+    VulnFixGroupDeploySerializer,
+    VulnFixGroupListSerializer,
+    VulnFleetScoreSerializer,
+    VulnScanCreateSerializer,
+)
 from .models import VulnFinding, VulnScan, VulnScoreHistory, VulnSummary
 from .scoring import SEVERITY_RANK
 from .serializers import (
@@ -20,6 +33,7 @@ from .serializers import (
 )
 
 
+@extend_schema(responses={200: VulnSummarySerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("vulns")
@@ -32,6 +46,7 @@ def vuln_list(request):
     return Response(VulnSummarySerializer(qs, many=True).data)
 
 
+@extend_schema(request=None, responses={200: VulnFleetScoreSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def fleet_score(request):
@@ -57,6 +72,7 @@ def fleet_score(request):
     })
 
 
+@extend_schema(responses={200: VulnFindingSerializer(many=True), 400: VulnErrorResponse})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("vulns")
@@ -154,6 +170,7 @@ def finding_list(request):
     return Response(VulnFindingSerializer(qs[:500], many=True).data)
 
 
+@extend_schema(request=None, responses={200: VulnScoreHistorySerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def score_history(request, host_id):
@@ -175,6 +192,7 @@ def score_history(request, host_id):
     return Response(VulnScoreHistorySerializer(qs, many=True).data)
 
 
+@extend_schema(request=None, responses={200: VulnScanSerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("vulns")
@@ -189,6 +207,11 @@ def scan_list(request):
     return Response(VulnScanSerializer(qs[:100], many=True).data)
 
 
+@extend_schema(request=VulnScanCreateSerializer,
+               responses={201: VulnScanSerializer, 400: VulnErrorResponse,
+                          401: VulnErrorResponse, 403: VulnErrorResponse,
+                          404: VulnErrorResponse, 409: VulnErrorActiveScanSerializer,
+                          503: VulnErrorResponse})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def scan_create(request, host_id):
@@ -281,6 +304,10 @@ def scan_create(request, host_id):
     return Response(VulnScanSerializer(scan).data, status=201)
 
 
+@extend_schema(methods=["GET"], request=None, responses={200: VulnDataSerializer})
+@extend_schema(methods=["POST"], request=None,
+               responses={200: VulnDataLoadSerializer, 400: VulnDetailResponse,
+                          403: VulnDetailResponse})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAdmin, SettingsPage("retention")])
 def vuln_data(request):
@@ -310,6 +337,7 @@ def vuln_data(request):
                      "kev_entries": KevEntry.objects.count(), "epss_scores": EpssScore.objects.count()})
 
 
+@extend_schema(request=None, responses={200: VulnFixGroupListSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("vulns")
@@ -321,6 +349,9 @@ def fix_group_list(request):
     return Response({"count": len(groups), "results": groups[:500]})
 
 
+@extend_schema(request=VulnFixGroupDeploySerializer,
+               responses={200: VulnFixGroupDeployResultSerializer,
+                          400: VulnDetailResponse, 403: VulnDetailResponse})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def fix_group_deploy(request):
@@ -335,6 +366,9 @@ def fix_group_deploy(request):
     return Response({"definition_id": str(definition.id), "host_ids": host_ids})
 
 
+@extend_schema(request=VulnAnvilImportSerializer,
+               responses={200: VulnAnvilImportResultSerializer,
+                          400: VulnDetailResponse})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def anvil_import(request):
