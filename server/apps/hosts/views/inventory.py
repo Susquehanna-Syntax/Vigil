@@ -8,11 +8,11 @@ from ._common import *  # noqa: F401,F403
 # this package has always had it.
 from ..api_schema import (HostsContainerSerializer, HostsErrorSerializer,
                           HostsInventoryListSerializer, HostsInventoryRowSerializer,
-                          HostsStackSerializer, HostsTagSerializer)
+                          HostsStackSerializer, HostsTagCountSerializer)
 from drf_spectacular.utils import extend_schema
 
 
-@extend_schema(responses={200: HostsTagSerializer(many=True)})
+@extend_schema(responses={200: HostsTagCountSerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def tag_index(request):

@@ -1,7 +1,16 @@
 """apps.hosts.views: firewall views (split from the old single module, unchanged)."""
+from drf_spectacular.utils import extend_schema
+
+from ..api_schema import (
+    HostsErrorSerializer,
+    HostsFirewallApplySerializer,
+    HostsFirewallSerializer,
+    HostsFirewallTaskSerializer,
+)
 from ._common import *  # noqa: F401,F403
 
 
+@extend_schema(responses={200: HostsFirewallSerializer, 404: HostsErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def host_firewall(request, host_id):
@@ -33,6 +42,9 @@ def host_firewall(request, host_id):
     })
 
 
+@extend_schema(request=None, responses={202: HostsFirewallTaskSerializer,
+                                        400: HostsErrorSerializer, 403: HostsErrorSerializer,
+                                        404: HostsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def host_firewall_refresh(request, host_id):
@@ -63,6 +75,10 @@ def host_firewall_refresh(request, host_id):
                     status=status.HTTP_202_ACCEPTED)
 
 
+@extend_schema(request=HostsFirewallApplySerializer,
+               responses={202: HostsFirewallTaskSerializer, 400: HostsErrorSerializer,
+                          401: HostsErrorSerializer, 403: HostsErrorSerializer,
+                          404: HostsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def host_firewall_apply(request, host_id):

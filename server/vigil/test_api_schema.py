@@ -31,11 +31,12 @@ TYPED: set[str] = {
     "automations", "catalog", "dashboards", "instance", "licensing",
     "metrics", "playbooks", "policies", "relays", "remote", "reports",
     "reprovision", "software", "statuspage", "vulns",
+    "hosts",
 }
 
 #: Apps still to type, each one phase of the work.
 PENDING: set[str] = {
-    "hosts", "jackil", "stacks", "tasks",
+    "jackil", "stacks", "tasks",
     # Views in vigil/ itself (about, health), and the Business apps, which
     # live in the private Vigil_Business repository.
     "vigil", "apps_business",

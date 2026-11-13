@@ -14,6 +14,8 @@ import secrets
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -22,6 +24,14 @@ from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin
 from vigil import scoping
 
+from .api_schema import (
+    HostsErrorSerializer,
+    HostsLogTailAgentUploadSerializer,
+    HostsLogTailCreatedSerializer,
+    HostsLogTailOpenSerializer,
+    HostsLogTailPollSerializer,
+    HostsLogTailRefusalSerializer,
+)
 from .authentication import authenticate_agent
 from .models import LogTailSession
 
@@ -47,6 +57,10 @@ def _task_for(session: LogTailSession, tail: int, user):
         expires_at=expires_at, nonce=secrets.token_hex(32))
 
 
+@extend_schema(methods=["POST"], request=HostsLogTailOpenSerializer,
+               responses={201: HostsLogTailCreatedSerializer,
+                          400: HostsErrorSerializer, 401: HostsLogTailRefusalSerializer,
+                          403: HostsErrorSerializer, 404: HostsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def open_logs(request, host_id, name):
@@ -73,6 +87,9 @@ def open_logs(request, host_id, name):
                     status=status.HTTP_201_CREATED)
 
 
+@extend_schema(methods=["GET", "DELETE"], request=None,
+               responses={200: HostsLogTailPollSerializer,
+                          (204, "application/json"): None, 404: HostsErrorSerializer})
 @api_view(["GET", "DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def poll_logs(request, session_id):
@@ -97,6 +114,7 @@ def poll_logs(request, session_id):
 
 
 @scoping.system_view(reason="agent API: the caller is a host, authenticated by its agent token")
+@extend_schema(request=HostsLogTailAgentUploadSerializer, responses={200: OpenApiTypes.OBJECT})
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def agent_log_lines(request, session_id):

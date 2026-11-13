@@ -15,12 +15,14 @@ plumbing, not a network anyone crosses.
 import ipaddress
 from collections import defaultdict
 
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from vigil import scoping
 
+from .api_schema import HostsTopologySerializer
 from .models import DockerContainer, Host, UnmanagedDevice
 
 MAX_LISTENING = 64
@@ -110,6 +112,7 @@ def build_topology(user) -> dict:
     }
 
 
+@extend_schema(responses=HostsTopologySerializer)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def topology(request):

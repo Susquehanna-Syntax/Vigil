@@ -23,7 +23,7 @@ from .api_schema import (
     HostsInventoryRowSerializer,
     HostsRegisterResponseSerializer,
     HostsStackSerializer,
-    HostsTagSerializer,
+    HostsTagCountSerializer,
     HostsTransportAckSerializer,
 )
 
@@ -458,7 +458,7 @@ class Test43ResponsesMatchTheApiSchema(TestCase):
         tags = self.client.get("/api/v1/hosts/tags/")
         self.assertEqual(tags.status_code, 200, tags.content)
         self.assertIn("prod", [row["tag"] for row in tags.json()])
-        assert_shape(self, tags.json(), HostsTagSerializer(many=True))
+        assert_shape(self, tags.json(), HostsTagCountSerializer(many=True))
 
         DockerContainer.objects.create(host=self.host, container_id="1", name="web",
                                        stack="shop", state="running")

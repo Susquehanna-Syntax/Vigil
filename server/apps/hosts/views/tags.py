@@ -1,7 +1,20 @@
 """apps.hosts.views: tags views (split from the old single module, unchanged)."""
+from drf_spectacular.utils import extend_schema
+
+from ..api_schema import (
+    HostsErrorSerializer,
+    HostsFieldErrorsSerializer,
+    HostsTagCreateSerializer,
+    HostsTagPatchSerializer,
+    HostsTagSerializer,
+)
 from ._common import *  # noqa: F401,F403
 
 
+@extend_schema(methods=["GET"], responses={200: HostsTagSerializer(many=True)})
+@extend_schema(methods=["POST"], request=HostsTagCreateSerializer,
+               responses={201: HostsTagSerializer, 400: HostsFieldErrorsSerializer,
+                          403: HostsErrorSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def tag_collection(request):
@@ -43,6 +56,15 @@ def tag_collection(request):
     return Response(_tag_payload(tag, request), status=201)
 
 
+@extend_schema(methods=["GET"], responses={200: HostsTagSerializer, 404: HostsErrorSerializer})
+@extend_schema(methods=["PATCH"], request=HostsTagPatchSerializer,
+               responses={200: HostsTagSerializer, 400: HostsFieldErrorsSerializer,
+                          403: HostsErrorSerializer, 404: HostsErrorSerializer,
+                          409: HostsErrorSerializer})
+@extend_schema(methods=["DELETE"], request=None,
+               responses={(204, "application/json"): None, 400: HostsErrorSerializer,
+                          403: HostsErrorSerializer, 404: HostsErrorSerializer,
+                          409: HostsErrorSerializer})
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def tag_detail(request, tag_id):

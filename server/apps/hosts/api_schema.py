@@ -102,11 +102,8 @@ class HostsDeviceWriteSerializer(serializers.Serializer):
 class HostsValidationErrorSerializer(serializers.Serializer):
     """DRF's field errors: a key per rejected field with its messages.
 
-    A device body is refused before anything else runs, and the keys are the
-    names of whichever fields went wrong, so this declares no fields at all
-    rather than declaring a wrong one. ``shape_errors`` then treats it as
-    free-form, which is exactly what the body is.
-    """
+    The keys are whichever fields went wrong, so this declares none, and the
+    schema shows a free-form object rather than a wrong field."""
 
     def get_fields(self):
         return {}
@@ -377,7 +374,7 @@ class HostsInventoryListSerializer(serializers.Serializer):
         help_text="Every collect: column any row in scope carries.")
 
 
-class HostsTagSerializer(serializers.Serializer):
+class HostsTagCountSerializer(serializers.Serializer):
     tag = serializers.CharField()
     host_count = serializers.IntegerField()
 
@@ -423,3 +420,304 @@ class HostsStackSerializer(serializers.Serializer):
     container_count = serializers.IntegerField()
     running_count = serializers.IntegerField()
     seen_at = serializers.DateTimeField(allow_null=True)
+
+
+class HostsFieldErrorsSerializer(serializers.Serializer):
+    """A refusal that names the field it refused — a tag's ``name``."""
+
+    name = serializers.ListField(child=serializers.CharField())
+
+
+# ── docker: images, volumes, networks (14.3) ────────────────────────────────
+
+
+class HostsDockerImageSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    short_id = serializers.CharField()
+    tags = serializers.ListField(child=serializers.CharField())
+    digests = serializers.ListField(child=serializers.CharField())
+    size = serializers.IntegerField()
+    created = serializers.DateTimeField(allow_null=True)
+    #: The names of the containers running it — not objects, just the names.
+    used_by = serializers.ListField(child=serializers.CharField())
+    dangling = serializers.BooleanField()
+
+
+class HostsVolumeUseSerializer(serializers.Serializer):
+    container = serializers.CharField()
+    destination = serializers.CharField()
+    rw = serializers.BooleanField()
+
+
+class HostsDockerVolumeSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    driver = serializers.CharField(allow_blank=True)
+    stack = serializers.CharField(allow_blank=True)
+    mountpoint = serializers.CharField(allow_blank=True)
+    #: The agent's own created string, not a timestamp the server parses.
+    created = serializers.CharField(allow_blank=True)
+    #: None until a ``docker_disk_usage`` task has read the sizes.
+    size = serializers.IntegerField(allow_null=True)
+    used_by = HostsVolumeUseSerializer(many=True)
+
+
+class HostsNetworkContainerSerializer(serializers.Serializer):
+    container = serializers.CharField()
+    ip = serializers.CharField()
+    state = serializers.CharField()
+
+
+class HostsDockerNetworkSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    name = serializers.CharField()
+    driver = serializers.CharField(allow_blank=True)
+    scope = serializers.CharField(allow_blank=True)
+    internal = serializers.BooleanField()
+    subnets = serializers.ListField(child=serializers.CharField())
+    stack = serializers.CharField(allow_blank=True)
+    builtin = serializers.BooleanField()
+    containers = HostsNetworkContainerSerializer(many=True)
+
+
+class HostsDockerUsageSerializer(serializers.Serializer):
+    images_size = serializers.IntegerField()
+    images_reclaimable = serializers.IntegerField()
+    containers_size = serializers.IntegerField()
+    volumes_size = serializers.IntegerField()
+    volumes_reclaimable = serializers.IntegerField()
+    build_cache_size = serializers.IntegerField()
+    build_cache_reclaimable = serializers.IntegerField()
+    read_at = serializers.DateTimeField()
+
+
+class HostsDockerSnapshotSerializer(serializers.Serializer):
+    snapshot_at = serializers.DateTimeField(allow_null=True)
+    usage = HostsDockerUsageSerializer(allow_null=True)
+    images = HostsDockerImageSerializer(many=True)
+    volumes = HostsDockerVolumeSerializer(many=True)
+    networks = HostsDockerNetworkSerializer(many=True)
+
+
+class HostsDockerHostSummarySerializer(serializers.Serializer):
+    id = serializers.CharField()
+    hostname = serializers.CharField()
+    os = serializers.CharField(allow_blank=True)
+    status = serializers.CharField()
+    containers = serializers.IntegerField()
+    running = serializers.IntegerField()
+    engine = serializers.CharField(allow_blank=True)
+
+
+# ── live container logs (M11) ───────────────────────────────────────────────
+
+
+class HostsLogTailOpenSerializer(serializers.Serializer):
+    tail = serializers.IntegerField(required=False,
+                                    help_text="How many lines to ask the agent for.")
+    totp = serializers.CharField(required=False, help_text="The 2FA code opening the tail.")
+
+
+class HostsLogTailRefusalSerializer(serializers.Serializer):
+    """``needs_totp`` rides along with the 401 ``detail``: the dialog must stay
+    open rather than tell the operator their code was wrong."""
+
+    detail = serializers.CharField(required=False)
+    error = serializers.CharField(required=False)
+    needs_totp = serializers.BooleanField(required=False)
+
+
+class HostsLogTailCreatedSerializer(serializers.Serializer):
+    session = serializers.CharField()
+    task = serializers.CharField()
+
+
+class HostsLogTailAgentUploadSerializer(serializers.Serializer):
+    """What the agent posts to ``/api/v1/agent/log-tail/<id>/``: the lines it
+    scraped since its last request."""
+
+    lines = serializers.ListField(child=serializers.CharField())
+
+
+class HostsLogTailPollSerializer(serializers.Serializer):
+    task_state = serializers.CharField(help_text="'gone' when its task no longer exists.")
+    initial = serializers.CharField(allow_blank=True,
+                                    help_text="The task's whole output; empty until it finishes.")
+    #: [[seq, line], …] — the pair is positional, so a list of integers.
+    lines = serializers.ListField(child=serializers.IntegerField())
+    live = serializers.BooleanField()
+
+
+# ── search everything (QA-25) ───────────────────────────────────────────────
+
+
+class HostsSearchResultSerializer(serializers.Serializer):
+    #: 'host' rows carry no host_id; container and stack rows do. The subtitle
+    #: is a display string — os, IP, severity, "on 2 hosts" — joined by " · ".
+    kind = serializers.CharField()
+    id = serializers.CharField()
+    host_id = serializers.CharField(required=False)
+    title = serializers.CharField()
+    subtitle = serializers.CharField(allow_blank=True)
+
+
+class HostsSearchGroupSerializer(serializers.Serializer):
+    kind = serializers.CharField()
+    label = serializers.CharField()
+    results = HostsSearchResultSerializer(many=True)
+
+
+class HostsSearchSerializer(serializers.Serializer):
+    query = serializers.CharField()
+    groups = HostsSearchGroupSerializer(many=True)
+
+
+# ── topology (14.4) ─────────────────────────────────────────────────────────
+
+
+class HostsTopologySiteSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    name = serializers.CharField()
+
+
+class HostsTopologyTagSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    count = serializers.IntegerField()
+
+
+class HostsTopologySubnetSerializer(serializers.Serializer):
+    cidr = serializers.CharField()
+    host_ids = serializers.ListField(child=serializers.CharField())
+
+
+class HostsTopologyListeningSerializer(serializers.Serializer):
+    proto = serializers.CharField(allow_blank=True)
+    port = serializers.IntegerField()
+    process = serializers.CharField(allow_blank=True)
+    public = serializers.BooleanField()
+
+
+class HostsTopologyFirewallSerializer(serializers.Serializer):
+    tool = serializers.CharField(allow_blank=True)
+    enabled = serializers.BooleanField(allow_null=True)
+    incoming = serializers.CharField(allow_blank=True)
+    rules = serializers.IntegerField()
+    allows = serializers.ListField(child=serializers.IntegerField())
+
+
+class HostsTopologyContainerSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    state = serializers.CharField(allow_blank=True)
+    ports = serializers.ListField(child=serializers.CharField())
+    published = serializers.ListField(child=serializers.IntegerField())
+    networks = serializers.ListField(child=serializers.CharField())
+
+
+class HostsTopologyStackSerializer(serializers.Serializer):
+    #: '' for containers compose did not put in a project.
+    name = serializers.CharField(allow_blank=True)
+    containers = HostsTopologyContainerSerializer(many=True)
+
+
+class HostsTopologyExternalSerializer(serializers.Serializer):
+    ip = serializers.CharField()
+    count = serializers.IntegerField()
+    ports = serializers.ListField(child=serializers.IntegerField())
+
+
+class HostsTopologyHostSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    hostname = serializers.CharField()
+    status = serializers.CharField()
+    os = serializers.CharField(allow_blank=True)
+    site_id = serializers.CharField(allow_null=True)
+    tags = serializers.ListField(child=serializers.CharField())
+    ips = serializers.ListField(child=serializers.CharField())
+    primary_ip = serializers.CharField(allow_null=True)
+    listening = HostsTopologyListeningSerializer(many=True)
+    firewall = HostsTopologyFirewallSerializer(allow_null=True)
+    stacks = HostsTopologyStackSerializer(many=True)
+    external = HostsTopologyExternalSerializer(many=True)
+    network_at = serializers.DateTimeField(allow_null=True)
+    partial = serializers.BooleanField()
+
+
+class HostsTopologyDeviceSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    name = serializers.CharField()
+    type = serializers.CharField()
+    ip = serializers.CharField()
+
+
+class HostsTopologyLinkSerializer(serializers.Serializer):
+    #: ('host'|'device', id) — the endpoint's kind is in its prefix.
+    source = serializers.CharField()
+    target = serializers.CharField()
+    ports = serializers.ListField(child=serializers.IntegerField())
+    count = serializers.IntegerField()
+
+
+class HostsTopologySerializer(serializers.Serializer):
+    sites = HostsTopologySiteSerializer(many=True)
+    tags = HostsTopologyTagSerializer(many=True)
+    subnets = HostsTopologySubnetSerializer(many=True)
+    hosts = HostsTopologyHostSerializer(many=True)
+    devices = HostsTopologyDeviceSerializer(many=True)
+    links = HostsTopologyLinkSerializer(many=True)
+
+
+# ── firewall tab ────────────────────────────────────────────────────────────
+
+
+class HostsFirewallSerializer(serializers.Serializer):
+    """One snapshot. ``enabled`` is tri-state — None means a read that could
+    not tell, which is not the same answer as False."""
+
+    tool = serializers.CharField(allow_blank=True)
+    supported = serializers.BooleanField()
+    enabled = serializers.BooleanField(allow_null=True)
+    defaults = serializers.DictField()
+    profiles = serializers.ListField()
+    rules = serializers.ListField()
+    unparsed = serializers.ListField()
+    fetched_at = serializers.DateTimeField(allow_null=True)
+
+
+class HostsFirewallApplySerializer(serializers.Serializer):
+    action = serializers.CharField(help_text="One of the five actions the Firewall tab may drive.")
+    params = serializers.DictField(required=False)
+    totp = serializers.CharField(required=False, help_text="The 2FA code confirming the change.")
+
+
+class HostsFirewallTaskSerializer(serializers.Serializer):
+    task_id = serializers.CharField()
+    #: Only a refresh says whether it queued anything; an apply always queues.
+    queued = serializers.BooleanField(required=False)
+
+
+# ── tags ────────────────────────────────────────────────────────────────────
+
+
+class HostsTagCreateSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    site_id = serializers.CharField(required=False, allow_null=True, allow_blank=True,
+                                    help_text="Omit or empty for a global tag.")
+    description = serializers.CharField(required=False, allow_blank=True)
+
+
+class HostsTagPatchSerializer(serializers.Serializer):
+    name = serializers.CharField(required=False)
+    description = serializers.CharField(required=False, allow_blank=True)
+
+
+class HostsTagSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    key = serializers.CharField()
+    kind = serializers.CharField()
+    description = serializers.CharField(allow_blank=True)
+    host_count = serializers.IntegerField()
+    editable = serializers.BooleanField()
+    site_id = serializers.CharField(allow_null=True)
+    #: Whether *this* user may rename or delete it, so the page offers only
+    #: what the server will allow.
+    can_change = serializers.BooleanField(required=False)
