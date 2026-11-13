@@ -1,6 +1,7 @@
 """The native channel types (sprint M7): what each one sends, and the
 ``secret_url`` field the chat types keep their webhook URL in."""
 import json
+from urllib.parse import parse_qs
 
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -135,3 +136,284 @@ class SlackTests(_Net, TestCase):
         self.transport.return_value = 404
         with self.assertRaises(channels.ChannelError):
             channels.get("slack").send({"webhook_url": self.HOOK}, message())
+
+
+class DiscordTests(_Net, TestCase):
+    HOOK = "https://discord.com/api/webhooks/1234/TOKENSECRET"
+
+    def _send(self, **extra):
+        channels.get("discord").send({"webhook_url": self.HOOK}, message(**extra))
+        return json.loads(self.transport.call_args.args[6])
+
+    def test_the_webhook_url_host_and_path_are_the_ones_the_admin_entered(self):
+        channels.get("discord").send({"webhook_url": self.HOOK}, message())
+        method, scheme, address, port, hostname, path, _body, _h = self.transport.call_args.args
+        self.assertEqual((method, scheme, address, port, hostname, path),
+                         ("POST", "https", PUBLIC, 443, "discord.com",
+                          "/api/webhooks/1234/TOKENSECRET"))
+
+    def test_mentions_are_switched_off_and_no_embed_has_a_color(self):
+        sent = self._send()
+        self.assertEqual(sent["allowed_mentions"], {"parse": []})
+        self.assertNotIn("color", json.dumps(sent))
+
+    def test_the_content_line_is_the_headline(self):
+        self.assertEqual(self._send()["content"], "[FIRING] [CRITICAL] Alert: web-1")
+
+    def test_every_fact_arrives_as_an_inline_embed_field(self):
+        embed = self._send()["embeds"][0]
+        self.assertEqual([(f["name"], f["value"]) for f in embed["fields"]],
+                         [("Host", "web-1"), ("Site", "Leeds"), ("Value", "97.0"),
+                          ("Rule", "High CPU")])
+        self.assertTrue(all(f["inline"] for f in embed["fields"]))
+        self.assertEqual(embed["description"], "CPU 97% > 90% <b>&")
+        self.assertEqual(embed["url"], "https://vigil.test/hosts/7/")
+
+    def test_blank_text_and_link_leave_their_keys_out_of_the_embed(self):
+        embed = self._send(text="", link="")["embeds"][0]
+        self.assertNotIn("description", embed)
+        self.assertNotIn("url", embed)
+
+    def test_a_long_title_arrives_cut_to_discords_limit(self):
+        embed = self._send(title="t" * 300)["embeds"][0]
+        self.assertEqual(embed["title"], "t" * 256)
+
+    def test_no_alert_text_can_ping_a_room_or_hide_a_link(self):
+        sent = self._send(text="see [login](https://evil.test) @Everyone", host="@everyone")
+        body = json.dumps(sent, ensure_ascii=False)
+        for raw in ("@everyone", "@Everyone", "](http"):
+            self.assertNotIn(raw, body)
+        self.assertIn("@\u200beveryone", body)
+
+    def test_a_failure_is_a_channel_error(self):
+        self.transport.return_value = 500
+        with self.assertRaises(channels.ChannelError):
+            channels.get("discord").send({"webhook_url": self.HOOK}, message())
+
+
+class TeamsTests(_Net, TestCase):
+    HOOK = ("https://prod-14.westus.logic.azure.com/workflows/"
+            "9f1b7c0d2e3f4a5b8c9d0e1f2a3b4c5d?api-version=2016-06-01")
+
+    def _send(self, **extra):
+        channels.get("teams").send({"webhook_url": self.HOOK}, message(**extra))
+        return json.loads(self.transport.call_args.args[6])
+
+    def card(self, **extra):
+        return self._send(**extra)["attachments"][0]["content"]
+
+    def test_the_workflow_url_host_and_path_are_the_ones_the_admin_entered(self):
+        channels.get("teams").send({"webhook_url": self.HOOK}, message())
+        method, scheme, address, port, hostname, path, _body, _h = self.transport.call_args.args
+        self.assertEqual((method, scheme, address, port, hostname),
+                         ("POST", "https", PUBLIC, 443, "prod-14.westus.logic.azure.com"))
+        self.assertEqual(path, "/workflows/9f1b7c0d2e3f4a5b8c9d0e1f2a3b4c5d"
+                               "?api-version=2016-06-01")
+
+    def test_the_attachment_is_an_adaptive_card(self):
+        sent = self._send()
+        attachment = sent["attachments"][0]
+        self.assertEqual(sent["type"], "message")
+        self.assertEqual(attachment["contentType"], "application/vnd.microsoft.card.adaptive")
+        self.assertIsNone(attachment["contentUrl"])
+        self.assertEqual(attachment["content"]["type"], "AdaptiveCard")
+        self.assertEqual(self.card()["$schema"],
+                         "http://adaptivecards.io/schemas/adaptive-card.json")
+        self.assertNotIn("style", json.dumps(sent))
+
+    def test_the_headline_is_the_first_textblock_and_every_fact_is_in_the_factset(self):
+        card = self.card()
+        self.assertEqual(card["body"][0],
+                         {"type": "TextBlock", "text": "[FIRING] [CRITICAL] Alert: web-1",
+                          "weight": "Bolder", "wrap": True})
+        self.assertEqual(card["body"][1]["text"], "CPU 97% > 90% <b>&")
+        self.assertEqual(card["body"][2]["facts"],
+                         [{"title": "Host", "value": "web-1"},
+                          {"title": "Site", "value": "Leeds"},
+                          {"title": "Value", "value": "97.0"},
+                          {"title": "Rule", "value": "High CPU"}])
+
+    def test_the_link_is_the_open_url_action(self):
+        card = self.card()
+        self.assertEqual(card["version"], "1.4")
+        self.assertEqual(card["actions"], [{"type": "Action.OpenUrl",
+                                            "title": "Open in Vigil",
+                                            "url": "https://vigil.test/hosts/7/"}])
+
+    def test_blank_text_facts_and_link_leave_the_card_with_only_the_headline(self):
+        card = self.card(text="", host="", site="", value=None, rule="", link="")
+        self.assertEqual([b["type"] for b in card["body"]], ["TextBlock"])
+        self.assertNotIn("actions", card)
+
+    def test_no_alert_text_can_ping_a_room_or_hide_a_link(self):
+        everything = json.dumps(self.card(text="see [x](https://e.test)", host="@everyone",
+                                          title="Alert @everyone"), ensure_ascii=False)
+        for raw in ("@everyone", "](http"):
+            self.assertNotIn(raw, everything)
+        self.assertIn("@\u200beveryone", everything)
+        self.assertIn("[x]\u200b(https://e.test)", everything)
+
+    def test_a_failure_is_a_channel_error(self):
+        self.transport.return_value = 500
+        with self.assertRaises(channels.ChannelError):
+            channels.get("teams").send({"webhook_url": self.HOOK}, message())
+
+
+class NtfyTests(_Net, TestCase):
+    SERVER = "https://ntfy.test"
+
+    def _sent(self, **extra):
+        """Send through the channel and return what left for the server: the
+        body as a dict, plus the headers."""
+        config = {"server": self.SERVER, "topic": "vigil-ops"}
+        config.update(extra.pop("config", {}))
+        channels.get("ntfy").send(config, message(**extra))
+        return json.loads(self.transport.call_args.args[6]), self.transport.call_args.args[7]
+
+    def test_a_firing_critical_alert_posts_to_the_root_with_priority_5(self):
+        sent, _headers = self._sent()
+        self.assertEqual(sent["topic"], "vigil-ops")
+        self.assertEqual(sent["title"], "[FIRING] [CRITICAL] Alert: web-1")
+        self.assertEqual(sent["message"],
+                         "CPU 97% > 90% <b>&\nHost: web-1\nSite: Leeds\nValue: 97.0\n"
+                         "Rule: High CPU")
+        self.assertEqual(sent["priority"], 5)
+        self.assertEqual(sent["click"], "https://vigil.test/hosts/7/")
+        method, scheme, address, port, hostname, path = self.transport.call_args.args[:6]
+        self.assertEqual((method, scheme, address, port, hostname, path),
+                         ("POST", "https", PUBLIC, 443, "ntfy.test", "/"))
+
+    def test_a_resolved_alert_has_priority_3(self):
+        sent, _headers = self._sent(event="resolved")
+        self.assertEqual(sent["priority"], 3)
+
+    def test_a_trailing_slash_does_not_double_the_path(self):
+        self._sent(config={"server": "https://ntfy.example.test/"})
+        self.assertEqual(self.transport.call_args.args[5], "/")
+
+    def test_a_token_is_sent_as_a_bearer_header(self):
+        _, headers = self._sent(config={"token": "tk_abc"})
+        self.assertEqual(headers["Authorization"], "Bearer tk_abc")
+
+    def test_without_a_token_there_is_no_authorization_header(self):
+        _, headers = self._sent()
+        self.assertNotIn("Authorization", headers)
+
+    def test_ntfy_tags_are_never_sent(self):
+        sent, _headers = self._sent()
+        self.assertNotIn("tags", sent)
+
+    def test_a_topic_with_stray_characters_is_refused_before_any_request(self):
+        with self.assertRaises(channels.ChannelError):
+            self._sent(config={"topic": "bad topic!"})
+        self.transport.assert_not_called()
+
+    def test_a_refusal_is_a_channel_error(self):
+        self.transport.return_value = 500
+        with self.assertRaises(channels.ChannelError):
+            channels.get("ntfy").send({"server": self.SERVER, "topic": "vigil-ops"}, message())
+
+
+class GotifyTests(_Net, TestCase):
+    SERVER = "https://gotify.test"
+
+    def _send(self, **extra):
+        """Send through the channel and return what left for the server: the
+        body as a dict, plus the headers."""
+        config = {"server": self.SERVER, "token": "At_appsecret"}
+        config.update(extra.pop("config", {}))
+        channels.get("gotify").send(config, message(**extra))
+        return json.loads(self.transport.call_args.args[6]), self.transport.call_args.args[7]
+
+    def test_a_firing_critical_alert_posts_to_message_with_priority_8(self):
+        sent, _headers = self._send()
+        self.assertEqual(sent["title"], "[FIRING] [CRITICAL] Alert: web-1")
+        self.assertEqual(sent["message"],
+                         "CPU 97% > 90% <b>&\nHost: web-1\nSite: Leeds\nValue: 97.0\n"
+                         "Rule: High CPU")
+        self.assertEqual(sent["priority"], 8)
+        self.assertEqual(sent["extras"], {"client::notification": {
+            "click": {"url": "https://vigil.test/hosts/7/"}}})
+        method, scheme, address, port, hostname, path = self.transport.call_args.args[:6]
+        self.assertEqual((method, scheme, address, port, hostname, path),
+                         ("POST", "https", PUBLIC, 443, "gotify.test", "/message"))
+
+    def test_the_token_is_a_header_and_never_part_of_the_path(self):
+        _sent, headers = self._send()
+        self.assertEqual(headers["X-Gotify-Key"], "At_appsecret")
+        self.assertNotIn("At_appsecret", self.transport.call_args.args[5])
+
+    def test_a_resolved_alert_has_priority_2(self):
+        sent, _headers = self._send(event="resolved")
+        self.assertEqual(sent["priority"], 2)
+
+    def test_a_server_behind_a_path_prefix_posts_to_that_prefix(self):
+        self._send(config={"server": "https://h.test/gotify/"})
+        self.assertEqual(self.transport.call_args.args[5], "/gotify/message")
+
+    def test_without_a_link_there_is_no_extras_key(self):
+        sent, _headers = self._send(link="")
+        self.assertNotIn("extras", sent)
+
+    def test_a_refusal_is_a_channel_error(self):
+        self.transport.return_value = 500
+        with self.assertRaises(channels.ChannelError):
+            channels.get("gotify").send({"server": self.SERVER, "token": "At_appsecret"},
+                                        message())
+
+
+class PushoverTests(_Net, TestCase):
+
+    def _send(self, **extra):
+        """Send through the channel and return the form it posted, decoded."""
+        config = {"user": "u_secret", "token": "a_secret"}
+        config.update(extra.pop("config", {}))
+        channels.get("pushover").send(config, message(**extra))
+        return parse_qs(self.transport.call_args.args[6].decode())
+
+    def test_the_form_posts_to_pushovers_api_over_https(self):
+        self._send()
+        method, scheme, address, port, hostname, path, _body, headers = (
+            self.transport.call_args.args)
+        self.assertEqual((method, scheme, address, port, hostname, path),
+                         ("POST", "https", PUBLIC, 443, "api.pushover.net",
+                          "/1/messages.json"))
+        self.assertEqual(headers["Content-Type"], "application/x-www-form-urlencoded")
+
+    def test_a_firing_critical_alert_carries_both_keys_and_priority_1(self):
+        sent = self._send()
+        self.assertEqual(sent["token"], ["a_secret"])
+        self.assertEqual(sent["user"], ["u_secret"])
+        self.assertEqual(sent["title"], ["[FIRING] [CRITICAL] Alert: web-1"])
+        self.assertEqual(sent["priority"], ["1"])
+
+    def test_every_fact_arrives_in_the_message_under_the_text(self):
+        sent = self._send()["message"][0]
+        self.assertTrue(sent.startswith("CPU 97% > 90% <b>&\n"), sent)
+        self.assertEqual(sent.split("\n")[1:], ["Host: web-1", "Site: Leeds",
+                                                "Value: 97.0", "Rule: High CPU"])
+
+    def test_a_resolved_alert_has_priority_0(self):
+        self.assertEqual(self._send(event="resolved")["priority"], ["0"])
+
+    def test_a_long_text_arrives_cut_to_pushovers_limit(self):
+        self.assertEqual(len(self._send(text="x" * 2000)["message"][0]), 1024)
+
+    def test_a_device_is_sent_only_when_the_admin_named_one(self):
+        self.assertNotIn("device", self._send())
+        self.assertNotIn("device", self._send(config={"device": ""}))
+        self.assertEqual(self._send(config={"device": "phone"})["device"], ["phone"])
+
+    def test_the_link_arrives_with_url_title_only_when_there_is_one(self):
+        sent = self._send()
+        self.assertEqual(sent["url"], ["https://vigil.test/hosts/7/"])
+        self.assertEqual(sent["url_title"], ["Open in Vigil"])
+        without = self._send(link="")
+        self.assertNotIn("url", without)
+        self.assertNotIn("url_title", without)
+
+    def test_a_refusal_is_a_channel_error(self):
+        self.transport.return_value = 500
+        with self.assertRaises(channels.ChannelError):
+            channels.get("pushover").send({"user": "u_secret", "token": "a_secret"},
+                                          message())
