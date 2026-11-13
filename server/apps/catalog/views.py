@@ -10,6 +10,8 @@ from django.db.models import Case, Count, IntegerField, Min, Q, Value, When
 from django.db.models.functions import Lower
 from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -18,6 +20,17 @@ from apps.accounts.permissions import IsAdmin, IsInstanceAdmin
 from apps.instance import config
 from vigil import scoping
 
+from .api_schema import (
+    CatalogBrowseSerializer,
+    CatalogCategoriesSerializer,
+    CatalogDetailSerializer,
+    CatalogEnableSerializer,
+    CatalogErrorSerializer,
+    CatalogInstallTaskCreatedSerializer,
+    CatalogInstallTaskSerializer,
+    CatalogPackageDetailSerializer,
+    CatalogStatusSerializer,
+)
 from .download import MAX_ICON_BYTES, FetchError, fetch
 from .models import CatalogPackage, CatalogSync
 
@@ -102,6 +115,7 @@ def _installed_counts(user, pairs) -> dict:
     return {(r["source"], r["package_id"]): r["n"] for r in rows}
 
 
+@extend_schema(responses={200: CatalogBrowseSerializer, 403: CatalogDetailSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def browse(request):
@@ -179,6 +193,7 @@ def browse(request):
     })
 
 
+@extend_schema(responses={200: CatalogCategoriesSerializer, 403: CatalogDetailSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def categories(request):
@@ -198,6 +213,8 @@ def categories(request):
     return Response({"results": [{"name": k, "count": v} for k, v in top]})
 
 
+@extend_schema(responses={200: CatalogPackageDetailSerializer, 403: CatalogDetailSerializer,
+                          404: CatalogDetailSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def detail(request, package_id):
@@ -234,6 +251,8 @@ def _icon_dir() -> Path:
     return Path(settings.MEDIA_ROOT) / "catalog-icons"
 
 
+@extend_schema(responses={(200, "image/png"): OpenApiTypes.BINARY,
+                          403: CatalogDetailSerializer, 404: None})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def icon(request, package_id):
@@ -280,6 +299,7 @@ def _status_body() -> dict:
     }
 
 
+@extend_schema(responses={200: CatalogStatusSerializer, 403: CatalogDetailSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def status(request):
@@ -298,6 +318,9 @@ def _sync_in_background():
     threading.Thread(target=sync_catalog, daemon=True).start()
 
 
+@extend_schema(request=CatalogEnableSerializer, responses={200: CatalogStatusSerializer,
+                                                           403: CatalogDetailSerializer,
+                                                           409: CatalogDetailSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin, IsInstanceAdmin])  # install-wide (S1 04h)
 def enable(request):
@@ -312,6 +335,9 @@ def enable(request):
     return Response(_status_body())
 
 
+@extend_schema(request=None, responses={202: CatalogStatusSerializer,
+                                        403: CatalogDetailSerializer,
+                                        409: CatalogDetailSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin, IsInstanceAdmin])  # install-wide (S1 04h)
 def sync_now(request):
@@ -323,6 +349,11 @@ def sync_now(request):
     return Response(_status_body(), status=202)
 
 
+@extend_schema(request=CatalogInstallTaskSerializer,
+               responses={201: CatalogInstallTaskCreatedSerializer,
+                          403: CatalogDetailSerializer,
+                          (400, "application/json"): CatalogErrorSerializer,
+                          (404, "application/json"): CatalogErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def install_task(request):
