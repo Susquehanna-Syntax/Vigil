@@ -151,6 +151,35 @@ class AlertBulkActionTests(TestCase):
             400,
         )
 
+    def test_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+        from .api_schema import (AlertBulkResultSerializer, AlertResponseSerializer,
+                                 AlertRuleRowSerializer)
+
+        rule = AlertRule.objects.create(name="disk", category="disk", metric="usage_percent",
+                                        operator="gt", threshold=90, severity="critical")
+        firing = self._alert()
+        firing.rule = rule
+        firing.save(update_fields=["rule"])
+        acked = self._alert(state=Alert.State.ACKNOWLEDGED, acknowledged_at=now())
+
+        assert_shape(self, self.client.get("/api/v1/alerts/?limit=5").json()[0],
+                     AlertResponseSerializer)
+        assert_shape(self, self.client.post(
+            f"/api/v1/alerts/{firing.id}/acknowledge/", {"duration_seconds": 3600},
+            format="json").json(), AlertResponseSerializer)
+        assert_shape(self, self.client.post(f"/api/v1/alerts/{acked.id}/unacknowledge/").json(),
+                     AlertResponseSerializer)
+        assert_shape(self, self.client.post("/api/v1/alerts/bulk/",
+                                            {"ids": [str(firing.id)], "action": "acknowledge"},
+                                            format="json").json(), AlertBulkResultSerializer)
+        # A silence answers with the acknowledged alert, at 200.
+        assert_shape(self, self.client.post(
+            f"/api/v1/alerts/{firing.id}/silence/", {"duration_seconds": 60},
+            format="json").json(), AlertResponseSerializer)
+        assert_shape(self, self.client.get("/api/v1/alerts/rules/").json()[0],
+                     AlertRuleRowSerializer)
+
 
 class ExpireAcknowledgementsTests(TestCase):
     def setUp(self):
