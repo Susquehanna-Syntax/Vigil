@@ -117,6 +117,22 @@ class StartApiTests(_Audited):
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertEqual(RemoteSession.objects.get().container, "web-1")
 
+    def test_the_start_and_list_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from ..api_schema import (
+            RemoteSessionCreatedSerializer,
+            RemoteSessionListSerializer,
+        )
+
+        code = enroll_totp(self.admin)
+        assert_shape(self, self.post(totp=code).json(),
+                     RemoteSessionCreatedSerializer)
+
+        listed = self.client.get("/api/v1/sessions/")
+        self.assertEqual(listed.status_code, 200, listed.content)
+        assert_shape(self, listed.json(), RemoteSessionListSerializer)
+
     # -- refusals ----------------------------------------------------------
 
     def test_viewer_is_refused_and_the_refusal_is_written_down(self):
@@ -328,6 +344,15 @@ class RecordingDownloadTests(TestCase):
         self.assertEqual(resp.status_code, 402)
         self.assertEqual(resp.json()["feature"], "audit_log")
 
+    def test_the_refusal_body_matches_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from ..api_schema import RemoteSessionUpgradeSerializer
+
+        self.client.force_authenticate(self.admin)
+        resp = self.client.get(f"/api/v1/sessions/{self.session.id}/recording/")
+        assert_shape(self, resp.json(), RemoteSessionUpgradeSerializer)
+
     def test_a_session_with_no_file_is_404_rather_than_an_empty_download(self):
         self.client.force_authenticate(self.admin)
         with patch("apps.remote.views.has_feature", return_value=True):
@@ -361,6 +386,14 @@ class CloseEndpointTests(TestCase):
             queued = peek(f"vigil:sess:{self.session.id}:{direction}")
             self.assertEqual([item["t"] for item in queued], ["close"], direction)
             self.assertIn("closed by owner", queued[0]["reason"])
+
+    def test_the_close_response_matches_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from ..api_schema import RemoteSessionCloseSerializer
+
+        self.client.force_authenticate(self.owner)
+        assert_shape(self, self._close().json(), RemoteSessionCloseSerializer)
 
     def test_a_stranger_cannot_interrupt_someone_elses_session(self):
         self.client.force_authenticate(make_user("rando", Role.VIEWER))

@@ -12,6 +12,8 @@ from pathlib import Path
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.http import HttpResponseNotAllowed, JsonResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -25,6 +27,15 @@ from vigil import scoping
 from vigil.licensing import has_feature, upgrade_body
 
 from . import bus
+from .api_schema import (
+    RemoteSessionCloseSerializer,
+    RemoteSessionCreatedSerializer,
+    RemoteSessionErrorSerializer,
+    RemoteSessionListSerializer,
+    RemoteSessionOptionsSerializer,
+    RemoteSessionStartSerializer,
+    RemoteSessionUpgradeSerializer,
+)
 from .models import RemoteSession, os_family
 from .tickets import make_ticket
 
@@ -82,6 +93,11 @@ def _has_totp(user) -> bool:
     return has_second_factor(user)
 
 
+@extend_schema(methods=["GET"], responses={200: RemoteSessionListSerializer})
+@extend_schema(methods=["POST"], request=RemoteSessionStartSerializer,
+               responses={201: RemoteSessionCreatedSerializer,
+                          409: RemoteSessionErrorSerializer,
+                          429: RemoteSessionErrorSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def session_collection(request):
@@ -238,6 +254,7 @@ def _item(user, site, host, kind, family) -> dict:
     return {"available": not reason, "reason": reason}
 
 
+@extend_schema(methods=["GET"], responses={200: RemoteSessionOptionsSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def session_options(request):
@@ -288,6 +305,10 @@ def _admin_for(user, session) -> bool:
     return role_of(user, scoping.scope_of(session.host)) in (Role.ADMIN, OWNER)
 
 
+@extend_schema(responses={(200, "application/x-asciicast"): OpenApiTypes.BINARY,
+                          402: RemoteSessionUpgradeSerializer,
+                          403: RemoteSessionErrorSerializer,
+                          404: RemoteSessionErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAdmin])
 def session_recording(request, session_id):
@@ -307,6 +328,7 @@ def session_recording(request, session_id):
     return FileResponse(path.open("rb"), content_type="application/x-asciicast")
 
 
+@extend_schema(request=None, responses={202: RemoteSessionCloseSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def session_close(request, session_id):
