@@ -1,11 +1,7 @@
-import json
 import logging
 
-import requests
-from django.conf import settings
-from django.core.mail import send_mail
-
-from .models import Alert, NotificationChannel
+from . import channels
+from .models import NotificationChannel
 
 logger = logging.getLogger(__name__)
 
@@ -26,78 +22,83 @@ def _build_payload(alert, event):
     }
 
 
-def _send_webhook(channel, payload):
-    url = channel.config.get("url")
-    if not url:
-        logger.warning("Webhook channel %s has no URL configured", channel.name)
-        return
+def message_for(payload: dict, host=None) -> "channels.Message":
+    """A channel Message from a webhook-style payload: every channel words the
+    same facts, and the webhook still receives the payload unchanged."""
+    from django.conf import settings
 
-    headers = {"Content-Type": "application/json"}
-    if secret := channel.config.get("secret"):
-        headers["X-Vigil-Secret"] = secret
+    event = payload.get("event") or "firing"
+    severity = str(payload.get("severity") or "info")
+    site = ""
+    if host is not None:
+        from vigil import scoping
 
-    try:
-        resp = requests.post(url, json=payload, headers=headers, timeout=10)
-        resp.raise_for_status()
-        logger.info("Webhook sent to %s (status %d)", channel.name, resp.status_code)
-    except requests.RequestException as e:
-        logger.error("Webhook failed for %s: %s", channel.name, e)
-
-
-def _send_email(channel, payload):
-    recipients = channel.config.get("recipients", [])
-    if not recipients:
-        logger.warning("Email channel %s has no recipients configured", channel.name)
-        return
-
-    severity = payload["severity"].upper()
-    event = payload["event"].upper()
-    subject = f"[Vigil {event}] [{severity}] {payload['host']}: {payload['message']}"
-    body = (
-        f"Host: {payload['host']}\n"
-        f"Severity: {severity}\n"
-        f"Event: {event}\n"
-        f"Message: {payload['message']}\n"
-        f"Metric Value: {payload['metric_value']}\n"
-        f"Rule: {payload['rule']}\n"
-        f"Fired At: {payload['fired_at']}\n"
-    )
-    if payload.get("resolved_at"):
-        body += f"Resolved At: {payload['resolved_at']}\n"
-
-    try:
-        # The connection is built explicitly rather than left to Django's
-        # settings lookup, so SMTP entered in the UI is actually used.
-        from apps.instance.config import mail_connection, setting
-        send_mail(
-            subject=subject,
-            message=body,
-            from_email=setting("VIGIL_NOTIFICATION_FROM_EMAIL"),
-            recipient_list=recipients,
-            connection=mail_connection(),
-        )
-        logger.info("Email sent via channel %s to %d recipients", channel.name, len(recipients))
-    except Exception as e:
-        logger.error("Email failed for %s: %s", channel.name, e)
+        owner = scoping.scope_of(host)
+        if owner is not None and not getattr(owner, "is_global", False):
+            site = owner.name
+    base = getattr(settings, "VIGIL_PUBLIC_URL", "") or ""
+    link = ""
+    if base and payload.get("host_id"):
+        link = f"{base}/hosts/{payload['host_id']}/"
+    verb = {"firing": "Alert", "resolved": "Resolved", "notification": "Notice",
+            "test": "Test"}.get(event, event.title())
+    return channels.Message(
+        event=event, severity=severity,
+        title=f"{verb}: {payload.get('host') or 'Vigil'}",
+        text=str(payload.get("message") or ""),
+        host=str(payload.get("host") or ""), site=site,
+        value=payload.get("metric_value"), rule=str(payload.get("rule") or ""),
+        link=link, payload=payload)
 
 
-_DISPATCHERS = {
-    NotificationChannel.Kind.WEBHOOK: _send_webhook,
-    NotificationChannel.Kind.EMAIL: _send_email,
-}
+def deliver(channel, message) -> bool:
+    """Send *message* through *channel* and record the outcome on the row.
+
+    Never raises: one broken channel must not cost the others their message.
+    A channel whose type is unknown or needs a feature this install does not
+    have is skipped and says why.
+    """
+    from django.utils.timezone import now
+
+    from vigil import licensing
+
+    kind = channels.get(channel.kind)
+    ok, status = False, ""
+    if kind is None:
+        status = f"unknown channel type {channel.kind!r}"
+    elif kind.feature and not licensing.has_feature(kind.feature):
+        status = f"{kind.label} needs a license that includes it"
+    else:
+        try:
+            kind.send(channels.plain_config(kind, channel.config), message)
+            ok, status = True, "delivered"
+        except channels.ChannelError as exc:
+            status = str(exc)
+        except Exception:  # noqa: BLE001 — a channel bug must not stop the rest
+            logger.exception("channel %s (%s) failed", channel.pk, channel.kind)
+            status = "failed unexpectedly; see the server log"
+    if ok:
+        logger.info("notification sent via %s (%s)", channel.name, channel.kind)
+    else:
+        logger.error("notification via %s (%s) failed: %s", channel.name, channel.kind, status)
+    # Test sends count too: the admin pressing "Send test" wants the row to
+    # show whether it works.
+    type(channel).objects.filter(pk=channel.pk).update(
+        last_ok=ok, last_status=status[:200], last_status_at=now())
+    return ok
 
 
-def _channels_for_host(channels, host):
+def _channels_for_host(rows, host):
     """The channels that may hear about *host* (S1 05b, decisions-06 item
     18): global channels, and channels of the host's own site. A Lab alert
     never reaches a West channel. Without a host only global channels hear."""
     from vigil import scoping
 
-    channels = list(channels)
+    rows = list(rows)
     if host is None:
-        return [c for c in channels if scoping.site_id_of(c) is None]
+        return [c for c in rows if scoping.site_id_of(c) is None]
     scoping.prime_site_ids([host])
-    return [c for c in channels if scoping.within_site(c, host)]
+    return [c for c in rows if scoping.within_site(c, host)]
 
 
 def dispatch_alert_notification(alert, event="firing"):
@@ -105,18 +106,16 @@ def dispatch_alert_notification(alert, event="firing"):
 
     event: "firing" or "resolved"
     """
-    channels = NotificationChannel.objects.filter(enabled=True)
+    targets = NotificationChannel.objects.filter(enabled=True)
     if event == "firing":
-        channels = channels.filter(on_firing=True)
+        targets = targets.filter(on_firing=True)
     elif event == "resolved":
-        channels = channels.filter(on_resolved=True)
+        targets = targets.filter(on_resolved=True)
 
-    payload = _build_payload(alert, event)
+    message = message_for(_build_payload(alert, event), alert.host)
 
-    for channel in _channels_for_host(channels, alert.host):
-        dispatcher = _DISPATCHERS.get(channel.kind)
-        if dispatcher:
-            dispatcher(channel, payload)
+    for channel in _channels_for_host(targets, alert.host):
+        deliver(channel, message)
 
     # Every alert source funnels through here, so this is the one place the
     # event bus can be fed from. It had two subscribers and no emitter:

@@ -243,15 +243,11 @@ class ResolveAlertTests(TestCase):
 class SendNotificationPayloadTests(TestCase):
     def setUp(self):
         self.host = Host.objects.create(hostname="h", agent_token="t" * 32)
-        # Patched where task_actions looks them up: _DISPATCHERS holds the
-        # function objects themselves, so patching the module attribute after
-        # import would not reach them.
-        self.webhook = mock.Mock()
-        self.email = mock.Mock()
-        self.dispatcher = mock.patch.dict(
-            "apps.alerts.task_actions._DISPATCHERS",
-            {NotificationChannel.Kind.WEBHOOK: self.webhook,
-             NotificationChannel.Kind.EMAIL: self.email})
+        # Patched where task_actions looks it up: it imported deliver by name.
+        self.sent = []
+        self.dispatcher = mock.patch(
+            "apps.alerts.task_actions.deliver",
+            side_effect=lambda channel, message: self.sent.append((channel, message)))
         self.dispatcher.start()
         self.addCleanup(self.dispatcher.stop)
         self.ops = NotificationChannel.objects.create(
@@ -268,19 +264,16 @@ class SendNotificationPayloadTests(TestCase):
 
     def test_send_notification_named_channel_only(self):
         apply(self._task({"message": "hi", "channel": "Ops"}, "hi"))
-        self.assertEqual(self.webhook.call_count, 1)
-        self.assertEqual(self.webhook.call_args[0][0].name, "Ops")
-        self.email.assert_not_called()
+        self.assertEqual([c.name for c, _ in self.sent], ["Ops"])
         self.assertEqual(Alert.objects.count(), 0)
 
     def test_without_a_channel_every_enabled_channel_gets_it(self):
         apply(self._task({"message": "hi"}, "hi"))
-        self.assertEqual(self.webhook.call_count, 1)
-        self.assertEqual(self.email.call_count, 1)
+        self.assertEqual(sorted(c.name for c, _ in self.sent), ["Ops", "Ops email"])
 
     def test_the_payload_has_every_key_a_sender_indexes(self):
         apply(self._task({"message": "hi", "channel": "Ops"}, "hi"))
-        payload = self.webhook.call_args[0][1]
+        payload = self.sent[0][1].payload
         self.assertEqual(sorted(payload),
                          ["alert_id", "event", "fired_at", "host", "host_id",
                           "message", "metric_value", "resolved_at", "rule",
@@ -295,14 +288,12 @@ class SendNotificationPayloadTests(TestCase):
 
     def test_a_channel_named_but_absent_sends_nothing(self):
         apply(self._task({"message": "hi", "channel": "Nope"}, "hi"))
-        self.webhook.assert_not_called()
-        self.email.assert_not_called()
+        self.assertEqual(self.sent, [])
 
     def test_a_disabled_channel_is_skipped(self):
         NotificationChannel.objects.filter(name="Ops").update(enabled=False)
         apply(self._task({"message": "hi"}, "hi"))
-        self.webhook.assert_not_called()
-        self.assertEqual(self.email.call_count, 1)
+        self.assertEqual([c.name for c, _ in self.sent], ["Ops email"])
 
 
 class ResultEndpointTests(TestCase):

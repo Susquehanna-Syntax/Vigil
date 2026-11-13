@@ -48,11 +48,8 @@ class ChannelDeliveryTests(_Fleet):
                                         threshold=90, severity=AlertRule.Severity.WARNING)
         alert = Alert.objects.create(host=host, rule=rule, severity="warning", message="hot")
         sent = []
-        with mock.patch("apps.alerts.notifications._send_webhook",
-                        side_effect=lambda ch, payload: sent.append(ch.name)), \
-                mock.patch.dict("apps.alerts.notifications._DISPATCHERS",
-                                {NotificationChannel.Kind.WEBHOOK:
-                                 lambda ch, payload: sent.append(ch.name)}):
+        with mock.patch("apps.alerts.notifications.deliver",
+                        side_effect=lambda ch, message: sent.append(ch.name)):
             with scoping.system(reason="test: alert delivery runs as a job"):
                 dispatch_alert_notification(alert, "firing")
         return sorted(sent)

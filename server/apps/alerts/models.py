@@ -7,23 +7,33 @@ from vigil.scoping import SiteScopedManager
 
 
 class NotificationChannel(models.Model):
-    """A destination for alert notifications (webhook or email)."""
+    """A destination for alert notifications.
+
+    ``kind`` names a type in apps.alerts.channels, which says what ``config``
+    holds; secret settings are stored encrypted (``enc:`` prefix) and never
+    returned by the API.
+    """
 
     class Kind(models.TextChoices):
+        """The built-in kinds, for code and tests. The registry in
+        apps.alerts.channels is the full list: kind is not a choices field, so
+        a new channel type needs no migration."""
+
         WEBHOOK = "webhook", "Webhook"
         EMAIL = "email", "Email"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
-    kind = models.CharField(max_length=20, choices=Kind.choices)
-    config = models.JSONField(
-        default=dict,
-        help_text='Webhook: {"url": "..."}, Email: {"recipients": ["..."]}',
-    )
+    kind = models.CharField(max_length=32)
+    config = models.JSONField(default=dict)
     on_firing = models.BooleanField(default=True)
     on_resolved = models.BooleanField(default=True)
     enabled = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    #: The last delivery, test sends included: None until the first.
+    last_ok = models.BooleanField(null=True, blank=True)
+    last_status = models.CharField(max_length=200, blank=True, default="")
+    last_status_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.name} ({self.kind})"

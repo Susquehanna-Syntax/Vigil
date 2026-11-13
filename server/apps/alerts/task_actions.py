@@ -23,7 +23,7 @@ import logging
 from django.utils.timezone import now
 
 from .models import Alert, AlertRule, NotificationChannel
-from .notifications import _DISPATCHERS, dispatch_alert_notification
+from .notifications import deliver, dispatch_alert_notification, message_for
 
 logger = logging.getLogger(__name__)
 
@@ -170,8 +170,8 @@ def _notify(task, signed: dict, result: dict) -> None:
             return
 
     # A notification has no alert behind it, so the payload's alert fields are
-    # empty. Every key _build_payload makes must be present: the senders index
-    # them directly.
+    # empty. Every key _build_payload makes must be present: webhook receivers
+    # index them directly.
     payload = {
         "event": "notification",
         "alert_id": None,
@@ -184,10 +184,9 @@ def _notify(task, signed: dict, result: dict) -> None:
         "fired_at": now().isoformat(),
         "resolved_at": None,
     }
+    notice = message_for(payload, task.host)
     for channel in channels:
-        dispatcher = _DISPATCHERS.get(channel.kind)
-        if dispatcher:
-            dispatcher(channel, payload)
+        deliver(channel, notice)
 
 
 __all__ = ["ACTIONS", "MESSAGE_CAP", "apply", "fired_steps", "reported_text"]
