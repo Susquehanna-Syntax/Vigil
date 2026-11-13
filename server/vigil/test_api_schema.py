@@ -42,15 +42,51 @@ UNATTRIBUTED_MAX = 1
 _APP = re.compile(r"/server/(?:apps/([a-z_]+)/|(vigil)/)|/(apps_business)/")
 
 
+_VIEW_NAME = re.compile(r"^(?:Error|Warning) \[(\w+)\]")
+
+
+def _app_of(module: str) -> str:
+    parts = module.split(".")
+    if parts[0] == "apps" and len(parts) > 1:
+        return parts[1]
+    return parts[0] if parts[0] in ("vigil", "apps_business") else ""
+
+
+def _view_owners() -> dict[str, str]:
+    """View name to app, for every routed view whose name only one app uses."""
+    from django.urls import URLPattern, URLResolver, get_resolver
+
+    seen: dict[str, set[str]] = defaultdict(set)
+
+    def walk(patterns):
+        for p in patterns:
+            if isinstance(p, URLResolver):
+                walk(p.url_patterns)
+            elif isinstance(p, URLPattern):
+                view = getattr(p.callback, "cls", None) or getattr(p.callback, "view_class", None) \
+                    or p.callback
+                seen[view.__name__].add(_app_of(view.__module__))
+
+    walk(get_resolver().url_patterns)
+    return {name: next(iter(apps)) for name, apps in seen.items() if len(apps) == 1}
+
+
 def schema_problems() -> dict[str, list[str]]:
     """Generate the schema once, and return each app's warnings and errors."""
     GENERATOR_STATS.reset()
     with GENERATOR_STATS.silence():
         SchemaGenerator().get_schema(request=None, public=True)
     problems = defaultdict(list)
+    owners = _view_owners()
     for message in [*GENERATOR_STATS._warn_cache, *GENERATOR_STATS._error_cache]:
         match = _APP.search(message)
-        problems[next(g for g in match.groups() if g) if match else ""].append(message)
+        if match:
+            problems[next(g for g in match.groups() if g)].append(message)
+            continue
+        # A compiled module (the Business wheels) has no source file, so the
+        # message carries no path: fall back to the routed view's own module.
+        named = _VIEW_NAME.search(message)
+        problems[owners.get(named.group(1), "") if named else ""].append(message)
     GENERATOR_STATS.reset()
     return problems
 

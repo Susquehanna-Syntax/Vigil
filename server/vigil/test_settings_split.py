@@ -189,7 +189,12 @@ class SettingsRoutesAreClassifiedTests(TestCase):
         self.assertEqual(missing, [], "stale entries")
         for route, page in self.ROUTES.items():
             with self.subTest(route=route):
-                self.assertIn(page, _pages_named(routes[route]))
+                pages = _pages_named(routes[route])
+                if pages is None:
+                    # Business ships compiled: its views have no source to
+                    # read here. Business CI runs this suite from source.
+                    self.skipTest(f"{route}: compiled view, checked in Business CI")
+                self.assertIn(page, pages)
 
     def test_instance_settings_names_a_page_for_every_group(self):
         from apps.instance import registry
@@ -200,7 +205,9 @@ class SettingsRoutesAreClassifiedTests(TestCase):
 
 def _pages_named(callback):
     """The settings pages a view names: a SettingsPage permission, or a
-    settings_allows(..., "page") call in the view function's own source."""
+    settings_allows(..., "page") call in the view function's own source.
+    None when the permissions name none and the module has no source (a
+    compiled Business wheel), so the page cannot be checked here."""
     import importlib
 
     cls = getattr(callback, "cls", None)
@@ -209,7 +216,12 @@ def _pages_named(callback):
     owner = cls if cls is not None else callback
     # The decorated module attribute is DRF's view, so read the function's
     # own text out of its module rather than asking inspect for it.
-    module_src = inspect.getsource(importlib.import_module(owner.__module__))
+    if pages - {None}:
+        return pages - {None}
+    try:
+        module_src = inspect.getsource(importlib.import_module(owner.__module__))
+    except (OSError, TypeError):
+        return None
     match = re.search(rf"^def {owner.__name__}\(.*?(?=^(?:def |class |@)|\Z)", module_src, re.M | re.S)
     if match:
         pages |= set(re.findall(r'settings_allows\([^,]+, "([a-z]+)"', match.group(0)))
