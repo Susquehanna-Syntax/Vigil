@@ -270,17 +270,38 @@ def check_destination(url: str, *, private_ok: bool) -> str:
     if not addresses:
         raise ChannelError(f"{parts.hostname} does not resolve")
     for text in addresses:
-        address = ipaddress.ip_address(text)
-        mapped = getattr(address, "ipv4_mapped", None)
-        for a in (address, mapped) if mapped else (address,):
+        for a in _with_embedded(ipaddress.ip_address(text)):
             if a.is_loopback or a.is_link_local or a.is_unspecified or a.is_multicast \
                     or a.is_reserved:
                 raise ChannelError(f"{parts.hostname} resolves to {a}, which Vigil will not send to")
-            if a.is_private and not private_ok:
+            # Not a denylist: without LAN permission the address must be
+            # globally routable, which also rules out carrier-grade NAT
+            # (100.64.0.0/10, where Tailscale lives) and documentation ranges.
+            if not private_ok and not a.is_global:
                 raise ChannelError(
                     f"{parts.hostname} is on a private network: only an administrator of the "
                     f"whole install can send there")
     return addresses[0]
+
+
+_NAT64 = (ipaddress.ip_network("64:ff9b::/96"), ipaddress.ip_network("64:ff9b:1::/48"))
+
+
+def _with_embedded(address):
+    """*address* and every IPv4 address an IPv6 one carries inside it
+    (mapped, 6to4, Teredo, NAT64): each reaches that IPv4 host, so each is
+    checked as if it were the destination."""
+    out = [address]
+    if address.version == 6:
+        if address.ipv4_mapped:
+            out.append(address.ipv4_mapped)
+        if address.sixtofour:
+            out.append(address.sixtofour)
+        if address.teredo:
+            out.extend(address.teredo)
+        if any(address in net for net in _NAT64):
+            out.append(ipaddress.IPv4Address(int(address) & 0xFFFFFFFF))
+    return out
 
 
 def _transport(method, scheme, address, port, hostname, path, body, headers):

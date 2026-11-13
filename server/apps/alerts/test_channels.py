@@ -122,6 +122,20 @@ class DestinationTests(TestCase):
         self.assertEqual(self.check("10.0.0.5", private_ok=True), "10.0.0.5")
         self.assertEqual(self.check(PUBLIC), PUBLIC)
 
+    def test_without_lan_permission_only_global_addresses_pass(self):
+        for address in ("100.64.0.1", "192.0.2.10", "64:ff9b::7f00:1", "64:ff9b::a00:5",
+                        "2002:7f00:1::", "2001:0:4136:e378:8000:63bf:80ff:fffe", "fd00::1"):
+            with self.assertRaises(channels.ChannelError, msg=address):
+                self.check(address)
+
+    def test_an_ipv4_hidden_in_ipv6_is_held_to_the_same_rules(self):
+        # NAT64 and 6to4 forms of 127.0.0.1: refused even with LAN permission.
+        for address in ("64:ff9b::7f00:1", "2002:7f00:1::"):
+            with self.assertRaises(channels.ChannelError, msg=address):
+                self.check(address, private_ok=True)
+        # Tailscale's carrier-grade NAT range is a LAN choice, not a refusal.
+        self.assertEqual(self.check("100.64.0.1", private_ok=True), "100.64.0.1")
+
     def test_every_resolved_address_is_checked(self):
         with mock.patch("apps.alerts.channels._resolve", return_value=[PUBLIC, "127.0.0.1"]):
             with self.assertRaises(channels.ChannelError):
