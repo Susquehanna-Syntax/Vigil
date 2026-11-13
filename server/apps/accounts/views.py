@@ -18,6 +18,7 @@ from .api_schema import (
     AccountsAssertOptionsSerializer,
     AccountsAssertRequestSerializer,
     AccountsCapabilitiesSerializer,
+    AccountsDetailSerializer,
     AccountsErrorSerializer,
     AccountsKeyCreatedSerializer,
     AccountsKeyRowSerializer,
@@ -28,6 +29,16 @@ from .api_schema import (
     AccountsRemoveKeyRequestSerializer,
     AccountsRenameKeyRequestSerializer,
     AccountsSessionRemainingSerializer,
+    AccountsSettingsAccessSerializer,
+    AccountsTotpCodeSerializer,
+    AccountsTotpConfirmRequestSerializer,
+    AccountsTotpEnrollStartSerializer,
+    AccountsTotpEnrolledSerializer,
+    AccountsTotpStatusSerializer,
+    AccountsUpgradeSerializer,
+    AccountsUserCreateSerializer,
+    AccountsUserRowSerializer,
+    AccountsUsersIndexSerializer,
 )
 from .models import LoginAttempt, UserProfile
 from .totp import (
@@ -87,6 +98,7 @@ def _get_or_create_profile(user) -> UserProfile:
     return profile
 
 
+@extend_schema(methods=["GET"], responses=AccountsTotpStatusSerializer)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def totp_status(request):
@@ -250,6 +262,10 @@ def security_key_assert(request):
     return Response({"token": token})
 
 
+@extend_schema(methods=["POST"], request=None, responses={
+    200: AccountsTotpEnrollStartSerializer,
+    400: AccountsErrorSerializer,
+})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def totp_enroll_start(request):
@@ -274,6 +290,9 @@ def totp_enroll_start(request):
     })
 
 
+@extend_schema(methods=["POST"], request=AccountsTotpConfirmRequestSerializer,
+               responses={200: AccountsTotpEnrolledSerializer,
+                          400: AccountsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def totp_enroll_confirm(request):
@@ -288,6 +307,9 @@ def totp_enroll_confirm(request):
     return Response({"enrolled": True})
 
 
+@extend_schema(methods=["POST"], request=AccountsTotpConfirmRequestSerializer,
+               responses={200: AccountsTotpEnrolledSerializer,
+                          400: AccountsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def totp_disable(request):
@@ -507,6 +529,12 @@ def session_status(request):
     return Response(remaining(request.session))
 
 
+@extend_schema(methods=["POST"], request=None, responses={
+    200: AccountsTotpCodeSerializer,
+    # Not a DEBUG build: the helper answers it does not exist here.
+    (404, "application/json"): AccountsErrorSerializer,
+    # A user with no secret has no code to hand back.
+    (400, "application/json"): AccountsErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def totp_debug_code(request):
@@ -567,6 +595,7 @@ def capabilities_index(request):
                      sorted(CAPABILITIES.items())})
 
 
+@extend_schema(methods=["GET"], responses=AccountsSettingsAccessSerializer)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def settings_access_index(request):
@@ -577,6 +606,16 @@ def settings_access_index(request):
     return Response({page: settings_access(request.user, page) for page in SETTINGS_ACCESS})
 
 
+@extend_schema(methods=["GET"], responses={
+    200: AccountsUsersIndexSerializer,
+    403: AccountsDetailSerializer,
+})
+@extend_schema(methods=["POST"], request=AccountsUserCreateSerializer, responses={
+    201: AccountsUserRowSerializer,
+    400: AccountsDetailSerializer,
+    402: AccountsUpgradeSerializer,
+    403: AccountsDetailSerializer,
+})
 @api_view(["GET", "POST"])
 def users_index(request):
     from vigil import licensing
@@ -617,6 +656,14 @@ def users_index(request):
     return Response(_user_row(user), status=201)
 
 
+@extend_schema(methods=["PATCH"], request=AccountsUserCreateSerializer, responses={
+    200: AccountsUserRowSerializer,
+    400: AccountsDetailSerializer,
+    402: AccountsUpgradeSerializer,
+    403: AccountsDetailSerializer,
+    # A missing user is answered with an empty body.
+    404: None,
+})
 @api_view(["PATCH"])
 def user_role(request, user_id):
     from .permissions import IsAdmin, settings_allows
@@ -634,6 +681,13 @@ def user_role(request, user_id):
     return resp if resp is not None else Response(_user_row(user))
 
 
+@extend_schema(methods=["DELETE"], responses={
+    # Success and a missing user are both answered with an empty body.
+    204: None,
+    400: AccountsDetailSerializer,
+    403: AccountsDetailSerializer,
+    404: None,
+})
 @api_view(["DELETE"])
 def user_detail(request, user_id):
     """Delete a user. Admin-only, with two guards: you cannot delete your own

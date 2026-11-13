@@ -1,4 +1,5 @@
-"""OpenAPI shapes of the accounts security-key and session endpoints (sprint M5).
+"""OpenAPI shapes of the accounts endpoints (sprint M5): security keys,
+sessions, TOTP and users.
 
 Documentation only: the views build their responses by hand, and these
 serializers describe what they return so the schema has real types. Nothing
@@ -143,3 +144,101 @@ class AccountsSessionRemainingSerializer(serializers.Serializer):
     max_seconds_left = serializers.IntegerField()
     idle_seconds = serializers.IntegerField()
     max_seconds = serializers.IntegerField()
+
+
+class AccountsSettingsAccessSerializer(serializers.Serializer):
+    """One key per settings page (``permissions.SETTINGS_ACCESS``), so the
+    document lists the pages this build ships."""
+
+    account = serializers.CharField()
+    agents = serializers.CharField()
+    api = serializers.CharField()
+    users = serializers.CharField()
+    sites = serializers.CharField()
+    branding = serializers.CharField()
+    display = serializers.CharField()
+    retention = serializers.CharField()
+    relays = serializers.CharField()
+    distribution = serializers.CharField()
+    images = serializers.CharField()
+    license = serializers.CharField()
+    email = serializers.CharField()
+    ai = serializers.CharField()
+    identity = serializers.CharField()
+    directory = serializers.CharField()
+    scanners = serializers.CharField()
+    jackil = serializers.CharField()
+
+
+class AccountsTotpStatusSerializer(serializers.Serializer):
+    enrolled = serializers.BooleanField()
+    pending = serializers.BooleanField()
+    keys = serializers.IntegerField()
+    keys_possible = serializers.BooleanField()
+    keys_reason = serializers.CharField(allow_blank=True)
+
+
+class AccountsTotpEnrollStartSerializer(serializers.Serializer):
+    secret = serializers.CharField(help_text="Base32 secret; the QR encodes otpauth_uri.")
+    otpauth_uri = serializers.CharField()
+
+
+class AccountsTotpCodeSerializer(serializers.Serializer):
+    code = serializers.CharField(help_text="The current 6-digit code. DEBUG builds only.")
+
+
+class AccountsTotpEnrolledSerializer(serializers.Serializer):
+    """POST totp/enroll/ and totp/disable answer with the resulting state."""
+
+    enrolled = serializers.BooleanField()
+
+
+class AccountsTotpConfirmRequestSerializer(serializers.Serializer):
+    code = serializers.CharField(help_text="A current 6-digit code, or a wa_ key token.")
+
+
+class AccountsUserRowSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    username = serializers.CharField()
+    email = serializers.EmailField(allow_blank=True)
+    role = serializers.ChoiceField(choices=["owner", "admin", "operator", "viewer", "none"])
+    by_site = serializers.BooleanField()
+    is_active = serializers.BooleanField()
+    date_joined = serializers.DateTimeField()
+
+
+class AccountsUsersIndexSerializer(serializers.Serializer):
+    seats_used = serializers.IntegerField()
+    seats_allowed = serializers.IntegerField()
+    users = AccountsUserRowSerializer(many=True)
+
+
+class AccountsUserCreateSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField(write_only=True)
+    email = serializers.EmailField(required=False, allow_null=True, allow_blank=True)
+    role = serializers.CharField(
+        required=False, allow_blank=True,
+        help_text="Optional on create; required by the role endpoint. PATCH "
+                  "changes the role alone and ignores the other fields. An "
+                  "unknown role is a 400.")
+
+
+class AccountsDetailSerializer(serializers.Serializer):
+    """What these views refuse with — DRF's ErrorDetail renders as ``detail``."""
+
+    detail = serializers.CharField()
+
+
+class AccountsUpgradeSerializer(serializers.Serializer):
+    """What a feature the license does not cover answers with: 402 here.
+
+    The body is vigil.licensing.upgrade_body's, which every app that gates on
+    a feature returns verbatim; accounts spells its other refusals ``detail``
+    (see ``AccountsDetailSerializer``).
+    """
+
+    feature = serializers.CharField()
+    licensed = serializers.BooleanField()
+    detail = serializers.CharField()
+    upgrade_url = serializers.URLField()
