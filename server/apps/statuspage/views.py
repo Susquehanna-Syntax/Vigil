@@ -1,4 +1,5 @@
 from django.shortcuts import get_object_or_404, render
+from drf_spectacular.utils import extend_schema
 from rest_framework import status as http
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -9,6 +10,15 @@ from apps.hosts.models import Host
 from vigil import scoping
 from vigil.licensing import has_feature, upgrade_body
 
+from .api_schema import (
+    StatusPageDetailSerializer,
+    StatusPageErrorSerializer,
+    StatusPageHostChoiceSerializer,
+    StatusPageSerializer,
+    StatusPageUpgradeSerializer,
+    StatusPageUptimeDaySerializer,
+    StatusPageWriteSerializer,
+)
 from .models import StatusPage
 
 BRANDING_FIELDS = ("site_id", "logo_url", "hide_badge")
@@ -148,6 +158,7 @@ def _row(p: StatusPage) -> dict:
     }
 
 
+@extend_schema(responses=StatusPageHostChoiceSerializer(many=True))
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def selectable_hosts(request):
@@ -165,6 +176,11 @@ def selectable_hosts(request):
                       "up": h.status == Host.Status.ONLINE} for h in hosts])
 
 
+@extend_schema(methods=["GET"], responses=StatusPageSerializer(many=True))
+@extend_schema(methods=["POST"], request=StatusPageWriteSerializer,
+               responses={201: StatusPageSerializer,
+                          402: StatusPageUpgradeSerializer,
+                          403: StatusPageDetailSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def page_index(request):
@@ -181,6 +197,15 @@ def page_index(request):
     return err if err is not None else Response(_row(page), status=http.HTTP_201_CREATED)
 
 
+@extend_schema(methods=["PATCH"], request=StatusPageWriteSerializer,
+               responses={200: StatusPageSerializer,
+                          400: StatusPageDetailSerializer,
+                          402: StatusPageUpgradeSerializer,
+                          403: StatusPageDetailSerializer})
+@extend_schema(methods=["DELETE"], request=None,
+               responses={(204, "application/json"): None,
+                          400: StatusPageErrorSerializer,
+                          403: StatusPageDetailSerializer})
 @api_view(["PATCH", "DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def page_detail(request, page_id):
@@ -246,6 +271,7 @@ def _apply(page, request):
     return None
 
 
+@extend_schema(responses=StatusPageUptimeDaySerializer(many=True))
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def host_uptime(request, host_id):

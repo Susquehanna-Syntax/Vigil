@@ -119,6 +119,51 @@ class ProfileApiTests(TestCase):
         self.assertEqual(actions["restart_service"]["group"], "service")
         self.assertEqual(actions["restart_service"]["label"], "Restart service")
 
+    def test_the_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            AgentActionSerializer,
+            AgentProfileErrorSerializer,
+            AgentProfileErrorsSerializer,
+            AgentProfileSerializer,
+        )
+
+        created = self.client.post("/api/v1/agent-profiles/", base_profile(
+            name="shaped", mode="managed", allowlist=["restart_service"]),
+            content_type="application/json")
+        self.assertEqual(created.status_code, 201, created.content)
+        assert_shape(self, created.json(), AgentProfileSerializer)
+
+        listed = self.client.get("/api/v1/agent-profiles/")
+        self.assertEqual(listed.status_code, 200, listed.content)
+        assert_shape(self, listed.json(), AgentProfileSerializer(many=True))
+
+        detail = self.client.get(f"/api/v1/agent-profiles/{created.json()['id']}/")
+        self.assertEqual(detail.status_code, 200, detail.content)
+        assert_shape(self, detail.json(), AgentProfileSerializer)
+
+        patched = self.client.patch(f"/api/v1/agent-profiles/{created.json()['id']}/",
+                                    {"description": "shaped boxes"},
+                                    content_type="application/json")
+        self.assertEqual(patched.status_code, 200, patched.content)
+        assert_shape(self, patched.json(), AgentProfileSerializer)
+
+        actions = self.client.get("/api/v1/agent-profiles/actions/")
+        self.assertEqual(actions.status_code, 200, actions.content)
+        assert_shape(self, actions.json(), AgentActionSerializer(many=True))
+
+        bad = self.client.post("/api/v1/agent-profiles/",
+                               base_profile(name="bad", checkin_interval=5),
+                               content_type="application/json")
+        self.assertEqual(bad.status_code, 400, bad.content)
+        assert_shape(self, bad.json(), AgentProfileErrorsSerializer)
+
+        builtin = AgentProfile.objects.get(name="Monitor only")
+        refused = self.client.delete(f"/api/v1/agent-profiles/{builtin.id}/")
+        self.assertEqual(refused.status_code, 400, refused.content)
+        assert_shape(self, refused.json(), AgentProfileErrorSerializer)
+
 
 class EnrollConfigApiTests(TestCase):
     def setUp(self):
@@ -156,6 +201,28 @@ class EnrollConfigApiTests(TestCase):
                                 content_type="application/json")
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.json()["settings"]["allowlist"], ["restart_service"])
+
+    def test_the_responses_match_the_api_schema(self):
+        """The created-config body and the way it refuses a bad profile id."""
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            AgentEnrollConfigCreatedSerializer,
+            AgentProfileErrorsSerializer,
+        )
+
+        resp = self.client.post("/api/v1/agent-profiles/enroll-config/",
+                                {"overrides": {"name": "shaped one-off",
+                                               "mode": "managed"}},
+                                content_type="application/json")
+        self.assertEqual(resp.status_code, 201, resp.content)
+        assert_shape(self, resp.json(), AgentEnrollConfigCreatedSerializer)
+
+        bad = self.client.post("/api/v1/agent-profiles/enroll-config/",
+                               {"profile": "not-a-uuid"},
+                               content_type="application/json")
+        self.assertEqual(bad.status_code, 400, bad.content)
+        assert_shape(self, bad.json(), AgentProfileErrorsSerializer)
 
     def test_a_profile_id_that_is_not_one_is_a_400(self):
         resp = self.client.post("/api/v1/agent-profiles/enroll-config/",

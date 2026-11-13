@@ -6,6 +6,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -16,6 +17,16 @@ from apps.tasks.registry import ACTION_REGISTRY
 from vigil import scoping
 
 from . import render
+from .api_schema import (
+    AgentActionSerializer,
+    AgentEnrollConfigCreatedSerializer,
+    AgentEnrollConfigSerializer,
+    AgentProfileDetailSerializer,
+    AgentProfileErrorSerializer,
+    AgentProfileErrorsSerializer,
+    AgentProfileSerializer,
+    AgentProfileWriteSerializer,
+)
 from .models import AgentProfile, EnrollConfig
 from .render import NEVER_ALLOWLISTABLE
 
@@ -94,6 +105,11 @@ def _apply(profile: AgentProfile | None, data: dict) -> tuple[dict, dict]:
     return clean, errors
 
 
+@extend_schema(methods=["GET"], responses=AgentProfileSerializer(many=True))
+@extend_schema(methods=["POST"], request=AgentProfileWriteSerializer,
+               responses={201: AgentProfileSerializer,
+                          400: AgentProfileErrorsSerializer,
+                          403: AgentProfileDetailSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def profile_index(request):
@@ -129,6 +145,14 @@ def profile_index(request):
     return Response(_row(profile), status=201)
 
 
+@extend_schema(methods=["GET"],
+               responses={200: AgentProfileSerializer,
+                          403: AgentProfileDetailSerializer})
+@extend_schema(methods=["PATCH"], request=AgentProfileWriteSerializer,
+               responses={200: AgentProfileSerializer, 400: AgentProfileErrorsSerializer})
+@extend_schema(methods=["DELETE"], request=None,
+               responses={(204, "application/json"): None,
+                          400: AgentProfileErrorSerializer})
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def profile_detail(request, profile_id):
@@ -181,6 +205,7 @@ def profile_detail(request, profile_id):
     return Response(_row(profile))
 
 
+@extend_schema(responses=AgentActionSerializer(many=True))
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def actions_list(request):
@@ -209,6 +234,9 @@ def actions_list(request):
     return Response(out)
 
 
+@extend_schema(request=AgentEnrollConfigSerializer,
+               responses={201: AgentEnrollConfigCreatedSerializer,
+                          400: AgentProfileErrorsSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def enroll_config(request):
