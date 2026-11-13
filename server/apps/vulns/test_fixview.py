@@ -87,6 +87,36 @@ class FixGroupApiTests(TestCase):
                                      format="json").status_code, 403)
 
 
+class FixGroupApiSchemaShapeTests(TestCase):
+    """The bodies the fix-group endpoints return, against their schema."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("shape", password="x")
+        UserProfile.objects.create(user=self.user, role=Role.ADMIN)
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        for host in (_host("shape-a"), _host("shape-b")):
+            f = _f(host, "pkg:openssl:CVE-2024-9999", "CVE-2024-9999", sev="critical",
+                   advisory={"source": "dpkg"})
+            add_evidence(f, "package", "dpkg:openssl", "openssl installed")
+
+    def test_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            VulnFixGroupDeployResultSerializer,
+            VulnFixGroupListSerializer,
+        )
+
+        body = self.client.get("/api/v1/vulns/fix-groups/").json()
+        self.assertTrue(body["results"], "the item shape is only checked with a row")
+        assert_shape(self, body, VulnFixGroupListSerializer)
+        key = VulnFinding.objects.filter(package_name="openssl").first().fix_key
+        deployed = self.client.post("/api/v1/vulns/fix-groups/deploy/",
+                                    {"fix_key": key}, format="json")
+        assert_shape(self, deployed.json(), VulnFixGroupDeployResultSerializer)
+
+
 class FixViewWiringTests(TestCase):
     def test_page_script_and_deploy_prefill(self):
         from pathlib import Path

@@ -108,3 +108,80 @@ class PolicyCrudTests(TestCase):
         resp = viewer.post("/api/v1/policies/", {"name": "x"}, format="json")
         self.assertEqual(resp.status_code, 403)
         self.assertFalse(UpdatePolicy.objects.exists())
+
+
+class PolicySchemaShapeTests(TestCase):
+    """Every body these endpoints return is the shape its schema documents."""
+
+    def setUp(self):
+        self.client, self.user = admin_client("schema-admin")
+
+    def test_responses_match_the_api_schema(self):
+        from unittest import mock
+
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            PolicyApproveResultSerializer,
+            PolicyChangeListSerializer,
+            PolicyComplianceSerializer,
+            PolicyDetailErrorSerializer,
+            PolicyDriftSerializer,
+            PolicyListSerializer,
+            PolicyRejectResultSerializer,
+            PolicyRunResultSerializer,
+            PolicySerializer,
+        )
+        from .models import PolicyChange
+        from .run import run_policy
+        from .test_drift import give, make_host
+        from .test_run import _TOTP, make_policy
+
+        created = self.client.post("/api/v1/policies/", {
+            "name": "Schema", "patch_enabled": True,
+            "app_rules": [{"app": "curl", "source": "dpkg", "state": "latest"}],
+        }, format="json")
+        assert_shape(self, created.json(), PolicySerializer)
+        pid = created.json()["id"]
+        assert_shape(self, self.client.get("/api/v1/policies/").json(),
+                     PolicyListSerializer)
+        assert_shape(self, self.client.put(f"/api/v1/policies/{pid}/",
+                                           {"name": "Schema"},
+                                           format="json").json(), PolicySerializer)
+        assert_shape(self, self.client.post("/api/v1/policies/", {"name": ""},
+                                            format="json").json(),
+                     PolicyDetailErrorSerializer)
+
+        host = make_host("schema-host")
+        give(host, "curl", "8.4", "8.5")
+        assert_shape(self, self.client.get(f"/api/v1/policies/{pid}/drift/").json(),
+                     PolicyDriftSerializer)
+        with mock.patch(_TOTP, return_value="bad code"):
+            refused = self.client.post(f"/api/v1/policies/{pid}/run/", {"totp": "1"},
+                                       format="json")
+        assert_shape(self, refused.json(), PolicyDetailErrorSerializer)
+        with mock.patch(_TOTP, return_value=None):
+            ran = self.client.post(f"/api/v1/policies/{pid}/run/", {"totp": "1"},
+                                   format="json")
+        assert_shape(self, ran.json(), PolicyRunResultSerializer)
+
+        approval = make_policy(name="Schema-approve", approval_mode="approve")
+        run_policy(approval, user=self.user)
+        change_id = str(PolicyChange.objects.filter(policy=approval).first().pk)
+        assert_shape(self, self.client.get("/api/v1/policies/changes/").json(),
+                     PolicyChangeListSerializer)
+        assert_shape(self, self.client.post("/api/v1/policies/changes/reject/",
+                                            {"ids": [change_id]},
+                                            format="json").json(),
+                     PolicyRejectResultSerializer)
+        run_policy(approval, user=self.user)
+        for change in PolicyChange.objects.exclude(policy=approval):
+            change.delete()
+        change_id = str(PolicyChange.objects.filter(policy=approval,
+                                                    state="pending").first().pk)
+        with mock.patch(_TOTP, return_value=None):
+            approved = self.client.post("/api/v1/policies/changes/approve/",
+                                        {"ids": [change_id]}, format="json")
+        assert_shape(self, approved.json(), PolicyApproveResultSerializer)
+        assert_shape(self, self.client.get("/api/v1/policies/compliance/").json(),
+                     PolicyComplianceSerializer)

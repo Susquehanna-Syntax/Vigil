@@ -139,3 +139,20 @@ class DataEndpointTests(TestCase):
         self.assertEqual(admin.post("/api/v1/vulns/data/", {}, format="multipart").status_code, 400)
         viewer = self._client(Role.VIEWER)
         self.assertEqual(viewer.get("/api/v1/vulns/data/").status_code, 403)
+
+    def test_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            VulnDataLoadSerializer,
+            VulnDataSerializer,
+            VulnDetailResponse,
+        )
+
+        admin = self._client(Role.ADMIN)
+        upload = SimpleUploadedFile("vuln-data.zip", _bundle_bytes(), content_type="application/zip")
+        assert_shape(self, admin.post("/api/v1/vulns/data/", {"bundle": upload},
+                                      format="multipart").json(), VulnDataLoadSerializer)
+        assert_shape(self, admin.get("/api/v1/vulns/data/").json(), VulnDataSerializer)
+        assert_shape(self, admin.post("/api/v1/vulns/data/", {},
+                                      format="multipart").json(), VulnDetailResponse)
