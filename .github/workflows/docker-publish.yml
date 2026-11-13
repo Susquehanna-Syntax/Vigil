@@ -366,6 +366,11 @@ jobs:
   compose-smoke:
     name: Compose from an empty .env
     runs-on: ubuntu-latest
+    env:
+      # Only the published file: docker-compose.override.yml is the local
+      # development setup (source mounted, dev server, DEBUG on web), and
+      # Compose merges it in automatically when it sits beside this one.
+      COMPOSE_FILE: docker-compose.yml
     steps:
       - uses: actions/checkout@v4
       - name: Build the image the compose file names
@@ -455,6 +460,11 @@ jobs:
   security-scan:
     name: Security scans (Semgrep, ZAP baseline)
     runs-on: ubuntu-latest
+    env:
+      # Only the published file: docker-compose.override.yml is the local
+      # development setup (source mounted, dev server, DEBUG on web), and
+      # Compose merges it in automatically when it sits beside this one.
+      COMPOSE_FILE: docker-compose.yml
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
