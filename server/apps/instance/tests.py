@@ -323,3 +323,27 @@ class ConsumerTests(TestCase):
                 override_settings(
                     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend"):
             self.assertIn("locmem", type(config.mail_connection()).__module__)
+
+
+class MigrateOnceTests(TestCase):
+    """Every container migrates on start; the lock keeps first boots apart."""
+
+    def test_it_migrates_and_releases_its_lock(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        from django.db import connection
+
+        from apps.instance.management.commands.migrate_once import LOCK_ID
+
+        call_command("migrate_once", verbosity=0, stdout=StringIO())
+        if connection.vendor == "postgresql":
+            with connection.cursor() as cur:
+                cur.execute("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' "
+                            "AND objid = %s AND pid = pg_backend_pid()", [LOCK_ID])
+                self.assertEqual(cur.fetchone()[0], 0)
+
+    def test_it_runs_without_a_public_url(self):
+        from vigil import startup_checks
+
+        self.assertIn("migrate_once", startup_checks.NON_SERVING_COMMANDS)

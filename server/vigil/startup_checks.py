@@ -52,7 +52,7 @@ _GENERATE_SEED = (
 #: fails loudly at the moment it would otherwise start answering requests, and
 #: the operator still sees the whole list in `docker compose logs`.
 NON_SERVING_COMMANDS = frozenset({
-    "check", "test", "migrate", "makemigrations", "showmigrations",
+    "check", "test", "migrate", "migrate_once", "makemigrations", "showmigrations",
     "sqlmigrate", "collectstatic", "createsuperuser", "changepassword",
     "shell", "dbshell", "diffsettings", "loaddata", "dumpdata",
 })
