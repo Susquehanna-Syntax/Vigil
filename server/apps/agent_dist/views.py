@@ -5,6 +5,8 @@ from pathlib import Path
 from django.conf import settings
 from django.http import FileResponse, HttpResponse
 from django.template.loader import render_to_string
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -12,6 +14,12 @@ from rest_framework.response import Response
 
 from apps.accounts.permissions import IsAdmin, SettingsPage
 
+from .api_schema import (
+    AgentBinarySerializer,
+    AgentErrorSerializer,
+    AgentUploadResultSerializer,
+    AgentUploadSerializer,
+)
 from .models import AgentBinary
 
 
@@ -93,6 +101,9 @@ def all_binary_sha256() -> dict[str, str]:
     return digests
 
 
+@extend_schema(methods=["GET"],
+               responses={(200, "application/octet-stream"): OpenApiTypes.BINARY,
+                          (404, "application/json"): AgentErrorSerializer})
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def download_agent(request, platform):
@@ -186,6 +197,14 @@ def install_ps1(request):
     return HttpResponse(content, content_type="text/plain; charset=utf-8")
 
 
+@extend_schema(
+    methods=["POST"], request=AgentUploadSerializer,
+    # 200 as served: this view replaces one row per platform rather than
+    # creating a resource, and DRF answers with the default status. Documenting
+    # a 201 would promise a status the endpoint never returns.
+    responses={200: AgentUploadResultSerializer,
+               (400, "application/json"): AgentErrorSerializer,
+               (401, "application/json"): AgentErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAdmin, SettingsPage("distribution")])
 @parser_classes([MultiPartParser])
@@ -235,6 +254,11 @@ def upload_agent(request, platform):
     return Response({"platform": platform, "version": version, "sha256": digest})
 
 
+# One binary per served platform. sha256 is empty for a bundled artifact
+# because the installer reads its digest off the download response's
+# X-Vigil-SHA256 header instead, and an unreadable artifact gets no digest at
+# all so the install is refused rather than trusted on a guess.
+@extend_schema(methods=["GET"], responses={200: AgentBinarySerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def agent_info(request):
