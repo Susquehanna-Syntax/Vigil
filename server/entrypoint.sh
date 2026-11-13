@@ -13,7 +13,7 @@ done
 echo "PostgreSQL is up."
 
 echo "Running migrations..."
-python manage.py migrate --noinput
+python manage.py migrate_once
 
 # Drop privileges for the actual work. Everything above needs root only
 # because the mounted volumes arrive owned by root on an install that has
