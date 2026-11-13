@@ -68,8 +68,8 @@ jobs:
       CELERY_RESULT_BACKEND: redis://localhost:6379/0
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -135,8 +135,8 @@ jobs:
     name: JavaScript unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
       - name: Run node:test
@@ -153,10 +153,10 @@ jobs:
     name: Dependency audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The images and the agent build run 3.12; resolve on the same Python, so
       # the lock is checked against what they actually install.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       # Each requirements.txt applies its lock (-c requirements-lock.txt), so a
@@ -216,8 +216,8 @@ jobs:
       POSTGRES_HOST: localhost
       E2E_BASE: http://localhost:8010
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -265,7 +265,7 @@ jobs:
         run: scripts/ci-annotate.sh "Browser end-to-end" 80 e2e-run.log e2e-server.log
       - name: Keep the screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-screens
           path: |
@@ -311,8 +311,8 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Start a seeded server
@@ -372,7 +372,7 @@ jobs:
       # Compose merges it in automatically when it sits beside this one.
       COMPOSE_FILE: docker-compose.yml
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build the image the compose file names
         run: |
           version="$(sed -n 's/^VIGIL_VERSION = "\(.*\)"$/\1/p' server/vigil/settings.py)"
@@ -478,8 +478,8 @@ jobs:
       # Compose merges it in automatically when it sits beside this one.
       COMPOSE_FILE: docker-compose.yml
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Semgrep
@@ -524,7 +524,7 @@ jobs:
           scripts/ci-annotate.sh "ZAP" 60 zap-summary.log
       - name: Keep the ZAP report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: zap-report
           path: zap/
@@ -573,10 +573,10 @@ jobs:
       POSTGRES_HOST: localhost
       VIGIL_SKIP_STARTUP_CHECKS: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Find the previous release
@@ -677,8 +677,8 @@ jobs:
         working-directory: agent
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       # No pip cache: actions/setup-python@v5's internal cache step has been
@@ -787,7 +787,7 @@ jobs:
       # where the zip is what the server serves anyway.
       - name: Upload artifact (Windows — zip only)
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.out }}
           path: agent/dist/${{ matrix.out }}.zip
@@ -795,7 +795,7 @@ jobs:
 
       - name: Upload artifact
         if: runner.os != 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.out }}
           path: agent/dist/${{ matrix.out }}*
@@ -817,8 +817,8 @@ jobs:
     needs: [build-agent]
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -834,7 +834,7 @@ jobs:
             || echo "awk has no IGNORECASE, as expected"
 
       - name: Fetch the darwin-arm64 agent built by this run
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: vigil-agent-darwin-arm64
           path: server/agent_dist
@@ -971,7 +971,7 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The tag names the release: its version must be the one the code says it
       # is, and anything after it must be a release candidate or experimental
@@ -992,7 +992,7 @@ jobs:
       # Download all agent binaries into server/agent_dist/.
       # COPY server/ . in the Dockerfile picks them up automatically.
       - name: Download agent binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: server/agent_dist/
           merge-multiple: true
@@ -1015,17 +1015,17 @@ jobs:
           chmod +x server/agent_dist/vigil-agent-darwin-arm64 || true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to DockerHub
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.SERVER_IMAGE }}
           flavor: latest=false
@@ -1038,7 +1038,7 @@ jobs:
 
       - name: Build and push
         id: build
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: server/Dockerfile
@@ -1058,7 +1058,7 @@ jobs:
       # the same commit, so a relay and the dashboard it links to match.
       - name: Extract relay metadata
         id: relaymeta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.RELAY_IMAGE }}
           flavor: latest=false
@@ -1071,7 +1071,7 @@ jobs:
 
       - name: Build and push relay
         id: buildrelay
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: relay
           file: relay/Dockerfile
@@ -1093,7 +1093,7 @@ jobs:
       #     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
       #     --certificate-identity-regexp '^https://github.com/Susquehanna-Syntax/Vigil/'
       - name: Install cosign
-        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
 
       - name: Sign images
         env:
@@ -1123,13 +1123,13 @@ jobs:
       id-token: write   # keyless Sigstore signing
     steps:
       - name: Download agent binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release/
           merge-multiple: true
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
 
       - name: Checksum and sign every file
         working-directory: release

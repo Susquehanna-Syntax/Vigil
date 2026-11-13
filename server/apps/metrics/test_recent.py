@@ -199,8 +199,14 @@ class RecentMetricsTests(TestCase):
                 _point(host, "memory", "usage_percent", 60, 2.0)
             with CaptureQueriesContext(connection) as queries:
                 self.assertEqual(self.get().status_code, 200)
-            counts.append(len(queries))
+            # The endpoint only reads. A request can also write session or
+            # activity rows once enough time has passed, which a slow runner
+            # gives it, and that has nothing to do with the number of hosts.
+            counts.append(sum(1 for q in queries.captured_queries
+                              if q["sql"].lstrip().upper().startswith("SELECT")
+                              and "django_session" not in q["sql"]))
         self.assertEqual(counts[0], counts[1], f"3 hosts vs 30: {counts}")
+        self.assertTrue(counts[0], "no read was captured")
 
 
 # Exercises core with the Business apps; a source checkout has none.
