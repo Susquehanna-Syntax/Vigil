@@ -135,3 +135,56 @@ class SlackTests(_Net, TestCase):
         self.transport.return_value = 404
         with self.assertRaises(channels.ChannelError):
             channels.get("slack").send({"webhook_url": self.HOOK}, message())
+
+
+class DiscordTests(_Net, TestCase):
+    HOOK = "https://discord.com/api/webhooks/1234/TOKENSECRET"
+
+    def _send(self, **extra):
+        channels.get("discord").send({"webhook_url": self.HOOK}, message(**extra))
+        return json.loads(self.transport.call_args.args[6])
+
+    def test_the_webhook_url_host_and_path_are_the_ones_the_admin_entered(self):
+        channels.get("discord").send({"webhook_url": self.HOOK}, message())
+        method, scheme, address, port, hostname, path, _body, _h = self.transport.call_args.args
+        self.assertEqual((method, scheme, address, port, hostname, path),
+                         ("POST", "https", PUBLIC, 443, "discord.com",
+                          "/api/webhooks/1234/TOKENSECRET"))
+
+    def test_mentions_are_switched_off_and_no_embed_has_a_color(self):
+        sent = self._send()
+        self.assertEqual(sent["allowed_mentions"], {"parse": []})
+        self.assertNotIn("color", json.dumps(sent))
+
+    def test_the_content_line_is_the_headline(self):
+        self.assertEqual(self._send()["content"], "[FIRING] [CRITICAL] Alert: web-1")
+
+    def test_every_fact_arrives_as_an_inline_embed_field(self):
+        embed = self._send()["embeds"][0]
+        self.assertEqual([(f["name"], f["value"]) for f in embed["fields"]],
+                         [("Host", "web-1"), ("Site", "Leeds"), ("Value", "97.0"),
+                          ("Rule", "High CPU")])
+        self.assertTrue(all(f["inline"] for f in embed["fields"]))
+        self.assertEqual(embed["description"], "CPU 97% > 90% <b>&")
+        self.assertEqual(embed["url"], "https://vigil.test/hosts/7/")
+
+    def test_blank_text_and_link_leave_their_keys_out_of_the_embed(self):
+        embed = self._send(text="", link="")["embeds"][0]
+        self.assertNotIn("description", embed)
+        self.assertNotIn("url", embed)
+
+    def test_a_long_title_arrives_cut_to_discords_limit(self):
+        embed = self._send(title="t" * 300)["embeds"][0]
+        self.assertEqual(embed["title"], "t" * 256)
+
+    def test_no_alert_text_can_ping_a_room_or_hide_a_link(self):
+        sent = self._send(text="see [login](https://evil.test) @Everyone", host="@everyone")
+        body = json.dumps(sent, ensure_ascii=False)
+        for raw in ("@everyone", "@Everyone", "](http"):
+            self.assertNotIn(raw, body)
+        self.assertIn("@\u200beveryone", body)
+
+    def test_a_failure_is_a_channel_error(self):
+        self.transport.return_value = 500
+        with self.assertRaises(channels.ChannelError):
+            channels.get("discord").send({"webhook_url": self.HOOK}, message())
