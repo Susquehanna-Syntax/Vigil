@@ -443,7 +443,7 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 50,
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_SCHEMA_CLASS": "vigil.schema.VigilAutoSchema",
 }
 
 # The OpenAPI schema of /api/v1/ (sprint M5). Served to admins only, at
@@ -457,6 +457,7 @@ SPECTACULAR_SETTINGS = {
     "SERVE_PERMISSIONS": ["apps.accounts.permissions.IsAdmin"],
     "COMPONENT_SPLIT_REQUEST": True,
     "REDOC_DIST": "SIDECAR",
+    "PREPROCESSING_HOOKS": ["vigil.schema.drop_legacy_routes"],
 }
 
 # ---------------------------------------------------------------------------

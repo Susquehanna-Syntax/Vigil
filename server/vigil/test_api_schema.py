@@ -30,9 +30,16 @@ PENDING: set[str] = {
     "licensing", "metrics", "playbooks", "policies", "relays", "remote",
     "reports", "reprovision", "software", "stacks", "statuspage", "tasks",
     "vulns",
+    # Views in vigil/ itself (about, health), and the Business apps, which
+    # live in the private Vigil_Business repository.
+    "vigil", "apps_business",
 }
 
-_APP = re.compile(r"/server/apps/([a-z_]+)/")
+#: Messages tied to no view file: a view mounted at two URLs gets the same
+#: operation id twice. Only ever lower this.
+UNATTRIBUTED_MAX = 1
+
+_APP = re.compile(r"/server/(?:apps/([a-z_]+)/|(vigil)/)|/(apps_business)/")
 
 
 def schema_problems() -> dict[str, list[str]]:
@@ -43,7 +50,7 @@ def schema_problems() -> dict[str, list[str]]:
     problems = defaultdict(list)
     for message in [*GENERATOR_STATS._warn_cache, *GENERATOR_STATS._error_cache]:
         match = _APP.search(message)
-        problems[match.group(1) if match else ""].append(message)
+        problems[next(g for g in match.groups() if g) if match else ""].append(message)
     GENERATOR_STATS.reset()
     return problems
 
@@ -66,6 +73,10 @@ class ApiSchemaRatchetTests(SimpleTestCase):
         untracked = sorted(app for app in self.problems
                            if app and app not in TYPED | PENDING)
         self.assertEqual(untracked, [], "add these apps to PENDING")
+
+    def test_no_new_unattributed_problems(self):
+        self.assertLessEqual(len(self.problems.get("", [])), UNATTRIBUTED_MAX,
+                             self.problems.get(""))
 
     def test_the_lists_do_not_overlap(self):
         self.assertEqual(TYPED & PENDING, set())
