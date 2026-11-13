@@ -188,3 +188,71 @@ class DiscordTests(_Net, TestCase):
         self.transport.return_value = 500
         with self.assertRaises(channels.ChannelError):
             channels.get("discord").send({"webhook_url": self.HOOK}, message())
+
+
+class TeamsTests(_Net, TestCase):
+    HOOK = ("https://prod-14.westus.logic.azure.com/workflows/"
+            "9f1b7c0d2e3f4a5b8c9d0e1f2a3b4c5d?api-version=2016-06-01")
+
+    def _send(self, **extra):
+        channels.get("teams").send({"webhook_url": self.HOOK}, message(**extra))
+        return json.loads(self.transport.call_args.args[6])
+
+    def card(self, **extra):
+        return self._send(**extra)["attachments"][0]["content"]
+
+    def test_the_workflow_url_host_and_path_are_the_ones_the_admin_entered(self):
+        channels.get("teams").send({"webhook_url": self.HOOK}, message())
+        method, scheme, address, port, hostname, path, _body, _h = self.transport.call_args.args
+        self.assertEqual((method, scheme, address, port, hostname),
+                         ("POST", "https", PUBLIC, 443, "prod-14.westus.logic.azure.com"))
+        self.assertEqual(path, "/workflows/9f1b7c0d2e3f4a5b8c9d0e1f2a3b4c5d"
+                               "?api-version=2016-06-01")
+
+    def test_the_attachment_is_an_adaptive_card(self):
+        sent = self._send()
+        attachment = sent["attachments"][0]
+        self.assertEqual(sent["type"], "message")
+        self.assertEqual(attachment["contentType"], "application/vnd.microsoft.card.adaptive")
+        self.assertIsNone(attachment["contentUrl"])
+        self.assertEqual(attachment["content"]["type"], "AdaptiveCard")
+        self.assertEqual(self.card()["$schema"],
+                         "http://adaptivecards.io/schemas/adaptive-card.json")
+        self.assertNotIn("style", json.dumps(sent))
+
+    def test_the_headline_is_the_first_textblock_and_every_fact_is_in_the_factset(self):
+        card = self.card()
+        self.assertEqual(card["body"][0],
+                         {"type": "TextBlock", "text": "[FIRING] [CRITICAL] Alert: web-1",
+                          "weight": "Bolder", "wrap": True})
+        self.assertEqual(card["body"][1]["text"], "CPU 97% > 90% <b>&")
+        self.assertEqual(card["body"][2]["facts"],
+                         [{"title": "Host", "value": "web-1"},
+                          {"title": "Site", "value": "Leeds"},
+                          {"title": "Value", "value": "97.0"},
+                          {"title": "Rule", "value": "High CPU"}])
+
+    def test_the_link_is_the_open_url_action(self):
+        card = self.card()
+        self.assertEqual(card["version"], "1.4")
+        self.assertEqual(card["actions"], [{"type": "Action.OpenUrl",
+                                            "title": "Open in Vigil",
+                                            "url": "https://vigil.test/hosts/7/"}])
+
+    def test_blank_text_facts_and_link_leave_the_card_with_only_the_headline(self):
+        card = self.card(text="", host="", site="", value=None, rule="", link="")
+        self.assertEqual([b["type"] for b in card["body"]], ["TextBlock"])
+        self.assertNotIn("actions", card)
+
+    def test_no_alert_text_can_ping_a_room_or_hide_a_link(self):
+        everything = json.dumps(self.card(text="see [x](https://e.test)", host="@everyone",
+                                          title="Alert @everyone"), ensure_ascii=False)
+        for raw in ("@everyone", "](http"):
+            self.assertNotIn(raw, everything)
+        self.assertIn("@\u200beveryone", everything)
+        self.assertIn("[x]\u200b(https://e.test)", everything)
+
+    def test_a_failure_is_a_channel_error(self):
+        self.transport.return_value = 500
+        with self.assertRaises(channels.ChannelError):
+            channels.get("teams").send({"webhook_url": self.HOOK}, message())
