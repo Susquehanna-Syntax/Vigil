@@ -133,6 +133,9 @@ class MetricHistoryCostTests(TestCase):
         from django.test.utils import CaptureQueriesContext
         from django.db import connection
 
+        # One request first: a cold process caches a lookup or two on its
+        # first request, which would count against "small" alone.
+        self.client.get(self._url(limit=1))
         with CaptureQueriesContext(connection) as small:
             resp = self.client.get(self._url(limit=1))
         self.assertEqual(resp.status_code, 200)
