@@ -5,12 +5,14 @@ so it is a ``secret_url`` and never leaves the server once saved. Mattermost
 and Rocket.Chat accept the same body, so their incoming webhooks work here too.
 """
 from . import ChannelType, Field, Message, post, register
-from .text import facts, headline
+from .text import defang, facts, headline
 
 
 def escape(text: str) -> str:
-    """Slack mrkdwn treats &, < and > as markup (links, mentions)."""
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    """Slack mrkdwn treats &, < and > as markup (``<!channel>``, links), and
+    Mattermost honours plain ``@channel`` and Markdown links: neither may come
+    through from an alert."""
+    return defang(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 @register
@@ -35,4 +37,4 @@ class Slack(ChannelType):
             blocks.append({"type": "actions", "elements": [
                 {"type": "button", "text": {"type": "plain_text", "text": "Open in Vigil"},
                  "url": message.link}]})
-        post(config["webhook_url"], json={"text": headline(message), "blocks": blocks})
+        post(config["webhook_url"], json={"text": escape(headline(message)), "blocks": blocks})

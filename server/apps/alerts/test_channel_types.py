@@ -83,6 +83,17 @@ class SecretUrlTests(_Net, TestCase):
         self.assertIn("enter it again", errors["token"])
 
 
+class DefangTests(TestCase):
+    def test_mass_mentions_and_markdown_links_are_broken_invisibly(self):
+        from .channels.text import defang
+
+        self.assertEqual(defang("@channel @HERE @all @everyone"),
+                         "@\u200bchannel @\u200bHERE @\u200ball @\u200beveryone")
+        self.assertEqual(defang("[x](https://e.test)"), "[x]\u200b(https://e.test)")
+        self.assertEqual(defang("mail ops@example.com about @alice"),
+                         "mail ops@example.com about @alice")
+
+
 class SlackTests(_Net, TestCase):
     HOOK = "https://hooks.slack.com/services/T000/B000/XXXX"
 
@@ -99,6 +110,18 @@ class SlackTests(_Net, TestCase):
         for fact in ("Host: web-1", "Site: Leeds", "Value: 97.0", "Rule: High CPU"):
             self.assertIn(fact, text)
         self.assertEqual(sent["blocks"][-1]["elements"][0]["url"], "https://vigil.test/hosts/7/")
+
+    def test_no_alert_text_can_ping_a_room_or_hide_a_link(self):
+        channels.get("slack").send({"webhook_url": self.HOOK}, message(
+            title="Alert: <!channel> @here", text="see [login](https://evil.test) @Everyone",
+            host="@all"))
+        sent = json.loads(self.transport.call_args.args[6])
+        everything = json.dumps(sent, ensure_ascii=False)
+        self.assertNotIn("<!channel>", everything)
+        self.assertIn("&lt;!channel&gt;", sent["text"])
+        for raw in ("@here", "@Everyone", "@all", "](https"):
+            self.assertNotIn(raw, everything)
+        self.assertIn("@\u200bhere", sent["text"])
 
     def test_blank_facts_and_link_are_left_out(self):
         channels.get("slack").send({"webhook_url": self.HOOK},
