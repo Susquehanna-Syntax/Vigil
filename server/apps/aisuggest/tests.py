@@ -173,6 +173,57 @@ class ProviderCrudTests(TestCase):
         resp = self.client.post("/api/v1/ai/providers/", {"name": "empty"})
         self.assertFalse(resp.json()["configured"])
 
+    def test_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            AiDetailSerializer,
+            AiProviderKeyStateSerializer,
+            ProviderTestOkSerializer,
+            SuggestRunSerializer,
+        )
+
+        created = self.client.post(
+            "/api/v1/ai/providers/",
+            {"name": "local box", "base_url": "http://10.0.0.108:11434/v1",
+             "model": "qwopus", "api_key": "sk-secret"},
+        )
+        self.assertEqual(created.status_code, 201, created.content)
+        assert_shape(self, created.json(), AiProviderKeyStateSerializer)
+
+        listed = self.client.get("/api/v1/ai/providers/")
+        self.assertTrue(listed.json(), "an empty list checks no item shape")
+        assert_shape(self, listed.json(), AiProviderKeyStateSerializer(many=True))
+
+        pid = created.json()["id"]
+        patched = self.client.patch(f"/api/v1/ai/providers/{pid}/",
+                                    {"enabled": False},
+                                    content_type="application/json")
+        assert_shape(self, patched.json(), AiProviderKeyStateSerializer)
+        refused = self.client.patch(f"/api/v1/ai/providers/{pid}/",
+                                    {"reasoning_effort": "extreme"},
+                                    content_type="application/json")
+        self.assertEqual(refused.status_code, 400, refused.content)
+        assert_shape(self, refused.json(), AiDetailSerializer)
+
+        provider = make_provider()
+        with fake_completion(f"```yaml\n{GOOD_YAML}```\n"):
+            tested = self.client.post(f"/api/v1/ai/providers/{provider.id}/test/")
+        self.assertTrue(tested.json()["ok"], tested.content)
+        assert_shape(self, tested.json(), ProviderTestOkSerializer)
+
+        host = Host.objects.create(hostname="web-09", agent_token=uuid.uuid4().hex)
+        rule = AlertRule.objects.create(name="disk", category="disk", metric="disk_pct",
+                                        operator="gt", threshold=90, severity="critical")
+        alert = Alert.objects.create(host=host, rule=rule, severity="critical",
+                                     message="disk 97% full")
+        with fake_completion(f"Checked the host.\n\n```yaml\n{GOOD_YAML}```\n"):
+            run = self.client.post(f"/api/v1/ai/suggest/alert/{alert.id}/",
+                                   {"provider_id": provider.id})
+        self.assertEqual(run.status_code, 200, run.content)
+        self.assertTrue(run.json()["suggestions"], "an empty list checks no item shape")
+        assert_shape(self, run.json(), SuggestRunSerializer)
+
     def test_provider_management_requires_admin(self):
         get_user_model().objects.create_user("v", password="x")
         c = self.client_class()

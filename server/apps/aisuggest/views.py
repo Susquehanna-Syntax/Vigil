@@ -10,6 +10,7 @@ import re
 import time
 
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -19,6 +20,17 @@ from apps.alerts.models import Alert
 from apps.tasks.spec import SpecError, parse_and_validate
 from vigil import scoping
 
+from .api_schema import (
+    AiDetailSerializer,
+    AiProviderCreateSerializer,
+    AiProviderKeyStateSerializer,
+    AiProviderPatchSerializer,
+    AiSuggestRequestSerializer,
+    ProviderTestFailureSerializer,
+    ProviderTestOkSerializer,
+    SuggestRunFailureSerializer,
+    SuggestRunSerializer,
+)
 from .models import AiProvider, ProviderKind, ReasoningEffort
 from .prompt import repair_prompt, system_prompt
 from .providers import ProviderError, provider_for
@@ -48,6 +60,10 @@ def _provider_dict(p: "AiProvider", *, with_key_state=False) -> dict:
 # ── Provider management ────────────────────────────────────────────────────
 
 
+@extend_schema(methods=["GET"], responses=AiProviderKeyStateSerializer(many=True))
+@extend_schema(methods=["POST"], request=AiProviderCreateSerializer,
+               responses={201: AiProviderKeyStateSerializer,
+                          400: AiDetailSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAdmin, SettingsPage("ai")])
 def providers(request):
@@ -73,6 +89,9 @@ def providers(request):
     return Response(_provider_dict(p, with_key_state=True), status=201)
 
 
+@extend_schema(methods=["PATCH"], request=AiProviderPatchSerializer,
+               responses={200: AiProviderKeyStateSerializer, 400: AiDetailSerializer})
+@extend_schema(methods=["DELETE"], responses=None)
 @api_view(["PATCH", "DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin, SettingsPage("ai")])
 def provider_detail(request, provider_id):
@@ -121,6 +140,9 @@ _TEST_PROMPT = (
 )
 
 
+@extend_schema(request=None,
+               responses={200: ProviderTestOkSerializer,
+                          502: ProviderTestFailureSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin, SettingsPage("ai")])
 def provider_test(request, provider_id):
@@ -193,6 +215,9 @@ def _run_provider(provider_id: int, prompt: str) -> Response:
     )
 
 
+@extend_schema(request=AiSuggestRequestSerializer,
+               responses={200: SuggestRunSerializer, 409: AiDetailSerializer,
+                          502: SuggestRunFailureSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsOperator])
 def suggest_for_alert(request, alert_id):
@@ -208,6 +233,9 @@ def suggest_for_alert(request, alert_id):
     return _run_provider(int(provider_id), _alert_prompt(alert))
 
 
+@extend_schema(request=AiSuggestRequestSerializer,
+               responses={200: SuggestRunSerializer, 409: AiDetailSerializer,
+                          502: SuggestRunFailureSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsOperator])
 def suggest_for_vuln(request, finding_id):
@@ -236,6 +264,9 @@ def suggest_for_vuln(request, finding_id):
     )
 
 
+@extend_schema(request=AiSuggestRequestSerializer,
+               responses={200: SuggestRunSerializer, 409: AiDetailSerializer,
+                          502: SuggestRunFailureSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsOperator])
 def suggest_for_fix_group(request):

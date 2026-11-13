@@ -5,6 +5,8 @@ import uuid
 from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -15,6 +17,15 @@ from apps.playbooks.models import Playbook
 from vigil import scoping
 
 from . import widgets
+from .api_schema import (
+    ReportCreateSerializer,
+    ReportDataSerializer,
+    ReportDetailSerializer,
+    ReportPatchSerializer,
+    ReportPreviewSerializer,
+    ReportRowSerializer,
+    WidgetCatalogEntrySerializer,
+)
 from .models import Report
 
 _FIELDS = ("name", "description", "range_days", "widgets", "playbooks", "automations")
@@ -24,6 +35,9 @@ _WIDGET_KEYS = frozenset(("kind", "title", "chart", "x_label", "y_label", "legen
 _PLACE_KEYS = ("x", "y", "w", "h")
 
 
+@extend_schema(methods=["GET"], responses=ReportRowSerializer(many=True))
+@extend_schema(methods=["POST"], request=ReportCreateSerializer,
+               responses={201: ReportRowSerializer, 400: ReportDetailSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def report_index(request):
@@ -47,6 +61,10 @@ def report_index(request):
     return Response(_row(report, request.user), status=201)
 
 
+@extend_schema(methods=["GET"], responses=ReportRowSerializer)
+@extend_schema(methods=["PATCH"], request=ReportPatchSerializer,
+               responses={200: ReportRowSerializer, 400: ReportDetailSerializer})
+@extend_schema(methods=["DELETE"], responses=None)
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def report_detail(request, report_id):
@@ -71,6 +89,7 @@ def report_detail(request, report_id):
     return Response(_row(report, request.user))
 
 
+@extend_schema(responses=WidgetCatalogEntrySerializer(many=True))
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def widget_catalog(request):
@@ -84,6 +103,8 @@ def widget_catalog(request):
                      for kind, spec in widgets.WIDGETS.items()])
 
 
+@extend_schema(request=ReportPreviewSerializer,
+               responses={200: ReportDataSerializer, 400: ReportDetailSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def report_preview(request):
@@ -105,6 +126,7 @@ def report_preview(request):
         payload["range_days"], payload["widgets"], request.user))
 
 
+@extend_schema(responses=ReportDataSerializer)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def report_data(request, report_id):
@@ -112,6 +134,7 @@ def report_data(request, report_id):
     return Response(widgets.compute(report, request.user))
 
 
+@extend_schema(responses={(200, "text/csv"): OpenApiTypes.BINARY})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def report_data_csv(request, report_id, index):
