@@ -341,7 +341,9 @@ def _transport(method, scheme, address, port, hostname, path, body, headers):
             address, port, server_hostname=hostname, assert_hostname=hostname,
             cert_reqs="CERT_REQUIRED", ca_certs=certifi.where(), **kwargs)
     else:
-        pool = urllib3.HTTPConnectionPool(address, port, **kwargs)
+        # Plain HTTP only when the admin entered an http:// URL, as a LAN ntfy
+        # or Gotify often is; the address was still checked by check_destination.
+        pool = urllib3.HTTPConnectionPool(address, port, **kwargs)  # nosemgrep: http-not-https-connection
     try:
         resp = pool.urlopen(method, path, body=body, headers=headers,
                             redirect=False, preload_content=False)
