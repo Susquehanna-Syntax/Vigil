@@ -94,6 +94,15 @@ class MetricCatalogTests(TestCase):
         self.assertEqual([(r["category"], r["metric"]) for r in rows],
                          [("custom", "my_metric")])
 
+    def test_the_catalog_response_matches_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import MetricCatalogEntrySerializer
+
+        self._point("cpu", "usage_percent")
+        assert_shape(self, self.client.get("/api/v1/metrics/catalog/").json(),
+                     MetricCatalogEntrySerializer(many=True))
+
 
 class MetricHistoryCostTests(TestCase):
     """The history endpoint must not pull a whole series into the worker.
@@ -185,3 +194,15 @@ class MetricHistoryCostTests(TestCase):
         resp = self.client.get(self._url(limit=1000))
         self.assertEqual(len(resp.json()), 500)
         self.assertEqual(resp["X-Vigil-Sampled"], "0")
+
+    def test_the_history_response_matches_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import MetricSampleSerializer
+
+        MetricPoint.objects.create(host=self.host, category="disk",
+                                   metric="usage_percent", value=41.5,
+                                   time=now(), labels={"mount": "/"})
+        resp = self.client.get(self._url(limit=5))
+        self.assertEqual(resp.status_code, 200)
+        assert_shape(self, resp.json(), MetricSampleSerializer(many=True))

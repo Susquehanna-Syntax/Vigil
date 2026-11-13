@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -12,10 +13,24 @@ from rest_framework.response import Response
 from vigil import scoping
 from apps.hosts.models import Host
 
+from .api_schema import (
+    MetricCatalogEntrySerializer,
+    MetricErrorSerializer,
+    MetricSampleSerializer,
+    MetricsRecentSerializer,
+)
 from .models import MetricPoint
 from .serializers import MetricPointSerializer
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter("limit", int, description="Newest points to sample; 1-1000, default 200."),
+        OpenApiParameter("from", str, description="ISO-8601 lower bound on the point time."),
+        OpenApiParameter("to", str, description="ISO-8601 upper bound on the point time."),
+    ],
+    responses={(200, "application/json"): MetricSampleSerializer(many=True),
+               (400, "application/json"): MetricErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def metric_history(request, host_id, category, metric_name):
@@ -126,6 +141,7 @@ COLLECTOR_METRICS = (
 )
 
 
+@extend_schema(responses={(200, "application/json"): MetricCatalogEntrySerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def metric_catalog(request):
@@ -209,6 +225,15 @@ def _label_key(labels):
     return tuple(sorted((labels or {}).items())) if isinstance(labels, dict) else (str(labels),)
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter("series", str, required=True,
+                         description="`category/metric[:limit]`, comma-separated."),
+        OpenApiParameter("hosts", str, description="Comma-separated host ids; the whole fleet otherwise."),
+        OpenApiParameter("from", str, description="ISO-8601 lower bound on the point time."),
+    ],
+    responses={(200, "application/json"): MetricsRecentSerializer,
+               (400, "application/json"): MetricErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def metrics_recent(request):

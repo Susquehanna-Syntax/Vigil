@@ -8,6 +8,7 @@ strips it.
 
 from django.conf import settings
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -16,6 +17,17 @@ from apps.accounts.permissions import IsAdmin, SettingsPage
 from apps.accounts.totp import require_totp_confirmation
 from vigil.licensing import relays_allowed, upgrade_body
 
+from .api_schema import (
+    RelayCreateSerializer,
+    RelayCreatedSerializer,
+    RelayErrorSerializer,
+    RelayKeySerializer,
+    RelayListSerializer,
+    RelayRotateKeySerializer,
+    RelaySerializer,
+    RelayUpdateSerializer,
+    UpgradeRequiredSerializer,
+)
 from .models import (
     Relay, enabled_remote_count, generate_key, in_service, set_key,
 )
@@ -68,6 +80,11 @@ def _over_limit() -> Response:
     return Response(body, status=402)
 
 
+@extend_schema(methods=["GET"], responses={200: RelayListSerializer})
+@extend_schema(methods=["POST"], request=RelayCreateSerializer,
+               responses={201: RelayCreatedSerializer,
+                          400: RelayErrorSerializer,
+                          402: UpgradeRequiredSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAdmin, SettingsPage("relays")])
 def relay_index(request):
@@ -117,6 +134,10 @@ def relay_index(request):
     return Response(row, status=201)
 
 
+@extend_schema(methods=["PATCH"], request=RelayUpdateSerializer,
+               responses={200: RelaySerializer, 400: RelayErrorSerializer})
+@extend_schema(methods=["DELETE"], request=None,
+               responses={(204, "application/json"): None, 400: RelayErrorSerializer})
 @api_view(["PATCH", "DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin, SettingsPage("relays")])
 def relay_detail(request, relay_id):
@@ -195,6 +216,8 @@ def relay_detail(request, relay_id):
     return Response(_row(relay))
 
 
+@extend_schema(request=RelayRotateKeySerializer,
+               responses={200: RelayKeySerializer, 400: RelayErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin, SettingsPage("relays")])
 def relay_rotate_key(request, relay_id):

@@ -115,6 +115,54 @@ class StatusPageTests(TestCase):
         c.login(username="v", password="x")
         self.assertEqual(c.get("/api/v1/status-pages/").status_code, 403)
 
+    def test_the_responses_match_the_api_schema(self):
+        from django.utils.timezone import now
+
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            StatusPageHostChoiceSerializer,
+            StatusPageSerializer,
+            StatusPageUptimeDaySerializer,
+        )
+
+        host = make_host("shaped-01")
+        created = self.client.post("/api/v1/status-pages/", {})
+        self.assertEqual(created.status_code, 201, created.content)
+        assert_shape(self, created.json(), StatusPageSerializer)
+
+        # A licensed page carries the branding keys; an unlicensed one does
+        # not, which is why the serializer marks them optional.
+        licensing.set_license(make_blob())
+        listed = self.client.get("/api/v1/status-pages/")
+        self.assertEqual(listed.status_code, 200, listed.content)
+        assert_shape(self, listed.json(), StatusPageSerializer(many=True))
+
+        hosts = self.client.get("/api/v1/status-pages/hosts/")
+        self.assertEqual(hosts.status_code, 200, hosts.content)
+        assert_shape(self, hosts.json(), StatusPageHostChoiceSerializer(many=True))
+
+        HostUptimeSample.objects.create(host=host, up=True, time=now())
+        uptime = self.client.get(f"/api/v1/status-pages/uptime/{host.id}/")
+        self.assertEqual(uptime.status_code, 200, uptime.content)
+        assert_shape(self, uptime.json(), StatusPageUptimeDaySerializer(many=True))
+
+        patched = self.client.patch(f"/api/v1/status-pages/{created.json()['id']}/",
+                                    {"title": "Shaped"}, content_type="application/json")
+        self.assertEqual(patched.status_code, 200, patched.content)
+        assert_shape(self, patched.json(), StatusPageSerializer)
+
+    def test_the_refusal_matches_the_api_schema(self):
+        """What an unlicensed second page answers with."""
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import StatusPageUpgradeSerializer
+
+        self.client.post("/api/v1/status-pages/", {})
+        refused = self.client.post("/api/v1/status-pages/", {})
+        self.assertEqual(refused.status_code, 402, refused.content)
+        assert_shape(self, refused.json(), StatusPageUpgradeSerializer)
+
 
 class HostLabelTests(TestCase):
     def setUp(self):

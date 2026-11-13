@@ -210,6 +210,35 @@ class RelayApiTests(TestCase):
         self.client.force_authenticate(viewer)
         self.assertEqual(self.client.get("/api/v1/relays/").status_code, 403)
 
+    def test_the_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            RelayCreatedSerializer,
+            RelayKeySerializer,
+            RelayListSerializer,
+            RelaySerializer,
+        )
+
+        with patch("apps.relays.views.relays_allowed", return_value=10):
+            created = self._create(name="shaped")
+        self.assertEqual(created.status_code, 201, created.content)
+        assert_shape(self, created.json(), RelayCreatedSerializer)
+
+        listed = self.client.get("/api/v1/relays/")
+        self.assertEqual(listed.status_code, 200, listed.content)
+        assert_shape(self, listed.json(), RelayListSerializer)
+
+        detail = self.client.patch(f"/api/v1/relays/{created.json()['id']}/",
+                                   {"name": "shaped-2"}, format="json")
+        self.assertEqual(detail.status_code, 200, detail.content)
+        assert_shape(self, detail.json(), RelaySerializer)
+
+        rotated = self.client.post(
+            f"/api/v1/relays/{created.json()['id']}/rotate-key/", {}, format="json")
+        self.assertEqual(rotated.status_code, 200, rotated.content)
+        assert_shape(self, rotated.json(), RelayKeySerializer)
+
 
 class RelayGateTests(TestCase):
     def setUp(self):

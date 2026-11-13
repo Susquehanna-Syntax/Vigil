@@ -339,6 +339,72 @@ class DashboardTests(TestCase):
             self.assertIn("min_h", entry)
             self.assertIn("settings", entry)
 
+    def test_the_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            DashboardCatalogSerializer,
+            DashboardErrorSerializer,
+            DashboardSerializer,
+            DashboardUpgradeSerializer,
+        )
+
+        self._login(self.user)
+        created = self.client.post("/api/v1/dashboards/", {"name": "Shaped"},
+                                   format="json")
+        self.assertEqual(created.status_code, 201, created.content)
+        assert_shape(self, created.json(), DashboardSerializer)
+
+        listed = self.client.get("/api/v1/dashboards/")
+        self.assertEqual(listed.status_code, 200, listed.content)
+        assert_shape(self, listed.json(), DashboardSerializer(many=True))
+
+        detail = self.client.get(f"/api/v1/dashboards/{created.json()['id']}/")
+        self.assertEqual(detail.status_code, 200, detail.content)
+        assert_shape(self, detail.json(), DashboardSerializer)
+
+        layout = self.client.put(
+            f"/api/v1/dashboards/{created.json()['id']}/layout/",
+            {"widgets": [{"kind": "metric_chart", "x": 0, "y": 0, "w": 6, "h": 4}]},
+            format="json")
+        self.assertEqual(layout.status_code, 200, layout.content)
+        assert_shape(self, layout.json(), DashboardSerializer)
+
+        catalog = self.client.get("/api/v1/dashboards/catalog/")
+        self.assertEqual(catalog.status_code, 200, catalog.content)
+        assert_shape(self, catalog.json(), DashboardCatalogSerializer)
+        # A widget that needs a licence carries the extra key; without one in
+        # the checked shape the schema would not name it.
+        self.assertTrue(any("feature" in spec
+                            for spec in catalog.json()["widgets"].values()),
+                        "no feature-gated widget to check: registry changed?")
+
+        shared = self.client.post(f"/api/v1/dashboards/{created.json()['id']}/share/",
+                                  {"shared": True}, format="json")
+        self.assertEqual(shared.status_code, 402, shared.content)
+        assert_shape(self, shared.json(), DashboardUpgradeSerializer)
+
+        unnamed = self.client.post("/api/v1/dashboards/", {"name": ""}, format="json")
+        self.assertEqual(unnamed.status_code, 400, unnamed.content)
+        assert_shape(self, unnamed.json(), DashboardErrorSerializer)
+
+    def test_a_shared_dashboard_reads_and_refuses_in_the_documented_shape(self):
+        """The two bodies a non-owner of a shared dashboard gets."""
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import DashboardErrorSerializer, DashboardSerializer
+
+        board = self._board(self.user, name="Shared shape", shared=True)
+        self._login(self.other)
+        read = self.client.get(f"/api/v1/dashboards/{board.id}/")
+        self.assertEqual(read.status_code, 200, read.content)
+        assert_shape(self, read.json(), DashboardSerializer)
+
+        refused = self.client.patch(f"/api/v1/dashboards/{board.id}/",
+                                    {"name": "Hijack"}, format="json")
+        self.assertEqual(refused.status_code, 403, refused.content)
+        assert_shape(self, refused.json(), DashboardErrorSerializer)
+
     def test_deleting_a_dashboard_takes_its_widgets_with_it(self):
         board = starter_dashboard(self.user)
         self._login(self.user)
