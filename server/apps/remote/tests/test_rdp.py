@@ -174,7 +174,7 @@ class _FakeGuacd:
             await writer.drain()
         elif self.script and self.script[0] == "expect":
             wanted = self.script[1]
-            if not await _wait_for(lambda: wanted in b"".join(self.from_bridge), 5.0):
+            if not await _wait_for(lambda: wanted in b"".join(self.from_bridge), 20.0):
                 writer.close()
                 return
             self.send_to_client("sync", "answered", "0")
@@ -616,9 +616,23 @@ class DesktopSessionTests(_DesktopCase):
     async def test_the_agents_bytes_reach_guacd_over_the_bridge(self):
         wanted = b"\x03\x00\x00\x13nego"
         guacd = await self.guacd(script=("expect", wanted))
-        browser = await self.browser()
-        await self.login(browser)
-        self.assertTrue(await guacd.wait_for_handshake())
+        bridges = []
+
+        class Recorded(rdp.OneShotBridge):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                bridges.append(self)
+
+        with patch.object(rdp, "OneShotBridge", Recorded):
+            browser = await self.browser()
+            await self.login(browser)
+            self.assertTrue(await guacd.wait_for_handshake())
+            # guacd dials the bridge only after its handshake, and the bridge
+            # drops agent bytes that come before guacd is on it: in real use the
+            # RDP client speaks first, so there are none. Wait for guacd's side.
+            self.assertTrue(await _wait_for(
+                lambda: bridges and bridges[0]._writer is not None, 20.0),
+                "guacd never connected to the bridge")
 
         bus.push_sync(bus.A2B_KEY.format(sid=str(self.session.id)),
                       {"t": "out", "d": base64.b64encode(wanted).decode()})
