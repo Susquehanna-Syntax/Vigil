@@ -1,12 +1,31 @@
+"""Host API tests: enrolment and check-in, the agent-facing payloads, and the
+console's inventory endpoints, each response checked against its schema."""
+import uuid
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.utils.timezone import now
 from rest_framework.test import APIClient
 
-from apps.hosts.models import Host
+from apps.accounts.models import Role, UserProfile
+from apps.hosts.models import ContainerStack, DockerContainer, Host
 from apps.metrics.models import MetricPoint
-
+from vigil.schema_check import assert_shape
 from vigil.testsupport import requires_business
+
+from .api_schema import (
+    HostsCheckinSerializer,
+    HostsCheckPendingSerializer,
+    HostsContainerSerializer,
+    HostsErrorSerializer,
+    HostsHostSerializer,
+    HostsInventoryListSerializer,
+    HostsInventoryRowSerializer,
+    HostsRegisterResponseSerializer,
+    HostsStackSerializer,
+    HostsTagSerializer,
+    HostsTransportAckSerializer,
+)
 
 
 class RegisterTests(TestCase):
@@ -383,3 +402,91 @@ class ContainerEngineIngestTests(TestCase):
         self._checkin({})
         self.host.refresh_from_db()
         self.assertEqual(len(self.host.container_engines), 1)
+
+
+class Test43ResponsesMatchTheApiSchema(TestCase):
+    """Every endpoint this app's agent and inventory views expose answers with
+    what ``apps/hosts/api_schema.py`` documents."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = get_user_model().objects.create_user("op", password="pw")
+        UserProfile.objects.create(user=self.user, role=Role.ADMIN)
+        self.client.force_authenticate(self.user)
+        self.host = Host.objects.create(
+            hostname="h1", agent_token="tok-" + "a" * 32, os="linux",
+            status=Host.Status.ONLINE, mode=Host.Mode.FULL_CONTROL)
+
+    def _checkin(self, payload=None):
+        return self.client.post("/api/v1/checkin", {"hostname": "h1", **(payload or {})},
+                                format="json",
+                                HTTP_AUTHORIZATION=f"Bearer {self.host.raw_agent_token}")
+
+    def test_43_responses_match_the_api_schema(self):
+        resp = self._checkin()
+        self.assertEqual(resp.status_code, 200, resp.content)
+        assert_shape(self, resp.json(), HostsCheckinSerializer)
+
+        polled = self.client.post(f"/api/v1/hosts/{self.host.id}/poll/", {}, format="json")
+        self.assertEqual(polled.status_code, 200, polled.content)
+        assert_shape(self, polled.json(), HostsHostSerializer)
+
+        pending = Host.objects.create(hostname="new-01", agent_token="tok-" + "b" * 32,
+                                      machine_id="mid-new", status=Host.Status.PENDING)
+        check = self.client.post("/api/v1/hosts/check-pending/",
+                                 {"token": pending.raw_agent_token}, format="json")
+        self.assertEqual(check.status_code, 200, check.content)
+        assert_shape(self, check.json(), HostsCheckPendingSerializer)
+
+        registered = self.client.post("/api/v1/register", {
+            "agent_token": "tok-" + "c" * 32, "hostname": "new-02", "os": "linux"},
+            format="json")
+        self.assertEqual(registered.status_code, 201, registered.content)
+        assert_shape(self, registered.json(), HostsRegisterResponseSerializer)
+
+        listed = self.client.get("/api/v1/hosts/inventory/")
+        self.assertEqual(listed.status_code, 200, listed.content)
+        self.assertTrue(listed.json()["rows"], "an empty list checks no row shape")
+        assert_shape(self, listed.json(), HostsInventoryListSerializer)
+
+        detail = self.client.get(f"/api/v1/hosts/{self.host.id}/inventory/")
+        self.assertEqual(detail.status_code, 200, detail.content)
+        assert_shape(self, detail.json(), HostsInventoryRowSerializer)
+
+        Host.objects.create(hostname="h2", agent_token="tok-" + "d" * 32, tags=["prod"],
+                            status=Host.Status.ONLINE)
+        tags = self.client.get("/api/v1/hosts/tags/")
+        self.assertEqual(tags.status_code, 200, tags.content)
+        self.assertIn("prod", [row["tag"] for row in tags.json()])
+        assert_shape(self, tags.json(), HostsTagSerializer(many=True))
+
+        DockerContainer.objects.create(host=self.host, container_id="1", name="web",
+                                       stack="shop", state="running")
+        containers = self.client.get(f"/api/v1/hosts/{self.host.id}/containers/")
+        self.assertEqual(containers.status_code, 200, containers.content)
+        self.assertTrue(containers.json(), "an empty list checks no container shape")
+        assert_shape(self, containers.json(), HostsContainerSerializer(many=True))
+
+        overview = self.client.get("/api/v1/hosts/docker/overview/")
+        self.assertEqual(overview.status_code, 200, overview.content)
+        self.assertTrue(overview.json())
+        assert_shape(self, overview.json(), HostsContainerSerializer(many=True))
+
+        ContainerStack.objects.create(host=self.host, project="shop", ownership="managed",
+                                      config_files=["/srv/shop/compose.yaml"],
+                                      engine="docker", container_count=1, running_count=1)
+        stacks = self.client.get(f"/api/v1/hosts/{self.host.id}/stacks/")
+        self.assertEqual(stacks.status_code, 200, stacks.content)
+        self.assertTrue(stacks.json())
+        assert_shape(self, stacks.json(), HostsStackSerializer(many=True))
+
+        acked = self.client.post("/api/v1/hosts/transport-ack/", {"acknowledged": True},
+                                 content_type="application/json")
+        self.assertEqual(acked.status_code, 200, acked.content)
+        assert_shape(self, acked.json(), HostsTransportAckSerializer)
+
+    def test_43_an_unreachable_host_is_a_documented_error(self):
+        """``scoping.host_or_404`` answers ``error``, not DRF's ``detail``."""
+        resp = self.client.get(f"/api/v1/hosts/{uuid.uuid4()}/inventory/")
+        self.assertEqual(resp.status_code, 404, resp.content)
+        assert_shape(self, resp.json(), HostsErrorSerializer)

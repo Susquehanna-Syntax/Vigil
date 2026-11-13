@@ -1,7 +1,18 @@
 """apps.hosts.views: inventory views (split from the old single module, unchanged)."""
+# ruff: noqa: I001
+# The star import stays first of this block on purpose: _common is where these
+# views get Response, api_view and the permission classes.
 from ._common import *  # noqa: F401,F403
 
+# `extend_schema` comes last of the block so the star import above stays where
+# this package has always had it.
+from ..api_schema import (HostsContainerSerializer, HostsErrorSerializer,
+                          HostsInventoryListSerializer, HostsInventoryRowSerializer,
+                          HostsStackSerializer, HostsTagSerializer)
+from drf_spectacular.utils import extend_schema
 
+
+@extend_schema(responses={200: HostsTagSerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def tag_index(request):
@@ -22,6 +33,7 @@ def tag_index(request):
     return Response(out)
 
 
+@extend_schema(responses={200: HostsInventoryListSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("inventory")
@@ -51,6 +63,7 @@ def inventory_list(request):
     return Response({"rows": rows, "custom_columns": sorted(seen_columns)})
 
 
+@extend_schema(responses={200: HostsInventoryRowSerializer, 404: HostsErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def inventory_detail(request, host_id):
@@ -61,6 +74,7 @@ def inventory_detail(request, host_id):
     return Response(HostInventorySerializer(inv).data)
 
 
+@extend_schema(responses={200: HostsStackSerializer(many=True), 404: HostsErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def host_stacks(request, host_id):
@@ -77,6 +91,7 @@ def host_stacks(request, host_id):
     } for s in host.container_stacks.all()])
 
 
+@extend_schema(responses={200: HostsContainerSerializer(many=True), 404: HostsErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def host_containers(request, host_id):
@@ -97,6 +112,7 @@ def host_containers(request, host_id):
     ).data)
 
 
+@extend_schema(responses={200: HostsContainerSerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def docker_overview(request):
