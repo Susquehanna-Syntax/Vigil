@@ -389,13 +389,17 @@ jobs:
           done
       - name: It serves, and the old default password is gone
         run: |
-          curl -sf http://localhost:9200/api/v1/health/
-          curl -sf -o /dev/null http://localhost:9200/login/
+          code() { curl -s -o /dev/null -w '%{http_code} -> %{redirect_url}' "$1"; }
+          curl -sf http://localhost:9200/api/v1/health/ \
+            || { echo "::error title=Compose::health answered $(code http://localhost:9200/api/v1/health/)"; exit 1; }
+          curl -sf -o /dev/null http://localhost:9200/login/ \
+            || { echo "::error title=Compose::login answered $(code http://localhost:9200/login/)"; exit 1; }
           # The nightly backup's pg_dump must match the pinned pg16 server.
-          docker compose exec -T celery-worker pg_dump --version | grep -E ' 16\.'
+          v="$(docker compose exec -T celery-worker pg_dump --version 2>&1)"
+          echo "$v" | grep -E ' 16\.' || { echo "::error title=Compose::pg_dump is: $v"; exit 1; }
           if docker compose exec -T db env PGPASSWORD=vigil \
               psql -h 127.0.0.1 -U vigil -d vigil -c 'select 1' >/dev/null 2>&1; then
-            echo "the database still accepts the password 'vigil'"; exit 1
+            echo "::error title=Compose::the database still accepts the password 'vigil'"; exit 1
           fi
       - name: Second boot keeps the secrets
         run: |
