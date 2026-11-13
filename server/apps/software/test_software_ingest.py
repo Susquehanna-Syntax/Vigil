@@ -372,6 +372,21 @@ class ReadApiTests(TestCase):
         self.assertEqual([r["name_key"] for r in page2["results"]], ["7-zip"])
         self.assertEqual(self.client.get("/api/v1/software/apps/?limit=abc").json()["count"], 2)
 
+    def test_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (SoftwareAppDetailSerializer, SoftwareAppListSerializer,
+                                 SoftwareHostSoftwareSerializer, SoftwareHostSummariesSerializer)
+
+        assert_shape(self, self.client.get("/api/v1/software/apps/").json(),
+                     SoftwareAppListSerializer)
+        assert_shape(self, self.client.get("/api/v1/software/apps/mozilla firefox/").json(),
+                     SoftwareAppDetailSerializer)
+        assert_shape(self, self.client.get(f"/api/v1/software/hosts/{self.h1.id}/").json(),
+                     SoftwareHostSoftwareSerializer)
+        assert_shape(self, self.client.get("/api/v1/software/hosts/").json(),
+                     SoftwareHostSummariesSerializer)
+
 
 class EndpointAuthTests(TestCase):
     def test_endpoints_require_authentication(self):

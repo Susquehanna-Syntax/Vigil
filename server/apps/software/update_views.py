@@ -3,6 +3,7 @@ fleet-wide approve / decline every policy reads."""
 
 from django.db.models import Count, Max, Min, Q
 from django.utils.timezone import now
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -11,6 +12,13 @@ from vigil import scoping
 
 from apps.accounts.permissions import IsAdmin
 
+from .api_schema import (
+    SoftwareDetailSerializer,
+    SoftwareUpdateDecidedSerializer,
+    SoftwareUpdateDecideSerializer,
+    SoftwareUpdateHostsSerializer,
+    SoftwareUpdateListSerializer,
+)
 from .models import PendingUpdate, UpdateDecision
 
 MAX_ROWS = 1000
@@ -25,6 +33,8 @@ def _decisions() -> dict:
     return {(d.kind, d.key): d for d in UpdateDecision.objects.select_related("decided_by")}
 
 
+@extend_schema(responses={200: SoftwareUpdateListSerializer,
+                         403: SoftwareDetailSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def update_list(request):
@@ -68,6 +78,12 @@ def update_list(request):
     return Response({"count": len(rows), "results": rows})
 
 
+@extend_schema(description="The hosts missing one update. ``kind`` and "
+                          "``key`` are plain query filters: with neither the "
+                          "view matches rows whose kind and key are both "
+                          "empty, which is why it answers 200 with no results.",
+               responses={200: SoftwareUpdateHostsSerializer,
+                          403: SoftwareDetailSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def update_hosts(request):
@@ -84,6 +100,10 @@ def update_hosts(request):
     } for p in rows[:MAX_ROWS]]})
 
 
+@extend_schema(request=SoftwareUpdateDecideSerializer,
+               responses={200: SoftwareUpdateDecidedSerializer,
+                          400: SoftwareDetailSerializer,
+                          403: SoftwareDetailSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def update_decide(request):
