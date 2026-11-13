@@ -507,7 +507,7 @@ jobs:
         run: |
           mkdir -p zap && chmod 777 zap
           docker run --rm --network host -v "$PWD/zap:/zap/wrk" \
-            zaproxy/zaproxy:2.16.1 zap-baseline.py \
+            ghcr.io/zaproxy/zaproxy:2.17.0 zap-baseline.py \
             -t http://localhost:9200/login/ -r zap-report.html -J zap-report.json -I
       - name: Summarise the ZAP findings
         if: always()
