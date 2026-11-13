@@ -226,6 +226,16 @@ class LicenseApiTests(TestCase):
         self.assertTrue(names["playbooks"]["active"])
         self.assertFalse(names["sites"]["active"])
 
+    def test_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+        from .api_schema import DetailSerializer, LicenseSerializer
+
+        assert_shape(self, self.client.get("/api/v1/license/").json(), LicenseSerializer)
+        assert_shape(self, self.client.post("/api/v1/license/", {"license": make_blob()}).json(),
+                     LicenseSerializer)
+        assert_shape(self, self.client.post("/api/v1/license/", {"license": "junk"}).json(),
+                     DetailSerializer)
+
     def test_paste_valid_license_via_api(self):
         resp = self.client.post("/api/v1/license/", {"license": make_blob()},
                                 format=None)

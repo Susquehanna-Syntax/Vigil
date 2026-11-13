@@ -250,6 +250,9 @@ class RefreshApiTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["refresh_now"]["result"], "unreachable")
         self.assertEqual(resp.json()["refresh"]["result"], "unreachable")
+        from vigil.schema_check import assert_shape
+        from .api_schema import LicenseRefreshSerializer
+        assert_shape(self, resp.json(), LicenseRefreshSerializer)
 
     def test_the_about_page_names_the_licensee(self):
         licensing.set_license(make_blob())

@@ -4,6 +4,7 @@ panels need it); POST (paste) is admin-only."""
 
 import threading
 
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -12,7 +13,18 @@ from apps.accounts.permissions import IsAdmin, SettingsPage, settings_allows
 from vigil import licensing
 from vigil.editions import FEATURE_TIERS
 
+from .api_schema import (
+    DetailSerializer,
+    LicensePasteSerializer,
+    LicenseRefreshSerializer,
+    LicenseSerializer,
+)
 
+
+@extend_schema(methods=["GET"], responses=LicenseSerializer)
+@extend_schema(methods=["POST"], request=LicensePasteSerializer,
+               responses={200: LicenseSerializer, 400: DetailSerializer,
+                          403: DetailSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def license_view(request):
@@ -36,6 +48,7 @@ def license_view(request):
     return Response(_payload())
 
 
+@extend_schema(request=None, responses=LicenseRefreshSerializer)
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin, SettingsPage("license")])
 def license_refresh(request):
