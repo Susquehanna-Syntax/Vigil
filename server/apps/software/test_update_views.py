@@ -110,6 +110,37 @@ class UpdateListTests(TestCase):
         rows = scoped.get("/api/v1/software/updates/").json()["results"]
         self.assertEqual({r["key"]: r["hosts"] for r in rows}, {"KB1": 1, "KB2": 1})
 
+    def test_responses_match_the_api_schema(self):
+        from .api_schema import (SoftwareDetailSerializer, SoftwareUpdateDecidedSerializer,
+                                 SoftwareUpdateHostsSerializer, SoftwareUpdateListSerializer)
+
+        from vigil.schema_check import assert_shape
+
+        assert_shape(self, self.client.get("/api/v1/software/updates/").json(),
+                     SoftwareUpdateListSerializer)
+        assert_shape(self,
+                     self.client.get("/api/v1/software/updates/hosts/?kind=windows&key=KB1").json(),
+                     SoftwareUpdateHostsSerializer)
+        for body in ({"kind": "mac", "keys": ["x"], "decision": "approved"},
+                     {"kind": "windows", "keys": [], "decision": "approved"},
+                     {"kind": "windows", "keys": [""], "decision": "approved"},
+                     {"kind": "windows", "keys": ["KB1"], "decision": "maybe"}):
+            with self.subTest(body=body):
+                resp = self.client.post("/api/v1/software/updates/decide/", body, format="json")
+                self.assertEqual(resp.status_code, 400)
+                assert_shape(self, resp.json(), SoftwareDetailSerializer)
+        viewer = _client("upd-schema-viewer", role=Role.VIEWER)
+        denied = viewer.post("/api/v1/software/updates/decide/",
+                             {"kind": "windows", "keys": ["KB1"], "decision": "declined"},
+                             format="json")
+        self.assertEqual(denied.status_code, 403)
+        assert_shape(self, denied.json(), SoftwareDetailSerializer)
+        assert_shape(self,
+                     self.client.post("/api/v1/software/updates/decide/",
+                                      {"kind": "windows", "keys": ["KB1"], "decision": "declined"},
+                                      format="json").json(),
+                     SoftwareUpdateDecidedSerializer)
+
 
 class ByUpdateTabWiringTests(TestCase):
     """No JS runner: the ids and calls the tab depends on, pinned by source scan."""

@@ -11,6 +11,8 @@ import re
 from django.db import transaction
 from django.http import Http404, HttpResponse
 from django.utils.timezone import now
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.throttling import AnonRateThrottle
@@ -36,6 +38,8 @@ def _miss() -> Http404:
 
 
 @scoping.system_view(reason="agent install: a one-time profile token is the access control")
+@extend_schema(responses={(200, "text/yaml"): OpenApiTypes.BINARY},
+               auth=[], request=None)
 @api_view(["GET"])
 @permission_classes([AllowAny])
 @throttle_classes([_ConfigThrottle])

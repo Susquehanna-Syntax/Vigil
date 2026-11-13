@@ -1,4 +1,5 @@
 from django.db import IntegrityError, transaction
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -6,6 +7,16 @@ from rest_framework.response import Response
 
 from vigil.licensing import licence_gate
 
+from .api_schema import (
+    DashboardCatalogSerializer,
+    DashboardCreateSerializer,
+    DashboardErrorSerializer,
+    DashboardLayoutSerializer,
+    DashboardPatchSerializer,
+    DashboardSerializer,
+    DashboardShareSerializer,
+    DashboardUpgradeSerializer,
+)
 from .models import Dashboard, DashboardWidget, starter_dashboard
 from .widgets import GRID_COLUMNS, GRID_MAX_ROWS, WIDGET_REGISTRY
 
@@ -44,6 +55,9 @@ def _visible_dashboards(user):
     return list(qs) + list(shared)
 
 
+@extend_schema(methods=["GET"], responses=DashboardSerializer(many=True))
+@extend_schema(methods=["POST"], request=DashboardCreateSerializer,
+               responses={201: DashboardSerializer, 400: DashboardErrorSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def dashboard_list(request):
@@ -77,6 +91,13 @@ def dashboard_list(request):
     return Response(_serialize(board, request.user), status=status.HTTP_201_CREATED)
 
 
+@extend_schema(methods=["GET"],
+               responses={200: DashboardSerializer,
+                          403: DashboardErrorSerializer})
+@extend_schema(methods=["PATCH"], request=DashboardPatchSerializer,
+               responses={200: DashboardSerializer, 400: DashboardErrorSerializer})
+@extend_schema(methods=["DELETE"], request=None,
+               responses={(204, "application/json"): None})
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def dashboard_detail(request, dashboard_id):
@@ -127,6 +148,8 @@ def dashboard_detail(request, dashboard_id):
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@extend_schema(request=DashboardLayoutSerializer,
+               responses={200: DashboardSerializer, 400: DashboardErrorSerializer})
 @api_view(["PUT"])
 @permission_classes([IsAuthenticated])
 def layout_update(request, dashboard_id):
@@ -229,6 +252,10 @@ def layout_update(request, dashboard_id):
     return Response(_serialize(board, request.user))
 
 
+@extend_schema(request=DashboardShareSerializer,
+               responses={200: DashboardSerializer,
+                          402: DashboardUpgradeSerializer,
+                          403: DashboardErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def dashboard_share(request, dashboard_id):
@@ -255,6 +282,7 @@ def dashboard_share(request, dashboard_id):
     return Response(_serialize(board, request.user))
 
 
+@extend_schema(responses=DashboardCatalogSerializer)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def catalog(request):

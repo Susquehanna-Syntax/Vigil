@@ -317,6 +317,40 @@ class ApiTests(_FreshSettings, TestCase):
         self.assertEqual(resp.status_code, 404)
         get.assert_not_called()
 
+    def test_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            CatalogBrowseSerializer,
+            CatalogCategoriesSerializer,
+            CatalogInstallTaskCreatedSerializer,
+            CatalogPackageDetailSerializer,
+            CatalogStatusSerializer,
+        )
+
+        assert_shape(self, self.client_admin.get("/api/v1/catalog/").json(),
+                     CatalogBrowseSerializer)
+        assert_shape(self, self.client_admin.get("/api/v1/catalog/categories/").json(),
+                     CatalogCategoriesSerializer)
+        assert_shape(self, self.client_admin.get(f"/api/v1/catalog/{self.ff_flat.id}/").json(),
+                     CatalogPackageDetailSerializer)
+        assert_shape(self, self.client_admin.get("/api/v1/catalog/status/").json(),
+                     CatalogStatusSerializer)
+        with mock.patch("apps.catalog.views._sync_in_background"):
+            from apps.instance import config
+            config.write("VIGIL_CATALOG_SYNC", "true", user=self.admin)
+            assert_shape(self, self.client_admin.post("/api/v1/catalog/enable/", {},
+                                                      format="json").json(),
+                         CatalogStatusSerializer)
+            assert_shape(self, self.client_admin.post("/api/v1/catalog/sync/", {},
+                                                      format="json").json(),
+                         CatalogStatusSerializer)
+        assert_shape(self,
+                     self.client_admin.post("/api/v1/catalog/install-task/",
+                                            {"packages": [self.ff_win.id]},
+                                            format="json").json(),
+                     CatalogInstallTaskCreatedSerializer)
+
     def test_an_icon_must_be_a_png(self):
         from apps.instance import config
         config.write("VIGIL_CATALOG_SYNC", "true")

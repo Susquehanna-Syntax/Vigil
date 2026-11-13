@@ -68,6 +68,23 @@ class RecentMetricsTests(TestCase):
             self.assertEqual([p["value"] for p in mem], [1.0, 0.0])
             self.assertEqual(mem[0]["labels"], {})
 
+    def test_the_recent_response_matches_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import recent_host_entry
+
+        host = _make_host("shape-1")
+        _point(host, "cpu", "usage_percent", 60, 1.0, {"interface": "eth0"})
+        resp = self.get()
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        # The body's keys are host ids and `category/metric` pairs, so the
+        # documented shape is a free-form mapping to one host's entry. With one
+        # host and one series in the answer, that entry carries an item at every
+        # level, so it — and through it each point — is really checked.
+        assert_shape(self, body[str(host.id)], recent_host_entry())
+        self.assertEqual(sorted(body), [str(host.id)])
+
     def test_old_points_are_left_out(self):
         host = _make_host("old-1")
         _point(host, "cpu", "usage_percent", 60, 9.0)

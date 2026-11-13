@@ -3,6 +3,7 @@ import logging
 from collections import Counter, defaultdict
 
 from django.db.models import Count, F, Q
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -10,6 +11,13 @@ from vigil import scoping
 
 from apps.hosts.models import Host
 
+from .api_schema import (
+    SoftwareAppDetailSerializer,
+    SoftwareAppListSerializer,
+    SoftwareErrorSerializer,
+    SoftwareHostSoftwareSerializer,
+    SoftwareHostSummariesSerializer,
+)
 from .models import SoftwareItem, SoftwareSnapshot
 
 logger = logging.getLogger(__name__)
@@ -59,6 +67,7 @@ def _row(base: dict, *, host_id=None, hostname=None, name_field="name",
     return out
 
 
+@extend_schema(responses={200: SoftwareAppListSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("software")
@@ -134,6 +143,7 @@ def app_list(request):
     return Response({"count": len(rows), "results": rows[offset:offset + limit]})
 
 
+@extend_schema(responses={200: SoftwareAppDetailSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def app_detail(request, name_key):
@@ -151,6 +161,7 @@ def app_detail(request, name_key):
     })
 
 
+@extend_schema(responses={200: SoftwareHostSoftwareSerializer, 404: SoftwareErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def host_software(request, host_id):
@@ -177,6 +188,7 @@ def host_software(request, host_id):
     })
 
 
+@extend_schema(responses={200: SoftwareHostSummariesSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def host_summaries(request):

@@ -186,6 +186,13 @@ class OptionsTests(TestCase):
         with patch("apps.remote.views.has_feature", return_value=True):
             self.assertTrue(self.options()["recorded"])
 
+    def test_the_options_response_matches_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from ..api_schema import RemoteSessionOptionsSerializer
+
+        assert_shape(self, self.options(), RemoteSessionOptionsSerializer)
+
     # -- who may ask -------------------------------------------------------
 
     def test_anonymous_may_not_ask(self):
