@@ -386,5 +386,17 @@ def post(url: str, *, json=None, data=None, headers=None) -> None:
         raise ChannelError(f"the server answered HTTP {status}")
 
 
-# Channel modules register themselves on import.
-from . import discord, email, gotify, ntfy, slack, teams, webhook  # noqa: E402,F401
+# Channel modules register themselves on import. F401: the names appear nowhere
+# else, only their import registers each channel type. Wrapping the line for its
+# length left nothing for E402 to cover, since a channel module may never import
+# this one at module level anyway - it is what they all import from.
+from . import (  # noqa: F401
+    discord,
+    email,
+    gotify,
+    ntfy,
+    pushover,
+    slack,
+    teams,
+    webhook,
+)

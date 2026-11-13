@@ -1,6 +1,7 @@
 """The native channel types (sprint M7): what each one sends, and the
 ``secret_url`` field the chat types keep their webhook URL in."""
 import json
+from urllib.parse import parse_qs
 
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -359,3 +360,60 @@ class GotifyTests(_Net, TestCase):
         with self.assertRaises(channels.ChannelError):
             channels.get("gotify").send({"server": self.SERVER, "token": "At_appsecret"},
                                         message())
+
+
+class PushoverTests(_Net, TestCase):
+
+    def _send(self, **extra):
+        """Send through the channel and return the form it posted, decoded."""
+        config = {"user": "u_secret", "token": "a_secret"}
+        config.update(extra.pop("config", {}))
+        channels.get("pushover").send(config, message(**extra))
+        return parse_qs(self.transport.call_args.args[6].decode())
+
+    def test_the_form_posts_to_pushovers_api_over_https(self):
+        self._send()
+        method, scheme, address, port, hostname, path, _body, headers = (
+            self.transport.call_args.args)
+        self.assertEqual((method, scheme, address, port, hostname, path),
+                         ("POST", "https", PUBLIC, 443, "api.pushover.net",
+                          "/1/messages.json"))
+        self.assertEqual(headers["Content-Type"], "application/x-www-form-urlencoded")
+
+    def test_a_firing_critical_alert_carries_both_keys_and_priority_1(self):
+        sent = self._send()
+        self.assertEqual(sent["token"], ["a_secret"])
+        self.assertEqual(sent["user"], ["u_secret"])
+        self.assertEqual(sent["title"], ["[FIRING] [CRITICAL] Alert: web-1"])
+        self.assertEqual(sent["priority"], ["1"])
+
+    def test_every_fact_arrives_in_the_message_under_the_text(self):
+        sent = self._send()["message"][0]
+        self.assertTrue(sent.startswith("CPU 97% > 90% <b>&\n"), sent)
+        self.assertEqual(sent.split("\n")[1:], ["Host: web-1", "Site: Leeds",
+                                                "Value: 97.0", "Rule: High CPU"])
+
+    def test_a_resolved_alert_has_priority_0(self):
+        self.assertEqual(self._send(event="resolved")["priority"], ["0"])
+
+    def test_a_long_text_arrives_cut_to_pushovers_limit(self):
+        self.assertEqual(len(self._send(text="x" * 2000)["message"][0]), 1024)
+
+    def test_a_device_is_sent_only_when_the_admin_named_one(self):
+        self.assertNotIn("device", self._send())
+        self.assertNotIn("device", self._send(config={"device": ""}))
+        self.assertEqual(self._send(config={"device": "phone"})["device"], ["phone"])
+
+    def test_the_link_arrives_with_url_title_only_when_there_is_one(self):
+        sent = self._send()
+        self.assertEqual(sent["url"], ["https://vigil.test/hosts/7/"])
+        self.assertEqual(sent["url_title"], ["Open in Vigil"])
+        without = self._send(link="")
+        self.assertNotIn("url", without)
+        self.assertNotIn("url_title", without)
+
+    def test_a_refusal_is_a_channel_error(self):
+        self.transport.return_value = 500
+        with self.assertRaises(channels.ChannelError):
+            channels.get("pushover").send({"user": "u_secret", "token": "a_secret"},
+                                          message())
