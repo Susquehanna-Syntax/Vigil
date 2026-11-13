@@ -3,6 +3,12 @@
 from django.db import migrations, models
 
 
+def trust_existing_channels(apps, schema_editor):
+    """Channels made before this release were made by superusers in the
+    Django admin, and may already point at a LAN host: keep them working."""
+    apps.get_model("alerts", "NotificationChannel").objects.update(allow_private_targets=True)
+
+
 def encrypt_webhook_secrets(apps, schema_editor):
     """Webhook shared secrets were stored in plain text; seal them the way
     every channel secret is stored from now on (apps.alerts.channels)."""
@@ -50,5 +56,11 @@ class Migration(migrations.Migration):
             name='kind',
             field=models.CharField(max_length=32),
         ),
+        migrations.AddField(
+            model_name='notificationchannel',
+            name='allow_private_targets',
+            field=models.BooleanField(default=False),
+        ),
+        migrations.RunPython(trust_existing_channels, migrations.RunPython.noop),
         migrations.RunPython(encrypt_webhook_secrets, migrations.RunPython.noop),
     ]

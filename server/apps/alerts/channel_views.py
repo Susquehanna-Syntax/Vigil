@@ -46,9 +46,12 @@ def _visible(user):
         NotificationChannel.objects.all(), user, cascade_global=True))
 
 
-def _row(channel: NotificationChannel) -> dict:
+def _row(channel: NotificationChannel, user=None) -> dict:
     kind = channels.get(channel.kind)
-    config, secrets_set = channels.public_config(kind, channel.config)
+    # Someone who may see a channel but not change it (a site admin, looking at
+    # a global channel) gets its URLs cut to scheme and host.
+    full = user is None or scoping.write_denied(user, channel) is None
+    config, secrets_set = channels.public_config(kind, channel.config, full=full)
     return {
         "id": str(channel.id),
         "name": channel.name,
@@ -92,6 +95,21 @@ def _name_or_error(raw, exclude=None):
     return name, None
 
 
+def _check_addresses(kind, config, user):
+    """``(private_ok, None)`` when every URL in *config* may be sent to by
+    this user, else ``(None, response)``. Who saved the address decides
+    whether the channel may reach the LAN (channels.check_destination)."""
+    private_ok = scoping.is_instance_admin(user)
+    plain = channels.plain_config(kind, config)
+    for f in kind.fields:
+        if f.kind == "url" and plain.get(f.name):
+            try:
+                channels.check_destination(plain[f.name], private_ok=private_ok)
+            except channels.ChannelError as exc:
+                return None, Response({"config": {f.name: str(exc)}}, status=400)
+    return private_ok, None
+
+
 def _flags(channel, data):
     for flag in ("on_firing", "on_resolved", "enabled"):
         if flag in data:
@@ -113,7 +131,7 @@ def channel_types(request):
 @permission_classes([IsAuthenticated, IsAdmin])
 def channel_index(request):
     if request.method == "GET":
-        return Response([_row(c) for c in _visible(request.user).order_by("name")])
+        return Response([_row(c, request.user) for c in _visible(request.user).order_by("name")])
 
     data = request.data
     kind, err = _kind_or_error(data.get("kind"))
@@ -128,12 +146,16 @@ def channel_index(request):
     config, errors = channels.clean_config(kind, data.get("config"))
     if errors:
         return Response({"config": errors}, status=400)
-    channel = NotificationChannel(name=name, kind=kind.kind, config=config)
+    private_ok, err = _check_addresses(kind, config, request.user)
+    if err:
+        return err
+    channel = NotificationChannel(name=name, kind=kind.kind, config=config,
+                                  allow_private_targets=private_ok)
     _flags(channel, data)
     with transaction.atomic():
         channel.save()
         scoping.place(channel, site_id)
-    return Response(_row(channel), status=status.HTTP_201_CREATED)
+    return Response(_row(channel, request.user), status=status.HTTP_201_CREATED)
 
 
 @extend_schema(methods=["GET"], responses=AlertChannelSerializer)
@@ -145,7 +167,7 @@ def channel_index(request):
 def channel_detail(request, channel_id):
     channel = get_object_or_404(_visible(request.user), pk=channel_id)
     if request.method == "GET":
-        return Response(_row(channel))
+        return Response(_row(channel, request.user))
     if denied := scoping.write_denied(request.user, channel):
         return denied
     if request.method == "DELETE":
@@ -172,13 +194,17 @@ def channel_detail(request, channel_id):
         config, errors = channels.clean_config(kind, data["config"], existing=channel.config)
         if errors:
             return Response({"config": errors}, status=400)
+        private_ok, err = _check_addresses(kind, config, request.user)
+        if err:
+            return err
         channel.config = config
+        channel.allow_private_targets = private_ok
     _flags(channel, data)
     with transaction.atomic():
         channel.save()
         if "site_id" in data:
             scoping.place(channel, new_site)
-    return Response(_row(channel))
+    return Response(_row(channel, request.user))
 
 
 @extend_schema(request=None, responses=AlertChannelTestSerializer)
@@ -208,4 +234,5 @@ def channel_test(request, channel_id):
 
     ok = deliver(channel, message_for(payload))
     channel.refresh_from_db(fields=["last_ok", "last_status", "last_status_at"])
-    return Response({"ok": ok, "detail": channel.last_status, "channel": _row(channel)})
+    return Response({"ok": ok, "detail": channel.last_status,
+                     "channel": _row(channel, request.user)})

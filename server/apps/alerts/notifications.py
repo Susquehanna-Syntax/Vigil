@@ -69,6 +69,7 @@ def deliver(channel, message) -> bool:
     elif kind.feature and not licensing.has_feature(kind.feature):
         status = f"{kind.label} needs a license that includes it"
     else:
+        token = channels.allow_private.set(channel.allow_private_targets)
         try:
             kind.send(channels.plain_config(kind, channel.config), message)
             ok, status = True, "delivered"
@@ -77,6 +78,8 @@ def deliver(channel, message) -> bool:
         except Exception:  # noqa: BLE001 — a channel bug must not stop the rest
             logger.exception("channel %s (%s) failed", channel.pk, channel.kind)
             status = "failed unexpectedly; see the server log"
+        finally:
+            channels.allow_private.reset(token)
     if ok:
         logger.info("notification sent via %s (%s)", channel.name, channel.kind)
     else:

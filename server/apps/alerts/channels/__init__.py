@@ -17,9 +17,15 @@ from __future__ import annotations
 
 import base64
 import binascii
+import contextvars
+import ipaddress
+import json as jsonlib
+import socket
+import urllib.parse
 from dataclasses import dataclass, field
 
-import requests
+import certifi
+import urllib3
 
 #: Prefix of an encrypted setting inside NotificationChannel.config.
 ENCRYPTED_PREFIX = "enc:"
@@ -140,15 +146,22 @@ def clean_config(channel_type: ChannelType, raw, existing: dict | None = None):
     existing = existing or {}
     if not isinstance(raw, dict):
         return {}, {"config": "must be an object"}
+    # A stored secret is kept only while every address stays the same: an
+    # admin who may edit a channel but never saw its token must not be able to
+    # point the URL at their own server and have Vigil send the token there.
+    urls_unchanged = all(
+        str(raw.get(f.name) or "").strip() == str(existing.get(f.name) or "")
+        for f in channel_type.fields if f.kind == "url")
     config, errors = {}, {}
     for f in channel_type.fields:
         value = raw.get(f.name, None)
         if f.kind == "secret":
             if value in (None, ""):
-                if existing.get(f.name):
+                if existing.get(f.name) and urls_unchanged:
                     config[f.name] = existing[f.name]
-                elif f.required:
-                    errors[f.name] = "required"
+                elif f.required or existing.get(f.name):
+                    errors[f.name] = ("enter it again: the address changed" if existing.get(f.name)
+                                      else "required")
                 continue
             if not isinstance(value, str) or len(value) > 2000:
                 errors[f.name] = "must be text of at most 2000 characters"
@@ -198,17 +211,97 @@ def plain_config(channel_type: ChannelType, config: dict) -> dict:
     return out
 
 
-def public_config(channel_type: ChannelType | None, config: dict) -> tuple[dict, list[str]]:
+def public_config(channel_type: ChannelType | None, config: dict,
+                  *, full: bool = True) -> tuple[dict, list[str]]:
     """``(config, secrets_set)`` for the API: secret values left out, and the
-    names of the secrets that are set listed instead."""
+    names of the secrets that are set listed instead.
+
+    Without *full* (a caller who may see the channel but not change it, such
+    as a site admin looking at a global channel) a URL shows only its scheme
+    and host: chat webhook URLs carry their token in the path.
+    """
     if channel_type is None:
         return {}, []
     secret_names = {f.name for f in channel_type.fields if f.kind == "secret"}
-    shown = {k: v for k, v in (config or {}).items() if k not in secret_names}
+    url_names = {f.name for f in channel_type.fields if f.kind == "url"}
+    shown = {}
+    for key, value in (config or {}).items():
+        if key in secret_names:
+            continue
+        if key in url_names and not full and isinstance(value, str):
+            parts = urllib.parse.urlsplit(value)
+            value = f"{parts.scheme}://{parts.hostname or ''}/..."
+        shown[key] = value
     return shown, sorted(n for n in secret_names if (config or {}).get(n))
 
 
 # ── HTTP ────────────────────────────────────────────────────────────────────
+
+#: Whether the channel being sent through may reach private (LAN) addresses.
+#: Set by notifications.deliver from the channel row for the length of a send.
+allow_private = contextvars.ContextVar("channel_allow_private", default=False)
+
+
+def _resolve(host: str, port: int) -> list[str]:
+    """Every address *host* resolves to (a seam for tests)."""
+    infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+    return [info[4][0].split("%", 1)[0] for info in infos]
+
+
+def check_destination(url: str, *, private_ok: bool) -> str:
+    """The address to connect to for *url*, or ChannelError.
+
+    Never: loopback, link-local (which holds the cloud metadata address),
+    unspecified, multicast or reserved addresses, so no admin can turn a
+    channel into a way to make Vigil call itself. Private LAN addresses only
+    when *private_ok*: a homelab's ntfy or Gotify lives there, so an admin of
+    the whole install may choose it, but a site admin may not. Every address
+    the name resolves to is checked; the first is returned, and the request is
+    sent to that address, so DNS changing its answer in between cannot move it.
+    """
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise ChannelError("the address must be an http:// or https:// URL")
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    try:
+        addresses = _resolve(parts.hostname, port)
+    except (socket.gaierror, UnicodeError) as exc:
+        raise ChannelError(f"{parts.hostname} does not resolve") from exc
+    if not addresses:
+        raise ChannelError(f"{parts.hostname} does not resolve")
+    for text in addresses:
+        address = ipaddress.ip_address(text)
+        mapped = getattr(address, "ipv4_mapped", None)
+        for a in (address, mapped) if mapped else (address,):
+            if a.is_loopback or a.is_link_local or a.is_unspecified or a.is_multicast \
+                    or a.is_reserved:
+                raise ChannelError(f"{parts.hostname} resolves to {a}, which Vigil will not send to")
+            if a.is_private and not private_ok:
+                raise ChannelError(
+                    f"{parts.hostname} is on a private network: only an administrator of the "
+                    f"whole install can send there")
+    return addresses[0]
+
+
+def _transport(method, scheme, address, port, hostname, path, body, headers):
+    """One request to *address*, presenting *hostname* for TLS and Host (a
+    seam for tests). Returns the status code; the body is never read."""
+    kwargs = {"timeout": urllib3.Timeout(total=TIMEOUT_SECONDS), "retries": False, "maxsize": 1}
+    if scheme == "https":
+        pool = urllib3.HTTPSConnectionPool(
+            address, port, server_hostname=hostname, assert_hostname=hostname,
+            cert_reqs="CERT_REQUIRED", ca_certs=certifi.where(), **kwargs)
+    else:
+        pool = urllib3.HTTPConnectionPool(address, port, **kwargs)
+    try:
+        resp = pool.urlopen(method, path, body=body, headers=headers,
+                            redirect=False, preload_content=False)
+        status = resp.status
+        resp.release_conn()
+        return status
+    finally:
+        pool.close()
+
 
 def post(url: str, *, json=None, data=None, headers=None) -> None:
     """POST to a channel's endpoint, or raise ChannelError with the reason.
@@ -217,15 +310,31 @@ def post(url: str, *, json=None, data=None, headers=None) -> None:
     misconfigured, and following it could carry the message (and its token
     header) somewhere the admin never entered.
     """
+    address = check_destination(url, private_ok=allow_private.get())
+    parts = urllib.parse.urlsplit(url)
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
+    head = {"Host": parts.hostname + (f":{parts.port}" if parts.port else ""),
+            "User-Agent": "Vigil"}
+    if json is not None:
+        body = jsonlib.dumps(json).encode()
+        head["Content-Type"] = "application/json"
+    elif isinstance(data, dict):
+        body = urllib.parse.urlencode(data).encode()
+        head["Content-Type"] = "application/x-www-form-urlencoded"
+    else:
+        body = data.encode() if isinstance(data, str) else data
+    head.update(headers or {})
     try:
-        resp = requests.post(url, json=json, data=data, headers=headers or {},
-                             timeout=TIMEOUT_SECONDS, allow_redirects=False)
-    except requests.Timeout as exc:
+        status = _transport("POST", parts.scheme, address, port, parts.hostname, path, body, head)
+    except urllib3.exceptions.TimeoutError as exc:
         raise ChannelError(f"no answer within {TIMEOUT_SECONDS} seconds") from exc
-    except requests.RequestException as exc:
+    except urllib3.exceptions.SSLError as exc:
+        raise ChannelError("its TLS certificate did not verify") from exc
+    except (urllib3.exceptions.HTTPError, OSError) as exc:
         raise ChannelError("could not connect") from exc
-    if not 200 <= resp.status_code < 300:
-        raise ChannelError(f"the server answered HTTP {resp.status_code}")
+    if not 200 <= status < 300:
+        raise ChannelError(f"the server answered HTTP {status}")
 
 
 # Channel modules register themselves on import.

@@ -30,6 +30,9 @@ class NotificationChannel(models.Model):
     on_resolved = models.BooleanField(default=True)
     enabled = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    #: May this channel reach private (LAN) addresses? Set when an admin of
+    #: the whole install saves its address, cleared when anyone else does.
+    allow_private_targets = models.BooleanField(default=False)
     #: The last delivery, test sends included: None until the first.
     last_ok = models.BooleanField(null=True, blank=True)
     last_status = models.CharField(max_length=200, blank=True, default="")
