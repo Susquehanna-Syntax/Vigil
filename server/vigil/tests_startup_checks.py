@@ -90,3 +90,20 @@ class ConfigurationGateTests(SimpleTestCase):
         with patch.dict("os.environ", {}, clear=True), \
                 patch("sys.argv", ["manage.py", "check"]):
             validate_or_die()          # must not raise
+
+    @override_settings(DEBUG=False, SECRET_KEY="a-real-random-key")
+    def test_celery_needs_no_public_address_but_still_needs_its_secrets(self):
+        """The compose file gives the Celery services no public URL; checking
+        it there crash-looped both on every install from an empty .env."""
+        env = {"VIGIL_SIGNING_KEY_SEED": _GOOD_ENV["VIGIL_SIGNING_KEY_SEED"]}
+        for argv in (["/usr/local/bin/celery", "-A", "vigil", "worker"],
+                     ["/usr/local/lib/python3.12/site-packages/celery/__main__.py", "beat"]):
+            with self.subTest(argv=argv[0]), patch("sys.argv", argv), \
+                    patch.dict("os.environ", env, clear=True):
+                self.assertEqual(collect_problems(), [])
+        with patch("sys.argv", ["/usr/local/bin/celery", "worker"]), \
+                patch.dict("os.environ", {}, clear=True):
+            self.assertTrue(any("VIGIL_SIGNING_KEY_SEED" in p for p in collect_problems()))
+        with patch("sys.argv", ["/usr/local/bin/gunicorn", "vigil.wsgi"]), \
+                patch.dict("os.environ", env, clear=True):
+            self.assertTrue(any("VIGIL_PUBLIC_URL" in p for p in collect_problems()))
