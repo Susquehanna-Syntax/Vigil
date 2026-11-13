@@ -339,6 +339,20 @@ class FailureApiTests(TestCase):
         self.assertEqual(row["state"], "failed")
         self.assertIn("sshd refused", row["output"])
 
+    def test_the_failure_and_retry_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import PlaybookDispatchSerializer, PlaybookFailureSerializer
+
+        failures = self.client.get(f"/api/v1/playbooks/{self.playbook.id}/failures/")
+        self.assertEqual(failures.status_code, 200, failures.content)
+        assert_shape(self, failures.json(), PlaybookFailureSerializer(many=True))
+
+        retried = self.client.post(f"/api/v1/playbooks/{self.playbook.id}/retry/",
+                                   {}, content_type="application/json")
+        self.assertEqual(retried.status_code, 200, retried.content)
+        assert_shape(self, retried.json(), PlaybookDispatchSerializer)
+
     def test_retrying_dispatches_again_and_clears_the_quarantine(self):
         resp = self.client.post(f"/api/v1/playbooks/{self.playbook.id}/retry/",
                                 {}, content_type="application/json")

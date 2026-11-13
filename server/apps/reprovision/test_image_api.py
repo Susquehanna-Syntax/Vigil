@@ -1,11 +1,13 @@
 """Pulling an image is admin-only and refuses destinations Vigil will not
 fetch from. The refusal comes back as a message the operator can act on, not
 a bare 400."""
+import hashlib
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils.timezone import now
 from datetime import timedelta
@@ -32,6 +34,61 @@ class ImageApiTests(TestCase):
         resp = self.client.get("/api/v1/reprovision/catalog/")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.json()), len(CATALOG))
+
+    def test_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (ReprovisionCatalogEntrySerializer,
+                                 ReprovisionImageSerializer)
+
+        assert_shape(self, self.client.get("/api/v1/reprovision/catalog/").json(),
+                     ReprovisionCatalogEntrySerializer(many=True))
+
+        # VIGIL_IMAGE_ROOT is /var/lib/vigil on a real install and unwritable
+        # to a test runner; every route here that touches the volume gets a
+        # temp one, as ImageUploadPreflightTests does for the upload.
+        from tempfile import TemporaryDirectory
+
+        from django.test import override_settings
+
+        with TemporaryDirectory() as tmp, \
+                override_settings(VIGIL_IMAGE_ROOT=tmp), \
+                patch("apps.reprovision.views.fetch_image"), \
+                patch("apps.reprovision.views._free_bytes_for_images",
+                      return_value=500 * 1024 ** 3), \
+                patch("apps.reprovision.fetcher.import_iso",
+                      lambda image, path: None):
+            pulled = self.client.post(
+                "/api/v1/reprovision/images/pull/",
+                {"catalog_id": CATALOG[0]["id"]},
+                content_type="application/json")
+            self.assertEqual(pulled.status_code, 202, pulled.content)
+            assert_shape(self, pulled.json(), ReprovisionImageSerializer)
+
+            uploaded = self.client.post("/api/v1/reprovision/images/upload/", {
+                "name": "Ubuntu", "os_family": "ubuntu", "version": "24.04",
+                "sha256": hashlib.sha256(b"x" * 16).hexdigest(),
+                "iso": SimpleUploadedFile("x.iso", b"x" * 16,
+                                          content_type="application/octet-stream"),
+            })
+            self.assertEqual(uploaded.status_code, 201, uploaded.content)
+            assert_shape(self, uploaded.json(), ReprovisionImageSerializer)
+
+        registered = self.client.post("/api/v1/reprovision/images/", {
+            "name": "x", "os_family": "ubuntu", "version": "1",
+            "architecture": "x86_64", "sha256": "0" * 64,
+        }, content_type="application/json")
+        self.assertEqual(registered.status_code, 201, registered.content)
+
+        listed = self.client.get("/api/v1/reprovision/images/")
+        self.assertEqual(listed.status_code, 200, listed.content)
+        self.assertTrue(listed.json(), "the list needs one item to check")
+        assert_shape(self, listed.json(), ReprovisionImageSerializer(many=True))
+
+        detail = self.client.get(
+            f"/api/v1/reprovision/images/{registered.json()['id']}/")
+        self.assertEqual(detail.status_code, 200, detail.content)
+        assert_shape(self, detail.json(), ReprovisionImageSerializer)
 
     def test_pulling_a_catalog_entry_creates_an_image_and_queues_the_task(self):
         resp, task = self._pull({"catalog_id": CATALOG[0]["id"]})

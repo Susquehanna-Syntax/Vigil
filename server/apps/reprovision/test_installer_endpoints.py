@@ -161,6 +161,18 @@ class InstallerEndpointTests(TestCase):
         self.job.refresh_from_db()
         self.assertEqual(self.job.state, S.ENROLLING)
 
+    def test_enrolment_answers_with_the_new_host_id(self):
+        """``{"id": ..., "status": ...}`` is the agent's only confirmation
+        that its token was swapped."""
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import ReprovisionEnrollSerializer
+
+        self._installing()
+        resp = self._enrol()
+        self.assertEqual(resp.status_code, 200, resp.content)
+        assert_shape(self, resp.json(), ReprovisionEnrollSerializer)
+
 
 class InstallTreeTests(TestCase):
     def setUp(self):

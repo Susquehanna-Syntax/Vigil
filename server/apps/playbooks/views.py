@@ -3,6 +3,7 @@ from pathlib import Path
 from django.db import transaction
 from django.utils.timezone import now
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -12,6 +13,19 @@ from apps.accounts.permissions import IsAdmin
 from apps.tasks.models import TaskDefinition
 from vigil import scoping
 
+from .api_schema import (
+    PlaybookArchiveSerializer,
+    PlaybookCreateSerializer,
+    PlaybookDetailSerializer,
+    PlaybookDispatchSerializer,
+    PlaybookFailureSerializer,
+    PlaybookFromYamlSerializer,
+    PlaybookLibrarySerializer,
+    PlaybookPatchSerializer,
+    PlaybookRetrySerializer,
+    PlaybookSerializer,
+    PlaybookYamlSerializer,
+)
 from .models import (Playbook, PlaybookStep, dispatch_to_host, eligible,
                      failing_counts, hosts_failing)
 
@@ -231,6 +245,10 @@ def _validate_and_set_inputs(playbook: Playbook, raw, auto_enroll=None, *,
     return None
 
 
+@extend_schema(methods=["GET"], responses=PlaybookSerializer(many=True))
+@extend_schema(methods=["POST"], request=PlaybookCreateSerializer,
+               responses={201: PlaybookSerializer, 400: PlaybookDetailSerializer,
+                          403: PlaybookDetailSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def playbook_index(request):
@@ -291,6 +309,11 @@ def playbook_index(request):
     return Response(_row(playbook), status=status.HTTP_201_CREATED)
 
 
+@extend_schema(methods=["GET"], responses=PlaybookSerializer)
+@extend_schema(methods=["PATCH"], request=PlaybookPatchSerializer,
+               responses={200: PlaybookSerializer, 400: PlaybookDetailSerializer,
+                          403: PlaybookDetailSerializer})
+@extend_schema(methods=["DELETE"], responses={(204, "application/json"): None})
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def playbook_detail(request, playbook_id):
@@ -391,6 +414,7 @@ def _latest_refusal(playbook, verb: str) -> Response | None:
     return None
 
 
+@extend_schema(request=None, responses=PlaybookSerializer)
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def playbook_sync_tasks(request, playbook_id):
@@ -428,6 +452,7 @@ def playbook_sync_tasks(request, playbook_id):
 # TOTP confirmation that guards allow_high_risk.
 
 
+@extend_schema(responses={200: PlaybookYamlSerializer, 400: PlaybookDetailSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def playbook_yaml(request, playbook_id):
@@ -558,6 +583,9 @@ def _create_playbook_from_parsed(request, parsed, resolved, existing=None,
                     else status.HTTP_201_CREATED)
 
 
+@extend_schema(request=PlaybookFromYamlSerializer, responses={
+    200: PlaybookSerializer, 201: PlaybookSerializer,
+    400: PlaybookDetailSerializer, 403: PlaybookDetailSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def playbook_from_yaml(request):
@@ -597,6 +625,7 @@ def _library_texts() -> dict[str, str]:
     return {p.stem: p.read_text() for p in _library_dir().glob("*.yaml")}
 
 
+@extend_schema(responses=PlaybookLibrarySerializer)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def playbook_library(request):
@@ -631,6 +660,10 @@ def playbook_library(request):
     return Response({"results": results})
 
 
+@extend_schema(request=None, responses={201: PlaybookSerializer,
+                                        400: PlaybookDetailSerializer,
+                                        403: PlaybookDetailSerializer,
+                                        404: PlaybookDetailSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def playbook_library_use(request, template_id):
@@ -675,6 +708,7 @@ def playbook_library_use(request, template_id):
     return _create_playbook_from_parsed(request, parsed, resolved, name=wanted)
 
 
+@extend_schema(request=PlaybookArchiveSerializer, responses=PlaybookSerializer)
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def playbook_archive(request, playbook_id):
@@ -723,6 +757,7 @@ def _last_failure(playbook, host) -> dict:
     }
 
 
+@extend_schema(responses=PlaybookFailureSerializer(many=True))
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def playbook_failures(request, playbook_id):
@@ -742,6 +777,10 @@ def playbook_failures(request, playbook_id):
     ])
 
 
+@extend_schema(request=PlaybookRetrySerializer,
+               responses={200: PlaybookDispatchSerializer,
+                          400: PlaybookDetailSerializer,
+                          404: PlaybookDetailSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def playbook_retry(request, playbook_id):

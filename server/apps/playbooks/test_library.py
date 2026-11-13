@@ -97,6 +97,22 @@ class LibraryUseTests(TestCase):
     def test_an_unknown_template_is_a_404(self):
         self.assertEqual(self._use("nothing-like-this").status_code, 404)
 
+    def test_the_library_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            PlaybookLibrarySerializer,
+            PlaybookSerializer,
+        )
+
+        listed = self.client.get("/api/v1/playbooks/library/")
+        self.assertEqual(listed.status_code, 200, listed.content)
+        assert_shape(self, listed.json(), PlaybookLibrarySerializer)
+
+        used = self._use("restart-service-and-check")
+        self.assertEqual(used.status_code, 201, used.content)
+        assert_shape(self, used.json(), PlaybookSerializer)
+
     def test_the_high_risk_template_needs_the_same_totp_as_the_yaml_import(self):
         r = self._use("scan-with-trivy")
         self.assertEqual(r.status_code, 403, r.content[:400])
