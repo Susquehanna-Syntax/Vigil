@@ -320,7 +320,9 @@ jobs:
         run: |
           pip install -q -r requirements.txt
           python manage.py migrate --noinput
-          python manage.py shell < ../scripts/e2e/seed.py
+          # Not `shell < seed.py`: on Windows Django's shell ignores piped stdin
+          # (it select()s on it), so the seed never ran and no admin existed.
+          python manage.py shell -c "exec(open('../scripts/e2e/seed.py').read())"
           python manage.py runserver 127.0.0.1:8010 --insecure --noreload > ../server.log 2>&1 &
           for _ in $(seq 1 30); do curl -sf http://127.0.0.1:8010/api/v1/health/ && break; sleep 2; done
           curl -sf http://127.0.0.1:8010/api/v1/health/ || { cat ../server.log; exit 1; }
