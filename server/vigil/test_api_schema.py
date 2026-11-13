@@ -21,12 +21,12 @@ from drf_spectacular.drainage import GENERATOR_STATS
 from drf_spectacular.generators import SchemaGenerator
 
 #: Apps whose every /api/v1/ view comes out typed.
-TYPED: set[str] = {"licensing"}
+TYPED: set[str] = {"agent_dist", "instance", "licensing"}
 
 #: Apps still to type, each one phase of the work.
 PENDING: set[str] = {
-    "accounts", "agent_dist", "agentprofiles", "aisuggest", "alerts",
-    "automations", "catalog", "dashboards", "hosts", "instance", "jackil",
+    "accounts", "agentprofiles", "aisuggest", "alerts",
+    "automations", "catalog", "dashboards", "hosts", "jackil",
     "metrics", "playbooks", "policies", "relays", "remote",
     "reports", "reprovision", "software", "stacks", "statuspage", "tasks",
     "vulns",

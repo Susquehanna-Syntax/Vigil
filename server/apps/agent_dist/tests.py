@@ -80,6 +80,63 @@ class DownloadAgentTests(TestCase):
         resp = self.client.get("/agent/download/linux-arm64/")
         self.assertEqual(resp.status_code, 404)
 
+    def test_info_and_upload_match_the_api_schema(self):
+        """The documented shape and the served one are the same document.
+
+        These responses are built by hand, so nothing but this check notices a
+        renamed key: the settings page would render blanks and the schema would
+        still say it looked up platforms.
+        """
+        from io import BytesIO
+        from unittest.mock import patch
+
+        from django.contrib.auth import get_user_model
+        from django.core.files.base import ContentFile
+
+        from apps.accounts.models import Role, UserProfile
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import (
+            AgentBinarySerializer,
+            AgentErrorSerializer,
+            AgentUploadResultSerializer,
+        )
+
+        admin = get_user_model().objects.create_user("dist-admin", password="pw")
+        UserProfile.objects.create(user=admin, role=Role.ADMIN)
+        self.client.force_login(admin)
+
+        with tempfile.TemporaryDirectory() as bundle:
+            # A dist directory of our own: the bundled artifact is a file on
+            # disk here, and every platform without one falls back to its row.
+            with open(os.path.join(bundle, "vigil-agent-linux-amd64"), "wb") as fh:
+                fh.write(b"#!/bin/sh\n")
+            AgentBinary.objects.create(platform="linux-arm64", version="1.2",
+                                       sha256="a" * 64,
+                                       binary=ContentFile(b"arm agent", "vigil-arm"))
+            with override_settings(VIGIL_AGENT_DIST_DIR=bundle):
+                info = self.client.get("/agent/info/").json()
+            # Both sources present: an empty list would check no item shape at
+            # all, and one source alone leaves the other's keys unchecked.
+            self.assertEqual({b["source"] for b in info}, {"bundled", "uploaded"})
+            assert_shape(self, info, AgentBinarySerializer(many=True))
+
+            with override_settings(VIGIL_AGENT_DIST_DIR=bundle), \
+                    patch("apps.accounts.totp.require_totp_confirmation",
+                          return_value=None):
+                resp = self.client.post(
+                    "/agent/upload/linux-amd64/",
+                    {"binary": BytesIO(b"a rebuilt agent"), "version": "9.9"},
+                    format="multipart")
+            # The uploaded row replaces the bundle for that platform, which is
+            # what makes the digest in this body the one a download sends.
+            self.assertEqual(resp.status_code, 200, resp.content)
+            assert_shape(self, resp.json(), AgentUploadResultSerializer)
+
+        missing = self.client.get("/agent/download/windows-amd64/")
+        self.assertEqual(missing.status_code, 404)
+        assert_shape(self, missing.json(), AgentErrorSerializer)
+
 
 class BundledDigestTests(TestCase):
     """The installer refuses a binary the server cannot vouch for, so the path

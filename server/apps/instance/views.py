@@ -11,6 +11,7 @@ site's data and the install's secrets.
 from __future__ import annotations
 
 from django.conf import settings as django_settings
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -24,6 +25,16 @@ from apps.accounts.permissions import (
 from vigil import hooks
 
 from . import config, registry
+from .api_schema import (
+    BackupRunSerializer,
+    InstanceDetailErrorsSerializer,
+    InstanceDetailSerializer,
+    InstanceSettingsChangedSerializer,
+    InstanceSettingsPostSerializer,
+    InstanceSettingsSerializer,
+    IntegrationTestResultSerializer,
+    IntegrationTestSerializer,
+)
 
 
 def _field(key: registry.Key) -> dict:
@@ -69,6 +80,17 @@ def _group_access(user, gid):
     return settings_access(user, GROUP_PAGE[gid])
 
 
+#: The whole settings page: one entry per group the caller may see, each
+#: holding every field in it. A secret's value is never part of the shape —
+#: ``is_set`` says whether one is stored, and ``value`` stays empty. A refused
+#: POST carries DRF's own detail body, which the permission classes build.
+@extend_schema(methods=["GET"], responses={200: InstanceSettingsSerializer})
+@extend_schema(
+    methods=["POST"],
+    request=InstanceSettingsPostSerializer,
+    responses={200: InstanceSettingsChangedSerializer,
+               403: InstanceDetailSerializer,
+               400: InstanceDetailErrorsSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAdmin])
 def instance_settings(request):
@@ -146,6 +168,9 @@ def instance_settings(request):
     return Response({"changed": sorted(set(changed)), "env_locked": ignored})
 
 
+@extend_schema(methods=["POST"], request=IntegrationTestSerializer,
+               responses={200: IntegrationTestResultSerializer,
+                          403: InstanceDetailSerializer})
 @api_view(["POST"])
 @permission_classes([IsAdmin, SettingsPage("email")])
 def test_integration(request):
@@ -249,6 +274,11 @@ def _test_email(request) -> dict:
     return {"ok": True, "detail": f"Connected to {config.setting('EMAIL_HOST')}."}
 
 
+# The twenty most recent runs, newest first: the Settings page's summary card,
+# not a pager. A run still going has no finish time, an error text is capped at
+# 2000 characters, and offsite is "" whenever no off-site copy is configured —
+# so every key is always present and only two of them can be null.
+@extend_schema(methods=["GET"], responses={200: BackupRunSerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsInstanceAdmin])
 def backup_runs(request):
