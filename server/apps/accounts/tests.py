@@ -436,3 +436,12 @@ class ContentSecurityPolicyTests(TestCase):
 
         out = mw(_Req())
         self.assertEqual(out["Content-Security-Policy"], "default-src 'none'")
+
+    def test_pages_switch_off_unused_browser_features(self):
+        """ZAP baseline: Permissions-Policy and Cross-Origin-Resource-Policy
+        were missing. WebAuthn must stay on: hardware keys use it."""
+        resp = self.client.get("/login/")
+        policy = resp["Permissions-Policy"]
+        self.assertIn("camera=()", policy)
+        self.assertIn("publickey-credentials-get=(self)", policy)
+        self.assertEqual(resp["Cross-Origin-Resource-Policy"], "same-origin")

@@ -58,6 +58,16 @@ _POLICY_TEMPLATE = (
 )
 
 
+#: Browser features Vigil never uses, switched off so an injected script or
+#: frame cannot ask for them. WebAuthn stays on for this origin: hardware keys
+#: sign in and confirm actions with it.
+PERMISSIONS_POLICY = (
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), "
+    "bluetooth=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=(), "
+    "publickey-credentials-get=(self), publickey-credentials-create=(self)"
+)
+
+
 class ContentSecurityPolicyMiddleware:
     """Adds the policy to every response that does not already carry one.
 
@@ -77,4 +87,10 @@ class ContentSecurityPolicyMiddleware:
             policy = getattr(settings, "VIGIL_CSP", None)
             response["Content-Security-Policy"] = (
                 policy or _POLICY_TEMPLATE.format(nonce=request.csp_nonce))
+        # Same rule as the policy: a proxy's own header wins.
+        if "Permissions-Policy" not in response:
+            response["Permissions-Policy"] = PERMISSIONS_POLICY
+        # Another site's page may not load Vigil's responses as resources.
+        if "Cross-Origin-Resource-Policy" not in response:
+            response["Cross-Origin-Resource-Policy"] = "same-origin"
         return response
