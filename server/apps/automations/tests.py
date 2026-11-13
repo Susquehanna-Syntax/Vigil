@@ -184,6 +184,70 @@ class AutomationApiTests(TestCase):
         self.assertFalse(resp.json()["enabled"])
         self.assertEqual(self.client.delete(f"/api/v1/automations/{a.id}/").status_code, 204)
 
+    def test_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+        from .api_schema import (AutomationIndexSerializer, AutomationRowSerializer,
+                                 AutomationYamlSerializer)
+
+        d = make_def()
+        created = self.client.post("/api/v1/automations/", {
+            "name": "cleanup", "trigger": "event", "event": "alert_sent",
+            "action_kind": "task", "task_definition": str(d.id),
+            "target": "tags", "target_tags": ["role:web"],
+            "conditions": [{"field": "severity", "op": "gte", "value": "warning"}],
+            "cron": {"minute": "30"}}, content_type="application/json")
+        self.assertEqual(created.status_code, 201, created.content)
+        row = created.json()
+        assert_shape(self, row, AutomationRowSerializer)
+
+        index = self.client.get("/api/v1/automations/").json()
+        self.assertTrue(index["automations"], "an empty list checks no item shape")
+        assert_shape(self, index, AutomationIndexSerializer)
+
+        automation_id = row["id"]
+        assert_shape(self, self.client.patch(f"/api/v1/automations/{automation_id}/",
+                                             {"enabled": False},
+                                             content_type="application/json").json(),
+                     AutomationRowSerializer)
+        assert_shape(self, self.client.post(f"/api/v1/automations/{automation_id}/sync-task/",
+                                            {}, content_type="application/json").json(),
+                     AutomationRowSerializer)
+        # The exported document is also the import body: resolving its task by
+        # slug against this install's own library needs no network.
+        exported = self.client.get(f"/api/v1/automations/{automation_id}/yaml/")
+        assert_shape(self, exported.json(), AutomationYamlSerializer)
+        assert_shape(self, self.client.post("/api/v1/automations/yaml/",
+                                            {"yaml": exported.json()["yaml"]},
+                                            content_type="application/json").json(),
+                     AutomationRowSerializer)
+
+    def test_run_now_answers_with_what_it_dispatched(self):
+        from vigil.schema_check import assert_shape
+        from .api_schema import AutomationRunNowSerializer
+
+        d = make_def()
+        created = self.client.post("/api/v1/automations/", {
+            "name": "runnable", "trigger": "event", "event": "alert_sent",
+            "action_kind": "task", "task_definition": str(d.id), "target": "all"},
+            content_type="application/json")
+        self.assertEqual(created.status_code, 201, created.content)
+        make_host()
+        resp = self.client.post(
+            f"/api/v1/automations/{created.json()['id']}/run/", {},
+            content_type="application/json")
+        assert_shape(self, resp.json(), AutomationRunNowSerializer)
+
+    def test_an_automation_that_runs_no_task_has_nothing_to_sync(self):
+        from vigil.schema_check import assert_shape
+        from .api_schema import AutomationDetailErrorSerializer
+
+        created = self.client.post("/api/v1/automations/", {
+            "name": "playbook-one", "trigger": "event", "event": "alert_sent",
+            "action_kind": "playbook", "playbook_name": "nowhere"},
+            content_type="application/json")
+        self.assertEqual(created.status_code, 400, created.content)
+        assert_shape(self, created.json(), AutomationDetailErrorSerializer)
+
     def test_params_override_round_trips_and_applies(self):
         d = make_def(actions=[{"type": "restart_service",
                                "params": {"service_name": "nginx"}}])

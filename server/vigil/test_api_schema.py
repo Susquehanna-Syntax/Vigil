@@ -11,6 +11,11 @@ To type an app's endpoints: give each function view an ``@extend_schema``
 (request and responses, a serializer or ``inline_serializer``), or a
 ``serializer_class`` on class views, until ``manage.py spectacular`` prints
 nothing for that app; then move the app from PENDING to TYPED.
+
+Name every documented serializer with the app as a prefix. A component's name
+is the class name without "Serializer", so a bare ``DetailSerializer`` in a
+second app collides with the first app's and the schema comes out wrong for
+both.
 """
 
 import re
@@ -21,12 +26,12 @@ from drf_spectacular.drainage import GENERATOR_STATS
 from drf_spectacular.generators import SchemaGenerator
 
 #: Apps whose every /api/v1/ view comes out typed.
-TYPED: set[str] = {"licensing"}
+TYPED: set[str] = {"alerts", "automations", "licensing"}
 
 #: Apps still to type, each one phase of the work.
 PENDING: set[str] = {
-    "accounts", "agent_dist", "agentprofiles", "aisuggest", "alerts",
-    "automations", "catalog", "dashboards", "hosts", "instance", "jackil",
+    "accounts", "agent_dist", "agentprofiles", "aisuggest",
+    "catalog", "dashboards", "hosts", "instance", "jackil",
     "metrics", "playbooks", "policies", "relays", "remote",
     "reports", "reprovision", "software", "stacks", "statuspage", "tasks",
     "vulns",

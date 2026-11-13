@@ -1,4 +1,5 @@
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -12,6 +13,16 @@ from vigil import scoping
 from vigil.hooks import KNOWN_EVENTS
 
 from . import conditions
+from .api_schema import (
+    AutomationDetailErrorSerializer,
+    AutomationFromYamlRequestSerializer,
+    AutomationIndexSerializer,
+    AutomationRowSerializer,
+    AutomationRunNowSerializer,
+    AutomationTotpErrorSerializer,
+    AutomationWriteRequestSerializer,
+    AutomationYamlSerializer,
+)
 from .models import Automation
 from .tasks import sync_periodic_task
 
@@ -251,6 +262,10 @@ def _apply(a: Automation, data) -> str | None:
     return None
 
 
+@extend_schema(methods=["GET"], responses={200: AutomationIndexSerializer})
+@extend_schema(methods=["POST"], request=AutomationWriteRequestSerializer,
+               responses={201: AutomationRowSerializer,
+                          400: AutomationDetailErrorSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def automation_index(request):
@@ -278,6 +293,12 @@ def automation_index(request):
     return Response(_row(a), status=status.HTTP_201_CREATED)
 
 
+@extend_schema(methods=["PATCH"], request=AutomationWriteRequestSerializer,
+               responses={200: AutomationRowSerializer,
+                          400: AutomationDetailErrorSerializer,
+                          401: AutomationTotpErrorSerializer})
+@extend_schema(methods=["DELETE"], request=None,
+               responses={204: None, 404: AutomationDetailErrorSerializer})
 @api_view(["PATCH", "DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def automation_detail(request, automation_id):
@@ -309,6 +330,9 @@ def automation_detail(request, automation_id):
     return Response(_row(a))
 
 
+@extend_schema(request=None,
+               responses={200: AutomationRunNowSerializer,
+                          404: AutomationDetailErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def automation_run_now(request, automation_id):
@@ -324,6 +348,8 @@ def automation_run_now(request, automation_id):
     return Response({"dispatched": n, "reason": why[0] if why else ""})
 
 
+@extend_schema(request=None, responses={200: AutomationRowSerializer,
+                                        400: AutomationDetailErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def automation_sync_task(request, automation_id):
@@ -358,6 +384,8 @@ def automation_sync_task(request, automation_id):
 # overrides — instead of a second, quietly diverging set for YAML.
 
 
+@extend_schema(responses={200: AutomationYamlSerializer,
+                                        400: AutomationDetailErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def automation_yaml(request, automation_id):
@@ -386,6 +414,10 @@ def automation_yaml(request, automation_id):
     })
 
 
+@extend_schema(request=AutomationFromYamlRequestSerializer,
+               responses={201: AutomationRowSerializer,
+                          400: AutomationDetailErrorSerializer,
+                          404: AutomationDetailErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def automation_from_yaml(request):

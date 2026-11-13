@@ -2,11 +2,20 @@ from datetime import timedelta
 from uuid import UUID
 
 from django.utils.timezone import now
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from vigil import scoping
 
+from .api_schema import (
+    AlertBulkRequestSerializer,
+    AlertBulkResultSerializer,
+    AlertDurationRequestSerializer,
+    AlertErrorSerializer,
+    AlertResponseSerializer,
+    AlertRuleRowSerializer,
+)
 from .models import Alert
 from .serializers import AlertSerializer
 
@@ -39,6 +48,7 @@ DEFAULT_ALERT_PAGE = 200
 MAX_ALERT_PAGE = 500
 
 
+@extend_schema(responses={200: AlertResponseSerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("alerts")
@@ -71,6 +81,9 @@ def alert_list(request):
     return response
 
 
+@extend_schema(request=AlertDurationRequestSerializer,
+               responses={200: AlertResponseSerializer, 400: AlertErrorSerializer,
+                          404: AlertErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def alert_acknowledge(request, alert_id):
@@ -92,6 +105,7 @@ def alert_acknowledge(request, alert_id):
     return Response(AlertSerializer(alert).data)
 
 
+@extend_schema(request=None, responses={200: AlertResponseSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def alert_unacknowledge(request, alert_id):
@@ -111,6 +125,8 @@ def alert_unacknowledge(request, alert_id):
     return Response(AlertSerializer(alert).data)
 
 
+@extend_schema(request=AlertBulkRequestSerializer,
+               responses={200: AlertBulkResultSerializer, 400: AlertErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def alert_bulk(request):
@@ -169,6 +185,9 @@ def alert_bulk(request):
     return Response({"updated": updated, "skipped": skipped})
 
 
+@extend_schema(request=AlertDurationRequestSerializer,
+               responses={200: AlertResponseSerializer, 400: AlertErrorSerializer,
+                          404: AlertErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def alert_silence(request, alert_id):
@@ -191,6 +210,7 @@ def alert_silence(request, alert_id):
     return Response(AlertSerializer(alert).data)
 
 
+@extend_schema(responses={200: AlertRuleRowSerializer(many=True)})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def rule_list(request):
