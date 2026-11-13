@@ -141,6 +141,115 @@ class GreenboneLaunchTests(TestCase):
         self.assertEqual(self.scan.external_scan_id, "task-1")
 
 
+class VulnApiSchemaShapeTests(TestCase):
+    """The bodies the vulns endpoints return are the shapes their schema says."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("shape", password="pw")
+        UserProfile.objects.create(user=self.user, role=Role.ADMIN)
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.host = Host.objects.create(hostname="shape-host", agent_token="s" * 32,
+                                        status=Host.Status.ONLINE)
+
+    def test_list_and_score_endpoints_match_their_schema(self):
+        from datetime import timedelta
+        from unittest import mock
+
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import VulnErrorResponse, VulnFleetScoreSerializer
+        from .models import VulnSummary
+        from .serializers import (
+            VulnScanSerializer,
+            VulnScoreHistorySerializer,
+            VulnSummarySerializer,
+        )
+
+        VulnFinding.objects.create(host=self.host, scanner="trivy",
+                                   plugin_id_or_oid="1", severity="critical")
+        recompute_summary(self.host)
+        self.assertTrue(VulnSummary.objects.filter(host=self.host).exists())
+        assert_shape(self, self.client.get("/api/v1/vulns/").json(),
+                     VulnSummarySerializer(many=True))
+        assert_shape(self, self.client.get("/api/v1/vulns/score/").json(),
+                     VulnFleetScoreSerializer)
+
+        VulnScan.objects.filter(host=self.host).delete()
+        with mock.patch("apps.accounts.totp.require_totp_confirmation",
+                        return_value=None):
+            created = self.client.post(f"/api/v1/vulns/scans/{self.host.id}/",
+                                       format="json")
+        self.assertEqual(created.status_code, 503)
+        assert_shape(self, created.json(), VulnErrorResponse)
+        with override_settings(NESSUS_URL="https://n", NESSUS_ACCESS_KEY="a",
+                               NESSUS_SECRET_KEY="s"), \
+                mock.patch("apps.accounts.totp.require_totp_confirmation",
+                           return_value=None):
+            scanned = self.client.post(f"/api/v1/vulns/scans/{self.host.id}/",
+                                       {"totp": "123456"}, format="json")
+        self.assertEqual(scanned.status_code, 201, scanned.data)
+        assert_shape(self, scanned.json(), VulnScanSerializer)
+        scans = self.client.get("/api/v1/vulns/scans/").json()
+        self.assertTrue(scans, "the item shape is only checked with a row")
+        assert_shape(self, scans, VulnScanSerializer(many=True))
+
+        VulnScoreHistory.objects.create(
+            host=self.host, date=(now() - timedelta(days=1)).date(), score=40)
+        history = self.client.get(f"/api/v1/vulns/history/{self.host.id}/").json()
+        self.assertTrue(history, "the item shape is only checked with a row")
+        assert_shape(self, history, VulnScoreHistorySerializer(many=True))
+
+        with mock.patch("apps.accounts.totp.require_totp_confirmation",
+                        return_value=None):
+            refused = self.client.post(f"/api/v1/vulns/scans/{self.host.id}/",
+                                       {"scanner": "greenbone"}, format="json")
+        self.assertEqual(refused.status_code, 503)
+        assert_shape(self, refused.json(), VulnErrorResponse)
+
+
+class FindingListSchemaShapeTests(TestCase):
+    """The bodies the finding and summary endpoints return, against schema: a
+    finding row whose optional nested rows are null included."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("shapes", password="pw")
+        UserProfile.objects.create(user=self.user, role=Role.ADMIN)
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.host = Host.objects.create(hostname="shape-findings", agent_token="sf" * 8,
+                                        status=Host.Status.ONLINE)
+
+    def test_findings_match_their_schema(self):
+        from datetime import timedelta
+
+        from django.utils.timezone import localdate
+
+        from vigil.schema_check import assert_shape
+
+        from .evidence import add_evidence
+        from .models import VulnException
+        from .serializers import VulnFindingSerializer
+
+        plain = VulnFinding.objects.create(host=self.host, scanner="trivy",
+                                           plugin_id_or_oid="1", severity="critical",
+                                           cve_id="CVE-2024-0001")
+        add_evidence(plain, "package", "dpkg:openssl", "openssl installed")
+        VulnFinding.objects.create(host=self.host, scanner="trivy",
+                                   plugin_id_or_oid="2", severity="high")
+        # Both rows carry an exception: a row with a null nested object would
+        # hide whether that field is documented as nullable.
+        for finding in VulnFinding.objects.all():
+            VulnException.objects.create(
+                finding=finding, kind=VulnException.Kind.ACCEPTED,
+                reason="known and monitored",
+                expires_on=localdate() + timedelta(days=30), created_by=self.user)
+
+        body = self.client.get("/api/v1/vulns/findings/").json()
+        self.assertEqual(len(body), 2, "the item shape is only checked with rows")
+        assert_shape(self, body, VulnFindingSerializer(many=True))
+
+
 class ScanCreateTests(TestCase):
     def setUp(self):
         self.client = APIClient()

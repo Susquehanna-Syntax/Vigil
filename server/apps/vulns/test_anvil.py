@@ -119,3 +119,16 @@ class AnvilImportTests(TestCase):
         resp = client.post("/api/v1/vulns/anvil/", {"record": {"version": "2.1.0"}}, format="json")
         self.assertEqual(resp.status_code, 400)
         self.assertIn("schema error", resp.json()["detail"])
+
+    def test_api_response_matches_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import VulnAnvilImportResultSerializer
+
+        user = get_user_model().objects.create_user("shape", password="x")
+        UserProfile.objects.create(user=user, role=Role.ADMIN)
+        client = APIClient()
+        client.force_authenticate(user)
+        resp = client.post("/api/v1/vulns/anvil/", {"record": record(_result(1))},
+                           format="json")
+        assert_shape(self, resp.json(), VulnAnvilImportResultSerializer)

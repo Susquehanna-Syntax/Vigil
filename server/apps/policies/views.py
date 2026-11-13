@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -9,6 +10,20 @@ from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin
 from vigil import scoping
 
+from .api_schema import (
+    PolicyApproveResultSerializer,
+    PolicyChangeDecisionSerializer,
+    PolicyChangeListSerializer,
+    PolicyComplianceSerializer,
+    PolicyDetailErrorSerializer,
+    PolicyDriftSerializer,
+    PolicyListSerializer,
+    PolicyRejectResultSerializer,
+    PolicyRunResultSerializer,
+    PolicyRunSerializer,
+    PolicySerializer,
+    PolicyWriteSerializer,
+)
 from .compile import compile_policy
 from .drift import policy_drift
 from .models import AppRule, PolicyChange, UpdatePolicy
@@ -95,6 +110,10 @@ def _save(request, policy: UpdatePolicy, data: dict) -> Response | None:
     return None
 
 
+@extend_schema(methods=["GET"], responses={200: PolicyListSerializer, 403: PolicyDetailErrorSerializer})
+@extend_schema(methods=["POST"], request=PolicyWriteSerializer,
+               responses={201: PolicySerializer, 400: PolicyDetailErrorSerializer,
+                          403: PolicyDetailErrorSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def policy_index(request):
@@ -108,6 +127,12 @@ def policy_index(request):
     return Response(_row(policy), status=status.HTTP_201_CREATED)
 
 
+@extend_schema(methods=["GET"], responses={200: PolicySerializer, 403: PolicyDetailErrorSerializer,
+                                           404: PolicyDetailErrorSerializer})
+@extend_schema(methods=["PUT"], request=PolicyWriteSerializer,
+               responses={200: PolicySerializer, 400: PolicyDetailErrorSerializer,
+                          403: PolicyDetailErrorSerializer})
+@extend_schema(methods=["DELETE"], request=None, responses={204: None})
 @api_view(["GET", "PUT", "DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def policy_detail(request, policy_id):
@@ -132,6 +157,8 @@ def policy_detail(request, policy_id):
     return Response(_row(policy))
 
 
+@extend_schema(responses={200: PolicyDriftSerializer, 403: PolicyDetailErrorSerializer,
+                          404: PolicyDetailErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def policy_drift_view(request, policy_id):
@@ -142,6 +169,9 @@ def policy_drift_view(request, policy_id):
     return Response(policy_drift(policy))
 
 
+@extend_schema(request=PolicyRunSerializer,
+               responses={200: PolicyRunResultSerializer, 400: PolicyDetailErrorSerializer,
+                          401: PolicyDetailErrorSerializer, 403: PolicyDetailErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def policy_run_now(request, policy_id):
@@ -163,6 +193,7 @@ def policy_run_now(request, policy_id):
     return Response(result)
 
 
+@extend_schema(responses={200: PolicyChangeListSerializer, 403: PolicyDetailErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def change_list(request):
@@ -199,6 +230,9 @@ def _visible_ids(request, ids):
     return [str(i) for i in visible.values_list("pk", flat=True)]
 
 
+@extend_schema(request=PolicyChangeDecisionSerializer,
+               responses={200: PolicyApproveResultSerializer, 400: PolicyDetailErrorSerializer,
+                          401: PolicyDetailErrorSerializer, 403: PolicyDetailErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def change_approve(request):
@@ -222,6 +256,9 @@ def change_approve(request):
                         status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(request=PolicyChangeDecisionSerializer,
+               responses={200: PolicyRejectResultSerializer, 400: PolicyDetailErrorSerializer,
+                          403: PolicyDetailErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def change_reject(request):
@@ -239,6 +276,7 @@ def change_reject(request):
                         status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(responses={200: PolicyComplianceSerializer, 403: PolicyDetailErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def compliance_summary(request):
