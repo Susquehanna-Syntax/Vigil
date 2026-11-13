@@ -267,6 +267,35 @@ class PreflightEndpointTests(TestCase):
         self.assertEqual(task.risk_level, Task.RiskLevel.LOW)
         self.assertEqual(task.params["disk_target"], "/dev/sda")
 
+    def test_the_dispatch_and_a_stored_result_match_the_api_schema(self):
+        """On 202 the body is ours; on 200 it is the agent's free-form §5
+        snapshot, whose keys belong to the agent and not to this app."""
+        import json
+
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import ReprovisionPreflightSerializer
+
+        self._login(Role.ADMIN)
+        dispatched = self._post(disk_target="/dev/sda")
+        self.assertEqual(dispatched.status_code, 202, dispatched.content)
+        assert_shape(self, dispatched.json(), ReprovisionPreflightSerializer)
+
+        from django.utils.timezone import now
+
+        from apps.tasks.models import Task
+
+        Task.objects.filter(host=self.host,
+                            action="reprovision_preflight").delete()
+        Task.objects.create(
+            host=self.host, action="reprovision_preflight",
+            nonce=uuid.uuid4().hex, state=Task.State.COMPLETED,
+            completed_at=now(),
+            result_output=json.dumps({"ok": True, "free_mib": 4096}))
+        stored = self._post()
+        self.assertEqual(stored.status_code, 200, stored.content)
+        self.assertIs(stored.json()["ok"], True)
+
     def test_viewer_may_check_readiness(self):
         # Read-only, so it needs only the view capability — an operator can
         # survey a fleet without arming anything.

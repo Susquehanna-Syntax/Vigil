@@ -45,6 +45,23 @@ class PlaybookYamlApiTests(TestCase):
                          "standard-linux-server-build.yaml")
         self.assertIn("task: install-nginx", r.json()["yaml"])
 
+    def test_the_yaml_endpoints_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import PlaybookSerializer, PlaybookYamlSerializer
+
+        playbook = self._playbook(name="Shaped Export")
+        exported = self.client.get(f"/api/v1/playbooks/{playbook.id}/yaml/")
+        self.assertEqual(exported.status_code, 200, exported.content)
+        assert_shape(self, exported.json(), PlaybookYamlSerializer)
+
+        imported = self.client.post("/api/v1/playbooks/yaml/", {
+            "yaml": "name: Shaped Import\ndescription: From a file.\n"
+                    "steps:\n  - task: install-nginx\n",
+        }, content_type="application/json")
+        self.assertEqual(imported.status_code, 201, imported.content)
+        assert_shape(self, imported.json(), PlaybookSerializer)
+
     def test_import_creates_a_playbook(self):
         r = self.client.post("/api/v1/playbooks/yaml/", {
             "yaml": "name: Imported\ndescription: From a file.\n"
