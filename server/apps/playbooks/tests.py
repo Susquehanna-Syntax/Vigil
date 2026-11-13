@@ -396,3 +396,76 @@ class HighRiskOptInTests(TestCase):
         row = next(r for r in resp.json() if r["id"] == str(playbook.id))
         self.assertIn("allow_high_risk", row)
         self.assertFalse(row["allow_high_risk"])
+
+    def test_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import PlaybookSerializer
+
+        created = self.client.post("/api/v1/playbooks/", {
+            "name": "Shaped", "definition_ids": [str(make_definition().id)],
+            "target_tags": ["os:linux"]}, content_type="application/json")
+        self.assertEqual(created.status_code, 201, created.content)
+        assert_shape(self, created.json(), PlaybookSerializer)
+
+        listed = self.client.get("/api/v1/playbooks/")
+        self.assertEqual(listed.status_code, 200, listed.content)
+        assert_shape(self, listed.json(), PlaybookSerializer(many=True))
+
+        detail = self.client.get(f"/api/v1/playbooks/{created.json()['id']}/")
+        self.assertEqual(detail.status_code, 200, detail.content)
+        assert_shape(self, detail.json(), PlaybookSerializer)
+
+        patched = self.client.patch(f"/api/v1/playbooks/{created.json()['id']}/",
+                                    {"description": "shaped too"},
+                                    content_type="application/json")
+        self.assertEqual(patched.status_code, 200, patched.content)
+        assert_shape(self, patched.json(), PlaybookSerializer)
+
+        synced = self.client.post(
+            f"/api/v1/playbooks/{created.json()['id']}/sync-tasks/", {},
+            content_type="application/json")
+        self.assertEqual(synced.status_code, 200, synced.content)
+        assert_shape(self, synced.json(), PlaybookSerializer)
+
+    def test_declared_inputs_match_the_api_schema(self):
+        """The canonical input shape — choices, a number default — only
+        reaches the response through ``inputs:`` on create."""
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import PlaybookSerializer
+
+        created = self.client.post("/api/v1/playbooks/", {
+            "name": "Shaped inputs",
+            "definition_ids": [str(make_definition().id)],
+            "inputs": [{"id": "kind", "type": "choice",
+                        "choices": [{"value": "a", "label": "A"}]},
+                       {"id": "count", "type": "number", "default": 2}]},
+            content_type="application/json")
+        self.assertEqual(created.status_code, 201, created.content)
+        self.assertEqual([i["id"] for i in created.json()["inputs"]],
+                         ["kind", "count"])
+        assert_shape(self, created.json(), PlaybookSerializer)
+
+    def test_a_branching_playbook_response_matches_the_api_schema(self):
+        """``flow`` is null for the playbooks above; a branching one is the
+        only body that carries the flow tree, so it needs its own check."""
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import PlaybookSerializer
+
+        check = make_definition(name="Check nginx", actions=[
+            {"type": "hunt_process", "params": {"name": "nginx"}}])
+        patch = make_definition(name="Patch nginx", actions=[
+            {"type": "check_service", "params": {"service_name": "nginx"}}])
+        created = self.client.post("/api/v1/playbooks/", {"name": "Shaped flow",
+                                                          "flow_steps": [
+            {"definition_id": str(check.id), "id": "check"},
+            {"if": "steps.check.result.count > 0",
+             "then": [{"definition_id": str(patch.id), "id": "patch"}],
+             "else": []},
+        ]}, content_type="application/json")
+        self.assertEqual(created.status_code, 201, created.content)
+        body = created.json()
+        self.assertTrue(body["flow"], "the test needs a playbook with a branch")
+        assert_shape(self, body, PlaybookSerializer)

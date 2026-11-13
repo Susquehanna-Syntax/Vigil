@@ -76,6 +76,19 @@ class PlaybookArchiveTests(TestCase):
         self.playbook.refresh_from_db()
         self.assertEqual(self.playbook.steps.count(), 1)
 
+    def test_the_archive_responses_match_the_api_schema(self):
+        from vigil.schema_check import assert_shape
+
+        from .api_schema import PlaybookSerializer
+
+        archived = self._archive()
+        self.assertEqual(archived.status_code, 200, archived.content)
+        assert_shape(self, archived.json(), PlaybookSerializer)
+
+        restored = self._archive(restore=True)
+        self.assertEqual(restored.status_code, 200, restored.content)
+        assert_shape(self, restored.json(), PlaybookSerializer)
+
 
 class DefinitionArchiveTests(TestCase):
     def setUp(self):

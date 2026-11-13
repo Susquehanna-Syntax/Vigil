@@ -22,14 +22,14 @@ from drf_spectacular.generators import SchemaGenerator
 
 #: Apps whose every /api/v1/ view comes out typed.
 TYPED: set[str] = {"agent_dist", "agentprofiles", "dashboards", "instance",
-                   "licensing", "metrics", "relays", "remote", "statuspage"}
+                   "licensing", "metrics", "playbooks", "relays", "remote",
+                   "statuspage"}
 
 #: Apps still to type, each one phase of the work.
 PENDING: set[str] = {
     "accounts", "aisuggest", "alerts",
     "automations", "catalog", "hosts", "jackil",
-    "playbooks", "policies",
-    "reports", "reprovision", "software", "stacks", "tasks",
+    "policies", "reports", "reprovision", "software", "stacks", "tasks",
     "vulns",
     # Views in vigil/ itself (about, health), and the Business apps, which
     # live in the private Vigil_Business repository.
