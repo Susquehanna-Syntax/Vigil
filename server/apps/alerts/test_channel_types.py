@@ -256,3 +256,58 @@ class TeamsTests(_Net, TestCase):
         self.transport.return_value = 500
         with self.assertRaises(channels.ChannelError):
             channels.get("teams").send({"webhook_url": self.HOOK}, message())
+
+
+class NtfyTests(_Net, TestCase):
+    SERVER = "https://ntfy.test"
+
+    def _sent(self, **extra):
+        """Send through the channel and return what left for the server: the
+        body as a dict, plus the headers."""
+        config = {"server": self.SERVER, "topic": "vigil-ops"}
+        config.update(extra.pop("config", {}))
+        channels.get("ntfy").send(config, message(**extra))
+        return json.loads(self.transport.call_args.args[6]), self.transport.call_args.args[7]
+
+    def test_a_firing_critical_alert_posts_to_the_root_with_priority_5(self):
+        sent, _headers = self._sent()
+        self.assertEqual(sent["topic"], "vigil-ops")
+        self.assertEqual(sent["title"], "[FIRING] [CRITICAL] Alert: web-1")
+        self.assertEqual(sent["message"],
+                         "CPU 97% > 90% <b>&\nHost: web-1\nSite: Leeds\nValue: 97.0\n"
+                         "Rule: High CPU")
+        self.assertEqual(sent["priority"], 5)
+        self.assertEqual(sent["click"], "https://vigil.test/hosts/7/")
+        method, scheme, address, port, hostname, path = self.transport.call_args.args[:6]
+        self.assertEqual((method, scheme, address, port, hostname, path),
+                         ("POST", "https", PUBLIC, 443, "ntfy.test", "/"))
+
+    def test_a_resolved_alert_has_priority_3(self):
+        sent, _headers = self._sent(event="resolved")
+        self.assertEqual(sent["priority"], 3)
+
+    def test_a_trailing_slash_does_not_double_the_path(self):
+        self._sent(config={"server": "https://ntfy.example.test/"})
+        self.assertEqual(self.transport.call_args.args[5], "/")
+
+    def test_a_token_is_sent_as_a_bearer_header(self):
+        _, headers = self._sent(config={"token": "tk_abc"})
+        self.assertEqual(headers["Authorization"], "Bearer tk_abc")
+
+    def test_without_a_token_there_is_no_authorization_header(self):
+        _, headers = self._sent()
+        self.assertNotIn("Authorization", headers)
+
+    def test_ntfy_tags_are_never_sent(self):
+        sent, _headers = self._sent()
+        self.assertNotIn("tags", sent)
+
+    def test_a_topic_with_stray_characters_is_refused_before_any_request(self):
+        with self.assertRaises(channels.ChannelError):
+            self._sent(config={"topic": "bad topic!"})
+        self.transport.assert_not_called()
+
+    def test_a_refusal_is_a_channel_error(self):
+        self.transport.return_value = 500
+        with self.assertRaises(channels.ChannelError):
+            channels.get("ntfy").send({"server": self.SERVER, "topic": "vigil-ops"}, message())
