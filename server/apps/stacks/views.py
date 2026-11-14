@@ -8,6 +8,7 @@ secrets it is not changing.
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -17,6 +18,31 @@ from apps.accounts.permissions import IsAdmin
 from apps.hosts.crypto import decrypt_secret, encrypt_secret
 from vigil import hooks, scoping
 
+from .api_schema import (
+    StacksAdoptQueuedSerializer,
+    StacksAdoptSerializer,
+    StacksAgentEnvSerializer,
+    StacksAgentHandoverSerializer,
+    StacksComposeDescriptionSerializer,
+    StacksDeployBodySerializer,
+    StacksDeploySerializer,
+    StacksEnvRevealSerializer,
+    StacksErrorSerializer,
+    StacksOkSerializer,
+    StacksPrunedSerializer,
+    StacksRemoveBodySerializer,
+    StacksRevisionListSerializer,
+    StacksRevisionNameSerializer,
+    StacksRevisionRenamedSerializer,
+    StacksRevisionsPruneSerializer,
+    StacksStackCreateSerializer,
+    StacksStackEditSerializer,
+    StacksStackListSerializer,
+    StacksStackSerializer,
+    StacksTaskSerializer,
+    StacksTotpSerializer,
+    StacksValidateSerializer,
+)
 from .models import ManagedStack, StackRevision
 from .validation import (
     NAME_RE,
@@ -36,17 +62,39 @@ def _env_pairs(stack_or_rev) -> list[tuple[str, str]]:
 
 
 def _row(s: ManagedStack) -> dict:
-    return {"id": str(s.id), "host_id": str(s.host_id), "hostname": s.host.hostname,
-            "name": s.name, "compose_yaml": s.compose_yaml, "revision": s.revision,
-            "working_dir": s.working_dir, "adopted": s.adopted, "compose_file": s.compose_file,
-            "adopt_report": s.adopt_report or {},
-            "git": ({"url": s.git_url, "branch": s.git_branch, "pin": s.git_pin, "path": s.git_path,
-                     "credential_id": str(s.git_credential_id) if s.git_credential_id else None,
-                     "commit": (s.revisions.filter(number=s.revision).values_list("git_commit", flat=True)
-                                .first() or "")}
-                    if s.git_url else None),
-            "env": [{"key": k, "set": bool(v)} for k, v in _env_pairs(s)],
-            "updated_at": s.updated_at.isoformat() if s.updated_at else None}
+    return {
+        "id": str(s.id),
+        "host_id": str(s.host_id),
+        "hostname": s.host.hostname,
+        "name": s.name,
+        "compose_yaml": s.compose_yaml,
+        "revision": s.revision,
+        "working_dir": s.working_dir,
+        "adopted": s.adopted,
+        "compose_file": s.compose_file,
+        "adopt_report": s.adopt_report or {},
+        "git": (
+            {
+                "url": s.git_url,
+                "branch": s.git_branch,
+                "pin": s.git_pin,
+                "path": s.git_path,
+                "credential_id": str(s.git_credential_id)
+                if s.git_credential_id
+                else None,
+                "commit": (
+                    s.revisions.filter(number=s.revision)
+                    .values_list("git_commit", flat=True)
+                    .first()
+                    or ""
+                ),
+            }
+            if s.git_url
+            else None
+        ),
+        "env": [{"key": k, "set": bool(v)} for k, v in _env_pairs(s)],
+        "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+    }
 
 
 def _merge_env(stack: ManagedStack | None, data) -> list[tuple[str, str]]:
@@ -74,72 +122,110 @@ def _merge_env(stack: ManagedStack | None, data) -> list[tuple[str, str]]:
         if "\n" in value:
             raise StackError(f".env key {key}: a value cannot span lines")
         pairs.append((key, value))
-    return parse_env(render_env(pairs))   # same key rules as a pasted file
+    return parse_env(render_env(pairs))  # same key rules as a pasted file
 
 
 def _save(request, stack: ManagedStack, data, *, note: str) -> Response | None:
     if stack.git_url and "compose_yaml" in data:
-        return Response({"detail": "this stack's compose file comes from Git: change it in the "
-                                   "repository and pull"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "detail": "this stack's compose file comes from Git: change it in the "
+                "repository and pull"
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     try:
         if "compose_yaml" in data:
             validate_compose(str(data["compose_yaml"]))
             stack.compose_yaml = str(data["compose_yaml"])
         if "env_text" in data or "env" in data:
-            stack.env_encrypted = encrypt_secret(render_env(_merge_env(
-                None if stack._state.adding else stack, data)))
+            stack.env_encrypted = encrypt_secret(
+                render_env(_merge_env(None if stack._state.adding else stack, data))
+            )
     except StackError as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     with transaction.atomic():
         if not stack._state.adding:
             stack.revision += 1
         stack.save()
-        StackRevision.objects.create(stack=stack, number=stack.revision,
-                                     compose_yaml=stack.compose_yaml,
-                                     env_encrypted=stack.env_encrypted,
-                                     note=note[:200], created_by=request.user)
+        StackRevision.objects.create(
+            stack=stack,
+            number=stack.revision,
+            compose_yaml=stack.compose_yaml,
+            env_encrypted=stack.env_encrypted,
+            note=note[:200],
+            created_by=request.user,
+        )
     hooks.emit("stack_saved", stack=stack, user=request.user, revision=stack.revision)
     return None
 
 
+@extend_schema(methods=["GET"], responses={200: StacksStackListSerializer})
+@extend_schema(
+    methods=["POST"],
+    request=StacksStackCreateSerializer,
+    responses={201: StacksStackSerializer, 400: StacksErrorSerializer},
+)
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 @scoping.module_view("stacks")
 def stack_index(request):
     if request.method == "GET":
-        qs = scoping.filter_by_site(ManagedStack.objects.select_related("host"), request.user,
-                                    path="host__")
+        qs = scoping.filter_by_site(
+            ManagedStack.objects.select_related("host"), request.user, path="host__"
+        )
         if host_id := request.query_params.get("host"):
             import uuid
+
             try:
                 qs = qs.filter(host_id=uuid.UUID(str(host_id)))
             except ValueError:
-                return Response({"detail": "host must be a host id"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {"detail": "host must be a host id"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         return Response({"results": [_row(s) for s in qs]})
     host, denied = scoping.host_or_404(request, request.data.get("host_id"))
     if denied:
         return denied
     name = str(request.data.get("name") or "").strip()
     if not NAME_RE.match(name):
-        return Response({"detail": "name must be lowercase letters, digits, _ or -"},
-                        status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"detail": "name must be lowercase letters, digits, _ or -"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     if ManagedStack.objects.filter(host=host, name=name).exists():
-        return Response({"detail": f"{host.hostname} already has a stack called {name}"},
-                        status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"detail": f"{host.hostname} already has a stack called {name}"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     from apps.hosts.models import ContainerStack
-    if ContainerStack.objects.filter(host=host, project=name, container_count__gt=0).exists():
+
+    if ContainerStack.objects.filter(
+        host=host, project=name, container_count__gt=0
+    ).exists():
         # Deploying under a running project's name would take over its
         # containers (compose -p <name>): adopt that one instead.
-        return Response({"detail": f"{host.hostname} already runs a compose stack called {name} "
-                                   f"— adopt it to manage it"},
-                        status=status.HTTP_400_BAD_REQUEST)
-    stack = ManagedStack(host=host, name=name, created_by=request.user,
-                         working_dir=f"{STACKS_ROOT}/{name}")
+        return Response(
+            {
+                "detail": f"{host.hostname} already runs a compose stack called {name} "
+                f"— adopt it to manage it"
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    stack = ManagedStack(
+        host=host,
+        name=name,
+        created_by=request.user,
+        working_dir=f"{STACKS_ROOT}/{name}",
+    )
     if "git" in request.data:
         return _create_from_git(request, stack)
     if "compose_yaml" not in request.data:
-        return Response({"detail": "compose_yaml (or git) is required"},
-                        status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"detail": "compose_yaml (or git) is required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     if error := _save(request, stack, request.data, note="created"):
         return error
     return Response(_row(stack), status=status.HTTP_201_CREATED)
@@ -155,13 +241,19 @@ def _create_from_git(request, stack: ManagedStack) -> Response:
     try:
         git_views.apply_git_settings(stack, request.data)
         if "env_text" in request.data or "env" in request.data:
-            stack.env_encrypted = encrypt_secret(render_env(_merge_env(None, request.data)))
+            stack.env_encrypted = encrypt_secret(
+                render_env(_merge_env(None, request.data))
+            )
         git_views.pull(stack, request.user, note="created from Git")
     except (gitsource.GitSourceError, StackError) as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     return Response(_row(stack), status=status.HTTP_201_CREATED)
 
 
+@extend_schema(
+    request=StacksValidateSerializer,
+    responses={200: StacksComposeDescriptionSerializer},
+)
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def stack_validate(request):
@@ -180,6 +272,13 @@ def _stack_or_404(request, stack_id):
     return stack
 
 
+@extend_schema(methods=["GET"], responses={200: StacksStackSerializer})
+@extend_schema(
+    methods=["PUT"],
+    request=StacksStackEditSerializer,
+    responses={200: StacksStackSerializer, 400: StacksErrorSerializer},
+)
+@extend_schema(methods=["DELETE"], request=None, responses={204: None})
 @api_view(["GET", "PUT", "DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def stack_detail(request, stack_id):
@@ -196,10 +295,15 @@ def stack_detail(request, stack_id):
     if "git" in request.data:
         # New repository settings take effect by pulling them.
         from . import git_views, gitsource
+
         if not stack.git_url:
-            return Response({"detail": "a stack edited in Vigil cannot be switched to Git; "
-                                       "create a new stack from the repository"},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {
+                    "detail": "a stack edited in Vigil cannot be switched to Git; "
+                    "create a new stack from the repository"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if denied := git_views.credential_step_up(request):
             return denied
         env_given = "env" in request.data or "env_text" in request.data
@@ -207,7 +311,9 @@ def stack_detail(request, stack_id):
             git_views.apply_git_settings(stack, request.data)
             if env_given:
                 # The .env edited alongside goes into the revision the pull makes.
-                stack.env_encrypted = encrypt_secret(render_env(_merge_env(stack, request.data)))
+                stack.env_encrypted = encrypt_secret(
+                    render_env(_merge_env(stack, request.data))
+                )
             changed = git_views.pull(stack, request.user, note="Git settings changed")
         except (gitsource.GitSourceError, StackError) as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -215,33 +321,63 @@ def stack_detail(request, stack_id):
             # Same commit: the settings (a branch at that commit, another
             # credential) still stick, and a .env edit is its own revision.
             if env_given:
-                if error := _save(request, stack, request.data,
-                                  note=str(request.data.get("note") or "edited")):
+                if error := _save(
+                    request,
+                    stack,
+                    request.data,
+                    note=str(request.data.get("note") or "edited"),
+                ):
                     return error
             else:
-                stack.save(update_fields=["git_url", "git_branch", "git_pin", "git_path",
-                                          "git_credential"])
+                stack.save(
+                    update_fields=[
+                        "git_url",
+                        "git_branch",
+                        "git_pin",
+                        "git_path",
+                        "git_credential",
+                    ]
+                )
         return Response(_row(stack))
-    if error := _save(request, stack, request.data, note=str(request.data.get("note") or "edited")):
+    if error := _save(
+        request, stack, request.data, note=str(request.data.get("note") or "edited")
+    ):
         return error
     return Response(_row(stack))
 
 
+@extend_schema(request=None, responses={200: StacksRevisionListSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def stack_revisions(request, stack_id):
     stack = _stack_or_404(request, stack_id)
     if stack is None:
         return Response(status=status.HTTP_404_NOT_FOUND)
-    return Response({"results": [{
-        "number": r.number, "name": r.name, "note": r.note, "compose_yaml": r.compose_yaml,
-        "git_commit": r.git_commit, "current": r.number == stack.revision,
-        "deployed": r.number == stack.deployed_revision,
-        "env_keys": [k for k, _v in _env_pairs(r)],
-        "created_by": r.created_by.username if r.created_by else None,
-        "created_at": r.created_at.isoformat()} for r in stack.revisions.all()[:50]]})
+    return Response(
+        {
+            "results": [
+                {
+                    "number": r.number,
+                    "name": r.name,
+                    "note": r.note,
+                    "compose_yaml": r.compose_yaml,
+                    "git_commit": r.git_commit,
+                    "current": r.number == stack.revision,
+                    "deployed": r.number == stack.deployed_revision,
+                    "env_keys": [k for k, _v in _env_pairs(r)],
+                    "created_by": r.created_by.username if r.created_by else None,
+                    "created_at": r.created_at.isoformat(),
+                }
+                for r in stack.revisions.all()[:50]
+            ]
+        }
+    )
 
 
+@extend_schema(
+    request=StacksRevisionNameSerializer,
+    responses={200: StacksRevisionRenamedSerializer, 400: StacksErrorSerializer},
+)
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def stack_revision_name(request, stack_id, number):
@@ -254,13 +390,19 @@ def stack_revision_name(request, stack_id, number):
         return Response(status=status.HTTP_404_NOT_FOUND)
     name = request.data.get("name")
     if not isinstance(name, str) or len(name.strip()) > 80:
-        return Response({"detail": "name must be text of at most 80 characters"},
-                        status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"detail": "name must be text of at most 80 characters"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     rev.name = " ".join(name.split())
     rev.save(update_fields=["name"])
     return Response({"number": rev.number, "name": rev.name})
 
 
+@extend_schema(
+    request=StacksRevisionsPruneSerializer,
+    responses={200: StacksPrunedSerializer, 400: StacksErrorSerializer},
+)
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def stack_revisions_prune(request, stack_id):
@@ -274,22 +416,40 @@ def stack_revisions_prune(request, stack_id):
     revs = stack.revisions.order_by("-number")
     keep, numbers = request.data.get("keep"), request.data.get("numbers")
     if numbers is not None:
-        if not isinstance(numbers, list) or not all(isinstance(n, int) for n in numbers):
-            return Response({"detail": "numbers must be a list of revision numbers"},
-                            status=status.HTTP_400_BAD_REQUEST)
-        doomed = revs.filter(number__in=numbers).exclude(number__in=[p for p in protected if p])
+        if not isinstance(numbers, list) or not all(
+            isinstance(n, int) for n in numbers
+        ):
+            return Response(
+                {"detail": "numbers must be a list of revision numbers"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        doomed = revs.filter(number__in=numbers).exclude(
+            number__in=[p for p in protected if p]
+        )
     elif isinstance(keep, int) and not isinstance(keep, bool) and keep >= 1:
         newest = list(revs.values_list("number", flat=True)[:keep])
-        doomed = (revs.exclude(number__in=newest).exclude(name__gt="")
-                  .exclude(number__in=[p for p in protected if p]))
+        doomed = (
+            revs.exclude(number__in=newest)
+            .exclude(name__gt="")
+            .exclude(number__in=[p for p in protected if p])
+        )
     else:
-        return Response({"detail": "send keep (at least 1) or numbers"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"detail": "send keep (at least 1) or numbers"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     deleted = sorted(doomed.values_list("number", flat=True))
     doomed.delete()
-    hooks.emit("stack_revisions_pruned", stack=stack, user=request.user, numbers=deleted)
+    hooks.emit(
+        "stack_revisions_pruned", stack=stack, user=request.user, numbers=deleted
+    )
     return Response({"deleted": deleted, "remaining": stack.revisions.count()})
 
 
+@extend_schema(
+    request=StacksTotpSerializer,
+    responses={200: StacksEnvRevealSerializer, 401: StacksErrorSerializer},
+)
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def stack_env_reveal(request, stack_id):
@@ -300,8 +460,13 @@ def stack_env_reveal(request, stack_id):
     if stack is None:
         return Response(status=status.HTTP_404_NOT_FOUND)
     if error := require_totp_confirmation(request.user, request.data):
-        return Response({"detail": f"Showing secrets needs confirmation: {error}", "needs_totp": True},
-                        status=status.HTTP_401_UNAUTHORIZED)
+        return Response(
+            {
+                "detail": f"Showing secrets needs confirmation: {error}",
+                "needs_totp": True,
+            },
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
     hooks.emit("stack_env_revealed", stack=stack, user=request.user)
     return Response({"env": [{"key": k, "value": v} for k, v in _env_pairs(stack)]})
 
@@ -318,23 +483,45 @@ def _dispatch(request, stack: ManagedStack, actions: list[dict], name: str):
 
     spec = parse_and_validate(yaml.safe_dump({"name": name[:120], "actions": actions}))
     params, risk, expires_at = task_params(spec)
-    run = TaskRun.objects.create(name_snapshot=name[:120], requested_by=request.user,
-                                 host_count=1, step_count=len(actions))
-    return Task.objects.create(host=stack.host, run=run, requested_by=request.user,
-                               step_label=name[:120], action="_script", params=params,
-                               risk_level=risk, state=Task.State.PENDING, expires_at=expires_at,
-                               nonce=secrets.token_hex(32))
+    run = TaskRun.objects.create(
+        name_snapshot=name[:120],
+        requested_by=request.user,
+        host_count=1,
+        step_count=len(actions),
+    )
+    return Task.objects.create(
+        host=stack.host,
+        run=run,
+        requested_by=request.user,
+        step_label=name[:120],
+        action="_script",
+        params=params,
+        risk_level=risk,
+        state=Task.State.PENDING,
+        expires_at=expires_at,
+        nonce=secrets.token_hex(32),
+    )
 
 
 def _confirmed(request) -> Response | None:
     from apps.accounts.totp import require_totp_confirmation
 
     if error := require_totp_confirmation(request.user, request.data):
-        return Response({"detail": f"This needs confirmation: {error}", "needs_totp": True},
-                        status=status.HTTP_401_UNAUTHORIZED)
+        return Response(
+            {"detail": f"This needs confirmation: {error}", "needs_totp": True},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
     return None
 
 
+@extend_schema(
+    request=StacksDeployBodySerializer,
+    responses={
+        201: StacksDeploySerializer,
+        400: StacksErrorSerializer,
+        401: StacksErrorSerializer,
+    },
+)
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def stack_deploy(request, stack_id):
@@ -351,6 +538,7 @@ def stack_deploy(request, stack_id):
         return Response(status=status.HTTP_404_NOT_FOUND)
     # A stack task runs as root on its host: tasks:run in that host's site (SEC-1).
     from apps.tasks.authz import run_denied
+
     if refused := run_denied(request.user, [stack.host]):
         return refused
     if denied := _confirmed(request):
@@ -358,42 +546,71 @@ def stack_deploy(request, stack_id):
     source = {}
     if stack.git_url and "stack_source" not in set(stack.host.agent_features or []):
         # An older agent would ignore the source ticket and build with no source.
-        return Response({"detail": f"{stack.host.hostname}'s agent is too old for stacks from Git — "
-                                   "update the agent first"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "detail": f"{stack.host.hostname}'s agent is too old for stacks from Git — "
+                "update the agent first"
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     if stack.git_url:
         # Tracking a branch means a deploy takes its latest commit; a pinned
         # stack re-fetches the same one (and makes no revision).
         from . import git_views, gitsource
+
         try:
             git_views.pull(stack, request.user)
             source = git_views.deploy_source_params(stack)
         except (gitsource.GitSourceError, StackError) as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-    params = {"project": stack.name, "compose": stack.compose_yaml,
-              "working_dir": stack.working_dir, "revision": stack.revision, **source}
+    params = {
+        "project": stack.name,
+        "compose": stack.compose_yaml,
+        "working_dir": stack.working_dir,
+        "revision": stack.revision,
+        **source,
+    }
     # A Git stack builds its images from the source it ships, and plain `up`
     # only builds an image that is missing: the new commit would never run.
-    rebuilds = bool(stack.git_url) and "stack_build" in set(stack.host.agent_features or [])
+    rebuilds = bool(stack.git_url) and "stack_build" in set(
+        stack.host.agent_features or []
+    )
     if rebuilds:
         params["build"] = True
     if stack.compose_file != "compose.yaml":
         params["compose_file"] = stack.compose_file
     if bytes(stack.env_encrypted or b""):
-        ticket = EnvTicket.objects.create(stack=stack, revision=stack.revision, host=stack.host,
-                                          expires_at=now() + timedelta(hours=EnvTicket.TTL_HOURS))
+        ticket = EnvTicket.objects.create(
+            stack=stack,
+            revision=stack.revision,
+            host=stack.host,
+            expires_at=now() + timedelta(hours=EnvTicket.TTL_HOURS),
+        )
         params["env_ticket"] = str(ticket.id)
-    task = _dispatch(request, stack, [{"id": "deploy", "type": "stack_deploy", "params": params}],
-                     f"Deploy stack {stack.name} (r{stack.revision})")
+    task = _dispatch(
+        request,
+        stack,
+        [{"id": "deploy", "type": "stack_deploy", "params": params}],
+        f"Deploy stack {stack.name} (r{stack.revision})",
+    )
     stack.deployed_revision = stack.revision
     stack.save(update_fields=["deployed_revision"])
     # Record the project as Vigil's now: until the host's next check-in
     # reports its containers, the Containers page would otherwise call a
     # stack that is being deployed "not deployed".
     from apps.hosts.models import ContainerStack
+
     ContainerStack.objects.update_or_create(
-        host=stack.host, project=stack.name,
-        defaults={"ownership": (ContainerStack.Ownership.ADOPTED if stack.adopted
-                                else ContainerStack.Ownership.MANAGED)})
+        host=stack.host,
+        project=stack.name,
+        defaults={
+            "ownership": (
+                ContainerStack.Ownership.ADOPTED
+                if stack.adopted
+                else ContainerStack.Ownership.MANAGED
+            )
+        },
+    )
     hooks.emit("stack_deployed", stack=stack, user=request.user, task=task)
     body = {"task": str(task.id), "run": str(task.run_id)}
     if stack.git_url:
@@ -403,6 +620,10 @@ def stack_deploy(request, stack_id):
     return Response(body, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(
+    request=StacksRemoveBodySerializer,
+    responses={201: StacksTaskSerializer, 401: StacksErrorSerializer},
+)
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def stack_remove(request, stack_id):
@@ -411,18 +632,37 @@ def stack_remove(request, stack_id):
         return Response(status=status.HTTP_404_NOT_FOUND)
     # A stack task runs as root on its host: tasks:run in that host's site (SEC-1).
     from apps.tasks.authz import run_denied
+
     if refused := run_denied(request.user, [stack.host]):
         return refused
     if denied := _confirmed(request):
         return denied
     delete_files = bool(request.data.get("delete_files")) and not stack.adopted
-    task = _dispatch(request, stack, [{"id": "remove", "type": "stack_remove", "params": {
-        "project": stack.name, "working_dir": stack.working_dir, "delete_files": delete_files}}],
-        f"Take down stack {stack.name}")
-    return Response({"task": str(task.id), "run": str(task.run_id)}, status=status.HTTP_201_CREATED)
+    task = _dispatch(
+        request,
+        stack,
+        [
+            {
+                "id": "remove",
+                "type": "stack_remove",
+                "params": {
+                    "project": stack.name,
+                    "working_dir": stack.working_dir,
+                    "delete_files": delete_files,
+                },
+            }
+        ],
+        f"Take down stack {stack.name}",
+    )
+    return Response(
+        {"task": str(task.id), "run": str(task.run_id)}, status=status.HTTP_201_CREATED
+    )
 
 
-@scoping.system_view(reason="agent API: the caller is a host, authenticated by its agent token")
+@extend_schema(request=None, responses={200: StacksAgentEnvSerializer})
+@scoping.system_view(
+    reason="agent API: the caller is a host, authenticated by its agent token"
+)
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def agent_stack_env(request, ticket_id):
@@ -439,16 +679,34 @@ def agent_stack_env(request, ticket_id):
     if err:
         return err
     with _tx.atomic():
-        ticket = (EnvTicket.objects.select_for_update().select_related("stack")
-                  .filter(pk=ticket_id, host=host).first())
+        ticket = (
+            EnvTicket.objects.select_for_update()
+            .select_related("stack")
+            .filter(pk=ticket_id, host=host)
+            .first()
+        )
         if ticket is None or ticket.used_at is not None or ticket.expires_at <= now():
-            return Response({"detail": "ticket unknown, used or expired"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": "ticket unknown, used or expired"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
         ticket.used_at = now()
         ticket.save(update_fields=["used_at"])
-        rev = ticket.stack.revisions.filter(number=ticket.revision).first() or ticket.stack
+        rev = (
+            ticket.stack.revisions.filter(number=ticket.revision).first()
+            or ticket.stack
+        )
     return Response({"env": render_env(_env_pairs(rev))})
 
 
+@extend_schema(
+    request=StacksAdoptSerializer,
+    responses={
+        201: StacksAdoptQueuedSerializer,
+        400: StacksErrorSerializer,
+        401: StacksErrorSerializer,
+    },
+)
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def stack_adopt(request):
@@ -467,24 +725,56 @@ def stack_adopt(request):
         return denied
     project = str(request.data.get("project") or "")
     if not NAME_RE.match(project):
-        return Response({"detail": "not a compose project name"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"detail": "not a compose project name"}, status=status.HTTP_400_BAD_REQUEST
+        )
     if ManagedStack.objects.filter(host=host, name=project).exists():
-        return Response({"detail": f"{project} is already managed"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"detail": f"{project} is already managed"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     # A stack task runs as root on its host: tasks:run in that host's site (SEC-1).
     from apps.tasks.authz import run_denied
+
     if refused := run_denied(request.user, [host]):
         return refused
     if denied := _confirmed(request):
         return denied
-    ticket = AdoptTicket.objects.create(host=host, project=project, requested_by=request.user,
-                                        expires_at=now() + timedelta(hours=AdoptTicket.TTL_HOURS))
+    ticket = AdoptTicket.objects.create(
+        host=host,
+        project=project,
+        requested_by=request.user,
+        expires_at=now() + timedelta(hours=AdoptTicket.TTL_HOURS),
+    )
     placeholder = ManagedStack(host=host, name=project)
-    task = _dispatch(request, placeholder, [{"id": "read", "type": "stack_read", "params": {
-        "project": project, "adopt_ticket": str(ticket.id)}}], f"Adopt stack {project}")
-    return Response({"ticket": str(ticket.id), "task": str(task.id)}, status=status.HTTP_201_CREATED)
+    task = _dispatch(
+        request,
+        placeholder,
+        [
+            {
+                "id": "read",
+                "type": "stack_read",
+                "params": {"project": project, "adopt_ticket": str(ticket.id)},
+            }
+        ],
+        f"Adopt stack {project}",
+    )
+    return Response(
+        {"ticket": str(ticket.id), "task": str(task.id)}, status=status.HTTP_201_CREATED
+    )
 
 
-@scoping.system_view(reason="agent API: the caller is a host, authenticated by its agent token")
+@extend_schema(
+    request=StacksAgentHandoverSerializer,
+    responses={
+        200: StacksOkSerializer,
+        400: StacksErrorSerializer,
+        404: StacksErrorSerializer,
+    },
+)
+@scoping.system_view(
+    reason="agent API: the caller is a host, authenticated by its agent token"
+)
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def agent_stack_adopt(request, ticket_id):
@@ -502,10 +792,16 @@ def agent_stack_adopt(request, ticket_id):
         return err
     data = request.data
     with _tx.atomic():
-        ticket = (AdoptTicket.objects.select_for_update()
-                  .filter(pk=ticket_id, host=host).first())
+        ticket = (
+            AdoptTicket.objects.select_for_update()
+            .filter(pk=ticket_id, host=host)
+            .first()
+        )
         if ticket is None or ticket.used_at is not None or ticket.expires_at <= now():
-            return Response({"detail": "ticket unknown, used or expired"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": "ticket unknown, used or expired"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
         ticket.used_at = now()
         try:
             if str(data.get("project") or "") != ticket.project:
@@ -520,18 +816,34 @@ def agent_stack_adopt(request, ticket_id):
         except StackError as exc:
             ticket.error = str(exc)[:500]
             ticket.save(update_fields=["used_at", "error"])
-            return Response({"detail": ticket.error}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": ticket.error}, status=status.HTTP_400_BAD_REQUEST
+            )
         ticket.save(update_fields=["used_at"])
-        stack = ManagedStack(host=host, name=ticket.project, compose_yaml=compose,
-                             env_encrypted=encrypt_secret(render_env(env_pairs)) if env_pairs else b"",
-                             working_dir=working_dir, compose_file=compose_file, adopted=True,
-                             adopt_report=data.get("hashes") if isinstance(data.get("hashes"), dict) else {},
-                             created_by=ticket.requested_by)
+        stack = ManagedStack(
+            host=host,
+            name=ticket.project,
+            compose_yaml=compose,
+            env_encrypted=encrypt_secret(render_env(env_pairs)) if env_pairs else b"",
+            working_dir=working_dir,
+            compose_file=compose_file,
+            adopted=True,
+            adopt_report=data.get("hashes")
+            if isinstance(data.get("hashes"), dict)
+            else {},
+            created_by=ticket.requested_by,
+        )
         stack.save()
-        StackRevision.objects.create(stack=stack, number=1, compose_yaml=compose,
-                                     env_encrypted=stack.env_encrypted, note="adopted",
-                                     created_by=ticket.requested_by)
+        StackRevision.objects.create(
+            stack=stack,
+            number=1,
+            compose_yaml=compose,
+            env_encrypted=stack.env_encrypted,
+            note="adopted",
+            created_by=ticket.requested_by,
+        )
         ContainerStack.objects.filter(host=host, project=ticket.project).update(
-            ownership=ContainerStack.Ownership.ADOPTED)
+            ownership=ContainerStack.Ownership.ADOPTED
+        )
     hooks.emit("stack_saved", stack=stack, user=ticket.requested_by, revision=1)
     return Response({"ok": True})
