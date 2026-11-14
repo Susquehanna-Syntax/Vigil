@@ -311,3 +311,100 @@ class StacksRevisionRenamedSerializer(serializers.Serializer):
 
     number = serializers.IntegerField()
     name = serializers.CharField(allow_blank=True)
+
+
+# ── Git credentials, pulling, and private registries ────────────────────────
+
+
+class StacksGitCredentialSerializer(serializers.Serializer):
+    """One Git credential as ``_cred_row`` builds it — never the secret. The
+    key is write-only; ``has_known_hosts`` says whether an SSH credential
+    pinned the Git server's host keys, without echoing them."""
+
+    id = serializers.CharField()
+    name = serializers.CharField()
+    # A plain field on purpose: ``choices=[…]`` would make this a named enum
+    # component, and drf-spectacular resolves two *kind* choice sets that no
+    # other app shares into one hash-named enum — a schema warning with no
+    # view file to attribute it to.
+    kind = serializers.CharField(help_text="``token`` or ``ssh_key``.")
+    git_host = serializers.CharField(
+        help_text="The one Git server this credential may be used with."
+    )
+    username = serializers.CharField(allow_blank=True)
+    has_known_hosts = serializers.BooleanField()
+    site_id = serializers.CharField(allow_null=True)
+    created_at = serializers.DateTimeField()
+
+
+class StacksGitCredentialListSerializer(serializers.Serializer):
+    results = StacksGitCredentialSerializer(many=True)
+
+
+class StacksGitCredentialCreateSerializer(serializers.Serializer):
+    """The POST body. ``secret`` is the access token or the private key, and
+    an ``ssh_key`` also needs the server's ``known_hosts`` line; ``totp`` is
+    the confirmation asked for before anything is stored."""
+
+    name = serializers.CharField()
+    kind = serializers.CharField(help_text="``token`` or ``ssh_key``.")
+    git_host = serializers.CharField(
+        help_text="The Git server's host name only, e.g. github.com."
+    )
+    username = serializers.CharField(required=False)
+    secret = serializers.CharField(help_text="An HTTPS access token or a private key.")
+    known_hosts = serializers.CharField(
+        required=False,
+        help_text="A known_hosts line for the Git server; an SSH key needs one.",
+    )
+    site_id = serializers.CharField(required=False, allow_null=True)
+    totp = serializers.CharField(required=False)
+
+
+class StacksPullSerializer(serializers.Serializer):
+    """The pull's answer: whether the repository brought anything new, and
+    the stack row as it stands after."""
+
+    changed = serializers.BooleanField(
+        help_text="False when the repository is still at the commit the current revision came from."
+    )
+    stack = StacksStackSerializer()
+
+
+class StacksRegistryCredentialSerializer(serializers.Serializer):
+    """One registry login as ``_row`` builds it. The password is write-only,
+    and ``host_tags`` are the host tags this credential covers — none means
+    every managed host of its site."""
+
+    id = serializers.CharField()
+    registry = serializers.CharField(help_text="The registry host as an image names it.")
+    username = serializers.CharField()
+    host_tags = serializers.ListField(child=serializers.CharField())
+    site_id = serializers.CharField(allow_null=True)
+    created_at = serializers.DateTimeField()
+
+
+class StacksRegistryCredentialListSerializer(serializers.Serializer):
+    results = StacksRegistryCredentialSerializer(many=True)
+
+
+class StacksRegistryCredentialCreateSerializer(serializers.Serializer):
+    """The POST body; ``registry`` is lowercased before it is checked."""
+
+    registry = serializers.CharField(help_text="ghcr.io, docker.io, registry.local:5000.")
+    username = serializers.CharField()
+    password = serializers.CharField()
+    host_tags = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        help_text="Cover the hosts carrying one of these tags; empty covers every host of its site.",
+    )
+    site_id = serializers.CharField(required=False, allow_null=True)
+
+
+class StacksRegistryAuthSerializer(serializers.Serializer):
+    """The agent's docker-config triple for the registry it asked about."""
+
+    username = serializers.CharField()
+    password = serializers.CharField()
+    serveraddress = serializers.CharField(help_text="The registry asked for, lowercased.")

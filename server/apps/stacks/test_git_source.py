@@ -25,8 +25,18 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Role, UserProfile
 from apps.hosts.crypto import decrypt_secret
 from apps.hosts.models import Host
+from vigil.schema_check import assert_shape
 
 from . import gitsource
+from .api_schema import (
+    StacksErrorSerializer,
+    StacksGitCredentialListSerializer,
+    StacksGitCredentialSerializer,
+    StacksPullSerializer,
+    StacksRegistryAuthSerializer,
+    StacksRegistryCredentialListSerializer,
+    StacksRegistryCredentialSerializer,
+)
 from .gitsource import GitSourceError, Source
 
 _TOTP = "apps.accounts.totp.require_totp_confirmation"
@@ -415,3 +425,104 @@ class GitStackApiTests(TestCase):
         self.assertEqual(api.get("/api/v1/stacks/git-credentials/").status_code, 403)
         sid = self._create().json()["id"]
         self.assertEqual(api.post(f"/api/v1/stacks/{sid}/pull/").status_code, 403)
+
+
+class Test49ResponsesMatchTheApiSchema(TestCase):
+    """Phase 49: the Git-credential, pull and registry endpoints answer with
+    what ``apps/stacks/api_schema.py`` documents. Data is present everywhere —
+    a list with no row in it checks nothing."""
+
+    def setUp(self):
+        self.host = Host.objects.create(hostname="nas", agent_token="nastok",
+                                        status=Host.Status.ONLINE, mode="managed",
+                                        tags=["builders"])
+        user = get_user_model().objects.create_user("a", password="x")
+        UserProfile.objects.create(user=user, role=Role.ADMIN)
+        self.api = APIClient()
+        self.api.force_authenticate(user)
+
+    def _git(self):
+        with mock.patch(_TOTP, return_value=None):
+            created = self.api.post(
+                "/api/v1/stacks/git-credentials/",
+                {"name": "gh", "kind": "token", "secret": "ghp_secret",
+                 "username": "bot", "git_host": "github.com"}, format="json")
+        self.assertEqual(created.status_code, 201, created.content)
+        assert_shape(self, created.json(), StacksGitCredentialSerializer)
+
+    def _registry(self):
+        created = self.api.post(
+            "/api/v1/stacks/registries/",
+            {"registry": "GHCR.io", "username": "bot", "password": "s3cret",
+             "host_tags": ["Builders"]}, format="json")
+        self.assertEqual(created.status_code, 201, created.content)
+        assert_shape(self, created.json(), StacksRegistryCredentialSerializer)
+
+    def test_49_responses_match_the_api_schema(self):
+        self._git()
+        credentials = self.api.get("/api/v1/stacks/git-credentials/")
+        self.assertEqual(credentials.status_code, 200, credentials.content)
+        self.assertTrue(credentials.json()["results"], "an empty list checks no row shape")
+        assert_shape(self, credentials.json(), StacksGitCredentialListSerializer)
+
+        self._registry()
+        registries = self.api.get("/api/v1/stacks/registries/")
+        self.assertEqual(registries.status_code, 200, registries.content)
+        self.assertTrue(registries.json()["results"], "an empty list checks no row shape")
+        assert_shape(self, registries.json(), StacksRegistryCredentialListSerializer)
+
+        auth = self.client.get("/api/v1/agent/registry-auth/?registry=GHCR.io",
+                               HTTP_AUTHORIZATION="Bearer nastok")
+        self.assertEqual(auth.status_code, 200, auth.content)
+        assert_shape(self, auth.json(), StacksRegistryAuthSerializer)
+
+        cred_id = credentials.json()["results"][0]["id"]
+        with mock.patch(_TOTP, return_value=None):
+            self.assertEqual(
+                self.api.delete(f"/api/v1/stacks/git-credentials/{cred_id}/").status_code, 204)
+        registry_id = registries.json()["results"][0]["id"]
+        self.assertEqual(
+            self.api.delete(f"/api/v1/stacks/registries/{registry_id}/").status_code, 204)
+
+    def test_49_a_credential_without_its_server_is_refused(self):
+        """The documented refusal shape of the credential POST: ``detail``."""
+        with mock.patch(_TOTP, return_value=None):
+            refused = self.api.post("/api/v1/stacks/git-credentials/",
+                                    {"name": "gh", "kind": "ssh_key", "git_host": ""},
+                                    format="json")
+        self.assertEqual(refused.status_code, 400, refused.content)
+        assert_shape(self, refused.json(), StacksErrorSerializer)
+
+    def test_49_a_pull_says_whether_the_repository_moved(self):
+        from datetime import timedelta
+
+        from django.utils.timezone import now
+
+        from . import gitsource
+        from .models import ManagedStack, SourceSnapshot, SourceTicket
+
+        stack = ManagedStack.objects.create(
+            host=self.host, name="web", compose_yaml=COMPOSE,
+            git_url="https://github.com/acme/web.git", revision=1)
+        revision = stack.revisions.create(number=1, compose_yaml=COMPOSE,
+                                          git_commit="a" * 40)
+        snapshot = SourceSnapshot.objects.create(
+            stack=stack, revision=revision.number, commit=revision.git_commit,
+            sha256="b" * 64, size=3, data=b"\x1f\x8b\x08")
+        ticket = SourceTicket.objects.create(
+            host=self.host, snapshot=snapshot, expires_at=now() + timedelta(hours=1))
+
+        with mock.patch.object(gitsource, "fetch", return_value=gitsource.Fetched(
+                commit=revision.git_commit, compose_yaml=COMPOSE,
+                compose_file="compose.yaml", archive=b"\x1f\x8b\x08",
+                sha256="b" * 64)) as fetched:
+            pulled = self.api.post(f"/api/v1/stacks/{stack.id}/pull/", format="json")
+        self.assertEqual(fetched.call_args.args[0].url, stack.git_url)
+        self.assertEqual(pulled.status_code, 200, pulled.content)
+        self.assertFalse(pulled.json()["changed"], "the same commit makes no revision")
+        assert_shape(self, pulled.json(), StacksPullSerializer)
+
+        source = self.client.get(f"/api/v1/agent/stack-source/{ticket.id}/",
+                                 HTTP_AUTHORIZATION="Bearer nastok")
+        self.assertEqual(source.status_code, 200, source.content)
+        self.assertEqual(source.getvalue(), b"\x1f\x8b\x08")

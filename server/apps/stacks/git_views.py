@@ -13,6 +13,8 @@ from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -23,6 +25,13 @@ from apps.hosts.crypto import decrypt_secret, encrypt_secret
 from vigil import hooks, scoping
 
 from . import gitsource
+from .api_schema import (
+    StacksErrorSerializer,
+    StacksGitCredentialCreateSerializer,
+    StacksGitCredentialListSerializer,
+    StacksGitCredentialSerializer,
+    StacksPullSerializer,
+)
 from .models import GitCredential, ManagedStack, SourceSnapshot, SourceTicket, StackRevision
 from .validation import StackError, validate_compose
 
@@ -40,6 +49,11 @@ def _cred_row(c: GitCredential) -> dict:
             "created_at": c.created_at.isoformat()}
 
 
+@extend_schema(methods=["GET"], responses={200: StacksGitCredentialListSerializer})
+@extend_schema(methods=["POST"], request=StacksGitCredentialCreateSerializer,
+               responses={201: StacksGitCredentialSerializer,
+                          400: StacksErrorSerializer, 401: StacksErrorSerializer,
+                          403: StacksErrorSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def git_credential_index(request):
@@ -84,6 +98,8 @@ def git_credential_index(request):
     return Response(_cred_row(cred), status=status.HTTP_201_CREATED)
 
 
+@extend_schema(methods=["DELETE"], request=None, responses={204: None,
+                                                            403: StacksErrorSerializer})
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def git_credential_detail(request, cred_id):
@@ -171,6 +187,9 @@ def pull(stack: ManagedStack, user, *, note: str = "") -> bool:
     return True
 
 
+@extend_schema(request=None, responses={200: StacksPullSerializer,
+                                        400: StacksErrorSerializer,
+                                        403: StacksErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def stack_pull(request, stack_id):
@@ -206,6 +225,7 @@ def deploy_source_params(stack: ManagedStack) -> dict:
 
 
 @scoping.system_view(reason="agent API: the caller is a host, authenticated by its agent token")
+@extend_schema(responses={(200, "application/gzip"): OpenApiTypes.BINARY})
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def agent_stack_source(request, ticket_id):

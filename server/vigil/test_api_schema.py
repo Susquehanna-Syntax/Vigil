@@ -30,12 +30,12 @@ TYPED: set[str] = {
     "accounts", "agent_dist", "agentprofiles", "aisuggest", "alerts",
     "automations", "catalog", "dashboards", "hosts", "instance", "licensing",
     "metrics", "playbooks", "policies", "relays", "remote", "reports",
-    "reprovision", "software", "statuspage", "vigil", "vulns",
+    "reprovision", "software", "stacks", "statuspage", "vigil", "vulns",
 }
 
 #: Apps still to type, each one phase of the work.
 PENDING: set[str] = {
-    "jackil", "stacks", "tasks",
+    "jackil", "tasks",
     # The Business apps, which live in the private Vigil_Business repository.
     "apps_business",
 }
