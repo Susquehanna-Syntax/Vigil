@@ -28,14 +28,15 @@ from drf_spectacular.generators import SchemaGenerator
 #: Apps whose every /api/v1/ view comes out typed.
 TYPED: set[str] = {
     "accounts", "agent_dist", "agentprofiles", "aisuggest", "alerts",
-    "automations", "catalog", "dashboards", "hosts", "instance", "licensing",
-    "metrics", "playbooks", "policies", "relays", "remote", "reports",
-    "reprovision", "software", "statuspage", "vigil", "vulns",
+    "automations", "catalog", "dashboards", "hosts", "instance", "jackil",
+    "licensing", "metrics", "playbooks", "policies", "relays", "remote",
+    "reports", "reprovision", "software", "stacks", "statuspage", "vigil",
+    "vulns",
 }
 
 #: Apps still to type, each one phase of the work.
 PENDING: set[str] = {
-    "jackil", "stacks", "tasks",
+    "tasks",
     # The Business apps, which live in the private Vigil_Business repository.
     "apps_business",
 }

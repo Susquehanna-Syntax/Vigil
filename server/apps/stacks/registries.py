@@ -4,6 +4,7 @@ and the agent's own lookup, limited to the hosts each credential covers."""
 import re
 
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -12,6 +13,13 @@ from rest_framework.response import Response
 from apps.accounts.permissions import IsAdmin
 from apps.hosts.crypto import decrypt_secret, encrypt_secret
 
+from .api_schema import (
+    StacksErrorSerializer,
+    StacksRegistryAuthSerializer,
+    StacksRegistryCredentialCreateSerializer,
+    StacksRegistryCredentialListSerializer,
+    StacksRegistryCredentialSerializer,
+)
 from .models import RegistryCredential
 from vigil import scoping
 
@@ -35,6 +43,10 @@ def covers(cred: RegistryCredential, host) -> bool:
     return not tags or bool(tags & {t.key for t in host.tag_rows.all()})
 
 
+@extend_schema(methods=["GET"], responses={200: StacksRegistryCredentialListSerializer})
+@extend_schema(methods=["POST"], request=StacksRegistryCredentialCreateSerializer,
+               responses={201: StacksRegistryCredentialSerializer,
+                          400: StacksErrorSerializer, 403: StacksErrorSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def registry_index(request):
@@ -62,6 +74,8 @@ def registry_index(request):
     return Response(_row(cred), status=status.HTTP_201_CREATED)
 
 
+@extend_schema(methods=["DELETE"], request=None, responses={204: None,
+                                                            403: StacksErrorSerializer})
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def registry_detail(request, cred_id):
@@ -73,6 +87,7 @@ def registry_detail(request, cred_id):
 
 
 @scoping.system_view(reason="agent API: the caller is a host, authenticated by its agent token")
+@extend_schema(responses={200: StacksRegistryAuthSerializer})
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def agent_registry_auth(request):

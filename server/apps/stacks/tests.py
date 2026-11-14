@@ -1,4 +1,6 @@
 """M11 08: managed stacks — validated compose, encrypted .env, revisions, masking."""
+
+import uuid
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -7,11 +9,25 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, UserProfile
 from apps.hosts.models import Host
+from vigil.schema_check import assert_shape
+from vigil.testsupport import requires_business
 
+from .api_schema import (
+    StacksAdoptQueuedSerializer,
+    StacksAgentEnvSerializer,
+    StacksComposeDescriptionSerializer,
+    StacksEnvRevealSerializer,
+    StacksErrorSerializer,
+    StacksOkSerializer,
+    StacksPrunedSerializer,
+    StacksRevisionListSerializer,
+    StacksRevisionRenamedSerializer,
+    StacksStackListSerializer,
+    StacksStackSerializer,
+    StacksTaskSerializer,
+)
 from .models import ManagedStack, StackRevision
 from .validation import NAME_RE, StackError, parse_env, validate_compose
-
-from vigil.testsupport import requires_business
 
 COMPOSE = """services:
   jellyfin:
@@ -58,23 +74,34 @@ class ValidationTests(SimpleTestCase):
 
 class StackApiTests(TestCase):
     def setUp(self):
-        self.host = Host.objects.create(hostname="nas", agent_token="nastok", status=Host.Status.ONLINE,
-                                        mode="managed")
+        self.host = Host.objects.create(
+            hostname="nas",
+            agent_token="nastok",
+            status=Host.Status.ONLINE,
+            mode="managed",
+        )
         self.user = get_user_model().objects.create_user("a", password="x")
         UserProfile.objects.create(user=self.user, role=Role.ADMIN)
         self.client_api = APIClient()
         self.client_api.force_authenticate(self.user)
 
     def _create(self, **extra):
-        body = {"host_id": str(self.host.id), "name": "media", "compose_yaml": COMPOSE,
-                "env_text": "TZ=Europe/London\nAPI_KEY=hunter2\n", **extra}
+        body = {
+            "host_id": str(self.host.id),
+            "name": "media",
+            "compose_yaml": COMPOSE,
+            "env_text": "TZ=Europe/London\nAPI_KEY=hunter2\n",
+            **extra,
+        }
         return self.client_api.post("/api/v1/stacks/", body, format="json")
 
     def test_create_masks_and_encrypts(self):
         resp = self._create()
         self.assertEqual(resp.status_code, 201, resp.content)
         body = resp.json()
-        self.assertEqual(body["env"], [{"key": "TZ", "set": True}, {"key": "API_KEY", "set": True}])
+        self.assertEqual(
+            body["env"], [{"key": "TZ", "set": True}, {"key": "API_KEY", "set": True}]
+        )
         self.assertNotIn("hunter2", resp.content.decode())
         stack = ManagedStack.objects.get()
         self.assertNotIn(b"hunter2", bytes(stack.env_encrypted))
@@ -83,30 +110,63 @@ class StackApiTests(TestCase):
 
     def test_edit_keeps_unchanged_secrets_and_makes_a_revision(self):
         sid = self._create().json()["id"]
-        resp = self.client_api.put(f"/api/v1/stacks/{sid}/", {"env": [
-            {"key": "TZ", "value": "UTC"}, {"key": "API_KEY", "keep": True}, {"key": "NEW", "value": "1"}],
-            "note": "tz"}, format="json")
+        resp = self.client_api.put(
+            f"/api/v1/stacks/{sid}/",
+            {
+                "env": [
+                    {"key": "TZ", "value": "UTC"},
+                    {"key": "API_KEY", "keep": True},
+                    {"key": "NEW", "value": "1"},
+                ],
+                "note": "tz",
+            },
+            format="json",
+        )
         self.assertEqual(resp.json()["revision"], 2)
         with mock.patch(_TOTP, return_value=None):
-            env = self.client_api.post(f"/api/v1/stacks/{sid}/env/reveal/", {"totp": "1"},
-                                       format="json").json()["env"]
-        self.assertEqual(env, [{"key": "TZ", "value": "UTC"}, {"key": "API_KEY", "value": "hunter2"},
-                               {"key": "NEW", "value": "1"}])
+            env = self.client_api.post(
+                f"/api/v1/stacks/{sid}/env/reveal/", {"totp": "1"}, format="json"
+            ).json()["env"]
+        self.assertEqual(
+            env,
+            [
+                {"key": "TZ", "value": "UTC"},
+                {"key": "API_KEY", "value": "hunter2"},
+                {"key": "NEW", "value": "1"},
+            ],
+        )
         revs = self.client_api.get(f"/api/v1/stacks/{sid}/revisions/").json()["results"]
-        self.assertEqual([(r["number"], r["note"]) for r in revs], [(2, "tz"), (1, "created")])
+        self.assertEqual(
+            [(r["number"], r["note"]) for r in revs], [(2, "tz"), (1, "created")]
+        )
         self.assertNotIn("hunter2", str(revs))
 
     def test_refusals(self):
         self.assertEqual(self._create(name="Bad Name").status_code, 400)
-        self.assertEqual(self._create(compose_yaml="services: {a: {image: x, privileged: true}}").status_code, 400)
+        self.assertEqual(
+            self._create(
+                compose_yaml="services: {a: {image: x, privileged: true}}"
+            ).status_code,
+            400,
+        )
         self.assertEqual(self._create().status_code, 201)
-        self.assertEqual(self._create().status_code, 400, "the same name twice on one host")
+        self.assertEqual(
+            self._create().status_code, 400, "the same name twice on one host"
+        )
         sid = ManagedStack.objects.get().id
-        resp = self.client_api.put(f"/api/v1/stacks/{sid}/", {"env": [{"key": "MISSING", "keep": True}]},
-                                   format="json")
+        resp = self.client_api.put(
+            f"/api/v1/stacks/{sid}/",
+            {"env": [{"key": "MISSING", "keep": True}]},
+            format="json",
+        )
         self.assertEqual(resp.status_code, 400)
         with mock.patch(_TOTP, return_value="bad"):
-            self.assertEqual(self.client_api.post(f"/api/v1/stacks/{sid}/env/reveal/", {}, format="json").status_code, 401)
+            self.assertEqual(
+                self.client_api.post(
+                    f"/api/v1/stacks/{sid}/env/reveal/", {}, format="json"
+                ).status_code,
+                401,
+            )
         viewer = get_user_model().objects.create_user("v", password="x")
         UserProfile.objects.create(user=viewer, role=Role.VIEWER)
         c = APIClient()
@@ -116,47 +176,78 @@ class StackApiTests(TestCase):
 
 class StackDeployTests(TestCase):
     def setUp(self):
-        self.host = Host.objects.create(hostname="nas", agent_token="nastok", status=Host.Status.ONLINE,
-                                        mode="managed")
+        self.host = Host.objects.create(
+            hostname="nas",
+            agent_token="nastok",
+            status=Host.Status.ONLINE,
+            mode="managed",
+        )
         self.user = get_user_model().objects.create_user("a", password="x")
         UserProfile.objects.create(user=self.user, role=Role.ADMIN)
         self.api = APIClient()
         self.api.force_authenticate(self.user)
-        self.sid = self.api.post("/api/v1/stacks/", {
-            "host_id": str(self.host.id), "name": "media", "compose_yaml": COMPOSE,
-            "env_text": "API_KEY=hunter2\n"}, format="json").json()["id"]
+        self.sid = self.api.post(
+            "/api/v1/stacks/",
+            {
+                "host_id": str(self.host.id),
+                "name": "media",
+                "compose_yaml": COMPOSE,
+                "env_text": "API_KEY=hunter2\n",
+            },
+            format="json",
+        ).json()["id"]
 
     def _deploy(self):
         with mock.patch(_TOTP, return_value=None):
-            return self.api.post(f"/api/v1/stacks/{self.sid}/deploy/", {"totp": "1"}, format="json")
+            return self.api.post(
+                f"/api/v1/stacks/{self.sid}/deploy/", {"totp": "1"}, format="json"
+            )
 
     def _redeem(self, ticket, token="nastok"):
-        return self.client.get(f"/api/v1/agent/stack-env/{ticket}/", HTTP_AUTHORIZATION=f"Bearer {token}")
+        return self.client.get(
+            f"/api/v1/agent/stack-env/{ticket}/", HTTP_AUTHORIZATION=f"Bearer {token}"
+        )
 
     def test_a_deployed_stack_is_vigils_before_and_after_the_host_reports_it(self):
         """It used to be recorded as "external" at check-in, and as nothing at
         all before it, so the Containers page called it "not deployed"."""
         from apps.hosts.models import ContainerStack
         from apps.hosts.views import _sync_container_stacks
+
         self.assertEqual(self._deploy().status_code, 201)
-        self.assertEqual(ContainerStack.objects.get(host=self.host, project="media").ownership, "managed")
-        ContainerStack.objects.filter(project="media").update(ownership="external")   # a 14.2 row
-        _sync_container_stacks(self.host, [{"stack": "media", "state": "running"},
-                                           {"stack": "other", "state": "running"}])
+        self.assertEqual(
+            ContainerStack.objects.get(host=self.host, project="media").ownership,
+            "managed",
+        )
+        ContainerStack.objects.filter(project="media").update(
+            ownership="external"
+        )  # a 14.2 row
+        _sync_container_stacks(
+            self.host,
+            [
+                {"stack": "media", "state": "running"},
+                {"stack": "other", "state": "running"},
+            ],
+        )
         owners = dict(ContainerStack.objects.values_list("project", "ownership"))
         self.assertEqual(owners, {"media": "managed", "other": "external"})
 
     def test_deploy_sends_a_ticket_not_the_secret(self):
         from apps.tasks.models import Task
+
         resp = self._deploy()
         self.assertEqual(resp.status_code, 201, resp.content)
         task = Task.objects.get(pk=resp.json()["task"])
         self.assertEqual(task.risk_level, "high")
         params = task.params["steps"][0]["params"]
-        self.assertEqual((params["project"], params["working_dir"], params["revision"]),
-                         ("media", "/opt/vigil/stacks/media", 1))
+        self.assertEqual(
+            (params["project"], params["working_dir"], params["revision"]),
+            ("media", "/opt/vigil/stacks/media", 1),
+        )
         self.assertNotIn("hunter2", str(task.params))
-        self.assertNotIn("build", params, "a stack edited in Vigil has no source to rebuild")
+        self.assertNotIn(
+            "build", params, "a stack edited in Vigil has no source to rebuild"
+        )
         self.assertNotIn("rebuilds", resp.json())
         ticket = params["env_ticket"]
         self.assertEqual(self._redeem(ticket).json(), {"env": "API_KEY=hunter2\n"})
@@ -168,32 +259,56 @@ class StackDeployTests(TestCase):
         from django.utils.timezone import now
 
         from .models import EnvTicket
-        Host.objects.create(hostname="other", agent_token="othertok", status=Host.Status.ONLINE)
+
+        Host.objects.create(
+            hostname="other", agent_token="othertok", status=Host.Status.ONLINE
+        )
         self._deploy()
         ticket = EnvTicket.objects.get()
         self.assertEqual(self._redeem(ticket.id, "othertok").status_code, 404)
-        EnvTicket.objects.filter(pk=ticket.pk).update(expires_at=now() - timedelta(seconds=1))
+        EnvTicket.objects.filter(pk=ticket.pk).update(
+            expires_at=now() - timedelta(seconds=1)
+        )
         self.assertEqual(self._redeem(ticket.id).status_code, 404)
 
     def test_deploy_ships_the_revision_it_was_issued_for(self):
         self._deploy()
         from .models import EnvTicket
+
         ticket = EnvTicket.objects.get()
-        self.api.put(f"/api/v1/stacks/{self.sid}/", {"env": [{"key": "API_KEY", "value": "new"}]},
-                     format="json")
+        self.api.put(
+            f"/api/v1/stacks/{self.sid}/",
+            {"env": [{"key": "API_KEY", "value": "new"}]},
+            format="json",
+        )
         self.assertEqual(self._redeem(ticket.id).json()["env"], "API_KEY=hunter2\n")
 
     def test_remove_and_totp(self):
         from apps.tasks.models import Task
+
         with mock.patch(_TOTP, return_value="bad"):
-            self.assertEqual(self.api.post(f"/api/v1/stacks/{self.sid}/deploy/", {}, format="json").status_code, 401)
+            self.assertEqual(
+                self.api.post(
+                    f"/api/v1/stacks/{self.sid}/deploy/", {}, format="json"
+                ).status_code,
+                401,
+            )
         self.assertFalse(Task.objects.exists())
         with mock.patch(_TOTP, return_value=None):
-            resp = self.api.post(f"/api/v1/stacks/{self.sid}/remove/", {"totp": "1", "delete_files": True},
-                                 format="json")
+            resp = self.api.post(
+                f"/api/v1/stacks/{self.sid}/remove/",
+                {"totp": "1", "delete_files": True},
+                format="json",
+            )
         params = Task.objects.get(pk=resp.json()["task"]).params["steps"][0]["params"]
-        self.assertEqual(params, {"project": "media", "working_dir": "/opt/vigil/stacks/media",
-                                  "delete_files": True})
+        self.assertEqual(
+            params,
+            {
+                "project": "media",
+                "working_dir": "/opt/vigil/stacks/media",
+                "delete_files": True,
+            },
+        )
 
 
 class StackSpecTests(SimpleTestCase):
@@ -201,16 +316,32 @@ class StackSpecTests(SimpleTestCase):
         import yaml
 
         from apps.tasks.spec import parse_and_validate
-        base = {"project": "media", "working_dir": "/opt/vigil/stacks/media", "compose": COMPOSE}
-        return parse_and_validate(yaml.safe_dump({"name": "t", "actions": [
-            {"type": "stack_deploy", "params": {**base, **params}}]}))
+
+        base = {
+            "project": "media",
+            "working_dir": "/opt/vigil/stacks/media",
+            "compose": COMPOSE,
+        }
+        return parse_and_validate(
+            yaml.safe_dump(
+                {
+                    "name": "t",
+                    "actions": [{"type": "stack_deploy", "params": {**base, **params}}],
+                }
+            )
+        )
 
     def test_task_spec_applies_the_same_checks(self):
         from apps.tasks.spec import SpecError
+
         self.assertEqual(self._spec()["risk"], "high")
-        for bad in ({"compose": "services: {a: {image: x, privileged: true}}"},
-                    {"working_dir": "/opt/../etc"}, {"working_dir": "relative"},
-                    {"project": "Media"}, {"env_ticket": "API_KEY=hunter2"}):
+        for bad in (
+            {"compose": "services: {a: {image: x, privileged: true}}"},
+            {"working_dir": "/opt/../etc"},
+            {"working_dir": "relative"},
+            {"project": "Media"},
+            {"env_ticket": "API_KEY=hunter2"},
+        ):
             with self.subTest(bad=bad), self.assertRaises(SpecError):
                 self._spec(**bad)
 
@@ -220,28 +351,47 @@ class StackAuditTests(TestCase):
     def test_saving_revealing_and_deploying_are_audited_without_values(self):
         from apps_business.audits.apps import wire
         from apps_business.audits.models import AuditEvent
+
         wire()
-        host = Host.objects.create(hostname="nas", agent_token="nastok", status=Host.Status.ONLINE,
-                                   mode="managed")
+        host = Host.objects.create(
+            hostname="nas",
+            agent_token="nastok",
+            status=Host.Status.ONLINE,
+            mode="managed",
+        )
         user = get_user_model().objects.create_user("a", password="x")
         UserProfile.objects.create(user=user, role=Role.ADMIN)
         api = APIClient()
         api.force_authenticate(user)
-        sid = api.post("/api/v1/stacks/", {"host_id": str(host.id), "name": "media", "compose_yaml": COMPOSE,
-                                           "env_text": "API_KEY=hunter2\n"}, format="json").json()["id"]
+        sid = api.post(
+            "/api/v1/stacks/",
+            {
+                "host_id": str(host.id),
+                "name": "media",
+                "compose_yaml": COMPOSE,
+                "env_text": "API_KEY=hunter2\n",
+            },
+            format="json",
+        ).json()["id"]
         with mock.patch(_TOTP, return_value=None):
             api.post(f"/api/v1/stacks/{sid}/env/reveal/", {"totp": "1"}, format="json")
             api.post(f"/api/v1/stacks/{sid}/deploy/", {"totp": "1"}, format="json")
         events = list(AuditEvent.objects.order_by("id").values_list("action", "target"))
-        self.assertEqual(sorted(e for e in events if e[0].startswith("stack.")),
-                         [("stack.deployed", "media@nas"), ("stack.env_revealed", "media@nas"),
-                          ("stack.saved", "media@nas")])
+        self.assertEqual(
+            sorted(e for e in events if e[0].startswith("stack.")),
+            [
+                ("stack.deployed", "media@nas"),
+                ("stack.env_revealed", "media@nas"),
+                ("stack.saved", "media@nas"),
+            ],
+        )
         self.assertNotIn("hunter2", str(list(AuditEvent.objects.values())))
 
 
 class StackEditorWiringTests(SimpleTestCase):
     def test_editor_is_wired(self):
         from pathlib import Path
+
         root = Path(__file__).resolve().parents[2]
         js = (root / "static/js/vigil-stacks.js").read_text(encoding="utf-8")
         bar = (root / "templates/pages/_containers.html").read_text(encoding="utf-8")
@@ -249,11 +399,24 @@ class StackEditorWiringTests(SimpleTestCase):
         base = (root / "templates/base.html").read_text(encoding="utf-8")
         self.assertIn('id="managed-stacks"', bar)
         self.assertIn("js/vigil-stacks.js", base)
-        for marker in ('id="page-stack-editor"', 'id="stack-compose"', 'data-stack-save',
-                       'data-stack-deploy', 'data-stack-remove', 'data-stack-env-reveal'):
+        for marker in (
+            'id="page-stack-editor"',
+            'id="stack-compose"',
+            "data-stack-save",
+            "data-stack-deploy",
+            "data-stack-remove",
+            "data-stack-env-reveal",
+        ):
             self.assertIn(marker, page)
-        for needle in ("/env/reveal/", "/deploy/", "/remove/", "/revisions/", "keep: true",
-                       "type=\"${e.revealed ? 'text' : 'password'}\"", "async function renderManagedStacks"):
+        for needle in (
+            "/env/reveal/",
+            "/deploy/",
+            "/remove/",
+            "/revisions/",
+            "keep: true",
+            "type=\"${e.revealed ? 'text' : 'password'}\"",
+            "async function renderManagedStacks",
+        ):
             self.assertIn(needle, js)
 
     def test_a_listed_stack_is_edited_from_its_own_header(self):
@@ -261,33 +424,48 @@ class StackEditorWiringTests(SimpleTestCase):
         stack and the managed stacks with no row on the page."""
         import re
         from pathlib import Path
+
         root = Path(__file__).resolve().parents[2]
         js = (root / "static/js/vigil-stacks.js").read_text(encoding="utf-8")
         ctr = (root / "static/js/vigil-containers.js").read_text(encoding="utf-8")
         self.assertIn("!stackEd.listed.has(s.name)", js)
         self.assertIn("setListedStacks(", ctr)
-        headers = re.findall(r'<span class="docker-stack-name">[^\n]*\n\s*(\$\{[^\n]*\})', ctr)
-        self.assertEqual(len(headers), 2, "both header shapes (running and down) carry Edit")
+        headers = re.findall(
+            r'<span class="docker-stack-name">[^\n]*\n\s*(\$\{[^\n]*\})', ctr
+        )
+        self.assertEqual(
+            len(headers), 2, "both header shapes (running and down) carry Edit"
+        )
         self.assertTrue(all("editButton(" in h for h in headers), headers)
 
 
 class StackNameTests(TestCase):
     def setUp(self):
         from apps.hosts.models import ContainerStack
-        self.host = Host.objects.create(hostname="nas", agent_token="nastok", status=Host.Status.ONLINE,
-                                        mode="managed")
-        ContainerStack.objects.create(host=self.host, project="searxng", ownership="external",
-                                      container_count=1)
-        ContainerStack.objects.create(host=self.host, project="gone", ownership="vigil",
-                                      container_count=0)
+
+        self.host = Host.objects.create(
+            hostname="nas",
+            agent_token="nastok",
+            status=Host.Status.ONLINE,
+            mode="managed",
+        )
+        ContainerStack.objects.create(
+            host=self.host, project="searxng", ownership="external", container_count=1
+        )
+        ContainerStack.objects.create(
+            host=self.host, project="gone", ownership="vigil", container_count=0
+        )
         user = get_user_model().objects.create_user("a", password="x")
         UserProfile.objects.create(user=user, role=Role.ADMIN)
         self.api = APIClient()
         self.api.force_authenticate(user)
 
     def _create(self, name):
-        return self.api.post("/api/v1/stacks/", {"host_id": str(self.host.id), "name": name,
-                                                 "compose_yaml": COMPOSE}, format="json")
+        return self.api.post(
+            "/api/v1/stacks/",
+            {"host_id": str(self.host.id), "name": name, "compose_yaml": COMPOSE},
+            format="json",
+        )
 
     def test_a_running_projects_name_is_refused(self):
         """compose -p <name> would take over the running project's containers."""
@@ -300,30 +478,48 @@ class StackNameTests(TestCase):
 
     def test_the_editor_checks_the_name_as_you_type_and_sends_it(self):
         from pathlib import Path
-        js = (Path(__file__).resolve().parents[2] / "static/js/vigil-stacks.js").read_text(encoding="utf-8")
+
+        js = (
+            Path(__file__).resolve().parents[2] / "static/js/vigil-stacks.js"
+        ).read_text(encoding="utf-8")
         self.assertIn("const STACK_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/;", js)
-        self.assertEqual(NAME_RE.pattern, "^[a-z0-9][a-z0-9_-]{0,62}$", "keep the two in step")
+        self.assertEqual(
+            NAME_RE.pattern, "^[a-z0-9][a-z0-9_-]{0,62}$", "keep the two in step"
+        )
         self.assertIn("stackEd.running.has(name)", js)
         self.assertIn("stackEd.nameTouched = true;\n    _checkStackName(false);", js)
         # A new stack written here (not from Git) carries its host and name.
-        self.assertIn("else body = { host_id: stackEd.hostId, name: _stedEl('stack-name').value.trim(),", js)
+        self.assertIn(
+            "else body = { host_id: stackEd.hostId, name: _stedEl('stack-name').value.trim(),",
+            js,
+        )
 
 
 class StackRevisionPruneTests(TestCase):
     """14.3: name revisions, and prune old ones without losing the ones that matter."""
 
     def setUp(self):
-        self.host = Host.objects.create(hostname="nas", agent_token="nastok", status=Host.Status.ONLINE,
-                                        mode="managed")
+        self.host = Host.objects.create(
+            hostname="nas",
+            agent_token="nastok",
+            status=Host.Status.ONLINE,
+            mode="managed",
+        )
         user = get_user_model().objects.create_user("a", password="x")
         UserProfile.objects.create(user=user, role=Role.ADMIN)
         self.api = APIClient()
         self.api.force_authenticate(user)
-        self.sid = self.api.post("/api/v1/stacks/", {"host_id": str(self.host.id), "name": "media",
-                                                     "compose_yaml": COMPOSE}, format="json").json()["id"]
-        for n in range(2, 9):   # r1 … r8
-            self.api.put(f"/api/v1/stacks/{self.sid}/", {"compose_yaml": COMPOSE + f"# {n}\n", "env": [],
-                                                        "note": f"edit {n}"}, format="json")
+        self.sid = self.api.post(
+            "/api/v1/stacks/",
+            {"host_id": str(self.host.id), "name": "media", "compose_yaml": COMPOSE},
+            format="json",
+        ).json()["id"]
+        for n in range(2, 9):  # r1 … r8
+            self.api.put(
+                f"/api/v1/stacks/{self.sid}/",
+                {"compose_yaml": COMPOSE + f"# {n}\n", "env": [], "note": f"edit {n}"},
+                format="json",
+            )
         stack = ManagedStack.objects.get()
         stack.deployed_revision = 3
         stack.save()
@@ -332,40 +528,76 @@ class StackRevisionPruneTests(TestCase):
         return sorted(StackRevision.objects.values_list("number", flat=True))
 
     def test_naming(self):
-        resp = self.api.patch(f"/api/v1/stacks/{self.sid}/revisions/2/", {"name": "  before   upgrade "},
-                              format="json")
+        resp = self.api.patch(
+            f"/api/v1/stacks/{self.sid}/revisions/2/",
+            {"name": "  before   upgrade "},
+            format="json",
+        )
         self.assertEqual(resp.json()["name"], "before upgrade")
-        revs = {r["number"]: r for r in self.api.get(f"/api/v1/stacks/{self.sid}/revisions/").json()["results"]}
+        revs = {
+            r["number"]: r
+            for r in self.api.get(f"/api/v1/stacks/{self.sid}/revisions/").json()[
+                "results"
+            ]
+        }
         self.assertEqual(revs[2]["name"], "before upgrade")
         self.assertTrue(revs[8]["current"] and revs[3]["deployed"])
-        self.assertEqual(self.api.patch(f"/api/v1/stacks/{self.sid}/revisions/2/", {"name": "x" * 81},
-                                        format="json").status_code, 400)
+        self.assertEqual(
+            self.api.patch(
+                f"/api/v1/stacks/{self.sid}/revisions/2/",
+                {"name": "x" * 81},
+                format="json",
+            ).status_code,
+            400,
+        )
 
     def test_keep_n_spares_named_current_and_deployed(self):
-        self.api.patch(f"/api/v1/stacks/{self.sid}/revisions/1/", {"name": "first"}, format="json")
-        resp = self.api.post(f"/api/v1/stacks/{self.sid}/revisions/prune/", {"keep": 2}, format="json").json()
+        self.api.patch(
+            f"/api/v1/stacks/{self.sid}/revisions/1/", {"name": "first"}, format="json"
+        )
+        resp = self.api.post(
+            f"/api/v1/stacks/{self.sid}/revisions/prune/", {"keep": 2}, format="json"
+        ).json()
         self.assertEqual(resp["deleted"], [2, 4, 5, 6])
         self.assertEqual(self._numbers(), [1, 3, 7, 8])
 
     def test_by_number_never_takes_current_or_deployed(self):
-        resp = self.api.post(f"/api/v1/stacks/{self.sid}/revisions/prune/", {"numbers": [3, 5, 8]},
-                             format="json").json()
+        resp = self.api.post(
+            f"/api/v1/stacks/{self.sid}/revisions/prune/",
+            {"numbers": [3, 5, 8]},
+            format="json",
+        ).json()
         self.assertEqual(resp["deleted"], [5])
-        self.assertEqual(self.api.post(f"/api/v1/stacks/{self.sid}/revisions/prune/", {"keep": 0},
-                                       format="json").status_code, 400)
+        self.assertEqual(
+            self.api.post(
+                f"/api/v1/stacks/{self.sid}/revisions/prune/",
+                {"keep": 0},
+                format="json",
+            ).status_code,
+            400,
+        )
 
     def test_a_deploy_records_its_revision(self):
         with mock.patch(_TOTP, return_value=None):
-            self.api.post(f"/api/v1/stacks/{self.sid}/deploy/", {"totp": "1"}, format="json")
+            self.api.post(
+                f"/api/v1/stacks/{self.sid}/deploy/", {"totp": "1"}, format="json"
+            )
         self.assertEqual(ManagedStack.objects.get().deployed_revision, 8)
 
 
 class StackAdoptTests(TestCase):
     def setUp(self):
         from apps.hosts.models import ContainerStack
-        self.host = Host.objects.create(hostname="nas", agent_token="nastok", status=Host.Status.ONLINE,
-                                        mode="managed")
-        ContainerStack.objects.create(host=self.host, project="shop", ownership="external")
+
+        self.host = Host.objects.create(
+            hostname="nas",
+            agent_token="nastok",
+            status=Host.Status.ONLINE,
+            mode="managed",
+        )
+        ContainerStack.objects.create(
+            host=self.host, project="shop", ownership="external"
+        )
         self.user = get_user_model().objects.create_user("a", password="x")
         UserProfile.objects.create(user=self.user, role=Role.ADMIN)
         self.api = APIClient()
@@ -373,95 +605,465 @@ class StackAdoptTests(TestCase):
 
     def _adopt(self):
         with mock.patch(_TOTP, return_value=None):
-            return self.api.post("/api/v1/stacks/adopt/", {"host_id": str(self.host.id), "project": "shop",
-                                                           "totp": "1"}, format="json")
+            return self.api.post(
+                "/api/v1/stacks/adopt/",
+                {"host_id": str(self.host.id), "project": "shop", "totp": "1"},
+                format="json",
+            )
 
     def _hand_over(self, ticket, **extra):
-        body = {"project": "shop", "compose": COMPOSE, "env": "DB_PASSWORD=hunter2\n",
-                "compose_file": "docker-compose.yml", "working_dir": "/srv/shop",
-                "hashes": {"match": ["jellyfin"], "recreate": []}, **extra}
-        return self.client.post(f"/api/v1/agent/stack-adopt/{ticket}/", body,
-                                content_type="application/json", HTTP_AUTHORIZATION="Bearer nastok")
+        body = {
+            "project": "shop",
+            "compose": COMPOSE,
+            "env": "DB_PASSWORD=hunter2\n",
+            "compose_file": "docker-compose.yml",
+            "working_dir": "/srv/shop",
+            "hashes": {"match": ["jellyfin"], "recreate": []},
+            **extra,
+        }
+        return self.client.post(
+            f"/api/v1/agent/stack-adopt/{ticket}/",
+            body,
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer nastok",
+        )
 
     def test_adopt_reads_in_place(self):
         from apps.hosts.models import ContainerStack
         from apps.tasks.models import Task
+
         resp = self._adopt()
         self.assertEqual(resp.status_code, 201, resp.content)
         task = Task.objects.get(pk=resp.json()["task"])
         self.assertEqual(task.params["steps"][0]["action"], "stack_read")
         self.assertEqual(self._hand_over(resp.json()["ticket"]).status_code, 200)
         stack = ManagedStack.objects.get()
-        self.assertEqual((stack.adopted, stack.working_dir, stack.compose_file),
-                         (True, "/srv/shop", "docker-compose.yml"))
+        self.assertEqual(
+            (stack.adopted, stack.working_dir, stack.compose_file),
+            (True, "/srv/shop", "docker-compose.yml"),
+        )
         self.assertEqual(stack.adopt_report, {"match": ["jellyfin"], "recreate": []})
         self.assertNotIn(b"hunter2", bytes(stack.env_encrypted))
         self.assertEqual(ContainerStack.objects.get().ownership, "adopted")
-        self.assertEqual(self._hand_over(resp.json()["ticket"]).status_code, 404, "one time only")
+        self.assertEqual(
+            self._hand_over(resp.json()["ticket"]).status_code, 404, "one time only"
+        )
         # A deploy of the adopted stack writes its own file name back.
         with mock.patch(_TOTP, return_value=None):
-            task_id = self.api.post(f"/api/v1/stacks/{stack.id}/deploy/", {"totp": "1"}, format="json").json()["task"]
+            task_id = self.api.post(
+                f"/api/v1/stacks/{stack.id}/deploy/", {"totp": "1"}, format="json"
+            ).json()["task"]
         params = Task.objects.get(pk=task_id).params["steps"][0]["params"]
-        self.assertEqual((params["working_dir"], params["compose_file"]), ("/srv/shop", "docker-compose.yml"))
+        self.assertEqual(
+            (params["working_dir"], params["compose_file"]),
+            ("/srv/shop", "docker-compose.yml"),
+        )
 
     def test_a_compose_file_vigil_will_not_run_is_refused(self):
         ticket = self._adopt().json()["ticket"]
-        resp = self._hand_over(ticket, compose="services:\n  a:\n    image: x\n    privileged: true\n")
+        resp = self._hand_over(
+            ticket, compose="services:\n  a:\n    image: x\n    privileged: true\n"
+        )
         self.assertEqual(resp.status_code, 400)
         self.assertFalse(ManagedStack.objects.exists())
         from .models import AdoptTicket
+
         self.assertIn("privileged", AdoptTicket.objects.get().error)
 
     def test_refusals(self):
         self._adopt()
-        self.assertEqual(self._adopt().status_code, 201, "a second ticket while the first is pending is fine")
+        self.assertEqual(
+            self._adopt().status_code,
+            201,
+            "a second ticket while the first is pending is fine",
+        )
         with mock.patch(_TOTP, return_value="bad"):
-            self.assertEqual(self.api.post("/api/v1/stacks/adopt/", {"host_id": str(self.host.id),
-                                                                     "project": "shop"}, format="json").status_code, 401)
+            self.assertEqual(
+                self.api.post(
+                    "/api/v1/stacks/adopt/",
+                    {"host_id": str(self.host.id), "project": "shop"},
+                    format="json",
+                ).status_code,
+                401,
+            )
         with mock.patch(_TOTP, return_value=None):
-            self.assertEqual(self.api.post("/api/v1/stacks/adopt/", {"host_id": str(self.host.id),
-                                                                     "project": "Shop!"}, format="json").status_code, 400)
+            self.assertEqual(
+                self.api.post(
+                    "/api/v1/stacks/adopt/",
+                    {"host_id": str(self.host.id), "project": "Shop!"},
+                    format="json",
+                ).status_code,
+                400,
+            )
+
+
+class StackApiSchemaTests(TestCase):
+    """Phase 48: each core stack endpoint's body against the serializer its
+    ``@extend_schema`` names. Data present everywhere, since a list with no
+    item in it checks nothing. Each check also pins the status code."""
+
+    def setUp(self):
+        self.host = Host.objects.create(
+            hostname="nas",
+            agent_token="nastok",
+            status=Host.Status.ONLINE,
+            mode="managed",
+        )
+        user = get_user_model().objects.create_user("a", password="x")
+        UserProfile.objects.create(user=user, role=Role.ADMIN)
+        self.api = APIClient()
+        self.api.force_authenticate(user)
+
+    def ok(self, resp, serializer, status=200):
+        self.assertEqual(resp.status_code, status, resp.content)
+        assert_shape(self, resp.json(), serializer)
+        return resp.json()
+
+    def _create(self, **extra):
+        body = {
+            "host_id": str(self.host.id),
+            "name": "media",
+            "compose_yaml": COMPOSE,
+            "env_text": "TZ=Europe/London\nAPI_KEY=hunter2\n",
+            **extra,
+        }
+        return self.ok(
+            self.api.post("/api/v1/stacks/", body, format="json"),
+            StacksStackSerializer,
+            201,
+        )
+
+    def test_the_index_list_create_and_detail_as_documented(self):
+        created = self._create()
+        self.assertTrue(
+            created["env"], "masked .env rows are the point of the item shape"
+        )
+        listed = self.ok(self.api.get("/api/v1/stacks/"), StacksStackListSerializer)[
+            "results"
+        ]
+        self.assertTrue(listed, "a list with no row checks nothing")
+        self.ok(self.api.get(f"/api/v1/stacks/{created['id']}/"), StacksStackSerializer)
+        self.ok(
+            self.api.put(
+                f"/api/v1/stacks/{created['id']}/",
+                {"compose_yaml": COMPOSE + "# edited\n"},
+                format="json",
+            ),
+            StacksStackSerializer,
+        )
+
+    def test_validate_and_the_revision_endpoints_as_documented(self):
+        sid = self._create()["id"]
+        described = self.ok(
+            self.api.post(
+                "/api/v1/stacks/validate/",
+                {"compose_yaml": COMPOSE, "env_keys": ["TZ"]},
+                format="json",
+            ),
+            StacksComposeDescriptionSerializer,
+        )
+        self.assertTrue(described["services"], "a panel with no service checks nothing")
+        self.assertFalse(described["missing_env"])
+        self.ok(
+            self.api.patch(
+                f"/api/v1/stacks/{sid}/revisions/1/", {"name": " kept "}, format="json"
+            ),
+            StacksRevisionRenamedSerializer,
+        )
+        revisions = self.ok(
+            self.api.get(f"/api/v1/stacks/{sid}/revisions/"),
+            StacksRevisionListSerializer,
+        )["results"]
+        self.assertTrue(revisions, "a list with no revision checks nothing")
+        self.ok(
+            self.api.post(
+                f"/api/v1/stacks/{sid}/revisions/prune/", {"keep": 0}, format="json"
+            ),
+            StacksErrorSerializer,
+            400,
+        )
+        pruned = self.ok(
+            self.api.post(
+                f"/api/v1/stacks/{sid}/revisions/prune/",
+                {"numbers": [1]},
+                format="json",
+            ),
+            StacksPrunedSerializer,
+        )
+        self.assertEqual(pruned["deleted"], [], "the current revision stays")
+        self.api.put(
+            f"/api/v1/stacks/{sid}/",
+            {"compose_yaml": COMPOSE + "# r2\n"},
+            format="json",
+        )
+        self._create(name="other")
+        kept = self.ok(
+            self.api.post(
+                f"/api/v1/stacks/{sid}/revisions/prune/", {"keep": 1}, format="json"
+            ),
+            StacksPrunedSerializer,
+        )
+        self.assertEqual(kept["deleted"], [], "one revision, nothing doomed")
+        self.api.patch(
+            f"/api/v1/stacks/{sid}/revisions/1/", {"name": ""}, format="json"
+        )
+        dropped = self.ok(
+            self.api.post(
+                f"/api/v1/stacks/{sid}/revisions/prune/", {"keep": 1}, format="json"
+            ),
+            StacksPrunedSerializer,
+        )
+        self.assertEqual(
+            dropped["deleted"],
+            [1],
+            "unnamed and older, it goes when a newer one is current",
+        )
+
+    def test_reveal_deploy_remove_and_the_agent_ticket_as_documented(self):
+        from apps.tasks.models import Task
+
+        sid = self._create()["id"]
+        with mock.patch(_TOTP, return_value=None):
+            revealed = self.ok(
+                self.api.post(
+                    f"/api/v1/stacks/{sid}/env/reveal/", {"totp": "1"}, format="json"
+                ),
+                StacksEnvRevealSerializer,
+            )
+            deployed = self.ok(
+                self.api.post(
+                    f"/api/v1/stacks/{sid}/deploy/", {"totp": "1"}, format="json"
+                ),
+                StacksTaskSerializer,
+                201,
+            )
+        self.assertTrue(revealed["env"], "a reveal with no key checks nothing")
+        ticket = Task.objects.get(pk=deployed["task"]).params["steps"][0]["params"][
+            "env_ticket"
+        ]
+        self.ok(
+            self.client.get(
+                f"/api/v1/agent/stack-env/{ticket}/", HTTP_AUTHORIZATION="Bearer nastok"
+            ),
+            StacksAgentEnvSerializer,
+        )
+        with mock.patch(_TOTP, return_value=None):
+            removed = self.ok(
+                self.api.post(
+                    f"/api/v1/stacks/{sid}/remove/", {"totp": "1"}, format="json"
+                ),
+                StacksTaskSerializer,
+                201,
+            )
+        self.assertTrue(removed["task"])
+
+    def test_adoption_and_the_agent_hand_over_as_documented(self):
+        """A refused hand-over (the wrong project) is a 400 with ``detail``,
+        and the ticket is spent either way: only after it burns does redeeming
+        answer 404."""
+        from apps.hosts.models import ContainerStack
+
+        ContainerStack.objects.create(
+            host=self.host, project="shop", ownership="external"
+        )
+        with mock.patch(_TOTP, return_value=None):
+            self.assertEqual(
+                self.api.post(
+                    "/api/v1/stacks/adopt/",
+                    {"host_id": str(self.host.id), "project": "Shop!"},
+                    format="json",
+                ).status_code,
+                400,
+                "not a project name",
+            )
+        with mock.patch(_TOTP, return_value=None):
+            queued = self.ok(
+                self.api.post(
+                    "/api/v1/stacks/adopt/",
+                    {"host_id": str(self.host.id), "project": "shop", "totp": "1"},
+                    format="json",
+                ),
+                StacksAdoptQueuedSerializer,
+                201,
+            )
+        refused = self.ok(
+            self.client.post(
+                f"/api/v1/agent/stack-adopt/{queued['ticket']}/",
+                {"project": "elsewhere", "compose": COMPOSE},
+                content_type="application/json",
+                HTTP_AUTHORIZATION="Bearer nastok",
+            ),
+            StacksErrorSerializer,
+            400,
+        )
+        self.assertIn("different stack", refused["detail"])
+        with mock.patch(_TOTP, return_value=None):
+            second = self.ok(
+                self.api.post(
+                    "/api/v1/stacks/adopt/",
+                    {"host_id": str(self.host.id), "project": "shop", "totp": "1"},
+                    format="json",
+                ),
+                StacksAdoptQueuedSerializer,
+                201,
+            )
+        self.ok(
+            self.client.post(
+                f"/api/v1/agent/stack-adopt/{second['ticket']}/",
+                {
+                    "project": "shop",
+                    "compose": COMPOSE,
+                    "env": "DB_PASSWORD=hunter2\n",
+                    "compose_file": "docker-compose.yml",
+                    "working_dir": "/srv/shop",
+                    "hashes": {"match": ["jellyfin"], "recreate": []},
+                },
+                content_type="application/json",
+                HTTP_AUTHORIZATION="Bearer nastok",
+            ),
+            StacksOkSerializer,
+        )
+        self.assertEqual(
+            self.client.post(
+                f"/api/v1/agent/stack-adopt/{second['ticket']}/",
+                {"project": "shop", "compose": COMPOSE},
+                content_type="application/json",
+                HTTP_AUTHORIZATION="Bearer nastok",
+            ).status_code,
+            404,
+            "one time only",
+        )
+
+    def test_the_refusals_as_documented(self):
+        """A stack that is not there is a bare 404 with no body at all; the
+        refusals that do speak — an unsaved name, bad compose text, a prune
+        with neither form of its body — use one shape."""
+        sid = self._create()["id"]
+        self.assertEqual(
+            self.api.get(f"/api/v1/stacks/{uuid.uuid4()}/").status_code, 404
+        )
+        self.ok(
+            self.api.put(
+                f"/api/v1/stacks/{sid}/", {"compose_yaml": "["}, format="json"
+            ),
+            StacksErrorSerializer,
+            400,
+        )
+        self.ok(
+            self.api.post(
+                "/api/v1/stacks/",
+                {
+                    "host_id": str(self.host.id),
+                    "name": "Bad Name",
+                    "compose_yaml": COMPOSE,
+                },
+                format="json",
+            ),
+            StacksErrorSerializer,
+            400,
+        )
+        with mock.patch(_TOTP, return_value=None):
+            queued = self.ok(
+                self.api.post(
+                    "/api/v1/stacks/adopt/",
+                    {"host_id": str(self.host.id), "project": "shop", "totp": "1"},
+                    format="json",
+                ),
+                StacksAdoptQueuedSerializer,
+                201,
+            )
+        refused = self.ok(
+            self.client.post(
+                f"/api/v1/agent/stack-adopt/{queued['ticket']}/",
+                {"project": "elsewhere", "compose": COMPOSE},
+                content_type="application/json",
+                HTTP_AUTHORIZATION="Bearer nastok",
+            ),
+            StacksErrorSerializer,
+            400,
+        )
+        self.assertIn("different stack", refused["detail"])
 
 
 class RegistryCredentialTests(TestCase):
     def setUp(self):
-        self.office = Host.objects.create(hostname="office", agent_token="offtok", status=Host.Status.ONLINE,
-                                          mode="managed", tags=["builders"])
-        self.other = Host.objects.create(hostname="other", agent_token="othtok", status=Host.Status.ONLINE,
-                                         mode="managed")
+        self.office = Host.objects.create(
+            hostname="office",
+            agent_token="offtok",
+            status=Host.Status.ONLINE,
+            mode="managed",
+            tags=["builders"],
+        )
+        self.other = Host.objects.create(
+            hostname="other",
+            agent_token="othtok",
+            status=Host.Status.ONLINE,
+            mode="managed",
+        )
         user = get_user_model().objects.create_user("a", password="x")
         UserProfile.objects.create(user=user, role=Role.ADMIN)
         self.api = APIClient()
         self.api.force_authenticate(user)
 
     def _auth(self, token, registry="ghcr.io"):
-        return self.client.get(f"/api/v1/agent/registry-auth/?registry={registry}",
-                               HTTP_AUTHORIZATION=f"Bearer {token}")
+        return self.client.get(
+            f"/api/v1/agent/registry-auth/?registry={registry}",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
 
     def test_password_is_write_only_and_scoped_to_tagged_hosts(self):
         from .models import RegistryCredential
-        resp = self.api.post("/api/v1/stacks/registries/", {"registry": "GHCR.io", "username": "bot",
-                                                            "password": "s3cret", "host_tags": ["Builders"]},
-                             format="json")
+
+        resp = self.api.post(
+            "/api/v1/stacks/registries/",
+            {
+                "registry": "GHCR.io",
+                "username": "bot",
+                "password": "s3cret",
+                "host_tags": ["Builders"],
+            },
+            format="json",
+        )
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertNotIn("s3cret", resp.content.decode())
-        self.assertNotIn(b"s3cret", bytes(RegistryCredential.objects.get().password_encrypted))
-        self.assertNotIn("s3cret", self.api.get("/api/v1/stacks/registries/").content.decode())
-        self.assertEqual(self._auth("offtok").json(),
-                         {"username": "bot", "password": "s3cret", "serveraddress": "ghcr.io"})
+        self.assertNotIn(
+            b"s3cret", bytes(RegistryCredential.objects.get().password_encrypted)
+        )
+        self.assertNotIn(
+            "s3cret", self.api.get("/api/v1/stacks/registries/").content.decode()
+        )
+        self.assertEqual(
+            self._auth("offtok").json(),
+            {"username": "bot", "password": "s3cret", "serveraddress": "ghcr.io"},
+        )
         self.assertEqual(self._auth("othtok").status_code, 404, "not a builders host")
         self.assertEqual(self._auth("offtok", "docker.io").status_code, 404)
 
     def test_untagged_credential_covers_every_host_and_refusals(self):
-        self.api.post("/api/v1/stacks/registries/", {"registry": "registry.local:5000", "username": "u",
-                                                     "password": "p"}, format="json")
+        self.api.post(
+            "/api/v1/stacks/registries/",
+            {"registry": "registry.local:5000", "username": "u", "password": "p"},
+            format="json",
+        )
         self.assertEqual(self._auth("othtok", "registry.local:5000").status_code, 200)
-        for body in ({"registry": "https://ghcr.io", "username": "u", "password": "p"},
-                     {"registry": "ghcr.io", "username": "", "password": "p"},
-                     {"registry": "ghcr.io", "username": "u", "password": ""}):
+        for body in (
+            {"registry": "https://ghcr.io", "username": "u", "password": "p"},
+            {"registry": "ghcr.io", "username": "", "password": "p"},
+            {"registry": "ghcr.io", "username": "u", "password": ""},
+        ):
             with self.subTest(body=body):
-                self.assertEqual(self.api.post("/api/v1/stacks/registries/", body, format="json").status_code, 400)
-        self.assertEqual(self.client.get("/api/v1/agent/registry-auth/?registry=ghcr.io").status_code, 401)
+                self.assertEqual(
+                    self.api.post(
+                        "/api/v1/stacks/registries/", body, format="json"
+                    ).status_code,
+                    400,
+                )
+        self.assertEqual(
+            self.client.get(
+                "/api/v1/agent/registry-auth/?registry=ghcr.io"
+            ).status_code,
+            401,
+        )
 
 
 class SandboxEscapeTests(SimpleTestCase):
@@ -478,7 +1080,8 @@ class SandboxEscapeTests(SimpleTestCase):
             "cap sys_ptrace": self.S + "    cap_add: [SYS_PTRACE]\n",
             "raw disk device": self.S + "    devices: ['/dev/sda:/dev/sda']\n",
             "device long form": self.S + "    devices:\n      - /dev/mem\n",
-            "apparmor unconfined": self.S + "    security_opt: ['apparmor:unconfined']\n",
+            "apparmor unconfined": self.S
+            + "    security_opt: ['apparmor:unconfined']\n",
             "seccomp unconfined": self.S + "    security_opt: ['seccomp=unconfined']\n",
             "label disable": self.S + "    security_opt: ['label:disable']\n",
             "ipc host": self.S + "    ipc: host\n",
@@ -489,9 +1092,11 @@ class SandboxEscapeTests(SimpleTestCase):
             "env_file climb": self.S + "    env_file: ['../../etc/x']\n",
             "build context absolute": "services:\n  a:\n    build: /\n",
             "build context climb": "services:\n  a:\n    build: {context: ../..}\n",
-            "named volume binds etc": self.S + "    volumes: ['data:/d']\nvolumes:\n  data:\n    driver_opts: {type: none, o: bind, device: /etc}\n",
+            "named volume binds etc": self.S
+            + "    volumes: ['data:/d']\nvolumes:\n  data:\n    driver_opts: {type: none, o: bind, device: /etc}\n",
             "secret from host file": self.S + "secrets:\n  s:\n    file: /etc/shadow\n",
-            "config from host file": self.S + "configs:\n  c:\n    file: /root/.ssh/id_rsa\n",
+            "config from host file": self.S
+            + "configs:\n  c:\n    file: /root/.ssh/id_rsa\n",
         }
         for label, text in bad.items():
             with self.subTest(label):
@@ -501,7 +1106,8 @@ class SandboxEscapeTests(SimpleTestCase):
     def test_ordinary_setups_still_pass(self):
         good = [
             self.S + "    devices: ['/dev/dri:/dev/dri']\n",
-            self.S + "    devices: ['/dev/net/tun:/dev/net/tun']\n    cap_add: [NET_ADMIN]\n",
+            self.S
+            + "    devices: ['/dev/net/tun:/dev/net/tun']\n    cap_add: [NET_ADMIN]\n",
             self.S + "    network_mode: host\n",
             self.S + "    env_file: .env\n",
             "services:\n  a:\n    build: ./app\n",
@@ -522,20 +1128,24 @@ class SandboxAllowlistTests(SimpleTestCase):
 
     def test_more_routes_are_refused(self):
         bad = {
-            "volumes_from another container": self.S + "    volumes_from: ['container:portainer']\n",
-            "include other compose files": "include: ['/opt/other/compose.yaml']\n" + self.S,
+            "volumes_from another container": self.S
+            + "    volumes_from: ['container:portainer']\n",
+            "include other compose files": "include: ['/opt/other/compose.yaml']\n"
+            + self.S,
             "extends a file": "services:\n  a:\n    extends: {file: /opt/x.yaml, service: b}\n",
             "device cgroup rules": self.S + "    device_cgroup_rules: ['b 8:* rmw']\n",
             "api socket": self.S + "    use_api_socket: true\n",
             "privileged as string": self.S + "    privileged: 'true'\n",
             "privileged as yes": self.S + "    privileged: yes\n",
             "variable bind source": self.S + "    volumes: ['${HOSTDIR}:/data']\n",
-            "variable long bind": self.S + "    volumes:\n      - {type: bind, source: '${D}', target: /d}\n",
+            "variable long bind": self.S
+            + "    volumes:\n      - {type: bind, source: '${D}', target: /d}\n",
             "variable cap": self.S + "    cap_add: ['${CAP}']\n",
             "variable device": self.S + "    devices: ['${DEV}:/dev/x']\n",
             "variable privileged": self.S + "    privileged: ${P}\n",
             "variable env_file": self.S + "    env_file: ${F}\n",
-            "variable driver device": self.S + "    volumes: ['d:/d']\nvolumes:\n  d:\n    driver_opts: {o: bind, device: '${X}'}\n",
+            "variable driver device": self.S
+            + "    volumes: ['d:/d']\nvolumes:\n  d:\n    driver_opts: {o: bind, device: '${X}'}\n",
             "unknown service key": self.S + "    some_future_key: true\n",
             "unknown top-level key": "something: else\n" + self.S,
             "pid of another container": self.S + "    pid: 'container:other'\n",
@@ -554,7 +1164,8 @@ class SandboxAllowlistTests(SimpleTestCase):
             self.S + "    sysctls: {net.core.somaxconn: 1024}\n",
             self.S + "    deploy:\n      resources:\n        limits: {memory: 512M}\n",
             "x-common: &c {restart: always}\n" + self.S + "    <<: *c\n",
-            self.S + "    healthcheck: {test: ['CMD', 'true']}\n    labels: {a: b}\n    logging: {driver: json-file}\n",
+            self.S
+            + "    healthcheck: {test: ['CMD', 'true']}\n    labels: {a: b}\n    logging: {driver: json-file}\n",
         ]
         for text in good:
             with self.subTest(text=text):
@@ -568,9 +1179,11 @@ class SandboxReviewTests(SimpleTestCase):
 
     def test_refused(self):
         bad = {
-            "privileged post_start hook": self.S + "    post_start: [{command: id, privileged: true}]\n",
+            "privileged post_start hook": self.S
+            + "    post_start: [{command: id, privileged: true}]\n",
             "pre_stop hook": self.S + "    pre_stop: [{command: id}]\n",
-            "develop watch": self.S + "    develop: {watch: [{path: /etc, action: sync, target: /x}]}\n",
+            "develop watch": self.S
+            + "    develop: {watch: [{path: /etc, action: sync, target: /x}]}\n",
             "runtime": self.S + "    runtime: runc-unsafe\n",
             "build additional context": "services:\n  a:\n    build: {context: ., additional_contexts: {h: /etc}}\n",
             "build ssh": "services:\n  a:\n    build: {context: ., ssh: [default]}\n",
@@ -580,7 +1193,8 @@ class SandboxReviewTests(SimpleTestCase):
             "build cache_to local": "services:\n  a:\n    build: {context: ., cache_to: ['type=local,dest=/etc']}\n",
             "build privileged": "services:\n  a:\n    build: {context: ., privileged: true}\n",
             "device climbs out": self.S + "    devices: ['/dev/dri/../sda:/dev/sda']\n",
-            "device prefix trick": self.S + "    devices: ['/dev/fuse-not-really:/x']\n",
+            "device prefix trick": self.S
+            + "    devices: ['/dev/fuse-not-really:/x']\n",
             "nvidia prefix trick": self.S + "    devices: ['/dev/nvidiaXYZ:/x']\n",
         }
         for label, text in bad.items():
@@ -593,7 +1207,8 @@ class SandboxReviewTests(SimpleTestCase):
             "services:\n  a:\n    build: {context: ./app, dockerfile: Dockerfile, args: {V: 1}, target: prod}\n",
             "services:\n  a:\n    build: {context: ., additional_contexts: {base: 'docker-image://alpine:3', b: 'service:b'}}\n  b:\n    image: y\n",
             "services:\n  a:\n    build: {context: ., cache_from: ['type=registry,ref=ghcr.io/x/y:cache']}\n",
-            self.S + "    devices: ['/dev/dri/renderD128:/dev/dri/renderD128', '/dev/nvidia0', '/dev/nvidiactl', '/dev/net/tun', '/dev/fuse']\n",
+            self.S
+            + "    devices: ['/dev/dri/renderD128:/dev/dri/renderD128', '/dev/nvidia0', '/dev/nvidiactl', '/dev/net/tun', '/dev/fuse']\n",
         ]
         for text in good:
             with self.subTest(text=text):
@@ -607,14 +1222,17 @@ class SandboxAncestorTests(SimpleTestCase):
 
     def test_refused(self):
         bad = {
-            "/run holds the engine socket": self.S + "    volumes: ['/run:/host-run']\n",
+            "/run holds the engine socket": self.S
+            + "    volumes: ['/run:/host-run']\n",
             "/var/run (a link to /run)": self.S + "    volumes: ['/var/run:/r']\n",
             "/var holds /var/lib/docker": self.S + "    volumes: ['/var:/v']\n",
             "/var/lib": self.S + "    volumes: ['/var/lib:/l']\n",
             "containerd socket dir": self.S + "    volumes: ['/run/containerd:/c']\n",
             "agent data": self.S + "    volumes: ['/var/lib/vigil-agent:/a']\n",
-            "variable in a key": self.S + "    volumes: ['d:/d']\nvolumes:\n  d:\n    driver_opts: {'${K}': /etc}\n",
-            "annotations": self.S + "    annotations: {run.oci.keep_original_groups: '1'}\n",
+            "variable in a key": self.S
+            + "    volumes: ['d:/d']\nvolumes:\n  d:\n    driver_opts: {'${K}': /etc}\n",
+            "annotations": self.S
+            + "    annotations: {run.oci.keep_original_groups: '1'}\n",
             "double leading slash": self.S + "    volumes: ['//run:/r']\n",
             "triple slash etc": self.S + "    volumes: ['///etc/:/e']\n",
             "pid Host": self.S + "    pid: Host\n",
@@ -626,7 +1244,13 @@ class SandboxAncestorTests(SimpleTestCase):
                     validate_compose(text)
 
     def test_data_paths_still_allowed(self):
-        for path in ("/srv/media", "/mnt/storage", "/home/alice/music", "/var/log/app", "/opt/app-data"):
+        for path in (
+            "/srv/media",
+            "/mnt/storage",
+            "/home/alice/music",
+            "/var/log/app",
+            "/opt/app-data",
+        ):
             with self.subTest(path):
                 validate_compose(self.S + f"    volumes: ['{path}:/data']\n")
 
@@ -637,9 +1261,11 @@ class SandboxPodmanTests(SimpleTestCase):
 
     def test_x_podman_is_refused(self):
         S = "services:\n  a:\n    image: x\n"
-        for text in (S + "x-podman:\n  in_pod: false\n",
-                     S + "    x-podman:\n      podman_args: [--privileged]\n",
-                     S + "    X-Podman.uidmaps: ['0:0:1']\n"):
+        for text in (
+            S + "x-podman:\n  in_pod: false\n",
+            S + "    x-podman:\n      podman_args: [--privileged]\n",
+            S + "    X-Podman.uidmaps: ['0:0:1']\n",
+        ):
             with self.subTest(text=text), self.assertRaises(StackError):
                 validate_compose(text)
         validate_compose("x-common: &c {restart: always}\n" + S)
@@ -648,9 +1274,10 @@ class SandboxPodmanTests(SimpleTestCase):
 class SandboxDosTests(SimpleTestCase):
     def test_an_anchor_bomb_is_checked_quickly(self):
         import time
+
         lines = ["x-a0: &a0 [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]"]
         for i in range(1, 25):
-            lines.append(f"x-a{i}: &a{i} [" + ", ".join([f"*a{i-1}"] * 10) + "]")
+            lines.append(f"x-a{i}: &a{i} [" + ", ".join([f"*a{i - 1}"] * 10) + "]")
         text = "\n".join(lines) + "\nservices:\n  a:\n    image: x\n"
         start = time.monotonic()
         validate_compose(text)
