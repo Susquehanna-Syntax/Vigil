@@ -62,11 +62,20 @@ class VigilAutoSchema(AutoSchema):
         return op
 
 
+#: Routes that are the same view as another, documented one.
+_LEGACY_EXACT = {
+    # The pre-2026.9.1 URL, meaning the tasks kind: /tasks/community/{kind}/.
+    "/api/v1/tasks/community/",
+}
+
+
 def drop_legacy_routes(endpoints, **kwargs):
     """Spectacular preprocessing hook: leave the legacy aliases out.
 
     /api/v1/baselines/ still answers for old clients but is the same view as
-    /api/v1/playbooks/; listing both would document one API twice and give
-    every operation a duplicate id.
+    /api/v1/playbooks/, and /api/v1/tasks/community/ the same as its ``{kind}``
+    route; listing both would document one API twice and give every operation
+    a duplicate id.
     """
-    return [e for e in endpoints if not e[0].startswith("/api/v1/baselines/")]
+    return [e for e in endpoints
+            if not e[0].startswith("/api/v1/baselines/") and e[0] not in _LEGACY_EXACT]
