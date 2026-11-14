@@ -237,3 +237,116 @@ class JackilKeyDeviceWriteSerializer(serializers.Serializer):
     enabled = serializers.BooleanField(
         help_text="Whether this key may create and change unmanaged devices. Any other value is refused."
     )
+
+
+# ── the read surface: search, resolve, detail ───────────────────────────────
+
+
+class JackilItemSerializer(serializers.Serializer):
+    """One row as the search page draws it, for every kind a key may read.
+
+    The same seven keys whatever the kind is: ``status`` and ``tone`` are the
+    badge, and both are "" for kinds that have nothing to badge (a playbook, a
+    device with no type). ``url`` opens the row in the SPA."""
+
+    type = serializers.CharField(help_text="host, task, playbook, automation, run or device.")
+    id = serializers.CharField()
+    label = serializers.CharField()
+    sub = serializers.CharField(help_text="The second line; empty when there is nothing to add.")
+    status = serializers.CharField(help_text="The badge text; empty when this kind has no badge.")
+    tone = serializers.CharField(
+        help_text="ok, warn, bad, info or muted; empty for a badge with no colour."
+    )
+    url = serializers.URLField(help_text="Opens the row in the SPA.")
+
+
+class JackilSearchResultsSerializer(serializers.Serializer):
+    results = JackilItemSerializer(many=True)
+
+
+class JackilResolveItemSerializer(JackilItemSerializer):
+    """One resolved row: the search shape, whose ``type`` is the query's and
+    therefore the same on every row of one call."""
+
+
+class JackilResolveSerializer(serializers.Serializer):
+    """The rows that exist and are the key creator's to see, keyed by id. An
+    id that is malformed, absent or hidden is simply not a key."""
+
+    items = serializers.DictField(child=JackilResolveItemSerializer())
+
+
+class JackilFactSerializer(serializers.Serializer):
+    label = serializers.CharField()
+    value = serializers.CharField()
+
+
+class JackilCpuPointSerializer(serializers.Serializer):
+    t = serializers.DateTimeField()
+    v = serializers.FloatField(help_text="CPU usage percent, one decimal.")
+
+
+class JackilDetailSerializer(JackilItemSerializer):
+    """Every kind but a host: the row plus its fact rows."""
+
+    facts = JackilFactSerializer(many=True)
+
+
+class JackilHostDetailSerializer(JackilDetailSerializer):
+    """A host's detail: the row, its fact rows, and the sparkline that only a
+    host carries."""
+
+    cpu_series = JackilCpuPointSerializer(many=True)
+
+
+class JackilDeviceWriteSerializer(serializers.Serializer):
+    """The device fields ``create_device`` reads from the body:
+    ``device_detail_write`` takes any subset of them, which is what a partial
+    update means."""
+
+    name = serializers.CharField(help_text="1 to 200 characters, not blank.")
+    device_type = serializers.ChoiceField(
+        choices=["router", "switch", "firewall", "access_point", "printer", "nas",
+                 "server", "workstation", "camera", "ups", "iot", "other"])
+    ip_address = serializers.IPAddressField(required=False, allow_null=True)
+    mac_address = serializers.CharField(required=False, allow_blank=True)
+    vendor = serializers.CharField(required=False, allow_blank=True)
+    location = serializers.CharField(required=False, allow_blank=True)
+    serial = serializers.CharField(required=False, allow_blank=True)
+    warranty_end = serializers.DateField(required=False, allow_null=True)
+    owner = serializers.CharField(required=False, allow_blank=True,
+                                  help_text="A name or an email address.")
+    extra = serializers.DictField(
+        required=False, child=serializers.CharField(),
+        help_text="Up to 50 free-form facts, names and values both as text.")
+    notes = serializers.CharField(required=False, allow_blank=True)
+    site_id = serializers.UUIDField(
+        required=False, allow_null=True,
+        help_text="Ignored: the device goes to the site the key may write in — "
+                  "global unless a scoped Business key says otherwise.")
+
+
+class JackilDeviceDetailSerializer(JackilDetailSerializer):
+    """A created, patched or read device: the row and its facts, the same
+    shape whichever way it arrived."""
+
+
+class JackilPingSerializer(serializers.Serializer):
+    ok = serializers.BooleanField()
+    version = serializers.CharField(help_text="This Vigil's version.")
+    capabilities = serializers.ListField(
+        child=serializers.CharField(),
+        help_text='What this caller may do: "devices" and "host_facts", plus '
+                  '"device_write" for a key its admin gave the device-write flag.')
+    acting_as = serializers.CharField(help_text="The key creator's username.")
+
+
+class JackilLicenceSerializer(serializers.Serializer):
+    blob = serializers.CharField(
+        help_text="The signed license token, for the caller to verify with its "
+                  'own copy of the public key. "" when this install has none.')
+    instance = serializers.CharField(help_text="This deployment's id.")
+    status = serializers.CharField(
+        help_text="none, valid, expiring, expired or invalid.")
+
+

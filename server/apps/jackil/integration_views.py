@@ -15,6 +15,8 @@ from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Max, Q
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import (
     api_view,
     authentication_classes,
@@ -29,6 +31,16 @@ from apps.hosts.serializers import UnmanagedDeviceSerializer
 from apps.tasks.authz import trim_run, visible_runs
 from vigil import licensing, scoping
 
+from .api_schema import (
+    JackilDeviceDetailSerializer,
+    JackilDeviceWriteSerializer,
+    JackilErrorSerializer,
+    JackilHostDetailSerializer,
+    JackilLicenceSerializer,
+    JackilPingSerializer,
+    JackilResolveSerializer,
+    JackilSearchResultsSerializer,
+)
 from .integration_auth import IntegrationKeyAuthentication
 from .models import IntegrationKey
 
@@ -356,7 +368,10 @@ def integration(view):
     The policy decorators must sit inside ``api_view``, hence this order.
 
     A Business scoped API key is accepted too: it is how an admin limits
-    what Jackil can see to some sites."""
+    what Jackil can see to some sites.
+
+    Returns the view rather than wrapping it, so a documented view's
+    ``@extend_schema`` sits above this and reaches the APIView class here."""
     authentication_classes([IntegrationKeyAuthentication, *_scoped_key_auth()])(view)
     permission_classes([IsAuthenticated])(view)
     return api_view(["GET"])(view)
@@ -383,6 +398,7 @@ def integration_write(methods):
     return wrap
 
 
+@extend_schema(responses=JackilPingSerializer)
 @integration
 def ping(request):
     return Response({"ok": True, "version": settings.VIGIL_VERSION,
@@ -405,6 +421,7 @@ def _capabilities(request) -> list[str]:
     return caps
 
 
+@extend_schema(responses=JackilLicenceSerializer)
 @integration
 def licence(request):
     """The signed licence and this instance's id, for Jackil to verify itself.
@@ -422,6 +439,7 @@ def licence(request):
                          "status": "none"})
 
 
+@extend_schema(responses={200: JackilSearchResultsSerializer, 400: JackilErrorSerializer})
 @integration
 def search(request):
     q = request.query_params.get("q", "").strip()[:MAX_QUERY]
@@ -437,6 +455,7 @@ def search(request):
     return Response({"results": results})
 
 
+@extend_schema(responses={200: JackilResolveSerializer, 400: JackilErrorSerializer})
 @integration
 def resolve(request):
     kind = request.query_params.get("type", "").strip()
@@ -446,12 +465,19 @@ def resolve(request):
     ids = [one for one in ids if one]
     if len(ids) > MAX_IDS:
         return Response({"error": f"At most {MAX_IDS} ids per request"}, status=400)
+    # A row's ``type`` is the query's, identical for every row of a call.
     return Response({"items": {str(o.pk): _item(kind, o, request)
                                for o in _owned(kind, request.user, ids)}})
 
 
+@extend_schema(responses={200: JackilHostDetailSerializer, 400: JackilErrorSerializer,
+                         404: JackilErrorSerializer})
 @integration
 def detail(request, kind: str, id: str):
+    """A row's facts — the detail panel Jackil draws under a link preview.
+
+    Every kind answers with ``JackilDetailSerializer``'s fields; a host adds
+    ``cpu_series``, which is why the schema names the host shape here."""
     if kind not in TYPES:
         return Response({"error": "Unknown type"}, status=400)
     obj = _owned(kind, request.user, [id]).first()
@@ -485,6 +511,10 @@ def may_write_devices(request) -> bool:
     return IsAdmin().has_permission(request, None)
 
 
+@extend_schema(request=JackilDeviceWriteSerializer,
+               responses={201: JackilDeviceDetailSerializer,
+                          400: OpenApiTypes.OBJECT,
+                          403: JackilErrorSerializer})
 @integration_write(["POST"])
 def create_device(request):
     """Add a device to Vigil's inventory. Jackil keeps no copy of its own."""
@@ -501,6 +531,18 @@ def create_device(request):
     return _device_response(request, device, status=201)
 
 
+@extend_schema(methods=["PATCH"], request=None,
+               # The body may name any subset of what a create may, so there
+               # is no one serializer to name: the same fields, all optional.
+               responses={200: JackilDeviceDetailSerializer,
+                          400: OpenApiTypes.OBJECT,
+                          403: JackilErrorSerializer,
+                          404: JackilErrorSerializer})
+@extend_schema(methods=["DELETE"], request=None,
+               # A deletion answers with nothing at all; only a refusal has a body.
+               responses={204: None,
+                          403: JackilErrorSerializer,
+                          404: JackilErrorSerializer})
 @integration_write(["PATCH", "DELETE"])
 def device_detail_write(request, id: str):
     """Partially update or delete one device, on the key's say-so.

@@ -6,6 +6,8 @@ the inventory, and the two admins who decide that are whoever set the flag and
 whoever created the key.
 """
 
+import json
+from datetime import timedelta
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -14,13 +16,32 @@ from django.utils.timezone import now
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, UserProfile
-from apps.hosts.models import UnmanagedDevice
+from apps.hosts.models import Host, UnmanagedDevice
+from apps.metrics.models import MetricPoint
+from vigil.schema_check import assert_shape
 
+from .api_schema import (
+    JackilDeviceDetailSerializer,
+    JackilHostDetailSerializer,
+    JackilLicenceSerializer,
+    JackilPingSerializer,
+    JackilResolveSerializer,
+    JackilSearchResultsSerializer,
+)
 from .models import IntegrationKey
-from .test_integration import PING, UNKNOWN_HOST, _admin, _authed, _key
+from .test_integration import (
+    PING,
+    RESOLVE,
+    SEARCH,
+    UNKNOWN_HOST,
+    _admin,
+    _authed,
+    _key,
+)
 
 KEYS = "/api/v1/jackil/integration-keys/"
 DEVICES = "/api/v1/jackil/integration/devices/"
+LICENCE = "/api/v1/jackil/integration/licence/"
 PRINTERS = {"name": "Front desk printer", "device_type": "printer",
             "location": "Lobby", "serial": "PRN-1"}
 
@@ -287,3 +308,73 @@ class KeyFlagEndpointTests(TestCase):
                 self.assertNotIn("key", row)
                 self.assertNotIn("key_hash", row)
                 self.assertNotIn(raw, str(row))
+
+
+class SchemaTests(TestCase):
+    """The seven documented integration answers and their schemas agree.
+
+    A device, a host and one recent CPU point are enough for every listed
+    view to answer with data in it: an empty list, an empty dict, or a host
+    without its ``cpu_series`` would leave that shape unchecked."""
+
+    def setUp(self):
+        self.admin = _admin("boss")
+        self.key, raw = _key(name="desk", user=self.admin)
+        # The write half of this surface needs the flag as well as an admin
+        # creator: without it every device answer below is a 403.
+        IntegrationKey.objects.update(can_write_devices=True)
+        self.client = _authed(raw)
+        self.device = UnmanagedDevice.objects.create(
+            name="Core switch", device_type="switch", ip_address="10.0.0.9",
+            serial="CS-9001")
+        self.host = Host.objects.create(hostname="web1", agent_token="t" * 32,
+                                        os="Debian 13", status=Host.Status.ONLINE)
+        MetricPoint.objects.create(host=self.host, category="cpu",
+                                   metric="usage_percent", value=42.4,
+                                   time=now() - timedelta(minutes=5))
+
+    def test_51_responses_match_the_api_schema(self):
+        ping = self.client.get(PING)
+        self.assertEqual(ping.status_code, 200, ping.content)
+        self.assertTrue(ping.json()["capabilities"], "an empty list checks no item shape")
+        assert_shape(self, ping.json(), JackilPingSerializer)
+
+        licence = self.client.get(LICENCE)
+        self.assertEqual(licence.status_code, 200, licence.content)
+        assert_shape(self, licence.json(), JackilLicenceSerializer)
+
+        searched = self.client.get(SEARCH, {"q": "web1"})
+        self.assertEqual(searched.status_code, 200, searched.content)
+        self.assertTrue(searched.json()["results"], "an empty list checks no row shape")
+        assert_shape(self, searched.json(), JackilSearchResultsSerializer)
+
+        resolved = self.client.get(RESOLVE, {"type": "device", "ids": str(self.device.id)})
+        self.assertEqual(resolved.status_code, 200, resolved.content)
+        self.assertTrue(resolved.json()["items"], "an empty dict checks no row shape")
+        assert_shape(self, resolved.json(), JackilResolveSerializer)
+
+        hosted = self.client.get(f"/api/v1/jackil/integration/host/{self.host.id}/")
+        self.assertEqual(hosted.status_code, 200, hosted.content)
+        assert_shape(self, hosted.json(), JackilHostDetailSerializer)
+
+        device = self.client.get(f"/api/v1/jackil/integration/device/{self.device.id}/")
+        self.assertEqual(device.status_code, 200, device.content)
+        assert_shape(self, device.json(), JackilDeviceDetailSerializer)
+
+        created = self.client.post(DEVICES, json.dumps({"name": "Edge router",
+                                                        "device_type": "router"}),
+                                   content_type="application/json")
+        self.assertEqual(created.status_code, 201, created.content)
+        assert_shape(self, created.json(), JackilDeviceDetailSerializer)
+
+        patched = self.client.patch(f"{DEVICES}{created.json()['id']}/",
+                                    json.dumps({"location": "Rack 4"}),
+                                    content_type="application/json")
+        self.assertEqual(patched.status_code, 200, patched.content)
+        assert_shape(self, patched.json(), JackilDeviceDetailSerializer)
+
+        # ``detail`` on a kind with no sparkline returns the same body the
+        # write responses return, key for key.
+        listed = self.client.get(f"/api/v1/jackil/integration/device/{self.device.id}/")
+        self.assertEqual(listed.status_code, 200, listed.content)
+        assert_shape(self, listed.json(), JackilDeviceDetailSerializer)
