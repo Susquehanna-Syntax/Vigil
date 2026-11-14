@@ -16,7 +16,14 @@ from django.utils import timezone
 from apps.alerts.models import Alert, AlertRule
 from apps.hosts.models import Host
 from apps.tasks.models import Task, TaskRun
+from vigil.schema_check import assert_shape
 
+from .api_schema import (
+    JackilWidgetCatalogueSerializer,
+    JackilWidgetGaugeSerializer,
+    JackilWidgetListSerializer,
+    JackilWidgetStatSerializer,
+)
 from .integration_widgets import WIDGETS
 from .test_integration import _admin, _authed
 
@@ -77,6 +84,8 @@ class CatalogueTests(TestCase):
 
     def test_catalogue_lists_every_kind_with_its_settings(self):
         body = self.client.get(WIDGETS_URL).json()
+        assert_shape(self, body, JackilWidgetCatalogueSerializer)
+        self.assertTrue(body["widgets"], "an empty list checks no row shape")
         self.assertEqual(body["version"], 1)
         self.assertEqual([row["kind"] for row in body["widgets"]], list(WIDGETS))
         for row in body["widgets"]:
@@ -99,11 +108,17 @@ class CatalogueTests(TestCase):
                          ["alerts_firing", "Firing alerts"])
 
     def test_each_widget_returns_a_contract_envelope(self):
+        by_shape = {"gauge": JackilWidgetGaugeSerializer,
+                    "stat": JackilWidgetStatSerializer,
+                    "list": JackilWidgetListSerializer}
         for kind in WIDGETS:
             with self.subTest(kind=kind):
                 response = self.client.get(WIDGET.format(kind))
                 self.assertEqual(response.status_code, 200, response.content)
-                _assert_contract(response.json())
+                body = response.json()
+                _assert_contract(body)
+                # …and the same envelope in the shape api_schema.py documents.
+                assert_shape(self, body, by_shape[body["shape"]])
 
     def test_settings_come_back_as_the_settings_they_take(self):
         """A widget with no settings ignores the ones it was not given, and

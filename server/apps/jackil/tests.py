@@ -8,9 +8,11 @@ that the severity floor is honoured.
 
 from __future__ import annotations
 
+import json
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from django.utils.timezone import now
 from rest_framework.test import APIClient
@@ -20,7 +22,21 @@ from apps.alerts.models import Alert, AlertRule
 from apps.hosts.models import Host
 from apps.instance import config
 from apps.jackil import client, service
+from apps.jackil.api_schema import (
+    JackilErrorSerializer,
+    JackilKeyListSerializer,
+    JackilKeySerializer,
+    JackilMintedKeySerializer,
+    JackilRelatedSerializer,
+    JackilRelatedUnavailableSerializer,
+    JackilRelatedUnconfiguredSerializer,
+    JackilRemoteWidgetSerializer,
+    JackilTicketsSerializer,
+)
 from apps.jackil.models import JackilTicket
+from vigil.schema_check import assert_shape
+
+from .test_integration import KEYS, _admin
 
 
 def _turn_on(min_severity="info"):
@@ -302,6 +318,129 @@ class ApiTests(JackilTestCase):
         config.write("JACKIL_API_KEY", "key-123")
         body = self.client_api.get("/api/v1/instance-settings/").json()
         self.assertNotIn("key-123", str(body))
+
+
+class ApiSchemaTests(JackilTestCase):
+    """Phase 50: the session endpoints a helpdesk's settings pane calls answer
+    with what ``apps/jackil/api_schema.py`` documents. Data is present
+    everywhere — a list with no row in it checks nothing — and each of the
+    answers ``related`` and a Jackil tile can give is checked, not only the
+    happy one."""
+
+    def setUp(self):
+        super().setUp()
+        self.client_api = APIClient()
+        user = get_user_model().objects.create_user("jadmin", password="pw")
+        UserProfile.objects.create(user=user, role=Role.ADMIN)
+        self.client_api.force_authenticate(user)
+
+    @staticmethod
+    def _helpdesk(payload):
+        """The ``requests`` response a configured Jackil would hand back."""
+        body = json.dumps(payload).encode()
+        return mock.Mock(status_code=200, content=body, text="",
+                         json=lambda: payload)
+
+    def test_50_responses_match_the_api_schema(self):
+        # The ticket list the settings pane draws: one row, because an empty
+        # list would check no row shape at all.
+        _turn_on()
+        with mock.patch.object(client, "create_ticket", return_value={"id": 42}):
+            service.on_alert_sent(self._alert())
+        tickets = self.client_api.get("/api/v1/jackil/tickets/")
+        self.assertEqual(tickets.status_code, 200, tickets.content)
+        self.assertTrue(tickets.json()["tickets"], "an empty list checks no row shape")
+        assert_shape(self, tickets.json(), JackilTicketsSerializer)
+
+        # The key admin's three answers: minted once, then listed, then
+        # revoked. These are settings-page endpoints and the settings page is
+        # hidden from a site admin (SETTINGS_ACCESS), so this caller is the
+        # instance admin the pane belongs to.
+        keys = self.client_class()
+        keys.force_login(_admin("boss"))
+        minted = keys.post(KEYS, {"name": "Front desk"}, format="json")
+        self.assertEqual(minted.status_code, 201, minted.content)
+        assert_shape(self, minted.json(), JackilMintedKeySerializer)
+        pk = minted.json()["id"]
+
+        # ``enabled`` has to arrive as the JSON boolean the view reads: a form
+        # encoding would send the word, not the value.
+        enabled = keys.post(f"{KEYS}{pk}/devices/", json.dumps({"enabled": True}),
+                            content_type="application/json")
+        self.assertEqual(enabled.status_code, 200, enabled.content)
+        assert_shape(self, enabled.json(), JackilKeySerializer)
+
+        listed = keys.get(KEYS)
+        self.assertEqual(listed.status_code, 200, listed.content)
+        self.assertTrue(listed.json()["keys"], "an empty list checks no row shape")
+        assert_shape(self, listed.json(), JackilKeyListSerializer)
+
+        revoked = keys.post(f"{KEYS}{pk}/revoke/", {}, format="json")
+        self.assertEqual(revoked.status_code, 200, revoked.content)
+        assert_shape(self, revoked.json(), JackilKeySerializer)
+        missing = keys.post(f"{KEYS}999999/revoke/", {}, format="json")
+        self.assertEqual(missing.status_code, 404, missing.content)
+        assert_shape(self, missing.json(), JackilErrorSerializer)
+
+        # ``related``: the link list, then each reason the drawer stays empty.
+        _turn_on()
+        with mock.patch("apps.jackil.client.requests.request",
+                        return_value=self._helpdesk(
+                            {"links": [{"relation": "fixes", "type": "ticket",
+                                        "id": "7", "label": "#7 Printer on fire",
+                                        "url": "https://jackil.example/tickets/7/",
+                                        "status": "Open", "tone": "info"}],
+                             "items": [{"id": "3", "name": "Edge switch",
+                                        "url": "https://jackil.example/items/3/"}]})):
+            linked = self.client_api.get("/api/v1/jackil/related/",
+                                         {"type": "host", "id": str(self.host.pk)})
+        self.assertEqual(linked.status_code, 200, linked.content)
+        self.assertTrue(linked.json()["links"], "an empty list checks no row shape")
+        assert_shape(self, linked.json(), JackilRelatedSerializer)
+
+        config.write("JACKIL_ENABLED", False)
+        unconfigured = self.client_api.get("/api/v1/jackil/related/",
+                                           {"type": "host", "id": str(self.host.pk)})
+        self.assertEqual(unconfigured.status_code, 200, unconfigured.content)
+        assert_shape(self, unconfigured.json(), JackilRelatedUnconfiguredSerializer)
+
+        _turn_on()
+        with mock.patch.object(client, "related",
+                               side_effect=client.JackilError(
+                                   "Jackil is not answering right now.")):
+            down = self.client_api.get("/api/v1/jackil/related/",
+                                       {"type": "host", "id": str(self.host.pk)})
+        self.assertEqual(down.status_code, 200, down.content)
+        assert_shape(self, down.json(), JackilRelatedUnavailableSerializer)
+
+        # A Jackil tile on a Vigil dashboard: the helpdesk's envelope, and the
+        # sentence that replaces it when there is no helpdesk to ask. The
+        # catalogue is cached for five minutes and the "stop calling" flag
+        # lasts thirty seconds, so both start from an empty cache.
+        cache.clear()
+        _turn_on()
+        with mock.patch("apps.jackil.client.requests.request",
+                        side_effect=[self._helpdesk(
+                            {"version": 1,
+                             "widgets": [{"kind": "stat_tile", "title": "Stat tile",
+                                          "description": "One number.",
+                                          "shape": "stat", "settings": {}}]}),
+                            self._helpdesk({"version": 1, "shape": "stat",
+                                            "data": {"value": 7,
+                                                     "label": "Open tickets"}})]):
+            tile = self.client_api.get("/api/v1/jackil/widgets/jackil:stat_tile/")
+        self.assertEqual(tile.status_code, 200, tile.content)
+        assert_shape(self, tile.json(), JackilRemoteWidgetSerializer)
+
+        config.write("JACKIL_ENABLED", False)
+        off = self.client_api.get("/api/v1/jackil/widgets/jackil:stat_tile/")
+        self.assertEqual(off.status_code, 200, off.content)
+        assert_shape(self, off.json(), JackilRemoteWidgetSerializer)
+
+        # A kind the registry does not know is refused before anyone is asked.
+        gone = self.client_api.get("/api/v1/jackil/widgets/not-a-jackil-tile/")
+        self.assertEqual(gone.status_code, 404, gone.content)
+        assert_shape(self, gone.json(), JackilErrorSerializer)
 
 
 class RefireTests(JackilTestCase):

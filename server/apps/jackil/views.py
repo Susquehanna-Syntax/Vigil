@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -17,6 +18,19 @@ from apps.accounts.permissions import IsAdmin, visible_site_ids, SettingsPage
 from vigil import scoping
 
 from . import client
+from .api_schema import (
+    JackilErrorSerializer,
+    JackilKeyCreateSerializer,
+    JackilKeyDeviceWriteSerializer,
+    JackilKeyListSerializer,
+    JackilKeySerializer,
+    JackilMintedKeySerializer,
+    JackilRelatedSerializer,
+    JackilRelatedUnconfiguredSerializer,
+    JackilRelatedUnavailableSerializer,
+    JackilRemoteWidgetSerializer,
+    JackilTicketsSerializer,
+)
 from .integration_views import TYPES, _owned
 from .models import IntegrationKey, JackilTicket
 
@@ -57,6 +71,17 @@ def _item_row(entry) -> dict:
     return {"name": str(entry.get("name", "")), "url": _safe_url(entry.get("url"))}
 
 
+@extend_schema(
+    # Three bodies, keyed as they are on the widget endpoint: ``configured``
+    # and ``available`` say which one arrived.
+    responses={
+        "200": JackilRelatedSerializer,
+        "200 unconfigured": JackilRelatedUnconfiguredSerializer,
+        "200 unavailable": JackilRelatedUnavailableSerializer,
+        400: JackilErrorSerializer,
+        404: JackilErrorSerializer,
+    },
+)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def related(request):
@@ -93,6 +118,8 @@ def related(request):
                      "items": [_item_row(e) for e in items[:MAX_ITEMS]]})
 
 
+@extend_schema(responses={200: JackilRemoteWidgetSerializer,
+                         404: JackilErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def jackil_widget(request, kind):
@@ -110,6 +137,8 @@ def jackil_widget(request, kind):
     return Response(remote_widget(kind, request.query_params.dict()))
 
 
+@extend_schema(responses={200: JackilTicketsSerializer,
+                         403: JackilErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAdmin, SettingsPage("jackil")])
 def recent_tickets(request):
@@ -165,6 +194,12 @@ def _visible_keys(user):
     return keys.filter(created_by=user)
 
 
+@extend_schema(methods=["GET"], responses={200: JackilKeyListSerializer,
+                                           403: JackilErrorSerializer})
+@extend_schema(methods=["POST"], request=JackilKeyCreateSerializer,
+               responses={201: JackilMintedKeySerializer,
+                          400: JackilErrorSerializer,
+                          403: JackilErrorSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAdmin, SettingsPage("jackil")])
 def integration_keys(request):
@@ -180,6 +215,9 @@ def integration_keys(request):
     return Response({**_key_row(key), "key": raw}, status=201)
 
 
+@extend_schema(request=None, responses={200: JackilKeySerializer,
+                                        403: JackilErrorSerializer,
+                                        404: JackilErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAdmin, SettingsPage("jackil")])
 def revoke_integration_key(request, pk: int):
@@ -195,6 +233,11 @@ def revoke_integration_key(request, pk: int):
     return Response(_key_row(key))
 
 
+@extend_schema(request=JackilKeyDeviceWriteSerializer,
+               responses={200: JackilKeySerializer,
+                          400: JackilErrorSerializer,
+                          403: JackilErrorSerializer,
+                          404: JackilErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAdmin, SettingsPage("jackil")])
 def set_key_device_write(request, pk: int):

@@ -26,12 +26,21 @@ from datetime import timezone as dt_timezone
 from django.db.models import DateTimeField, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema
 from rest_framework.response import Response
 
 from apps.alerts.models import Alert, AlertRule
 from apps.hosts.models import Host
 from vigil import scoping
 
+from .api_schema import (
+    JackilWidgetCatalogueSerializer,
+    JackilWidgetEnvelopeSerializer,
+    JackilWidgetGaugeDataSerializer,
+    JackilWidgetListDataSerializer,
+    JackilWidgetStatDataSerializer,
+    JackilWidgetUnknownSerializer,
+)
 from .integration_views import _hosts, _item, _runs, deep_link
 from .integration_views import integration as _key_only
 
@@ -285,6 +294,7 @@ def _date(value) -> str:
 
 # ── endpoints ─────────────────────────────────────────────────────────────────
 
+@extend_schema(responses=JackilWidgetCatalogueSerializer)
 @integration
 def widgets(request):
     """What can be asked for, and how to ask for it. Jackil builds its picker
@@ -301,6 +311,19 @@ def widgets(request):
     })
 
 
+@extend_schema(
+    # One endpoint, three bodies, and an OpenAPI response object is keyed by
+    # status code alone: the envelope — ``shape`` naming the key set ``data``
+    # follows — is 200, and each shape's exact keys are the entries beside it.
+    responses={
+        "200": JackilWidgetEnvelopeSerializer,
+        "200 gauge": JackilWidgetGaugeDataSerializer,
+        "200 stat": JackilWidgetStatDataSerializer,
+        "200 list": JackilWidgetListDataSerializer,
+        400: JackilWidgetUnknownSerializer,
+        404: JackilWidgetUnknownSerializer,
+    },
+)
 @integration
 def widget(request, kind: str):
     spec = WIDGETS.get(kind)
