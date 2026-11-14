@@ -1,4 +1,4 @@
-"""OpenAPI shapes of the tasks rollout and wave endpoints (sprint M5).
+"""OpenAPI shapes of the tasks endpoints (sprint M5).
 
 Documentation only: the views build their responses by hand, and these
 serializers describe what they return so the schema has real types. Nothing
@@ -221,13 +221,6 @@ class TasksValidateRequestSerializer(serializers.Serializer):
         "server cannot deploy; validate only parses.")
 
 
-class TasksDefinitionErrorSerializer(serializers.Serializer):
-    """Every refusal these views makes is ``{"error": …}`` — a spec it cannot
-    deploy, a definition owned by someone else, or a role that may not write."""
-
-    error = serializers.CharField()
-
-
 class TasksNotFoundSerializer(serializers.Serializer):
     """A 404 has one of two bodies: ``{"error"}`` when the row exists but the
     caller may not see it, DRF's ``{"detail"}`` when there is no such row."""
@@ -411,3 +404,280 @@ class TasksArchiveSerializer(serializers.Serializer):
     restore = serializers.BooleanField(
         required=False,
         help_text="Put the definition back in the working set instead of retiring it.")
+
+
+# ── Phase 47: results, catalog, deploy and history ─────────────────────────
+
+class TasksErrorSerializer(serializers.Serializer):
+    """The older tasks endpoints refuse with ``error`` where the newer ones
+    use DRF's ``detail``."""
+
+    error = serializers.CharField()
+
+
+# ── Task rows and history ────────────────────────────────────────────────────
+
+
+class TasksTaskHistorySerializer(serializers.Serializer):
+    """``GET /tasks/history/``: the fleet's tasks, newest first, in pages."""
+
+    count = serializers.IntegerField()
+    page = serializers.IntegerField()
+    pages = serializers.IntegerField()
+    page_size = serializers.IntegerField()
+    results = TasksTaskSerializer(many=True)
+
+
+# ── Runs ─────────────────────────────────────────────────────────────────────
+
+
+class TasksRunSummarySerializer(serializers.Serializer):
+    """``TaskRunSummarySerializer``: the run header without its tasks."""
+
+    id = serializers.CharField()
+    source = serializers.CharField()
+    automation = serializers.CharField(allow_null=True)
+    automation_name = serializers.CharField(allow_null=True)
+    playbook = serializers.CharField(allow_null=True)
+    playbook_name = serializers.CharField(allow_null=True)
+    name_snapshot = serializers.CharField()
+    requested_by_username = serializers.CharField(allow_null=True)
+    host_count = serializers.IntegerField()
+    step_count = serializers.IntegerField()
+    state = serializers.CharField()
+    created_at = serializers.DateTimeField()
+    finished_at = serializers.DateTimeField(allow_null=True)
+
+
+class TasksRunHistorySerializer(serializers.Serializer):
+    """``GET /tasks/runs/``."""
+
+    count = serializers.IntegerField()
+    page = serializers.IntegerField()
+    pages = serializers.IntegerField()
+    page_size = serializers.IntegerField()
+    results = TasksRunSummarySerializer(many=True)
+
+
+class TasksRunHostStateSerializer(serializers.Serializer):
+    """One host's verdict in ``run_summary``'s ``per_host``."""
+
+    state = serializers.CharField()
+    outcome = serializers.CharField(allow_null=True)
+
+
+class TasksRunSummaryCountsSerializer(serializers.Serializer):
+    """``run_summary``: how the run went, per host and in total.
+
+    ``states`` counts hosts by state and is absent for a state no host is in;
+    an unlabelled run has no outcomes at all, so that key is null rather than
+    an empty map."""
+
+    hosts = serializers.IntegerField()
+    states = serializers.DictField(child=serializers.IntegerField())
+    outcomes = serializers.DictField(child=serializers.IntegerField(), allow_null=True)
+    per_host = serializers.DictField(child=TasksRunHostStateSerializer())
+
+
+class TasksRunSerializer(serializers.Serializer):
+    """``TaskRunSerializer``: one run with every task it dispatched."""
+
+    id = serializers.CharField()
+    definition = serializers.CharField(allow_null=True)
+    definition_name = serializers.CharField(allow_null=True)
+    name_snapshot = serializers.CharField()
+    requested_by = serializers.CharField(allow_null=True)
+    requested_by_username = serializers.CharField(allow_null=True)
+    host_count = serializers.IntegerField()
+    step_count = serializers.IntegerField()
+    state = serializers.CharField()
+    created_at = serializers.DateTimeField()
+    finished_at = serializers.DateTimeField(allow_null=True)
+    flow_snapshot = serializers.DictField(allow_null=True)
+    tasks = TasksTaskSerializer(many=True, required=False)
+
+
+class TasksRunDetailSerializer(TasksRunSerializer):
+    """``GET /tasks/runs/<id>/``: the run with its per-host ``summary``."""
+
+    summary = TasksRunSummaryCountsSerializer()
+
+
+class TasksDeploySkipSerializer(serializers.Serializer):
+    """One host left out of a deploy because its agent would refuse."""
+
+    host_id = serializers.CharField()
+    hostname = serializers.CharField()
+    actions = serializers.ListField(child=serializers.CharField())
+
+
+class TasksDeployResponseSerializer(TasksRunSerializer):
+    """``POST /tasks/definitions/<id>/deploy/``: the run beside ``skipped``.
+
+    Its ``state`` is still the freshly-created ``running``, and the run is
+    serialised before its tasks exist, so no ``tasks`` key reaches this body —
+    run detail is the view that shows them.
+    """
+
+    skipped = TasksDeploySkipSerializer(many=True)
+
+
+class TasksDeployRequestSerializer(serializers.Serializer):
+    """What ``definition_deploy`` reads from the body.
+
+    A definition's own declared inputs go in ``inputs``, so that key is
+    free-form. The policy overrides are the YAML blocks the deploy modal's
+    tabs hydrate, and each keeps exactly the shape its YAML form has.
+    """
+
+    host_ids = serializers.ListField(child=serializers.CharField(), required=False)
+    tags = serializers.ListField(child=serializers.CharField(), required=False)
+    password = serializers.CharField(required=False, write_only=True)
+    totp = serializers.CharField(
+        required=False, write_only=True, help_text="The six-digit confirmation code."
+    )
+    inputs = serializers.DictField(required=False)
+    send_to_refusing = serializers.BooleanField(
+        required=False,
+        help_text="Send anyway to hosts whose agent would refuse the task.",
+    )
+    schedule = serializers.DictField(required=False)
+    on_failure = serializers.DictField(required=False)
+    success_criteria = serializers.DictField(required=False)
+
+
+# ── Agent: task result ───────────────────────────────────────────────────────
+
+
+class TasksTaskResultRequestSerializer(serializers.Serializer):
+    """What ``task_result`` reads from the agent's report.
+
+    Each step is ``{id, status, result}`` with a scalar-valued ``result``, and
+    a hunt step may carry its matches under ``hunt``; both are untrusted and
+    sanitised on the way in (apps/tasks/views/_ingest.py), so they stay
+    free-form here.
+    """
+
+    task_id = serializers.IntegerField()
+    state = serializers.CharField(
+        help_text="A terminal state: completed, failed, rejected, skipped or "
+        "not_applicable."
+    )
+    output = serializers.CharField(required=False, allow_blank=True)
+    steps = serializers.ListField(child=serializers.DictField(), required=False)
+
+
+class TasksRunBadParamSerializer(serializers.Serializer):
+    """A malformed ``limit``, ``offset`` or ``host`` on the hunt results view."""
+
+    detail = serializers.CharField()
+
+
+# ── Community catalog ────────────────────────────────────────────────────────
+
+
+class TasksCommunityRequirementSerializer(serializers.Serializer):
+    """What a catalog item says it needs: a kind, a slug and a uid."""
+
+    kind = serializers.CharField()
+    slug = serializers.CharField()
+    uid = serializers.CharField(allow_blank=True)
+
+
+class TasksCommunityCardSerializer(serializers.Serializer):
+    """One catalog file: its card fields plus the raw YAML it was parsed from.
+
+    ``parsed_spec`` is the task spec (tasks only); playbook and automation
+    cards carry no such key, so it is optional here. So are ``step_count``
+    and ``summary``, which only those two kinds set.
+    """
+
+    kind = serializers.CharField()
+    filename = serializers.CharField()
+    html_url = serializers.CharField(allow_blank=True)
+    yaml_source = serializers.CharField()
+    uid = serializers.CharField(allow_blank=True)
+    name = serializers.CharField()
+    description = serializers.CharField(allow_blank=True)
+    author = serializers.CharField(allow_blank=True)
+    relevance = serializers.CharField(allow_blank=True)
+    risk_level = serializers.CharField()
+    parsed_spec = serializers.DictField(required=False)
+    step_count = serializers.IntegerField(required=False)
+    summary = serializers.CharField(allow_blank=True, required=False)
+    requires = TasksCommunityRequirementSerializer(many=True)
+
+
+class TasksCommunityNeedSerializer(serializers.Serializer):
+    """One dependency of a fork plan, and whether it is already held."""
+
+    kind = serializers.CharField()
+    slug = serializers.CharField()
+    name = serializers.CharField()
+    found = serializers.BooleanField()
+    have = serializers.BooleanField()
+    uid = serializers.CharField(allow_blank=True)
+
+
+class TasksForkPlanSerializer(serializers.Serializer):
+    """``GET /tasks/community/<kind>/<filename>/plan/``."""
+
+    name = serializers.CharField()
+    have = serializers.BooleanField()
+    needs = TasksCommunityNeedSerializer(many=True)
+
+
+class TasksCreatedItemSerializer(serializers.Serializer):
+    kind = serializers.CharField()
+    name = serializers.CharField()
+
+
+class TasksForkResponseSerializer(serializers.Serializer):
+    """``POST .../fork/``. Forking what you already hold is a 200 no-op that
+    names the item rather than a duplicate-name error; a real fork is a 201
+    listing what it created."""
+
+    created = TasksCreatedItemSerializer(many=True)
+    already = serializers.BooleanField(required=False)
+    name = serializers.CharField(required=False)
+
+
+# ── Hunt results ─────────────────────────────────────────────────────────────
+
+
+class TasksHuntHostSerializer(serializers.Serializer):
+    """One targeted host's hunt outcome. ``state`` is matched, not_matched,
+    pending, error, not_applicable or did_not_report."""
+
+    host_id = serializers.CharField()
+    hostname = serializers.CharField()
+    state = serializers.CharField()
+    match_count = serializers.IntegerField()
+    truncated = serializers.BooleanField()
+    timed_out = serializers.BooleanField()
+
+
+class TasksHuntResultsSerializer(serializers.Serializer):
+    """``GET /tasks/runs/<id>/hunt/``.
+
+    ``columns`` is the union of the matches' own field names in first-seen
+    order, so it is not known in advance; a match carries those fields beside
+    the fixed ones below, which the agent can never overwrite — so the items
+    are documented as free form rather than by name.
+    """
+
+    columns = serializers.ListField(
+        child=serializers.CharField(),
+        help_text="The agent-reported field names the matches carry, in "
+        "first-seen order.",
+    )
+    hosts = TasksHuntHostSerializer(many=True)
+    matches = serializers.ListField(
+        child=serializers.DictField(),
+        help_text="One page of matches: ``host_id``, ``hostname``, "
+        "``step_id``, ``action`` and ``evidence_type``, plus the fields from "
+        "each match's own evidence.",
+    )
+    total = serializers.IntegerField()
+    limit = serializers.IntegerField()
+    offset = serializers.IntegerField()

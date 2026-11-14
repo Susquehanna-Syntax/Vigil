@@ -11,10 +11,10 @@ from apps.hosts.models import Host
 from vigil.schema_check import assert_shape
 
 from .api_schema import (
-    TasksDefinitionErrorSerializer,
     TasksDefinitionListRowSerializer,
     TasksDefinitionSerializer,
     TasksEditorTemplatesSerializer,
+    TasksErrorSerializer,
     TasksNotFoundSerializer,
     TasksRefusalsSerializer,
     TasksTaskSerializer,
@@ -52,7 +52,7 @@ class DefinitionApiSchemaTests(TestCase):
         definition = self.create()
         did = definition["id"]
         self.ok(self.api.post(f"{BASE}/definitions/", {"yaml_source": "name: [unclosed"},
-                              format="json"), TasksDefinitionErrorSerializer, 400)
+                              format="json"), TasksErrorSerializer, 400)
 
         # The library list, with a run so last_run is filled in, then without.
         run = TaskRun.objects.create(definition_id=did, requested_by=self.operator)
@@ -97,11 +97,11 @@ class DefinitionApiSchemaTests(TestCase):
         viewer.force_authenticate(self.viewer)
         # A role that may not write tasks is refused before anything is read.
         self.ok(viewer.post(f"{BASE}/definitions/{did}/fork/", {}, format="json"),
-                TasksDefinitionErrorSerializer, 403)
+                TasksErrorSerializer, 403)
         self.ok(viewer.put(f"{BASE}/definitions/{did}/", {"yaml_source": CHECK}, format="json"),
                 TasksNotFoundSerializer, 404)
         TaskDefinition.objects.filter(pk=did).update(visibility=TaskDefinition.Visibility.COMMUNITY)
         self.ok(viewer.put(f"{BASE}/definitions/{did}/", {"yaml_source": CHECK}, format="json"),
-                TasksDefinitionErrorSerializer, 403)
+                TasksErrorSerializer, 403)
         self.ok(viewer.post(f"{BASE}/definitions/{did}/archive/", {}, format="json"),
-                TasksDefinitionErrorSerializer, 403)
+                TasksErrorSerializer, 403)

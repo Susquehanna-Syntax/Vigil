@@ -1,10 +1,23 @@
 """apps.tasks.views: runs views (split from the old single module, unchanged)."""
+
+from drf_spectacular.utils import extend_schema
+
 from ._common import *  # noqa: F401,F403
 from ._ingest import *  # noqa: F401,F403
 from ._sequence import *  # noqa: F401,F403
 from ._catalog import *  # noqa: F401,F403
+from ..api_schema import (
+    TasksDetailSerializer,
+    TasksHuntResultsSerializer,
+    TasksNotFoundSerializer,
+    TasksRunBadParamSerializer,
+    TasksRunDetailSerializer,
+    TasksRunHistorySerializer,
+    TasksTaskHistorySerializer,
+)
 
 
+@extend_schema(responses=TasksTaskHistorySerializer)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("tasks")
@@ -20,6 +33,7 @@ def task_history(request):
     page_size = 50
 
     from ..authz import visible_tasks
+
     qs = visible_tasks(
         Task.objects.filter(hidden=False)
         .select_related("host", "requested_by")
@@ -31,16 +45,19 @@ def task_history(request):
     if page > pages:
         page = pages
     start = (page - 1) * page_size
-    items = list(qs[start:start + page_size])
-    return Response({
-        "count": total,
-        "page": page,
-        "pages": pages,
-        "page_size": page_size,
-        "results": TaskSerializer(items, many=True).data,
-    })
+    items = list(qs[start : start + page_size])
+    return Response(
+        {
+            "count": total,
+            "page": page,
+            "pages": pages,
+            "page_size": page_size,
+            "results": TaskSerializer(items, many=True).data,
+        }
+    )
 
 
+@extend_schema(responses={200: TasksRunHistorySerializer, 400: TasksDetailSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 @scoping.module_view("tasks")
@@ -57,8 +74,13 @@ def run_history(request):
     page_size = 25
 
     from ..authz import trim_runs, visible_runs
-    qs = visible_runs(TaskRun.objects.select_related(
-        "automation", "playbook", "requested_by").order_by("-created_at"), request.user)
+
+    qs = visible_runs(
+        TaskRun.objects.select_related(
+            "automation", "playbook", "requested_by"
+        ).order_by("-created_at"),
+        request.user,
+    )
 
     raw = (request.query_params.get("source") or "").strip()
     if raw:
@@ -73,16 +95,20 @@ def run_history(request):
     if page > pages:
         page = pages
     start = (page - 1) * page_size
-    return Response({
-        "count": total,
-        "page": page,
-        "pages": pages,
-        "page_size": page_size,
-        "results": TaskRunSummarySerializer(
-            trim_runs(qs[start:start + page_size], request.user), many=True).data,
-    })
+    return Response(
+        {
+            "count": total,
+            "page": page,
+            "pages": pages,
+            "page_size": page_size,
+            "results": TaskRunSummarySerializer(
+                trim_runs(qs[start : start + page_size], request.user), many=True
+            ).data,
+        }
+    )
 
 
+@extend_schema(responses={200: TasksRunDetailSerializer, 404: TasksNotFoundSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def run_detail(request, run_id):
@@ -93,14 +119,23 @@ def run_detail(request, run_id):
         pk=run_id,
     )
     from ..authz import run_visible, trim_run
+
     if not run_visible(request.user, run):
         return Response({"error": "Not found"}, status=404)
     data = TaskRunSerializer(trim_run(run, request.user)).data
     from ..summary import run_summary
+
     data["summary"] = run_summary(run)
     return Response(data)
 
 
+@extend_schema(
+    responses={
+        200: TasksHuntResultsSerializer,
+        400: TasksRunBadParamSerializer,
+        404: TasksNotFoundSerializer,
+    }
+)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def run_hunt_results(request, run_id):
@@ -113,9 +148,9 @@ def run_hunt_results(request, run_id):
     ``?host=`` and ``?step=`` filter the matches only — hosts and columns
     always describe the whole run. A run without a hunt step is a 404.
     """
-    run = get_object_or_404(
-        TaskRun.objects.prefetch_related("tasks__host"), pk=run_id)
+    run = get_object_or_404(TaskRun.objects.prefetch_related("tasks__host"), pk=run_id)
     from ..authz import run_visible
+
     if not run_visible(request.user, run):
         return Response({"error": "Not found"}, status=404)
     tasks = list(run.tasks.all())
@@ -142,11 +177,12 @@ def run_hunt_results(request, run_id):
     run_matches = HuntMatch.objects.filter(run=run)
     columns: dict = {}
     for data in run_matches.values_list("data", flat=True).iterator(chunk_size=2000):
-        for key in (data or {}):
+        for key in data or {}:
             columns.setdefault(key, None)
 
     matches_qs = run_matches.select_related("host").order_by(
-        "host__hostname", "step_id", "id")
+        "host__hostname", "step_id", "id"
+    )
     if raw_host := (request.query_params.get("host") or "").strip():
         try:
             matches_qs = matches_qs.filter(host_id=uuid.UUID(raw_host))
@@ -157,7 +193,7 @@ def run_hunt_results(request, run_id):
 
     total = matches_qs.count()
     matches = []
-    for row in matches_qs[offset:offset + limit]:
+    for row in matches_qs[offset : offset + limit]:
         item = {
             "host_id": str(row.host_id),
             "hostname": row.host.hostname,
@@ -174,22 +210,32 @@ def run_hunt_results(request, run_id):
     for task in sorted(tasks, key=lambda t: (t.host.hostname, str(t.id))):
         count = counts.get(task.id, 0)
         step_hunts = (task.result_data or {}).get("hunts") or {}
-        hosts.append({
-            "host_id": str(task.host_id),
-            "hostname": task.host.hostname,
-            "state": _hunt_host_state(task, count),
-            "match_count": count,
-            "truncated": any(bool(h.get("truncated")) for h in step_hunts.values()
-                             if isinstance(h, dict)),
-            "timed_out": any(bool(h.get("timed_out")) for h in step_hunts.values()
-                             if isinstance(h, dict)),
-        })
+        hosts.append(
+            {
+                "host_id": str(task.host_id),
+                "hostname": task.host.hostname,
+                "state": _hunt_host_state(task, count),
+                "match_count": count,
+                "truncated": any(
+                    bool(h.get("truncated"))
+                    for h in step_hunts.values()
+                    if isinstance(h, dict)
+                ),
+                "timed_out": any(
+                    bool(h.get("timed_out"))
+                    for h in step_hunts.values()
+                    if isinstance(h, dict)
+                ),
+            }
+        )
 
-    return Response({
-        "columns": list(columns),
-        "hosts": hosts,
-        "matches": matches,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-    })
+    return Response(
+        {
+            "columns": list(columns),
+            "hosts": hosts,
+            "matches": matches,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+    )

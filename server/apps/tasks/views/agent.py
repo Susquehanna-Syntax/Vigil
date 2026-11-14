@@ -1,11 +1,31 @@
 """apps.tasks.views: agent views (split from the old single module, unchanged)."""
+
+from drf_spectacular.utils import extend_schema
+
 from ._common import *  # noqa: F401,F403
 from ._ingest import *  # noqa: F401,F403
 from ._sequence import *  # noqa: F401,F403
 from ._catalog import *  # noqa: F401,F403
+from ..api_schema import (
+    TasksErrorSerializer,
+    TasksTaskResultRequestSerializer,
+    TasksTaskSerializer,
+)
 
 
-@scoping.system_view(reason="agent API: the caller is a host, authenticated by its agent token")
+@extend_schema(
+    request=TasksTaskResultRequestSerializer,
+    responses={
+        200: TasksTaskSerializer,
+        400: TasksErrorSerializer,
+        401: TasksErrorSerializer,
+        403: TasksErrorSerializer,
+        404: TasksErrorSerializer,
+    },
+)
+@scoping.system_view(
+    reason="agent API: the caller is a host, authenticated by its agent token"
+)
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def task_result(request):
@@ -44,8 +64,13 @@ def task_result(request):
         task.completed_at = now()
         task.save()
         _ingest_hunt_matches(task, request.data.get("steps"))
-        if new_state in (Task.State.COMPLETED, Task.State.FAILED, Task.State.NOT_APPLICABLE):
+        if new_state in (
+            Task.State.COMPLETED,
+            Task.State.FAILED,
+            Task.State.NOT_APPLICABLE,
+        ):
             from apps.vulns.detection import record_detection
+
             record_detection(task)
 
         if task.run_id:
@@ -55,6 +80,7 @@ def task_result(request):
         # successful run's output into the host's inventory custom columns.
         if new_state == Task.State.COMPLETED:
             from apps.hosts.container_history import record_container_task
+
             record_container_task(task)
             _maybe_capture_inventory_column(task, output)
             _maybe_apply_tags(task)
@@ -62,8 +88,11 @@ def task_result(request):
             _maybe_ingest_trivy_report(task, output)
             _maybe_ingest_firewall_rules(task, output)
             _maybe_ingest_docker_usage(task, output)
-        if new_state in (Task.State.COMPLETED, Task.State.FAILED,
-                         Task.State.NOT_APPLICABLE):
+        if new_state in (
+            Task.State.COMPLETED,
+            Task.State.FAILED,
+            Task.State.NOT_APPLICABLE,
+        ):
             # A step that ran before a later one failed still fired, so these
             # run on any terminal state and pick their steps from the agent's
             # per-step statuses rather than the task's.
@@ -80,6 +109,7 @@ def task_result(request):
     # sent it, so emitting it here would start firing them, with nothing to
     # stop a task-runs-a-task loop.
     from vigil import hooks
+
     hooks.emit("task_finished", task=task, host=host)
 
     return Response(TaskSerializer(task).data)

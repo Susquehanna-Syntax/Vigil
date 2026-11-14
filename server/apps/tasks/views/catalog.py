@@ -1,10 +1,27 @@
 """apps.tasks.views: catalog views (split from the old single module, unchanged)."""
+
+from drf_spectacular.utils import extend_schema
+
 from ._common import *  # noqa: F401,F403
 from ._ingest import *  # noqa: F401,F403
 from ._sequence import *  # noqa: F401,F403
 from ._catalog import *  # noqa: F401,F403
+from ..api_schema import (
+    TasksCommunityCardSerializer,
+    TasksDetailSerializer,
+    TasksErrorSerializer,
+    TasksForkPlanSerializer,
+    TasksForkResponseSerializer,
+)
 
 
+@extend_schema(
+    responses={
+        200: TasksCommunityCardSerializer(many=True),
+        404: TasksErrorSerializer,
+        502: TasksErrorSerializer,
+    }
+)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def community_templates(request, kind: str = "tasks"):
@@ -28,18 +45,30 @@ def community_templates(request, kind: str = "tasks"):
         templates = _fetch_community_templates(kind)
     except Exception:
         return Response(
-            {"error": "Community repo unreachable — check the server's internet access"},
+            {
+                "error": "Community repo unreachable — check the server's internet access"
+            },
             status=502,
         )
     cache.set(cache_key, templates, _COMMUNITY_CACHE_TTL)
     return Response(templates)
 
 
+@extend_schema(
+    request=None,
+    responses={
+        200: TasksForkPlanSerializer,
+        403: TasksErrorSerializer,
+        404: TasksErrorSerializer,
+        502: TasksErrorSerializer,
+    },
+)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def community_fork_plan(request, kind: str, filename: str):
     """What forking this catalog item would create, without creating it."""
     from ..authz import author_denied
+
     denied = author_denied(request.user)
     if denied:
         return denied
@@ -51,15 +80,32 @@ def community_fork_plan(request, kind: str, filename: str):
         return Response({"error": "Community repo unreachable"}, status=502)
     if "error" in plan:
         return Response(plan, status=404)
-    return Response({
-        "name": plan["item"]["name"],
-        "have": plan["have"],
-        "needs": [{**{k: n[k] for k in ("kind", "slug", "name", "found", "have")},
-                   "uid": (n.get("source") or {}).get("uid", "")}
-                  for n in plan["needs"]],
-    })
+    return Response(
+        {
+            "name": plan["item"]["name"],
+            "have": plan["have"],
+            "needs": [
+                {
+                    **{k: n[k] for k in ("kind", "slug", "name", "found", "have")},
+                    "uid": (n.get("source") or {}).get("uid", ""),
+                }
+                for n in plan["needs"]
+            ],
+        }
+    )
 
 
+@extend_schema(
+    request=None,
+    responses={
+        200: TasksForkResponseSerializer,
+        201: TasksForkResponseSerializer,
+        400: TasksDetailSerializer,
+        403: TasksErrorSerializer,
+        404: TasksErrorSerializer,
+        502: TasksErrorSerializer,
+    },
+)
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def community_fork(request, kind: str, filename: str):
@@ -74,6 +120,7 @@ def community_fork(request, kind: str, filename: str):
     from apps.playbooks.views import playbook_from_yaml
 
     from ..authz import author_denied
+
     # Forking creates tasks, playbooks and automations: the same role gate as
     # every other way of creating them, and as community_fork_plan.
     denied = author_denied(request.user)
@@ -91,15 +138,17 @@ def community_fork(request, kind: str, filename: str):
     if plan["have"]:
         # Already held. A no-op with a clear answer beats a duplicate-name
         # error, which reads as a failure when nothing is actually wrong.
-        return Response({"created": [], "already": True,
-                         "name": plan["item"]["name"]})
+        return Response({"created": [], "already": True, "name": plan["item"]["name"]})
 
     missing = [n["slug"] for n in plan["needs"] if not n["found"]]
     if missing:
         return Response(
-            {"detail": "The catalog is missing files this references: "
-                       + ", ".join(sorted(set(missing)))},
-            status=400)
+            {
+                "detail": "The catalog is missing files this references: "
+                + ", ".join(sorted(set(missing)))
+            },
+            status=400,
+        )
 
     created = []
     with transaction.atomic():

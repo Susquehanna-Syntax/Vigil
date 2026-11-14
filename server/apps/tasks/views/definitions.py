@@ -8,10 +8,10 @@ from ._sequence import *  # noqa: F401,F403
 from ._catalog import *  # noqa: F401,F403
 from ..api_schema import (
     TasksArchiveSerializer,
-    TasksDefinitionErrorSerializer,
     TasksDefinitionListRowSerializer,
     TasksDefinitionSerializer,
     TasksEditorTemplatesSerializer,
+    TasksErrorSerializer,
     TasksNotFoundSerializer,
     TasksRefusalsSerializer,
     TasksTaskSerializer,
@@ -38,8 +38,8 @@ def editor_templates(request):
                responses=TasksDefinitionListRowSerializer(many=True))
 @extend_schema(methods=["POST"], request=TasksValidateRequestSerializer,
                responses={201: TasksDefinitionSerializer,
-                          400: TasksDefinitionErrorSerializer,
-                          403: TasksDefinitionErrorSerializer})
+                          400: TasksErrorSerializer,
+                          403: TasksErrorSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def definition_list(request):
@@ -99,8 +99,8 @@ def definition_list(request):
                                            404: TasksNotFoundSerializer})
 @extend_schema(methods=["PUT"], request=TasksValidateRequestSerializer,
                responses={200: TasksDefinitionSerializer,
-                          400: TasksDefinitionErrorSerializer,
-                          403: TasksDefinitionErrorSerializer,
+                          400: TasksErrorSerializer,
+                          403: TasksErrorSerializer,
                           404: TasksNotFoundSerializer})
 @api_view(["GET", "PUT"])
 @permission_classes([IsAuthenticated])
@@ -137,7 +137,7 @@ def definition_detail(request, definition_id):
 
 @extend_schema(request=TasksValidateRequestSerializer,
                responses={200: TasksValidateResponseSerializer,
-                          400: TasksDefinitionErrorSerializer})
+                          400: TasksErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def definition_validate(request):
@@ -151,7 +151,7 @@ def definition_validate(request):
 
 
 @extend_schema(request=None, responses={201: TasksDefinitionSerializer,
-                                        403: TasksDefinitionErrorSerializer,
+                                        403: TasksErrorSerializer,
                                         404: TasksNotFoundSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -236,7 +236,7 @@ def action_registry(request):
 
 @extend_schema(request=TasksArchiveSerializer,
                responses={200: TasksDefinitionSerializer,
-                          403: TasksDefinitionErrorSerializer,
+                          403: TasksErrorSerializer,
                           404: TasksNotFoundSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
