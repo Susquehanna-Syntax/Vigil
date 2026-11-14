@@ -1,10 +1,33 @@
 """apps.tasks.views: deploy views (split from the old single module, unchanged)."""
+
+from drf_spectacular.utils import extend_schema
+
 from ._common import *  # noqa: F401,F403
 from ._ingest import *  # noqa: F401,F403
 from ._sequence import *  # noqa: F401,F403
 from ._catalog import *  # noqa: F401,F403
+from ..api_schema import (
+    TasksDeployRequestSerializer,
+    TasksDeployResponseSerializer,
+    TasksErrorSerializer,
+    TasksNotFoundSerializer,
+)
 
 
+@extend_schema(
+    request=TasksDeployRequestSerializer,
+    responses={
+        201: TasksDeployResponseSerializer,
+        400: TasksErrorSerializer,
+        # The confirmation gate; run_denied's 403 for a host
+        # the caller may not run tasks on.
+        401: TasksErrorSerializer,
+        403: TasksErrorSerializer,
+        # run_denied's "not found" for an out-of-scope host,
+        # and the definition or host lookups.
+        404: TasksNotFoundSerializer,
+    },
+)
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def definition_deploy(request, definition_id):
@@ -26,15 +49,18 @@ def definition_deploy(request, definition_id):
     raw_tags = request.data.get("tags") or []
     host_ids = request.data.get("host_ids") or []
     if raw_tags:
-        if not isinstance(raw_tags, list) or not all(isinstance(t, str) for t in raw_tags):
+        if not isinstance(raw_tags, list) or not all(
+            isinstance(t, str) for t in raw_tags
+        ):
             return Response({"error": "tags must be a list of strings"}, status=400)
         wanted = {t.strip().lower() for t in raw_tags if t.strip()}
         if not wanted:
             return Response({"error": "tags is empty after normalization"}, status=400)
         from ..authz import runnable
-        candidate_hosts = Host.objects.filter(
-            status=Host.Status.ONLINE
-        ).exclude(mode=Host.Mode.MONITOR)
+
+        candidate_hosts = Host.objects.filter(status=Host.Status.ONLINE).exclude(
+            mode=Host.Mode.MONITOR
+        )
         # Only hosts this user may run tasks on: tag targeting must never
         # reach into a site the user cannot see (SEC-1).
         host_ids = [
@@ -61,12 +87,16 @@ def definition_deploy(request, definition_id):
     # use: copied in, inputs resolved, inline playbooks expanded.
     from apps.playbooks.expansion import PlaybookExpandError, including_from
     from ..dispatch import resolve_task_spec, task_params
+
     # Includes may pull in a site's playbook only when every target is in that
     # site: its admins edit those steps (S1 04e).
     from django.core.exceptions import ValidationError as _BadId
+
     try:
-        target_sites = {None if site.is_global else site.id
-                        for site in scoping.sites_for_hosts(host_ids).values()}
+        target_sites = {
+            None if site.is_global else site.id
+            for site in scoping.sites_for_hosts(host_ids).values()
+        }
     except (_BadId, ValueError, TypeError):
         target_sites = set()  # the host checks below answer malformed ids
     try:
@@ -101,6 +131,7 @@ def definition_deploy(request, definition_id):
     # A signed task runs as root on its host: the caller must be allowed to run
     # tasks on every target, in that target's site (SEC-1).
     from ..authz import run_denied
+
     denied = run_denied(request.user, hosts)
     if denied:
         return denied
@@ -137,15 +168,21 @@ def definition_deploy(request, definition_id):
     # allowlist lacks it) are left out and reported, unless the operator says
     # to send anyway — the agent stays the authority either way (M7).
     from ..refusals import refusals_for
+
     skipped = refusals_for(hosts, spec)
     if skipped and request.data.get("send_to_refusing") is not True:
         refusing = {row["host_id"] for row in skipped}
         hosts = [h for h in hosts if str(h.id) not in refusing]
         if not hosts:
-            return Response({"error": "every selected host would refuse this task",
-                             "skipped": skipped}, status=400)
+            return Response(
+                {
+                    "error": "every selected host would refuse this task",
+                    "skipped": skipped,
+                },
+                status=400,
+            )
     elif skipped:
-        skipped = []   # sent to them anyway: nothing was skipped
+        skipped = []  # sent to them anyway: nothing was skipped
 
     # The full script is sent as a single signed task per host — the agent
     # validates each action against its own local allowlist, so a compromised
@@ -157,7 +194,7 @@ def definition_deploy(request, definition_id):
     steps_payload = params["steps"]
 
     schedule_snapshot = spec.get("schedule") or {}
-    retry_cfg = ((spec.get("on_failure") or {}).get("retry") or {})
+    retry_cfg = (spec.get("on_failure") or {}).get("retry") or {}
     max_retries = int(retry_cfg.get("attempts", 0))
     retry_delay = int(retry_cfg.get("delay_seconds", 0))
 

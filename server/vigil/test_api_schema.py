@@ -30,20 +30,20 @@ TYPED: set[str] = {
     "accounts", "agent_dist", "agentprofiles", "aisuggest", "alerts",
     "automations", "catalog", "dashboards", "hosts", "instance", "jackil",
     "licensing", "metrics", "playbooks", "policies", "relays", "remote",
-    "reports", "reprovision", "software", "stacks", "statuspage", "vigil",
-    "vulns",
+    "reports", "reprovision", "software", "stacks", "statuspage", "tasks",
+    "vigil", "vulns",
 }
 
 #: Apps still to type, each one phase of the work.
 PENDING: set[str] = {
-    "tasks",
     # The Business apps, which live in the private Vigil_Business repository.
     "apps_business",
 }
 
-#: Messages tied to no view file: a view mounted at two URLs gets the same
-#: operation id twice. Only ever lower this.
-UNATTRIBUTED_MAX = 1
+#: Messages tied to no view file, such as a view mounted at two URLs getting
+#: the same operation id twice (vigil.schema.drop_legacy_routes leaves such an
+#: alias out). There are none: keep it that way.
+UNATTRIBUTED_MAX = 0
 
 _APP = re.compile(r"/server/(?:apps/([a-z_]+)/|(vigil)/)|/(apps_business)/")
 
@@ -119,6 +119,14 @@ class ApiSchemaRatchetTests(SimpleTestCase):
     def test_no_new_unattributed_problems(self):
         self.assertLessEqual(len(self.problems.get("", [])), UNATTRIBUTED_MAX,
                              self.problems.get(""))
+
+    def test_a_legacy_alias_is_left_out_and_its_route_kept(self):
+        from django.urls import resolve
+
+        paths = SchemaGenerator().get_schema(request=None, public=True)["paths"]
+        self.assertIn("/api/v1/tasks/community/{kind}/", paths)
+        self.assertNotIn("/api/v1/tasks/community/", paths)
+        self.assertEqual(resolve("/api/v1/tasks/community/").url_name, "community-templates")
 
     def test_the_lists_do_not_overlap(self):
         self.assertEqual(TYPED & PENDING, set())

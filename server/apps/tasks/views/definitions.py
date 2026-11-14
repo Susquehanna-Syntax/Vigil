@@ -1,10 +1,26 @@
 """apps.tasks.views: definitions views (split from the old single module, unchanged)."""
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+
 from ._common import *  # noqa: F401,F403
 from ._ingest import *  # noqa: F401,F403
 from ._sequence import *  # noqa: F401,F403
 from ._catalog import *  # noqa: F401,F403
+from ..api_schema import (
+    TasksArchiveSerializer,
+    TasksDefinitionListRowSerializer,
+    TasksDefinitionSerializer,
+    TasksEditorTemplatesSerializer,
+    TasksErrorSerializer,
+    TasksNotFoundSerializer,
+    TasksRefusalsSerializer,
+    TasksTaskSerializer,
+    TasksValidateRequestSerializer,
+    TasksValidateResponseSerializer,
+)
 
 
+@extend_schema(responses=TasksEditorTemplatesSerializer)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def editor_templates(request):
@@ -12,6 +28,18 @@ def editor_templates(request):
     return Response({"results": _load_editor_templates()})
 
 
+@extend_schema(methods=["GET"],
+               parameters=[
+                   OpenApiParameter("scope", str, enum=["mine", "community"],
+                                    description="Whose definitions; mine by default."),
+                   OpenApiParameter("archived", str, enum=["1"],
+                                    description="1 lists the archived ones instead."),
+               ],
+               responses=TasksDefinitionListRowSerializer(many=True))
+@extend_schema(methods=["POST"], request=TasksValidateRequestSerializer,
+               responses={201: TasksDefinitionSerializer,
+                          400: TasksErrorSerializer,
+                          403: TasksErrorSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def definition_list(request):
@@ -67,6 +95,13 @@ def definition_list(request):
     return Response(TaskDefinitionSerializer(definition).data, status=201)
 
 
+@extend_schema(methods=["GET"], responses={200: TasksDefinitionSerializer,
+                                           404: TasksNotFoundSerializer})
+@extend_schema(methods=["PUT"], request=TasksValidateRequestSerializer,
+               responses={200: TasksDefinitionSerializer,
+                          400: TasksErrorSerializer,
+                          403: TasksErrorSerializer,
+                          404: TasksNotFoundSerializer})
 @api_view(["GET", "PUT"])
 @permission_classes([IsAuthenticated])
 def definition_detail(request, definition_id):
@@ -100,6 +135,9 @@ def definition_detail(request, definition_id):
     return Response(TaskDefinitionSerializer(definition).data)
 
 
+@extend_schema(request=TasksValidateRequestSerializer,
+               responses={200: TasksValidateResponseSerializer,
+                          400: TasksErrorSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def definition_validate(request):
@@ -112,6 +150,9 @@ def definition_validate(request):
     return Response({"ok": True, "parsed_spec": spec})
 
 
+@extend_schema(request=None, responses={201: TasksDefinitionSerializer,
+                                        403: TasksErrorSerializer,
+                                        404: TasksNotFoundSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def definition_fork(request, definition_id):
@@ -139,6 +180,9 @@ def definition_fork(request, definition_id):
     return Response(TaskDefinitionSerializer(copy).data, status=201)
 
 
+@extend_schema(parameters=[OpenApiParameter(
+                   "host_ids", str, description="Comma-separated host ids, at most 500.")],
+               responses={200: TasksRefusalsSerializer, 404: TasksNotFoundSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def definition_refusals(request, definition_id):
@@ -163,6 +207,7 @@ def definition_refusals(request, definition_id):
     return Response({"refusals": refusals_for(hosts, definition.parsed_spec or {})})
 
 
+@extend_schema(responses={200: TasksTaskSerializer, 404: TasksNotFoundSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def task_detail(request, task_id):
@@ -179,6 +224,9 @@ def task_detail(request, task_id):
     return Response(TaskSerializer(task).data)
 
 
+@extend_schema(responses=OpenApiTypes.OBJECT,
+               description="Action name to its label, risk, required and optional "
+               "params and outputs.")
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def action_registry(request):
@@ -186,6 +234,10 @@ def action_registry(request):
     return Response(ACTION_REGISTRY)
 
 
+@extend_schema(request=TasksArchiveSerializer,
+               responses={200: TasksDefinitionSerializer,
+                          403: TasksErrorSerializer,
+                          404: TasksNotFoundSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def definition_archive(request, definition_id):
