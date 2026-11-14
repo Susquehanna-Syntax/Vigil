@@ -1,10 +1,32 @@
 """apps.tasks.views: rollouts views (split from the old single module, unchanged)."""
+from drf_spectacular.utils import extend_schema
+
 from ._common import *  # noqa: F401,F403
 from ._ingest import *  # noqa: F401,F403
 from ._sequence import *  # noqa: F401,F403
 from ._catalog import *  # noqa: F401,F403
+from ..api_schema import (
+    TasksBatchHaltSerializer,
+    TasksDetailSerializer,
+    TasksRolloutHaltSerializer,
+    TasksRolloutSerializer,
+    TasksRolloutStartResponseSerializer,
+    TasksRolloutStartSerializer,
+    TasksWaveGroupsSerializer,
+    TasksWaveHostsSerializer,
+    TasksWaveOrderConflictSerializer,
+    TasksWaveSerializer,
+    TasksWaveWriteSerializer,
+)
 
 
+@extend_schema(methods=["GET"], responses={200: TasksRolloutSerializer(many=True),
+                                           400: TasksDetailSerializer})
+@extend_schema(methods=["POST"], request=TasksRolloutStartSerializer,
+               responses={201: TasksRolloutStartResponseSerializer,
+                          400: TasksDetailSerializer,
+                          401: TasksDetailSerializer, 403: TasksDetailSerializer,
+                          404: TasksDetailSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def rollout_collection(request):
@@ -103,6 +125,8 @@ def rollout_collection(request):
                      for r in visible_rollouts(rollouts, request.user)])
 
 
+@extend_schema(methods=["GET"], responses={404: TasksDetailSerializer,
+                                           200: TasksRolloutSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def rollout_detail(request, rollout_id):
@@ -118,6 +142,9 @@ def rollout_detail(request, rollout_id):
     return Response(_RolloutDetailSerializer(rollout, context={"user": request.user}).data)
 
 
+@extend_schema(request=TasksRolloutHaltSerializer,
+               responses={200: TasksRolloutSerializer, 400: TasksDetailSerializer,
+                          401: TasksDetailSerializer, 403: TasksDetailSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def rollout_halt(request, rollout_id):
@@ -138,6 +165,10 @@ def rollout_halt(request, rollout_id):
     return Response(_rollout_response(rollout, request.user))
 
 
+@extend_schema(request=TasksRolloutHaltSerializer,
+               responses={200: TasksBatchHaltSerializer, 400: TasksDetailSerializer,
+                          401: TasksDetailSerializer, 403: TasksDetailSerializer,
+                          404: TasksDetailSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def rollout_batch_halt(request, batch):
@@ -163,6 +194,9 @@ def rollout_batch_halt(request, batch):
     return Response({"halted": halted})
 
 
+@extend_schema(request=None,
+               responses={200: TasksRolloutSerializer, 400: TasksDetailSerializer,
+                          401: TasksDetailSerializer, 403: TasksDetailSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def rollout_resume(request, rollout_id):
@@ -183,6 +217,12 @@ def rollout_resume(request, rollout_id):
     return Response(_rollout_response(rollout, request.user))
 
 
+@extend_schema(methods=["GET"], responses={200: TasksWaveSerializer(many=True),
+                                           400: TasksWaveOrderConflictSerializer})
+@extend_schema(methods=["POST"], request=TasksWaveWriteSerializer,
+               responses={201: TasksWaveSerializer,
+                          400: TasksWaveOrderConflictSerializer,
+                          403: TasksDetailSerializer})
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def wave_collection(request):
@@ -222,6 +262,15 @@ def wave_collection(request):
     return Response(serializer.data, status=201)
 
 
+@extend_schema(methods=["GET"], responses={200: TasksWaveSerializer,
+                                           404: TasksDetailSerializer})
+@extend_schema(methods=["PATCH"], request=TasksWaveWriteSerializer,
+               responses={200: TasksWaveSerializer,
+                          400: TasksWaveOrderConflictSerializer,
+                          403: TasksDetailSerializer})
+@extend_schema(methods=["DELETE"], responses={
+    (204, "application/json"): None,
+    403: TasksDetailSerializer, 409: TasksDetailSerializer})
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def wave_detail(request, wave_id):
@@ -269,6 +318,9 @@ def wave_detail(request, wave_id):
     return Response(serializer.data)
 
 
+@extend_schema(request=None,
+               responses={200: TasksRolloutSerializer, 400: TasksDetailSerializer,
+                          401: TasksDetailSerializer, 403: TasksDetailSerializer})
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def rollout_skip_validation(request, rollout_id):
@@ -294,6 +346,7 @@ def rollout_skip_validation(request, rollout_id):
     return Response(_rollout_response(rollout, request.user))
 
 
+@extend_schema(responses=TasksWaveGroupsSerializer)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def wave_group_collection(request):
@@ -323,6 +376,7 @@ def wave_group_collection(request):
     })
 
 
+@extend_schema(responses={200: TasksWaveHostsSerializer, 404: TasksDetailSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def rollout_wave_hosts(request, rollout_id, wave_id):
