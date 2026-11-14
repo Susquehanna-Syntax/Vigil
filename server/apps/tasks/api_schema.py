@@ -202,3 +202,212 @@ class TasksWaveOrderConflictSerializer(serializers.Serializer):
 
 class TasksDetailSerializer(serializers.Serializer):
     detail = serializers.CharField()
+
+
+# ── Definitions (sprint M5, phase 46) ───────────────────────────────────────
+#
+# The definition cards and the editor speak ``parsed_spec``: the canonical
+# dict apps/tasks/spec/parse.py returns and stores on the row. Its nested
+# trees — ``flow``, ``relevant``, a step's ``when:`` guard — are recursive, so
+# they stay free-form ``DictField``s; everything with a fixed key set is a
+# serializer below.
+
+
+class TasksValidateRequestSerializer(serializers.Serializer):
+    """What the definition create/update/validate views read from the body."""
+
+    yaml_source = serializers.CharField(
+        help_text="The task YAML. A save parses it and refuses a spec the "
+        "server cannot deploy; validate only parses.")
+
+
+class TasksDefinitionErrorSerializer(serializers.Serializer):
+    """Every refusal these views makes is ``{"error": …}`` — a spec it cannot
+    deploy, a definition owned by someone else, or a role that may not write."""
+
+    error = serializers.CharField()
+
+
+class TasksNotFoundSerializer(serializers.Serializer):
+    """A 404 has one of two bodies: ``{"error"}`` when the row exists but the
+    caller may not see it, DRF's ``{"detail"}`` when there is no such row."""
+
+    error = serializers.CharField(required=False)
+    detail = serializers.CharField(required=False)
+
+
+class TasksParsedSpecActionSerializer(serializers.Serializer):
+    """One flattened leaf step of ``parsed_spec.actions``. ``when`` is the
+    guard as source text and ``branch`` the dot path of the branch it sits
+    in, not a tree."""
+
+    id = serializers.CharField()
+    type = serializers.CharField()
+    label = serializers.CharField(allow_blank=True)
+    params = serializers.DictField()
+    risk = serializers.CharField()
+    when = serializers.CharField(allow_blank=True,
+                                 help_text="The step's guard expression, as written.")
+    timeout = serializers.IntegerField(allow_null=True,
+                                       help_text="Per-step seconds; null for the default.")
+    outcome = serializers.CharField(allow_null=True, allow_blank=True,
+                                    help_text="The named end state a success here leaves the host in.")
+    outputs = serializers.ListField(child=serializers.CharField())
+    branch = serializers.CharField(allow_null=True, allow_blank=True,
+                                   help_text="Dot path of the branch this step is in; null at top level.")
+    # execute_script only: what the agent must have to run the body verbatim.
+    script_sha256 = serializers.CharField(required=False)
+
+
+class TasksParsedSpecSerializer(serializers.Serializer):
+    """``parsed_spec`` as the editor and the library cards receive it."""
+
+    name = serializers.CharField()
+    description = serializers.CharField(allow_blank=True)
+    relevance = serializers.CharField(allow_blank=True)
+    uid = serializers.CharField(allow_blank=True, required=False,
+                                help_text="This task's identity in the community catalog.")
+    author = serializers.CharField(allow_blank=True, required=False)
+    created = serializers.CharField(allow_blank=True, required=False,
+                                    help_text="ISO-8601 date.")
+    cves = serializers.ListField(child=serializers.CharField(), required=False)
+    references = serializers.ListField(child=serializers.CharField(), required=False)
+    platforms = serializers.ListField(child=serializers.CharField(), required=False)
+    risk = serializers.CharField()
+    declared_risk = serializers.CharField(required=False)
+    actions = TasksParsedSpecActionSerializer(many=True)
+    uses = serializers.ListField(child=serializers.CharField(), required=False,
+                                 help_text="Task names pulled in with ``use:``; spliced in at deploy.")
+    flow = serializers.DictField(allow_null=True, required=False,
+                                 help_text="The if/then/else tree; null outside a branching task.")
+    inputs = serializers.ListField(child=serializers.DictField(), required=False)
+    relevant = serializers.DictField(allow_null=True, required=False)
+    severity = serializers.CharField(required=False, allow_blank=True)
+    boost = serializers.ListField(child=serializers.DictField(), required=False)
+    schedule = serializers.DictField(required=False)
+    on_failure = serializers.DictField(required=False)
+    success_criteria = serializers.DictField(allow_null=True, required=False)
+    collect = serializers.DictField(allow_null=True, required=False)
+    target_tags = serializers.ListField(child=serializers.CharField(), required=False)
+    warnings = serializers.ListField(child=serializers.CharField())
+
+
+class TasksDefinitionSerializer(serializers.Serializer):
+    """``TaskDefinitionSerializer``: one definition, as the library card and
+    the editor read it.
+
+    ``owner`` is a primary key and so an integer; ``id``, ``forked_from`` and
+    the archive view's path parameter are UUIDs, which DRF renders as text.
+    """
+
+    id = serializers.CharField()
+    archived_at = serializers.DateTimeField(allow_null=True)
+    owner = serializers.IntegerField(allow_null=True)
+    owner_username = serializers.CharField(allow_null=True)
+    name = serializers.CharField()
+    description = serializers.CharField(allow_blank=True)
+    relevance = serializers.CharField(allow_blank=True)
+    risk_level = serializers.CharField()
+    visibility = serializers.CharField()
+    yaml_source = serializers.CharField(allow_blank=True)
+    parsed_spec = TasksParsedSpecSerializer()
+    action_count = serializers.IntegerField()
+    forked_from = serializers.CharField(allow_null=True)
+    content_source = serializers.CharField()
+    created_at = serializers.DateTimeField()
+    updated_at = serializers.DateTimeField()
+
+
+class TasksDefinitionListRowSerializer(serializers.Serializer):
+    """A ``GET /definitions/`` row. Under the default scope every row also
+    carries ``last_run``; under ``scope=community`` it never does."""
+
+    id = serializers.CharField()
+    archived_at = serializers.DateTimeField(allow_null=True)
+    owner = serializers.IntegerField(allow_null=True)
+    owner_username = serializers.CharField(allow_null=True)
+    name = serializers.CharField()
+    description = serializers.CharField(allow_blank=True)
+    relevance = serializers.CharField(allow_blank=True)
+    risk_level = serializers.CharField()
+    visibility = serializers.CharField()
+    yaml_source = serializers.CharField(allow_blank=True)
+    parsed_spec = TasksParsedSpecSerializer()
+    action_count = serializers.IntegerField()
+    forked_from = serializers.CharField(allow_null=True)
+    content_source = serializers.CharField()
+    created_at = serializers.DateTimeField()
+    updated_at = serializers.DateTimeField()
+    last_run = serializers.DictField(
+        allow_null=True, required=False,
+        help_text="The newest run's header beside its summary — ``id``, "
+        "``created_at``, ``state``, ``hosts``, ``states``, ``outcomes`` — "
+        "without the per-host breakdown. Null when it has never run.")
+
+
+class TasksValidateResponseSerializer(serializers.Serializer):
+    ok = serializers.BooleanField()
+    parsed_spec = TasksParsedSpecSerializer()
+
+
+class TasksEditorTemplateSerializer(serializers.Serializer):
+    """One bundled template: its picker entry beside the YAML itself."""
+
+    id = serializers.CharField()
+    label = serializers.CharField()
+    group = serializers.CharField(allow_blank=True)
+    summary = serializers.CharField(allow_blank=True)
+    yaml = serializers.CharField()
+
+
+class TasksEditorTemplatesSerializer(serializers.Serializer):
+    results = TasksEditorTemplateSerializer(many=True)
+
+
+class TasksRefusalSerializer(serializers.Serializer):
+    host_id = serializers.CharField()
+    hostname = serializers.CharField()
+    actions = serializers.ListField(child=serializers.CharField(),
+                                    help_text="What that host's agent would refuse.")
+
+
+class TasksRefusalsSerializer(serializers.Serializer):
+    """Hosts that would refuse, from the agents' reported allowlists — a
+    warning for the deploy dialog, never enforcement."""
+
+    refusals = TasksRefusalSerializer(many=True)
+
+
+class TasksTaskSerializer(serializers.Serializer):
+    """``TaskSerializer``: one history row. ``nonce`` is deliberately absent —
+    it is the agent's one-time replay token."""
+
+    id = serializers.CharField()
+    host = serializers.CharField()
+    host_hostname = serializers.CharField()
+    requested_by = serializers.CharField(allow_null=True)
+    requested_by_username = serializers.CharField(allow_null=True)
+    run = serializers.CharField(allow_null=True)
+    step_order = serializers.IntegerField()
+    step_label = serializers.CharField(allow_blank=True)
+    action = serializers.CharField()
+    params = serializers.DictField()
+    risk_level = serializers.CharField()
+    state = serializers.CharField()
+    ttl_seconds = serializers.IntegerField()
+    result_output = serializers.CharField(allow_blank=True)
+    result_data = serializers.DictField()
+    created_at = serializers.DateTimeField()
+    dispatched_at = serializers.DateTimeField(allow_null=True)
+    completed_at = serializers.DateTimeField(allow_null=True)
+    step_ref = serializers.CharField(allow_blank=True)
+    branch = serializers.CharField(allow_blank=True)
+
+
+class TasksArchiveSerializer(serializers.Serializer):
+    """``POST .../archive/``: ``restore`` is the only body field, and its
+    absence means archive rather than restore."""
+
+    restore = serializers.BooleanField(
+        required=False,
+        help_text="Put the definition back in the working set instead of retiring it.")
