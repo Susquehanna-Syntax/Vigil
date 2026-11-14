@@ -4,6 +4,7 @@ Documentation only: the views build their responses by hand, and these
 serializers describe what they return so the schema has real types. Nothing
 validates or renders through them.
 """
+from drf_spectacular.utils import PolymorphicProxySerializer
 from rest_framework import serializers
 
 # ── Vigil's widget catalogue, as a helpdesk reads it ────────────────────────
@@ -75,18 +76,6 @@ class JackilWidgetListDataSerializer(serializers.Serializer):
     empty = serializers.CharField(help_text="What to draw when ``items`` is empty.")
 
 
-class JackilWidgetEnvelopeSerializer(serializers.Serializer):
-    """One widget's envelope. One endpoint answers with three bodies and an
-    OpenAPI response object is keyed by status code alone, so this is the 200:
-    ``shape`` names the key set ``data`` follows — ``JackilWidgetGaugeData``,
-    ``JackilWidgetStatData`` or ``JackilWidgetListDataSerializer``, each also
-    documented beside it."""
-
-    version = serializers.IntegerField()
-    shape = serializers.CharField(help_text="gauge, stat or list: the key set data follows.")
-    data = JackilWidgetGaugeDataSerializer()
-
-
 class JackilWidgetGaugeSerializer(serializers.Serializer):
     version = serializers.IntegerField()
     shape = serializers.CharField()
@@ -103,6 +92,16 @@ class JackilWidgetListSerializer(serializers.Serializer):
     version = serializers.IntegerField()
     shape = serializers.CharField()
     data = JackilWidgetListDataSerializer()
+
+
+#: One widget's body: ``shape`` names which of the three ``data`` follows.
+JackilWidgetSerializer = PolymorphicProxySerializer(
+    component_name="JackilWidget",
+    serializers={"gauge": JackilWidgetGaugeSerializer,
+                 "stat": JackilWidgetStatSerializer,
+                 "list": JackilWidgetListSerializer},
+    resource_type_field_name="shape",
+)
 
 
 # ── refusals ────────────────────────────────────────────────────────────────
@@ -172,6 +171,16 @@ class JackilRelatedSerializer(serializers.Serializer):
 
 
 # ── Jackil's own tiles on a Vigil dashboard ─────────────────────────────────
+
+
+#: The related endpoint's 200: ``configured`` and ``available`` say which
+#: of the three bodies arrived.
+JackilRelatedAnswerSerializer = PolymorphicProxySerializer(
+    component_name="JackilRelatedAnswer",
+    serializers=[JackilRelatedSerializer, JackilRelatedUnconfiguredSerializer,
+                 JackilRelatedUnavailableSerializer],
+    resource_type_field_name=None,
+)
 
 
 class JackilRemoteWidgetSerializer(serializers.Serializer):

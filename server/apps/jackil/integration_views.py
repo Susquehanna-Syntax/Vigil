@@ -370,8 +370,8 @@ def integration(view):
     A Business scoped API key is accepted too: it is how an admin limits
     what Jackil can see to some sites.
 
-    Returns the view rather than wrapping it, so a documented view's
-    ``@extend_schema`` sits above this and reaches the APIView class here."""
+    A documented view's ``@extend_schema`` goes above this decorator, so it
+    reaches the view ``api_view`` builds."""
     authentication_classes([IntegrationKeyAuthentication, *_scoped_key_auth()])(view)
     permission_classes([IsAuthenticated])(view)
     return api_view(["GET"])(view)
@@ -531,9 +531,9 @@ def create_device(request):
     return _device_response(request, device, status=201)
 
 
-@extend_schema(methods=["PATCH"], request=None,
-               # The body may name any subset of what a create may, so there
-               # is no one serializer to name: the same fields, all optional.
+@extend_schema(methods=["PATCH"],
+               # Documented as the create's fields, all optional.
+               request=JackilDeviceWriteSerializer,
                responses={200: JackilDeviceDetailSerializer,
                           400: OpenApiTypes.OBJECT,
                           403: JackilErrorSerializer,

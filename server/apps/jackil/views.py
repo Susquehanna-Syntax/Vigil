@@ -25,9 +25,7 @@ from .api_schema import (
     JackilKeyListSerializer,
     JackilKeySerializer,
     JackilMintedKeySerializer,
-    JackilRelatedSerializer,
-    JackilRelatedUnconfiguredSerializer,
-    JackilRelatedUnavailableSerializer,
+    JackilRelatedAnswerSerializer,
     JackilRemoteWidgetSerializer,
     JackilTicketsSerializer,
 )
@@ -71,17 +69,9 @@ def _item_row(entry) -> dict:
     return {"name": str(entry.get("name", "")), "url": _safe_url(entry.get("url"))}
 
 
-@extend_schema(
-    # Three bodies, keyed as they are on the widget endpoint: ``configured``
-    # and ``available`` say which one arrived.
-    responses={
-        "200": JackilRelatedSerializer,
-        "200 unconfigured": JackilRelatedUnconfiguredSerializer,
-        "200 unavailable": JackilRelatedUnavailableSerializer,
-        400: JackilErrorSerializer,
-        404: JackilErrorSerializer,
-    },
-)
+@extend_schema(responses={200: JackilRelatedAnswerSerializer,
+                          400: JackilErrorSerializer,
+                          404: JackilErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def related(request):

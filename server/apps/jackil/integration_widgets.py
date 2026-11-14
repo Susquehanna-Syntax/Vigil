@@ -35,10 +35,7 @@ from vigil import scoping
 
 from .api_schema import (
     JackilWidgetCatalogueSerializer,
-    JackilWidgetEnvelopeSerializer,
-    JackilWidgetGaugeDataSerializer,
-    JackilWidgetListDataSerializer,
-    JackilWidgetStatDataSerializer,
+    JackilWidgetSerializer,
     JackilWidgetUnknownSerializer,
 )
 from .integration_views import _hosts, _item, _runs, deep_link
@@ -311,19 +308,9 @@ def widgets(request):
     })
 
 
-@extend_schema(
-    # One endpoint, three bodies, and an OpenAPI response object is keyed by
-    # status code alone: the envelope — ``shape`` naming the key set ``data``
-    # follows — is 200, and each shape's exact keys are the entries beside it.
-    responses={
-        "200": JackilWidgetEnvelopeSerializer,
-        "200 gauge": JackilWidgetGaugeDataSerializer,
-        "200 stat": JackilWidgetStatDataSerializer,
-        "200 list": JackilWidgetListDataSerializer,
-        400: JackilWidgetUnknownSerializer,
-        404: JackilWidgetUnknownSerializer,
-    },
-)
+@extend_schema(responses={200: JackilWidgetSerializer,
+                          400: JackilWidgetUnknownSerializer,
+                          404: JackilWidgetUnknownSerializer})
 @integration
 def widget(request, kind: str):
     spec = WIDGETS.get(kind)
