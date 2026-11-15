@@ -522,6 +522,19 @@ jobs:
                         f"{a.get('count')} x | {' '.join(urls)}")
           PY
           scripts/ci-annotate.sh "ZAP" 60 zap-summary.log
+      # A high-risk finding stops the publish (publish needs this job);
+      # medium and below are reported above and left to the backlog.
+      - name: Refuse a high-risk ZAP finding
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          report = json.load(open("zap/zap-report.json"))
+          high = [a for site in report.get("site", []) for a in site.get("alerts", [])
+                  if str(a.get("riskcode")) == "3"]
+          for a in high:
+              print(f"::error::ZAP high risk: {a.get('pluginid')} {a.get('name')}")
+          sys.exit(1 if high else 0)
+          PY
       - name: Keep the ZAP report
         if: always()
         uses: actions/upload-artifact@v7
@@ -952,7 +965,8 @@ jobs:
   publish:
     name: Publish Docker Image
     runs-on: ubuntu-latest
-    needs: [test, js-tests, e2e, upgrade, pip-audit, build-agent, smoke-macos-install]
+    needs: [test, js-tests, e2e, upgrade, pip-audit, security-scan, build-agent,
+            smoke-macos-install]
     # What a push publishes, once every check above has passed:
     #   v2026.17.0       -> 2026.17.0 and latest        (production)
     #   v2026.17.0-rc1   -> 2026.17.0-rc1 and rc-latest (release candidate)
