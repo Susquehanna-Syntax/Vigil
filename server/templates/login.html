@@ -43,12 +43,6 @@
       </div>
       <button type="submit" class="btn btn-mint" style="width:100%;margin-top:8px;">Sign in</button>
     </form>
-    {% if passkeys %}
-    <button type="button" class="btn btn-outline auth-alt-btn" id="login-key-btn"
-            data-options="{% url 'login-passkey-options' %}" data-verify="{% url 'login-passkey' %}"
-            data-next="{{ request.GET.next }}">Sign in with a passkey</button>
-    <div class="auth-error auth-key-error" id="login-key-error" style="display:none;"></div>
-    {% endif %}
     {% if civil_enabled %}
     {% if request.GET.civil == "failed" %}<div class="auth-error">Civil sign-in didn't complete — use your local account or try again.</div>{% endif %}
     <a class="btn btn-outline" style="width:100%;margin-top:10px;justify-content:center;box-sizing:border-box;" href="{% url 'civil-login' %}{% if request.GET.next %}?next={{ request.GET.next|urlencode }}{% endif %}">Sign in with Civil</a>
@@ -56,6 +50,5 @@
   </div>
   <div class="auth-footer">{% if branding.footer_text %}{{ branding.footer_text }}{% else %}Vigil &mdash; A Susquehanna Syntax product{% endif %}</div>
 </div>
-{% if passkeys %}<script src="{% static 'js/vigil-login-verify.js' %}"></script>{% endif %}
 </body>
 </html>

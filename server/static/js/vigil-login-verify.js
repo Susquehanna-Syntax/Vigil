@@ -1,6 +1,4 @@
-/* Sign-in with a passkey or security key (login_mfa.py): the second step on
- * /login/verify/, and the passkey-only sign-in on /login/. The button's data
- * attributes name the two endpoints, and data-next where to go afterwards.
+/* Sign-in second step: tap a passkey or security key (login_mfa.py).
  *
  * Runs on the pre-auth page, so it carries its own base64url helpers rather
  * than loading vigil-utils.js and the dashboard it assumes. */
@@ -58,7 +56,7 @@
         })),
       } });
       const r = cred.response;
-      const result = await post(btn.dataset.verify, { next: btn.dataset.next || '', credential: {
+      const result = await post(btn.dataset.verify, { credential: {
         id: cred.id || bytesToB64url(cred.rawId),
         rawId: bytesToB64url(cred.rawId),
         type: cred.type || 'public-key',
@@ -72,16 +70,9 @@
       window.location.assign(result.next || '/');
     } catch (e) {
       // NotAllowedError is the browser's word for "cancelled or timed out".
-      // Any other DOMException is the browser declining in its own words
-      // (no authenticator, an unsupported option): say so plainly. The
-      // server's refusals arrive as plain Errors and are shown as written.
-      if (e && e.name === 'NotAllowedError') {
-        showError('The key request was cancelled or timed out.');
-      } else if (typeof DOMException !== 'undefined' && e instanceof DOMException) {
-        showError('This browser could not use a passkey or security key here.');
-      } else {
-        showError((e && e.message) || 'The key could not be checked. Try again.');
-      }
+      showError(e && e.name === 'NotAllowedError'
+        ? 'The key request was cancelled or timed out.'
+        : (e && e.message) || 'The key could not be checked. Try again.');
       btn.disabled = false;
     }
   }
