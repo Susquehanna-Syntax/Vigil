@@ -202,7 +202,7 @@ def virtual_authenticator(session):
     return cdp, found["authenticatorId"]
 
 
-@flow("add a security key, sign in with it instead of a code, then with it alone")
+@flow("add a security key, then sign in with it instead of a code")
 def security_key(s: Session, browser):
     cdp, auth = virtual_authenticator(s)
     s.go("settings")
@@ -239,31 +239,7 @@ def security_key(s: Session, browser):
     assert fresh.api("/api/v1/hosts/") is not None
     problems = fresh.drain() + s.drain()
     assert not problems, problems
-    # The copy as it stands after that sign-in: one taken before it would have
-    # a lower sign count than the server has seen, and be refused as a clone.
-    keys = fresh_cdp.send("WebAuthn.getCredentials", {"authenticatorId": fresh_auth})["credentials"]
     fresh.ctx.close()
-
-    # And a third browser with the same passkey signs in with nothing else:
-    # no username, no password, no code (login_mfa.passkey_view).
-    bare = Session(browser, s.user)
-    bare_cdp, bare_auth = virtual_authenticator(bare)
-    for cred in keys:
-        bare_cdp.send("WebAuthn.addCredential", {"authenticatorId": bare_auth, "credential": cred})
-    pg = bare.page
-    pg.goto(BASE + "/login/?next=/hosts/", wait_until="networkidle")
-    pg.click("#login-key-btn")
-    deadline = time.time() + 15
-    while "/login" in pg.url and time.time() < deadline:
-        pg.wait_for_timeout(250)
-    assert "/login" not in pg.url, f"the passkey did not sign in: {pg.url}"
-    assert pg.url.rstrip("/").endswith("/hosts"), f"next was not followed: {pg.url}"
-    pg.wait_for_load_state("networkidle")
-    bare.shot("signed-in-with-passkey-alone")
-    assert bare.api("/api/v1/hosts/") is not None
-    problems = bare.drain()
-    assert not problems, problems
-    bare.ctx.close()
 
 
 @flow("roll a playbook out in waves with a TOTP code")

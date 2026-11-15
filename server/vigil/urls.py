@@ -139,8 +139,6 @@ urlpatterns = [
     path("login/verify/", login_mfa.verify_view, name="login-verify"),
     path("login/verify/key/options/", login_mfa.key_options_view, name="login-verify-key-options"),
     path("login/verify/key/", login_mfa.key_view, name="login-verify-key"),
-    path("login/passkey/options/", login_mfa.passkey_options_view, name="login-passkey-options"),
-    path("login/passkey/", login_mfa.passkey_view, name="login-passkey"),
     path("logout/", logout_view, name="logout"),
     path("admin/", admin.site.urls),
     path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),
