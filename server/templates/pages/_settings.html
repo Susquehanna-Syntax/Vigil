@@ -499,6 +499,13 @@
         <div id="channels-list"><p class="muted">Loading…</p></div>
         <button class="btn btn-mint btn-sm" data-act="addChannel">Add a channel</button>
       </div>
+      {# Logic: static/js/vigil-maintenance.js | API: /api/v1/alerts/maintenance/ #}
+      <div class="section-label" style="margin-top:32px;">Maintenance windows</div>
+      <div class="totp-card">
+        <p class="totp-sub">Times when hosts are expected to be down: during a window its hosts raise no alerts and send no notifications.</p>
+        <div id="maintenance-list"><p class="muted">Loading…</p></div>
+        <button class="btn btn-mint btn-sm" data-act="addMaintenance">Add a maintenance window</button>
+      </div>
         </div>
         <div class="settings-pane" data-pane="email">
       <div class="section-label" style="margin-top:32px;">Outgoing Mail</div>
