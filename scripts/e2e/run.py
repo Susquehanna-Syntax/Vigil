@@ -64,6 +64,12 @@ document.addEventListener('securitypolicyviolation', e => {
 """
 
 
+def _outside(response) -> bool:
+    """The community catalog is fetched from GitHub; its 502 means GitHub did not
+    answer the CI runner, which says nothing about Vigil."""
+    return response.status == 502 and "/api/v1/tasks/community/" in response.url
+
+
 class Session:
     def __init__(self, browser, user, viewport=(1440, 1000)):
         self.user = user
@@ -73,7 +79,7 @@ class Session:
         self.problems: list[str] = []
         self.page.on("pageerror", lambda e: self.problems.append(f"pageerror: {e}"))
         self.page.on("response", lambda r: self.problems.append(f"{r.status} {r.request.method} {r.url}")
-                     if r.status >= 500 else None)
+                     if r.status >= 500 and not _outside(r) else None)
 
     def login(self):
         pg = self.page
