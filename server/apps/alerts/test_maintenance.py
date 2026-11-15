@@ -282,6 +282,34 @@ class MaintenanceApiTests(TestCase):
         self.assertEqual(ok.status_code, 201, ok.content)
         self.assertEqual(ok.json()["tags"], ["db"])
 
+    def test_a_weekly_window_without_a_duration_gets_an_hour(self):
+        answer = self.client.post(INDEX, {
+            "name": "Nightly", "kind": "weekly", "weekdays": [0], "start_time": "01:00",
+        }, format="json")
+        self.assertEqual(answer.status_code, 201, answer.content)
+        self.assertEqual(answer.json()["duration_minutes"], 60)
+
+    def test_patching_one_schedule_field_keeps_the_rest(self):
+        weekly = self.client.post(INDEX, {
+            "name": "Nightly", "kind": "weekly", "weekdays": [0, 2], "start_time": "01:00",
+            "duration_minutes": 90, "timezone": "Europe/Berlin",
+        }, format="json").json()
+        answer = self.client.patch(_detail(weekly["id"]), {"start_time": "03:30"}, format="json")
+        self.assertEqual(answer.status_code, 200, answer.content)
+        body = answer.json()
+        self.assertEqual(body["start_time"], "03:30")
+        self.assertEqual((body["weekdays"], body["duration_minutes"], body["timezone"]),
+                         ([0, 2], 90, "Europe/Berlin"))
+        bad = self.client.patch(_detail(weekly["id"]), {"weekdays": [9]}, format="json")
+        self.assertEqual(bad.status_code, 400)
+
+    def test_a_one_off_can_become_weekly(self):
+        once = self.client.post(INDEX, _once(), format="json").json()
+        answer = self.client.patch(_detail(once["id"]), {
+            "kind": "weekly", "weekdays": [5], "start_time": "22:00"}, format="json")
+        self.assertEqual(answer.status_code, 200, answer.content)
+        self.assertEqual((answer.json()["kind"], answer.json()["weekdays"]), ("weekly", [5]))
+
     def test_patch_renames_and_delete_answers_204(self):
         created = self.client.post(INDEX, _once(name="Old name"), format="json").json()
         renamed = self.client.patch(_detail(created["id"]), {"name": "New name"}, format="json")
@@ -341,6 +369,20 @@ class MaintenanceApiSiteTests(TestCase):
         self.client.force_authenticate(self.anna)
         answer = self.client.post(INDEX, _once(name="Everywhere"), format="json")
         self.assertEqual(answer.status_code, 403)
+
+    def test_a_global_window_shows_a_site_admin_only_their_own_hosts(self):
+        """Host is scoped by default, so the window's hosts as a site admin
+        reads them are already narrowed to that admin's sites."""
+        from apps_business.sites.models import HostSiteAssignment
+
+        host_a = _host("alpha-box")
+        HostSiteAssignment.objects.create(host=host_a, site=self.site_a)
+        window = MaintenanceWindow.objects.create(
+            name="Everywhere", kind="once", starts_at=now(), ends_at=now() + timedelta(hours=1))
+        window.hosts.set([host_a, self.host_b])
+        self.client.force_authenticate(self.anna)
+        row = self.client.get(_detail(window.id)).json()
+        self.assertEqual(row["host_ids"], [str(host_a.id)])
 
     def test_an_instance_admin_creates_a_global_window(self):
         self.client.force_authenticate(self.admin)

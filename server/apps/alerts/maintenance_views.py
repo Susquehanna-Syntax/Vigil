@@ -172,7 +172,22 @@ def _clean_host_ids(raw, user, site_id):
     return found, None
 
 
-def _clean(data, user, site_id, window_kind, partial=False):
+_SCHEDULE = ("starts_at", "ends_at", "weekdays", "start_time", "duration_minutes", "timezone")
+
+
+def _stored_schedule(window) -> dict:
+    """The schedule fields of a stored window, in the shape a request sends them."""
+    return {
+        "starts_at": window.starts_at.isoformat() if window.starts_at else None,
+        "ends_at": window.ends_at.isoformat() if window.ends_at else None,
+        "weekdays": list(window.weekdays or []),
+        "start_time": window.start_time.strftime("%H:%M") if window.start_time else None,
+        "duration_minutes": window.duration_minutes,
+        "timezone": window.timezone,
+    }
+
+
+def _clean(data, user, site_id, window_kind, partial=False, stored=None):
     """Validated field values for POST (all required) and PATCH (partial: a
     field left out keeps what is stored, ``kind`` included).
 
@@ -198,7 +213,9 @@ def _clean(data, user, site_id, window_kind, partial=False):
 
     # The schedule fields belong to the window's kind: a one-off answers for
     # its two ends, a weekly recurrence for its weekdays, time and duration.
-    if "starts_at" in data or "ends_at" in data or not partial:
+    if "kind" in data or any(k in data for k in _SCHEDULE) or not partial:
+        if partial and stored is not None:
+            data = {**stored, **{k: data[k] for k in data}}
         if (values.get("kind") or window_kind) == MaintenanceWindow.Kind.ONCE:
             start, end, err = _clean_once(data.get("starts_at"), data.get("ends_at"))
             if err:
@@ -214,7 +231,7 @@ def _clean(data, user, site_id, window_kind, partial=False):
             hour, minute = (int(p) for p in data["start_time"].strip().split(":"))
             values["weekdays"] = list(data["weekdays"])
             values["start_time"] = _time_type(hour, minute)
-            values["duration_minutes"] = data["duration_minutes"]
+            values["duration_minutes"] = data.get("duration_minutes", 60)
             values["timezone"] = str(data.get("timezone", "UTC")).strip()
 
     if "host_ids" in data:
@@ -280,7 +297,8 @@ def window_detail(request, window_id):
         if denied:
             return denied
 
-    values, hosts, err = _clean(data, request.user, site_id, window.kind, partial=True)
+    values, hosts, err = _clean(data, request.user, site_id, window.kind, partial=True,
+                                stored=_stored_schedule(window))
     if err is not None:
         return err
 
