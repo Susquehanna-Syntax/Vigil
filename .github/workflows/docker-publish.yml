@@ -240,7 +240,8 @@ jobs:
         env:
           BUSINESS: ${{ steps.business.outputs.available }}
         run: |
-          pip install -q -r server/requirements.txt playwright==1.63.0
+          # Playwright's version comes from the lock, like every other package.
+          pip install -q -r server/requirements.txt playwright
           if [ "$BUSINESS" = true ]; then
             pip install -q --no-deps --no-index --find-links business-wheels "vigil-business==$(cat business.lock)"
           fi
