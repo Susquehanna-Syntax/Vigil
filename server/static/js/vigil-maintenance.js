@@ -6,9 +6,8 @@
    A window is either a one-off stretch between two datetimes, or a weekly
    recurrence with weekdays, a start time, a duration and a time zone. Hosts
    and tags pick which machines it covers: an empty pair covers every host in
-   the window's site. Editing sends every field the form holds — a partial
-   PATCH could not turn a weekly window back into a one-off, because the
-   schedule fields it leaves out would be validated against what is stored.
+   the window's site. Editing sends every field the form holds, so what the
+   admin sees in the form is exactly what is saved.
    Rows reuse the relay row styles, like the channels card above. */
 
 const _MAINT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -23,6 +22,11 @@ function _maintDuration(minutes) {
   return rest ? `${hours} h ${rest} min` : `${hours} h`;
 }
 
+/* A one-off's ends to the minute, in the viewer's own locale and zone. */
+function _maintWhen(iso) {
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
 function _maintSchedule(w) {
   if (w.kind === 'weekly') {
     const days = (w.weekdays || []).slice().sort((a, b) => a - b)
@@ -30,13 +34,13 @@ function _maintSchedule(w) {
     return `${days || 'No days'} at ${w.start_time} for ${_maintDuration(w.duration_minutes)}`
       + ` (${w.timezone})`;
   }
-  return `${new Date(w.starts_at).toLocaleString()} to ${new Date(w.ends_at).toLocaleString()}`;
+  return `${_maintWhen(w.starts_at)} to ${_maintWhen(w.ends_at)}`;
 }
 
 function _maintCovers(w) {
   const hosts = (w.host_ids || []).length;
   const tags = w.tags || [];
-  if (!hosts && !tags.length) return 'Every host in the site';
+  if (!hosts && !tags.length) return w.site_id ? 'Every host in its site' : 'Every host in every site';
   const parts = [];
   if (hosts) parts.push(`${hosts} host${hosts === 1 ? '' : 's'}`);
   if (tags.length) parts.push(`tags: ${tags.join(', ')}`);
@@ -95,24 +99,37 @@ function _maintLocalInput(iso) {
     + `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/* The host picker. A failure here is not fatal: a window may name no hosts
-   at all, so the select is simply empty and the save still works. */
+/* The host picker. The host list is paginated, so every page is read: a
+   window naming a host past the first page would otherwise lose it on save.
+   A selected host the list did not return (another site's, or deleted) stays
+   selected under its id. A failure is not fatal: a window may name no hosts,
+   so the select is simply short and the save still works. */
 async function _maintHostOptions(selected) {
   const wanted = new Set((selected || []).map(String));
-  let rows = [];
+  const rows = [];
+  let url = '/api/v1/hosts/';
   try {
-    const r = await apiJson('/api/v1/hosts/');
-    rows = r.results || r || [];
-  } catch (e) { /* empty select */ }
+    for (let page = 0; url && page < 100; page += 1) {
+      const r = await apiJson(url);
+      rows.push(...(Array.isArray(r) ? r : (r.results || [])));
+      // next is absolute and, behind a proxy, may carry the wrong scheme or
+      // host: keep only its path and query.
+      const next = Array.isArray(r) ? null : r.next;
+      url = next ? (() => { const u = new URL(next, location.href); return u.pathname + u.search; })() : null;
+    }
+  } catch (e) { /* keep what was read */ }
+  const seen = new Set(rows.map((h) => String(h.id)));
+  const missing = [...wanted].filter((id) => !seen.has(id));
   return rows.map((h) => `<option value="${escAttr(h.id)}"${wanted.has(String(h.id)) ? ' selected' : ''}>`
-    + `${escHtml(h.hostname)}</option>`).join('');
+    + `${escHtml(h.hostname)}</option>`).join('')
+    + missing.map((id) => `<option value="${escAttr(id)}" selected>${escHtml(id)}</option>`).join('');
 }
 
 function _maintDayChecks(weekdays) {
   const on = new Set(weekdays || []);
-  return _MAINT_DAYS.map((label, day) => '<label class="setting-check">'
+  return '<div class="maint-days">' + _MAINT_DAYS.map((label, day) => '<label class="setting-check">'
     + `<input type="checkbox" data-day="${day}"${on.has(day) ? ' checked' : ''}> ${label}</label>`)
-    .join(' ');
+    .join('') + '</div>';
 }
 
 function _maintShowScheduleGroups(m) {

@@ -12,8 +12,9 @@ test('a one-off row reads as the stretch between its two ends', () => {
     starts_at: '2026-11-20T02:00:00Z',
     ends_at: '2026-11-20T05:00:00Z',
   });
-  assert.equal(text, `${new Date('2026-11-20T02:00:00Z').toLocaleString()}`
-    + ` to ${new Date('2026-11-20T05:00:00Z').toLocaleString()}`);
+  const at = (iso) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  assert.equal(text, `${at('2026-11-20T02:00:00Z')} to ${at('2026-11-20T05:00:00Z')}`);
+  assert.doesNotMatch(text, /:00:00/, 'no seconds');
 });
 
 test('a weekly row lists the days in Monday-first order, with the zone', () => {
@@ -33,9 +34,10 @@ test('weekly durations under an hour, whole hours, and a part hour', () => {
   assert.equal(week(150), 'Mon at 01:00 for 2 h 30 min (UTC)');
 });
 
-test('a window naming nothing covers the whole site', () => {
-  assert.equal(w._maintCovers({ host_ids: [], tags: [] }), 'Every host in the site');
-  assert.equal(w._maintCovers({}), 'Every host in the site');
+test('a window naming nothing covers its site, or every site when global', () => {
+  assert.equal(w._maintCovers({ host_ids: [], tags: [], site_id: 's1' }), 'Every host in its site');
+  assert.equal(w._maintCovers({ host_ids: [], tags: [], site_id: null }), 'Every host in every site');
+  assert.equal(w._maintCovers({}), 'Every host in every site');
 });
 
 test('hosts and tags each drop out when empty, and one host is singular', () => {
