@@ -2448,6 +2448,7 @@ actions:
 
       <h3>Signing in</h3>
       <p class="prose">After the password, Vigil asks for the second factor. Nobody is signed in until it checks out, and the step expires after five minutes. Five wrong tries lock the account's codes for ten minutes.</p>
+      <p class="prose">A passkey can also sign in on its own: click <em>Sign in with a passkey</em> under the form, with no username or password. That only works with a passkey that checks it is you, by PIN, fingerprint or face, because it stands in for the password and the second factor together. A security key without a PIN still works as the second step after a password. Failed passkey sign-ins count toward the same lockout as wrong passwords.</p>
       <p class="prose">An account with no second factor yet (a new user, or one signing in through Civil for the first time) sees a QR code on that step and sets up TOTP before the dashboard opens. The steps below are for adding it from Settings instead.</p>
 
       <h3>Lost a phone or key</h3>
