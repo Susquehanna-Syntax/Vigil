@@ -39,23 +39,24 @@ def _reboot_required_linux() -> bool:
     try:
         proc = subprocess.run(
             ["dnf", "needs-restarting", "-r"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, shell=False,
             env=clean_env(),
         )
-        return proc.returncode == 1
+        return proc.returncode != 0
     except Exception:
         return False
 
 
 def _reboot_required_windows() -> bool:
     # winreg is stdlib on Windows only — import it lazily so the module
-    # stays importable (and every other branch testable) on Linux/macOS.
+    # still imports on Linux.
     import winreg
 
-    for key_path in (
+    keys = (
         r"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
         r"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired",
-    ):
+    )
+    for key_path in keys:
         try:
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path):
                 return True
@@ -91,7 +92,7 @@ def machine_fingerprint() -> str:
 
 def _machine_fingerprint_windows() -> str:
     # winreg is stdlib on Windows only — import it lazily so the module
-    # stays importable off-Windows.
+    # still imports on Linux.
     import winreg
 
     with winreg.OpenKey(
@@ -101,13 +102,16 @@ def _machine_fingerprint_windows() -> str:
         winreg.KEY_READ | winreg.KEY_WOW64_64KEY,
     ) as key:
         value, _ = winreg.QueryValueEx(key, "MachineGuid")
-        return str(value).strip()[:200]
+    return str(value).strip()[:200]
 
 
 def _machine_fingerprint_macos() -> str:
     proc = subprocess.run(
         ["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
-        capture_output=True, text=True, timeout=10, env=clean_env(),
+        env=clean_env(),
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     match = re.search(r'IOPlatformUUID"\s*=\s*"([^"]+)"', proc.stdout)
     if not match:
