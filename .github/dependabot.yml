@@ -9,10 +9,22 @@ updates:
     groups:
       python-minor:
         update-types: [minor, patch]
+    ignore:
+      # Held back by what depends on them: django-celery-beat pins
+      # cron-descriptor below 2, and celery pins python-dateutil below 3.
+      - dependency-name: cron-descriptor
+        versions: [">=2"]
+      - dependency-name: python-dateutil
+        versions: [">=3"]
 
   - package-ecosystem: docker
     directories: ["/server", "/relay"]
     schedule: { interval: weekly, day: monday }
+    ignore:
+      # The Business wheels are compiled for Python 3.12; the base image moves
+      # only with them.
+      - dependency-name: python
+        versions: [">=3.13"]
 
   # The published compose pins every image to an exact tag (sprint M3 phase 2),
   # so a new TimescaleDB, Redis, guacd or cloudflared release arrives here.
