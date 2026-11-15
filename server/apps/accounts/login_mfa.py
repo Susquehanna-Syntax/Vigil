@@ -44,6 +44,8 @@ from .webauthn_keys import (
     authenticate as webauthn_authenticate,
     authentication_options,
     consume_key_token,
+    passwordless_options,
+    passwordless_user,
     relying_party,
     secure_context,
 )
@@ -191,3 +193,55 @@ def key_view(request):
         return JsonResponse({"error": "That key could not be verified."}, status=400)
     _clear_totp_attempts(user)
     return JsonResponse({"next": _finish(request, user, state)})
+
+
+# ── Signing in with a passkey alone ─────────────────────────────────────────
+#
+# A passkey that verified its user (PIN or biometric) is two factors on its
+# own, so it skips both the password and /login/verify/. Failures count
+# against the sign-in page's per-address limit, the same one wrong passwords
+# use, since no username is known until the key has been checked.
+
+#: The backend the password form signs in with; a passkey sign-in is recorded
+#: the same way.
+_PASSKEY_BACKEND = "django.contrib.auth.backends.ModelBackend"
+
+
+def passkeys_offered(request) -> bool:
+    """Whether the sign-in page can offer a passkey: the browser will only run
+    WebAuthn in a secure context, and only once some account has a key."""
+    from .models import SecurityKey
+
+    _rp_id, origin = relying_party(request)
+    return secure_context(origin) and SecurityKey.objects.exists()
+
+
+@require_POST
+def passkey_options_view(request):
+    try:
+        return JsonResponse(passwordless_options(request))
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+
+@require_POST
+def passkey_view(request):
+    import json
+
+    from .views import _login_blocked, _record_login_failure
+
+    ip = request.META.get("REMOTE_ADDR")
+    if _login_blocked("", ip):
+        return JsonResponse(
+            {"error": "Too many failed sign-in attempts. Try again in a few minutes."},
+            status=429)
+    try:
+        body = json.loads(request.body or b"{}")
+        user = passwordless_user(request, body.get("credential"))
+    except (ValueError, TypeError, AttributeError) as exc:
+        _record_login_failure("", ip)
+        return JsonResponse({"error": str(exc) or "That passkey could not sign you in."},
+                            status=400)
+    _forget(request)
+    auth.login(request, user, backend=_PASSKEY_BACKEND)
+    return JsonResponse({"next": safe_next(request, str(body.get("next") or ""))})

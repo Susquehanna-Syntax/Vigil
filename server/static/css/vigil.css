@@ -4957,3 +4957,7 @@ a.jk-card { text-decoration: none; }
 .settings-greyed-note { font-size: 13px; color: var(--text-2); background: var(--wash);
   border-radius: var(--r-sm); padding: 10px 14px; margin: 0 0 18px; }
 .settings-greyed :is(input, select, textarea, button):disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* A second way in under the sign-in form: a passkey, or Civil. */
+.auth-alt-btn { width: 100%; margin-top: 10px; justify-content: center; box-sizing: border-box; }
+.auth-key-error { margin-top: 10px; margin-bottom: 0; }

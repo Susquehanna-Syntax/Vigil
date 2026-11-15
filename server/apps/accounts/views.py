@@ -498,7 +498,9 @@ def login_view(request):
         _record_login_failure(username, ip)
         error = "Invalid username or password"
 
-    return render(request, "login.html", {"error": error, "branding": _branding()})
+    from .login_mfa import passkeys_offered
+    return render(request, "login.html", {"error": error, "branding": _branding(),
+                                          "passkeys": passkeys_offered(request)})
 
 
 def logout_view(request):
