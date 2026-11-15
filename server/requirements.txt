@@ -42,6 +42,6 @@ uvicorn>=0.35,<1
 uvicorn-worker>=0.3,<1
 # Uvicorn only speaks WebSocket with one of these installed; without it every
 # session upgrade is answered 404.
-websockets>=15,<16
+websockets>=17.4,<18
 # 2026.15.0: security keys and passkeys (WebAuthn) as a second factor.
 webauthn>=3.0,<4
