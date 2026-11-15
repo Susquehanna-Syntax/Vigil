@@ -188,6 +188,10 @@ class RecentMetricsTests(TestCase):
                 self.assertEqual(resp.status_code, 400, params)
                 self.assertIn("error", resp.json())
 
+    # The instance settings cache refreshes every five seconds, and setting up
+    # 30 hosts on a slow CI runner can take longer than that: the refresh read
+    # would then land in the second count. Not per-host cost, so hold it open.
+    @mock.patch("apps.instance.config.CACHE_TTL_SECONDS", 3600.0)
     def test_query_count_does_not_grow_with_hosts(self):
         # One request first: whatever a process looks up once and keeps (on
         # Postgres in CI, one extra read on the first call) is not per-host cost.
