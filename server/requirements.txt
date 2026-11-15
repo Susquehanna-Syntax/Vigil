@@ -7,7 +7,7 @@
 # installed and left running, so the LTS line is the right default: 6.x
 # reaches end of life well before 5.2 does, and every dependency below
 # supports 5.2 today. Move to the next LTS, not to the next release.
-Django>=5.2,<6.0
+Django>=6.1.3,<7.0
 djangorestframework>=3.18.3,<4.0
 # The OpenAPI schema of /api/v1/ (sprint M5), served to admins at /api/docs/.
 drf-spectacular>=0.30.0,<0.31
