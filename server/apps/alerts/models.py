@@ -107,3 +107,34 @@ class Alert(models.Model):
 
     def __str__(self):
         return f"[{self.severity}] {self.host.hostname}: {self.message}"
+
+
+class MaintenanceWindow(models.Model):
+    """A time when some hosts are expected to be down or noisy: no metric
+    alerts fire for them and no notifications go out (apps/alerts/maintenance.py)."""
+
+    class Kind(models.TextChoices):
+        ONCE = "once", "One-off"
+        WEEKLY = "weekly", "Weekly"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=200)
+    #: Null = global (every site's hosts, unless hosts or tags narrow it).
+    site_id = models.UUIDField(null=True, blank=True, db_index=True)
+    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.ONCE)
+    # one-off
+    starts_at = models.DateTimeField(null=True, blank=True)
+    ends_at = models.DateTimeField(null=True, blank=True)
+    # weekly: Monday = 0 ... Sunday = 6, as datetime.weekday()
+    weekdays = models.JSONField(default=list, blank=True)
+    start_time = models.TimeField(null=True, blank=True)
+    duration_minutes = models.PositiveIntegerField(default=60)
+    timezone = models.CharField(max_length=64, default="UTC")
+    #: Empty hosts and tags = every host in the window's site.
+    hosts = models.ManyToManyField(Host, blank=True, related_name="maintenance_windows")
+    tags = models.JSONField(default=list, blank=True)
+    enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name

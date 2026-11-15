@@ -57,3 +57,37 @@ class AlertChannelTestSerializer(serializers.Serializer):
     ok = serializers.BooleanField()
     detail = serializers.CharField(allow_blank=True)
     channel = AlertChannelSerializer()
+
+
+class MaintenanceWindowSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    site_id = serializers.UUIDField(allow_null=True)
+    kind = serializers.ChoiceField(choices=["once", "weekly"])
+    starts_at = serializers.DateTimeField(allow_null=True)
+    ends_at = serializers.DateTimeField(allow_null=True)
+    weekdays = serializers.ListField(child=serializers.IntegerField(),
+                                     help_text="Monday is 0, Sunday is 6.")
+    start_time = serializers.CharField(allow_null=True, help_text="HH:MM local to timezone.")
+    duration_minutes = serializers.IntegerField()
+    timezone = serializers.CharField()
+    host_ids = serializers.ListField(child=serializers.UUIDField(),
+                                     help_text="Empty with no tags means every host in the site.")
+    tags = serializers.ListField(child=serializers.CharField())
+    enabled = serializers.BooleanField()
+    active = serializers.BooleanField(help_text="Whether the window covers time right now.")
+
+
+class MaintenanceWindowWriteSerializer(serializers.Serializer):
+    name = serializers.CharField(required=False, help_text="Required on create.")
+    kind = serializers.CharField(required=False, help_text="Required on create: once or weekly.")
+    site_id = serializers.UUIDField(required=False, allow_null=True)
+    starts_at = serializers.DateTimeField(required=False)
+    ends_at = serializers.DateTimeField(required=False)
+    weekdays = serializers.ListField(child=serializers.IntegerField(), required=False)
+    start_time = serializers.CharField(required=False, help_text="HH:MM local to timezone.")
+    duration_minutes = serializers.IntegerField(required=False)
+    timezone = serializers.CharField(required=False)
+    host_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
+    tags = serializers.ListField(child=serializers.CharField(), required=False)
+    enabled = serializers.BooleanField(required=False)

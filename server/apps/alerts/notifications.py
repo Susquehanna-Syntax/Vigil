@@ -109,6 +109,13 @@ def dispatch_alert_notification(alert, event="firing"):
 
     event: "firing" or "resolved"
     """
+    # Imported here to avoid an import cycle: maintenance imports the models,
+    # and this module is imported by tasks, which maintenance does not need.
+    from .maintenance import in_maintenance
+
+    if alert.host_id and in_maintenance(alert.host):
+        return
+
     targets = NotificationChannel.objects.filter(enabled=True)
     if event == "firing":
         targets = targets.filter(on_firing=True)

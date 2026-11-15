@@ -35,7 +35,7 @@ from rest_framework.response import Response
 
 from apps.accounts.models import Role
 from apps.agentprofiles.models import AgentProfile
-from apps.alerts.models import Alert, AlertRule, NotificationChannel
+from apps.alerts.models import Alert, AlertRule, MaintenanceWindow, NotificationChannel
 from apps.automations.models import Automation
 from apps.dashboards.models import Dashboard
 from apps.hosts.models import Host, LogTailSession, Tag, UnmanagedDevice
@@ -105,6 +105,7 @@ FILLERS = {
     "dashboard_id": lambda o: o["dashboard"].id,
     "job_id": lambda o: o["job"].id,
     "page_id": lambda o: o["page"].id,
+    "window_id": lambda o: o["window"].id,
     "finding_id": lambda o: o["finding"].id,
     # Both sites' SoftwareItem rows share this name_key (Spec 4): the two
     # requests are then identical, so the body can differ only if a site-B row leaks.
@@ -565,6 +566,9 @@ class SiteIsolationTests(TestCase):
             o["profile"] = AgentProfile.objects.create(name=f"{tag}-profile", site_id=site.pk)
             o["device"] = UnmanagedDevice.objects.create(name=f"{tag}-device", site_id=site.pk)
             o["page"] = StatusPage.objects.create(title=f"{tag}-page", site_id=site.pk)
+            o["window"] = MaintenanceWindow.objects.create(
+                name=f"{tag}-window", site_id=site.pk, kind="once",
+                starts_at=timezone.now(), ends_at=timezone.now() + timedelta(hours=1))
             o["key"] = IntegrationKey.objects.create(
                 name=f"shared-{shared}-key",
                 prefix="ky",

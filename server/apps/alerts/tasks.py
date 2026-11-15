@@ -114,6 +114,11 @@ def _evaluate_alert_rules():
     if not online_hosts.exists():
         return "No online hosts"
 
+    from .maintenance import hosts_in_maintenance
+    skip = hosts_in_maintenance(online_hosts)
+    if skip:
+        online_hosts = online_hosts.exclude(pk__in=skip)
+
     current_time = now()
     fired = 0
     resolved = 0
