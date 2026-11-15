@@ -13,6 +13,11 @@ Shape of the exchange:
   assert:    GET options  → session["webauthn_auth"] = {challenge, exp}
              POST credential → verify → wa_… token cached against the user id
 
+  sign in:   POST options → session["webauthn_login"] = {challenge, exp}, no
+             credentials listed, so the browser offers any passkey it holds
+             POST credential → find the key by its id → verify, user
+             verification required → that key's owner (``passwordless_user``)
+
 `consume_totp` recognises the ``wa_`` prefix and hands it to
 `consume_key_token`, which is single-use by construction: the token is only
 accepted by the request that manages to `cache.delete` it.
@@ -35,6 +40,7 @@ from webauthn import (
     verify_registration_response,
 )
 from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
+from webauthn.helpers.exceptions import InvalidAuthenticationResponse
 from webauthn.helpers.structs import (
     AuthenticatorSelectionCriteria,
     PublicKeyCredentialDescriptor,
@@ -260,3 +266,67 @@ def consume_key_token(user, token: str) -> bool:
     if owner != user.id:
         return False
     return bool(cache.delete(f"webauthn:token:{token}"))
+
+
+#: The one answer every refused passkey sign-in gets: which part failed (no
+#: such key, a disabled account, a bad signature) is not the caller's business.
+PASSKEY_REFUSED = "That passkey could not sign you in."
+
+
+def passwordless_options(request) -> dict:
+    """Request options for signing in with a passkey alone.
+
+    No credentials are listed: nobody has said who they are yet, so the browser
+    offers whichever discoverable credentials it holds for this rp id. User
+    verification is required, because the passkey replaces both the password
+    and the second step: the PIN or biometric is the factor the password was.
+    """
+    rp_id, _origin = _required_party(request)
+    challenge = secrets.token_bytes(32)
+    _store_challenge(request.session, "webauthn_login", challenge)
+    options = generate_authentication_options(
+        challenge=challenge,
+        rp_id=rp_id,
+        allow_credentials=[],
+        user_verification=UserVerificationRequirement.REQUIRED,
+    )
+    return json.loads(options_to_json(options))
+
+
+def passwordless_user(request, credential):
+    """Verify a passkey sign-in and return the account it belongs to.
+
+    Raises ``ValueError(PASSKEY_REFUSED)`` for anything short of a verified,
+    user-verified assertion from a key enrolled to an active account. The
+    ``userHandle`` must name the key's owner: a discoverable credential always
+    returns it, so a missing one (read as empty) is refused too.
+    """
+    from .models import SecurityKey
+
+    rp_id, origin = _required_party(request)
+    expected = _take_challenge(request.session, "webauthn_login")
+    if not isinstance(credential, dict):
+        raise ValueError(PASSKEY_REFUSED)
+    key = (SecurityKey.objects.select_related("user")
+           .filter(credential_id=_credential_id(credential)).first())
+    handle = (credential.get("response") or {}).get("userHandle") or ""
+    if (key is None or not key.user.is_active
+            or base64url_to_bytes(handle) != str(key.user_id).encode()):
+        raise ValueError(PASSKEY_REFUSED)
+    try:
+        verified = verify_authentication_response(
+            credential=credential,
+            expected_challenge=expected,
+            expected_rp_id=rp_id,
+            expected_origin=origin,
+            credential_public_key=bytes(key.public_key),
+            credential_current_sign_count=key.sign_count,
+            require_user_verification=True,
+        )
+    except (InvalidAuthenticationResponse, ValueError, TypeError, KeyError) as exc:
+        # The library's own refusal, or a credential too malformed to parse.
+        raise ValueError(PASSKEY_REFUSED) from exc
+    key.sign_count = verified.new_sign_count
+    key.last_used_at = now()
+    key.save(update_fields=["sign_count", "last_used_at"])
+    return key.user
