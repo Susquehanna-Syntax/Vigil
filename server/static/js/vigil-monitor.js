@@ -208,7 +208,14 @@ function makeTimeChart(canvasId, color, label) {
         borderColor: color,
         backgroundColor: color + '18',
         fill: true,
-      }]
+      },
+        // The min-max band (bandSeries): empty unless the range is bucketed.
+        // The second fills up to the first, so the band sits between them.
+        { label: label + ' max', data: [], band: true, borderWidth: 0, pointRadius: 0,
+          backgroundColor: color + '30', fill: false },
+        { label: label + ' min', data: [], band: true, borderWidth: 0, pointRadius: 0,
+          backgroundColor: color + '30', fill: '-1' },
+      ]
     },
     options: {
       responsive: true,
@@ -243,8 +250,15 @@ function makeTimeChart(canvasId, color, label) {
           borderWidth: 1,
           titleFont: { family: "'DM Sans', sans-serif", weight: 600 },
           bodyFont: { family: "'IBM Plex Mono', monospace" },
+          filter: item => !item.dataset.band,
           callbacks: {
-            label: ctx => ctx.parsed.y.toFixed(1) + '%',
+            label: ctx => {
+              const r = ctx.raw || {};
+              const avg = ctx.parsed.y.toFixed(1) + '%';
+              return typeof r.min === 'number' && typeof r.max === 'number'
+                ? `${avg} average, ${r.min.toFixed(1)}% to ${r.max.toFixed(1)}%`
+                : avg;
+            },
           }
         }
       }
@@ -325,9 +339,16 @@ function updateChart(chart, points, labelFilter) {
   }
   // Numeric timestamps, not Date objects: `parsing: false` hands the array
   // straight to the time scale, which wants milliseconds.
-  const data = filtered.map(p => ({ x: new Date(p.time).getTime(), y: p.value }))
+  const data = filtered.map(p => ({ x: new Date(p.time).getTime(), y: p.value, min: p.min, max: p.max }))
     .sort((a, b) => a.x - b.x);
   chart.data.datasets[0].data = data;
+  // Only the time charts have band datasets; the network chart is not drawn
+  // through here, but check rather than assume.
+  if (chart.data.datasets.length >= 3 && chart.data.datasets[1].band) {
+    const band = bandSeries(filtered);
+    chart.data.datasets[1].data = band ? band.high : [];
+    chart.data.datasets[2].data = band ? band.low : [];
+  }
   chart.update(chartUpdateMode());
   return data;
 }

@@ -89,12 +89,13 @@
             Containers
           </button>
           <span class="field-hint" tabindex="0" aria-label="About the time range"
-                data-hint="How far back the charts on this page look.&#10;&#10;Longer ranges hold more measurements than the chart has pixels, so Vigil shows every n-th real reading rather than averaging them together — a spike you can see is a spike that really happened.&#10;&#10;The newest reading is always included, so the right-hand edge is current.">?</span>
+                data-hint="How far back the charts on this page look.&#10;&#10;Up to 24 hours, the charts show real readings: when a range holds more than the chart has pixels, Vigil shows every n-th reading rather than averaging, so a spike you can see really happened. The newest reading is always included.&#10;&#10;7 and 30 days show one point per hour: the line is that hour's average, and the shaded band runs from its lowest to its highest reading, so a short spike still shows.">?</span>
           <div class="time-range-bar">
             <button class="time-btn active" data-range="60" data-act="setTimeRange" data-a1="60" data-a2="$el">1h</button>
             <button class="time-btn" data-range="360" data-act="setTimeRange" data-a1="360" data-a2="$el">6h</button>
             <button class="time-btn" data-range="1440" data-act="setTimeRange" data-a1="1440" data-a2="$el">24h</button>
             <button class="time-btn" data-range="10080" data-act="setTimeRange" data-a1="10080" data-a2="$el">7d</button>
+            <button class="time-btn" data-range="43200" data-act="setTimeRange" data-a1="43200" data-a2="$el">30d</button>
           </div>
         </div>
 
