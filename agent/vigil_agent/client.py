@@ -63,6 +63,8 @@ def checkin(
     container_engines: list[dict] | None = None,
     network: dict | None = None,
     agent_update: dict | None = None,
+    poller: bool | None = None,
+    check_results: list[dict] | None = None,
 ) -> dict:
     """Send metrics and receive tasks. Returns the full server response."""
     payload = {
@@ -136,7 +138,14 @@ def checkin(
     # back, or not applied. Absent on every ordinary check-in.
     if agent_update is not None:
         payload["agent_update"] = agent_update
-    url = f"{config.server_url}/api/v1/checkin"
+    # Always a bool: the server stores it and never sets it itself (S9). The
+    # argument lets a caller override the file; by default it is this file's own.
+    payload["poller"] = bool(config.poller if poller is None else poller)
+    # Device-check results (S9): sent only when there are some, so an absent
+    # key means "nothing to store" just like the other optional payloads.
+    if check_results:
+        payload["check_results"] = check_results
+    url =f"{config.server_url}/api/v1/checkin"
     resp = requests.post(url, json=payload, headers=_headers(config), timeout=_TIMEOUT)
     resp.raise_for_status()
     return resp.json()
