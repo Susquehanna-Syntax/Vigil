@@ -108,13 +108,16 @@ def dispatch_alert_notification(alert, event="firing"):
     """Send notification to all enabled channels for an alert event.
 
     event: "firing" or "resolved"
+
+    Returns False when the host is in maintenance and nothing was sent, True
+    otherwise (whether or not any channel was set up to receive it).
     """
     # Imported here to avoid an import cycle: maintenance imports the models,
     # and this module is imported by tasks, which maintenance does not need.
     from .maintenance import in_maintenance
 
     if alert.host_id and in_maintenance(alert.host):
-        return
+        return False
 
     targets = NotificationChannel.objects.filter(enabled=True)
     if event == "firing":
@@ -135,3 +138,4 @@ def dispatch_alert_notification(alert, event="firing"):
     from vigil import hooks
     hooks.emit("alert_sent" if event == "firing" else "alert_resolved",
                alert=alert)
+    return True

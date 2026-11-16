@@ -16,6 +16,9 @@ from vigil.locks import advisory_lock
 #: an hour later still pages.
 FLAP_WINDOW_SECONDS = 900
 
+#: Every offline alert's message starts with this; check-in matches on it.
+OFFLINE_PREFIX = "Host offline:"
+
 
 from apps.hosts.models import Host
 from apps.instance.config import setting
@@ -256,23 +259,45 @@ def _mark_stale_hosts_offline():
     count = stale.update(status=Host.Status.OFFLINE)
     if count:
         logger.info("Marked %d stale hosts as offline", count)
-        for host in stale_list:
-            already_firing = Alert.objects.filter(
-                host=host,
-                rule=None,
-                state__in=[Alert.State.FIRING, Alert.State.ACKNOWLEDGED],
-                message__startswith="Host offline:",
-            ).exists()
-            if not already_firing:
-                Alert.objects.create(
-                    host=host,
-                    rule=None,
-                    state=Alert.State.FIRING,
-                    severity="warning",
-                    message=f"Host offline: {host.hostname} has not checked in for 5+ minutes",
-                    metric_value=None,
-                )
-    return f"{count} hosts marked offline"
+    for host in stale_list:
+        already_firing = Alert.objects.filter(
+            host=host,
+            rule=None,
+            state__in=[Alert.State.FIRING, Alert.State.ACKNOWLEDGED],
+            message__startswith=OFFLINE_PREFIX,
+        ).exists()
+        if already_firing:
+            continue
+        alert = Alert.objects.create(
+            host=host,
+            rule=None,
+            state=Alert.State.FIRING,
+            severity="warning",
+            message=f"{OFFLINE_PREFIX} {host.hostname} has not checked in for 5+ minutes",
+            metric_value=None,
+        )
+        # A scheduled maintenance window holds the notice back (the host is
+        # not in stale_list's maintenance_until exclusion, only in a window);
+        # notified_at stays null then, so its return is not announced either.
+        if dispatch_alert_notification(alert, event="firing"):
+            alert.notified_at = now()
+            alert.save(update_fields=["notified_at"])
+    sent = _send_owed_resolutions()
+    return f"{count} hosts marked offline, {sent} back-online notices sent"
+
+
+def _send_owed_resolutions() -> int:
+    """Send the resolved notices that check-ins left owing (see
+    apps.hosts.views.agent). Only an alert whose firing notice went out
+    announces its end."""
+    sent = 0
+    for alert in Alert.objects.filter(resolve_pending=True).select_related("host"):
+        if alert.notified_at is not None:
+            dispatch_alert_notification(alert, event="resolved")
+            sent += 1
+        alert.resolve_pending = False
+        alert.save(update_fields=["resolve_pending"])
+    return sent
 
 
 def _metricpoint_is_hypertable() -> bool:

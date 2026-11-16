@@ -102,6 +102,14 @@ class Alert(models.Model):
     #: that a threshold is set where a metric lives.
     flap_count = models.PositiveIntegerField(default=0)
 
+    #: When the firing notice went out to the channels. Null when nothing was
+    #: sent (the host was in maintenance, or the alert predates this field).
+    notified_at = models.DateTimeField(null=True, blank=True)
+
+    #: The alert resolved somewhere that must not send (an agent's check-in) and
+    #: its resolved notice is still owed; the stale-host job sends it.
+    resolve_pending = models.BooleanField(default=False, db_index=True)
+
     class Meta:
         ordering = ["-fired_at"]
 
