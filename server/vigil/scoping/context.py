@@ -77,12 +77,12 @@ _log = logging.getLogger("vigil.scoping")
 def _caller():
     """Where the unscoped query came from: the first frame in Vigil code
     outside this module, as ``path:line in func``. (Since S5 07 the module is
-    a package; "/scoping" skips every file of it.)"""
+    a package; "vigil/scoping/" skips every file of it.)"""
     import traceback
     for frame in reversed(traceback.extract_stack()[:-3]):
         name = frame.filename.replace("\\", "/")
         if ("/apps/" in name or "/apps_business/" in name or "/vigil/" in name) \
-                and "/scoping" not in name:
+                and "vigil/scoping/" not in name:
             short = name.split("/server/")[-1].split("/Vigil_Business/")[-1]
             return f"{short}:{frame.lineno} in {frame.name}"
     return "unknown"

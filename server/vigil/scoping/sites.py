@@ -384,6 +384,8 @@ def filter_by_site(qs, user, path="", cascade_global=False, app=None):
     Unscoped users get the queryset back untouched, which is what keeps
     existing installs behaving exactly as before.
     """
+    from apps.accounts.permissions import visible_site_ids
+
     ids = viewing_site_ids(user, app=_reading_app() if app is None else (app or None))
     if ids is None:
         return qs
@@ -417,6 +419,8 @@ def filter_by_site_field(qs, user, field="site_id", app=None):
     filter_by_site(..., cascade_global=True). A row whose `field` is the
     global site's id counts as null. Unscoped users get `qs` untouched.
     """
+    from apps.accounts.permissions import visible_site_ids
+
     ids = viewing_site_ids(user, app=_reading_app() if app is None else (app or None))
     if ids is None:
         return qs

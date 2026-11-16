@@ -15,6 +15,7 @@ from .context import (  # noqa: F401
     ScopeMissing,
     _caller,
     _entered,
+    _log,
     _no_scope,
     _require_reason,
     as_user,
