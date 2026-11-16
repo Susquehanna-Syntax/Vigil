@@ -132,7 +132,8 @@ class ReportEditorMarkupTests(SimpleTestCase):
     def test_typing_never_redraws_the_cards(self):
         """A redraw replaces the input being typed in, and the cursor with it."""
         wiring = CODE[CODE.index("document.addEventListener('DOMContentLoaded'"):]
-        typing = wiring[wiring.index("addEventListener('input', (e) => {\n    const t = e.target;"):]
+        # The line may carry a JSDoc cast since the file is type-checked (M6).
+        typing = wiring[wiring.index("addEventListener('input', (e) => {\n    const t = "):]
         typing = typing[:typing.index("});")]
         self.assertIn("_rptSchedulePreview()", typing)
         self.assertNotIn("_renderRptWidgets", typing)
