@@ -34,7 +34,10 @@ ITEM_FIELDS = ("source", "id", "name", "version", "latest", "scope", "user",
 
 #: Primary package database — the first whose binary exists.
 _PRIMARY_ORDER = (("dpkg", "dpkg-query"), ("rpm", "rpm"), ("apk", "apk"),
-                  ("pacman", "pacman"))
+                  ("pacman", "pacman"), ("pkg", "pkg"))
+
+#: The primary database that only exists on FreeBSD. Collected only there.
+_FREEBSD_ONLY = frozenset({"pkg"})
 
 #: Overlay stores, collected in addition to the primary database.
 _OVERLAYS = (("snap", "snap"), ("flatpak", "flatpak"))
@@ -395,6 +398,58 @@ def _collect_flatpak(errors: dict[str, str]) -> list[dict]:
     return items
 
 
+# ── pkg (FreeBSD) ─────────────────────────────────────────────────────────────
+
+_PKG_ARGV = ["pkg", "query", "%n\t%v\t%o\t%m"]
+_PKG_UPDATES_ARGV = ["pkg", "version", "-vRL="]
+
+#: ``pkg version -vRL=`` ends an out-of-date row with ``(remote has 8.11.0)``.
+_PKG_REMOTE_VERSION = re.compile(r"\(remote has ([^)]+)\)")
+
+
+def _parse_pkg_list(text: str) -> list[dict]:
+    """``pkg query`` tab rows: name, version, origin, maintainer (publisher)."""
+    items: list[dict] = []
+    for line in text.splitlines():
+        fields = line.split("\t")
+        if len(fields) < 2 or not fields[0].strip():
+            continue
+        name = fields[0].strip()
+        publisher = _clean_publisher(fields[3]) if len(fields) > 3 else ""
+        items.append(_item("pkg", name, name, fields[1].strip(), publisher))
+    return items
+
+
+def _parse_pkg_updates(text: str) -> dict[str, str]:
+    """``pkg version -vRL=`` → {name: latest}, from the out-of-date rows only.
+
+    ``curl-8.10.1    <   needs updating (remote has 8.11.0)``: the first field
+    is ``<name>-<version>``, split on the last hyphen so a name such as
+    ``py311-requests`` survives. Up-to-date rows carry no ``remote has``.
+    """
+    updates: dict[str, str] = {}
+    for line in text.splitlines():
+        remote = _PKG_REMOTE_VERSION.search(line)
+        if remote is None:
+            continue
+        fields = line.split()
+        if not fields:
+            continue
+        name, sep, _version = fields[0].rpartition("-")
+        if not sep or not name:
+            continue
+        updates[name] = remote.group(1).strip()
+    return updates
+
+
+def _collect_pkg(errors: dict[str, str]) -> list[dict]:
+    items = _run_and_parse(_PKG_ARGV, _parse_pkg_list, errors, "pkg", _LIST_SHAPE)
+    updates = _run_and_parse(_PKG_UPDATES_ARGV, _parse_pkg_updates, errors,
+                             "pkg-updates", shape=_MAP_SHAPE)
+    _merge_updates(items, updates)
+    return items
+
+
 # ── run/parse helper ──────────────────────────────────────────────────────────
 
 #: What a parser returns when its command produced nothing usable.
@@ -441,6 +496,7 @@ _COLLECTORS = {
     "rpm": _collect_rpm,
     "apk": _collect_apk,
     "pacman": _collect_pacman,
+    "pkg": _collect_pkg,
     "snap": _collect_snap,
     "flatpak": _collect_flatpak,
 }
@@ -451,6 +507,8 @@ def collect_linux() -> dict:
     items: list[dict] = []
     errors: dict[str, str] = {}
     for name, binary in _PRIMARY_ORDER:
+        if name in _FREEBSD_ONLY and not sys.platform.startswith("freebsd"):
+            continue
         if _which(binary):
             items.extend(_COLLECTORS[name](errors))
             break

@@ -7,6 +7,7 @@ Detection order (first found wins):
   Linux:    apt-get → dnf → yum → pacman → zypper → apk → snap
   macOS:    brew
   Windows:  winget → choco → scoop
+  FreeBSD:  pkg
 
 All commands use subprocess with explicit argument lists (never shell=True).
 """
@@ -131,6 +132,9 @@ class PackageManager:
                 if len(lines) > 1:
                     return lines[1].split()[1]
                 return ""
+            if self.name == "pkg":
+                return _run(["pkg", "query", "%v", package_name],
+                            timeout=_EXEC_TIMEOUT_SHORT).strip()
         except Exception as exc:
             logger.debug("installed_version(%s) via %s inconclusive: %s",
                          package_name, self.name, exc)
@@ -158,6 +162,8 @@ class PackageManager:
                         env=self._env())
         if self.name == "snap":
             return _run(["snap", "refresh", "--list"])
+        if self.name == "pkg":
+            return _run(["pkg", "update", "-q"])
         raise RuntimeError(f"refresh not implemented for {self.name}")
 
     def _upgrade_all(self) -> str:
@@ -180,6 +186,8 @@ class PackageManager:
                         env=self._env())
         if self.name == "snap":
             return _run(["snap", "refresh"])
+        if self.name == "pkg":
+            return _run(["pkg", "upgrade", "-y"])
         raise RuntimeError(f"upgrade_all not implemented for {self.name}")
 
     def _install(self, pkg: str) -> str:
@@ -201,6 +209,8 @@ class PackageManager:
             return _run([self._bin(), "install", pkg, "--disable-interactivity", "--accept-package-agreements", "--accept-source-agreements"], env=self._env())
         if self.name == "snap":
             return _run(["snap", "install", pkg])
+        if self.name == "pkg":
+            return _run(["pkg", "install", "-y", pkg])
         raise RuntimeError(f"install not implemented for {self.name}")
 
     def _remove(self, pkg: str) -> str:
@@ -222,6 +232,8 @@ class PackageManager:
             return _run([self._bin(), "uninstall", pkg, "--disable-interactivity"], env=self._env())
         if self.name == "snap":
             return _run(["snap", "remove", pkg])
+        if self.name == "pkg":
+            return _run(["pkg", "delete", "-y", pkg])
         raise RuntimeError(f"remove not implemented for {self.name}")
 
     def _list_upgradable(self) -> str:
@@ -243,6 +255,8 @@ class PackageManager:
             return _run([self._bin(), "upgrade", "--disable-interactivity"], timeout=_EXEC_TIMEOUT_SHORT, env=self._env())
         if self.name == "snap":
             return _run(["snap", "refresh", "--list"], timeout=_EXEC_TIMEOUT_SHORT)
+        if self.name == "pkg":
+            return _run(["pkg", "version", "-vRL="], timeout=_EXEC_TIMEOUT_SHORT)
         raise RuntimeError(f"list_upgradable not implemented for {self.name}")
 
 
@@ -257,6 +271,8 @@ def detect() -> Optional[PackageManager]:
         candidates = ["brew"]
     elif system == "Windows":
         candidates = ["winget", "choco", "scoop"]
+    elif system == "FreeBSD":
+        candidates = ["pkg"]
     else:
         # Linux and other Unix-likes
         candidates = ["apt-get", "dnf", "yum", "pacman", "zypper", "apk", "snap"]
