@@ -162,3 +162,102 @@ class ApiSchemaAccessTests(TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertNotIn(b"https://", page.content)
         self.assertNotIn(b"<style", page.content)
+
+
+# ── Query parameters ─────────────────────────────────────────────────────────
+#
+# A view that reads ``request.query_params.get("state")`` takes a parameter the
+# generator cannot see, so the schema (and every client built from it) misses
+# it unless ``@extend_schema(parameters=[...])`` says so. This reads each
+# routed view function's own source for the names it reads and compares them
+# with what its GET operation documents. It sees only reads made in the view
+# function itself, not in a helper it calls.
+
+_QUERY_READ = re.compile(
+    r"""(?:query_params|request\.GET)(?:\.get\(|\.getlist\(|\[)\s*["']([A-Za-z_]+)["']""")
+
+#: Views with undocumented query parameters, each one to fix: document the
+#: parameters with OpenApiParameter, then delete its line here.
+QUERY_PARAMS_PENDING: dict[str, set[str]] = {
+    "/api/v1/agent/registry-auth/": {"registry"},
+    "/api/v1/catalog/": {"category", "page", "platform", "q", "source"},
+    "/api/v1/catalog/categories/": {"platform"},
+    "/api/v1/hosts/log-tails/{session_id}/": {"after"},
+    "/api/v1/hosts/{host_id}/rdp/": {"port"},
+    "/api/v1/jackil/integration/resolve/": {"ids", "type"},
+    "/api/v1/jackil/integration/search/": {"q", "type"},
+    "/api/v1/jackil/related/": {"id", "type"},
+    "/api/v1/metrics/recent/": {"host"},
+    "/api/v1/playbooks/": {"archived"},
+    "/api/v1/policies/changes/": {"policy", "state"},
+    "/api/v1/rollouts/": {"state"},
+    "/api/v1/search/": {"q"},
+    "/api/v1/sessions/options/": {"host"},
+    "/api/v1/software/apps/": {"limit", "offset", "outdated", "q", "source", "unmanaged"},
+    "/api/v1/software/updates/": {"decision", "kind", "q", "severity"},
+    "/api/v1/software/updates/hosts/": {"key", "kind"},
+    "/api/v1/stacks/": {"host"},
+    "/api/v1/status-pages/uptime/{host_id}/": {"days"},
+    "/api/v1/tasks/community/{kind}/": {"refresh"},
+    "/api/v1/tasks/history/": {"page"},
+    "/api/v1/tasks/runs/": {"page", "source"},
+    "/api/v1/tasks/runs/{run_id}/hunt/": {"host", "limit", "offset", "step"},
+    "/api/v1/vulns/": {"host"},
+    "/api/v1/vulns/findings/": {"due_within", "host", "overdue", "scanner", "severity",
+                                "sort", "state"},
+    "/api/v1/vulns/fix-groups/": {"q"},
+    "/api/v1/vulns/history/{host_id}/": {"days"},
+    "/api/v1/vulns/scans/": {"host"},
+    "/api/v1/waves/": {"group"},
+}
+
+
+def undocumented_query_params() -> dict[str, set[str]]:
+    """GET path → the query parameters its view reads and its schema omits."""
+    import inspect
+
+    from drf_spectacular.generators import EndpointEnumerator
+
+    with GENERATOR_STATS.silence():
+        paths = SchemaGenerator().get_schema(request=None, public=True)["paths"]
+    gaps: dict[str, set[str]] = {}
+    for path, _regex, method, callback in EndpointEnumerator().get_api_endpoints():
+        operation = paths.get(path, {}).get("get")
+        if method != "GET" or operation is None:
+            continue
+        handler = getattr(getattr(callback, "cls", None), "get", None)
+        func = handler
+        # @api_view wraps the function in a handler that closes over it.
+        for cell in getattr(handler, "__closure__", None) or ():
+            if inspect.isfunction(cell.cell_contents):
+                func = cell.cell_contents
+        # The Business apps ship compiled, with no source to read here.
+        if getattr(func, "__module__", "").startswith("apps_business"):
+            continue
+        try:
+            source = inspect.getsource(inspect.unwrap(func))
+        except (TypeError, OSError):
+            continue
+        documented = {p["name"] for p in operation.get("parameters", [])
+                      if p["in"] == "query"}
+        missing = set(_QUERY_READ.findall(source)) - documented
+        if missing:
+            gaps[path] = missing
+    return gaps
+
+
+class QueryParameterRatchetTests(SimpleTestCase):
+    def test_no_view_reads_an_undocumented_query_parameter(self):
+        gaps = undocumented_query_params()
+        new = {path: sorted(names - QUERY_PARAMS_PENDING.get(path, set()))
+               for path, names in gaps.items()
+               if names - QUERY_PARAMS_PENDING.get(path, set())}
+        self.assertEqual(new, {}, "document these with @extend_schema(parameters=[...])")
+
+    def test_a_documented_parameter_leaves_the_pending_list(self):
+        gaps = undocumented_query_params()
+        done = {path: sorted(names - gaps.get(path, set()))
+                for path, names in QUERY_PARAMS_PENDING.items()
+                if names - gaps.get(path, set())}
+        self.assertEqual(done, {}, "these are documented now: delete them from "
+                                   "QUERY_PARAMS_PENDING")
