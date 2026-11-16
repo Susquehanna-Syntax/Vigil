@@ -1,3 +1,12 @@
+// @ts-check
+/** A saved report row, one chart spec as the server stores it (only the fields the
+ *  operator set — every default stays the server's to choose), and the builder's
+ *  working copy of a card: draft-side axis titles, `sources` a Set until
+ *  rptSpecFromDraft turns it back into an array. Only what this file reads. */
+/** @typedef {{kind: string, chart?: string, title?: string, x_label?: string, y_label?: string, legend?: boolean, sources?: (string|number)[], x?: number, y?: number, w?: number, h?: number}} RptSpec */
+/** @typedef {{id?: string|number, name?: string|null, description?: string|null, range_days?: number, widgets?: RptSpec[]}} RptReportRow */
+/** The builder's draft of one chart card; `place` is its saved viewer cell. */
+/** @typedef {{kind: string, chart: string, title: string, xLabel: string, yLabel: string, axes: boolean, legend: string, sourceMode: string, sources: Set<string>, place: {x: number, y: number, w: number, h: number}|null}} RptDraft */
 // vigil-reports.js
 // Owns: the Reports page — the saved-report list,
 //   the builder dialog, and the viewer that charts a report's widgets with
@@ -64,7 +73,7 @@ function _rptHasData(w) {
 /* ── List ────────────────────────────────────────────────────────────── */
 
 async function loadReports(refreshView) {
-  const list = document.getElementById('rpt-list');
+  const list = /** @type {HTMLElement|null} */ (document.getElementById('rpt-list'));
   if (!list) return;
   if (!_rptLoaded) list.innerHTML = '<div class="empty-block"><p>Loading…</p></div>';
   try {
@@ -119,7 +128,7 @@ function _rptCardHtml(r) {
 function _renderReportList() {
   const list = document.getElementById('rpt-list');
   if (!list) return;
-  const q = (document.getElementById('rpt-search')?.value || '').trim().toLowerCase();
+  const q = (/** @type {HTMLInputElement|null} */ (document.getElementById('rpt-search'))?.value || '').trim().toLowerCase();
   const reports = !q ? _rptReports : _rptReports.filter(r =>
     (r.name || '').toLowerCase().includes(q)
     || (r.description || '').toLowerCase().includes(q)
@@ -226,9 +235,9 @@ function openReportEditor(report) {
   if (!_rptLoaded) return;
   document.getElementById('rpt-editor-title').textContent = report ? 'Edit report' : 'New report';
   document.getElementById('rpt-editor-modal').dataset.editing = report ? report.id : '';
-  document.getElementById('rpt-name').value = report ? report.name : '';
-  document.getElementById('rpt-description').value = report ? (report.description || '') : '';
-  const range = document.getElementById('rpt-range');
+  /** @type {HTMLInputElement} */ (document.getElementById('rpt-name')).value = report ? report.name : '';
+  /** @type {HTMLTextAreaElement} */ (document.getElementById('rpt-description')).value = report ? (report.description || '') : '';
+  const range = /** @type {HTMLSelectElement} */ (document.getElementById('rpt-range'));
   range.innerHTML = RPT_RANGES.map(n => `<option value="${n}">Last ${n} days</option>`).join('');
   range.value = String(report ? report.range_days : 30);
   _rptDraft = {
@@ -237,9 +246,9 @@ function openReportEditor(report) {
     'rpt-pb': new Set(report ? (report.playbooks || []).map(String) : []),
     'rpt-auto': new Set(report ? (report.automations || []).map(String) : []),
   };
-  const pbFilter = document.getElementById('rpt-pb-filter');
+  const pbFilter = /** @type {HTMLInputElement} */ (document.getElementById('rpt-pb-filter'));
   if (pbFilter) pbFilter.value = '';
-  const autoFilter = document.getElementById('rpt-auto-filter');
+  const autoFilter = /** @type {HTMLInputElement} */ (document.getElementById('rpt-auto-filter'));
   if (autoFilter) autoFilter.value = '';
   _renderRptPicks('rpt-pb-picks', 'rpt-pb', _rptPlaybooks);
   _renderRptPicks('rpt-auto-picks', 'rpt-auto', _rptAutomations);
@@ -266,7 +275,7 @@ function _rptPicked(group) {
 function _renderRptPicks(boxId, group, sources) {
   const box = document.getElementById(boxId);
   if (!box) return;
-  const q = (document.getElementById(`${group}-filter`)?.value || '').trim().toLowerCase();
+  const q = (/** @type {HTMLInputElement|null} */ (document.getElementById(`${group}-filter`))?.value || '').trim().toLowerCase();
   const rows = !q ? sources : sources.filter(s => (s.name || '').toLowerCase().includes(q));
   if (!rows.length) {
     box.innerHTML = `<div class="rpt-none muted">${sources.length ? 'Nothing matches that filter.' : 'None yet.'}</div>`;
@@ -280,7 +289,7 @@ function _renderRptPicks(boxId, group, sources) {
 }
 
 function _renderRptWidgetAdd() {
-  const sel = document.getElementById('rpt-widget-add');
+  const sel = /** @type {HTMLSelectElement} */ (document.getElementById('rpt-widget-add'));
   if (!sel) return;
   sel.innerHTML = '<option value="">Add a chart…</option>' + _rptCatalog.map(c =>
     `<option value="${escAttr(c.kind)}">${escHtml(c.title)} — ${escHtml(c.description)}</option>`).join('');
@@ -424,16 +433,16 @@ async function _rptRunPreview() {
   _destroyRptPreview();
   const widgets = data.widgets || [];
   for (const el of _rptPreviewBoxes()) {
-    const i = Number(el.dataset.rptWprev);
+    const i = Number(/** @type {HTMLElement} */ (el).dataset.rptWprev);
     if (widgets[i]) _drawRptWidget(el, widgets[i], i, _rptPreviewCharts);
   }
 }
 
 function _rptBodyFromForm() {
-  const range = Number(document.getElementById('rpt-range').value);
+  const range = Number(/** @type {HTMLSelectElement} */ (document.getElementById('rpt-range')).value);
   return {
-    name: document.getElementById('rpt-name').value.trim(),
-    description: document.getElementById('rpt-description').value.trim(),
+    name: /** @type {HTMLInputElement} */ (document.getElementById('rpt-name')).value.trim(),
+    description: /** @type {HTMLTextAreaElement} */ (document.getElementById('rpt-description')).value.trim(),
     range_days: Number.isFinite(range) ? range : 30,
     widgets: _rptDraft.widgets.map(rptSpecFromDraft),
     playbooks: _rptPicked('rpt-pb'),
@@ -442,7 +451,7 @@ function _rptBodyFromForm() {
 }
 
 async function saveReport() {
-  const btn = document.getElementById('rpt-save-btn');
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('rpt-save-btn'));
   const body = _rptBodyFromForm();
   if (!body.name) { showToast('Give the report a name', 'error'); return; }
   if (!body.widgets.length) { showToast('Pick at least one chart', 'error'); return; }
@@ -450,7 +459,7 @@ async function saveReport() {
     showToast('Pick at least one playbook or automation', 'error');
     return;
   }
-  const editing = document.getElementById('rpt-editor-modal').dataset.editing;
+  const editing = /** @type {HTMLElement} */ (document.getElementById('rpt-editor-modal')).dataset.editing;
   btn.disabled = true;
   try {
     await apiJson(editing ? `/api/v1/reports/${editing}/` : '/api/v1/reports/', {
@@ -1067,7 +1076,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Typing only updates the draft: re-rendering the cards would throw the
   // cursor out of the box being typed in.
   document.getElementById('rpt-widgets')?.addEventListener('input', (e) => {
-    const t = e.target;
+    const t = /** @type {HTMLInputElement} */ (e.target);
     const field = ['rptWtitle', 'rptWx', 'rptWy'].find(k => k in t.dataset);
     if (!field) return;
     const d = _rptDraft.widgets[Number(t.dataset[field])];
@@ -1077,13 +1086,13 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   // Every other control changes what the card shows, so the cards redraw.
   document.getElementById('rpt-widgets')?.addEventListener('change', (e) => {
-    if (_rptWidgetChanged(e.target)) {
+    if (_rptWidgetChanged(/** @type {HTMLInputElement} */ (e.target))) {
       _renderRptWidgets();
       _rptSchedulePreview();
     }
   });
   document.getElementById('rpt-widget-add')?.addEventListener('change', (e) => {
-    const kind = e.target.value;
+    const kind = /** @type {HTMLSelectElement} */ (e.target).value;
     if (!kind) return;
     if (_rptDraft.widgets.length < 12) _rptDraft.widgets.push(rptDraftFrom({ kind }, _rptCatalog));
     _renderRptWidgetAdd();
@@ -1093,7 +1102,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('rpt-range')?.addEventListener('change', _rptSchedulePreview);
   // Delegated from the panel, so a refiltered checkbox list keeps its ticks.
   document.getElementById('rpt-editor-modal')?.addEventListener('change', (e) => {
-    const box = e.target.closest('[data-rpt-src]');
+    const box = /** @type {HTMLInputElement} */ (/** @type {HTMLElement} */ (e.target).closest('[data-rpt-src]'));
     if (!box || !_rptDraft[box.dataset.rptSrc]) return;
     if (box.checked) _rptDraft[box.dataset.rptSrc].add(box.value);
     else _rptDraft[box.dataset.rptSrc].delete(box.value);

@@ -1,3 +1,8 @@
+// @ts-check
+/** One row of GET /api/v1/tasks/editor-templates/, which this page caches in
+ *  _editorTemplates: a real task file the server ships, with `label` and `group`
+ *  for the picker's two-line row. */
+/** @typedef {{id: string, label: string, group: string, filename: string, yaml: string}} EditorTemplate */
 // vigil-tasks.js
 // Owns: Tasks page — library grid, task editor (YAML + preview), fork,
 //   deploy launcher, community-submit (GitHub PR). The Community page's own
@@ -46,6 +51,7 @@ actions:
    GET /api/v1/tasks/editor-templates/. Each is a real task file a test can
    prove valid, rather than a string literal kept in sync by hand. Fetched once
    per page load and held here; the picker and the loader read this cache. */
+/** @type {EditorTemplate[]|null} */
 let _editorTemplates = null;
 
 async function _loadEditorTemplates() {
@@ -63,7 +69,7 @@ async function _loadEditorTemplates() {
 function _populateTemplatePicker() {
   // One template file per example on the server, so this fetches the list once
   // and opens a search modal over the result rather than an in-page constant.
-  const btn = document.getElementById('editor-template-btn');
+  const btn = /** @type {HTMLElement|null} */ (document.getElementById('editor-template-btn'));
   if (!btn || btn.dataset.wired) return;
   btn.dataset.wired = '1';
   btn.addEventListener('click', async () => {
@@ -79,11 +85,12 @@ function _populateTemplatePicker() {
   });
 }
 
+/** @param {string|null|undefined} id @returns {void} */
 function loadEditorTemplate(id) {
   if (!id) return;
   const tpl = (_editorTemplates || []).find(t => t.id === id);
   if (!tpl) return;
-  const ta = document.getElementById('editor-yaml');
+  const ta = /** @type {HTMLTextAreaElement} */ (document.getElementById('editor-yaml'));
   const current = (ta.value || '').trim();
   const isPristine = !current || current === DEFAULT_YAML_TEMPLATE.trim();
   if (!isPristine && !confirm('Replace the current YAML with the selected template?')) return;
@@ -91,6 +98,25 @@ function loadEditorTemplate(id) {
   onEditorInput();
 }
 
+/** A "relevant" expression as the parser returns it: a fold of probes, so a node
+ *  is either an `op` over its `items` or one `probe`. _relevantTreeHtml walks it. */
+/** @typedef {{op: string, items: RelevantNode[]} | {probe: {type?: string|null, params: Record<string, unknown>}}} RelevantNode */
+/** A step as the editor renders it — an `actions` entry or a `flow` one; a flow
+ *  step carries its condition (`when`) and what it declares (`outputs`). */
+/** @typedef {{type?: string, label?: string|null, id?: string, when?: string|null, outputs?: string[]|null, script_sha256?: string|null}} EditorAction */
+/** A `flow` entry the editor's preview draws: a branch (`if`/`then`/`else`), a
+ *  task pulled in by name (`use`), or a plain step. One shape per kind, and
+ *  _flowNodeHtml tests for them in that order. */
+/** @typedef {{type?: string, label?: string|null, id?: string, when?: string|null, outputs?: string[]|null, script_sha256?: string|null, use?: string, if?: string, then?: object[], else?: object[]}} FlowNode */
+/** The editor's preview of one parsed document. `inputs` are the questions the
+ *  deploy form asks, and a container step carries `params`, whose values are
+ *  whatever YAML put there — this page escapes them all before drawing them. */
+/** @typedef {{name?: string|null, description?: string|null, derived_risk?: string, risk?: string, relevant?: RelevantNode|{all?: RelevantNode[]}|null, actions?: EditorAction[], flow?: FlowNode[], inputs?: {id: string, type?: string, label?: string|null, choices?: {value: string}[], default?: unknown}[], warnings?: string[], author?: string, created?: string}} EditorSpec */
+/** A definition row of the library or community grid: only what _renderTaskGrid
+ *  reads before handing the row on to defCardHtml, which draws from the whole
+ *  object and needs no declared fields to do it. */
+/** @typedef {{name?: string|null, description?: string|null, relevance?: string|null, parsed_spec?: EditorSpec|null}} TaskGridRow */
+/** @typedef {{valid: boolean, error?: string, spec?: EditorSpec|null}} ValidateResponse */
 let editorState = {
   definitionId: null,   // null when creating
   lastParsedSpec: null,
@@ -168,6 +194,7 @@ const LIBRARY_EMPTY_HTML = `
   </div>`;
 
 // Cached unfiltered list so search is purely client-side and instant.
+/** @type {{library: TaskGridRow[]}} */
 const taskGridCache = { library: [] };
 
 function _renderTaskGrid(scope) {
@@ -176,9 +203,9 @@ function _renderTaskGrid(scope) {
   const grid = document.getElementById(cfg.gridId);
   if (!grid) return;
   const all = taskGridCache[scope] || [];
-  const q = (document.getElementById(cfg.searchId)?.value || '').trim().toLowerCase();
+  const q = (/** @type {HTMLInputElement} */ (document.getElementById(cfg.searchId))?.value || '').trim().toLowerCase();
   let visible = all;
-  if (document.getElementById('task-library-detections')?.checked) {
+  if (/** @type {HTMLInputElement} */ (document.getElementById('task-library-detections'))?.checked) {
     visible = visible.filter(d => d.parsed_spec && d.parsed_spec.severity);
   }
   if (q) {
@@ -216,7 +243,7 @@ async function forkDefinition(id) {
     await apiJson(`/api/v1/tasks/definitions/${id}/fork/`, { method: 'POST' });
     showToast('Forked into your library', 'success');
     refreshTaskLibrary();
-    const libTab = document.querySelector('[data-tab="tasks-library"]');
+    const libTab = /** @type {HTMLElement} */ (document.querySelector('[data-tab="tasks-library"]'));
     if (libTab) libTab.click();
   } catch (e) {
     showToast('Fork failed: ' + e.message, 'error');
@@ -232,14 +259,14 @@ async function openDefinitionEditor(definitionId, initialYaml = null) {
   if (definitionId) {
     try {
       const def = await apiJson(`/api/v1/tasks/definitions/${definitionId}/`);
-      document.getElementById('editor-yaml').value = def.yaml_source || DEFAULT_YAML_TEMPLATE;
+      /** @type {HTMLTextAreaElement} */ (document.getElementById('editor-yaml')).value = def.yaml_source || DEFAULT_YAML_TEMPLATE;
     } catch (e) {
       showToast('Failed to load task: ' + e.message, 'error');
       return;
     }
   } else {
     // initialYaml can be passed by suggestAgentUpdate() or other callers to pre-fill the editor
-    document.getElementById('editor-yaml').value = initialYaml || DEFAULT_YAML_TEMPLATE;
+    /** @type {HTMLTextAreaElement} */ (document.getElementById('editor-yaml')).value = initialYaml || DEFAULT_YAML_TEMPLATE;
   }
 
   navigateTo('task-editor');
@@ -252,7 +279,7 @@ function onEditorInput() {
 }
 
 async function validateEditor() {
-  const yaml = document.getElementById('editor-yaml').value;
+  const yaml = /** @type {HTMLTextAreaElement} */ (document.getElementById('editor-yaml')).value;
   const errBox = document.getElementById('editor-error');
   try {
     const body = await apiJson('/api/v1/tasks/definitions/validate/', {
@@ -274,7 +301,7 @@ async function validateEditor() {
 }
 
 function renderEditorPreview(spec) {
-  const el = document.getElementById('editor-preview');
+  const el = /** @type {HTMLElement} */ (document.getElementById('editor-preview'));
   if (!spec) { el.innerHTML = '<div class="preview-heading">—</div>'; return; }
   // The whole task's steps share ONE pastel — the task's derived risk — so a
   // task reads as a single coloured unit rather than a mixed-colour ladder.
@@ -338,7 +365,7 @@ function renderEditorPreview(spec) {
     ${relevantHtml}
     ${inputsHtml}
     <div class="preview-actions">${actionsHtml}</div>${scriptNote}`;
-  el.querySelectorAll('[data-copy-hash]').forEach(btn => {
+  el.querySelectorAll('[data-copy-hash]').forEach((/** @type {HTMLButtonElement} */ btn) => {
     btn.addEventListener('click', () => {
       const hash = btn.dataset.copyHash;
       if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -453,14 +480,14 @@ function _injectCommunityMetadata(yaml) {
 }
 
 function openCommunitySubmit() {
-  const rawYaml = (document.getElementById('editor-yaml').value || '').trim();
+  const rawYaml = (/** @type {HTMLTextAreaElement} */ (document.getElementById('editor-yaml')).value || '').trim();
   if (!rawYaml) { showToast('Write some YAML first', 'error'); return; }
   const yaml = _injectCommunityMetadata(rawYaml);
   const parsed = editorState.lastParsedSpec;
   const nameSlug = parsed && parsed.name ? _slugifyTaskName(parsed.name) : 'task';
   const filename = nameSlug + '.yaml';
   const url = `${COMMUNITY_REPO_URL}/new/main/tasks?filename=${encodeURIComponent(filename)}&value=${encodeURIComponent(yaml)}`;
-  const link = document.getElementById('community-submit-link');
+  const link = /** @type {HTMLAnchorElement} */ (document.getElementById('community-submit-link'));
   link.href = url;
   document.getElementById('community-submit-filename').textContent = filename;
   document.getElementById('community-submit-overlay').classList.add('open');
@@ -485,8 +512,8 @@ async function copyCommunityYaml() {
 }
 
 async function saveDefinitionFromEditor() {
-  const yaml = document.getElementById('editor-yaml').value;
-  const btn = document.getElementById('editor-save-btn');
+  const yaml = /** @type {HTMLTextAreaElement} */ (document.getElementById('editor-yaml')).value;
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('editor-save-btn'));
   btn.disabled = true; btn.style.opacity = '0.6';
   try {
     const url = editorState.definitionId
@@ -510,13 +537,13 @@ async function saveDefinitionFromEditor() {
 /* ── navigateTo wrapper: lazy-load library/community grids ───────────── */
 // Load the library / community grids when their respective pages become visible.
 const originalNavigateForTasks = navigateTo;
-navigateTo = function (pageName) {
+window.navigateTo = function (pageName) {
   originalNavigateForTasks(pageName);
   if (pageName === 'tasks') refreshTaskLibrary();
 };
 
 // Hook tab switches inside the tasks page so the library grid refreshes on demand.
-document.querySelectorAll('.tab-bar[data-tab-group="tasks"] .tab').forEach(tab => {
+document.querySelectorAll('.tab-bar[data-tab-group="tasks"] .tab').forEach((/** @type {HTMLElement} */ tab) => {
   tab.addEventListener('click', () => {
     if (tab.dataset.tab === 'tasks-library') refreshTaskLibrary();
   });
@@ -840,7 +867,7 @@ function _startTaskHistoryPolling() {
 _startTaskHistoryPolling();
 
 // Tab click: load history when the user opens the tab.
-document.querySelectorAll('.tab-bar[data-tab-group="tasks"] .tab').forEach(tab => {
+document.querySelectorAll('.tab-bar[data-tab-group="tasks"] .tab').forEach((/** @type {HTMLElement} */ tab) => {
   tab.addEventListener('click', () => {
     if (tab.dataset.tab === 'tasks-history') refreshTaskHistory(1);
   });

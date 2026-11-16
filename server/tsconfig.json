@@ -55,6 +55,10 @@
     "static/js/vigil-rollout.js",
     "static/js/vigil-ai.js",
     "static/js/vigil-branding.js",
-    "static/js/vigil-instance-settings.js"
+    "static/js/vigil-instance-settings.js",
+    "static/js/vigil-rdp.js",
+    "static/js/vigil-devices.js",
+    "static/js/vigil-tasks.js",
+    "static/js/vigil-reports.js"
   ]
 }

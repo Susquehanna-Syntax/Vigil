@@ -1,3 +1,4 @@
+// @ts-check
 /* ── Web RDP (QA-59) ────────────────────────────────────────────────────────
    A Windows desktop, a Linux one through xrdp, or a Mac's Screen Sharing (VNC)
    in the browser. Not loaded by base.html: loadRdpAssets() in
@@ -17,6 +18,8 @@
    never becomes markup: Guacamole paints it into a canvas, and this file writes
    none of it into the page. */
 
+/** @typedef {{teardown: () => void, teardownDone: boolean}} RdpSession */
+/** @type {RdpSession|null} */
 let _rdpSession = null;
 
 async function openRdpSession(hostId) {
@@ -67,7 +70,7 @@ function _signInThenConnect(started) {
   const drop = () => {
     // Blank the password before the element goes away: otherwise the field
     // holds it until the node itself is collected.
-    const pass = m.modal.querySelector('#rdp-pass');
+    const pass = /** @type {HTMLInputElement|null} */ (m.modal.querySelector('#rdp-pass'));
     if (pass) pass.value = '';
     m.close();
   };
@@ -75,9 +78,9 @@ function _signInThenConnect(started) {
   form.addEventListener('submit', (ev) => {
     ev.preventDefault();
     const login = {
-      username: m.modal.querySelector('#rdp-user').value,
-      password: m.modal.querySelector('#rdp-pass').value,
-      domain: m.modal.querySelector('#rdp-domain').value,
+      username: /** @type {HTMLInputElement} */ (m.modal.querySelector('#rdp-user')).value,
+      password: /** @type {HTMLInputElement} */ (m.modal.querySelector('#rdp-pass')).value,
+      domain: /** @type {HTMLInputElement} */ (m.modal.querySelector('#rdp-domain')).value,
     };
     drop();
     if (!login.username) { showToast('A username is required.', 'error'); return; }
@@ -205,6 +208,7 @@ async function _endRdpSession(sessionId) {
    one's transport is a WebSocket to Vigil rather than Guacamole's HTTP tunnel —
    which is also why the vendored HTTP tunnels are not used here: they put their
    parameters in a query string, and an access log would keep a Windows password. */
+/** @param {string} url @param {{username: string, password: string, domain?: string}} login */
 function VigilRdpTunnel(url, login) {
   const tunnel = this;
   let socket = null;

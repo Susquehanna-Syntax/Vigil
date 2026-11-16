@@ -18,20 +18,9 @@ declare function loadPlaybooks(): unknown;
  *  list; vigil-contentyaml.js calls it behind a typeof guard). */
 declare function loadAutomations(): unknown;
 
-/** Defined in server/static/js/vigil-tasks.js. Top-level `const`, so a classic
- *  <script src> tag does not put it on window — vigil-contentyaml.js reads it
- *  bare and relies on base.html loading vigil-tasks.js first. */
-declare const COMMUNITY_REPO_URL: string;
-
 /** Defined in server/static/js/vigil-tasks.js (adds the author/created fields
  *  the community repo's PR policy requires). Read bare, like the const above. */
 declare function _injectCommunityMetadata(yaml: string): string;
-
-/** Defined in server/static/js/vigil-tasks.js (task state -> CSS colour). */
-declare const _TASK_STATE_COLORS: Record<string, string>;
-
-/** Defined in server/static/js/vigil-tasks.js (task state -> label). */
-declare const TASK_STATE_LABELS: Record<string, string>;
 
 /** Defined in server/static/js/vigil-widgets.js. */
 declare function openWidgetSettings(widgetId: string): Promise<void>;
@@ -64,9 +53,16 @@ declare function openHostDetail(card: {dataset: {[k: string]: string | undefined
 /** Defined in server/static/js/vigil-pickers.js. `type: 'tag'` is a caller-side
  *  type: openPicker only fetches when there is no `items` array, so a caller may
  *  name any type as long as it supplies its own items. */
-declare function openPicker(opts: {type: 'task' | 'playbook' | 'machine' | 'tag' | 'rollout_target', title: string,
+declare function openPicker(opts: {type: 'task' | 'playbook' | 'machine' | 'tag' | 'rollout_target' | string, title: string,
   onSelect: (item: {key: string, [k: string]: any}) => void, allowAdd?: boolean,
   items?: object[], ineligible?: (item: {key: string, [k: string]: any}) => string|null|undefined}): Promise<void>;
+
+/** Defined in server/static/js/vigil-host-cards.js (the two-line Jackil block a
+ *  detail view shows when Jackil is configured). `stillCurrent` is the caller's
+ *  staleness check; vigil-tasks.js calls it behind a typeof guard. */
+declare function renderJackilRelated(
+  section: HTMLElement|null, body: HTMLElement|null, kind: string, id: string|number,
+  stillCurrent: () => boolean): Promise<void>;
 
 /** Defined in server/static/js/vigil-tasks.js (the empty-state block a list
  *  page shows when it has nothing: a title, a sentence, and an optional action). */
@@ -145,13 +141,50 @@ declare function inputsFormMount(container: HTMLElement, inputs: any[], values?:
 /** Defined in server/static/js/vigil-pickers.js: read + validate that form. */
 declare function inputsFormRead(container: HTMLElement): { values: Record<string, any>, error: string };
 
-/** Set by the inline config script in templates/base.html. */
+/** Set by the inline config script in templates/base.html. `__pendingCommunityYaml`
+ *  is the YAML vigil-tasks.js hands to the community-submit dialog, so its Copy
+ *  button can copy what the GitHub link opened. */
 interface Window {
   VIGIL_CONFIG: { timezone: string, timeFormat: string, username: string };
+  __pendingCommunityYaml?: string;
 }
 
 /** The vendored GridStack (static/js/vendor/gridstack-all.js), a third-party library. */
 declare const GridStack: any;
+
+/** The vendored Chart.js UMD build (static/js/vendor/chart.umd.min.js), a
+ *  third-party library loaded at runtime by the Reports page. Declared as `any`
+ *  per the vendor rule: its config object is chart-kind-specific and this repo
+ *  builds it in seven different shapes. */
+declare const Chart: any;
+
+/** The three handler fields VigilRdpTunnel's constructor initialises to null and
+ *  that Guacamole.Client — plus vigil-rdp.js itself, right after `new` — set to
+ *  callbacks afterwards. tsc types a classic function-as-constructor from the
+ *  members its body assigns to `this`, so these are merged into that name to give
+ *  both `tunnel.onstatechange = …` and the guarded callback calls their type;
+ *  `null` is in the union because that is what the constructor stores. */
+interface VigilRdpTunnel {
+  onstatechange: ((state: number) => void) | null;
+  oninstruction: ((opcode: string, stream: GuacamoleInputStream) => void) | null;
+  onerror: ((status: {message?: string}) => void) | null;
+}
+
+/** A stream argument of the Guacamole protocol instruction callbacks
+ *  (static/js/vendor/guacamole-common.js). vigil-rdp.js answers one `neg`
+ *  instruction through it and hands the stream to nothing else, so this names
+ *  that field alone. */
+interface GuacamoleInputStream {
+  /** set by the client for a "neg" instruction; Vigil answers it once. */
+  onext: ((opcode: string, ...args: any[]) => void) | null;
+}
+
+/** The vendored Apache guacamole-common-js 1.5.0
+ *  (static/js/vendor/guacamole-common.js), a third-party library loaded at
+ *  runtime by loadRdpAssets() in vigil-host-cards.js. Declared as `any` per the
+ *  vendor rule: the client, tunnel and display surface vigil-rdp.js drives is
+ *  dynamic (per-layer display objects, protocol streams). */
+declare const Guacamole: any;
 
 /** Defined in server/static/js/vigil-pickers.js (the in-modal task editor;
  *  `opts.id` opens an existing definition, `opts.yaml` seeds a new one). */

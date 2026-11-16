@@ -1,8 +1,15 @@
+// @ts-check
+/** A row of /api/v1/hosts/devices/, and the fields this file's form writes back. */
+/** @typedef {{id: string, name?: string|null, device_type?: string|null, device_type_label?: string|null, ip_address?: string|null, mac_address?: string|null, serial?: string|null, vendor?: string|null, location?: string|null, owner?: string|null, warranty_end?: string|null, notes?: string|null, site_id?: string|number|null, extra?: Record<string, string>|null}} InventoryDevice */
+/** What the device form reads: every field is an input or select in the modal. */
+/** @typedef {Omit<InventoryDevice, 'id'|'device_type_label'> & {site_id?: string|number|null}} DeviceFormBody */
 // vigil-devices.js — Unmanaged device inventory (manual registry on the Inventory page).
 // Depends on: vigil-utils.js (apiJson, showToast, escHtml), vigil-nav.js (navigateTo).
 
+/** @type {InventoryDevice[]} */
 let _devices = [];
 
+/** @returns {Promise<void>} */
 async function loadDevices() {
   try {
     _devices = await apiJson('/api/v1/hosts/devices/');
@@ -13,8 +20,8 @@ async function loadDevices() {
 }
 
 function renderDevices() {
-  const wrap = document.getElementById('dev-content');
-  const countEl = document.getElementById('dev-count');
+  const wrap = /** @type {HTMLElement|null} */ (document.getElementById('dev-content'));
+  const countEl = /** @type {HTMLElement|null} */ (document.getElementById('dev-count'));
   if (!wrap) return;
 
   if (!_devices.length) {
@@ -47,57 +54,64 @@ function renderDevices() {
   wrap.innerHTML = html;
 }
 
+/** @param {string|number} id @returns {void} */
 function openDeviceModal(id) {
   const d = id ? _devices.find(x => x.id === id) : null;
-  document.getElementById('device-modal-title').textContent = d ? 'Edit Device' : 'Add Device';
-  document.getElementById('device-id').value = d ? d.id : '';
-  document.getElementById('device-name').value = d ? (d.name || '') : '';
-  sitePickFill(document.getElementById('device-site'), document.getElementById('device-site-field'),
+  /** @type {HTMLElement} */ (document.getElementById('device-modal-title')).textContent = d ? 'Edit Device' : 'Add Device';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-id')).value = d ? d.id : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-name')).value = d ? (d.name || '') : '';
+  sitePickFill(/** @type {HTMLSelectElement} */ (document.getElementById('device-site')),
+    /** @type {HTMLElement} */ (document.getElementById('device-site-field')),
     d ? d.site_id : null, { editing: !!d });
-  document.getElementById('device-type').value = d ? (d.device_type || 'other') : 'other';
-  document.getElementById('device-ip').value = d ? (d.ip_address || '') : '';
-  document.getElementById('device-mac').value = d ? (d.mac_address || '') : '';
-  document.getElementById('device-vendor').value = d ? (d.vendor || '') : '';
-  document.getElementById('device-location').value = d ? (d.location || '') : '';
-  document.getElementById('device-serial').value = d ? (d.serial || '') : '';
-  document.getElementById('device-warranty').value = d ? (d.warranty_end || '') : '';
-  document.getElementById('device-owner').value = d ? (d.owner || '') : '';
-  document.getElementById('device-extra').value = d ? _extraToLines(d.extra) : '';
-  document.getElementById('device-notes').value = d ? (d.notes || '') : '';
-  document.getElementById('device-delete-btn').style.display = d ? 'inline-flex' : 'none';
-  document.getElementById('device-overlay').classList.add('open');
-  document.getElementById('device-modal').classList.add('open');
+  /** @type {HTMLSelectElement} */ (document.getElementById('device-type')).value = d ? (d.device_type || 'other') : 'other';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-ip')).value = d ? (d.ip_address || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-mac')).value = d ? (d.mac_address || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-vendor')).value = d ? (d.vendor || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-location')).value = d ? (d.location || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-serial')).value = d ? (d.serial || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-warranty')).value = d ? (d.warranty_end || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('device-owner')).value = d ? (d.owner || '') : '';
+  /** @type {HTMLTextAreaElement} */ (document.getElementById('device-extra')).value = d ? _extraToLines(d.extra) : '';
+  /** @type {HTMLTextAreaElement} */ (document.getElementById('device-notes')).value = d ? (d.notes || '') : '';
+  /** @type {HTMLElement} */ (document.getElementById('device-delete-btn')).style.display = d ? 'inline-flex' : 'none';
+  /** @type {HTMLElement} */ (document.getElementById('device-overlay')).classList.add('open');
+  /** @type {HTMLElement} */ (document.getElementById('device-modal')).classList.add('open');
 }
 
+/** @returns {void} */
 function closeDeviceModal() {
-  document.getElementById('device-overlay').classList.remove('open');
-  document.getElementById('device-modal').classList.remove('open');
+  /** @type {HTMLElement} */ (document.getElementById('device-overlay')).classList.remove('open');
+  /** @type {HTMLElement} */ (document.getElementById('device-modal')).classList.remove('open');
 }
 
+/** @returns {DeviceFormBody} */
 function _deviceFormBody() {
-  const ip = document.getElementById('device-ip').value.trim();
+  const ip = /** @type {HTMLInputElement} */ (document.getElementById('device-ip')).value.trim();
   return {
-    name: document.getElementById('device-name').value.trim(),
-    device_type: document.getElementById('device-type').value,
+    name: /** @type {HTMLInputElement} */ (document.getElementById('device-name')).value.trim(),
+    device_type: /** @type {HTMLSelectElement} */ (document.getElementById('device-type')).value,
     ip_address: ip || null,
-    mac_address: document.getElementById('device-mac').value.trim(),
-    vendor: document.getElementById('device-vendor').value.trim(),
-    location: document.getElementById('device-location').value.trim(),
-    serial: document.getElementById('device-serial').value.trim(),
-    warranty_end: document.getElementById('device-warranty').value || null,
-    owner: document.getElementById('device-owner').value.trim(),
-    extra: _extraFromBody(document.getElementById('device-extra').value),
-    notes: document.getElementById('device-notes').value.trim(),
+    mac_address: /** @type {HTMLInputElement} */ (document.getElementById('device-mac')).value.trim(),
+    vendor: /** @type {HTMLInputElement} */ (document.getElementById('device-vendor')).value.trim(),
+    location: /** @type {HTMLInputElement} */ (document.getElementById('device-location')).value.trim(),
+    serial: /** @type {HTMLInputElement} */ (document.getElementById('device-serial')).value.trim(),
+    warranty_end: /** @type {HTMLInputElement} */ (document.getElementById('device-warranty')).value || null,
+    owner: /** @type {HTMLInputElement} */ (document.getElementById('device-owner')).value.trim(),
+    extra: _extraFromBody(/** @type {HTMLTextAreaElement} */ (document.getElementById('device-extra')).value),
+    notes: /** @type {HTMLTextAreaElement} */ (document.getElementById('device-notes')).value.trim(),
   };
 }
 
 /** The extra-facts object as the textarea shows it: "Key: value" per line. */
+/** @param {Record<string, string>|null|undefined} extra @returns {string} */
 function _extraToLines(extra) {
   return Object.entries(extra || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
 }
 
 /** And back: split on the first colon so a value may carry its own colons. */
+/** @param {string} text @returns {Record<string, string>} */
 function _extraFromBody(text) {
+  /** @type {Record<string, string>} */
   const extra = {};
   for (const line of (text || '').split('\n')) {
     const colon = line.indexOf(':');
@@ -109,11 +123,13 @@ function _extraFromBody(text) {
   return extra;
 }
 
+/** @returns {Promise<void>} */
 async function saveDevice() {
-  const id = document.getElementById('device-id').value;
+  const id = /** @type {HTMLInputElement} */ (document.getElementById('device-id')).value;
   const body = _deviceFormBody();
   if (!body.name) { showToast('Name is required', 'error'); return; }
-  const siteId = sitePickValue(document.getElementById('device-site'), document.getElementById('device-site-field'));
+  const siteId = sitePickValue(/** @type {HTMLSelectElement} */ (document.getElementById('device-site')),
+    /** @type {HTMLElement} */ (document.getElementById('device-site-field')));
   if (siteId !== undefined) body.site_id = siteId;
   try {
     if (id) {
@@ -130,8 +146,9 @@ async function saveDevice() {
   }
 }
 
+/** @returns {Promise<void>} */
 async function deleteDeviceFromModal() {
-  const id = document.getElementById('device-id').value;
+  const id = /** @type {HTMLInputElement} */ (document.getElementById('device-id')).value;
   if (!id) return;
   if (!confirm('Delete this device from the inventory?')) return;
   try {
@@ -145,7 +162,7 @@ async function deleteDeviceFromModal() {
 }
 
 const _origNavForDevices = navigateTo;
-navigateTo = function(pageName) {
+window.navigateTo = function(pageName) {
   _origNavForDevices(pageName);
   if (pageName === 'inventory') loadDevices();
 };
