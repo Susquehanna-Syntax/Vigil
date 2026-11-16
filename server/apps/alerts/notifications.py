@@ -187,11 +187,13 @@ def dispatch_offline_group(alerts, event="firing") -> list:
         text = f"{len(covered)} hosts{where} are checking in again: {shown}"
     payload["message"] = text
 
-    # Not dataclasses.replace(base, ...): it copies the title too, which says
-    # one host's name, and shares this message's payload by reference.
+    # A fresh Message rather than dataclasses.replace(base, ...), so nothing of
+    # the first host's (its link) rides along. base.title already reads
+    # "Alert: N hosts" or "Resolved: N hosts", since payload["host"] was
+    # replaced before message_for ran.
     message = channels.Message(
         event=event,
-        title=f"Alert: {payload['host']}",
+        title=base.title,
         text=text,
         severity=base.severity,
         host=base.host,

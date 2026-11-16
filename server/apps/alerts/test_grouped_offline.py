@@ -206,6 +206,8 @@ class GroupedNoticeTests(TestCase):
         message = deliver.call_args.args[1]
         self.assertEqual(message.text,
                          "2 hosts are checking in again: host00, host01")
+        # The headline says what happened, not "Alert:".
+        self.assertEqual(message.title, "Resolved: 2 hosts")
 
     def test_every_host_in_a_window_gets_nothing(self):
         alerts = self._alerts(3)
