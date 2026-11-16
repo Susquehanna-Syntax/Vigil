@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-inventory.js
 // Owns: Inventory page — hardware snapshot table with sortable/filterable
 //   columns, drag-to-reorder, custom column support, CSV export.
@@ -8,6 +9,8 @@
 //   vigil-host-cards.js (openHostDetail invoked from inventory row click).
 // API: GET /api/v1/hosts/inventory/, GET/POST /api/v1/hosts/ad/{,sync/}
 
+/** @typedef {{id: string, label: string, dv: boolean, fn: (row: any) => HTMLElement, val: (row: any) => string}} InvColumn */
+/** @type {{rows: any[], customColumns: string[], sortCol: (string|null), sortDir: string, colFilters: Record<string, string>, dragSrcColId: (string|null)}} */
 const inventoryState = {
   rows: [], customColumns: [],
   sortCol: null, sortDir: 'asc',
@@ -17,6 +20,7 @@ const inventoryState = {
 
 // ── Column definitions ──────────────────────────────────────────────────────
 // fn(row) → <td>   val(row) → string used for sort/filter
+/** @type {InvColumn[]} */
 const INV_COLUMNS = [
   { id: 'hostname',        label: 'Host',         dv: true,
     fn: r => _hostCell(r),                                              val: r => r.hostname || '' },
@@ -193,7 +197,7 @@ async function refreshInventory() {
 
 function renderInventory() {
   const content = document.getElementById('inv-content');
-  const q = (document.getElementById('inv-search')?.value || '').trim().toLowerCase();
+  const q = (/** @type {HTMLInputElement|null} */ (document.getElementById('inv-search'))?.value || '').trim().toLowerCase();
   let rows = inventoryState.rows;
 
   // Global search across all text fields
@@ -346,7 +350,7 @@ function renderInventory() {
     // No click on the row itself (user, 2026-10-16): a cell is for selecting
     // and copying. The host's name is the way into its detail panel.
     const row = document.createElement('tr');
-    for (const col of allCols) row.appendChild(col.fn(r));
+    for (const col of allCols) row.appendChild(col.fn(/** @type {any} */ (r)));
     tbody.appendChild(row);
   }
   table.appendChild(tbody);
@@ -458,6 +462,7 @@ function exportInventoryCsv() {
   URL.revokeObjectURL(url);
 }
 
+/** @param {any} row @returns {void} */
 function openInventoryDetail(row) {
   // Reuse the existing host detail panel by synthesizing a card-like dataset.
   const fakeCard = { dataset: {
@@ -477,7 +482,7 @@ function openInventoryDetail(row) {
 
 // Auto-load inventory the first time the page is shown
 const _origNavForInv = navigateTo;
-navigateTo = function(pageName) {
+window.navigateTo = function(pageName) {
   _origNavForInv(pageName);
   if (pageName === 'inventory' && !inventoryState.rows.length) {
     refreshInventory();
@@ -491,11 +496,11 @@ navigateTo = function(pageName) {
 async function adLoadConfig() {
   try {
     const cfg = await apiJson('/api/v1/hosts/ad/');
-    document.getElementById('ad-ldap-url').value = cfg.ldap_url || '';
-    document.getElementById('ad-bind-dn').value = cfg.bind_dn || '';
-    document.getElementById('ad-base-dn').value = cfg.base_dn || '';
-    document.getElementById('ad-computer-ou').value = cfg.computer_ou || '';
-    document.getElementById('ad-enabled').checked = !!cfg.enabled;
+    /** @type {HTMLInputElement} */ (document.getElementById('ad-ldap-url')).value = cfg.ldap_url || '';
+    /** @type {HTMLInputElement} */ (document.getElementById('ad-bind-dn')).value = cfg.bind_dn || '';
+    /** @type {HTMLInputElement} */ (document.getElementById('ad-base-dn')).value = cfg.base_dn || '';
+    /** @type {HTMLInputElement} */ (document.getElementById('ad-computer-ou')).value = cfg.computer_ou || '';
+    /** @type {HTMLInputElement} */ (document.getElementById('ad-enabled')).checked = !!cfg.enabled;
     const status = document.getElementById('ad-status');
     if (cfg.last_sync) {
       status.textContent = `Last sync: ${new Date(cfg.last_sync).toLocaleString()} — ${cfg.last_sync_status || ''}`;
@@ -507,17 +512,17 @@ async function adLoadConfig() {
 
 async function adSaveConfig() {
   const body = {
-    ldap_url: document.getElementById('ad-ldap-url').value.trim(),
-    bind_dn: document.getElementById('ad-bind-dn').value.trim(),
-    base_dn: document.getElementById('ad-base-dn').value.trim(),
-    computer_ou: document.getElementById('ad-computer-ou').value.trim(),
-    enabled: document.getElementById('ad-enabled').checked,
+    ldap_url: /** @type {HTMLInputElement} */ (document.getElementById('ad-ldap-url')).value.trim(),
+    bind_dn: /** @type {HTMLInputElement} */ (document.getElementById('ad-bind-dn')).value.trim(),
+    base_dn: /** @type {HTMLInputElement} */ (document.getElementById('ad-base-dn')).value.trim(),
+    computer_ou: /** @type {HTMLInputElement} */ (document.getElementById('ad-computer-ou')).value.trim(),
+    enabled: /** @type {HTMLInputElement} */ (document.getElementById('ad-enabled')).checked,
   };
-  const pwd = document.getElementById('ad-bind-password').value;
+  const pwd = /** @type {HTMLInputElement} */ (document.getElementById('ad-bind-password')).value;
   if (pwd) body.bind_password = pwd;
   try {
     await apiJson('/api/v1/hosts/ad/', { method: 'POST', body: JSON.stringify(body) });
-    document.getElementById('ad-bind-password').value = '';
+    /** @type {HTMLInputElement} */ (document.getElementById('ad-bind-password')).value = '';
     showToast('AD settings saved', 'success');
     adLoadConfig();
   } catch (e) {
@@ -526,7 +531,7 @@ async function adSaveConfig() {
 }
 
 async function adSyncNow() {
-  const btn = event.target;
+  const btn = /** @type {HTMLButtonElement} */ (event.target);
   btn.disabled = true; btn.style.opacity = '0.6';
   try {
     const result = await apiJson('/api/v1/hosts/ad/sync/', { method: 'POST' });

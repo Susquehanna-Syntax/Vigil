@@ -59,15 +59,12 @@ declare function addDetailTag(name: string): Promise<void>;
 /** Defined in server/static/js/vigil-host-cards.js (the host detail drawer).
  *  Callers pass a rendered `.host-card`, or a detached element carrying the
  *  same dataset; only `dataset` is read. */
-declare function openHostDetail(card: HTMLElement): void;
-
-/** Defined in server/static/js/vigil-users.js. */
-declare const ROLE_LABELS: Record<string, string>;
+declare function openHostDetail(card: {dataset: {[k: string]: string | undefined}}): void;
 
 /** Defined in server/static/js/vigil-pickers.js. `type: 'tag'` is a caller-side
  *  type: openPicker only fetches when there is no `items` array, so a caller may
  *  name any type as long as it supplies its own items. */
-declare function openPicker(opts: {type: 'task' | 'playbook' | 'machine' | 'tag', title: string,
+declare function openPicker(opts: {type: 'task' | 'playbook' | 'machine' | 'tag' | 'rollout_target', title: string,
   onSelect: (item: {key: string, [k: string]: any}) => void, allowAdd?: boolean,
   items?: object[], ineligible?: (item: {key: string, [k: string]: any}) => string|null|undefined}): Promise<void>;
 
@@ -142,6 +139,16 @@ declare function openUpdateContainer(hostId: any, containerName?: string): Promi
 
 /** Defined in server/static/js/vigil-deploy.js. */
 declare function openDeployModal(definitionId: string, prefill?: object): Promise<void>;
+
+/** Defined in server/static/js/vigil-pickers.js: the declared-inputs form. */
+declare function inputsFormMount(container: HTMLElement, inputs: any[], values?: Record<string, any>): void;
+/** Defined in server/static/js/vigil-pickers.js: read + validate that form. */
+declare function inputsFormRead(container: HTMLElement): { values: Record<string, any>, error: string };
+
+/** Set by the inline config script in templates/base.html. */
+interface Window {
+  VIGIL_CONFIG: { timezone: string, timeFormat: string, username: string };
+}
 
 /** The vendored GridStack (static/js/vendor/gridstack-all.js), a third-party library. */
 declare const GridStack: any;

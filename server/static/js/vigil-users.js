@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-users.js
 // Owns: Settings → Users & Roles pane — list users + seats, create, change
 //   role, delete. Backend: GET/POST /api/v1/accounts/users/,
@@ -5,8 +6,10 @@
 // HTML: templates/pages/_settings.html (data-pane="users")
 // Depends on: vigil-utils.js (apiJson, showToast, confirmModal, escHtml)
 
+/** @type {Record<string, string>} */
 const ROLE_LABELS = { admin: 'Admin', operator: 'Operator', viewer: 'Viewer' };
 
+/** @returns {Promise<void>} */
 async function loadUsers() {
   const list = document.getElementById('users-list');
   if (!list) return;
@@ -14,10 +17,11 @@ async function loadUsers() {
     const data = await apiJson('/api/v1/accounts/users/');
     const seats = document.getElementById('users-seats');
     if (seats) seats.textContent = `Seats: ${data.seats_used} / ${data.seats_allowed}`;
-    const me = (window.VIGIL_CONFIG && window.VIGIL_CONFIG.username) || '';
+    const me = /** @type {string} */ ((/** @type {any} */ (window.VIGIL_CONFIG) && /** @type {any} */ (window.VIGIL_CONFIG).username) || '');
+    /** @type {Record<string, any>} */
     const byId = {};
     list.innerHTML = '';
-    data.users.forEach((u) => {
+    data.users.forEach((/** @type {any} */ u) => {
       byId[String(u.id)] = u;
       const isMe = u.username === me;
       const row = document.createElement('div');
@@ -43,14 +47,14 @@ async function loadUsers() {
     });
     // Wire role selects and delete buttons; names come from the lookup map, not
     // from a data- attribute, so no user-supplied text is interpolated anywhere.
-    list.querySelectorAll('.user-role-select').forEach((sel) => {
+    list.querySelectorAll('.user-role-select').forEach((/** @type {HTMLSelectElement} */ sel) => {
       sel.addEventListener('change', () => changeRole(sel.dataset.uid, sel.value));
     });
-    list.querySelectorAll('.user-sites').forEach((btn) => {
+    list.querySelectorAll('.user-sites').forEach((/** @type {HTMLElement} */ btn) => {
       const u = byId[btn.dataset.uid];
       btn.addEventListener('click', () => openUserSites(u));
     });
-    list.querySelectorAll('.user-del').forEach((btn) => {
+    list.querySelectorAll('.user-del').forEach((/** @type {HTMLElement} */ btn) => {
       const u = byId[btn.dataset.uid];
       btn.addEventListener('click', () => deleteUser(btn.dataset.uid, u ? u.username : ''));
     });
@@ -59,11 +63,12 @@ async function loadUsers() {
   }
 }
 
+/** @returns {Promise<void>} */
 async function createUser() {
-  const username = document.getElementById('nu-username').value.trim();
-  const email = document.getElementById('nu-email').value.trim();
-  const password = document.getElementById('nu-password').value;
-  const role = document.getElementById('nu-role').value;
+  const username = /** @type {HTMLInputElement} */ (document.getElementById('nu-username')).value.trim();
+  const email = /** @type {HTMLInputElement} */ (document.getElementById('nu-email')).value.trim();
+  const password = /** @type {HTMLInputElement} */ (document.getElementById('nu-password')).value;
+  const role = /** @type {HTMLSelectElement} */ (document.getElementById('nu-role')).value;
   const result = document.getElementById('nu-result');
   result.textContent = '';
   if (!username || !password) {
@@ -76,10 +81,10 @@ async function createUser() {
       body: JSON.stringify({ username, email, password, role }),
     });
     showToast(`Created ${username}`, 'success');
-    document.getElementById('nu-username').value = '';
-    document.getElementById('nu-email').value = '';
-    document.getElementById('nu-password').value = '';
-    document.getElementById('nu-role').value = 'viewer';
+    /** @type {HTMLInputElement} */ (document.getElementById('nu-username')).value = '';
+    /** @type {HTMLInputElement} */ (document.getElementById('nu-email')).value = '';
+    /** @type {HTMLInputElement} */ (document.getElementById('nu-password')).value = '';
+    /** @type {HTMLSelectElement} */ (document.getElementById('nu-role')).value = 'viewer';
     loadUsers();
   } catch (e) {
     // 402 (operator without a Business license) and 400 (dupe / missing) land here.
@@ -87,6 +92,7 @@ async function createUser() {
   }
 }
 
+/** @param {string|null} uid @param {string} role @returns {Promise<void>} */
 async function changeRole(uid, role) {
   try {
     await apiJson(`/api/v1/accounts/users/${uid}/role/`, {
@@ -102,6 +108,7 @@ async function changeRole(uid, role) {
   }
 }
 
+/** @param {string|null} uid @param {string} username @returns {Promise<void>} */
 async function deleteUser(uid, username) {
   const ok = await confirmModal(`Delete user "${username}"? This cannot be undone.`, { danger: true });
   if (!ok) return;
