@@ -433,26 +433,32 @@ class TicketTests(_Net, TestCase):
     def test_a_blank_body_sends_the_default_request(self):
         sent, headers = self._send()
         self.assertEqual(sent["title"], "[FIRING] [CRITICAL] Alert: web-1")
+        self.assertEqual(sent["description"],
+                         "CPU 97% > 90% <b>&\nHost: web-1\nSite: Leeds\nValue: 97.0\n"
+                         "Rule: High CPU")
         self.assertEqual(sent["host"], "web-1")
+        self.assertEqual(sent["site"], "Leeds")
         self.assertEqual(sent["severity"], "critical")
+        self.assertEqual(sent["event"], "firing")
+        self.assertEqual(sent["link"], "https://vigil.test/hosts/7/")
         method, scheme, address, port, hostname, path = self.transport.call_args.args[:6]
         self.assertEqual((method, scheme, address, port, hostname, path),
                          ("POST", "https", PUBLIC, 443, "tickets.test", "/api/v2/tickets"))
         self.assertEqual(headers["Content-Type"], "application/json")
 
     def test_a_custom_body_arrives_with_its_placeholders_filled(self):
-        sent, _headers = self._send(config={"body": (
-            '{"fields": {"summary": "{{title}}", '
-            '"labels": ["vigil", "{{severity}}"]}}')})
-        self.assertEqual(sent, {"fields": {"summary": "[FIRING] [CRITICAL] Alert: web-1",
-                                           "labels": ["vigil", "critical"]}})
+        sent, _headers = self._send(config={
+            "body": '{"fields": {"summary": "{{title}}", '
+                    '"labels": ["vigil", "{{severity}}"]}}'})
+        self.assertEqual(sent["fields"]["summary"], "[FIRING] [CRITICAL] Alert: web-1")
+        self.assertEqual(sent["fields"]["labels"], ["vigil", "critical"])
 
     def test_a_quote_or_newline_in_the_alert_cannot_break_the_json(self):
-        sent, _headers = self._send(text='he said "no"\nand left')
-        self.assertEqual(sent["description"].split("\n")[0], 'he said "no"')
+        _sent, _headers = self._send(text='he said "no"\nand left')
         self.assertEqual(json.loads(
             self.transport.call_args.args[6].decode())["description"],
-            'he said "no"\nand left\nHost: web-1\nSite: Leeds\nValue: 97.0\nRule: High CPU')
+            'he said "no"\nand left\nHost: web-1\nSite: Leeds\nValue: 97.0\n'
+            'Rule: High CPU')
 
     def test_the_authorization_header_arrives_only_when_the_admin_set_one(self):
         self.assertNotIn("Authorization", self._send()[1])

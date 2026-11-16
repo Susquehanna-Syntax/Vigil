@@ -16,33 +16,42 @@ from .text import facts, headline
 PLACEHOLDERS = ("title", "text", "host", "site", "severity", "event", "value", "rule", "link")
 
 DEFAULT_BODY = (
-    '{"title": "{{title}}", "description": "{{text}}", "host": "{{host}}", "site": "{{site}}", '
-    '"severity": "{{severity}}", "event": "{{event}}", "link": "{{link}}"}'
+    '{"title": "{{title}}", "description": "{{text}}", "host": "{{host}}", '
+    '"site": "{{site}}", "severity": "{{severity}}", "event": "{{event}}", '
+    '"link": "{{link}}"}'
 )
 
 
 def _values(message) -> dict:
     return {
         "title": headline(message),
-        "text": ("\n".join(([message.text] if message.text else []) + facts(message))
-                 or message.title),
-        "host": message.host, "site": message.site, "severity": message.severity,
-        "event": message.event, "value": "" if message.value is None else f"{message.value:g}",
-        "rule": message.rule, "link": message.link,
+        "text": "\n".join(([message.text] if message.text else []) + facts(message))
+                or message.title,
+        "host": message.host,
+        "site": message.site,
+        "severity": message.severity,
+        "event": message.event,
+        "value": "" if message.value is None else f"{message.value:g}",
+        "rule": message.rule,
+        "link": message.link,
     }
 
 
 def render(template: str, message) -> dict:
-    """The admin's template with every {{name}} replaced by its value,
-    JSON-escaped so a quote or newline in an alert cannot break out of the
-    string it sits in. Raises ChannelError when the result is not JSON."""
+    """The admin's template with every {{name}} replaced by its value.
+
+    Each value is JSON-escaped as it goes in, so a quote or a newline coming
+    from an alert cannot break out of the string it sits in. Raises
+    ``ChannelError`` when the filled-in result is not JSON: the admin wrote the
+    template, so that is their mistake to read about, not something to send on.
+    """
     values = _values(message)
-    out = template or DEFAULT_BODY
+    body = template or DEFAULT_BODY
     for name in PLACEHOLDERS:
         escaped = json.dumps(str(values[name]))[1:-1]
-        out = out.replace("{{" + name + "}}", escaped)
+        body = body.replace("{{" + name + "}}", escaped)
     try:
-        return json.loads(out)
+        return json.loads(body)
     except ValueError as exc:
         raise ChannelError(
             f"The request body is not valid JSON after filling it in: {exc}"
