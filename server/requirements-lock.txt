@@ -49,11 +49,11 @@ jsonschema-specifications==2025.9.1
 kombu==5.7.0
 multidict==7.2.1
 packaging==26.3
-playwright==1.65.0
+playwright==1.65.1
 prompt_toolkit==3.0.53
 propcache==0.5.4
-psycopg==3.3.8
-psycopg-binary==3.3.8
+psycopg==3.3.9
+psycopg-binary==3.3.9
 pyasn1==0.6.5
 pyasn1_modules==0.4.2
 pycdlib==1.22.0
@@ -70,7 +70,7 @@ redis==8.1.0
 referencing==0.37.0
 requests==2.34.2
 rpds-py==2026.9.1
-ruff==0.17.4
+ruff==0.17.5
 six==1.17.0
 sqlparse==0.6.1
 typing_extensions==4.16.0
