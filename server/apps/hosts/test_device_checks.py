@@ -83,6 +83,14 @@ class ValidateParamsTests(TestCase):
                 validate_interval(bad)
 
 
+class UrlCredentialTests(TestCase):
+    def test_an_http_url_with_a_user_name_or_password_is_refused(self):
+        for url in ("https://admin:hunter2@router.lan/", "http://admin@printer.lan/status"):
+            with self.subTest(url), self.assertRaises(ValueError) as caught:
+                validate_params("http", {"url": url})
+            self.assertIn("user name or password", str(caught.exception))
+
+
 class PollerFlagTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -175,6 +183,22 @@ class SiteAssignmentTests(TestCase):
             self.assertEqual(assigned_poller(check), poller_a)
             self.assertEqual([c.id for c in checks_for(poller_a)], [check.id])
             self.assertEqual(checks_for(poller_b), [])
+
+    def test_a_global_device_goes_only_to_a_global_poller(self):
+        """Every site sees a global device, so one site's poller must not be
+        the one reporting on it."""
+        from apps_business.sites.models import HostSiteAssignment, Site
+
+        site_b = Site.objects.create(name="B", slug="b")
+        check = make_check(make_device("website"))  # site_id None: global
+        poller_b = make_host("pb", "tok-pb-" + "e" * 32, poller=True)
+        HostSiteAssignment.objects.create(host=poller_b, site=site_b)
+        with scoping.system(reason="test"):
+            self.assertIsNone(assigned_poller(check))
+            self.assertEqual(checks_for(poller_b), [])
+            poller_g = make_host("pg", "tok-pg-" + "f" * 32, poller=True)  # unassigned: global
+            self.assertEqual(assigned_poller(check), poller_g)
+            self.assertEqual([c.id for c in checks_for(poller_g)], [check.id])
 
 
 class AssignmentTests(TestCase):

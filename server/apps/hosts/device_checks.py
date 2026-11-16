@@ -82,6 +82,10 @@ def validate_params(kind: str, params) -> dict:
         if parts.scheme not in ("http", "https") or not parts.hostname:
             raise ValueError("url must be an http or https address with a host")
         _host_value(parts.hostname, "url host")
+        if parts.username or parts.password:
+            # Check params are shown to everyone who can see the device; a
+            # password in the URL would be shown with them.
+            raise ValueError("url must not carry a user name or password")
         cleaned = {"url": url}
         if "expect_status" in params:
             codes = params["expect_status"]
@@ -106,10 +110,14 @@ def validate_params(kind: str, params) -> dict:
 
 
 def _eligible(poller: Host, device) -> bool:
-    """Online, opted in as a poller, and in the device's site (a global device takes any site)."""
+    """Online, opted in as a poller, and in exactly the device's site.
+
+    A global device goes only to a global poller: every site can see it, so a
+    poller one site's admins control must not be the one reporting on it. On a
+    Community install everything is global, so any poller qualifies."""
     if poller.status != Host.Status.ONLINE or not poller.agent_poller:
         return False
-    return device.site_id is None or site_id_of(poller) == device.site_id
+    return site_id_of(poller) == device.site_id
 
 
 def _assign(check: DeviceCheck, pollers: list) -> Host | None:
@@ -133,14 +141,17 @@ def assigned_poller(check: DeviceCheck) -> Host | None:
 def checks_for(host: Host) -> list[DeviceCheck]:
     """Every enabled check this host is the assigned poller for, sorted by id.
 
-    Evaluated in Python over the enabled checks of this host's site and the global devices.
+    Evaluated in Python over the enabled checks of this host's own site (global devices for a
+    global poller).
     That is O(checks) per call, made once per check-in, and fine below a few thousand checks.
     """
     if not host.agent_poller:
         return []
     host_site = site_id_of(host)
-    checks = (DeviceCheck.objects.filter(enabled=True)
-              .filter(Q(device__site_id__isnull=True) | Q(device__site_id=host_site))
+    # Exactly this host's site: a global poller serves global devices, a site's
+    # poller serves that site's (see _eligible).
+    devices = Q(device__site_id__isnull=True) if host_site is None else Q(device__site_id=host_site)
+    checks = (DeviceCheck.objects.filter(enabled=True).filter(devices)
               .select_related("device", "poller"))
     pollers = list(Host.objects.filter(status=Host.Status.ONLINE, agent_poller=True).order_by("id"))
     mine = [c for c in checks if (p := _assign(c, pollers)) is not None and p.id == host.id]
