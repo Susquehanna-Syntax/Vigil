@@ -1461,6 +1461,36 @@ cosign verify-blob vigil-agent-linux-amd64 \
       <h3>Bulk actions</h3>
       <p class="prose">Every firing and acknowledged alert has a checkbox. Selecting any shows a bulk bar with <strong>Ack selected</strong> (same duration menu) and <strong>Un-ack selected</strong>. One request handles the whole selection (<code>POST /api/v1/alerts/bulk/</code>, up to 200 ids). Alerts in the wrong state for the action are skipped and reported, so a selection can safely span tabs. All alert actions update the page in place; nothing reloads or navigates away.</p>
 
+      <h3 id="alert-channels">Notification channels</h3>
+      <p class="prose">Set them up under <strong>Settings &gt; Notifications &gt; Notification channels</strong>. The kinds are <strong>Email</strong>, <strong>Webhook</strong> (with an optional shared secret), <strong>Slack</strong>, <strong>Microsoft Teams</strong> (a Workflow URL), <strong>Discord</strong>, <strong>ntfy</strong> (server defaults to <code>https://ntfy.sh</code>, a topic, and an optional access token), <strong>Gotify</strong> (server and application token), <strong>Pushover</strong> (user or group key, application token, and an optional device), and <strong>Open a ticket</strong> (a create-issue URL, an optional Authorization header, and an optional JSON request body, so it works with any tracker that opens an issue from a webhook).</p>
+      <p class="prose">Every channel has a <strong>Send test</strong> button. A channel can be limited to firing notices or resolved notices only. On a Business install with sites, a channel can belong to one site; it then hears about that site's hosts only.</p>
+      <p class="prose">Messages are formatted per service — host, site, value, and a link back to Vigil — not raw JSON. Secrets are stored encrypted and never shown again after saving.</p>
+
+      <h3 id="maintenance-windows">Maintenance windows</h3>
+      <p class="prose">Set them up under <strong>Settings &gt; Notifications &gt; Maintenance windows</strong>. A window is <strong>once</strong> (a start and an end) or <strong>weekly</strong> (weekdays, a start time, a duration of at most 24 hours, and a timezone). It covers chosen hosts, hosts with any of chosen tags, or — with neither — every host. On a Business install a window can belong to one site.</p>
+      <p class="prose">A host inside an active window, or one whose rebuild set <code>maintenance_until</code>, sends no alert notices. The alert still opens in Vigil.</p>
+      <p class="prose">The public status page shows a host in a window as <strong>maintenance</strong> rather than down and does not count it as an outage. It lists windows that run now or start within the next 7 days, with the page's hosts each one covers. The window's name is internal and never appears on the public page.</p>
+
+      <h3 id="host-dependencies">Host dependencies</h3>
+      <p class="prose">In a host's drawer, <strong>Depends on</strong> picks one other host of the same site — for example the switch or relay it sits behind. A choice that would make a loop is refused.</p>
+      <p class="prose">While the parent is offline, a child that goes offline opens its alert but sends no notice. If the parent comes back and the child is still down, the child's notice goes out then. A parent in another site never silences a host.</p>
+
+      <h3 id="grouped-notices">Grouped offline notices</h3>
+      <p class="prose">The offline check runs every 2 minutes. When 3 or more hosts of one site get their offline notice in the same pass, the channels receive one notice instead of one each: "5 hosts in West stopped checking in: ..." naming the first 10 hosts in alphabetical order and then "and N more". Each host still has its own alert. Back-online notices group the same way ("... are checking in again"). Fewer than 3 go out one by one.</p>
+      <p class="prose">Grouping is per pass, so hosts that go offline two minutes apart can land in different passes.</p>
+
+      <h3 id="slack-acknowledge">Acknowledge from Slack</h3>
+      <p class="prose">A Slack channel with its app's <strong>Signing secret</strong> set gets an <strong>Acknowledge</strong> button on firing notices. A grouped notice's button acknowledges up to 50 of its alerts.</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-content"><strong>Copy the signing secret.</strong> In your Slack app: Basic Information &gt; Signing Secret. Paste it into the channel's <strong>Signing secret</strong> field.</div>
+        </div>
+        <div class="step">
+          <div class="step-content"><strong>Turn on Interactivity</strong> and set its Request URL to <code>&lt;your Vigil address&gt;/api/v1/alerts/slack/actions/</code>. Vigil must be reachable from Slack at that address.</div>
+        </div>
+      </div>
+      <p class="prose">Vigil checks Slack's signature and refuses a click more than 5 minutes old, acknowledges only alerts that channel was allowed to hear about, and answers in the thread "Acknowledged in Vigil by &lt;Slack user&gt;". The acknowledgement has no end time — the same as a permanent ack in Vigil.</p>
+
       <h3 id="alert-actions">Alerts and tickets from a task</h3>
       <p class="prose">Six task actions let a task, playbook, automation or rollout raise and clear alerts and helpdesk tickets. The agent does no real work for them; the server acts when the step reports <code>ok</code>. A step skipped by <code>when:</code> does nothing.</p>
       <p class="prose"><code>raise_alert</code> opens an alert on the host with a <code>severity</code> (<code>info</code>, <code>warning</code> or <code>critical</code>) and a <code>message</code>, and notifies through the usual channels. With a <code>key</code>, it does not open a second one while one with that key is still firing on that host. <code>resolve_alert</code> with the same <code>key</code> resolves it.</p>
