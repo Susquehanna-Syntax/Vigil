@@ -16,7 +16,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Max, Q
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import (
     api_view,
     authentication_classes,
@@ -439,7 +439,12 @@ def licence(request):
                          "status": "none"})
 
 
-@extend_schema(responses={200: JackilSearchResultsSerializer, 400: JackilErrorSerializer})
+@extend_schema(parameters=[
+    OpenApiParameter("q", str, required=True,
+                     description=f"Text to match, at least two characters and at most {MAX_QUERY}; shorter queries return no results."),
+    OpenApiParameter("type", str, enum=list(TYPES),
+                     description="Restrict the search to one kind of row. Default: every kind."),
+], responses={200: JackilSearchResultsSerializer, 400: JackilErrorSerializer})
 @integration
 def search(request):
     q = request.query_params.get("q", "").strip()[:MAX_QUERY]
@@ -455,7 +460,12 @@ def search(request):
     return Response({"results": results})
 
 
-@extend_schema(responses={200: JackilResolveSerializer, 400: JackilErrorSerializer})
+@extend_schema(parameters=[
+    OpenApiParameter("type", str, required=True, enum=list(TYPES),
+                     description="Which kind of row the ids are. Required."),
+    OpenApiParameter("ids", str, required=True,
+                     description=f"Comma-separated row ids to look up, at most {MAX_IDS}."),
+], responses={200: JackilResolveSerializer, 400: JackilErrorSerializer})
 @integration
 def resolve(request):
     kind = request.query_params.get("type", "").strip()

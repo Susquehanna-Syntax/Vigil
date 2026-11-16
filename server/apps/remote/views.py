@@ -13,7 +13,7 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.http import HttpResponseNotAllowed, JsonResponse
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -254,7 +254,10 @@ def _item(user, site, host, kind, family) -> dict:
     return {"available": not reason, "reason": reason}
 
 
-@extend_schema(methods=["GET"], responses={200: RemoteSessionOptionsSerializer})
+@extend_schema(methods=["GET"], parameters=[
+    OpenApiParameter("host", OpenApiTypes.UUID, required=True,
+                     description="Host id to report the Connect menu options for. Required."),
+], responses={200: RemoteSessionOptionsSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def session_options(request):

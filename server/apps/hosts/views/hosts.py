@@ -1,6 +1,6 @@
 """apps.hosts.views: hosts views (split from the old single module, unchanged)."""
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 from ..api_schema import (
     HostsAdConfigSavedSerializer,
@@ -407,10 +407,14 @@ def host_reject(request, host_id):
     return Response(HostSerializer(host).data)
 
 
-@extend_schema(methods=["GET"],
-               responses={(200, "application/x-rdp"): OpenApiTypes.BINARY,
-                          (400, "application/json"): HostsErrorSerializer,
-                          (404, "application/json"): HostsErrorSerializer})
+@extend_schema(
+    methods=["GET"],
+    parameters=[
+        OpenApiParameter("port", int, description="TCP port to put in the RDP file. Default 3389."),
+    ],
+    responses={(200, "application/x-rdp"): OpenApiTypes.BINARY,
+               (400, "application/json"): HostsErrorSerializer,
+               (404, "application/json"): HostsErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def host_rdp(request, host_id):

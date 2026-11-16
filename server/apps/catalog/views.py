@@ -11,7 +11,7 @@ from django.db.models.functions import Lower
 from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -115,7 +115,15 @@ def _installed_counts(user, pairs) -> dict:
     return {(r["source"], r["package_id"]): r["n"] for r in rows}
 
 
-@extend_schema(responses={200: CatalogBrowseSerializer, 403: CatalogDetailSerializer})
+@extend_schema(parameters=[
+    OpenApiParameter("q", str, description="Substring to match in a package's name or id."),
+    OpenApiParameter("source", str, enum=list(SOURCE_LABELS),
+                     description="Which package manager to list. Default: every source."),
+    OpenApiParameter("platform", str, enum=[p.value for p in CatalogPackage.Platform],
+                     description="Which platform's packages to list. Default: every platform."),
+    OpenApiParameter("category", str, description="Category name, matched case-insensitively."),
+    OpenApiParameter("page", int, description=f"1-based page of {PAGE} cards. Default 1."),
+], responses={200: CatalogBrowseSerializer, 403: CatalogDetailSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def browse(request):
@@ -193,7 +201,10 @@ def browse(request):
     })
 
 
-@extend_schema(responses={200: CatalogCategoriesSerializer, 403: CatalogDetailSerializer})
+@extend_schema(parameters=[
+    OpenApiParameter("platform", str, enum=[p.value for p in CatalogPackage.Platform],
+                     description="Which platform's categories to count. Default: every platform."),
+], responses={200: CatalogCategoriesSerializer, 403: CatalogDetailSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def categories(request):

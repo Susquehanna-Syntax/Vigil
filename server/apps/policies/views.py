@@ -1,7 +1,8 @@
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -193,7 +194,12 @@ def policy_run_now(request, policy_id):
     return Response(result)
 
 
-@extend_schema(responses={200: PolicyChangeListSerializer, 403: PolicyDetailErrorSerializer})
+@extend_schema(parameters=[
+    OpenApiParameter("policy", OpenApiTypes.UUID,
+                     description="Only changes from this policy. Default: every policy."),
+    OpenApiParameter("state", str, enum=[s.value for s in PolicyChange.State],
+                     description="Only changes in this state. Default: every state."),
+], responses={200: PolicyChangeListSerializer, 403: PolicyDetailErrorSerializer})
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsAdmin])
 def change_list(request):

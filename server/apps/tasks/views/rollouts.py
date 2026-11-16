@@ -1,5 +1,5 @@
 """apps.tasks.views: rollouts views (split from the old single module, unchanged)."""
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 from ._common import *  # noqa: F401,F403
 from ._ingest import *  # noqa: F401,F403
@@ -20,7 +20,10 @@ from ..api_schema import (
 )
 
 
-@extend_schema(methods=["GET"], responses={200: TasksRolloutSerializer(many=True),
+@extend_schema(methods=["GET"], parameters=[
+    OpenApiParameter("state", str, enum=[s.value for s in PatchRollout.State],
+                     description="Comma-separated states to list. Default: every state."),
+], responses={200: TasksRolloutSerializer(many=True),
                                            400: TasksDetailSerializer})
 @extend_schema(methods=["POST"], request=TasksRolloutStartSerializer,
                responses={201: TasksRolloutStartResponseSerializer,
