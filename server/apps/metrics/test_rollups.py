@@ -155,6 +155,15 @@ class BucketedHistoryTests(TestCase):
         self.assertEqual(r["X-Vigil-Bucket"], "1h")
         self.assertEqual([row["value"] for row in r.json()], [3.0])
 
+    def test_an_answer_stops_at_the_row_cap_keeping_the_newest(self):
+        day = rollups._floor(NOW, timedelta(days=1))
+        for i in range(5):
+            self._add(day - timedelta(days=i + 1), float(i))
+        with patch.object(rollups, "MAX_ROWS", 3):
+            r = self._get(**{"from": _iso(NOW - timedelta(days=60)), "to": _iso(NOW)})
+        self.assertEqual([row["value"] for row in r.json()], [0.0, 1.0, 2.0])
+        self.assertEqual(r["X-Vigil-Truncated"], "1")
+
     def test_has_rollups_is_false_on_sqlite(self):
         self.assertFalse(rollups.has_rollups())
 
@@ -172,7 +181,8 @@ class BucketedHistoryTests(TestCase):
             rows = rollups.history(self.host.pk, "system", "cpu", start, NOW, "1h")
 
         view.assert_called_once_with(rollups.BUCKETS["1h"][0], self.host.pk,
-                                     "system", "cpu", rollups._floor(start, size), boundary)
+                                     "system", "cpu", rollups._floor(start, size), boundary,
+                                     rollups.MAX_ROWS - len(raw))
         self.assertEqual(rows[:len(raw)], raw)
         self.assertEqual(rows[len(raw):], [marker])
 

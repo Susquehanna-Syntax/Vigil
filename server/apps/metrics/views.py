@@ -86,6 +86,8 @@ def metric_history(request, host_id, category, metric_name):
             response["X-Vigil-Bucket"] = bucket
             response["X-Vigil-Sampled"] = "0"
             response["X-Vigil-Total-Points"] = str(len(rows))
+            # The oldest buckets were left out to stay under the row cap.
+            response["X-Vigil-Truncated"] = "1" if len(rows) >= rollups.MAX_ROWS else "0"
             return response
 
     # Sample across the whole window rather than truncating to the newest N.
