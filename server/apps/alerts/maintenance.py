@@ -39,6 +39,38 @@ def is_active(window, at=None) -> bool:
     return False
 
 
+def occurrence(window, after, horizon):
+    """``(start, end)`` of *window*'s occurrence that is running at *after*, or
+    else the first one starting before ``after + horizon``; None when there is
+    none. Both are aware datetimes. A disabled window has none."""
+    if not window.enabled:
+        return None
+    if window.kind == MaintenanceWindow.Kind.ONCE:
+        if not (window.starts_at and window.ends_at):
+            return None
+        if window.ends_at > after and window.starts_at < after + horizon:
+            return window.starts_at, window.ends_at
+        return None
+    if window.start_time is None or not window.weekdays:
+        return None
+    try:
+        tz = ZoneInfo(window.timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        tz = ZoneInfo("UTC")
+    local_after = after.astimezone(tz)
+    length = timedelta(minutes=min(window.duration_minutes, MAX_WEEKLY_MINUTES))
+    first = local_after.date() - timedelta(days=1)
+    for offset in range(horizon.days + 2):
+        day = first + timedelta(days=offset)
+        if day.weekday() not in window.weekdays:
+            continue
+        start = datetime.combine(day, window.start_time, tzinfo=tz)
+        end = start + length
+        if end > after and start < after + horizon:
+            return start, end
+    return None
+
+
 def covers(window, host) -> bool:
     """Does *window* apply to *host*, ignoring time?"""
     sid = window.site_id

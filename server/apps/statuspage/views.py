@@ -1,4 +1,7 @@
+from datetime import timedelta
+
 from django.shortcuts import get_object_or_404, render
+from django.utils.timezone import now
 from drf_spectacular.utils import extend_schema
 from rest_framework import status as http
 from rest_framework.decorators import api_view, permission_classes
@@ -6,6 +9,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.permissions import IsAdmin
+from apps.alerts.maintenance import covers, hosts_in_maintenance, occurrence
+from apps.alerts.models import MaintenanceWindow
 from apps.hosts.models import Host
 from vigil import scoping
 from vigil.licensing import has_feature, upgrade_body
@@ -86,27 +91,83 @@ def _public_key(page, host) -> str:
     return hmac.new(page.token.encode(), str(host.id).encode(), hashlib.sha256).hexdigest()[:16]
 
 
-def _page_hosts(page):
-    """The host rows the page renders: current up/down, uptime bars, and the
-    overall percent. Shared by the HTML page and its polling JSON endpoint."""
+NOTICE_HORIZON = timedelta(days=7)
+MAX_NOTICES = 5
+
+
+def _card_state(in_maintenance: bool, up: bool) -> str:
+    """The state key the public page renders one host as. The template's CSS
+    and its live-refresh script both switch on these exact strings."""
+    if in_maintenance:
+        return "maintenance"
+    return "up" if up else "down"
+
+
+def _page_view(page):
+    """Everything the page renders: host rows with their state, the headline
+    flags, and the maintenance notices. Shared by the HTML page and its polling
+    JSON endpoint."""
     labels = page.host_labels or {}
     host_objs = list(page.hosts())
+    scoping.prime_site_ids(host_objs)
+    in_maint = hosts_in_maintenance(host_objs)
     history = _uptime_history(host_objs)
     hosts = []
     for h in host_objs:
         hist = history.get(str(h.id), {})
         pct = hist.get("pct")
+        up = h.status == Host.Status.ONLINE
+        state = _card_state(h.pk in in_maint, up)
         hosts.append({
             # Opaque and per page: the live refresh only needs a stable key to
             # find each card, and the public page should not publish the
             # host's internal id.
             "id": _public_key(page, h),
             "hostname": labels.get(str(h.id)) or h.hostname,
-            "up": h.status == Host.Status.ONLINE,
+            "up": up,
+            "state": state,
             "bars": hist.get("bars", []),
             "uptime_pct": f"{pct * 100:.2f}" if pct is not None else None,
         })
-    return hosts
+    return {
+        "hosts": hosts,
+        "all_up": not any(h["state"] == "down" for h in hosts),
+        "up_count": sum(1 for h in host_objs if h.status == Host.Status.ONLINE),
+        "maintenance_count": len(in_maint),
+        "notices": _notices(page, host_objs, labels),
+    }
+
+
+def _notices(page, host_objs, labels):
+    """The maintenance windows covering this page's hosts that are running now
+    or start within NOTICE_HORIZON. The window's own name is internal and never
+    reaches the public page."""
+    moment = now()
+    notices = []
+    for window in MaintenanceWindow.objects.filter(
+            enabled=True).prefetch_related("hosts"):
+        occ = occurrence(window, moment, NOTICE_HORIZON)
+        if occ is None:
+            continue
+        start, end = occ
+        covered = sorted({labels.get(str(h.id)) or h.hostname
+                          for h in host_objs if covers(window, h)})
+        if not covered:
+            continue
+        notices.append({"start": start, "end": end,
+                        "hosts": covered})
+    notices.sort(key=lambda n: (not (n["start"] <= moment), n["start"]))
+    out = []
+    for n in notices[:MAX_NOTICES]:
+        out.append({
+            "starts_at": n["start"].isoformat(),
+            "ends_at": n["end"].isoformat(),
+            "active": n["start"] <= moment,
+            "hosts": n["hosts"],
+            "start": n["start"],
+            "end": n["end"],
+        })
+    return out
 
 
 @scoping.system_view(reason="public status page: the page token is the access control")
@@ -116,12 +177,14 @@ def public_status(request, token):
     Business page cleanly falls back to the free look instead of breaking."""
     page = get_object_or_404(StatusPage, token=token, enabled=True)
     branded = has_feature("status_branding")
-    hosts = _page_hosts(page)
+    view = _page_view(page)
     return render(request, "status_public.html", {
         "page": page,
-        "hosts": hosts,
-        "all_up": all(h["up"] for h in hosts) if hosts else True,
-        "up_count": sum(1 for h in hosts if h["up"]),
+        "hosts": view["hosts"],
+        "all_up": view["all_up"],
+        "up_count": view["up_count"],
+        "maintenance_count": view["maintenance_count"],
+        "notices": view["notices"],
         "window_days": UPTIME_WINDOW_DAYS,
         "branded": branded,
         "show_badge": not (branded and page.hide_badge),
@@ -137,12 +200,15 @@ def public_status_data(request, token):
     from django.http import JsonResponse
 
     page = get_object_or_404(StatusPage, token=token, enabled=True)
-    hosts = _page_hosts(page)
+    view = _page_view(page)
     return JsonResponse({
-        "all_up": all(h["up"] for h in hosts) if hosts else True,
-        "up_count": sum(1 for h in hosts if h["up"]),
-        "total": len(hosts),
-        "hosts": hosts,
+        "all_up": view["all_up"],
+        "up_count": view["up_count"],
+        "total": len(view["hosts"]),
+        "maintenance_count": view["maintenance_count"],
+        "hosts": view["hosts"],
+        "notices": [{k: n[k] for k in ("starts_at", "ends_at", "active", "hosts")}
+                    for n in view["notices"]],
     })
 
 
