@@ -42,6 +42,8 @@ class HostsHostSerializer(serializers.Serializer):
     reboot_required = serializers.BooleanField()
     last_checkin = serializers.DateTimeField(allow_null=True)
     created_at = serializers.DateTimeField()
+    depends_on = serializers.UUIDField(
+        allow_null=True, help_text="The host this one sits behind, or null.")
     site = serializers.CharField(allow_null=True, help_text="Owning site id.")
     site_name = serializers.CharField()
 
@@ -164,6 +166,12 @@ class HostsTagsWriteSerializer(serializers.Serializer):
     #: Not a validated list of strings here: the view refuses a body that is
     #: not a list with its own 400, and drops anything else per entry.
     tags = serializers.ListField(child=serializers.CharField())
+
+
+class HostsDependsOnWriteSerializer(serializers.Serializer):
+    """The host this one depends on, or null to clear it."""
+
+    depends_on = serializers.UUIDField(allow_null=True)
 
 
 class HostsTotpSerializer(serializers.Serializer):

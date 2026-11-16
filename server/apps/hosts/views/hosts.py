@@ -1,4 +1,6 @@
 """apps.hosts.views: hosts views (split from the old single module, unchanged)."""
+import uuid
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 
@@ -9,6 +11,7 @@ from ..api_schema import (
     HostsAdSyncInlineSerializer,
     HostsAdSyncQueuedSerializer,
     HostsDeletedSerializer,
+    HostsDependsOnWriteSerializer,
     HostsDeviceSerializer,
     HostsDeviceWriteSerializer,
     HostsErrorSerializer,
@@ -252,7 +255,71 @@ def host_tags(request, host_id):
                                 status=status.HTTP_400_BAD_REQUEST)
         host.tags = wanted
         host.save(update_fields=["tags", "updated_at"])
-    return Response(HostSerializer(host).data)
+    return Response(HostSerializer(host, context={
+        "host_sites": scoping.sites_for_hosts([host.id])}).data)
+
+
+@extend_schema(request=HostsDependsOnWriteSerializer,
+               responses={200: HostsHostSerializer, 400: HostsErrorSerializer,
+                          403: HostsErrorSerializer, 404: HostsErrorSerializer})
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def host_depends_on(request, host_id):
+    """Say which host this one sits behind, so while that one is offline this
+    one's offline alert is created but not sent (apps.alerts.tasks). The loop
+    and same-site rules are checked here because nothing at the database level
+    can express them."""
+    host, denied = scoping.host_or_404(request, host_id)
+    if denied is not None:
+        return denied
+
+    if not can(request.user, scoping.scope_of(host), "hosts", "edit"):
+        return Response({"error": "Not permitted"}, status=status.HTTP_403_FORBIDDEN)
+
+    raw = request.data.get("depends_on")
+    if raw is None:
+        host.depends_on = None
+        host.save(update_fields=["depends_on"])
+        return Response(HostSerializer(host, context={
+            "host_sites": scoping.sites_for_hosts([host.id])}).data)
+
+    try:
+        parsed = uuid.UUID(str(raw))
+    except ValueError:
+        return Response({"error": "depends_on must be a host id or null"},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    parent = Host.objects.filter(pk=parsed).exclude(
+        status=Host.Status.REJECTED).first()
+    if parent is None or not scoping.host_in_scope(request.user, parent):
+        # The same words either way, so a host in another site is not confirmed
+        # to exist.
+        return Response({"error": "No such host"}, status=status.HTTP_400_BAD_REQUEST)
+
+    if parent.pk == host.pk:
+        return Response({"error": "A host cannot depend on itself"},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    if scoping.site_id_of(parent) != scoping.site_id_of(host):
+        return Response({"error": "A host can only depend on a host in its own site"},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    current = parent.pk
+    for _ in range(50):
+        current = Host.objects.filter(pk=current).values_list(
+            "depends_on_id", flat=True).first()
+        if current == host.pk:
+            return Response(
+                {"error": f"That would make a loop: {parent.hostname} already "
+                          f"depends on {host.hostname}"},
+                status=status.HTTP_400_BAD_REQUEST)
+        if current is None:
+            break
+
+    host.depends_on = parent
+    host.save(update_fields=["depends_on"])
+    return Response(HostSerializer(host, context={
+        "host_sites": scoping.sites_for_hosts([host.id])}).data)
 
 
 @extend_schema(request=HostsTotpSerializer,

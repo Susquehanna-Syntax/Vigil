@@ -135,7 +135,10 @@ class OfflineNotificationTests(TestCase):
         host = self._stale_host()
         _mark_stale_hosts_offline()
         alert = self._offline_alerts(host).get()
-        Alert.objects.filter(pk=alert.pk).update(notified_at=None, resolve_pending=True)
+        # As a check-in leaves it (resolved, notice owed), for an alert whose
+        # firing notice never went out.
+        Alert.objects.filter(pk=alert.pk).update(
+            state=Alert.State.RESOLVED, notified_at=None, resolve_pending=True)
         self.dispatch.reset_mock()
         _mark_stale_hosts_offline()
         self.dispatch.assert_not_called()
