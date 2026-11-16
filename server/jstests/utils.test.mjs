@@ -31,6 +31,8 @@ test('formatBytes and the per-second formatter', () => {
   assert.equal(w.formatBytes(0), '0 B');
   assert.equal(w.formatBytes(1536), '1.5 KB');
   assert.equal(w.formatBytes(1024 ** 3), '1 GB');
+  assert.equal(w.formatBytes(0.5), '0.5 B');   // an axis tick, not "512 undefined"
+  assert.equal(w.formatBytes(1024 ** 6), '1048576 TB');
   assert.equal(w._formatBytesPerSec(-5), '0 B/s');
   assert.equal(w._formatBytesPerSec(Infinity), '0 B/s');
   assert.equal(w._formatBytesPerSec(2048), '2.00 KB/s');
