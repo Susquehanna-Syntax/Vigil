@@ -59,6 +59,9 @@
     "static/js/vigil-rdp.js",
     "static/js/vigil-devices.js",
     "static/js/vigil-tasks.js",
-    "static/js/vigil-reports.js"
+    "static/js/vigil-reports.js",
+    "static/js/vigil-sites.js",
+    "static/js/vigil-pickers.js",
+    "static/js/vigil-monitor.js"
   ]
 }

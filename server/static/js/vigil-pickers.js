@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-pickers.js
 // Owns: two reusable stacked modals used from the playbook/automation editors
 // (and the AI "Use this" flow):
@@ -14,9 +15,41 @@
 // Depends on: vigil-utils.js (mountModal, apiJson, escHtml, showToast,
 //             confirmModal, yamlToHtml).
 
-/* ═══ Picker modal ═══════════════════════════════════════════════════════ */
+/** One row of the picker list, as a caller builds it or _loadPickerData makes
+ *  it. vigil-tags.js spells out the same shape in its own typedef; keep the two identical. */
+/** @typedef {{key: string|number, name: string, meta?: string|null, risk?: string|null, editable?: boolean, raw?: any}} PickerItem */
+/** `openPicker`'s onSelect. vigil-reprovision.js adds a `close` field to the
+ *  options object it passes and calls that from its own onSelect. */
+/** @typedef {((item: any) => void) & {close?: () => void}} PickerOnSelect */
+/** One option of `openPicker`. `type` names a list the picker can fetch
+ *  ('task' | 'playbook' | 'machine' | 'rollout_target') or anything at all
+ *  when the caller supplies its own `items`, which openPicker never fetches. */
+/** @typedef {{type: string, title?: string, onSelect: PickerOnSelect, allowAdd?: boolean, items?: PickerItem[], ineligible?: (item: PickerItem) => string|null|undefined}} PickerOpts */
+/** @type {PickerOpts|null} */
 let _pickerState = null;
+/** A row of /api/v1/tasks/definitions/, as far as the picker and the in-modal editor read it. */
+/** @typedef {{id: string, name: string, risk_level?: string|null, action_count?: number, parsed_spec?: {actions?: object[]}, yaml_source?: string}} TaskDefRow */
+/** @typedef {{id: string, name: string, steps?: any[], step_count?: number, enabled?: boolean}} PlaybookRow */
+/** One host of /api/v1/status-pages/hosts/, as far as the machine picker reads it. */
+/** @typedef {{id: string, hostname: string, os?: string, up?: boolean, site_id?: string|null, tags?: string[]}} HostRow */
+/** One action's registry entry from /api/v1/tasks/actions/. */
+/** @typedef {{label?: string, required?: string[], optional?: string[]}} ActionEntry */
+/** One action of a task definition's parsed spec, as openInputsModal reads it. */
+/** @typedef {{type: string, params?: Record<string, any>}} SpecAction */
+/** A task definition whose per-action params the inputs modal can override. */
+/** @typedef {{name: string, parsed_spec?: {actions?: SpecAction[]}}} InputsModalDef */
+/** One action of a validate response — its declared step, as the preview shows it. */
+/** @typedef {{id?: string, label?: string, type?: string, params?: Record<string, any>}} ValidatedAction */
+/** What /api/v1/tasks/definitions/validate/ says about some task YAML. */
+/** @typedef {{parsed_spec?: {name?: string, derived_risk?: string, risk?: string, actions?: ValidatedAction[]}}} ValidateResult */
+/** One input a caller types into an inputs row, as the form renders it. */
+/** @typedef {{id: string, type?: string|null, label?: string|null, description?: string|null, required?: boolean, default?: any, choices?: {value: string, label?: string|null}[]}} DeclaredInput */
+/** One option of `openTaskModal`. */
+/** @typedef {{onSaved?: (def: any) => void, id?: string|number|null, yaml?: string}} TaskModalOpts */
 
+/* ═══ Picker modal ═══════════════════════════════════════════════════════ */
+
+/** @param {PickerOpts} opts @returns {Promise<void>} */
 async function openPicker(opts) {
   // opts: { type: 'task'|'playbook'|'machine', title, onSelect(item), allowAdd }
   _pickerState = opts;
@@ -33,15 +66,15 @@ async function openPicker(opts) {
       <button class="btn btn-mint btn-sm" id="picker-add" type="button">Add new</button>
     </div>
     <div class="picker-list" id="picker-list"></div>`);
-  m.modal.querySelector('#picker-close').onclick = m.close;
-  m.modal.querySelector('#picker-title').textContent =
+  /** @type {HTMLElement} */ (m.modal.querySelector('#picker-close')).onclick = m.close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#picker-title')).textContent =
     opts.title || ('Pick a ' + opts.type);
-  const addBtn = m.modal.querySelector('#picker-add');
+  const addBtn = /** @type {HTMLButtonElement} */ (m.modal.querySelector('#picker-add'));
   addBtn.style.display = opts.allowAdd === false ? 'none' : '';
   addBtn.textContent = opts.type === 'playbook' ? 'New playbook'
     : opts.type === 'task' ? 'New task' : 'Add';
   addBtn.onclick = () => _pickerAdd(opts.type);
-  const search = m.modal.querySelector('#picker-search');
+  const search = /** @type {HTMLInputElement} */ (m.modal.querySelector('#picker-search'));
   search.value = '';
   search.oninput = () => _renderPickerList(search.value);
   m.open();
@@ -52,10 +85,13 @@ async function openPicker(opts) {
 
 function closePicker() { const o = document.getElementById('picker-overlay'); if (o) o.classList.remove('open'); document.getElementById('picker-modal')?.classList.remove('open'); }
 
+/** @type {string|null} */
 let _pickerPartialFailure = null;
+/** @type {PickerItem[]} */
 let _pickerItems = [];
+/** @param {string} type @returns {Promise<void>} */
 async function _loadPickerData(type) {
-  const list = document.getElementById('picker-list');
+  const list = /** @type {HTMLElement} */ (document.getElementById('picker-list'));
   list.innerHTML = '<div class="picker-empty">Loading…</div>';
   // A caller may supply its own items (a fixed in-page list, like the task
   // editor's starter templates) rather than a type the picker knows how to
@@ -70,7 +106,7 @@ async function _loadPickerData(type) {
   try {
     if (type === 'task') {
       const defs = await apiJson('/api/v1/tasks/definitions/');
-      _pickerItems = (Array.isArray(defs) ? defs : defs.results || []).map(d => ({
+      _pickerItems = (Array.isArray(defs) ? defs : defs.results || []).map((/** @type {TaskDefRow} */ d) => ({
         key: d.id, name: d.name, meta: (d.risk_level || 'standard') + ' · ' +
           ((d.parsed_spec && d.parsed_spec.actions ? d.parsed_spec.actions.length : d.action_count || 0) + ' action(s)'),
         risk: d.risk_level, editable: true, raw: d }));
@@ -89,35 +125,36 @@ async function _loadPickerData(type) {
       _pickerPartialFailure = bls === null ? 'playbooks' : null;
       const defList = Array.isArray(defs) ? defs : defs.results || [];
       const blRaw = bls === null ? [] : (Array.isArray(bls) ? bls : bls.playbooks || []);
-      const blList = blRaw.filter(b => b.enabled !== false);
+      const blList = blRaw.filter((/** @type {PlaybookRow} */ b) => b.enabled !== false);
       _pickerItems = [
-        ...defList.map(d => ({
+        ...defList.map((/** @type {TaskDefRow} */ d) => ({
           key: 'task:' + d.id, name: d.name,
           meta: 'task · ' + (d.risk_level || 'standard'),
           risk: d.risk_level, editable: false, raw: d })),
-        ...blList.map(b => ({
+        ...blList.map((/** @type {PlaybookRow} */ b) => ({
           key: 'playbook:' + b.id, name: b.name,
           meta: 'playbook · ' + b.steps.length + (b.steps.length === 1 ? ' step' : ' steps'),
           editable: false, raw: b })),
       ];
     } else if (type === 'playbook') {
       const bl = await apiJson('/api/v1/playbooks/');
-      _pickerItems = bl.map(b => ({ key: b.name, name: b.name,
+      _pickerItems = bl.map((/** @type {PlaybookRow} */ b) => ({ key: b.name, name: b.name,
         meta: b.steps.length + ' step(s)' + (b.enabled ? '' : ' · auto-enroll off'),
         editable: true, raw: b }));
     } else {
       const hosts = await apiJson('/api/v1/status-pages/hosts/');
-      _pickerItems = hosts.map(h => ({ key: h.id, name: h.hostname,
+      _pickerItems = hosts.map((/** @type {HostRow} */ h) => ({ key: h.id, name: h.hostname,
         meta: h.up ? 'online' : 'offline', editable: false, raw: h }));
     }
   } catch (e) { list.innerHTML = `<div class="picker-empty">${escHtml(e.message)}</div>`; }
 }
 
+/** @param {string} q @returns {void} */
 function _renderPickerList(q) {
-  const list = document.getElementById('picker-list');
+  const list = /** @type {HTMLElement} */ (document.getElementById('picker-list'));
   if (!list) return;
   q = (q || '').trim().toLowerCase();
-  const items = q ? _pickerItems.filter(i => i.name.toLowerCase().includes(q) || (i.meta || '').toLowerCase().includes(q)) : _pickerItems;
+  const items = q ? _pickerItems.filter((/** @type {PickerItem} */ i) => i.name.toLowerCase().includes(q) || (i.meta || '').toLowerCase().includes(q)) : _pickerItems;
   if (!items.length) {
     // Distinguish "we could not ask" from "there is nothing": they point an
     // operator in opposite directions.
@@ -127,7 +164,7 @@ function _renderPickerList(q) {
     list.innerHTML = `<div class="picker-empty">${_pickerItems.length ? 'No matches.' : nothing}</div>`;
     return;
   }
-  list.innerHTML = items.map((i, idx) => {
+  list.innerHTML = items.map((/** @type {PickerItem} */ i, /** @type {number} */ idx) => {
     // Some contexts can't accept every item (e.g. high-risk tasks while
     // building a playbook) — show them greyed with the reason, not hidden.
     const why = _pickerState.ineligible ? _pickerState.ineligible(i) : null;
@@ -143,15 +180,15 @@ function _renderPickerList(q) {
       </div>
     </div>`;
   }).join('');
-  list.querySelectorAll('[data-pick-sel]').forEach(b => b.addEventListener('click', () => {
+  list.querySelectorAll('[data-pick-sel]').forEach((/** @type {HTMLElement} */ b) => b.addEventListener('click', () => {
     const item = items[+b.dataset.pickSel];
     closePicker();
     _pickerState.onSelect(item);
   }));
-  list.querySelectorAll('[data-pick-edit]').forEach(b => b.addEventListener('click', () => {
+  list.querySelectorAll('[data-pick-edit]').forEach((/** @type {HTMLElement} */ b) => b.addEventListener('click', () => {
     const item = items[+b.dataset.pickEdit];
     if (_pickerState.type === 'task') {
-      openTaskModal({ id: item.key, onSaved: () => { _loadPickerData('task').then(() => _renderPickerList(document.getElementById('picker-search').value)); } });
+      openTaskModal({ id: item.key, onSaved: () => { _loadPickerData('task').then(() => _renderPickerList(/** @type {HTMLInputElement} */ (document.getElementById('picker-search')).value)); } });
     } else if (_pickerState.type === 'playbook') {
       closePicker();
       // Reuse the playbooks editor modal for the playbook.
@@ -173,8 +210,10 @@ function _pickerAdd(type) {
 }
 
 /* ═══ Inputs modal — per-use param overrides for a task definition ═══════ */
+/** @type {Record<string, ActionEntry>|null} */
 let _actionRegistry = null;
 
+/** @param {{def: InputsModalDef, override?: Record<string, any>, onSave: (override: Record<string, any>) => void}} opts @returns {Promise<void>} */
 async function openInputsModal(opts) {
   // opts: { def, override, onSave(newOverride) }
   if (!_actionRegistry) _actionRegistry = await apiJson('/api/v1/tasks/actions/');
@@ -182,13 +221,13 @@ async function openInputsModal(opts) {
   const override = opts.override || {};
   const m = mountModal('inputs', { wide: true, variant: 'm-pop m-sheet-sm' });
   const actions = (def.parsed_spec && def.parsed_spec.actions) || [];
-  const sections = actions.map((a, i) => {
+  const sections = actions.map((/** @type {SpecAction} */ a, /** @type {number} */ i) => {
     const entry = _actionRegistry[a.type];
     const head = `<div class="inputs-action"><span class="bl-editor-step-num">${i + 1}</span> ${escHtml(entry && entry.label ? entry.label : a.type)}</div>`;
     if (!entry) return head + '<div class="muted-note">No editable inputs.</div>';
     const names = [...(entry.required || []), ...(entry.optional || [])];
     if (!names.length) return head + '<div class="muted-note">This action takes no inputs.</div>';
-    const rows = names.map(name => {
+    const rows = names.map((/** @type {string} */ name) => {
       const required = (entry.required || []).includes(name);
       const current = (override[String(i)] || {})[name];
       const fallback = (a.params || {})[name];
@@ -213,15 +252,16 @@ async function openInputsModal(opts) {
       <button class="btn btn-ghost" id="inputs-cancel" type="button">Cancel</button>
       <button class="btn btn-mint" id="inputs-save" type="button">Save inputs</button>
     </div>`);
-  m.modal.querySelector('#inputs-close').onclick = m.close;
-  m.modal.querySelector('#inputs-cancel').onclick = m.close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#inputs-close')).onclick = m.close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#inputs-cancel')).onclick = m.close;
   m.overlay.onclick = m.close;
-  m.modal.querySelector('#inputs-reset').onclick = () => {
-    m.modal.querySelectorAll('[data-inp-action]').forEach(el => { el.value = ''; });
+  /** @type {HTMLElement} */ (m.modal.querySelector('#inputs-reset')).onclick = () => {
+    m.modal.querySelectorAll('[data-inp-action]').forEach((/** @type {HTMLInputElement} */ el) => { el.value = ''; });
   };
-  m.modal.querySelector('#inputs-save').onclick = () => {
+  /** @type {HTMLElement} */ (m.modal.querySelector('#inputs-save')).onclick = () => {
+    /** @type {Record<string, Record<string, string>>} */
     const built = {};
-    m.modal.querySelectorAll('[data-inp-action]').forEach(el => {
+    m.modal.querySelectorAll('[data-inp-action]').forEach((/** @type {HTMLInputElement} */ el) => {
       const v = el.value.trim();
       if (!v) return;
       const key = el.dataset.inpAction;
@@ -241,6 +281,7 @@ async function openInputsModal(opts) {
    from a saved automation rather than the declaration's defaults. Same
    per-type controls and the same reading/validation rules as
    _renderDeployInputs / _readDeployInputs in vigil-deploy.js. */
+/** @param {HTMLElement} container @param {DeclaredInput[]} inputs @param {Record<string, any>=} values @returns {void} */
 function inputsFormMount(container, inputs, values) {
   values = values || {};
   container.replaceChildren();
@@ -308,13 +349,15 @@ function inputsFormMount(container, inputs, values) {
   }
 }
 
+/** @param {HTMLElement} container @returns {{values: Record<string, any>, error: string}} */
 function inputsFormRead(container) {
+  /** @type {Record<string, any>} */
   const values = {};
   let error = '';
-  for (const row of container.querySelectorAll('.inputs-form-row')) {
+  for (const row of /** @type {NodeListOf<HTMLElement>} */ (container.querySelectorAll('.inputs-form-row'))) {
     const id = row.dataset.inputId;
     const type = row.dataset.inputType;
-    const ctrl = row.querySelector('.inputs-form-control');
+    const ctrl = /** @type {HTMLInputElement|null} */ (row.querySelector('.inputs-form-control'));
     if (!ctrl) continue;
     if (!error) {
       const name = (row.querySelector('.inputs-form-label')?.firstChild?.textContent || id).trim();
@@ -332,8 +375,14 @@ function inputsFormRead(container) {
 }
 
 /* ═══ In-modal task editor ═══════════════════════════════════════════════ */
-let _taskModalSaved = null, _taskModalId = null, _taskValidateTimer = null;
+/** @type {((def: any) => void)|null} */
+let _taskModalSaved = null;
+/** @type {string|number|null} */
+let _taskModalId = null;
+/** @type {number|null} */
+let _taskValidateTimer = null;
 
+/** @param {TaskModalOpts=} opts @returns {void} */
 function openTaskModal(opts) {
   opts = opts || {};
   _taskModalSaved = opts.onSaved || null;
@@ -365,11 +414,11 @@ function openTaskModal(opts) {
       <button class="btn btn-ghost" id="te-cancel" type="button">Cancel</button>
       <button class="btn btn-mint" id="te-save">Save task</button>
     </div>`);
-  m.modal.querySelector('#te-close').onclick = m.close;
-  m.modal.querySelector('#te-cancel').onclick = m.close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#te-close')).onclick = m.close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#te-cancel')).onclick = m.close;
   m.overlay.onclick = m.close;
-  const ta = m.modal.querySelector('#te-yaml');
-  const hl = m.modal.querySelector('#te-highlight');
+  const ta = /** @type {HTMLTextAreaElement} */ (m.modal.querySelector('#te-yaml'));
+  const hl = /** @type {HTMLElement} */ (m.modal.querySelector('#te-highlight'));
   const sync = () => {
     hl.innerHTML = yamlToHtml(ta.value) + '\n';   // trailing NL keeps last line visible
     hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft;
@@ -380,24 +429,26 @@ function openTaskModal(opts) {
     _taskValidateTimer = setTimeout(() => _teValidate(ta.value), 400);
   });
   ta.addEventListener('scroll', () => { hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; });
-  m.modal.querySelector('#te-save').onclick = () => _teSave(ta.value, m.close);
+  /** @type {HTMLElement} */ (m.modal.querySelector('#te-save')).onclick = () => _teSave(ta.value, m.close);
   m.open();
 
+  /** @param {string} yaml @returns {void} */
   const load = (yaml) => { ta.value = yaml || ''; sync(); _teValidate(ta.value); };
-  if (opts.id) apiJson(`/api/v1/tasks/definitions/${opts.id}/`).then(d => load(d.yaml_source || ''));
+  if (opts.id) apiJson(`/api/v1/tasks/definitions/${opts.id}/`).then((/** @type {TaskDefRow} */ d) => load(d.yaml_source || ''));
   else load(opts.yaml || '');
   setTimeout(() => ta.focus(), 50);
 }
 
+/** @param {string} yaml @returns {Promise<void>} */
 async function _teValidate(yaml) {
-  const prev = document.getElementById('te-preview');
+  const prev = /** @type {HTMLElement|null} */ (document.getElementById('te-preview'));
   if (!prev) return;
   if (!yaml.trim()) { prev.innerHTML = '<div class="muted-note">Start typing to see steps.</div>'; return; }
   try {
-    const r = await apiJson('/api/v1/tasks/definitions/validate/', { method: 'POST', body: JSON.stringify({ yaml_source: yaml }) });
+    const r = /** @type {ValidateResult} */ (await apiJson('/api/v1/tasks/definitions/validate/', { method: 'POST', body: JSON.stringify({ yaml_source: yaml }) }));
     const spec = r.parsed_spec || {};
     const risk = spec.derived_risk || spec.risk || 'standard';
-    const steps = (spec.actions || []).map((a, i) => `
+    const steps = (spec.actions || []).map((/** @type {ValidatedAction} */ a, /** @type {number} */ i) => `
       <div class="te-step">
         <div class="te-step-num">${i + 1}</div>
         <div class="te-step-body">
@@ -415,6 +466,7 @@ async function _teValidate(yaml) {
   }
 }
 
+/** @param {string} yaml @param {() => void} close @returns {Promise<any>} */
 async function _teSave(yaml, close) {
   if (!yaml.trim()) return showToast('Write some task YAML', 'error');
   try {

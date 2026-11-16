@@ -57,6 +57,24 @@ declare function openPicker(opts: {type: 'task' | 'playbook' | 'machine' | 'tag'
   onSelect: (item: {key: string, [k: string]: any}) => void, allowAdd?: boolean,
   items?: object[], ineligible?: (item: {key: string, [k: string]: any}) => string|null|undefined}): Promise<void>;
 
+/** Defined in server/static/js/vigil-host-cards.js (the pinned-hosts list it
+ *  keeps in localStorage). */
+declare function getPins(): {id: string, hostname: string, status: string}[];
+
+/** Defined in server/static/js/vigil-host-cards.js (the pin chip strip above the
+ *  host dropdown; vigil-monitor.js repaints it when the selected host changes). */
+declare function renderPinBar(): void;
+
+/** Defined in server/static/js/vigil-host-cards.js (the Connect menu a host card
+ *  or the monitor header opens; `anchorEl` is where it hangs from). */
+declare function openConnectMenu(hostId: string, hostname: string, anchorEl: HTMLElement): Promise<void>;
+
+/** Defined in server/static/js/vigil-vulns.js (reload the Vulnerabilities page). */
+declare function refreshVulns(): Promise<void>;
+
+/** Defined in server/static/js/vigil-settings.js (reload the Account pane's TOTP status). */
+declare function refreshTotpStatus(): Promise<void>;
+
 /** Defined in server/static/js/vigil-host-cards.js (the two-line Jackil block a
  *  detail view shows when Jackil is configured). `stillCurrent` is the caller's
  *  staleness check; vigil-tasks.js calls it behind a typeof guard. */
@@ -189,6 +207,10 @@ declare const Guacamole: any;
 /** Defined in server/static/js/vigil-pickers.js (the in-modal task editor;
  *  `opts.id` opens an existing definition, `opts.yaml` seeds a new one). */
 declare function openTaskModal(opts?: {id?: string|number, yaml?: string, onSaved?: (def: any) => void}): void;
+
+/** Defined in server/static/js/vigil-playbooks.js (the playbook editor modal;
+ *  `data` prefills a new or duplicated playbook, null starts an empty one). */
+declare function _openEditor(data: object|null, editingId: string|number|null): void;
 
 /** Defined in server/static/js/vigil-hunts.js (a run with any hunt step). */
 declare function _runHasHuntSteps(run: {tasks?: object[]} | null | undefined): boolean;

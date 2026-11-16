@@ -15,8 +15,8 @@
 /** @typedef {{id: number, name: string, key?: string, kind?: string, description?: string, host_count: number, editable: boolean, can_change?: boolean, site_id: string|null}} TagRow */
 /** One openPicker row — what vigil-pickers.js renders and hands back to
  *  `onSelect`. A picked tag's ✓ goes in `name`, not `key`: the picker matches
- *  on `key`, and "west  ✓" would match no tag. */
-/** @typedef {{key: string, name: string, meta?: string, editable?: boolean, risk?: string, raw?: any}} PickerItem */
+ *  on `key`, and "west  ✓" would match no tag. The same shape is typed in
+ *  vigil-pickers.js, which declares that name for the checker now. */
 
 /** @type {TagRow[]} */
 let _allTags = [];
