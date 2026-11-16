@@ -260,6 +260,14 @@
   </div>
 
   <div class="detail-section">
+    <div class="detail-section-title">Depends on</div>
+    <select class="form-control" id="detail-depends-on" aria-label="The host this one depends on" style="font-size:12px;padding:7px 10px;">
+      <option value="">Nothing</option>
+    </select>
+    <div class="confirm-hint" style="margin-top:6px;">The switch, firewall or hypervisor this host sits behind. While that host is offline, this host's offline alert is kept off the notification channels: the other host's alert is the one that goes out.</div>
+  </div>
+
+  <div class="detail-section">
     <div class="detail-section-title">Quick Actions</div>
     <div class="detail-actions" id="detail-actions">
       <!-- populated by JS based on host mode -->

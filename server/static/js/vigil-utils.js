@@ -90,6 +90,23 @@ async function apiJson(url, opts) {
   return body;
 }
 
+// Every host the API lists, following its pages. `next` is absolute and,
+// behind a proxy, may carry the wrong scheme or host: only its path and query
+// are kept. Stops after 100 pages; a failed page keeps what was read.
+async function fetchAllHosts() {
+  const rows = [];
+  let url = '/api/v1/hosts/';
+  try {
+    for (let page = 0; url && page < 100; page += 1) {
+      const r = await apiJson(url);
+      rows.push(...(Array.isArray(r) ? r : (r.results || [])));
+      const next = Array.isArray(r) ? null : r.next;
+      url = next ? (() => { const u = new URL(next, location.href); return u.pathname + u.search; })() : null;
+    }
+  } catch (e) { /* keep what was read */ }
+  return rows;
+}
+
 /* ── Formatters ──────────────────────────────────────────────────────── */
 /* ── Version comparison ──────────────────────────────────────────────────
    Mirrors _version_key/_is_older in apps/alerts/tasks.py — the alert and the

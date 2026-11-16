@@ -106,18 +106,7 @@ function _maintLocalInput(iso) {
    so the select is simply short and the save still works. */
 async function _maintHostOptions(selected) {
   const wanted = new Set((selected || []).map(String));
-  const rows = [];
-  let url = '/api/v1/hosts/';
-  try {
-    for (let page = 0; url && page < 100; page += 1) {
-      const r = await apiJson(url);
-      rows.push(...(Array.isArray(r) ? r : (r.results || [])));
-      // next is absolute and, behind a proxy, may carry the wrong scheme or
-      // host: keep only its path and query.
-      const next = Array.isArray(r) ? null : r.next;
-      url = next ? (() => { const u = new URL(next, location.href); return u.pathname + u.search; })() : null;
-    }
-  } catch (e) { /* keep what was read */ }
+  const rows = await fetchAllHosts();
   const seen = new Set(rows.map((h) => String(h.id)));
   const missing = [...wanted].filter((id) => !seen.has(id));
   return rows.map((h) => `<option value="${escAttr(h.id)}"${wanted.has(String(h.id)) ? ' selected' : ''}>`
