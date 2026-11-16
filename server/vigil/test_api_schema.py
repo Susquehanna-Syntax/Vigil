@@ -32,13 +32,14 @@ TYPED: set[str] = {
     "licensing", "metrics", "playbooks", "policies", "relays", "remote",
     "reports", "reprovision", "software", "stacks", "statuspage", "tasks",
     "vigil", "vulns",
-}
-
-#: Apps still to type, each one phase of the work.
-PENDING: set[str] = {
-    # The Business apps, which live in the private Vigil_Business repository.
+    # The Business apps (private Vigil_Business repository), checked whenever
+    # they are installed.
     "apps_business",
 }
+
+#: Apps still to type, each one phase of the work. None are left: an app added
+#: later starts here until its views are typed.
+PENDING: set[str] = set()
 
 #: Messages tied to no view file, such as a view mounted at two URLs getting
 #: the same operation id twice (vigil.schema.drop_legacy_routes leaves such an
