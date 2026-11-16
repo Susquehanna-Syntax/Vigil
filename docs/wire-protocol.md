@@ -1,15 +1,15 @@
-"""The agent wire protocol, pinned by vectors both sides run.
+# The agent wire protocol
 
-Phase 60 wrote this down; the two vector files under `protocol/conformance/`
-are what makes it testable rather than folklore. Everything here comes from
-the code named in each section — when they disagree, the code wins and this
-page is a bug.
+How a Vigil agent talks to the server: transport, registration, check-in, the
+task envelope, signing and the `when:` expression language. The two vector files
+under `protocol/conformance/` make it testable. Everything here comes from the
+code named in each section; when they disagree, the code wins and this page is
+a bug.
 
-- Server side of the protocol: `server/vigil/signing.py`,
-  `server/apps/hosts/api_schema.py`, `server/apps/hosts/views/agent.py`.
+- Server side: `server/vigil/signing.py`, `server/apps/hosts/api_schema.py`,
+  `server/apps/hosts/views/agent.py`.
 - Agent side: `agent/vigil_agent/client.py`, `agent/vigil_agent/verify.py`,
   `agent/vigil_agent/expression.py`.
-"""
 
 ## 1. Transport
 
@@ -135,7 +135,7 @@ A task handed out at check-in (`HostsTaskSerializer`):
 | `id` | string | Task id (UUID). Also the `task_id` to report against. |
 | `host_id` | string | The host this task was created for; a v2 signature binds it to the receiving agent instead. |
 | `action` | string | Action name from the server's action registry. |
-| `params` | object | Action parameters, including any resolved `variables` an expression reads. |
+| `params` | object | Action parameters. |
 | `nonce` | string | Unique per task. Makes a signed payload unrepeatable: replaying an old task is a signature failure. |
 | `signature` | string | Base64 Ed25519 over the canonical payload — section 4. An agent rejects a task whose signature does not verify with its pinned key. |
 | `sig_v` | integer, optional | `2`, and only for an agent that advertised `signed_v2`. Its absence on a v2-advertising agent means the envelope was not signed as v2 — reject it. |
@@ -255,7 +255,7 @@ Missing keys resolve to `None`, so a predicate never raises over a context the
 agent has not filled in yet — `agent.os == "linux"` on an agent that reported no
 OS is simply False, `inputs.nope == None` is True, and `None in (...)` is False
 while `None not in (...)` is True. An untestable membership (`7 in host.count`)
-is likewise just False. Booleans are numbers for equality (`params.flag == 1`
+is likewise just False. Booleans are numbers for equality (`agent.flag == 1`
 holds when the value is `true`) but never for ordering.
 
 ## 6. Conformance
