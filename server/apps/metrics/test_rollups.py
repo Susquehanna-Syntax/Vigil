@@ -42,10 +42,15 @@ def _iso(moment):
 
 class PickBucketTests(TestCase):
     def test_boundaries_between_raw_hourly_and_daily(self):
+        skew = rollups.SKEW
         self.assertEqual(rollups.pick_bucket(NOW - timedelta(hours=24), NOW), "raw")
-        self.assertEqual(rollups.pick_bucket(NOW - timedelta(hours=24, seconds=1), NOW), "1h")
-        self.assertEqual(rollups.pick_bucket(NOW - timedelta(days=30), NOW), "1h")
-        self.assertEqual(rollups.pick_bucket(NOW - timedelta(days=30, seconds=1), NOW), "1d")
+        # The 24h and 30d buttons measure from the browser's clock: a request
+        # arriving a moment (or a few minutes) later keeps its resolution.
+        self.assertEqual(rollups.pick_bucket(NOW - timedelta(hours=24, seconds=3), NOW), "raw")
+        self.assertEqual(rollups.pick_bucket(NOW - timedelta(hours=24) - skew, NOW), "raw")
+        self.assertEqual(rollups.pick_bucket(NOW - timedelta(hours=24, seconds=1) - skew, NOW), "1h")
+        self.assertEqual(rollups.pick_bucket(NOW - timedelta(days=30, seconds=3), NOW), "1h")
+        self.assertEqual(rollups.pick_bucket(NOW - timedelta(days=30, seconds=1) - skew, NOW), "1d")
 
 
 class BucketedHistoryTests(TestCase):

@@ -15,6 +15,12 @@ from .models import MetricPoint
 RAW_MAX = timedelta(hours=24)
 HOURLY_MAX = timedelta(days=30)
 
+#: Allowance on both limits. A chart asks for "the last 24 hours" as a `from`
+#: taken from the browser's clock, and the range is measured to the server's,
+#: which is a moment later (or minutes off): without this the 24h button got
+#: hourly buckets and the 30d button daily ones.
+SKEW = timedelta(minutes=15)
+
 #: The most rows one answer carries, newest first. One series is at most 720
 #: hourly or about 1,800 daily rows (the default daily retention), but a metric
 #: with many label sets multiplies that; past this the oldest rows are dropped.
@@ -31,9 +37,9 @@ _views_present = None
 
 def pick_bucket(start, end) -> str:
     span = end - start
-    if span <= RAW_MAX:
+    if span <= RAW_MAX + SKEW:
         return "raw"
-    return "1h" if span <= HOURLY_MAX else "1d"
+    return "1h" if span <= HOURLY_MAX + SKEW else "1d"
 
 
 def has_rollups() -> bool:

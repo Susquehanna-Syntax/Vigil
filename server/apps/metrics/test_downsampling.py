@@ -75,6 +75,12 @@ class DownsamplingTests(TestCase):
         self.assertIn(newest_in_db.time.isoformat().replace("+00:00", "Z"),
                       {t.replace("+00:00", "Z") for t in returned})
 
+    def test_the_24h_button_stays_raw_though_it_arrives_a_moment_late(self):
+        """The page sends from = its clock minus 24 hours; the server measures
+        to its own, later clock. That must not tip it into hourly buckets."""
+        r = self._get(**{"from": (now() - timedelta(hours=24)).isoformat(), "limit": 300})
+        self.assertEqual(r["X-Vigil-Bucket"], "raw")
+
     def test_a_narrow_window_is_not_sampled(self):
         r = self._get(**{"from": (now() - timedelta(hours=2)).isoformat(),
                          "limit": 1000})
