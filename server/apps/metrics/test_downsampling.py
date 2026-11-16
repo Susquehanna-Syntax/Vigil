@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils.dateparse import parse_datetime
 from django.utils.timezone import now
 
 from apps.hosts.models import Host
@@ -33,6 +34,10 @@ class DownsamplingTests(TestCase):
             for i in range(3000)
         ])
         self.all_of_it = (now() - timedelta(days=8)).isoformat()
+        # Stride sampling applies to ranges of a day or less; longer ones are
+        # answered from hourly or daily buckets (test_rollups.py). About 410
+        # of the points fall in this window.
+        self.last_day = (now() - timedelta(hours=23)).isoformat()
 
     def _get(self, **params):
         qs = urlencode(params)
@@ -42,23 +47,28 @@ class DownsamplingTests(TestCase):
     def test_a_wide_window_spans_the_whole_window(self):
         """The regression: the returned series must cover the range asked for,
         not just its newest tail."""
-        r = self._get(**{"from": self.all_of_it, "limit": 300})
+        r = self._get(**{"from": self.last_day, "limit": 300})
         points = r.json()
         self.assertGreater(len(points), 0)
-        from django.utils.dateparse import parse_datetime
         times = sorted(parse_datetime(p["time"]) for p in points)
         span = times[-1] - times[0]
-        self.assertGreater(span, timedelta(days=1),
-                           "a 7-day request returned less than a day of data — "
+        self.assertGreater(span, timedelta(hours=20),
+                           "a 23-hour request returned under 20 hours of data — "
                            "it is truncating instead of sampling")
 
+    def test_a_week_answers_hourly_across_the_whole_week(self):
+        r = self._get(**{"from": self.all_of_it, "limit": 50})
+        self.assertEqual(r["X-Vigil-Bucket"], "1h")
+        times = sorted(parse_datetime(p["time"]) for p in r.json())
+        self.assertGreater(times[-1] - times[0], timedelta(days=6, hours=20))
+
     def test_the_limit_is_respected(self):
-        r = self._get(**{"from": self.all_of_it, "limit": 300})
+        r = self._get(**{"from": self.last_day, "limit": 300})
         self.assertLessEqual(len(r.json()), 302)   # +newest-point insertion
 
     def test_the_newest_point_is_always_included(self):
         """A chart whose right edge lags looks stale even when it is current."""
-        r = self._get(**{"from": self.all_of_it, "limit": 50})
+        r = self._get(**{"from": self.last_day, "limit": 50})
         newest_in_db = MetricPoint.objects.filter(
             host=self.host, category="system", metric="cpu").order_by("-time").first()
         returned = {p["time"] for p in r.json()}
@@ -71,13 +81,14 @@ class DownsamplingTests(TestCase):
         self.assertEqual(r["X-Vigil-Sampled"], "0")
 
     def test_sampling_is_flagged_in_the_response(self):
-        r = self._get(**{"from": self.all_of_it, "limit": 100})
+        r = self._get(**{"from": self.last_day, "limit": 100})
         self.assertEqual(r["X-Vigil-Sampled"], "1")
-        self.assertEqual(r["X-Vigil-Total-Points"], "3000")
+        in_window = MetricPoint.objects.filter(
+            host=self.host, time__gte=parse_datetime(self.last_day)).count()
+        self.assertEqual(r["X-Vigil-Total-Points"], str(in_window))
 
     def test_different_ranges_return_different_spans(self):
         """The user-visible symptom: 24h and 7d looked identical."""
-        from django.utils.dateparse import parse_datetime
 
         def span_for(days):
             since = (now() - timedelta(days=days)).isoformat()

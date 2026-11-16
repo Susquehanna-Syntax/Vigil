@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from vigil import scoping
 from apps.hosts.models import Host
 
+from . import rollups
 from .api_schema import (
     MetricCatalogEntrySerializer,
     MetricErrorSerializer,
@@ -50,6 +51,7 @@ def metric_history(request, host_id, category, metric_name):
         return Response({"error": "limit must be an integer"}, status=400)
     limit = max(1, min(limit, 1000))
 
+    start = end = None
     for param, lookup in (("from", "time__gte"), ("to", "time__lte")):
         raw = request.query_params.get(param)
         if not raw:
@@ -59,7 +61,32 @@ def metric_history(request, host_id, category, metric_name):
             return Response(
                 {"error": f"{param} must be an ISO-8601 datetime"}, status=400
             )
+        if timezone.is_naive(ts):
+            # Read in TIME_ZONE, as the ORM reads a naive filter value, so the
+            # bucket arithmetic below compares like with like.
+            ts = timezone.make_aware(ts)
         qs = qs.filter(**{lookup: ts})
+        if param == "from":
+            start = ts
+        else:
+            end = ts
+    if end is None:
+        end = timezone.now()
+
+    # A range longer than a day answers one point per hour (to 30 days) or per
+    # day (longer), each with the bucket's average, minimum and maximum so a
+    # chart can draw a band and spikes still show. Stride sampling such a range
+    # scans tens of thousands of raw rows per series and cannot reach past the
+    # raw retention at all; on TimescaleDB these buckets are precomputed.
+    if start is not None and limit != 1:
+        bucket = rollups.pick_bucket(start, end)
+        if bucket != "raw":
+            rows = rollups.history(host.pk, category, metric_name, start, end, bucket)
+            response = Response([{**r, "time": r["time"].isoformat()} for r in rows])
+            response["X-Vigil-Bucket"] = bucket
+            response["X-Vigil-Sampled"] = "0"
+            response["X-Vigil-Total-Points"] = str(len(rows))
+            return response
 
     # Sample across the whole window rather than truncating to the newest N.
     #
@@ -116,6 +143,7 @@ def metric_history(request, host_id, category, metric_name):
     response = Response(payload)
     # Tells the caller the series is sampled, so a UI can say so rather than
     # implying it is showing every measurement.
+    response["X-Vigil-Bucket"] = "raw"
     response["X-Vigil-Sampled"] = "1" if total > limit else "0"
     response["X-Vigil-Total-Points"] = str(total)
     return response
