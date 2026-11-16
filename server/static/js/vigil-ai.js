@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-ai.js
 // Owns: the multi-provider "Suggested fixes" modal (Alerts + Docker) and the
 // AI providers manager on Settings. A request fans out to every selected
@@ -74,7 +75,7 @@ function _ensureAiModal() {
       <button class="btn btn-mint btn-sm" id="ai-run" style="margin-top:12px;">Get suggestions</button>
     </div>
     <div class="ai-compare" id="ai-compare"></div>`);
-  _aiModal.modal.querySelector('#ai-close').onclick = () => _closeAi();
+  /** @type {HTMLElement} */ (_aiModal.modal.querySelector('#ai-close')).onclick = () => _closeAi();
   return _aiModal;
 }
 
@@ -120,12 +121,12 @@ async function _openAi(context, runFn, staticResult) {
     picker.insertAdjacentHTML('beforeend',
       '<span class="ai-empty" style="width:100%;">Add AI providers in Settings to compare model suggestions alongside the built-in template.</span>');
   }
-  picker.querySelectorAll('.ai-pick').forEach(el => {
-    const cb = el.querySelector('input');
+  /** @type {NodeListOf<HTMLElement>} */ (picker.querySelectorAll('.ai-pick')).forEach(el => {
+    const cb = /** @type {HTMLInputElement} */ (el.querySelector('input'));
     cb.addEventListener('change', () => el.classList.toggle('on', cb.checked));
   });
   document.getElementById('ai-run').onclick = () => {
-    const ids = [...picker.querySelectorAll('.ai-pick')].filter(el => el.querySelector('input').checked)
+    const ids = [.../** @type {NodeListOf<HTMLElement>} */ (picker.querySelectorAll('.ai-pick'))].filter(el => el.querySelector('input').checked)
       .map(el => el.dataset.pid === 'static' ? 'static' : +el.dataset.pid);
     if (!ids.length) return showToast('Pick at least one option', 'error');
     document.getElementById('ai-picker-wrap').style.display = 'none';
@@ -336,25 +337,25 @@ async function loadAiProviders() {
           <button class="btn btn-rose btn-xs" data-ap-del="${p.id}">Delete</button>
         </div>
       </div>`).join('') : '<p class="muted-note">No providers yet. Add your first model endpoint below.</p>';
-    list.querySelectorAll('[data-ap-del]').forEach(b => b.addEventListener('click', async () => {
+    /** @type {NodeListOf<HTMLButtonElement>} */ (list.querySelectorAll('[data-ap-del]')).forEach(b => b.addEventListener('click', async () => {
       if (!(await confirmModal('Delete this AI provider?', { danger: true, confirmText: 'Delete' }))) return;
       await fetch(`/api/v1/ai/providers/${b.dataset.apDel}/`, { method: 'DELETE', headers: { 'X-CSRFToken': getCsrf() }, credentials: 'same-origin' });
       loadAiProviders();
     }));
-    list.querySelectorAll('[data-ap-toggle]').forEach(b => b.addEventListener('click', async () => {
+    /** @type {NodeListOf<HTMLButtonElement>} */ (list.querySelectorAll('[data-ap-toggle]')).forEach(b => b.addEventListener('click', async () => {
       await apiJson(`/api/v1/ai/providers/${b.dataset.apToggle}/`, { method: 'PATCH', body: JSON.stringify({ enabled: b.dataset.en !== 'true' }) });
       loadAiProviders();
     }));
-    list.querySelectorAll('[data-ap-test]').forEach(b => b.addEventListener('click', () => _testProvider(b)));
-    list.querySelectorAll('[data-ap-edit]').forEach(b => b.addEventListener('click', () => _editProvider(rows.find(r => r.id == b.dataset.apEdit))));
+    /** @type {NodeListOf<HTMLButtonElement>} */ (list.querySelectorAll('[data-ap-test]')).forEach(b => b.addEventListener('click', () => _testProvider(b)));
+    /** @type {NodeListOf<HTMLButtonElement>} */ (list.querySelectorAll('[data-ap-edit]')).forEach(b => b.addEventListener('click', () => _editProvider(rows.find(r => r.id == b.dataset.apEdit))));
   } catch (e) { /* card stays as-is */ }
 }
 
 // Asks the provider for one real task and says what came back: the time it
 // took, whether Vigil accepted the task, and the reason when it did not.
-async function _testProvider(btn) {
+async function _testProvider(/** @type {HTMLButtonElement} */ btn) {
   const id = btn.dataset.apTest;
-  const out = document.getElementById(`ap-test-${id}`);
+  const out = /** @type {HTMLElement} */ (document.getElementById(`ap-test-${id}`));
   const t0 = performance.now();
   btn.disabled = true;
   out.hidden = false;
@@ -386,27 +387,27 @@ async function _testProvider(btn) {
 }
 
 function _editProvider(p) {
-  document.getElementById('ap-form').dataset.editing = p ? p.id : '';
-  document.getElementById('ap-form-title').textContent = p ? 'Edit provider' : 'Add a provider';
-  document.getElementById('ap-name').value = p ? p.name : '';
-  document.getElementById('ap-kind').value = p ? p.kind : 'openai';
-  document.getElementById('ap-url').value = p ? p.base_url : '';
-  document.getElementById('ap-model').value = p ? p.model : '';
-  document.getElementById('ap-effort').value = p ? (p.reasoning_effort || '') : '';
-  document.getElementById('ap-key').value = '';
-  document.getElementById('ap-key-note').textContent = p && p.api_key_set ? 'A key is stored — leave blank to keep it.' : '';
+  /** @type {HTMLElement} */ (document.getElementById('ap-form')).dataset.editing = p ? p.id : '';
+  /** @type {HTMLElement} */ (document.getElementById('ap-form-title')).textContent = p ? 'Edit provider' : 'Add a provider';
+  /** @type {HTMLInputElement} */ (document.getElementById('ap-name')).value = p ? p.name : '';
+  /** @type {HTMLSelectElement} */ (document.getElementById('ap-kind')).value = p ? p.kind : 'openai';
+  /** @type {HTMLInputElement} */ (document.getElementById('ap-url')).value = p ? p.base_url : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('ap-model')).value = p ? p.model : '';
+  /** @type {HTMLSelectElement} */ (document.getElementById('ap-effort')).value = p ? (p.reasoning_effort || '') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('ap-key')).value = '';
+  /** @type {HTMLElement} */ (document.getElementById('ap-key-note')).textContent = p && p.api_key_set ? 'A key is stored — leave blank to keep it.' : '';
   document.getElementById('ap-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 async function _saveProvider() {
   const body = {
-    name: document.getElementById('ap-name').value.trim() || 'Provider',
-    kind: document.getElementById('ap-kind').value,
-    base_url: document.getElementById('ap-url').value.trim(),
-    model: document.getElementById('ap-model').value.trim(),
-    reasoning_effort: document.getElementById('ap-effort').value,
+    name: /** @type {HTMLInputElement} */ (document.getElementById('ap-name')).value.trim() || 'Provider',
+    kind: /** @type {HTMLSelectElement} */ (document.getElementById('ap-kind')).value,
+    base_url: /** @type {HTMLInputElement} */ (document.getElementById('ap-url')).value.trim(),
+    model: /** @type {HTMLInputElement} */ (document.getElementById('ap-model')).value.trim(),
+    reasoning_effort: /** @type {HTMLSelectElement} */ (document.getElementById('ap-effort')).value,
   };
-  const key = document.getElementById('ap-key').value;
+  const key = /** @type {HTMLInputElement} */ (document.getElementById('ap-key')).value;
   if (key) body.api_key = key;
   const editing = document.getElementById('ap-form').dataset.editing;
   try {

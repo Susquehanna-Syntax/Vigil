@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-rollout.js
 // Owns: staged rollout UI on the Tasks page (Rollouts tab) — the wave
 //   progression view, start/halt/resume actions, and the TOTP confirmations.
@@ -85,7 +86,7 @@ async function openWaveHosts(rolloutId, waveId) {
         <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button></div>
     <div id="wh-body"><span class="muted-note">Loading…</span></div>`);
-  m.modal.querySelector('#wh-x').onclick = m.close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#wh-x')).onclick = m.close;
   m.open();
 
   let data;
@@ -178,7 +179,7 @@ async function refreshRollouts() {
 // Search filters what is already loaded rather than refetching — the list is
 // small and a round-trip per keystroke would fight the 5s poll.
 function _filterRollouts() {
-  const q = (document.getElementById('rollout-search')?.value || '').trim().toLowerCase();
+  const q = (/** @type {HTMLInputElement} */ (document.getElementById('rollout-search'))?.value || '').trim().toLowerCase();
   if (!q) return _rolloutState.items;
   return _rolloutState.items.filter(r =>
     (r.target_name || r.definition_name || r.playbook_name || '').toLowerCase().includes(q) ||
@@ -268,11 +269,11 @@ function _renderRollouts() {
 
 /* Delegated so it survives every re-render of the list, which happens on a
    5-second poll while the tab is visible. */
-function _bindWaveHostButtons(box) {
+function _bindWaveHostButtons(/** @type {HTMLElement} */ box) {
   if (box.dataset.waveHostsBound) return;
   box.dataset.waveHostsBound = '1';
   box.addEventListener('click', (ev) => {
-    const btn = ev.target.closest('[data-wave-hosts]');
+    const btn = /** @type {HTMLButtonElement|null} */ (/** @type {HTMLElement} */ (ev.target).closest('[data-wave-hosts]'));
     if (!btn || !box.contains(btn)) return;
     ev.stopPropagation();
     openWaveHosts(btn.dataset.rollout, btn.dataset.wave);
@@ -305,7 +306,7 @@ async function openRolloutStart() {
   const modal = document.getElementById('rollout-start-modal');
   if (!modal) return;
   // Cleared on every open so a previous pick can't be submitted by accident.
-  document.getElementById('rollout-start-def').value = '';
+  /** @type {HTMLSelectElement} */ (document.getElementById('rollout-start-def')).value = '';
   document.getElementById('rollout-start-def-label').textContent = 'Choose a task or playbook…';
   // The chips need no reset beyond clearing the pick: they are re-fetched and
   // repainted on every open.
@@ -368,7 +369,7 @@ function pickRolloutTarget() {
     title: 'Pick a task or playbook to roll out',
     allowAdd: false,
     onSelect: (item) => {
-      document.getElementById('rollout-start-def').value = item.key;
+      /** @type {HTMLSelectElement} */ (document.getElementById('rollout-start-def')).value = item.key;
       document.getElementById('rollout-start-def-label').textContent = item.name;
       _loadRolloutStartInputs();
     },
@@ -382,7 +383,7 @@ function pickRolloutTarget() {
 async function _loadRolloutStartInputs() {
   const box = document.getElementById('rollout-start-inputs');
   if (!box) return;
-  const key = document.getElementById('rollout-start-def').value;
+  const key = /** @type {HTMLSelectElement} */ (document.getElementById('rollout-start-def')).value;
   box.hidden = true;
   box.replaceChildren();
   if (!key) return;
@@ -411,10 +412,10 @@ function closeRolloutStart() {
 }
 
 async function submitRolloutStart() {
-  const sel = document.getElementById('rollout-start-def');
-  const threshold = parseInt(document.getElementById('rollout-start-threshold').value, 10);
-  const minResults = parseInt(document.getElementById('rollout-start-min').value, 10);
-  const btn = document.getElementById('rollout-start-submit');
+  const sel = /** @type {HTMLSelectElement} */ (document.getElementById('rollout-start-def'));
+  const threshold = parseInt(/** @type {HTMLInputElement} */ (document.getElementById('rollout-start-threshold')).value, 10);
+  const minResults = parseInt(/** @type {HTMLInputElement} */ (document.getElementById('rollout-start-min')).value, 10);
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('rollout-start-submit'));
   if (!sel.value) { showToast('Pick something to roll out first', 'error'); return; }
   const inputBox = document.getElementById('rollout-start-inputs');
   const withInputs = !!(inputBox && !inputBox.hidden);
@@ -470,7 +471,7 @@ async function submitRolloutStart() {
 
 /* ── Halt / resume (confirmed with TOTP) ─────────────────────────────── */
 
-async function promptRolloutAction(btn, kind) {
+async function promptRolloutAction(/** @type {HTMLElement|null} */ btn, /** @type {string} */ kind) {
   const rolloutId = btn ? btn.dataset.rlt : null;
   const batch = btn ? btn.dataset.rltBatch : null;
   const card = btn ? btn.closest('.rlt-batch') : null;
@@ -539,13 +540,13 @@ async function promptRolloutAction(btn, kind) {
 document.getElementById('rollout-search')?.addEventListener('input', _renderRollouts);
 document.getElementById('rollout-start-def-btn')?.addEventListener('click', pickRolloutTarget);
 
-document.querySelectorAll('.sub-tab[data-subtab]').forEach(tab => {
+document.querySelectorAll('.sub-tab[data-subtab]').forEach((/** @type {HTMLElement} */ tab) => {
   tab.addEventListener('click', () => {
     if (tab.dataset.subtab === 'rollout-panel') refreshRollouts();
   });
 });
 const _origNavigateForRollouts = navigateTo;
-navigateTo = function (pageName) {
+window.navigateTo = function (pageName) {
   _origNavigateForRollouts(pageName);
   if (pageName === 'playbooks' && _rolloutsTabVisible()) refreshRollouts();
 };
@@ -700,9 +701,9 @@ delegateClick('[data-rlt-open]', (el, ev) => {
    listener per card would not survive the 5-second re-render — so one
    delegated listener, keyed off the same attribute the click uses. */
 document.addEventListener('keydown', (ev) => {
-  const card = ev.target.closest && ev.target.closest('[data-rlt-open]');
+  const card = /** @type {HTMLElement|null} */ (/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('[data-rlt-open]'));
   if (!card || (ev.key !== 'Enter' && ev.key !== ' ')) return;
-  if (ev.target.closest('button')) return;
+  if (/** @type {HTMLElement} */ (ev.target).closest('button')) return;
   ev.preventDefault();
   openRolloutDetail(card.dataset.rltOpen);
 });

@@ -153,6 +153,10 @@ interface Window {
 /** The vendored GridStack (static/js/vendor/gridstack-all.js), a third-party library. */
 declare const GridStack: any;
 
+/** Defined in server/static/js/vigil-pickers.js (the in-modal task editor;
+ *  `opts.id` opens an existing definition, `opts.yaml` seeds a new one). */
+declare function openTaskModal(opts?: {id?: string|number, yaml?: string, onSaved?: (def: any) => void}): void;
+
 /** Defined in server/static/js/vigil-hunts.js (a run with any hunt step). */
 declare function _runHasHuntSteps(run: {tasks?: object[]} | null | undefined): boolean;
 

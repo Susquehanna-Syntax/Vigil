@@ -51,6 +51,10 @@
     "static/js/vigil-api-keys.js",
     "static/js/vigil-users.js",
     "static/js/vigil-hunts.js",
-    "static/js/vigil-inventory.js"
+    "static/js/vigil-inventory.js",
+    "static/js/vigil-rollout.js",
+    "static/js/vigil-ai.js",
+    "static/js/vigil-branding.js",
+    "static/js/vigil-instance-settings.js"
   ]
 }

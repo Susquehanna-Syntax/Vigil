@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-instance-settings.js
 // Owns: the Settings panes backed by /api/v1/instance-settings/ — Scanners,
 //   Email, Retention (including the backup history under it), and the
@@ -31,25 +32,25 @@ async function loadInstanceSettings(force, quiet) {
 }
 
 function _isRenderAll() {
-  document.querySelectorAll('.is-group').forEach((host) => {
+  document.querySelectorAll('.is-group').forEach((/** @type {HTMLElement} */ host) => {
     const group = (_isGroups || []).find((g) => g.id === host.dataset.group);
     if (!group) {
       // A group this user may not see is left out by the server; its heading
       // goes with it rather than standing over nothing.
       host.hidden = true;
-      const label = host.previousElementSibling;
+      const label = /** @type {HTMLElement} */ (host.previousElementSibling);
       if (label && label.classList.contains('section-label')) label.hidden = true;
       return;
     }
     host.hidden = false;
-    const label = host.previousElementSibling;
+    const label = /** @type {HTMLElement} */ (host.previousElementSibling);
     if (label && label.classList.contains('section-label')) label.hidden = false;
     host.innerHTML = _isRenderGroup(group);
     // A site admin reads install-wide groups and changes nothing (S1 04h).
     // The Account pane is theirs, so only this group is greyed there.
     if (group.read_only) {
-      host.querySelectorAll('input, select, textarea, button').forEach((el) => { el.disabled = true; });
-      host.querySelector('.is-actions').innerHTML =
+      host.querySelectorAll('input, select, textarea, button').forEach((/** @type {HTMLInputElement} */ el) => { el.disabled = true; });
+      /** @type {HTMLElement} */ (host.querySelector('.is-actions')).innerHTML =
         '<span class="muted">Only an administrator of the whole install can change these.</span>';
     }
   });
@@ -117,7 +118,7 @@ function _isRenderField(f) {
 
 function clearInstanceSecret(name) {
   _isCleared.add(name);
-  const input = document.getElementById('is-f-' + name);
+  const input = /** @type {HTMLInputElement} */ (document.getElementById('is-f-' + name));
   if (input) {
     input.value = '';
     input.placeholder = 'will be cleared on save';
@@ -138,7 +139,7 @@ async function saveInstanceSettings(groupId) {
   // backend: saving the From address alone would have broken alert email.
   group.fields.forEach((f) => {
     if (f.env_locked) return;
-    const el = document.getElementById('is-f-' + f.name);
+    const el = /** @type {HTMLInputElement} */ (document.getElementById('is-f-' + f.name));
     if (!el) return;
     if (_isCleared.has(f.name)) { clear.push(f.name); return; }
     if (f.kind === 'bool') {
@@ -347,7 +348,7 @@ function _jkRow(k) {
 }
 
 delegateClick('[data-jk-create]', async () => {
-  const input = document.getElementById('jackil-key-name');
+  const input = /** @type {HTMLInputElement} */ (document.getElementById('jackil-key-name'));
   const name = (input?.value || '').trim();
   if (!name) { showToast('Give the key a name', 'error'); return; }
   let created;
@@ -375,8 +376,8 @@ function _jkShowPlainKey(raw) {
     + `</div>`);
   // The key is read back out of the box when it is copied rather than kept in
   // a closure: the modal is the only place it exists.
-  m.modal.querySelector('[data-jk-copy]').onclick = async () => {
-    const field = document.getElementById('jackil-key-plain');
+  /** @type {HTMLElement} */ (m.modal.querySelector('[data-jk-copy]')).onclick = async () => {
+    const field = /** @type {HTMLInputElement} */ (document.getElementById('jackil-key-plain'));
     try {
       await navigator.clipboard.writeText(field ? field.value : '');
       showToast('Key copied', 'success');
@@ -384,7 +385,7 @@ function _jkShowPlainKey(raw) {
       showToast('Copy failed — select it and copy manually', 'error');
     }
   };
-  m.modal.querySelector('[data-jk-done]').onclick = () => m.close();
+  /** @type {HTMLElement} */ (m.modal.querySelector('[data-jk-done]')).onclick = () => m.close();
   // Done, a scrim click and Esc all close it by dropping `.open`; whichever
   // it was, the key leaves the page with the modal instead of sitting hidden
   // in the DOM for the rest of the session, and the list picks up the new row.
@@ -418,7 +419,7 @@ delegateClick('[data-jk-revoke]', async (el) => {
 // too and the server would answer 403 for a revoked key the row already says
 // is revoked.
 document.addEventListener('change', async (ev) => {
-  const box = ev.target.closest && ev.target.closest('[data-jk-write]');
+  const box = /** @type {HTMLInputElement|null} */ (/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('[data-jk-write]'));
   if (!box) return;
   const enabled = box.checked;
   try {
