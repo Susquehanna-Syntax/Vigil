@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-modal.js
 // Owns: the behaviour every dialog and drawer shares (M12, SQSY design
 //   language): focus moves in on open, Tab stays inside, Esc closes the top
@@ -121,8 +122,8 @@ function _syncModals() {
 
 new MutationObserver((records) => {
   for (const r of records) {
-    if (r.type === 'attributes' ? r.target.matches?.(_MODAL_SEL)
-      : (_modalStack.length || [...r.addedNodes].some(n => n.nodeType === 1 && n.matches(_MODAL_SEL)))) {
+    if (r.type === 'attributes' ? /** @type {HTMLElement} */ (r.target).matches?.(_MODAL_SEL)
+      : (_modalStack.length || [...r.addedNodes].some((/** @type {Node} */ n) => n.nodeType === 1 && /** @type {HTMLElement} */ (n).matches(_MODAL_SEL)))) {
       _syncModals();
       return;
     }
@@ -154,7 +155,7 @@ window.addEventListener('keydown', (e) => {
   const top = _modalStack[_modalStack.length - 1];
   if (!top) return;
   if (e.key === 'Escape') {
-    if (!_isOpen(top.el) || e.target.closest?.('[role="menu"]')) return;
+    if (!_isOpen(top.el) || /** @type {HTMLElement} */ (e.target).closest?.('[role="menu"]')) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     closeModalEl(top.el);
@@ -163,7 +164,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key !== 'Tab') return;
   // A terminal or a remote desktop needs Tab itself (completion, Alt+Tab on
   // the far side), so a dialog or region marked data-keeps-tab is left alone.
-  if (top.el.hasAttribute('data-keeps-tab') || e.target.closest?.('[data-keeps-tab]')) return;
+  if (top.el.hasAttribute('data-keeps-tab') || /** @type {HTMLElement} */ (e.target).closest?.('[data-keeps-tab]')) return;
   const items = [...top.el.querySelectorAll(_FOCUSABLE)].filter(_visible);
   if (!items.length) { e.preventDefault(); return; }
   const first = items[0];

@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-utils.js
 // Owns: shared helpers used across all other vigil-*.js files.
 // Depends on: nothing — must load FIRST.
@@ -38,8 +39,9 @@ async function copyText(text) {
   }
 }
 
+/** @returns {string} */
 function getCsrf() {
-  const el = document.querySelector('[name=csrfmiddlewaretoken]');
+  const el = /** @type {HTMLInputElement|null} */ (document.querySelector('[name=csrfmiddlewaretoken]'));
   return el ? el.value : '';
 }
 
@@ -68,6 +70,7 @@ async function apiPost(url) {
   return resp.json();
 }
 
+/** @param {string} url @param {RequestInit} [opts] @returns {Promise<any>} */
 async function apiJson(url, opts) {
   const resp = await fetch(url, {
     credentials: 'same-origin',
@@ -82,7 +85,7 @@ async function apiJson(url, opts) {
     }
     // The body rides along for callers that place per-field errors
     // ({errors: {field: message}}) next to their fields.
-    const err = new Error(body.detail || body.error || 'Request failed');
+    const err = /** @type {Error & {status?: number, body?: any}} */ (new Error(body.detail || body.error || 'Request failed'));
     err.status = resp.status;
     err.body = body;
     throw err;
@@ -161,8 +164,20 @@ function _formatBytesPerSec(value) {
 }
 
 /* ── Metric helpers (used by monitor + host-cards detail charts) ─────── */
+/** @typedef {(number|string)} TimeLike */
+/** One sample from a PromQL range query: {labels, time, value}. `time` is the
+ * caller's timestamp — epoch ms as the monitor charts and the API responses
+ * carry it, or an ISO string as jstests/utils.test.mjs passes them. Either way
+ * it reaches a Date constructor below. */
+/** @typedef {{labels?: Object<string, string>, time: TimeLike, value: number}} MetricPoint */
+
+/**
+ * @param {MetricPoint[]} points
+ * @param {string} labelKey
+ * @returns {Record<string, MetricPoint[]>}
+ */
 function groupByLabel(points, labelKey) {
-  const groups = {};
+  const groups = /** @type {Record<string, MetricPoint[]>} */ ({});
   for (const p of points) {
     const key = (p.labels || {})[labelKey] || '_default';
     if (!groups[key]) groups[key] = [];
@@ -171,10 +186,13 @@ function groupByLabel(points, labelKey) {
   return groups;
 }
 
+/** @param {MetricPoint[]} points @returns {{x: number, y: number}[]} */
 function computeRates(points) {
   const rates = [];
   for (let i = 1; i < points.length; i++) {
-    const dt = (new Date(points[i].time) - new Date(points[i-1].time)) / 1000;
+    // getTime() on each side rather than `new Date(a) - new Date(b)`: tsc
+    // rejects the latter because a caller may pass an ISO string. Same value.
+    const dt = ((new Date(points[i].time)).getTime() - (new Date(points[i-1].time)).getTime()) / 1000;
     if (dt <= 0) continue;
     const rate = Math.max(0, (points[i].value - points[i-1].value) / dt);
     // Numeric x: the charts run with `parsing: false`, which hands this
@@ -258,10 +276,20 @@ function osLogo(name) {
 const MODAL_BASE_Z = 200;
 let _modalDepth = 0;
 
+/** @typedef {string} ModalId — a mountModal id, and `<id>-overlay` /
+ * `<id>-modal` the element ids it uses. */
+/** What mountModal returns: the overlay + modal pair, both toggled `.open`. */
+/** @typedef {{overlay: HTMLElement, modal: HTMLElement, open: () => void, close: () => void, setBody: (html: string) => void}} MountedModal */
+/** Options the confirm / prompt / totp prompts read. */
+/** @typedef {{title?: string, html?: boolean, confirmText?: string, confirmLabel?: string, danger?: boolean, value?: string, placeholder?: string}} ModalOpts */
+
+/** @param {ModalId} id @param {{wide?: boolean, xwide?: boolean, variant?: string}} [opts] @returns {MountedModal} */
 function mountModal(id, opts) {
   opts = opts || {};
-  let overlay = document.getElementById(id + '-overlay');
-  let modal = document.getElementById(id + '-modal');
+  /** @type {HTMLElement} */
+  let overlay = /** @type {HTMLElement|null} */ (document.getElementById(id + '-overlay'));
+  /** @type {HTMLElement} */
+  let modal = /** @type {HTMLElement|null} */ (document.getElementById(id + '-modal'));
   if (!overlay) {
     overlay = document.createElement('div');
     overlay.id = id + '-overlay';
@@ -317,16 +345,16 @@ function confirmModal(message, opts) {
     // textContent by default: almost every caller passes a plain sentence and
     // must not be able to inject markup through it. opts.html is for the few
     // confirmations that need emphasis, and those escape their own values.
-    const msgEl = m.modal.querySelector('#confirm-msg');
+    const msgEl = /** @type {HTMLElement} */ (m.modal.querySelector('#confirm-msg'));
     if (opts.html) msgEl.innerHTML = message;
     else msgEl.textContent = message;
-    const okBtn = m.modal.querySelector('#confirm-ok');
+    const okBtn = /** @type {HTMLButtonElement} */ (m.modal.querySelector('#confirm-ok'));
     okBtn.textContent = opts.confirmText || opts.confirmLabel || 'Confirm';
     okBtn.className = 'btn btn-sm ' + (opts.danger ? 'btn-rose' : 'btn-mint');
     const done = (val) => { m.close(); setTimeout(() => resolve(val), 200); };
     okBtn.onclick = () => done(true);
-    m.modal.querySelector('#confirm-cancel').onclick = () => done(false);
-    m.modal.querySelector('#confirm-x').onclick = () => done(false);
+    /** @type {HTMLButtonElement} */ (m.modal.querySelector('#confirm-cancel')).onclick = () => done(false);
+    /** @type {HTMLButtonElement} */ (m.modal.querySelector('#confirm-x')).onclick = () => done(false);
     m.overlay.onclick = () => done(false);
     requestAnimationFrame(m.open);
   });
@@ -352,15 +380,15 @@ function promptModal(message, opts) {
         <button class="btn btn-mint btn-sm" id="prompt-ok"></button>
       </div>`);
     m.modal.querySelector('#prompt-title').textContent = message;
-    const input = m.modal.querySelector('#prompt-input');
+    const input = /** @type {HTMLInputElement} */ (m.modal.querySelector('#prompt-input'));
     input.value = opts.value || '';
     if (opts.placeholder) input.placeholder = opts.placeholder;
     m.modal.querySelector('#prompt-ok').textContent = opts.confirmText || 'Save';
 
     const done = (val) => { m.close(); setTimeout(() => resolve(val), 200); };
-    m.modal.querySelector('#prompt-ok').onclick = () => done(input.value.trim() || null);
-    m.modal.querySelector('#prompt-cancel').onclick = () => done(null);
-    m.modal.querySelector('#prompt-x').onclick = () => done(null);
+    /** @type {HTMLButtonElement} */ (m.modal.querySelector('#prompt-ok')).onclick = () => done(input.value.trim() || null);
+    /** @type {HTMLButtonElement} */ (m.modal.querySelector('#prompt-cancel')).onclick = () => done(null);
+    /** @type {HTMLButtonElement} */ (m.modal.querySelector('#prompt-x')).onclick = () => done(null);
     m.overlay.onclick = () => done(null);
     input.onkeydown = (ev) => {
       if (ev.key === 'Enter') done(input.value.trim() || null);
@@ -424,8 +452,8 @@ async function _runSecurityKeyCeremony() {
       type: c.type || 'public-key', id: b64urlToBytes(c.id).buffer,
     })),
   };
-  const cred = await navigator.credentials.get({ publicKey });
-  const r = cred.response;
+  const cred = /** @type {PublicKeyCredential} */ (await navigator.credentials.get({ publicKey }));
+  const r = /** @type {AuthenticatorAssertionResponse} */ (cred.response);
   const credential = {
     id: cred.id || bytesToB64url(cred.rawId),
     rawId: bytesToB64url(cred.rawId),
@@ -473,8 +501,8 @@ function totpPrompt(reason, opts) {
       </div>`);
     m.modal.querySelector('#totp-title').textContent = opts.title || 'Confirm with your authenticator';
     m.modal.querySelector('#totp-reason').textContent = reason || '';
-    const input = m.modal.querySelector('#totp-input');
-    const okBtn = m.modal.querySelector('#totp-ok');
+    const input = /** @type {HTMLInputElement} */ (m.modal.querySelector('#totp-input'));
+    const okBtn = /** @type {HTMLButtonElement} */ (m.modal.querySelector('#totp-ok'));
     okBtn.textContent = opts.confirmText || 'Confirm';
     okBtn.disabled = true;
 
@@ -492,8 +520,8 @@ function totpPrompt(reason, opts) {
     };
     const submit = () => { if (/^\d{6}$/.test(input.value)) done(input.value); };
     okBtn.onclick = submit;
-    m.modal.querySelector('#totp-cancel').onclick = () => done(null);
-    m.modal.querySelector('#totp-x').onclick = () => done(null);
+    /** @type {HTMLButtonElement} */ (m.modal.querySelector('#totp-cancel')).onclick = () => done(null);
+    /** @type {HTMLButtonElement} */ (m.modal.querySelector('#totp-x')).onclick = () => done(null);
     m.overlay.onclick = () => done(null);
     input.onkeydown = (ev) => {
       if (ev.key === 'Enter') { ev.preventDefault(); submit(); }
@@ -501,8 +529,8 @@ function totpPrompt(reason, opts) {
       if (ev.key === 'Escape') { ev.stopPropagation(); done(null); }
     };
 
-    const keyBtn = m.modal.querySelector('#totp-key-btn');
-    const keyErr = m.modal.querySelector('#totp-key-error');
+    const keyBtn = /** @type {HTMLButtonElement} */ (m.modal.querySelector('#totp-key-btn'));
+    const keyErr = /** @type {HTMLElement} */ (m.modal.querySelector('#totp-key-error'));
     keyBtn.onclick = () => {
       keyErr.style.display = 'none';
       keyBtn.disabled = true;
@@ -522,12 +550,12 @@ function totpPrompt(reason, opts) {
 
     _securityKeyOffer().then((offer) => {
       if (closed || !offer.offer) return;
-      m.modal.querySelector('#totp-key-slot').style.display = '';
+      /** @type {HTMLElement} */ (m.modal.querySelector('#totp-key-slot')).style.display = '';
       requestAnimationFrame(() => keyBtn.focus());
     });
     requestAnimationFrame(() => {
       m.open();
-      if (m.modal.querySelector('#totp-key-slot').style.display !== 'none') return;
+      if (/** @type {HTMLElement} */ (m.modal.querySelector('#totp-key-slot')).style.display !== 'none') return;
       input.focus();
     });
   });
@@ -645,7 +673,7 @@ if (_MQ_DARK && _MQ_DARK.addEventListener) {
 // is labelled without a second copy of its name. "Theme: Dark" and
 // "Search (Ctrl+K)" read as "Theme" and "Search".
 function _sidebarLabels() {
-  document.querySelectorAll('.sidebar .sidebar-icon[data-tip]').forEach((icon) => {
+  document.querySelectorAll('.sidebar .sidebar-icon[data-tip]').forEach((/** @type {HTMLElement} */ icon) => {
     if (icon.querySelector('.sidebar-label')) return;
     const label = document.createElement('span');
     label.className = 'sidebar-label';
@@ -675,7 +703,7 @@ document.addEventListener('DOMContentLoaded', () => {
   _applySidebarToggle(document.documentElement.getAttribute('data-sidebar') === 'expanded');
 });
 document.addEventListener('keydown', (ev) => {
-  if (ev.target && ev.target.id === 'sidebar-toggle' && (ev.key === 'Enter' || ev.key === ' ')) {
+  if (ev.target && /** @type {HTMLElement} */ (ev.target).id === 'sidebar-toggle' && (ev.key === 'Enter' || ev.key === ' ')) {
     ev.preventDefault();
     toggleSidebar();
   }
@@ -723,7 +751,7 @@ function _closeFnFor(modalId) {
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join('');
   for (const name of ['close' + base, 'close' + base + 'Modal']) {
-    if (typeof window[name] === 'function') return window[name];
+    if (typeof window[name] === 'function') return /** @type {() => void} */ (window[name]);
   }
   return null;
 }
@@ -822,16 +850,16 @@ document.addEventListener('visibilitychange', () => {
   }
 
   const enter = (ev) => {
-    const marker = ev.target.closest && ev.target.closest('.field-hint');
+    const marker = /** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('.field-hint');
     if (marker) show(marker);
   };
   document.addEventListener('mouseover', enter);
   document.addEventListener('focusin', enter);
   document.addEventListener('mouseout', (ev) => {
-    if (ev.target.closest && ev.target.closest('.field-hint')) hide();
+    if (/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('.field-hint')) hide();
   });
   document.addEventListener('focusout', (ev) => {
-    if (ev.target.closest && ev.target.closest('.field-hint')) hide();
+    if (/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('.field-hint')) hide();
   });
   // A bubble pinned to a rect goes stale the moment anything moves.
   window.addEventListener('scroll', hide, true);
@@ -858,7 +886,6 @@ function timeAgo(value) {
   return then.toLocaleDateString();
 }
 
-
 /* ── Delegated click handlers ──────────────────────────────────────────────
    Inline onclick attributes are why the Content-Security-Policy had to keep
    'unsafe-inline' for scripts, which is the directive that would otherwise
@@ -871,7 +898,7 @@ function timeAgo(value) {
    yet — which is what every one of these call sites actually needed. */
 function delegateClick(selector, handler) {
   document.addEventListener('click', (ev) => {
-    const el = ev.target.closest && ev.target.closest(selector);
+    const el = /** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest(selector);
     if (!el) return;
     handler(el, ev);
   });
@@ -929,19 +956,19 @@ function _runAct(el, ev, name) {
 }
 
 document.addEventListener('click', (ev) => {
-  const el = ev.target.closest && ev.target.closest('[data-act]');
+  const el = /** @type {HTMLElement|null} */ (/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('[data-act]'));
   if (el) _runAct(el, ev, el.dataset.act);
 });
 document.addEventListener('change', (ev) => {
-  const el = ev.target.closest && ev.target.closest('[data-change]');
+  const el = /** @type {HTMLElement|null} */ (/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('[data-change]'));
   if (el) _runAct(el, ev, el.dataset.change);
 });
 document.addEventListener('input', (ev) => {
-  const el = ev.target.closest && ev.target.closest('[data-input]');
+  const el = /** @type {HTMLElement|null} */ (/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('[data-input]'));
   if (el) _runAct(el, ev, el.dataset.input);
 });
 document.addEventListener('submit', (ev) => {
-  const el = ev.target.closest && ev.target.closest('[data-submit]');
+  const el = /** @type {HTMLElement|null} */ (/** @type {HTMLElement} */ (ev.target).closest && /** @type {HTMLElement} */ (ev.target).closest('[data-submit]'));
   if (el) _runAct(el, ev, el.dataset.submit);
 });
 

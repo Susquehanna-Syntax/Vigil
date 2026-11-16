@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": false,
+    "skipLibCheck": true
+  },
+  "files": [
+    "static/js/types/globals.d.ts",
+    "static/js/vigil-utils.js",
+    "static/js/vigil-modal.js"
+  ]
+}

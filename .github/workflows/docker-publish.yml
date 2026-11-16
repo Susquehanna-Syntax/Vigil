@@ -142,6 +142,11 @@ jobs:
       - name: Run node:test
         working-directory: server
         run: node --test jstests/
+      # Type checking without a build step (sprint M6): // @ts-check and JSDoc
+      # in the listed scripts, checked by tsc against server/tsconfig.json.
+      - name: Type-check the dashboard scripts
+        working-directory: server
+        run: npx --yes -p typescript@5.6.3 tsc -p tsconfig.json
 
   # ── Known-vulnerable dependencies ──────────────────────────────────────────
   # Every pinned Python dependency the images and the agent binaries ship, checked against
