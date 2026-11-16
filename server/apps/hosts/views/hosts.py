@@ -1,4 +1,10 @@
 """apps.hosts.views: hosts views (split from the old single module, unchanged)."""
+from datetime import timedelta
+from datetime import timezone as dt_timezone
+
+from django.conf import settings
+from django.utils.dateparse import parse_datetime
+from django.utils.timezone import now
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 
@@ -8,6 +14,7 @@ from ..api_schema import (
     HostsAdConfigWriteSerializer,
     HostsAdSyncInlineSerializer,
     HostsAdSyncQueuedSerializer,
+    HostsAgentVersionsSerializer,
     HostsDeletedSerializer,
     HostsDeviceSerializer,
     HostsDeviceWriteSerializer,
@@ -18,6 +25,7 @@ from ..api_schema import (
     HostsTotpSerializer,
     HostsValidationErrorSerializer,
 )
+from apps.alerts.tasks import _is_older, _version_key
 from ._common import *  # noqa: F401,F403
 
 
@@ -30,6 +38,94 @@ def host_list(request):
         Host.objects.exclude(status=Host.Status.REJECTED), request.user))
     ctx = {"host_sites": scoping.sites_for_hosts([h.id for h in hosts])}
     return Response(HostSerializer(hosts, many=True, context=ctx).data)
+
+
+def _recent_update_at(raw, since):
+    """The parsed ``at`` of an agent_update report when it is inside the window,
+    else None. A report with no readable time is ignored, not counted."""
+    if not isinstance(raw, str):
+        return None
+    try:
+        at = parse_datetime(raw)
+    except ValueError:
+        return None
+    if at is None:
+        return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=dt_timezone.utc)
+    return at if at >= since else None
+
+
+def _newest_first(version):
+    """Sort key: known versions newest first by number, unknown or unparseable last."""
+    key = _version_key(version)
+    if key is None:
+        return (1, ())
+    padded = key + (0,) * (8 - len(key))
+    return (0, tuple(-part for part in padded))
+
+
+@extend_schema(methods=["GET"], responses=HostsAgentVersionsSerializer)
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@scoping.module_view("hosts")
+def agent_versions(request):
+    """Which agent versions the approved fleet runs, against the version this
+    server ships, and how self-updates from the last 30 days ended."""
+    expected = settings.VIGIL_AGENT_VERSION or ""
+    since = now() - timedelta(days=30)
+    hosts = scoping.filter_by_site(
+        Host.objects.filter(status__in=[Host.Status.ONLINE, Host.Status.OFFLINE]),
+        request.user,
+    ).values("id", "hostname", "agent_version", "agent_update")
+
+    counts = {}
+    updates = {"confirmed": 0, "rolled_back": 0, "not_applied": 0}
+    rolled_back = []
+    for row in hosts:
+        version = row["agent_version"] or ""
+        counts[version] = counts.get(version, 0) + 1
+        update = row["agent_update"]
+        if not isinstance(update, dict):
+            continue
+        at = _recent_update_at(update.get("at"), since)
+        if at is None:
+            continue
+        state = update.get("state")
+        if state in updates:
+            updates[state] += 1
+        if state == "rolled_back":
+            rolled_back.append((at, row, update))
+
+    versions = []
+    for version in sorted(counts, key=_newest_first):
+        versions.append({
+            "version": version,
+            "hosts": counts[version],
+            "current": bool(expected) and version == expected,
+            "outdated": bool(expected) and _is_older(version, expected),
+        })
+
+    rolled_back.sort(key=lambda item: item[0], reverse=True)
+    rolled_back_rows = [
+        {
+            "host_id": str(row["id"]),
+            "hostname": row["hostname"],
+            "from_version": update.get("from_version") or "",
+            "to_version": update.get("to_version") or "",
+            "reason": update.get("reason") or "",
+            "at": update.get("at"),
+        }
+        for _, row, update in rolled_back[:50]
+    ]
+    return Response({
+        "expected": expected,
+        "total": sum(counts.values()),
+        "versions": versions,
+        "outdated_hosts": sum(v["hosts"] for v in versions if v["outdated"]),
+        "updates": updates,
+        "rolled_back": rolled_back_rows,
+    })
 
 
 @extend_schema(methods=["GET"], responses=HostsHostSerializer)
