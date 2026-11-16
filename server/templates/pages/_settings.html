@@ -545,6 +545,7 @@
         <label class="deploy-input-label" style="margin-top:10px;">Windows (PowerShell, run as Administrator)</label>
         <div class="code-block mono" id="install-cmd-ps1" style="cursor:pointer;user-select:all;" data-act="copyInstallCmdPs1" title="Click to copy"></div>
         <div id="agent-versions" style="margin-top:10px;font-size:12px;color:var(--text-3);min-height:16px;"></div>
+        <div id="fleet-versions" class="fleet-versions"></div>
 
         <!-- Upload new binary -->
         <div style="border-top:1px solid var(--border);margin-top:20px;padding-top:18px;">
@@ -586,7 +587,7 @@
         document.getElementById('install-cmd-ps1').textContent =
           `irm ${vigilEnrollOrigin}/agent/install.ps1 | iex`;
         // vigil-settings.js loads after this inline block — defer the call.
-        document.addEventListener('DOMContentLoaded', () => loadAgentInfo());
+        document.addEventListener('DOMContentLoaded', () => { loadAgentInfo(); loadFleetVersions(); });
       </script>
         </div>
         </div><!-- settings-content -->
