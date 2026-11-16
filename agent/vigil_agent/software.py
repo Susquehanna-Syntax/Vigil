@@ -359,9 +359,34 @@ def _parse_flatpak_updates(text: str) -> dict[str, str]:
     return updates
 
 
+#: `flatpak remote-ls --updates` loads the whole remote's index: about 500 MB
+#: for under a second with Flathub (measured by `vigil-agent measure`, 2026-11),
+#: and flatpak has no lighter way to ask. With less than this available the
+#: update check is skipped for this scan, because an agent that pushes a small
+#: host into the OOM killer has done more harm than a missing "update
+#: available" badge.
+FLATPAK_UPDATES_MIN_AVAILABLE = 1024 ** 3
+
+
+def _available_memory() -> int | None:
+    try:
+        import psutil
+        return int(psutil.virtual_memory().available)
+    except Exception:
+        return None  # cannot tell: behave as before
+
+
 def _collect_flatpak(errors: dict[str, str]) -> list[dict]:
     items = _run_and_parse(_FLATPAK_ARGV, _parse_flatpak_list, errors,
                            "flatpak", _LIST_SHAPE)
+    if not items:
+        return items  # nothing installed: nothing to look for updates to
+    available = _available_memory()
+    if available is not None and available < FLATPAK_UPDATES_MIN_AVAILABLE:
+        errors["flatpak-updates"] = (
+            f"skipped: flatpak needs about 500 MB to list updates and only "
+            f"{available // 1048576} MB is available")
+        return items
     updates = _run_and_parse(_FLATPAK_UPDATES_ARGV, _parse_flatpak_updates,
                              errors, "flatpak-updates", shape=_MAP_SHAPE)
     # remote-ls names apps by application id; the item's id is the match, not

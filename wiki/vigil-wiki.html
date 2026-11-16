@@ -1353,6 +1353,12 @@ cosign verify-blob vigil-agent-linux-amd64 \
         </table>
       </div>
 
+      <p class="prose">CPU usage is the average since the previous check-in, per core and in total, so a burst between two check-ins shows in the number. Only an agent's first reading after it starts is a one-second sample.</p>
+
+      <h3 id="agent-footprint">What the agent costs a host</h3>
+      <p class="prose">The agent can measure itself. <code>vigil-agent measure</code> runs the same local collection a check-in runs, and a software inventory scan, and reports its installed size, start-up time, memory at rest, the CPU and time of a check-in, and the scan's time and peak memory. It reads no config and sends nothing, so it is safe on any host. <code>--json</code> prints the numbers for a script. On a Debian 13 host the Linux agent is a 14.8 MB file, holds about 43 MB of memory between check-ins, and spends about 40 ms of CPU on each one. The table for each platform is in <code>docs/agent-footprint.md</code> in the repository.</p>
+      <p class="prose">The software scan's memory is mostly the package managers it asks. Flatpak needs about 500 MB for a moment to list available updates, so the agent skips that one lookup when no flatpak app is installed or when the host has less than 1 GB of memory available; the scan then says it was skipped, and the installed apps are still listed.</p>
+
       <h3>Reading the charts</h3>
       <p>The buttons above the gauges (<code>1h</code>, <code>6h</code>, <code>24h</code>, <code>7d</code>) set how far back every chart on the page looks. Changing the range animates rather than snapping, so you can see which way the window moved.</p>
       <div class="table-wrap">
