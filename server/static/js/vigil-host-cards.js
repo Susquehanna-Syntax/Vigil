@@ -323,12 +323,21 @@ async function _loadDetailDependsOn(hostId) {
   _detailDependsState.hostId = hostId;
   const select = document.getElementById('detail-depends-on');
   if (!select) return;
+  // Never leave the previous host's choice showing while this one loads.
+  const placeholder = (text) => {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = text;
+    select.replaceChildren(opt);
+  };
+  placeholder('Loading...');
   select.disabled = true;
   let host;
   let all;
   try {
     [host, all] = await Promise.all([apiJson(`/api/v1/hosts/${hostId}/`), fetchAllHosts()]);
   } catch (e) {
+    if (_detailDependsState.hostId === hostId) placeholder('Could not load the hosts');
     return;
   }
   if (_detailDependsState.hostId !== hostId) return;
