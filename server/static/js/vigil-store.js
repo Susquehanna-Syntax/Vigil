@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-store.js
 // Owns: the Store page (QA-26) — the package catalog as an app store: search,
 //   platform tabs, category chips, app cards, and an app's page with
@@ -9,6 +10,23 @@
 // API: GET /api/v1/catalog/?q=&platform=&category=&page=, /categories/,
 //   /status/, /<id>/, /<id>/icon/; POST /install-task/, /enable/
 
+/** One package row of the catalog list, or of an app's `also` list. */
+/** @typedef {{id: string|number, name?: string, package_id?: string, source?: string,
+ *  source_label?: string, platform?: string, version?: string, installed?: number,
+ *  icon?: boolean|string, summary?: string, publisher?: string, [k: string]: any}} StoreCard */
+/** One /api/v1/catalog/status/ sync row, or one `wanted` (never-synced) row. */
+/** @typedef {{source?: string, release?: string|null, source_label?: string, platform?: string,
+ *  error?: string|null, synced_at?: string|null, count?: number}} StoreSync */
+/** What /api/v1/catalog/status/ returns. `locked` is whether the setting is an
+ *  environment variable rather than something this page may change. */
+/** @typedef {{enabled: boolean, packages: number, syncs: StoreSync[], wanted?: StoreSync[], locked?: boolean}} StoreStatus */
+/** What /api/v1/catalog/<id>/ adds to a card: its long form and other sources. */
+/** @typedef {StoreCard & {description?: string|null, license?: string|null, homepage?: string|null,
+ *  releases?: Array<{release: string, version: string}>, also?: StoreCard[]}} StoreApp */
+
+/** @type {{q: string, platform: string, category: string, page: number, seq: number, timer: any,
+ *  cards: StoreCard[], syncTimer: any, syncTicks: number, syncAt: any, loaded: boolean,
+ *  poll: any, current: StoreApp|null, status: StoreStatus|null}} */
 const storeState = {
   q: '', platform: '', category: '', page: 1, seq: 0, timer: null, cards: [],
   syncTimer: null, syncTicks: 0, syncAt: null,
@@ -17,9 +35,11 @@ const storeState = {
 
 const _STORE_TINTS = ['mint', 'sky', 'lavender', 'peach', 'rose', 'lemon'];
 
+/** @param {string} id @returns {HTMLElement|null} */
 function _storeEl(id) { return document.getElementById(id); }
 
 /** A card's icon: the cached image, or a tinted tile with the first letter. */
+/** @param {StoreCard} c @param {number} size @returns {string} */
 function _storeIcon(c, size) {
   const letter = escHtml((c.name || '?').trim().charAt(0).toUpperCase() || '?');
   let h = 0;
@@ -32,14 +52,16 @@ function _storeIcon(c, size) {
 }
 
 /** Images that fail fall back to their tile (no inline onerror: CSP). */
+/** @param {ParentNode} root @returns {void} */
 function _wireIcons(root) {
-  root.querySelectorAll('img.store-icon:not([data-wired])').forEach((img) => {
+  root.querySelectorAll('img.store-icon:not([data-wired])').forEach((/** @type {HTMLImageElement} */ img) => {
     img.dataset.wired = '1';
     img.addEventListener('error', () => img.remove());
     img.addEventListener('load', () => img.classList.add('is-loaded'));
   });
 }
 
+/** @param {StoreCard} c @returns {string} */
 function _storeCard(c) {
   const where = c.platform === 'windows' ? 'Windows' : c.platform === 'macos' ? 'macOS' : 'Linux';
   return `<button class="store-card" type="button" data-store-open="${escAttr(c.id)}">
@@ -56,6 +78,7 @@ function _storeCard(c) {
     </button>`;
 }
 
+/** @param {StoreStatus} status @returns {void} */
 function _storeEmpty(status) {
   const grid = _storeEl('store-grid');
   if (status.enabled) {
@@ -94,6 +117,7 @@ function _storeEmpty(status) {
 /** Why one platform's tab is empty, read off the last status: the lists Vigil
  *  would download for that platform, and what each of them did. An empty tab
  *  is not "nothing matched" — it is a list that never downloaded. */
+/** @param {StoreStatus|null} status @param {string} platform @returns {void} */
 function _storeEmptyPlatform(status, platform) {
   const grid = _storeEl('store-grid');
   if (!grid) return;
@@ -167,7 +191,7 @@ async function loadStore(reset) {
   if (!grid) return;
   if (reset) { storeState.page = 1; storeState.cards = []; }
   const seq = ++storeState.seq;
-  const params = new URLSearchParams({ page: storeState.page });
+  const params = new URLSearchParams({ page: String(storeState.page) });
   if (storeState.q) params.set('q', storeState.q);
   if (storeState.platform) params.set('platform', storeState.platform);
   if (storeState.category) params.set('category', storeState.category);
@@ -273,13 +297,13 @@ async function openStoreApp(id) {
       <button class="btn btn-outline btn-sm" type="button" data-store-save>Save as task</button>
       <button class="btn btn-mint btn-sm" type="button" data-store-install>Install…</button>
     </div>`);
-  m.modal.querySelector('#store-x').onclick = m.close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#store-x')).onclick = m.close;
   _wireIcons(m.modal);
   m.open();
 }
 
 function _storePicked() {
-  const ids = [...document.querySelectorAll('#store-modal [data-store-pick]:checked')].map(i => Number(i.dataset.storePick));
+  const ids = [...document.querySelectorAll('#store-modal [data-store-pick]:checked')].map((/** @type {HTMLInputElement} */ i) => Number(i.dataset.storePick));
   return _storeChoices(storeState.current).filter(c => ids.includes(c.id));
 }
 
@@ -365,6 +389,7 @@ function openStoreSyncInfo() {
   const status = storeState.status;
   if (!status) return;
   const m = mountModal('store-sync-info', {});
+  /** @type {StoreSync[]} */
   const failed = status.syncs.filter(s => s.error);
   const rows = (list, note) => `<div class="store-sync-rows">${list.map(s => `
       <div class="store-sync-row">
@@ -384,7 +409,7 @@ function openStoreSyncInfo() {
       ? `<div class="store-app-label">Not synced yet</div>${
           rows((status.wanted || []).filter(w => !status.syncs.some(s => s.source === w.source)),
             () => 'not synced yet')}` : ''}`);
-  m.modal.querySelector('#store-sync-info-x').onclick = m.close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#store-sync-info-x')).onclick = m.close;
   m.open();
 }
 
@@ -426,10 +451,10 @@ delegateClick('[data-store-enable]', async (el) => {
 });
 
 document.addEventListener('input', (ev) => {
-  if (ev.target.id !== 'store-q') return;
+  if (/** @type {HTMLInputElement} */ (ev.target).id !== 'store-q') return;
   clearTimeout(storeState.timer);
   storeState.timer = setTimeout(() => {
-    storeState.q = ev.target.value.trim();
+    storeState.q = /** @type {HTMLInputElement} */ (ev.target).value.trim();
     loadStore(true);
   }, 250);
 });

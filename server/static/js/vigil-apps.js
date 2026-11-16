@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-apps.js
 // Owns: the Apps page (installed software by app / by host) and the Software
 //   section on the Monitor page.
@@ -16,6 +17,24 @@ const APPS_COLUMNS = 7;
 const APPS_EMPTY_TEXT = 'No software reported yet — agents send their list within a few '
   + 'minutes of starting, or run the "Refresh software inventory" task.';
 
+/** One installed app of /api/v1/software/apps/, or one host row of
+ *  /api/v1/software/hosts/, or one installed item of a host's software list. */
+/** @typedef {{name?: string, name_key?: string, key?: string, hostname?: string, hosts?: number,
+ *  item_count?: number, versions?: Record<string, number>, outdated?: any, unmanaged?: number,
+ *  managed?: any, sources?: string[], errors?: Record<string, string>, scope?: string,
+ *  user?: string|null, package_id?: string, source?: string, version?: string, host_id?: string,
+ *  latest_version?: string, received_at?: string|null, [k: string]: any}} AppRow */
+
+/** The per-host snapshot of /api/v1/software/hosts/<id>/ (`null` when the host
+ *  never reported), shown as one line above its software table. */
+/** @typedef {{digest?: string, collected_at?: string|null, received_at?: string|null,
+ *  item_count?: number, errors?: Record<string, string>}} MonitorSnapshot */
+
+/** @type {{rows: AppRow[], count: number, hosts: AppRow[], seq: number, hostSeq: number,
+ *  details: Record<string, AppRow[]|null>, expanded: Record<string, boolean>,
+ *  hostDetails: Record<string, AppRow[]|null>, hostExpanded: Record<string, boolean>,
+ *  hostShowAll: Record<string, boolean>, monitorItems: AppRow[],
+ *  monitorSnapshot: MonitorSnapshot|null, monitorSeq: number}} */
 const appsState = {
   rows: [],
   count: 0,
@@ -43,10 +62,12 @@ function _emptyRow(text) {
   return `<tr><td colspan="${APPS_COLUMNS}" class="apps-empty-state">${escHtml(text)}</td></tr>`;
 }
 
+/** @param {any} value @param {string} cls @returns {string} */
 function _countChip(value, cls) {
   return value ? `<span class="chip ${cls}">${value}</span>` : '<span class="apps-zero">0</span>';
 }
 
+/** @param {string[]|null|undefined} sources @returns {string} */
 function _sourceChips(sources) {
   if (!sources || !sources.length) return '<span class="apps-zero">—</span>';
   return sources.map(s => `<span class="chip chip-muted apps-src">${escHtml(s)}</span>`).join('');
@@ -58,6 +79,7 @@ function _scopeCell(row) {
     ? `user: ${escHtml(row.user || 'unknown')}` : escHtml(row.scope || '');
 }
 
+/** @param {Record<string, any>|null|undefined} errors @returns {string} */
 function _errorChips(errors) {
   const entries = Object.entries(errors || {});
   if (!entries.length) return '';
@@ -78,13 +100,14 @@ function _versionChips(versions) {
 }
 
 /* ── By app ──────────────────────────────────────────────────────────── */
+/** @param {number} offset @returns {URLSearchParams} */
 function _appsParams(offset) {
   const params = new URLSearchParams();
-  const q = document.getElementById('apps-q');
+  const q = /** @type {HTMLInputElement} */ (document.getElementById('apps-q'));
   if (q && q.value.trim()) params.set('q', q.value.trim());
-  if (document.getElementById('apps-outdated')?.checked) params.set('outdated', '1');
-  if (document.getElementById('apps-unmanaged')?.checked) params.set('unmanaged', '1');
-  const source = document.getElementById('apps-source');
+  if (/** @type {HTMLInputElement} */ (document.getElementById('apps-outdated'))?.checked) params.set('outdated', '1');
+  if (/** @type {HTMLInputElement} */ (document.getElementById('apps-unmanaged'))?.checked) params.set('unmanaged', '1');
+  const source = /** @type {HTMLSelectElement} */ (document.getElementById('apps-source'));
   if (source && source.value) params.set('source', source.value);
   params.set('limit', String(APPS_PAGE_SIZE));
   params.set('offset', String(offset));
@@ -338,7 +361,7 @@ async function fetchUpdates() {
   if (tbody) tbody.innerHTML = `<tr><td colspan="${UPDATE_COLUMNS}" class="apps-detail-loading">Loading…</td></tr>`;
   const params = new URLSearchParams();
   for (const [id, name] of [['upd-q', 'q'], ['upd-kind', 'kind'], ['upd-decision', 'decision']]) {
-    const value = (document.getElementById(id)?.value || '').trim();
+    const value = (/** @type {HTMLInputElement} */ (document.getElementById(id))?.value || '').trim();
     if (value) params.set(name, value);
   }
   let body = { results: [] };
@@ -394,7 +417,7 @@ function _renderUpdateBulk() {
   if (bar) bar.hidden = count === 0;
   const label = document.getElementById('upd-bulk-count');
   if (label) label.textContent = `${count} selected`;
-  const all = document.getElementById('upd-all');
+  const all = /** @type {HTMLInputElement|null} */ (document.getElementById('upd-all'));
   if (all) all.checked = count > 0 && count === updState.rows.length;
 }
 
@@ -472,7 +495,7 @@ function renderHostSoftwareList() {
       + ` · reported ${timeAgo(snapshot.received_at) || 'unknown'}`;
   }
 
-  const filter = (document.getElementById('software-q')?.value || '').trim().toLowerCase();
+  const filter = (/** @type {HTMLInputElement} */ (document.getElementById('software-q'))?.value || '').trim().toLowerCase();
   const matched = (filter
     ? items.filter(i => (i.name || '').toLowerCase().includes(filter)
         || (i.package_id || '').toLowerCase().includes(filter))
@@ -539,7 +562,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', fetchUpdates);
   }
-  const updAll = document.getElementById('upd-all');
+  const updAll = /** @type {HTMLInputElement} */ (document.getElementById('upd-all'));
   if (updAll) {
     updAll.addEventListener('change', () => {
       updState.selected = new Set(updAll.checked ? updState.rows.map(_updKey) : []);
@@ -660,7 +683,7 @@ delegateClick('[data-app-host]', (el, ev) => {
 // that is the empty state an operator needs to see — so a rows-only guard
 // would leave the page blank forever.
 const _origNavForApps = navigateTo;
-navigateTo = function(pageName) {
+window.navigateTo = function(pageName) {
   _origNavForApps(pageName);
   if (pageName === 'apps') {
     fetchApps(true);

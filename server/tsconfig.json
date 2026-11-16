@@ -4,7 +4,11 @@
     "checkJs": true,
     "noEmit": true,
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "strict": false,
     "skipLibCheck": true
   },
@@ -30,6 +34,13 @@
     "static/js/vigil-vulns.js",
     "static/js/vigil-dashboards.js",
     "static/js/vigil-siteswitch.js",
-    "static/js/vigil-contentyaml.js"
+    "static/js/vigil-contentyaml.js",
+    "static/js/vigil-deeplink.js",
+    "static/js/vigil-community.js",
+    "static/js/vigil-alerts.js",
+    "static/js/vigil-store.js",
+    "static/js/vigil-runhistory.js",
+    "static/js/vigil-agentprofiles.js",
+    "static/js/vigil-apps.js"
   ]
 }

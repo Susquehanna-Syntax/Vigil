@@ -1,3 +1,4 @@
+// @ts-check
 /* The Community page — tasks, playbooks and automations from the public repo.
  *
  * Each kind is fetched and cached independently (server-side, ten minutes) so
@@ -14,6 +15,7 @@
  */
 
 const COMMUNITY_KINDS = ['tasks', 'playbooks', 'automations'];
+/** @type {Record<string, CommunityItem[]>} */
 const communityCache = { tasks: [], playbooks: [], automations: [] };
 const communityLoaded = { tasks: false, playbooks: false, automations: false };
 let communityKind = 'tasks';
@@ -23,6 +25,13 @@ let communityShowServing = false;
 
 const COMMUNITY_LABEL = { tasks: 'task', playbooks: 'playbook', automations: 'automation' };
 
+/** One catalog entry from /api/v1/tasks/community/<kind>/. */
+/** @typedef {{kind?: string, filename?: string, name?: string, description?: string, summary?: string,
+ *  relevance?: string, author?: string, html_url?: string, risk_level?: string, uid?: string,
+ *  yaml_source?: string, have?: boolean, _planned?: boolean, requires?: Array<{kind?: string, uid?: string, slug?: string, name?: string, have?: boolean}>,
+ *  parsed_spec?: {actions?: Array<{type?: string, label?: string}>}, [k: string]: any}} CommunityItem */
+
+/** @param {string} kind @returns {string} */
 function _communityEmptyHtml(kind) {
   return `<div class="empty-state">
     <div class="empty-state-title">No community ${escHtml(kind)} yet</div>
@@ -39,6 +48,7 @@ function _communityEmptyHtml(kind) {
  * rather than being hidden outright — a task that serves a playbook is still
  * a perfectly good task to read, or to fork on its own.
  */
+/** @returns {Set<string>} */
 function _referencedTaskKeys() {
   const keys = new Set();
   ['playbooks', 'automations'].forEach(kind => {
@@ -53,12 +63,14 @@ function _referencedTaskKeys() {
   return keys;
 }
 
+/** @param {CommunityItem} item @param {Set<string>} keys @returns {boolean} */
 function _isReferenced(item, keys) {
   const stem = (item.filename || '').replace(/\.(ya?ml)$/, '');
   return (item.uid && keys.has('uid:' + item.uid)) || keys.has('slug:' + stem);
 }
 
 /** What forking this item would pull in, rendered as a short list. */
+/** @param {CommunityItem} item @returns {string} */
 function _requiresHtml(item) {
   const needs = item.requires || [];
   const held = item.have
@@ -80,6 +92,7 @@ function _requiresHtml(item) {
   </div>`;
 }
 
+/** @param {CommunityItem} item @returns {string} */
 function _communityCardHtml(item) {
   const meta = [];
   if (item.kind === 'tasks') {
@@ -118,12 +131,14 @@ function _communityCardHtml(item) {
 }
 
 /** "Fork" for a lone task, "Fork all 3" when it drags things along. */
+/** @param {CommunityItem} item @returns {string} */
 function _forkLabel(item) {
   if (item.have) return 'Already yours';
   const outstanding = (item.requires || []).filter(r => r.have !== true).length;
   return outstanding > 0 ? `Fork all ${outstanding + 1}` : 'Fork';
 }
 
+/** @param {string} kind @returns {void} */
 function _renderCommunity(kind) {
   const grid = document.getElementById(`community-${kind}-grid`);
   if (!grid) return;
@@ -134,7 +149,7 @@ function _renderCommunity(kind) {
       : '<div class="empty-state"><div class="empty-state-desc">Loading…</div></div>';
     return;
   }
-  const q = (document.getElementById(`community-${kind}-search`)?.value || '')
+  const q = (/** @type {HTMLInputElement} */ (document.getElementById(`community-${kind}-search`))?.value || '')
     .trim().toLowerCase();
   let visible = all;
   if (q) {
@@ -188,6 +203,7 @@ function toggleCommunityServing() {
   _renderCommunity('tasks');
 }
 
+/** @param {string} kind @param {boolean=} force @returns {Promise<void>} */
 async function loadCommunityKind(kind, force) {
   if (communityLoaded[kind] && !force) return;
   const grid = document.getElementById(`community-${kind}-grid`);
@@ -224,6 +240,7 @@ async function loadCommunityKind(kind, force) {
  * The same walk backs this and the fork itself, so the card's promise and the
  * button's behaviour cannot drift apart. One request per card, only for the
  * kinds that reference anything. */
+/** @param {string} kind @returns {Promise<void>} */
 async function _annotateFork(kind) {
   if (kind === 'tasks') return;
   const items = communityCache[kind] || [];
@@ -262,12 +279,14 @@ function _invalidateForkPlans() {
   });
 }
 
+/** @param {string} kind @param {string} encodedFilename @returns {CommunityItem|undefined} */
 function _communityItem(kind, encodedFilename) {
   const filename = decodeURIComponent(encodedFilename);
   return (communityCache[kind] || []).find(i => i.filename === filename);
 }
 
 /** Fork one item into the operator's own library. */
+/** @param {string} kind @param {string} encodedFilename @returns {Promise<void>} */
 async function openCommunityItem(kind, encodedFilename) {
   const item = _communityItem(kind, encodedFilename);
   if (!item || !item.yaml_source) {
@@ -316,13 +335,13 @@ async function openCommunityItem(kind, encodedFilename) {
 /* ── Wiring ───────────────────────────────────────────────────────────── */
 
 document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('#page-community .sub-tab').forEach(tab => {
+  document.querySelectorAll('#page-community .sub-tab').forEach((/** @type {HTMLElement} */ tab) => {
     tab.addEventListener('click', () => {
       document.querySelectorAll('#page-community .sub-tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('#page-community .sub-panel').forEach(p => p.classList.remove('active'));
       tab.classList.add('active');
-      document.getElementById(tab.dataset.subtab).classList.add('active');
-      communityKind = tab.dataset.kind;
+      /** @type {HTMLElement} */ (document.getElementById(/** @type {DOMStringMap} */ (tab.dataset).subtab)).classList.add('active');
+      communityKind = /** @type {DOMStringMap} */ (tab.dataset).kind;
       loadCommunityKind(communityKind);
     });
   });
@@ -337,7 +356,7 @@ document.addEventListener('DOMContentLoaded', () => {
    is three round-trips wasted. */
 if (typeof navigateTo === 'function') {
   const _origNavCommunity = navigateTo;
-  navigateTo = function (page) {
+  window.navigateTo = function (page) {
     _origNavCommunity(page);
     if (page === 'community') loadCommunityKind(communityKind);
   };

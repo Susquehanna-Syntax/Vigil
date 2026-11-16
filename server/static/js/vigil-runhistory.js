@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-runhistory.js
 // Owns: Playbooks → History sub-tab. Lists TaskRuns produced by playbook and
 // automation dispatch, newest first, with the outcome the run settled into.
@@ -21,7 +22,9 @@ const _RUN_STATE_ACCENT = {
 // each row can say what happened in words next to its outputs.
 const _STEP_LINE = /^\[(OK|ERROR|FAILED|SKIPPED|PROBE|NOT APPLICABLE)\]\s+([^:(]+?)(?:\s+\(([^)]+)\))?:\s*(.*)$/;
 
+/** @param {string} output @returns {{byId: Record<string, {tag: string, action: string, text: string}>, notes: string[]}} */
 function _stepLines(output) {
+  /** @type {Record<string, {tag: string, action: string, text: string}>} */
   const byId = {};
   const notes = [];
   String(output || '').split('\n').forEach((line) => {
@@ -33,6 +36,7 @@ function _stepLines(output) {
 }
 
 // A hunt's line is its JSON result; say it as a count instead.
+/** @param {string} text @returns {string} */
 function _stepMessage(text) {
   const t = String(text || '').trim();
   if (t.startsWith('{')) {
@@ -47,6 +51,7 @@ function _stepMessage(text) {
   return t.length > 240 ? t.slice(0, 240) + '…' : t;
 }
 
+/** @param {any} resultData @param {string|null|undefined} output @returns {string} */
 function _stepResultsHtml(resultData, output) {
   // One row per step: what happened, in words, next to what it reported.
   // Everything here is agent-reported, so every value goes through escHtml.
@@ -55,6 +60,7 @@ function _stepResultsHtml(resultData, output) {
   const { byId, notes } = _stepLines(output);
   const rows = steps.map((s) => {
     const id = String((s && s.id) || '');
+    /** @type {{tag?: string, action?: string, text?: string}} */
     const line = byId[id] || {};
     let status = String((s && s.status) || '');
     if (line.tag === 'ERROR' || line.tag === 'FAILED') status = 'error';
@@ -78,6 +84,12 @@ function _stepResultsHtml(resultData, output) {
   return `<div class="run-step-results">${rows}${noteHtml}</div>`;
 }
 
+/** One playbook/automation TaskRun row from /api/v1/tasks/history/. */
+/** @typedef {{id: any, source?: string, state?: string, created_at?: string, finished_at?: string|null,
+ *  name_snapshot?: string, automation_name?: string, playbook_name?: string, host_count?: number,
+ *  step_count?: number, [k: string]: any}} RunRow */
+
+/** @param {string} iso @returns {string} */
 function _runWhen(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -88,14 +100,16 @@ function _runWhen(iso) {
   return d.toLocaleDateString();
 }
 
+/** @param {RunRow} row @returns {string} */
 function _runDuration(row) {
   if (!row.finished_at) return '';
-  const ms = new Date(row.finished_at) - new Date(row.created_at);
+  const ms = new Date(row.finished_at).getTime() - new Date(row.created_at).getTime();
   if (ms < 1000) return '<1s';
   if (ms < 60000) return `${Math.round(ms / 1000)}s`;
   return `${Math.round(ms / 60000)}m`;
 }
 
+/** @param {RunRow} row @returns {HTMLElement} */
 function _buildRunRow(row) {
   const el = document.createElement('div');
   el.className = 'run-row';
@@ -118,6 +132,7 @@ function _buildRunRow(row) {
   return el;
 }
 
+/** @param {any} runId @returns {Promise<void>} */
 async function _openRunDetail(runId) {
   let run;
   try { run = await apiJson(`/api/v1/tasks/runs/${runId}/`); }
@@ -148,16 +163,17 @@ async function _openRunDetail(runId) {
     <div class="run-task-list">${rows}</div>
     <div class="confirm-actions">${huntBtn}<button class="btn btn-outline btn-sm" id="rd-close">Close</button></div>`);
   const close = () => m.close();
-  m.modal.querySelector('#rd-x').onclick = close;
-  m.modal.querySelector('#rd-close').onclick = close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#rd-x')).onclick = close;
+  /** @type {HTMLElement} */ (m.modal.querySelector('#rd-close')).onclick = close;
   if (typeof wireRunSummary === 'function') wireRunSummary(m.modal, run.summary, run);
   // A playbook run draws its flow: give it the room the lanes need.
   if (run.flow_snapshot) m.modal.classList.add('modal-flow');
-  const huntBtnEl = m.modal.querySelector('#rd-hunt');
+  const huntBtnEl = /** @type {HTMLElement} */ (m.modal.querySelector('#rd-hunt'));
   if (huntBtnEl) huntBtnEl.onclick = () => { m.close(); openHuntResults(run.id); };
   requestAnimationFrame(m.open);
 }
 
+/** @returns {void} */
 function _renderRunPager() {
   const el = document.getElementById('run-history-pager');
   if (!el) return;
@@ -171,6 +187,7 @@ function _renderRunPager() {
   el.querySelector('#rh-next')?.addEventListener('click', () => loadRunHistory(page + 1));
 }
 
+/** @param {number=} page @returns {Promise<void>} */
 async function loadRunHistory(page) {
   const list = document.getElementById('run-history-list');
   if (!list) return;
@@ -200,15 +217,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // Client-side filter over the page already fetched. Deliberately not a
   // server round-trip: history is paged, and re-querying on every keystroke
   // would fight the pager.
-  document.getElementById('hist-search')?.addEventListener('input', (e) => {
-    const q = (e.target.value || '').trim().toLowerCase();
-    document.querySelectorAll('#hist-list .bl-card, #hist-list tr').forEach(row => {
+  document.getElementById('hist-search')?.addEventListener('input', (/** @type {Event} */ e) => {
+    const q = (/** @type {HTMLInputElement} */ (e.target).value || '').trim().toLowerCase();
+    document.querySelectorAll('#hist-list .bl-card, #hist-list tr').forEach((/** @type {HTMLElement} */ row) => {
       row.style.display = !q || (row.textContent || '').toLowerCase().includes(q) ? '' : 'none';
     });
   });
 
-  document.getElementById('hist-filters')?.addEventListener('click', (e) => {
-    const b = e.target.closest('.sa-chip');
+  document.getElementById('hist-filters')?.addEventListener('click', (/** @type {MouseEvent} */ e) => {
+    const b = /** @type {HTMLElement|null} */ (/** @type {HTMLElement} */ (e.target).closest('.sa-chip'));
     if (!b) return;
     document.querySelectorAll('#hist-filters .sa-chip')
       .forEach((c) => c.classList.toggle('on', c === b));
@@ -216,7 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadRunHistory(1);
   });
 
-  document.querySelectorAll('#page-playbooks .sub-tab').forEach((tab) => {
+  document.querySelectorAll('#page-playbooks .sub-tab').forEach((/** @type {HTMLElement} */ tab) => {
     tab.addEventListener('click', () => {
       if (tab.dataset.subtab === 'hist-panel') loadRunHistory(1);
     });

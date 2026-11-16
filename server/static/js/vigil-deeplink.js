@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-deeplink.js
 // Opens '#open/<type>/<id>' — the link shape Vigil mints for itself, and the
 // one a Jackil helpdesk ticket hands to an agent clicking "Open in Vigil".
@@ -13,11 +14,13 @@
 const DEEP_LINK = /^#open\/(host|device|task|playbook|run|automation)\/([0-9A-Za-z-]{1,64})$/;
 
 /** Parses '#open/<type>/<id>'; returns {type, id} or null. */
+/** @param {string} hash @returns {{type: string, id: string}|null} */
 function parseDeepLink(hash) {
   const match = DEEP_LINK.exec(hash || '');
   return match ? { type: match[1], id: match[2] } : null;
 }
 
+/** @param {string} type @param {string} id @returns {Promise<void>} */
 async function openVigilItem(type, id) {
   switch (type) {
     case 'host':
@@ -50,10 +53,10 @@ async function openVigilItem(type, id) {
       // the whole row rather than an id. So: reveal the tab, load the list,
       // find the one named in the link.
       if (typeof navigateTo === 'function') navigateTo('playbooks');
-      const tab = document.querySelector('#page-playbooks .sub-tab[data-subtab="auto-panel"]');
+      const tab = /** @type {HTMLElement} */ (document.querySelector('#page-playbooks .sub-tab[data-subtab="auto-panel"]'));
       if (tab) tab.click();
       if (typeof loadAutomations !== 'function') break;
-      const automations = (await loadAutomations()) || [];
+      const automations = /** @type {any[]} */ ((await loadAutomations()) || []);
       const found = automations.find((a) => String(a.id) === String(id));
       if (!found) { showToast('That automation is not available', 'error'); break; }
       if (typeof _openAutoEditor === 'function') _openAutoEditor(found);
@@ -66,6 +69,7 @@ async function openVigilItem(type, id) {
 
 /** Opens what the hash names and then drops the hash, so a reload does not
     reopen the same thing over whatever the user navigated to next. */
+/** @returns {Promise<void>} */
 async function _runDeepLink() {
   const link = parseDeepLink(location.hash);
   if (!link) return;

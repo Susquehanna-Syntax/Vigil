@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-alerts.js
 // Owns: Alerts page — client-side rendered firing/acknowledged/resolved lists,
 //       ack / un-ack (single + bulk multi-select), ack duration menu,
@@ -11,10 +12,19 @@
 //      POST /api/v1/alerts/bulk/
 
 /* ── State ───────────────────────────────────────────────────────────── */
+/** One alert row from /api/v1/alerts/?state=... . `id` is a server UUID, and
+ *  the checkbox set holds ids of both kinds. */
+/** @typedef {{id: any, host?: any, host_hostname?: string, message?: string, severity?: string,
+ *  metric_value?: number|string|null, fired_at?: string, acknowledged_at?: string,
+ *  acknowledged_until?: string|null, resolved_at?: string, fix_context?: {container_name?: string},
+ *  [k: string]: any}} Alert */
+/** @type {{firing: Alert[], acknowledged: Alert[], resolved: Alert[]}} */
 const alertsCache = { firing: [], acknowledged: [], resolved: [] };
+/** @type {Set<any>} */
 const alertSelection = new Set();
 
 /* ── Time formatting ─────────────────────────────────────────────────── */
+/** @param {string|null|undefined} iso @returns {string} */
 function _alertRelTime(iso) {
   if (!iso) return '';
   const diff = Date.now() - new Date(iso).getTime();
@@ -29,6 +39,7 @@ function _alertRelTime(iso) {
 }
 
 /* ── Rendering ───────────────────────────────────────────────────────── */
+/** @param {Alert} alert @param {string} tab @returns {string} */
 function _alertDotColor(alert, tab) {
   if (tab === 'ack') return 'var(--lemon)';
   if (tab === 'resolved') return 'var(--mint)';
@@ -36,6 +47,7 @@ function _alertDotColor(alert, tab) {
     : alert.severity === 'warning' ? 'var(--lemon)' : 'var(--lavender)';
 }
 
+/** @param {Alert} alert @param {string} tab @returns {string} */
 function _alertItemHtml(alert, tab) {
   const dot = _alertDotColor(alert, tab);
   const checked = alertSelection.has(alert.id) ? 'checked' : '';
@@ -130,6 +142,7 @@ const _ALERT_EMPTY = {
     </div>`,
 };
 
+/** @param {string} tab @param {Alert[]} alerts @returns {void} */
 function _renderAlertList(tab, alerts) {
   const el = document.getElementById(`alerts-list-${tab}`);
   if (!el) return;
@@ -145,6 +158,7 @@ function _renderAlertCounts() {
   if (ack) ack.textContent = alertsCache.acknowledged.length ? `(${alertsCache.acknowledged.length})` : '';
 }
 
+/** @returns {Promise<void>} */
 async function refreshAlerts() {
   try {
     const [firing, acked, resolved] = await Promise.all([
@@ -182,10 +196,11 @@ function _updateBulkBar() {
 
 function clearAlertSelection() {
   alertSelection.clear();
-  document.querySelectorAll('.alert-check:checked').forEach(cb => { cb.checked = false; });
+  document.querySelectorAll('.alert-check:checked').forEach((/** @type {HTMLInputElement} */ cb) => { cb.checked = false; });
   _updateBulkBar();
 }
 
+/** @param {string} action @param {number|null=} durationSeconds @returns {Promise<void>} */
 async function bulkAlertAction(action, durationSeconds = null) {
   closeAckMenus();
   if (!alertSelection.size) return;
@@ -204,6 +219,7 @@ async function bulkAlertAction(action, durationSeconds = null) {
 }
 
 /* ── Single-alert actions (no reload — lists re-render in place) ─────── */
+/** @param {any} alertId @param {number|null=} durationSeconds @returns {Promise<void>} */
 async function acknowledgeAlert(alertId, durationSeconds = null) {
   closeAckMenus();
   try {
@@ -219,6 +235,7 @@ async function acknowledgeAlert(alertId, durationSeconds = null) {
   }
 }
 
+/** @param {any} alertId @returns {Promise<void>} */
 async function unacknowledgeAlert(alertId) {
   try {
     await apiJson(`/api/v1/alerts/${alertId}/unacknowledge/`, { method: 'POST' });
@@ -236,6 +253,7 @@ function closeAckMenus() {
   document.querySelectorAll('.alert-item.menu-open').forEach(el => el.classList.remove('menu-open'));
 }
 
+/** @param {MouseEvent} event @param {any} alertId @returns {void} */
 function toggleAckMenu(event, alertId) {
   event.stopPropagation();
   const menu = document.getElementById('ack-menu-' + alertId);
@@ -254,16 +272,16 @@ function toggleAckMenu(event, alertId) {
 document.addEventListener('click', closeAckMenus);
 
 /* ── Event delegation for rendered content ───────────────────────────── */
-document.addEventListener('change', (e) => {
-  const cb = e.target.closest('.alert-check');
+document.addEventListener('change', (/** @type {Event} */ e) => {
+  const cb = /** @type {HTMLInputElement} */ (/** @type {HTMLElement} */ (e.target).closest('.alert-check'));
   if (!cb) return;
   if (cb.checked) alertSelection.add(cb.dataset.alertId);
   else alertSelection.delete(cb.dataset.alertId);
   _updateBulkBar();
 });
 
-document.addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-alert-action="suggest-fix"]');
+document.addEventListener('click', (/** @type {MouseEvent} */ e) => {
+  const btn = /** @type {HTMLElement|null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-alert-action="suggest-fix"]'));
   if (!btn) return;
   e.stopPropagation();
   const alert = alertsCache.firing.find(a => a.id === btn.dataset.alertId);
@@ -279,8 +297,8 @@ document.addEventListener('click', (e) => {
   }
 });
 
-document.addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-alert-action="update-container"]');
+document.addEventListener('click', (/** @type {MouseEvent} */ e) => {
+  const btn = /** @type {HTMLElement|null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-alert-action="update-container"]'));
   if (!btn) return;
   e.stopPropagation();
   const alert = alertsCache.firing.find(a => a.id === btn.dataset.alertId);
@@ -288,6 +306,7 @@ document.addEventListener('click', (e) => {
 });
 
 /* ── Fix suggestions ─────────────────────────────────────────────────── */
+/** @param {any} hostId @returns {void} */
 function suggestAgentUpdate(hostId) {
   const yaml = [
     `name: "Update Vigil Agent"`,
@@ -305,7 +324,7 @@ function suggestAgentUpdate(hostId) {
 // so the tab counts are populated before the first visit.
 if (typeof navigateTo === 'function') {
   const _origNavigateAlerts = navigateTo;
-  navigateTo = function (pageName) {
+  window.navigateTo = function (pageName) {
     _origNavigateAlerts(pageName);
     if (pageName === 'alerts') refreshAlerts();
   };

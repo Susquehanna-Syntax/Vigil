@@ -1,3 +1,4 @@
+// @ts-check
 // vigil-agentprofiles.js
 // Owns: Reprovision → Agent profiles — the list, and the editor for one.
 // HTML: templates/pages/_reprovision.html #agent-profiles-list
@@ -12,6 +13,10 @@
 
 const APF_LABELS = { monitor: 'Monitor', managed: 'Managed', full_control: 'Full control' };
 
+/** One agent-profile row from /api/v1/agent-profiles/. */
+/** @typedef {{id?: string|number, name?: string, mode?: string, builtin?: boolean, site_id?: string|number|null, description?: string, primary_relay?: string|number|null, allow_remote_shell?: boolean, allow_remote_desktop?: boolean, install_profiles?: Array<string|{name?: string}>, [k: string]: any}} AgentProfile */
+
+/** @returns {Promise<void>} */
 async function loadAgentProfiles() {
   const list = document.getElementById('agent-profiles-list');
   if (!list) return;
@@ -65,6 +70,7 @@ function _apRelayName(id) {
   return _apRelaysById[String(id)] || `relay ${String(id).slice(0, 8)}`;
 }
 
+/** @param {AgentProfile|null=} profile @returns {HTMLElement} */
 function _apCard(profile) {
   const card = document.createElement('div');
   card.className = 'site-row';
@@ -121,6 +127,7 @@ function _apCard(profile) {
   return card;
 }
 
+/** @param {AgentProfile|null=} profile @returns {Promise<void>} */
 async function openAgentProfileEditor(profile) {
   const m = mountModal('agentprofile', { wide: true });
   const editing = profile && profile.id ? String(profile.id) : '';
@@ -143,14 +150,16 @@ async function openAgentProfileEditor(profile) {
       <button class="btn btn-mint btn-sm" id="ap-save">Save</button>
     </div>`);
 
+  /** @type {HTMLElement} */
   const form = m.modal.querySelector('#ap-form');
   // Mount and open first: apfLoadContext is a request, and a dialog that
   // appears only once it settles reads as lag (see commit 57470af).
   form.innerHTML = '<div class="modal-skeleton"><div class="sk-line sk-w60"></div>'
     + '<div class="sk-line"></div><div class="sk-line sk-w80"></div></div>';
-  m.modal.querySelector('#ap-name').value = (profile && profile.name) || '';
-  m.modal.querySelector('#ap-description').value = (profile && profile.description) || '';
-  sitePickFill(m.modal.querySelector('#ap-site'), m.modal.querySelector('#ap-site-field'),
+  /** @type {HTMLInputElement} */ (m.modal.querySelector('#ap-name')).value = (profile && profile.name) || '';
+  /** @type {HTMLInputElement} */ (m.modal.querySelector('#ap-description')).value = (profile && profile.description) || '';
+  sitePickFill(/** @type {HTMLSelectElement} */ (m.modal.querySelector('#ap-site')),
+    /** @type {HTMLElement} */ (m.modal.querySelector('#ap-site-field')),
     profile ? profile.site_id : null, { editing: !!editing });
   requestAnimationFrame(m.open);
 
@@ -165,14 +174,15 @@ async function openAgentProfileEditor(profile) {
     form.appendChild(p);
     return;
   }
-  apfRender(form, profile, ctx);
+  apfRender(form, profile, /** @type {any} */ (ctx));
 
+  /** @type {HTMLElement} */
   const nameError = m.modal.querySelector('#ap-name-error');
   const close = () => m.close();
-  m.modal.querySelector('#ap-x').addEventListener('click', close);
-  m.modal.querySelector('#ap-cancel').addEventListener('click', close);
-  m.modal.querySelector('#ap-save').addEventListener('click', async () => {
-    const name = m.modal.querySelector('#ap-name').value.trim();
+  /** @type {HTMLButtonElement} */ (m.modal.querySelector('#ap-x')).addEventListener('click', close);
+  /** @type {HTMLButtonElement} */ (m.modal.querySelector('#ap-cancel')).addEventListener('click', close);
+  /** @type {HTMLButtonElement} */ (m.modal.querySelector('#ap-save')).addEventListener('click', async () => {
+    const name = /** @type {HTMLInputElement} */ (m.modal.querySelector('#ap-name')).value.trim();
     // The form holds the agent settings; the two fields above are the profile's
     // own identity, which is why apfShowErrors cannot place a complaint here.
     if (!name) {
@@ -182,13 +192,16 @@ async function openAgentProfileEditor(profile) {
     }
     nameError.hidden = true;
     apfShowErrors(form, null);
+    /** @type {{name: string, description: string, site_id?: string|number|null}} */
     const body = {
       name,
-      description: m.modal.querySelector('#ap-description').value.trim(),
+      description: /** @type {HTMLInputElement} */ (m.modal.querySelector('#ap-description')).value.trim(),
       ...apfRead(form),
     };
-    const siteId = sitePickValue(m.modal.querySelector('#ap-site'), m.modal.querySelector('#ap-site-field'));
+    const siteId = sitePickValue(/** @type {HTMLSelectElement} */ (m.modal.querySelector('#ap-site')),
+      /** @type {HTMLElement} */ (m.modal.querySelector('#ap-site-field')));
     if (siteId !== undefined) body.site_id = siteId;
+    /** @type {HTMLButtonElement} */
     const btn = m.modal.querySelector('#ap-save');
     btn.disabled = true;
     try {
