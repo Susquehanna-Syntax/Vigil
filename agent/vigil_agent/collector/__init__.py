@@ -44,6 +44,7 @@ from .gpu import (
     collect_gpu,
     collect_nvidia_gpu,
 )
+from .zfs import collect_zfs
 from .aggregate import collect_all
 from .identity import (
     _machine_fingerprint_macos,
