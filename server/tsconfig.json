@@ -41,6 +41,9 @@
     "static/js/vigil-store.js",
     "static/js/vigil-runhistory.js",
     "static/js/vigil-agentprofiles.js",
-    "static/js/vigil-apps.js"
+    "static/js/vigil-apps.js",
+    "static/js/vigil-search.js",
+    "static/js/vigil-waves.js",
+    "static/js/vigil-enroll.js"
   ]
 }

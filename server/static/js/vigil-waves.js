@@ -1,3 +1,4 @@
+// @ts-check
 /* Wave management — the Deployments › Waves panel.
  *
  * Built to the same shape as playbooks and automations: a toolbar with search
@@ -6,20 +7,24 @@
  * the host, so there is exactly one place a host's membership is decided.
  */
 
+/** @type {any[]} */
 let _allWaves = [];
+/** @type {any[]} */
 let _waveGroups = [];
+/** @type {any} */
 let _editingWaveId = null;
 
 /* ── List ─────────────────────────────────────────────────────────────── */
 
 function _filterWaves() {
-  const q = (document.getElementById('wave-search')?.value || '').trim().toLowerCase();
+  const q = (/** @type {HTMLInputElement} */ (document.getElementById('wave-search'))?.value || '').trim().toLowerCase();
   if (!q) return _allWaves;
   return _allWaves.filter(w =>
     (w.name || '').toLowerCase().includes(q) ||
     (w.tags || []).some(t => (t || '').toLowerCase().includes(q)));
 }
 
+/** @param {any} w @returns {string} */
 function _waveCard(w) {
   const tags = (w.tags || []).length
     ? (w.tags || []).map(t => `<span class="chip">${escHtml(t)}</span>`).join(' ')
@@ -54,6 +59,7 @@ function _waveCard(w) {
   </div>`;
 }
 
+/** @returns {void} */
 function _renderWaves() {
   const box = document.getElementById('waves-list');
   if (!box) return;
@@ -71,6 +77,7 @@ function _renderWaves() {
   box.innerHTML = items.map(_waveCard).join('');
 }
 
+/** @returns {Promise<void>} */
 async function loadWaves() {
   const box = document.getElementById('waves-list');
   if (!box) return;
@@ -90,21 +97,22 @@ async function loadWaves() {
 
 /* ── Editor ───────────────────────────────────────────────────────────── */
 
+/** @param {any=} waveId @returns {void} */
 function openWaveEditor(waveId) {
   _editingWaveId = waveId || null;
   const w = waveId ? _allWaves.find(x => x.id === waveId) : null;
   document.getElementById('wave-editor-title').textContent = w ? 'Edit Wave' : 'New Wave';
-  document.getElementById('wave-name').value = w ? w.name : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('wave-name')).value = w ? w.name : '';
   // Default a new wave to the end of the order rather than colliding with 1.
-  document.getElementById('wave-order').value = w
+  /** @type {HTMLInputElement} */ (document.getElementById('wave-order')).value = w
     ? w.order
     : (_allWaves.reduce((m, x) => Math.max(m, x.order), 0) + 1);
-  document.getElementById('wave-validation').value = w ? w.validation_hours : 24;
-  document.getElementById('wave-tags').value = w ? (w.tags || []).join(', ') : '';
-  document.getElementById('wave-enabled').checked = w ? w.enabled : true;
-  const groupInput = document.getElementById('wave-group-tags');
+  /** @type {HTMLInputElement} */ (document.getElementById('wave-validation')).value = w ? w.validation_hours : 24;
+  /** @type {HTMLInputElement} */ (document.getElementById('wave-tags')).value = w ? (w.tags || []).join(', ') : '';
+  /** @type {HTMLInputElement} */ (document.getElementById('wave-enabled')).checked = w ? w.enabled : true;
+  const groupInput = /** @type {HTMLInputElement} */ (document.getElementById('wave-group-tags'));
   if (groupInput) groupInput.value = w ? (w.group_tags || []).join(', ') : '';
-  const siteSel = document.getElementById('wave-site');
+  const siteSel = /** @type {HTMLSelectElement} */ (document.getElementById('wave-site'));
   sitePickFill(siteSel, document.getElementById('wave-site-field'), w ? w.site_id : null,
     { editing: !!w }).then(() => { siteSel.disabled = !!w; });
   _updateWaveMatchPreview();
@@ -112,17 +120,20 @@ function openWaveEditor(waveId) {
   document.getElementById('wave-editor-modal').classList.add('open');
 }
 
+/** @returns {void} */
 function closeWaveEditor() {
   document.getElementById('wave-editor-overlay').classList.remove('open');
   document.getElementById('wave-editor-modal').classList.remove('open');
   _editingWaveId = null;
 }
 
+/** @returns {string[]} */
 function _waveTagsFromInput() {
-  return (document.getElementById('wave-tags').value || '')
+  return (/** @type {HTMLInputElement} */ (document.getElementById('wave-tags')).value || '')
     .split(',').map(t => t.trim()).filter(Boolean);
 }
 
+/** @returns {Promise<void>} */
 async function _updateWaveMatchPreview() {
   const el = document.getElementById('wave-match-preview');
   if (!el) return;
@@ -141,19 +152,21 @@ async function _updateWaveMatchPreview() {
   }
 }
 
+/** @returns {Promise<void>} */
 async function saveWave() {
-  const btn = document.getElementById('wave-save-btn');
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('wave-save-btn'));
+  /** @type {{name: string, order: number, validation_hours: number, tags: string[], enabled: boolean, group_tags?: string[], site_id?: string|number|null}} */
   const payload = {
-    name: (document.getElementById('wave-name').value || '').trim(),
-    order: parseInt(document.getElementById('wave-order').value, 10) || 1,
-    validation_hours: parseInt(document.getElementById('wave-validation').value, 10) || 0,
+    name: (/** @type {HTMLInputElement} */ (document.getElementById('wave-name')).value || '').trim(),
+    order: parseInt(/** @type {HTMLInputElement} */ (document.getElementById('wave-order')).value, 10) || 1,
+    validation_hours: parseInt(/** @type {HTMLInputElement} */ (document.getElementById('wave-validation')).value, 10) || 0,
     tags: _waveTagsFromInput(),
-    enabled: document.getElementById('wave-enabled').checked,
+    enabled: /** @type {HTMLInputElement} */ (document.getElementById('wave-enabled')).checked,
   };
-  payload.group_tags = ((document.getElementById('wave-group-tags') || {}).value || '')
+  payload.group_tags = ((/** @type {HTMLInputElement} */ (document.getElementById('wave-group-tags')) || {}).value || '')
     .split(',').map(t => t.trim()).filter(Boolean);
   if (!_editingWaveId) {
-    const siteId = sitePickValue(document.getElementById('wave-site'), document.getElementById('wave-site-field'));
+    const siteId = sitePickValue(/** @type {HTMLSelectElement} */ (document.getElementById('wave-site')), document.getElementById('wave-site-field'));
     if (siteId !== undefined) payload.site_id = siteId;
   }
   if (!payload.name) { showToast('Give the wave a name', 'error'); return; }
@@ -178,6 +191,7 @@ async function saveWave() {
   }
 }
 
+/** @param {any=} waveId @returns {Promise<void>} */
 async function deleteWave(waveId) {
   const w = _allWaves.find(x => x.id === waveId);
   if (!w) return;
@@ -199,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('wave-tags')?.addEventListener('input', _updateWaveMatchPreview);
 
 
-  document.querySelectorAll('.sub-tab[data-subtab]').forEach(tab => {
+  document.querySelectorAll('.sub-tab[data-subtab]').forEach((/** @type {HTMLElement} */ tab) => {
     tab.addEventListener('click', () => {
       if (tab.dataset.subtab === 'wave-panel') loadWaves();
     });
