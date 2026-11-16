@@ -40,6 +40,14 @@ if [ "$OS" = "linux" ]; then
     systemctl daemon-reload >/dev/null 2>&1 || true
     say "the systemd unit"
   fi
+elif [ "$OS" = "freebsd" ]; then
+  if [ -f /usr/local/etc/rc.d/vigil_agent ]; then
+    service vigil_agent stop >/dev/null 2>&1 || true
+    sysrc -x vigil_agent_enable >/dev/null 2>&1 || true
+    rm -f /usr/local/etc/rc.d/vigil_agent
+    say "the rc.d service"
+  fi
+  rm -f /var/log/vigil-agent.log
 elif [ "$OS" = "darwin" ]; then
   if [ -f /Library/LaunchDaemons/com.susquehannasyntax.vigil-agent.plist ]; then
     launchctl unload /Library/LaunchDaemons/com.susquehannasyntax.vigil-agent.plist >/dev/null 2>&1 || true
@@ -56,12 +64,18 @@ fi
 [ -d /var/lib/vigil-agent ] && { rm -rf /var/lib/vigil-agent; say "/var/lib/vigil-agent"; }
 
 if [ "$KEEP_CONFIG" -eq 1 ]; then
-  echo "  kept /etc/vigil/agent.yml (--keep-config)"
+  # Both spellings of the config directory, matching what install.sh writes per
+  # platform. Literal paths only: a variable here could resolve to nothing.
+  echo "  kept /etc/vigil/agent.yml or /usr/local/etc/vigil/agent.yml (--keep-config)"
 else
-  [ -f /etc/vigil/agent.yml ] && { rm -f /etc/vigil/agent.yml; say "/etc/vigil/agent.yml"; }
-  rm -f /etc/vigil/agent.yml.bak
-  # Only if empty: an operator may keep scripts for execute_script in here.
-  rmdir /etc/vigil 2>/dev/null && echo "  removed /etc/vigil (was empty)" || true
+  for dir in /etc/vigil /usr/local/etc/vigil; do
+    [ -f "$dir/agent.yml" ] && { rm -f "$dir/agent.yml"; say "$dir/agent.yml"; }
+    rm -f "$dir"/agent.yml.bak
+    # Untrusted-config leftovers from the installer (SEC-3) and profile backups.
+    rm -f "$dir"/agent.yml.untrusted.* "$dir"/agent.yml.before-profile.* 2>/dev/null || true
+    # Only if empty: an operator may keep scripts for execute_script in here.
+    rmdir "$dir" 2>/dev/null && echo "  removed $dir (was empty)" || true
+  done
 fi
 
 # The unprivileged account monitor mode runs as. Left alone if anything else

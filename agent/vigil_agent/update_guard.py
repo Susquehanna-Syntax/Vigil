@@ -311,6 +311,11 @@ def restart_service() -> None:
             time.sleep(1)
             subprocess.run(["launchctl", "start", "com.susquehannasyntax.vigil-agent"],
                            timeout=10, capture_output=True, env=clean_env())
+        elif sys.platform.startswith("freebsd"):
+            # The rc.d script install.sh writes runs the agent under
+            # `daemon -r`, so the restart lands on the new binary.
+            subprocess.run(["service", "vigil_agent", "restart"],
+                           timeout=10, capture_output=True, env=clean_env())
         else:
             subprocess.run(["systemctl", "restart", "vigil-agent"],
                            timeout=10, capture_output=True, env=clean_env())

@@ -239,6 +239,11 @@ def _update_agent(params: dict, config: AgentConfig) -> str:
         elif sys.platform == "darwin":
             # Apple Silicon only since 2026.15: no Intel build is published.
             platform = "darwin-arm64" if os.uname().machine == "arm64" else "darwin-amd64"
+        elif sys.platform.startswith("freebsd"):
+            machine = os.uname().machine
+            if machine not in ("amd64", "x86_64"):
+                raise RuntimeError(f"No Vigil agent build for FreeBSD on {machine}")
+            platform = "freebsd-amd64"
         else:
             machine = os.uname().machine
             platform = "linux-arm64" if machine in ("aarch64", "arm64") else "linux-amd64"
