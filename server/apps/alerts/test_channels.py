@@ -163,6 +163,8 @@ class ChannelApiTests(_Net, TestCase):
         kinds = {t["kind"]: t for t in self.client.get("/api/v1/alerts/channels/types/").json()}
         self.assertIn("email", kinds)
         self.assertEqual([f["name"] for f in kinds["webhook"]["fields"]], ["url", "secret"])
+        self.assertEqual([f["name"] for f in kinds["slack"]["fields"]],
+                         ["webhook_url", "signing_secret"])
         self.assertTrue(kinds["webhook"]["available"])
 
     def test_a_secret_is_never_returned(self):

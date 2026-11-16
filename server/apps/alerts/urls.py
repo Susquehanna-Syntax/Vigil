@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import channel_views, maintenance_views, views
+from . import channel_views, maintenance_views, slack_actions, views
 
 urlpatterns = [
     path("", views.alert_list, name="alert-list"),
@@ -14,6 +14,8 @@ urlpatterns = [
     path("channels/types/", channel_views.channel_types, name="alert-channel-types"),
     path("channels/<uuid:channel_id>/", channel_views.channel_detail, name="alert-channel-detail"),
     path("channels/<uuid:channel_id>/test/", channel_views.channel_test, name="alert-channel-test"),
+    # Slack's Interactivity Request URL: the Acknowledge button on an alert.
+    path("slack/actions/", slack_actions.slack_action, name="alert-slack-action"),
     # Maintenance windows (sprint M7).
     path("maintenance/", maintenance_views.window_index, name="alert-maintenance-index"),
     path("maintenance/<uuid:window_id>/", maintenance_views.window_detail, name="alert-maintenance-detail"),
