@@ -15,13 +15,13 @@ from __future__ import annotations
 import os
 import shutil
 
+from .. import executor as ex
 from ..config import AgentConfig
 from ..executor import (
     ActionOutput,
     _chown,
     _parse_octal_mode,
     _validate_delete_path,
-    _validate_path,
     _validate_write_path,
 )
 
@@ -44,7 +44,7 @@ def _write_file(params: dict, config: AgentConfig) -> str:
 
 
 def _create_directory(params: dict, _config: AgentConfig) -> str:
-    path = _validate_path(params.get("path", ""), "path")
+    path = ex._validate_path(params.get("path", ""), "path")
     path.mkdir(parents=True, exist_ok=True)
 
     mode = params.get("mode", "")
@@ -74,7 +74,7 @@ def _delete_path(params: dict, _config: AgentConfig) -> str:
 
 
 def _copy_file(params: dict, config: AgentConfig) -> str:
-    src = _validate_path(params.get("src", ""), "src")
+    src = ex._validate_path(params.get("src", ""), "src")
     # The destination is written to, so it gets the sensitive-file checks —
     # _validate_path alone would let a copy land on /etc/shadow.
     dest = _validate_write_path(params.get("dest", ""), config)
@@ -102,7 +102,7 @@ def _move_file(params: dict, config: AgentConfig) -> str:
 
 
 def _set_permissions(params: dict, _config: AgentConfig) -> str:
-    path = _validate_path(params.get("path", ""), "path")
+    path = ex._validate_path(params.get("path", ""), "path")
     if not path.exists():
         raise ValueError(f"Path not found: {path}")
 
