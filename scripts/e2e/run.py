@@ -235,6 +235,9 @@ def security_key(s: Session, browser):
     pg.fill("input[name=password]", PASSWORD)
     pg.click("button[type=submit]")
     pg.wait_for_selector("#login-key-btn")
+    # The button is in the HTML, its handler in vigil-login-verify.js: a click
+    # before that script has run does nothing, which a loaded machine shows.
+    pg.wait_for_load_state("networkidle")
     pg.click("#login-key-btn")
     deadline = time.time() + 15
     while "/login" in pg.url and time.time() < deadline:
