@@ -577,7 +577,7 @@ async function _appPolicyPairs(key) {
 }
 
 //: apps/tasks/spec.py _APP_SOURCE_CHOICES — what an app rule may name.
-const POLICY_APP_SOURCES = ['dpkg', 'rpm', 'apk', 'pacman', 'flatpak', 'snap',
+const POLICY_APP_SOURCES = ['dpkg', 'rpm', 'apk', 'pacman', 'pkg', 'flatpak', 'snap',
   'winget', 'chocolatey', 'scoop', 'registry'];
 
 delegateClick('[data-app-policy]', async (el) => {
