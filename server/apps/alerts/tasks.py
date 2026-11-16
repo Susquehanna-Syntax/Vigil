@@ -52,11 +52,18 @@ def _not_in_maintenance():
 
 
 def _parent_down(host):
-    """The parent host this one depends on, when that parent is offline."""
+    """The parent host this one depends on, when that parent is offline.
+
+    Same site only, checked here and not just when the dependency is set: a
+    host can move to another site afterwards, and one site's outage must
+    never silence another site's pages.
+    """
     parent = host.depends_on
-    if parent is not None and parent.status == Host.Status.OFFLINE:
-        return parent
-    return None
+    if parent is None or parent.status != Host.Status.OFFLINE:
+        return None
+    if scoping.site_id_of(parent) != scoping.site_id_of(host):
+        return None
+    return parent
 
 
 def _check_rule(rule, host, current_time):

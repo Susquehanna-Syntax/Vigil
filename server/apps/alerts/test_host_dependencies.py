@@ -54,6 +54,19 @@ class HostDependencyTests(TestCase):
         self.assertIsNone(child_alert.notified_at)
         self.assertIn("depends on switch", child_alert.message)
 
+    def test_a_parent_in_another_site_never_silences_the_child(self):
+        """A host can move sites after its dependency was set; the rule is
+        checked when it is used, so one site's outage cannot hide another's."""
+        parent = self._host("switch-x", status=Host.Status.OFFLINE, stale=False)
+        child = self._host("vm-x", depends_on=parent)
+        sites = {parent.pk: "site-a", child.pk: "site-b"}
+        with patch("apps.alerts.tasks.scoping.site_id_of",
+                   side_effect=lambda h: sites.get(h.pk)):
+            _mark_stale_hosts_offline()
+        alert = self._offline_alert(child)
+        self.dispatch.assert_called_once_with(alert, event="firing")
+        self.assertNotIn("depends on", alert.message)
+
     def test_child_going_stale_behind_an_already_offline_parent_sends_nothing(self):
         parent = self._host("switch2", status=Host.Status.OFFLINE, stale=False)
         child = self._host("vm2", depends_on=parent)
